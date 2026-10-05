@@ -198,6 +198,20 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $this->assertSame(1, Schedule::where('student_course_id', $this->sc->ID)->count());
     }
 
+    public function test_leave_occurrence_is_refused_flag_on(): void
+    {
+        $this->seedWorld();
+        $this->flag(true);
+        $session = $this->plainSession();
+        DB::table('schedules')->insert(['id' => 9200, 'student_id' => $this->sc->StudentID, 'day_of_week' => 7, 'type' => 'normal',
+            'deduction' => 0, 'branch_id' => 1, 'student_course_id' => $this->sc->ID, 'teacher_id' => $this->aId, 'status' => 'leave',
+            'schedule_date' => '2026-04-19', 'start_time' => '13:00', 'end_time' => '15:00', 'created_at' => now(), 'updated_at' => now()]);
+
+        $this->postSubstitute($session)->assertStatus(422);
+
+        $this->assertSame([1, 0], [Schedule::count(), ScheduleChangeLog::count()]);
+    }
+
     public function test_durable_restore_to_contract_teacher_flag_on(): void
     {
         $this->seedWorld();

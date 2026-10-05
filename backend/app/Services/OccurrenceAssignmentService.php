@@ -44,6 +44,15 @@ class OccurrenceAssignmentService
                     ->exists());
     }
 
+    /** A leave occurrence already has its live row; a substitute must not add a second one. */
+    public static function onLeave(ClassSession $session): bool
+    {
+        return strtolower((string) $session->Status) === 'leave'
+            || Schedule::where('student_course_id', (int) $session->StudentClassID)->where('status', 'leave')
+                ->whereDate('schedule_date', Carbon::parse((string) $session->SessionDate)->toDateString())
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr((string) $session->StartTime, 0, 5)])->exists();
+    }
+
     /**
      * @param array{date:string,start:string,end:string}|null $newSlot
      */
@@ -101,7 +110,7 @@ class OccurrenceAssignmentService
      * a row that also carries a reschedule keeps its slot and gets the contract teacher.
      *
      * @param array{date:string,start:string,end:string}|null $restoreSlot
-     * @return Schedule|null the live row (->exists is false when it was removed); null if none
+     * @return Schedule|null the live row (->exists is false when it was removed); null if none, caller falls back to the legacy cleanup
      */
     public function restoreContractTeacher(ClassSession $session, ?int $actorId, ?array $restoreSlot = null): ?Schedule
     {

@@ -241,17 +241,17 @@ class SubstituteController extends Controller
                 $lastNotification, $currentOperatorId, $payload,
                 $shouldRestoreTime, $origDate, $origStart, $origEnd, $campusId
             ) {
-                // TD-076 B1 (flag on): one writer restores the live row (slot too when the
-                // substitute moved it), one log row. Flag off: today's delete path below.
-                $v2 = OccurrenceAssignmentService::handles($session, $campusId);
-                if ($v2):
-                    $rescheduled = null;
-                    $scheduledRow = app(OccurrenceAssignmentService::class)->restoreContractTeacher(
+                // TD-076 B1: one writer restores the live row (slot too when the substitute moved it), one
+                // log row. No live row at the slot: legacy delete path below.
+                $rescheduled = null;
+                $scheduledRow = OccurrenceAssignmentService::handles($session, $campusId)
+                    ? app(OccurrenceAssignmentService::class)->restoreContractTeacher(
                         $session,
                         $currentOperatorId ?: null,
                         $shouldRestoreTime ? ['date' => $origDate, 'start' => $origStart, 'end' => $origEnd] : null
-                    );
-                else:
+                    )
+                    : null;
+                if (!$scheduledRow):
                 // 找當前代課 scheduled row：以 rescheduled anchor + 新老師為特徵
                 // 注意：合併代課+換時情境下，這些列已位於「新日期」（= 目前 session->SessionDate）。
                 $rescheduled = Schedule::where('student_course_id', $courseId)

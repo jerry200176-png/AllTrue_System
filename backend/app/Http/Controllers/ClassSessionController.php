@@ -2502,6 +2502,10 @@ class ClassSessionController extends Controller
             'has_existing_scheduled' => (bool) $existingScheduled,
         ]);
 
+        if (OccurrenceAssignmentService::enabledFor($campusId) && OccurrenceAssignmentService::onLeave($session)) {
+            return response()->json(['message' => '此堂已請假，無法代課'], 422);
+        }
+
         try {
             return $this->runSubstituteTransaction(
                 $request,
@@ -3039,10 +3043,13 @@ class ClassSessionController extends Controller
 
             $scheduledDeleted = 0;
             $rescheduledDeleted = 0;
-            if (OccurrenceAssignmentService::handles($session, (int) Student::where('id', $studentClass->StudentID)->value('CampusID'))):
-                // TD-076 B1: one writer sets the live row back (or removes a substitute-only row), one log row.
-                $restored = app(OccurrenceAssignmentService::class)->restoreContractTeacher($session, $changedBy ?: null);
-                $scheduledDeleted = $restored ? 1 : 0; // counts "cleared", for the response only
+            // TD-076 B1: one writer sets the live row back (or removes a substitute-only row), one log row.
+            // No live row at the slot (stranded legacy row): fall through to the legacy cleanup below.
+            $restored = OccurrenceAssignmentService::handles($session, (int) Student::where('id', $studentClass->StudentID)->value('CampusID'))
+                ? app(OccurrenceAssignmentService::class)->restoreContractTeacher($session, $changedBy ?: null)
+                : null;
+            if ($restored):
+                $scheduledDeleted = 1; // counts "cleared", for the response only
             else:
             // in-app #276: durable restore must clear substitute_with_reschedule chains even when
             // notification payload times / TIME-column formatting diverge from ClassSession HH:mm.
