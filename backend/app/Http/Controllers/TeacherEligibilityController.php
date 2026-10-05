@@ -99,12 +99,12 @@ class TeacherEligibilityController extends Controller
         $schedules = DB::table('schedules')
             ->whereIn('teacher_id', $teacherIds)
             ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
-            ->whereNotIn('status', ['cancelled', 'leave', 'leave_requested'])
+            ->whereNotIn('status', ['cancelled', 'leave', 'leave_requested', \App\Models\Schedule::STATUS_SUPERSEDED])
             ->get();
         $plannedSchedules = DB::table('schedules')
             ->whereIn('teacher_id', $teacherIds)
             ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
-            ->whereNotIn('status', ['cancelled'])
+            ->whereNotIn('status', ['cancelled', \App\Models\Schedule::STATUS_SUPERSEDED])
             ->get();
 
         // Teacher RFID is still incomplete in production. Work-hours for

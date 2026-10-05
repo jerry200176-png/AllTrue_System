@@ -1,3 +1,5 @@
+import { isDirectorRole } from './roleCapabilities.js';
+
 export const ROLE_ONBOARDING_VERSION = '2026-09-05-v1.2';
 
 const ROLE_ONBOARDING_MISSIONS = {
@@ -131,7 +133,7 @@ function storageFor(storage) {
 }
 
 export function isOnboardingRole(role) {
-  return role === 'teacher' || role === 'director' || role === 'admin' || role === 'super_admin';
+  return role === 'teacher' || isDirectorRole(role);
 }
 
 export function getRoleOnboardingSteps(role) {
