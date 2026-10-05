@@ -458,10 +458,11 @@ class BillingController extends Controller
                 $projection['billing_period'],
                 $serviceStart,
                 $serviceEnd,
-                // Once paid (fully or partly) the amount is fixed and is never
-                // repriced from held lessons, so it covers upcoming lessons too
-                // (unpaid and void invoices keep the billed-only list).
-                includeUpcoming: in_array((string) ($invoice->Status ?? ''), ['paid', 'partial'], true),
+                // A fixed amount (never repriced from held lessons: paid, partly
+                // paid, or a cross-month cycle) covers upcoming lessons too.
+                // Void/cancelled invoices keep the billed-only list.
+                includeUpcoming: !$projection['repriceable']
+                    && !in_array((string) ($invoice->Status ?? ''), ['void', 'cancelled'], true),
             );
         } else {
             $sessions = ClassSession::sessionsForPaymentSlip(

@@ -466,6 +466,29 @@ class MonthlyBillingSlipTest extends TestCase
         $this->assertSame([], $slipDates('paid', 3000));
     }
 
+    public function test_unpaid_cross_month_slip_lists_held_and_upcoming_lessons(): void
+    {
+        // A cross-month service cycle keeps its agreed amount even while unpaid,
+        // so the slip covers the cycle's upcoming lessons as well.
+        Carbon::setTestNow(Carbon::parse('2026-09-01 09:00:00', 'Asia/Taipei'));
+        $token = $this->createDirectorToken('director-monthly-cross-upcoming@example.com');
+        [$student, $course] = $this->makeMonthlyCourse('月結跨月未繳測試', '2026-08-30', '2026-09-28');
+        foreach ([['2026-08-30', 'attended'], ['2026-09-07', 'scheduled'], ['2026-09-14', 'scheduled']] as [$date, $status]) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-25', 'DueDate' => '2026-08-30',
+            'TotalAmount' => 6600, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-08',
+        ]);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => '月結費用', 'Amount' => 6600, 'PeriodStart' => '2026-08-30', 'PeriodEnd' => '2026-09-28']);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonPath('total_amount', 6600)
+            ->assertJsonPath('sessions.*.date', ['2026-08-30', '2026-09-07', '2026-09-14']);
+    }
+
     /** @return array{0: Student, 1: StudentClass} */
     private function makeMonthlyCourse(string $name, string $start, string $end): array
     {

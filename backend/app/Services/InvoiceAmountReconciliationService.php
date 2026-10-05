@@ -27,6 +27,7 @@ class InvoiceAmountReconciliationService
      *   computed_total_amount:int|null,
      *   amount_source:string,
      *   amount_discrepancy:bool,
+     *   repriceable:bool,
      *   period_sessions:int|null,
      *   period_start:string|null,
      *   period_end:string|null,
@@ -57,6 +58,10 @@ class InvoiceAmountReconciliationService
         $computedTotalAmount = null;
         $amountSource = 'invoice_total';
         $amountDiscrepancy = false;
+        // Whether this invoice follows the held-session pricing policy at all
+        // (unpaid, nothing applied, single-month date course). When false its
+        // stored amount is fixed (paid, partly paid, void or cross-month cycle).
+        $repriceable = false;
         $periodSessions = null;
         $periodStart = null;
         $periodEnd = null;
@@ -89,11 +94,9 @@ class InvoiceAmountReconciliationService
             $amountDiscrepancy = $billing['source'] === 'billable_sessions'
                 && $computedTotalAmount !== $storedTotalAmount;
 
-            if (
-                $amountDiscrepancy
-                && (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
-                && $netApplied === 0
-            ) {
+            $repriceable = (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
+                && $netApplied === 0;
+            if ($amountDiscrepancy && $repriceable) {
                 $totalAmount = $computedTotalAmount;
                 $amountSource = 'billable_sessions';
             }
@@ -105,6 +108,7 @@ class InvoiceAmountReconciliationService
             'computed_total_amount' => $computedTotalAmount,
             'amount_source' => $amountSource,
             'amount_discrepancy' => $amountDiscrepancy,
+            'repriceable' => $repriceable,
             'period_sessions' => $periodSessions,
             'period_start' => $periodStart,
             'period_end' => $periodEnd,
