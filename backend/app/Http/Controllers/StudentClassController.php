@@ -795,6 +795,9 @@ class StudentClassController extends Controller
                     if (!$d) {
                         continue;
                     }
+                    if ($row->status === Schedule::STATUS_SUPERSEDED) {
+                        continue;
+                    }
                     if ($row->status === 'scheduled') {
                         if (!isset($scheduledByClass[$id])) {
                             $scheduledByClass[$id] = [];
@@ -1033,6 +1036,9 @@ class StudentClassController extends Controller
                 if (!$d) {
                     continue;
                 }
+                if ($row->status === Schedule::STATUS_SUPERSEDED) {
+                    continue;
+                }
                 if ($row->status === 'scheduled') {
                     if (!isset($scheduledByClass[$id])) {
                         $scheduledByClass[$id] = [];
@@ -1066,6 +1072,9 @@ class StudentClassController extends Controller
                 $id = (int) $row->student_course_id;
                 $d = $row->schedule_date ? Carbon::parse($row->schedule_date)->toDateString() : null;
                 if (!$d) {
+                    continue;
+                }
+                if ($row->status === Schedule::STATUS_SUPERSEDED) {
                     continue;
                 }
                 if ($row->status === 'scheduled') {

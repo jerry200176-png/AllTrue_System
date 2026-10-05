@@ -9,6 +9,10 @@
 <!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
 - 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
 
+## 2026-10-06 — fix(schedule): TD-076 sweep so no reader treats a `superseded` schedules row as live, leave or scheduled
+<!-- release-notes: silent_ship=silent-2026-10-06-td076-superseded-sweep -->
+- 課程管理「排課日期」（`sessionDates`）原把任何非 `scheduled` 的 schedules 列當成請假而移除該日；補課時長判斷與非標準時長盤點原把 `superseded` 補課列當成補課；主任儀表板備援讀取原只排除 cancelled／leave。現在三處與前端判斷都先略過 `superseded` 列（既有狀態行為不變），並以測試證明；目前沒有任何寫入端產生 `superseded`，畫面與行為不變。
+
 ## 2026-10-05 — chore(schedule): TD-076 Track B PR-A log teacher columns + `superseded` status constant
 <!-- release-notes: silent_ship=silent-2026-10-05-td076-pr-a-log-superseded -->
 - `schedule_change_log` 新增可為空的 `from_teacher_id`／`to_teacher_id`（加欄位 migration，可回滾）、`ScheduleChangeLog::REASONS` 與 `Schedule::STATUS_SUPERSEDED`；目前沒有任何寫入端使用，並以測試證明 `superseded` 排程列對日曆、代課解析、忙碌時段、衝堂檢查、回填與前端合併皆不可見。畫面與行為不變。
