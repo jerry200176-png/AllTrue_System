@@ -31,6 +31,12 @@ export const changelogDraftNotes = [
           "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
           "monthly slips list upcoming lessons; MonthlySplit keeps requested endpoints"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "7 S2 paid status comes only from the server"
+        ]
       }
     ],
     "items": [
@@ -40,7 +46,8 @@ export const changelogDraftNotes = [
       "monthly closes stay in accounting queue",
       "slips always list lesson dates",
       "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-      "monthly slips list upcoming lessons; MonthlySplit keeps requested endpoints"
+      "monthly slips list upcoming lessons; MonthlySplit keeps requested endpoints",
+      "7 S2 paid status comes only from the server"
     ]
   },
   {
