@@ -22,6 +22,7 @@ on:
           - monthly_slip_student
           - unpaid_months_muzha
           - unpaid_hidden_candidates
+          - f7_prod_discrepancy
           - swipe_line_path
           - class_sessions_explain_319
           - substitute_calendar_xinzhuang
@@ -101,7 +102,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
@@ -694,6 +695,45 @@ jobs:
             $out['count'] = count($rows);
             $out['outstanding_total'] = array_sum(array_column($rows, 'outstanding'));
             $out['stale_paid_flag_count'] = count(array_filter($rows, fn ($r) => $r['paid_flag'] === 1));
+          }} elseif ($case === 'f7_prod_discrepancy') {{
+            // Read-only F7 S0 prod-snapshot discrepancy report (packet section 7): run the S1 resolver
+            // (BillingPayableResolver::courseStatusesByStudentClassIds) next to the legacy signals over every contract
+            // that is active or ended in 2026, and aggregate. Aggregate counts, amounts and example IDs only; no names.
+            $resolver = app(\App\Services\BillingPayableResolver::class);
+            $ids = $db::table('StudentClass')->where(fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop')->orWhereDate('EndDate', '>=', '2026-01-01'))
+              ->orderBy('ID')->pluck('ID')->map(fn ($id) => (int)$id)->all();
+            $buckets = []; $hidden = []; $flagOnlyPaid = 0; $total = 0;
+            foreach (array_chunk($ids, 400) as $chunk) {{
+              $models = \App\Models\StudentClass::query()->whereIn('ID', $chunk)->get();
+              $statuses = $resolver->courseStatusesByStudentClassIds($chunk, $models);
+              foreach ($models as $c) {{
+                $cid = (int)$c->getAttribute('ID'); $r = $statuses[$cid] ?? null; $total++;
+                $status = (string)($r['status'] ?? 'missing'); $out_amt = (int)($r['outstanding'] ?? 0);
+                $legacyPaid = $c->isEffectivelyPaid();
+                $stop = (int)$c->getAttribute('Stop') === 1;
+                $reason = (string)($c->getAttribute('closed_reason') ?? '');
+                $reasonClass = $reason === '' ? 'none' : (in_array($reason, ['settled', 'completed', 'settled_pending', 'contract_amended', 'waived', 'usage_settled', 'converted_trial'], true) ? $reason : 'other');
+                $key = implode('|', [$status, $legacyPaid ? 'legacy_paid' : 'legacy_unpaid', $stop ? 'stopped' : 'active', $reasonClass, (string)($r['source'] ?? '-')]);
+                $b = $buckets[$key] ?? ['status' => $status, 'legacy' => $legacyPaid ? 'paid' : 'unpaid', 'state' => $stop ? 'stopped' : 'active',
+                  'closed_reason' => $reasonClass, 'source' => (string)($r['source'] ?? '-'), 'count' => 0, 'outstanding' => 0, 'examples' => []];
+                $b['count']++; $b['outstanding'] += $out_amt;
+                if (count($b['examples']) < 5) $b['examples'][] = $cid;
+                $buckets[$key] = $b;
+                // Debt the accounting queue cannot see: resolver owes, contract stopped, reason outside the queue.
+                if (in_array($status, ['unpaid', 'partial'], true) && $stop && !in_array($reasonClass, ['settled_pending', 'contract_amended'], true)) {{
+                  $hidden[] = ['id' => $cid, 'campus_id' => (int)$db::table('Student')->where('id', $c->getAttribute('StudentID'))->value('CampusID'),
+                    'status' => $status, 'outstanding' => $out_amt, 'closed_reason' => $reasonClass];
+                }}
+                if ($legacyPaid && in_array($status, ['unpaid', 'partial'], true)) $flagOnlyPaid++;
+              }}
+            }}
+            uasort($buckets, fn ($a, $b) => $b['count'] <=> $a['count']);
+            $out['courses_scanned'] = $total;
+            $out['buckets'] = array_values($buckets);
+            $out['hidden_debt_count'] = count($hidden);
+            $out['hidden_debt_outstanding'] = array_sum(array_column($hidden, 'outstanding'));
+            $out['hidden_debt'] = array_slice($hidden, 0, 200);
+            $out['legacy_paid_but_resolver_owes'] = $flagOnlyPaid;
           }} elseif ($case === 'contract_yang_binghe') {{
             $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
