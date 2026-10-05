@@ -5,6 +5,30 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.10.06",
+    "date": "2026-10-06",
+    "title": "2026.10.06 草稿（未發布）",
+    "summary": "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。；待對帳 lists every stopped contract that still owes (F7 S3a)",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
+          "待對帳 lists every stopped contract that still owes (F7 S3a)"
+        ]
+      }
+    ],
+    "items": [
+      "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
+      "待對帳 lists every stopped contract that still owes (F7 S3a)"
+    ]
+  },
+  {
     "version": "2026.10.05",
     "date": "2026-10-05",
     "title": "2026.10.05 草稿（未發布）",
@@ -662,45 +686,6 @@ export const changelogDraftNotes = [
       "編輯課表不再把自己判成衝堂",
       "排課衝突顯示卡住的學生與排除指引",
       "帳務中心可依剩餘堂數排序"
-    ]
-  },
-  {
-    "version": "2026.09.15",
-    "date": "2026-09-15",
-    "title": "2026.09.15 草稿（未發布）",
-    "summary": "帳務中心窄視窗操作不再被裁切；堂數待對帳提供處理入口",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "體驗調整",
-        "items": [
-          "帳務中心窄視窗操作不再被裁切"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "堂數待對帳提供處理入口",
-          "對帳帳單改以科目與上課日期辨識",
-          "跨校滿席時段提示更清楚",
-          "綁定健康狀態與控制項更清楚",
-          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-          "堂數待對帳提示提供處理入口"
-        ]
-      }
-    ],
-    "items": [
-      "帳務中心窄視窗操作不再被裁切",
-      "堂數待對帳提供處理入口",
-      "對帳帳單改以科目與上課日期辨識",
-      "跨校滿席時段提示更清楚",
-      "綁定健康狀態與控制項更清楚",
-      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-      "堂數待對帳提示提供處理入口"
     ]
   }
 ];

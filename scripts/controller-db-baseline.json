@@ -5,5 +5,5 @@
   "backend/app/Http/Controllers/ClassSessionController.php": 31,
   "backend/app/Http/Controllers/FinanceController.php": 16,
   "backend/app/Http/Controllers/AlertController.php": 9,
-  "backend/app/Http/Controllers/SwipeRfidController.php": 3
+  "backend/app/Http/Controllers/SwipeRfidController.php": 1
 }
