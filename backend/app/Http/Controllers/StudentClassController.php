@@ -25,6 +25,7 @@ use App\Services\BillingModeConversionArchiveService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\Scheduling\BillingContractLockGuard;
+use App\Services\Scheduling\ContractSessionSchedule;
 use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\ClassSessionContractReflowService;
@@ -646,9 +647,9 @@ class StudentClassController extends Controller
         }
 
         $result = [];
-        $rangeStart = $this->normalizeDateString($request->input('range_start') ?? null)
+        $rangeStart = ContractSessionSchedule::normalizeDateString($request->input('range_start') ?? null)
             ?: Carbon::today()->startOfMonth()->toDateString();
-        $rangeEnd = $this->normalizeDateString($request->input('range_end') ?? null)
+        $rangeEnd = ContractSessionSchedule::normalizeDateString($request->input('range_end') ?? null)
             ?: Carbon::parse($rangeStart)->endOfMonth()->toDateString();
         if ($rangeEnd < $rangeStart) {
             $rangeEnd = $rangeStart;
@@ -784,7 +785,7 @@ class StudentClassController extends Controller
                     $classSessionsBodyByClass[(int) $row->StudentClassID][] = $row;
                 }
                 // Body rows are window-bounded; the contract walk needs cancellations on any date.
-                $cancelledByClass = self::cancelledDatesByClass($courseIds);
+                $cancelledByClass = ContractSessionSchedule::cancelledDatesByClass($courseIds);
                 $leaveByClass = [];
                 $scheduledByClass = [];
                 $sessionDatesByClass = [];
@@ -882,7 +883,7 @@ class StudentClassController extends Controller
                         // Cancelled dates are skipped by the walk so N contract dates remain after capping.
                         $leaveSet = $leaveByClass[$cid] ?? [];
                         $scheduledSet = $scheduledByClass[$cid] ?? [];
-                        $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet, $cancelledByClass[(int) $cid] ?? []);
+                        $contractList = ContractSessionSchedule::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet, $cancelledByClass[(int) $cid] ?? []);
                         $mergedSet = [];
                         foreach ($contractList as $date) {
                             $mergedSet[$date] = true;
@@ -1125,7 +1126,7 @@ class StudentClassController extends Controller
                     $n = (int) $class->SessionCount;
                     $leaveSet = $leaveByClass[$id] ?? [];
                     $scheduledSet = $scheduledByClass[$id] ?? [];
-                    $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet, self::cancelledDateSet($sessionsByClass[$id] ?? []));
+                    $contractList = ContractSessionSchedule::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet, ContractSessionSchedule::cancelledDateSet($sessionsByClass[$id] ?? []));
 
                     // Regression guard (#440): when a count-mode course already has historical
                     // ClassSession rows but future scheduled rows are missing, we must not return
@@ -1229,62 +1230,6 @@ class StudentClassController extends Controller
     }
 
     /**
-     * Dates with a cancelled session. A cancelled row beside a live row in the same slot (date + start) is a
-     * duplicate/placeholder (e.g. reschedule collision), not a cancelled lesson.
-     *
-     * @return array<string, bool>
-     */
-    public static function cancelledDateSet(iterable $sessionRows): array
-    {
-        $cancelledSlots = [];
-        $liveSlots = [];
-        foreach ($sessionRows as $row) {
-            if (!$row->SessionDate) {
-                continue;
-            }
-            $slot = Carbon::parse($row->SessionDate)->toDateString() . '|' . substr((string) ($row->StartTime ?? ''), 0, 5);
-            if (strtolower((string) ($row->Status ?? '')) === 'cancelled') {
-                $cancelledSlots[$slot] = true;
-            } else {
-                $liveSlots[$slot] = true;
-            }
-        }
-        $set = [];
-        foreach (array_keys(array_diff_key($cancelledSlots, $liveSlots)) as $slot) {
-            $set[strstr($slot, '|', true)] = true;
-        }
-
-        return $set;
-    }
-
-    /**
-     * Contract-wide cancelled dates per class (any date, one query), for count-mode recurrence walks.
-     *
-     * @param  list<int>  $classIds
-     * @return array<int, array<string, bool>>
-     */
-    public static function cancelledDatesByClass(array $classIds): array
-    {
-        if ($classIds === []) {
-            return [];
-        }
-        $rows = ClassSession::query()
-            ->whereIn('StudentClassID', $classIds)
-            ->whereExists(fn ($q) => $q->selectRaw('1')->from('ClassSession as c2')
-                ->whereColumn('c2.StudentClassID', 'ClassSession.StudentClassID')
-                ->whereColumn('c2.SessionDate', 'ClassSession.SessionDate')
-                ->whereRaw('LOWER(c2.Status) = ?', ['cancelled']))
-            ->get(['StudentClassID', 'SessionDate', 'StartTime', 'Status']);
-
-        $out = [];
-        foreach ($rows->groupBy('StudentClassID') as $classId => $classRows) {
-            $out[(int) $classId] = self::cancelledDateSet($classRows);
-        }
-
-        return $out;
-    }
-
-    /**
      * @param  list<string>  $effectiveDateList
      * @param  iterable<object>  $sessionRows
      * @return array{materialized: list<array<string, mixed>>, projected: list<array<string, mixed>>}
@@ -1304,7 +1249,7 @@ class StudentClassController extends Controller
             $effectiveDateList = [];
         }
         // A cancelled ClassSession occupies its date even if its start time differs from the template.
-        $cancelledDates = self::cancelledDateSet($sessionRows);
+        $cancelledDates = ContractSessionSchedule::cancelledDateSet($sessionRows);
         $effectiveDateList = array_values(array_filter($effectiveDateList, fn ($d) => !isset($cancelledDates[$d]) && $d >= $rangeStart && $d <= $rangeEnd));
         $projected = $reader->buildProjectedFromEffectiveDates($classId, $effectiveDateList, $materialized, $class);
 
@@ -1322,12 +1267,12 @@ class StudentClassController extends Controller
      */
     public function computeMonthlyEffectiveSessionDates(StudentClass $class, string $rangeStart, string $rangeEnd, array $leaveSet, array $scheduledSet, array $existingSet): array
     {
-        $start = $this->normalizeDateString($class->StartDate ?? null) ?: $rangeStart;
+        $start = ContractSessionSchedule::normalizeDateString($class->StartDate ?? null) ?: $rangeStart;
         if ($start < $rangeStart) {
             $start = $rangeStart;
         }
 
-        $end = $this->normalizeDateString($class->EndDate ?? null) ?: $rangeEnd;
+        $end = ContractSessionSchedule::normalizeDateString($class->EndDate ?? null) ?: $rangeEnd;
         if ($end > $rangeEnd) {
             $end = $rangeEnd;
         }
@@ -1377,34 +1322,6 @@ class StudentClassController extends Controller
         $list = array_keys($set);
         sort($list);
         return $list;
-    }
-
-    /**
-     * 堂數制：從第一堂日開始，依排課星期與請假/調課/加課，算出恰好 N 堂的有效日期（請假會讓結束日往後推）。
-     */
-    public static function computeEffectiveSessionDates(string $startDate, int $n, array $daysOfWeek, array $leaveSet, array $scheduledSet, array $cancelledSet = []): array
-    {
-        $list = [];
-        $d = Carbon::parse($startDate . ' 12:00:00');
-        $end = $d->copy()->addYears(2);
-        while ($d <= $end && count($list) < $n) {
-            $ymd = $d->toDateString();
-            $dow = $d->dayOfWeekIso;
-            $isRegular = in_array($dow, $daysOfWeek, true);
-            $isCancelled = isset($cancelledSet[$ymd]);
-            $isLeave = isset($leaveSet[$ymd]) || $isCancelled;
-            $isScheduledExtra = isset($scheduledSet[$ymd]);
-
-            if ($isRegular && !$isLeave) {
-                $list[] = $ymd;
-            } elseif ($isScheduledExtra && !$isRegular && !$isCancelled) {
-                // A same-day leave marker beside a schedule-only make-up keeps the make-up (R13/R114);
-                // only a cancelled ClassSession on that date removes it.
-                $list[] = $ymd;
-            }
-            $d->addDay();
-        }
-        return array_slice($list, 0, $n);
     }
 
     /**
@@ -1601,7 +1518,7 @@ class StudentClassController extends Controller
 
         // Store ISO weekdays (1-7) in week columns — DB convention is 7=Sunday, never 0.
         $scheduleSlots = array_map(function ($slot) {
-            $slot['weekday'] = self::isoWeekday($slot['weekday'] ?? 0);
+            $slot['weekday'] = ContractSessionSchedule::isoWeekday($slot['weekday'] ?? 0);
 
             return $slot;
         }, $data['ScheduleSlots'] ?? []);
@@ -1742,7 +1659,7 @@ class StudentClassController extends Controller
     {
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
-        $previousStartDate = $this->normalizeDateString($studentClass->StartDate ?? null);
+        $previousStartDate = ContractSessionSchedule::normalizeDateString($studentClass->StartDate ?? null);
         $oldScheduleMode = (string) ($studentClass->ScheduleMode ?? 'count');
 
         if (!empty($campusIds)) {
@@ -1939,9 +1856,9 @@ class StudentClassController extends Controller
                     'slots' => $recurringSlots,
                     'exclude_student_class_id' => (int) $studentClass->getAttribute('ID'),
                     'exclude_student_id' => (int) ($studentClass->getAttribute('StudentID') ?? 0) ?: null,
-                    'start_date' => $this->normalizeDateString($candidate->getAttribute('StartDate')),
+                    'start_date' => ContractSessionSchedule::normalizeDateString($candidate->getAttribute('StartDate')),
                     'end_date' => $candidate->getAttribute('ScheduleMode') === 'date'
-                        ? $this->normalizeDateString($candidate->getAttribute('EndDate'))
+                        ? ContractSessionSchedule::normalizeDateString($candidate->getAttribute('EndDate'))
                         : null,
                 ]);
                 if (!empty($recurringConflicts)) {
@@ -2377,7 +2294,7 @@ class StudentClassController extends Controller
                     $leaveSet = $courseExceptions['leave'];
                     $scheduledSet = $courseExceptions['scheduled'];
 
-                    $dates = self::computeEffectiveSessionDates($startDate, $sessionCount, $intDays, $leaveSet, $scheduledSet);
+                    $dates = ContractSessionSchedule::computeEffectiveSessionDates($startDate, $sessionCount, $intDays, $leaveSet, $scheduledSet);
                     $validDatesSet = array_flip($dates);
                     $today = Carbon::today()->toDateString();
                     $sTime = $startTime ? substr($startTime, 0, 5) : '16:00';
@@ -3171,7 +3088,7 @@ class StudentClassController extends Controller
             );
             $slots = $this->resolveScheduleSlotsForRebuild($source);
             if (empty($slots)) {
-                $fallbackTime = $this->normalizeSessionTime($source->getAttribute('time'), '16:00');
+                $fallbackTime = ContractSessionSchedule::normalizeSessionTime($source->getAttribute('time'), '16:00');
                 $slots = [[
                     'weekday' => (int) Carbon::parse($plan['start_date'])->dayOfWeekIso,
                     'time' => substr($fallbackTime, 0, 5),
@@ -3362,10 +3279,10 @@ class StudentClassController extends Controller
             }
 
             $start = Carbon::parse($data['start_date'])->toDateString();
-            $sourceEnd = $this->normalizeDateString($source->getAttribute('EndDate'));
+            $sourceEnd = ContractSessionSchedule::normalizeDateString($source->getAttribute('EndDate'));
             $lastSession = ClassSession::query()->where('StudentClassID', $source->getAttribute('ID'))
                 ->where('Status', '!=', 'cancelled')->max('SessionDate');
-            $lastDate = max($sourceEnd ?: '', $this->normalizeDateString($lastSession) ?: '');
+            $lastDate = max($sourceEnd ?: '', ContractSessionSchedule::normalizeDateString($lastSession) ?: '');
             if (!$lastDate || $start <= $lastDate) {
                 abort(422, '下一期須在原課程結束日及最後堂次之後；請先確認原課程日期。');
             }
@@ -3469,7 +3386,7 @@ class StudentClassController extends Controller
                 'message' => '已建立下一期輔導課並保留前後期關聯；費用 0 元，無須繳費。',
                 'source_course_id' => (int) $source->getAttribute('ID'), 'continuity_group_id' => (int) $group->id,
                 'new_course' => ['id' => (int) $new->getAttribute('ID'), 'charge' => 0,
-                    'start_date' => $start, 'end_date' => $this->normalizeDateString($new->getAttribute('EndDate')),
+                    'start_date' => $start, 'end_date' => ContractSessionSchedule::normalizeDateString($new->getAttribute('EndDate')),
                     'created_sessions' => count($rows)],
                 'next_actions' => ['view_new_course'],
             ], 201);
@@ -3709,8 +3626,8 @@ class StudentClassController extends Controller
                     'errors' => ['duplicate' => ['已存在相同期間的月結續報課程。']],
                     'duplicate_course' => [
                         'id' => (int) $duplicate->ID,
-                        'start_date' => $this->normalizeDateString($duplicate->StartDate),
-                        'end_date' => $this->normalizeDateString($duplicate->EndDate),
+                        'start_date' => ContractSessionSchedule::normalizeDateString($duplicate->StartDate),
+                        'end_date' => ContractSessionSchedule::normalizeDateString($duplicate->EndDate),
                         'paid' => (int) ($duplicate->Paid ?? 0),
                     ],
                 ], 409);
@@ -3866,16 +3783,16 @@ class StudentClassController extends Controller
                 'session_sync' => $sessionSync,
                 'source_course' => [
                     'id' => (int) $studentClass->ID,
-                    'start_date' => $this->normalizeDateString($studentClass->StartDate),
-                    'end_date' => $this->normalizeDateString($studentClass->EndDate),
+                    'start_date' => ContractSessionSchedule::normalizeDateString($studentClass->StartDate),
+                    'end_date' => ContractSessionSchedule::normalizeDateString($studentClass->EndDate),
                     'paid' => (int) ($studentClass->Paid ?? 0),
                     'stop' => (int) ($studentClass->Stop ?? 0),
                     'closed_reason' => $studentClass->closed_reason,
                 ],
                 'new_course' => [
                     'id' => (int) $newCourse->ID,
-                    'start_date' => $this->normalizeDateString($newCourse->StartDate),
-                    'end_date' => $this->normalizeDateString($newCourse->EndDate),
+                    'start_date' => ContractSessionSchedule::normalizeDateString($newCourse->StartDate),
+                    'end_date' => ContractSessionSchedule::normalizeDateString($newCourse->EndDate),
                     'settlement_day' => $newCourse->settlement_day,
                     'monthly_sessions' => $newCourse->monthly_sessions,
                     'schedule_mode' => $newCourse->ScheduleMode,
@@ -3886,7 +3803,7 @@ class StudentClassController extends Controller
                     'billing_period' => $invoice->billing_period,
                     'status' => $invoice->Status,
                     'total_amount' => (int) $invoice->TotalAmount,
-                    'due_date' => $this->normalizeDateString($invoice->DueDate),
+                    'due_date' => ContractSessionSchedule::normalizeDateString($invoice->DueDate),
                 ],
             ], 201);
         });
@@ -4125,8 +4042,8 @@ class StudentClassController extends Controller
                     ],
                     'duplicate_course' => [
                         'id' => (int) $duplicate->ID,
-                        'start_date' => $this->normalizeDateString($duplicate->StartDate),
-                        'end_date' => $this->normalizeDateString($duplicate->EndDate),
+                        'start_date' => ContractSessionSchedule::normalizeDateString($duplicate->StartDate),
+                        'end_date' => ContractSessionSchedule::normalizeDateString($duplicate->EndDate),
                         'session_count' => (int) ($duplicate->SessionCount ?? 0),
                         'remaining_sessions' => (int) ($duplicate->RemainingSessions ?? 0),
                         'paid' => (int) ($duplicate->Paid ?? 0),
@@ -4218,7 +4135,7 @@ class StudentClassController extends Controller
             $slots = $this->resolveScheduleSlotsForRebuild($newCourse);
             if (empty($slots)) {
                 $isoDow = (int) Carbon::parse($startDate)->dayOfWeekIso;
-                $fallbackTime = $this->normalizeSessionTime($newCourse->time ?? null, '16:00');
+                $fallbackTime = ContractSessionSchedule::normalizeSessionTime($newCourse->time ?? null, '16:00');
                 $slots = [['weekday' => $isoDow, 'time' => substr($fallbackTime, 0, 5)]];
                 if ($globalDur >= 30) {
                     $slots[0]['duration_minutes'] = $globalDur;
@@ -4281,7 +4198,7 @@ class StudentClassController extends Controller
                     'paid' => (int) ($studentClass->Paid ?? 0),
                     'stop' => (int) ($studentClass->Stop ?? 0),
                     'closed_reason' => $studentClass->closed_reason,
-                    'end_date' => $this->normalizeDateString($studentClass->EndDate),
+                    'end_date' => ContractSessionSchedule::normalizeDateString($studentClass->EndDate),
                 ],
                 'new_course' => [
                     'id' => (int) $newCourse->ID,
@@ -4289,10 +4206,10 @@ class StudentClassController extends Controller
                     'remaining_sessions' => (int) ($newCourse->RemainingSessions ?? 0),
                     'created_sessions' => $createdSessions,
                     'paid' => (int) ($newCourse->Paid ?? 0),
-                    'start_date' => $this->normalizeDateString($newCourse->StartDate),
-                    'end_date' => $this->normalizeDateString($newCourse->EndDate),
-                    'first_session_date' => $this->normalizeDateString($firstSessionDate),
-                    'last_session_date' => $this->normalizeDateString($lastSessionDate),
+                    'start_date' => ContractSessionSchedule::normalizeDateString($newCourse->StartDate),
+                    'end_date' => ContractSessionSchedule::normalizeDateString($newCourse->EndDate),
+                    'first_session_date' => ContractSessionSchedule::normalizeDateString($firstSessionDate),
+                    'last_session_date' => ContractSessionSchedule::normalizeDateString($lastSessionDate),
                 ],
             ], 201);
         });
@@ -4353,7 +4270,7 @@ class StudentClassController extends Controller
             $slots = $this->resolveScheduleSlotsForRebuild($source);
             if (empty($slots)) {
                 $isoDow = (int) Carbon::parse($startDate)->dayOfWeekIso;
-                $fallbackTime = $this->normalizeSessionTime($source->getAttribute('time') ?? null, '16:00');
+                $fallbackTime = ContractSessionSchedule::normalizeSessionTime($source->getAttribute('time') ?? null, '16:00');
                 $slots = [['weekday' => $isoDow, 'time' => substr($fallbackTime, 0, 5)]];
             }
             $duration = max(30, (int) ($source->getAttribute('SessionDuration') ?? 120));
@@ -4460,14 +4377,14 @@ class StudentClassController extends Controller
         ]);
 
         $sessionDate = Carbon::parse($data['session_date'])->toDateString();
-        $startTime = $this->normalizeSessionTime($data['start_time'] ?? null, $studentClass->time ?: '16:00');
+        $startTime = ContractSessionSchedule::normalizeSessionTime($data['start_time'] ?? null, $studentClass->time ?: '16:00');
 
         $globalDur = (int) ($studentClass->SessionDuration ?? 120);
         $isoDow = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
         $perDayDur = $this->resolvePerDayDuration($studentClass, $isoDow);
         $durationMinutes = (int) ($data['duration_minutes'] ?? ($perDayDur ?: $globalDur));
         if (!empty($data['end_time'])) {
-            $endTime = $this->normalizeSessionTime($data['end_time'], '18:00');
+            $endTime = ContractSessionSchedule::normalizeSessionTime($data['end_time'], '18:00');
             $durationMinutes = Carbon::createFromFormat('H:i:s', $startTime)
                 ->diffInMinutes(Carbon::createFromFormat('H:i:s', $endTime), false);
             if ($durationMinutes <= 0) {
@@ -4479,7 +4396,7 @@ class StudentClassController extends Controller
         }
 
         $now = Carbon::now();
-        $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime, $now);
+        $isEnded = ContractSessionSchedule::sessionEndedByEndTime($sessionDate, $endTime, $now);
         // Adding/making up a session must not silently approve an assessment
         // merely because the selected time is in the past. Approval is an
         // explicit director choice; omitted input fails closed to pending.
@@ -4590,7 +4507,7 @@ class StudentClassController extends Controller
                 $movableSession = $conflict['_movable_session'];
 
                 if ($isSessionMode && $movableSession) {
-                    $movedFromDate = $this->normalizeDateString($movableSession->SessionDate);
+                    $movedFromDate = ContractSessionSchedule::normalizeDateString($movableSession->SessionDate);
                     $classSession = $movableSession;
                     $classSession->SessionDate = $sessionDate;
                     $classSession->StartTime = $startTime;
@@ -4743,7 +4660,7 @@ class StudentClassController extends Controller
         ]);
 
         $sessionDate = Carbon::parse($data['session_date'])->toDateString();
-        $startTime = $this->normalizeSessionTime($data['start_time'] ?? null, $studentClass->time ?: '16:00');
+        $startTime = ContractSessionSchedule::normalizeSessionTime($data['start_time'] ?? null, $studentClass->time ?: '16:00');
 
         $classId = (int) $studentClass->ID;
         $isSessionMode = ((string) ($studentClass->ScheduleMode ?? 'count') === 'count')
@@ -4775,11 +4692,11 @@ class StudentClassController extends Controller
         $canAdd = $result['conflict_type'] === 'none';
 
         $endTime = !empty($data['end_time'])
-            ? $this->normalizeSessionTime($data['end_time'], '18:00')
+            ? ContractSessionSchedule::normalizeSessionTime($data['end_time'], '18:00')
             : Carbon::createFromFormat('H:i:s', $startTime)
                 ->addMinutes(max(30, (int) ($data['duration_minutes'] ?? 120)))
                 ->format('H:i:s');
-        $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime);
+        $isEnded = ContractSessionSchedule::sessionEndedByEndTime($sessionDate, $endTime);
 
         if ($canAdd && empty($result['_existing_session'])) {
             $teacherConflicts = $this->teacherCapacityConflictsForSession(
@@ -5399,8 +5316,8 @@ class StudentClassController extends Controller
             return [];
         }
 
-        $anchor = $this->normalizeDateString($tailDate)
-            ?: $this->normalizeDateString($source->getAttribute('StartDate'))
+        $anchor = ContractSessionSchedule::normalizeDateString($tailDate)
+            ?: ContractSessionSchedule::normalizeDateString($source->getAttribute('StartDate'))
             ?: Carbon::today()->toDateString();
         $anchorDate = Carbon::parse($anchor)->startOfDay();
         $today = Carbon::today()->startOfDay();
@@ -5420,7 +5337,7 @@ class StudentClassController extends Controller
         $existing = ClassSession::query()->where('StudentClassID', (int) $source->getAttribute('ID'))
             ->get(['SessionDate', 'StartTime']);
         foreach ($existing as $session) {
-            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
             $start = substr((string) ($session->StartTime ?? ''), 0, 5);
             if ($date && $start !== '') {
                 $occupied[$date . '|' . $start] = true;
@@ -5580,7 +5497,7 @@ class StudentClassController extends Controller
             }
 
             $sessions = (int) ($data['sessions'] ?? 0);
-            $startDate = $this->normalizeDateString($data['start_date'] ?? null);
+            $startDate = ContractSessionSchedule::normalizeDateString($data['start_date'] ?? null);
             if ($sessions < 1) {
                 $blockers[] = [
                     'code' => 'sessions_required',
@@ -5620,11 +5537,11 @@ class StudentClassController extends Controller
                 $sessionsPreview = $this->buildSessionsForCount((int) $studentClass->ID, $startDate, $sessions, $slots, $globalDur);
                 $schedule['created_sessions'] = count($sessionsPreview);
                 $schedule['first_session_date'] = isset($sessionsPreview[0])
-                    ? $this->normalizeDateString($sessionsPreview[0]['SessionDate'])
+                    ? ContractSessionSchedule::normalizeDateString($sessionsPreview[0]['SessionDate'])
                     : null;
                 $lastSession = !empty($sessionsPreview) ? $sessionsPreview[count($sessionsPreview) - 1] : null;
                 $schedule['last_session_date'] = $lastSession
-                    ? $this->normalizeDateString($lastSession['SessionDate'])
+                    ? ContractSessionSchedule::normalizeDateString($lastSession['SessionDate'])
                     : null;
             }
 
@@ -5664,8 +5581,8 @@ class StudentClassController extends Controller
                 ];
             }
 
-            $currentEnd = $this->normalizeDateString($studentClass->EndDate ?? null);
-            $newEnd = $this->normalizeDateString($data['end_date'] ?? null);
+            $currentEnd = ContractSessionSchedule::normalizeDateString($studentClass->EndDate ?? null);
+            $newEnd = ContractSessionSchedule::normalizeDateString($data['end_date'] ?? null);
             if (!$newEnd && !empty($data['months'])) {
                 $base = $currentEnd ?: Carbon::today()->toDateString();
                 $newEnd = Carbon::parse($base)->addMonths((int) $data['months'])->toDateString();
@@ -5815,8 +5732,8 @@ class StudentClassController extends Controller
                 'subject_id' => (int) ($studentClass->SubjectID ?? 0),
                 'teacher_id' => (int) ($studentClass->TeacherID ?? 0),
                 'schedule_mode' => (string) ($studentClass->ScheduleMode ?? ''),
-                'start_date' => $this->normalizeDateString($studentClass->StartDate ?? null),
-                'end_date' => $this->normalizeDateString($studentClass->EndDate ?? null),
+                'start_date' => ContractSessionSchedule::normalizeDateString($studentClass->StartDate ?? null),
+                'end_date' => ContractSessionSchedule::normalizeDateString($studentClass->EndDate ?? null),
                 'paid' => (int) ($studentClass->Paid ?? 0),
                 'remaining_sessions' => (int) ($studentClass->RemainingSessions ?? 0),
                 'session_count' => (int) ($studentClass->SessionCount ?? 0),
@@ -5826,8 +5743,8 @@ class StudentClassController extends Controller
             'mode' => $mode,
             'payload' => [
                 'sessions' => $data['sessions'] ?? null,
-                'start_date' => $this->normalizeDateString($data['start_date'] ?? null),
-                'end_date' => $this->normalizeDateString($data['end_date'] ?? null),
+                'start_date' => ContractSessionSchedule::normalizeDateString($data['start_date'] ?? null),
+                'end_date' => ContractSessionSchedule::normalizeDateString($data['end_date'] ?? null),
                 'months' => $data['months'] ?? null,
                 // Hash the server-normalized discount snapshot so equivalent
                 // inputs such as 12.5 and 12.50 confirm the same preview.
@@ -5852,8 +5769,8 @@ class StudentClassController extends Controller
                 'subject_id' => (int) ($studentClass->SubjectID ?? 0),
                 'teacher_id' => (int) ($studentClass->TeacherID ?? 0),
                 'schedule_mode' => (string) ($studentClass->ScheduleMode ?? ''),
-                'start_date' => $this->normalizeDateString($studentClass->StartDate ?? null),
-                'end_date' => $this->normalizeDateString($studentClass->EndDate ?? null),
+                'start_date' => ContractSessionSchedule::normalizeDateString($studentClass->StartDate ?? null),
+                'end_date' => ContractSessionSchedule::normalizeDateString($studentClass->EndDate ?? null),
                 'paid' => (int) ($studentClass->Paid ?? 0),
                 'remaining_sessions' => (int) ($studentClass->RemainingSessions ?? 0),
             ],
@@ -5936,8 +5853,8 @@ class StudentClassController extends Controller
     /** Conservative calendar window: contract overlap OR ClassSession/Schedule in range. */
     private function applyCalendarWindowFilter($query, $start, $end): void
     {
-        $rangeStart = $this->normalizeDateString($start);
-        $rangeEnd = $this->normalizeDateString($end);
+        $rangeStart = ContractSessionSchedule::normalizeDateString($start);
+        $rangeEnd = ContractSessionSchedule::normalizeDateString($end);
         if (!$rangeStart || !$rangeEnd || $rangeEnd < $rangeStart) {
             return;
         }
@@ -6340,7 +6257,7 @@ class StudentClassController extends Controller
 
         $sessions = ClassSession::query()->where('StudentClassID', $cid)
             ->whereRaw("COALESCE(Status, '') != 'cancelled'")->lockForUpdate()->get();
-        $isMoving = fn ($x) => $this->normalizeDateString($x->getAttribute('SessionDate')) >= $start;
+        $isMoving = fn ($x) => ContractSessionSchedule::normalizeDateString($x->getAttribute('SessionDate')) >= $start;
         $unmarked = $sessions->reject($isMoving)->filter(fn ($x) => (string) $x->getAttribute('Status') === 'scheduled');
         if ($unmarked->isNotEmpty()) {
             abort(response()->json([
@@ -6422,7 +6339,7 @@ class StudentClassController extends Controller
         SessionDeductionService::recomputeCounters($newId);
         $last = ClassSession::query()->where('StudentClassID', $newId)->whereRaw("COALESCE(Status, '') != 'cancelled'")->max('SessionDate');
         if ($last) {
-            $new->setAttribute('EndDate', $this->normalizeDateString($last));
+            $new->setAttribute('EndDate', ContractSessionSchedule::normalizeDateString($last));
             $new->save();
         }
         $this->linkTransferGroup($source, $new, $start);
@@ -6546,7 +6463,7 @@ class StudentClassController extends Controller
             'paid_amount' => $fullCharge,
             'transfer_amount' => $newCharge,
             'receipt_no' => $receipt,
-            'pay_date' => $this->normalizeDateString($course->getAttribute('PayDate')),
+            'pay_date' => ContractSessionSchedule::normalizeDateString($course->getAttribute('PayDate')),
         ];
     }
 
@@ -6795,7 +6712,7 @@ class StudentClassController extends Controller
             return;
         }
 
-        $normalizedDate = $this->normalizeDateString((string) $paidAt);
+        $normalizedDate = ContractSessionSchedule::normalizeDateString((string) $paidAt);
         if (!$normalizedDate) {
             return;
         }
@@ -6955,13 +6872,13 @@ class StudentClassController extends Controller
             return ['created_sessions' => 0, 'reason' => 'inactive_course'];
         }
 
-        $endDate = $this->normalizeDateString($studentClass->EndDate ?? null);
+        $endDate = ContractSessionSchedule::normalizeDateString($studentClass->EndDate ?? null);
         if (!$endDate) {
             return ['created_sessions' => 0, 'reason' => 'end_date_missing'];
         }
 
         $today = Carbon::today()->toDateString();
-        $startDate = $this->normalizeDateString($studentClass->StartDate ?? null) ?: $today;
+        $startDate = ContractSessionSchedule::normalizeDateString($studentClass->StartDate ?? null) ?: $today;
         if ($startDate < $today) {
             $startDate = $today;
         }
@@ -6992,7 +6909,7 @@ class StudentClassController extends Controller
             ->whereDate('SessionDate', '<=', $endDate)
             ->get(['SessionDate', 'StartTime']);
         foreach ($existingRows as $row) {
-            $date = $this->normalizeDateString($row->SessionDate ?? null);
+            $date = ContractSessionSchedule::normalizeDateString($row->SessionDate ?? null);
             $start = substr((string) ($row->StartTime ?? ''), 0, 5);
             if ($date && $start !== '') {
                 $existingKeys[$date . '|' . $start] = true;
@@ -7002,13 +6919,13 @@ class StudentClassController extends Controller
         $created = 0;
         $now = Carbon::now();
         foreach ($proposedSessions as $session) {
-            $sessionDate = $this->normalizeDateString($session['SessionDate'] ?? null);
+            $sessionDate = ContractSessionSchedule::normalizeDateString($session['SessionDate'] ?? null);
             $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
-            $endTime = $this->normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');
+            $endTime = ContractSessionSchedule::normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');
             if (!$sessionDate || $start === '') {
                 continue;
             }
-            if ($this->sessionEndedByEndTime($sessionDate, $endTime, $now)) {
+            if (ContractSessionSchedule::sessionEndedByEndTime($sessionDate, $endTime, $now)) {
                 continue;
             }
             $key = $sessionDate . '|' . $start;
@@ -7062,7 +6979,7 @@ class StudentClassController extends Controller
 
         $slotsByWeekday = [];
         foreach ($activeSessions as $cs) {
-            $date = $this->normalizeDateString($cs->SessionDate ?? null);
+            $date = ContractSessionSchedule::normalizeDateString($cs->SessionDate ?? null);
             if (!$date) {
                 continue;
             }
@@ -7181,7 +7098,7 @@ class StudentClassController extends Controller
             });
         }
         return $query->get(['SessionDate', 'StartTime', 'EndTime'])->filter(function ($session) use ($contractKeys) {
-            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
             if (!$date) {
                 return false;
             }
@@ -7269,13 +7186,13 @@ class StudentClassController extends Controller
                 ];
             }
 
-            $startDate = $this->normalizeDateString($studentClass->StartDate ?? null) ?: Carbon::today()->toDateString();
+            $startDate = ContractSessionSchedule::normalizeDateString($studentClass->StartDate ?? null) ?: Carbon::today()->toDateString();
             $scheduleMode = (string) ($studentClass->ScheduleMode ?? 'count');
             $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
             $sessions = [];
 
             if ($scheduleMode === 'date') {
-                $endDate = $this->normalizeDateString($studentClass->EndDate ?? null);
+                $endDate = ContractSessionSchedule::normalizeDateString($studentClass->EndDate ?? null);
                 if (!$endDate) {
                     return ['rebuilt' => false, 'reason' => 'end_date_missing'];
                 }
@@ -7324,12 +7241,12 @@ class StudentClassController extends Controller
                 ?? DB::table('BaseData')->where('Name', '課程')->where('id', $studentClass->SubjectID)->value('Val')
                 ?? '評量';
             foreach ($sessions as $session) {
-                $sessionDate = $this->normalizeDateString($session['SessionDate'] ?? null);
-                $endTime = $this->normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');
+                $sessionDate = ContractSessionSchedule::normalizeDateString($session['SessionDate'] ?? null);
+                $endTime = ContractSessionSchedule::normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');
                 if (!$sessionDate) {
                     continue;
                 }
-                $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime, $now);
+                $isEnded = ContractSessionSchedule::sessionEndedByEndTime($sessionDate, $endTime, $now);
                 $session['Status'] = $isEnded ? 'completed' : 'scheduled';
                 if ($isEnded && empty($session['Note'])) {
                     $session['Note'] = '系統重建堂次（固定星期調整）';
@@ -7369,7 +7286,7 @@ class StudentClassController extends Controller
             ];
         }
 
-        $newStartDate = $this->normalizeDateString($studentClass->StartDate ?? null);
+        $newStartDate = ContractSessionSchedule::normalizeDateString($studentClass->StartDate ?? null);
         if (!$newStartDate) {
             return ['rebuilt' => false, 'reason' => 'start_date_unchanged'];
         }
@@ -7442,7 +7359,7 @@ class StudentClassController extends Controller
 
         $sessions = [];
         if ($scheduleMode === 'date') {
-            $endDate = $this->normalizeDateString($studentClass->EndDate ?? null);
+            $endDate = ContractSessionSchedule::normalizeDateString($studentClass->EndDate ?? null);
             if (!$endDate) {
                 return ['rebuilt' => false, 'reason' => 'end_date_missing'];
             }
@@ -7510,13 +7427,13 @@ class StudentClassController extends Controller
             ?? '評量';
 
         foreach ($sessions as $session) {
-            $sessionDate = $this->normalizeDateString($session['SessionDate'] ?? null);
-            $endTime = $this->normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');
+            $sessionDate = ContractSessionSchedule::normalizeDateString($session['SessionDate'] ?? null);
+            $endTime = ContractSessionSchedule::normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');
             if (!$sessionDate) {
                 continue;
             }
 
-            $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime, $now);
+            $isEnded = ContractSessionSchedule::sessionEndedByEndTime($sessionDate, $endTime, $now);
             $session['Status'] = $isEnded ? 'completed' : 'scheduled';
             if ($isEnded && empty($session['Note'])) {
                 $session['Note'] = '系統重建堂次（開課日調整）';
@@ -7646,7 +7563,7 @@ class StudentClassController extends Controller
         if ($k <= 0) {
             return 0;
         }
-        $firstSessionDate = $this->normalizeDateString($unlockedSorted->first()->SessionDate ?? null);
+        $firstSessionDate = ContractSessionSchedule::normalizeDateString($unlockedSorted->first()->SessionDate ?? null);
         $anchor = $firstSessionDate;
         $startDateIsAnchor = false;
         if ($contractStartDate !== null && $contractStartDate !== '') {
@@ -7669,8 +7586,8 @@ class StudentClassController extends Controller
         $candidateSessions = $this->buildSessionsForCount(0, $snapped, $candidateCount, $slots, $durationMinutes);
         $proposed = [];
         foreach ($candidateSessions as $candidate) {
-            $date = $this->normalizeDateString($candidate['SessionDate'] ?? null);
-            $start = $this->normalizeSessionTime($candidate['StartTime'] ?? null, '16:00:00');
+            $date = ContractSessionSchedule::normalizeDateString($candidate['SessionDate'] ?? null);
+            $start = ContractSessionSchedule::normalizeSessionTime($candidate['StartTime'] ?? null, '16:00:00');
             if (!$date || isset($skipOccupiedTargetKeys["{$date}|" . substr($start, 0, 5)])) {
                 continue;
             }
@@ -7692,13 +7609,13 @@ class StudentClassController extends Controller
                 break;
             }
             $p = $proposed[$i];
-            $newDate = $this->normalizeDateString($p['SessionDate'] ?? null);
-            $newStart = $this->normalizeSessionTime($p['StartTime'] ?? null, '16:00:00');
-            $newEnd = $this->normalizeSessionTime($p['EndTime'] ?? null, '18:00:00');
+            $newDate = ContractSessionSchedule::normalizeDateString($p['SessionDate'] ?? null);
+            $newStart = ContractSessionSchedule::normalizeSessionTime($p['StartTime'] ?? null, '16:00:00');
+            $newEnd = ContractSessionSchedule::normalizeSessionTime($p['EndTime'] ?? null, '18:00:00');
             if ($newDate === null || $newDate === '') {
                 continue;
             }
-            $oldDate = $this->normalizeDateString($session->SessionDate ?? null);
+            $oldDate = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
             if (
                 $oldDate === $newDate
                 && (string) $session->StartTime === $newStart
@@ -7904,7 +7821,7 @@ class StudentClassController extends Controller
         }
 
         $globalDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
-        $startFrom = $this->normalizeDateString($studentClass->StartDate ?? null)
+        $startFrom = ContractSessionSchedule::normalizeDateString($studentClass->StartDate ?? null)
             ?: Carbon::today()->toDateString();
         $expectedSessions = $this->buildSessionsForCount($classId, $startFrom, $newCount, $slots, $globalDur);
         if (empty($expectedSessions)) {
@@ -7913,7 +7830,7 @@ class StudentClassController extends Controller
 
         $expectedKeys = [];
         foreach ($expectedSessions as $session) {
-            $date = $this->normalizeDateString($session['SessionDate'] ?? null);
+            $date = ContractSessionSchedule::normalizeDateString($session['SessionDate'] ?? null);
             $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
             if ($date && $start !== '') {
                 $expectedKeys[$date . '|' . $start] = true;
@@ -7932,7 +7849,7 @@ class StudentClassController extends Controller
         $hasLockedQuotaSession = false;
         $hasLockedQuotaOutsideContract = false;
         foreach ($existingSessions as $session) {
-            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
             $start = substr((string) ($session->StartTime ?? ''), 0, 5);
             if (!$date || $start === '') {
                 continue;
@@ -7975,7 +7892,7 @@ class StudentClassController extends Controller
         $newSessions = [];
         $quotaShortfall = max(0, $newCount - $currentCount);
         foreach ($expectedSessions as $session) {
-            $date = $this->normalizeDateString($session['SessionDate'] ?? null);
+            $date = ContractSessionSchedule::normalizeDateString($session['SessionDate'] ?? null);
             $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
             if (!$date || $start === '') {
                 continue;
@@ -8004,7 +7921,7 @@ class StudentClassController extends Controller
                 ? Carbon::parse($lastSession->SessionDate)->addDay()->startOfDay()
                 : Carbon::parse($startFrom)->startOfDay();
             $validWeekdays = array_map(
-                fn (array $slot): int => self::isoWeekday((int) $slot['weekday']),
+                fn (array $slot): int => ContractSessionSchedule::isoWeekday((int) $slot['weekday']),
                 $slots
             );
             $appendGuard = 0;
@@ -8037,7 +7954,7 @@ class StudentClassController extends Controller
             if (!$sessionDate) {
                 continue;
             }
-            $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime, $now);
+            $isEnded = ContractSessionSchedule::sessionEndedByEndTime($sessionDate, $endTime, $now);
             $session['Status'] = $isEnded ? 'completed' : 'scheduled';
             if ($isEnded && empty($session['Note'])) {
                 $session['Note'] = '系統補建堂次（增加購買堂數）';
@@ -8075,7 +7992,7 @@ class StudentClassController extends Controller
                     if (!empty($session->IsContractException)) {
                         return false;
                     }
-                    $date = $this->normalizeDateString($session->SessionDate ?? null);
+                    $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
                     $start = substr((string) ($session->StartTime ?? ''), 0, 5);
                     return $date && $start !== '' && !isset($expectedKeys[$date . '|' . $start]);
                 })
@@ -8141,7 +8058,7 @@ class StudentClassController extends Controller
         $rowsByDate = [];
         $sessionsById = [];
         foreach ($sessions as $session) {
-            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
             if ($date) {
                 $sessionsById[(int) $session->id] = $session;
                 $rowsByDate[$date][] = [
@@ -8155,7 +8072,7 @@ class StudentClassController extends Controller
         $plans = [];
         foreach ($rowsByDate as $date => $rows) {
             $daySlots = array_map(function ($slot) {
-                $start = $this->normalizeSessionTime($slot['time'], '16:00:00');
+                $start = ContractSessionSchedule::normalizeSessionTime($slot['time'], '16:00:00');
                 $end = Carbon::createFromFormat('H:i:s', $start)->addMinutes(max(30, $slot['dur']))->format('H:i:s');
                 return ['start' => $start, 'end' => $end];
             }, $slotsByWeekday[(int) Carbon::parse($date)->dayOfWeekIso] ?? []);
@@ -8181,7 +8098,7 @@ class StudentClassController extends Controller
         $sessionWeekdays = [];
         $unlockedCountByDate = [];
         foreach ($unlocked as $session) {
-            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
             if (!$date) {
                 continue;
             }
@@ -8219,12 +8136,12 @@ class StudentClassController extends Controller
             $lockedTargetKeys = $sessions->filter(function ($session) use ($unlockedIds) {
                 return !isset($unlockedIds[(int) $session->id]);
             })->mapWithKeys(function ($session) {
-                $date = $this->normalizeDateString($session->SessionDate ?? null);
+                $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
                 $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
                 return $date && $start ? ["{$date}|{$start}" => true] : [];
             })->all();
 
-            $contractStartDate = $this->normalizeDateString(
+            $contractStartDate = ContractSessionSchedule::normalizeDateString(
                 DB::table('StudentClass')->where('ID', $studentClassId)->value('StartDate')
             );
 
@@ -8246,7 +8163,7 @@ class StudentClassController extends Controller
                 $session = $sessionsById[$sessionId];
                 $moves[] = [
                     'session'       => $session,
-                    'oldDate'       => $this->normalizeDateString($session->SessionDate ?? null),
+                    'oldDate'       => ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null),
                     'oldStartShort' => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
                     'newDate'       => $date,
                     'newStart'      => $slot['start'],
@@ -8297,7 +8214,7 @@ class StudentClassController extends Controller
         if (!$firstActive) {
             return false;
         }
-        $firstDate = $this->normalizeDateString($firstActive->SessionDate ?? null);
+        $firstDate = ContractSessionSchedule::normalizeDateString($firstActive->SessionDate ?? null);
         return $firstDate !== null && $firstDate !== $startDate;
     }
 
@@ -8717,7 +8634,7 @@ class StudentClassController extends Controller
                 if ($weekday < 1 || $weekday > 7) {
                     continue;
                 }
-                $time = $this->normalizeSessionTime($slot['time'] ?? null, '16:00');
+                $time = ContractSessionSchedule::normalizeSessionTime($slot['time'] ?? null, '16:00');
                 $entry = [
                     'weekday' => $weekday,
                     'time' => substr($time, 0, 5),
@@ -8745,7 +8662,7 @@ class StudentClassController extends Controller
                 if ($weekday < 1 || $weekday > 7) {
                     continue;
                 }
-                $time = $this->normalizeSessionTime($studentClass->{$timeField} ?? null, $studentClass->time ?? '16:00');
+                $time = ContractSessionSchedule::normalizeSessionTime($studentClass->{$timeField} ?? null, $studentClass->time ?? '16:00');
                 $entry = [
                     'weekday' => $weekday,
                     'time' => substr($time, 0, 5),
@@ -8795,29 +8712,6 @@ class StudentClassController extends Controller
         return $out;
     }
 
-    private function normalizeDateString($value): ?string
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-        try {
-            return Carbon::parse($value)->toDateString();
-        } catch (\Throwable $e) {
-            return null;
-        }
-    }
-
-    /**
-     * Normalize a weekday value to ISO-8601 (1=Mon … 7=Sun).
-     * Accepts both ISO 1-7 and legacy JS 0-6 (0=Sunday → 7).
-     */
-    public static function isoWeekday($weekday): int
-    {
-        $weekday = (int) $weekday;
-
-        return $weekday === 0 ? 7 : $weekday;
-    }
-
     private function calculateCourseChargeFromRate(
         float $rate,
         string $rateUnit,
@@ -8852,36 +8746,6 @@ class StudentClassController extends Controller
             }
         }
         return 0;
-    }
-
-    private function normalizeSessionTime($value, string $fallback = '16:00:00'): string
-    {
-        $raw = trim((string) ($value ?? ''));
-        if ($raw === '') {
-            $raw = $fallback;
-        }
-        try {
-            if (preg_match('/^\d{1,2}:\d{2}$/', $raw)) {
-                return Carbon::createFromFormat('H:i', $raw)->format('H:i:s');
-            }
-            if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $raw)) {
-                return Carbon::createFromFormat('H:i:s', $raw)->format('H:i:s');
-            }
-            return Carbon::parse($raw)->format('H:i:s');
-        } catch (\Throwable $e) {
-            try {
-                return Carbon::parse($fallback)->format('H:i:s');
-            } catch (\Throwable $ignore) {
-                return '16:00:00';
-            }
-        }
-    }
-
-    private function sessionEndedByEndTime(string $sessionDate, string $endTime, ?Carbon $now = null): bool
-    {
-        $now = $now ?: Carbon::now();
-        $sessionEndAt = Carbon::parse($sessionDate . ' ' . $endTime);
-        return $sessionEndAt->lte($now);
     }
 
     /**
@@ -9109,7 +8973,7 @@ class StudentClassController extends Controller
                 // and legacy JS 0-6 (ScheduleSlots param). Both agree on Mon-Sat (1-6);
                 // Sunday is 7 (ISO) or 0 (JS). Comparing raw dayOfWeek (0-6) silently
                 // dropped every ISO-Sunday slot (GitHub #1096: 0-amount monthly invoices).
-                return (int) $date->dayOfWeekIso === self::isoWeekday($slot['weekday']);
+                return (int) $date->dayOfWeekIso === ContractSessionSchedule::isoWeekday($slot['weekday']);
             }));
 
             // Monthly courses have an explicit opening date that is the first lesson,
