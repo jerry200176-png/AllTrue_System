@@ -1,7 +1,7 @@
 // App shell navigation is a presentation registry only.
 // Backend permissions and branch scope remain the security boundary.
+import { isDirectorRole } from './roleCapabilities.js';
 
-const DIRECTOR_ROLES = new Set(['director', 'admin', 'super_admin']);
 
 function directorGroups(role, { admissionsEnabled = true } = {}) {
   const systemItems = [
@@ -129,14 +129,14 @@ function cloneGroups(groups) {
 
 /** Return a fresh role-scoped model for every renderer. */
 export function getNavigationGroups(role, options = {}) {
-  if (DIRECTOR_ROLES.has(role)) return cloneGroups(directorGroups(role, options));
+  if (isDirectorRole(role)) return cloneGroups(directorGroups(role, options));
   if (role === 'teacher') return cloneGroups(teacherGroups(options));
   return [];
 }
 
 /** High-frequency mobile tabs; More is a renderer sentinel, not a page. */
 export function getMobileTabItems(role) {
-  if (DIRECTOR_ROLES.has(role)) {
+  if (isDirectorRole(role)) {
     return [
       { page: 'director', label: '儀表板', icon: 'dashboard' },
       { page: 'calendar', label: '行事曆', icon: 'calendar_today' },

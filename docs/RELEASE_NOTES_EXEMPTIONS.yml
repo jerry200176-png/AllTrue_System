@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-10-06-td076-pr-b1-assignment-writer
+    changelog_date: "2026-10-06"
+    changelog_title: "chore(schedule): TD-076 Track B PR-B1 OccurrenceAssignmentService behind schedule-occurrence-v2"
+    reason: 新寫入端只在預設關閉的 schedule-occurrence-v2 旗標開啟時使用，關閉時行為完全不變，教職員看不到任何差異。
+
   - id: silent-2026-10-05-td076-pr-a-log-superseded
     changelog_date: "2026-10-05"
     changelog_title: "chore(schedule): TD-076 Track B PR-A log teacher columns + `superseded` status constant"
@@ -12,10 +17,20 @@ exemptions:
     changelog_title: "refactor(frontend): F7 S2 paid status comes only from the server `payment_status`"
     reason: 前端改只讀後端既有的 payment_status，移除內部推算備援；後端本就下發該欄位，教職員看到的畫面不變。
 
+  - id: silent-2026-10-06-td076-pr-b2-pins-lr
+    changelog_date: "2026-10-06"
+    changelog_title: "chore(schedule): TD-076 Track B PR-B2 history pins and learning-record teacher fix through the occurrence writer"
+    reason: 只在預設關閉的 schedule-occurrence-v2 旗標開啟時生效，關閉時行為完全不變，教職員看不到任何差異。
+
   - id: silent-2026-10-01-calendar-tutoring-acceptance
     changelog_date: "2026-10-01"
     changelog_title: "fix(qa): production calendar and tutoring acceptance follow actual contracts"
     reason: 僅修正內部正式站驗收的事件、樣本前提、學生明細定位與有界 UI 時限，不改教職員操作或收費規則。
+
+  - id: silent-2026-10-06-td076-superseded-sweep
+    changelog_date: "2026-10-06"
+    changelog_title: "fix(schedule): TD-076 sweep so no reader treats a `superseded` schedules row as live, leave or scheduled"
+    reason: 目前沒有任何寫入端產生 superseded 排程列，只是讓讀取端先略過它並補測試，教職員看到的畫面與行為不變。
 
   - id: silent-2026-10-01-muzha-pop-schedule
     changelog_date: "2026-10-01"

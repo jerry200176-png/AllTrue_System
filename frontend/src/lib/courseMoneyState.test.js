@@ -68,6 +68,10 @@ const F = {
   waived: { id: 18, payment_type: 'session', sessions_purchased: 4, remaining_sessions: 4, payment_status: 'waived' },
   stringRemaining: { id: 19, payment_type: 'session', sessions_purchased: '8', remaining_sessions: '3' },
   nullRemainingFallsToPascal: { id: 20, payment_type: 'session', sessions_purchased: 8, remaining_sessions: null, RemainingSessions: 6 },
+  nullRemaining: { id: 22, payment_type: 'session', sessions_purchased: 10, remaining_sessions: null },
+  bothRemainingNull: { id: 23, payment_type: 'session', sessions_purchased: 10, remaining_sessions: null, RemainingSessions: null },
+  sessionsUsedNull: { id: 24, payment_type: 'session', sessions_purchased: 10, remaining_sessions: 4, sessions_used: null, used_sessions: null },
+  packageNullPool: { id: 25, payment_type: 'session', PackageID: 9, package_total_sessions: 12, package_remaining_sessions: null },
   junk: { id: 21, payment_type: 'session', sessions_purchased: 'x', remaining_sessions: 'abc' },
 };
 
@@ -128,6 +132,13 @@ assert.equal(M.modalRemainingSessions(F.legacyCapitalized), 0);
 assert.equal(M.ownRemainingSessions(F.legacyCapitalized), 1);
 // D6 Pascal pool aliases: honored by summary/used/total, ignored by progress, list badge and CM display (server never emits them).
 assert.equal(M.poolRemainingSessions(F.packagePascalPool), 1);
+for (const [name, c] of Object.entries(F)) {
+  assert.equal(Math.max(0, M.poolRemainingSessions(c, { pascalAlias: false }) ?? 0), legacy.cmPkgDisplay(c), `${name}: CM display ignores Pascal pool alias`);
+}
+// D9 explicit null coerces to 0 in every legacy copy (parseCourseNumber / Number(null))
+assert.equal(M.ownRemainingSessions(F.bothRemainingNull), 0);
+assert.equal(M.ownRemainingSessions(F.nullRemaining), null, 'null ?? undefined -> undefined -> no value');
+assert.equal(M.courseProgress(F.sessionsUsedNull).used, 0, 'sessions_used:null -> reported used 0, not total-remaining');
 assert.equal(M.isSessionPaymentLow(F.packagePascalPool), false);
 assert.equal(legacy.cmPkgDisplay(F.packagePascalPool), 0);
 
