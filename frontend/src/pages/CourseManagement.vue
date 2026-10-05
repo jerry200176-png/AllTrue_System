@@ -288,7 +288,7 @@
                         <span class="paused-notice__label">課程暫停中</span>
                         <span class="paused-notice__sep" aria-hidden="true">·</span>
                         <span class="paused-notice__desc">未恢復前不排新課、不計入待辦</span>
-                        <button class="paused-notice__btn" type="button" @click.stop="requestCoursePause(c)">▶ 恢復課程</button>
+                        <button v-if="c.closed_reason !== 'waived'" class="paused-notice__btn" type="button" @click.stop="requestCoursePause(c)">▶ 恢復課程</button>
                       </div>
                     </td>
                   </tr>
@@ -473,7 +473,7 @@
                             <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                             <p class="action-section-label">狀態管理</p>
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">pause_circle</span> 暫停課程</button>
-                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
+                            <button v-if="c.status === 'inactive' && c.closed_reason !== 'waived'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
                             <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒" @click="closeCourseInPlace(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結束課程（不再續課）</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
@@ -677,7 +677,7 @@
                         ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(hc) }}</button>
                         <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                         <p class="action-section-label">狀態管理</p>
-                        <button class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
+                        <button v-if="hc.closed_reason !== 'waived'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
                         <hr class="action-dropdown-divider" />
                         <p class="action-section-label action-section-label--danger">危險操作</p>
                         <button class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = hc; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
@@ -4747,7 +4747,6 @@ const invoiceStatusLabel = (invoice) => {
   unpaid: '未繳',
   partial: '部分繳',
   void: '已作廢',
-  uncollectible: '確認不收',
   }[status] || status || '未知');
 };
 const invoiceStatusClass = (invoice) => {

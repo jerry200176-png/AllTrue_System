@@ -506,6 +506,7 @@
                         <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                         <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
                         <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">已結算 · 待對帳</span>
+                        <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag sl-tag-history sl-tag-history--settled">確認不收</span>
                         <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
                         <span v-else class="tag sl-tag-history sl-tag-history--completed">已完課</span>
                       </div>
@@ -821,7 +822,7 @@
               <td style="text-align: right; font-weight: 600;">${{ inv.total_amount.toLocaleString() }}</td>
               <td style="text-align: center;">
                 <span :class="['invoice-status-chip', inv.status]">
-                  {{ { paid: '已繳', unpaid: '未繳', partial: '部分繳', uncollectible: '確認不收' }[inv.status] || inv.status }}
+                  {{ { paid: '已繳', unpaid: '未繳', partial: '部分繳' }[inv.status] || inv.status }}
                 </span>
               </td>
             </tr>

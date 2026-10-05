@@ -794,7 +794,8 @@
                   <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
                   <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
                   <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">結案待對帳</span>
-                  <span v-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation" class="text-light">正常</span>
+                  <span v-if="row.closed_reason === 'waived'" class="acct-chip">確認不收</span>
+                  <span v-else-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation" class="text-light">正常</span>
                 </td>
                 <td>
                   <div class="tc-actions">

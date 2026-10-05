@@ -9273,6 +9273,11 @@ class StudentClassController extends Controller
 
         $sc = $studentClass;
 
+        // 確認不收（waived）為終態：不可再暫停／恢復，避免欠款重新出現。
+        if ((string) ($sc->closed_reason ?? '') === 'waived') {
+            return response()->json(['message' => '此合約已確認不收，不能恢復或變更狀態'], 422);
+        }
+
         $action = $request->input('action', 'pause');
         $today = Carbon::today()->toDateString();
 

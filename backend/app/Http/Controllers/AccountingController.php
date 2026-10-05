@@ -194,6 +194,10 @@ class AccountingController extends Controller
                 return $denied;
             }
 
+            if ($course->PackageID !== null) {
+                return response()->json(['message' => '套裝課程請到套裝處理'], 422);
+            }
+
             $closedReason = (string) ($course->closed_reason ?? '');
             $unpaid = (int) ($course->Paid ?? 0) !== 1;
             $pending = $closedReason === 'settled_pending' || ($closedReason === 'contract_amended' && $unpaid);
@@ -219,7 +223,7 @@ class AccountingController extends Controller
             $course->setAttribute('settlement_snapshot', json_encode([
                 'kind' => 'waived',
                 'before' => ['closed_reason' => $closedReason, 'Paid' => $course->Paid, 'Charge' => $course->Charge, 'invoice_ids' => $openIds],
-                'after' => ['closed_reason' => 'waived', 'invoice_status' => 'uncollectible'],
+                'after' => ['closed_reason' => 'waived', 'invoice_status' => 'void'],
                 'previous_snapshot' => $course->getOriginal('settlement_snapshot'),
                 'outstanding_amount' => $outstanding,
                 'reason' => $reason,
@@ -228,7 +232,7 @@ class AccountingController extends Controller
             ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
             $course->save();
             if ($openIds !== []) {
-                Invoice::query()->whereIn('id', $openIds)->update(['Status' => 'uncollectible']);
+                Invoice::query()->whereIn('id', $openIds)->update(['Status' => 'void']);
             }
             SecurityAuditEvent::append('accounting.course_waived', 'success', [
                 'actor_type' => 'user', 'actor_id' => $actorId ?: null,

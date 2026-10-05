@@ -182,6 +182,10 @@ class BillingController extends Controller
             'Note' => 'nullable|string|max:255',
         ]);
 
+        if ((string) $invoice->getAttribute('Status') === 'void') {
+            return response()->json(['message' => '作廢帳單不可登記收款'], 422);
+        }
+
         return DB::transaction(function () use ($invoice, $data) {
             $payment = Payment::create([
                 'InvoiceID' => $invoice->id,

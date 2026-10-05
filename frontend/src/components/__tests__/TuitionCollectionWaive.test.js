@@ -19,4 +19,8 @@ describe('tuition 確認不收 (waive) action', () => {
     expect(source).toContain('JSON.stringify({ reason })');
     expect(source).toMatch(/已確認不收[\s\S]{0,120}loadAlerts\(\), loadSettledCourses\(\)/);
   });
+
+  it('labels waived rows in the settled table instead of 正常', () => {
+    expect(source).toContain(`v-if="row.closed_reason === 'waived'" class="acct-chip">確認不收`);
+  });
 });

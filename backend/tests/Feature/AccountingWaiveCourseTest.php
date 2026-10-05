@@ -32,7 +32,7 @@ class AccountingWaiveCourseTest extends TestCase
         $this->assertSame('waived', $course->closed_reason);
         $this->assertSame(0, (int) $course->Paid);
         $this->assertSame(8800, (int) $course->Charge);
-        $this->assertSame('uncollectible', Invoice::find($invoiceId)->Status);
+        $this->assertSame('void', Invoice::find($invoiceId)->Status);
         $this->assertSame('家長搬家失聯', json_decode($course->settlement_snapshot, true)['reason']);
         $audit = DB::table('security_audit_events')->where('event_type', 'accounting.course_waived')->first();
         $this->assertNotNull($audit);
@@ -150,5 +150,30 @@ class AccountingWaiveCourseTest extends TestCase
             'ClassType' => 'one_on_one',
             'UsedSessions' => 0,
         ], $overrides));
+    }
+
+    public function test_package_members_are_rejected(): void
+    {
+        $token = $this->createToken([1]);
+        $course = $this->createStudentClass($this->createStudent()->id, ['Charge' => 8800, 'Stop' => 1, 'closed_reason' => 'settled_pending', 'PackageID' => 1]);
+
+        $this->postJson("/api/v1/accounting/courses/{$course->ID}/waive", ['reason' => '不收了'], ['Authorization' => "Bearer {$token}"])
+            ->assertStatus(422)->assertJsonPath('message', '套裝課程請到套裝處理');
+        $this->assertSame('settled_pending', $course->refresh()->closed_reason);
+    }
+
+    public function test_waived_is_terminal_for_resume_and_void_invoice_rejects_payment(): void
+    {
+        $token = $this->createToken([1]);
+        $course = $this->createStudentClass($this->createStudent()->id, ['Charge' => 8800, 'Stop' => 1, 'closed_reason' => 'waived']);
+        $invoiceId = DB::table('Invoice')->insertGetId([
+            'StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'void',
+        ]);
+
+        $this->postJson("/api/v1/student-classes/{$course->ID}/pause", ['action' => 'resume'], ['Authorization' => "Bearer {$token}"])->assertStatus(422);
+        $this->assertSame('waived', $course->refresh()->closed_reason);
+        $this->assertSame(1, (int) $course->Stop);
+        $this->postJson("/api/v1/invoices/{$invoiceId}/payments", ['Amount' => 100], ['Authorization' => "Bearer {$token}"])->assertStatus(422);
     }
 }
