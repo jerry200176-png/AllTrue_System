@@ -315,7 +315,11 @@ class StudentController extends Controller
                 || ($classIds !== [] && DB::table('InvoiceItem')->whereIn('StudentClassID', $classIds)->exists())
                 || DB::table('course_packages')->where('student_id', $studentId)->exists()
                 // Attendance / ledger history is authoritative too; same rule as contract delete.
-                || StudentClass::hasOperationalHistory($classIds);
+                || StudentClass::hasOperationalHistory($classIds)
+                // Student-level history that has no contract id (self-study sign-ins, dunning, continuity groups).
+                || DB::table('StudentSingIn')->where('StudentID', $studentId)->exists()
+                || DB::table('dunning_events')->where('student_id', $studentId)->exists()
+                || DB::table('course_contract_groups')->where('student_id', $studentId)->exists();
             if ($history) {
                 $out[] = $studentId;
             }
