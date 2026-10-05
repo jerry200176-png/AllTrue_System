@@ -7745,7 +7745,7 @@ class StudentClassController extends Controller
     {
         $today = Carbon::today()->toDateString();
         $taughtStatuses = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
-        $pastSessions = DB::table('ClassSession as cs')
+        return DB::table('ClassSession as cs')
             ->where('cs.StudentClassID', $courseId)
             ->where(function ($q) use ($today, $taughtStatuses, $effectiveDate) {
                 // Past lessons are history regardless of attendance evidence.
