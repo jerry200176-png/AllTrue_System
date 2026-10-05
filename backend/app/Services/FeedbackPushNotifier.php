@@ -4,11 +4,10 @@ namespace App\Services;
 
 use App\Models\FeedbackPushLog;
 use App\Services\Line\LinePush;
+use App\Services\Line\ParentLinePush;
 use App\Models\LearningRecordFeedback;
 use App\Models\Notification;
 use App\Models\Student;
-use App\Models\StudentLineBinding;
-use App\Models\SecurityAuditEvent;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -117,10 +116,8 @@ class FeedbackPushNotifier
         }
 
         $campusId = (int) $feedback->campus_id;
-        $bindings = StudentLineBinding::where('student_id', $feedback->student_id)
-            ->verified()
-            ->where('campus_id', $campusId)
-            ->get()
+        $parents = app(ParentLinePush::class);
+        $bindings = $parents->bindings((int) $feedback->student_id, $campusId)
             ->filter(fn ($b) => (bool) ($b->notify_learning_feedback ?? true));
         if ($bindings->isEmpty()) {
             return;
@@ -137,24 +134,14 @@ class FeedbackPushNotifier
             . "老師回覆了 {$studentName} 的學習回饋，歡迎至家長系統查看。\n\n"
             . "如不想再收到此類通知，可於家長系統設定中關閉。";
 
-        $sent = 0;
-        foreach ($bindings as $binding) {
-            $delivered = $this->pushLine((string) $binding->line_user_id, $msg, (string) $campus->messaging_channel_token);
-            SecurityAuditEvent::append('notification.delivery', $delivered ? 'success' : 'failure', [
-                'campus_id' => $campusId,
-                'subject_type' => 'student',
-                'subject_id' => $feedback->getAttribute('student_id'),
-                'binding_id' => $binding->getKey(),
-            ], [
-                'method' => 'line_push',
-                'notification_type' => 'learning_feedback',
-                'delivery_status' => $delivered ? 'delivered' : 'failed',
-                'binding_verified' => true,
-            ]);
-            if ($delivered) {
-                $sent++;
-            }
-        }
+        $token = (string) $campus->messaging_channel_token;
+        $sent = $parents->deliver(
+            $bindings,
+            (int) $feedback->getAttribute('student_id'),
+            $campusId,
+            'learning_feedback',
+            fn ($binding) => $this->pushLine((string) $binding->line_user_id, $msg, $token)
+        );
 
         if ($sent > 0) {
             $this->recordPush($feedback, 'to_parent');
