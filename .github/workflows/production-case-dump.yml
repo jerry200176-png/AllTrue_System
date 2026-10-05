@@ -483,8 +483,10 @@ jobs:
           }} elseif ($case === 'unpaid_months_muzha') {{
             // Read-only, 2026-10-05: director sees only September unpaid for a 木柵 student said to owe July-September.
             // Scope: CampusID 16, exact dispatched name (compared in memory, never written out), 2026-06..2026-10.
-            $studentIds = $db::table('Student')->where('CampusID', 16)->whereRaw('TRIM(name) = ?', [$targetStudentName])
-              ->pluck('id')->map(fn ($id) => (int)$id)->all();
+            // Approved names only (director report 2026-10-05); any other name returns nothing.
+            $approvedNames = ['陳宥翰', '陳宥霖'];
+            $studentIds = !in_array($targetStudentName, $approvedNames, true) ? [] : $db::table('Student')->where('CampusID', 16)
+              ->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
             $out['student_match_count'] = count($studentIds);
             if (count($studentIds) !== 1) {{
               $out['ok'] = false;
@@ -505,7 +507,13 @@ jobs:
                   $r->closed_reason = $reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other');
                   return (array)$r;
                 }})->values()->all();
+              // Window-bound invoices: billing_period in 2026-06..2026-10, or an item whose service range overlaps the window.
+              $windowItemInvoiceIds = $db::table('InvoiceItem')->select('InvoiceID')
+                ->where(fn ($q) => $q->whereNotNull('PeriodStart')->orWhereNotNull('PeriodEnd'))
+                ->where(fn ($q) => $q->whereNull('PeriodStart')->orWhereDate('PeriodStart', '<=', $to))
+                ->where(fn ($q) => $q->whereNull('PeriodEnd')->orWhereDate('PeriodEnd', '>=', $from));
               $invoices = $db::table('Invoice')->where(fn ($q) => $q->whereIn('StudentID', $studentIds)->orWhereIn('StudentClassID', $classIds ?: [0]))
+                ->where(fn ($q) => $q->whereBetween('billing_period', ['2026-06', '2026-10'])->orWhereIn('id', $windowItemInvoiceIds))
                 ->orderBy('id')->get(['id', 'StudentClassID', 'Status', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'billing_period']);
               $invoiceIds = $invoices->pluck('id')->all();
               $out['invoices'] = $invoices->map(fn ($r) => (array)$r)->values()->all();
@@ -525,7 +533,8 @@ jobs:
                 $models = \\App\\Models\\StudentClass::query()->whereIn('ID', $classIds ?: [0])->get();
                 $out['monthly_payment_projection'] = app(\\App\\Services\\MonthlyPeriodPaymentService::class)->batch($models);
               }} catch (\\Throwable $e) {{
-                $out['monthly_payment_projection_error'] = get_class($e);
+                $out['ok'] = false;
+                $out['error'] = 'monthly_payment_projection failed: ' . get_class($e);
               }}
             }}
           }} elseif ($case === 'contract_yang_binghe') {{
