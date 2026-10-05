@@ -1,3 +1,6 @@
+## 2026-10-05 — chore(arch): monthly top-up and week/time reconcile into ContractSessionSchedule (slice 9/10)
+- 行為不變的搬移（ADR-003／#966）：`ensureMonthlyFutureScheduledSessions`、`reconcileWeekTimeFieldsFromSessions`、`countUnalignedFutureContractSessions` 移到 `ContractSessionSchedule`
+
 ## 2026-10-05 — chore(arch): syncFutureScheduledSessionTimes into ContractSessionSchedule (slice 8/10)
 - 行為不變的搬移（ADR-003／#966）：`syncFutureScheduledSessionTimes`（兩段式搬移）移到 `ContractSessionSchedule`；StudentClassController 不再持有 reflow service
 
