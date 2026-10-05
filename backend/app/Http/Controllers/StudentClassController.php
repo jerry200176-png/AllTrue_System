@@ -20,6 +20,7 @@ use App\Models\CoursePackage;
 use App\Support\LearningRecordMutableOwnership;
 use App\Support\SessionStatus;
 use App\Support\Utf8mb3SearchSanitizer;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\BillingModeConversionArchiveService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
@@ -198,8 +199,8 @@ class StudentClassController extends Controller
             static fn (array $diagnostic): int => (int) $diagnostic['observed_used'],
             $usageDiagnosticsByClass
         );
-        $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
-        $invoiceAggMap = AlertController::invoiceAggregateByStudentClassIds($classIds);
+        $paidAtMap = ContractMoneyState::lastPaidAtByStudentClassIds($classIds);
+        $invoiceAggMap = ContractMoneyState::invoiceAggregateByStudentClassIds($classIds);
         $monthlyPayments = app(\App\Services\MonthlyPeriodPaymentService::class)->batch(collect($classes->items()));
         $pendingReportByClassId = !empty($classIds)
             ? PaymentReport::query()
@@ -559,11 +560,12 @@ class StudentClassController extends Controller
             // not undo that projection. Keep its ID/summary for explicit review,
             // never silently confirm/reject it from this read-only endpoint.
             $effectivePaid = $class->isEffectivelyPaid($pkg);
-            $class->setAttribute('payment_status', StudentClass::isFullyPaid(
+            $class->setAttribute('payment_status', ContractMoneyState::listStatus(
                 $effectivePaid,
                 $invoicePaidAmount,
-                $effectiveCharge
-            ) ? 'paid' : ($pendingReportId !== null ? 'pending_report' : 'unpaid'));
+                $effectiveCharge,
+                $pendingReportId !== null
+            ));
 
             $tutoringBillingAnomalyReasons = [];
             if ($isTutoringCourse) {
@@ -2441,22 +2443,7 @@ class StudentClassController extends Controller
         }
 
         $classId = (int) $studentClass->getKey();
-        $activePayment = DB::table('Invoice')
-            ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
-            ->where('Invoice.StudentClassID', $classId)
-            ->where(function ($q) {
-                $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
-            })
-            ->where(function ($q) {
-                $q->where('Invoice.PaidAmount', '>', 0)
-                    ->orWhere(function ($payment) {
-                        $payment->where('Payment.Amount', '>', 0)
-                            ->where(function ($method) {
-                                $method->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void');
-                            });
-                    });
-            })
-            ->exists();
+        $activePayment = ContractMoneyState::hasActivePayment($classId);
         if ($activePayment) {
             $this->auditEditBlocked($studentClass, 'billing_correction_payment_locked', 409);
             return response()->json([
@@ -2720,22 +2707,7 @@ class StudentClassController extends Controller
         }
 
         $classId = (int) $studentClass->getKey();
-        $activePayment = DB::table('Invoice')
-            ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
-            ->where('Invoice.StudentClassID', $classId)
-            ->where(function ($q) {
-                $q->whereNull('Invoice.Status')->orWhereNotIn('Invoice.Status', ['void']);
-            })
-            ->where(function ($q) {
-                $q->where('Invoice.PaidAmount', '>', 0)
-                    ->orWhere(function ($payment) {
-                        $payment->where('Payment.Amount', '>', 0)
-                            ->where(function ($method) {
-                                $method->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void');
-                            });
-                    });
-            })
-            ->exists();
+        $activePayment = ContractMoneyState::hasActivePayment($classId);
         if ($activePayment) {
             $this->auditEditBlocked($studentClass, 'billing_correction_payment_locked', 409);
             return response()->json([
@@ -2940,22 +2912,7 @@ class StudentClassController extends Controller
         }
 
         $classId = (int) $studentClass->getKey();
-        $activePayment = DB::table('Invoice')
-            ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
-            ->where('Invoice.StudentClassID', $classId)
-            ->where(function ($q) {
-                $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
-            })
-            ->where(function ($q) {
-                $q->where('Invoice.PaidAmount', '>', 0)
-                    ->orWhere(function ($payment) {
-                        $payment->where('Payment.Amount', '>', 0)
-                            ->where(function ($method) {
-                                $method->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void');
-                            });
-                    });
-            })
-            ->exists();
+        $activePayment = ContractMoneyState::hasActivePayment($classId);
         if ($activePayment) {
             $this->auditEditBlocked($studentClass, 'charge_correction_payment_locked', 409);
             return response()->json([
@@ -3269,8 +3226,8 @@ class StudentClassController extends Controller
             if (!$locked instanceof StudentClass) {
                 return response()->json(['message' => '找不到此課程'], 404);
             }
-            if ((string) $locked->getAttribute('closed_reason') === 'waived') {
-                return response()->json(['message' => '此合約已確認不收，不能標記已繳', 'code' => 'course_waived'], 422);
+            if ($refusal = ContractMoneyState::waivedRefusal($locked, '此合約已確認不收，不能標記已繳', 'course_waived')) {
+                return $refusal;
             }
             $locked->setAttribute('Paid', 1);
             $locked->setAttribute('PayDate', now()->toDateString());
@@ -5126,7 +5083,7 @@ class StudentClassController extends Controller
                 return $authTarget;
             }
 
-            if ((string) $source->getAttribute('closed_reason') === 'waived'
+            if (ContractMoneyState::isWaived($source)
                 || ($source->hasDeductionHistory() && (string) $source->getAttribute('closed_reason') === 'usage_settled')) {
                 return response()->json([
                     'message' => '來源課程已提前結清，堂次與紀錄已鎖定，無法轉移。',
@@ -5486,8 +5443,8 @@ class StudentClassController extends Controller
         }
 
         // A written-off contract keeps its void invoices and audit snapshot; deleting it would strand them.
-        if ((string) $studentClass->getAttribute('closed_reason') === 'waived') {
-            return response()->json(['message' => '此合約已確認不收，不能刪除', 'code' => 'course_waived'], 422);
+        if ($refusal = ContractMoneyState::waivedRefusal($studentClass, '此合約已確認不收，不能刪除', 'course_waived')) {
+            return $refusal;
         }
 
         return DB::transaction(function () use ($studentClass) {
@@ -6037,7 +5994,7 @@ class StudentClassController extends Controller
                 'code' => 'split_contract_paid_locked',
             ], 409));
         }
-        if ((string) ($studentClass->getAttribute('closed_reason') ?? '') === 'waived'
+        if (ContractMoneyState::isWaived($studentClass)
             || ($studentClass->hasDeductionHistory() && (string) ($studentClass->getAttribute('closed_reason') ?? '') === 'usage_settled')) {
             abort(response()->json([
                 'message' => '此課程已提前結清，堂次與紀錄已鎖定，無法拆分。',
@@ -6045,22 +6002,7 @@ class StudentClassController extends Controller
             ], 422));
         }
         $classId = (int) $studentClass->getAttribute('ID');
-        $activePayment = DB::table('Invoice')
-            ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
-            ->where('Invoice.StudentClassID', $classId)
-            ->where(function ($query) {
-                $query->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
-            })
-            ->where(function ($query) {
-                $query->where('Invoice.PaidAmount', '>', 0)
-                    ->orWhere(function ($payment) {
-                        $payment->where('Payment.Amount', '>', 0)
-                            ->where(function ($method) {
-                                $method->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void');
-                            });
-                    });
-            })
-            ->exists();
+        $activePayment = ContractMoneyState::hasActivePayment($classId);
         if ($activePayment) {
             abort(response()->json([
                 'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
@@ -6284,7 +6226,7 @@ class StudentClassController extends Controller
         if ($c->isPartOfPackage()) {
             $fail('split_contract_package_forbidden', '共用課程包請使用方案調整流程。');
         }
-        if ((string) ($c->getAttribute('closed_reason') ?? '') === 'waived'
+        if (ContractMoneyState::isWaived($c)
             || ($c->hasDeductionHistory() && (string) ($c->getAttribute('closed_reason') ?? '') === 'usage_settled')) {
             $fail('split_contract_usage_settled', '此課程已提前結清，無法轉課。');
         }
@@ -9157,8 +9099,8 @@ class StudentClassController extends Controller
         $sc = $studentClass;
 
         // 確認不收（waived）為終態：不可再暫停／恢復，避免欠款重新出現。
-        if ((string) ($sc->closed_reason ?? '') === 'waived') {
-            return response()->json(['message' => '此合約已確認不收，不能恢復或變更狀態'], 422);
+        if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能恢復或變更狀態')) {
+            return $refusal;
         }
 
         $action = $request->input('action', 'pause');
