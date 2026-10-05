@@ -26,6 +26,7 @@ use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\Scheduling\BillingContractLockGuard;
 use App\Services\Scheduling\ContractSessionSchedule;
+use App\Services\Scheduling\ContractTeacherChangeCascade;
 use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\FrontendSubjectIdResolver;
@@ -1910,13 +1911,13 @@ class StudentClassController extends Controller
             if ($newTeacherId > 0 && $newTeacherId !== $oldTeacherSnapshot) {
                 // in-app #207: pin past attended/history to former teacher BEFORE
                 // future schedule rows move to the new contract teacher.
-                $this->pinPastSessionsToFormerTeacherAfterContractTeacherChange(
+                ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange(
                     $courseIdForTeacherSync,
                     $oldTeacherSnapshot,
                     $newTeacherId,
                     $teacherEffectiveDate
                 );
-                $this->syncFutureScheduleTeachersAfterContractTeacherChange(
+                ContractTeacherChangeCascade::syncFutureScheduleTeachersAfterContractTeacherChange(
                     $courseIdForTeacherSync,
                     $oldTeacherSnapshot,
                     $newTeacherId
@@ -2053,7 +2054,7 @@ class StudentClassController extends Controller
         // be sparse near the end of a course (e.g. only one Wednesday remains),
         // so reverse-reconciling from them would erase newly edited weekdays.
         if ($scheduleFieldsPresent) {
-            $unalignedFuture = $this->countUnalignedFutureContractSessions($studentClass);
+            $unalignedFuture = $this->contractSchedule->countUnalignedFutureContractSessions($studentClass);
             $sessionSync['unaligned_future_sessions'] = $unalignedFuture;
             if ($unalignedFuture > 0) {
                 $sessionSync['reconcile_skipped'] = true;
@@ -2068,10 +2069,10 @@ class StudentClassController extends Controller
                 $sessionSync['warning'] = '未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但堂次仍為舊時段，請檢查堂次狀態。';
             }
         } elseif ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY) {
-            $this->reconcileWeekTimeFieldsFromSessions($studentClass);
+            $this->contractSchedule->reconcileWeekTimeFieldsFromSessions($studentClass);
         }
 
-        $monthlySessionSync = $this->ensureMonthlyFutureScheduledSessions($studentClass, $scheduleSlotsForRebuild);
+        $monthlySessionSync = $this->contractSchedule->ensureMonthlyFutureScheduledSessions($studentClass, $scheduleSlotsForRebuild);
         if (($monthlySessionSync['created_sessions'] ?? 0) > 0) {
             $sessionSync['monthly_future_sessions_created'] = (int) $monthlySessionSync['created_sessions'];
         }
@@ -3686,7 +3687,7 @@ class StudentClassController extends Controller
             $cancelled = $this->cancelFutureScheduledSessions($studentClass, 'settled');
             $studentClass->refresh();
 
-            $sessionSync = $this->ensureMonthlyFutureScheduledSessions($newCourse);
+            $sessionSync = $this->contractSchedule->ensureMonthlyFutureScheduledSessions($newCourse);
 
             $billingPeriod = $periodReview['billing_period'];
             $totalAmount = max(0, (int) ($newCourse->Charge ?? 0));
@@ -6272,7 +6273,7 @@ class StudentClassController extends Controller
         $this->contractSchedule->extendSessionsIfNeeded($new, $remaining);
         $this->contractSchedule->cancelExcessScheduledSessions($newId, $remaining);
         if ($newTeacher !== $oldTeacher) {
-            $this->syncFutureScheduleTeachersAfterContractTeacherChange($newId, $oldTeacher, $newTeacher);
+            ContractTeacherChangeCascade::syncFutureScheduleTeachersAfterContractTeacherChange($newId, $oldTeacher, $newTeacher);
             $this->alignMutableLearningRecordTeachersAfterContractTeacherChange($newId, $oldTeacher, $newTeacher, $this->currentActorId(), $start);
         }
         SessionDeductionService::recomputeCounters($cid);
@@ -6797,238 +6798,6 @@ class StudentClassController extends Controller
     }
 
     /**
-     * 月結課程以 EndDate + 固定星期/時段為契約；課程管理詳情則讀 ClassSession。
-     * 續約或編輯後補齊未來缺少的實體堂次，讓 UI 能立即顯示預排課程。
-     *
-     * @param  array<int, array<string, mixed>>  $providedSlots
-     * @return array<string, mixed>
-     */
-    private function ensureMonthlyFutureScheduledSessions(StudentClass $studentClass, array $providedSlots = []): array
-    {
-        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
-            return ['created_sessions' => 0, 'reason' => 'not_monthly'];
-        }
-        if ((int) ($studentClass->Stop ?? 0) === 1) {
-            return ['created_sessions' => 0, 'reason' => 'inactive_course'];
-        }
-
-        $endDate = ContractSessionSchedule::normalizeDateString($studentClass->EndDate ?? null);
-        if (!$endDate) {
-            return ['created_sessions' => 0, 'reason' => 'end_date_missing'];
-        }
-
-        $today = Carbon::today()->toDateString();
-        $startDate = ContractSessionSchedule::normalizeDateString($studentClass->StartDate ?? null) ?: $today;
-        if ($startDate < $today) {
-            $startDate = $today;
-        }
-        if ($endDate < $startDate) {
-            return ['created_sessions' => 0, 'reason' => 'date_range_elapsed'];
-        }
-
-        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $providedSlots);
-        if (empty($slots)) {
-            return ['created_sessions' => 0, 'reason' => 'schedule_slots_missing'];
-        }
-
-        $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
-        $proposedSessions = ContractSessionSchedule::buildSessionsFromWeeklySchedule(
-            (int) $studentClass->ID,
-            $startDate,
-            $endDate,
-            $slots,
-            $durationMinutes
-        );
-        if (empty($proposedSessions)) {
-            return ['created_sessions' => 0, 'reason' => 'no_matching_dates'];
-        }
-
-        $existingKeys = [];
-        $existingRows = ClassSession::where('StudentClassID', (int) $studentClass->ID)
-            ->whereDate('SessionDate', '>=', $startDate)
-            ->whereDate('SessionDate', '<=', $endDate)
-            ->get(['SessionDate', 'StartTime']);
-        foreach ($existingRows as $row) {
-            $date = ContractSessionSchedule::normalizeDateString($row->SessionDate ?? null);
-            $start = substr((string) ($row->StartTime ?? ''), 0, 5);
-            if ($date && $start !== '') {
-                $existingKeys[$date . '|' . $start] = true;
-            }
-        }
-
-        $created = 0;
-        $now = Carbon::now();
-        foreach ($proposedSessions as $session) {
-            $sessionDate = ContractSessionSchedule::normalizeDateString($session['SessionDate'] ?? null);
-            $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
-            $endTime = ContractSessionSchedule::normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');
-            if (!$sessionDate || $start === '') {
-                continue;
-            }
-            if (ContractSessionSchedule::sessionEndedByEndTime($sessionDate, $endTime, $now)) {
-                continue;
-            }
-            $key = $sessionDate . '|' . $start;
-            if (isset($existingKeys[$key])) {
-                continue;
-            }
-
-            $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($session);
-            if ($upsert['created']) {
-                $existingKeys[$key] = true;
-                $created++;
-            }
-        }
-
-        return [
-            'created_sessions' => $created,
-            'reason' => $created > 0 ? 'monthly_future_sessions_created' : 'already_complete',
-        ];
-    }
-
-    /**
-     * After an update, optionally align week/time DB fields with **future**
-     * scheduled ClassSession rows (same cadence as index drift detection).
-     *
-     * Does **not** fall back to completed/attended history: one-off substitute
-     * slots (e.g. 週二代課) must not overwrite the contract when the user removes
-     * that weekday and there are no upcoming scheduled sessions left.
-     */
-    private function reconcileWeekTimeFieldsFromSessions(StudentClass $studentClass): void
-    {
-        $classId = (int) $studentClass->ID;
-        $today = Carbon::today()->toDateString();
-        $activeSessionsQuery = ClassSession::where('StudentClassID', $classId)
-            ->where('Status', 'scheduled')
-            ->whereDate('SessionDate', '>=', $today)
-            ->orderBy('SessionDate')
-            ->orderBy('StartTime');
-
-        // One-off 調課／補課 must not rewrite series week/time (SaaS: this occurrence only).
-        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
-            $activeSessionsQuery->where(function ($q) {
-                $q->whereNull('IsContractException')->orWhere('IsContractException', 0);
-            });
-        }
-
-        $activeSessions = $activeSessionsQuery->get(['SessionDate', 'StartTime', 'EndTime']);
-
-        if ($activeSessions->isEmpty()) {
-            return;
-        }
-
-        $slotsByWeekday = [];
-        foreach ($activeSessions as $cs) {
-            $date = ContractSessionSchedule::normalizeDateString($cs->SessionDate ?? null);
-            if (!$date) {
-                continue;
-            }
-            $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
-            $start = substr((string) ($cs->StartTime ?? ''), 0, 5);
-            if ($start === '') {
-                continue;
-            }
-            $endRaw = (string) ($cs->EndTime ?? '');
-            $durMin = 0;
-            if ($endRaw && $start) {
-                $startM = ((int) substr($start, 0, 2)) * 60 + (int) substr($start, 3, 2);
-                $endM = ((int) substr($endRaw, 0, 2)) * 60 + (int) substr($endRaw, 3, 2);
-                $durMin = max(0, $endM - $startM);
-            }
-            $key = $isoDow . '|' . $start;
-            if (!isset($slotsByWeekday[$key])) {
-                $slotsByWeekday[$key] = [
-                    'weekday' => $isoDow,
-                    'start' => $start,
-                    'dur' => $durMin > 0 ? $durMin : null,
-                ];
-            }
-        }
-
-        $uniqueSlots = array_values($slotsByWeekday);
-        usort($uniqueSlots, fn ($a, $b) => $a['weekday'] <=> $b['weekday'] ?: strcmp($a['start'], $b['start']));
-
-        if (empty($uniqueSlots)) {
-            return;
-        }
-
-        $updates = [];
-        $globalDur = (int) ($studentClass->SessionDuration ?? 0);
-        $updates['week'] = $uniqueSlots[0]['weekday'];
-        $updates['time'] = $uniqueSlots[0]['start'] . ':00';
-
-        for ($i = 1; $i <= 6; $i++) {
-            if (isset($uniqueSlots[$i])) {
-                $updates['week' . $i] = $uniqueSlots[$i]['weekday'];
-                $updates['time' . $i] = $uniqueSlots[$i]['start'] . ':00';
-                $dur = $uniqueSlots[$i]['dur'];
-                $updates['duration' . $i] = ($dur && $dur !== $globalDur) ? $dur : null;
-            } else {
-                $updates['week' . $i] = null;
-                $updates['time' . $i] = null;
-                $updates['duration' . $i] = null;
-            }
-        }
-
-        $changed = false;
-        foreach ($updates as $field => $value) {
-            $current = $studentClass->{$field} ?? null;
-            if ($field === 'time' || preg_match('/^time\d$/', $field)) {
-                $currentNorm = $current ? substr((string) $current, 0, 5) : null;
-                $newNorm = $value ? substr((string) $value, 0, 5) : null;
-                if ($currentNorm !== $newNorm) {
-                    $changed = true;
-                    break;
-                }
-            } elseif ((string) ($current ?? '') !== (string) ($value ?? '')) {
-                $changed = true;
-                break;
-            }
-        }
-
-        if ($changed) {
-            $studentClass->fill($updates);
-            $studentClass->save();
-        }
-    }
-
-    private function countUnalignedFutureContractSessions(StudentClass $studentClass): int
-    {
-        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
-        $contractKeys = [];
-        $defaultDuration = max(30, (int) ($studentClass->SessionDuration ?? 120));
-        foreach ($slots as $slot) {
-            $day = (int) data_get($slot, 'weekday', 0);
-            $start = substr((string) data_get($slot, 'time', ''), 0, 5);
-            if ($day < 1 || $day > 7 || $start === '') {
-                continue;
-            }
-            $duration = max(30, (int) (data_get($slot, 'duration_minutes') ?: $defaultDuration));
-            $end = Carbon::createFromFormat('H:i', $start)->addMinutes($duration)->format('H:i');
-            $contractKeys["{$day}|{$start}|{$end}"] = true;
-        }
-
-        $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
-            ->where('Status', 'scheduled')
-            ->whereDate('SessionDate', '>=', Carbon::today()->toDateString());
-        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
-            $query->where(function ($q) {
-                $q->whereNull('IsContractException')->orWhere('IsContractException', 0);
-            });
-        }
-        return $query->get(['SessionDate', 'StartTime', 'EndTime'])->filter(function ($session) use ($contractKeys) {
-            $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
-            if (!$date) {
-                return false;
-            }
-            $day = (int) Carbon::parse($date)->dayOfWeekIso;
-            $start = substr((string) ($session->StartTime ?? ''), 0, 5);
-            $end = substr((string) ($session->EndTime ?? ''), 0, 5);
-            return !isset($contractKeys["{$day}|{$start}|{$end}"]);
-        })->count();
-    }
-
-    /**
      * Rebuild upcoming class sessions when first class date is edited and no immutable history exists.
      *
      * @param  array<string, mixed>  $mapped
@@ -7432,218 +7201,6 @@ class StudentClassController extends Controller
         ];
 
         return hash_hmac('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), (string) config('app.key'));
-    }
-
-    /**
-     * Keep past / already-taught sessions on the former contract teacher when
-     * StudentClass.TeacherID changes (in-app #207).
-     *
-     * Calendar display prefers substitute schedule rows (original_schedule_id NOT NULL
-     * + teacher_id <> contract). Without pinning, past attended sessions fall through
-     * to the new contract teacher and look like history was rewritten.
-     */
-    private function pinPastSessionsToFormerTeacherAfterContractTeacherChange(
-        int $courseId,
-        int $oldTeacherId,
-        int $newTeacherId,
-        ?string $effectiveDate = null
-    ): void {
-        if ($courseId <= 0 || $oldTeacherId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
-            return;
-        }
-        // Sessions before this date keep the former teacher (default: today).
-        $effectiveDate = $effectiveDate ?: Carbon::today()->toDateString();
-
-        $course = DB::table('StudentClass')->where('ID', $courseId)->first();
-        if (!$course) {
-            return;
-        }
-
-        $studentId = (int) ($course->StudentID ?? 0);
-        $campusId = $studentId > 0
-            ? (int) (DB::table('Student')->where('id', $studentId)->value('CampusID') ?? 0)
-            : 0;
-        if ($studentId <= 0 || $campusId <= 0) {
-            return;
-        }
-
-        $today = Carbon::today()->toDateString();
-        $subject = (string) (DB::table('Subject')->where('id', $course->SubjectID)->value('Subject_Name') ?? '');
-        $classType = (string) ($course->class_type ?? $course->ClassType ?? 'one_on_one');
-
-        // in-app #207: only pin sessions with teaching evidence so calendar history
-        // stays on the former teacher. Past rows that are still merely `scheduled`
-        // must NOT become fake substitute pins — otherwise calendar keeps showing
-        // the old teacher after a contract TeacherID change (in-app #312).
-        $taughtStatuses = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
-        $pastSessions = DB::table('ClassSession as cs')
-            ->where('cs.StudentClassID', $courseId)
-            ->where(function ($q) use ($today, $taughtStatuses, $effectiveDate) {
-                // Past lessons are history regardless of attendance evidence.
-                $q->where(function ($before) use ($effectiveDate) {
-                    $before->whereDate('cs.SessionDate', '<', $effectiveDate)
-                        ->whereRaw("COALESCE(cs.Status, '') != 'cancelled'");
-                })
-                    ->orWhereIn('cs.Status', $taughtStatuses)
-                    ->orWhere(function ($q2) use ($today) {
-                        $q2->whereDate('cs.SessionDate', '<', $today)
-                            ->whereExists(function ($sub) {
-                                $sub->select(DB::raw(1))
-                                    ->from('StudentSingIn as ssi')
-                                    ->whereColumn('ssi.ClassSessionID', 'cs.id');
-                            });
-                    })
-                    // Historical LR authorship only — bare pending placeholders must
-                    // not become false #207 pins (#312 / #314 Option 2B).
-                    ->orWhere(function ($q2) use ($today) {
-                        $q2->whereDate('cs.SessionDate', '<', $today)
-                            ->whereExists(function ($sub) {
-                                $sub->select(DB::raw(1))
-                                    ->from('LearningRecord as lr')
-                                    ->whereColumn('lr.ClassSessionID', 'cs.id')
-                                    ->whereNull('lr.VoidedAt')
-                                    ->where(function ($hist) {
-                                        $hist->whereRaw("LOWER(TRIM(COALESCE(lr.Status, ''))) != ?", ['pending'])
-                                            ->orWhereNotNull('lr.ApprovedAt')
-                                            ->orWhere('lr.SessionDeducted', 1)
-                                            ->orWhere(function ($c) {
-                                                $c->whereNotNull('lr.Content')
-                                                    ->whereRaw("TRIM(lr.Content) != ''")
-                                                    ->whereRaw("TRIM(lr.Content) != ?", ['（評量表）']);
-                                            })
-                                            ->orWhere(function ($p) {
-                                                $p->whereNotNull('lr.Progress')->whereRaw("TRIM(lr.Progress) != ''");
-                                            })
-                                            ->orWhere(function ($p) {
-                                                $p->whereNotNull('lr.NextHomework')->whereRaw("TRIM(lr.NextHomework) != ''");
-                                            });
-                                    });
-                            });
-                    });
-            })
-            ->orderBy('cs.SessionDate')
-            ->orderBy('cs.StartTime')
-            ->select('cs.*')
-            ->get();
-
-        foreach ($pastSessions as $session) {
-            try {
-                $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
-            } catch (\Throwable $e) {
-                continue;
-            }
-            $startTime = substr((string) ($session->StartTime ?? ''), 0, 5);
-            $endTime = substr((string) ($session->EndTime ?? ''), 0, 5);
-            if ($startTime === '' || $endTime === '') {
-                continue;
-            }
-
-            // Already has a substitute-style exception with a non-contract teacher → leave it.
-            $existingPin = DB::table('schedules')
-                ->where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $sessionDate)
-                ->where('status', 'scheduled')
-                ->whereNotNull('original_schedule_id')
-                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                ->where('teacher_id', '<>', $newTeacherId)
-                ->exists();
-            if ($existingPin) {
-                continue;
-            }
-
-            $dayOfWeek = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
-            $startM = ((int) substr($startTime, 0, 2)) * 60 + (int) substr($startTime, 3, 2);
-            $endM = ((int) substr($endTime, 0, 2)) * 60 + (int) substr($endTime, 3, 2);
-            $durationHours = max(0.5, round(max(0, $endM - $startM) / 60, 1));
-            $now = now();
-
-            $rescheduledId = DB::table('schedules')->insertGetId([
-                'student_id' => $studentId,
-                'teacher_id' => $oldTeacherId,
-                'subject' => $subject,
-                'day_of_week' => $dayOfWeek,
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'duration_hours' => $durationHours,
-                'class_type' => $classType,
-                'status' => 'rescheduled',
-                'type' => 'normal',
-                'deduction' => 0,
-                'branch_id' => $campusId,
-                'schedule_date' => $sessionDate,
-                'student_course_id' => $courseId,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
-
-            DB::table('schedules')->insert([
-                'student_id' => $studentId,
-                'teacher_id' => $oldTeacherId,
-                'subject' => $subject,
-                'day_of_week' => $dayOfWeek,
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'duration_hours' => $durationHours,
-                'class_type' => $classType,
-                'status' => 'scheduled',
-                'type' => 'normal',
-                'deduction' => 1,
-                'branch_id' => $campusId,
-                'schedule_date' => $sessionDate,
-                'student_course_id' => $courseId,
-                'original_schedule_id' => (int) $rescheduledId,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
-        }
-    }
-
-    /**
-     * Keep future schedule rows aligned when contract teacher changes.
-     */
-    private function syncFutureScheduleTeachersAfterContractTeacherChange(int $courseId, int $oldTeacherId, int $newTeacherId): void
-    {
-        if ($courseId <= 0 || $newTeacherId <= 0 || $oldTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
-            return;
-        }
-
-        $today = Carbon::today()->toDateString();
-
-        Schedule::where('student_course_id', $courseId)
-            ->where('status', 'scheduled')
-            ->whereDate('schedule_date', '>=', $today)
-            ->whereNull('original_schedule_id')
-            ->where('teacher_id', $oldTeacherId)
-            ->update([
-                'teacher_id' => $newTeacherId,
-                'updated_at' => now(),
-            ]);
-
-        $staleAnchorIds = Schedule::where('student_course_id', $courseId)
-            ->where('status', 'scheduled')
-            ->whereDate('schedule_date', '>=', $today)
-            ->whereNotNull('original_schedule_id')
-            ->where('teacher_id', $oldTeacherId)
-            ->pluck('original_schedule_id')
-            ->filter(fn ($id) => (int) $id > 0)
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values()
-            ->all();
-
-        if (!empty($staleAnchorIds)) {
-            Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', '>=', $today)
-                ->where('status', 'scheduled')
-                ->whereIn('original_schedule_id', $staleAnchorIds)
-                ->delete();
-
-            Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', '>=', $today)
-                ->where('status', 'rescheduled')
-                ->whereIn('id', $staleAnchorIds)
-                ->delete();
-        }
     }
 
     /** in-app #314: restamp mutable LRs onto new contract teacher; leave history/subs. */
