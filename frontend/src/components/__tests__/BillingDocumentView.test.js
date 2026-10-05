@@ -21,6 +21,8 @@ describe('paymentSlipView', () => {
       due_date: '2026-09-17', days_until_settlement: -3, sessions: [{ date: '2026-09-02', status: 'scheduled' }],
     });
     expect(v.items[0].period).toBe('本期預計 1 堂');
+    expect(v.session_title).toBe('本期上課日期');
+    expect(paymentSlipView({ student_class_id: 1, schedule_mode: 'count', sessions: [] }).session_title).toBe('課程明細');
     expect(v.due.hint).toBe('已逾期 3 天');
   });
 
