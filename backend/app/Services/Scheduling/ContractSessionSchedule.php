@@ -288,4 +288,164 @@ class ContractSessionSchedule
 
         return $sessions;
     }
+
+    /**
+     * 月結制詳情顯示：以固定星期/時段推算查詢月份的日期，再與既有 ClassSession/schedules 合併。
+     * Legacy 月結課可能沒有 EndDate/monthly_sessions，但仍有 week/time 契約欄位。
+     *
+     * @param  array<string, bool>  $leaveSet
+     * @param  array<string, bool>  $scheduledSet
+     * @param  array<string, bool>  $existingSet
+     * @return array<int, string>
+     */
+    public static function computeMonthlyEffectiveSessionDates(StudentClass $class, string $rangeStart, string $rangeEnd, array $leaveSet, array $scheduledSet, array $existingSet): array
+    {
+        $start = self::normalizeDateString($class->StartDate ?? null) ?: $rangeStart;
+        if ($start < $rangeStart) {
+            $start = $rangeStart;
+        }
+
+        $end = self::normalizeDateString($class->EndDate ?? null) ?: $rangeEnd;
+        if ($end > $rangeEnd) {
+            $end = $rangeEnd;
+        }
+        if ($end < $start) {
+            $end = $start;
+        }
+
+        $weekdays = [];
+        $candidates = [
+            ['week', 'time'],
+            ['week1', 'time1'],
+            ['week2', 'time2'],
+            ['week3', 'time3'],
+            ['week4', 'time4'],
+            ['week5', 'time5'],
+            ['week6', 'time6'],
+        ];
+        foreach ($candidates as [$weekField, $timeField]) {
+            $weekday = (int) ($class->{$weekField} ?? 0);
+            $time = trim((string) ($class->{$timeField} ?? ''));
+            if ($weekday >= 1 && $weekday <= 7 && $time !== '') {
+                $weekdays[$weekday] = true;
+            }
+        }
+
+        $set = $existingSet;
+        $cursor = Carbon::parse($start . ' 12:00:00');
+        $last = Carbon::parse($end . ' 12:00:00');
+        while ($cursor->lte($last)) {
+            $ymd = $cursor->toDateString();
+            $dow = (int) $cursor->dayOfWeekIso;
+            if (isset($weekdays[$dow]) && !isset($leaveSet[$ymd])) {
+                $set[$ymd] = true;
+            }
+            if (isset($scheduledSet[$ymd])) {
+                $set[$ymd] = true;
+            }
+            $cursor->addDay();
+        }
+
+        foreach (array_keys($set) as $date) {
+            if ($date < $rangeStart || $date > $rangeEnd) {
+                unset($set[$date]);
+            }
+        }
+
+        $list = array_keys($set);
+        sort($list);
+        return $list;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $providedSlots
+     * @return array<int, array{weekday:int,time:string,duration_minutes?:int}>
+     */
+    public static function resolveScheduleSlotsForRebuild(StudentClass $studentClass, array $providedSlots = []): array
+    {
+        $slots = [];
+
+        if (!empty($providedSlots)) {
+            foreach ($providedSlots as $slot) {
+                $weekday = (int) ($slot['weekday'] ?? 0);
+                if ($weekday < 1 || $weekday > 7) {
+                    continue;
+                }
+                $time = self::normalizeSessionTime($slot['time'] ?? null, '16:00');
+                $entry = [
+                    'weekday' => $weekday,
+                    'time' => substr($time, 0, 5),
+                ];
+                if (!empty($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30) {
+                    $entry['duration_minutes'] = (int) $slot['duration_minutes'];
+                }
+                $slots[] = $entry;
+            }
+        }
+
+        if (empty($slots)) {
+            $globalDur = (int) ($studentClass->SessionDuration ?? 0);
+            $candidates = [
+                ['week', 'time', null],
+                ['week1', 'time1', 'duration1'],
+                ['week2', 'time2', 'duration2'],
+                ['week3', 'time3', 'duration3'],
+                ['week4', 'time4', 'duration4'],
+                ['week5', 'time5', 'duration5'],
+                ['week6', 'time6', 'duration6'],
+            ];
+            foreach ($candidates as [$weekField, $timeField, $durField]) {
+                $weekday = (int) ($studentClass->{$weekField} ?? 0);
+                if ($weekday < 1 || $weekday > 7) {
+                    continue;
+                }
+                $time = self::normalizeSessionTime($studentClass->{$timeField} ?? null, $studentClass->time ?? '16:00');
+                $entry = [
+                    'weekday' => $weekday,
+                    'time' => substr($time, 0, 5),
+                ];
+                $perDayDur = $durField !== null ? (int) ($studentClass->{$durField} ?? 0) : 0;
+                if ($perDayDur >= 30) {
+                    $entry['duration_minutes'] = $perDayDur;
+                } elseif ($globalDur >= 30) {
+                    $entry['duration_minutes'] = $globalDur;
+                }
+                $slots[] = $entry;
+            }
+            $slots = self::dedupeIdenticalConsecutiveScheduleSlots($slots);
+        }
+
+        usort($slots, function ($a, $b) {
+            $c = ($a['weekday'] <=> $b['weekday']);
+
+            return $c !== 0 ? $c : strcmp((string) ($a['time'] ?? ''), (string) ($b['time'] ?? ''));
+        });
+
+        return $slots;
+    }
+
+    /**
+     * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
+     * @return array<int, array{weekday:int,time:string,duration_minutes?:int}>
+     */
+    public static function dedupeIdenticalConsecutiveScheduleSlots(array $slots): array
+    {
+        if (count($slots) < 2) {
+            return $slots;
+        }
+        $out = [$slots[0]];
+        for ($i = 1; $i < count($slots); $i++) {
+            $prev = $out[count($out) - 1];
+            $cur = $slots[$i];
+            if ((int) ($prev['weekday'] ?? 0) === (int) ($cur['weekday'] ?? 0)
+                && (string) ($prev['time'] ?? '') === (string) ($cur['time'] ?? '')
+                && (int) ($prev['duration_minutes'] ?? 0) === (int) ($cur['duration_minutes'] ?? 0)
+            ) {
+                continue;
+            }
+            $out[] = $cur;
+        }
+
+        return $out;
+    }
 }
