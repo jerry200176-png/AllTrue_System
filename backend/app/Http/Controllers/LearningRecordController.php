@@ -1383,7 +1383,7 @@ class LearningRecordController extends Controller
             if ($occurrenceV2 && $updateClass) {
                 $course = StudentClass::find($learningRecord->StudentClassID);
                 if ($course && (int) $course->TeacherID > 0 && (int) $course->TeacherID !== $newTeacherId) {
-                    app(StudentClassController::class)->pinTaughtOccurrencesBeforeContractTeacherChange(
+                    \App\Services\Scheduling\ContractTeacherChangeCascade::pinTaughtOccurrencesBeforeContractTeacherChange(
                         $course, $newTeacherId, null, (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null
                     );
                 }
@@ -1415,7 +1415,7 @@ class LearningRecordController extends Controller
             }
 
             $session = $occurrenceV2 && $learningRecord->ClassSessionID ? ClassSession::find($learningRecord->ClassSessionID) : null;
-            if ($session && !OccurrenceAssignmentService::onLeave($session) && app(StudentClassController::class)->isPinnableOccurrence($session)) {
+            if ($session && !OccurrenceAssignmentService::onLeave($session) && \App\Services\Scheduling\ContractTeacherChangeCascade::isPinnableOccurrence($session)) {
                 // The occurrence row agrees with the corrected LR (also for update_class=true, after its pin pass).
                 app(OccurrenceAssignmentService::class)->assignTeacher($session, $newTeacherId, (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null);
             }

@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\StudentClassController;
+use App\Services\Scheduling\ContractSessionSchedule;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
@@ -119,7 +119,7 @@ class StudentClassRemoveFixedSlotConflictTest extends TestCase
             'Status' => 'attended',
         ]);
 
-        $controller = app(StudentClassController::class);
+        $controller = app(ContractSessionSchedule::class);
         $method = new \ReflectionMethod($controller, 'remapFutureScheduledSessionsToContract');
         $method->setAccessible(true);
 

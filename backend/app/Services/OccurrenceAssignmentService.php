@@ -8,6 +8,7 @@ use App\Models\Schedule;
 use App\Models\ScheduleChangeLog;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -41,7 +42,7 @@ class OccurrenceAssignmentService
     /** A leave occurrence already has its live row; a substitute must not add a second one. */
     public static function onLeave(ClassSession $session): bool
     {
-        return strtolower((string) $session->Status) === 'leave'
+        return SessionStatus::isLeaveLike((string) $session->Status)
             || self::at((int) $session->StudentClassID, Carbon::parse((string) $session->SessionDate)->toDateString(), substr((string) $session->StartTime, 0, 5), 'leave')->exists();
     }
 
@@ -56,6 +57,7 @@ class OccurrenceAssignmentService
         ?array $newSlot = null
     ): Schedule {
         return DB::transaction(function () use ($session, $newTeacherId, $actorId, $reason, $newSlot): Schedule {
+            $this->lockOccurrence($session);
             [$course, $date, $start, $end] = $this->slotOf($session);
             $contractTeacherId = (int) ($course->TeacherID ?? 0);
 
@@ -85,6 +87,9 @@ class OccurrenceAssignmentService
                     $this->moveTo($anchor, $newSlot);
                     $anchor->save();
                 }
+            } else {
+                // Pure substitution: keep the live row's end/duration in step with the session, like the flag-off path.
+                $this->moveTo($live, ['date' => $date, 'start' => $start, 'end' => $end]);
             }
             $live->save();
 
@@ -110,6 +115,7 @@ class OccurrenceAssignmentService
     public function restoreContractTeacher(ClassSession $session, ?int $actorId, ?array $restoreSlot = null): ?Schedule
     {
         return DB::transaction(function () use ($session, $actorId, $restoreSlot): ?Schedule {
+            $this->lockOccurrence($session);
             [$course, $date, $start] = $this->slotOf($session);
             $contractTeacherId = (int) ($course->TeacherID ?? 0);
             $live = $this->findLive((int) $course->ID, $date, $start, $contractTeacherId);
@@ -152,6 +158,12 @@ class OccurrenceAssignmentService
 
             return $live;
         });
+    }
+
+    /** Serialize writers on one occurrence: no unique index yet, so two first writes must not both create a chain. */
+    private function lockOccurrence(ClassSession $session): void
+    {
+        ClassSession::query()->where('id', (int) $session->id)->lockForUpdate()->first();
     }
 
     /** @return array{0: StudentClass, 1: string, 2: string, 3: string} */

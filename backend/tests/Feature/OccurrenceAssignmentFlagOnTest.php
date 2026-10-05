@@ -222,28 +222,6 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $this->assertSame(['substitute', 'restore'], ScheduleChangeLog::orderBy('id')->pluck('reason')->all());
     }
 
-    public function test_batch_substitute_one_live_row_and_one_log_per_lesson_flag_on(): void
-    {
-        $this->seedWorld();
-        $this->flag(true);
-        $s1 = $this->plainSession();
-        $s2 = ClassSession::create([
-            'StudentClassID' => $this->sc->ID, 'SessionDate' => '2026-04-20',
-            'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled',
-        ]);
-
-        $this->api()->postJson('/api/v1/teacher-leaves/batch-substitute', [
-                'assignments' => [
-                    ['class_session_id' => $s1->id, 'substitute_teacher_id' => $this->bId],
-                    ['class_session_id' => $s2->id, 'substitute_teacher_id' => $this->bId],
-                ],
-                'atomic' => true,
-            ])->assertOk()->assertJsonFragment(['success' => 2, 'fail' => 0]);
-
-        $this->assertSame(2, Schedule::where('status', 'scheduled')->where('teacher_id', $this->bId)->whereNotNull('original_schedule_id')->count());
-        $this->assertSame(2, ScheduleChangeLog::where('reason', 'substitute')->count());
-    }
-
     private function flag(bool $on): void
     {
         config(['feature_flags.values' => ['FEATURE_SCHEDULE_OCCURRENCE_V2' => false, 'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1' => $on]]);

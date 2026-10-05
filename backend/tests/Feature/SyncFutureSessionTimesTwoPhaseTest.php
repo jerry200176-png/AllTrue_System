@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\StudentClassController;
+use App\Services\Scheduling\ContractSessionSchedule;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use Carbon\Carbon;
@@ -129,7 +129,7 @@ class SyncFutureSessionTimesTwoPhaseTest extends TestCase
 
     private function invokeSync(int $courseId, array $slots, int $durationMinutes): int
     {
-        $controller = app(StudentClassController::class);
+        $controller = app(ContractSessionSchedule::class);
         $method = new \ReflectionMethod($controller, 'syncFutureScheduledSessionTimes');
         $method->setAccessible(true);
         return (int) $method->invoke($controller, $courseId, $slots, $durationMinutes);
