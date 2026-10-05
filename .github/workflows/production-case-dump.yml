@@ -723,7 +723,9 @@ jobs:
               ->whereRaw("LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'")
               ->where(fn ($q) => $q->whereNull('sc.closed_reason')->orWhere('sc.closed_reason', '!=', 'waived'))
               // Zero-fee contracts are `free` in BillingPayableResolver: no invoice is expected.
-              ->where(fn ($q) => $q->where('sc.Charge', '>', 0)->orWhere('sc.Rate', '>', 0))
+              ->where(fn ($q) => $q->where('sc.Charge', '>', 0)->orWhere('sc.Rate', '>', 0)
+                ->orWhereExists(fn ($e) => $e->selectRaw('1')->from('Invoice as pi')->whereColumn('pi.StudentClassID', 'sc.ID')
+                  ->where('pi.TotalAmount', '>', 0)->where(fn ($v) => $v->whereNull('pi.Status')->orWhere('pi.Status', '!=', 'void'))))
               ->get(['sc.ID', 'sc.StudentID', 'st.CampusID', 'sc.Paid', 'sc.Stop', 'sc.closed_reason', 'sc.StartDate', 'sc.EndDate', 'sc.Charge'])->keyBy('ID');
             $ids = $courses->keys()->map(fn ($id) => (int)$id)->all();
             $sessions = $ids === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $ids)
@@ -741,6 +743,11 @@ jobs:
               ->whereIn('it.StudentClassID', $ids)->whereNotNull('it.PeriodStart')->whereNotNull('it.PeriodEnd')
               ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '!=', 'void'))->where('inv.TotalAmount', '>', 0)
               ->get(['it.StudentClassID', 'it.PeriodStart', 'it.PeriodEnd'])->groupBy('StudentClassID');
+            // Unbounded items owned by the contract: the invoice's billing_period month is the coverage (as MonthlyPeriodPayment does).
+            $ownedMonths = $ids === [] ? collect() : $db::table('InvoiceItem as it')->join('Invoice as inv', 'inv.id', '=', 'it.InvoiceID')
+              ->whereIn('it.StudentClassID', $ids)->whereNull('it.PeriodStart')->whereNull('it.PeriodEnd')->whereNotNull('inv.billing_period')
+              ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '!=', 'void'))->where('inv.TotalAmount', '>', 0)
+              ->get(['it.StudentClassID', 'inv.billing_period'])->groupBy('StudentClassID')->map(fn ($g) => $g->pluck('billing_period')->unique()->values()->all());
             $rows = [];
             foreach ($sessions as $cid => $list) {{
               $c = $courses->get($cid);
@@ -752,7 +759,8 @@ jobs:
               $uncovered = [];
               foreach ($list as $s) {{
                 $d = substr((string)$s->SessionDate, 0, 10); $m = substr($d, 0, 7);
-                $covered = $owned->contains(fn ($it) => substr((string)$it->PeriodStart, 0, 10) <= $d && substr((string)$it->PeriodEnd, 0, 10) >= $d);
+                $covered = $owned->contains(fn ($it) => substr((string)$it->PeriodStart, 0, 10) <= $d && substr((string)$it->PeriodEnd, 0, 10) >= $d)
+                  || in_array($m, $ownedMonths->get($cid, []), true);
                 foreach ($inv as $i) {{
                   $bounded = $items->get($i->id, collect());
                   $its = $bounded->filter(fn ($it) => $it->StudentClassID === null || (int)$it->StudentClassID === (int)$cid);
