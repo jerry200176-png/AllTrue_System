@@ -85,6 +85,81 @@ class AccountingWaiveCourseTest extends TestCase
         $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'accounting.course_waived')->count());
     }
 
+    public function test_waived_course_cannot_be_rebilled_marked_paid_or_deleted(): void
+    {
+        $token = $this->createToken([1]);
+        $h = ['Authorization' => "Bearer {$token}"];
+        $course = $this->createStudentClass($this->createStudent()->id, ['Charge' => 5000, 'Stop' => 1, 'closed_reason' => 'waived']);
+
+        $this->postJson('/api/v1/invoices', ['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-10-01', 'TotalAmount' => 5000], $h)->assertStatus(422)->assertJsonPath('code', 'course_waived');
+        $this->postJson("/api/v1/student-classes/{$course->ID}/confirm-payment", [], $h)->assertStatus(422);
+        $this->deleteJson("/api/v1/student-classes/{$course->ID}", [], $h)->assertStatus(422);
+
+        // Any other writer is blocked at the model: general edit, renewal, and a billing line on another invoice.
+        $this->putJson("/api/v1/student-classes/{$course->ID}", ['status' => 'active', 'paid_at' => '2026-10-01'], $h)
+            ->assertStatus(422)->assertJsonPath('message', '此合約已確認不收，不能再變更繳費或結案狀態');
+        $this->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", ['end_date' => '2026-11-30'], $h)->assertStatus(422);
+        $other = $this->createStudentClass($course->StudentID, ['Charge' => 100]);
+        $this->postJson('/api/v1/invoices', ['StudentID' => $course->StudentID, 'StudentClassID' => $other->ID, 'IssueDate' => '2026-10-01',
+            'TotalAmount' => 100, 'Items' => [['Description' => 'x', 'Amount' => 100, 'StudentClassID' => $course->ID]]], $h)
+            ->assertStatus(422)->assertJsonPath('message', '此合約已確認不收，不能再建立帳單');
+
+        $course->refresh();
+        $this->assertSame(0, (int) $course->Paid);
+        $this->assertSame(1, (int) $course->Stop);
+        $this->assertSame('waived', $course->closed_reason);
+        $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
+        $this->assertSame(0, Invoice::query()->where('StudentClassID', $other->ID)->count());
+
+        // Purging the student would strand the waived contract's void invoices and audit trail.
+        $this->deleteJson("/api/v1/students/{$course->StudentID}", [], $h)->assertStatus(422);
+        $plain = $this->createStudent();
+        $this->postJson('/api/v1/students/bulk-delete', ['student_ids' => [$plain->id, $course->StudentID]], $h)->assertStatus(422);
+        $this->assertNotNull(Student::query()->find($plain->id)); // nothing deleted before the refusal
+        $this->assertSame('waived', $course->fresh()->closed_reason);
+    }
+
+    public function test_course_billed_on_another_courses_open_invoice_cannot_be_waived(): void
+    {
+        $token = $this->createToken([1]);
+        $student = $this->createStudent();
+        $a = $this->createStudentClass($student->id, ['Charge' => 1000]);
+        $b = $this->createStudentClass($student->id, ['Charge' => 2000, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
+        $invoiceId = DB::table('Invoice')->insertGetId(['StudentID' => $student->id, 'StudentClassID' => $a->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 3000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => $invoiceId, 'StudentClassID' => $b->ID, 'Description' => 'b', 'Amount' => 2000]);
+
+        $this->postJson("/api/v1/accounting/courses/{$b->ID}/waive", ['reason' => '不收了', 'expected_amount' => 2000], ['Authorization' => "Bearer {$token}"])
+            ->assertStatus(422)->assertJsonPath('message', '此合約在合併帳單中，請先到帳務處理該帳單');
+        $this->assertSame('settled_pending', $b->fresh()->closed_reason);
+
+        // Inverse: the waived course anchors an invoice that also bills another course.
+        $c = $this->createStudentClass($student->id, ['Charge' => 500, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
+        $anchored = DB::table('Invoice')->insertGetId(['StudentID' => $student->id, 'StudentClassID' => $c->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 1500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => $anchored, 'StudentClassID' => $a->ID, 'Description' => 'a', 'Amount' => 1000]);
+        $this->postJson("/api/v1/accounting/courses/{$c->ID}/waive", ['reason' => '不收了', 'expected_amount' => 1500], ['Authorization' => "Bearer {$token}"])
+            ->assertStatus(422)->assertJsonPath('message', '此合約在合併帳單中，請先到帳務處理該帳單');
+
+        // A paid shared invoice still references the course: also a conflict.
+        DB::table('Invoice')->where('id', $invoiceId)->update(['Status' => 'paid', 'PaidAmount' => 3000]);
+        $this->postJson("/api/v1/accounting/courses/{$b->ID}/waive", ['reason' => '不收了', 'expected_amount' => 2000], ['Authorization' => "Bearer {$token}"])
+            ->assertStatus(422);
+    }
+
+    public function test_confirmed_report_blocks_waiver(): void
+    {
+        $token = $this->createToken([1]);
+        $course = $this->createStudentClass($this->createStudent()->id, ['Charge' => 900, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
+        DB::table('payment_reports')->insert(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+            'reported_by_name' => 'p', 'payment_date' => '2026-09-01', 'payment_method' => 'cash', 'reported_amount' => 900,
+            'status' => 'confirmed', 'report_token_hash' => str_repeat('b', 64), 'token_expires_at' => now()->addDay(),
+            'created_at' => now(), 'updated_at' => now()]);
+        $this->postJson("/api/v1/accounting/courses/{$course->ID}/waive", ['reason' => '不收了', 'expected_amount' => 900], ['Authorization' => "Bearer {$token}"])
+            ->assertStatus(422)->assertJsonPath('message', '此合約已有確認過的繳費回報，請先到帳務更正後再處理');
+    }
+
     private function createToken(array $campusIds, string $type = 'D'): string
     {
         $user = User::create([

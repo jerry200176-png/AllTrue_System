@@ -2080,6 +2080,8 @@ class ClassSessionController extends Controller
                 $error = '找不到目標課程合約';
             } elseif ($newId === $oldId) {
                 $error = '目標課程合約與目前課程合約相同，無需改派。';
+            } elseif (in_array('waived', [(string) $old->getAttribute('closed_reason'), (string) $new->getAttribute('closed_reason')], true)) {
+                $error = '確認不收的合約不能改派堂次。';
             } elseif ((int) $new->getAttribute('StudentID') !== (int) $old->getAttribute('StudentID') || (int) $new->getAttribute('SubjectID') !== (int) $old->getAttribute('SubjectID')) {
                 $error = '新舊課程合約的學生或科目不一致，拒絕改派。';
             } elseif (!in_array(strtolower((string) $session->Status), self::REASSIGN_STATUSES, true)) {
