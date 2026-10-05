@@ -294,26 +294,37 @@ class StudentController extends Controller
         return response()->json($this->transformStudent($student));
     }
 
-    /** Students with any money evidence (Payment rows, stored PaidAmount, Paid=1 contracts, any payment report); deleting them would destroy accounting history. */
+    /**
+     * Students with any money evidence, checked over EXACTLY the invoice set purgeStudentRecords() deletes
+     * (Invoice.StudentID = student OR Invoice.StudentClassID in the student's contracts): Payment rows, stored
+     * PaidAmount or paid/partial status, Paid=1 or paid-package contracts, any payment report, or a contract
+     * billed as a line on someone else's invoice. Deleting such a student would destroy accounting history.
+     */
     private function studentIdsWithCollectedMoney(array $studentIds): array
     {
-        $paid = DB::table('Payment')->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')
-            ->whereIn('Invoice.StudentID', $studentIds)->pluck('Invoice.StudentID');
-        $stored = DB::table('Invoice')->whereIn('StudentID', $studentIds)
-            ->where(fn ($q) => $q->where('PaidAmount', '>', 0)->orWhereIn('Status', ['paid', 'partial']))
-            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->pluck('StudentID');
-        $flagged = DB::table('StudentClass')->whereIn('StudentID', $studentIds)->where('Paid', 1)->pluck('StudentID');
-        // Paid package (CoursePackage.paid) counts like StudentClass::isEffectivelyPaid().
-        $packaged = DB::table('StudentClass as sc')->join('course_packages as cp', 'cp.id', '=', 'sc.PackageID')
-            ->whereIn('sc.StudentID', $studentIds)->where('cp.paid', 1)->pluck('sc.StudentID');
-        // A contract billed as a line on an invoice owned by someone else must not be erased with the student.
-        $sharedLine = DB::table('InvoiceItem as it')->join('StudentClass as sc', 'sc.ID', '=', 'it.StudentClassID')
-            ->join('Invoice as inv', 'inv.id', '=', 'it.InvoiceID')->whereIn('sc.StudentID', $studentIds)
-            ->whereColumn('inv.StudentID', '!=', 'sc.StudentID')->pluck('sc.StudentID');
-        $reported = DB::table('payment_reports')->whereIn('StudentID', $studentIds)->pluck('StudentID'); // any status is accounting history
+        $out = [];
+        foreach ($studentIds as $studentId) {
+            $studentId = (int) $studentId;
+            $classIds = DB::table('StudentClass')->where('StudentID', $studentId)->pluck('ID')->map(fn ($id) => (int) $id)->all();
+            $invoices = DB::table('Invoice')->where(fn ($q) => $q->where('StudentID', $studentId)
+                ->when($classIds !== [], fn ($w) => $w->orWhereIn('StudentClassID', $classIds)))->get(['id', 'Status', 'PaidAmount']);
+            $invoiceIds = $invoices->pluck('id')->all();
+            $evidence = $invoices->contains(fn ($i) => in_array((string) $i->Status, ['paid', 'partial'], true)
+                    || ((string) $i->Status !== 'void' && (int) $i->PaidAmount > 0))
+                || ($invoiceIds !== [] && DB::table('Payment')->whereIn('InvoiceID', $invoiceIds)->exists())
+                || DB::table('payment_reports')->where(fn ($q) => $q->where('StudentID', $studentId)
+                    ->when($classIds !== [], fn ($w) => $w->orWhereIn('StudentClassID', $classIds)))->exists()
+                || ($classIds !== [] && DB::table('StudentClass')->whereIn('ID', $classIds)->where('Paid', 1)->exists())
+                || ($classIds !== [] && DB::table('StudentClass as sc')->join('course_packages as cp', 'cp.id', '=', 'sc.PackageID')
+                    ->whereIn('sc.ID', $classIds)->where('cp.paid', 1)->exists())
+                || ($classIds !== [] && DB::table('InvoiceItem')->whereIn('StudentClassID', $classIds)
+                    ->whereNotIn('InvoiceID', $invoiceIds ?: [0])->exists());
+            if ($evidence) {
+                $out[] = $studentId;
+            }
+        }
 
-        return $paid->merge($stored)->merge($flagged)->merge($packaged)->merge($sharedLine)->merge($reported)
-            ->map(fn ($id) => (int) $id)->unique()->values()->all();
+        return $out;
     }
 
     private function purgeStudentRecords(int $studentId): array
