@@ -25,7 +25,7 @@ export function formatBrandTitle(campusName) {
 
 export const STATUS_ZH = {
   attended: '已到課', completed: '已完課', late: '遲到', absent: '缺席',
-  excused: '事假', scheduled: '排定', leave: '請假', leave_adjusted: '調課', expected: '預計',
+  excused: '事假', scheduled: '排定', leave: '請假', leave_adjusted: '調課', expected: '預計', rescheduled: '改期',
 };
 const DONE = ['attended', 'completed', 'late', 'absent', 'excused'];
 export function isDone(status) {
@@ -113,6 +113,8 @@ export function paymentSlipView(raw) {
     ],
     items,
     note: raw.note,
+    // Count-mode payloads list the whole course, not one billing period.
+    session_title: raw.schedule_mode === 'date' ? '本期上課日期' : '課程明細',
     sessions: raw.sessions || [],
     footer_note: SLIP_FOOTER,
     generated_on: generatedOn,
