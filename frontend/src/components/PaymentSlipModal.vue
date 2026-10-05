@@ -93,8 +93,7 @@ async function warmUp() {
   // Fonts and the logo must be ready before capture; the first capture on
   // iOS Safari can come out blank, so render once up front and discard it.
   await document.fonts?.ready;
-  const img = docRef.value?.$el?.querySelector('img');
-  if (img && !img.complete) await new Promise(r => { img.onload = img.onerror = r; });
+  await docRef.value?.$el?.querySelector('img')?.decode?.().catch(() => {});
   await renderBlob().catch(() => {});
 }
 
