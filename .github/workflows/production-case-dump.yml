@@ -587,7 +587,7 @@ jobs:
                 $out['calendar_rows'] = (new \\App\\Services\\ClassSessionIndexReadService())->buildQuery($req)->whereIn('sc.ID', $classIds ?: [0])->get()
                   ->map(fn ($r) => array_intersect_key((array)$r, $keep))->values()->all();
               }} catch (\\Throwable $e) {{
-                $out['calendar_rows_error'] = get_class($e) . ': ' . $e->getMessage();
+                $out['calendar_rows_error'] = get_class($e);
               }}
               $teacherIds = collect($out['classes'])->pluck('TeacherID')->merge($schedules->pluck('teacher_id'))
                 ->merge(collect($out['learning_records'])->pluck('TeacherID'))->filter()->map(fn ($id) => (int)$id)->unique()->values()->all();
@@ -610,7 +610,11 @@ jobs:
                   if (!str_contains($line, '[substitute]') && !str_contains($line, 'substitute')) {{ continue; }}
                   foreach ($sessionIds as $sid) {{
                     if (str_contains($line, '"class_session_id":' . $sid . ',') || str_contains($line, '"class_session_id":' . $sid . '}}')) {{
-                      $logLines[] = basename($f) . ' ' . mb_substr(trim($line), 0, 600);
+                      // Whitelisted IDs/times only: the context also carries free-text reason/exception text.
+                      $ctx = json_decode((string)substr($line, (int)strpos($line, '{{')), true) ?: [];
+                      $logLines[] = ['at' => substr($line, 1, 19)] + array_intersect_key($ctx, array_flip(['step', 'class_session_id', 'student_class_id',
+                        'session_date', 'start_time', 'end_time', 'old_teacher_id', 'new_teacher_id', 'has_existing_rescheduled', 'has_existing_scheduled',
+                        'rescheduled_id', 'reused_rescheduled_row', 'scheduled_id', 'original_schedule_id', 'learning_record_id', 'session_status', 'exception']));
                       break;
                     }}
                   }}
