@@ -724,3 +724,7 @@ exemptions:
     changelog_date: "2026-10-05"
     changelog_title: "chore(ops): POP operation puts unpaid hidden closures back in the reconciliation queue"
     reason: POP 修復需部署後另經 Founder 核准執行；教職員卡片於正式站執行並驗證成功後另 PR 發布
+  - id: silent-2026-10-05-muzha-chen-catchup
+    changelog_date: "2026-10-05"
+    changelog_title: "chore(ops): POP catch-up billing for 宥翰 Jun–Aug + void orphan invoice 1053"
+    reason: POP 修復需部署後另經 Founder 核准執行；教職員卡片於正式站執行並驗證成功後另 PR 發布
