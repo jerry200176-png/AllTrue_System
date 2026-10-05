@@ -28,7 +28,6 @@ use App\Services\Scheduling\BillingContractLockGuard;
 use App\Services\Scheduling\ContractSessionSchedule;
 use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
-use App\Services\ClassSessionContractReflowService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\LearningRecordResurrectionPolicy;
@@ -53,7 +52,6 @@ class StudentClassController extends Controller
 {
     public function __construct(
         private ScheduleGuardService $scheduleGuardService,
-        private ClassSessionContractReflowService $contractSessionReflowService,
         private InvoiceAmountReconciliationService $invoiceAmounts,
         private BillingModeConversionArchiveService $billingModeConversionArchive,
         private ContractSessionSchedule $contractSchedule
@@ -2024,7 +2022,7 @@ class StudentClassController extends Controller
             $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlotsForRebuild);
             if (!empty($slots)) {
                 $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
-                $updatedCount = $this->syncFutureScheduledSessionTimes(
+                $updatedCount = $this->contractSchedule->syncFutureScheduledSessionTimes(
                     (int) $studentClass->ID,
                     $slots,
                     $durationMinutes,
@@ -6268,7 +6266,7 @@ class StudentClassController extends Controller
         // Re-time not-yet-taught moved sessions to the new slot, then top up / trim to the new balance.
         $newSlots = $slots ?: $previousSlots;
         if ($slots) {
-            $this->syncFutureScheduledSessionTimes($newId, $newSlots, $duration, $previousSlots);
+            $this->contractSchedule->syncFutureScheduledSessionTimes($newId, $newSlots, $duration, $previousSlots);
         }
         $new->refresh();
         $this->contractSchedule->extendSessionsIfNeeded($new, $remaining);
@@ -7074,7 +7072,7 @@ class StudentClassController extends Controller
 
             // If immutable history exists, do a safe partial sync (times only).
             if (ContractSessionSchedule::hasImmutableSessionHistory($classId) || ContractSessionSchedule::hasAttendanceMarkedSessions($classId)) {
-                $updatedCount = $this->syncFutureScheduledSessionTimes(
+                $updatedCount = $this->contractSchedule->syncFutureScheduledSessionTimes(
                     $classId,
                     $slots,
                     $durationMinutes,
@@ -7093,7 +7091,7 @@ class StudentClassController extends Controller
             // only mutable future rows, preserving past rows and contract
             // exceptions even when immutable history is not present yet.
             if ($studentClass->isPartOfPackage()) {
-                $updatedCount = $this->syncFutureScheduledSessionTimes(
+                $updatedCount = $this->contractSchedule->syncFutureScheduledSessionTimes(
                     $classId,
                     $slots,
                     $durationMinutes,
@@ -7224,7 +7222,7 @@ class StudentClassController extends Controller
                 $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
                 if (!empty($slots)) {
                     $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
-                    $updatedCount = $this->syncFutureScheduledSessionTimes(
+                    $updatedCount = $this->contractSchedule->syncFutureScheduledSessionTimes(
                         (int) $studentClass->ID,
                         $slots,
                         $durationMinutes,
@@ -7248,7 +7246,7 @@ class StudentClassController extends Controller
                 $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
                 if (!empty($slots)) {
                     $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
-                    $updatedCount = $this->syncFutureScheduledSessionTimes(
+                    $updatedCount = $this->contractSchedule->syncFutureScheduledSessionTimes(
                         (int) $studentClass->ID,
                         $slots,
                         $durationMinutes,
@@ -7434,196 +7432,6 @@ class StudentClassController extends Controller
         ];
 
         return hash_hmac('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), (string) config('app.key'));
-    }
-
-    /**
-     * Sync only future scheduled sessions' times by weekday mapping.
-     * Keeps historical/locked sessions untouched.
-     * Supports same-day multi-slot (e.g. Saturday 13:00 + 17:00): pairs
-     * sessions and slots positionally (both sorted by time) per date.
-     *
-     * If the contract weekdays no longer include a future session's weekday (e.g. removed 週六),
-     * remaps SessionDate (and times) in chronological order to match buildSessionsForCount cadence.
-     *
-     * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
-     */
-    private function syncFutureScheduledSessionTimes(
-        int $studentClassId,
-        array $slots,
-        int $durationMinutes,
-        array $previousScheduleSlots = []
-    ): int
-    {
-        if ($studentClassId <= 0 || empty($slots)) {
-            return 0;
-        }
-
-        $slotsByWeekday = ContractSessionSchedule::buildSlotsByWeekdayMap($slots, $durationMinutes);
-        if (empty($slotsByWeekday)) {
-            return 0;
-        }
-
-        return DB::transaction(function () use (
-            $studentClassId,
-            $slots,
-            $durationMinutes,
-            $slotsByWeekday
-        ) {
-        $lockedBySessionId = ContractSessionSchedule::lockedClassSessionIds($studentClassId);
-
-        $today = Carbon::today()->toDateString();
-        $sessions = ClassSession::where('StudentClassID', $studentClassId)
-            ->where('Status', 'scheduled')
-            ->whereDate('SessionDate', '>=', $today)
-            ->orderBy('SessionDate')
-            ->orderBy('StartTime')
-            ->get();
-
-        // Same-day plan per date, shared with ScheduleGuardService so the course-edit guard predicts exactly this.
-        $rowsByDate = [];
-        $sessionsById = [];
-        foreach ($sessions as $session) {
-            $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
-            if ($date) {
-                $sessionsById[(int) $session->id] = $session;
-                $rowsByDate[$date][] = [
-                    'id' => (int) $session->id,
-                    'start' => (string) $session->StartTime,
-                    'end' => (string) $session->EndTime,
-                    'exception' => !empty($session->IsContractException),
-                ];
-            }
-        }
-        $plans = [];
-        foreach ($rowsByDate as $date => $rows) {
-            $daySlots = array_map(function ($slot) {
-                $start = ContractSessionSchedule::normalizeSessionTime($slot['time'], '16:00:00');
-                $end = Carbon::createFromFormat('H:i:s', $start)->addMinutes(max(30, $slot['dur']))->format('H:i:s');
-                return ['start' => $start, 'end' => $end];
-            }, $slotsByWeekday[(int) Carbon::parse($date)->dayOfWeekIso] ?? []);
-            $plans[$date] = ContractSessionSchedule::planSameDayRemap($rows, $daySlots, $lockedBySessionId);
-            // Safe adoption / regularization: an exception now exactly on a contract slot joins the regular contract.
-            foreach (array_keys($plans[$date]['adopted']) as $id) {
-                $sessionsById[$id]->IsContractException = 0;
-                $sessionsById[$id]->save();
-            }
-        }
-
-        $unlocked = $sessions->filter(function ($session) use ($lockedBySessionId) {
-            if (isset($lockedBySessionId[(int) $session->id])) {
-                return false;
-            }
-            if (!empty($session->IsContractException)) {
-                return false;
-            }
-            return true;
-        })->values();
-
-        $needsRemap = false;
-        $sessionWeekdays = [];
-        $unlockedCountByDate = [];
-        foreach ($unlocked as $session) {
-            $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
-            if (!$date) {
-                continue;
-            }
-            $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
-            $sessionWeekdays[$isoDow] = true;
-            $unlockedCountByDate[$date] = ($unlockedCountByDate[$date] ?? 0) + 1;
-            if (!isset($slotsByWeekday[$isoDow])) {
-                $needsRemap = true;
-                break;
-            }
-        }
-
-        if (!$needsRemap && $unlocked->isNotEmpty()) {
-            foreach ($unlockedCountByDate as $date => $countOnDate) {
-                $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
-                $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
-                if (!empty($contractSlotsForDay) && count($contractSlotsForDay) > $countOnDate) {
-                    $needsRemap = true;
-                    break;
-                }
-            }
-        }
-
-        if (!$needsRemap && $unlocked->isNotEmpty()) {
-            foreach (array_keys($slotsByWeekday) as $contractDay) {
-                if (!isset($sessionWeekdays[$contractDay])) {
-                    $needsRemap = true;
-                    break;
-                }
-            }
-        }
-
-        if ($needsRemap && $unlocked->isNotEmpty()) {
-            $unlockedIds = $unlocked->mapWithKeys(fn ($s) => [(int) $s->id => true])->all();
-            $lockedTargetKeys = $sessions->filter(function ($session) use ($unlockedIds) {
-                return !isset($unlockedIds[(int) $session->id]);
-            })->mapWithKeys(function ($session) {
-                $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
-                $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
-                return $date && $start ? ["{$date}|{$start}" => true] : [];
-            })->all();
-
-            $contractStartDate = ContractSessionSchedule::normalizeDateString(
-                DB::table('StudentClass')->where('ID', $studentClassId)->value('StartDate')
-            );
-
-            return $this->contractSchedule->remapFutureScheduledSessionsToContract(
-                $unlocked,
-                $slots,
-                $durationMinutes,
-                $lockedTargetKeys,
-                $contractStartDate
-            );
-        }
-
-        // Permutation-safe move list: same-day time shifts would hit uq_class_session_slot 1062 if updated
-        // in place onto a sibling's not-yet-vacated StartTime (Sentry PHP-LARAVEL-25 / #1384).
-        $moves = [];
-        $reflowIds = [];
-        foreach ($plans as $date => $plan) {
-            foreach ($plan['moves'] as $sessionId => $slot) {
-                $session = $sessionsById[$sessionId];
-                $moves[] = [
-                    'session'       => $session,
-                    'oldDate'       => ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null),
-                    'oldStartShort' => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
-                    'newDate'       => $date,
-                    'newStart'      => $slot['start'],
-                    'newEnd'        => $slot['end'],
-                ];
-                $reflowIds[$sessionId] = true;
-            }
-        }
-
-        if (empty($moves)) {
-            return 0;
-        }
-
-        $courseId = (int) ($moves[0]['session']->StudentClassID ?? 0);
-        try {
-            return $this->contractSessionReflowService->move($courseId, $reflowIds, $moves);
-        } catch (\App\Exceptions\SlotOccupiedException $e) {
-            // Soft sync must not 500 the course update: skip colliding moves
-            // one-by-one so compatible rows still realign.
-            $updated = 0;
-            foreach ($moves as $move) {
-                $sid = (int) $move['session']->id;
-                try {
-                    $updated += $this->contractSessionReflowService->move(
-                        $courseId,
-                        [$sid => true],
-                        [$move]
-                    );
-                } catch (\App\Exceptions\SlotOccupiedException $ignored) {
-                    continue;
-                }
-            }
-            return $updated;
-        }
-        });
     }
 
     /**
