@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Exceptions\SlotOccupiedException;
-use App\Http\Controllers\StudentClassController;
+use App\Services\Scheduling\ContractSessionSchedule;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\Student;
@@ -162,7 +162,7 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $wedSession = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-15')->firstOrFail();
         $wedSession->update(['EndTime' => '18:30:00', 'IsContractException' => 1]);
 
-        $controller = app(StudentClassController::class);
+        $controller = app(ContractSessionSchedule::class);
         $method = new ReflectionMethod($controller, 'syncFutureScheduledSessionTimes');
         $method->setAccessible(true);
         $method->invoke($controller, (int) $course->ID, [
