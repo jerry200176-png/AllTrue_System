@@ -85,6 +85,22 @@ class AccountingWaiveCourseTest extends TestCase
         $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'accounting.course_waived')->count());
     }
 
+    public function test_waived_course_cannot_be_rebilled_marked_paid_or_deleted(): void
+    {
+        $token = $this->createToken([1]);
+        $h = ['Authorization' => "Bearer {$token}"];
+        $course = $this->createStudentClass($this->createStudent()->id, ['Charge' => 5000, 'Stop' => 1, 'closed_reason' => 'waived']);
+
+        $this->postJson('/api/v1/invoices', ['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-10-01', 'TotalAmount' => 5000], $h)->assertStatus(422)->assertJsonPath('code', 'course_waived');
+        $this->postJson("/api/v1/student-classes/{$course->ID}/confirm-payment", [], $h)->assertStatus(422);
+        $this->deleteJson("/api/v1/student-classes/{$course->ID}", [], $h)->assertStatus(422);
+
+        $course->refresh();
+        $this->assertSame(0, (int) $course->Paid);
+        $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
+    }
+
     private function createToken(array $campusIds, string $type = 'D'): string
     {
         $user = User::create([

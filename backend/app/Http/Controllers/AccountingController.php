@@ -583,7 +583,8 @@ class AccountingController extends Controller
                 'applied_total' => $appliedTotal,
                 'voided_total' => (int) $invoiceRows->sum('voided_amount'),
                 'overpaid_total' => (int) $invoiceRows->sum('overpaid_amount'),
-                'outstanding_total' => max(0, $openInvoiceTotal - $appliedTotal),
+                // Sum per-row balances: a void row owes 0 and its retained applications must not offset open rows.
+                'outstanding_total' => (int) $invoiceRows->sum('outstanding_amount'),
                 'invoice_count' => $invoiceRows->count(),
                 'receipt_count' => $reportRows->where('status', 'confirmed')->count(),
                 'anomaly_count' => $uniqueAnomalies->count(),

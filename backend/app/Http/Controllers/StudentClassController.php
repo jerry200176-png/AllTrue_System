@@ -3346,6 +3346,10 @@ class StudentClassController extends Controller
             ], 422);
         }
 
+        if ((string) $studentClass->getAttribute('closed_reason') === 'waived') {
+            return response()->json(['message' => '此合約已確認不收，不能標記已繳', 'code' => 'course_waived'], 422);
+        }
+
         $studentClass->Paid = 1;
         $studentClass->PayDate = now()->toDateString();
         $studentClass->save();
@@ -5556,6 +5560,11 @@ class StudentClassController extends Controller
             if (!$allowed) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
+        }
+
+        // A written-off contract keeps its void invoices and audit snapshot; deleting it would strand them.
+        if ((string) $studentClass->getAttribute('closed_reason') === 'waived') {
+            return response()->json(['message' => '此合約已確認不收，不能刪除', 'code' => 'course_waived'], 422);
         }
 
         return DB::transaction(function () use ($studentClass) {

@@ -105,7 +105,10 @@ class BillingController extends Controller
 
         return DB::transaction(function () use ($data) {
             if (!empty($data['StudentClassID'])) {
-                $course = StudentClass::query()->find($data['StudentClassID']);
+                $course = StudentClass::query()->whereKey($data['StudentClassID'])->lockForUpdate()->first();
+                if ($course && (string) $course->getAttribute('closed_reason') === 'waived') {
+                    return response()->json(['message' => '此合約已確認不收，不能再建立帳單', 'code' => 'course_waived'], 422);
+                }
                 if ($course && strtolower(trim((string) ($course->ClassType ?? ''))) === 'tutoring') {
                     return response()->json([
                         'message' => '輔導課無須繳費，不能建立帳單或付款義務。請先檢查課程帳務資料。',
