@@ -437,7 +437,7 @@
                         <span class="material-symbols-outlined">check_circle</span>
                         登記已回報
                       </button>
-                      <button v-if="canWaive" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)" title="確認這筆不會收，從待處理移除並留稽核紀錄">
+                      <button v-if="canWaive && r.closed_reason" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)" title="確認這筆不會收，從待處理移除並留稽核紀錄">
                         <span class="material-symbols-outlined">money_off</span>
                         確認不收
                       </button>
@@ -793,9 +793,10 @@
                 <td>
                   <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
                   <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
-                  <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">結案待對帳</span>
+                  <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '結案待對帳' }}</span>
+                  <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '付款期間待確認' }}</span>
                   <span v-if="row.closed_reason === 'waived'" class="acct-chip">確認不收</span>
-                  <span v-else-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation" class="text-light">正常</span>
+                  <span v-else-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation && !row.payment_review_required" class="text-light">正常</span>
                 </td>
                 <td>
                   <div class="tc-actions">
@@ -1297,8 +1298,12 @@ const batchForm = ref({
 
 const selectedIdSet = computed(() => new Set(selectedIds.value));
 
+// A batch report needs a real amount: unbilled rows with a null/0 payable would be sent as amount 0.
+const hasBatchAmount = (r) => Number(r?.payable_outstanding ?? r?.payable_amount ?? 0) > 0;
+
 function isRowSelectable(r) {
   const ps = r?.payment_status;
+  if (ps !== 'pending_report' && !hasBatchAmount(r)) return false;
   if (activeTab.value === 'pending_report') return ps === 'pending_report' && !!r.latest_payment_report_id;
   if (activeTab.value === 'pending_reconciliation') return ps === 'pending_reconciliation';
   if (r?.payable_status !== 'invoiced') return false;
@@ -1319,7 +1324,7 @@ const batchPreviewRows = computed(() => {
   if (batchPreviewMode.value === 'confirm') {
     return selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id);
   }
-  return selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
+  return selectedRows.value.filter((r) => (r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation') && hasBatchAmount(r));
 });
 const batchPreviewTotal = computed(() => batchPreviewRows.value.reduce((total, row) => total + Number(row.payable_outstanding ?? row.payable_amount ?? 0), 0));
 const allVisibleSelected = computed(() => selectableRows.value.length > 0 && selectableRows.value.every((r) => selectedIdSet.value.has(r.id)));
@@ -1356,7 +1361,7 @@ function openBatchPreview() {
   }
   const rows = mode === 'confirm'
     ? selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id)
-    : selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
+    : selectedRows.value.filter((r) => (r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation') && hasBatchAmount(r));
   if (!rows.length) {
     showToast(mode === 'confirm' ? '請先勾選待對帳課程' : '請先勾選未繳課程', 'warning');
     billingWorkflowError(mode === 'confirm' ? 'confirm' : 'report', 'validation');
@@ -1394,7 +1399,7 @@ watch(activeTab, () => {
 async function submitBatchReport() {
   const workflowStep = 'report';
   if (!batchPreviewOpen.value) return;
-  const rows = selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
+  const rows = selectedRows.value.filter((r) => (r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation') && hasBatchAmount(r));
   if (!rows.length) {
     showToast('請先勾選未繳課程', 'warning');
     billingWorkflowError(workflowStep, 'validation');

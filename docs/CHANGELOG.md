@@ -13,6 +13,10 @@
 <!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
 - 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
 
+## 2026-10-06 — fix(accounting): 待對帳 lists every stopped contract that still owes (F7 S3a)
+<!-- release-notes: staff_update=staff-2026-10-06-pending-reconciliation-all-owed -->
+- `AccountingController::settledCourses` 與學費提醒 `AlertController` 的結案待對帳改用 `BillingPayableResolver::courseStatusesByStudentClassIds()`（整批一次查）：Stop=1 且解析結果為 unpaid／partial／unbilled 且欠款 > 0 即列入，不再依 `closed_reason` 白名單，暫停中（無 reason）也會顯示，標「暫停中 · 待對帳」，欠款金額取自解析結果。解析結果為 `review_required` 的結案合約獨立顯示「付款期間待確認」（`payment_review_required`）。`waived` 仍為歷史、欠款 0；Paid=1／已付帳單的已結清清單不變；現行（Stop=0）合約的提醒規則不變
+
 ## 2026-10-05 — chore(schedule): TD-076 Track B PR-A log teacher columns + `superseded` status constant
 <!-- release-notes: silent_ship=silent-2026-10-05-td076-pr-a-log-superseded -->
 - `schedule_change_log` 新增可為空的 `from_teacher_id`／`to_teacher_id`（加欄位 migration，可回滾）、`ScheduleChangeLog::REASONS` 與 `Schedule::STATUS_SUPERSEDED`；目前沒有任何寫入端使用，並以測試證明 `superseded` 排程列對日曆、代課解析、忙碌時段、衝堂檢查、回填與前端合併皆不可見。畫面與行為不變。
