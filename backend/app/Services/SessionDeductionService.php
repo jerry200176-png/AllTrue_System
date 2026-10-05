@@ -697,6 +697,7 @@ class SessionDeductionService
             ->where('student_course_id', (int) $sc->getKey())
             ->whereDate('schedule_date', $cs->SessionDate)
             ->where('type', 'extra')
+            ->where('status', '!=', Schedule::STATUS_SUPERSEDED)
             ->get(['start_time'])
             ->contains(fn ($r) => substr((string) $r->start_time, 0, 5) === $csStart);
         if (!$isMakeup) {
