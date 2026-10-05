@@ -368,8 +368,17 @@ class AlertController extends Controller
 
                 $paymentStatus = ContractMoneyState::alertStatus($sc, $paidAmount, $charge, $pendingReportId !== null);
                 if ($row['alert_type'] === 'pending_reconciliation') {
-                    // F7 S3a: stopped + still owing per the invoices (resolver), regardless of closed_reason.
-                    $outstanding = (int) $stoppedStatuses[$classId]['outstanding'];
+                    // F7 S3a: stopped + still owing per the invoices. Every amount the UI reads comes from the
+                    // resolver's cumulative totals (never the single-invoice payable or the contract price).
+                    $stopped = $stoppedStatuses[$classId];
+                    $charge = (int) $stopped['payable_total'];
+                    $paidAmount = (int) $stopped['applied'];
+                    $outstanding = (int) $stopped['outstanding'];
+                    $payable = array_merge($payable, [
+                        'payable_amount' => $charge,
+                        'payable_outstanding' => $outstanding,
+                        'payable_invoice_id' => $stopped['current_invoice_id'],
+                    ]);
                     $paymentStatus = $pendingReportId !== null ? 'pending_report' : 'pending_reconciliation';
                 }
 
@@ -386,6 +395,7 @@ class AlertController extends Controller
                     && $currentEndDate >= $newerInfo['start_date'];
 
                 return $row + [
+                    'closed_reason'            => $sc?->getAttribute('closed_reason'),
                     'paid_at'                  => $directPaidAt,
                     'last_paid_at'             => $directPaidAt ?? $invoicePaidAt,
                     'charge'                   => $charge,

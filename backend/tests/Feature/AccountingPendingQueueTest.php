@@ -127,4 +127,51 @@ class AccountingPendingQueueTest extends TestCase
         $this->assertFalse($row['pending_reconciliation']);
         $this->assertSame('付款期間待確認', $row['reconciliation_label']);
     }
+
+    public function test_unbilled_stopped_alert_carries_resolver_amounts_not_null(): void
+    {
+        $c = $this->course(['closed_reason' => null]); // no invoice, Charge 8800 => resolver unbilled
+
+        $alert = $this->tuitionRow($c);
+        $this->assertSame(8800, $alert['payable_amount']);
+        $this->assertSame(8800, $alert['payable_outstanding']);
+        $this->assertSame(8800, $alert['outstanding']);
+        $this->assertNull($alert['closed_reason']);
+    }
+
+    public function test_zero_charge_contract_with_positive_unpaid_invoice_is_kept(): void
+    {
+        $c = $this->course(['closed_reason' => 'settled', 'Charge' => 0]);
+        $this->invoice($c, 5000);
+
+        $alert = $this->tuitionRow($c);
+        $this->assertNotNull($alert);
+        $this->assertSame(5000, $alert['charge']);
+        $this->assertSame(5000, $alert['payable_outstanding']);
+    }
+
+    public function test_multi_invoice_amount_fields_are_cumulative(): void
+    {
+        $c = $this->course(['closed_reason' => 'settled']);
+        $first = $this->invoice($c, 3000);
+        $second = $this->invoice($c, 4000);
+
+        $alert = $this->tuitionRow($c);
+        foreach (['payable_amount', 'payable_outstanding', 'outstanding', 'charge'] as $field) {
+            $this->assertSame(7000, $alert[$field], $field);
+        }
+        $this->assertContains((int) $alert['payable_invoice_id'], [$first->id, $second->id]);
+    }
+
+    public function test_settled_pending_covered_by_payments_stays_in_history(): void
+    {
+        $c = $this->course(['closed_reason' => 'settled_pending']);
+        $this->invoice($c, 8800, 'unpaid', 8800); // payment rows cover it, invoice status still unpaid
+
+        $row = $this->row($c);
+        $this->assertNotNull($row);
+        $this->assertFalse($row['pending_reconciliation']);
+        $this->assertSame(0, $row['outstanding_amount']);
+        $this->assertNull($this->tuitionRow($c));
+    }
 }

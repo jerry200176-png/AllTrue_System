@@ -613,3 +613,23 @@ assert.equal(
   assert.equal(rows.length, 1, 'teacher list must not show the same weekly slot twice');
   assert.equal(rows[0].id, 3200, 'prefer the newer StudentClass id');
 }
+
+// TD-076 Track B: `superseded` is not live; a superseded substitute row must neither overlay nor render.
+{
+  const supersededException = {
+    id: 611, status: 'superseded', schedule_date: '2026-05-10', student_course_id: 382, student_id: 1205,
+    start_time: '15:00', end_time: '17:00', teacher_id: 99, original_schedule_id: 610,
+  };
+  const withSession = merge({
+    sessionDatesByCourseId: {
+      382: [{ id: 7001, student_class_id: 382, session_date: '2026-05-10', start_time: '15:00', end_time: '17:00', status: 'scheduled', teacher_id: 17, teacher_name: '原老師' }],
+    },
+    exceptions: [supersededException],
+  });
+  assert.equal(withSession.length, 1, 'superseded exception must not add a row');
+  assert.equal(withSession[0].teacher_id, 17, 'superseded exception must not overlay the substitute teacher');
+
+  const noSession = merge({ exceptions: [{ ...supersededException, start_time: '09:00', end_time: '11:00' }] });
+  assert.deepEqual(noSession.map((row) => row.start_time), ['15:00'], 'superseded exception at another time must not render');
+  assert.ok(noSession.every((row) => Number(row.teacher_id) === 17));
+}

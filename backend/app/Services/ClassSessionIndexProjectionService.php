@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Http\Controllers\StudentClassController;
 use App\Services\Scheduling\ContractSessionSchedule;
 use App\Models\ClassSession;
 use App\Models\Schedule;
@@ -111,6 +110,9 @@ class ClassSessionIndexProjectionService
             if (!$d) {
                 continue;
             }
+            if ($row->status === Schedule::STATUS_SUPERSEDED) {
+                continue;
+            }
             if ($row->status === 'scheduled') {
                 $scheduledByClass[$id][$d] = true;
             } else {
@@ -123,7 +125,6 @@ class ClassSessionIndexProjectionService
         $cancelledByClass = ContractSessionSchedule::cancelledDatesByClass(array_map('intval', $classIds));
 
         $reader = app(SessionProjectionReadService::class);
-        $studentClassController = app(StudentClassController::class);
         /** @var array<string, list<array<string, mixed>>> $projectedByClass */
         $projectedByClass = [];
 
@@ -165,7 +166,7 @@ class ClassSessionIndexProjectionService
 
             $effectiveDates = [];
             if ((string) ($class->ScheduleMode ?? '') === 'date') {
-                $effectiveDates = $studentClassController->computeMonthlyEffectiveSessionDates(
+                $effectiveDates = ContractSessionSchedule::computeMonthlyEffectiveSessionDates(
                     $class,
                     $rangeStart,
                     $rangeEnd,

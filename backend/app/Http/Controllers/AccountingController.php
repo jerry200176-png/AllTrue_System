@@ -61,11 +61,15 @@ class AccountingController extends Controller
 
         $stopped = StudentClass::query()
             ->where('Stop', 1)
-            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
+            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring'])
+            ->where(fn ($q) => $q->whereNull('closed_reason')->orWhere('closed_reason', '!=', 'waived'));
         if (($guard = $applyFilters($stopped)) !== null) {
             return $guard;
         }
-        $stoppedCourses = $stopped->get();
+        // Same scope, filters and ordering as the final query, capped at its 500-row limit, so the resolver
+        // never sees more than 500 stopped contracts. ponytail: if more than 500 stopped contracts match, owing ones
+        // past the cap are not listed until filters narrow; chunk/paginate the resolver if that ever bites.
+        $stoppedCourses = $stopped->orderByDesc('PayDate')->orderByDesc('ID')->limit(500)->get();
         $stoppedStatuses = app(BillingPayableResolver::class)
             ->courseStatusesByStudentClassIds($stoppedCourses->pluck('ID')->all(), $stoppedCourses);
         $listedStopped = [];
@@ -121,7 +125,7 @@ class AccountingController extends Controller
             $state = $status !== null && (int) $course->getAttribute('Stop') === 1 ? $this->stoppedCourseVisibleState($course, $status) : null;
             $pendingReconciliation = $state === 'pending';
             $paymentReview = $state === 'review';
-            if ($pendingReconciliation) {
+            if ($state === 'pending' || $state === 'review') {
                 $invoiceTotal = (int) $status['payable_total'];
                 $appliedTotal = (int) $status['applied'];
                 $outstandingTotal = (int) $status['outstanding'];
@@ -179,7 +183,8 @@ class AccountingController extends Controller
     }
 
     /**
-     * Stopped contract: 'pending' (resolver says it still owes), 'review' (payment period unattributable) or null.
+     * Stopped contract: 'pending' (resolver says it still owes), 'review' (payment period unattributable),
+     * 'history' (closed settled_pending/amended but the resolver says paid) or null.
      * waived is history with outstanding 0, never pending.
      *
      * @param array<string, mixed> $status BillingPayableResolver::courseStatusesByStudentClassIds() row
@@ -191,6 +196,10 @@ class AccountingController extends Controller
         }
         if ($status['status'] === 'review_required') {
             return 'review';
+        }
+        // Settled by Payment rows although the invoice/closure state says otherwise: keep it in history.
+        if ($status['status'] === 'paid' && in_array((string) $course->getAttribute('closed_reason'), ['settled_pending', 'contract_amended'], true)) {
+            return 'history';
         }
 
         return in_array($status['status'], ['unpaid', 'partial', 'unbilled'], true) && (int) $status['outstanding'] > 0 ? 'pending' : null;
