@@ -1184,7 +1184,7 @@ class StudentClassController extends Controller
                 if ($class && ($class->ScheduleMode ?? '') === 'date') {
                     $leaveSet = $leaveByClass[$id] ?? [];
                     $scheduledSet = $scheduledByClass[$id] ?? [];
-                    $list = $this->computeMonthlyEffectiveSessionDates($class, $rangeStart, $classRangeEnd, $leaveSet, $scheduledSet, $set);
+                    $list = ContractSessionSchedule::computeMonthlyEffectiveSessionDates($class, $rangeStart, $classRangeEnd, $leaveSet, $scheduledSet, $set);
                     $result[(string) $id] = $this->buildSessionDatesSplit(
                         $projectionReader,
                         $id,
@@ -1254,74 +1254,6 @@ class StudentClassController extends Controller
         $projected = $reader->buildProjectedFromEffectiveDates($classId, $effectiveDateList, $materialized, $class);
 
         return $reader->wrapCourseSplit($materialized, $projected);
-    }
-
-    /**
-     * 月結制詳情顯示：以固定星期/時段推算查詢月份的日期，再與既有 ClassSession/schedules 合併。
-     * Legacy 月結課可能沒有 EndDate/monthly_sessions，但仍有 week/time 契約欄位。
-     *
-     * @param  array<string, bool>  $leaveSet
-     * @param  array<string, bool>  $scheduledSet
-     * @param  array<string, bool>  $existingSet
-     * @return array<int, string>
-     */
-    public function computeMonthlyEffectiveSessionDates(StudentClass $class, string $rangeStart, string $rangeEnd, array $leaveSet, array $scheduledSet, array $existingSet): array
-    {
-        $start = ContractSessionSchedule::normalizeDateString($class->StartDate ?? null) ?: $rangeStart;
-        if ($start < $rangeStart) {
-            $start = $rangeStart;
-        }
-
-        $end = ContractSessionSchedule::normalizeDateString($class->EndDate ?? null) ?: $rangeEnd;
-        if ($end > $rangeEnd) {
-            $end = $rangeEnd;
-        }
-        if ($end < $start) {
-            $end = $start;
-        }
-
-        $weekdays = [];
-        $candidates = [
-            ['week', 'time'],
-            ['week1', 'time1'],
-            ['week2', 'time2'],
-            ['week3', 'time3'],
-            ['week4', 'time4'],
-            ['week5', 'time5'],
-            ['week6', 'time6'],
-        ];
-        foreach ($candidates as [$weekField, $timeField]) {
-            $weekday = (int) ($class->{$weekField} ?? 0);
-            $time = trim((string) ($class->{$timeField} ?? ''));
-            if ($weekday >= 1 && $weekday <= 7 && $time !== '') {
-                $weekdays[$weekday] = true;
-            }
-        }
-
-        $set = $existingSet;
-        $cursor = Carbon::parse($start . ' 12:00:00');
-        $last = Carbon::parse($end . ' 12:00:00');
-        while ($cursor->lte($last)) {
-            $ymd = $cursor->toDateString();
-            $dow = (int) $cursor->dayOfWeekIso;
-            if (isset($weekdays[$dow]) && !isset($leaveSet[$ymd])) {
-                $set[$ymd] = true;
-            }
-            if (isset($scheduledSet[$ymd])) {
-                $set[$ymd] = true;
-            }
-            $cursor->addDay();
-        }
-
-        foreach (array_keys($set) as $date) {
-            if ($date < $rangeStart || $date > $rangeEnd) {
-                unset($set[$date]);
-            }
-        }
-
-        $list = array_keys($set);
-        sort($list);
-        return $list;
     }
 
     /**
@@ -1678,7 +1610,7 @@ class StudentClassController extends Controller
         // Snapshot the pre-edit fixed-slot contract. Later we must distinguish
         // a pure removal from a slot that was added or moved: deleting a slot
         // must not validate a retained locked occurrence as a new booking.
-        $previousScheduleSlots = $this->resolveScheduleSlotsForRebuild($studentClass);
+        $previousScheduleSlots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
         if (($rawInput['payment_status'] ?? null) === 'paid'
             && (!array_key_exists('paid_at', $rawInput) || empty($rawInput['paid_at']))) {
             return response()->json([
@@ -1830,7 +1762,7 @@ class StudentClassController extends Controller
             if ($scheduleFieldsPresent) {
                 $candidate = clone $studentClass;
                 $candidate->fill($mapped);
-                $slots = $this->resolveScheduleSlotsForRebuild($candidate, $scheduleSlotsForRebuild);
+                $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($candidate, $scheduleSlotsForRebuild);
                 $recurringSlots = [];
                 foreach ($slots as $slot) {
                     $weekday = (int) data_get($slot, 'weekday', 0);
@@ -2079,7 +2011,7 @@ class StudentClassController extends Controller
                     ],
                 ]))];
             }
-            $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlotsForRebuild);
+            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlotsForRebuild);
             if (!empty($slots)) {
                 $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
                 $updatedCount = $this->syncFutureScheduledSessionTimes(
@@ -3086,7 +3018,7 @@ class StudentClassController extends Controller
             $newCourse = $this->createStudentClassRecordResilient(
                 $this->buildSplitContractPayload($source, $plan)
             );
-            $slots = $this->resolveScheduleSlotsForRebuild($source);
+            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($source);
             if (empty($slots)) {
                 $fallbackTime = ContractSessionSchedule::normalizeSessionTime($source->getAttribute('time'), '16:00');
                 $slots = [[
@@ -3295,7 +3227,7 @@ class StudentClassController extends Controller
             if ($mode === 'date' && Carbon::parse($data['end_date'])->gt(Carbon::parse($start)->addYears(2))) {
                 abort(422, '下一期期間最多兩年。');
             }
-            $slots = $this->resolveScheduleSlotsForRebuild($source);
+            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($source);
             $policy = $source->getAttribute('scheduling_policy') ?: 'auto_recurrence';
             if (!in_array($policy, ['auto_recurrence', 'manual_occurrence'], true)) {
                 abort(422, '原課程排課方式不明，請先確認設定。');
@@ -3639,7 +3571,7 @@ class StudentClassController extends Controller
                 $rateUnit = 'session';
             }
             $globalDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
-            $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
+            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
             $periodSessions = !empty($slots)
                 ? ContractSessionSchedule::buildSessionsFromWeeklySchedule(
                     (int) $studentClass->getKey(),
@@ -4058,7 +3990,7 @@ class StudentClassController extends Controller
             $totalHours = 0;
             $charge = 0;
             if ($rateUnit === 'hour') {
-                $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
+                $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
                 $durSum = 0;
                 $slotCount = max(1, count($slots));
                 foreach ($slots as $slot) {
@@ -4132,7 +4064,7 @@ class StudentClassController extends Controller
             $newCourse->initializePricingSnapshot($discountSnapshot);
 
             // ── Build ClassSession rows for the new course ──
-            $slots = $this->resolveScheduleSlotsForRebuild($newCourse);
+            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($newCourse);
             if (empty($slots)) {
                 $isoDow = (int) Carbon::parse($startDate)->dayOfWeekIso;
                 $fallbackTime = ContractSessionSchedule::normalizeSessionTime($newCourse->time ?? null, '16:00');
@@ -4267,7 +4199,7 @@ class StudentClassController extends Controller
                 ], 409);
             }
 
-            $slots = $this->resolveScheduleSlotsForRebuild($source);
+            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($source);
             if (empty($slots)) {
                 $isoDow = (int) Carbon::parse($startDate)->dayOfWeekIso;
                 $fallbackTime = ContractSessionSchedule::normalizeSessionTime($source->getAttribute('time') ?? null, '16:00');
@@ -5311,7 +5243,7 @@ class StudentClassController extends Controller
             return [];
         }
 
-        $slots = $this->resolveScheduleSlotsForRebuild($source);
+        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($source);
         if (empty($slots)) {
             return [];
         }
@@ -5514,7 +5446,7 @@ class StudentClassController extends Controller
             $rate = (float) ($studentClass->Rate ?? 0);
             $rateUnit = (string) ($studentClass->rate_unit ?? 'session');
             $globalDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
-            $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
+            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
             $totalHours = 0;
             $charge = 0;
             if ($sessions > 0) {
@@ -5622,7 +5554,7 @@ class StudentClassController extends Controller
                 $newStart = $currentEnd
                     ? Carbon::parse($currentEnd)->addDay()->toDateString()
                     : Carbon::today()->toDateString();
-                $previewSlots = $this->resolveScheduleSlotsForRebuild($studentClass);
+                $previewSlots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
                 $previewDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
                 $previewSessions = !empty($previewSlots)
                     ? ContractSessionSchedule::buildSessionsFromWeeklySchedule(
@@ -6090,7 +6022,7 @@ class StudentClassController extends Controller
         }
         $teacherId = (int) ($plan['teacher_id'] ?? $source->getAttribute('TeacherID'));
         $campusId = (int) (DB::table('Student')->where('id', (int) $source->getAttribute('StudentID'))->value('CampusID') ?? 0);
-        $slots = $plan['slots'] ?: $this->resolveScheduleSlotsForRebuild($source);
+        $slots = $plan['slots'] ?: ContractSessionSchedule::resolveScheduleSlotsForRebuild($source);
         $recurring = [];
         foreach ($slots as $slot) {
             $start = substr((string) data_get($slot, 'time', ''), 0, 5);
@@ -6268,7 +6200,7 @@ class StudentClassController extends Controller
         $movingIds = $sessions->filter($isMoving)->pluck('id')->map(fn ($i) => (int) $i)->values()->all();
 
         $slots = $data['slots'] ?? null;
-        $previousSlots = $this->resolveScheduleSlotsForRebuild($source);
+        $previousSlots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($source);
         $conflicts = $this->transferScheduleConflicts($source, ['slots' => $slots, 'teacher_id' => $data['teacher_id'] ?? null, 'start_date' => $start]);
         if (!empty($conflicts)) {
             abort(response()->json([
@@ -6886,7 +6818,7 @@ class StudentClassController extends Controller
             return ['created_sessions' => 0, 'reason' => 'date_range_elapsed'];
         }
 
-        $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $providedSlots);
+        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $providedSlots);
         if (empty($slots)) {
             return ['created_sessions' => 0, 'reason' => 'schedule_slots_missing'];
         }
@@ -7075,7 +7007,7 @@ class StudentClassController extends Controller
 
     private function countUnalignedFutureContractSessions(StudentClass $studentClass): int
     {
-        $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
+        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
         $contractKeys = [];
         $defaultDuration = max(30, (int) ($studentClass->SessionDuration ?? 120));
         foreach ($slots as $slot) {
@@ -7143,7 +7075,7 @@ class StudentClassController extends Controller
                 return ['rebuilt' => false, 'reason' => 'start_date_not_updated'];
             }
 
-            $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
+            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
             if (empty($slots)) {
                 return ['rebuilt' => false, 'reason' => 'schedule_slots_missing'];
             }
@@ -7300,7 +7232,7 @@ class StudentClassController extends Controller
             // letting it bypass this branch left the new contract beside old
             // future times (and made the UI issue a second, non-atomic PUT).
             if ($scheduleUpdated && (!$startDateMismatch || $this->hasImmutableSessionHistory((int) $studentClass->getKey()))) {
-                $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
+                $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
                 if (!empty($slots)) {
                     $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
                     $updatedCount = $this->syncFutureScheduledSessionTimes(
@@ -7324,7 +7256,7 @@ class StudentClassController extends Controller
         if ($this->hasImmutableSessionHistory((int) $studentClass->ID)) {
             // 開課日有變更：嘗試安全部分重建（只動未鎖定的未來堂次，保留已點名/已核准）
             if ($startDateChanged) {
-                $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
+                $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
                 if (!empty($slots)) {
                     $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
                     $updatedCount = $this->syncFutureScheduledSessionTimes(
@@ -7344,7 +7276,7 @@ class StudentClassController extends Controller
             return ['rebuilt' => false, 'reason' => 'history_exists'];
         }
 
-        $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
+        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
         if (empty($slots)) {
             return ['rebuilt' => false, 'reason' => 'schedule_slots_missing'];
         }
@@ -7815,7 +7747,7 @@ class StudentClassController extends Controller
 
         // 計算現有「實際堂次數」：排除 cancelled 與 leave/excused（請假不佔用購買額度）
         // 與 cancelExcessScheduledSessions 的計算口徑保持一致
-        $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
+        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
         if (empty($slots)) {
             return;
         }
@@ -8618,98 +8550,6 @@ class StudentClassController extends Controller
     private function subjectLabelForGuard(int $subjectId): string
     {
         return (string) (DB::table('Subject')->where('id', $subjectId)->value('Subject_Name') ?? "#{$subjectId}");
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $providedSlots
-     * @return array<int, array{weekday:int,time:string,duration_minutes?:int}>
-     */
-    private function resolveScheduleSlotsForRebuild(StudentClass $studentClass, array $providedSlots = []): array
-    {
-        $slots = [];
-
-        if (!empty($providedSlots)) {
-            foreach ($providedSlots as $slot) {
-                $weekday = (int) ($slot['weekday'] ?? 0);
-                if ($weekday < 1 || $weekday > 7) {
-                    continue;
-                }
-                $time = ContractSessionSchedule::normalizeSessionTime($slot['time'] ?? null, '16:00');
-                $entry = [
-                    'weekday' => $weekday,
-                    'time' => substr($time, 0, 5),
-                ];
-                if (!empty($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30) {
-                    $entry['duration_minutes'] = (int) $slot['duration_minutes'];
-                }
-                $slots[] = $entry;
-            }
-        }
-
-        if (empty($slots)) {
-            $globalDur = (int) ($studentClass->SessionDuration ?? 0);
-            $candidates = [
-                ['week', 'time', null],
-                ['week1', 'time1', 'duration1'],
-                ['week2', 'time2', 'duration2'],
-                ['week3', 'time3', 'duration3'],
-                ['week4', 'time4', 'duration4'],
-                ['week5', 'time5', 'duration5'],
-                ['week6', 'time6', 'duration6'],
-            ];
-            foreach ($candidates as [$weekField, $timeField, $durField]) {
-                $weekday = (int) ($studentClass->{$weekField} ?? 0);
-                if ($weekday < 1 || $weekday > 7) {
-                    continue;
-                }
-                $time = ContractSessionSchedule::normalizeSessionTime($studentClass->{$timeField} ?? null, $studentClass->time ?? '16:00');
-                $entry = [
-                    'weekday' => $weekday,
-                    'time' => substr($time, 0, 5),
-                ];
-                $perDayDur = $durField !== null ? (int) ($studentClass->{$durField} ?? 0) : 0;
-                if ($perDayDur >= 30) {
-                    $entry['duration_minutes'] = $perDayDur;
-                } elseif ($globalDur >= 30) {
-                    $entry['duration_minutes'] = $globalDur;
-                }
-                $slots[] = $entry;
-            }
-            $slots = $this->dedupeIdenticalConsecutiveScheduleSlots($slots);
-        }
-
-        usort($slots, function ($a, $b) {
-            $c = ($a['weekday'] <=> $b['weekday']);
-
-            return $c !== 0 ? $c : strcmp((string) ($a['time'] ?? ''), (string) ($b['time'] ?? ''));
-        });
-
-        return $slots;
-    }
-
-    /**
-     * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
-     * @return array<int, array{weekday:int,time:string,duration_minutes?:int}>
-     */
-    private function dedupeIdenticalConsecutiveScheduleSlots(array $slots): array
-    {
-        if (count($slots) < 2) {
-            return $slots;
-        }
-        $out = [$slots[0]];
-        for ($i = 1; $i < count($slots); $i++) {
-            $prev = $out[count($out) - 1];
-            $cur = $slots[$i];
-            if ((int) ($prev['weekday'] ?? 0) === (int) ($cur['weekday'] ?? 0)
-                && (string) ($prev['time'] ?? '') === (string) ($cur['time'] ?? '')
-                && (int) ($prev['duration_minutes'] ?? 0) === (int) ($cur['duration_minutes'] ?? 0)
-            ) {
-                continue;
-            }
-            $out[] = $cur;
-        }
-
-        return $out;
     }
 
     private function calculateCourseChargeFromRate(
