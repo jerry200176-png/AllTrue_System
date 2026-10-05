@@ -299,7 +299,9 @@ f. **Acceptance metric.** The gate is a **campus-scoped duplicate count over the
 
    `substitute_slot_conflicts` is diagnostic only and is not the gate. It groups by the current slot, counts only `scheduled` rows, and needs different teachers, so it misses same-teacher, moved-slot and `leave` duplicates. Its `calendar_risk_slots` is a symptom metric too.
 
-**Gate:** items 1–4 and a–f need the same Founder GO as Phase 4/5. The pilot campus is 新莊 (CampusID 11). Until then the R44 frontend guard (#3539) keeps the calendar equal to 課程查找, and the monitor case `substitute_slot_conflicts` is the regression signal.
+**Gate:** items 1–4 and a–f need the same Founder GO as Phase 4/5.
+
+**Design answering §10:** [`DESIGN_TD076_TRACK_B_SUBSTITUTE.md`](DESIGN_TD076_TRACK_B_SUBSTITUTE.md) (Founder decisions D1–D4, writer/reader migration, repairs R-1/R-2, `occurrence_identity_health` gate, PR sequence). The pilot campus is 新莊 (CampusID 11). Until then the R44 frontend guard (#3539) keeps the calendar equal to 課程查找, and the monitor case `substitute_slot_conflicts` is the regression signal.
 
 **Acceptance:** the identity duplicate count (item f) = 0 on the pilot campus for one week after cutover. A parity test passes: calendar, course management, attendance and payroll all name the same teacher, both for the 41612 shape and for the contract-change shape.
 
