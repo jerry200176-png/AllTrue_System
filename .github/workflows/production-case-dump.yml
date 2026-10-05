@@ -20,6 +20,7 @@ on:
           - contract_yang_binghe
           - contract_yu_shengrui
           - monthly_slip_student
+          - unpaid_months_muzha
           - swipe_line_path
           - class_sessions_explain_319
       student_name:
@@ -97,12 +98,14 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'class_sessions_explain_319'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'class_sessions_explain_319'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
           if case == 'monthly_slip_student' and not os.environ.get('TARGET_STUDENT_NAME'):
               raise SystemExit('monthly_slip_student requires student_name')
+          if case == 'unpaid_months_muzha' and not os.environ.get('TARGET_STUDENT_NAME'):
+              raise SystemExit('unpaid_months_muzha requires student_name')
           if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
@@ -476,6 +479,63 @@ jobs:
               $out['invoices'] = $invoices->map(fn ($r) => (array)$r)->values()->all();
               $out['invoice_items'] = $items->map(fn ($r) => (array)$r)->values()->all();
               $out['august_sessions_by_class_status'] = $sessions->map(fn ($r) => (array)$r)->values()->all();
+            }}
+          }} elseif ($case === 'unpaid_months_muzha') {{
+            // Read-only, 2026-10-05: director sees only September unpaid for a 木柵 student said to owe July-September.
+            // Scope: CampusID 16, exact dispatched name (compared in memory, never written out), 2026-06..2026-10.
+            // Approved names only (director report 2026-10-05); any other name returns nothing.
+            $approvedNames = ['陳宥翰', '陳宥霖'];
+            $studentIds = !in_array($targetStudentName, $approvedNames, true) ? [] : $db::table('Student')->where('CampusID', 16)
+              ->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $out['student_match_count'] = count($studentIds);
+            if (count($studentIds) !== 1) {{
+              $out['ok'] = false;
+              $out['error'] = 'student_name must match exactly one 木柵 student';
+            }} else {{
+              $from = '2026-06-01'; $to = '2026-10-31';
+              $classIds = $db::table('StudentClass')->whereIn('StudentID', $studentIds)
+                ->where(fn ($q) => $q->whereNull('EndDate')->orWhereDate('EndDate', '>=', $from))
+                ->where(fn ($q) => $q->whereNull('StartDate')->orWhereDate('StartDate', '<=', $to))
+                ->pluck('ID')->map(fn ($id) => (int)$id)->all();
+              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled'];
+              $out['student_ids'] = $studentIds;
+              $out['window'] = [$from, $to];
+              $out['classes'] = $db::table('StudentClass')->whereIn('ID', $classIds ?: [0])->orderBy('ID')
+                ->get(['ID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'PackageID', 'Stop', 'StartDate', 'EndDate', 'SessionCount', 'Charge', 'Paid', 'PayDate', 'closed_reason'])
+                ->map(function ($r) use ($knownReasons) {{
+                  $reason = (string)($r->closed_reason ?? '');
+                  $r->closed_reason = $reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other');
+                  return (array)$r;
+                }})->values()->all();
+              // Window-bound invoices: billing_period in 2026-06..2026-10, or an item whose service range overlaps the window.
+              $windowItemInvoiceIds = $db::table('InvoiceItem')->select('InvoiceID')
+                ->where(fn ($q) => $q->whereNotNull('PeriodStart')->orWhereNotNull('PeriodEnd'))
+                ->where(fn ($q) => $q->whereNull('PeriodStart')->orWhereDate('PeriodStart', '<=', $to))
+                ->where(fn ($q) => $q->whereNull('PeriodEnd')->orWhereDate('PeriodEnd', '>=', $from));
+              $invoices = $db::table('Invoice')->where(fn ($q) => $q->whereIn('StudentID', $studentIds)->orWhereIn('StudentClassID', $classIds ?: [0]))
+                ->where(fn ($q) => $q->whereBetween('billing_period', ['2026-06', '2026-10'])->orWhereIn('id', $windowItemInvoiceIds))
+                ->orderBy('id')->get(['id', 'StudentClassID', 'Status', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'billing_period']);
+              $invoiceIds = $invoices->pluck('id')->all();
+              $out['invoices'] = $invoices->map(fn ($r) => (array)$r)->values()->all();
+              $out['invoice_items'] = $invoiceIds === [] ? [] : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)
+                ->get(['id', 'InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd', 'Amount'])->map(fn ($r) => (array)$r)->values()->all();
+              $out['payments'] = $invoiceIds === [] ? [] : $db::table('Payment')->whereIn('InvoiceID', $invoiceIds)
+                ->get(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'payment_report_id'])->map(fn ($r) => (array)$r)->values()->all();
+              $out['payment_reports'] = $db::table('payment_reports')->whereIn('StudentID', $studentIds)
+                ->get(['id', 'StudentClassID', 'InvoiceID', 'status', 'reported_amount', 'payment_date', 'payment_id'])->map(fn ($r) => (array)$r)->values()->all();
+              $out['sessions_by_class_month_status'] = $db::table('ClassSession')->whereIn('StudentClassID', $classIds ?: [0])
+                ->whereBetween('SessionDate', [$from, $to])
+                ->selectRaw("StudentClassID as class_id, DATE_FORMAT(SessionDate, '%Y-%m') as month, Status as status, COUNT(*) as n")
+                ->groupBy('StudentClassID', 'month', 'Status')->orderBy('StudentClassID')->orderBy('month')->get()
+                ->map(fn ($r) => (array)$r)->values()->all();
+              // Same read-only projection the course list uses for the monthly 未繳 label.
+              try {{
+                $models = \\App\\Models\\StudentClass::query()->whereIn('ID', $classIds ?: [0])->get();
+                $out['monthly_payment_projection'] = app(\\App\\Services\\MonthlyPeriodPaymentService::class)->batch($models);
+              }} catch (\\Throwable $e) {{
+                $out['ok'] = false;
+                $out['error'] = 'monthly_payment_projection failed: ' . get_class($e);
+              }}
             }}
           }} elseif ($case === 'contract_yang_binghe') {{
             $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
