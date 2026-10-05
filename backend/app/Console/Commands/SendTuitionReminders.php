@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Notification;
+use App\Services\Line\LinePush;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
@@ -10,7 +11,6 @@ use App\Models\SecurityAuditEvent;
 use App\Services\StaffCapabilityAuthorizer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -154,10 +154,7 @@ class SendTuitionReminders extends Command
     private function pushLine(string $lineUserId, string $text, string $token, string $campusName): bool
     {
         try {
-            return Http::withToken($token)->post('https://api.line.me/v2/bot/message/push', [
-                'to'       => $lineUserId,
-                'messages' => [['type' => 'text', 'text' => $text]],
-            ])->successful();
+            return app(LinePush::class)->send($token, $lineUserId, [['type' => 'text', 'text' => $text]])->successful();
         } catch (\Exception $e) {
             Log::error("tuition_reminder_line_push [{$campusName}]: " . $e->getMessage());
             return false;

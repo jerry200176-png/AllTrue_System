@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\ScheduleDiscrepancy;
+use App\Services\Line\LinePush;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -98,12 +98,7 @@ class ScheduleDiscrepancyNotifier
         while ($attempt < self::MAX_ATTEMPTS) {
             $attempt++;
             try {
-                $response = Http::withToken($token)
-                    ->timeout(8)
-                    ->post('https://api.line.me/v2/bot/message/push', [
-                        'to' => $groupId,
-                        'messages' => [['type' => 'text', 'text' => $text]],
-                    ]);
+                $response = app(LinePush::class)->send($token, $groupId, [['type' => 'text', 'text' => $text]], 8);
 
                 if ($response->successful()) {
                     return;
