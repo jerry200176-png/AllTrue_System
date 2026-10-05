@@ -1415,7 +1415,7 @@ class LearningRecordController extends Controller
             }
 
             $session = $occurrenceV2 && $learningRecord->ClassSessionID ? ClassSession::find($learningRecord->ClassSessionID) : null;
-            if ($session && !OccurrenceAssignmentService::onLeave($session)) {
+            if ($session && !OccurrenceAssignmentService::onLeave($session) && app(StudentClassController::class)->isPinnableOccurrence($session)) {
                 // The occurrence row agrees with the corrected LR (also for update_class=true, after its pin pass).
                 app(OccurrenceAssignmentService::class)->assignTeacher($session, $newTeacherId, (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null);
             }

@@ -119,6 +119,40 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
         $this->assertSame(0, ScheduleChangeLog::count());
     }
 
+    public function test_repeat_change_keeps_a_substitute_row_naming_the_current_contract_teacher(): void
+    {
+        $this->flag(true);
+        $past = $this->taughtSession('2026-04-10', $this->aId, signInManual: false);
+        LearningRecord::where('ClassSessionID', $past->id)->delete();
+        $this->substituteRow('2026-04-10', $this->bId);
+        $this->sc->update(['TeacherID' => $this->bId]);
+
+        $this->changeContractTeacher($this->cId)->assertOk();
+
+        $this->assertSame(0, ScheduleChangeLog::count(), 'sub row B vs RFID A disagree: no overwrite');
+        $this->assertSame($this->bId, SubstituteScheduleService::effectiveInstructorUserId((int) $this->sc->ID, '2026-04-10', $this->cId, '16:00'));
+    }
+
+    public function test_sign_in_only_leave_and_makeup_occurrences_are_not_pinned(): void
+    {
+        $this->flag(true);
+        $leave = $this->taughtSession('2026-04-10', $this->aId, signInManual: true);
+        StudentSignIn::where('ClassSessionID', $leave->id)->update(['Status' => 'leave', 'SignOutDT' => '2026-04-10 18:00:00']);
+        $leave->update(['Status' => 'scheduled']);
+        $makeup = $this->taughtSession('2026-04-11', $this->aId, signInManual: true);
+        DB::table('schedules')->insert([
+            'student_id' => $this->sc->StudentID, 'teacher_id' => $this->aId, 'subject' => 'Math', 'day_of_week' => 6, 'type' => 'extra',
+            'status' => 'scheduled', 'deduction' => 1, 'branch_id' => 1, 'student_course_id' => $this->sc->ID,
+            'schedule_date' => '2026-04-11', 'start_time' => '16:00', 'end_time' => '18:00', 'class_type' => 'one_on_one',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->changeContractTeacher($this->bId)->assertOk();
+
+        $this->assertSame(0, ScheduleChangeLog::count());
+        $this->assertSame(1, Schedule::where('student_course_id', $this->sc->ID)->where('status', 'scheduled')->count(), 'only the makeup row, no second live row');
+    }
+
     private function changeContractTeacher(int $teacherId)
     {
         return $this->api()->putJson("/api/v1/student-classes/{$this->sc->ID}", ['teacher_id' => $teacherId]);

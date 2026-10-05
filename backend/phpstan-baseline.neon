@@ -3993,7 +3993,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 7
+			count: 8
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4035,7 +4035,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 4
 			path: app/Http/Controllers/StudentClassController.php
 
 		-

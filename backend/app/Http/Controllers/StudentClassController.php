@@ -7911,6 +7911,17 @@ class StudentClassController extends Controller
         }
     }
 
+    /** Not a plain contract occurrence: leave recorded only on a sign-in, or a makeup (`extra`) lesson. The writer would add a second live row. */
+    public function isPinnableOccurrence(ClassSession $session): bool
+    {
+        $start = substr((string) $session->StartTime, 0, 5);
+
+        return !StudentSignIn::where('ClassSessionID', $session->id)->whereNull('VoidedAt')->whereRaw("LOWER(TRIM(COALESCE(Status, ''))) = 'leave'")->exists()
+            && !Schedule::where('student_course_id', (int) $session->StudentClassID)->where('type', 'extra')->where('status', 'scheduled')
+                ->whereDate('schedule_date', Carbon::parse((string) $session->SessionDate)->toDateString())
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start])->exists();
+    }
+
     /**
      * TD-076 B2 (flag on): upsert a `pin` row per taught past occurrence through the single writer, before TeacherID changes.
      * Who taught (D2): substitute row > non-voided LR > manual sign-in (RecordedByUserID set) > RFID sign-in; no evidence
@@ -7928,12 +7939,16 @@ class StudentClassController extends Controller
         $sessions = $this->taughtPastSessions($courseId, $effectiveDate ?: Carbon::today()->toDateString());
 
         foreach ($sessions as $row) {
+            $session = ClassSession::findOrFail($row->id);
+            if (!$this->isPinnableOccurrence($session)) {
+                continue;
+            }
             $start = substr((string) $row->StartTime, 0, 5);
             $sub = Schedule::where('student_course_id', $courseId)->where('status', 'scheduled')
                 ->whereDate('schedule_date', Carbon::parse($row->SessionDate)->toDateString())
                 ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start])
                 ->where(fn ($q) => $q->whereNull('type')->orWhere('type', '<>', 'extra'))
-                ->whereNotNull('original_schedule_id')->where('teacher_id', '<>', $oldTeacherId)
+                ->whereNotNull('original_schedule_id')
                 ->pluck('teacher_id')->all();
             $lr = LearningRecord::where('ClassSessionID', $row->id)->whereNull('VoidedAt')->pluck('TeacherID')->all();
             $signIns = StudentSignIn::where('ClassSessionID', $row->id)->whereNull('VoidedAt');
@@ -7951,7 +7966,7 @@ class StudentClassController extends Controller
             if ($teacherId === $newTeacherId) {
                 continue;
             }
-            $writer->pinTaughtTeacher(ClassSession::findOrFail($row->id), $teacherId, $actorId);
+            $writer->pinTaughtTeacher($session, $teacherId, $actorId);
         }
     }
 
