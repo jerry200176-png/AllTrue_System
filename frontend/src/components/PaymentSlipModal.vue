@@ -83,7 +83,8 @@ async function fetchTuitionSlip(scId) {
 // ─── Export (modern-screenshot, MIT) ─────────────────────────────
 async function renderBlob() {
   const { domToBlob } = await import('modern-screenshot');
-  return domToBlob(docRef.value.$el, { scale: 2, backgroundColor: '#ffffff', type: 'image/png' });
+  // font: false — the slip uses system fonts, nothing to embed.
+  return domToBlob(docRef.value.$el, { scale: 2, backgroundColor: '#ffffff', type: 'image/png', font: false });
 }
 
 async function warmUp() {
