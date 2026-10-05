@@ -1245,7 +1245,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 4
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -2211,7 +2211,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$StudentClassID\.$#'
 			identifier: property.notFound
-			count: 8
+			count: 9
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
@@ -2319,7 +2319,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:find\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 5
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
@@ -2409,7 +2409,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:find\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 8
+			count: 9
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
@@ -2915,6 +2915,7 @@ parameters:
 			identifier: property.notFound
 			count: 12
 			path: app/Http/Controllers/ParentPortalController.php
+
 		-
 			message: '#^Access to an undefined property App\\Models\\ParentSession\:\:\$id\.$#'
 			identifier: property.notFound
@@ -3022,6 +3023,7 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 9
 			path: app/Http/Controllers/ParentPortalController.php
+
 		-
 			message: '#^Offset ''count'' on array\{key\: ''feedback'', title\: ''評量待回饋'', count\: int\<1, max\>, cta_target\: ''learning''\}\|array\{key\: ''payment'', title\: ''繳費提醒'', count\: int\<1, max\>, cta_target\: ''billing''\}\|array\{key\: ''today_session'', title\: ''今日有課程'', count\: 1, cta_target\: ''schedule''\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
@@ -3829,7 +3831,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 47
+			count: 44
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -3859,7 +3861,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
 			identifier: property.notFound
-			count: 13
+			count: 14
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -3919,7 +3921,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 15
+			count: 12
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -3979,7 +3981,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 6
+			count: 2
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -3991,7 +3993,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 4
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4125,6 +4127,7 @@ parameters:
 			identifier: property.notFound
 			count: 9
 			path: app/Http/Controllers/StudentController.php
+
 		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$notes\.$#'
 			identifier: property.notFound
@@ -4280,7 +4283,6 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 1
 			path: app/Http/Controllers/TeacherAttendanceController.php
-
 
 		-
 			message: '#^Using nullsafe property access "\?\-\>start_time" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
@@ -5593,7 +5595,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$TeacherID\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 2
 			path: app/Services/ManualSessionBookingService.php
 
 		-
@@ -5604,18 +5606,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$EndDate\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/ManualSessionBookingService.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ClassType\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/ManualSessionBookingService.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$room_id\.$#'
 			identifier: property.notFound
 			count: 1
 			path: app/Services/ManualSessionBookingService.php
@@ -5733,6 +5723,7 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Services/ParentBinding/BindingConflictService.php
+
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:find\(\)\.$#'
 			identifier: staticMethod.notFound
@@ -5940,7 +5931,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 4
 			path: app/Services/Scheduling/ContractSessionSchedule.php
 
 		-
@@ -5952,7 +5943,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 6
+			count: 9
 			path: app/Services/Scheduling/ContractSessionSchedule.php
 
 		-
@@ -6014,3 +6005,183 @@ parameters:
 			identifier: property.notFound
 			count: 5
 			path: app/Services/RecordStudentSwipe.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:findOrFail\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 6
+			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/ClassSessionController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$day_of_week\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$duration_hours\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$end_time\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$original_schedule_date\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$original_schedule_id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$original_start_time\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$schedule_date\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$start_time\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$student_course_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$teacher_id\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ClassType\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$SubjectID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 4
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ScheduleChangeLog\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:findOrFail\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ScheduleChangeLog\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$ClassSessionID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/LearningRecordController.php

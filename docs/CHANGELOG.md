@@ -1,3 +1,7 @@
+## 2026-10-06 — chore(schedule): TD-076 Track B PR-B1 OccurrenceAssignmentService behind schedule-occurrence-v2
+<!-- release-notes: silent_ship=silent-2026-10-06-td076-pr-b1-assignment-writer -->
+- 新增單一寫入端 `OccurrenceAssignmentService`（找或建立唯一的 live 排程列、設定老師／時段、每次只寫一筆 `schedule_change_log`），並接上代課（含代課＋換時合併）、回復正班、代課復原與批次代課；僅在 `schedule-occurrence-v2` 對該分校開啟時生效，預設關閉，關閉時走原本程式路徑、資料與畫面完全不變。可修正「換日調課後再代課會多出第二條鏈」的新莊問題。讀取端尚未改，PR-C 才處理。
+
 ## 2026-10-05 — feat(accounting): director can waive (確認不收) a closed unpaid contract with an audited reason
 <!-- release-notes: staff_update=staff-2026-10-05-waive-unpaid-contract -->
 - 新增 `POST /api/v1/accounting/courses/{id}/waive`（主任／同分校）：僅 Stop=1 且 `settled_pending`／未繳 `contract_amended` 且仍有欠款可用，需 2–200 字原因。同一交易內設 `closed_reason='waived'`、未結帳單 Status 改 `void`（Paid／Charge／收款不動），並寫 `security_audit_events`（`accounting.course_waived`，含欠款金額、原因雜湊）與 `settlement_snapshot`（原因、前後狀態）。套裝課程拒絕、waived 為終態（不可恢復）、void 帳單不可登記收款。套裝課程拒絕、waived 為終態（不可暫停／恢復）、void 帳單不可登記收款。waived 合約離開待對帳／學收提醒佇列，於已結清清單與課程管理顯示「歷史 · 確認不收」，不計入已收
@@ -12,6 +16,10 @@
 ## 2026-10-06 — fix(schedule): TD-076 sweep so no reader treats a `superseded` schedules row as live, leave or scheduled
 <!-- release-notes: silent_ship=silent-2026-10-06-td076-superseded-sweep -->
 - 課程管理「排課日期」（`sessionDates`）原把任何非 `scheduled` 的 schedules 列當成請假而移除該日；補課時長判斷與非標準時長盤點原把 `superseded` 補課列當成補課；主任儀表板備援讀取原只排除 cancelled／leave。現在三處與前端判斷都先略過 `superseded` 列（既有狀態行為不變），並以測試證明；目前沒有任何寫入端產生 `superseded`，畫面與行為不變。
+
+## 2026-10-06 — chore(schedule): TD-076 Track B PR-B2 history pins and learning-record teacher fix through the occurrence writer
+<!-- release-notes: silent_ship=silent-2026-10-06-td076-pr-b2-pins-lr -->
+- `schedule-occurrence-v2` 對該分校開啟時：改合約老師前，已上過的過去堂次先依證據（代課列 > 學習紀錄 > 手動簽到 > 刷卡簽到）經單一寫入端釘住原老師並寫 `pin` 日誌，證據互相矛盾者不釘；學習紀錄改老師（不連動合約）時同步更正該堂排程老師，連動合約時先走同一條釘住路徑。旗標預設關閉，關閉時行為與資料不變。
 ## 2026-10-06 — fix(billing): deleting a contract never orphans invoices (plan D)
 <!-- release-notes: staff_update=staff-2026-10-06-delete-contract-keeps-billing -->
 - 合約刪除（`StudentClassController::destroy`）與學生刪除（單筆／批量）改成「有紀錄就不能硬刪」：有收款、已付／部分付款帳單、任何繳費回報、Paid／Pay／PayDate、套裝成員，或上課／點名／扣堂／轉堂／改堂／調價／催繳等紀錄（`StudentClass::hasOperationalHistory`）一律回 422，請改用結案或停用。只剩未繳帳單的合約：限主任／超管，同一交易鎖合約→帳單、只作廢同一學生的帳單（Note 加註操作者與日期，限 255 字）、合併帳單任一方向回 422，寫入嚴格稽核 `student_class.deleted` 後才刪除。建帳單／登記收款遇到同時被刪的合約回 404。避免再出現帳單 1053 指向已刪合約 2564 的孤兒。

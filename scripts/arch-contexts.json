@@ -3,7 +3,7 @@
   "_ruleOrder": "first match wins; order specific -> general. The abstract base Controller.php is excluded by FIT-10.",
   "rules": [
     { "context": "billing",        "match": "PopOperationController|MonthlyContract|MonthlyRenewalPeriod" },
-    { "context": "scheduling",     "match": "Schedule|Reschedule|ClassSession|Substitute|ScheduleGuard|CourseLeaveCascade|ExceptionWorkflow|Calendar|Backfill|SessionProjection|ForwardSession|DuplicateSession|Reconcile|Commitment|ContractSlot|HistoryCadence|PrepaidHorizon|HorizonPhase0|PreviewSessionHorizon|EnsureSessionHorizon|ShadowSessionHorizon|Coverage|AllocateSession|ReleaseSession|PoolCoverage|NonstandardDuration|ManualSessionBooking|SharedPackagePlanning|TrueFit" },
+    { "context": "scheduling",     "match": "OccurrenceAssignment|Schedule|Reschedule|ClassSession|Substitute|ScheduleGuard|CourseLeaveCascade|ExceptionWorkflow|Calendar|Backfill|SessionProjection|ForwardSession|DuplicateSession|Reconcile|Commitment|ContractSlot|HistoryCadence|PrepaidHorizon|HorizonPhase0|PreviewSessionHorizon|EnsureSessionHorizon|ShadowSessionHorizon|Coverage|AllocateSession|ReleaseSession|PoolCoverage|NonstandardDuration|ManualSessionBooking|SharedPackagePlanning|TrueFit" },
     { "context": "billing",        "match": "TransactionDiscountCalculator" },
     { "context": "enrollment",     "match": "AdmissionInquiry|Enrollment|StudentClass|CoursePackage|PackageDeduction|FrontendSubjectIdResolver|CourseContract|CourseContinuity|CourseEditability" },
     { "context": "enrollment",     "match": "ContractAmendment" },
