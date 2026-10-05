@@ -69,6 +69,7 @@ class OccurrenceAssignmentService
                 $this->moveTo($live, $newSlot);
                 if ($anchorTravels) {
                     $this->moveTo($anchor, $newSlot);
+                    $anchor->save();
                 }
             }
             $live->save();
@@ -110,6 +111,7 @@ class OccurrenceAssignmentService
                 $this->moveTo($live, $restoreSlot);
                 if ($anchorTravels) {
                     $this->moveTo($anchor, $restoreSlot);
+                    $anchor->save();
                 }
             }
             $live->save();
