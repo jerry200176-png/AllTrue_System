@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Student;
+use App\Services\Line\LinePush;
 use App\Models\StudentLineBinding;
 use App\Models\SecurityAuditEvent;
 use App\Models\SystemSetting;
@@ -635,10 +636,7 @@ class LineWebhookController extends Controller
         $token = $campus->messaging_channel_token ?? '';
         if (!$token) return;
         try {
-            Http::withToken($token)->post('https://api.line.me/v2/bot/message/push', [
-                'to'       => $lineUserId,
-                'messages' => [$this->buildFlexMessage($title, $body, $url)],
-            ]);
+            app(LinePush::class)->send($token, $lineUserId, [$this->buildFlexMessage($title, $body, $url)]);
         } catch (\Exception $e) {
             Log::error("LINE push flex [{$campus->name}]: " . $e->getMessage());
         }
@@ -667,10 +665,7 @@ class LineWebhookController extends Controller
             return;
         }
         try {
-            Http::withToken($token)->post('https://api.line.me/v2/bot/message/push', [
-                'to'       => $lineUserId,
-                'messages' => [['type' => 'text', 'text' => $text]],
-            ]);
+            app(LinePush::class)->send($token, $lineUserId, [['type' => 'text', 'text' => $text]]);
         } catch (\Exception $e) {
             Log::error("LINE push [{$campus->name}]: " . $e->getMessage());
         }
