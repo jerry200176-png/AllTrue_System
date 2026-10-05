@@ -227,8 +227,9 @@ class MonthlyBillingService
 
     /**
      * Display only (amounts and billing snapshots never use this). Prefers the
-     * billed lessons so the list matches the amount (plus upcoming lessons when
-     * the amount is fixed, $includeUpcoming); with none billed yet it
+     * billed lessons so the list matches the amount (for a paid/partly paid
+     * invoice, $includeUpcoming: held + upcoming lessons in its service
+     * range); with nothing to list yet it
      * lists the month's planned lessons, and for a prepaid next-period invoice
      * (month window empty) the lessons in its own service range (#3445).
      *
@@ -242,13 +243,18 @@ class MonthlyBillingService
         bool $includeUpcoming = false,
     ): array {
         $sessions = $this->billableSessionsForPeriod($course, $billingPeriod);
-        if ($sessions->isNotEmpty() && $includeUpcoming) {
-            // A fixed (stored / paid) amount also covers the period's lessons
-            // still to come; a billed-session amount covers only what was held.
-            $upcomingQuery = $this->periodSessionQuery($course, $billingPeriod);
+        if ($includeUpcoming) {
+            // A paid/partly paid amount is fixed and covers its whole service
+            // period: list held lessons plus those still to come in that range
+            // (the item range when known, else the billing month).
+            $rangeStart = $serviceStart !== null && $serviceEnd !== null ? (string) $serviceStart : null;
+            $rangeEnd = $rangeStart !== null ? (string) $serviceEnd : null;
+            $held = $this->periodSessionQuery($course, $billingPeriod, $rangeStart, $rangeEnd)
+                ->whereIn('Status', self::BILLABLE_STATUSES)
+                ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+            $upcomingQuery = $this->periodSessionQuery($course, $billingPeriod, $rangeStart, $rangeEnd);
             $upcomingQuery->whereDate('SessionDate', '>=', Carbon::today()->toDateString());
-            $upcoming = $this->plannedSessions($upcomingQuery);
-            $sessions = $sessions->concat($upcoming)
+            $sessions = $held->concat($this->plannedSessions($upcomingQuery))
                 ->sortBy(fn (ClassSession $session) => sprintf('%s %s %010d', substr((string) $session->SessionDate, 0, 10), (string) $session->StartTime, (int) $session->getKey()))
                 ->values();
         }

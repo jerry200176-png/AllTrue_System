@@ -429,6 +429,31 @@ class MonthlyBillingSlipTest extends TestCase
         $this->assertSame([['2026-08-30', '2026-08-31', 3300], ['2026-09-01', '2026-09-28', 3300]], $bounds);
     }
 
+    public function test_partly_paid_slip_uses_item_range_and_unpaid_equal_total_stays_billed_only(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-12 09:00:00', 'Asia/Taipei'));
+        $token = $this->createDirectorToken('director-monthly-range-upcoming@example.com');
+        [$student, $course] = $this->makeMonthlyCourse('月結期間預排測試', '2026-08-01', '2026-08-31');
+        foreach ([['2026-08-05', 'attended'], ['2026-08-11', 'attended'], ['2026-08-15', 'scheduled'], ['2026-08-25', 'scheduled']] as [$date, $status]) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        $slipDates = function (string $status, int $paid) use ($student, $course, $token): array {
+            $invoice = Invoice::create([
+                'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-01', 'DueDate' => '2026-08-17',
+                'TotalAmount' => 3000, 'PaidAmount' => $paid, 'Status' => $status, 'billing_period' => '2026-08',
+            ]);
+            InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => '月結費用', 'Amount' => 3000, 'PeriodStart' => '2026-08-10', 'PeriodEnd' => '2026-08-20']);
+
+            return $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")->assertOk()->json('sessions.*.date');
+        };
+
+        // Partly paid: fixed amount → held + upcoming inside the 8/10–8/20 item range only.
+        $this->assertSame(['2026-08-11', '2026-08-15'], $slipDates('partial', 1000));
+        // Unpaid with total equal to the held lessons: still billed-only.
+        $this->assertSame(['2026-08-05', '2026-08-11'], $slipDates('unpaid', 0));
+    }
+
     /** @return array{0: Student, 1: StudentClass} */
     private function makeMonthlyCourse(string $name, string $start, string $end): array
     {

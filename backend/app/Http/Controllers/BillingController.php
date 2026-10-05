@@ -458,8 +458,9 @@ class BillingController extends Controller
                 $projection['billing_period'],
                 $serviceStart,
                 $serviceEnd,
-                // A fixed (stored/paid) amount covers the period's upcoming lessons too.
-                includeUpcoming: $projection['amount_source'] !== 'billable_sessions',
+                // Once paid (fully or partly) the amount is fixed and is never
+                // repriced from held lessons, so it covers upcoming lessons too.
+                includeUpcoming: (string) ($invoice->Status ?? '') !== 'unpaid',
             );
         } else {
             $sessions = ClassSession::sessionsForPaymentSlip(
