@@ -1384,7 +1384,7 @@ jobs:
             base64 -w76 /tmp/production_case_probe.php
             echo 'PROBE_B64'
             echo 'cd /home/admin/backend'
-            echo 'php artisan tinker --execute="require '"'"'$probe_file'"'"';"'
+            echo 'php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
           } > "$remote_script"
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' < "$remote_script" | tee out/production-case.log
