@@ -59,8 +59,9 @@ class InvoiceAmountReconciliationService
         $amountSource = 'invoice_total';
         $amountDiscrepancy = false;
         // Whether this invoice follows the held-session pricing policy at all
-        // (unpaid, nothing applied, single-month date course). When false its
-        // stored amount is fixed (paid, partly paid, void or cross-month cycle).
+        // (unpaid, nothing applied, single-month date course priced per lesson).
+        // When false its stored amount is fixed (paid, partly paid, void,
+        // cross-month cycle, or no lesson price to compute from).
         $repriceable = false;
         $periodSessions = null;
         $periodStart = null;
@@ -79,6 +80,15 @@ class InvoiceAmountReconciliationService
             && (string) $item->PeriodEnd <= substr((string) $course->EndDate, 0, 10)
             && (string) $item->PeriodStart <= (string) $item->PeriodEnd
             && substr((string) $item->PeriodStart, 0, 7) !== substr((string) $item->PeriodEnd, 0, 7));
+        if ($course && !$hasCrossMonthServiceRange && $items->isNotEmpty()) {
+            // MonthlySplit stores one item per month: judge the course's whole span.
+            [$spanStart, $spanEnd] = $this->monthlyBilling->serviceRangeForCourse($invoice, (int) $course->getKey());
+            $hasCrossMonthServiceRange = $spanStart !== null && $spanEnd !== null
+                && $course->StartDate && $course->EndDate
+                && $spanStart >= substr((string) $course->StartDate, 0, 10)
+                && $spanEnd <= substr((string) $course->EndDate, 0, 10)
+                && substr($spanStart, 0, 7) !== substr($spanEnd, 0, 7);
+        }
 
         if (
             $course
@@ -94,7 +104,8 @@ class InvoiceAmountReconciliationService
             $amountDiscrepancy = $billing['source'] === 'billable_sessions'
                 && $computedTotalAmount !== $storedTotalAmount;
 
-            $repriceable = (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
+            $repriceable = $billing['source'] === 'billable_sessions'
+                && (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
                 && $netApplied === 0;
             if ($amountDiscrepancy && $repriceable) {
                 $totalAmount = $computedTotalAmount;

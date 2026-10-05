@@ -489,6 +489,45 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('sessions.*.date', ['2026-08-30', '2026-09-07', '2026-09-14']);
     }
 
+    public function test_monthly_split_cross_month_and_missing_rate_invoices_keep_their_amount(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-01 09:00:00', 'Asia/Taipei'));
+        $token = $this->createDirectorToken('director-monthly-split-fixed@example.com');
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        // MonthlySplit 8/30–9/28 (one item per month) is one cross-month cycle: no repricing
+        // from August's held lessons, and the slip lists the cycle's upcoming lessons.
+        [$student, $course] = $this->makeMonthlyCourse('月結拆月固定測試', '2026-08-30', '2026-09-28');
+        foreach ([['2026-08-30', 'attended'], ['2026-09-07', 'scheduled']] as [$date, $status]) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        $this->withHeaders($headers)->postJson('/api/v1/invoices', [
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-25', 'TotalAmount' => 6600,
+            'billing_period' => '2026-08', 'MonthlySplit' => true, 'SplitStart' => '2026-08-30', 'SplitEnd' => '2026-09-28',
+        ])->assertSuccessful();
+        $splitId = Invoice::where('StudentClassID', $course->ID)->value('id');
+        $this->withHeaders($headers)->getJson("/api/v1/invoices/{$splitId}/slip-data")
+            ->assertOk()
+            ->assertJsonPath('total_amount', 6600)
+            ->assertJsonPath('sessions.*.date', ['2026-08-30', '2026-09-07']);
+
+        // No lesson price (legacy zero rate): the stored amount is fixed, so upcoming lessons show.
+        [$student2, $course2] = $this->makeMonthlyCourse('月結無單價測試', '2026-09-01', '2026-09-30');
+        $course2->forceFill(['Rate' => 0, 'Charge' => 0])->save();
+        foreach ([['2026-09-01', 'attended'], ['2026-09-08', 'scheduled']] as [$date, $status]) {
+            ClassSession::create(['StudentClassID' => $course2->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        $invoice = Invoice::create([
+            'StudentID' => $student2->id, 'StudentClassID' => $course2->ID, 'IssueDate' => '2026-09-01', 'DueDate' => '2026-09-10',
+            'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-09',
+        ]);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course2->ID, 'Description' => '月結費用', 'Amount' => 5000, 'PeriodStart' => '2026-09-01', 'PeriodEnd' => '2026-09-30']);
+        $this->withHeaders($headers)->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonPath('total_amount', 5000)
+            ->assertJsonPath('sessions.*.date', ['2026-09-01', '2026-09-08']);
+    }
+
     /** @return array{0: Student, 1: StudentClass} */
     private function makeMonthlyCourse(string $name, string $start, string $end): array
     {
