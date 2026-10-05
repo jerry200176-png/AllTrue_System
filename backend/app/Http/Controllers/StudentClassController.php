@@ -5384,6 +5384,8 @@ class StudentClassController extends Controller
 
         return DB::transaction(function () use ($studentClass, $actorId) {
             $id = (int) $studentClass->ID;
+            // Same lock order as payment/waive flows (course, then invoices) so concurrent writers serialize.
+            StudentClass::query()->whereKey($id)->lockForUpdate()->first();
             // Billing records are never orphaned: a contract with collected money or a payment report is not erasable.
             $invoices = Invoice::query()->where('StudentClassID', $id)->lockForUpdate()->get();
             $invoiceIds = $invoices->pluck('id')->all();
