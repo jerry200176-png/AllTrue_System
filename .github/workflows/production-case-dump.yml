@@ -697,41 +697,42 @@ jobs:
             $out['stale_paid_flag_count'] = count(array_filter($rows, fn ($r) => $r['paid_flag'] === 1));
           }} elseif ($case === 'unbilled_monthly_sessions') {{
             // Read-only, Founder question 2026-10-05: across all campuses, which monthly (date-mode) contracts have
-            // attended lessons that no non-void invoice covers? A lesson is covered when an invoice of the same contract
-            // has an item range containing its date, or (no item range) a billing_period equal to its month.
-            // Contracts with no invoice at all are reported separately (legacy flag-only billing). IDs/counts only.
+            // billable lessons (MonthlyBillingService: attended/completed/late, inside the contract interval) that no
+            // positive non-void invoice of the same contract covers? Coverage = an item owned by the contract (its
+            // StudentClassID, or null on an invoice anchored to it) with BOTH PeriodStart and PeriodEnd containing the date,
+            // or an invoice without such items whose billing_period equals the lesson month. Waived contracts are
+            // excluded. Invoice-less contracts are counted too, flagged by kind. IDs/counts only.
             $from = '2026-01-01'; $to = date('Y-m-d');
             $courses = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
               ->where('sc.ScheduleMode', 'date')->where(fn ($q) => $q->whereNull('sc.PackageID')->orWhere('sc.PackageID', 0))
               ->whereRaw("LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'")
-              ->get(['sc.ID', 'sc.StudentID', 'st.CampusID', 'sc.Paid', 'sc.Stop', 'sc.closed_reason', 'sc.StartDate', 'sc.EndDate'])->keyBy('ID');
+              ->where(fn ($q) => $q->whereNull('sc.closed_reason')->orWhere('sc.closed_reason', '!=', 'waived'))
+              ->get(['sc.ID', 'sc.StudentID', 'st.CampusID', 'sc.Paid', 'sc.Stop', 'sc.closed_reason', 'sc.StartDate', 'sc.EndDate', 'sc.Charge'])->keyBy('ID');
             $ids = $courses->keys()->map(fn ($id) => (int)$id)->all();
             $sessions = $ids === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $ids)
-              ->whereBetween('SessionDate', [$from, $to])->whereRaw("LOWER(Status) IN ('attended', 'completed')")
+              ->whereBetween('SessionDate', [$from, $to])->whereRaw("LOWER(Status) IN ('attended', 'completed', 'late')")
               ->get(['StudentClassID', 'SessionDate'])->groupBy('StudentClassID');
             $invoices = $ids === [] ? collect() : $db::table('Invoice')->whereIn('StudentClassID', $ids)
-              ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->get(['id', 'StudentClassID', 'billing_period'])->groupBy('StudentClassID');
+              ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->where('TotalAmount', '>', 0)
+              ->get(['id', 'StudentClassID', 'billing_period'])->groupBy('StudentClassID');
             $invoiceIds = $invoices->flatten()->pluck('id')->all();
-            $items = $invoiceIds === [] ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)->get(['InvoiceID', 'PeriodStart', 'PeriodEnd'])->groupBy('InvoiceID');
-            $rows = []; $noInvoice = [];
+            $items = $invoiceIds === [] ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)
+              ->whereNotNull('PeriodStart')->whereNotNull('PeriodEnd')->where('Amount', '>', 0)
+              ->get(['InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd'])->groupBy('InvoiceID');
+            $rows = [];
             foreach ($sessions as $cid => $list) {{
               $c = $courses->get($cid);
+              $start = substr((string)$c->StartDate, 0, 10); $end = substr((string)$c->EndDate, 0, 10);
+              $list = $list->filter(fn ($s) => (!$start || substr((string)$s->SessionDate, 0, 10) >= $start) && (!$end || substr((string)$s->SessionDate, 0, 10) <= $end));
+              if ($list->isEmpty()) continue;
               $inv = $invoices->get($cid, collect());
-              if ($inv->isEmpty()) {{
-                $byMonth = $list->groupBy(fn ($s) => substr((string)$s->SessionDate, 0, 7))->map->count();
-                $noInvoice[] = ['course_id' => (int)$cid, 'student_id' => (int)$c->StudentID, 'campus_id' => (int)$c->CampusID,
-                  'paid_flag' => (int)$c->Paid, 'closed_reason' => $c->closed_reason, 'attended_by_month' => $byMonth->all()];
-                continue;
-              }}
               $uncovered = [];
               foreach ($list as $s) {{
                 $d = substr((string)$s->SessionDate, 0, 10); $m = substr($d, 0, 7); $covered = false;
                 foreach ($inv as $i) {{
-                  $its = $items->get($i->id, collect())->filter(fn ($it) => $it->PeriodStart || $it->PeriodEnd);
+                  $its = $items->get($i->id, collect())->filter(fn ($it) => $it->StudentClassID === null || (int)$it->StudentClassID === (int)$cid);
                   if ($its->isNotEmpty()) {{
-                    foreach ($its as $it) {{
-                      if ((!$it->PeriodStart || substr((string)$it->PeriodStart, 0, 10) <= $d) && (!$it->PeriodEnd || substr((string)$it->PeriodEnd, 0, 10) >= $d)) {{ $covered = true; break 2; }}
-                    }}
+                    foreach ($its as $it) {{ if (substr((string)$it->PeriodStart, 0, 10) <= $d && substr((string)$it->PeriodEnd, 0, 10) >= $d) {{ $covered = true; break 2; }} }}
                   }} elseif ((string)$i->billing_period === $m) {{ $covered = true; break; }}
                 }}
                 if (!$covered) $uncovered[$m] = ($uncovered[$m] ?? 0) + 1;
@@ -739,21 +740,20 @@ jobs:
               if ($uncovered !== []) {{
                 ksort($uncovered);
                 $rows[] = ['course_id' => (int)$cid, 'student_id' => (int)$c->StudentID, 'campus_id' => (int)$c->CampusID,
-                  'paid_flag' => (int)$c->Paid, 'stop' => (int)$c->Stop, 'closed_reason' => $c->closed_reason, 'uncovered_attended_by_month' => $uncovered];
+                  'kind' => $inv->isEmpty() ? 'no_positive_invoice' : 'partial_coverage', 'paid_flag' => (int)$c->Paid,
+                  'stop' => (int)$c->Stop, 'closed_reason' => $c->closed_reason, 'charge' => (int)$c->Charge, 'uncovered_billable_by_month' => $uncovered];
               }}
             }}
             $summary = [];
-            foreach ($rows as $r) {{ foreach ($r['uncovered_attended_by_month'] as $m => $n) {{
-              $k = $r['campus_id'] . '|' . $m; $summary[$k] = ['campus_id' => $r['campus_id'], 'month' => $m,
+            foreach ($rows as $r) {{ foreach ($r['uncovered_billable_by_month'] as $m => $n) {{
+              $k = $r['campus_id'] . '|' . $m . '|' . $r['kind']; $summary[$k] = ['campus_id' => $r['campus_id'], 'month' => $m, 'kind' => $r['kind'],
                 'lessons' => ($summary[$k]['lessons'] ?? 0) + $n, 'courses' => ($summary[$k]['courses'] ?? 0) + 1]; }} }}
             ksort($summary);
             $out['window'] = [$from, $to];
             $out['courses_with_unbilled_lessons'] = count($rows);
-            $out['unbilled_lessons_total'] = array_sum(array_map(fn ($r) => array_sum($r['uncovered_attended_by_month']), $rows));
+            $out['unbilled_lessons_total'] = array_sum(array_map(fn ($r) => array_sum($r['uncovered_billable_by_month']), $rows));
             $out['by_campus_month'] = array_values($summary);
             $out['rows'] = $rows;
-            $out['no_invoice_courses_count'] = count($noInvoice);
-            $out['no_invoice_courses'] = $noInvoice;
           }} elseif ($case === 'contract_yang_binghe') {{
             $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
