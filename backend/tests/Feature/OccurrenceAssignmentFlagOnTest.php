@@ -208,6 +208,33 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $this->assertSame([1, 0], [Schedule::count(), ScheduleChangeLog::count()]);
     }
 
+    public function test_pending_leave_without_a_leave_row_is_refused_flag_on(): void
+    {
+        $this->seedWorld();
+        $this->flag(true);
+        $session = $this->plainSession();
+        $session->Status = 'leave_requested';
+        $session->save();
+        $this->postSubstitute($session)->assertStatus(422);
+        $this->assertSame([0, 0], [Schedule::count(), ScheduleChangeLog::count()]);
+    }
+
+    public function test_pure_substitution_syncs_live_row_end_time_to_the_session_flag_on(): void
+    {
+        $this->seedWorld();
+        $this->flag(true);
+        $session = $this->crossDateShape();
+        $session->EndTime = '16:00';
+        $session->save();
+
+        $this->postSubstitute($session)->assertOk();
+
+        $live = Schedule::findOrFail(9001);
+        $this->assertSame($this->bId, (int) $live->teacher_id);
+        $this->assertSame('16:00', substr((string) $live->end_time, 0, 5));
+        $this->assertEquals(3.0, (float) $live->duration_hours);
+    }
+
     public function test_durable_restore_to_contract_teacher_flag_on(): void
     {
         $this->seedWorld();
