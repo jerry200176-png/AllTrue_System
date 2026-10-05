@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-05-payment-slip-redesign",
+    "publishedAt": "2026-10-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "繳費單換新版面",
+    "summary": "繳費單加上補習班 logo，金額和繳費期限更清楚，每堂課列出日期和星期。",
+    "items": [
+      "新版面：上方 logo 和分校，金額和繳費期限最醒目，下方列每堂課的日期、星期、時間、狀態。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "新版面：上方 logo 和分校，金額和繳費期限最醒目，下方列每堂課的日期、星期、時間、狀態。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-05:payment-slip-redesign"
+    ],
+    "date": "2026-10-05",
+    "version": "2026.10.05"
+  },
+  {
     "id": "staff-2026-10-03-trial-convert-from-students",
     "publishedAt": "2026-10-03",
     "effectiveAt": null,

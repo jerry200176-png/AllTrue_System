@@ -3,6 +3,18 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-05-payment-slip-redesign
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: digest
+    title: 繳費單換新版面
+    summary: 繳費單加上補習班 logo，金額和繳費期限更清楚，每堂課列出日期和星期。
+    items:
+      - category: improved
+        text: 新版面：上方 logo 和分校，金額和繳費期限最醒目，下方列每堂課的日期、星期、時間、狀態。
+    source_refs:
+      - "changelog:2026-10-05:payment-slip-redesign"
   - id: staff-2026-10-03-trial-convert-from-students
     published_at: "2026-10-03"
     audiences:

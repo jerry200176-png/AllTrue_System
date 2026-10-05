@@ -1,3 +1,7 @@
+## 2026-10-05 — feat(billing-ui): payment slip redesign with logo (#3445)
+<!-- release-notes: staff_update=staff-2026-10-05-payment-slip-redesign -->
+- 繳費單由手畫 canvas 改為 `PaymentSlipDocument`（HTML/CSS），用 `modern-screenshot`（MIT，按下載／複製時才載入）匯出 PNG；加 logo、金額／期限主視覺、服務期間、上課日期含星期。下載與複製、檔名不變
+
 ## 2026-10-03 — fix(students): trial courses convert to a regular course instead of a new trial batch (in-app #374)
 <!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->
 - 學生管理的試聽課改走「轉為正式課程」（與課程管理一致）；後端加購端點拒絕試聽來源，避免再建立試聽批次
