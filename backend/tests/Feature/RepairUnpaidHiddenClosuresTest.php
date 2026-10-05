@@ -20,6 +20,7 @@ class RepairUnpaidHiddenClosuresTest extends TestCase
             'TotalHours' => 0, 'StartDate' => '2026-09-01 00:00:00', 'EndDate' => '2026-09-30 00:00:00',
             'Charge' => 6600, 'Pay' => 0, 'Paid' => 0, 'Rate' => 1650, 'rate_unit' => 'session', 'SessionDuration' => 120,
             'ScheduleMode' => 'date', 'SessionCount' => 4, 'UsedSessions' => 0, 'RemainingSessions' => 0, 'Stop' => 1,
+            'ClassType' => 'regular', 'closed_reason' => null,
         ];
         DB::table('StudentClass')->insert([
             array_merge($base, ['ID' => 3516, 'closed_reason' => 'settled']),          // unpaid, no invoice -> candidate
