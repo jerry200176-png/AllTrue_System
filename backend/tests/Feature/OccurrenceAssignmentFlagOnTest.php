@@ -203,10 +203,8 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         DB::table('schedules')->insert(['id' => 9200, 'student_id' => $this->sc->StudentID, 'day_of_week' => 7, 'type' => 'normal',
             'deduction' => 0, 'branch_id' => 1, 'student_course_id' => $this->sc->ID, 'teacher_id' => $this->aId, 'status' => 'leave',
             'schedule_date' => '2026-04-19', 'start_time' => '13:00', 'end_time' => '15:00', 'created_at' => now(), 'updated_at' => now()]);
-
         $this->postSubstitute($session)->assertStatus(422);
         $this->api()->postJson('/api/v1/teacher-leaves/batch-substitute', ['assignments' => [['class_session_id' => $session->id, 'substitute_teacher_id' => $this->bId]]])->assertStatus(422);
-
         $this->assertSame([1, 0], [Schedule::count(), ScheduleChangeLog::count()]);
     }
 
