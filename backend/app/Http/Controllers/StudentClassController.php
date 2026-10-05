@@ -5386,9 +5386,15 @@ class StudentClassController extends Controller
         return DB::transaction(function () use ($studentClass, $actorId) {
             $id = (int) $studentClass->ID;
             // Same lock order as payment/waive flows (course, then invoices) so concurrent writers serialize.
-            StudentClass::query()->whereKey($id)->lockForUpdate()->first();
+            if (!StudentClass::query()->whereKey($id)->lockForUpdate()->first()) {
+                return response()->json(['message' => '找不到此課程'], 404); // deleted concurrently
+            }
             // Billing records are never orphaned: a contract with collected money or a payment report is not erasable.
             $invoices = Invoice::query()->where('StudentClassID', $id)->lockForUpdate()->get();
+            // Only void invoices that belong to this contract's student; a mismatched owner needs accounting review.
+            if ($invoices->contains(fn ($i) => (int) $i->getAttribute('StudentID') !== (int) $studentClass->getAttribute('StudentID'))) {
+                return response()->json(['message' => '此合約的帳單學生不一致，請先到帳務處理'], 422);
+            }
             $invoiceIds = $invoices->pluck('id')->all();
             $locked = StudentClass::query()->whereKey($id)->first();
             // isEffectivelyPaid() also honours a paid CoursePackage (package members can have no invoice).

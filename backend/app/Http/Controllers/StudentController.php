@@ -295,10 +295,10 @@ class StudentController extends Controller
     }
 
     /**
-     * Students with any money evidence, checked over EXACTLY the invoice set purgeStudentRecords() deletes
-     * (Invoice.StudentID = student OR Invoice.StudentClassID in the student's contracts): Payment rows, stored
-     * PaidAmount or paid/partial status, Paid=1 or paid-package contracts, any payment report, or a contract
-     * billed as a line on someone else's invoice. Deleting such a student would destroy accounting history.
+     * Students with ANY billing history may not be purged: invoices (any status, anchored to the student or to one
+     * of the student's contracts), payment reports, contracts carrying payment state (Paid/Pay/PayDate) or a package,
+     * or a contract billed as a line on another invoice. Only students with no billing record at all (e.g. created
+     * by mistake) are erasable; everything else must be closed through accounting. One rule instead of chasing shapes.
      */
     private function studentIdsWithCollectedMoney(array $studentIds): array
     {
@@ -306,20 +306,14 @@ class StudentController extends Controller
         foreach ($studentIds as $studentId) {
             $studentId = (int) $studentId;
             $classIds = DB::table('StudentClass')->where('StudentID', $studentId)->pluck('ID')->map(fn ($id) => (int) $id)->all();
-            $invoices = DB::table('Invoice')->where(fn ($q) => $q->where('StudentID', $studentId)
-                ->when($classIds !== [], fn ($w) => $w->orWhereIn('StudentClassID', $classIds)))->get(['id', 'Status', 'PaidAmount']);
-            $invoiceIds = $invoices->pluck('id')->all();
-            $evidence = $invoices->contains(fn ($i) => in_array((string) $i->Status, ['paid', 'partial'], true)
-                    || ((string) $i->Status !== 'void' && (int) $i->PaidAmount > 0))
-                || ($invoiceIds !== [] && DB::table('Payment')->whereIn('InvoiceID', $invoiceIds)->exists())
-                || DB::table('payment_reports')->where(fn ($q) => $q->where('StudentID', $studentId)
-                    ->when($classIds !== [], fn ($w) => $w->orWhereIn('StudentClassID', $classIds)))->exists()
-                || ($classIds !== [] && DB::table('StudentClass')->whereIn('ID', $classIds)->where('Paid', 1)->exists())
-                || ($classIds !== [] && DB::table('StudentClass as sc')->join('course_packages as cp', 'cp.id', '=', 'sc.PackageID')
-                    ->whereIn('sc.ID', $classIds)->where('cp.paid', 1)->exists())
-                || ($classIds !== [] && DB::table('InvoiceItem')->whereIn('StudentClassID', $classIds)
-                    ->whereNotIn('InvoiceID', $invoiceIds ?: [0])->exists());
-            if ($evidence) {
+            $byStudentOrClass = fn ($q, string $studentCol, string $classCol) => $q->where($studentCol, $studentId)
+                ->when($classIds !== [], fn ($w) => $w->orWhereIn($classCol, $classIds));
+            $history = DB::table('Invoice')->where(fn ($q) => $byStudentOrClass($q, 'StudentID', 'StudentClassID'))->exists()
+                || DB::table('payment_reports')->where(fn ($q) => $byStudentOrClass($q, 'StudentID', 'StudentClassID'))->exists()
+                || ($classIds !== [] && DB::table('StudentClass')->whereIn('ID', $classIds)->where(fn ($q) => $q->where('Paid', 1)
+                    ->orWhere('Pay', '>', 0)->orWhereNotNull('PayDate')->orWhere('PackageID', '>', 0))->exists())
+                || ($classIds !== [] && DB::table('InvoiceItem')->whereIn('StudentClassID', $classIds)->exists());
+            if ($history) {
                 $out[] = $studentId;
             }
         }
@@ -360,7 +354,7 @@ class StudentController extends Controller
             DB::table('StudentClass')->where('StudentID', $studentId)->orderBy('ID')->lockForUpdate()->get(['ID']);
             DB::table('Invoice')->where('StudentID', $studentId)->orderBy('id')->lockForUpdate()->get(['id']);
             if ($this->studentIdsWithCollectedMoney([$studentId]) !== []) {
-                abort(422, '此學生已有收款或繳費回報，不能刪除');
+                abort(422, '此學生已有帳務紀錄（帳單、收款或繳費回報），不能刪除；請改用停用');
             }
             $studentClassIds = [];
             if ($tableExists['StudentClass']) {
