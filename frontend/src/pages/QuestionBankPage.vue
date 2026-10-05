@@ -53,6 +53,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { isDirectorRole } from '../lib/roleCapabilities.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -63,7 +64,7 @@ const banks = ref([]); const selectedBank = ref(null); const items = ref([]); co
 const loading = ref(false); const itemsLoading = ref(false); const saving = ref(false); const error = ref(''); const notice = ref(''); const showBankForm = ref(false); const editing = ref(null); const editorOpen = ref(false); const fileInput = ref(null);
 const filters = reactive({ status: '' }); const bankForm = reactive({ name: '', description: '' });
 const itemForm = reactive({ question_type: 'single_choice', prompt: '', choices: '', answer: '', explanation: '', knowledge_tag: '', difficulty: 3, source_type: 'internal', source_name: '', source_version: '', source_question_key: '', grade_level: '', subject_name: '', source_ref: '', license_ref: '' });
-const isDirector = computed(() => ['director', 'super_admin'].includes(props.userRole));
+const isDirector = computed(() => isDirectorRole(props.userRole));
 function auth() { try { return JSON.parse(localStorage.getItem('alltrue_session') || '{}')?.access_token || ''; } catch { return ''; } }
 async function api(path, options = {}) { const response = await fetch(`${base}${path}`, { ...options, headers: { Accept: 'application/json', Authorization: `Bearer ${auth()}`, ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(options.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body?.message || Object.values(body?.errors || {})?.flat?.()?.[0] || '操作失敗'); return body; }
 function statusLabel(status) { return { draft: '草稿', pending_review: '待審核', approved: '已核准', retired: '已退休' }[status] || status; }
