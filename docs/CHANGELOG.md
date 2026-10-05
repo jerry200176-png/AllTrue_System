@@ -1,12 +1,3 @@
-## 2026-10-05 — chore(arch): monthly effective dates and contract slot resolution into ContractSessionSchedule (slice 3/10)
-- 行為不變的搬移（ADR-003／#966）：月結有效日期、`resolveScheduleSlotsForRebuild` 與時段去重 helper 移到 `ContractSessionSchedule`；ClassSessionIndexProjectionService 不再引用 StudentClassController
-
-## 2026-10-05 — chore(arch): weekly/count session builders into ContractSessionSchedule (slice 2/10)
-- 行為不變的搬移（ADR-003／#966）：`buildSessionsFromWeeklySchedule`／`buildSessionsForCount` 移到 `ContractSessionSchedule`；EnrollmentService、CoursePackageController 直接呼叫該模組
-
-## 2026-10-05 — chore(arch): date/time normalizers and count-mode effective dates into ContractSessionSchedule (slice 1/9)
-- 行為不變的搬移（ADR-003／#966）：日期／時間正規化、取消日期集合與堂數制有效日期計算移到新的 `App\Services\Scheduling\ContractSessionSchedule`
-
 ## 2026-10-05 — feat(accounting): director can waive (確認不收) a closed unpaid contract with an audited reason
 <!-- release-notes: staff_update=staff-2026-10-05-waive-unpaid-contract -->
 - 新增 `POST /api/v1/accounting/courses/{id}/waive`（主任／同分校）：僅 Stop=1 且 `settled_pending`／未繳 `contract_amended` 且仍有欠款可用，需 2–200 字原因。同一交易內設 `closed_reason='waived'`、未結帳單 Status 改 `void`（Paid／Charge／收款不動），並寫 `security_audit_events`（`accounting.course_waived`，含欠款金額、原因雜湊）與 `settlement_snapshot`（原因、前後狀態）。套裝課程拒絕、waived 為終態（不可恢復）、void 帳單不可登記收款。套裝課程拒絕、waived 為終態（不可暫停／恢復）、void 帳單不可登記收款。waived 合約離開待對帳／學收提醒佇列，於已結清清單與課程管理顯示「歷史 · 確認不收」，不計入已收
