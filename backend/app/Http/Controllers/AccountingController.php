@@ -14,6 +14,7 @@ use App\Support\Utf8mb3SearchSanitizer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class AccountingController extends Controller
 {
@@ -194,7 +195,7 @@ class AccountingController extends Controller
                 return $denied;
             }
 
-            if ($course->PackageID !== null) {
+            if ($course->isPartOfPackage()) {
                 return response()->json(['message' => '套裝課程請到套裝處理'], 422);
             }
 
@@ -208,15 +209,22 @@ class AccountingController extends Controller
             $invoices = Invoice::with(['studentClass', 'payments'])
                 ->where('StudentClassID', $id)
                 ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->lockForUpdate()->get();
+            // 已有收款的帳單不在此處理，避免作廢帳單蓋住已收的錢。
+            if ($invoices->contains(fn ($i) => $i->payments->isNotEmpty() || (int) ($i->PaidAmount ?? 0) !== 0)) {
+                return response()->json(['message' => '此合約已有收款紀錄，請先到帳務更正後再處理'], 422);
+            }
+            if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'pending')->exists()) {
+                return response()->json(['message' => '有待確認的繳費回報，請先確認或退回'], 422);
+            }
+            $toVoid = $invoices->filter(fn ($i) => (string) ($i->Status ?? '') !== 'paid');
             $outstanding = $invoices->isEmpty()
                 ? (int) ($course->Charge ?? 0)
-                : $this->invoiceTotals($invoices)[3];
+                : (int) $toVoid->sum(fn ($i) => (int) $this->invoiceAmounts->resolve($i, $i->getRelationValue('studentClass'))['total_amount']);
             if ($outstanding <= 0) {
                 return response()->json(['message' => '此合約已沒有欠款，不需要確認不收'], 422);
             }
 
-            $openIds = $invoices->filter(fn ($i) => in_array((string) $i->Status, ['unpaid', 'partial'], true))
-                ->pluck('id')->map(fn ($v) => (int) $v)->values()->all();
+            $openIds = $toVoid->pluck('id')->map(fn ($v) => (int) $v)->values()->all();
             $actorId = (int) $request->attributes->get('auth_user_id');
             $course->setAttribute('closed_reason', 'waived');
             // 保留原結案快照（contract_amended 還原用）於 previous 欄位
@@ -234,7 +242,9 @@ class AccountingController extends Controller
             if ($openIds !== []) {
                 Invoice::query()->whereIn('id', $openIds)->update(['Status' => 'void']);
             }
+            $correlationId = (string) Str::uuid();
             SecurityAuditEvent::append('accounting.course_waived', 'success', [
+                'correlation_id' => $correlationId,
                 'actor_type' => 'user', 'actor_id' => $actorId ?: null,
                 'subject_type' => 'student_class', 'subject_id' => $id,
                 'campus_id' => (int) ($course->student->CampusID ?? 0) ?: null,
@@ -243,6 +253,10 @@ class AccountingController extends Controller
                 'old_type' => $closedReason, 'new_type' => 'waived',
                 'reason_hash' => hash('sha256', $reason),
             ]);
+            // append() swallows write failures; a waiver without its audit row must roll back.
+            if (!DB::table('security_audit_events')->where('correlation_id', $correlationId)->exists()) {
+                throw new \RuntimeException('確認不收稽核紀錄寫入失敗，已取消操作');
+            }
 
             return response()->json(['message' => '已確認不收', 'student_class_id' => $id, 'outstanding_amount' => $outstanding]);
         });

@@ -338,6 +338,9 @@ class PaymentReportController extends Controller
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));
             $sc = StudentClass::find($report->StudentClassID);
+            if ($sc && (string) $sc->getAttribute('closed_reason') === 'waived') {
+                return response()->json(['message' => '此合約已確認不收，不能再確認回報'], 422);
+            }
             if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
                 return $blockedTutoringPayment;
             }

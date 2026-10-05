@@ -176,4 +176,62 @@ class AccountingWaiveCourseTest extends TestCase
         $this->assertSame(1, (int) $course->Stop);
         $this->postJson("/api/v1/invoices/{$invoiceId}/payments", ['Amount' => 100], ['Authorization' => "Bearer {$token}"])->assertStatus(422);
     }
+
+    public function test_invoice_with_collected_money_or_pending_report_is_refused_and_nothing_changes(): void
+    {
+        $token = $this->createToken([1]);
+        $student = $this->createStudent();
+        $withPayment = $this->createStudentClass($student->id, ['Charge' => 8800, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
+        $partial = DB::table('Invoice')->insertGetId([
+            'StudentID' => $student->id, 'StudentClassID' => $withPayment->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 8800, 'PaidAmount' => 3000, 'Status' => 'partial',
+        ]);
+        DB::table('Payment')->insert(['InvoiceID' => $partial, 'Amount' => 3000, 'PaidAt' => now(), 'Method' => 'cash']);
+        $withReport = $this->createStudentClass($student->id, ['Charge' => 5000, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
+        DB::table('payment_reports')->insert([
+            'StudentID' => $student->id, 'StudentClassID' => $withReport->ID, 'reported_by_name' => 'p', 'payment_date' => '2026-09-02',
+            'payment_method' => 'cash', 'reported_amount' => 5000, 'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'waive-pending'), 'token_expires_at' => now()->addDay(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        foreach ([$withPayment, $withReport] as $course) {
+            $this->postJson("/api/v1/accounting/courses/{$course->ID}/waive", ['reason' => '不收了'], ['Authorization' => "Bearer {$token}"])->assertStatus(422);
+            $this->assertSame('settled_pending', $course->refresh()->closed_reason);
+        }
+        $this->assertSame('partial', Invoice::find($partial)->Status);
+        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'accounting.course_waived')->count());
+    }
+
+    public function test_confirming_a_report_on_a_waived_course_is_rejected(): void
+    {
+        $token = $this->createToken([1]);
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, ['Charge' => 5000, 'Stop' => 1, 'closed_reason' => 'waived']);
+        $reportId = DB::table('payment_reports')->insertGetId([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'reported_by_name' => 'p', 'payment_date' => '2026-09-02',
+            'payment_method' => 'cash', 'reported_amount' => 5000, 'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'waive-confirm'), 'token_expires_at' => now()->addDay(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->putJson("/api/v1/payment-reports/{$reportId}/confirm", [], ['Authorization' => "Bearer {$token}"])->assertStatus(422);
+        $this->assertSame(0, (int) $course->refresh()->Paid);
+    }
+
+    public function test_blank_status_legacy_invoice_is_voided_and_package_id_zero_is_allowed(): void
+    {
+        $token = $this->createToken([1]);
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, ['Charge' => 4000, 'Stop' => 1, 'closed_reason' => 'settled_pending', 'PackageID' => 0]);
+        $invoiceId = DB::table('Invoice')->insertGetId([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => '',
+        ]);
+
+        $this->postJson("/api/v1/accounting/courses/{$course->ID}/waive", ['reason' => '不收了'], ['Authorization' => "Bearer {$token}"])
+            ->assertOk()->assertJsonPath('outstanding_amount', 4000);
+        $this->assertSame('void', Invoice::find($invoiceId)->Status);
+        $this->assertSame('waived', $course->refresh()->closed_reason);
+    }
 }
