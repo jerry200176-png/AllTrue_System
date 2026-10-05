@@ -3925,7 +3925,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 16
+			count: 15
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -3967,7 +3967,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 5
+			count: 4
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4027,7 +4027,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4056,18 +4056,6 @@ parameters:
 
 		-
 			message: '#^Offset ''start_time'' on array\{day\: int, start_time\: non\-empty\-string, duration_hours\: float\|null\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Offset ''time'' on array\{weekday\: int, time\: string, duration_minutes\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Offset ''weekday'' on array\{weekday\: int, time\: string, duration_minutes\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Http/Controllers/StudentClassController.php
@@ -5982,13 +5970,13 @@ parameters:
 		-
 			message: '#^Offset ''time'' on array\{weekday\: int, time\: string, duration_minutes\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
-			count: 4
+			count: 5
 			path: app/Services/Scheduling/ContractSessionSchedule.php
 
 		-
 			message: '#^Offset ''weekday'' on array\{weekday\: int, time\: string, duration_minutes\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
-			count: 2
+			count: 3
 			path: app/Services/Scheduling/ContractSessionSchedule.php
 
 		-
@@ -6006,11 +5994,23 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 5
+			count: 6
 			path: app/Services/Scheduling/ContractSessionSchedule.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractSessionSchedule.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractSessionSchedule.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Services/Scheduling/ContractSessionSchedule.php

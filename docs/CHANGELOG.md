@@ -1,3 +1,6 @@
+## 2026-10-05 — chore(arch): slot-map, weekday snap and history guards into ContractSessionSchedule (slice 6/10)
+- 行為不變的搬移（ADR-003／#966）：`buildSlotsByWeekdayMap`、`snapDateToContractWeekday`、`hasImmutableSessionHistory`／`hasAttendanceMarkedSessions`／`hasSessionStartDateMismatch`、`scheduleFieldsPresentInMapped` 移到 `ContractSessionSchedule`
+
 ## 2026-10-05 — chore(arch): cancel-excess and beyond-count quota helpers into ContractSessionSchedule (slice 5/10)
 - 行為不變的搬移（ADR-003／#966）：`cancelExcessScheduledSessions*`、`scheduledSessionsBeyondCount*`、`purchasedQuotaSessionRows` 移到 `ContractSessionSchedule`；CoursePackageController 直接呼叫該模組
 
