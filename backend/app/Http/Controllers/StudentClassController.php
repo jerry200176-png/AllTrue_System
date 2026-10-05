@@ -5393,7 +5393,8 @@ class StudentClassController extends Controller
             $locked = StudentClass::query()->whereKey($id)->first();
             // isEffectivelyPaid() also honours a paid CoursePackage (package members can have no invoice).
             $hasMoney = (bool) $locked?->isEffectivelyPaid()
-                || $invoices->contains(fn ($i) => (string) ($i->Status ?? '') !== 'void' && (int) ($i->PaidAmount ?? 0) > 0)
+                || $invoices->contains(fn ($i) => in_array((string) ($i->Status ?? ''), ['paid', 'partial'], true)
+                    || ((string) ($i->Status ?? '') !== 'void' && (int) ($i->PaidAmount ?? 0) > 0))
                 || ($invoiceIds !== [] && DB::table('Payment')->whereIn('InvoiceID', $invoiceIds)->exists())
                 || DB::table('payment_reports')->where('StudentClassID', $id)->exists();
             if ($hasMoney) {

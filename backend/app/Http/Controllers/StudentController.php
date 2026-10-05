@@ -299,12 +299,21 @@ class StudentController extends Controller
     {
         $paid = DB::table('Payment')->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')
             ->whereIn('Invoice.StudentID', $studentIds)->pluck('Invoice.StudentID');
-        $stored = DB::table('Invoice')->whereIn('StudentID', $studentIds)->where('PaidAmount', '>', 0)
+        $stored = DB::table('Invoice')->whereIn('StudentID', $studentIds)
+            ->where(fn ($q) => $q->where('PaidAmount', '>', 0)->orWhereIn('Status', ['paid', 'partial']))
             ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->pluck('StudentID');
         $flagged = DB::table('StudentClass')->whereIn('StudentID', $studentIds)->where('Paid', 1)->pluck('StudentID');
+        // Paid package (CoursePackage.paid) counts like StudentClass::isEffectivelyPaid().
+        $packaged = DB::table('StudentClass as sc')->join('course_packages as cp', 'cp.id', '=', 'sc.PackageID')
+            ->whereIn('sc.StudentID', $studentIds)->where('cp.paid', 1)->pluck('sc.StudentID');
+        // A contract billed as a line on an invoice owned by someone else must not be erased with the student.
+        $sharedLine = DB::table('InvoiceItem as it')->join('StudentClass as sc', 'sc.ID', '=', 'it.StudentClassID')
+            ->join('Invoice as inv', 'inv.id', '=', 'it.InvoiceID')->whereIn('sc.StudentID', $studentIds)
+            ->whereColumn('inv.StudentID', '!=', 'sc.StudentID')->pluck('sc.StudentID');
         $reported = DB::table('payment_reports')->whereIn('StudentID', $studentIds)->pluck('StudentID'); // any status is accounting history
 
-        return $paid->merge($stored)->merge($flagged)->merge($reported)->map(fn ($id) => (int) $id)->unique()->values()->all();
+        return $paid->merge($stored)->merge($flagged)->merge($packaged)->merge($sharedLine)->merge($reported)
+            ->map(fn ($id) => (int) $id)->unique()->values()->all();
     }
 
     private function purgeStudentRecords(int $studentId): array
@@ -336,6 +345,9 @@ class StudentController extends Controller
                 ->where('closed_reason', 'waived')->lockForUpdate()->exists()) {
                 abort(422, '此學生有已確認不收的合約，不能刪除');
             }
+            // Lock the student's contracts, then invoices (payment flows use the same order) before the money check.
+            DB::table('StudentClass')->where('StudentID', $studentId)->orderBy('ID')->lockForUpdate()->get(['ID']);
+            DB::table('Invoice')->where('StudentID', $studentId)->orderBy('id')->lockForUpdate()->get(['id']);
             if ($this->studentIdsWithCollectedMoney([$studentId]) !== []) {
                 abort(422, '此學生已有收款或繳費回報，不能刪除');
             }
