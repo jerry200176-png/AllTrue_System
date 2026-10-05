@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.05",
     "date": "2026-10-05",
     "title": "2026.10.05 草稿（未發布）",
-    "summary": "shares the payment slip design",
+    "summary": "shares the payment slip design；slips always list lesson dates",
     "audience": [
       "teacher",
       "director"
@@ -20,10 +20,17 @@ export const changelogDraftNotes = [
         "items": [
           "shares the payment slip design"
         ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "slips always list lesson dates"
+        ]
       }
     ],
     "items": [
-      "shares the payment slip design"
+      "shares the payment slip design",
+      "slips always list lesson dates"
     ]
   },
   {

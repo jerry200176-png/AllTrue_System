@@ -1,6 +1,6 @@
-## 2026-10-05 — feat(billing-ui): receipt shares the payment slip design (#3445)
-<!-- release-notes: staff_update=staff-2026-10-05-receipt-redesign -->
-- 電子收據改用 `BillingDocument`（`receiptView`），與繳費單同一套版面；收據圖片改由 `modern-screenshot` 擷取畫面，取代手寫 SVG 產生器（`receiptImage.js`）。複製文字、列印、作廢浮水印保留
+## 2026-10-05 — fix(billing): monthly slips always list lesson dates (#3445)
+<!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
+- 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
 
 ## 2026-10-03 — fix(students): trial courses convert to a regular course instead of a new trial batch (in-app #374)
 <!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->
@@ -9,6 +9,10 @@
 ## 2026-10-04 — fix(course-edit): slot edits check exactly the lessons that move; no false block on own lessons, no self-overlap (in-app #347, part 2)
 <!-- release-notes: silent_ship=silent-2026-10-04-course-edit-guard -->
 - 修改課程時段時的檢查改用與實際搬移相同的「同日重排計畫」：不再被自己會被搬走的堂次或不同日期的學生加總擋下；會留在原地的堂次（已簽到、待審請假、多出來的）仍會擋；搬完會跟自己的課重疊時直接拒絕，不會半套成功
+
+## 2026-10-05 — feat(billing-ui): receipt shares the payment slip design (#3445)
+<!-- release-notes: staff_update=staff-2026-10-05-receipt-redesign -->
+- 電子收據改用 `BillingDocument`（`receiptView`），與繳費單同一套版面；收據圖片改由 `modern-screenshot` 擷取畫面，取代手寫 SVG 產生器（`receiptImage.js`）。複製文字、列印、作廢浮水印保留
 
 ## 2026-10-04 — fix(course-edit): course slot edits move the right lessons (locked lessons stay; shared same-day remap plan) (in-app #347)
 <!-- release-notes: silent_ship=silent-2026-10-04-course-edit-remap -->

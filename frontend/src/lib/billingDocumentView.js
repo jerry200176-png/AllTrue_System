@@ -26,15 +26,17 @@ export function formatBrandTitle(campusName) {
 export const STATUS_ZH = {
   attended: '已到課', completed: '已完課', late: '遲到', absent: '缺席',
   excused: '事假', scheduled: '排定', leave: '請假', leave_adjusted: '調課', expected: '預計', rescheduled: '改期',
+  leave_requested: '請假申請中',
 };
-const DONE = ['attended', 'completed', 'late', 'absent', 'excused'];
+// Lessons that happened (excused is leave, not a lesson taken).
+const DONE = ['attended', 'completed', 'late', 'absent'];
 export function isDone(status) {
   return DONE.includes(status);
 }
 export function statusTone(status) {
   if (['attended', 'completed'].includes(status)) return 'done';
   if (['late', 'absent'].includes(status)) return 'warn';
-  if (['leave', 'leave_adjusted', 'excused'].includes(status)) return 'leave';
+  if (['leave', 'leave_adjusted', 'leave_requested', 'excused'].includes(status)) return 'leave';
   return 'planned';
 }
 
@@ -71,6 +73,8 @@ export function paymentSlipView(raw) {
       ],
       items,
       note: raw.note,
+      // Invoice payloads carry no schedule mode; count-mode ones list the whole course.
+      session_title: '上課日期',
       sessions: raw.sessions || [],
       footer_note: SLIP_FOOTER,
       generated_on: generatedOn,

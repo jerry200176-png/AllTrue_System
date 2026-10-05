@@ -175,7 +175,7 @@ const hiddenCount = computed(() => Math.max(0, props.doc.sessions.length - MAX_S
 .slip-doc-title { font-size: 20px; font-weight: 800; color: var(--slip-accent); letter-spacing: 0.04em; }
 .slip-doc-ref { font-size: 12px; color: var(--slip-mute); }
 
-.slip-label { font-size: 12px; font-weight: 600; color: var(--slip-mute); }
+.slip-label { font-size: 12px; font-weight: 600; color: var(--slip-ink-2); }
 .slip-hero {
   display: flex;
   justify-content: space-between;

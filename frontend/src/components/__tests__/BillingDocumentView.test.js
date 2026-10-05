@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import BillingDocument from '../BillingDocument.vue';
-import { paymentSlipView, formatSessionDate, statusTone } from '../../lib/billingDocumentView.js';
+import { paymentSlipView, formatSessionDate, statusTone, isDone, STATUS_ZH } from '../../lib/billingDocumentView.js';
 
 describe('paymentSlipView', () => {
   it('invoice slip: partial balance, service period and filename', () => {
@@ -15,6 +15,7 @@ describe('paymentSlipView', () => {
     expect(v.amount_label).toBe('尚欠金額');
     expect(v.meta.map(m => m.label)).toEqual(['學生', '服務期間', '開立日期']);
     expect(v.filename).toBe('繳費單_測試_1623.png');
+    expect(v.session_title).toBe('上課日期');
   });
 
   it('tuition slip: zero billed lessons with planned dates reads as planned, overdue hint shown', () => {
@@ -32,6 +33,9 @@ describe('paymentSlipView', () => {
     expect(formatSessionDate('2026-09-01')).toBe('2026/09/01（二）');
     expect(statusTone('leave')).toBe('leave');
     expect(statusTone('expected')).toBe('planned');
+    expect(statusTone('leave_requested')).toBe('leave');
+    expect(isDone('excused')).toBe(false);
+    expect(STATUS_ZH.leave_requested).toBe('請假申請中');
   });
 
   it('caps the lesson list at 40 rows and says how many are left out', () => {
