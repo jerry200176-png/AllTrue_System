@@ -17,6 +17,11 @@ exemptions:
     changelog_title: "refactor(frontend): F7 S2 paid status comes only from the server `payment_status`"
     reason: 前端改只讀後端既有的 payment_status，移除內部推算備援；後端本就下發該欄位，教職員看到的畫面不變。
 
+  - id: silent-2026-10-06-td076-pr-b2-pins-lr
+    changelog_date: "2026-10-06"
+    changelog_title: "chore(schedule): TD-076 Track B PR-B2 history pins and learning-record teacher fix through the occurrence writer"
+    reason: 只在預設關閉的 schedule-occurrence-v2 旗標開啟時生效，關閉時行為完全不變，教職員看不到任何差異。
+
   - id: silent-2026-10-01-calendar-tutoring-acceptance
     changelog_date: "2026-10-01"
     changelog_title: "fix(qa): production calendar and tutoring acceptance follow actual contracts"

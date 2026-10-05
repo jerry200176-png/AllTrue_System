@@ -94,6 +94,12 @@ class OccurrenceAssignmentService
         });
     }
 
+    /** reason=pin: freeze who taught a past occurrence; a leave occurrence already has its live row, so null. */
+    public function pinTaughtTeacher(ClassSession $session, int $teacherId, ?int $actorId): ?Schedule
+    {
+        return self::onLeave($session) ? null : $this->assignTeacher($session, $teacherId, $actorId, 'pin');
+    }
+
     /**
      * reason=restore. A substitute-only row (same-slot anchor, identity unmoved) is deleted like today's undo;
      * a row that also carries a reschedule keeps its slot with the contract teacher.
