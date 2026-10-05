@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-05-payment-slip-redesign",
+    "publishedAt": "2026-10-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "繳費單新版，月結單列上課日",
+    "summary": "繳費單加上 logo，金額和期限更清楚；月結單會列出這一期的上課日期。",
+    "items": [
+      "新版面：上方 logo 和分校，金額和繳費期限最醒目，下方列每堂課的日期、星期、時間、狀態。",
+      "月結單還沒點名時列排定的課；預繳下一期的單列服務期間內的課。金額不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "新版面：上方 logo 和分校，金額和繳費期限最醒目，下方列每堂課的日期、星期、時間、狀態。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "月結單還沒點名時列排定的課；預繳下一期的單列服務期間內的課。金額不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-05:payment-slip-redesign"
+    ],
+    "date": "2026-10-05",
+    "version": "2026.10.05"
+  },
+  {
     "id": "staff-2026-10-03-trial-convert-from-students",
     "publishedAt": "2026-10-03",
     "effectiveAt": null,
