@@ -65,7 +65,7 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
         $this->assertSame($this->bId, (int) $rows->firstWhere('id', $future->id)['teacher_id']);
     }
 
-    public function test_rfid_and_substitute_disagreement_is_not_pinned(): void
+    public function test_rfid_and_substitute_disagreement_leaves_the_existing_substitute_row(): void
     {
         $this->flag(true);
         $past = $this->taughtSession('2026-04-10', $this->aId, signInManual: false);
@@ -77,7 +77,23 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
         $this->assertSame(0, ScheduleChangeLog::count());
         $live = Schedule::where('student_course_id', $this->sc->ID)->where('status', 'scheduled')->whereDate('schedule_date', '2026-04-10')->get();
         $this->assertCount(1, $live);
-        $this->assertSame($this->cId, (int) $live[0]->teacher_id, 'existing substitute row untouched, no guess');
+        $this->assertSame($this->cId, (int) $live[0]->teacher_id, 'existing substitute row untouched');
+    }
+
+    public function test_evidence_disagreement_pins_the_old_contract_teacher_with_conflict_marker(): void
+    {
+        $this->flag(true);
+        $past = $this->taughtSession('2026-04-10', $this->aId, signInManual: true);
+        LearningRecord::where('ClassSessionID', $past->id)->update(['TeacherID' => $this->cId]);
+
+        $this->changeContractTeacher($this->bId)->assertOk();
+
+        $this->assertSame($this->aId, SubstituteScheduleService::effectiveInstructorUserId((int) $this->sc->ID, '2026-04-10', $this->bId, '16:00'));
+        $log = ScheduleChangeLog::all();
+        $this->assertCount(1, $log);
+        $this->assertSame('pin_conflict', $log[0]->reason);
+        $this->assertSame($this->aId, (int) $log[0]->to_teacher_id);
+        $this->assertSame($this->bId, (int) $this->sc->fresh()->TeacherID, 'contract change not blocked');
     }
 
     public function test_lr_update_teacher_without_update_class_moves_the_occurrence_teacher(): void

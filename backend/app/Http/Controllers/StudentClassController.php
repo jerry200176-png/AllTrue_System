@@ -7935,7 +7935,7 @@ class StudentClassController extends Controller
     /**
      * TD-076 B2 (flag on): upsert a `pin` row per taught past occurrence through the single writer, before TeacherID changes.
      * Who taught (D2): substitute row > non-voided LR > manual sign-in (RecordedByUserID set) > RFID sign-in; no evidence
-     * keeps the old contract teacher like #207. Sources that disagree are NOT pinned (ids-only warning; quarantine = PR-E).
+     * keeps the old contract teacher like #207. Sources that disagree pin the OLD contract teacher like #207, reason `pin_conflict` + ids-only warning (PR-E quarantine lists them); an existing exception row is left alone.
      */
     public function pinTaughtOccurrencesBeforeContractTeacherChange(
         StudentClass $course,
@@ -7966,17 +7966,20 @@ class StudentClassController extends Controller
             $rfid = (clone $signIns)->whereNull('RecordedByUserID')->pluck('TeacherID')->all();
 
             $ids = array_values(array_unique(array_filter(array_map('intval', array_merge($sub, $lr, $manual, $rfid)))));
-            if (count($ids) > 1) {
-                Log::warning('td076 pin skipped: teacher evidence disagrees', [
+            $conflict = count($ids) > 1;
+            if ($conflict) {
+                Log::warning('td076 pin conflict: teacher evidence disagrees, pinning the old contract teacher', [
                     'student_course_id' => $courseId, 'class_session_id' => (int) $row->id, 'teacher_ids' => $ids,
                 ]);
-                continue;
+                if ($sub) {
+                    continue; // an existing exception row already holds the history, like #207
+                }
             }
-            $teacherId = $ids[0] ?? $oldTeacherId;
+            $teacherId = $conflict ? $oldTeacherId : ($ids[0] ?? $oldTeacherId);
             if ($teacherId === $newTeacherId) {
                 continue;
             }
-            $writer->pinTaughtTeacher($session, $teacherId, $actorId);
+            $writer->pinTaughtTeacher($session, $teacherId, $actorId, $conflict ? 'pin_conflict' : 'pin');
         }
     }
 

@@ -94,10 +94,10 @@ class OccurrenceAssignmentService
         });
     }
 
-    /** reason=pin: freeze who taught a past occurrence; a leave occurrence already has its live row, so null. */
-    public function pinTaughtTeacher(ClassSession $session, int $teacherId, ?int $actorId): ?Schedule
+    /** reason=pin (or pin_conflict when evidence disagreed): freeze who taught a past occurrence; a leave occurrence already has its live row, so null. */
+    public function pinTaughtTeacher(ClassSession $session, int $teacherId, ?int $actorId, string $reason = 'pin'): ?Schedule
     {
-        return self::onLeave($session) ? null : $this->assignTeacher($session, $teacherId, $actorId, 'pin');
+        return self::onLeave($session) ? null : $this->assignTeacher($session, $teacherId, $actorId, $reason);
     }
 
     /**
