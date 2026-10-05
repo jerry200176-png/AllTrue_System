@@ -32,6 +32,35 @@ operations:
     tags: [repair, session, scheduling, muzha]
     notes: Exact four-course case. The strategy embeds all 32 occurrence preconditions and aborts on drift. Pi-local POP only.
 
+  unpaid-hidden-closures-20261005:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-unpaid-hidden-closures
+    founder_approval_required: true
+    runbook: docs/incidents/RM-UNPAID-HIDDEN-CLOSURES-20261005.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: exact_manifest_student_classes_closed_reason_only
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\UnpaidHiddenClosuresStrategy
+    parameter_keys: [decision_reference]
+    tags: [repair, billing, reconciliation]
+    notes: Exact manifest of unpaid settled/completed contracts. Flips closed_reason to settled_pending only; money is never touched. Pi-local POP only.
+
   reviewed-monthly-accounting-correction:
     lifecycle: active
     domain: billing-entitlement

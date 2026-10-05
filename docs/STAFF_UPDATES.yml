@@ -39,6 +39,18 @@ updates:
         text: 試聽課按「轉為正式課程」，保留試聽紀錄，不再多建一筆試聽。
     source_refs:
       - "alltrue:bug_report:374"
+  - id: staff-2026-10-05-unpaid-backlog-pending
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: action_required
+    title: 舊的未繳月份回來了
+    summary: 先前被誤標已結算的未繳月份，已回到帳務中心「待對帳」。
+    items:
+      - category: action_required
+        text: 款項已收請記錄收款；還沒收請跟進。
+    source_refs:
+      - "changelog:2026-10-05:unpaid-backlog-pending"
   - id: staff-2026-10-03-adjust-error-message
     published_at: "2026-10-03"
     audiences:
