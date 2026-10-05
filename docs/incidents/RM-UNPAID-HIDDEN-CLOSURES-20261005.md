@@ -14,7 +14,7 @@ Invoice, Payment, Charge and Paid are never written.
 
 The closed allowlist `UnpaidHiddenClosuresManifest::cases()` in
 `backend/app/Operations/Strategies/UnpaidHiddenClosuresManifest.php`
-(`student_class_id => closed_reason, outstanding, campus_id`), filled from read-only probe run `<id>`.
+(`student_class_id => closed_reason, outstanding, campus_id`), filled from read-only probe run `37291794698` (production-case-dump `unpaid_hidden_candidates`, prod e00d4d097, PR #3533).
 Strategy: `UnpaidHiddenClosuresStrategy`. Parameters: `decision_reference = repair-unpaid-hidden-closures-20261005`.
 Tutoring (`LOWER(TRIM(ClassType))`) is out of scope. Paid=1 rows with open invoices are not candidates; they need a reviewed correction.
 
@@ -23,8 +23,9 @@ Tutoring (`LOWER(TRIM(ClassType))`) is out of scope. Paid=1 rows with open invoi
 Per manifest row: still Stop=1, same `closed_reason`, Paid != 1, not tutoring, student campus matches, and the ledger
 (`InvoiceAmountReconciliationService::resolve`; legacy `PaidAmount` when an invoice has no payment rows; `Charge` when
 there are no invoices) still owes exactly the manifest `outstanding`. Any drift returns one error code per course id and aborts.
-Pending payment reports are not excluded: the course and invoice row locks serialize against
-`PaymentReportController::confirm`, and a later rejected report simply leaves the course visible in `settled_pending`.
+A pending payment report on any manifest course is a stop condition (`pending_report_<id>`): confirm or reject it
+first, then re-run the dry-run. Partial confirmations / partial invoice payments can still settle a course afterwards;
+that pre-existing behaviour is tracked in #3536.
 
 ## Dry-run
 

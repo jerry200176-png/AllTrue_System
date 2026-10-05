@@ -54,10 +54,8 @@ final class UnpaidHiddenClosuresStrategy
             if ($n !== count($ids)) {
                 throw new RuntimeException("unpaid_hidden_updated_{$n}_of_" . count($ids));
             }
-            SecurityAuditEvent::append('pop.unpaid_hidden_closures', 'success', [
-                'actor_type' => 'pop-runner', 'subject_type' => 'student_class_batch',
-            ], ['reason_code' => self::REF, 'operation_id' => (string) ($context['operation_id'] ?? ''),
-                'course_count' => count($ids), 'outcome' => 'success']);
+            $this->audit('pop.unpaid_hidden_closures', ['reason_code' => self::REF,
+                'operation_id' => (string) ($context['operation_id'] ?? ''), 'course_count' => count($ids), 'outcome' => 'success']);
 
             return ['ok' => true, 'snapshot' => $this->snapshot($rows), 'updated' => $n];
         }, 3);
@@ -98,13 +96,23 @@ final class UnpaidHiddenClosuresStrategy
                 }
                 $restored++;
             }
-            SecurityAuditEvent::append('pop.unpaid_hidden_closures.rollback', 'success', [
-                'actor_type' => 'pop-runner', 'subject_type' => 'student_class_batch',
-            ], ['reason_code' => self::REF, 'restored' => $restored, 'skipped' => count($skippedIds), 'outcome' => 'success']);
+            $this->audit('pop.unpaid_hidden_closures.rollback', ['reason_code' => self::REF,
+                'restored' => $restored, 'skipped' => count($skippedIds), 'outcome' => 'success']);
 
             // Any skipped row means the repair is only partly undone: surface it for operator resolution.
             return ['ok' => $skippedIds === [], 'partial' => $skippedIds !== [], 'restored' => $restored, 'skipped_ids' => $skippedIds];
         }, 3);
+    }
+
+    /** Strict audit: append() swallows insert failures, so confirm the row exists or roll the transaction back. */
+    private function audit(string $event, array $metadata): void
+    {
+        $correlationId = (string) \Illuminate\Support\Str::uuid();
+        SecurityAuditEvent::append($event, 'success', ['actor_type' => 'pop-runner', 'subject_type' => 'student_class_batch',
+            'correlation_id' => $correlationId], $metadata);
+        if (!DB::table('security_audit_events')->where('correlation_id', $correlationId)->exists()) {
+            throw new RuntimeException('unpaid_hidden_audit_not_persisted');
+        }
     }
 
     /** @return array<int,array<string,mixed>> manifest id => live state; locks courses and invoices when asked */
