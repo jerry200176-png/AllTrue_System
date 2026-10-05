@@ -397,7 +397,7 @@ import {
   trustDecisionTitle,
 } from '../lib/trustDecisionDisplay.js';
 import { parseInboxCount } from '../lib/actionInboxContract.js';
-import { buildDirectorDashboardTasks } from '../lib/directorDashboardTasks.js';
+import { buildDirectorDashboardTasks, isLiveScheduleRow } from '../lib/directorDashboardTasks.js';
 import { runDashboardLoaders } from '../lib/dashboardLoadPlan.js';
 import { isUserEngagementRankDisplayEnabled } from '../lib/userEngagementDisplay';
 
@@ -1232,7 +1232,7 @@ const loadData = async () => {
       .filter(s => {
         if (seenIds.has(s.id)) return false;
         seenIds.add(s.id);
-        return !['cancelled', 'leave'].includes(String(s.status || '').toLowerCase());
+        return isLiveScheduleRow(s);
       })
       .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
   }
