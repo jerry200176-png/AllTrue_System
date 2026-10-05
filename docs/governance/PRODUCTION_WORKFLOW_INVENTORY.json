@@ -21,6 +21,7 @@
     "scp"
   ],
   "retired_workflows": {
+    "yu-shengrui-3499-transfer-repair.yml": {"retired_at": "2026-10-06", "reason": "The single 余晟睿 contract 3499 paid 轉課 repair was executed and verified on 2026-09-30.", "evidence": ["Execute run 36692638312 created contract 4138 and transfer payments 2005/2006 with session_corrections row 19 (decision_reference repair-yu-shengrui-3499).", "Introduced in #3394 (75fe7f894); deployed by run 36691731538."], "replacement": "None. Founder decision 2026-10-05 removed the command, test and workflow (#3561) because the command called a private StudentClassController method; git history (75fe7f894) preserves them and the session_corrections audit row stays in the DB.", "production_authority_removed": true},
     "234-renewal-overlap-repair.yml": {
       "retired_at": "2026-09-08",
       "reason": "The single case was completed and verified; GitHub issue #1740 is closed.",
@@ -85,7 +86,6 @@
       "future_state": "Retire after case closure or migrate through Founder-approved POP"
     },
     "yang-1445-contract-repair.yml": {"classification":"legacy-case-specific-mutation","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"repair:yang-1445-contract-move --execute/--rollback --force","authorization":"Manual exact phrase, actor, pinned production SSH trust; dry-run default; Founder GO before execute","concurrency":"repair-yang-1445; cancel-in-progress=false","rollback":"Command --rollback restores snapshot_before rows from session_corrections; in-transaction and independent post-verify","canonical":false,"required":"case-specific repair","future_state":"Retire after case closure"},
-    "yu-shengrui-3499-transfer-repair.yml": {"classification":"legacy-case-specific-mutation","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"repair:yu-shengrui-3499-transfer --execute/--rollback --force","authorization":"Manual exact phrase, actor, pinned production SSH trust; dry-run default; Founder GO before execute","concurrency":"repair-yu-shengrui-3499; cancel-in-progress=false","rollback":"Command --rollback restores snapshot_before rows from session_corrections; in-transaction and independent post-verify","canonical":false,"required":"case-specific repair","future_state":"Retire after case closure"},
     "173-supersede-repair.yml": {
       "classification": "legacy-case-specific-mutation",
       "production_mutation": "confirmed",
