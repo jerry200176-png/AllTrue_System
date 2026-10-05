@@ -50,12 +50,16 @@ class RepairUnpaidHiddenClosuresTest extends TestCase
         $payment(902, 6600, 'transfer');
     }
 
-    private function digest(): string
+    /** Writes the dry-run MANIFEST_JSON as a committed-style manifest; returns [relative path, sha256]. */
+    private function manifest(): array
     {
         Artisan::call('repair:unpaid-hidden-closures');
-        preg_match('/DIGEST=([0-9a-f]+)/', Artisan::output(), $m);
+        preg_match('/MANIFEST_JSON=(.+)/', Artisan::output(), $m);
+        $raw = json_encode(['decision_reference' => 'repair-unpaid-hidden-closures', 'rows' => json_decode($m[1], true)], JSON_PRETTY_PRINT) . "\n";
+        @mkdir(storage_path('app'), 0777, true);
+        file_put_contents(storage_path('app/unpaid-hidden-test.manifest.json'), $raw);
 
-        return $m[1];
+        return ['backend/storage/app/unpaid-hidden-test.manifest.json', hash('sha256', $raw)];
     }
 
     private function reason(int $id): ?string
@@ -67,43 +71,53 @@ class RepairUnpaidHiddenClosuresTest extends TestCase
     {
         $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures'));
         $out = Artisan::output();
-        foreach ([3516, 3517, 3524] as $id) {
+        foreach ([3516, 3517] as $id) {
             $this->assertStringContainsString("course={$id} ", $out);
         }
-        foreach ([3518, 3519, 3520, 3521, 3522, 3523, 3525] as $id) {
+        foreach ([3518, 3519, 3520, 3521, 3522, 3523, 3524, 3525] as $id) {
             $this->assertStringNotContainsString("course={$id} ", $out);
         }
-        $this->assertStringContainsString('CANDIDATES=3 OUTSTANDING_TOTAL=19800', $out);
+        // Stale Paid=1 with a reversed payment is reported for review, not auto-flipped.
+        $this->assertStringContainsString('STALE_PAID_REVIEW course=3524 ', $out);
+        $this->assertStringContainsString('CANDIDATES=2 OUTSTANDING_TOTAL=13200 STALE_PAID=1', $out);
+        $this->assertStringContainsString('MANIFEST_JSON=[{"id":3516,"closed_reason":"settled"},{"id":3517,"closed_reason":"completed"}]', $out);
         $this->assertSame('settled', $this->reason(3516));
     }
 
-    public function test_execute_requires_matching_digest(): void
+    public function test_execute_requires_the_committed_manifest_hash_and_live_rows(): void
     {
-        $this->assertSame(1, Artisan::call('repair:unpaid-hidden-closures', ['--execute' => true, '--expect-digest' => 'deadbeef']));
+        [$path] = $this->manifest();
+        $this->assertSame(1, Artisan::call('repair:unpaid-hidden-closures', ['--execute' => true, '--manifest' => $path, '--expect-manifest-sha' => str_repeat('0', 64)]));
+        $this->assertSame('settled', $this->reason(3516));
+
+        // A manifest row that stopped being a candidate (paid since) aborts the whole batch.
+        [$path, $sha] = $this->manifest();
+        DB::table('StudentClass')->where('ID', 3517)->update(['Paid' => 1]);
+        $this->assertSame(1, Artisan::call('repair:unpaid-hidden-closures', ['--execute' => true, '--manifest' => $path, '--expect-manifest-sha' => $sha]));
         $this->assertSame('settled', $this->reason(3516));
     }
 
-    public function test_execute_moves_candidates_to_pending_and_rollback_restores(): void
+    public function test_execute_moves_manifest_rows_to_pending_and_rollback_restores(): void
     {
-        $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures', ['--execute' => true, '--expect-digest' => $this->digest()]));
+        [$path, $sha] = $this->manifest();
+        $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures', ['--execute' => true, '--manifest' => $path, '--expect-manifest-sha' => $sha]));
         $this->assertSame('settled_pending', $this->reason(3516));
         $this->assertSame('settled_pending', $this->reason(3517));
-        $this->assertSame('settled', $this->reason(3518));
-        $this->assertSame(0, (int) DB::table('StudentClass')->where('ID', 3516)->value('Paid'));
+        $this->assertSame('settled', $this->reason(3524));
         $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures', ['--verify' => true]));
-        $this->assertSame(1, DB::table('session_corrections')->where('decision_reference', 'repair-unpaid-hidden-closures')->count());
+        $this->assertSame($sha, json_decode((string) DB::table('session_corrections')->where('decision_reference', 'repair-unpaid-hidden-closures')->value('snapshot_before'), true)['manifest_sha256']);
 
         // A director confirming payment afterwards is a legitimate forward move, not a verify failure.
         DB::table('StudentClass')->where('ID', 3517)->update(['Paid' => 1, 'closed_reason' => 'settled']);
         $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures', ['--verify' => true]));
-        // Falling back to any hidden reason while unpaid is caught.
+        // Falling back to any hidden reason while the ledger still shows debt is caught.
         DB::table('StudentClass')->where('ID', 3516)->update(['closed_reason' => 'completed']);
         $this->assertSame(1, Artisan::call('repair:unpaid-hidden-closures', ['--verify' => true]));
         DB::table('StudentClass')->where('ID', 3516)->update(['closed_reason' => 'settled_pending']);
 
         // Rollback skips the reconciled row and records the actor.
         $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures', ['--rollback' => true, '--execute' => true, '--actor' => 'gha:test']));
-        $this->assertStringContainsString('restored=2', Artisan::output());
+        $this->assertStringContainsString('restored=1', Artisan::output());
         $this->assertStringContainsString('rollback:gha:test', (string) DB::table('session_corrections')->where('decision_reference', 'repair-unpaid-hidden-closures')->value('decided_by_actor'));
         $this->assertSame('settled', $this->reason(3516));
         $this->assertSame(1, (int) DB::table('StudentClass')->where('ID', 3517)->value('Paid'));

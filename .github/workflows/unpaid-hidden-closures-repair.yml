@@ -3,7 +3,7 @@ name: Unpaid hidden closures repair (manual, pinned set)
 # Founder decision 2026-10-05: put unpaid contracts closed as settled/completed back into 待對帳.
 # dry-run is read-only. execute/rollback run only in the production-activation environment (Founder
 # approval), serialized with deploys and other production side effects, against the exact deployed
-# backend SHA and (execute) the exact candidate DIGEST printed by the reviewed dry-run.
+# backend SHA and (execute) the committed, hash-pinned Repair Manifest reviewed in a Founder-approved PR.
 on:
   workflow_dispatch:
     inputs:
@@ -20,8 +20,8 @@ on:
         description: "For execute/rollback only: type I_APPROVE_UNPAID_HIDDEN_CLOSURES"
         required: false
         type: string
-      expect_digest:
-        description: "For execute only: DIGEST printed by the reviewed dry-run"
+      manifest_sha256:
+        description: "For execute only: sha256 of the committed operations/repairs/unpaid-hidden-closures.manifest.json"
         required: false
         type: string
       deployed_backend_sha:
@@ -93,7 +93,7 @@ jobs:
         env:
           MODE: ${{ inputs.mode }}
           CONFIRM: ${{ inputs.confirm }}
-          EXPECT_DIGEST: ${{ inputs.expect_digest }}
+          MANIFEST_SHA: ${{ inputs.manifest_sha256 }}
           DEPLOYED_SHA: ${{ inputs.deployed_backend_sha }}
           ACTOR: ${{ inputs.actor }}
         run: |
@@ -103,9 +103,9 @@ jobs:
           [ "$CONFIRM" = "I_APPROVE_UNPAID_HIDDEN_CLOSURES" ] || { echo "::error::exact confirmation string required"; exit 1; }
           [[ "$DEPLOYED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::deployed_backend_sha must be a full commit SHA"; exit 1; }
           [[ "$ACTOR" =~ ^[A-Za-z0-9:._-]{1,64}$ ]] || { echo "::error::invalid actor"; exit 1; }
-          [[ -z "$EXPECT_DIGEST" || "$EXPECT_DIGEST" =~ ^[0-9a-f]{16}$ ]] || { echo "::error::invalid digest"; exit 1; }
+          [[ -z "$MANIFEST_SHA" || "$MANIFEST_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::invalid manifest sha"; exit 1; }
           if [ "$MODE" = "execute" ]; then
-            [[ "$EXPECT_DIGEST" =~ ^[0-9a-f]{16}$ ]] || { echo "::error::execute requires the 16-hex DIGEST from the reviewed dry-run"; exit 1; }
+            [[ "$MANIFEST_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::execute requires the committed manifest sha256"; exit 1; }
           fi
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -126,7 +126,7 @@ jobs:
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           MODE: ${{ inputs.mode }}
           ACTOR: ${{ inputs.actor }}
-          EXPECT_DIGEST: ${{ inputs.expect_digest }}
+          MANIFEST_SHA: ${{ inputs.manifest_sha256 }}
           DEPLOYED_SHA: ${{ inputs.deployed_backend_sha }}
         run: |
           set -euo pipefail
@@ -137,7 +137,7 @@ jobs:
           trap 'rm -f "$ssh_dir/deploy_key"' EXIT
           ssh -i "$ssh_dir/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" "$PI_SSH_USER@$PI_SSH_HOST" \
-            "MODE='$MODE' ACTOR='$ACTOR' EXPECT_DIGEST='$EXPECT_DIGEST' DEPLOYED_SHA='$DEPLOYED_SHA' bash -s" <<'ENDSSH'
+            "MODE='$MODE' ACTOR='$ACTOR' MANIFEST_SHA='$MANIFEST_SHA' DEPLOYED_SHA='$DEPLOYED_SHA' bash -s" <<'ENDSSH'
           set -euo pipefail
           cd /home/admin/backend
           manifest_sha="$(curl -fsSL --proto '=https' --tlsv1.2 https://daan.lifenet.com.tw/deployment.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
@@ -160,7 +160,7 @@ jobs:
             exit 0
           fi
           set +e
-          MUT_OUT=$(ALLOW_PROD_REPAIR=1 $CMD --execute --force --expect-digest="${EXPECT_DIGEST}" --actor="${ACTOR}" 2>&1)
+          MUT_OUT=$(ALLOW_PROD_REPAIR=1 $CMD --execute --force --expect-manifest-sha="${MANIFEST_SHA}" --actor="${ACTOR}" 2>&1)
           MUT_EC=$?
           echo "$MUT_OUT"
           $CMD --verify

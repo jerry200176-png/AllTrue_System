@@ -16,10 +16,15 @@ use Illuminate\Support\Facades\DB;
  * payment check; fixed in #3529). This flips only closed_reason -> 'settled_pending' so they re-enter the
  * reconciliation queue. Money (Invoice / Payment / Charge / Paid) is never touched.
  *
- * Default dry-run prints the candidate IDs and a digest. --execute requires --expect-digest from that
- * dry-run (pins the exact set) and, in production, --force + ALLOW_PROD_REPAIR=1. Ledger: one
- * session_corrections row (session_id 0 = contract-level key, REF below) whose snapshot_before holds every
- * old reason for --rollback.
+ * Default dry-run prints the candidates and a MANIFEST_JSON line. That list is committed as the immutable
+ * Repair Manifest (operations/repairs/unpaid-hidden-closures.manifest.json) through a Founder-approved PR.
+ * --execute only touches manifest rows, requires --expect-manifest-sha (sha256 of the committed file) and
+ * fails closed unless every manifest row is still a live candidate with the same reason. Production also
+ * needs --force + ALLOW_PROD_REPAIR=1. Ledger: one session_corrections row (session_id 0 = contract-level
+ * key) whose snapshot_before holds the manifest hash and every old reason for --rollback.
+ *
+ * Paid=1 rows whose invoices are not covered by payment rows are listed as STALE_PAID_REVIEW only: the
+ * director record flow rejects Paid=1, so they need a reviewed correction, not this flag flip.
  */
 class RepairUnpaidHiddenClosures extends Command
 {
@@ -28,13 +33,15 @@ class RepairUnpaidHiddenClosures extends Command
                             {--verify}
                             {--rollback}
                             {--force}
-                            {--expect-digest=}
+                            {--manifest=operations/repairs/unpaid-hidden-closures.manifest.json}
+                            {--expect-manifest-sha=}
                             {--actor=}';
 
     protected $description = 'Move unpaid contracts closed as settled/completed back to settled_pending (待對帳)';
 
     private const REF = 'repair-unpaid-hidden-closures';
     private const KEY_SESSION = 0;
+    private const VISIBLE = ['settled_pending', 'contract_amended', 'waived'];
 
     public function __construct(private InvoiceAmountReconciliationService $amounts)
     {
@@ -66,46 +73,61 @@ class RepairUnpaidHiddenClosures extends Command
             return self::FAILURE;
         }
 
-        $rows = $this->candidates();
-        $digest = self::digest($rows);
-        $this->line($execute ? '=== EXECUTE ' . self::REF . ' ===' : '=== DRY RUN ' . self::REF . ' ===');
-        foreach ($rows as $r) {
-            $this->line(sprintf('course=%d student=%d campus=%s mode=%s reason=%s paid_flag=%d outstanding=%d end=%s',
-                $r['id'], $r['student_id'], $r['campus_id'] ?? '-', $r['mode'], $r['closed_reason'], $r['paid_flag'], $r['outstanding'], $r['end_date']));
-        }
-        $this->line('CANDIDATES=' . count($rows) . ' OUTSTANDING_TOTAL=' . array_sum(array_column($rows, 'outstanding')));
-        $this->line('DIGEST=' . $digest);
+        [$rows, $stale] = $this->candidates();
         if (!$execute) {
+            $this->line('=== DRY RUN ' . self::REF . ' ===');
+            foreach ($rows as $r) {
+                $this->line(sprintf('course=%d student=%d campus=%s mode=%s reason=%s outstanding=%d end=%s',
+                    $r['id'], $r['student_id'], $r['campus_id'] ?? '-', $r['mode'], $r['closed_reason'], $r['outstanding'], $r['end_date']));
+            }
+            foreach ($stale as $r) {
+                $this->line(sprintf('STALE_PAID_REVIEW course=%d campus=%s reason=%s outstanding=%d', $r['id'], $r['campus_id'] ?? '-', $r['closed_reason'], $r['outstanding']));
+            }
+            $this->line('CANDIDATES=' . count($rows) . ' OUTSTANDING_TOTAL=' . array_sum(array_column($rows, 'outstanding')) . ' STALE_PAID=' . count($stale));
+            $this->line('MANIFEST_JSON=' . json_encode(self::manifestRows($rows), JSON_THROW_ON_ERROR));
             $this->line('Dry-run complete; no data changed.');
 
             return self::SUCCESS;
         }
-        if ($rows === [] || $this->option('expect-digest') !== $digest) {
+
+        $this->line('=== EXECUTE ' . self::REF . ' ===');
+        [$manifest, $sha, $error] = $this->loadManifest();
+        if ($error !== null) {
             $this->line('REPAIR_STATE=NOT_APPLIED');
-            $this->error('DRIFT: --expect-digest does not match the current candidate set');
+            $this->error('MANIFEST: ' . $error);
 
             return self::FAILURE;
         }
+        try {
+            DB::transaction(function () use ($manifest, $sha): void {
+                $ids = array_column($manifest, 'id');
+                StudentClass::query()->whereIn('ID', $ids)->lockForUpdate()->get();
+                $drift = $this->drift($manifest, $this->candidates()[0]);
+                if ($drift !== []) {
+                    throw new \RuntimeException('manifest rows no longer candidates: ' . implode(',', $drift));
+                }
+                $n = DB::table('StudentClass')->whereIn('ID', $ids)->whereIn('closed_reason', ['settled', 'completed'])
+                    ->update(['closed_reason' => 'settled_pending']);
+                if ($n !== count($ids)) {
+                    throw new \RuntimeException("updated {$n} of " . count($ids));
+                }
+                (new SessionCorrection([
+                    'session_id' => self::KEY_SESSION, 'replaced_by_session_id' => null,
+                    'correction_reason' => 'unpaid_hidden_closure_repair', 'decision_reference' => self::REF,
+                    'decided_at' => now(), 'decided_by_actor' => substr((string) ($this->option('actor') ?: 'cli'), 0, 128),
+                    'previous_status' => 'settled_or_completed', 'new_status' => 'settled_pending',
+                    'snapshot_before' => ['manifest_sha256' => $sha, 'rows' => $manifest],
+                ]))->save();
+                SecurityAuditEvent::append('repair.unpaid_hidden_closures', 'applied', [
+                    'actor_type' => 'system', 'subject_type' => 'student_class_batch',
+                ], ['reason_code' => self::REF, 'outcome' => 'applied']);
+            });
+        } catch (\Throwable $e) {
+            $this->line('REPAIR_STATE=NOT_APPLIED');
+            $this->error('DRIFT: ' . $e->getMessage());
 
-        DB::transaction(function () use ($rows, $digest): void {
-            $ids = array_column($rows, 'id');
-            // Re-check under lock: the set must be unchanged since the dry-run.
-            StudentClass::query()->whereIn('ID', $ids)->lockForUpdate()->get();
-            if (self::digest($this->candidates()) !== $digest) {
-                throw new \RuntimeException('candidate set changed under lock');
-            }
-            DB::table('StudentClass')->whereIn('ID', $ids)->update(['closed_reason' => 'settled_pending']);
-            (new SessionCorrection([
-                'session_id' => self::KEY_SESSION, 'replaced_by_session_id' => null,
-                'correction_reason' => 'unpaid_hidden_closure_repair', 'decision_reference' => self::REF,
-                'decided_at' => now(), 'decided_by_actor' => substr((string) ($this->option('actor') ?: 'cli'), 0, 128),
-                'previous_status' => 'settled_or_completed', 'new_status' => 'settled_pending',
-                'snapshot_before' => ['digest' => $digest, 'rows' => array_map(fn ($r) => ['id' => $r['id'], 'closed_reason' => $r['closed_reason']], $rows)],
-            ]))->save();
-            SecurityAuditEvent::append('repair.unpaid_hidden_closures', 'applied', [
-                'actor_type' => 'system', 'subject_type' => 'student_class_batch',
-            ], ['reason_code' => self::REF, 'outcome' => 'applied']);
-        });
+            return self::FAILURE;
+        }
         $errors = $this->postErrors($this->openCorrection());
         foreach ($errors as $e) {
             $this->error('VERIFY: ' . $e);
@@ -115,13 +137,54 @@ class RepairUnpaidHiddenClosures extends Command
         return $errors === [] ? self::SUCCESS : self::FAILURE;
     }
 
+    /** @return array{0:list<array<string,mixed>>,1:?string,2:?string} rows, sha256, error */
+    private function loadManifest(): array
+    {
+        $relative = ltrim((string) $this->option('manifest'), '/');
+        $path = base_path('../' . $relative);
+        if (str_contains($relative, '..') || !is_file($path)) {
+            return [[], null, 'manifest file not found'];
+        }
+        $raw = (string) file_get_contents($path);
+        $sha = hash('sha256', $raw);
+        if (!hash_equals($sha, (string) $this->option('expect-manifest-sha'))) {
+            return [[], $sha, 'sha256 mismatch: file is ' . $sha];
+        }
+        $rows = json_decode($raw, true)['rows'] ?? null;
+        if (!is_array($rows) || $rows === []) {
+            return [[], $sha, 'manifest has no rows'];
+        }
+
+        return [self::manifestRows($rows), $sha, null];
+    }
+
     /**
-     * Closed as settled/completed with open debt. Ledger first: any non-void invoice whose payment rows
-     * (legacy: PaidAmount when no rows) do not cover its resolved total; without invoices, Charge > 0 and
-     * not effectively paid. Same rule as StudentClassController::courseNeedsPaymentReconciliation (#3529).
-     * Tutoring is always free.
+     * @param list<array<string,mixed>> $manifest
+     * @param list<array<string,mixed>> $live
+     * @return list<int> manifest ids that are not a live candidate with the same reason
+     */
+    private function drift(array $manifest, array $live): array
+    {
+        $now = collect($live)->pluck('closed_reason', 'id');
+
+        return collect($manifest)->filter(fn ($r) => ($now[$r['id']] ?? null) !== $r['closed_reason'])->pluck('id')->values()->all();
+    }
+
+    /**
+     * @param list<array<string,mixed>> $rows
+     * @return list<array{id:int,closed_reason:string}>
+     */
+    private static function manifestRows(array $rows): array
+    {
+        return collect($rows)->map(fn ($r) => ['id' => (int) $r['id'], 'closed_reason' => (string) $r['closed_reason']])
+            ->sortBy('id')->values()->all();
+    }
+
+    /**
+     * Closed as settled/completed with open debt per the invoice ledger. Same rule as
+     * StudentClassController::courseNeedsPaymentReconciliation (#3529). Tutoring is always free.
      *
-     * @return list<array<string,mixed>>
+     * @return array{0:list<array<string,mixed>>,1:list<array<string,mixed>>} candidates, stale Paid=1 rows
      */
     private function candidates(): array
     {
@@ -129,43 +192,60 @@ class RepairUnpaidHiddenClosures extends Command
             ->where('Stop', 1)->whereIn('closed_reason', ['settled', 'completed'])
             ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> 'tutoring'")
             ->orderBy('ID')->get();
-        $invoices = Invoice::query()->with('payments')->whereIn('StudentClassID', $courses->pluck('ID')->all() ?: [0])
-            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
-            ->get()->groupBy('StudentClassID');
-        $rows = [];
+        $outstanding = $this->outstanding($courses);
+        [$rows, $stale] = [[], []];
         foreach ($courses as $c) {
-            [$billed, $paid] = [0, 0];
-            foreach ($invoices->get($c->ID, collect()) as $invoice) {
-                $a = $this->amounts->resolve($invoice, $c);
-                $billed += (int) $a['total_amount'];
-                $paid += $invoice->getRelationValue('payments')->isEmpty()
-                    ? min((int) $a['total_amount'], max(0, (int) $invoice->getAttribute('PaidAmount')))
-                    : min((int) $a['total_amount'], (int) $a['net_applied']);
-            }
-            $hasInvoices = $invoices->has($c->ID);
-            $outstanding = $hasInvoices ? $billed - $paid
-                : ((int) $c->Charge > 0 && !$c->isEffectivelyPaid() ? (int) $c->Charge : 0);
-            if ($outstanding <= 0) {
+            $owed = $outstanding[(int) $c->ID] ?? 0;
+            if ($owed <= 0) {
                 continue;
             }
-            $rows[] = ['id' => (int) $c->ID, 'student_id' => (int) $c->StudentID, 'campus_id' => $c->student?->CampusID,
+            $row = ['id' => (int) $c->ID, 'student_id' => (int) $c->StudentID, 'campus_id' => $c->student?->CampusID,
                 'mode' => (string) $c->ScheduleMode, 'closed_reason' => (string) $c->closed_reason,
-                'paid_flag' => (int) $c->Paid, 'outstanding' => $outstanding, 'end_date' => substr((string) $c->EndDate, 0, 10)];
+                'outstanding' => $owed, 'end_date' => substr((string) $c->EndDate, 0, 10)];
+            if ((int) $c->Paid === 1) {
+                $stale[] = $row;
+            } else {
+                $rows[] = $row;
+            }
         }
 
-        return $rows;
-    }
-
-    /** @param list<array<string,mixed>> $rows */
-    private static function digest(array $rows): string
-    {
-        return substr(hash('sha256', implode(',', array_map(fn ($r) => $r['id'] . ':' . $r['closed_reason'], $rows))), 0, 16);
+        return [$rows, $stale];
     }
 
     /**
-     * A repaired row may legitimately move on (payment confirmed -> Paid=1, written off -> waived). Any row
-     * that is unpaid and not in a reason the accounting queue lists (settled_pending / contract_amended)
-     * or the explicit waived state has vanished again - or the row is missing - is an error.
+     * Open debt per course: non-void invoices not covered by their payment rows (legacy: PaidAmount when no
+     * rows); without invoices, Charge when not effectively paid.
+     *
+     * @param \Illuminate\Support\Collection<int, mixed> $courses
+     * @return array<int,int>
+     */
+    private function outstanding($courses): array
+    {
+        $invoices = Invoice::query()->with('payments')->whereIn('StudentClassID', $courses->pluck('ID')->all() ?: [0])
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+            ->get()->groupBy('StudentClassID');
+        $out = [];
+        foreach ($courses as $c) {
+            if (!$invoices->has($c->ID)) {
+                $out[(int) $c->ID] = (int) $c->Charge > 0 && !$c->isEffectivelyPaid() ? (int) $c->Charge : 0;
+                continue;
+            }
+            $owed = 0;
+            foreach ($invoices->get($c->ID) as $invoice) {
+                $a = $this->amounts->resolve($invoice, $c);
+                $paid = $invoice->getRelationValue('payments')->isEmpty()
+                    ? max(0, (int) $invoice->getAttribute('PaidAmount')) : (int) $a['net_applied'];
+                $owed += max(0, (int) $a['total_amount'] - $paid);
+            }
+            $out[(int) $c->ID] = $owed;
+        }
+
+        return $out;
+    }
+
+    /**
+     * A repaired row may legitimately move on (payment confirmed, written off). It is an error only when the
+     * ledger still shows debt and the row is outside every reason the accounting queue lists, or is missing.
      *
      * @return list<string>
      */
@@ -174,14 +254,11 @@ class RepairUnpaidHiddenClosures extends Command
         if (!$corr) {
             return ['no open correction'];
         }
-        $ids = collect($corr->snapshot_before['rows'] ?? [])->pluck('id');
-        $now = DB::table('StudentClass')->whereIn('ID', $ids->all() ?: [0])->get(['ID', 'closed_reason', 'Paid'])->keyBy('ID');
-        $bad = $ids->filter(function ($id) use ($now) {
-            $row = $now->get($id);
-
-            return !$row || ((int) $row->Paid !== 1
-                && !in_array((string) $row->closed_reason, ['settled_pending', 'contract_amended', 'waived'], true));
-        })->values()->all();
+        $ids = collect($corr->snapshot_before['rows'] ?? [])->pluck('id')->map(fn ($id) => (int) $id);
+        $courses = StudentClass::query()->whereIn('ID', $ids->all() ?: [0])->get()->keyBy('ID');
+        $owed = $this->outstanding($courses->values());
+        $bad = $ids->filter(fn ($id) => !$courses->has($id)
+            || (($owed[$id] ?? 0) > 0 && !in_array((string) $courses[$id]->closed_reason, self::VISIBLE, true)))->values()->all();
 
         return $bad === [] ? [] : ['unpaid and hidden again, or missing: ' . implode(',', $bad)];
     }
