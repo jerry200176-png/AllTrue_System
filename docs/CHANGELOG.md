@@ -1,3 +1,6 @@
+## 2026-10-05 — chore(arch): contract-teacher change cascade moved out of StudentClassController (slice 3/4)
+- 行為不變的搬移：改合約老師時的 `pinPastSessionsToFormerTeacher…`／`syncFutureScheduleTeachers…`／`alignMutableLearningRecordTeachers…`／`clearUntaughtPastFalseHistoryPins` 四個連動 helper 移到 `App\Services\Scheduling\ContractTeacherChangeCascade`（ADR-003／#966）
+
 ## 2026-10-05 — chore(arch): contract-schedule sync/remap/rebuild moved out of StudentClassController (slice 2/4)
 - 行為不變的搬移：`syncFutureScheduledSessionTimes`、`remapFutureScheduledSessionsToContract`、`maybeRebuildSessionsAfterUpdate`、月結補堂與週時段對帳移到 `ContractSessionSchedule`；同日配對 `planSameDayRemap`／`lockedClassSessionIds` 由 `ScheduleGuardService` 移入同一模組（課程編輯守門與實際同步共用同一份，ADR-003／#966）
 
