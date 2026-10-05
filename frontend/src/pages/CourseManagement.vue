@@ -1580,7 +1580,7 @@ import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import MonthlyCorrectionPreviewModal from '../components/course-management/MonthlyCorrectionPreviewModal.vue';
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
-import { monthlyPaymentLabel } from '../lib/monthlyPaymentDisplay.js';
+import { monthlyPaymentLabel } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import {
   buildBillingCorrectionBlockedState,
