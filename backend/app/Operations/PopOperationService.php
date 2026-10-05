@@ -126,7 +126,7 @@ final class PopOperationService
         $this->assertRequestIntegrity($request, $entry, $parameters, null, false);
         if ($this->isReviewedMonthly($entry)) {
             $this->assertMonthlyApprover($request, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
-        } elseif (!$this->isExactMuzhaSchedule($entry)
+        } elseif (!$this->isExactMuzhaSchedule($entry) && !$this->isExactUnpaidHiddenClosures($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
         }
@@ -609,6 +609,23 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($policy === 'founder-exact-unpaid-hidden-closures'
+            && ($entry['id'] ?? null) === 'unpaid-hidden-closures-20261005'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnpaidHiddenClosuresStrategy::class
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'exact_manifest_student_classes_closed_reason_only'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         throw new RuntimeException('POP approval policy is not supported by this execution slice; fail closed.');
     }
 
@@ -635,6 +652,14 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'muzha-fixed-schedule-20261001'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\MuzhaFixedScheduleStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-muzha-schedule';
+    }
+
+    /** Same single-super_admin Founder-exact shape as the Muzha case. */
+    private function isExactUnpaidHiddenClosures(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'unpaid-hidden-closures-20261005'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnpaidHiddenClosuresStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-unpaid-hidden-closures';
     }
 
     /** @return array<string,mixed> */
