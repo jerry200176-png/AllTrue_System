@@ -32,11 +32,12 @@ class SubstituteTwoChainsSameSlotParityTest extends TestCase
         [$aId, $bId, $aToken, $bToken, $sc, $session] = $this->seed2026Shape();
 
         // 1. class-sessions index read service
-        $rows = app(\App\Services\ClassSessionIndexReadService::class)
-            ->buildQuery(Request::create('/api/v1/class-sessions', 'GET', [
+        $svc = app(\App\Services\ClassSessionIndexReadService::class);
+        $rows = $svc->buildQuery(Request::create('/api/v1/class-sessions', 'GET', [
                 'start' => self::DATE, 'end' => self::DATE,
             ]))->get();
         $row = $rows->firstWhere('id', $session->id);
+        $row = $row ? $svc->transformRow($row) : null;
         $this->assertNotNull($row, 'index buildQuery should return the session');
         $this->assertSame($bId, (int) $row->teacher_id, 'index teacher_id');
         $this->assertSame($bId, (int) $row->substitute_teacher_id, 'index substitute_teacher_id');
