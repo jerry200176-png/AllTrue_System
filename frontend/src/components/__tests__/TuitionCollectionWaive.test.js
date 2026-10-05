@@ -14,7 +14,7 @@ describe('tuition 確認不收 (waive) action', () => {
   });
 
   it('requires a reason and posts it to the waive endpoint, then refreshes', () => {
-    expect(source).toContain(':disabled="waiveReason.trim().length < 2 || waiveLoading"');
+    expect(source).toContain(':disabled="waiveReason.trim().length < 2 || waiveLoading || waivableAmount === null"');
     expect(source).toContain('/api/v1/accounting/courses/${waiveTarget.value.id}/waive');
     expect(source).toContain('JSON.stringify({ reason, expected_amount: waivableAmount.value })');
     expect(source).toContain('waivable_amount');
