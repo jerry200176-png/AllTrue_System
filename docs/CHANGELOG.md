@@ -1,3 +1,6 @@
+## 2026-10-05 — chore(arch): contract-schedule sync/remap/rebuild moved out of StudentClassController (slice 2/4)
+- 行為不變的搬移：`syncFutureScheduledSessionTimes`、`remapFutureScheduledSessionsToContract`、`maybeRebuildSessionsAfterUpdate`、月結補堂與週時段對帳移到 `ContractSessionSchedule`；同日配對 `planSameDayRemap`／`lockedClassSessionIds` 由 `ScheduleGuardService` 移入同一模組（課程編輯守門與實際同步共用同一份，ADR-003／#966）
+
 ## 2026-10-05 — chore(arch): contract-schedule builders and extend/cancel-excess moved out of StudentClassController (slice 1/4)
 - 行為不變的搬移：生效日期計算、`buildSessionsFromWeeklySchedule`／`buildSessionsForCount`、`extendSessionsIfNeeded`、`cancelExcessScheduledSessions*` 移到 `App\Services\Scheduling\ContractSessionSchedule`；EnrollmentService、CoursePackageController、ClassSessionController、ClassSessionIndexProjectionService、SyncPackageSessionCounts、StudentClassesImport 改直接呼叫該模組（ADR-003／#966）
 
