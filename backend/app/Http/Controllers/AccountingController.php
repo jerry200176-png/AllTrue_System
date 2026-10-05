@@ -232,7 +232,7 @@ class AccountingController extends Controller
             // A line on another course's open invoice cannot be voided from here without touching that invoice.
             $sharedInvoice = DB::table('InvoiceItem')->join('Invoice', 'Invoice.id', '=', 'InvoiceItem.InvoiceID')
                 ->where('InvoiceItem.StudentClassID', $id)->where('Invoice.StudentClassID', '!=', $id)
-                ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhereNotIn('Invoice.Status', ['void', 'paid']))->exists();
+                ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))->exists();
             if ($sharedInvoice) {
                 return response()->json(['message' => '此合約在合併帳單中，請先到帳務處理該帳單'], 422);
             }

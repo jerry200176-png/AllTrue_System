@@ -133,6 +133,11 @@ class AccountingWaiveCourseTest extends TestCase
         $this->postJson("/api/v1/accounting/courses/{$b->ID}/waive", ['reason' => '不收了', 'expected_amount' => 2000], ['Authorization' => "Bearer {$token}"])
             ->assertStatus(422)->assertJsonPath('message', '此合約在合併帳單中，請先到帳務處理該帳單');
         $this->assertSame('settled_pending', $b->fresh()->closed_reason);
+
+        // A paid shared invoice still references the course: also a conflict.
+        DB::table('Invoice')->where('id', $invoiceId)->update(['Status' => 'paid', 'PaidAmount' => 3000]);
+        $this->postJson("/api/v1/accounting/courses/{$b->ID}/waive", ['reason' => '不收了', 'expected_amount' => 2000], ['Authorization' => "Bearer {$token}"])
+            ->assertStatus(422);
     }
 
     private function createToken(array $campusIds, string $type = 'D'): string

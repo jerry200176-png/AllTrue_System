@@ -192,6 +192,12 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($invoice, $data) {
+            // Same order as 確認不收 (courses, then invoice) so the two cannot deadlock.
+            $courseIds = DB::table('InvoiceItem')->where('InvoiceID', $invoice->getKey())->pluck('StudentClassID')
+                ->push($invoice->getAttribute('StudentClassID'))->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+            if ($courseIds !== []) {
+                StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+            }
             // 先鎖帳單再判斷，避免與確認不收（void）競爭。
             $fresh = Invoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
             if (!$fresh || (string) $fresh->getAttribute('Status') === 'void') {
