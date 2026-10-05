@@ -22,6 +22,7 @@ on:
           - monthly_slip_student
           - unpaid_months_muzha
           - unpaid_hidden_candidates
+          - f7_prod_discrepancy
           - swipe_line_path
           - class_sessions_explain_319
           - substitute_calendar_xinzhuang
@@ -101,7 +102,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
@@ -708,6 +709,73 @@ jobs:
             $out['count'] = count($rows);
             $out['outstanding_total'] = array_sum(array_column($rows, 'outstanding'));
             $out['stale_paid_flag_count'] = count(array_filter($rows, fn ($r) => $r['paid_flag'] === 1));
+          }} elseif ($case === 'f7_prod_discrepancy') {{
+            // Read-only F7 S0 prod-snapshot discrepancy report (packet section 7): run the S1 resolver
+            // (BillingPayableResolver::courseStatusesByStudentClassIds) next to the legacy signals over every contract
+            // that is active or ended in 2026, and aggregate. Aggregate counts, amounts and example IDs only; no names.
+            $resolver = app(\App\Services\BillingPayableResolver::class);
+            // One consistent read view (InnoDB REPEATABLE READ) for the whole scan; nothing is written.
+            \Illuminate\Support\Facades\DB::beginTransaction();
+            $ids = $db::table('StudentClass')->where(fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop')->orWhereNull('EndDate')->orWhereDate('EndDate', '>=', '2026-01-01'))
+              ->orderBy('ID')->pluck('ID')->map(fn ($id) => (int)$id)->all();
+            $buckets = []; $hidden = []; $flagOnlyPaid = 0; $total = 0; $divergent = [];
+            foreach (array_chunk($ids, 400) as $chunk) {{
+              $models = \App\Models\StudentClass::query()->whereIn('ID', $chunk)->get();
+              $statuses = $resolver->courseStatusesByStudentClassIds($chunk, $models);
+              foreach ($models as $c) {{
+                $cid = (int)$c->getAttribute('ID'); $r = $statuses[$cid] ?? null; $total++;
+                $status = (string)($r['status'] ?? 'missing'); $out_amt = (int)($r['outstanding'] ?? 0);
+                $legacyPaid = $c->isEffectivelyPaid();
+                // Second legacy surface: stored Invoice.PaidAmount (B2/B3/B4/B7/B18 read it instead of Payment rows).
+                $storedPaid = (int)$db::table('Invoice')->where('StudentClassID', $cid)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->sum('PaidAmount');
+                $storedTotal = (int)$db::table('Invoice')->where('StudentClassID', $cid)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->sum('TotalAmount');
+                // Legacy surfaces (AlertController / student-classes summary) compare stored PaidAmount with the course charge.
+                $charge = max((int)$c->getAttribute('Charge'), $storedTotal);
+                $storedState = $storedTotal === 0 ? 'no_invoice' : ($storedPaid >= $charge ? 'stored_paid' : ($storedPaid > 0 ? 'stored_partial' : 'stored_unpaid'));
+                $hasPaidInvoice = $db::table('Invoice')->where('StudentClassID', $cid)->where('Status', 'paid')->exists();
+                $stop = (int)$c->getAttribute('Stop') === 1;
+                $reason = (string)($c->getAttribute('closed_reason') ?? '');
+                $reasonClass = $reason === '' ? 'none' : (in_array($reason, ['settled', 'completed', 'settled_pending', 'contract_amended', 'waived', 'usage_settled', 'converted_trial'], true) ? $reason : 'other');
+                $key = implode('|', [$status, $legacyPaid ? 'legacy_paid' : 'legacy_unpaid', $storedState, $stop ? 'stopped' : 'active', $reasonClass, (string)($r['source'] ?? '-')]);
+                $b = $buckets[$key] ?? ['status' => $status, 'legacy' => $legacyPaid ? 'paid' : 'unpaid', 'state' => $stop ? 'stopped' : 'active',
+                  'stored' => $storedState, 'closed_reason' => $reasonClass, 'source' => (string)($r['source'] ?? '-'), 'count' => 0, 'outstanding' => 0, 'examples' => []];
+                $b['count']++; $b['outstanding'] += $out_amt;
+                if (count($b['examples']) < 5) $b['examples'][] = $cid;
+                $buckets[$key] = $b;
+                // Debt the accounting queue cannot see: resolver owes, contract stopped, reason outside the queue.
+                // Same inclusion as AccountingController::settledCourses: Paid=1 or a paid invoice lists it anyway.
+                if (in_array($status, ['unpaid', 'partial', 'unbilled'], true) && $out_amt > 0 && $stop && !$legacyPaid && !$hasPaidInvoice
+                  && !in_array($reasonClass, ['settled_pending', 'contract_amended', 'waived'], true)) {{
+                  $hidden[] = ['id' => $cid, 'campus_id' => (int)$db::table('Student')->where('id', $c->getAttribute('StudentID'))->value('CampusID'),
+                    'status' => $status, 'outstanding' => $out_amt, 'closed_reason' => $reasonClass];
+                }}
+                if ($legacyPaid && in_array($status, ['unpaid', 'partial'], true)) $flagOnlyPaid++;
+                // Every course whose legacy answer differs from the resolver (S0 asks for the full list, not samples).
+                // Exact-status comparison: map each legacy surface onto the resolver vocabulary.
+                $legacyStatus = $legacyPaid ? 'paid' : 'unpaid';
+                $storedStatus = ['stored_paid' => 'paid', 'stored_partial' => 'partial', 'stored_unpaid' => 'unpaid'][$storedState] ?? null;
+                $norm = fn ($s) => $s === 'free' ? 'paid' : ($s === 'unbilled' ? 'unpaid' : $s);
+                if ($norm($status) !== $legacyStatus || ($storedStatus !== null && $norm($status) !== $storedStatus) || $status === 'review_required') {{
+                  $divergent[] = ['id' => $cid, 'status' => $status, 'legacy' => $legacyPaid ? 'paid' : 'unpaid', 'stored' => $storedState, 'outstanding' => $out_amt];
+                }}
+              }}
+            }}
+            uasort($buckets, fn ($a, $b) => $b['count'] <=> $a['count']);
+            $out['courses_scanned'] = $total;
+            $out['buckets'] = array_values($buckets);
+            $out['hidden_debt_count'] = count($hidden);
+            $out['hidden_debt_outstanding'] = array_sum(array_column($hidden, 'outstanding'));
+            $out['hidden_debt'] = array_slice($hidden, 0, 200);
+            \Illuminate\Support\Facades\DB::rollBack();
+            $out['legacy_paid_but_resolver_owes'] = $flagOnlyPaid;
+            $out['divergent_count'] = count($divergent);
+            $out['divergent'] = $divergent;
+            // This report gates F7 S3: an empty or incomplete resolution must not look like a clean result.
+            $missing = array_sum(array_map(fn ($b) => $b['status'] === 'missing' ? $b['count'] : 0, $buckets));
+            if ($total === 0 || $missing > 0) {{
+              $out['ok'] = false;
+              $out['error'] = "f7 snapshot incomplete: scanned=" . $total . " missing=" . $missing;
+            }}
           }} elseif ($case === 'contract_yang_binghe') {{
             $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
@@ -1303,18 +1371,23 @@ jobs:
           echo json_encode($out, JSON_UNESCAPED_UNICODE), PHP_EOL;
           ?>''')
           PY
-          B64=$(base64 -w0 /tmp/production_case_probe.php)
+          # The generated probe outgrew ARG_MAX when passed as a base64 argument. Ship it inside the remote script on
+          # stdin instead: one connection, cleanup trap set before the file is written.
+          [[ "$CASE_KEY" =~ ^[a-z0-9_]{1,64}$ ]] || { echo '::error::invalid case key'; exit 1; }
+          remote_script="$RUNNER_TEMP/production-case-remote.sh"
+          {
+            echo 'set -euo pipefail'
+            echo 'umask 077'
+            echo "probe_file=/tmp/production_case_probe_${CASE_KEY}.php"
+            echo 'trap '"'"'shred -u "$probe_file" 2>/dev/null || true'"'"' EXIT'
+            echo 'base64 -d > "$probe_file" <<'"'"'PROBE_B64'"'"''
+            base64 -w76 /tmp/production_case_probe.php
+            echo 'PROBE_B64'
+            echo 'cd /home/admin/backend'
+            echo 'php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
+          } > "$remote_script"
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
-            "B64='$B64' CASE_KEY='$CASE_KEY' bash -s" <<'REMOTE' | tee out/production-case.log
-          set -euo pipefail
-          cd /home/admin/backend
-          probe_file="/tmp/production_case_probe_${CASE_KEY}.php"
-          export PROBE_FILE="$probe_file"
-          php -r 'file_put_contents(getenv("PROBE_FILE"), base64_decode(getenv("B64")));'
-          php artisan tinker --execute="require '${probe_file}';"
-          rm -f "${probe_file}"
-          REMOTE
+            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' < "$remote_script" | tee out/production-case.log
           fi
           python3 - <<'PY'
           import json

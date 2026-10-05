@@ -15,7 +15,9 @@ export async function closeCourseNoRenew({
   if (!courseId) { alertImpl('課程資料缺少識別碼，請重新整理後再試'); return; }
   const subject = getSubjectLabel(course?.subject);
   const remaining = Math.max(0, Number(getRemainingSessions(course) ?? 0));
-  const paymentWarning = isCourseSettled(course)
+  const settled = isCourseSettled(course);
+  if (settled === null) { alertImpl('繳費狀態載入中，請重新整理後再結案'); return; }
+  const paymentWarning = settled
     ? ''
     : '\n\n目前尚未完成繳費；結案後會標記「待對帳」，不會視為已繳費。';
   const balanceWarning = remaining > 0

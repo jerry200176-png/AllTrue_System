@@ -83,7 +83,7 @@ export function paymentSlipView(raw) {
   }
   const modeLabel = raw.schedule_mode === 'date' ? '月結制' : '堂數制';
   const hasCanonicalPayable = raw.payable_status === 'invoiced' && raw.payable_amount != null;
-  const displayedAmount = hasCanonicalPayable ? raw.payable_amount : (raw.estimated_amount ?? raw.charge ?? 0);
+  const displayedAmount = hasCanonicalPayable ? raw.payable_amount : (raw.estimated_amount ?? 0);
   const items = [{
     description: `${raw.subject}（${modeLabel}${hasCanonicalPayable ? '' : '・估算'}）`,
     period: raw.schedule_mode === 'date' && raw.period_sessions != null
