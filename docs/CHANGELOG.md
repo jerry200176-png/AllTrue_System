@@ -1,3 +1,7 @@
+## 2026-10-05 — chore(billing): contract money state moved into one module (F4/F7, no behavior change)
+
+- 新增 `App\Services\Billing\ContractMoneyState`：繳費狀態分類（alerts 7 階、課程列表、家長卡片／帳單紀錄）、「有效付款」查詢、`lastPaidAt`／`invoiceAggregate` 批次查詢、確認不收（waived）controller 端檢查與訊息集中；`AlertController` 靜態 helper 移除、呼叫端改用新模組。各拷貝既有不一致之處原樣保留（見 `ContractMoneyStateTest` divergence 案例），輸出不變。
+
 ## 2026-10-05 — feat(accounting): director can waive (確認不收) a closed unpaid contract with an audited reason
 <!-- release-notes: staff_update=staff-2026-10-05-waive-unpaid-contract -->
 - 新增 `POST /api/v1/accounting/courses/{id}/waive`（主任／同分校）：僅 Stop=1 且 `settled_pending`／未繳 `contract_amended` 且仍有欠款可用，需 2–200 字原因。同一交易內設 `closed_reason='waived'`、未結帳單 Status 改 `void`（Paid／Charge／收款不動），並寫 `security_audit_events`（`accounting.course_waived`，含欠款金額、原因雜湊）與 `settlement_snapshot`（原因、前後狀態）。套裝課程拒絕、waived 為終態（不可恢復）、void 帳單不可登記收款。套裝課程拒絕、waived 為終態（不可暫停／恢復）、void 帳單不可登記收款。waived 合約離開待對帳／學收提醒佇列，於已結清清單與課程管理顯示「歷史 · 確認不收」，不計入已收
