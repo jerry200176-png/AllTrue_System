@@ -13,6 +13,10 @@
 <!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
 - 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
 
+## 2026-10-06 — fix(schedule): TD-076 sweep so no reader treats a `superseded` schedules row as live, leave or scheduled
+<!-- release-notes: silent_ship=silent-2026-10-06-td076-superseded-sweep -->
+- 課程管理「排課日期」（`sessionDates`）原把任何非 `scheduled` 的 schedules 列當成請假而移除該日；補課時長判斷與非標準時長盤點原把 `superseded` 補課列當成補課；主任儀表板備援讀取原只排除 cancelled／leave。現在三處與前端判斷都先略過 `superseded` 列（既有狀態行為不變），並以測試證明；目前沒有任何寫入端產生 `superseded`，畫面與行為不變。
+
 ## 2026-10-06 — chore(schedule): TD-076 Track B PR-B2 history pins and learning-record teacher fix through the occurrence writer
 <!-- release-notes: silent_ship=silent-2026-10-06-td076-pr-b2-pins-lr -->
 - `schedule-occurrence-v2` 對該分校開啟時：改合約老師前，已上過的過去堂次先依證據（代課列 > 學習紀錄 > 手動簽到 > 刷卡簽到）經單一寫入端釘住原老師並寫 `pin` 日誌，證據互相矛盾者不釘；學習紀錄改老師（不連動合約）時同步更正該堂排程老師，連動合約時先走同一條釘住路徑。旗標預設關閉，關閉時行為與資料不變。
