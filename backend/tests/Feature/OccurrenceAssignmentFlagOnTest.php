@@ -313,7 +313,6 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
                 'phone' => '09' . random_int(10000000, 99999999), 'MustChangePassword' => false,
             ]);
             UserCampus::create(['CampusID' => 1, 'UserID' => $u->id, 'Admin' => $admin, 'Approved' => 1]);
-
             return $u;
         };
         $dir = $mk('dirb1', 'A', 1);
@@ -321,7 +320,6 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $this->bId = (int) $mk('teacherb', 'T', 0)->id;
         $this->token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $dir->id, 'token' => $this->token, 'expires_at' => now()->addDay()]);
-
         $stu = Student::create([
             'name' => 'B1 student', 'CampusID' => 1, 'ClassID' => 1,
             'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
