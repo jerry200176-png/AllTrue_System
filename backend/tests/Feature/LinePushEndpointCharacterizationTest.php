@@ -273,6 +273,20 @@ class LinePushEndpointCharacterizationTest extends TestCase
         $this->assertSame(['LinePush.php'], $hits);
     }
 
+    public function test_parent_bindings_are_verified_and_same_campus_only(): void
+    {
+        $a = $this->campus();
+        $b = $this->campus();
+        $s = $this->student($a->id);
+        $this->bind($s->id, $a->id, 'Uok');
+        $this->bind($s->id, $b->id, 'Uother-campus');
+        StudentLineBinding::create(['student_id' => $s->id, 'line_user_id' => 'Uunverified', 'campus_id' => $a->id, 'bound_at' => now()]);
+
+        $ids = app(\App\Services\Line\ParentLinePush::class)->bindings($s->id, $a->id)->pluck('line_user_id')->all();
+
+        $this->assertSame(['Uok'], $ids);
+    }
+
     private function assertAuditEvent(string $type, string $outcome, string $status): void
     {
         $row = DB::table('security_audit_events')->where('event_type', 'notification.delivery')->first();
