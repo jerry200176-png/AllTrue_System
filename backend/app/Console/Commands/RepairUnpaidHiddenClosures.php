@@ -199,9 +199,10 @@ class RepairUnpaidHiddenClosures extends Command
             return self::FAILURE;
         }
         $rows = collect($corr->snapshot_before['rows'] ?? []);
-        // Only rows still exactly as this repair left them (unpaid, settled_pending); a director may have moved on.
+        // Only rows still exactly as this repair left them (settled_pending); a confirmed payment or a waiver
+        // moves closed_reason on, so those are skipped. The Paid flag is not trusted (it can be stale).
         $restorable = fn () => DB::table('StudentClass')->whereIn('ID', $rows->pluck('id')->all() ?: [0])
-            ->where('closed_reason', 'settled_pending')->where(fn ($q) => $q->where('Paid', 0)->orWhereNull('Paid'));
+            ->where('closed_reason', 'settled_pending');
         $still = $restorable()->pluck('ID')->map(fn ($id) => (int) $id)->all();
         $this->line(($execute ? '=== EXECUTE ROLLBACK ===' : '=== DRY RUN ROLLBACK ===') . ' restore=' . count($still) . ' skip=' . ($rows->count() - count($still)));
         if (!$execute) {
