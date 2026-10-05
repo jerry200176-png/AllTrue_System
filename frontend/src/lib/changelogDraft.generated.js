@@ -28,6 +28,7 @@ export const changelogDraftNotes = [
         "items": [
           "monthly closes stay in accounting queue",
           "slips always list lesson dates",
+          "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
           "monthly slips list upcoming lessons; MonthlySplit keeps requested endpoints"
         ]
       }
@@ -38,6 +39,7 @@ export const changelogDraftNotes = [
       "slip redesign with logo",
       "monthly closes stay in accounting queue",
       "slips always list lesson dates",
+      "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
       "monthly slips list upcoming lessons; MonthlySplit keeps requested endpoints"
     ]
   },
