@@ -1371,17 +1371,20 @@ jobs:
           echo json_encode($out, JSON_UNESCAPED_UNICODE), PHP_EOL;
           ?>''')
           PY
-          B64=$(base64 -w0 /tmp/production_case_probe.php)
+          # The generated probe outgrew ARG_MAX when passed as a base64 argument; stream it over stdin instead.
+          # CASE_KEY was allowlisted by the generator above (unsupported case => exit) before reaching the remote shell.
+          [[ "$CASE_KEY" =~ ^[a-z0-9_]{1,64}$ ]] || { echo '::error::invalid case key'; exit 1; }
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
-            "B64='$B64' CASE_KEY='$CASE_KEY' bash -s" <<'REMOTE' | tee out/production-case.log
+            "umask 077; cat > /tmp/production_case_probe_${CASE_KEY}.php" < /tmp/production_case_probe.php
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
+            "CASE_KEY='$CASE_KEY' bash -s" <<'REMOTE' | tee out/production-case.log
           set -euo pipefail
           cd /home/admin/backend
           probe_file="/tmp/production_case_probe_${CASE_KEY}.php"
-          export PROBE_FILE="$probe_file"
-          php -r 'file_put_contents(getenv("PROBE_FILE"), base64_decode(getenv("B64")));'
+          trap 'shred -u "$probe_file" 2>/dev/null || true' EXIT
           php artisan tinker --execute="require '${probe_file}';"
-          rm -f "${probe_file}"
           REMOTE
           fi
           python3 - <<'PY'
