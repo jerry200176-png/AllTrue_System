@@ -268,6 +268,7 @@ Any reader-side tie-break (newest id, or prefer non-contract) gets one of them w
 a. **History pins (#207).** An attended occurrence with no schedules row has no live row to UPDATE.
    - Before a contract-teacher change, upsert the stable occurrence row with the teacher who taught. Otherwise the resolver falls back to the new `StudentClass.TeacherID` and rewrites past attendance and payroll.
    - Keep `ContractTeacherChangePreservesHistoryTest` green.
+   - **Already-changed contracts:** Phase 3 backfill only reads existing schedules rows, so it cannot create a missing pin. Before cutover on a campus, inventory attended/taught `ClassSession`s with no schedules row whose taught teacher (`StudentSingIn` / `LearningRecord` evidence) differs from the current `StudentClass.TeacherID`. Repair them by creating stable rows from that evidence (Repair Manifest, dry-run first). Add a regression for a contract that was changed before the new writer shipped.
 
 b. **Teacher history.** Add `from_teacher_id` / `to_teacher_id` to `schedule_change_log`, so an UPDATE never loses who was replaced or restored. Substitute and payroll history must stay auditable.
 
@@ -289,11 +290,13 @@ e. **Migrate every substitute reader.** These still treat `original_schedule_id 
 
    Re-run the Appendix A/B inventory (`rg original_schedule_id`) and list each reader in the cutover PR.
 
-f. **Acceptance metric.** Use zero duplicate live rows per occurrence identity (the monitor's `conflict_slots`, or a direct duplicate-identity count). `calendar_risk_slots` is only a symptom and can read 0 after a later contract change while readers still disagree.
+f. **Acceptance metric.** The gate is a **campus-scoped duplicate count over the frozen identity columns** (`student_course_id`, `original_schedule_date`, `original_start_time`) across **every live status** (scheduled, leave, …). It must be 0. That needs a new read-only monitor.
+
+   `substitute_slot_conflicts` is diagnostic only and is not the gate. It groups by the current slot, counts only `scheduled` rows, and needs different teachers, so it misses same-teacher, moved-slot and `leave` duplicates. Its `calendar_risk_slots` is a symptom metric too.
 
 **Gate:** items 1–4 and a–f need the same Founder GO as Phase 4/5. The pilot campus is 新莊 (CampusID 11). Until then the R44 frontend guard (#3539) keeps the calendar equal to 課程查找, and the monitor case `substitute_slot_conflicts` is the regression signal.
 
-**Acceptance:** monitor `conflict_slots` = 0 (no duplicate live rows) on the pilot campus for one week after cutover. A parity test passes: calendar, course management, attendance and payroll all name the same teacher, both for the 41612 shape and for the contract-change shape.
+**Acceptance:** the identity duplicate count (item f) = 0 on the pilot campus for one week after cutover. A parity test passes: calendar, course management, attendance and payroll all name the same teacher, both for the 41612 shape and for the contract-change shape.
 
 ---
 
