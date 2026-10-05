@@ -54,7 +54,8 @@ class StudentClassController extends Controller
         private ScheduleGuardService $scheduleGuardService,
         private ClassSessionContractReflowService $contractSessionReflowService,
         private InvoiceAmountReconciliationService $invoiceAmounts,
-        private BillingModeConversionArchiveService $billingModeConversionArchive
+        private BillingModeConversionArchiveService $billingModeConversionArchive,
+        private ContractSessionSchedule $contractSchedule
     )
     {
     }
@@ -1993,7 +1994,7 @@ class StudentClassController extends Controller
                 if ($sessionCountChanged) {
                     $this->cancelExcessScheduledSessions((int) $studentClass->ID, $newCount);
                     if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY) {
-                        $this->extendSessionsIfNeeded($studentClass, $newCount);
+                        $this->contractSchedule->extendSessionsIfNeeded($studentClass, $newCount);
                     }
                 }
             }
@@ -6319,7 +6320,7 @@ class StudentClassController extends Controller
             $this->syncFutureScheduledSessionTimes($newId, $newSlots, $duration, $previousSlots);
         }
         $new->refresh();
-        $this->extendSessionsIfNeeded($new, $remaining);
+        $this->contractSchedule->extendSessionsIfNeeded($new, $remaining);
         $this->cancelExcessScheduledSessions($newId, $remaining);
         if ($newTeacher !== $oldTeacher) {
             $this->syncFutureScheduleTeachersAfterContractTeacherChange($newId, $oldTeacher, $newTeacher);
@@ -7780,225 +7781,6 @@ class StudentClassController extends Controller
         ];
 
         return hash_hmac('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), (string) config('app.key'));
-    }
-
-    /**
-     * 對齊堂數制契約序列：優先補中間缺口，再取消多出的尾端 scheduled 堂次。
-     *
-     * NOTE: public for cross-controller invocation (see cancelExcessScheduledSessions).
-     * Must never delete/rebuild locked history; only create missing contract rows
-     * and cancel unlocked scheduled rows outside the first N contract slots.
-     */
-    /**
-     * @param  \Illuminate\Support\Collection<int, ClassSession>|null  $preloadedExistingSessions  When the
-     *         caller already batch-fetched this class's existing ClassSession rows (e.g. TD-018-style
-     *         batch preload across many classes in one query), pass them here to skip the per-class
-     *         query. Pass null (default) to have this method query them itself, as before.
-     */
-    public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount, ?\Illuminate\Support\Collection $preloadedExistingSessions = null): void
-    {
-        if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
-            return;
-        }
-        $classId = (int) $studentClass->ID;
-        $nonQuotaStatuses = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
-
-        // 計算現有「實際堂次數」：排除 cancelled 與 leave/excused（請假不佔用購買額度）
-        // 與 cancelExcessScheduledSessions 的計算口徑保持一致
-        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
-        if (empty($slots)) {
-            return;
-        }
-
-        $globalDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
-        $startFrom = ContractSessionSchedule::normalizeDateString($studentClass->StartDate ?? null)
-            ?: Carbon::today()->toDateString();
-        $expectedSessions = ContractSessionSchedule::buildSessionsForCount($classId, $startFrom, $newCount, $slots, $globalDur);
-        if (empty($expectedSessions)) {
-            return;
-        }
-
-        $expectedKeys = [];
-        foreach ($expectedSessions as $session) {
-            $date = ContractSessionSchedule::normalizeDateString($session['SessionDate'] ?? null);
-            $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
-            if ($date && $start !== '') {
-                $expectedKeys[$date . '|' . $start] = true;
-            }
-        }
-
-        $existingSessions = $preloadedExistingSessions ?? ClassSession::where('StudentClassID', $classId)
-            ->orderBy('SessionDate')
-            ->orderBy('StartTime')
-            ->orderBy('id')
-            ->get();
-        $existingQuotaKeys = [];
-        $occupiedKeys = [];
-        $currentCount = 0;
-        $hasScheduledOutsideContract = false;
-        $hasLockedQuotaSession = false;
-        $hasLockedQuotaOutsideContract = false;
-        foreach ($existingSessions as $session) {
-            $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
-            $start = substr((string) ($session->StartTime ?? ''), 0, 5);
-            if (!$date || $start === '') {
-                continue;
-            }
-            $key = $date . '|' . $start;
-            $status = strtolower((string) ($session->Status ?? ''));
-            // Cancelled sessions must still occupy the calendar key; otherwise we
-            // treat the slot as empty and refill from the contract sequence —
-            // recreating the same date/time (classic "取消了又補回" on count-mode courses).
-            $occupiedKeys[$key] = true;
-            if (!in_array($status, $nonQuotaStatuses, true)) {
-                $existingQuotaKeys[$key] = true;
-                $currentCount++;
-                if ($status !== 'scheduled') {
-                    $hasLockedQuotaSession = true;
-                }
-            }
-            if ($status === 'scheduled'
-                && !isset($expectedKeys[$key])
-                && empty($session->IsContractException)
-            ) {
-                $hasScheduledOutsideContract = true;
-            } elseif (!in_array($status, $nonQuotaStatuses, true)
-                && !isset($expectedKeys[$key])
-            ) {
-                $hasLockedQuotaOutsideContract = true;
-            }
-        }
-
-        if ($currentCount >= $newCount && ($hasLockedQuotaSession || $hasLockedQuotaOutsideContract)) {
-            SessionDeductionService::syncCounters($studentClass);
-            return;
-        }
-
-        if ($currentCount >= $newCount && !$hasScheduledOutsideContract) {
-            SessionDeductionService::syncCounters($studentClass);
-            return;
-        }
-
-        $newSessions = [];
-        $quotaShortfall = max(0, $newCount - $currentCount);
-        foreach ($expectedSessions as $session) {
-            $date = ContractSessionSchedule::normalizeDateString($session['SessionDate'] ?? null);
-            $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
-            if (!$date || $start === '') {
-                continue;
-            }
-            $key = $date . '|' . $start;
-            if (isset($existingQuotaKeys[$key]) || isset($occupiedKeys[$key])) {
-                continue;
-            }
-            $newSessions[] = $session;
-            if ($quotaShortfall > 0 && count($newSessions) >= $quotaShortfall) {
-                break;
-            }
-        }
-
-        if ($currentCount < $newCount && empty($newSessions)) {
-            // No contract gap was found; append after the last row as the legacy extension path.
-            // The first item in buildSessionsForCount is intentionally allowed to be the
-            // supplied start date (that is required for a course's首堂日).  That behaviour
-            // is unsafe here: appendFrom is normally the day after an existing session,
-            // so a Saturday course could otherwise materialize a Sunday/Monday tail.
-            $lastSession = ClassSession::where('StudentClassID', $classId)
-                ->orderByDesc('SessionDate')
-                ->orderByDesc('StartTime')
-                ->first();
-            $appendFromDate = $lastSession
-                ? Carbon::parse($lastSession->SessionDate)->addDay()->startOfDay()
-                : Carbon::parse($startFrom)->startOfDay();
-            $validWeekdays = array_map(
-                fn (array $slot): int => ContractSessionSchedule::isoWeekday((int) $slot['weekday']),
-                $slots
-            );
-            $appendGuard = 0;
-            while (!in_array((int) $appendFromDate->dayOfWeekIso, $validWeekdays, true)
-                && $appendGuard++ < 14
-            ) {
-                $appendFromDate->addDay();
-            }
-            if ($appendGuard >= 14) {
-                return;
-            }
-            $newSessions = ContractSessionSchedule::buildSessionsForCount(
-                $classId,
-                $appendFromDate->toDateString(),
-                $newCount - $currentCount,
-                $slots,
-                $globalDur
-            );
-        }
-
-        $now = Carbon::now();
-        $teacherId = (int) ($studentClass->TeacherID ?? 0);
-        $subjectName = DB::table('Subject')->where('id', $studentClass->SubjectID)->value('Subject_Name')
-            ?? DB::table('BaseData')->where('Name', '課程')->where('id', $studentClass->SubjectID)->value('Val')
-            ?? '評量';
-
-        foreach ($newSessions as $session) {
-            $sessionDate = $session['SessionDate'] ?? null;
-            $endTime = $session['EndTime'] ?? '18:00:00';
-            if (!$sessionDate) {
-                continue;
-            }
-            $isEnded = ContractSessionSchedule::sessionEndedByEndTime($sessionDate, $endTime, $now);
-            $session['Status'] = $isEnded ? 'completed' : 'scheduled';
-            if ($isEnded && empty($session['Note'])) {
-                $session['Note'] = '系統補建堂次（增加購買堂數）';
-            }
-
-            $classSession = app(ClassSessionMaterializationService::class)->upsertSlot($session)['session'];
-
-            if ($isEnded) {
-                LearningRecord::create([
-                    'StudentClassID' => $classId,
-                    'ClassSessionID' => (int) $classSession->id,
-                    'TeacherID' => $teacherId,
-                    'Content' => '',
-                    'Subject' => $subjectName,
-                    'SessionDate' => $classSession->SessionDate,
-                    'StartTime' => $classSession->StartTime,
-                    'EndTime' => $classSession->EndTime,
-                    'Status' => 'pending',
-                ]);
-            }
-        }
-
-        $activeCount = ClassSession::where('StudentClassID', $classId)
-            ->whereNotIn('Status', $nonQuotaStatuses)
-            ->count();
-        if ($activeCount > $newCount) {
-            $excess = $activeCount - $newCount;
-            $extraScheduled = ClassSession::where('StudentClassID', $classId)
-                ->where('Status', 'scheduled')
-                ->orderBy('SessionDate')
-                ->orderBy('StartTime')
-                ->orderBy('id')
-                ->get()
-                ->filter(function ($session) use ($expectedKeys) {
-                    if (!empty($session->IsContractException)) {
-                        return false;
-                    }
-                    $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
-                    $start = substr((string) ($session->StartTime ?? ''), 0, 5);
-                    return $date && $start !== '' && !isset($expectedKeys[$date . '|' . $start]);
-                })
-                ->values();
-
-            foreach ($extraScheduled as $session) {
-                if ($excess <= 0) {
-                    break;
-                }
-                $session->Status = 'cancelled';
-                $session->save();
-                $excess--;
-            }
-        }
-
-        SessionDeductionService::syncCounters($studentClass);
     }
 
     /**

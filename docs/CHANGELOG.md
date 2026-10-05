@@ -1,3 +1,6 @@
+## 2026-10-05 — chore(arch): extendSessionsIfNeeded into ContractSessionSchedule (slice 4/10)
+- 行為不變的搬移（ADR-003／#966）：`extendSessionsIfNeeded` 移到 `ContractSessionSchedule`；ClassSessionController、CoursePackageController、SyncPackageSessionCounts 直接呼叫該模組
+
 ## 2026-10-05 — chore(arch): monthly effective dates and contract slot resolution into ContractSessionSchedule (slice 3/10)
 - 行為不變的搬移（ADR-003／#966）：月結有效日期、`resolveScheduleSlotsForRebuild` 與時段去重 helper 移到 `ContractSessionSchedule`；ClassSessionIndexProjectionService 不再引用 StudentClassController
 
