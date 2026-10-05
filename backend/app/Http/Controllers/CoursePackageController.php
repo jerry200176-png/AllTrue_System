@@ -359,7 +359,7 @@ class CoursePackageController extends Controller
 
             $createdMembers = [];
             $membersScheduled = [];
-            $scController = app()->make(\App\Http\Controllers\StudentClassController::class);
+            $scController = app(\App\Services\Scheduling\ContractSessionSchedule::class);
             $materializer = app(ClassSessionMaterializationService::class);
 
             foreach ($data['subjects'] as $subjectSpec) {
@@ -487,7 +487,7 @@ class CoursePackageController extends Controller
                 $firstSessionDate = null;
 
                 if ($isMonthly && $hasSchedule && $pkgEndDate) {
-                    $sessions = $scController->buildSessionsFromWeeklySchedule(
+                    $sessions = \App\Services\Scheduling\ContractSessionSchedule::buildSessionsFromWeeklySchedule(
                         (int) $sc->ID,
                         $startDate,
                         $pkgEndDate,
@@ -1224,7 +1224,6 @@ class CoursePackageController extends Controller
                     ]);
 
                 $members = StudentClass::where('PackageID', $pkg->id)->get();
-                $scController = app()->make(\App\Http\Controllers\StudentClassController::class);
 
                 foreach ($members as $member) {
                     if ((string) ($member->ScheduleMode ?? 'count') !== 'count') {
@@ -1250,8 +1249,8 @@ class CoursePackageController extends Controller
 
                     $beforeActive = $beforeAll->count();
 
-                    $scController->cancelExcessScheduledSessions((int) $member->ID, $newTotal);
-                    $scController->extendSessionsIfNeeded($member, $newTotal);
+                    app(\App\Services\Scheduling\ContractSessionSchedule::class)->cancelExcessScheduledSessions((int) $member->ID, $newTotal);
+                    app(\App\Services\Scheduling\ContractSessionSchedule::class)->extendSessionsIfNeeded($member, $newTotal);
 
                     $afterActive = ClassSession::where('StudentClassID', $member->ID)
                         ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
