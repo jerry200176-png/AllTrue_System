@@ -22,6 +22,7 @@ on:
           - monthly_slip_student
           - unpaid_months_muzha
           - unpaid_hidden_candidates
+          - unbilled_monthly_sessions
           - swipe_line_path
           - class_sessions_explain_319
           - substitute_calendar_xinzhuang
@@ -101,7 +102,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
@@ -694,6 +695,65 @@ jobs:
             $out['count'] = count($rows);
             $out['outstanding_total'] = array_sum(array_column($rows, 'outstanding'));
             $out['stale_paid_flag_count'] = count(array_filter($rows, fn ($r) => $r['paid_flag'] === 1));
+          }} elseif ($case === 'unbilled_monthly_sessions') {{
+            // Read-only, Founder question 2026-10-05: across all campuses, which monthly (date-mode) contracts have
+            // attended lessons that no non-void invoice covers? A lesson is covered when an invoice of the same contract
+            // has an item range containing its date, or (no item range) a billing_period equal to its month.
+            // Contracts with no invoice at all are reported separately (legacy flag-only billing). IDs/counts only.
+            $from = '2026-01-01'; $to = date('Y-m-d');
+            $courses = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+              ->where('sc.ScheduleMode', 'date')->where(fn ($q) => $q->whereNull('sc.PackageID')->orWhere('sc.PackageID', 0))
+              ->whereRaw("LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'")
+              ->get(['sc.ID', 'sc.StudentID', 'st.CampusID', 'sc.Paid', 'sc.Stop', 'sc.closed_reason', 'sc.StartDate', 'sc.EndDate'])->keyBy('ID');
+            $ids = $courses->keys()->map(fn ($id) => (int)$id)->all();
+            $sessions = $ids === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $ids)
+              ->whereBetween('SessionDate', [$from, $to])->whereRaw("LOWER(Status) IN ('attended', 'completed')")
+              ->get(['StudentClassID', 'SessionDate'])->groupBy('StudentClassID');
+            $invoices = $ids === [] ? collect() : $db::table('Invoice')->whereIn('StudentClassID', $ids)
+              ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->get(['id', 'StudentClassID', 'billing_period'])->groupBy('StudentClassID');
+            $invoiceIds = $invoices->flatten()->pluck('id')->all();
+            $items = $invoiceIds === [] ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)->get(['InvoiceID', 'PeriodStart', 'PeriodEnd'])->groupBy('InvoiceID');
+            $rows = []; $noInvoice = [];
+            foreach ($sessions as $cid => $list) {{
+              $c = $courses->get($cid);
+              $inv = $invoices->get($cid, collect());
+              if ($inv->isEmpty()) {{
+                $byMonth = $list->groupBy(fn ($s) => substr((string)$s->SessionDate, 0, 7))->map->count();
+                $noInvoice[] = ['course_id' => (int)$cid, 'student_id' => (int)$c->StudentID, 'campus_id' => (int)$c->CampusID,
+                  'paid_flag' => (int)$c->Paid, 'closed_reason' => $c->closed_reason, 'attended_by_month' => $byMonth->all()];
+                continue;
+              }}
+              $uncovered = [];
+              foreach ($list as $s) {{
+                $d = substr((string)$s->SessionDate, 0, 10); $m = substr($d, 0, 7); $covered = false;
+                foreach ($inv as $i) {{
+                  $its = $items->get($i->id, collect())->filter(fn ($it) => $it->PeriodStart || $it->PeriodEnd);
+                  if ($its->isNotEmpty()) {{
+                    foreach ($its as $it) {{
+                      if ((!$it->PeriodStart || substr((string)$it->PeriodStart, 0, 10) <= $d) && (!$it->PeriodEnd || substr((string)$it->PeriodEnd, 0, 10) >= $d)) {{ $covered = true; break 2; }}
+                    }}
+                  }} elseif ((string)$i->billing_period === $m) {{ $covered = true; break; }}
+                }}
+                if (!$covered) $uncovered[$m] = ($uncovered[$m] ?? 0) + 1;
+              }}
+              if ($uncovered !== []) {{
+                ksort($uncovered);
+                $rows[] = ['course_id' => (int)$cid, 'student_id' => (int)$c->StudentID, 'campus_id' => (int)$c->CampusID,
+                  'paid_flag' => (int)$c->Paid, 'stop' => (int)$c->Stop, 'closed_reason' => $c->closed_reason, 'uncovered_attended_by_month' => $uncovered];
+              }}
+            }}
+            $summary = [];
+            foreach ($rows as $r) {{ foreach ($r['uncovered_attended_by_month'] as $m => $n) {{
+              $k = $r['campus_id'] . '|' . $m; $summary[$k] = ['campus_id' => $r['campus_id'], 'month' => $m,
+                'lessons' => ($summary[$k]['lessons'] ?? 0) + $n, 'courses' => ($summary[$k]['courses'] ?? 0) + 1]; }} }}
+            ksort($summary);
+            $out['window'] = [$from, $to];
+            $out['courses_with_unbilled_lessons'] = count($rows);
+            $out['unbilled_lessons_total'] = array_sum(array_map(fn ($r) => array_sum($r['uncovered_attended_by_month']), $rows));
+            $out['by_campus_month'] = array_values($summary);
+            $out['rows'] = $rows;
+            $out['no_invoice_courses_count'] = count($noInvoice);
+            $out['no_invoice_courses'] = $noInvoice;
           }} elseif ($case === 'contract_yang_binghe') {{
             $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
