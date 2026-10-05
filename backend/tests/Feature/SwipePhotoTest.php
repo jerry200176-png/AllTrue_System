@@ -201,7 +201,8 @@ class SwipePhotoTest extends TestCase
         $audit = DB::table('security_audit_events')->where('event_type', 'notification.delivery')->get();
         $this->assertCount(1, $audit); // only the verified binding is attempted
         $this->assertSame('success', $audit[0]->outcome);
-        $this->assertSame(
+        // MySQL JSON columns reorder keys; compare as a map, not by key order.
+        $this->assertEqualsCanonicalizing(
             ['method' => 'line_push', 'notification_type' => 'swipe_photo', 'delivery_status' => 'delivered', 'binding_verified' => true],
             array_intersect_key(json_decode($audit[0]->metadata, true), array_flip(['method', 'notification_type', 'delivery_status', 'binding_verified']))
         );

@@ -168,9 +168,9 @@ class LinePushEndpointCharacterizationTest extends TestCase
         $this->assertDatabaseMissing('feedback_push_log', ['feedback_id' => $fb->id, 'direction' => 'to_parent']);
     }
 
-    public function test_tuition_reminder_wire_format_and_audit(): void
+    /** One overdue unpaid course whose student has two verified parent bindings. */
+    private function overdueUnpaidWithTwoParents(): void
     {
-        Http::fake([self::PUSH => Http::response([], 200)]);
         $campus = $this->campus('tok-tui');
         $s = $this->student($campus->id);
         $this->bind($s->id, $campus->id, 'Uparent');
@@ -181,6 +181,12 @@ class LinePushEndpointCharacterizationTest extends TestCase
             'MDate' => now()->subDays(30), 'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 10,
             'SessionDuration' => 120, 'RemainingSessions' => 5, 'ClassType' => 'one_on_one', 'UsedSessions' => 0,
         ]);
+    }
+
+    public function test_tuition_reminder_wire_format_and_audit(): void
+    {
+        Http::fake([self::PUSH => Http::response([], 200)]);
+        $this->overdueUnpaidWithTwoParents();
 
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
 
@@ -198,11 +204,16 @@ class LinePushEndpointCharacterizationTest extends TestCase
         $this->assertSame(2, DB::table('security_audit_events')->where('outcome', 'success')->count());
     }
 
-    public function test_tuition_dry_run_sends_nothing(): void
+    public function test_tuition_dry_run_sends_nothing_even_with_eligible_parents(): void
     {
         Http::fake();
-        $this->artisan('tuition:send-reminders', ['--dry-run' => true])->assertExitCode(0);
+        $this->overdueUnpaidWithTwoParents();
+
+        $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('tuition:send-reminders', ['--dry-run' => true]));
+        $this->assertStringContainsString('[dry-run] Would send LINE to Uparent', \Illuminate\Support\Facades\Artisan::output());
+
         Http::assertNothingSent();
+        $this->assertSame(0, DB::table('security_audit_events')->count());
     }
 
     private function webhook(Campus $campus, array $event)
