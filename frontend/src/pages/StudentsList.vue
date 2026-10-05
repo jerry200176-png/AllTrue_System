@@ -179,7 +179,7 @@
                 <span
                   v-for="course in getStudentCourses(student.id)"
                   :key="course.id"
-                  :class="['subject-pill', { low: isSessionPaymentLowRemaining(course) }]"
+                  :class="['subject-pill', { low: isSessionPaymentLow(course) }]"
                 >
                   {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong>{{ courseBadgeSessionLabel(course) }}</strong>
@@ -334,7 +334,7 @@
                           <span class="status-tag" :class="course.class_type">{{ classTypeLabel(course.class_type) }}</span>
                           <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
                           <span v-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
-                          <span v-else-if="isSessionPaymentLowRemaining(course)" class="tag tag-expiring">即將用完</span>
+                          <span v-else-if="isSessionPaymentLow(course)" class="tag tag-expiring">即將用完</span>
                         </div>
                       </div>
                       <button
@@ -464,9 +464,9 @@
                         <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
-                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
+                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLow(course) ? '再次續報加購' : '加購' }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
-                        <button v-if="isSessionPaymentLowRemaining(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
+                        <button v-if="isSessionPaymentLow(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
                         <button type="button" class="small danger" @click="deleteCourse(course)">刪除</button>
                       </div>
@@ -846,9 +846,9 @@
         </div>
         <div class="form-group">
           <label>{{ selectedCourse?.PackageID ? '目前剩餘（方案池）' : '目前剩餘（此課程）' }}</label>
-          <p :style="{ fontSize: '20px', fontWeight: 700, color: (selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0)) <= 2 ? '#e65100' : 'var(--primary)' }">
-            {{ selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0) }} 堂
-            <span v-if="(selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0)) <= 2" class="sessions-near-empty-hint">{{ isTutoringCourse(selectedCourse) ? '（即將用完，可建立下一期）' : '（即將用完，建議盡快加購）' }}</span>
+          <p :style="{ fontSize: '20px', fontWeight: 700, color: isLowRemaining(modalRemainingSessions(selectedCourse)) ? '#e65100' : 'var(--primary)' }">
+            {{ modalRemainingSessions(selectedCourse) }} 堂
+            <span v-if="isLowRemaining(modalRemainingSessions(selectedCourse))" class="sessions-near-empty-hint">{{ isTutoringCourse(selectedCourse) ? '（即將用完，可建立下一期）' : '（即將用完，建議盡快加購）' }}</span>
           </p>
         </div>
         <p class="hint sessions-package-hint">
@@ -1035,6 +1035,10 @@
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick, reactive } from 'vue';
 import { supabase } from '../supabase';
 import { isCourseSettled } from '../lib/paymentStatus.js';
+import {
+  courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
+  modalRemainingSessions, ownRemainingSessions, poolTotalSessions,
+} from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { getStudentCourseSubjectDisplayLabel } from '../lib/studentCourseSubjectDisplay.js';
@@ -1272,11 +1276,7 @@ function normalizeTo30Min(timeStr) {
   const nm = rounded % 60;
   return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
 }
-const isPackageMember = (course) => Number(course?.PackageID ?? course?.package_id ?? 0) > 0;
-const getPackageTotalSessions = (course) => {
-  const total = Number(course?.package_total_sessions ?? course?.PackageTotalSessions ?? course?.sessions_purchased ?? 0);
-  return Number.isFinite(total) && total > 0 ? total : 0;
-};
+const getPackageTotalSessions = (course) => poolTotalSessions(course, { fallbackToPurchased: true });
 
 // Grade promotion
 const showGradePromotion = ref(false);
@@ -1420,59 +1420,13 @@ const parseCourseNumber = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 };
-const getCourseRemainingSessions = (course) => (
-  parseCourseNumber(course?.remaining_sessions ?? course?.RemainingSessions)
-);
-/** 堂數制才顯示可驗證的進度；月結制不把月份或剩餘欄位誤換算成百分比。 */
-const courseProgress = (course) => {
-  if (isPackageMember(course)) return null;
-  if (String(course?.payment_type || '').toLowerCase() === 'monthly') return null;
-
-  const total = parseCourseNumber(
-    course?.PackageID ? course?.package_total_sessions : course?.sessions_purchased,
-  );
-  const remaining = parseCourseNumber(
-    course?.PackageID
-      ? course?.package_remaining_sessions
-      : (course?.remaining_sessions ?? course?.RemainingSessions),
-  );
-  if (total == null || total <= 0 || remaining == null || remaining < 0) return null;
-
-  const reportedUsed = parseCourseNumber(
-    course?.PackageID
-      ? course?.package_used_sessions
-      : (course?.used_sessions ?? course?.sessions_used),
-  );
-  const used = Math.max(0, reportedUsed == null ? total - remaining : reportedUsed);
-  const boundedUsed = Math.min(total, used);
-  return {
-    total,
-    remaining,
-    used: boundedUsed,
-    percent: Math.min(100, Math.max(0, Math.round((boundedUsed / total) * 100))),
-  };
-};
-/** 列表小徽章：僅堂數制用「剩餘 ≤2」標紅；月結制不以 RemainingSessions（常為 0）判斷。
- *  方案課程（PackageID）改以 package_remaining_sessions（方案池剩餘）判斷，
- *  與主要「剩餘堂數」顯示一致。 */
-const isSessionPaymentLowRemaining = (course) => {
-  if (String(course?.payment_type || '').toLowerCase() === 'monthly') return false;
-  if (course?.PackageID) {
-    const pr = Number(course?.package_remaining_sessions ?? NaN);
-    if (!Number.isFinite(pr)) return false;
-    return pr <= 2;
-  }
-  const r = getCourseRemainingSessions(course);
-  if (r == null) return false;
-  return r <= 2;
-};
 function effectiveClosedReason(course) {
   if (course?.closed_reason) return course.closed_reason;
   if (String(course?.status || '').toLowerCase() === 'inactive'
     && course?.payment_type === 'session'
     && isCourseSettled(course)
-    && getCourseRemainingSessions(course) != null
-    && getCourseRemainingSessions(course) <= 0) {
+    && ownRemainingSessions(course) != null
+    && ownRemainingSessions(course) <= 0) {
     return 'completed';
   }
   // 月結制課程停用即視為完課（DB 無 closed_reason 的歷史髒資料也走此分支）
@@ -1486,7 +1440,7 @@ const isHistoricalCourse = (course) => {
   if (course?.closed_reason === 'settled_pending' || course?.closed_reason === 'waived') return true;
   // 月結制課程 RemainingSessions 通常為 0（月結不扣堂），不可用 remaining ≤ 0 判斷歷史。
   // 月結課程只有明確停課（status=inactive，即 Stop=1）才視為歷史課程。
-  if (String(course?.payment_type || '').toLowerCase() === 'monthly') {
+  if (isMonthlyPaymentType(course)) {
     return String(course?.status || '').toLowerCase() === 'inactive';
   }
   // FR-001：共用方案課程（PackageID）以方案共用池記錄剩餘，個別 StudentClass 的 remaining 欄可能
@@ -1495,7 +1449,7 @@ const isHistoricalCourse = (course) => {
   if (course?.PackageID && String(course?.status || '').toLowerCase() !== 'inactive') {
     return false;
   }
-  const remaining = getCourseRemainingSessions(course);
+  const remaining = ownRemainingSessions(course);
   if (remaining == null) return false;
   return remaining <= 0 && isCourseSettled(course);
 };
@@ -1508,7 +1462,7 @@ const getActiveStudentCourses = (id) => {
 };
 /** Active, billable monthly courses: what the one-dialog 月結續報 offers. */
 const getRenewableMonthlyCourses = (id) => getActiveStudentCourses(id).filter((c) => (
-  String(c?.payment_type || '').toLowerCase() === 'monthly'
+  isMonthlyPaymentType(c)
   && !isTutoringCourse(c)
   && !isTrialCourse(c)
   && String(c?.status || '').toLowerCase() !== 'inactive'
@@ -1531,7 +1485,7 @@ const hasCourseSchedule = (course) => (
 const isCourseNeedsAttention = (course) => {
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
   const courseStatus = String(course?.status || '').toLowerCase();
-  return isSessionPaymentLowRemaining(course)
+  return isSessionPaymentLow(course)
     || isTutoringBillingAnomaly(course)
     || (!isTutoringCourse(course) && ['overdue', 'unpaid', 'pending'].includes(paymentStatus))
     || courseStatus === 'inactive'
@@ -1542,7 +1496,7 @@ const isCourseNeedsAttention = (course) => {
 };
 const getCourseAttentionLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
-  if (isSessionPaymentLowRemaining(course)) return '需要續報';
+  if (isSessionPaymentLow(course)) return '需要續報';
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
   if (!isTutoringCourse(course) && ['overdue', 'unpaid', 'pending'].includes(paymentStatus)) return '付款待確認';
   if (String(course?.status || '').toLowerCase() === 'inactive') return '已暫停';
@@ -1562,7 +1516,7 @@ const getCoursePrimaryAction = (course) => {
       tone: 'warning',
     };
   }
-  if (isSessionPaymentLowRemaining(course)) {
+  if (isSessionPaymentLow(course)) {
     return {
       key: 'renew',
       icon: 'add_circle',
@@ -1570,7 +1524,7 @@ const getCoursePrimaryAction = (course) => {
       title: '先處理課程續報',
       description: isPackageMember(course)
         ? '請核對上方共用方案摘要，再處理方案續報。'
-        : `剩餘 ${getCourseRemainingSessions(course)} 堂，先補充堂數可避免後續排課中斷。`,
+        : `剩餘 ${ownRemainingSessions(course)} 堂，先補充堂數可避免後續排課中斷。`,
       tone: 'warning',
     };
   }
@@ -1624,7 +1578,7 @@ const getCourseProgressSummary = (course) => {
   if (isPackageMember(course)) return '共用方案 · 上課日期見明細';
   const progress = courseProgress(course);
   if (progress) return `剩餘 ${progress.remaining} / ${progress.total} 堂`;
-  if (String(course?.payment_type || '').toLowerCase() === 'monthly') {
+  if (isMonthlyPaymentType(course)) {
     const monthlySessions = parseCourseNumber(course?.monthly_sessions);
     return monthlySessions ? `月結 · 每月 ${monthlySessions} 堂` : '月結課程';
   }
@@ -1674,7 +1628,7 @@ const canCloseCourse = (course) => {
 
 async function closeCourseNoRenew(course, studentName) {
   return runCloseCourseNoRenew({
-    course, studentName, getRemainingSessions: getCourseRemainingSessions,
+    course, studentName, getRemainingSessions: ownRemainingSessions,
     getSubjectLabel, isCourseSettled, supabase, reloadCourses: loadAllStudentCourses,
   });
 }
