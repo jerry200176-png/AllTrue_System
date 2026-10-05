@@ -216,7 +216,7 @@ class SupersededScheduleInvisibleToReadersTest extends TestCase
         $hours = fn () => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')
             ->assertOk()
-            ->json('teachers.0.weekday_hours.2026-08-03');
+            ->json('teachers.0.components.weekday_afternoon.metrics.daily_coverage_hours.2026-08-03');
 
         $this->assertEquals(2.0, $hours());
 
