@@ -619,6 +619,36 @@ class ScheduleGuardrailsTest extends TestCase
         $this->assertSame([], $guard->validateCourseOccurrence($mine, 1, '2026-04-13', '18:00', '20:00'));
     }
 
+    public function test_validate_occurrences_tags_conflicts_and_optionally_dedupes(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-guard-occ@example.com');
+        $occupant = $this->createStudent(1, '佔位生');
+        $courseId = DB::table('StudentClass')->insertGetId([
+            'StudentID' => $occupant->id, 'TeacherID' => $teacherId, 'ClassType' => 'one_on_one',
+            'GradeID' => 1, 'SubjectID' => 1, 'by1' => 1, 'Period' => 4, 'StartDate' => '2026-04-01',
+            'TotalHours' => 2, 'SessionCount' => 1, 'SessionDuration' => 120, 'RemainingSessions' => 1,
+            'UsedSessions' => 0, 'Charge' => 500, 'Pay' => 0, 'Paid' => 0, 'Rate' => 500, 'Stop' => 0,
+            'MDate' => now(), 'ScheduleMode' => 'count',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $courseId, 'SessionDate' => '2026-04-13',
+            'StartTime' => '18:00:00', 'EndTime' => '20:00:00', 'Status' => 'scheduled',
+        ]);
+        $guard = app(\App\Services\ScheduleGuardService::class);
+        $base = ['teacher_id' => $teacherId, 'class_type' => 'one_on_one', 'branch_id' => 1];
+        $slot = ['date' => '2026-04-13', 'start_time' => '18:00:00', 'end_time' => '20:00:00'];
+
+        $all = $guard->validateOccurrences($base, [$slot, $slot]);
+        $this->assertCount(2, $all);
+        $this->assertSame('2026-04-13', $all[0]['date']);
+        $this->assertSame('18:00-20:00', $all[0]['proposed_time']);
+        $this->assertSame('teacher_capacity', $all[0]['type']);
+
+        $this->assertCount(1, $guard->validateOccurrences($base, [$slot, $slot], true));
+        // Same-student exclusion still applies (self occupancy never conflicts).
+        $this->assertSame([], $guard->validateOccurrences($base + ['exclude_student_id' => $occupant->id], [$slot]));
+    }
+
     public function test_used_up_count_course_does_not_hold_recurring_seat(): void
     {
         $teacherId = $this->createTeacher(1, 'teacher-guard-used-up@example.com');

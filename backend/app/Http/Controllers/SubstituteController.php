@@ -12,6 +12,7 @@ use App\Models\StudentClass;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\OccurrenceAssignmentService;
 use App\Services\SubstituteService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -238,8 +239,18 @@ class SubstituteController extends Controller
             $result = DB::transaction(function () use (
                 $session, $courseId, $sessionDate, $startTime, $oldTeacherId, $newTeacherId,
                 $lastNotification, $currentOperatorId, $payload,
-                $shouldRestoreTime, $origDate, $origStart, $origEnd
+                $shouldRestoreTime, $origDate, $origStart, $origEnd, $campusId
             ) {
+                // TD-076 B1: one writer restores the live row (and slot); none at the slot = legacy delete path below.
+                $rescheduled = null;
+                $scheduledRow = OccurrenceAssignmentService::handles($session, $campusId)
+                    ? app(OccurrenceAssignmentService::class)->restoreContractTeacher(
+                        $session,
+                        $currentOperatorId ?: null,
+                        $shouldRestoreTime ? ['date' => $origDate, 'start' => $origStart, 'end' => $origEnd] : null
+                    )
+                    : null;
+                if (!$scheduledRow):
                 // 找當前代課 scheduled row：以 rescheduled anchor + 新老師為特徵
                 // 注意：合併代課+換時情境下，這些列已位於「新日期」（= 目前 session->SessionDate）。
                 $rescheduled = Schedule::where('student_course_id', $courseId)
@@ -263,6 +274,7 @@ class SubstituteController extends Controller
                 if ($rescheduled) {
                     $rescheduled->delete();
                 }
+                endif;
 
                 // 回復 LearningRecord.TeacherID（若有）
                 $lrTable = (new LearningRecord())->getTable();

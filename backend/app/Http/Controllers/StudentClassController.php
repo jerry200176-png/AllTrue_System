@@ -7409,53 +7409,26 @@ class StudentClassController extends Controller
             return [];
         }
 
-        $conflicts = [];
-        $seen = [];
+        $slots = [];
         foreach ($proposedSessions as $proposed) {
             $date = isset($proposed['SessionDate']) ? Carbon::parse($proposed['SessionDate'])->toDateString() : null;
             $start = isset($proposed['StartTime']) ? substr((string) $proposed['StartTime'], 0, 5) : null;
             $end = isset($proposed['EndTime']) ? substr((string) $proposed['EndTime'], 0, 5) : null;
-            if (!$date || !$start || !$end) {
-                continue;
-            }
-
-            $slotConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
-                'teacher_id' => $teacherId,
-                'class_type' => $newClassType,
-                'room_id' => $roomId,
-                'branch_id' => $branchId,
-                'schedule_date' => $date,
-                'start_time' => $start,
-                'end_time' => $end,
-                'exclude_course_id' => $excludeCourseId,
-                // Same-student dual-contract / self occupancy must not block edit
-                // (in-app #311; matches substitute + enrollment exclude pattern).
-                'exclude_student_id' => $excludeStudentId,
-            ]);
-            if (empty($slotConflicts)) {
-                continue;
-            }
-
-            foreach ($slotConflicts as $conflict) {
-                $key = implode('|', [
-                    (string) ($conflict['type'] ?? ''),
-                    $date,
-                    $start,
-                    $end,
-                    (string) ($conflict['room_id'] ?? ''),
-                ]);
-                if (isset($seen[$key])) {
-                    continue;
-                }
-                $seen[$key] = true;
-                $conflicts[] = array_merge([
-                    'date' => $date,
-                    'proposed_time' => $start . '-' . $end,
-                ], $conflict);
+            if ($date && $start && $end) {
+                $slots[] = ['date' => $date, 'start_time' => $start, 'end_time' => $end];
             }
         }
 
-        return $conflicts;
+        // Same-student dual-contract / self occupancy must not block edit
+        // (in-app #311; matches substitute + enrollment exclude pattern).
+        return $this->scheduleGuardService->validateOccurrences([
+            'teacher_id' => $teacherId,
+            'class_type' => $newClassType,
+            'room_id' => $roomId,
+            'branch_id' => $branchId,
+            'exclude_course_id' => $excludeCourseId,
+            'exclude_student_id' => $excludeStudentId,
+        ], $slots, true);
     }
 
     /**
