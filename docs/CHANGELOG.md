@@ -1,3 +1,7 @@
+## 2026-10-06 — chore(schedule): TD-076 Track B PR-B1 OccurrenceAssignmentService behind schedule-occurrence-v2
+<!-- release-notes: silent_ship=silent-2026-10-06-td076-pr-b1-assignment-writer -->
+- 新增單一寫入端 `OccurrenceAssignmentService`（找或建立唯一的 live 排程列、設定老師／時段、每次只寫一筆 `schedule_change_log`），並接上代課（含代課＋換時合併）、回復正班、代課復原與批次代課；僅在 `schedule-occurrence-v2` 對該分校開啟時生效，預設關閉，關閉時走原本程式路徑、資料與畫面完全不變。可修正「換日調課後再代課會多出第二條鏈」的新莊問題。讀取端尚未改，PR-C 才處理。
+
 ## 2026-10-05 — feat(accounting): director can waive (確認不收) a closed unpaid contract with an audited reason
 <!-- release-notes: staff_update=staff-2026-10-05-waive-unpaid-contract -->
 - 新增 `POST /api/v1/accounting/courses/{id}/waive`（主任／同分校）：僅 Stop=1 且 `settled_pending`／未繳 `contract_amended` 且仍有欠款可用，需 2–200 字原因。同一交易內設 `closed_reason='waived'`、未結帳單 Status 改 `void`（Paid／Charge／收款不動），並寫 `security_audit_events`（`accounting.course_waived`，含欠款金額、原因雜湊）與 `settlement_snapshot`（原因、前後狀態）。套裝課程拒絕、waived 為終態（不可恢復）、void 帳單不可登記收款。套裝課程拒絕、waived 為終態（不可暫停／恢復）、void 帳單不可登記收款。waived 合約離開待對帳／學收提醒佇列，於已結清清單與課程管理顯示「歷史 · 確認不收」，不計入已收

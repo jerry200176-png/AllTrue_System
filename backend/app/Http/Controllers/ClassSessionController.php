@@ -23,6 +23,7 @@ use App\Services\CourseLeaveCascadeService;
 use App\Services\EnrollmentService;
 use App\Services\LearningRecordBackfillService;
 use App\Services\LearningRecordResurrectionPolicy;
+use App\Services\OccurrenceAssignmentService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
 use App\Services\SessionProjectionReadService;
@@ -2592,6 +2593,9 @@ class ClassSessionController extends Controller
                 }
             }
 
+            $v2 = OccurrenceAssignmentService::enabledFor($campusId);
+            $identityRow = null;
+
             $this->logSubstituteDiag('transaction_begin', [
                 'class_session_id' => $session->id,
                 'duration_hours' => $durationHours,
@@ -2615,6 +2619,18 @@ class ClassSessionController extends Controller
                     (int) $session->id
                 );
 
+                // TD-076 B1 (flag on): one live identity row takes teacher + new slot, one log row.
+                // Must run while the session still sits on its original slot.
+                if ($v2) {
+                    $identityRow = app(OccurrenceAssignmentService::class)->assignTeacher(
+                        $session,
+                        $newTeacherId,
+                        (int) ($request->attributes->get('auth_user')->id ?? 0),
+                        'substitute',
+                        ['date' => $sessionDate, 'start' => $startTime, 'end' => $endTime]
+                    );
+                }
+
                 $session->SessionDate = $sessionDate;
                 $session->StartTime = $startTime;
                 $session->EndTime = $endTime;
@@ -2633,7 +2649,7 @@ class ClassSessionController extends Controller
                     ->where('ClassSessionID', $session->id)
                     ->update($lrUpdateEarly);
 
-                if ($existingRescheduled) {
+                if (!$v2 && $existingRescheduled) {
                     $existingRescheduled->schedule_date = $sessionDate;
                     $existingRescheduled->start_time = $startTime;
                     $existingRescheduled->end_time = $endTime;
@@ -2641,7 +2657,7 @@ class ClassSessionController extends Controller
                     $existingRescheduled->duration_hours = $durationHours;
                     $existingRescheduled->save();
                 }
-                if ($existingScheduled) {
+                if (!$v2 && $existingScheduled) {
                     $existingScheduled->schedule_date = $sessionDate;
                     $existingScheduled->start_time = $startTime;
                     $existingScheduled->end_time = $endTime;
@@ -2660,6 +2676,15 @@ class ClassSessionController extends Controller
                 ]);
             }
 
+            if ($v2):
+                $identityRow ??= app(OccurrenceAssignmentService::class)->assignTeacher(
+                    $session,
+                    $newTeacherId,
+                    (int) ($request->attributes->get('auth_user')->id ?? 0)
+                );
+                $rescheduledId = (int) $identityRow->original_schedule_id;
+                $scheduledId = (int) $identityRow->id;
+            else:
             // 1) Upsert rescheduled record (hides original teacher's slot)
             $existingRescheduledRow = $existingRescheduled ?: Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', $sessionDate)
@@ -2777,6 +2802,7 @@ class ClassSessionController extends Controller
                 'scheduled_id' => $scheduledId,
                 'original_schedule_id' => $rescheduledId,
             ]);
+            endif;
 
             // 3) Update LearningRecord if one exists for this session
             // Use query builder (not Eloquent active()+save) so production DB quirks
@@ -3011,6 +3037,13 @@ class ClassSessionController extends Controller
             $authUser = $request->attributes->get('auth_user');
             $changedBy = (int) ($authUser->id ?? 0);
 
+            $scheduledDeleted = 0;
+            $rescheduledDeleted = 0;
+            if (OccurrenceAssignmentService::enabledFor((int) Student::where('id', $studentClass->StudentID)->value('CampusID'))):
+                // TD-076 B1: one writer sets the live row back (or removes a substitute-only row), one log row.
+                $restored = app(OccurrenceAssignmentService::class)->restoreContractTeacher($session, $changedBy ?: null);
+                $scheduledDeleted = $restored ? 1 : 0; // counts "cleared", for the response only
+            else:
             // in-app #276: durable restore must clear substitute_with_reschedule chains even when
             // notification payload times / TIME-column formatting diverge from ClassSession HH:mm.
             $matchDates = $this->substituteRestoreMatchDates($session, $sessionDate);
@@ -3140,6 +3173,7 @@ class ClassSessionController extends Controller
                     'substitute_teacher_id' => ['無法清除此堂代課排程，請稍後再試或聯絡系統管理員。'],
                 ]);
             }
+            endif;
 
             $lrId = null;
             $lrTable = (new LearningRecord())->getTable();
