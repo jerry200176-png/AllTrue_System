@@ -129,6 +129,7 @@
   --ds-print-warn-wash: #FEF3C7;
   --ds-print-leave: #6D28D9;
   --ds-print-leave-wash: #EDE9FE;
+  --ds-print-void: rgba(220, 38, 38, 0.12);
 
   --ds-surface-0: var(--ds-canvas-soft);
   --ds-surface-1: var(--ds-canvas);
