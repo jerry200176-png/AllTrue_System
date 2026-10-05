@@ -3346,11 +3346,21 @@ class StudentClassController extends Controller
             ], 422);
         }
 
-        $studentClass->Paid = 1;
-        $studentClass->PayDate = now()->toDateString();
-        $studentClass->save();
+        // Re-read under lock so a concurrent 確認不收 cannot slip between the check and the write.
+        return DB::transaction(function () use ($studentClass) {
+            $locked = StudentClass::query()->whereKey($studentClass->getKey())->lockForUpdate()->first();
+            if (!$locked instanceof StudentClass) {
+                return response()->json(['message' => '找不到此課程'], 404);
+            }
+            if ((string) $locked->getAttribute('closed_reason') === 'waived') {
+                return response()->json(['message' => '此合約已確認不收，不能標記已繳', 'code' => 'course_waived'], 422);
+            }
+            $locked->setAttribute('Paid', 1);
+            $locked->setAttribute('PayDate', now()->toDateString());
+            $locked->save();
 
-        return response()->json(['message' => '已確認繳費', 'class_id' => $studentClass->ID]);
+            return response()->json(['message' => '已確認繳費', 'class_id' => $locked->getKey()]);
+        });
     }
 
     /** Founder GO #286: a new zero-obligation tutoring term, never a paid renewal. */
@@ -5556,6 +5566,11 @@ class StudentClassController extends Controller
             if (!$allowed) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
+        }
+
+        // A written-off contract keeps its void invoices and audit snapshot; deleting it would strand them.
+        if ((string) $studentClass->getAttribute('closed_reason') === 'waived') {
+            return response()->json(['message' => '此合約已確認不收，不能刪除', 'code' => 'course_waived'], 422);
         }
 
         return DB::transaction(function () use ($studentClass) {

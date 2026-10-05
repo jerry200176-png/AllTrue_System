@@ -104,8 +104,17 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($data) {
+            // Lock every referenced course once, in ID order, so concurrent multi-course invoices cannot deadlock.
+            $courseIds = collect([$data['StudentClassID'] ?? null])->merge(array_column($data['Items'] ?? [], 'StudentClassID'))
+                ->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+            if ($courseIds !== []) {
+                StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+            }
             if (!empty($data['StudentClassID'])) {
-                $course = StudentClass::query()->find($data['StudentClassID']);
+                $course = StudentClass::query()->whereKey($data['StudentClassID'])->lockForUpdate()->first();
+                if ($course && (string) $course->getAttribute('closed_reason') === 'waived') {
+                    return response()->json(['message' => '此合約已確認不收，不能再建立帳單', 'code' => 'course_waived'], 422);
+                }
                 if ($course && strtolower(trim((string) ($course->ClassType ?? ''))) === 'tutoring') {
                     return response()->json([
                         'message' => '輔導課無須繳費，不能建立帳單或付款義務。請先檢查課程帳務資料。',
@@ -183,6 +192,12 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($invoice, $data) {
+            // Same order as 確認不收 (courses, then invoice) so the two cannot deadlock.
+            $courseIds = DB::table('InvoiceItem')->where('InvoiceID', $invoice->getKey())->pluck('StudentClassID')
+                ->push($invoice->getAttribute('StudentClassID'))->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+            if ($courseIds !== []) {
+                StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+            }
             // 先鎖帳單再判斷，避免與確認不收（void）競爭。
             $fresh = Invoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
             if (!$fresh || (string) $fresh->getAttribute('Status') === 'void') {

@@ -229,6 +229,21 @@ class AccountingController extends Controller
             if ($invoices->contains(fn ($i) => $i->payments->isNotEmpty() || (int) ($i->PaidAmount ?? 0) !== 0)) {
                 return response()->json(['message' => '此合約已有收款紀錄，請先到帳務更正後再處理'], 422);
             }
+            // A waiver may only touch invoices that belong to this course alone. Any non-void invoice involving this
+            // course (as anchor or line) that also involves another course, or has no anchor, needs accounting first.
+            $involved = DB::table('Invoice')->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+                ->where(fn ($q) => $q->where('StudentClassID', $id)
+                    ->orWhereIn('id', DB::table('InvoiceItem')->where('StudentClassID', $id)->select('InvoiceID')))
+                ->get(['id', 'StudentClassID']);
+            $shared = $involved->contains(fn ($inv) => (int) ($inv->StudentClassID ?? 0) !== $id)
+                || ($involved->isNotEmpty() && DB::table('InvoiceItem')->whereIn('InvoiceID', $involved->pluck('id')->all())
+                    ->whereNotNull('StudentClassID')->where('StudentClassID', '!=', $id)->exists());
+            if ($shared) {
+                return response()->json(['message' => '此合約在合併帳單中，請先到帳務處理該帳單'], 422);
+            }
+            if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'confirmed')->exists()) {
+                return response()->json(['message' => '此合約已有確認過的繳費回報，請先到帳務更正後再處理'], 422);
+            }
             if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'pending')->exists()) {
                 return response()->json(['message' => '有待確認的繳費回報，請先確認或退回'], 422);
             }
@@ -583,7 +598,8 @@ class AccountingController extends Controller
                 'applied_total' => $appliedTotal,
                 'voided_total' => (int) $invoiceRows->sum('voided_amount'),
                 'overpaid_total' => (int) $invoiceRows->sum('overpaid_amount'),
-                'outstanding_total' => max(0, $openInvoiceTotal - $appliedTotal),
+                // Sum per-row balances: a void row owes 0 and its retained applications must not offset open rows.
+                'outstanding_total' => (int) $invoiceRows->sum('outstanding_amount'),
                 'invoice_count' => $invoiceRows->count(),
                 'receipt_count' => $reportRows->where('status', 'confirmed')->count(),
                 'anomaly_count' => $uniqueAnomalies->count(),

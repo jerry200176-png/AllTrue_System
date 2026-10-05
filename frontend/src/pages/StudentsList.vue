@@ -548,7 +548,7 @@
                       </section>
                       <div class="sl-history-card__actions">
                         <button type="button" class="small ghost" @click="editCourse(hc)">編輯</button>
-                        <button type="button" class="small danger" @click="deleteCourse(hc)">刪除</button>
+                        <button v-if="effectiveClosedReason(hc) !== 'waived'" type="button" class="small danger" @click="deleteCourse(hc)">刪除</button>
                       </div>
                     </div>
                   </div>
