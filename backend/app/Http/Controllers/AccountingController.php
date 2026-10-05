@@ -190,7 +190,7 @@ class AccountingController extends Controller
             if (!$course) {
                 return response()->json(['message' => '找不到此課程合約'], 404);
             }
-            if ($denied = $this->authorizeCampusForStudent($request, (int) ($course->student?->CampusID ?? 0))) {
+            if ($denied = $this->authorizeCampusForStudent($request, (int) ($course->student->CampusID ?? 0))) {
                 return $denied;
             }
 
@@ -202,7 +202,8 @@ class AccountingController extends Controller
             }
 
             $invoices = Invoice::with(['studentClass', 'payments'])
-                ->where('StudentClassID', $id)->notVoided()->lockForUpdate()->get();
+                ->where('StudentClassID', $id)
+                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->lockForUpdate()->get();
             $outstanding = $invoices->isEmpty()
                 ? (int) ($course->Charge ?? 0)
                 : $this->invoiceTotals($invoices)[3];
@@ -227,12 +228,12 @@ class AccountingController extends Controller
             ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
             $course->save();
             if ($openIds !== []) {
-                Invoice::whereIn('id', $openIds)->update(['Status' => 'uncollectible']);
+                Invoice::query()->whereIn('id', $openIds)->update(['Status' => 'uncollectible']);
             }
             SecurityAuditEvent::append('accounting.course_waived', 'success', [
                 'actor_type' => 'user', 'actor_id' => $actorId ?: null,
                 'subject_type' => 'student_class', 'subject_id' => $id,
-                'campus_id' => (int) ($course->student?->CampusID ?? 0) ?: null,
+                'campus_id' => (int) ($course->student->CampusID ?? 0) ?: null,
             ], [
                 'outstanding_amount' => $outstanding,
                 'old_type' => $closedReason, 'new_type' => 'waived',
