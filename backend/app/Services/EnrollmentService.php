@@ -105,8 +105,8 @@ class EnrollmentService
                 $slots[] = ['weekday' => $wd, 'time' => $startTimeStr];
             }
 
-            $scController = app()->make(\App\Http\Controllers\StudentClassController::class);
-            $generatedSessions = $scController->buildSessionsFromWeeklySchedule(
+            $scController = app(\App\Services\Scheduling\ContractSessionSchedule::class);
+            $generatedSessions = \App\Services\Scheduling\ContractSessionSchedule::buildSessionsFromWeeklySchedule(
                 0,
                 $courseStart,
                 $endDate,
