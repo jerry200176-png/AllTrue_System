@@ -1,3 +1,4 @@
+import { TUITION_STATUS_CONFIG } from '../../lib/courseMoneyState.js';
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -26,7 +27,8 @@ describe('TuitionCollectionPage receipt entry paths', () => {
 
   it('uses explicit accounting-stage labels on collection tabs and sticky batch bar when rows are selected', () => {
     expect(source).toContain("{ key: 'pending_report', label: '已回報／待查帳' }");
-    expect(source).toContain("pending_report:   { label: '已回報／待查帳'");
+    expect(source).toContain('const STATUS_CONFIG = TUITION_STATUS_CONFIG;');
+    expect(TUITION_STATUS_CONFIG.pending_report.label).toBe('已回報／待查帳');
     expect(source).toContain('tc-batch-bar--sticky');
     expect(source).toContain('v-if="selectedRows.length"');
     expect(source).not.toContain('勾選最左欄後才會出現批次回報或確認列。');

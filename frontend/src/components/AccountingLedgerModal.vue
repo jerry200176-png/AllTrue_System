@@ -205,6 +205,7 @@ import {
   humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
+import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
 
 const EXCEPTION_PREVIEW = 2;
 
@@ -399,8 +400,8 @@ const formatCurrency = (value) => 'NT$ ' + Number(value || 0).toLocaleString('zh
 const signedCurrency = (value) => `${Number(value || 0) > 0 ? '+' : Number(value || 0) < 0 ? '-' : ''}${formatCurrency(Math.abs(Number(value || 0)))}`;
 const formatPeriod = (period) => !period ? '—' : (String(period).split('-').length === 2 ? String(period).replace('-', '/') : period);
 const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '更正收款' }, method);
-const invoiceStatusLabel = (status) => labelMap({ paid: '已繳', unpaid: '未繳', partial: '部分付款', void: '已作廢' }, status);
-const reportStatusLabel = (status) => labelMap({ confirmed: '已核帳', pending: '待對帳', voided: '已撤銷', rejected: '已退回' }, status);
+const invoiceStatusLabel = (status) => labelMap(INVOICE_STATUS_LABELS.ledger, status);
+const reportStatusLabel = (status) => labelMap(REPORT_STATUS_LABELS.ledger, status);
 const applicationStatusLabel = (status) => labelMap({ applied: '已記入', partially_applied: '部分記入', overpayment_pending_review: '多收待處理', voided: '已更正' }, status);
 const invoiceStatusClass = (status) => labelMap({
   paid: 'chip--success',

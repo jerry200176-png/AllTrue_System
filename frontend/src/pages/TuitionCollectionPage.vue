@@ -1091,6 +1091,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
+import { TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -1487,15 +1488,7 @@ async function submitBatchConfirm() {
 }
 
 // ═══ Payment Status Helpers ═══
-const STATUS_CONFIG = {
-  unpaid:           { label: '應收／尚未回報', cls: 'st-unpaid' },
-  partial:          { label: '部分已入帳',      cls: 'st-partial' },
-  pending_report:   { label: '已回報／待查帳', cls: 'st-pending' },
-  pending_reconciliation: { label: '結案／待查帳', cls: 'st-pending' },
-  paid:             { label: '已確認入帳',        cls: 'st-paid' },
-  renew_needed:     { label: '續課待處理',    cls: 'st-renew' },
-  monthly_due_soon: { label: '月結將到期',    cls: 'st-monthly' },
-};
+const STATUS_CONFIG = TUITION_STATUS_CONFIG;
 
 function statusLabel(r) {
   const ps = r.payment_status;
