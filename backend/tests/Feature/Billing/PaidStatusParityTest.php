@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Billing;
 
-use App\Http\Controllers\AlertController;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\CoursePackage;
@@ -383,7 +382,7 @@ class PaidStatusParityTest extends TestCase
         $out['model.scopeEffectivelyUnpaid'] = StudentClass::query()->effectivelyUnpaid()->where('ID', $id)->exists() ? 'unpaid' : 'notunpaid';
 
         // B2: flag OR (agg stored PaidAmount >= Charge > 0). Wraps the static isFullyPaid.
-        $paidAmount = (int) (AlertController::invoiceAggregateByStudentClassIds([$id])[$id]['paid_amount'] ?? 0);
+        $paidAmount = (int) (\App\Services\Billing\ContractMoneyState::invoiceAggregateByStudentClassIds([$id])[$id]['paid_amount'] ?? 0);
         $out['model.isFullyPaidWithInvoiceAmount'] = $course->isFullyPaidWithInvoiceAmount($paidAmount, (int) $course->Charge) ? 'paid' : 'notpaid';
 
         // B12 (F7 S1 contract): course-level resolver over all non-void invoices. `unbilled` (no invoice, no flag) reads as unpaid.

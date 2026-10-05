@@ -9,6 +9,7 @@ use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyBillingService;
 use App\Services\BillingPayableResolver;
@@ -105,30 +106,28 @@ class AlertController extends Controller
 
         $countResults = $countQuery->with('student')->get();
         $dateResults  = $dateQuery->with('student')->get();
-        // Unpaid closed contracts must stay actionable in 帳務中心.
-        // settled_pending = 結案（不續報）未繳；contract_amended = 提前結束／改堂數未繳
-        // (in-app #251 / GH #2461 — amended unpaid rows previously vanished from tuition).
-        $pendingSettlementResults = StudentClass::query()
+        // Stopped contracts that still owe per the invoices (resolver: unpaid/partial/unbilled with
+        // outstanding > 0) stay actionable in 帳務中心, whatever closed_reason says (paused ones included).
+        // waived = 確認不收 is history, never pending. F7 S3a.
+        $stoppedResults = StudentClass::query()
             ->where('Stop', 1)
             ->where(function ($q) {
                 $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
             })
             ->where(function ($q) {
-                $q->where('closed_reason', 'settled_pending')
-                    ->orWhere(function ($q2) {
-                        $q2->where('closed_reason', 'contract_amended')
-                            ->where(function ($q3) {
-                                $q3->where('Paid', 0)->orWhereNull('Paid');
-                            });
-                    });
+                $q->whereNull('closed_reason')->orWhere('closed_reason', '!=', 'waived');
             })
-            ->with('student')
-            ->get();
+            ->with('student');
         if ($studentIds !== null) {
-            $pendingSettlementResults = $pendingSettlementResults
-                ->whereIn('StudentID', $studentIds)
-                ->values();
+            $stoppedResults->whereIn('StudentID', $studentIds);
         }
+        $stoppedResults = $stoppedResults->get();
+        $stoppedStatuses = $this->payableResolver
+            ->courseStatusesByStudentClassIds($stoppedResults->pluck('ID')->all(), $stoppedResults);
+        $pendingSettlementResults = $stoppedResults
+            ->filter(fn ($c) => in_array($stoppedStatuses[(int) $c->ID]['status'] ?? null, ['unpaid', 'partial', 'unbilled'], true)
+                && (int) $stoppedStatuses[(int) $c->ID]['outstanding'] > 0)
+            ->values();
 
         $countPkgQuery = CoursePackage::query()
             ->where('billing_mode', CoursePackage::BILLING_MODE_SESSION)
@@ -166,8 +165,8 @@ class AlertController extends Controller
             ->unique()
             ->values()
             ->all();
-        $paidAtMap = self::lastPaidAtByStudentClassIds($allClassIds);
-        $invoiceAggMap = self::invoiceAggregateByStudentClassIds($allClassIds);
+        $paidAtMap = ContractMoneyState::lastPaidAtByStudentClassIds($allClassIds);
+        $invoiceAggMap = ContractMoneyState::invoiceAggregateByStudentClassIds($allClassIds);
         $allResults = $countResults->merge($dateResults)->merge($pendingSettlementResults)->keyBy('ID');
         $payableMap = $this->payableResolver->byStudentClassIds($allClassIds, $allResults);
         $openMonthlyInvoiceMap = $this->openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
@@ -343,7 +342,7 @@ class AlertController extends Controller
             ->merge(
                 $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
             )
-            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap) {
+            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
@@ -367,7 +366,21 @@ class AlertController extends Controller
 
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
 
-                $paymentStatus = $this->computePaymentStatus($sc, $paidAmount, $charge, $pendingReportId !== null);
+                $paymentStatus = ContractMoneyState::alertStatus($sc, $paidAmount, $charge, $pendingReportId !== null);
+                if ($row['alert_type'] === 'pending_reconciliation') {
+                    // F7 S3a: stopped + still owing per the invoices. Every amount the UI reads comes from the
+                    // resolver's cumulative totals (never the single-invoice payable or the contract price).
+                    $stopped = $stoppedStatuses[$classId];
+                    $charge = (int) $stopped['payable_total'];
+                    $paidAmount = (int) $stopped['applied'];
+                    $outstanding = (int) $stopped['outstanding'];
+                    $payable = array_merge($payable, [
+                        'payable_amount' => $charge,
+                        'payable_outstanding' => $outstanding,
+                        'payable_invoice_id' => $stopped['current_invoice_id'],
+                    ]);
+                    $paymentStatus = $pendingReportId !== null ? 'pending_report' : 'pending_reconciliation';
+                }
 
                 $newerInfo = $newerCourseMap[$classId] ?? null;
 
@@ -382,6 +395,7 @@ class AlertController extends Controller
                     && $currentEndDate >= $newerInfo['start_date'];
 
                 return $row + [
+                    'closed_reason'            => $sc?->getAttribute('closed_reason'),
                     'paid_at'                  => $directPaidAt,
                     'last_paid_at'             => $directPaidAt ?? $invoicePaidAt,
                     'charge'                   => $charge,
@@ -895,101 +909,6 @@ class AlertController extends Controller
     }
 
     /**
-     * Compute the six-value payment_status for a StudentClass row in alerts/tuition.
-     * Priority order (first match wins):
-     *   1. pending_report — has an unconfirmed PaymentReport
-     *   2. pending_reconciliation — closed unpaid (settled_pending / contract_amended)
-     *   3. partial — has partial Invoice payment
-     *   4. unpaid — Paid=0 and no partial/pending
-     *   5. renew_needed — Paid=1, count-mode, RemainingSessions <= 2
-     *   6. monthly_due_soon — date-mode and Paid=1
-     *   7. paid — Paid=1 and none of the above
-     *
-     * "Paid" (for step 3/4 purposes) also counts a fully-covered invoice
-     * (paid_amount >= charge) even when the raw Paid flag was never flipped,
-     * matching StudentClassController's own paid rule. Deliberately amount-based
-     * rather than "any payment exists" so partial payments still hit step 2.
-     */
-    private function computePaymentStatus(?StudentClass $sc, int $paidAmount, int $charge, bool $hasPendingReport): string
-    {
-        if (!$sc) {
-            return 'unpaid';
-        }
-
-        if ($hasPendingReport) {
-            return 'pending_report';
-        }
-
-        $closedReason = (string) ($sc->getAttribute('closed_reason') ?? '');
-        $isPaid = $this->isFullyPaid((int) ($sc->Paid ?? 0) === 1 || $sc->isEffectivelyPaid(), $paidAmount, $charge);
-
-        // Closed-but-unpaid settlements stay in the tuition actionable queue.
-        if (!$isPaid && in_array($closedReason, ['settled_pending', 'contract_amended'], true)) {
-            return 'pending_reconciliation';
-        }
-
-        if (!$isPaid && $paidAmount > 0 && $charge > 0 && $paidAmount < $charge) {
-            return 'partial';
-        }
-
-        if (!$isPaid) {
-            return 'unpaid';
-        }
-
-        $mode = $sc->ScheduleMode ?? 'count';
-        $remaining = (int) ($sc->RemainingSessions ?? 0);
-
-        if ($mode === 'count' && $remaining <= 2) {
-            return 'renew_needed';
-        }
-
-        if ($mode === 'date') {
-            return 'monthly_due_soon';
-        }
-
-        return 'paid';
-    }
-
-    /**
-     * Batch-fetch Invoice paid aggregates per StudentClass ID.
-     *
-     * @param  int[]  $studentClassIds
-     * @return array<int, array{paid_amount: int, total_amount: int, active_invoice_count: int, outstanding_amount: int}>
-     */
-    public static function invoiceAggregateByStudentClassIds(array $studentClassIds): array
-    {
-        if (empty($studentClassIds)) {
-            return [];
-        }
-
-        $rows = DB::table('Invoice')
-            ->whereIn('StudentClassID', $studentClassIds)
-            ->where(function ($q) {
-                $q->whereNull('Status')->orWhere('Status', '!=', 'void');
-            })
-            ->select(
-                'StudentClassID',
-                DB::raw('COALESCE(SUM(PaidAmount), 0) as paid_amount'),
-                DB::raw('COALESCE(SUM(TotalAmount), 0) as total_amount'),
-                DB::raw('COUNT(*) as active_invoice_count')
-            )
-            ->groupBy('StudentClassID')
-            ->get();
-
-        $map = [];
-        foreach ($rows as $row) {
-            $map[(int) $row->StudentClassID] = [
-                'paid_amount'  => (int) $row->paid_amount,
-                'total_amount' => (int) $row->total_amount,
-                'active_invoice_count' => (int) $row->active_invoice_count,
-                'outstanding_amount' => max(0, (int) $row->total_amount - (int) $row->paid_amount),
-            ];
-        }
-
-        return $map;
-    }
-
-    /**
      * Batch-fetch the latest pending PaymentReport ID per StudentClass ID.
      *
      * @param  int[]  $studentClassIds
@@ -1062,40 +981,6 @@ class AlertController extends Controller
                     'remaining'  => (int) ($newer->RemainingSessions ?? 0),
                     'start_date' => $newer->StartDate ? substr($newer->StartDate, 0, 10) : null,
                 ];
-            }
-        }
-
-        return $map;
-    }
-
-    /**
-     * Batch-fetch the latest Payment.PaidAt per StudentClass ID.
-     * Uses Invoice.StudentClassID -> Payment.InvoiceID chain.
-     *
-     * @param  int[]  $studentClassIds
-     * @return array<int, string|null>  keyed by StudentClass ID, value is date string or null
-     */
-    public static function lastPaidAtByStudentClassIds(array $studentClassIds): array
-    {
-        if (empty($studentClassIds)) {
-            return [];
-        }
-
-        $rows = DB::table('Invoice')
-            ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
-            ->whereIn('Invoice.StudentClassID', $studentClassIds)
-            ->where(function ($q) {
-                $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
-            })
-            ->select('Invoice.StudentClassID', DB::raw('MAX(Payment.PaidAt) as last_paid_at'))
-            ->groupBy('Invoice.StudentClassID')
-            ->get();
-
-        $map = [];
-        foreach ($rows as $row) {
-            $date = $row->last_paid_at;
-            if ($date) {
-                $map[(int) $row->StudentClassID] = substr($date, 0, 10);
             }
         }
 
