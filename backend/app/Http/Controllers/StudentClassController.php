@@ -5402,11 +5402,8 @@ class StudentClassController extends Controller
                 return response()->json(['message' => '套裝課程的合約不能單獨刪除，請到套裝處理'], 422);
             }
             // Attendance / entitlement history is never erased with the contract: close it instead.
-            $hasHistory = DB::table('session_deduction_ledger')->where('student_class_id', $id)->exists()
-                || ClassSession::query()->where('StudentClassID', $id)
-                    ->whereRaw("LOWER(COALESCE(Status, '')) IN ('attended', 'completed', 'late')")->exists();
-            if ($hasHistory) {
-                return response()->json(['message' => '此合約已有上課或扣堂紀錄，不能刪除，請改用結案'], 422);
+            if (StudentClass::hasOperationalHistory([$id])) {
+                return response()->json(['message' => '此合約已有上課、點名、扣堂、轉堂或調價紀錄，不能刪除，請改用結案'], 422);
             }
             // isEffectivelyPaid() also honours a paid CoursePackage (package members can have no invoice);
             // legacy Pay / PayDate are payment state too.

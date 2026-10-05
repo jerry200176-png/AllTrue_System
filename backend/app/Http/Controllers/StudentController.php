@@ -314,10 +314,8 @@ class StudentController extends Controller
                     ->orWhere('Pay', '>', 0)->orWhereNotNull('PayDate')->orWhere('PackageID', '>', 0))->exists())
                 || ($classIds !== [] && DB::table('InvoiceItem')->whereIn('StudentClassID', $classIds)->exists())
                 || DB::table('course_packages')->where('student_id', $studentId)->exists()
-                // Attendance / deduction history is authoritative too; same rule as contract delete.
-                || ($classIds !== [] && DB::table('session_deduction_ledger')->whereIn('student_class_id', $classIds)->exists())
-                || ($classIds !== [] && DB::table('ClassSession')->whereIn('StudentClassID', $classIds)
-                    ->whereRaw("LOWER(COALESCE(Status, '')) IN ('attended', 'completed', 'late')")->exists());
+                // Attendance / ledger history is authoritative too; same rule as contract delete.
+                || StudentClass::hasOperationalHistory($classIds);
             if ($history) {
                 $out[] = $studentId;
             }

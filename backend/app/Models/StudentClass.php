@@ -79,6 +79,26 @@ class StudentClass extends Model
         });
     }
 
+    /**
+     * Contracts whose history other ledgers point at (attendance, deductions, entitlement transfers, pricing
+     * amendments) must never be hard-deleted; close them instead.
+     */
+    public static function hasOperationalHistory(array $ids): bool
+    {
+        if ($ids === []) {
+            return false;
+        }
+        $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $ids)->pluck('ID')->all();
+
+        return DB::table('session_deduction_ledger')->whereIn('student_class_id', $ids)->exists()
+            || DB::table('session_entitlement_transfers')->whereIn('source_student_class_id', $ids)
+                ->orWhereIn('target_student_class_id', $ids)->exists()
+            || DB::table('student_class_pricing_amendments')->whereIn('student_class_id', $ids)->exists()
+            || ($sessionIds !== [] && DB::table('StudentSingIn')->whereIn('ClassSessionID', $sessionIds)->exists())
+            || DB::table('ClassSession')->whereIn('StudentClassID', $ids)
+                ->whereRaw("LOWER(COALESCE(Status, '')) IN ('attended', 'completed', 'late', 'absent', 'leave')")->exists();
+    }
+
     public static function isWaivedInDb(int $id): bool
     {
         return $id > 0 && DB::table('StudentClass')->where('ID', $id)->lockForUpdate()->value('closed_reason') === 'waived';
