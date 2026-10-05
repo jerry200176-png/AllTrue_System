@@ -3,13 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Campus;
+use App\Services\Line\LinePush;
+use App\Services\Line\ParentLinePush;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\TempRfid;
 use App\Models\StudentClass;
-use App\Models\StudentLineBinding;
 use App\Support\LineNotifySettings;
-use App\Models\SecurityAuditEvent;
 use App\Models\StudentSignIn;
 use App\Models\TeacherSignIn;
 use App\Models\User;
@@ -22,7 +22,6 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -221,47 +220,31 @@ class SwipeRfidController extends Controller
         if ($token === '' || !LineNotifySettings::enabled((int) $campus->getKey(), 'swipe')) {
             return 0;
         }
-        $bindings = StudentLineBinding::query()->where('student_id', $student->getKey())
-            ->whereNotNull('verified_at') // = scopeVerified()
-            ->where('campus_id', $campus->getKey())
-            ->get();
-
+        $parents = app(ParentLinePush::class);
         $text = $this->swipePhotoText($student);
-        $sent = 0;
-        foreach ($bindings as $binding) {
-            $delivered = false;
-            try {
-                $delivered = Http::withToken($token)->timeout(5)->post('https://api.line.me/v2/bot/message/push', [
-                    'to' => $binding->line_user_id,
+
+        return $parents->deliver(
+            $parents->bindings((int) $student->getKey(), (int) $campus->getKey()),
+            (int) $student->getKey(),
+            (int) $campus->getKey(),
+            'swipe_photo',
+            function ($binding) use ($token, $text, $imageUrl, $flexRatio) {
+                try {
                     // 照片＋文字做成 1 張 Flex 卡＝聊天室 1 則；altText 是通知列看到的字。
                     // 照片超過 Flex 上限又縮不了 → 退回文字＋圖片 2 則，家長至少收得到。
-                    'messages' => $flexRatio !== null
+                    return app(LinePush::class)->send($token, $binding->line_user_id, $flexRatio !== null
                         ? [$this->swipePhotoFlex($text, $imageUrl, $flexRatio)]
                         : [
                             ['type' => 'text', 'text' => $text],
                             ['type' => 'image', 'originalContentUrl' => $imageUrl, 'previewImageUrl' => $imageUrl],
-                        ],
-                ])->successful();
-            } catch (\Throwable $e) {
-                Log::warning('swipe_photo_line_push_failed: ' . $e->getMessage());
-            }
-            SecurityAuditEvent::append('notification.delivery', $delivered ? 'success' : 'failure', [
-                'campus_id' => $campus->getKey(),
-                'subject_type' => 'student',
-                'subject_id' => $student->getKey(),
-                'binding_id' => $binding->getKey(),
-            ], [
-                'method' => 'line_push',
-                'notification_type' => 'swipe_photo',
-                'delivery_status' => $delivered ? 'delivered' : 'failed',
-                'binding_verified' => true,
-            ]);
-            if ($delivered) {
-                $sent++;
-            }
-        }
+                        ], 5)->successful();
+                } catch (\Throwable $e) {
+                    Log::warning('swipe_photo_line_push_failed: ' . $e->getMessage());
 
-        return $sent;
+                    return false;
+                }
+            }
+        );
     }
 
     /**
@@ -520,11 +503,10 @@ class SwipeRfidController extends Controller
             'TelegramID'  => $student->TelegramID,
             'TelegramID1' => $student->TelegramID1,
             'TelegramID2' => $student->TelegramID2,
-            'LineIDs'     => !LineNotifySettings::enabled($campusId, 'swipe') ? [] : StudentLineBinding::query()->where('student_id', $student->id)
-                ->whereNotNull('verified_at')
+            'LineIDs'     => !LineNotifySettings::enabled($campusId, 'swipe') ? [] : app(ParentLinePush::class)
                 // 只給刷卡分校頻道的綁定：學生是以 CampusID = 刷卡分校查出來的，所以等於刷卡分校；
                 // 轉校殘留／舊匯入的別校綁定不能交給這台讀卡機（跨分校）。
-                ->where('campus_id', $campusId)
+                ->bindings((int) $student->id, $campusId)
                 ->pluck('line_user_id')
                 ->values()
                 ->all(),
