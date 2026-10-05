@@ -25,6 +25,7 @@ on:
           - swipe_line_path
           - class_sessions_explain_319
           - substitute_calendar_xinzhuang
+          - substitute_slot_conflicts
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
@@ -100,7 +101,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
@@ -623,6 +624,41 @@ jobs:
               }}
               $out['substitute_log_lines'] = array_slice($logLines, -80);
             }}
+          }} elseif ($case === 'substitute_slot_conflicts') {{
+            // Read-only invariant monitor (R44 / TD-076, 2026-10-05): slots holding more than one live
+            // schedules.status=scheduled row with different teachers. IDs only, no names.
+            // calendar_risk = a substitute row (other teacher + original_schedule_id) shares the slot with a
+            // contract-teacher row: the shape that showed the wrong teacher on 新莊 session 41612.
+            $from = now()->subDays(7)->toDateString(); $to = now()->addDays(60)->toDateString();
+            $slots = $db::table('schedules as s')->join('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+              ->where('s.status', 'scheduled')->whereBetween('s.schedule_date', [$from, $to])
+              ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+              ->groupByRaw('s.student_course_id, s.schedule_date, SUBSTRING(s.start_time, 1, 5)')
+              ->havingRaw('COUNT(*) > 1 AND COUNT(DISTINCT s.teacher_id) > 1')
+              ->selectRaw('s.student_course_id as course_id, s.schedule_date as date, SUBSTRING(s.start_time, 1, 5) as start_hm')
+              ->get();
+            $rows = [];
+            foreach ($slots as $slot) {{
+              $course = $db::table('StudentClass as sc')->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->where('sc.ID', $slot->course_id)->first(['sc.TeacherID', 'st.CampusID']);
+              $live = $db::table('schedules')->where('student_course_id', $slot->course_id)->whereDate('schedule_date', $slot->date)
+                ->where('status', 'scheduled')->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$slot->start_hm])->orderBy('id')
+                ->get(['id', 'teacher_id', 'original_schedule_id']);
+              $contract = (int)($course->TeacherID ?? 0);
+              $hasSub = $live->contains(fn ($r) => (int)$r->teacher_id !== $contract && $r->original_schedule_id !== null);
+              $hasContract = $live->contains(fn ($r) => (int)$r->teacher_id === $contract);
+              $rows[] = ['campus_id' => (int)($course->CampusID ?? 0), 'course_id' => (int)$slot->course_id, 'date' => (string)$slot->date,
+                'start' => $slot->start_hm, 'contract_teacher_id' => $contract,
+                'live_rows' => $live->map(fn ($r) => ['id' => (int)$r->id, 'teacher_id' => (int)$r->teacher_id, 'original_schedule_id' => $r->original_schedule_id === null ? null : (int)$r->original_schedule_id])->values()->all(),
+                'has_session' => $db::table('ClassSession')->where('StudentClassID', $slot->course_id)->whereDate('SessionDate', $slot->date)
+                  ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$slot->start_hm])->where('Status', '!=', 'cancelled')->exists(),
+                'calendar_risk' => $hasSub && $hasContract];
+            }}
+            $out['window'] = [$from, $to];
+            $out['conflict_slots'] = count($rows);
+            $out['calendar_risk_slots'] = count(array_filter($rows, fn ($r) => $r['calendar_risk']));
+            $out['by_campus'] = collect($rows)->groupBy('campus_id')->map(fn ($g) => ['slots' => $g->count(), 'calendar_risk' => $g->where('calendar_risk', true)->count()])->all();
+            $out['slots'] = array_slice($rows, 0, 200);
           }} elseif ($case === 'unpaid_hidden_candidates') {{
             // Read-only, Founder decision 2026-10-05: list contracts closed as settled/completed that still owe
             // money per the invoice ledger (input for the POP repair manifest). IDs and amounts only, no names.
