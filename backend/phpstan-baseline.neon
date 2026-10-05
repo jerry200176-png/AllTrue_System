@@ -3831,7 +3831,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 47
+			count: 43
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -3861,7 +3861,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
 			identifier: property.notFound
-			count: 13
+			count: 12
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -3963,7 +3963,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 5
+			count: 4
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -3981,7 +3981,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 8
+			count: 2
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -3993,7 +3993,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4023,7 +4023,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 2
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -6019,9 +6019,39 @@ parameters:
 			path: app/Services/RecordStudentSwipe.php
 
 		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:findOrFail\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
+
+		-
 			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 6
 			path: app/Services/Scheduling/ContractTeacherChangeCascade.php
 
 		-
@@ -6167,12 +6197,6 @@ parameters:
 			identifier: property.notFound
 			count: 1
 			path: app/Http/Controllers/LearningRecordController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Status\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:findOrFail\(\)\.$#'
