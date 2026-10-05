@@ -5959,6 +5959,54 @@ parameters:
 			path: app/Services/StudentPresenceBackfillService.php
 
 		-
+			message: '#^Offset ''time'' on array\{weekday\: int, time\: string, duration_minutes\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 5
+			path: app/Services/Scheduling/ContractSessionSchedule.php
+
+		-
+			message: '#^Offset ''weekday'' on array\{weekday\: int, time\: string, duration_minutes\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 3
+			path: app/Services/Scheduling/ContractSessionSchedule.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractSessionSchedule.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$SubjectID\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/Scheduling/ContractSessionSchedule.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 6
+			path: app/Services/Scheduling/ContractSessionSchedule.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractSessionSchedule.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractSessionSchedule.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/Scheduling/ContractSessionSchedule.php
+
+		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
 			identifier: property.notFound
 			count: 1
@@ -6043,18 +6091,6 @@ parameters:
 			path: app/Services/OccurrenceAssignmentService.php
 
 		-
-			message: '#^Offset ''time'' on array\{weekday\: int, time\: string, duration_minutes\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 5
-			path: app/Services/Scheduling/ContractSessionSchedule.php
-
-		-
-			message: '#^Offset ''weekday'' on array\{weekday\: int, time\: string, duration_minutes\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 3
-			path: app/Services/Scheduling/ContractSessionSchedule.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
 			count: 4
@@ -6065,8 +6101,6 @@ parameters:
 			identifier: property.notFound
 			count: 2
 			path: app/Services/OccurrenceAssignmentService.php
-			count: 1
-			path: app/Services/Scheduling/ContractSessionSchedule.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$SubjectID\.$#'
@@ -6109,29 +6143,3 @@ parameters:
 			identifier: property.notFound
 			count: 1
 			path: app/Services/OccurrenceAssignmentService.php
-			count: 2
-			path: app/Services/Scheduling/ContractSessionSchedule.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 6
-			path: app/Services/Scheduling/ContractSessionSchedule.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:create\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Services/Scheduling/ContractSessionSchedule.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Services/Scheduling/ContractSessionSchedule.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Services/Scheduling/ContractSessionSchedule.php
