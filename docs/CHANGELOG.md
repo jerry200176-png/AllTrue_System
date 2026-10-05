@@ -1,3 +1,6 @@
+## 2026-10-05 — chore(arch): syncFutureScheduledSessionTimes into ContractSessionSchedule (slice 8/10)
+- 行為不變的搬移（ADR-003／#966）：`syncFutureScheduledSessionTimes`（兩段式搬移）移到 `ContractSessionSchedule`；StudentClassController 不再持有 reflow service
+
 ## 2026-10-05 — chore(arch): realign remap and same-day pairing into ContractSessionSchedule (slice 7/10)
 - 行為不變的搬移（ADR-003／#966）：`remapFutureScheduledSessionsToContract` 與同日配對 `planSameDayRemap`／`lockedClassSessionIds`（原在 ScheduleGuardService）移到 `ContractSessionSchedule`，守門與實際同步共用同一份
 
