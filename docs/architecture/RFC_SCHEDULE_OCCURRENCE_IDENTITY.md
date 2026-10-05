@@ -263,9 +263,37 @@ Any reader-side tie-break (newest id, or prefer non-contract) gets one of them w
 - Phase 3 dry-run run 37301540539: stampable 5302, collisions **279** (230 on 2026-09-02), superseded 358, drift 0.
 - Slot-conflict monitor: 2 calendar-risk slots in today−7..+60.
 
-**Gate:** items 1–4 need the same Founder GO as Phase 4/5. The pilot campus is 新莊 (CampusID 11). Until then the R44 frontend guard (#3539) keeps the calendar equal to 課程查找, and the monitor case `substitute_slot_conflicts` is the regression signal.
+**Must be designed before the GO (Codex review on #3542):**
 
-**Acceptance:** monitor `calendar_risk_slots` = 0 on the pilot campus for one week after cutover. A parity test passes: calendar, course management, attendance and payroll all name the same teacher, both for the 41612 shape and for the contract-change shape.
+a. **History pins (#207).** An attended occurrence with no schedules row has no live row to UPDATE.
+   - Before a contract-teacher change, upsert the stable occurrence row with the teacher who taught. Otherwise the resolver falls back to the new `StudentClass.TeacherID` and rewrites past attendance and payroll.
+   - Keep `ContractTeacherChangePreservesHistoryTest` green.
+
+b. **Teacher history.** Add `from_teacher_id` / `to_teacher_id` to `schedule_change_log`, so an UPDATE never loses who was replaced or restored. Substitute and payroll history must stay auditable.
+
+c. **Substitute + reschedule stays atomic.** The `new_date`/`new_start_time`/`new_end_time` path moves `ClassSession` and `LearningRecord`, sets the teacher and writes the notification in one transaction, and undo restores the time.
+   - The new boundary covers the combined operation and its undo.
+   - `SubstituteWithRescheduleTest` stays green.
+
+d. **Repair existing collisions first.** Phase 3 backfill skips colliding rows, and the interim write rule only prevents new ones.
+   - Collisions need a per-slot repair manifest (keeper = the row matching `ClassSession` + the latest operator intent; others retired via the log).
+   - The pilot campus needs **zero unresolved collisions** before identity readers are switched on there. This includes the two known 新莊 slots.
+
+e. **Migrate every substitute reader.** These still treat `original_schedule_id IS NOT NULL` as "is a substitute" and must use the one resolver:
+   - `SubstituteService::collectTeacherBusySlots*` (capacity release)
+   - `TeacherClassCalendar`
+   - `StudentClassController`
+   - `GlobalSearchController`
+   - the learning-record queries
+   - attendance and payroll
+
+   Re-run the Appendix A/B inventory (`rg original_schedule_id`) and list each reader in the cutover PR.
+
+f. **Acceptance metric.** Use zero duplicate live rows per occurrence identity (the monitor's `conflict_slots`, or a direct duplicate-identity count). `calendar_risk_slots` is only a symptom and can read 0 after a later contract change while readers still disagree.
+
+**Gate:** items 1–4 and a–f need the same Founder GO as Phase 4/5. The pilot campus is 新莊 (CampusID 11). Until then the R44 frontend guard (#3539) keeps the calendar equal to 課程查找, and the monitor case `substitute_slot_conflicts` is the regression signal.
+
+**Acceptance:** monitor `conflict_slots` = 0 (no duplicate live rows) on the pilot campus for one week after cutover. A parity test passes: calendar, course management, attendance and payroll all name the same teacher, both for the 41612 shape and for the contract-change shape.
 
 ---
 
