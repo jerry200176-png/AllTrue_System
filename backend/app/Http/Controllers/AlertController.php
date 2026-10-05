@@ -106,30 +106,28 @@ class AlertController extends Controller
 
         $countResults = $countQuery->with('student')->get();
         $dateResults  = $dateQuery->with('student')->get();
-        // Unpaid closed contracts must stay actionable in 帳務中心.
-        // settled_pending = 結案（不續報）未繳；contract_amended = 提前結束／改堂數未繳
-        // (in-app #251 / GH #2461 — amended unpaid rows previously vanished from tuition).
-        $pendingSettlementResults = StudentClass::query()
+        // Stopped contracts that still owe per the invoices (resolver: unpaid/partial/unbilled with
+        // outstanding > 0) stay actionable in 帳務中心, whatever closed_reason says (paused ones included).
+        // waived = 確認不收 is history, never pending. F7 S3a.
+        $stoppedResults = StudentClass::query()
             ->where('Stop', 1)
             ->where(function ($q) {
                 $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
             })
             ->where(function ($q) {
-                $q->where('closed_reason', 'settled_pending')
-                    ->orWhere(function ($q2) {
-                        $q2->where('closed_reason', 'contract_amended')
-                            ->where(function ($q3) {
-                                $q3->where('Paid', 0)->orWhereNull('Paid');
-                            });
-                    });
+                $q->whereNull('closed_reason')->orWhere('closed_reason', '!=', 'waived');
             })
-            ->with('student')
-            ->get();
+            ->with('student');
         if ($studentIds !== null) {
-            $pendingSettlementResults = $pendingSettlementResults
-                ->whereIn('StudentID', $studentIds)
-                ->values();
+            $stoppedResults->whereIn('StudentID', $studentIds);
         }
+        $stoppedResults = $stoppedResults->get();
+        $stoppedStatuses = $this->payableResolver
+            ->courseStatusesByStudentClassIds($stoppedResults->pluck('ID')->all(), $stoppedResults);
+        $pendingSettlementResults = $stoppedResults
+            ->filter(fn ($c) => in_array($stoppedStatuses[(int) $c->ID]['status'] ?? null, ['unpaid', 'partial', 'unbilled'], true)
+                && (int) $stoppedStatuses[(int) $c->ID]['outstanding'] > 0)
+            ->values();
 
         $countPkgQuery = CoursePackage::query()
             ->where('billing_mode', CoursePackage::BILLING_MODE_SESSION)
@@ -344,7 +342,7 @@ class AlertController extends Controller
             ->merge(
                 $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
             )
-            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap) {
+            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
@@ -369,6 +367,11 @@ class AlertController extends Controller
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
 
                 $paymentStatus = ContractMoneyState::alertStatus($sc, $paidAmount, $charge, $pendingReportId !== null);
+                if ($row['alert_type'] === 'pending_reconciliation') {
+                    // F7 S3a: stopped + still owing per the invoices (resolver), regardless of closed_reason.
+                    $outstanding = (int) $stoppedStatuses[$classId]['outstanding'];
+                    $paymentStatus = $pendingReportId !== null ? 'pending_report' : 'pending_reconciliation';
+                }
 
                 $newerInfo = $newerCourseMap[$classId] ?? null;
 

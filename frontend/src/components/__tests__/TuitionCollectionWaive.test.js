@@ -25,4 +25,10 @@ describe('tuition 確認不收 (waive) action', () => {
   it('labels waived rows in the settled table instead of 正常', () => {
     expect(source).toContain(`v-if="row.closed_reason === 'waived'" class="acct-chip">確認不收`);
   });
+
+  it('F7 S3a: shows the backend reconciliation label and the 付款期間待確認 state instead of 正常', () => {
+    expect(source).toContain(`row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '結案待對帳' }}`);
+    expect(source).toContain(`row.payment_review_required" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '付款期間待確認' }}`);
+    expect(source).toContain('!row.pending_reconciliation && !row.payment_review_required" class="text-light">正常');
+  });
 });
