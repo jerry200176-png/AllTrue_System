@@ -1536,6 +1536,7 @@ import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js'
 import { isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';
+import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1858,8 +1859,7 @@ async function retryLoadCourseSessions(course) {
   // Single-course miss path uses the resolve dialog + reloadCourseSessions instead.
   if (sessionDataLoadFailed.value) {
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (!token) return;
       const ok = await loadClassSessionsForCourses(courses.value, token);
       if (ok !== false) {
@@ -2103,7 +2103,7 @@ async function importBackfillCoursesFromCsv(event) {
       teacherMap.set(normalizeTeacherName(t.username), t);
     });
 
-    const token = (await supabase.auth.getSession())?.data?.session?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請重新登入後再試');
       return;
@@ -2163,12 +2163,12 @@ async function importBackfillCoursesFromCsv(event) {
         skip_auto_sessions: true,
       };
 
-      const res = await fetch('/api/v1/student-classes', {
+      const res = await authedFetch('/api/v1/student-classes', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      });
+      }, token);
       if (res.ok) {
         created += 1;
       } else {
@@ -2378,13 +2378,12 @@ async function loadCourseEditability(courseId) {
   editabilityLoading.value = true;
   editabilityError.value = '';
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error('登入狀態已失效，無法完成預檢。');
-    const res = await fetch(`/api/v1/student-classes/${courseId}/editability`, {
+    const res = await authedFetch(`/api/v1/student-classes/${courseId}/editability`, {
       credentials: 'include',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
+      headers: { Accept: 'application/json' },
+    }, token);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body?.message || `預檢失敗（${res.status}）`);
     if (requestId === editabilityRequestId) editability.value = body;
@@ -2585,14 +2584,13 @@ async function previewContractAmendment(newSessionCount) {
   contractAmendmentError.value = '';
   contractAmendmentPreview.value = null;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error('登入狀態已失效，請重新登入。');
-    const res = await fetch(`/api/v1/student-classes/${course.id}/contract-amendment/preview`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/contract-amendment/preview`, {
       method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ new_session_count: Number(newSessionCount) }),
-    });
+    }, token);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body?.message || '無法預覽合約調整。');
     contractAmendmentPreview.value = body;
@@ -2614,14 +2612,13 @@ async function submitContractAmendment({ newSessionCount, reason }) {
   contractAmendmentSubmitting.value = true;
   contractAmendmentError.value = '';
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error('登入狀態已失效，請重新登入。');
-    const res = await fetch(`/api/v1/student-classes/${course.id}/contract-amendment`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/contract-amendment`, {
       method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ new_session_count: Number(newSessionCount), reason }),
-    });
+    }, token);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body?.message || '合約調整失敗。');
     showContractAmendmentModal.value = false;
@@ -2640,14 +2637,13 @@ async function submitContractAmendment({ newSessionCount, reason }) {
 }
 
 async function contractRevertRequest(path, body) {
-  const { data: { session: sess } } = await supabase.auth.getSession();
-  const token = sess?.access_token;
+  const token = await getAccessToken();
   if (!token) throw new Error('登入狀態已失效，請重新登入。');
-  const res = await fetch(`/api/v1/student-classes/${contractRevertCourse.value.id}/contract-amendment/revert${path}`, {
+  const res = await authedFetch(`/api/v1/student-classes/${contractRevertCourse.value.id}/contract-amendment/revert${path}`, {
     method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(body),
-  });
+  }, token);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || '撤銷調整失敗。');
   return data;
@@ -2697,13 +2693,12 @@ async function submitBillingCorrection() {
   billingCorrectionBlocked.value = null;
   billingCorrectionSubmitting.value = true;
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error('登入狀態已失效，請重新登入。');
-    const res = await fetch(`/api/v1/student-classes/${course.id}/billing-correction`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/billing-correction`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         new_session_count: count,
         new_charge: charge,
@@ -2712,7 +2707,7 @@ async function submitBillingCorrection() {
           ? { confirmation_token: billingCorrectionPreview.value.confirmation_token }
           : { preview: true }),
       }),
-    });
+    }, token);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       // Keep this on-screen (not just a toast that vanishes) — the person acting on
@@ -2793,8 +2788,7 @@ async function loadTransferTargetCourses(sourceCourse) {
   const requestId = ++transferTargetCoursesRequest;
   transferTargetCoursesLoading.value = true;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token || !sourceCourse) return;
     const params = new URLSearchParams({
       per_page: '100',
@@ -2809,10 +2803,10 @@ async function loadTransferTargetCourses(sourceCourse) {
     } else if (sourceCourse.student_name) {
       params.set('name', String(sourceCourse.student_name));
     }
-    const res = await fetch(`/api/v1/student-classes?${params}`, {
+    const res = await authedFetch(`/api/v1/student-classes?${params}`, {
       credentials: 'include',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
+      headers: { Accept: 'application/json' },
+    }, token);
     if (!res.ok) return;
     const json = await res.json().catch(() => ({}));
     const list = json?.data ?? json;
@@ -2848,27 +2842,25 @@ async function submitTransferSessions({ targetCourseId, sessionIds, reason }) {
   transferSessionsError.value = '';
   transferSessionsNextActions.value = [];
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) { transferSessionsError.value = '請重新登入後再試'; return; }
     const hasRecovery = transferSessionsSessionOptions.value.some(
       (session) => sessionIds.includes(Number(session.id)) && session.recoverableCancelled
     );
     const endpoint = hasRecovery ? 'recover-transfer-sessions' : 'transfer-sessions';
-    const res = await fetch(`/api/v1/student-classes/${course.id}/${endpoint}`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/${endpoint}`, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         session_ids: sessionIds,
         target_student_class_id: targetCourseId,
         ...(hasRecovery ? { reason } : {}),
       }),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       transferSessionsNextActions.value = Array.isArray(json?.next_actions) ? json.next_actions : [];
@@ -3176,19 +3168,18 @@ async function confirmCoursePause() {
   const action = isPaused ? '恢復' : '暫停';
   pauseConfirmSubmitting.value = true;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) { alert('請重新登入'); return; }
 
     const body = { action: isPaused ? 'resume' : 'pause' };
     if (!isPaused) body.cancel_remaining = !!pauseCancelRemaining.value;
 
-    const res = await fetch(`/api/v1/student-classes/${course.id}/pause`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/pause`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(body),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       alert(`${action}失敗：` + (json.message || res.statusText));
@@ -3324,8 +3315,7 @@ async function loadRenewMonthlyPreview(course) {
 async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') {
   const requestId = ++renewMonthlyPreviewRequestId.value;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token || !course?.id) {
       Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '請重新登入後再預覽新一期。' });
       return;
@@ -3334,16 +3324,15 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
     let endDate = requestedEndDate;
     if (!endDate) endDate = nextPeriodEnd(currentEnd, course?.settlement_day);
     invalidateMonthlyRenewalPreview(renewMonthlyForm.value, endDate);
-    const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ mode: 'renew_monthly', end_date: endDate }),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (showRenewMonthlyModal.value && canApplyRenewalPreview({
       requestId,
@@ -3395,26 +3384,24 @@ async function submitPurchaseSessions() {
   purchaseSubmitting.value = true;
   try {
     if (course?.class_type === 'trial') {
-      const { data: { session: trialSession } } = await supabase.auth.getSession();
-      const trialToken = trialSession?.access_token;
+      const trialToken = await getAccessToken();
       if (!trialToken) {
         alert('請重新登入後再試');
         return;
       }
-      const res = await fetch(`/api/v1/student-classes/${course.id}/convert-trial`, {
+      const res = await authedFetch(`/api/v1/student-classes/${course.id}/convert-trial`, {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          Authorization: `Bearer ${trialToken}`,
         },
         body: JSON.stringify({
           sessions: Number(purchaseForm.value.sessions),
           start_date: purchaseForm.value.start_date,
           class_type: 'one_on_one',
         }),
-      });
+      }, trialToken);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         const details = json?.conflicts?.map((c) => c.message).filter(Boolean).join(' ') || '';
@@ -3474,26 +3461,24 @@ async function submitPurchaseSessions() {
       return;
     }
 
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請重新登入後再試');
       return;
     }
-    const res = await fetch(`/api/v1/student-classes/${course.id}/purchase-batch`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/purchase-batch`, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         sessions: Number(purchaseForm.value.sessions),
         start_date: purchaseForm.value.start_date,
         mode: 'new_purchase',
       }),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
@@ -3545,8 +3530,7 @@ async function submitRenewMonthly(endDate) {
   }
   renewMonthlySubmitting.value = true;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) { alert('請重新登入後再試'); return; }
     const renewalRequest = {
       method: 'POST',
@@ -3554,14 +3538,13 @@ async function submitRenewMonthly(endDate) {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ end_date: endDate }),
     };
     if (renewMonthlyForm.value.discount?.type && renewMonthlyForm.value.discount.type !== 'NONE') {
       renewalRequest.body = JSON.stringify({ end_date: endDate, discount: renewMonthlyForm.value.discount });
     }
-    const res = await fetch(`/api/v1/student-classes/${course.id}/renew-monthly`, renewalRequest);
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/renew-monthly`, renewalRequest, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
@@ -3653,15 +3636,14 @@ async function runQuickAddCheck(courseIdOverride) {
     const controller = new AbortController();
     quickAddCheckController = controller;
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (!token) return;
-      const res = await fetch(`/api/v1/student-classes/${courseId}/add-session/check`, {
+      const res = await authedFetch(`/api/v1/student-classes/${courseId}/add-session/check`, {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
         signal: controller.signal,
-      });
+      }, token);
       const json = await res.json().catch(() => ({}));
       if (requestVersion !== quickAddCheckVersion) return;
       quickAddConflict.value = json;
@@ -3708,19 +3690,17 @@ async function submitQuickAddSession() {
     return;
   }
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請重新登入後再試');
       return;
     }
-    const res = await fetch(`/api/v1/student-classes/${course.id}/add-session`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/add-session`, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         session_date: quickAddSessionForm.value.session_date,
@@ -3729,7 +3709,7 @@ async function submitQuickAddSession() {
         note: quickAddSessionForm.value.note || null,
         auto_approve: !!quickAddSessionForm.value.auto_approve,
       }),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 409 && json?.suggested_actions?.length) {
@@ -3869,15 +3849,14 @@ async function runManualSessionCheck() {
   manualSessionCheckController = controller;
   manualSessionChecking.value = true;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error('請先登入');
-    const res = await fetch(`/api/v1/student-classes/${courseId}/manual-sessions/check`, {
+    const res = await authedFetch(`/api/v1/student-classes/${courseId}/manual-sessions/check`, {
       method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
       signal: controller.signal,
-    });
+    }, token);
     const result = await res.json().catch(() => ({ can_add: false, message: '檢查失敗' }));
     if (requestVersion !== manualSessionCheckVersion) return;
     manualSessionCheck.value = result;
@@ -3898,14 +3877,13 @@ async function submitManualSession() {
   if (!courseId || !manualSessionCheck.value?.can_add) return;
   manualSessionSubmitting.value = true;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error('請先登入');
-    const res = await fetch(`/api/v1/student-classes/${courseId}/manual-sessions`, {
+    const res = await authedFetch(`/api/v1/student-classes/${courseId}/manual-sessions`, {
       method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       manualSessionCheck.value = json;
@@ -4063,26 +4041,24 @@ async function refreshLeaveCascadePreview() {
   }
   leaveCascadePlanLoading.value = true;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       leaveCascadePlan.value = null;
       return;
     }
-    const res = await fetch('/api/v1/schedules/leave-cascade-preview', {
+    const res = await authedFetch('/api/v1/schedules/leave-cascade-preview', {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         student_course_id: courseId,
         schedule_date: date,
         class_session_id: form.session_id || undefined,
       }),
-    });
+    }, token);
     if (!res.ok) {
       leaveCascadePlan.value = null;
       return;
@@ -4129,8 +4105,7 @@ async function submitLeave() {
   const isRetro = isSelectedRetroLeave.value;
 
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請假登記失敗：請重新登入後再試');
       return;
@@ -4143,12 +4118,12 @@ async function submitLeave() {
         session_date: form.schedule_date,
         reason: form.reason || '',
       };
-      const res = await fetch('/api/v1/schedules/retro-leave', {
+      const res = await authedFetch('/api/v1/schedules/retro-leave', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(retroPayload)
-      });
+      }, token);
       if (res.ok) {
         const json = await res.json().catch(() => ({}));
         const monthly = json?.leave_mode === 'monthly_bounded' || isMonthlyMode(leaveCourse.value);
@@ -4189,12 +4164,12 @@ async function submitLeave() {
       schedule_date: form.schedule_date,
       student_course_id: form.course_id
     };
-    const res = await fetch('/api/v1/schedules', {
+    const res = await authedFetch('/api/v1/schedules', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(payload)
-    });
+    }, token);
     if (res.ok) {
       const json = await res.json().catch(() => ({}));
       const monthly = json?.leave_mode === 'monthly_bounded' || isMonthlyMode(leaveCourse.value);
@@ -4221,11 +4196,11 @@ async function submitLeave() {
           durationMs: undoWindowSec * 1000,
           undoDescription: '已撤銷請假，尾堂已回復',
           onUndo: async () => {
-            const undoRes = await fetch(`/api/v1/schedules/${undoScheduleId}/undo-leave`, {
+            const undoRes = await authedFetch(`/api/v1/schedules/${undoScheduleId}/undo-leave`, {
               method: 'POST',
               credentials: 'include',
-              headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-            });
+              headers: { 'Accept': 'application/json' },
+            }, token);
             const undoJson = await undoRes.json().catch(() => ({}));
             if (!undoRes.ok) {
               throw new Error(undoJson?.message || '撤銷請假失敗');
@@ -4263,19 +4238,18 @@ async function submitBulkLeave() {
   bulkLeaveSubmitting.value = true;
   bulkLeaveResult.value = null;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) { alert('請重新登入'); bulkLeaveSubmitting.value = false; return; }
-    const res = await fetch('/api/v1/schedules/bulk-leave', {
+    const res = await authedFetch('/api/v1/schedules/bulk-leave', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({
         branch_id: branchId,
         start_date: bulkLeaveForm.value.start_date,
         end_date: bulkLeaveForm.value.end_date,
       })
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (res.ok) {
       bulkLeaveResult.value = json;
@@ -4774,10 +4748,10 @@ const loadCourses = async (page = 1) => {
       if (filters.value.name) params.set('name', filters.value.name);
       // convert-trial deep link: pin the target student so same-name/pagination can't hide the course.
       if (pendingConvertTrialId.value && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
-      const res = await fetch(`/api/v1/student-classes?${params}`, {
+      const res = await authedFetch(`/api/v1/student-classes?${params}`, {
         credentials: 'include',
-        headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
-      });
+        headers: { 'Accept': 'application/json' }
+      }, token);
       if (res.ok) {
         const json = await res.json();
         const list = json?.data ?? json;
@@ -4857,8 +4831,7 @@ const loadCourses = async (page = 1) => {
   resetExpandedStudentGroups(groupCoursesByStudent(result));
   const isCurrent = () => isCurrentListRequest(requestId, courseLoadRequestId);
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     sessionDataLoadFailed.value = false;
     const sessionsOk = await loadClassSessionsForCourses(result, token || '', isCurrent);
     if (!isCurrent()) return;
@@ -5008,8 +4981,7 @@ const onSubstituteV2Submit = async (submitPayload) => {
   const { substitute_teacher_id, reason, new_date, new_start_time, new_end_time } = submitPayload || {};
   const sessionId = substituteV2SessionId.value;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       substituteV2PickerRef.value?.setError?.('請重新登入');
       return;
@@ -5024,15 +4996,14 @@ const onSubstituteV2Submit = async (submitPayload) => {
       body.new_start_time = new_start_time;
       body.new_end_time = new_end_time;
     }
-    const res = await fetch(`/api/v1/class-sessions/${sessionId}/substitute`, {
+    const res = await authedFetch(`/api/v1/class-sessions/${sessionId}/substitute`, {
       method: 'POST', credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(body),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const msg = json.message || res.statusText || '代課設定失敗';
@@ -5110,17 +5081,16 @@ const loadStudents = async () => {
     return;
   }
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (token) {
       const params = new URLSearchParams({
         branch_id: branchId,
         per_page: '500',
       });
-      const res = await fetch(`/api/v1/students?${params.toString()}`, {
+      const res = await authedFetch(`/api/v1/students?${params.toString()}`, {
         credentials: 'include',
-        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-      });
+        headers: { Accept: 'application/json' },
+      }, token);
       if (res.ok) {
         const json = await res.json().catch(() => ({}));
         const list = json?.data ?? json;
@@ -5148,16 +5118,15 @@ const loadTeachers = async () => {
     return;
   }
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) { teachers.value = []; return; }
     const params = new URLSearchParams({
       per_page: 'all',
       branch_id: currentBranchId,
     });
-    const res = await fetch(`/api/v1/teachers?${params.toString()}`, {
-      headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
-    });
+    const res = await authedFetch(`/api/v1/teachers?${params.toString()}`, {
+      headers: { 'Accept': 'application/json' }
+    }, token);
     const data = await res.json().catch(() => ({}));
     const list = Array.isArray(data) ? data : (data?.data ?? []);
     const filteredRows = (Array.isArray(list) ? list : []).filter((teacher) => {
@@ -5201,8 +5170,7 @@ const goToPage = (p) => {
 const loadRoomsForBranch = async () => {
   if (!props.branchId) { rooms.value = []; return; }
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     const headers = { 'Accept': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(`/api/v1/rooms?branch_id=${props.branchId}`, { credentials: 'include', headers });
@@ -5308,8 +5276,7 @@ const submitEdit = async () => {
   editSaveError.value = null;
   if (editingCourseFromLaravel.value) {
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (token) {
         const endTime = computeEndTime(form.start_time, form.duration_hours);
         const isPackageCourse = isPackageMember(editingCourseRaw.value);
@@ -5358,12 +5325,12 @@ const submitEdit = async () => {
         if (String(form.paid_at || '') !== String(form.original_paid_at || '')) {
           body.paid_at = form.paid_at ? form.paid_at : null;
         }
-        const res = await fetch(`/api/v1/student-classes/${id}`, {
+        const res = await authedFetch(`/api/v1/student-classes/${id}`, {
           method: 'PUT',
           credentials: 'include',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
-        });
+        }, token);
         if (res.ok) {
           const payload = await res.json().catch(() => ({}));
           const sync = payload?.session_sync || {};
@@ -5563,8 +5530,7 @@ const loadStudentGroupBilling = async (group) => {
     [key]: { loading: true, error: '', rows: studentBillingState.value[key]?.rows || [], ledgerSummary: null },
   };
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       studentBillingState.value = {
         ...studentBillingState.value,
@@ -5574,14 +5540,14 @@ const loadStudentGroupBilling = async (group) => {
     }
     const courses = [...activeCourses(group), ...historyCourses(group)];
     const anchorCourse = courses.find((course) => course?.id);
-    const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+    const headers = { Accept: 'application/json' };
     const ledgerPromise = anchorCourse
-      ? fetch(`/api/v1/accounting/ledger?student_class_id=${anchorCourse.id}`, { credentials: 'include', headers })
+      ? authedFetch(`/api/v1/accounting/ledger?student_class_id=${anchorCourse.id}`, { credentials: 'include', headers }, token)
       : null;
     const rows = await Promise.all(courses.map(async (c) => {
       const [invRes, rptRes] = await Promise.all([
-        fetch(`/api/v1/student-classes/${c.id}/invoices`, { credentials: 'include', headers }),
-        fetch(`/api/v1/payment-reports?student_class_id=${c.id}`, { credentials: 'include', headers }),
+        authedFetch(`/api/v1/student-classes/${c.id}/invoices`, { credentials: 'include', headers }, token),
+        authedFetch(`/api/v1/payment-reports?student_class_id=${c.id}`, { credentials: 'include', headers }, token),
       ]);
       const invJson = await invRes.json().catch(() => ({}));
       const rptJson = await rptRes.json().catch(() => ({}));
@@ -5627,17 +5593,16 @@ const openInvoiceModal = async (course) => {
   invoiceModalOpen.value = true;
 
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       invoiceModalError.value = '請重新登入後再查看帳單。';
       return;
     }
 
-    const res = await fetch(`/api/v1/student-classes/${course.id}/invoices`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/invoices`, {
       credentials: 'include',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
+      headers: { Accept: 'application/json' },
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       invoiceModalError.value = json?.message || '帳單載入失敗，請稍後再試。';
@@ -5659,14 +5624,13 @@ const executeDeleteCourse = async () => {
   const fromLaravel = c.data_source === 'laravel' || c.branch_name != null || c.room_name != null || c.settlement_day != null;
   if (fromLaravel) {
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (token) {
-        const res = await fetch(`/api/v1/student-classes/${c.id}`, {
+        const res = await authedFetch(`/api/v1/student-classes/${c.id}`, {
           method: 'DELETE',
           credentials: 'include',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+          headers: {}
+        }, token);
         if (res.ok) {
           confirmDeleteTarget.value = null;
           courses.value = courses.value.filter(x => x.id !== c.id);
@@ -5758,12 +5722,12 @@ const submitBackfill = async () => {
         Memo: form.memo || null,
         skip_auto_sessions: isSessionPayment,
       };
-      const res = await fetch('/api/v1/student-classes', {
+      const res = await authedFetch('/api/v1/student-classes', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
-      });
+      }, token);
       if (res.ok) {
         const createdBody = await res.json().catch(() => ({}));
         const createdEntity = createdBody?.data ?? createdBody?.course ?? createdBody ?? {};
@@ -5815,10 +5779,10 @@ const submitBackfill = async () => {
 
   if (usedApi && isSessionPayment && selectedLegacyDates.length > 0 && createdCourseId && token) {
     if (!directorId) {
-      const meRes = await fetch('/api/v1/me', {
+      const meRes = await authedFetch('/api/v1/me', {
         credentials: 'include',
-        headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      }).catch(() => null);
+        headers: { 'Accept': 'application/json' },
+      }, token).catch(() => null);
       if (meRes?.ok) {
         const me = await meRes.json().catch(() => ({}));
         directorId = me?.id ?? null;
@@ -5828,17 +5792,17 @@ const submitBackfill = async () => {
       alert('課程已建立，但無法取得操作者身分，請重新登入後再補登上課日期。');
       return;
     }
-    const bulkRes = await fetch('/api/v1/learning-records/bulk-backdoor-approve', {
+    const bulkRes = await authedFetch('/api/v1/learning-records/bulk-backdoor-approve', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         StudentClassID: createdCourseId,
         TeacherID: Number(form.teacher_id),
         DirectorID: Number(directorId),
         session_dates: selectedLegacyDates,
       })
-    });
+    }, token);
     if (!bulkRes.ok) {
       const bulkErr = await bulkRes.json().catch(() => ({}));
       alert('課程已建立，但補登上課日期失敗：' + (bulkErr?.message || '請到學習評量頁補登'));
@@ -5846,12 +5810,12 @@ const submitBackfill = async () => {
     }
 
     // 以使用者勾選日期為最終依據，確保剩餘堂數與補登堂數一致。
-    const syncRemainingRes = await fetch(`/api/v1/student-classes/${createdCourseId}`, {
+    const syncRemainingRes = await authedFetch(`/api/v1/student-classes/${createdCourseId}`, {
       method: 'PUT',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remaining_sessions: remaining })
-    }).catch(() => null);
+    }, token).catch(() => null);
     if (!syncRemainingRes?.ok) {
       alert('課程與補登日期已建立，但剩餘堂數同步失敗，請重新整理後檢查。');
       return;

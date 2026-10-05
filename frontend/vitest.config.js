@@ -13,6 +13,7 @@ export default defineConfig({
       'src/composables/**/__tests__/**/*.test.js',
       'src/lib/tokenContrast.test.js',
       'src/lib/learningRecordSessionPolicy.test.js',
+      'src/lib/authedFetch.test.js',
     ],
     globals: false,
     coverage: {
