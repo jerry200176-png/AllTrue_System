@@ -110,6 +110,9 @@ class ClassSessionIndexProjectionService
             if (!$d) {
                 continue;
             }
+            if ($row->status === Schedule::STATUS_SUPERSEDED) {
+                continue;
+            }
             if ($row->status === 'scheduled') {
                 $scheduledByClass[$id][$d] = true;
             } else {

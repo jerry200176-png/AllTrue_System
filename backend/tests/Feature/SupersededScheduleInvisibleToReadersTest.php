@@ -223,4 +223,22 @@ class SupersededScheduleInvisibleToReadersTest extends TestCase
         DB::table('schedules')->where('id', 200)->update(['status' => 'scheduled']);
         $this->assertEquals(4.0, $hours(), 'control: scheduled 08:00-10:00 row is counted');
     }
+
+    public function test_busy_slots_latest_status_ignores_superseded_after_leave_marker(): void
+    {
+        $base = [
+            'student_id' => 1, 'day_of_week' => 5, 'type' => 'normal', 'deduction' => 1, 'branch_id' => 1,
+            'student_course_id' => $this->sc->ID, 'schedule_date' => self::DATE, 'teacher_id' => $this->aId,
+            'start_time' => '10:00:00', 'end_time' => '12:00:00', 'created_at' => now(), 'updated_at' => now(),
+        ];
+        DB::table('schedules')->insert($base + ['id' => 300, 'status' => 'leave']);
+        DB::table('schedules')->insert($base + ['id' => 301, 'status' => Schedule::STATUS_SUPERSEDED]);
+        $svc = app(SubstituteService::class);
+
+        // The leave marker frees A's contract session; the newer superseded row must not undo that.
+        $this->assertSame([], $svc->collectTeacherBusySlots($this->aId, self::DATE));
+
+        DB::table('schedules')->where('id', 301)->update(['status' => 'scheduled']);
+        $this->assertNotEmpty($svc->collectTeacherBusySlots($this->aId, self::DATE), 'control: newer scheduled row is live');
+    }
 }
