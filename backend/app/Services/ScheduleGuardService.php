@@ -189,6 +189,28 @@ class ScheduleGuardService
     }
 
     /**
+     * Teacher/room conflicts for one new session of an existing course: the course
+     * supplies teacher, class type, room, and the self-exclusions (same course and
+     * same student never conflict with themselves).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime): array
+    {
+        return $this->validateScheduleOccurrence([
+            'teacher_id' => (int) $course->getAttribute('TeacherID'),
+            'class_type' => (string) ($course->getAttribute('ClassType') ?: 'one_on_one'),
+            'room_id' => $course->getAttribute('room_id') ? (int) $course->getAttribute('room_id') : null,
+            'branch_id' => $branchId,
+            'schedule_date' => $date,
+            'start_time' => $startTime,
+            'end_time' => $endTime,
+            'exclude_course_id' => (int) $course->getAttribute('ID') ?: null,
+            'exclude_student_id' => (int) ($course->getAttribute('StudentID') ?? 0) ?: null,
+        ]);
+    }
+
+    /**
      * Validate many concrete occurrences with one shared payload; every conflict is
      * tagged with the proposed date/time. Single conflict shape for write paths.
      *

@@ -586,6 +586,39 @@ class ScheduleGuardrailsTest extends TestCase
      * still had Stop=0 and kept its weekly 1:3 seat forever.
      * Revert-proof: before the fix the three used-up courses fill the slot → conflict.
      */
+    public function test_validate_course_occurrence_excludes_own_course_and_student(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-guard-course-occ@example.com');
+        $make = function (string $name) use ($teacherId): StudentClass {
+            $student = $this->createStudent(1, $name);
+            $id = DB::table('StudentClass')->insertGetId([
+                'StudentID' => $student->id, 'TeacherID' => $teacherId, 'ClassType' => 'one_on_one',
+                'GradeID' => 1, 'SubjectID' => 1, 'by1' => 1, 'Period' => 4, 'StartDate' => '2026-04-01',
+                'TotalHours' => 2, 'SessionCount' => 1, 'SessionDuration' => 120, 'RemainingSessions' => 1,
+                'UsedSessions' => 0, 'Charge' => 500, 'Pay' => 0, 'Paid' => 0, 'Rate' => 500, 'Stop' => 0,
+                'MDate' => now(), 'ScheduleMode' => 'count',
+            ]);
+            ClassSession::create([
+                'StudentClassID' => $id, 'SessionDate' => '2026-04-13',
+                'StartTime' => '18:00:00', 'EndTime' => '20:00:00', 'Status' => 'scheduled',
+            ]);
+
+            return StudentClass::findOrFail($id);
+        };
+        $mine = $make('本人');
+        $other = $make('他人');
+        $guard = app(\App\Services\ScheduleGuardService::class);
+
+        // other's session fills the one_on_one seat; mine is excluded as self, so only other's counts
+        $conflicts = $guard->validateCourseOccurrence($mine, 1, '2026-04-13', '18:00', '20:00');
+        $this->assertSame('teacher_capacity', $conflicts[0]['type'] ?? null);
+        // a free slot is clean
+        $this->assertSame([], $guard->validateCourseOccurrence($mine, 1, '2026-04-13', '20:00', '21:00'));
+        // delete the other course's seat: own course/student alone never conflicts
+        DB::table('ClassSession')->where('StudentClassID', $other->ID)->delete();
+        $this->assertSame([], $guard->validateCourseOccurrence($mine, 1, '2026-04-13', '18:00', '20:00'));
+    }
+
     public function test_validate_occurrences_tags_conflicts_and_optionally_dedupes(): void
     {
         $teacherId = $this->createTeacher(1, 'teacher-guard-occ@example.com');
