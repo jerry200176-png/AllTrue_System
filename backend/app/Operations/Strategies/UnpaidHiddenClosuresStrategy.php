@@ -39,6 +39,10 @@ final class UnpaidHiddenClosuresStrategy
 
     public function execute(array $plan, array $context): array
     {
+        if (($plan['ok'] ?? false) && ($plan['state'] ?? null) === 'after') {
+            // Already applied (e.g. a retry after the execution record failed to persist): idempotent, let verify run.
+            return ['ok' => true, 'already_applied' => true, 'updated' => 0, 'snapshot' => []];
+        }
         if (!($plan['ok'] ?? false) || ($plan['state'] ?? null) !== 'before') {
             throw new RuntimeException('unpaid_hidden_plan_not_ready');
         }
@@ -148,6 +152,7 @@ final class UnpaidHiddenClosuresStrategy
                 'invoices' => $invoiceIds, 'payments' => $payments,
                 'stop' => (int) $c->getAttribute('Stop'), 'paid' => (int) $c->getAttribute('Paid'),
                 'effectively_paid' => $c->isEffectivelyPaid(),
+                'package' => (int) $c->getAttribute('PackageID') > 0,
                 'tutoring' => strtolower(trim((string) $c->getAttribute('ClassType'))) === 'tutoring',
                 'pending_report' => in_array($id, $pending, true),
                 'campus_id' => (int) $c->student?->getAttribute('CampusID'),
@@ -170,6 +175,7 @@ final class UnpaidHiddenClosuresStrategy
             if ($r['paid'] === 1 || $r['effectively_paid']) $errors[] = "paid_{$id}"; // incl. paid package
             if ($r['tutoring']) $errors[] = "tutoring_{$id}";
             if ($r['pending_report']) $errors[] = "pending_report_{$id}";
+            if ($r['package']) $errors[] = "package_{$id}"; // package payment state is out of this repair's lock scope
             if ($r['outstanding'] !== $case['outstanding']) $errors[] = "outstanding_{$id}";
         }
 
