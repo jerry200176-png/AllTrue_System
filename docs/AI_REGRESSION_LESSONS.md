@@ -715,6 +715,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 同一堂代課可能因重試或歷史流程留下兩筆 `schedules.status='scheduled'`：一筆 `teacher_id` 是原課程老師，一筆才是真正代課老師；若 `ClassSessionController::index` 單純取 `MAX(id)`，較新的原老師 stale row 會讓課表仍掛在原老師欄。
 - **強制規則**：查詢代課顯示老師時，`scheduled` 例外必須優先選 `teacher_id != StudentClass.TeacherID` 的紀錄；找不到不同老師時才退回課程老師。
 - **前端規則**：`SmartCalendar` 同日同時段例外排序時，必須讓「不同於課程老師」的 scheduled exception 先渲染，避免顯示去重保留錯誤那筆。
+- **2026-10-05 復發（新莊 session 41612）**：「先渲染」不夠。同一時段若有兩條鏈（舊調課 12695→12696 掛合約老師、代課 12697→12698），兩筆 `original_schedule_id` 不同、去重 key 不同，`mergeWeekCalendarOccurrences` 會依序把兩筆都 overlay 到同一張 ClassSession 卡，後 overlay 的合約老師蓋掉代課。後端 `GET /class-sessions` 其實已回 `substitute_teacher_id`；課程查找顯示正確、行事曆錯。
+- **前端強制規則**：session row 帶後端解析的 `substitute_teacher_id` 時，任何 `teacher_id` 不同的同時段 `schedules` overlay 一律不得改寫老師（`calendarOccurrenceMerge.js` 的 base 與 overlay 兩處）。前端不得自行從 `schedules` 鏈重算「誰上課」。根治見 TD-076（`RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`）：一堂一筆 live row，代課改為 UPDATE 而非新增鏈。
 - **測試必補**：修改 `ClassSessionController::index`、代課流程或行事曆例外合併時，必須覆蓋「同一堂同時存在原老師 stale scheduled row 與代課 scheduled row，API/畫面仍顯示代課老師」。
 
 ---
