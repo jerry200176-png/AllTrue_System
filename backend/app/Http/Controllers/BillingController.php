@@ -453,9 +453,11 @@ class BillingController extends Controller
         }
         $sessions = ($monthlyCourse && $monthlyCourse->getAttribute('ScheduleMode') === 'date'
             && $projection['billing_period'])
-            ? $this->monthlyBilling->billableSessionDetailsForPeriod(
+            ? $this->monthlyBilling->slipSessionDetailsForPeriod(
                 $monthlyCourse,
-                $projection['billing_period']
+                $projection['billing_period'],
+                $items->count() === 1 ? $items->first()['period_start'] : null,
+                $items->count() === 1 ? $items->first()['period_end'] : null,
             )
             : ClassSession::sessionsForPaymentSlip(
                 $studentClassIds,

@@ -169,16 +169,28 @@ class MonthlyBillingService
             ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
     }
 
-    private function periodSessionQuery(Model $course, string $billingPeriod): Builder
-    {
+    private function periodSessionQuery(
+        Model $course,
+        string $billingPeriod,
+        ?string $serviceStart = null,
+        ?string $serviceEnd = null,
+    ): Builder {
         try {
             $anchor = Carbon::createFromFormat('!Y-m', $billingPeriod);
         } catch (\Throwable) {
             $anchor = Carbon::today();
         }
 
-        $periodStart = $anchor->copy()->startOfMonth()->toDateString();
-        $periodEnd = $anchor->copy()->endOfMonth()->toDateString();
+        // A prepaid next-period invoice is labelled with the month its service
+        // starts in (e.g. 8/30–9/28 → 2026-08); its own service range, when
+        // known, is the window instead of the calendar month (#3445).
+        $hasServiceRange = $serviceStart !== null && $serviceEnd !== null;
+        $periodStart = $hasServiceRange
+            ? Carbon::parse($serviceStart)->toDateString()
+            : $anchor->copy()->startOfMonth()->toDateString();
+        $periodEnd = $hasServiceRange
+            ? Carbon::parse($serviceEnd)->toDateString()
+            : $anchor->copy()->endOfMonth()->toDateString();
 
         $query = ClassSession::query();
         $query->where('StudentClassID', (int) $course->getKey())
@@ -208,19 +220,50 @@ class MonthlyBillingService
     /** @return list<array{class_session_id:int,date:string,start_time:?string,end_time:?string,subject:string,lesson:int,status:string}> */
     public function billableSessionDetailsForPeriod(Model $course, string $billingPeriod): array
     {
+        return $this->sessionDetails($course, $this->billableSessionsForPeriod($course, $billingPeriod));
+    }
+
+    /**
+     * Display only (amounts and billing snapshots never use this). Prefers the
+     * billed lessons so the list matches the amount; with none billed yet it
+     * lists the month's planned lessons, and for a prepaid next-period invoice
+     * (month window empty) the lessons in its own service range (#3445).
+     *
+     * @return list<array{class_session_id:int,date:string,start_time:?string,end_time:?string,subject:string,lesson:int,status:string}>
+     */
+    public function slipSessionDetailsForPeriod(
+        Model $course,
+        string $billingPeriod,
+        \DateTimeInterface|string|null $serviceStart = null,
+        \DateTimeInterface|string|null $serviceEnd = null,
+    ): array {
+        $sessions = $this->billableSessionsForPeriod($course, $billingPeriod);
+        if ($sessions->isEmpty()) {
+            $sessions = $this->plannedSessions($this->periodSessionQuery($course, $billingPeriod));
+        }
+        if ($sessions->isEmpty() && $serviceStart !== null && $serviceEnd !== null) {
+            $sessions = $this->plannedSessions(
+                $this->periodSessionQuery($course, $billingPeriod, (string) $serviceStart, (string) $serviceEnd)
+            );
+        }
+
+        return $this->sessionDetails($course, $sessions);
+    }
+
+    /** @return Collection<int, ClassSession> */
+    private function plannedSessions(Builder $query): Collection
+    {
+        return $query->whereNotIn('Status', ['cancelled', 'voided', 'rescheduled'])
+            ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
+            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+    }
+
+    /** @param Collection<int, ClassSession> $sessions */
+    private function sessionDetails(Model $course, Collection $sessions): array
+    {
         $subject = method_exists($course, 'displaySubjectName')
             ? (string) $course->displaySubjectName()
             : '課程';
-
-        $sessions = $this->billableSessionsForPeriod($course, $billingPeriod);
-        if ($sessions->isEmpty()) {
-            // Display only (amounts untouched): a slip with no attended
-            // lessons yet still lists the period's planned lessons (R22).
-            $sessions = $this->periodSessionQuery($course, $billingPeriod)
-                ->whereNotIn('Status', ['cancelled', 'voided', 'rescheduled'])
-                ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
-                ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
-        }
 
         return $sessions
             ->values()

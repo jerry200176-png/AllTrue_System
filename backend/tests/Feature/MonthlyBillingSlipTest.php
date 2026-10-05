@@ -286,6 +286,83 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('total_amount', 6000);
     }
 
+    public function test_prepaid_next_period_slip_lists_dates_in_item_service_range(): void
+    {
+        // #3445: billing_period is the month the service starts in (8/30 → 2026-08)
+        // while the course starts 9/1; the slip must use the item's service range.
+        Carbon::setTestNow(Carbon::parse('2026-08-25 09:00:00', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken('director-monthly-prepaid@example.com');
+        $student = Student::create([
+            'name' => '月結預繳下期測試',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $course = StudentClass::create([
+            'StudentID' => $student->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 99,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-09-01',
+            'EndDate' => '2026-09-30',
+            'TotalHours' => 8,
+            'Charge' => 6600,
+            'Paid' => 0,
+            'Rate' => 1650,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'date',
+            'SessionCount' => 4,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 4,
+            'ClassType' => 'one_on_one',
+            'UsedSessions' => 0,
+            'settlement_day' => 30,
+            'monthly_sessions' => 4,
+            'rate_unit' => 'session',
+        ]);
+        foreach ([['2026-09-01', 'scheduled'], ['2026-09-08', 'scheduled'], ['2026-09-15', 'cancelled'], ['2026-09-29', 'scheduled']] as [$date, $status]) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => $date,
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => $status,
+            ]);
+        }
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-08-20',
+            'DueDate' => '2026-08-30',
+            'TotalAmount' => 6600,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'billing_period' => '2026-08',
+        ]);
+        InvoiceItem::create([
+            'InvoiceID' => $invoice->id,
+            'StudentClassID' => $course->ID,
+            'Description' => '月結費用 2026年8月',
+            'Amount' => 6600,
+            'PeriodStart' => '2026-08-30',
+            'PeriodEnd' => '2026-09-28',
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonCount(2, 'sessions')
+            ->assertJsonPath('sessions.0.date', '2026-09-01')
+            ->assertJsonPath('sessions.1.date', '2026-09-08')
+            ->assertJsonPath('items.0.period_start', '2026-08-30');
+    }
+
     public function test_count_mode_slip_uses_contract_charge_when_stored_charge_is_stale(): void
     {
         $token = $this->createDirectorToken('director-count-stale-charge@example.com');
