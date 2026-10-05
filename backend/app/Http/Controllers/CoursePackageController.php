@@ -1224,7 +1224,6 @@ class CoursePackageController extends Controller
                     ]);
 
                 $members = StudentClass::where('PackageID', $pkg->id)->get();
-                $scController = app()->make(\App\Http\Controllers\StudentClassController::class);
 
                 foreach ($members as $member) {
                     if ((string) ($member->ScheduleMode ?? 'count') !== 'count') {
@@ -1250,7 +1249,7 @@ class CoursePackageController extends Controller
 
                     $beforeActive = $beforeAll->count();
 
-                    $scController->cancelExcessScheduledSessions((int) $member->ID, $newTotal);
+                    app(\App\Services\Scheduling\ContractSessionSchedule::class)->cancelExcessScheduledSessions((int) $member->ID, $newTotal);
                     app(\App\Services\Scheduling\ContractSessionSchedule::class)->extendSessionsIfNeeded($member, $newTotal);
 
                     $afterActive = ClassSession::where('StudentClassID', $member->ID)
