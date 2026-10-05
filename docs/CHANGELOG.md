@@ -9,6 +9,10 @@
 <!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
 - 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
 
+## 2026-10-05 — chore(ops): POP catch-up billing for 宥翰 Jun–Aug + void orphan invoice 1053
+<!-- release-notes: silent_ship=silent-2026-10-05-muzha-chen-catchup -->
+- 新增 POP 營運操作 `muzha-chen-billing-catchup-20261005`（`MuzhaChenBillingCatchupStrategy`，精確個案、Founder 核准、可回滾）：木柵學生 164 在合約 1249 於 2026-06／07／08 已上課卻沒有帳單的 7 堂，依 Founder 決議每堂 $1,650 建立一份補收合約與三張未繳帳單（$4,950／$4,950／$1,650）；同時作廢查無合約的孤兒帳單 1053。不移動任何課堂、簽到或學習紀錄。需部署後另經 Founder 核准執行。
+
 ## 2026-10-05 — refactor(frontend): F7 S2 paid status comes only from the server `payment_status`
 <!-- release-notes: silent_ship=silent-2026-10-05-f7-s2 -->
 - 課程已繳判斷（學生管理、課程管理結案警告）、繳費通知可用狀態與帳務中心導向，改共用 `lib/paymentStatus.js` 只讀後端 `payment_status`；移除前端 `Paid >= Charge` 推算（Paid 為 0/1 旗標，Charge>1 時恆為 false）與無 `payment_status` 時視為未繳的 alert 備援。收款視窗與繳費單金額不再以課程 `charge` 備援，只用 `payable_*`／`estimated_amount`。後端一律下發 `payment_status`，正常情況畫面不變。F4 死碼（OverdueBucketsPanel／BatchInvoiceModal，後端無對應路由）留待獨立 PR 刪除。
