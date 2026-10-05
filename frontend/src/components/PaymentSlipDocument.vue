@@ -287,12 +287,12 @@ defineExpose({ slip });
 
 .slip-meta {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 8px 16px;
   margin: 0 0 16px;
 }
 .slip-meta dt { font-size: 11.5px; color: var(--slip-mute); }
-.slip-meta dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.slip-meta dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .slip-items {
   width: 100%;
