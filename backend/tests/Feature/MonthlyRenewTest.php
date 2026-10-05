@@ -1011,6 +1011,28 @@ class MonthlyRenewTest extends TestCase
             ->assertOk()->assertJsonFragment(['student_class_id' => $course->ID, 'pending_reconciliation' => true]);
     }
 
+    public function test_renew_monthly_stale_paid_flag_with_open_invoice_stays_pending(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-renew-stale-paid@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'settlement_day' => 15,
+            'monthly_sessions' => 8, 'StartDate' => '2026-04-01', 'EndDate' => '2026-04-30',
+            'Paid' => 1, 'Charge' => 4800, 'Rate' => 600, // stale flag: the April bill below is still open
+        ]);
+        Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-04-01', 'DueDate' => '2026-04-15',
+            'TotalAmount' => 4800, 'PaidAmount' => 0, 'ScheduleModeAtIssue' => 'date', 'Status' => 'unpaid', 'Note' => '',
+            'billing_period' => '2026-04',
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", ['end_date' => '2026-05-31'])
+            ->assertCreated();
+
+        $this->assertSame('settled_pending', (string) $course->fresh()->closed_reason);
+    }
+
     public function test_renew_monthly_invoice_creation_is_idempotent(): void
     {
         $token = $this->createDirectorToken([1], 'director-invoice-idempotent@example.com');

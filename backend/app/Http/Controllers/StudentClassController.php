@@ -9382,6 +9382,25 @@ class StudentClassController extends Controller
      */
     private function courseNeedsPaymentReconciliation(StudentClass $studentClass): bool
     {
+        // Ledger first: any non-void invoice not covered by its payment rows is open debt,
+        // even when a stale Paid flag or another period's PaidAmount says otherwise.
+        $hasOpenInvoice = Invoice::query()->with('payments')
+            ->where(function ($query) {
+                $query->whereNull('Status')->orWhere('Status', '!=', 'void');
+            })
+            ->where('StudentClassID', $studentClass->getAttribute('ID'))
+            ->get()
+            ->contains(function (Invoice $invoice) use ($studentClass) {
+                $amounts = $this->invoiceAmounts->resolve($invoice, $studentClass);
+                // Legacy invoices carry PaidAmount without Payment rows (same rule as MonthlyPeriodPaymentService).
+                $paid = $invoice->getRelationValue('payments')->isEmpty() ? max(0, (int) $invoice->getAttribute('PaidAmount')) : (int) $amounts['net_applied'];
+
+                return (int) $amounts['total_amount'] > $paid;
+            });
+        if ($hasOpenInvoice) {
+            return true;
+        }
+
         $charge = (int) ($studentClass->Charge ?? 0);
         if ($charge <= 0 || $studentClass->isEffectivelyPaid()) {
             return false;
