@@ -263,21 +263,22 @@ Any reader-side tie-break (newest id, or prefer non-contract) gets one of them w
 - Phase 3 dry-run run 37301540539: stampable 5302, collisions **279** (230 on 2026-09-02), superseded 358, drift 0.
 - Slot-conflict monitor: 2 calendar-risk slots in today−7..+60.
 
-**Must be designed before the GO (Codex review on #3542):**
+**Must be designed before the GO (Codex reviews on #3542 / #3550; an open list, not exhaustive — the Track B design PR must answer every item and re-run the inventory):**
 
 a. **History pins (#207).** An attended occurrence with no schedules row has no live row to UPDATE.
    - Before a contract-teacher change, upsert the stable occurrence row with the teacher who taught. Otherwise the resolver falls back to the new `StudentClass.TeacherID` and rewrites past attendance and payroll.
    - Keep `ContractTeacherChangePreservesHistoryTest` green.
    - **Already-changed contracts:** Phase 3 backfill only reads existing schedules rows, so it cannot create a missing pin. Before cutover on a campus, inventory attended/taught `ClassSession`s with no schedules row whose taught teacher (`StudentSingIn` / `LearningRecord` evidence) differs from the current `StudentClass.TeacherID`. Repair them by creating stable rows from that evidence (Repair Manifest, dry-run first). Add a regression for a contract that was changed before the new writer shipped.
+   - **Evidence precedence:** `StudentSingIn.TeacherID` from RFID swipes (`SwipeRfidController`) records the contract teacher even on substituted lessons, while `LearningRecordBackfillService` resolves the substitute. They are not interchangeable. Define one precedence (proposal: existing substitute schedules row > non-voided `LearningRecord.TeacherID` > manual-attendance `StudentSingIn` > RFID `StudentSingIn`). Quarantine rows where the sources disagree, for director review, and do not auto-pin them. Add a regression for RFID swipe + substitute.
 
 b. **Teacher history.** Add `from_teacher_id` / `to_teacher_id` to `schedule_change_log`, so an UPDATE never loses who was replaced or restored. Substitute and payroll history must stay auditable.
 
 c. **Substitute + reschedule stays atomic.** The `new_date`/`new_start_time`/`new_end_time` path moves `ClassSession` and `LearningRecord`, sets the teacher and writes the notification in one transaction, and undo restores the time.
    - The new boundary covers the combined operation and its undo.
-   - `SubstituteWithRescheduleTest` stays green.
+   - `SubstituteWithRescheduleTest` currently asserts the chain pair (`rescheduled` + `scheduled`). Under the flag, replace those storage-shape assertions with: exactly one live identity row, updated teacher/date/time, one audit entry, atomic rollback, and undo restores. Keep the flag-off case as today. Do not weaken it to make it pass.
 
 d. **Repair existing collisions first.** Phase 3 backfill skips colliding rows, and the interim write rule only prevents new ones.
-   - Collisions need a per-slot repair manifest (keeper = the row matching `ClassSession` + the latest operator intent; others retired via the log).
+   - Collisions need a per-slot repair manifest. The keeper is the row matching `ClassSession` plus the latest operator intent. Each loser gets an explicit **non-live state transition on the `schedules` row itself**: proposal `status='superseded'`, a status every live reader already excludes; this must be verified per reader. Each transition writes one audit entry (old status/teacher/slot → superseded), and the manifest's inverse restores the old status. The append-only log alone cannot retire a row.
    - The pilot campus needs **zero unresolved collisions** before identity readers are switched on there. This includes the two known 新莊 slots.
 
 e. **Migrate every substitute reader.** These still treat `original_schedule_id IS NOT NULL` as "is a substitute" and must use the one resolver:
@@ -288,9 +289,13 @@ e. **Migrate every substitute reader.** These still treat `original_schedule_id 
    - the learning-record queries
    - attendance and payroll
 
-   Re-run the Appendix A/B inventory (`rg original_schedule_id`) and list each reader in the cutover PR.
+   Writers too, not just readers: `LearningRecordController::updateTeacher` (with `update_class=false` it changes `LearningRecord.TeacherID` and payroll counters only; with `true` it can reattribute unpinned history), and every `StudentClass.TeacherID` mutation. These must route through the resolver writer, with each one in the regression matrix.
+
+   Re-run the Appendix A/B inventory. Use `rg original_schedule_id` **and** `rg "TeacherID"` writes, because grep on the chain column misses teacher writers. List each reader and writer in the cutover PR.
 
 f. **Acceptance metric.** The gate is a **campus-scoped duplicate count over the frozen identity columns** (`student_course_id`, `original_schedule_date`, `original_start_time`) across **every live status** (scheduled, leave, …). It must be 0. That needs a new read-only monitor.
+
+   It must also show **complete coverage**: every non-extra live row on the campus has both identity columns set. Zero duplicates alone does not prove this, because unstamped collision keepers and new pins would be invisible to identity readers. Add a null/partial-identity regression.
 
    `substitute_slot_conflicts` is diagnostic only and is not the gate. It groups by the current slot, counts only `scheduled` rows, and needs different teachers, so it misses same-teacher, moved-slot and `leave` duplicates. Its `calendar_risk_slots` is a symptom metric too.
 
