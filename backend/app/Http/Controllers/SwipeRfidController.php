@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Campus;
+use App\Services\Line\LinePush;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\TempRfid;
@@ -22,7 +23,6 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -231,17 +231,14 @@ class SwipeRfidController extends Controller
         foreach ($bindings as $binding) {
             $delivered = false;
             try {
-                $delivered = Http::withToken($token)->timeout(5)->post('https://api.line.me/v2/bot/message/push', [
-                    'to' => $binding->line_user_id,
-                    // 照片＋文字做成 1 張 Flex 卡＝聊天室 1 則；altText 是通知列看到的字。
-                    // 照片超過 Flex 上限又縮不了 → 退回文字＋圖片 2 則，家長至少收得到。
-                    'messages' => $flexRatio !== null
-                        ? [$this->swipePhotoFlex($text, $imageUrl, $flexRatio)]
-                        : [
-                            ['type' => 'text', 'text' => $text],
-                            ['type' => 'image', 'originalContentUrl' => $imageUrl, 'previewImageUrl' => $imageUrl],
-                        ],
-                ])->successful();
+                // 照片＋文字做成 1 張 Flex 卡＝聊天室 1 則；altText 是通知列看到的字。
+                // 照片超過 Flex 上限又縮不了 → 退回文字＋圖片 2 則，家長至少收得到。
+                $delivered = app(LinePush::class)->send($token, $binding->line_user_id, $flexRatio !== null
+                    ? [$this->swipePhotoFlex($text, $imageUrl, $flexRatio)]
+                    : [
+                        ['type' => 'text', 'text' => $text],
+                        ['type' => 'image', 'originalContentUrl' => $imageUrl, 'previewImageUrl' => $imageUrl],
+                    ], 5)->successful();
             } catch (\Throwable $e) {
                 Log::warning('swipe_photo_line_push_failed: ' . $e->getMessage());
             }
