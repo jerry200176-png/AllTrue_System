@@ -168,6 +168,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { answerMapFromAttempt, attemptStatusLabel, buildAnswerPayload } from '../lib/assessmentRunner.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
@@ -180,7 +181,7 @@ import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 const props = defineProps({ branchId: [String, Number], userRole: String });
 const base = `${import.meta.env.VITE_API_BASE || '/api'}/v1`;
 const isTeacher = computed(() => props.userRole === 'teacher');
-const isDirector = computed(() => ['director', 'super_admin'].includes(props.userRole));
+const isDirector = computed(() => isDirectorRole(props.userRole));
 const assessments = ref([]);
 const classes = ref([]);
 const summary = reactive({ assessment_count: 0, result_count: 0, average_percent: null, reviewed_count: 0, remediation_open_count: 0, remediation_overdue_count: 0, remediation_completed_count: 0 });

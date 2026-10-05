@@ -9,9 +9,12 @@
 <!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
 - 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
 
+## 2026-10-06 — fix(schedule): TD-076 sweep so no reader treats a `superseded` schedules row as live, leave or scheduled
+<!-- release-notes: silent_ship=silent-2026-10-06-td076-superseded-sweep -->
+- 課程管理「排課日期」（`sessionDates`）原把任何非 `scheduled` 的 schedules 列當成請假而移除該日；補課時長判斷與非標準時長盤點原把 `superseded` 補課列當成補課；主任儀表板備援讀取原只排除 cancelled／leave。現在三處與前端判斷都先略過 `superseded` 列（既有狀態行為不變），並以測試證明；目前沒有任何寫入端產生 `superseded`，畫面與行為不變。
 ## 2026-10-06 — fix(billing): deleting a contract never orphans invoices (plan D)
 <!-- release-notes: staff_update=staff-2026-10-06-delete-contract-keeps-billing -->
-- `StudentClassController::destroy`：合約有 Payment、任何繳費回報或已收款帳單時回 422；否則同一交易內鎖定合約與帳單、作廢未作廢帳單（Note 加註操作者與日期）、合併帳單明細仍指向該合約時回 422，寫入嚴格稽核 `student_class.deleted`（缺列即回滾）後才刪除。學生刪除（單筆／批量）遇有 Payment 或已確認繳費回報也回 422，批量先全數預檢。避免再出現帳單 1053 指向已刪合約 2564 的孤兒。
+- 合約刪除（`StudentClassController::destroy`）與學生刪除（單筆／批量）改成「有紀錄就不能硬刪」：有收款、已付／部分付款帳單、任何繳費回報、Paid／Pay／PayDate、套裝成員，或上課／點名／扣堂／轉堂／改堂／調價／催繳等紀錄（`StudentClass::hasOperationalHistory`）一律回 422，請改用結案或停用。只剩未繳帳單的合約：限主任／超管，同一交易鎖合約→帳單、只作廢同一學生的帳單（Note 加註操作者與日期，限 255 字）、合併帳單任一方向回 422，寫入嚴格稽核 `student_class.deleted` 後才刪除。建帳單／登記收款遇到同時被刪的合約回 404。避免再出現帳單 1053 指向已刪合約 2564 的孤兒。
 
 ## 2026-10-06 — fix(accounting): 待對帳 lists every stopped contract that still owes (F7 S3a)
 <!-- release-notes: staff_update=staff-2026-10-06-pending-reconciliation-all-owed -->

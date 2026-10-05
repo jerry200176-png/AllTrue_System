@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Http\Controllers\StudentClassController;
+use App\Services\Scheduling\ContractSessionSchedule;
 use App\Models\CoursePackage;
 use App\Models\StudentClass;
 use Illuminate\Console\Command;
@@ -44,8 +44,8 @@ class SyncPackageSessionCounts extends Command
         $totalFixed = 0;
         $totalExtended = 0;
 
-        /** @var StudentClassController $scController */
-        $scController = app()->make(StudentClassController::class);
+        /** @var ContractSessionSchedule $scController */
+        $scController = app(ContractSessionSchedule::class);
 
         foreach ($packages as $pkg) {
             $members = StudentClass::where('PackageID', $pkg->id)->get();

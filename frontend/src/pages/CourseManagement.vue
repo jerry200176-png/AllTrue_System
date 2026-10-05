@@ -388,7 +388,7 @@
                         <button type="button" class="small ghost" @click="emit('navigate', buildTuitionCollectNav(c, { intent: 'pending' }))">查看待核對回報</button>
                       </div>
                     </td>
-                    <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 }">
+                    <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
                       <template v-if="isSessionMode(c)">{{ displayRemainingSessions(c) ?? '—' }}<span v-if="c.PackageID" class="tag-package-hint">（方案共用）</span></template>
                       <template v-else>已上 {{ getCompletedSessionCount(c) }} 堂</template>
                     </td>
@@ -1528,6 +1528,7 @@
 <script setup>
 // Autonomous delivery canary: no runtime behavior change.
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { isDirectorRole } from '../lib/roleCapabilities.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
@@ -1579,7 +1580,10 @@ import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import MonthlyCorrectionPreviewModal from '../components/course-management/MonthlyCorrectionPreviewModal.vue';
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
-import { monthlyPaymentLabel } from '../lib/courseMoneyState.js';
+import {
+  INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, isLowRemaining, isNonSessionPayment, monthlyPaymentLabel,
+  ownRemainingSessions, poolTotalSessions, poolUsedSessions,
+} from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import {
   buildBillingCorrectionBlockedState,
@@ -1633,16 +1637,8 @@ const DAY_OPTIONS = [
   { value: 7, label: '日' },
 ];
 const isPackageMember = (course) => Number(course?.PackageID ?? course?.package_id ?? 0) > 0;
-const getPackageTotalSessions = (course) => {
-  const total = Number(course?.package_total_sessions ?? course?.PackageTotalSessions ?? course?.sessions_purchased ?? 0);
-  return Number.isFinite(total) && total > 0 ? total : 0;
-};
-const getPackageUsedSessions = (course) => {
-  const total = getPackageTotalSessions(course);
-  const remaining = Number(course?.package_remaining_sessions ?? course?.PackageRemainingSessions ?? 0);
-  const used = total - (Number.isFinite(remaining) ? remaining : 0);
-  return used > 0 ? used : 0;
-};
+const getPackageTotalSessions = (course) => poolTotalSessions(course, { fallbackToPurchased: true });
+const getPackageUsedSessions = poolUsedSessions;
 // 時間以半小時為單位：07:00 ~ 22:30
 const TIME_OPTIONS_30 = (() => {
   const opts = [];
@@ -1695,7 +1691,7 @@ const props = defineProps({
   initialStudentName: { type: String, default: '' },
   initialCourseIntent: { type: String, default: '' },
 });
-const allowFinancialDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
+const allowFinancialDiscount = computed(() => isDirectorRole(props.userRole));
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
 
 const goToTuitionBilling = (course) => {
@@ -1708,16 +1704,11 @@ const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
 };
 
-function courseRemainingSessionsForClose(course) {
-  const value = Number(course?.remaining_sessions ?? course?.RemainingSessions);
-  return Number.isFinite(value) ? value : null;
-}
-
 function closeCourseInPlace(course) {
   return runCloseCourseNoRenew({
     course,
     studentName: course?.student_name || course?.student?.name,
-    getRemainingSessions: courseRemainingSessionsForClose,
+    getRemainingSessions: ownRemainingSessions,
     getSubjectLabel,
     isCourseSettled,
     supabase,
@@ -2998,7 +2989,7 @@ function courseManagerNextSessionLabel(c) {
 }
 function courseManagerOverviewNeeds(c) {
   const needs = [];
-  if (isSessionMode(c) && Number(displayRemainingSessions(c) ?? 99) <= 2) {
+  if (isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 99))) {
     needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續報或加購', action: 'purchase', actionLabel: purchaseActionLabel(c) });
   }
   const makeups = pendingMakeupsByCourse.value?.[c.id] ?? [];
@@ -3253,11 +3244,11 @@ function duplicateCourseForTeacher(course) {
 function purchaseActionLabel(c) {
   if (c?.class_type === 'trial') return '轉為正式課程';
   if (!isSessionMode(c)) return '結算 / 續約下月';
-  return Number(displayRemainingSessions(c) ?? 0) <= 2 ? '續報加購' : '加購堂數';
+  return isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) ? '續報加購' : '加購堂數';
 }
 function purchaseActionIsRenew(c) {
   if (!isSessionMode(c)) return true;
-  return Number(displayRemainingSessions(c) ?? 0) <= 2;
+  return isLowRemaining(Number(displayRemainingSessions(c) ?? 0));
 }
 function purchaseActionTitle(c) {
   if (c?.class_type === 'trial') return '保留試聽紀錄並建立正式堂數課程';
@@ -4473,7 +4464,7 @@ const formatDayTimeSlots = (course) => formatDayTimeSlotLines(course).join('、'
 const sessionPrice = (c) => getPerSessionFee(c);
 const totalPrice = (c) => getCourseTotalFee(c);
 // 月結制：已上堂費用 = 實際已上堂數 × 每堂費用（月結無預購堂數，用 completed count）
-const isMonthlyMode = (c) => (c?.payment_type || 'session') !== 'session';
+const isMonthlyMode = isNonSessionPayment;
 const monthlyAttendedFee = (c) => Math.round(getPerSessionFee(c) * getCompletedSessionCount(c));
 
 // 備註開關（預設關閉，截圖給家長時保持乾淨）
@@ -4625,7 +4616,7 @@ const courseLensMetrics = computed(() => {
     const remaining = displayRemainingSessions(course);
     return isSessionMode(course)
       && remaining != null
-      && Number(remaining) <= 2
+      && isLowRemaining(Number(remaining))
       && !effectiveClosedReason(course);
   }).length;
   const usageReviewCount = visibleCourses.filter((course) => course.usage_balance_status === 'review_required').length;
@@ -4706,11 +4697,7 @@ const paymentStatusHelpTitle = (course) => {
   if (isTutoringCourse(course)) return '無須繳費；輔導課不產生付款義務。';
   return `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
 };
-const reportStatusLabel = (status) => ({
-  pending: '待對帳',
-  confirmed: '已入帳',
-  rejected: '已退回',
-}[status] || status || '—');
+const reportStatusLabel = (status) => REPORT_STATUS_LABELS.course[status] || status || '—';
 const hasMixedPackagePaymentStatuses = (key) => {
   const rows = studentBillingState.value[key]?.rows || [];
   const packageStatuses = rows
@@ -4734,12 +4721,7 @@ const formatBillingPeriod = (period) => {
 const invoiceStatusLabel = (invoice) => {
   if (invoice?.ledger_label) return invoice.ledger_label;
   const status = typeof invoice === 'string' ? invoice : invoice?.status;
-  return ({
-  paid: '已繳',
-  unpaid: '未繳',
-  partial: '部分繳',
-  void: '已作廢',
-  }[status] || status || '未知');
+  return INVOICE_STATUS_LABELS.course[status] || status || '未知';
 };
 const invoiceStatusClass = (invoice) => {
   const ledgerStatus = invoice?.ledger_status || '';
