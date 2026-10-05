@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class ScheduleChangeLog extends Model
 {
+    public const REASONS = ['reschedule', 'substitute', 'restore', 'pin', 'repair_supersede'];
+
     protected $table = 'schedule_change_log';
 
     public $timestamps = false;
@@ -19,6 +21,8 @@ class ScheduleChangeLog extends Model
         'from_time',
         'to_date',
         'to_time',
+        'from_teacher_id',
+        'to_teacher_id',
         'actor_id',
         'reason',
         'created_at',
