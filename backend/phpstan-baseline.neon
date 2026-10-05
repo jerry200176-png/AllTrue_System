@@ -3839,18 +3839,6 @@ parameters:
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$Paid\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$PayDate\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$Rate\.$#'
 			identifier: property.notFound
 			count: 2
