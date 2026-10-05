@@ -985,7 +985,7 @@ import { notesForRole, parentReleaseNoteTeaser } from '../lib/releaseNotes';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
 import { buildParentActionItems, buildParentHomeSummary } from '../lib/parentActionItems';
 import { formatAssessmentProgressDate, assessmentProgressScoreLabel, assessmentProgressPercentLabel } from '../lib/parentAssessmentProgress';
-import { remainingTone } from '../lib/courseMoneyState';
+import { isMonthlyPaymentType, remainingTone } from '../lib/courseMoneyState';
 import { isSessionStartedOrPast, isLateLeave, canRequestParentLeave } from '../lib/parentLeavePolicy';
 
 function resolveParentLiffId() {
@@ -1501,10 +1501,7 @@ const progressPercent = (c) => {
   return Math.min(100, Math.round((used / total) * 100));
 };
 
-const isMonthlyCourse = (c) => {
-  const mode = String(c?.schedule_mode ?? 'count');
-  return mode !== 'count';
-};
+const isMonthlyCourse = isMonthlyPaymentType;
 
 const monthlyProgressPercent = (c) => {
   const target = c?.monthly_target || 0;

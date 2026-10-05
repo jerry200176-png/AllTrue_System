@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.10.06",
     "date": "2026-10-06",
     "title": "2026.10.06 草稿（未發布）",
-    "summary": "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。；待對帳 lists every stopped contract that still owes (F7 S3a)",
+    "summary": "money/status answer per course on every screen (Founder option A)；課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "money/status answer per course on every screen (Founder option A)"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -24,6 +30,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "money/status answer per course on every screen (Founder option A)",
       "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
       "待對帳 lists every stopped contract that still owes (F7 S3a)"
     ]

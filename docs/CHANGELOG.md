@@ -9,6 +9,10 @@
 <!-- release-notes: staff_update=staff-2026-10-05-unpaid-close-pending -->
 - 月結「續下一期」與月結課程停用，原本不論有沒有繳費都把舊合約標成 `settled`／`completed`，未繳的月份因此從帳務中心與學費提醒消失；改用既有 `courseNeedsPaymentReconciliation()`，未繳清時改標 `settled_pending`（待對帳）
 
+## 2026-10-06 — feat(billing): one money/status answer per course on every screen (Founder option A)
+<!-- release-notes: staff_update=staff-2026-10-06-money-status-unify -->
+- 顯示與分類統一（不改「是否已繳」判定 G-009、不改任何金額或寫入）：確認不收在學費提醒階梯也回 `waived`（課程／學生列表仍為 `paid`，以 closed_reason 顯示「確認不收」）；課程列表部分繳回 `partial`；家長帳務紀錄 Charge 0 回 `free`；月結一律以 `payment_type==='monthly'`（家長端 API 新增 `payment_type`）；共用方案 `PackageID`／`package_id` 皆算；文案統一「部分繳」「已入帳」。移除 `isNonSessionPayment`／`isNonCountSchedule`／`strictPackageId` 分歧選項。
+
 ## 2026-10-05 — fix(billing): monthly slips always list lesson dates (#3445)
 <!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
 - 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變

@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-06-money-status-unify
+    published_at: "2026-10-06"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 各畫面繳費狀態一致
+    summary: 同一門課在課程、學生、帳務與家長端，繳費狀態說法統一。
+    items:
+      - category: improved
+        text: 確認不收、部分繳在各畫面都照實顯示，不再有的畫面寫未繳。
+      - category: improved
+        text: 不用付錢的課顯示免費；部分付款、已核帳統一寫部分繳、已入帳。
+      - category: fixed
+        text: 月結課與共用方案課，各畫面判斷一致。金額與誰要催繳都沒變。
+    source_refs:
+      - "changelog:2026-10-06:money-status-unify"
   - id: staff-2026-10-05-waive-unpaid-contract
     published_at: "2026-10-05"
     audiences:
