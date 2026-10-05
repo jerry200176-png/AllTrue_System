@@ -243,7 +243,7 @@ class SubstituteController extends Controller
             ) {
                 // TD-076 B1 (flag on): one writer restores the live row (slot too when the
                 // substitute moved it), one log row. Flag off: today's delete path below.
-                $v2 = OccurrenceAssignmentService::enabledFor($campusId);
+                $v2 = OccurrenceAssignmentService::handles($session, $campusId);
                 if ($v2):
                     $rescheduled = null;
                     $scheduledRow = app(OccurrenceAssignmentService::class)->restoreContractTeacher(

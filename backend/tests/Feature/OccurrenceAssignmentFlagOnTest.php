@@ -181,6 +181,41 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $this->assertSame(['substitute', 'restore'], ScheduleChangeLog::orderBy('id')->pluck('reason')->all());
     }
 
+    public function test_undo_after_flag_rollback_still_restores_through_the_writer(): void
+    {
+        $this->seedWorld();
+        $this->flag(true);
+        $session = $this->crossDateShape();
+        $this->postSubstitute($session)->assertOk();
+        $this->flag(false);
+
+        $this->postSession($session, 'substitute/undo')->assertOk();
+
+        $this->assertSame($this->aId, (int) Schedule::findOrFail(9001)->teacher_id);
+        $this->assertSame(['substitute', 'restore'], ScheduleChangeLog::orderBy('id')->pluck('reason')->all());
+    }
+
+    public function test_makeup_extra_row_is_never_taken_over_flag_on(): void
+    {
+        $this->seedWorld();
+        $this->flag(true);
+        $session = $this->plainSession();
+        DB::table('schedules')->insert([
+            'id' => 9100, 'student_id' => $this->sc->StudentID, 'teacher_id' => $this->aId, 'day_of_week' => 7,
+            'type' => 'extra', 'status' => 'scheduled', 'deduction' => 1, 'branch_id' => 1,
+            'student_course_id' => $this->sc->ID, 'schedule_date' => '2026-04-19',
+            'start_time' => '13:00', 'end_time' => '15:00', 'original_schedule_id' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->postSubstitute($session)->assertOk();
+        $this->postSession($session, 'substitute/undo')->assertOk();
+
+        $extra = Schedule::findOrFail(9100);
+        $this->assertSame([$this->aId, null, 'extra'], [(int) $extra->teacher_id, $extra->original_schedule_id, $extra->type]);
+        $this->assertSame(1, Schedule::where('student_course_id', $this->sc->ID)->count());
+    }
+
     public function test_durable_restore_to_contract_teacher_flag_on(): void
     {
         $this->seedWorld();

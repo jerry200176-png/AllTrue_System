@@ -30,6 +30,21 @@ class OccurrenceAssignmentService
     }
 
     /**
+     * Flag on, OR this slot was written by this service earlier: a flag rollback must still
+     * undo/restore rows through the same writer (they may hang off a cross-date anchor).
+     */
+    public static function handles(ClassSession $session, int $campusId): bool
+    {
+        return self::enabledFor($campusId)
+            || (Schema::hasColumn('schedule_change_log', 'to_teacher_id')
+                && ScheduleChangeLog::where('student_course_id', (int) $session->StudentClassID)
+                    ->where('reason', 'substitute')
+                    ->whereDate('to_date', Carbon::parse((string) $session->SessionDate)->toDateString())
+                    ->where('to_time', substr((string) $session->StartTime, 0, 5))
+                    ->exists());
+    }
+
+    /**
      * @param array{date:string,start:string,end:string}|null $newSlot
      */
     public function assignTeacher(
@@ -153,6 +168,7 @@ class OccurrenceAssignmentService
         return Schedule::where('student_course_id', $courseId)
             ->whereDate('schedule_date', $date)
             ->where('status', 'scheduled')
+            ->where(fn ($q) => $q->whereNull('type')->orWhere('type', '<>', 'extra')) // makeup rows are not occurrences
             ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start])
             ->lockForUpdate()
             ->orderByRaw('CASE WHEN teacher_id <> ? THEN 0 ELSE 1 END', [$contractTeacherId])
@@ -165,6 +181,7 @@ class OccurrenceAssignmentService
         return Schedule::where('student_course_id', $courseId)
             ->whereDate('schedule_date', $date)
             ->where('status', 'rescheduled')
+            ->where(fn ($q) => $q->whereNull('type')->orWhere('type', '<>', 'extra'))
             ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start])
             ->lockForUpdate()
             ->orderByDesc('id')

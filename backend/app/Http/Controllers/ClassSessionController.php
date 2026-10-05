@@ -3039,7 +3039,7 @@ class ClassSessionController extends Controller
 
             $scheduledDeleted = 0;
             $rescheduledDeleted = 0;
-            if (OccurrenceAssignmentService::enabledFor((int) Student::where('id', $studentClass->StudentID)->value('CampusID'))):
+            if (OccurrenceAssignmentService::handles($session, (int) Student::where('id', $studentClass->StudentID)->value('CampusID'))):
                 // TD-076 B1: one writer sets the live row back (or removes a substitute-only row), one log row.
                 $restored = app(OccurrenceAssignmentService::class)->restoreContractTeacher($session, $changedBy ?: null);
                 $scheduledDeleted = $restored ? 1 : 0; // counts "cleared", for the response only

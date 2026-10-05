@@ -6107,3 +6107,9 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Services/OccurrenceAssignmentService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ScheduleChangeLog\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/OccurrenceAssignmentService.php
