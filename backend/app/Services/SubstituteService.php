@@ -337,10 +337,13 @@ class SubstituteService
         $latest = [];
         $stopped = [];
         foreach ($rowsQuery->orderBy('schedules.id')->get(['schedules.id', 'schedules.student_course_id', 'schedules.start_time', 'schedules.status', 'sc_stop.Stop']) as $f) {
-            $latest[(int) $f->student_course_id . '|' . $this->hhmm($f->start_time)] = (string) $f->status;
             if ((int) $f->Stop === 1) {
                 $stopped[(int) $f->student_course_id] = true;
             }
+            if ((string) $f->status === Schedule::STATUS_SUPERSEDED) {
+                continue; // retired rows must not overwrite a leave/rescheduled marker
+            }
+            $latest[(int) $f->student_course_id . '|' . $this->hhmm($f->start_time)] = (string) $f->status;
         }
         $freed = array_filter($latest, fn ($status) => in_array($status, ['leave', 'rescheduled'], true));
 
