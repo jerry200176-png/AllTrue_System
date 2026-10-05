@@ -235,7 +235,10 @@ defineExpose({ slip });
   border-top: 6px solid var(--slip-accent);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   padding: 28px 32px 22px;
-  font-family: 'Noto Sans TC', 'Inter', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  /* System CJK fonts only: they have real bold weights on every device and
+     need no web-font embedding when the PNG is exported (WebKit dropped the
+     embedded Noto Sans TC weights). */
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Microsoft JhengHei', 'Noto Sans CJK TC', sans-serif;
   font-size: 13px;
   line-height: 1.5;
 }
@@ -271,7 +274,6 @@ defineExpose({ slip });
   border-radius: 12px;
 }
 .slip-amount {
-  font-family: 'Inter', 'Noto Sans TC', sans-serif;
   font-size: 34px;
   font-weight: 800;
   color: var(--slip-ink);
