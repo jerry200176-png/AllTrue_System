@@ -1371,21 +1371,23 @@ jobs:
           echo json_encode($out, JSON_UNESCAPED_UNICODE), PHP_EOL;
           ?>''')
           PY
-          # The generated probe outgrew ARG_MAX when passed as a base64 argument; stream it over stdin instead.
-          # CASE_KEY was allowlisted by the generator above (unsupported case => exit) before reaching the remote shell.
+          # The generated probe outgrew ARG_MAX when passed as a base64 argument. Ship it inside the remote script on
+          # stdin instead: one connection, cleanup trap set before the file is written.
           [[ "$CASE_KEY" =~ ^[a-z0-9_]{1,64}$ ]] || { echo '::error::invalid case key'; exit 1; }
+          remote_script="$RUNNER_TEMP/production-case-remote.sh"
+          {
+            echo 'set -euo pipefail'
+            echo 'umask 077'
+            echo "probe_file=/tmp/production_case_probe_${CASE_KEY}.php"
+            echo 'trap '"'"'shred -u "$probe_file" 2>/dev/null || true'"'"' EXIT'
+            echo 'base64 -d > "$probe_file" <<'"'"'PROBE_B64'"'"''
+            base64 -w76 /tmp/production_case_probe.php
+            echo 'PROBE_B64'
+            echo 'cd /home/admin/backend'
+            echo 'php artisan tinker --execute="require '"'"'$probe_file'"'"';"'
+          } > "$remote_script"
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
-            "umask 077; cat > /tmp/production_case_probe_${CASE_KEY}.php" < /tmp/production_case_probe.php
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
-            "CASE_KEY='$CASE_KEY' bash -s" <<'REMOTE' | tee out/production-case.log
-          set -euo pipefail
-          cd /home/admin/backend
-          probe_file="/tmp/production_case_probe_${CASE_KEY}.php"
-          trap 'shred -u "$probe_file" 2>/dev/null || true' EXIT
-          php artisan tinker --execute="require '${probe_file}';"
-          REMOTE
+            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' < "$remote_script" | tee out/production-case.log
           fi
           python3 - <<'PY'
           import json
