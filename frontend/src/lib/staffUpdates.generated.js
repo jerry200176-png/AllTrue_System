@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-06-pending-reconciliation-all-owed",
+    "publishedAt": "2026-10-06",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "待對帳會列出所有欠款的結案合約",
+    "summary": "待對帳現在依帳單列出每一份還有欠款的結案合約，暫停中的也會出現。",
+    "items": [
+      "暫停中但還有欠款的合約，以前不在待對帳；現在標「暫停中 · 待對帳」。",
+      "付款期間對不起來的合約獨立標「付款期間待確認」，不再被隱藏。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "暫停中但還有欠款的合約，以前不在待對帳；現在標「暫停中 · 待對帳」。"
+        ]
+      },
+      {
+        "title": "你現在可以",
+        "items": [
+          "付款期間對不起來的合約獨立標「付款期間待確認」，不再被隱藏。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-06:pending-reconciliation-all-owed"
+    ],
+    "date": "2026-10-06",
+    "version": "2026.10.06"
+  },
+  {
     "id": "staff-2026-10-05-waive-unpaid-contract",
     "publishedAt": "2026-10-05",
     "effectiveAt": null,
