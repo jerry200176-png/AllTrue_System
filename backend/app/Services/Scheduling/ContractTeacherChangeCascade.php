@@ -2,8 +2,12 @@
 
 namespace App\Services\Scheduling;
 
+use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\Schedule;
+use App\Models\StudentClass;
+use App\Models\StudentSignIn;
+use App\Services\OccurrenceAssignmentService;
 use App\Support\LearningRecordMutableOwnership;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -19,49 +23,12 @@ use Illuminate\Support\Facades\Schema;
 final class ContractTeacherChangeCascade
 {
 
-    /**
-     * Keep past / already-taught sessions on the former contract teacher when
-     * StudentClass.TeacherID changes (in-app #207).
-     *
-     * Calendar display prefers substitute schedule rows (original_schedule_id NOT NULL
-     * + teacher_id <> contract). Without pinning, past attended sessions fall through
-     * to the new contract teacher and look like history was rewritten.
-     */
-    public static function pinPastSessionsToFormerTeacherAfterContractTeacherChange(
-        int $courseId,
-        int $oldTeacherId,
-        int $newTeacherId,
-        ?string $effectiveDate = null
-    ): void {
-        if ($courseId <= 0 || $oldTeacherId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
-            return;
-        }
-        // Sessions before this date keep the former teacher (default: today).
-        $effectiveDate = $effectiveDate ?: Carbon::today()->toDateString();
-
-        $course = DB::table('StudentClass')->where('ID', $courseId)->first();
-        if (!$course) {
-            return;
-        }
-
-        $studentId = (int) ($course->StudentID ?? 0);
-        $campusId = $studentId > 0
-            ? (int) (DB::table('Student')->where('id', $studentId)->value('CampusID') ?? 0)
-            : 0;
-        if ($studentId <= 0 || $campusId <= 0) {
-            return;
-        }
-
+    /** The #207 "taught or past" ClassSession set shared by the legacy pin and the TD-076 flag-on pin. */
+    public static function taughtPastSessions(int $courseId, string $effectiveDate)
+    {
         $today = Carbon::today()->toDateString();
-        $subject = (string) (DB::table('Subject')->where('id', $course->SubjectID)->value('Subject_Name') ?? '');
-        $classType = (string) ($course->class_type ?? $course->ClassType ?? 'one_on_one');
-
-        // in-app #207: only pin sessions with teaching evidence so calendar history
-        // stays on the former teacher. Past rows that are still merely `scheduled`
-        // must NOT become fake substitute pins — otherwise calendar keeps showing
-        // the old teacher after a contract TeacherID change (in-app #312).
         $taughtStatuses = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
-        $pastSessions = DB::table('ClassSession as cs')
+        return DB::table('ClassSession as cs')
             ->where('cs.StudentClassID', $courseId)
             ->where(function ($q) use ($today, $taughtStatuses, $effectiveDate) {
                 // Past lessons are history regardless of attendance evidence.
@@ -110,6 +77,113 @@ final class ContractTeacherChangeCascade
             ->orderBy('cs.StartTime')
             ->select('cs.*')
             ->get();
+    }
+
+    /** Not a plain contract occurrence: any leave status (incl. leave_adjusted), leave recorded only on a sign-in, or a makeup (`extra`) lesson. The writer would add a second live row. */
+    public static function isPinnableOccurrence(ClassSession $session): bool
+    {
+        $start = substr((string) $session->StartTime, 0, 5);
+
+        return !str_contains(strtolower((string) $session->Status), 'leave')
+            && !StudentSignIn::where('ClassSessionID', $session->id)->whereNull('VoidedAt')->whereRaw("LOWER(TRIM(COALESCE(Status, ''))) = 'leave'")->exists()
+            && !Schedule::where('student_course_id', (int) $session->StudentClassID)->where('type', 'extra')->where('status', 'scheduled')
+                ->whereDate('schedule_date', Carbon::parse((string) $session->SessionDate)->toDateString())
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start])->exists();
+    }
+
+    /**
+     * TD-076 B2 (flag on): upsert a `pin` row per taught past occurrence through the single writer, before TeacherID changes.
+     * Who taught (D2): substitute row > non-voided LR > manual sign-in (RecordedByUserID set) > RFID sign-in; no evidence
+     * keeps the old contract teacher like #207. Sources that disagree pin the OLD contract teacher like #207, reason `pin_conflict` + ids-only warning (PR-E quarantine lists them); an existing exception row is left alone.
+     */
+    public static function pinTaughtOccurrencesBeforeContractTeacherChange(
+        StudentClass $course,
+        int $newTeacherId,
+        ?string $effectiveDate,
+        ?int $actorId
+    ): void {
+        $oldTeacherId = (int) ($course->TeacherID ?? 0);
+        $courseId = (int) $course->ID;
+        $writer = app(OccurrenceAssignmentService::class);
+        $sessions = self::taughtPastSessions($courseId, $effectiveDate ?: Carbon::today()->toDateString());
+
+        foreach ($sessions as $row) {
+            $session = ClassSession::findOrFail($row->id);
+            if (!self::isPinnableOccurrence($session)) {
+                continue;
+            }
+            $start = substr((string) $row->StartTime, 0, 5);
+            $sub = Schedule::where('student_course_id', $courseId)->where('status', 'scheduled')
+                ->whereDate('schedule_date', Carbon::parse($row->SessionDate)->toDateString())
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start])
+                ->where(fn ($q) => $q->whereNull('type')->orWhere('type', '<>', 'extra'))
+                ->whereNotNull('original_schedule_id')
+                ->pluck('teacher_id')->all();
+            $lr = LearningRecord::where('ClassSessionID', $row->id)->whereNull('VoidedAt')->pluck('TeacherID')->all();
+            $signIns = StudentSignIn::where('ClassSessionID', $row->id)->whereNull('VoidedAt');
+            $manual = (clone $signIns)->whereNotNull('RecordedByUserID')->pluck('TeacherID')->all();
+            $rfid = (clone $signIns)->whereNull('RecordedByUserID')->pluck('TeacherID')->all();
+
+            $ids = array_values(array_unique(array_filter(array_map('intval', array_merge($sub, $lr, $manual, $rfid)))));
+            $conflict = count($ids) > 1;
+            if ($conflict) {
+                Log::warning('td076 pin conflict: teacher evidence disagrees, pinning the old contract teacher', [
+                    'student_course_id' => $courseId, 'class_session_id' => (int) $row->id, 'teacher_ids' => $ids,
+                ]);
+                if ($sub) {
+                    continue; // an existing exception row already holds the history, like #207
+                }
+            }
+            $teacherId = $conflict ? $oldTeacherId : ($ids[0] ?? $oldTeacherId);
+            if ($teacherId === $newTeacherId) {
+                continue;
+            }
+            $writer->pinTaughtTeacher($session, $teacherId, $actorId, $conflict ? 'pin_conflict' : 'pin');
+        }
+    }
+
+    /**
+     * Keep past / already-taught sessions on the former contract teacher when
+     * StudentClass.TeacherID changes (in-app #207).
+     *
+     * Calendar display prefers substitute schedule rows (original_schedule_id NOT NULL
+     * + teacher_id <> contract). Without pinning, past attended sessions fall through
+     * to the new contract teacher and look like history was rewritten.
+     */
+    public static function pinPastSessionsToFormerTeacherAfterContractTeacherChange(
+        int $courseId,
+        int $oldTeacherId,
+        int $newTeacherId,
+        ?string $effectiveDate = null
+    ): void {
+        if ($courseId <= 0 || $oldTeacherId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
+            return;
+        }
+        // Sessions before this date keep the former teacher (default: today).
+        $effectiveDate = $effectiveDate ?: Carbon::today()->toDateString();
+
+        $course = DB::table('StudentClass')->where('ID', $courseId)->first();
+        if (!$course) {
+            return;
+        }
+
+        $studentId = (int) ($course->StudentID ?? 0);
+        $campusId = $studentId > 0
+            ? (int) (DB::table('Student')->where('id', $studentId)->value('CampusID') ?? 0)
+            : 0;
+        if ($studentId <= 0 || $campusId <= 0) {
+            return;
+        }
+
+        $today = Carbon::today()->toDateString();
+        $subject = (string) (DB::table('Subject')->where('id', $course->SubjectID)->value('Subject_Name') ?? '');
+        $classType = (string) ($course->class_type ?? $course->ClassType ?? 'one_on_one');
+
+        // in-app #207: only pin sessions with teaching evidence so calendar history
+        // stays on the former teacher. Past rows that are still merely `scheduled`
+        // must NOT become fake substitute pins — otherwise calendar keeps showing
+        // the old teacher after a contract TeacherID change (in-app #312).
+        $pastSessions = self::taughtPastSessions($courseId, $effectiveDate);
 
         foreach ($pastSessions as $session) {
             try {

@@ -26,6 +26,7 @@ use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\Scheduling\BillingContractLockGuard;
 use App\Services\Scheduling\ContractSessionSchedule;
+use App\Services\OccurrenceAssignmentService;
 use App\Services\Scheduling\ContractTeacherChangeCascade;
 use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
@@ -1860,6 +1861,18 @@ class StudentClassController extends Controller
             $scheduleFieldsPresent,
             $teacherEffectiveDate
         ) {
+        // TD-076 B2: flag on, pin taught past occurrences (D2 evidence) BEFORE TeacherID moves; replaces the legacy #207 pin below.
+        $occurrencePinned = false;
+        $pinNewTeacherId = (int) ($mapped['TeacherID'] ?? 0);
+        if ($pinNewTeacherId > 0 && $pinNewTeacherId !== $oldTeacherSnapshot && $oldTeacherSnapshot > 0
+            && OccurrenceAssignmentService::enabledFor((int) (Student::where('id', $studentClass->StudentID)->value('CampusID') ?? 0))) {
+            $pinActor = $request->attributes->get('auth_user');
+            ContractTeacherChangeCascade::pinTaughtOccurrencesBeforeContractTeacherChange(
+                $studentClass, $pinNewTeacherId, $teacherEffectiveDate, (int) ($pinActor->id ?? 0) ?: null
+            );
+            $occurrencePinned = true;
+        }
+
         $studentClass->update($mapped);
         $studentClass->refresh();
 
@@ -1911,12 +1924,14 @@ class StudentClassController extends Controller
             if ($newTeacherId > 0 && $newTeacherId !== $oldTeacherSnapshot) {
                 // in-app #207: pin past attended/history to former teacher BEFORE
                 // future schedule rows move to the new contract teacher.
-                ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange(
-                    $courseIdForTeacherSync,
-                    $oldTeacherSnapshot,
-                    $newTeacherId,
-                    $teacherEffectiveDate
-                );
+                if (!$occurrencePinned) {
+                    ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange(
+                        $courseIdForTeacherSync,
+                        $oldTeacherSnapshot,
+                        $newTeacherId,
+                        $teacherEffectiveDate
+                    );
+                }
                 ContractTeacherChangeCascade::syncFutureScheduleTeachersAfterContractTeacherChange(
                     $courseIdForTeacherSync,
                     $oldTeacherSnapshot,
