@@ -184,6 +184,38 @@ export const staffUpdates = [
     "version": "2026.10.05"
   },
   {
+    "id": "staff-2026-10-05-calendar-substitute-sticks",
+    "publishedAt": "2026-10-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "行事曆代課老師不再跳回",
+    "summary": "有調過時間的課改代課後，行事曆會顯示代課老師，和課程查找一致。",
+    "items": [
+      "以前同一時段還留著原老師的調課紀錄時，行事曆會一直顯示原老師。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "以前同一時段還留著原老師的調課紀錄時，行事曆會一直顯示原老師。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-05:calendar-substitute-sticks"
+    ],
+    "date": "2026-10-05",
+    "version": "2026.10.05"
+  },
+  {
     "id": "staff-2026-10-03-trial-convert-from-students",
     "publishedAt": "2026-10-03",
     "effectiveAt": null,
