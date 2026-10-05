@@ -1,6 +1,6 @@
-## 2026-10-05 — fix(billing): payment slip redesign with logo; monthly slips always list lesson dates (#3445)
-<!-- release-notes: staff_update=staff-2026-10-05-payment-slip-redesign -->
-- 繳費單改用 HTML + `modern-screenshot`（MIT）匯出 PNG，取代手畫 canvas：加 logo、金額／期限主視覺、服務期間、上課日期含星期。月結單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
+## 2026-10-05 — fix(billing): monthly slips always list lesson dates (#3445)
+<!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
+- 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
 
 ## 2026-10-03 — fix(students): trial courses convert to a regular course instead of a new trial batch (in-app #374)
 <!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->

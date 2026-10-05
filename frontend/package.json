@@ -75,7 +75,6 @@
   "dependencies": {
     "@sentry/vue": "^10.75.3",
     "@supabase/supabase-js": "^2.117.2",
-    "modern-screenshot": "4.7.0",
     "vue": "^3.5.43"
   },
   "devDependencies": {
