@@ -1005,6 +1005,10 @@ class MonthlyRenewTest extends TestCase
             'Status'         => 'unpaid',
         ]);
         $this->assertSame(2, Invoice::where('StudentID', $student->id)->count());
+        // The unpaid old period must stay in the accounting queue (木柵 2026-10-05: unpaid months vanished as 'settled').
+        $this->assertSame('settled_pending', (string) $course->fresh()->closed_reason);
+        $this->getJson('/api/v1/accounting/settled-courses?branch_id=1', ['Authorization' => "Bearer {$token}"])
+            ->assertOk()->assertJsonFragment(['student_class_id' => $course->ID, 'pending_reconciliation' => true]);
     }
 
     public function test_renew_monthly_invoice_creation_is_idempotent(): void

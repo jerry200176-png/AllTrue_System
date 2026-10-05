@@ -3856,7 +3856,8 @@ class StudentClassController extends Controller
             // EndDate; leaving it active during generation makes the new
             // renewal look like a real student overlap.
             $studentClass->setAttribute('Stop', 1);
-            $studentClass->closed_reason = 'settled';
+            // An unpaid old period must stay in the accounting queue, not vanish as settled.
+            $studentClass->closed_reason = $this->courseNeedsPaymentReconciliation($studentClass) ? 'settled_pending' : 'settled';
             $studentClass->save();
             $cancelled = $this->cancelFutureScheduledSessions($studentClass, 'settled');
             $studentClass->refresh();
@@ -9295,7 +9296,7 @@ class StudentClassController extends Controller
 
         $remainingOwed = (int) ($sc->getAttribute('RemainingSessions') ?? 0);
         $pendingReconciliation = $action === 'pause'
-            && $reason === 'settled'
+            && in_array((string) $reason, ['settled', 'completed'], true)
             && $this->courseNeedsPaymentReconciliation($sc);
 
         // #1839: count-mode still owes sessions — do not settle/complete and wipe
@@ -9319,7 +9320,7 @@ class StudentClassController extends Controller
             if ($action === 'pause') {
                 $sc->setAttribute('Stop', 1);
                 if ($reason === 'completed') {
-                    $sc->closed_reason = 'completed';
+                    $sc->closed_reason = $pendingReconciliation ? 'settled_pending' : 'completed';
                 } elseif ($reason === 'settled') {
                     $sc->closed_reason = $pendingReconciliation
                         ? 'settled_pending'
