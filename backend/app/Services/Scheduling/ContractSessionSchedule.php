@@ -768,4 +768,139 @@ class ContractSessionSchedule
             ], true);
         })->values();
     }
+
+    /**
+     * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
+     * @return array<int, list<array{time:string,dur:int}>>
+     */
+    public static function buildSlotsByWeekdayMap(array $slots, int $durationMinutes): array
+    {
+        $slotsByWeekday = [];
+        foreach ($slots as $slot) {
+            $weekday = (int) ($slot['weekday'] ?? 0);
+            $time = (string) ($slot['time'] ?? '');
+            if ($weekday < 1 || $weekday > 7 || $time === '') {
+                continue;
+            }
+            $dur = (!empty($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30)
+                ? (int) $slot['duration_minutes']
+                : $durationMinutes;
+            $slotsByWeekday[$weekday][] = ['time' => substr($time, 0, 5), 'dur' => $dur];
+        }
+        foreach ($slotsByWeekday as &$list) {
+            usort($list, fn ($a, $b) => strcmp($a['time'], $b['time']));
+        }
+        unset($list);
+
+        return $slotsByWeekday;
+    }
+
+    /**
+     * Nearest calendar day around $ymd whose ISO weekday exists in the contract map.
+     * Prefer closer days first; on equal distance prefer earlier day to avoid skipping
+     * the immediate week when changing weekday (e.g. Sun -> Sat should pick previous day).
+     * Never return a date earlier than today.
+     */
+    public static function snapDateToContractWeekday(string $ymd, array $slotsByWeekday, bool $notBeforeAnchor = false): string
+    {
+        if ($ymd === '' || empty($slotsByWeekday)) {
+            return $ymd;
+        }
+        $anchor = Carbon::parse($ymd)->startOfDay();
+        $today = Carbon::today()->startOfDay();
+
+        if (isset($slotsByWeekday[(int) $anchor->dayOfWeekIso]) && $anchor->greaterThanOrEqualTo($today)) {
+            return $anchor->toDateString();
+        }
+
+        if ($notBeforeAnchor) {
+            for ($offset = 1; $offset <= 7; $offset++) {
+                $next = $anchor->copy()->addDays($offset);
+                if ($next->greaterThanOrEqualTo($today) && isset($slotsByWeekday[(int) $next->dayOfWeekIso])) {
+                    return $next->toDateString();
+                }
+            }
+        }
+
+        for ($offset = 1; $offset <= 7; $offset++) {
+            $prev = $anchor->copy()->subDays($offset);
+            $next = $anchor->copy()->addDays($offset);
+
+            if ($prev->greaterThanOrEqualTo($today) && isset($slotsByWeekday[(int) $prev->dayOfWeekIso])) {
+                return $prev->toDateString();
+            }
+            if ($next->greaterThanOrEqualTo($today) && isset($slotsByWeekday[(int) $next->dayOfWeekIso])) {
+                return $next->toDateString();
+            }
+        }
+
+        return $ymd;
+    }
+
+    public static function hasSessionStartDateMismatch(int $studentClassId, string $startDate): bool
+    {
+        if ($studentClassId <= 0 || $startDate === '') {
+            return false;
+        }
+        $firstActive = ClassSession::where('StudentClassID', $studentClassId)
+            ->where('Status', '!=', 'cancelled')
+            ->orderBy('SessionDate', 'asc')
+            ->orderBy('StartTime', 'asc')
+            ->first();
+        if (!$firstActive) {
+            return false;
+        }
+        $firstDate = self::normalizeDateString($firstActive->SessionDate ?? null);
+        return $firstDate !== null && $firstDate !== $startDate;
+    }
+
+    /**
+     * Check if a session's (date, startTime, duration) falls within the contract slots.
+     */
+    public static function hasImmutableSessionHistory(int $studentClassId): bool
+    {
+        if ($studentClassId <= 0) {
+            return false;
+        }
+
+        // 已作廢的 StudentSignIn 不算歷史記錄，排除後再判斷
+        if (StudentSignIn::where('StudentClassID', $studentClassId)->whereNull('VoidedAt')->exists()) {
+            return true;
+        }
+
+        if (LearningRecord::where('StudentClassID', $studentClassId)->where('Status', 'approved')->whereNull('VoidedAt')->exists()) {
+            return true;
+        }
+        return false;
+    }
+
+    /** Attendance-marked sessions are history: a slot-only edit must never delete-and-rebuild them. */
+    public static function hasAttendanceMarkedSessions(int $studentClassId): bool
+    {
+        return DB::table('ClassSession')
+            ->where('StudentClassID', $studentClassId)
+            ->whereIn('Status', ['attended', 'late', 'leave', 'excused', 'absent'])
+            ->exists();
+    }
+
+    /**
+     * Whether the mapped payload contains any schedule-related field changes
+     * (week/time slots or duration).  Used to decide if reconcile should be
+     * skipped after an update that could not touch ClassSession rows.
+     */
+    public static function scheduleFieldsPresentInMapped(array $mapped): bool
+    {
+        static $fields = [
+            'week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6',
+            'time', 'time1', 'time2', 'time3', 'time4', 'time5', 'time6',
+            'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6',
+            'SessionDuration',
+        ];
+        foreach ($fields as $field) {
+            if (array_key_exists($field, $mapped)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
