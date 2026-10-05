@@ -230,4 +230,143 @@ final class ContractTeacherChangeCascade
                 ->delete();
         }
     }
+
+    /** in-app #314: restamp mutable LRs onto new contract teacher; leave history/subs. */
+    public static function alignMutableLearningRecordTeachersAfterContractTeacherChange(
+        int $courseId,
+        int $oldTeacherId,
+        int $newTeacherId,
+        int $changedBy,
+        ?string $fromDate = null
+    ): void {
+        if ($courseId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
+            return;
+        }
+
+        $records = LearningRecord::query()
+            ->where('StudentClassID', $courseId)
+            ->when($fromDate, fn ($q) => $q->whereDate('SessionDate', '>=', $fromDate))
+            ->whereNull('VoidedAt')
+            ->where('TeacherID', '!=', $newTeacherId)
+            ->get();
+
+        foreach ($records as $record) {
+            if (!LearningRecordMutableOwnership::canFollowCurrentCourseTeacher($record)) {
+                continue;
+            }
+
+            $fromTeacherId = (int) ($record->TeacherID ?? 0);
+            $record->TeacherID = $newTeacherId;
+            $record->save();
+
+            if (!Schema::hasTable('learning_record_teacher_changes')) {
+                continue;
+            }
+            try {
+                DB::table('learning_record_teacher_changes')->insert([
+                    'learning_record_id' => (int) $record->id,
+                    'old_teacher_id' => $fromTeacherId > 0 ? $fromTeacherId : null,
+                    'new_teacher_id' => $newTeacherId,
+                    'changed_by' => $changedBy > 0 ? $changedBy : null,
+                    'reason' => 'course_teacher_change_unperformed_occurrence',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('course_teacher_change: LR ownership audit skipped', [
+                    'learning_record_id' => (int) $record->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Remove false history pins created for untaught past ClassSessions.
+     * Real substitutes and taught-session #207 pins are retained.
+     */
+    public static function clearUntaughtPastFalseHistoryPins(int $courseId, int $currentTeacherId, ?string $fromDate = null): void
+    {
+        if ($courseId <= 0 || $currentTeacherId <= 0) {
+            return;
+        }
+
+        $today = Carbon::today()->toDateString();
+        $taughtStatuses = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
+
+        $pinRows = DB::table('schedules')
+            ->where('student_course_id', $courseId)
+            ->where('status', 'scheduled')
+            ->whereNotNull('original_schedule_id')
+            ->whereDate('schedule_date', '<', $today)
+            ->when($fromDate, fn ($q) => $q->whereDate('schedule_date', '>=', $fromDate))
+            ->where('teacher_id', '<>', $currentTeacherId)
+            ->get(['id', 'original_schedule_id', 'schedule_date', 'start_time']);
+
+        $anchorIds = [];
+        $pinIds = [];
+        foreach ($pinRows as $pin) {
+            $sessionDate = $pin->schedule_date ? Carbon::parse((string) $pin->schedule_date)->toDateString() : '';
+            $startTime = substr((string) ($pin->start_time ?? ''), 0, 5);
+            if ($sessionDate === '' || $startTime === '') {
+                continue;
+            }
+
+            $session = DB::table('ClassSession')
+                ->where('StudentClassID', $courseId)
+                ->whereDate('SessionDate', $sessionDate)
+                ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$startTime])
+                ->first();
+            if (!$session) {
+                continue;
+            }
+
+            $status = (string) ($session->Status ?? '');
+            if (in_array($status, $taughtStatuses, true)) {
+                continue;
+            }
+
+            $sessionId = (int) ($session->id ?? 0);
+            $hasSignIn = $sessionId > 0 && DB::table('StudentSingIn')
+                ->where('ClassSessionID', $sessionId)
+                ->exists();
+            if ($hasSignIn) {
+                continue;
+            }
+            // Keep pin only when LR has authorship/attendance history — mutable
+            // pending placeholders must follow the live contract teacher (#314).
+            $keepForHistoricalLr = false;
+            if ($sessionId > 0) {
+                $sessionLrs = LearningRecord::query()
+                    ->where('ClassSessionID', $sessionId)
+                    ->whereNull('VoidedAt')
+                    ->get();
+                foreach ($sessionLrs as $sessionLr) {
+                    if (LearningRecordMutableOwnership::hasAuthorshipOrAttendanceEvidence($sessionLr)) {
+                        $keepForHistoricalLr = true;
+                        break;
+                    }
+                }
+            }
+            if ($keepForHistoricalLr) {
+                continue;
+            }
+
+            $anchorIds[] = (int) $pin->original_schedule_id;
+            $pinIds[] = (int) $pin->id;
+        }
+
+        if (!empty($pinIds)) {
+            DB::table('schedules')->whereIn('id', $pinIds)->delete();
+        }
+
+        $anchorIds = array_values(array_unique(array_filter($anchorIds)));
+        if (!empty($anchorIds)) {
+            DB::table('schedules')
+                ->where('student_course_id', $courseId)
+                ->where('status', 'rescheduled')
+                ->whereIn('id', $anchorIds)
+                ->delete();
+        }
+    }
 }

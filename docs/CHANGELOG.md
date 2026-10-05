@@ -1,3 +1,6 @@
+## 2026-10-05 — chore(arch): evaluation-record teacher alignment and false-pin cleanup into ContractTeacherChangeCascade (slice 11/11)
+- 行為不變的搬移（ADR-003／#966）：`alignMutableLearningRecordTeachers…` 與 `clearUntaughtPastFalseHistoryPins` 移到 `ContractTeacherChangeCascade`
+
 ## 2026-10-05 — chore(arch): pin-past and future-schedule teacher cascade into ContractTeacherChangeCascade (slice 10/11)
 - 行為不變的搬移（ADR-003／#966）：改合約老師時的 `pinPastSessionsToFormerTeacher…` 與 `syncFutureScheduleTeachers…` 移到新的 `ContractTeacherChangeCascade`
 
