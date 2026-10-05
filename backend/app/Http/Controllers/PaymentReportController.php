@@ -10,6 +10,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\Subject;
 use App\Support\AccountingCourseClarity;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\MonthlyBillingService;
 use App\Services\PaymentReportTokenService;
 use App\Services\BillingPayableResolver;
@@ -193,7 +194,7 @@ class PaymentReportController extends Controller
         // 確認不收（waived）為終態：鎖課程後再建立回報，避免與 waive 競爭。
         $report = DB::transaction(function () use ($sc, $data, $tokenHash, $payload) {
             $locked = StudentClass::query()->whereKey($sc->getKey())->lockForUpdate()->first();
-            if (!$locked || (string) $locked->getAttribute('closed_reason') === 'waived') {
+            if (!$locked || ContractMoneyState::isWaived($locked)) {
                 return null;
             }
 
@@ -350,8 +351,8 @@ class PaymentReportController extends Controller
                 : trim((string) ($report->note ?? ''));
             // Lock the course so a concurrent 確認不收 cannot interleave with this confirmation.
             $sc = StudentClass::query()->whereKey($report->StudentClassID)->lockForUpdate()->first();
-            if ($sc && (string) $sc->getAttribute('closed_reason') === 'waived') {
-                return response()->json(['message' => '此合約已確認不收，不能再確認回報'], 422);
+            if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能再確認回報')) {
+                return $refusal;
             }
             if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
                 return $blockedTutoringPayment;
@@ -566,8 +567,8 @@ class PaymentReportController extends Controller
         return DB::transaction(function () use ($data, $sc, $userId) {
             $invoice = null;
             $lockedCourse = StudentClass::query()->whereKey($sc->getKey())->lockForUpdate()->first();
-            if ($lockedCourse && (string) $lockedCourse->getAttribute('closed_reason') === 'waived') {
-                return response()->json(['message' => '此合約已確認不收，不能登記收款'], 422);
+            if ($refusal = ContractMoneyState::waivedRefusal($lockedCourse, '此合約已確認不收，不能登記收款')) {
+                return $refusal;
             }
             $package = $this->lockPackageForCourse($sc);
 
