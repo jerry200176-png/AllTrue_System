@@ -1994,7 +1994,7 @@ class StudentClassController extends Controller
                 // projected sessions; otherwise saving a note can pre-plan new
                 // lessons unexpectedly (#231).
                 if ($sessionCountChanged) {
-                    $this->cancelExcessScheduledSessions((int) $studentClass->ID, $newCount);
+                    $this->contractSchedule->cancelExcessScheduledSessions((int) $studentClass->ID, $newCount);
                     if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY) {
                         $this->contractSchedule->extendSessionsIfNeeded($studentClass, $newCount);
                     }
@@ -2449,7 +2449,7 @@ class StudentClassController extends Controller
         // return their exact list first and require a state-bound confirmation.
         // The confirmation is revalidated after locking payment and session
         // state in the write transaction below.
-        $affectedScheduledSessions = $this->scheduledSessionsBeyondCount($classId, $newCount);
+        $affectedScheduledSessions = $this->contractSchedule->scheduledSessionsBeyondCount($classId, $newCount);
         $confirmationToken = $this->billingCorrectionConfirmationToken(
             $studentClass,
             $newCount,
@@ -2497,7 +2497,7 @@ class StudentClassController extends Controller
                 ->where('StudentClassID', $classId)
                 ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
                 ->lockForUpdate()->get();
-            $currentAffected = $this->scheduledSessionsBeyondCountFromRows($lockedSessions, $newCount);
+            $currentAffected = ContractSessionSchedule::scheduledSessionsBeyondCountFromRows($lockedSessions, $newCount);
             $currentUsageDiagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$classId])[$classId] ?? [];
             $currentObservedUsed = max(
                 (int) ($currentUsageDiagnostic['expected_used'] ?? 0),
@@ -2571,7 +2571,7 @@ class StudentClassController extends Controller
                 $adjustedInvoiceCount++;
             }
 
-            $this->cancelExcessScheduledSessionsFromRows($lockedSessions, $newCount);
+            $this->contractSchedule->cancelExcessScheduledSessionsFromRows($lockedSessions, $newCount);
             SessionDeductionService::recomputeCounters($classId);
             $fresh = $locked->fresh();
 
@@ -3084,7 +3084,7 @@ class StudentClassController extends Controller
                     ->update(['Amount' => $plan['source_charge']]);
                 $adjustedInvoiceCount++;
             }
-            $this->cancelExcessScheduledSessions((int) $source->getAttribute('ID'), $plan['source_session_count']);
+            $this->contractSchedule->cancelExcessScheduledSessions((int) $source->getAttribute('ID'), $plan['source_session_count']);
             SessionDeductionService::recomputeCounters((int) $source->getAttribute('ID'));
             SessionDeductionService::recomputeCounters((int) $newCourse->getAttribute('ID'));
             $source = $source->fresh();
@@ -6263,7 +6263,7 @@ class StudentClassController extends Controller
         }
         $new->refresh();
         $this->contractSchedule->extendSessionsIfNeeded($new, $remaining);
-        $this->cancelExcessScheduledSessions($newId, $remaining);
+        $this->contractSchedule->cancelExcessScheduledSessions($newId, $remaining);
         if ($newTeacher !== $oldTeacher) {
             $this->syncFutureScheduleTeachersAfterContractTeacherChange($newId, $oldTeacher, $newTeacher);
             $this->alignMutableLearningRecordTeachersAfterContractTeacherChange($newId, $oldTeacher, $newTeacher, $this->currentActorId(), $start);
@@ -7581,107 +7581,6 @@ class StudentClassController extends Controller
         // non-reflow live session (e.g. a locked/attended row) cannot be reflowed
         // onto — surface a clean 422 instead of a raw 1062.
         return $this->contractSessionReflowService->move($courseId, $reflowIds, $moves);
-    }
-
-    /**
-     * When SessionCount is reduced, cancel scheduled sessions beyond the new limit.
-     * Only cancels sessions whose Status is 'scheduled'; attended/late/absent sessions are untouched.
-     *
-     * NOTE: public for cross-controller invocation (e.g. CoursePackageController::update
-     * synchronising SessionCount across shared-package members). Do not integrate through
-     * StudentClassController::update() to avoid triggering Charge preserved_delta path.
-     */
-    public function cancelExcessScheduledSessions(int $classId, int $newCount): void
-    {
-        $allActive = ClassSession::where('StudentClassID', $classId)
-            ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
-            ->orderBy('SessionDate')
-            ->orderBy('StartTime')
-            ->orderBy('id')
-            ->get();
-
-        $this->cancelExcessScheduledSessionsFromRows($allActive, $newCount);
-    }
-
-    /**
-     * Cancel only unlocked scheduled rows outside the retained count. Callers
-     * that already hold ClassSession locks use this variant so a correction and
-     * concurrent attendance update cannot interleave.
-     */
-    private function cancelExcessScheduledSessionsFromRows($allActive, int $newCount): void
-    {
-        $allActive = $this->purchasedQuotaSessionRows($allActive);
-
-        if ($allActive->count() <= $newCount) {
-            return;
-        }
-
-        $excess = $allActive->slice($newCount);
-        foreach ($excess as $session) {
-            if ($session->Status === 'scheduled') {
-                $session->Status = 'cancelled';
-                $session->save();
-            }
-        }
-    }
-
-    /**
-     * Return future scheduled rows that would fall after a reduced count.
-     * This is a read-only preflight; it deliberately does not cancel anything.
-     *
-     * @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}>
-     */
-    private function scheduledSessionsBeyondCount(int $classId, int $newCount): array
-    {
-        $allActive = ClassSession::query()
-            ->where('StudentClassID', $classId)
-            ->where(function ($query) {
-                $query->whereNull('Status')
-                    ->orWhereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
-            })
-            ->orderBy('SessionDate')
-            ->orderBy('StartTime')
-            ->orderBy('id')
-            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status']);
-
-        return $this->scheduledSessionsBeyondCountFromRows($allActive, $newCount);
-    }
-
-    /** @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}> */
-    private function scheduledSessionsBeyondCountFromRows($allActive, int $newCount): array
-    {
-        $today = Carbon::today()->toDateString();
-
-        return $this->purchasedQuotaSessionRows($allActive)->slice($newCount)
-            ->filter(static function (ClassSession $session) use ($today): bool {
-                return strtolower((string) $session->getAttribute('Status')) === 'scheduled'
-                    && substr((string) $session->getAttribute('SessionDate'), 0, 10) >= $today;
-            })
-            ->map(static fn (ClassSession $session): array => [
-                'session_id' => (int) $session->getKey(),
-                'session_date' => substr((string) $session->getAttribute('SessionDate'), 0, 10),
-                'start_time' => substr((string) $session->getAttribute('StartTime'), 0, 5),
-                'end_time' => substr((string) $session->getAttribute('EndTime'), 0, 5),
-                'status' => (string) $session->getAttribute('Status'),
-            ])
-            ->values()
-            ->all();
-    }
-
-    /**
-     * Keep the correction preview, its locked confirmation, and the write path
-     * on the same purchased-session sequence. Historical cancellation and leave
-     * rows remain in the token snapshot for stale-state detection, but never
-     * consume a retained contract slot or shift which future reservation is
-     * selected for cancellation.
-     */
-    private function purchasedQuotaSessionRows($sessions)
-    {
-        return $sessions->filter(static function (ClassSession $session): bool {
-            return !in_array(strtolower((string) $session->getAttribute('Status')), [
-                'cancelled', 'leave', 'leave_adjusted', 'excused',
-            ], true);
-        })->values();
     }
 
     /**

@@ -667,4 +667,105 @@ class ContractSessionSchedule
 
         SessionDeductionService::syncCounters($studentClass);
     }
+
+    /**
+     * When SessionCount is reduced, cancel scheduled sessions beyond the new limit.
+     * Only cancels sessions whose Status is 'scheduled'; attended/late/absent sessions are untouched.
+     *
+     * NOTE: public for cross-controller invocation (e.g. CoursePackageController::update
+     * synchronising SessionCount across shared-package members). Do not integrate through
+     * StudentClassController::update() to avoid triggering Charge preserved_delta path.
+     */
+    public function cancelExcessScheduledSessions(int $classId, int $newCount): void
+    {
+        $allActive = ClassSession::where('StudentClassID', $classId)
+            ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->orderBy('id')
+            ->get();
+
+        $this->cancelExcessScheduledSessionsFromRows($allActive, $newCount);
+    }
+
+    /**
+     * Cancel only unlocked scheduled rows outside the retained count. Callers
+     * that already hold ClassSession locks use this variant so a correction and
+     * concurrent attendance update cannot interleave.
+     */
+    public function cancelExcessScheduledSessionsFromRows($allActive, int $newCount): void
+    {
+        $allActive = self::purchasedQuotaSessionRows($allActive);
+
+        if ($allActive->count() <= $newCount) {
+            return;
+        }
+
+        $excess = $allActive->slice($newCount);
+        foreach ($excess as $session) {
+            if ($session->Status === 'scheduled') {
+                $session->Status = 'cancelled';
+                $session->save();
+            }
+        }
+    }
+
+    /**
+     * Return future scheduled rows that would fall after a reduced count.
+     * This is a read-only preflight; it deliberately does not cancel anything.
+     *
+     * @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}>
+     */
+    public function scheduledSessionsBeyondCount(int $classId, int $newCount): array
+    {
+        $allActive = ClassSession::query()
+            ->where('StudentClassID', $classId)
+            ->where(function ($query) {
+                $query->whereNull('Status')
+                    ->orWhereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
+            })
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->orderBy('id')
+            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status']);
+
+        return self::scheduledSessionsBeyondCountFromRows($allActive, $newCount);
+    }
+
+    /** @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}> */
+    public static function scheduledSessionsBeyondCountFromRows($allActive, int $newCount): array
+    {
+        $today = Carbon::today()->toDateString();
+
+        return self::purchasedQuotaSessionRows($allActive)->slice($newCount)
+            ->filter(static function (ClassSession $session) use ($today): bool {
+                return strtolower((string) $session->getAttribute('Status')) === 'scheduled'
+                    && substr((string) $session->getAttribute('SessionDate'), 0, 10) >= $today;
+            })
+            ->map(static fn (ClassSession $session): array => [
+                'session_id' => (int) $session->getKey(),
+                'session_date' => substr((string) $session->getAttribute('SessionDate'), 0, 10),
+                'start_time' => substr((string) $session->getAttribute('StartTime'), 0, 5),
+                'end_time' => substr((string) $session->getAttribute('EndTime'), 0, 5),
+                'status' => (string) $session->getAttribute('Status'),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Keep the correction preview, its locked confirmation, and the write path
+     * on the same purchased-session sequence. Historical cancellation and leave
+     * rows remain in the token snapshot for stale-state detection, but never
+     * consume a retained contract slot or shift which future reservation is
+     * selected for cancellation.
+     */
+    public static function purchasedQuotaSessionRows($sessions)
+    {
+        return $sessions->filter(static function (ClassSession $session): bool {
+            return !in_array(strtolower((string) $session->getAttribute('Status')), [
+                'cancelled', 'leave', 'leave_adjusted', 'excused',
+            ], true);
+        })->values();
+    }
 }
