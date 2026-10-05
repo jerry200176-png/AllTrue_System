@@ -279,7 +279,11 @@ watch(() => [props.show, props.reportId], async ([visible]) => {
 .receipt-ops { margin-top: 12px; padding: 10px 12px; background: var(--ds-canvas-soft); border-radius: 8px; font-size: 12px; color: var(--ds-ink-mute); }
 .receipt-ops p { margin: 0 0 4px; }
 .receipt-ops p:last-child { margin-bottom: 0; }
-@media print { .receipt-ops { display: none; } }
+@media print {
+  .receipt-ops { display: none; }
+  /* Print the whole receipt, not the scroll window of the modal. */
+  .receipt-modal { max-height: none; overflow: visible; }
+}
 
 .receipt-actions { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; align-items: center; }
 .receipt-actions button { display: inline-flex; align-items: center; gap: 6px; }

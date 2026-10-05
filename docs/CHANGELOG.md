@@ -12,7 +12,11 @@
 
 ## 2026-10-05 — feat(billing-ui): receipt shares the payment slip design (#3445)
 <!-- release-notes: staff_update=staff-2026-10-05-receipt-redesign -->
-- 電子收據改用 `BillingDocument`（`receiptView`），與繳費單同一套版面；收據圖片改由 `modern-screenshot` 擷取畫面，取代手寫 SVG 產生器（`receiptImage.js`）。複製文字、列印、作廢浮水印保留
+- 電子收據改用 `BillingDocument`（`receiptView`），與繳費單同一套版面；收據圖片改由 `modern-screenshot` 擷取畫面，取代手寫 SVG 產生器（`receiptImage.js`）。複製文字、列印、作廢浮水印保留；列印時不受彈窗高度限制
+
+## 2026-10-05 — feat(billing-ui): payment slip redesign with logo (#3445)
+<!-- release-notes: staff_update=staff-2026-10-05-payment-slip-redesign -->
+- 繳費單由手畫 canvas 改為 `BillingDocument`（HTML/CSS），用 `modern-screenshot`（MIT，按下載／複製時才載入）匯出 PNG；加 logo、金額／期限主視覺、服務期間、上課日期含星期。下載與複製、檔名不變
 
 ## 2026-10-04 — fix(course-edit): course slot edits move the right lessons (locked lessons stay; shared same-day remap plan) (in-app #347)
 <!-- release-notes: silent_ship=silent-2026-10-04-course-edit-remap -->
