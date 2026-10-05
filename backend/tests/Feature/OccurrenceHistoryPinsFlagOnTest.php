@@ -139,6 +139,7 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
         $leave = $this->taughtSession('2026-04-10', $this->aId, signInManual: true);
         StudentSignIn::where('ClassSessionID', $leave->id)->update(['Status' => 'leave', 'SignOutDT' => '2026-04-10 18:00:00']);
         $leave->update(['Status' => 'scheduled']);
+        $retro = $this->makeSession('2026-04-09', 'leave_adjusted');
         $makeup = $this->taughtSession('2026-04-11', $this->aId, signInManual: true);
         DB::table('schedules')->insert([
             'student_id' => $this->sc->StudentID, 'teacher_id' => $this->aId, 'subject' => 'Math', 'day_of_week' => 6, 'type' => 'extra',

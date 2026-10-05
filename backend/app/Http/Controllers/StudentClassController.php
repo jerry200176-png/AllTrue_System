@@ -7920,12 +7920,13 @@ class StudentClassController extends Controller
         }
     }
 
-    /** Not a plain contract occurrence: leave recorded only on a sign-in, or a makeup (`extra`) lesson. The writer would add a second live row. */
+    /** Not a plain contract occurrence: any leave status (incl. leave_adjusted), leave recorded only on a sign-in, or a makeup (`extra`) lesson. The writer would add a second live row. */
     public function isPinnableOccurrence(ClassSession $session): bool
     {
         $start = substr((string) $session->StartTime, 0, 5);
 
-        return !StudentSignIn::where('ClassSessionID', $session->id)->whereNull('VoidedAt')->whereRaw("LOWER(TRIM(COALESCE(Status, ''))) = 'leave'")->exists()
+        return !str_contains(strtolower((string) $session->Status), 'leave')
+            && !StudentSignIn::where('ClassSessionID', $session->id)->whereNull('VoidedAt')->whereRaw("LOWER(TRIM(COALESCE(Status, ''))) = 'leave'")->exists()
             && !Schedule::where('student_course_id', (int) $session->StudentClassID)->where('type', 'extra')->where('status', 'scheduled')
                 ->whereDate('schedule_date', Carbon::parse((string) $session->SessionDate)->toDateString())
                 ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start])->exists();
