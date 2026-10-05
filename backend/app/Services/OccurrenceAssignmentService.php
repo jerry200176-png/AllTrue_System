@@ -188,15 +188,8 @@ class OccurrenceAssignmentService
             ->first();
     }
 
-    private function createRow(
-        StudentClass $course,
-        string $status,
-        int $teacherId,
-        string $date,
-        string $start,
-        string $end,
-        ?int $anchorId
-    ): Schedule {
+    private function createRow(StudentClass $course, string $status, int $teacherId,
+        string $date, string $start, string $end, ?int $anchorId): Schedule {
         $row = new Schedule([
             'student_id' => (int) $course->StudentID,
             'teacher_id' => $teacherId > 0 ? $teacherId : null,
@@ -232,18 +225,8 @@ class OccurrenceAssignmentService
             && substr((string) $row->start_time, 0, 5) === $start;
     }
 
-    private function log(
-        Schedule $live,
-        ?string $frozenDate,
-        ?string $frozenTime,
-        string $fromDate,
-        string $fromTime,
-        ?int $fromTeacherId,
-        ?int $toTeacherId,
-        ?string $fromStatus,
-        ?int $actorId,
-        string $reason
-    ): void {
+    private function log(Schedule $live, ?string $frozenDate, ?string $frozenTime, string $fromDate, string $fromTime,
+        ?int $fromTeacherId, ?int $toTeacherId, ?string $fromStatus, ?int $actorId, string $reason): void {
         ScheduleChangeLog::create([
             'schedule_id' => (int) $live->id,
             'student_course_id' => (int) $live->student_course_id,

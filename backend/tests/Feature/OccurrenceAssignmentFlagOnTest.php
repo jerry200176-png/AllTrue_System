@@ -18,11 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
-/**
- * TD-076 Track B PR-B1: OccurrenceAssignmentService behind schedule-occurrence-v2.
- * Flag on (per-campus override): one live identity row per occurrence, one log row per write.
- * Flag off: today's rows, byte for byte.
- */
+/** TD-076 Track B PR-B1: OccurrenceAssignmentService behind schedule-occurrence-v2 (flag off = today's rows). */
 class OccurrenceAssignmentFlagOnTest extends TestCase
 {
     use RefreshDatabase;
@@ -166,32 +162,18 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $this->assertSame([$this->bId, $this->aId], [(int) $restore->from_teacher_id, (int) $restore->to_teacher_id]);
     }
 
-    public function test_undo_keeps_a_row_that_also_carries_a_reschedule_flag_on(): void
-    {
-        $this->seedWorld();
-        $this->flag(true);
-        $session = $this->crossDateShape();
-        $this->postSubstitute($session)->assertOk();
-
-        $this->postSession($session, 'substitute/undo')->assertOk();
-
-        $live = Schedule::findOrFail(9001);
-        $this->assertSame($this->aId, (int) $live->teacher_id);
-        $this->assertSame(1, Schedule::where('student_course_id', $this->sc->ID)->where('status', 'scheduled')->count());
-        $this->assertSame(['substitute', 'restore'], ScheduleChangeLog::orderBy('id')->pluck('reason')->all());
-    }
-
     public function test_undo_after_flag_rollback_still_restores_through_the_writer(): void
     {
         $this->seedWorld();
         $this->flag(true);
         $session = $this->crossDateShape();
         $this->postSubstitute($session)->assertOk();
-        $this->flag(false);
+        $this->flag(false); // rollback: undo must still go through the writer
 
         $this->postSession($session, 'substitute/undo')->assertOk();
 
-        $this->assertSame($this->aId, (int) Schedule::findOrFail(9001)->teacher_id);
+        $this->assertSame($this->aId, (int) Schedule::findOrFail(9001)->teacher_id, 'cross-date row stays, teacher restored');
+        $this->assertSame(1, Schedule::where('student_course_id', $this->sc->ID)->where('status', 'scheduled')->count());
         $this->assertSame(['substitute', 'restore'], ScheduleChangeLog::orderBy('id')->pluck('reason')->all());
     }
 
@@ -240,8 +222,7 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
             'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled',
         ]);
 
-        $this->withHeaders(['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json'])
-            ->postJson('/api/v1/teacher-leaves/batch-substitute', [
+        $this->api()->postJson('/api/v1/teacher-leaves/batch-substitute', [
                 'assignments' => [
                     ['class_session_id' => $s1->id, 'substitute_teacher_id' => $this->bId],
                     ['class_session_id' => $s2->id, 'substitute_teacher_id' => $this->bId],
@@ -266,16 +247,19 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         return ['new_date' => '2026-04-20', 'new_start_time' => '14:00', 'new_end_time' => '16:00'];
     }
 
+    private function api()
+    {
+        return $this->withHeaders(['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json']);
+    }
+
     private function postSession(ClassSession $session, string $suffix)
     {
-        return $this->withHeaders(['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json'])
-            ->postJson("/api/v1/class-sessions/{$session->id}/{$suffix}");
+        return $this->api()->postJson("/api/v1/class-sessions/{$session->id}/{$suffix}");
     }
 
     private function postSubstitute(ClassSession $session, array $extra = [], ?int $teacherId = null)
     {
-        return $this->withHeaders(['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json'])
-            ->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+        return $this->api()->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
                 'substitute_teacher_id' => $teacherId ?? $this->bId,
                 'reason' => 'flag test',
             ] + $extra);
