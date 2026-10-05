@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-10-05-f7-s2
+    changelog_date: "2026-10-05"
+    changelog_title: "refactor(frontend): F7 S2 paid status comes only from the server `payment_status`"
+    reason: 前端改只讀後端既有的 payment_status，移除內部推算備援；後端本就下發該欄位，教職員看到的畫面不變。
+
   - id: silent-2026-10-01-calendar-tutoring-acceptance
     changelog_date: "2026-10-01"
     changelog_title: "fix(qa): production calendar and tutoring acceptance follow actual contracts"
