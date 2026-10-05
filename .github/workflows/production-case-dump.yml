@@ -24,6 +24,7 @@ on:
           - unpaid_hidden_candidates
           - swipe_line_path
           - class_sessions_explain_319
+          - substitute_calendar_xinzhuang
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
@@ -99,7 +100,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'class_sessions_explain_319'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
@@ -107,6 +108,8 @@ jobs:
               raise SystemExit('monthly_slip_student requires student_name')
           if case == 'unpaid_months_muzha' and not os.environ.get('TARGET_STUDENT_NAME'):
               raise SystemExit('unpaid_months_muzha requires student_name')
+          if case == 'substitute_calendar_xinzhuang' and not os.environ.get('TARGET_STUDENT_NAME'):
+              raise SystemExit('substitute_calendar_xinzhuang requires student_name')
           if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
@@ -544,6 +547,81 @@ jobs:
                 $out['ok'] = false;
                 $out['error'] = 'monthly_payment_projection failed: ' . get_class($e);
               }}
+            }}
+          }} elseif ($case === 'substitute_calendar_xinzhuang') {{
+            // Read-only, 2026-10-05: 新莊 director substituted the 2026-10-09 10:00-12:00 lesson to another teacher;
+            // 課程查找 shows the substitute, the calendar keeps showing the contract teacher.
+            // Scope: 新莊 campuses, one approved name (compared in memory, never written out), 2026-10-09 only.
+            $approvedNames = ['吳羽晨'];
+            $targetDate = '2026-10-09';
+            $campusIds = $db::table('Campus')->where('name', 'like', '%新莊%')->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $studentIds = !in_array($targetStudentName, $approvedNames, true) ? [] : $db::table('Student')->whereIn('CampusID', $campusIds ?: [0])
+              ->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $out['campus_ids'] = $campusIds;
+            $out['student_match_count'] = count($studentIds);
+            if (count($studentIds) !== 1) {{
+              $out['ok'] = false;
+              $out['error'] = 'student_name must match exactly one 新莊 student';
+            }} else {{
+              $out['student_campus_id'] = (int)$db::table('Student')->where('id', $studentIds[0])->value('CampusID');
+              $classes = $db::table('StudentClass')->where('StudentID', $studentIds[0])
+                ->where(fn ($q) => $q->whereNull('EndDate')->orWhereDate('EndDate', '>=', '2026-09-01'))
+                ->orderBy('ID')->get(['ID', 'SubjectID', 'TeacherID', 'ClassType', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'closed_reason', 'updated_at']);
+              $classIds = $classes->pluck('ID')->map(fn ($id) => (int)$id)->all();
+              $out['classes'] = $classes->map(fn ($r) => (array)$r)->values()->all();
+              $sessions = $db::table('ClassSession')->whereIn('StudentClassID', $classIds ?: [0])->whereDate('SessionDate', $targetDate)
+                ->orderBy('id')->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'created_at', 'updated_at']);
+              $sessionIds = $sessions->pluck('id')->map(fn ($id) => (int)$id)->all();
+              $out['sessions'] = $sessions->map(fn ($r) => (array)$r)->values()->all();
+              $schedules = $db::table('schedules')->whereIn('student_course_id', $classIds ?: [0])->whereDate('schedule_date', $targetDate)
+                ->orderBy('id')->get(['id', 'student_course_id', 'student_id', 'teacher_id', 'status', 'type', 'original_schedule_id',
+                  'schedule_date', 'start_time', 'end_time', 'branch_id', 'created_at', 'updated_at']);
+              $out['schedules'] = $schedules->map(fn ($r) => (array)$r)->values()->all();
+              $out['learning_records'] = $db::table('LearningRecord')->whereIn('ClassSessionID', $sessionIds ?: [0])
+                ->get(['id', 'ClassSessionID', 'TeacherID', 'VoidedAt', 'updated_at'])->map(fn ($r) => (array)$r)->values()->all();
+              // Same read the calendar uses (ClassSessionIndexReadService), narrowed to this student's classes.
+              try {{
+                $req = new \\Illuminate\\Http\\Request(['start' => $targetDate, 'end' => $targetDate, 'branch_id' => $out['student_campus_id'], 'per_page' => 1000]);
+                $req->attributes->set('auth_role', 'super_admin');
+                $keep = array_flip(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'TeacherID', 'substitute_teacher_id', 'teacher_id']);
+                $out['calendar_rows'] = (new \\App\\Services\\ClassSessionIndexReadService())->buildQuery($req)->whereIn('sc.ID', $classIds ?: [0])->get()
+                  ->map(fn ($r) => array_intersect_key((array)$r, $keep))->values()->all();
+              }} catch (\\Throwable $e) {{
+                $out['calendar_rows_error'] = get_class($e);
+              }}
+              $teacherIds = collect($out['classes'])->pluck('TeacherID')->merge($schedules->pluck('teacher_id'))
+                ->merge(collect($out['learning_records'])->pluck('TeacherID'))->filter()->map(fn ($id) => (int)$id)->unique()->values()->all();
+              // Staff identity as flags only (no names): 許 = contract teacher per report, 芸 = intended substitute.
+              $out['teachers'] = $db::table('User')->whereIn('id', $teacherIds ?: [0])->get(['id', 'Name'])
+                ->map(fn ($u) => ['id' => (int)$u->id, 'name_has_xu' => str_contains((string)$u->Name, '許'), 'name_has_yun' => str_contains((string)$u->Name, '芸')])->values()->all();
+              $out['substitute_notifications'] = $db::table('Notifications')->where('SourceType', 'ClassSession')->whereIn('SourceID', $sessionIds ?: [0])
+                ->orderBy('id')->get(['id', 'Type', 'SourceID', 'SourceKey', 'OccurredAt', 'ResolvedAt', 'created_at', 'updated_at', 'Payload'])
+                ->map(function ($r) {{
+                  $d = json_decode((string)$r->Payload, true) ?: [];
+                  $r->Payload = array_intersect_key($d, array_flip(['class_session_id', 'student_class_id', 'old_teacher_id', 'new_teacher_id', 'session_date', 'start_time', 'end_time', 'operation_type', 'operator_id', 'voided', 'voided_at']));
+                  return (array)$r;
+                }})->values()->all();
+              // [substitute] diagnostic log lines for these sessions (IDs/times only).
+              $logLines = [];
+              foreach (glob(storage_path('logs/*.log')) ?: [] as $f) {{
+                if (@filemtime($f) < strtotime('2026-09-25')) {{ continue; }}
+                $h = @fopen($f, 'r');
+                while ($h && ($line = fgets($h)) !== false) {{
+                  if (!str_contains($line, '[substitute]') && !str_contains($line, 'substitute')) {{ continue; }}
+                  foreach ($sessionIds as $sid) {{
+                    if (str_contains($line, '"class_session_id":' . $sid . ',') || str_contains($line, '"class_session_id":' . $sid . '}}')) {{
+                      // Whitelisted IDs/times only: the context also carries free-text reason/exception text.
+                      $ctx = json_decode((string)substr($line, (int)strpos($line, '{{')), true) ?: [];
+                      $logLines[] = ['at' => substr($line, 1, 19)] + array_intersect_key($ctx, array_flip(['step', 'class_session_id', 'student_class_id',
+                        'session_date', 'start_time', 'end_time', 'old_teacher_id', 'new_teacher_id', 'has_existing_rescheduled', 'has_existing_scheduled',
+                        'rescheduled_id', 'reused_rescheduled_row', 'scheduled_id', 'original_schedule_id', 'learning_record_id', 'session_status', 'exception']));
+                      break;
+                    }}
+                  }}
+                }}
+                if ($h) {{ fclose($h); }}
+              }}
+              $out['substitute_log_lines'] = array_slice($logLines, -80);
             }}
           }} elseif ($case === 'unpaid_hidden_candidates') {{
             // Read-only, Founder decision 2026-10-05: list contracts closed as settled/completed that still owe
