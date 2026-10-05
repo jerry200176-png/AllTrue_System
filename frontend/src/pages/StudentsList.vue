@@ -821,7 +821,7 @@
               <td style="text-align: right; font-weight: 600;">${{ inv.total_amount.toLocaleString() }}</td>
               <td style="text-align: center;">
                 <span :class="['invoice-status-chip', inv.status]">
-                  {{ { paid: '已繳', unpaid: '未繳', partial: '部分繳' }[inv.status] || inv.status }}
+                  {{ { paid: '已繳', unpaid: '未繳', partial: '部分繳', uncollectible: '確認不收' }[inv.status] || inv.status }}
                 </span>
               </td>
             </tr>

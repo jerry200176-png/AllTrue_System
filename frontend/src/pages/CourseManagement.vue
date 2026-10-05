@@ -4747,6 +4747,7 @@ const invoiceStatusLabel = (invoice) => {
   unpaid: '未繳',
   partial: '部分繳',
   void: '已作廢',
+  uncollectible: '確認不收',
   }[status] || status || '未知');
 };
 const invoiceStatusClass = (invoice) => {
