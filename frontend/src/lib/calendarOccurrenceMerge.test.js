@@ -281,6 +281,23 @@ assert.equal(substituteTeacherScopedRows.length, 1, 'substitute teacher week vie
 assert.equal(substituteTeacherScopedRows[0].class_session_id, 8201);
 assert.equal(substituteTeacherScopedRows[0].teacher_id, 99);
 
+// 新莊 2026-10-09: the slot also holds an older reschedule-target row on the contract
+// teacher (different original_schedule_id). It rendered after the substitute overlay and
+// put the contract teacher back on the calendar while 課程查找 showed the substitute.
+const staleSameSlotRows = merge({
+  courses: [substituteVisibilityCourse],
+  allCourses: [substituteVisibilityCourse],
+  weekDatesByDow: weekWithSundaySession,
+  sessionDatesByCourseId: substituteVisibilitySessions,
+  exceptions: [
+    { ...substituteVisibilityExceptions[0], id: 9050, teacher_id: 41, original_schedule_id: 9049 },
+    ...substituteVisibilityExceptions,
+  ],
+});
+assert.equal(staleSameSlotRows.length, 1);
+assert.equal(staleSameSlotRows[0].class_session_id, 8201);
+assert.equal(staleSameSlotRows[0].teacher_id, 99, 'a same-slot contract-teacher row must not overwrite the resolved substitute');
+
 const legacyMuzhaMonthlyCourse = {
   id: 94,
   student_id: 160,
