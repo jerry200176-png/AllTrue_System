@@ -337,7 +337,8 @@ class PaymentReportController extends Controller
             $note = $confirmationNote !== ''
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));
-            $sc = StudentClass::find($report->StudentClassID);
+            // Lock the course so a concurrent 確認不收 cannot interleave with this confirmation.
+            $sc = StudentClass::query()->whereKey($report->StudentClassID)->lockForUpdate()->first();
             if ($sc && (string) $sc->getAttribute('closed_reason') === 'waived') {
                 return response()->json(['message' => '此合約已確認不收，不能再確認回報'], 422);
             }

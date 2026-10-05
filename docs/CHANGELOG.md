@@ -1,6 +1,9 @@
 ## 2026-10-05 — feat(accounting): director can waive (確認不收) a closed unpaid contract with an audited reason
 <!-- release-notes: staff_update=staff-2026-10-05-waive-unpaid-contract -->
 - 新增 `POST /api/v1/accounting/courses/{id}/waive`（主任／同分校）：僅 Stop=1 且 `settled_pending`／未繳 `contract_amended` 且仍有欠款可用，需 2–200 字原因。同一交易內設 `closed_reason='waived'`、未結帳單 Status 改 `void`（Paid／Charge／收款不動），並寫 `security_audit_events`（`accounting.course_waived`，含欠款金額、原因雜湊）與 `settlement_snapshot`（原因、前後狀態）。套裝課程拒絕、waived 為終態（不可恢復）、void 帳單不可登記收款。套裝課程拒絕、waived 為終態（不可暫停／恢復）、void 帳單不可登記收款。waived 合約離開待對帳／學收提醒佇列，於已結清清單與課程管理顯示「歷史 · 確認不收」，不計入已收
+## 2026-10-05 — fix(billing): unpaid monthly closes stay in accounting queue
+<!-- release-notes: staff_update=staff-2026-10-05-unpaid-close-pending -->
+- 月結「續下一期」與月結課程停用，原本不論有沒有繳費都把舊合約標成 `settled`／`completed`，未繳的月份因此從帳務中心與學費提醒消失；改用既有 `courseNeedsPaymentReconciliation()`，未繳清時改標 `settled_pending`（待對帳）
 
 ## 2026-10-05 — fix(billing): monthly slips always list lesson dates (#3445)
 <!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->

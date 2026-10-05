@@ -12,9 +12,21 @@ updates:
     summary: 結案待對帳的欠款，主任可按「確認不收」移出待處理，並留下原因紀錄。
     items:
       - category: added
-        text: 帳務中心結案待對帳列新增「確認不收」，要填原因；帳單與收款紀錄保留，課程轉為歷史。
+        text: 要填原因；未繳帳單改為作廢並留紀錄。已有收款或待確認回報時不能按。
     source_refs:
       - "changelog:2026-10-05:waive-unpaid-contract"
+  - id: staff-2026-10-05-unpaid-close-pending
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: digest
+    title: 未繳月份續約後不會消失
+    summary: 月結課續下一期或停用時，舊月份沒繳清會留在帳務中心待對帳。
+    items:
+      - category: fixed
+        text: 以前續約後舊月份會變「已結算」而看不到欠款；現在會標「待對帳」。
+    source_refs:
+      - "changelog:2026-10-05:unpaid-close-pending"
   - id: staff-2026-10-05-monthly-slip-dates
     published_at: "2026-10-05"
     audiences:
