@@ -10,7 +10,7 @@ describe('tuition 確認不收 (waive) action', () => {
   it('is shown on the settled_pending row only for directors', () => {
     const row = source.slice(source.indexOf("r.payment_status === 'pending_reconciliation'\">"));
     expect(row.slice(0, 1400)).toContain('v-if="canWaive" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)"');
-    expect(source).toContain("['director', 'super_admin'].includes(getAuthRole())");
+    expect(source).toContain('const canWaive = computed(() => isDirectorRole(getAuthRole()));');
   });
 
   it('requires a reason and posts it to the waive endpoint, then refreshes', () => {

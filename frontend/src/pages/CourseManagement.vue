@@ -1528,6 +1528,7 @@
 <script setup>
 // Autonomous delivery canary: no runtime behavior change.
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { isDirectorRole } from '../lib/roleCapabilities.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
@@ -1694,7 +1695,7 @@ const props = defineProps({
   initialStudentName: { type: String, default: '' },
   initialCourseIntent: { type: String, default: '' },
 });
-const allowFinancialDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
+const allowFinancialDiscount = computed(() => isDirectorRole(props.userRole));
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
 
 const goToTuitionBilling = (course) => {

@@ -1062,6 +1062,7 @@
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
+import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { useToast } from '../composables/useToast';
 import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
@@ -1223,7 +1224,7 @@ function getAuthRole() {
 
 const canVoid = computed(() => {
   const role = getAuthRole();
-  return ['director', 'admin', 'super_admin'].includes(role);
+  return isDirectorRole(role);
 });
 
 function formatTodayYmd() {
@@ -2141,7 +2142,7 @@ async function rejectReport(row) {
 }
 
 // ═══ Waive (確認不收) Dialog — director only ═══
-const canWaive = computed(() => ['director', 'super_admin'].includes(getAuthRole()));
+const canWaive = computed(() => isDirectorRole(getAuthRole()));
 const waiveDialogOpen = ref(false);
 const waiveTarget = ref(null);
 const waiveReason = ref('');
