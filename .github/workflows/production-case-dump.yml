@@ -729,7 +729,10 @@ jobs:
                 // Second legacy surface: stored Invoice.PaidAmount (B2/B3/B4/B7/B18 read it instead of Payment rows).
                 $storedPaid = (int)$db::table('Invoice')->where('StudentClassID', $cid)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->sum('PaidAmount');
                 $storedTotal = (int)$db::table('Invoice')->where('StudentClassID', $cid)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->sum('TotalAmount');
-                $storedState = $storedTotal === 0 ? 'no_invoice' : ($storedPaid >= $storedTotal ? 'stored_paid' : ($storedPaid > 0 ? 'stored_partial' : 'stored_unpaid'));
+                // Legacy surfaces (AlertController / student-classes summary) compare stored PaidAmount with the course charge.
+                $charge = max((int)$c->getAttribute('Charge'), $storedTotal);
+                $storedState = $storedTotal === 0 ? 'no_invoice' : ($storedPaid >= $charge ? 'stored_paid' : ($storedPaid > 0 ? 'stored_partial' : 'stored_unpaid'));
+                $hasPaidInvoice = $db::table('Invoice')->where('StudentClassID', $cid)->where('Status', 'paid')->exists();
                 $stop = (int)$c->getAttribute('Stop') === 1;
                 $reason = (string)($c->getAttribute('closed_reason') ?? '');
                 $reasonClass = $reason === '' ? 'none' : (in_array($reason, ['settled', 'completed', 'settled_pending', 'contract_amended', 'waived', 'usage_settled', 'converted_trial'], true) ? $reason : 'other');
@@ -740,16 +743,19 @@ jobs:
                 if (count($b['examples']) < 5) $b['examples'][] = $cid;
                 $buckets[$key] = $b;
                 // Debt the accounting queue cannot see: resolver owes, contract stopped, reason outside the queue.
-                if (in_array($status, ['unpaid', 'partial', 'unbilled'], true) && $out_amt > 0 && $stop
+                // Same inclusion as AccountingController::settledCourses: Paid=1 or a paid invoice lists it anyway.
+                if (in_array($status, ['unpaid', 'partial', 'unbilled'], true) && $out_amt > 0 && $stop && !$legacyPaid && !$hasPaidInvoice
                   && !in_array($reasonClass, ['settled_pending', 'contract_amended', 'waived'], true)) {{
                   $hidden[] = ['id' => $cid, 'campus_id' => (int)$db::table('Student')->where('id', $c->getAttribute('StudentID'))->value('CampusID'),
                     'status' => $status, 'outstanding' => $out_amt, 'closed_reason' => $reasonClass];
                 }}
                 if ($legacyPaid && in_array($status, ['unpaid', 'partial'], true)) $flagOnlyPaid++;
                 // Every course whose legacy answer differs from the resolver (S0 asks for the full list, not samples).
-                $resolverPaid = in_array($status, ['paid', 'free'], true);
-                $storedSaysPaid = $storedState === 'stored_paid';
-                if ($status !== 'review_required' && ($legacyPaid !== $resolverPaid || ($storedState !== 'no_invoice' && $storedSaysPaid !== $resolverPaid))) {{
+                // Exact-status comparison: map each legacy surface onto the resolver vocabulary.
+                $legacyStatus = $legacyPaid ? 'paid' : 'unpaid';
+                $storedStatus = ['stored_paid' => 'paid', 'stored_partial' => 'partial', 'stored_unpaid' => 'unpaid'][$storedState] ?? null;
+                $norm = fn ($s) => $s === 'free' ? 'paid' : ($s === 'unbilled' ? 'unpaid' : $s);
+                if ($norm($status) !== $legacyStatus || ($storedStatus !== null && $norm($status) !== $storedStatus) || $status === 'review_required') {{
                   $divergent[] = ['id' => $cid, 'status' => $status, 'legacy' => $legacyPaid ? 'paid' : 'unpaid', 'stored' => $storedState, 'outstanding' => $out_amt];
                 }}
               }}
