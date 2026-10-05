@@ -6,6 +6,10 @@ export const DASHBOARD_TASK_SEVERITY_ORDER = Object.freeze({
   neutral: 3,
 });
 
+// Raw `schedules` rows (legacy fallback) that are not a live session; 'superseded' = TD-076 retired row.
+export const isLiveScheduleRow = (row) =>
+  !['cancelled', 'leave', 'superseded'].includes(String(row?.status || '').toLowerCase());
+
 const numericCount = (value) => Math.max(0, Number(value || 0));
 
 const task = ({

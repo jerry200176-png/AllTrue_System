@@ -22,6 +22,11 @@ exemptions:
     changelog_title: "fix(qa): production calendar and tutoring acceptance follow actual contracts"
     reason: 僅修正內部正式站驗收的事件、樣本前提、學生明細定位與有界 UI 時限，不改教職員操作或收費規則。
 
+  - id: silent-2026-10-06-td076-superseded-sweep
+    changelog_date: "2026-10-06"
+    changelog_title: "fix(schedule): TD-076 sweep so no reader treats a `superseded` schedules row as live, leave or scheduled"
+    reason: 目前沒有任何寫入端產生 superseded 排程列，只是讓讀取端先略過它並補測試，教職員看到的畫面與行為不變。
+
   - id: silent-2026-10-01-muzha-pop-schedule
     changelog_date: "2026-10-01"
     changelog_title: "fix(ops): route exact Muzha fixed schedule repair through POP"
