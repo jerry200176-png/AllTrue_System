@@ -112,6 +112,20 @@ class StudentClassDestroyBillingTest extends TestCase
         $this->assertNotNull(StudentClass::find($c->ID));
     }
 
+    public function test_attendance_history_and_legacy_pay_block_delete(): void
+    {
+        $student = $this->student();
+        $legacy = $this->course($student->id);
+        $legacy->forceFill(['Pay' => 500])->save();
+        $this->deleteJson("/api/v1/student-classes/{$legacy->ID}", [], $this->auth())->assertStatus(422);
+
+        $attended = $this->course($student->id);
+        DB::table('session_deduction_ledger')->insert(['student_class_id' => $attended->ID, 'event_type' => 'deduct', 'source' => 'attendance',
+            'created_at' => now(), 'updated_at' => now()]);
+        $this->deleteJson("/api/v1/student-classes/{$attended->ID}", [], $this->auth())->assertStatus(422);
+        $this->assertNotNull(StudentClass::find($attended->ID));
+    }
+
     public function test_payment_blocks_delete(): void
     {
         $c = $this->course($this->student()->id);

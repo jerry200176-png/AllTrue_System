@@ -312,7 +312,8 @@ class StudentController extends Controller
                 || DB::table('payment_reports')->where(fn ($q) => $byStudentOrClass($q, 'StudentID', 'StudentClassID'))->exists()
                 || ($classIds !== [] && DB::table('StudentClass')->whereIn('ID', $classIds)->where(fn ($q) => $q->where('Paid', 1)
                     ->orWhere('Pay', '>', 0)->orWhereNotNull('PayDate')->orWhere('PackageID', '>', 0))->exists())
-                || ($classIds !== [] && DB::table('InvoiceItem')->whereIn('StudentClassID', $classIds)->exists());
+                || ($classIds !== [] && DB::table('InvoiceItem')->whereIn('StudentClassID', $classIds)->exists())
+                || DB::table('course_packages')->where('student_id', $studentId)->exists();
             if ($history) {
                 $out[] = $studentId;
             }

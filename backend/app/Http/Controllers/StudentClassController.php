@@ -5401,8 +5401,17 @@ class StudentClassController extends Controller
             if ((int) ($locked?->getAttribute('PackageID') ?? 0) > 0) {
                 return response()->json(['message' => '套裝課程的合約不能單獨刪除，請到套裝處理'], 422);
             }
-            // isEffectivelyPaid() also honours a paid CoursePackage (package members can have no invoice).
+            // Attendance / entitlement history is never erased with the contract: close it instead.
+            $hasHistory = DB::table('session_deduction_ledger')->where('student_class_id', $id)->exists()
+                || ClassSession::query()->where('StudentClassID', $id)
+                    ->whereRaw("LOWER(COALESCE(Status, '')) IN ('attended', 'completed', 'late')")->exists();
+            if ($hasHistory) {
+                return response()->json(['message' => '此合約已有上課或扣堂紀錄，不能刪除，請改用結案'], 422);
+            }
+            // isEffectivelyPaid() also honours a paid CoursePackage (package members can have no invoice);
+            // legacy Pay / PayDate are payment state too.
             $hasMoney = (bool) $locked?->isEffectivelyPaid()
+                || (int) ($locked?->getAttribute('Pay') ?? 0) > 0 || $locked?->getAttribute('PayDate') !== null
                 || $invoices->contains(fn ($i) => in_array((string) ($i->Status ?? ''), ['paid', 'partial'], true)
                     || ((string) ($i->Status ?? '') !== 'void' && (int) ($i->PaidAmount ?? 0) > 0))
                 || ($invoiceIds !== [] && DB::table('Payment')->whereIn('InvoiceID', $invoiceIds)->exists())
