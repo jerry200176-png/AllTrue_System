@@ -155,6 +155,20 @@ Claude Code on the web／其他雲端 session 的 container 是全新隔離環�
 | 已回報 vs 確認入帳（#1827） | `docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md` |
 | 各角色測試帳號 | `.cursor/.local/test-credentials.md` |
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` (created lazily) + ADRs in `docs/ADR_*.md` and `docs/adr/`. See `docs/agents/domain.md`.
+
 <!-- exo:governance:begin -->
 <!-- Governance hash: f45f0f00b0698aa4 -->
 # ExoProtocol — Governed Repository
