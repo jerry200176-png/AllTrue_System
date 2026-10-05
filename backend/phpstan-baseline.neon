@@ -3835,7 +3835,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 48
+			count: 47
 			path: app/Http/Controllers/StudentClassController.php
 
 		-

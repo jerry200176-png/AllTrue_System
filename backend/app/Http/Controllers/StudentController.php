@@ -318,6 +318,11 @@ class StudentController extends Controller
         }
 
         DB::transaction(function () use ($studentId, &$deleted, $tableExists) {
+            // A 確認不收 contract keeps its void invoices and audit trail; purging the student would strand them.
+            if ($tableExists['StudentClass'] && DB::table('StudentClass')->where('StudentID', $studentId)
+                ->where('closed_reason', 'waived')->lockForUpdate()->exists()) {
+                abort(422, '此學生有已確認不收的合約，不能刪除');
+            }
             $studentClassIds = [];
             if ($tableExists['StudentClass']) {
                 $studentClassIds = DB::table('StudentClass')

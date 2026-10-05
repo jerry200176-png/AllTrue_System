@@ -104,6 +104,12 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($data) {
+            // Lock every referenced course once, in ID order, so concurrent multi-course invoices cannot deadlock.
+            $courseIds = collect([$data['StudentClassID'] ?? null])->merge(array_column($data['Items'] ?? [], 'StudentClassID'))
+                ->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+            if ($courseIds !== []) {
+                StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+            }
             if (!empty($data['StudentClassID'])) {
                 $course = StudentClass::query()->whereKey($data['StudentClassID'])->lockForUpdate()->first();
                 if ($course && (string) $course->getAttribute('closed_reason') === 'waived') {

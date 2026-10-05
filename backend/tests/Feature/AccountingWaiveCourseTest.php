@@ -111,6 +111,10 @@ class AccountingWaiveCourseTest extends TestCase
         $this->assertSame('waived', $course->closed_reason);
         $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
         $this->assertSame(0, Invoice::query()->where('StudentClassID', $other->ID)->count());
+
+        // Purging the student would strand the waived contract's void invoices and audit trail.
+        $this->deleteJson("/api/v1/students/{$course->StudentID}", [], $h)->assertStatus(422);
+        $this->assertSame('waived', $course->fresh()->closed_reason);
     }
 
     private function createToken(array $campusIds, string $type = 'D'): string

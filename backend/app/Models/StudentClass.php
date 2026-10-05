@@ -62,7 +62,7 @@ class StudentClass extends Model
         // 確認不收 is terminal: no writer (update, renewal, pause, payment, delete) may reopen or settle it.
         // Checked against the committed row so a model loaded before the waiver cannot slip through.
         static::saving(function (StudentClass $course): void {
-            if ($course->exists && $course->isDirty(['Paid', 'PayDate', 'Stop', 'closed_reason', 'Charge'])
+            if ($course->exists && $course->isDirty(['Paid', 'Pay', 'PayDate', 'Stop', 'closed_reason', 'Charge'])
                 && self::isWaivedInDb((int) $course->getKey())) {
                 abort(422, '此合約已確認不收，不能再變更繳費或結案狀態');
             }
