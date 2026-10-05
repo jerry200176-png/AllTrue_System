@@ -1,3 +1,7 @@
+## 2026-10-05 — chore(repair): unpaid contracts hidden as settled/completed return to 待對帳
+<!-- release-notes: staff_update=staff-2026-10-05-unpaid-backlog-pending -->
+- 一次性修資料 `repair:unpaid-hidden-closures`：以帳單收款明細判定仍有欠款、卻被標成 `settled`／`completed` 的已結案合約，改回 `settled_pending`，重新出現在帳務中心待對帳；金額與收款紀錄不動
+
 ## 2026-10-05 — fix(billing): monthly slips always list lesson dates (#3445)
 <!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
 - 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變

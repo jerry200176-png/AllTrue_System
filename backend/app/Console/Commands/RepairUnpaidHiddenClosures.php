@@ -2,9 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Invoice;
 use App\Models\SecurityAuditEvent;
 use App\Models\SessionCorrection;
 use App\Models\StudentClass;
+use App\Services\InvoiceAmountReconciliationService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -33,6 +35,11 @@ class RepairUnpaidHiddenClosures extends Command
 
     private const REF = 'repair-unpaid-hidden-closures';
     private const KEY_SESSION = 0;
+
+    public function __construct(private InvoiceAmountReconciliationService $amounts)
+    {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
@@ -63,10 +70,10 @@ class RepairUnpaidHiddenClosures extends Command
         $digest = self::digest($rows);
         $this->line($execute ? '=== EXECUTE ' . self::REF . ' ===' : '=== DRY RUN ' . self::REF . ' ===');
         foreach ($rows as $r) {
-            $this->line(sprintf('course=%d student=%d campus=%s mode=%s reason=%s charge=%d invoice_paid=%d end=%s',
-                $r['id'], $r['student_id'], $r['campus_id'] ?? '-', $r['mode'], $r['closed_reason'], $r['charge'], $r['invoice_paid'], $r['end_date']));
+            $this->line(sprintf('course=%d student=%d campus=%s mode=%s reason=%s paid_flag=%d outstanding=%d end=%s',
+                $r['id'], $r['student_id'], $r['campus_id'] ?? '-', $r['mode'], $r['closed_reason'], $r['paid_flag'], $r['outstanding'], $r['end_date']));
         }
-        $this->line('CANDIDATES=' . count($rows) . ' OUTSTANDING_TOTAL=' . array_sum(array_map(fn ($r) => $r['charge'] - $r['invoice_paid'], $rows)));
+        $this->line('CANDIDATES=' . count($rows) . ' OUTSTANDING_TOTAL=' . array_sum(array_column($rows, 'outstanding')));
         $this->line('DIGEST=' . $digest);
         if (!$execute) {
             $this->line('Dry-run complete; no data changed.');
@@ -109,8 +116,10 @@ class RepairUnpaidHiddenClosures extends Command
     }
 
     /**
-     * Closed as settled/completed, unpaid, with a positive charge not covered by non-void invoice payments.
-     * Same rule as StudentClassController::courseNeedsPaymentReconciliation; tutoring is always free.
+     * Closed as settled/completed with open debt. Ledger first: any non-void invoice whose payment rows
+     * (legacy: PaidAmount when no rows) do not cover its resolved total; without invoices, Charge > 0 and
+     * not effectively paid. Same rule as StudentClassController::courseNeedsPaymentReconciliation (#3529).
+     * Tutoring is always free.
      *
      * @return list<array<string,mixed>>
      */
@@ -118,23 +127,30 @@ class RepairUnpaidHiddenClosures extends Command
     {
         $courses = StudentClass::query()->with('student:id,CampusID')
             ->where('Stop', 1)->whereIn('closed_reason', ['settled', 'completed'])
-            ->where(fn ($q) => $q->where('Paid', 0)->orWhereNull('Paid'))
-            ->where('Charge', '>', 0)
-            ->where(fn ($q) => $q->whereNull('ClassType')->orWhere('ClassType', '!=', 'tutoring'))
+            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> 'tutoring'")
             ->orderBy('ID')->get();
-        $paid = DB::table('Invoice')->whereIn('StudentClassID', $courses->pluck('ID')->all() ?: [0])
+        $invoices = Invoice::query()->with('payments')->whereIn('StudentClassID', $courses->pluck('ID')->all() ?: [0])
             ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
-            ->groupBy('StudentClassID')->selectRaw('StudentClassID, SUM(PaidAmount) as paid')->pluck('paid', 'StudentClassID');
+            ->get()->groupBy('StudentClassID');
         $rows = [];
         foreach ($courses as $c) {
-            $charge = (int) $c->Charge;
-            $invoicePaid = (int) ($paid[$c->ID] ?? 0);
-            if ($c->isEffectivelyPaid() || $c->isFullyPaidWithInvoiceAmount($invoicePaid, $charge)) {
+            [$billed, $paid] = [0, 0];
+            foreach ($invoices->get($c->ID, collect()) as $invoice) {
+                $a = $this->amounts->resolve($invoice, $c);
+                $billed += (int) $a['total_amount'];
+                $paid += $invoice->getRelationValue('payments')->isEmpty()
+                    ? min((int) $a['total_amount'], max(0, (int) $invoice->getAttribute('PaidAmount')))
+                    : min((int) $a['total_amount'], (int) $a['net_applied']);
+            }
+            $hasInvoices = $invoices->has($c->ID);
+            $outstanding = $hasInvoices ? $billed - $paid
+                : ((int) $c->Charge > 0 && !$c->isEffectivelyPaid() ? (int) $c->Charge : 0);
+            if ($outstanding <= 0) {
                 continue;
             }
             $rows[] = ['id' => (int) $c->ID, 'student_id' => (int) $c->StudentID, 'campus_id' => $c->student?->CampusID,
-                'mode' => (string) $c->ScheduleMode, 'closed_reason' => (string) $c->closed_reason, 'charge' => $charge,
-                'invoice_paid' => $invoicePaid, 'end_date' => substr((string) $c->EndDate, 0, 10)];
+                'mode' => (string) $c->ScheduleMode, 'closed_reason' => (string) $c->closed_reason,
+                'paid_flag' => (int) $c->Paid, 'outstanding' => $outstanding, 'end_date' => substr((string) $c->EndDate, 0, 10)];
         }
 
         return $rows;
@@ -146,17 +162,26 @@ class RepairUnpaidHiddenClosures extends Command
         return substr(hash('sha256', implode(',', array_map(fn ($r) => $r['id'] . ':' . $r['closed_reason'], $rows))), 0, 16);
     }
 
-    /** @return list<string> */
+    /**
+     * A repaired row may legitimately move on (payment confirmed -> settled, written off -> waived).
+     * Only a row that fell back to its old hidden reason, or vanished, is an error.
+     *
+     * @return list<string>
+     */
     private function postErrors(?SessionCorrection $corr): array
     {
         if (!$corr) {
             return ['no open correction'];
         }
-        $want = collect($corr->snapshot_before['rows'] ?? [])->pluck('id')->all();
-        $now = DB::table('StudentClass')->whereIn('ID', $want ?: [0])->pluck('closed_reason', 'ID');
-        $bad = collect($want)->filter(fn ($id) => ($now[$id] ?? null) !== 'settled_pending')->values()->all();
+        $old = collect($corr->snapshot_before['rows'] ?? [])->pluck('closed_reason', 'id');
+        $now = DB::table('StudentClass')->whereIn('ID', $old->keys()->all() ?: [0])->get(['ID', 'closed_reason', 'Paid'])->keyBy('ID');
+        $bad = $old->keys()->filter(function ($id) use ($old, $now) {
+            $row = $now->get($id);
 
-        return $bad === [] ? [] : ['not settled_pending: ' . implode(',', $bad)];
+            return !$row || ($row->closed_reason === $old[$id] && (int) $row->Paid !== 1);
+        })->values()->all();
+
+        return $bad === [] ? [] : ['back to hidden reason or missing: ' . implode(',', $bad)];
     }
 
     private function openCorrection(): ?SessionCorrection
@@ -173,28 +198,38 @@ class RepairUnpaidHiddenClosures extends Command
 
             return self::FAILURE;
         }
-        $rows = $corr->snapshot_before['rows'] ?? [];
-        // Only restore rows still in the state this repair left them (a director may have since reconciled one).
-        $ids = array_column($rows, 'id');
-        $still = DB::table('StudentClass')->whereIn('ID', $ids ?: [0])->where('closed_reason', 'settled_pending')
-            ->where(fn ($q) => $q->where('Paid', 0)->orWhereNull('Paid'))->pluck('ID')->map(fn ($id) => (int) $id)->all();
-        $this->line(($execute ? '=== EXECUTE ROLLBACK ===' : '=== DRY RUN ROLLBACK ===') . ' restore=' . count($still) . ' skip=' . (count($ids) - count($still)));
+        $rows = collect($corr->snapshot_before['rows'] ?? []);
+        // Only rows still exactly as this repair left them (unpaid, settled_pending); a director may have moved on.
+        $restorable = fn () => DB::table('StudentClass')->whereIn('ID', $rows->pluck('id')->all() ?: [0])
+            ->where('closed_reason', 'settled_pending')->where(fn ($q) => $q->where('Paid', 0)->orWhereNull('Paid'));
+        $still = $restorable()->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        $this->line(($execute ? '=== EXECUTE ROLLBACK ===' : '=== DRY RUN ROLLBACK ===') . ' restore=' . count($still) . ' skip=' . ($rows->count() - count($still)));
         if (!$execute) {
             return self::SUCCESS;
         }
-        DB::transaction(function () use ($rows, $still, $corr): void {
+        $actor = substr((string) ($this->option('actor') ?: 'cli'), 0, 128);
+        $restored = DB::transaction(function () use ($rows, $restorable, $corr, $actor): int {
+            $locked = $restorable()->lockForUpdate()->pluck('ID')->map(fn ($id) => (int) $id)->all(); // re-check under lock
+            $n = 0;
             foreach ($rows as $r) {
-                if (in_array((int) $r['id'], $still, true)) {
-                    DB::table('StudentClass')->where('ID', $r['id'])->update(['closed_reason' => $r['closed_reason']]);
+                if (in_array((int) $r['id'], $locked, true)) {
+                    $n += DB::table('StudentClass')->where('ID', $r['id'])->where('closed_reason', 'settled_pending')
+                        ->update(['closed_reason' => $r['closed_reason']]);
                 }
             }
+            if ($n !== count($locked)) {
+                throw new \RuntimeException("rollback restored {$n} of " . count($locked) . ' locked rows');
+            }
             $corr->rolled_back_at = now();
+            $corr->decided_by_actor = substr($corr->decided_by_actor . ' | rollback:' . $actor, 0, 128);
             $corr->save();
             SecurityAuditEvent::append('repair.unpaid_hidden_closures', 'rolled_back', [
                 'actor_type' => 'system', 'subject_type' => 'student_class_batch',
             ], ['reason_code' => self::REF, 'outcome' => 'rolled_back']);
+
+            return $n;
         });
-        $this->line('REPAIR_STATE=ROLLED_BACK');
+        $this->line("REPAIR_STATE=ROLLED_BACK restored={$restored}");
 
         return self::SUCCESS;
     }

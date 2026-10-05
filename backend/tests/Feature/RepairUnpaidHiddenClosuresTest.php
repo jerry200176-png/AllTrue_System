@@ -22,18 +22,31 @@ class RepairUnpaidHiddenClosuresTest extends TestCase
             'ScheduleMode' => 'date', 'SessionCount' => 4, 'UsedSessions' => 0, 'RemainingSessions' => 0, 'Stop' => 1,
         ];
         DB::table('StudentClass')->insert([
-            array_merge($base, ['ID' => 3516, 'closed_reason' => 'settled']),          // unpaid, hidden -> candidate
-            array_merge($base, ['ID' => 3517, 'closed_reason' => 'completed']),        // unpaid, hidden -> candidate
-            array_merge($base, ['ID' => 3518, 'closed_reason' => 'settled', 'Paid' => 1]), // paid flag
-            array_merge($base, ['ID' => 3519, 'closed_reason' => 'settled']),          // paid by invoice
+            array_merge($base, ['ID' => 3516, 'closed_reason' => 'settled']),          // unpaid, no invoice -> candidate
+            array_merge($base, ['ID' => 3517, 'closed_reason' => 'completed']),        // unpaid, no invoice -> candidate
+            array_merge($base, ['ID' => 3518, 'closed_reason' => 'settled', 'Paid' => 1]), // paid flag, no invoice
+            array_merge($base, ['ID' => 3519, 'closed_reason' => 'settled']),          // paid by payment rows
             array_merge($base, ['ID' => 3520, 'closed_reason' => 'settled_pending']),  // already visible
             array_merge($base, ['ID' => 3521, 'closed_reason' => 'converted_trial']),  // not in scope
             array_merge($base, ['ID' => 3522, 'closed_reason' => 'settled', 'Charge' => 0]), // nothing owed
+            array_merge($base, ['ID' => 3523, 'closed_reason' => 'settled', 'ClassType' => '  TUTORING  ']), // free
+            array_merge($base, ['ID' => 3524, 'closed_reason' => 'settled', 'Paid' => 1]), // stored-full, payment reversed -> candidate
+            array_merge($base, ['ID' => 3525, 'closed_reason' => 'settled']),          // stored-zero, rows cover it
         ]);
-        DB::table('Invoice')->insert([
-            'id' => 900, 'StudentID' => 164, 'StudentClassID' => 3519, 'IssueDate' => '2026-09-01',
-            'TotalAmount' => 6600, 'PaidAmount' => 6600, 'Status' => 'paid', 'Note' => '', 'created_at' => now(), 'updated_at' => now(),
+        $invoice = fn (int $id, int $classId, int $paidAmount, string $status) => DB::table('Invoice')->insert([
+            'id' => $id, 'StudentID' => 164, 'StudentClassID' => $classId, 'IssueDate' => '2026-09-01',
+            'TotalAmount' => 6600, 'PaidAmount' => $paidAmount, 'Status' => $status, 'Note' => '', 'created_at' => now(), 'updated_at' => now(),
         ]);
+        $payment = fn (int $invoiceId, int $amount, string $method) => DB::table('Payment')->insert([
+            'InvoiceID' => $invoiceId, 'Amount' => $amount, 'PaidAt' => '2026-09-02 00:00:00', 'Method' => $method, 'created_at' => now(),
+        ]);
+        $invoice(900, 3519, 6600, 'paid');
+        $payment(900, 6600, 'cash');
+        $invoice(901, 3524, 6600, 'paid');
+        $payment(901, 6600, 'cash');
+        $payment(901, -6600, 'void');
+        $invoice(902, 3525, 0, 'unpaid');
+        $payment(902, 6600, 'transfer');
     }
 
     private function digest(): string
@@ -53,12 +66,13 @@ class RepairUnpaidHiddenClosuresTest extends TestCase
     {
         $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures'));
         $out = Artisan::output();
-        $this->assertStringContainsString('course=3516', $out);
-        $this->assertStringContainsString('course=3517', $out);
-        foreach ([3518, 3519, 3520, 3521, 3522] as $id) {
-            $this->assertStringNotContainsString("course={$id}", $out);
+        foreach ([3516, 3517, 3524] as $id) {
+            $this->assertStringContainsString("course={$id} ", $out);
         }
-        $this->assertStringContainsString('CANDIDATES=2 OUTSTANDING_TOTAL=13200', $out);
+        foreach ([3518, 3519, 3520, 3521, 3522, 3523, 3525] as $id) {
+            $this->assertStringNotContainsString("course={$id} ", $out);
+        }
+        $this->assertStringContainsString('CANDIDATES=3 OUTSTANDING_TOTAL=19800', $out);
         $this->assertSame('settled', $this->reason(3516));
     }
 
@@ -78,9 +92,14 @@ class RepairUnpaidHiddenClosuresTest extends TestCase
         $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures', ['--verify' => true]));
         $this->assertSame(1, DB::table('session_corrections')->where('decision_reference', 'repair-unpaid-hidden-closures')->count());
 
-        // Rollback skips a row a director already reconciled.
+        // A director confirming payment afterwards is a legitimate forward move, not a verify failure.
         DB::table('StudentClass')->where('ID', 3517)->update(['Paid' => 1, 'closed_reason' => 'settled']);
-        $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures', ['--rollback' => true, '--execute' => true]));
+        $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures', ['--verify' => true]));
+
+        // Rollback skips the reconciled row and records the actor.
+        $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures', ['--rollback' => true, '--execute' => true, '--actor' => 'gha:test']));
+        $this->assertStringContainsString('restored=2', Artisan::output());
+        $this->assertStringContainsString('rollback:gha:test', (string) DB::table('session_corrections')->where('decision_reference', 'repair-unpaid-hidden-closures')->value('decided_by_actor'));
         $this->assertSame('settled', $this->reason(3516));
         $this->assertSame(1, (int) DB::table('StudentClass')->where('ID', 3517)->value('Paid'));
     }
