@@ -9,7 +9,7 @@ const source = readFileSync(resolve(__dirname, '../../pages/TuitionCollectionPag
 describe('tuition 確認不收 (waive) action', () => {
   it('is shown on the settled_pending row only for directors', () => {
     const row = source.slice(source.indexOf("r.payment_status === 'pending_reconciliation'\">"));
-    expect(row.slice(0, 1400)).toContain('v-if="canWaive" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)"');
+    expect(row.slice(0, 1400)).toContain('v-if="canWaive && r.closed_reason" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)"');
     expect(source).toContain("['director', 'super_admin'].includes(getAuthRole())");
   });
 
@@ -24,5 +24,21 @@ describe('tuition 確認不收 (waive) action', () => {
 
   it('labels waived rows in the settled table instead of 正常', () => {
     expect(source).toContain(`v-if="row.closed_reason === 'waived'" class="acct-chip">確認不收`);
+  });
+
+  it('F7 S3a: shows the backend reconciliation label and the 付款期間待確認 state instead of 正常', () => {
+    expect(source).toContain(`row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '結案待對帳' }}`);
+    expect(source).toContain(`row.payment_review_required" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '付款期間待確認' }}`);
+    expect(source).toContain('!row.pending_reconciliation && !row.payment_review_required" class="text-light">正常');
+  });
+
+  it('hides 確認不收 on paused rows (no closed_reason) because the waive endpoint rejects them', () => {
+    expect(source).toContain('v-if="canWaive && r.closed_reason" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)"');
+  });
+
+  it('refuses to batch-select or submit rows whose payable is null or 0', () => {
+    expect(source).toContain("const hasBatchAmount = (r) => Number(r?.payable_outstanding ?? r?.payable_amount ?? 0) > 0;");
+    expect(source).toContain("if (ps !== 'pending_report' && !hasBatchAmount(r)) return false;");
+    expect(source.match(/&& hasBatchAmount\(r\)\)/g)).toHaveLength(3);
   });
 });
