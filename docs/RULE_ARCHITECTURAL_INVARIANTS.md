@@ -68,7 +68,7 @@
 
 | 實例 | 狀態 | 備註 |
 |---|---|---|
-| #1197 `BatchInvoiceModal`/`OverdueBucketsPanel` 呼叫 `/invoices/batch-preview`、`/invoices/batch`、`/invoices/overdue-summary` | 已知孤兒，未清償 | TD-067 |
+| #1197 `BatchInvoiceModal`/`OverdueBucketsPanel` 呼叫 `/invoices/batch-preview`、`/invoices/batch`、`/invoices/overdue-summary` | 已清償：F7 F4 刪除兩個孤兒元件（2026-10-05） | TD-067 |
 | CI 契約檢查（前端路徑 vs `route:list` diff） | ✅ 已新增（advisory） | #1493——刻意先 advisory，等 TD-067 清乾淨後可仿 PHPStan 的 baseline 畢業模式升級為 blocking |
 
 ---
