@@ -57,7 +57,7 @@
         <span v-if="attendedCount" class="slip-chip slip-chip--done">已上 {{ attendedCount }} 堂</span>
       </div>
       <ol class="slip-session-list">
-        <li v-for="(s, i) in doc.sessions" :key="s.class_session_id || i">
+        <li v-for="(s, i) in shownSessions" :key="s.class_session_id || i">
           <span class="slip-session-no">{{ i + 1 }}</span>
           <span class="slip-session-date">{{ formatSessionDate(s.date) }}</span>
           <span class="slip-session-time">{{ formatTime(s) }}</span>
@@ -65,6 +65,7 @@
           <span class="slip-status" :class="`is-${statusTone(s.status)}`">{{ STATUS_ZH[s.status] || s.status || '排定' }}</span>
         </li>
       </ol>
+      <p v-if="hiddenCount" class="slip-more">另有 {{ hiddenCount }} 堂未列出（共 {{ doc.sessions.length }} 堂）</p>
     </section>
 
     <section v-if="doc.note" class="slip-note">
@@ -108,6 +109,10 @@ const props = defineProps({
 const attendedCount = computed(() => props.doc.sessions.filter(s => isDone(s.status)).length);
 const hasSubject = computed(() => new Set(props.doc.sessions.map(s => s.subject).filter(Boolean)).size > 1);
 const hasPeriod = computed(() => props.doc.items.some(i => i.period));
+// Bounded so a long course still exports as one PNG within canvas limits.
+const MAX_SESSION_ROWS = 40;
+const shownSessions = computed(() => props.doc.sessions.slice(0, MAX_SESSION_ROWS));
+const hiddenCount = computed(() => Math.max(0, props.doc.sessions.length - MAX_SESSION_ROWS));
 </script>
 
 <style scoped>
@@ -270,6 +275,7 @@ const hasPeriod = computed(() => props.doc.items.some(i => i.period));
 .slip-status.is-leave { color: var(--slip-leave); background: var(--slip-leave-wash); }
 .slip-status.is-planned { color: var(--slip-ink-2); background: var(--slip-soft); border: 1px solid var(--slip-line); }
 
+.slip-more { margin: 6px 0 0; font-size: 12px; color: var(--slip-mute); text-align: center; }
 .slip-note {
   margin-top: 16px;
   padding: 10px 14px;
