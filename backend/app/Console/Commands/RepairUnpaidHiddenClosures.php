@@ -102,6 +102,8 @@ class RepairUnpaidHiddenClosures extends Command
             DB::transaction(function () use ($manifest, $sha): void {
                 $ids = array_column($manifest, 'id');
                 StudentClass::query()->whereIn('ID', $ids)->lockForUpdate()->get();
+                // Hold the invoices too, so a payment write on them waits for this decision.
+                Invoice::query()->whereIn('StudentClassID', $ids)->lockForUpdate()->get(['id']);
                 $drift = $this->drift($manifest, $this->candidates()[0]);
                 if ($drift !== []) {
                     throw new \RuntimeException('manifest rows no longer candidates: ' . implode(',', $drift));
@@ -188,9 +190,12 @@ class RepairUnpaidHiddenClosures extends Command
      */
     private function candidates(): array
     {
+        // A pending payment report is in flight: its confirmation settles the course, so leave it alone
+        // rather than racing PaymentReportController::confirm.
         $courses = StudentClass::query()->with('student:id,CampusID')
             ->where('Stop', 1)->whereIn('closed_reason', ['settled', 'completed'])
             ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> 'tutoring'")
+            ->whereNotIn('ID', DB::table('payment_reports')->where('status', 'pending')->select('StudentClassID'))
             ->orderBy('ID')->get();
         $outstanding = $this->outstanding($courses);
         [$rows, $stale] = [[], []];

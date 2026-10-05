@@ -33,6 +33,12 @@ class RepairUnpaidHiddenClosuresTest extends TestCase
             array_merge($base, ['ID' => 3523, 'closed_reason' => 'settled', 'ClassType' => '  TUTORING  ']), // free
             array_merge($base, ['ID' => 3524, 'closed_reason' => 'settled', 'Paid' => 1]), // stored-full, payment reversed -> candidate
             array_merge($base, ['ID' => 3525, 'closed_reason' => 'settled']),          // stored-zero, rows cover it
+            array_merge($base, ['ID' => 3526, 'closed_reason' => 'settled']),          // unpaid but a report is in flight
+        ]);
+        DB::table('payment_reports')->insert([
+            'StudentID' => 164, 'StudentClassID' => 3526, 'reported_by_name' => 'P', 'payment_date' => '2026-09-05',
+            'payment_method' => 'transfer', 'reported_amount' => 6600, 'status' => 'pending',
+            'report_token_hash' => str_repeat('a', 64), 'token_expires_at' => now()->addDay(), 'created_at' => now(), 'updated_at' => now(),
         ]);
         $invoice = fn (int $id, int $classId, int $paidAmount, string $status) => DB::table('Invoice')->insert([
             'id' => $id, 'StudentID' => 164, 'StudentClassID' => $classId, 'IssueDate' => '2026-09-01',
@@ -72,10 +78,10 @@ class RepairUnpaidHiddenClosuresTest extends TestCase
         $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures'));
         $out = Artisan::output();
         foreach ([3516, 3517] as $id) {
-            $this->assertStringContainsString("course={$id} ", $out);
+            $this->assertMatchesRegularExpression("/^course={$id} /m", $out);
         }
-        foreach ([3518, 3519, 3520, 3521, 3522, 3523, 3524, 3525] as $id) {
-            $this->assertStringNotContainsString("course={$id} ", $out);
+        foreach ([3518, 3519, 3520, 3521, 3522, 3523, 3524, 3525, 3526] as $id) {
+            $this->assertDoesNotMatchRegularExpression("/^course={$id} /m", $out);
         }
         // Stale Paid=1 with a reversed payment is reported for review, not auto-flipped.
         $this->assertStringContainsString('STALE_PAID_REVIEW course=3524 ', $out);

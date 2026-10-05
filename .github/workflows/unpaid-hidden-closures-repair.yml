@@ -153,12 +153,18 @@ jobs:
           fi
           [ "$manifest_sha" = "$DEPLOYED_SHA" ] || { echo "::error::production SHA drift: $manifest_sha (reviewed $DEPLOYED_SHA)"; exit 1; }
           # execute: exact-state preflight first (ALREADY_APPLIED short-circuits)
-          PRE=$($CMD 2>&1) || { echo "$PRE"; echo "REPAIR_STATE=NOT_APPLIED"; exit 1; }
+          set +e
+          PRE=$($CMD 2>&1)
+          PRE_EC=$?
+          set -e
           echo "$PRE"
           if echo "$PRE" | grep -q 'ALREADY_APPLIED'; then
+            # Applied earlier: never re-execute; surface a damaged state instead of calling it not applied.
+            [ "$PRE_EC" -eq 0 ] || { echo "REPAIR_STATE=APPLIED_POSTVERIFY_FAILED; use rollback/recovery, do NOT re-run execute"; exit 42; }
             echo "Refusing duplicate execute - correction ledger shows applied."
             exit 0
           fi
+          [ "$PRE_EC" -eq 0 ] || { echo "REPAIR_STATE=NOT_APPLIED"; exit 1; }
           set +e
           MUT_OUT=$(ALLOW_PROD_REPAIR=1 $CMD --execute --force --expect-manifest-sha="${MANIFEST_SHA}" --actor="${ACTOR}" 2>&1)
           MUT_EC=$?

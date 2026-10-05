@@ -1,5 +1,5 @@
 ## 2026-10-05 — chore(repair): unpaid contracts hidden as settled/completed return to 待對帳
-<!-- release-notes: staff_update=staff-2026-10-05-unpaid-backlog-pending -->
+<!-- release-notes: silent_ship=silent-2026-10-05-unpaid-backlog-repair -->
 - 一次性修資料 `repair:unpaid-hidden-closures`：以帳單收款明細判定仍有欠款、卻被標成 `settled`／`completed` 的已結案合約，改回 `settled_pending`，重新出現在帳務中心待對帳；金額與收款紀錄不動
 
 ## 2026-10-05 — fix(billing): unpaid monthly closes stay in accounting queue

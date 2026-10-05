@@ -720,3 +720,7 @@ exemptions:
     changelog_date: "2026-10-04"
     changelog_title: "fix(course-edit): slot edits check exactly the lessons that move; no false block on own lessons, no self-overlap (in-app #347, part 2)"
     reason: 課程時段編輯的可見變化（不再擋自己的課）待正式站驗證後另 PR 發布教職員卡片
+  - id: silent-2026-10-05-unpaid-backlog-repair
+    changelog_date: "2026-10-05"
+    changelog_title: "chore(repair): unpaid contracts hidden as settled/completed return to 待對帳"
+    reason: 只上線修資料指令，尚未執行；教職員卡片隨 Founder 核准的修復清單 PR 於實際執行時發布

@@ -3,18 +3,6 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
-  - id: staff-2026-10-05-unpaid-backlog-pending
-    published_at: "2026-10-05"
-    audiences:
-      - director
-    importance: action_required
-    title: 舊的未繳月份將回到待對帳
-    summary: 以前續約後被藏起來的未繳月份，將一次放回帳務中心「待對帳」。
-    items:
-      - category: action_required
-        text: 出現後：已收過錢就登記收款；確定不收就按「確認不收」並寫原因。
-    source_refs:
-      - "changelog:2026-10-05:unpaid-backlog-pending"
   - id: staff-2026-10-05-unpaid-close-pending
     published_at: "2026-10-05"
     audiences:

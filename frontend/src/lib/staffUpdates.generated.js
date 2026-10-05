@@ -4,36 +4,6 @@
  */
 export const staffUpdates = [
   {
-    "id": "staff-2026-10-05-unpaid-backlog-pending",
-    "publishedAt": "2026-10-05",
-    "effectiveAt": null,
-    "audiences": [
-      "director"
-    ],
-    "audience": [
-      "director"
-    ],
-    "importance": "action_required",
-    "title": "舊的未繳月份將回到待對帳",
-    "summary": "以前續約後被藏起來的未繳月份，將一次放回帳務中心「待對帳」。",
-    "items": [
-      "出現後：已收過錢就登記收款；確定不收就按「確認不收」並寫原因。"
-    ],
-    "sections": [
-      {
-        "title": "需要你注意",
-        "items": [
-          "出現後：已收過錢就登記收款；確定不收就按「確認不收」並寫原因。"
-        ]
-      }
-    ],
-    "sourceRefs": [
-      "changelog:2026-10-05:unpaid-backlog-pending"
-    ],
-    "date": "2026-10-05",
-    "version": "2026.10.05"
-  },
-  {
     "id": "staff-2026-10-05-unpaid-close-pending",
     "publishedAt": "2026-10-05",
     "effectiveAt": null,
