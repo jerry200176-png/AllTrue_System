@@ -1280,4 +1280,236 @@ class ContractSessionSchedule
         }
         });
     }
+
+    /**
+     * 月結課程以 EndDate + 固定星期/時段為契約；課程管理詳情則讀 ClassSession。
+     * 續約或編輯後補齊未來缺少的實體堂次，讓 UI 能立即顯示預排課程。
+     *
+     * @param  array<int, array<string, mixed>>  $providedSlots
+     * @return array<string, mixed>
+     */
+    public function ensureMonthlyFutureScheduledSessions(StudentClass $studentClass, array $providedSlots = []): array
+    {
+        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
+            return ['created_sessions' => 0, 'reason' => 'not_monthly'];
+        }
+        if ((int) ($studentClass->Stop ?? 0) === 1) {
+            return ['created_sessions' => 0, 'reason' => 'inactive_course'];
+        }
+
+        $endDate = self::normalizeDateString($studentClass->EndDate ?? null);
+        if (!$endDate) {
+            return ['created_sessions' => 0, 'reason' => 'end_date_missing'];
+        }
+
+        $today = Carbon::today()->toDateString();
+        $startDate = self::normalizeDateString($studentClass->StartDate ?? null) ?: $today;
+        if ($startDate < $today) {
+            $startDate = $today;
+        }
+        if ($endDate < $startDate) {
+            return ['created_sessions' => 0, 'reason' => 'date_range_elapsed'];
+        }
+
+        $slots = self::resolveScheduleSlotsForRebuild($studentClass, $providedSlots);
+        if (empty($slots)) {
+            return ['created_sessions' => 0, 'reason' => 'schedule_slots_missing'];
+        }
+
+        $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
+        $proposedSessions = self::buildSessionsFromWeeklySchedule(
+            (int) $studentClass->ID,
+            $startDate,
+            $endDate,
+            $slots,
+            $durationMinutes
+        );
+        if (empty($proposedSessions)) {
+            return ['created_sessions' => 0, 'reason' => 'no_matching_dates'];
+        }
+
+        $existingKeys = [];
+        $existingRows = ClassSession::where('StudentClassID', (int) $studentClass->ID)
+            ->whereDate('SessionDate', '>=', $startDate)
+            ->whereDate('SessionDate', '<=', $endDate)
+            ->get(['SessionDate', 'StartTime']);
+        foreach ($existingRows as $row) {
+            $date = self::normalizeDateString($row->SessionDate ?? null);
+            $start = substr((string) ($row->StartTime ?? ''), 0, 5);
+            if ($date && $start !== '') {
+                $existingKeys[$date . '|' . $start] = true;
+            }
+        }
+
+        $created = 0;
+        $now = Carbon::now();
+        foreach ($proposedSessions as $session) {
+            $sessionDate = self::normalizeDateString($session['SessionDate'] ?? null);
+            $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
+            $endTime = self::normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');
+            if (!$sessionDate || $start === '') {
+                continue;
+            }
+            if (self::sessionEndedByEndTime($sessionDate, $endTime, $now)) {
+                continue;
+            }
+            $key = $sessionDate . '|' . $start;
+            if (isset($existingKeys[$key])) {
+                continue;
+            }
+
+            $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($session);
+            if ($upsert['created']) {
+                $existingKeys[$key] = true;
+                $created++;
+            }
+        }
+
+        return [
+            'created_sessions' => $created,
+            'reason' => $created > 0 ? 'monthly_future_sessions_created' : 'already_complete',
+        ];
+    }
+
+    /**
+     * After an update, optionally align week/time DB fields with **future**
+     * scheduled ClassSession rows (same cadence as index drift detection).
+     *
+     * Does **not** fall back to completed/attended history: one-off substitute
+     * slots (e.g. 週二代課) must not overwrite the contract when the user removes
+     * that weekday and there are no upcoming scheduled sessions left.
+     */
+    public function reconcileWeekTimeFieldsFromSessions(StudentClass $studentClass): void
+    {
+        $classId = (int) $studentClass->ID;
+        $today = Carbon::today()->toDateString();
+        $activeSessionsQuery = ClassSession::where('StudentClassID', $classId)
+            ->where('Status', 'scheduled')
+            ->whereDate('SessionDate', '>=', $today)
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime');
+
+        // One-off 調課／補課 must not rewrite series week/time (SaaS: this occurrence only).
+        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+            $activeSessionsQuery->where(function ($q) {
+                $q->whereNull('IsContractException')->orWhere('IsContractException', 0);
+            });
+        }
+
+        $activeSessions = $activeSessionsQuery->get(['SessionDate', 'StartTime', 'EndTime']);
+
+        if ($activeSessions->isEmpty()) {
+            return;
+        }
+
+        $slotsByWeekday = [];
+        foreach ($activeSessions as $cs) {
+            $date = self::normalizeDateString($cs->SessionDate ?? null);
+            if (!$date) {
+                continue;
+            }
+            $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
+            $start = substr((string) ($cs->StartTime ?? ''), 0, 5);
+            if ($start === '') {
+                continue;
+            }
+            $endRaw = (string) ($cs->EndTime ?? '');
+            $durMin = 0;
+            if ($endRaw && $start) {
+                $startM = ((int) substr($start, 0, 2)) * 60 + (int) substr($start, 3, 2);
+                $endM = ((int) substr($endRaw, 0, 2)) * 60 + (int) substr($endRaw, 3, 2);
+                $durMin = max(0, $endM - $startM);
+            }
+            $key = $isoDow . '|' . $start;
+            if (!isset($slotsByWeekday[$key])) {
+                $slotsByWeekday[$key] = [
+                    'weekday' => $isoDow,
+                    'start' => $start,
+                    'dur' => $durMin > 0 ? $durMin : null,
+                ];
+            }
+        }
+
+        $uniqueSlots = array_values($slotsByWeekday);
+        usort($uniqueSlots, fn ($a, $b) => $a['weekday'] <=> $b['weekday'] ?: strcmp($a['start'], $b['start']));
+
+        if (empty($uniqueSlots)) {
+            return;
+        }
+
+        $updates = [];
+        $globalDur = (int) ($studentClass->SessionDuration ?? 0);
+        $updates['week'] = $uniqueSlots[0]['weekday'];
+        $updates['time'] = $uniqueSlots[0]['start'] . ':00';
+
+        for ($i = 1; $i <= 6; $i++) {
+            if (isset($uniqueSlots[$i])) {
+                $updates['week' . $i] = $uniqueSlots[$i]['weekday'];
+                $updates['time' . $i] = $uniqueSlots[$i]['start'] . ':00';
+                $dur = $uniqueSlots[$i]['dur'];
+                $updates['duration' . $i] = ($dur && $dur !== $globalDur) ? $dur : null;
+            } else {
+                $updates['week' . $i] = null;
+                $updates['time' . $i] = null;
+                $updates['duration' . $i] = null;
+            }
+        }
+
+        $changed = false;
+        foreach ($updates as $field => $value) {
+            $current = $studentClass->{$field} ?? null;
+            if ($field === 'time' || preg_match('/^time\d$/', $field)) {
+                $currentNorm = $current ? substr((string) $current, 0, 5) : null;
+                $newNorm = $value ? substr((string) $value, 0, 5) : null;
+                if ($currentNorm !== $newNorm) {
+                    $changed = true;
+                    break;
+                }
+            } elseif ((string) ($current ?? '') !== (string) ($value ?? '')) {
+                $changed = true;
+                break;
+            }
+        }
+
+        if ($changed) {
+            $studentClass->fill($updates);
+            $studentClass->save();
+        }
+    }
+
+    public function countUnalignedFutureContractSessions(StudentClass $studentClass): int
+    {
+        $slots = self::resolveScheduleSlotsForRebuild($studentClass);
+        $contractKeys = [];
+        $defaultDuration = max(30, (int) ($studentClass->SessionDuration ?? 120));
+        foreach ($slots as $slot) {
+            $day = (int) data_get($slot, 'weekday', 0);
+            $start = substr((string) data_get($slot, 'time', ''), 0, 5);
+            if ($day < 1 || $day > 7 || $start === '') {
+                continue;
+            }
+            $duration = max(30, (int) (data_get($slot, 'duration_minutes') ?: $defaultDuration));
+            $end = Carbon::createFromFormat('H:i', $start)->addMinutes($duration)->format('H:i');
+            $contractKeys["{$day}|{$start}|{$end}"] = true;
+        }
+
+        $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
+            ->where('Status', 'scheduled')
+            ->whereDate('SessionDate', '>=', Carbon::today()->toDateString());
+        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+            $query->where(function ($q) {
+                $q->whereNull('IsContractException')->orWhere('IsContractException', 0);
+            });
+        }
+        return $query->get(['SessionDate', 'StartTime', 'EndTime'])->filter(function ($session) use ($contractKeys) {
+            $date = self::normalizeDateString($session->SessionDate ?? null);
+            if (!$date) {
+                return false;
+            }
+            $day = (int) Carbon::parse($date)->dayOfWeekIso;
+            $start = substr((string) ($session->StartTime ?? ''), 0, 5);
+            $end = substr((string) ($session->EndTime ?? ''), 0, 5);
+            return !isset($contractKeys["{$day}|{$start}|{$end}"]);
+        })->count();
+    }
 }
