@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-10-05-td076-pr-a-log-superseded
+    changelog_date: "2026-10-05"
+    changelog_title: "chore(schedule): TD-076 Track B PR-A log teacher columns + `superseded` status constant"
+    reason: 只加可為空的日誌欄位、常數與測試，尚無寫入端使用，教職員看到的畫面與行為不變。
+
   - id: silent-2026-10-05-f7-s2
     changelog_date: "2026-10-05"
     changelog_title: "refactor(frontend): F7 S2 paid status comes only from the server `payment_status`"
