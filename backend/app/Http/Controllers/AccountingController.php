@@ -234,7 +234,8 @@ class AccountingController extends Controller
             }
             $toVoid = $invoices->filter(fn ($i) => (string) ($i->Status ?? '') !== 'paid');
             $outstanding = $this->waivableAmount($course, $invoices);
-            if ($request->filled('expected_amount') && (int) $request->input('expected_amount') !== $outstanding) {
+            // The director must confirm the exact amount being written off (the dialog sends what it showed).
+            if (!$request->filled('expected_amount') || (int) $request->input('expected_amount') !== $outstanding) {
                 return response()->json(['message' => '金額已變動，請重新整理', 'waivable_amount' => $outstanding], 409);
             }
             if ($outstanding <= 0) {

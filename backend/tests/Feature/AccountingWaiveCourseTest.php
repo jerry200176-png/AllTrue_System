@@ -25,7 +25,7 @@ class AccountingWaiveCourseTest extends TestCase
             'IssueDate' => '2026-09-01', 'DueDate' => '2026-09-10', 'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'unpaid',
         ]);
 
-        $this->postJson("/api/v1/accounting/courses/{$course->ID}/waive", ['reason' => '家長搬家失聯'], ['Authorization' => "Bearer {$token}"])
+        $this->postJson("/api/v1/accounting/courses/{$course->ID}/waive", ['reason' => '家長搬家失聯', 'expected_amount' => 8800], ['Authorization' => "Bearer {$token}"])
             ->assertOk()->assertJsonPath('outstanding_amount', 8800);
 
         $course->refresh();
@@ -229,7 +229,7 @@ class AccountingWaiveCourseTest extends TestCase
             'IssueDate' => '2026-09-01', 'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => '',
         ]);
 
-        $this->postJson("/api/v1/accounting/courses/{$course->ID}/waive", ['reason' => '不收了'], ['Authorization' => "Bearer {$token}"])
+        $this->postJson("/api/v1/accounting/courses/{$course->ID}/waive", ['reason' => '不收了', 'expected_amount' => 4000], ['Authorization' => "Bearer {$token}"])
             ->assertOk()->assertJsonPath('outstanding_amount', 4000);
         $this->assertSame('void', Invoice::find($invoiceId)->Status);
         $this->assertSame('waived', $course->refresh()->closed_reason);
