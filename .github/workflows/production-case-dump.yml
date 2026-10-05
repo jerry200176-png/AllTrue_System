@@ -724,17 +724,22 @@ jobs:
                 $cid = (int)$c->getAttribute('ID'); $r = $statuses[$cid] ?? null; $total++;
                 $status = (string)($r['status'] ?? 'missing'); $out_amt = (int)($r['outstanding'] ?? 0);
                 $legacyPaid = $c->isEffectivelyPaid();
+                // Second legacy surface: stored Invoice.PaidAmount (B2/B3/B4/B7/B18 read it instead of Payment rows).
+                $storedPaid = (int)$db::table('Invoice')->where('StudentClassID', $cid)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->sum('PaidAmount');
+                $storedTotal = (int)$db::table('Invoice')->where('StudentClassID', $cid)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->sum('TotalAmount');
+                $storedState = $storedTotal === 0 ? 'no_invoice' : ($storedPaid >= $storedTotal ? 'stored_paid' : ($storedPaid > 0 ? 'stored_partial' : 'stored_unpaid'));
                 $stop = (int)$c->getAttribute('Stop') === 1;
                 $reason = (string)($c->getAttribute('closed_reason') ?? '');
                 $reasonClass = $reason === '' ? 'none' : (in_array($reason, ['settled', 'completed', 'settled_pending', 'contract_amended', 'waived', 'usage_settled', 'converted_trial'], true) ? $reason : 'other');
-                $key = implode('|', [$status, $legacyPaid ? 'legacy_paid' : 'legacy_unpaid', $stop ? 'stopped' : 'active', $reasonClass, (string)($r['source'] ?? '-')]);
+                $key = implode('|', [$status, $legacyPaid ? 'legacy_paid' : 'legacy_unpaid', $storedState, $stop ? 'stopped' : 'active', $reasonClass, (string)($r['source'] ?? '-')]);
                 $b = $buckets[$key] ?? ['status' => $status, 'legacy' => $legacyPaid ? 'paid' : 'unpaid', 'state' => $stop ? 'stopped' : 'active',
-                  'closed_reason' => $reasonClass, 'source' => (string)($r['source'] ?? '-'), 'count' => 0, 'outstanding' => 0, 'examples' => []];
+                  'stored' => $storedState, 'closed_reason' => $reasonClass, 'source' => (string)($r['source'] ?? '-'), 'count' => 0, 'outstanding' => 0, 'examples' => []];
                 $b['count']++; $b['outstanding'] += $out_amt;
                 if (count($b['examples']) < 5) $b['examples'][] = $cid;
                 $buckets[$key] = $b;
                 // Debt the accounting queue cannot see: resolver owes, contract stopped, reason outside the queue.
-                if (in_array($status, ['unpaid', 'partial'], true) && $stop && !in_array($reasonClass, ['settled_pending', 'contract_amended'], true)) {{
+                if (in_array($status, ['unpaid', 'partial', 'unbilled'], true) && $out_amt > 0 && $stop
+                  && !in_array($reasonClass, ['settled_pending', 'contract_amended', 'waived'], true)) {{
                   $hidden[] = ['id' => $cid, 'campus_id' => (int)$db::table('Student')->where('id', $c->getAttribute('StudentID'))->value('CampusID'),
                     'status' => $status, 'outstanding' => $out_amt, 'closed_reason' => $reasonClass];
                 }}
@@ -748,6 +753,12 @@ jobs:
             $out['hidden_debt_outstanding'] = array_sum(array_column($hidden, 'outstanding'));
             $out['hidden_debt'] = array_slice($hidden, 0, 200);
             $out['legacy_paid_but_resolver_owes'] = $flagOnlyPaid;
+            // This report gates F7 S3: an empty or incomplete resolution must not look like a clean result.
+            $missing = array_sum(array_map(fn ($b) => $b['status'] === 'missing' ? $b['count'] : 0, $buckets));
+            if ($total === 0 || $missing > 0) {{
+              $out['ok'] = false;
+              $out['error'] = "f7 snapshot incomplete: scanned={$total} missing={$missing}";
+            }}
           }} elseif ($case === 'contract_yang_binghe') {{
             $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
