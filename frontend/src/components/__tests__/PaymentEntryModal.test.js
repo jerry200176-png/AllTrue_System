@@ -16,7 +16,7 @@ async function tick() {
   await nextTick();
 }
 
-const row = { id: 5, student_name: '王小明', subject: '英文', charge: 3000 };
+const row = { id: 5, student_name: '王小明', subject: '英文', charge: 3000, payable_status: 'invoiced', payable_amount: 3000, payable_outstanding: 3000 };
 
 beforeEach(() => {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: mockToken }));
