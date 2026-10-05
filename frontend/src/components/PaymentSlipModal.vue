@@ -18,10 +18,10 @@
         <button class="ghost" @click="$emit('close')">關閉</button>
       </div>
 
-      <template v-else-if="raw">
+      <template v-else-if="doc">
         <div class="slip-preview-wrap">
           <!-- What you see here is exactly the exported PNG. -->
-          <PaymentSlipDocument ref="docRef" :data="raw" />
+          <BillingDocument ref="docRef" :doc="doc" />
         </div>
         <div class="slip-actions">
           <button class="primary" @click="downloadPng" :disabled="exporting">
@@ -39,8 +39,9 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick } from 'vue';
-import PaymentSlipDocument from './PaymentSlipDocument.vue';
+import { ref, computed, watch, nextTick } from 'vue';
+import BillingDocument from './BillingDocument.vue';
+import { paymentSlipView } from '../lib/billingDocumentView.js';
 
 const props = defineProps({
   show: Boolean,
@@ -52,6 +53,7 @@ defineEmits(['close']);
 const loading = ref(false);
 const error = ref('');
 const raw = ref(null);
+const doc = computed(() => (raw.value ? paymentSlipView(raw.value) : null));
 const docRef = ref(null);
 const copying = ref(false);
 const exporting = ref(false);
@@ -125,7 +127,7 @@ async function downloadPng() {
     const blob = await renderBlob();
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.download = docRef.value.slip.filename;
+    link.download = doc.value.filename;
     link.href = url;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
