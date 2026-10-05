@@ -1,6 +1,6 @@
 # RFC: Schedule occurrence identity（TD-076 根治計畫）
 
-> **Status:** Phase 0–2 merged (`5634e9e9`). Phase 3 = dry-run backfill command (execute gated; not run on production). No read cutover, no stop-chain.  
+> **Status:** Phase 0–2 merged (`5634e9e9`). Phase 3 = dry-run backfill command (execute gated; not run on production). No read cutover, no stop-chain. §10 (2026-10-05) adds substitute writes to scope.  
 > **Date:** 2026-08-15  
 > **Campaign card:** [`ALLTRUE_ENGINEERING_NORTH_STAR.md`](ALLTRUE_ENGINEERING_NORTH_STAR.md)  
 > **Debt / lessons:** `docs/TECH_DEBT.md` TD-076 · `docs/AI_REGRESSION_LESSONS.md` R102, R103  
@@ -230,6 +230,42 @@ Still open (not blocking Phase 2):
 - Exact unique key vs cancelled extras (extras stay **out** of the identity unique key until a later decision).
 - Whether `ClassSession` stores frozen original start or only current.
 - Timing vs Laravel 8 (TD-014): **do not combine**.
+
+---
+
+## 10. Substitute scope (added 2026-10-05)
+
+**Trigger:** 新莊 session 41612 (2026-10-09 10:00). 課程查找 showed the substitute, but the calendar kept the contract teacher. Data evidence:
+- probe run 37300311383 (`substitute_calendar_xinzhuang`)
+- monitor run 37302577020 (`substitute_slot_conflicts`)
+
+One slot held two chains:
+- 12695→12696: an older reschedule *onto* this slot, contract teacher
+- 12697→12698: the substitute
+
+The substitute write did not find the live reschedule target. `ClassSessionController::substitute` looks for anchors only on the session's own date, and 12695 is on another date. So it created a second chain. The monitor found exactly this shape in every risky slot (2 slots, both 新莊, both reschedule-then-substitute).
+
+**Why the chain model cannot be patched on the read side:** the same data shape needs opposite answers.
+- **R44:** a newer stale contract-teacher row must lose to the substitute.
+- **Contract change to the substitute** (Codex on #3539): the newer current-contract row must win.
+
+Any reader-side tie-break (newest id, or prefer non-contract) gets one of them wrong. Only one live row per occurrence removes the tie.
+
+**Decision (target, same flag and phases as §5):**
+1. A substitute is an **UPDATE of `teacher_id`** on the occurrence's single live row, plus one `schedule_change_log` row (`reason='substitute'`). It no longer inserts a `rescheduled`+`scheduled` pair. "Restore contract teacher" is the same UPDATE back.
+2. Writers in scope (Appendix A): `ClassSessionController::substitute` and `restoreOriginalTeacherFromSubstitute`, the `StudentClassController` substitute pin (#207 history pins), `TeacherLeaveController::batchSubstitute`, `SubstituteController::undo`.
+3. One resolver: "who teaches this occurrence" = the live row's `teacher_id`, else `StudentClass.TeacherID`.
+   - Backend readers stop doing `MAX(id)` over substitute rows: `ClassSessionIndexReadService`, `SubstituteScheduleService::effectiveInstructorUserId`, attendance, payroll.
+   - The frontend never re-derives the teacher from `schedules` (R44, 2026-10-05 clause).
+4. Interim, before Phase 5, behind the same flag: when a substitute targets a slot that already has a live `scheduled` row with `original_schedule_id` (a reschedule target), update that row's teacher. Do not create a second chain. This alone removes the shape behind every slot the monitor flagged.
+
+**Evidence of scale (2026-10-05, read-only):**
+- Phase 3 dry-run run 37301540539: stampable 5302, collisions **279** (230 on 2026-09-02), superseded 358, drift 0.
+- Slot-conflict monitor: 2 calendar-risk slots in today−7..+60.
+
+**Gate:** items 1–4 need the same Founder GO as Phase 4/5. The pilot campus is 新莊 (CampusID 11). Until then the R44 frontend guard (#3539) keeps the calendar equal to 課程查找, and the monitor case `substitute_slot_conflicts` is the regression signal.
+
+**Acceptance:** monitor `calendar_risk_slots` = 0 on the pilot campus for one week after cutover. A parity test passes: calendar, course management, attendance and payroll all name the same teacher, both for the 41612 shape and for the contract-change shape.
 
 ---
 
