@@ -57,10 +57,14 @@ jobs:
           MODE: ${{ inputs.mode }}
           CONFIRM: ${{ inputs.confirm }}
           EXPECT_DIGEST: ${{ inputs.expect_digest }}
+          ACTOR: ${{ inputs.actor }}
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
         run: |
           set -euo pipefail
           case "$MODE" in dry-run|execute|rollback) ;; *) echo "::error::invalid mode"; exit 1 ;; esac
+          # ACTOR / EXPECT_DIGEST are interpolated into the remote shell command line: allowlist them.
+          if ! [[ "$ACTOR" =~ ^[A-Za-z0-9:._-]{1,64}$ ]]; then echo "::error::invalid actor"; exit 1; fi
+          if [ -n "$EXPECT_DIGEST" ] && ! [[ "$EXPECT_DIGEST" =~ ^[0-9a-f]{16}$ ]]; then echo "::error::invalid digest"; exit 1; fi
           if [ "$MODE" = "execute" ] && ! [[ "$EXPECT_DIGEST" =~ ^[0-9a-f]{16}$ ]]; then
             echo "::error::execute requires the 16-hex DIGEST from the reviewed dry-run"; exit 1
           fi
