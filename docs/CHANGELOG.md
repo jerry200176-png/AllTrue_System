@@ -1,3 +1,7 @@
+## 2026-10-05 — fix(billing): unpaid monthly closes stay in accounting queue
+<!-- release-notes: staff_update=staff-2026-10-05-unpaid-close-pending -->
+- 月結「續下一期」與月結課程停用，原本不論有沒有繳費都把舊合約標成 `settled`／`completed`，未繳的月份因此從帳務中心與學費提醒消失；改用既有 `courseNeedsPaymentReconciliation()`，未繳清時改標 `settled_pending`（待對帳）
+
 ## 2026-10-05 — fix(billing): monthly slips always list lesson dates (#3445)
 <!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
 - 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
