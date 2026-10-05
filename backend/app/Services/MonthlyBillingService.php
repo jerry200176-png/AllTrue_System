@@ -259,11 +259,12 @@ class MonthlyBillingService
      */
     public function serviceRangeForCourse(Invoice $invoice, int $courseId): array
     {
-        $bounded = $invoice->items->filter(fn ($item) => $item->PeriodStart && $item->PeriodEnd);
+        $items = $invoice->loadMissing('items')->getRelationValue('items');
+        $bounded = $items->filter(fn ($item) => $item->PeriodStart && $item->PeriodEnd);
         $linked = $bounded->filter(fn ($item) => (int) ($item->StudentClassID ?? 0) === $courseId);
         $item = $linked->count() === 1
             ? $linked->first()
-            : ($invoice->items->count() === 1 ? $bounded->first() : null);
+            : ($items->count() === 1 ? $bounded->first() : null);
 
         return $item
             ? [Carbon::parse($item->PeriodStart)->toDateString(), Carbon::parse($item->PeriodEnd)->toDateString()]
