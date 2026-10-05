@@ -676,21 +676,23 @@ jobs:
             $out['by_campus'] = collect($rows)->groupBy('campus_id')->map(fn ($g) => ['slots' => $g->count(), 'calendar_risk' => $g->where('calendar_risk', true)->count()])->all();
             $out['slots'] = array_slice($rows, 0, 200);
           }} elseif ($case === 'occurrence_identity_health') {{
-            // Read-only TD-076 Track B health probe (design §7). Per CampusID, active contracts only.
+            // Read-only TD-076 Track B health probe (design §7). Per CampusID; top-level counts are active contracts only, stopped_contract holds Stop = 1 counts.
             // IDs and counts only, no names; id lists capped at 50 per campus. Takes no student_name.
             $today = now()->toDateString();
-            $live = fn () => $db::table('schedules as s')->join('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+            $live = fn ($stopped = false) => $db::table('schedules as s')->join('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
               ->join('Student as st', 'st.id', '=', 'sc.StudentID')
               ->whereIn('s.status', ['scheduled', 'leave'])
               ->where(fn ($q) => $q->whereNull('s.type')->orWhere('s.type', '<>', 'extra'))
-              ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'));
-            $dups = $live()->whereNotNull('s.original_schedule_date')->whereNotNull('s.original_start_time')
+              ->where(fn ($q) => $stopped ? $q->where('sc.Stop', 1) : $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'));
+            $dupQ = fn ($stopped) => $live($stopped)->whereNotNull('s.original_schedule_date')->whereNotNull('s.original_start_time')
               ->groupByRaw('st.CampusID, s.student_course_id, s.original_schedule_date, s.original_start_time')
               ->havingRaw('COUNT(*) > 1')
               ->selectRaw('st.CampusID as campus_id, s.student_course_id as course_id, s.original_schedule_date as orig_date, s.original_start_time as orig_start, COUNT(*) as n, MIN(s.id) as min_id')
               ->get()->groupBy('campus_id');
-            $missing = $live()->where(fn ($q) => $q->whereNull('s.original_schedule_date')->orWhereNull('s.original_start_time'))
+            $dups = $dupQ(false); $sdups = $dupQ(true);
+            $missQ = fn ($stopped) => $live($stopped)->where(fn ($q) => $q->whereNull('s.original_schedule_date')->orWhereNull('s.original_start_time'))
               ->get(['s.id', 'st.CampusID as campus_id', 's.schedule_date'])->groupBy('campus_id');
+            $missing = $missQ(false); $smissing = $missQ(true);
             $slots = $db::table('schedules as s')->join('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
               ->join('Student as st', 'st.id', '=', 'sc.StudentID')
               ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
@@ -698,12 +700,12 @@ jobs:
               ->groupByRaw('st.CampusID, s.student_course_id, s.schedule_date, SUBSTRING(s.start_time, 1, 5)')
               ->havingRaw('COUNT(*) > 1 AND COUNT(DISTINCT s.teacher_id) > 1')
               ->selectRaw('st.CampusID as campus_id')->get()->groupBy('campus_id');
-            // seed from every campus with an active contract so healthy campuses show explicit zeros
+            // seed from every campus with any contract so healthy campuses show explicit zeros
             $campuses = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
-              ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))->distinct()->orderBy('st.CampusID')->pluck('st.CampusID');
+              ->distinct()->orderBy('st.CampusID')->pluck('st.CampusID');
             $out['today'] = $today;
             $out['quarantine_note'] = 'quarantine table not built yet (PR-E)';
-            $out['by_campus'] = $campuses->map(function ($cid) use ($dups, $missing, $slots, $today) {{
+            $out['by_campus'] = $campuses->map(function ($cid) use ($dups, $missing, $sdups, $smissing, $slots, $today) {{
               $d = $dups->get($cid, collect()); $m = $missing->get($cid, collect());
               $future = $m->filter(fn ($r) => (string)$r->schedule_date >= $today);
               return ['campus_id' => (int)$cid,
@@ -713,6 +715,10 @@ jobs:
                 'missing_identity_future' => $future->count(),
                 'missing_identity_past' => $m->count() - $future->count(),
                 'missing_identity_ids' => $m->take(50)->pluck('id')->map(fn ($v) => (int)$v)->values()->all(),
+                // Stop = 1 contracts, kept separate: calendar history and payroll can still read these rows
+                'stopped_contract' => ['duplicate_identity_groups' => $sdups->get($cid, collect())->count(),
+                  'missing_identity_rows' => $smissing->get($cid, collect())->count(),
+                  'missing_identity_ids' => $smissing->get($cid, collect())->take(50)->pluck('id')->map(fn ($v) => (int)$v)->values()->all()],
                 'quarantine_open' => 0, 'quarantine_gate_ready' => false, // quarantine table not built yet (PR-E): NOT a pass
                 'conflict_slots' => $slots->get($cid, collect())->count()];
             }})->all();
