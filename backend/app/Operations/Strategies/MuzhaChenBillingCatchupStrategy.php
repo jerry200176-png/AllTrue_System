@@ -14,10 +14,12 @@ use RuntimeException;
 
 /**
  * Exact-case POP strategy (Founder decision 2026-10-05):
- * A) student 164 attended 7 lessons (Jun-Aug 2026) on contract 1249 that no invoice covers: bill them at $1,650 each on
- *    ONE new catch-up contract with three monthly invoices. Sessions, sign-ins, learning records and 1249 are never touched.
- * B) void orphan unpaid invoice 1053 of student 162 (its contract 2564 no longer exists; no lessons, payments or reports).
- * Eloquent creates are used on purpose so the Invoice/InvoiceItem/StudentClass hooks (waived-contract guards) run.
+ * A) student 164 attended 7 lessons (Jun-Aug 2026) on contract 1249 that no invoice covers. Bill them at $1,650 each on
+ *    THREE new catch-up contracts, one per month (a single contract would make MonthlyBillingService::summarizePeriod
+ *    return its whole Charge for every month), each with one unpaid invoice and one item. 1249, sessions, sign-ins and
+ *    learning records are never touched.
+ * B) void orphan unpaid invoice 1053 of student 162 (contract 2564 is gone; no lessons, payments or reports).
+ * Eloquent creates are used so the Invoice/InvoiceItem/StudentClass hooks (waived-contract guards) run.
  */
 final class MuzhaChenBillingCatchupStrategy
 {
@@ -25,14 +27,14 @@ final class MuzhaChenBillingCatchupStrategy
     private const STUDENT = 164;
     private const CAMPUS = 16;
     private const SOURCE = 1249;
-    private const ORPHAN_INVOICE = 1053;
+    private const ORPHAN = 1053;
     private const ORPHAN_STUDENT = 162;
     private const ORPHAN_CLASS = 2564;
     private const ORPHAN_TOTAL = 6000;
     private const AUG_CUTOFF = '2026-08-14';
     private const RATE = 1650;
     private const BILLABLE = ['attended', 'completed', 'late']; // MonthlyBillingService::BILLABLE_STATUSES
-    private const MONTHS = ['2026-06' => 3, '2026-07' => 3, '2026-08' => 1];
+    private const LESSONS = ['2026-06' => 3, '2026-07' => 3, '2026-08' => 1];
     private const COPY = ['GradeID', 'SubjectID', 'TeacherID', 'by1', 'Period', 'TotalHours', 'Pay', 'Rate', 'ClassType'];
 
     public function plan(array $parameters): array
@@ -48,7 +50,7 @@ final class MuzhaChenBillingCatchupStrategy
         $errors = array_values(array_unique([...$paramErrors, ...$errors]));
 
         return ['ok' => $errors === [], 'errors' => $errors, 'state' => $state,
-            'student_class_ids' => [self::SOURCE], 'invoice_ids' => [self::ORPHAN_INVOICE],
+            'student_class_ids' => [self::SOURCE], 'invoice_ids' => [self::ORPHAN],
             'info' => ['may_billable_lessons' => $s['may_count'], 'may_covered' => $s['may_covered']],
             'snapshot' => $errors === [] ? ['orphan_invoice' => $s['orphan_old']] : []];
     }
@@ -63,51 +65,48 @@ final class MuzhaChenBillingCatchupStrategy
             throw new RuntimeException('muzha_chen_plan_not_ready');
         }
 
-        return DB::transaction(function () use ($context): array {
+        return DB::transaction(function (): array {
             $s = $this->inspect(true);
             $errors = $this->beforeErrors($s);
             if ($errors !== []) {
                 throw new RuntimeException('muzha_chen_drift:' . implode(',', $errors));
             }
-            /** @var StudentClass $src */
-            $src = $s['source'];
-            $attrs = [];
+            $copy = [];
             foreach (self::COPY as $col) {
-                if ($src->getAttribute($col) !== null) {
-                    $attrs[$col] = $src->getAttribute($col);
+                if ($s['source']->getAttribute($col) !== null) {
+                    $copy[$col] = $s['source']->getAttribute($col);
                 }
             }
-            $total = array_sum(self::MONTHS) * self::RATE;
-            $contract = StudentClass::query()->create($attrs + [
-                'StudentID' => self::STUDENT, 'ScheduleMode' => 'date', 'StartDate' => '2026-06-01', 'EndDate' => '2026-08-31',
-                'Charge' => $total, 'Paid' => 0, 'Stop' => 1, 'closed_reason' => 'settled_pending', 'SessionCount' => 0,
-                'Memo' => '補收帳單合約：合約 ' . self::SOURCE . ' 於 2026-06 至 2026-08 已上課未開單，Founder 2026-10-05 決議每堂 $'
-                    . self::RATE . ' 補開（' . self::REF . '）',
-            ]);
-            $invoiceIds = $itemIds = [];
-            foreach (self::MONTHS as $month => $lessons) {
+            $rows = [];
+            foreach (self::LESSONS as $month => $lessons) {
                 $amount = $lessons * self::RATE;
+                $start = "{$month}-01";
+                $end = Carbon::parse($start)->endOfMonth()->toDateString();
+                $contract = StudentClass::query()->create($copy + [
+                    'StudentID' => self::STUDENT, 'ScheduleMode' => 'date', 'StartDate' => $start, 'EndDate' => $end,
+                    'Charge' => $amount, 'Paid' => 0, 'Stop' => 1, 'closed_reason' => 'settled_pending', 'SessionCount' => 0,
+                    'Memo' => '補收帳單合約：合約 ' . self::SOURCE . " 於 {$month} 已上課 {$lessons} 堂未開單，Founder 2026-10-05 決議每堂 \$"
+                        . self::RATE . ' 補開（' . self::REF . '）']);
                 $invoice = Invoice::query()->create(['StudentID' => self::STUDENT, 'StudentClassID' => $contract->getKey(),
                     'IssueDate' => now()->toDateString(), 'TotalAmount' => $amount, 'PaidAmount' => 0, 'Status' => 'unpaid',
                     'ScheduleModeAtIssue' => 'date', 'Note' => self::REF, 'billing_period' => $month]);
+                $desc = "{$month} 補收學費（{$lessons} 堂 × \$" . self::RATE . '）';
                 $item = InvoiceItem::query()->create(['InvoiceID' => $invoice->getKey(), 'StudentClassID' => $contract->getKey(),
-                    'Description' => "{$month} 補收學費（{$lessons} 堂 × \$" . self::RATE . '）', 'Amount' => $amount,
-                    'PeriodStart' => "{$month}-01", 'PeriodEnd' => Carbon::parse("{$month}-01")->endOfMonth()->toDateString()]);
-                $invoiceIds[] = (int) $invoice->getKey();
-                $itemIds[] = (int) $item->getKey();
+                    'Description' => $desc, 'Amount' => $amount, 'PeriodStart' => $start, 'PeriodEnd' => $end]);
+                $rows[$month] = ['contract_id' => (int) $contract->getKey(), 'invoice_id' => (int) $invoice->getKey(),
+                    'item_id' => (int) $item->getKey(), 'amount' => $amount, 'description' => $desc, 'start' => $start, 'end' => $end];
             }
             $old = $s['orphan_old'];
-            $n = Invoice::query()->where('id', self::ORPHAN_INVOICE)->where('Status', 'unpaid')->where('PaidAmount', 0)
+            $n = Invoice::query()->where('id', self::ORPHAN)->where('Status', 'unpaid')->where('PaidAmount', 0)
                 ->update(['Status' => 'void', 'Note' => $this->voidedNote($old['note'])]);
             if ($n !== 1) {
                 throw new RuntimeException("muzha_chen_void_updated_{$n}_of_1");
             }
-            $this->audit('pop.muzha_chen_billing_catchup', ['reason_code' => self::REF,
-                'operation_id' => (string) ($context['operation_id'] ?? ''), 'contract_id' => (int) $contract->getKey(),
-                'invoice_ids' => $invoiceIds, 'voided_invoice_id' => self::ORPHAN_INVOICE, 'billed_amount' => $total, 'outcome' => 'success']);
+            // SecurityAuditEvent drops non-allowlisted metadata keys: the full id list lives in the POP snapshot.
+            $this->audit('pop.muzha_chen_billing_catchup', (int) $rows['2026-06']['contract_id'], ['reason_code' => self::REF,
+                'row_count' => count($rows), 'outstanding_amount' => array_sum(array_column($rows, 'amount')), 'outcome' => 'success']);
 
-            return ['ok' => true, 'created' => 7, 'snapshot' => ['contract_id' => (int) $contract->getKey(),
-                'invoice_ids' => $invoiceIds, 'item_ids' => $itemIds, 'orphan_invoice' => $old]];
+            return ['ok' => true, 'created' => 9, 'snapshot' => ['rows' => $rows, 'orphan_invoice' => $old]];
         }, 3);
     }
 
@@ -117,62 +116,60 @@ final class MuzhaChenBillingCatchupStrategy
         $errors = array_values(array_unique([...$errors, ...$this->afterErrors($this->inspect(false))]));
 
         return ['ok' => $errors === [], 'errors' => $errors,
-            'checks' => ['catchup_contract_three_invoices_three_items', 'orphan_invoice_void']];
+            'checks' => ['three_catchup_contracts_one_invoice_one_item_each', 'orphan_invoice_void']];
     }
 
     public function rollback(array $snapshot, array $context): array
     {
-        $ids = $snapshot['invoice_ids'] ?? null;
-        $items = $snapshot['item_ids'] ?? null;
+        $rows = $snapshot['rows'] ?? null;
         $old = $snapshot['orphan_invoice'] ?? null;
-        if (!is_array($ids) || count($ids) !== 3 || !is_array($items) || !is_array($old)
-            || (int) ($snapshot['contract_id'] ?? 0) < 1 || (int) ($old['id'] ?? 0) !== self::ORPHAN_INVOICE) {
+        if (!is_array($rows) || array_keys($rows) !== array_keys(self::LESSONS) || !is_array($old) || (int) ($old['id'] ?? 0) !== self::ORPHAN) {
             throw new RuntimeException('muzha_chen_rollback_snapshot_invalid');
         }
-        $contractId = (int) $snapshot['contract_id'];
 
-        return DB::transaction(function () use ($ids, $items, $old, $contractId): array {
+        return DB::transaction(function () use ($rows, $old): array {
             $deleted = 0;
             $skipped = [];
-            $invoices = Invoice::query()->with(['payments', 'items'])->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get();
-            foreach ($invoices as $inv) {
-                $id = (int) $inv->getKey();
-                $period = (string) $inv->getAttribute('billing_period');
-                $reports = DB::table('payment_reports')->where('InvoiceID', $id)->exists();
-                $itemIds = $inv->getRelationValue('items')->map(fn ($i) => (int) $i->getKey())->all();
-                if ((int) $inv->getAttribute('StudentClassID') !== $contractId || $inv->getAttribute('Status') !== 'unpaid'
-                    || (int) $inv->getAttribute('PaidAmount') !== 0 || $inv->getRelationValue('payments')->isNotEmpty() || $reports
-                    || (int) $inv->getAttribute('TotalAmount') !== (self::MONTHS[$period] ?? -1) * self::RATE
-                    || array_diff($itemIds, array_map('intval', $items)) !== []) {
-                    $skipped[] = "invoice_{$id}";
+            foreach ($rows as $month => $r) {
+                $cid = (int) $r['contract_id'];
+                $inv = Invoice::query()->with(['payments', 'items'])->lockForUpdate()->find((int) $r['invoice_id']);
+                $contract = StudentClass::query()->lockForUpdate()->find($cid);
+                $item = $inv?->getRelationValue('items')->first();
+                // Each created row must still equal what execute wrote; anything else changed since and is left alone.
+                $invOk = !$inv || ((int) $inv->getAttribute('StudentClassID') === $cid && $inv->getAttribute('Status') === 'unpaid'
+                    && (int) $inv->getAttribute('PaidAmount') === 0 && (int) $inv->getAttribute('TotalAmount') === (int) $r['amount']
+                    && (string) $inv->getAttribute('billing_period') === $month && $inv->getRelationValue('payments')->isEmpty()
+                    && $inv->getRelationValue('items')->count() === 1 && (int) $item->getKey() === (int) $r['item_id']
+                    && (int) $item->getAttribute('StudentClassID') === $cid && (int) $item->getAttribute('Amount') === (int) $r['amount']
+                    && (string) $item->getAttribute('Description') === $r['description']
+                    && substr((string) $item->getAttribute('PeriodStart'), 0, 10) === $r['start']
+                    && substr((string) $item->getAttribute('PeriodEnd'), 0, 10) === $r['end']
+                    && !DB::table('payment_reports')->where('InvoiceID', $inv->getKey())->exists());
+                $cOk = !$contract || ((int) $contract->getAttribute('Paid') === 0 && (int) $contract->getAttribute('Stop') === 1
+                    && $contract->getAttribute('closed_reason') === 'settled_pending' && (int) $contract->getAttribute('Charge') === (int) $r['amount']
+                    && substr((string) $contract->getAttribute('StartDate'), 0, 10) === $r['start']
+                    && substr((string) $contract->getAttribute('EndDate'), 0, 10) === $r['end']
+                    && Invoice::query()->where('StudentClassID', $cid)->count() === ($inv ? 1 : 0)
+                    && InvoiceItem::query()->where('StudentClassID', $cid)->count() === ($inv ? 1 : 0)
+                    && !ClassSession::query()->where('StudentClassID', $cid)->exists()
+                    && !DB::table('payment_reports')->where('StudentClassID', $cid)->exists());
+                if (!$invOk || !$cOk) {
+                    $skipped[] = "month_{$month}";
                     continue;
                 }
-                InvoiceItem::query()->where('InvoiceID', $id)->delete();
-                $inv->delete();
-                $deleted++;
-            }
-            $contract = StudentClass::query()->lockForUpdate()->find($contractId);
-            if ($contract) {
-                $untouched = (int) $contract->getAttribute('Paid') === 0 && (int) $contract->getAttribute('Stop') === 1
-                    && $contract->getAttribute('closed_reason') === 'settled_pending'
-                    && (int) $contract->getAttribute('Charge') === array_sum(self::MONTHS) * self::RATE
-                    && !Invoice::query()->where('StudentClassID', $contractId)->exists()
-                    && !InvoiceItem::query()->where('StudentClassID', $contractId)->exists()
-                    && !ClassSession::query()->where('StudentClassID', $contractId)->exists()
-                    && !DB::table('payment_reports')->where('StudentClassID', $contractId)->exists();
-                if ($untouched) {
-                    $contract->delete();
+                if ($inv) {
+                    InvoiceItem::query()->where('InvoiceID', $inv->getKey())->delete();
+                    $inv->delete();
                     $deleted++;
-                } else {
-                    $skipped[] = "contract_{$contractId}";
                 }
+                $contract?->delete();
+                $deleted += $contract ? 1 : 0;
             }
-            $restored = $this->restoreOrphan($old);
-            if ($restored === null) {
-                $skipped[] = 'invoice_' . self::ORPHAN_INVOICE;
+            if ($this->restoreOrphan($old) === null) {
+                $skipped[] = 'invoice_' . self::ORPHAN;
             }
-            $this->audit('pop.muzha_chen_billing_catchup.rollback', ['reason_code' => self::REF,
-                'deleted' => $deleted, 'skipped' => count($skipped), 'outcome' => 'success']);
+            $this->audit('pop.muzha_chen_billing_catchup.rollback', (int) ($rows['2026-06']['contract_id'] ?? 0), ['reason_code' => self::REF,
+                'row_count' => $deleted, 'outcome' => 'success']);
 
             // Any skipped row means the repair is only partly undone: surface it for operator resolution.
             return ['ok' => $skipped === [], 'partial' => $skipped !== [], 'deleted' => $deleted, 'skipped_ids' => $skipped];
@@ -182,7 +179,7 @@ final class MuzhaChenBillingCatchupStrategy
     /** @return bool|null true restored, false already in the old state, null changed since (skip) */
     private function restoreOrphan(array $old): ?bool
     {
-        $row = Invoice::query()->with('payments')->lockForUpdate()->find(self::ORPHAN_INVOICE);
+        $row = Invoice::query()->with('payments')->lockForUpdate()->find(self::ORPHAN);
         if (!$row) {
             return null;
         }
@@ -191,12 +188,10 @@ final class MuzhaChenBillingCatchupStrategy
         }
         if ($row->getAttribute('Status') !== 'void' || (string) $row->getAttribute('Note') !== $this->voidedNote($old['note'])
             || (int) $row->getAttribute('TotalAmount') !== self::ORPHAN_TOTAL || (int) $row->getAttribute('PaidAmount') !== 0
-            || $row->getRelationValue('payments')->isNotEmpty()
-            || DB::table('payment_reports')->where('InvoiceID', self::ORPHAN_INVOICE)->exists()) {
+            || $row->getRelationValue('payments')->isNotEmpty() || DB::table('payment_reports')->where('InvoiceID', self::ORPHAN)->exists()) {
             return null;
         }
-        $n = Invoice::query()->where('id', self::ORPHAN_INVOICE)->where('Status', 'void')
-            ->update(['Status' => $old['status'], 'Note' => $old['note']]);
+        $n = Invoice::query()->where('id', self::ORPHAN)->where('Status', 'void')->update(['Status' => $old['status'], 'Note' => $old['note']]);
         if ($n !== 1) {
             throw new RuntimeException('muzha_chen_rollback_orphan');
         }
@@ -210,11 +205,11 @@ final class MuzhaChenBillingCatchupStrategy
     }
 
     /** Strict audit: append() swallows insert failures, so confirm the row exists or roll the transaction back. */
-    private function audit(string $event, array $metadata): void
+    private function audit(string $event, int $subjectId, array $metadata): void
     {
         $correlationId = (string) Str::uuid();
-        SecurityAuditEvent::append($event, 'success', ['actor_type' => 'pop-runner', 'subject_type' => 'billing_catchup',
-            'correlation_id' => $correlationId], $metadata);
+        SecurityAuditEvent::append($event, 'success', ['actor_type' => 'pop-runner', 'subject_type' => 'student_class',
+            'subject_id' => $subjectId, 'campus_id' => self::CAMPUS, 'correlation_id' => $correlationId], $metadata);
         if (!DB::table('security_audit_events')->where('correlation_id', $correlationId)->exists()) {
             throw new RuntimeException('muzha_chen_audit_not_persisted');
         }
@@ -226,27 +221,28 @@ final class MuzhaChenBillingCatchupStrategy
         $l = fn ($q) => $lock ? $q->lockForUpdate() : $q;
         $source = $l(StudentClass::query()->with('student:id,CampusID'))->find(self::SOURCE);
         $contractIds = $l(StudentClass::query()->where('StudentID', self::STUDENT))->pluck('ID')->map(fn ($v) => (int) $v)->all();
-        $catchupIds = StudentClass::query()->where('StudentID', self::STUDENT)->where('Memo', 'like', '%' . self::REF . '%')
-            ->pluck('ID')->map(fn ($v) => (int) $v)->all();
+        $catchup = StudentClass::query()->where('StudentID', self::STUDENT)->where('Memo', 'like', '%' . self::REF . '%')->orderBy('ID')->get();
         $dates = $l(ClassSession::query()->where('StudentClassID', self::SOURCE)->whereIn('Status', self::BILLABLE)
             ->where('SessionDate', '>=', '2026-05-01'))->orderBy('SessionDate')->pluck('SessionDate')
             ->map(fn ($d) => substr((string) $d, 0, 10))->all();
-        $invoices = $l(Invoice::query()->where(fn ($v) => $v->whereNull('Status')->orWhere('Status', '!=', 'void'))->with('items')->where(fn ($w) => $w->whereIn('StudentClassID', $contractIds)
-            ->orWhereHas('items', fn ($i) => $i->whereIn('StudentClassID', $contractIds))))->orderBy('id')->get();
+        $invoices = $l(Invoice::query()->where(fn ($v) => $v->whereNull('Status')->orWhere('Status', '!=', 'void'))->with('items')
+            ->where(fn ($w) => $w->whereIn('StudentClassID', $contractIds)
+                ->orWhereHas('items', fn ($i) => $i->whereIn('StudentClassID', $contractIds))))->orderBy('id')->get();
         $covered = fn (string $d): bool => $this->covered($d, $invoices, $contractIds);
         $may = array_values(array_filter($dates, fn ($d) => str_starts_with($d, '2026-05')));
-        $orphan = $l(Invoice::query()->with('payments'))->find(self::ORPHAN_INVOICE);
-        $catchup = $catchupIds === [] ? null : Invoice::query()->with('items')->whereIn('StudentClassID', $catchupIds)->orderBy('billing_period')->get();
+        $orphan = $l(Invoice::query()->with('payments'))->find(self::ORPHAN);
 
         return [
             'source' => $source, 'dates' => array_values(array_filter($dates, fn ($d) => $d >= '2026-06-01')),
             'may_count' => count($may), 'may_covered' => $may !== [] && count(array_filter($may, $covered)) === count($may),
-            'covered' => $covered, 'catchup_ids' => $catchupIds, 'catchup_invoices' => $catchup, 'orphan' => $orphan,
-            'orphan_old' => ['id' => self::ORPHAN_INVOICE, 'status' => (string) $orphan?->getAttribute('Status'),
-                'note' => (string) $orphan?->getAttribute('Note')],
-            'orphan_reports' => DB::table('payment_reports')->where(fn ($w) => $w->where('InvoiceID', self::ORPHAN_INVOICE)
+            'covered' => $covered, 'catchup' => $catchup,
+            'catchup_invoices' => Invoice::query()->with('items')->whereIn('StudentClassID', $catchup->pluck('ID'))->get(),
+            'orphan' => $orphan,
+            'orphan_old' => ['id' => self::ORPHAN, 'status' => (string) $orphan?->getAttribute('Status'), 'note' => (string) $orphan?->getAttribute('Note')],
+            'orphan_reports' => DB::table('payment_reports')->where(fn ($w) => $w->where('InvoiceID', self::ORPHAN)
                 ->orWhere('StudentClassID', self::ORPHAN_CLASS))->count(),
             'orphan_class_exists' => DB::table('StudentClass')->where('ID', self::ORPHAN_CLASS)->exists(),
+            'orphan_sessions' => $l(ClassSession::query()->where('StudentClassID', self::ORPHAN_CLASS))->exists(),
         ];
     }
 
@@ -291,12 +287,12 @@ final class MuzhaChenBillingCatchupStrategy
         }
         $counts = array_count_values(array_map(fn ($d) => substr($d, 0, 7), $s['dates']));
         ksort($counts);
-        if ($counts !== self::MONTHS) $e[] = 'lessons_mismatch';
+        if ($counts !== self::LESSONS) $e[] = 'lessons_mismatch';
         if (array_filter($s['dates'], fn ($d) => str_starts_with($d, '2026-08') && $d > self::AUG_CUTOFF) !== []) $e[] = 'august_lesson_after_cutoff';
         foreach (array_unique(array_map(fn ($d) => substr($d, 0, 7), array_filter($s['dates'], $s['covered']))) as $m) {
             $e[] = "lesson_already_invoiced_{$m}";
         }
-        if ($s['catchup_ids'] !== []) $e[] = 'catchup_exists';
+        if ($s['catchup']->isNotEmpty()) $e[] = 'catchup_exists';
         $o = $s['orphan'];
         if (!$o) {
             $e[] = 'orphan_invoice_missing';
@@ -310,33 +306,33 @@ final class MuzhaChenBillingCatchupStrategy
         }
         if ($s['orphan_reports'] > 0) $e[] = 'orphan_invoice_has_reports';
         if ($s['orphan_class_exists']) $e[] = 'orphan_contract_exists';
+        if ($s['orphan_sessions']) $e[] = 'orphan_sessions_exist';
 
         return $e;
     }
 
-    /** Applied: exactly one catch-up contract with the three invoices/items, and 1053 void with the reference. @return list<string> */
+    /** Applied: exactly three catch-up contracts, each with its one invoice and item, and 1053 void with the reference. @return list<string> */
     private function afterErrors(array $s): array
     {
         $e = [];
-        if (count($s['catchup_ids']) !== 1) {
-            $e[] = 'catchup_contract_missing';
-        } else {
-            $byPeriod = collect($s['catchup_invoices'] ?? [])->keyBy(fn ($i) => (string) $i->getAttribute('billing_period'));
-            foreach (self::MONTHS as $month => $lessons) {
-                $inv = $byPeriod->get($month);
-                $items = $inv?->getRelationValue('items');
-                if (!$inv || (int) $inv->getAttribute('TotalAmount') !== $lessons * self::RATE
-                    || $items->count() !== 1 || (int) $items->first()->getAttribute('Amount') !== $lessons * self::RATE) {
-                    $e[] = "catchup_invoice_{$month}";
-                }
+        $byMonth = $s['catchup']->groupBy(fn ($c) => substr((string) $c->getAttribute('StartDate'), 0, 7));
+        foreach (self::LESSONS as $month => $lessons) {
+            $contracts = $byMonth->get($month, collect());
+            $invoices = $s['catchup_invoices']->where('StudentClassID', $contracts->first()?->getKey());
+            $items = $invoices->flatMap(fn ($i) => $i->getRelationValue('items'));
+            if ($contracts->count() !== 1 || $invoices->count() !== 1 || $items->count() !== 1
+                || (int) $invoices->first()->getAttribute('TotalAmount') !== $lessons * self::RATE
+                || (int) $items->first()->getAttribute('Amount') !== $lessons * self::RATE) {
+                $e[] = "catchup_{$month}";
             }
         }
+        if ($s['catchup']->count() !== 3) $e[] = 'catchup_contract_count';
         $o = $s['orphan'];
         if (!$o || $o->getAttribute('Status') !== 'void' || !str_contains((string) $o->getAttribute('Note'), self::REF)) {
             $e[] = 'orphan_invoice_not_void';
         }
 
-        return $e;
+        return array_values(array_unique($e));
     }
 
     /** @param array<string,mixed> $s */
@@ -345,11 +341,16 @@ final class MuzhaChenBillingCatchupStrategy
         $note = (string) $s['orphan']?->getAttribute('Note');
         $suffix = "\n" . self::REF;
         $old = $note === self::REF ? '' : (str_ends_with($note, $suffix) ? substr($note, 0, -strlen($suffix)) : $note);
-        $invoices = collect($s['catchup_invoices'] ?? []);
+        $rows = [];
+        foreach ($s['catchup'] as $c) {
+            $inv = $s['catchup_invoices']->firstWhere('StudentClassID', $c->getKey());
+            $item = $inv?->getRelationValue('items')->first();
+            $rows[substr((string) $c->getAttribute('StartDate'), 0, 7)] = ['contract_id' => (int) $c->getKey(), 'invoice_id' => (int) $inv?->getKey(),
+                'item_id' => (int) $item?->getKey(), 'amount' => (int) $c->getAttribute('Charge'), 'description' => (string) $item?->getAttribute('Description'),
+                'start' => substr((string) $item?->getAttribute('PeriodStart'), 0, 10), 'end' => substr((string) $item?->getAttribute('PeriodEnd'), 0, 10)];
+        }
+        ksort($rows);
 
-        return ['contract_id' => (int) ($s['catchup_ids'][0] ?? 0),
-            'invoice_ids' => $invoices->map(fn ($i) => (int) $i->getKey())->values()->all(),
-            'item_ids' => $invoices->flatMap(fn ($i) => $i->getRelationValue('items')->map(fn ($x) => (int) $x->getKey()))->values()->all(),
-            'orphan_invoice' => ['id' => self::ORPHAN_INVOICE, 'status' => 'unpaid', 'note' => $old]];
+        return ['rows' => $rows, 'orphan_invoice' => ['id' => self::ORPHAN, 'status' => 'unpaid', 'note' => $old]];
     }
 }

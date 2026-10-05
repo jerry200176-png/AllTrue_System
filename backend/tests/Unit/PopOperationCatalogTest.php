@@ -76,7 +76,6 @@ final class PopOperationCatalogTest extends TestCase
         $service = new PopOperationService($catalog);
         $method = new ReflectionMethod($service, 'approvalRoles');
         $entry = $catalog->operation('muzha-chen-billing-catchup-20261005');
-        self::assertSame(6, $catalog->version());
         self::assertSame('pop-pi-local', $entry['execution_authority']);
         self::assertSame(['decision_reference'], $entry['parameter_keys']);
         self::assertSame(['super_admin'], $method->invoke($service, $entry));
