@@ -46,7 +46,7 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
     {
         $this->flag(true);
         $past = $this->taughtSession('2026-04-10', $this->aId, signInManual: true);
-        $future = $this->session('2026-04-24', 'scheduled');
+        $future = $this->makeSession('2026-04-24', 'scheduled');
 
         $this->changeContractTeacher($this->bId)->assertOk();
 
@@ -124,7 +124,7 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
         return $this->api()->putJson("/api/v1/student-classes/{$this->sc->ID}", ['teacher_id' => $teacherId]);
     }
 
-    private function session(string $date, string $status): ClassSession
+    private function makeSession(string $date, string $status): ClassSession
     {
         return ClassSession::create([
             'StudentClassID' => $this->sc->ID, 'SessionDate' => $date,
@@ -135,7 +135,7 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
     /** Attended session with an approved LR and one sign-in (manual = has RecordedByUserID, else RFID-style). */
     private function taughtSession(string $date, int $teacherId, bool $signInManual): ClassSession
     {
-        $session = $this->session($date, 'attended');
+        $session = $this->makeSession($date, 'attended');
         StudentSignIn::create([
             'StudentClassID' => $this->sc->ID, 'StudentID' => $this->sc->StudentID, 'TeacherID' => $teacherId,
             'RecordedByUserID' => $signInManual ? $this->aId : null,
