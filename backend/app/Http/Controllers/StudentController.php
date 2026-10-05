@@ -294,14 +294,17 @@ class StudentController extends Controller
         return response()->json($this->transformStudent($student));
     }
 
-    /** Students who have any Payment row or confirmed payment report; deleting them would destroy accounting history. */
+    /** Students with any money evidence (Payment rows, stored PaidAmount, Paid=1 contracts, any payment report); deleting them would destroy accounting history. */
     private function studentIdsWithCollectedMoney(array $studentIds): array
     {
         $paid = DB::table('Payment')->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')
             ->whereIn('Invoice.StudentID', $studentIds)->pluck('Invoice.StudentID');
-        $reported = DB::table('payment_reports')->whereIn('StudentID', $studentIds)->whereIn('status', ['confirmed', 'pending'])->pluck('StudentID'); // a pending claim is also money evidence
+        $stored = DB::table('Invoice')->whereIn('StudentID', $studentIds)->where('PaidAmount', '>', 0)
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->pluck('StudentID');
+        $flagged = DB::table('StudentClass')->whereIn('StudentID', $studentIds)->where('Paid', 1)->pluck('StudentID');
+        $reported = DB::table('payment_reports')->whereIn('StudentID', $studentIds)->pluck('StudentID'); // any status is accounting history
 
-        return $paid->merge($reported)->map(fn ($id) => (int) $id)->unique()->values()->all();
+        return $paid->merge($stored)->merge($flagged)->merge($reported)->map(fn ($id) => (int) $id)->unique()->values()->all();
     }
 
     private function purgeStudentRecords(int $studentId): array

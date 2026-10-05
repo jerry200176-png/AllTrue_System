@@ -68,6 +68,34 @@ class StudentClassDestroyBillingTest extends TestCase
         $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.deleted')->count());
     }
 
+    public function test_paid_flag_and_foreign_item_on_own_invoice_block_delete(): void
+    {
+        $student = $this->student();
+        $legacyPaid = $this->course($student->id);
+        $legacyPaid->forceFill(['Paid' => 1])->save();
+        $this->deleteJson("/api/v1/student-classes/{$legacyPaid->ID}", [], $this->auth())->assertStatus(422);
+        $this->assertNotNull(StudentClass::find($legacyPaid->ID));
+
+        $anchor = $this->course($student->id);
+        $other = $this->course($student->id);
+        $inv = $this->invoice($anchor);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => $inv, 'StudentClassID' => $other->ID, 'Description' => 'x', 'Amount' => 500]);
+        $this->deleteJson("/api/v1/student-classes/{$anchor->ID}", [], $this->auth())->assertStatus(422);
+        $this->assertUntouched($anchor, $inv, 'unpaid');
+    }
+
+    public function test_long_note_is_bounded_and_actor_recorded(): void
+    {
+        $c = $this->course($this->student()->id);
+        $inv = $this->invoice($c);
+        DB::table('Invoice')->where('id', $inv)->update(['Note' => str_repeat('a', 255)]);
+        $this->deleteJson("/api/v1/student-classes/{$c->ID}", [], $this->auth())->assertOk();
+        $note = (string) Invoice::find($inv)->Note;
+        $this->assertLessThanOrEqual(255, mb_strlen($note));
+        $this->assertStringContainsString("合約 #{$c->ID} 刪除", $note);
+        $this->assertStringNotContainsString('by -', $note);
+    }
+
     public function test_payment_blocks_delete(): void
     {
         $c = $this->course($this->student()->id);

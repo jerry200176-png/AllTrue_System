@@ -5380,7 +5380,8 @@ class StudentClassController extends Controller
             return $refusal;
         }
 
-        $actorId = (int) request()->attributes->get('auth_user_id');
+        $authUser = request()->attributes->get('auth_user');
+        $actorId = (int) ($authUser?->getKey() ?? 0);
 
         return DB::transaction(function () use ($studentClass, $actorId) {
             $id = (int) $studentClass->ID;
@@ -5389,20 +5390,26 @@ class StudentClassController extends Controller
             // Billing records are never orphaned: a contract with collected money or a payment report is not erasable.
             $invoices = Invoice::query()->where('StudentClassID', $id)->lockForUpdate()->get();
             $invoiceIds = $invoices->pluck('id')->all();
-            $hasMoney = $invoices->contains(fn ($i) => (string) ($i->Status ?? '') !== 'void' && (int) ($i->PaidAmount ?? 0) > 0)
+            $locked = StudentClass::query()->whereKey($id)->first();
+            $hasMoney = (int) ($locked?->getAttribute('Paid') ?? 0) === 1
+                || $invoices->contains(fn ($i) => (string) ($i->Status ?? '') !== 'void' && (int) ($i->PaidAmount ?? 0) > 0)
                 || ($invoiceIds !== [] && DB::table('Payment')->whereIn('InvoiceID', $invoiceIds)->exists())
                 || DB::table('payment_reports')->where('StudentClassID', $id)->exists();
             if ($hasMoney) {
                 return response()->json(['message' => '此合約已有收款或繳費回報，請先到帳務處理後再刪除'], 422);
             }
-            if (DB::table('InvoiceItem')->where('StudentClassID', $id)->whereNotIn('InvoiceID', $invoiceIds)->exists()) {
+            // Consolidated invoices in either direction: this contract on another invoice, or another contract on this one's.
+            $sharedOut = DB::table('InvoiceItem')->where('StudentClassID', $id)->whereNotIn('InvoiceID', $invoiceIds ?: [0])->exists();
+            $sharedIn = $invoiceIds !== [] && DB::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)
+                ->whereNotNull('StudentClassID')->where('StudentClassID', '!=', $id)->exists();
+            if ($sharedOut || $sharedIn) {
                 return response()->json(['message' => '此合約在合併帳單中，請先到帳務處理該帳單'], 422);
             }
             $voided = $invoices->filter(fn ($i) => (string) ($i->Status ?? '') !== 'void');
             foreach ($voided as $invoice) {
                 $invoice->update([
                     'Status' => 'void',
-                    'Note' => trim(((string) $invoice->Note) . ' [合約 #' . $id . ' 刪除，帳單作廢 by ' . ($actorId ?: '-') . ' ' . now()->toDateString() . ']'),
+                    'Note' => mb_substr(trim(((string) $invoice->Note) . ' [合約 #' . $id . ' 刪除，帳單作廢 by ' . ($actorId ?: '-') . ' ' . now()->toDateString() . ']'), -255),
                 ]);
             }
             $correlationId = (string) Str::uuid();
@@ -5411,7 +5418,7 @@ class StudentClassController extends Controller
                 'actor_type' => 'user', 'actor_id' => $actorId ?: null,
                 'subject_type' => 'student_class', 'subject_id' => $id,
                 'campus_id' => (int) (Student::where('id', $studentClass->StudentID)->value('CampusID') ?? 0) ?: null,
-            ], ['voided_invoice_ids' => $voided->pluck('id')->values()->all()]);
+            ], ['reason_code' => 'contract_deleted', 'row_count' => $voided->count(), 'outcome' => 'success']);
             // append() swallows write failures; a deletion without its audit row must roll back.
             if (!DB::table('security_audit_events')->where('correlation_id', $correlationId)->exists()) {
                 throw new \RuntimeException('刪除合約稽核紀錄寫入失敗，已取消操作');
