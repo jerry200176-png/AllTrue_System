@@ -17,18 +17,48 @@ export const staffUpdates = [
     "title": "舊的未繳月份回來了",
     "summary": "先前被誤標已結算的未繳月份，已回到帳務中心「待對帳」。",
     "items": [
-      "款項已收請記錄收款；還沒收請跟進。"
+      "款項已收請記錄收款；還沒收請跟進；確定不收就按「確認不收」並寫原因。"
     ],
     "sections": [
       {
         "title": "需要你注意",
         "items": [
-          "款項已收請記錄收款；還沒收請跟進。"
+          "款項已收請記錄收款；還沒收請跟進；確定不收就按「確認不收」並寫原因。"
         ]
       }
     ],
     "sourceRefs": [
       "changelog:2026-10-05:unpaid-backlog-pending"
+    ],
+    "date": "2026-10-05",
+    "version": "2026.10.05"
+  },
+  {
+    "id": "staff-2026-10-05-waive-unpaid-contract",
+    "publishedAt": "2026-10-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "結案欠款可確認不收",
+    "summary": "結案待對帳的欠款，主任可按「確認不收」移出待處理，並留下原因紀錄。",
+    "items": [
+      "要填原因；未繳帳單改為作廢並留紀錄。已有收款或待確認回報時不能按。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "要填原因；未繳帳單改為作廢並留紀錄。已有收款或待確認回報時不能按。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-05:waive-unpaid-contract"
     ],
     "date": "2026-10-05",
     "version": "2026.10.05"

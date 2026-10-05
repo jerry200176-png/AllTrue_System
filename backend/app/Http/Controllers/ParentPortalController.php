@@ -783,6 +783,7 @@ class ParentPortalController extends Controller
                 $attended       = $isMonthly ? (int) ($attendedThisMonth[$c->ID] ?? 0) : 0;
                 $paid           = $this->isClassPaid($c, $paidAtMap);
                 $stopped        = (bool) $c->Stop;
+                $waived         = (string) ($c->closed_reason ?? '') === 'waived';
 
                 // 共用方案成員：附帶池子資訊，讓前端把每張卡標記為「共用方案」並用同一池數字，
                 // 避免家長誤以為每科各有一份總堂數。
@@ -804,8 +805,8 @@ class ParentPortalController extends Controller
                     'is_stopped'           => $stopped,
                     'paid'                 => $paid,
                     'is_tutoring'          => $isTutoring,
-                    'payment_status'       => $isTutoring ? 'free' : ($paid ? 'paid' : 'unpaid'),
-                    'payment_status_label' => $isTutoring ? '免費（不適用）' : ($paid ? '已繳費' : '未繳費'),
+                    'payment_status'       => $isTutoring ? 'free' : ($waived ? 'waived' : ($paid ? 'paid' : 'unpaid')),
+                    'payment_status_label' => $isTutoring ? '免費（不適用）' : ($waived ? '已確認不收' : ($paid ? '已繳費' : '未繳費')),
                     'lifecycle_status'     => $stopped ? 'closed' : 'active',
                     'lifecycle_status_label' => $stopped ? '課程已結束' : '進行中',
                     // 共用方案池（堂數制）：null 代表非共用方案，前端維持原本 per-course 顯示。
@@ -2011,7 +2012,7 @@ class ParentPortalController extends Controller
                 'period' => $course->StartDate ? substr($course->StartDate, 0, 7) : null,
                 'charge' => $charge,
                 'paid' => min($paid, $charge),
-                'status' => $isPaid ? 'paid' : ($paid > 0 ? 'partial' : 'unpaid'),
+                'status' => (string) ($course->closed_reason ?? '') === 'waived' ? 'waived' : ($isPaid ? 'paid' : ($paid > 0 ? 'partial' : 'unpaid')),
             ];
         })->values();
 

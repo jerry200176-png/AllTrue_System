@@ -90,7 +90,7 @@ class StudentClass extends Model
     public function isUsageSettlementLocked(): bool
     {
         return $this->getAttribute('settlement_locked_at') !== null
-            || in_array((string) $this->getAttribute('closed_reason'), ['usage_settled', 'contract_amended'], true);
+            || in_array((string) $this->getAttribute('closed_reason'), ['usage_settled', 'contract_amended', 'waived'], true);
     }
 
     public function subjectRecord()

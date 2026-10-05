@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\PaymentReport;
+use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\InvoiceAmountReconciliationService;
@@ -12,6 +13,8 @@ use App\Support\AccountingCourseClarity;
 use App\Support\Utf8mb3SearchSanitizer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class AccountingController extends Controller
 {
@@ -36,6 +39,7 @@ class AccountingController extends Controller
                 $q->where('Paid', 1)
                     ->orWhereHas('invoices', fn ($invoice) => $invoice->where('Status', 'paid'))
                     ->orWhere('closed_reason', 'settled_pending')
+                    ->orWhere('closed_reason', 'waived') // 歷史 · 確認不收
                     // in-app #251: unpaid early-settle / session-count amend must stay listable
                     ->orWhere(function ($q2) {
                         $q2->where('closed_reason', 'contract_amended')
@@ -48,6 +52,10 @@ class AccountingController extends Controller
         $guard = $this->applyStudentClassCampusGuard($request, $query);
         if ($guard !== null) {
             return $guard;
+        }
+
+        if ($request->filled('course_id')) {
+            $query->where('ID', (int) $request->input('course_id'));
         }
 
         if ($request->filled('student')) {
@@ -88,26 +96,7 @@ class AccountingController extends Controller
         $rows = $courses->map(function (StudentClass $course) use ($invoiceMap, $reportMap) {
             $invoices = $invoiceMap->get((int) $course->ID, collect());
             $reports = $reportMap->get((int) $course->ID, collect());
-            $invoiceTotal = 0;
-            $appliedTotal = 0;
-            $overpaidTotal = 0;
-            $outstandingTotal = 0;
-            foreach ($invoices as $invoice) {
-                $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
-                $total = (int) $projection['total_amount'];
-                $positive = (int) $invoice->payments
-                    ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
-                    ->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
-                $voided = abs((int) $invoice->payments
-                    ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
-                    ->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
-                $net = max(0, $positive - $voided);
-                $applied = min($total, $net);
-                $invoiceTotal += $total;
-                $appliedTotal += $applied;
-                $overpaidTotal += max(0, $net - $total);
-                $outstandingTotal += max(0, $total - $applied);
-            }
+            [$invoiceTotal, $appliedTotal, $overpaidTotal, $outstandingTotal] = $this->invoiceTotals($invoices);
 
             $legacyPaid = $invoices->isEmpty() && (int) ($course->Paid ?? 0) === 1;
             $closedReason = (string) ($course->getAttribute('closed_reason') ?? '');
@@ -117,6 +106,10 @@ class AccountingController extends Controller
             if ($pendingReconciliation && $invoices->isEmpty()) {
                 $invoiceTotal = (int) ($course->Charge ?? 0);
                 $outstandingTotal = max(0, $invoiceTotal - $appliedTotal);
+            }
+            $waived = $closedReason === 'waived';
+            if ($waived) {
+                $outstandingTotal = 0; // 確認不收：不再算欠款（帳單與收款歷史保留）
             }
             $latestReport = $reports->first();
             $lastPaidAt = $course->PayDate ? substr((string) $course->PayDate, 0, 10) : null;
@@ -135,6 +128,7 @@ class AccountingController extends Controller
                 'paid_amount' => $invoices->isEmpty() ? ((int) ($course->Paid ?? 0) === 1 ? (int) ($course->Charge ?? 0) : 0) : $appliedTotal,
                 'invoice_total' => $invoiceTotal,
                 'outstanding_amount' => $outstandingTotal,
+                'waivable_amount' => $this->waivableAmount($course, $invoices),
                 'overpaid_amount' => $overpaidTotal,
                 'invoice_count' => $invoices->count(),
                 'receipt_count' => $reports->count(),
@@ -142,7 +136,7 @@ class AccountingController extends Controller
                 'legacy_paid_without_invoice' => $legacyPaid,
                 'has_exception' => $overpaidTotal > 0,
                 'pending_reconciliation' => $pendingReconciliation,
-                'reconciliation_label' => $pendingReconciliation ? '結案待對帳' : null,
+                'reconciliation_label' => $pendingReconciliation ? '結案待對帳' : ($waived ? '歷史 · 確認不收' : null),
                 'closed_reason' => $course->getAttribute('closed_reason'),
             ];
         })->values();
@@ -159,6 +153,131 @@ class AccountingController extends Controller
                 'overpaid_total' => (int) $rows->sum('overpaid_amount'),
             ],
         ]);
+    }
+
+    /** 確認不收會沖銷的金額：所有未繳帳單的應收合計；沒有帳單時用 Charge。 */
+    private function waivableAmount(StudentClass $course, $invoices): int
+    {
+        if ($invoices->isEmpty()) {
+            return (int) ($course->Charge ?? 0);
+        }
+
+        return (int) $invoices->filter(fn ($i) => (string) ($i->Status ?? '') !== 'paid')
+            ->sum(fn ($i) => (int) $this->invoiceAmounts->resolve($i, $i->getRelationValue('studentClass'))['total_amount']);
+    }
+
+    /** @return array{0:int,1:int,2:int,3:int} invoice total, applied, overpaid, outstanding */
+    private function invoiceTotals($invoices): array
+    {
+        $invoiceTotal = $appliedTotal = $overpaidTotal = $outstandingTotal = 0;
+        foreach ($invoices as $invoice) {
+            $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
+            $total = (int) $projection['total_amount'];
+            $positive = (int) $invoice->payments
+                ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
+                ->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
+            $voided = abs((int) $invoice->payments
+                ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
+                ->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
+            $net = max(0, $positive - $voided);
+            $applied = min($total, $net);
+            $invoiceTotal += $total;
+            $appliedTotal += $applied;
+            $overpaidTotal += max(0, $net - $total);
+            $outstandingTotal += max(0, $total - $applied);
+        }
+
+        return [$invoiceTotal, $appliedTotal, $overpaidTotal, $outstandingTotal];
+    }
+
+    /**
+     * 確認不收（director）：結案待對帳且仍有欠款的合約，明確沖銷並留稽核紀錄。
+     * 只改 closed_reason 與未結帳單狀態；Paid / Charge / 收款一律不動。
+     */
+    public function waiveCourse(Request $request, int $id)
+    {
+        $data = $request->validate(['reason' => ['required', 'string', 'min:2', 'max:200']]);
+        $reason = trim($data['reason']);
+        if (mb_strlen($reason) < 2) {
+            return response()->json(['message' => '請填寫確認不收的原因（至少 2 字）'], 422);
+        }
+
+        return DB::transaction(function () use ($request, $id, $reason) {
+            $course = StudentClass::with('student')->whereKey($id)->lockForUpdate()->first();
+            if (!$course) {
+                return response()->json(['message' => '找不到此課程合約'], 404);
+            }
+            if ($denied = $this->authorizeCampusForStudent($request, (int) ($course->student->CampusID ?? 0))) {
+                return $denied;
+            }
+
+            if ($course->isPartOfPackage()) {
+                return response()->json(['message' => '套裝課程請到套裝處理'], 422);
+            }
+
+            $closedReason = (string) ($course->closed_reason ?? '');
+            $unpaid = (int) ($course->Paid ?? 0) !== 1;
+            $pending = $closedReason === 'settled_pending' || ($closedReason === 'contract_amended' && $unpaid);
+            if ((int) $course->Stop !== 1 || !$pending || !$unpaid) {
+                return response()->json(['message' => '只有「結案待對帳」且尚未繳清的合約才能確認不收'], 422);
+            }
+
+            $invoices = Invoice::with(['studentClass', 'payments'])
+                ->where('StudentClassID', $id)
+                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->lockForUpdate()->get();
+            // 已有收款的帳單不在此處理，避免作廢帳單蓋住已收的錢。
+            if ($invoices->contains(fn ($i) => $i->payments->isNotEmpty() || (int) ($i->PaidAmount ?? 0) !== 0)) {
+                return response()->json(['message' => '此合約已有收款紀錄，請先到帳務更正後再處理'], 422);
+            }
+            if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'pending')->exists()) {
+                return response()->json(['message' => '有待確認的繳費回報，請先確認或退回'], 422);
+            }
+            $toVoid = $invoices->filter(fn ($i) => (string) ($i->Status ?? '') !== 'paid');
+            $outstanding = $this->waivableAmount($course, $invoices);
+            // The director must confirm the exact amount being written off (the dialog sends what it showed).
+            if (!$request->filled('expected_amount') || (int) $request->input('expected_amount') !== $outstanding) {
+                return response()->json(['message' => '金額已變動，請重新整理', 'waivable_amount' => $outstanding], 409);
+            }
+            if ($outstanding <= 0) {
+                return response()->json(['message' => '此合約已沒有欠款，不需要確認不收'], 422);
+            }
+
+            $openIds = $toVoid->pluck('id')->map(fn ($v) => (int) $v)->values()->all();
+            $actorId = (int) $request->attributes->get('auth_user_id');
+            $course->setAttribute('closed_reason', 'waived');
+            // 保留原結案快照（contract_amended 還原用）於 previous 欄位
+            $course->setAttribute('settlement_snapshot', json_encode([
+                'kind' => 'waived',
+                'before' => ['closed_reason' => $closedReason, 'Paid' => $course->Paid, 'Charge' => $course->Charge, 'invoice_ids' => $openIds],
+                'after' => ['closed_reason' => 'waived', 'invoice_status' => 'void'],
+                'previous_snapshot' => $course->getOriginal('settlement_snapshot'),
+                'outstanding_amount' => $outstanding,
+                'reason' => $reason,
+                'actor_user_id' => $actorId ?: null,
+                'at' => now()->toIso8601String(),
+            ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+            $course->save();
+            if ($openIds !== []) {
+                Invoice::query()->whereIn('id', $openIds)->update(['Status' => 'void']);
+            }
+            $correlationId = (string) Str::uuid();
+            SecurityAuditEvent::append('accounting.course_waived', 'success', [
+                'correlation_id' => $correlationId,
+                'actor_type' => 'user', 'actor_id' => $actorId ?: null,
+                'subject_type' => 'student_class', 'subject_id' => $id,
+                'campus_id' => (int) ($course->student->CampusID ?? 0) ?: null,
+            ], [
+                'outstanding_amount' => $outstanding,
+                'old_type' => $closedReason, 'new_type' => 'waived',
+                'reason_hash' => hash('sha256', $reason),
+            ]);
+            // append() swallows write failures; a waiver without its audit row must roll back.
+            if (!DB::table('security_audit_events')->where('correlation_id', $correlationId)->exists()) {
+                throw new \RuntimeException('確認不收稽核紀錄寫入失敗，已取消操作');
+            }
+
+            return response()->json(['message' => '已確認不收', 'student_class_id' => $id, 'outstanding_amount' => $outstanding]);
+        });
     }
 
     public function ledger(Request $request)
@@ -251,8 +370,9 @@ class AccountingController extends Controller
             $totalAmount = (int) $projection['total_amount'];
             $appliedAmount = min($totalAmount, $netApplied);
             $overpaidAmount = max(0, $netApplied - $totalAmount);
-            $outstanding = max(0, $totalAmount - $appliedAmount);
             $status = (string) ($invoice->Status ?? '');
+            // 作廢帳單保留總額供稽核，但不算欠款。
+            $outstanding = $status === 'void' ? 0 : max(0, $totalAmount - $appliedAmount);
             $paidAmount = (int) ($invoice->PaidAmount ?? 0);
             $invoiceAnomalies = [];
 
@@ -443,6 +563,7 @@ class AccountingController extends Controller
 
         $appliedTotal = (int) $invoiceRows->sum('calculated_applied_amount');
         $invoiceTotal = (int) $invoiceRows->sum('total_amount');
+        $openInvoiceTotal = (int) $invoiceRows->where('status', '!=', 'void')->sum('total_amount');
 
         return response()->json([
             'student' => [
@@ -462,7 +583,7 @@ class AccountingController extends Controller
                 'applied_total' => $appliedTotal,
                 'voided_total' => (int) $invoiceRows->sum('voided_amount'),
                 'overpaid_total' => (int) $invoiceRows->sum('overpaid_amount'),
-                'outstanding_total' => max(0, $invoiceTotal - $appliedTotal),
+                'outstanding_total' => max(0, $openInvoiceTotal - $appliedTotal),
                 'invoice_count' => $invoiceRows->count(),
                 'receipt_count' => $reportRows->where('status', 'confirmed')->count(),
                 'anomaly_count' => $uniqueAnomalies->count(),
