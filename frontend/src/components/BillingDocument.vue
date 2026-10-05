@@ -1,60 +1,63 @@
 <template>
-  <article class="slip" :class="`slip--${slip.type}`">
+  <article class="slip" :class="`slip--${doc.tone}`">
     <header class="slip-top">
       <div class="slip-brand">
         <img :src="logoUrl" alt="" class="slip-logo" />
         <div>
           <div class="slip-brand-name">{{ BRAND_TITLE }}</div>
-          <div v-if="slip.campus_name" class="slip-brand-campus">{{ slip.campus_name }}</div>
+          <div v-if="doc.campus_name" class="slip-brand-campus">{{ doc.campus_name }}</div>
         </div>
       </div>
       <div class="slip-doc">
-        <div class="slip-doc-title">{{ slip.title }}</div>
-        <div class="slip-doc-ref">{{ slip.ref_label }}</div>
+        <div class="slip-doc-title">{{ doc.title }}</div>
+        <div class="slip-doc-ref">{{ doc.ref_label }}</div>
       </div>
     </header>
 
     <section class="slip-hero">
       <div class="slip-hero-amount">
-        <div class="slip-label">{{ slip.amount_label }}</div>
-        <div class="slip-amount">{{ formatAmount(slip.amount) }}</div>
-        <div v-if="slip.sub_amounts" class="slip-sub">{{ slip.sub_amounts }}</div>
+        <div class="slip-label">{{ doc.amount_label }}</div>
+        <div class="slip-amount">{{ formatAmount(doc.amount) }}</div>
+        <div v-if="doc.sub_amounts" class="slip-sub">{{ doc.sub_amounts }}</div>
       </div>
-      <div v-if="slip.due" class="slip-hero-due">
-        <div class="slip-label">{{ slip.due.label }}</div>
-        <div class="slip-due">{{ slip.due.value }}</div>
-        <div v-if="slip.due.hint" class="slip-overdue">{{ slip.due.hint }}</div>
+      <div v-if="doc.due" class="slip-hero-due">
+        <div class="slip-label">{{ doc.due.label }}</div>
+        <div class="slip-due">{{ doc.due.value }}</div>
+        <div v-if="doc.due.hint" class="slip-overdue">{{ doc.due.hint }}</div>
       </div>
     </section>
 
     <dl class="slip-meta">
-      <div v-for="m in slip.meta" :key="m.label">
+      <div v-for="m in doc.meta" :key="m.label">
         <dt>{{ m.label }}</dt>
         <dd>{{ m.value }}</dd>
       </div>
     </dl>
 
-    <table v-if="slip.items.length" class="slip-items">
+    <table v-if="doc.items.length" class="slip-items">
       <thead>
-        <tr><th>項目</th><th>期間／堂數</th><th class="num">金額</th></tr>
+        <tr><th>項目</th><th v-if="hasPeriod">期間／堂數</th><th class="num">金額</th></tr>
       </thead>
       <tbody>
-        <tr v-for="(item, i) in slip.items" :key="i">
+        <tr v-for="(item, i) in doc.items" :key="i">
           <td>{{ item.description }}</td>
-          <td class="muted">{{ item.period }}</td>
+          <td v-if="hasPeriod" class="muted">{{ item.period || '—' }}</td>
           <td class="num">{{ item.amount }}</td>
         </tr>
       </tbody>
+      <tfoot v-if="doc.total">
+        <tr><td :colspan="hasPeriod ? 2 : 1">合計</td><td class="num">{{ doc.total }}</td></tr>
+      </tfoot>
     </table>
 
-    <section v-if="slip.sessions.length" class="slip-sessions">
+    <section v-if="doc.sessions.length" class="slip-sessions">
       <div class="slip-section-title">
-        本期上課日期
-        <span class="slip-chip">共 {{ slip.sessions.length }} 堂</span>
+        {{ doc.session_title || '本期上課日期' }}
+        <span class="slip-chip">共 {{ doc.sessions.length }} 堂</span>
         <span v-if="attendedCount" class="slip-chip slip-chip--done">已上 {{ attendedCount }} 堂</span>
       </div>
       <ol class="slip-session-list">
-        <li v-for="(s, i) in slip.sessions" :key="s.class_session_id || i">
+        <li v-for="(s, i) in doc.sessions" :key="s.class_session_id || i">
           <span class="slip-session-no">{{ i + 1 }}</span>
           <span class="slip-session-date">{{ formatSessionDate(s.date) }}</span>
           <span class="slip-session-time">{{ formatTime(s) }}</span>
@@ -64,147 +67,47 @@
       </ol>
     </section>
 
-    <section v-if="slip.note" class="slip-note">
+    <section v-if="doc.note" class="slip-note">
       <div class="slip-label">備註</div>
-      <p>{{ slip.note }}</p>
+      <p>{{ doc.note }}</p>
     </section>
 
+    <section v-for="sec in doc.sections || []" :key="sec.label" class="slip-note slip-note--plain">
+      <div class="slip-label">{{ sec.label }}</div>
+      <p>{{ sec.text }}</p>
+    </section>
+
+    <div v-if="doc.sign_line" class="slip-sign">
+      <span>經辦人：__________</span>
+      <span>補習班用印：</span>
+    </div>
+
     <footer class="slip-foot">
-      <span>此通知單僅供繳費確認用，如已繳費請忽略。</span>
-      <span>{{ formatBrandTitle(slip.campus_name) }}・{{ slip.generated_on }}</span>
+      <span>{{ doc.footer_note }}</span>
+      <span>{{ formatBrandTitle(doc.campus_name) }}・{{ doc.generated_on }}</span>
     </footer>
+
+    <div v-if="doc.watermark" class="slip-watermark">{{ doc.watermark }}</div>
   </article>
 </template>
 
 <script setup>
 import { computed } from 'vue';
+import {
+  BRAND_TITLE, STATUS_ZH, formatAmount, formatBrandTitle, formatSessionDate, formatTime, statusTone, isDone,
+} from '../lib/billingDocumentView.js';
 // Cropped 256px mark: the full logo.png has wide white margins.
 import logoUrl from '../assets/slip-logo.png';
 
-// Pure view of one payment slip (invoice slip-data or tuition-slip payload).
-// PaymentSlipModal fetches the data and exports this element as the PNG.
+// One printable billing document (payment slip or receipt), exported as PNG
+// by its modal. `doc` is a view model from lib/billingDocumentView.js.
 const props = defineProps({
-  data: { type: Object, required: true },
+  doc: { type: Object, required: true },
 });
 
-function formatAmount(n) {
-  return 'NT$ ' + Number(n || 0).toLocaleString('zh-TW');
-}
-function formatDate(d) {
-  if (!d) return '—';
-  return String(d).slice(0, 10).replace(/-/g, '/');
-}
-const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
-function formatSessionDate(d) {
-  const day = new Date(`${String(d).slice(0, 10)}T00:00:00`);
-  return Number.isNaN(day.getTime()) ? formatDate(d) : `${formatDate(d)}（${WEEKDAY[day.getDay()]}）`;
-}
-function formatTime(s) {
-  if (s.start_time && s.end_time) return `${s.start_time}–${s.end_time}`;
-  return s.start_time || '—';
-}
-const BRAND_TITLE = '台北全真一對一補習班';
-function formatBrandTitle(campusName) {
-  const branch = String(campusName || '').trim();
-  return branch ? `${BRAND_TITLE}｜${branch}` : BRAND_TITLE;
-}
-
-const STATUS_ZH = {
-  attended: '已到課', completed: '已完課', late: '遲到', absent: '缺席',
-  excused: '事假', scheduled: '排定', leave: '請假', leave_adjusted: '調課',
-};
-const DONE = ['attended', 'completed', 'late', 'absent', 'excused'];
-function statusTone(status) {
-  if (['attended', 'completed'].includes(status)) return 'done';
-  if (['late', 'absent'].includes(status)) return 'warn';
-  if (['leave', 'leave_adjusted', 'excused'].includes(status)) return 'leave';
-  return 'planned';
-}
-const attendedCount = computed(() => (slip.value?.sessions || []).filter(s => DONE.includes(s.status)).length);
-const hasSubject = computed(() => {
-  const subjects = new Set((slip.value?.sessions || []).map(s => s.subject).filter(Boolean));
-  return subjects.size > 1;
-});
-
-function normalizeSlipData(raw) {
-  // Per slip, not per page load: a tab left open overnight must not print yesterday.
-  const generatedOn = new Date().toLocaleDateString('zh-TW');
-  if (raw.invoice_id) {
-    const items = (raw.items || []).map(i => ({
-      description: i.description || '—',
-      period: i.period_start && i.period_end
-        ? `${formatDate(i.period_start)} – ${formatDate(i.period_end)}`
-        : '—',
-      amount: formatAmount(i.amount),
-    }));
-    return {
-      type: 'invoice',
-      student_name: raw.student_name,
-      campus_name: raw.campus_name,
-      title: '繳費通知單',
-      amount_label: raw.status === 'partial' ? '尚欠金額' : '應繳金額',
-      amount: raw.remaining,
-      sub_amounts: raw.status === 'partial'
-        ? `應繳總額 ${formatAmount(raw.total_amount)}・已繳 ${formatAmount(raw.paid_amount)}`
-        : null,
-      ref_label: `帳單編號 #${raw.invoice_id}`,
-      due: raw.due_date ? { label: '繳費期限', value: formatDate(raw.due_date) } : null,
-      meta: [
-        { label: '學生', value: raw.student_name || '—' },
-        ...(items.length === 1 && items[0].period !== '—' ? [{ label: '服務期間', value: items[0].period }] : []),
-        { label: '開立日期', value: formatDate(raw.issue_date) },
-      ],
-      items,
-      note: raw.note,
-      sessions: raw.sessions || [],
-      generated_on: generatedOn,
-      filename: `繳費單_${raw.student_name}_${raw.invoice_id}.png`,
-    };
-  }
-  const modeLabel = raw.schedule_mode === 'date' ? '月結制' : '堂數制';
-  const hasCanonicalPayable = raw.payable_status === 'invoiced' && raw.payable_amount != null;
-  const displayedAmount = hasCanonicalPayable ? raw.payable_amount : (raw.estimated_amount ?? raw.charge ?? 0);
-  const items = [{
-    description: `${raw.subject}（${modeLabel}${hasCanonicalPayable ? '' : '・估算'}）`,
-    period: raw.schedule_mode === 'date' && raw.period_sessions != null
-      ? (raw.period_sessions === 0 && raw.sessions?.length
-          ? `本期預計 ${raw.sessions.length} 堂`
-          : `本期 ${raw.period_sessions} 堂`)
-      : (raw.remaining_sessions != null ? `剩餘 ${raw.remaining_sessions} 堂` : '—'),
-    amount: displayedAmount ? formatAmount(displayedAmount) : '—',
-  }];
-
-  const days = raw.days_until_settlement;
-  return {
-    type: 'tuition',
-    student_name: raw.student_name,
-    campus_name: raw.campus_name,
-    title: '繳費通知',
-    amount_label: hasCanonicalPayable ? '應繳費用' : '預估金額（尚無帳單）',
-    amount: displayedAmount,
-    sub_amounts: null,
-    ref_label: raw.subject,
-    due: raw.due_date
-      ? {
-          label: '繳費期限',
-          value: formatDate(raw.due_date),
-          hint: days != null && days < 0 ? `已逾期 ${Math.abs(days)} 天` : null,
-        }
-      : null,
-    meta: [
-      { label: '學生', value: raw.student_name || '—' },
-      { label: '產生日期', value: generatedOn },
-    ],
-    items,
-    note: raw.note,
-    sessions: raw.sessions || [],
-    generated_on: generatedOn,
-    filename: `繳費通知_${raw.student_name}_${raw.student_class_id}.png`,
-  };
-}
-
-const slip = computed(() => normalizeSlipData(props.data));
-defineExpose({ slip });
+const attendedCount = computed(() => props.doc.sessions.filter(s => isDone(s.status)).length);
+const hasSubject = computed(() => new Set(props.doc.sessions.map(s => s.subject).filter(Boolean)).size > 1);
+const hasPeriod = computed(() => props.doc.items.some(i => i.period));
 </script>
 
 <style scoped>
@@ -241,6 +144,11 @@ defineExpose({ slip });
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Microsoft JhengHei', 'Noto Sans CJK TC', sans-serif;
   font-size: 13px;
   line-height: 1.5;
+  position: relative;
+}
+.slip--receipt {
+  --slip-accent: var(--ds-print-done);
+  --slip-accent-wash: var(--ds-print-done-wash);
 }
 .slip--tuition {
   --slip-accent: var(--ds-print-accent-strong);
@@ -371,6 +279,26 @@ defineExpose({ slip });
 }
 .slip-note p { margin: 2px 0 0; white-space: pre-wrap; color: var(--slip-ink-2); }
 
+.slip-items tfoot td { font-weight: 700; border-bottom: none; padding-top: 12px; }
+.slip-note--plain { border-left-color: var(--slip-line); }
+.slip-sign {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+  font-size: 12px;
+  color: var(--slip-ink-2);
+}
+.slip-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-25deg);
+  font-size: 96px;
+  font-weight: 900;
+  color: var(--ds-print-void);
+  pointer-events: none;
+  white-space: nowrap;
+}
 .slip-foot {
   display: flex;
   flex-direction: column;
