@@ -41,97 +41,9 @@
           </div>
         </div>
 
-        <!-- Receipt document preview -->
+        <!-- Receipt document preview: exactly what the image export captures. -->
         <div class="receipt-preview-wrap" :class="{ voided: receipt.status === 'voided' }">
-          <div ref="receiptPrintRef" class="receipt-document">
-            <div class="receipt-doc-header">
-              <div class="receipt-doc-title">電子收據</div>
-              <div class="receipt-doc-brand">{{ schoolName }}</div>
-            </div>
-
-            <div class="receipt-doc-body">
-              <div class="receipt-doc-row">
-                <span class="receipt-doc-label">學生姓名</span>
-                <span class="receipt-doc-value">{{ snapshot.student_name || '—' }}</span>
-              </div>
-              <div v-if="snapshot.campus_name" class="receipt-doc-row">
-                <span class="receipt-doc-label">分校</span>
-                <span class="receipt-doc-value">{{ snapshot.campus_name }}</span>
-              </div>
-              <div class="receipt-doc-row">
-                <span class="receipt-doc-label">修業期間</span>
-                <span class="receipt-doc-value">
-                  <template v-if="snapshot.study_period">
-                    {{ snapshot.study_period.start }} ~ {{ snapshot.study_period.end }}
-                  </template>
-                  <template v-else>—</template>
-                </span>
-              </div>
-              <div class="receipt-doc-row">
-                <span class="receipt-doc-label">收據號碼</span>
-                <span class="receipt-doc-value receipt-doc-number">{{ receipt.receipt_number }}</span>
-              </div>
-
-              <!-- Items table -->
-              <div class="receipt-doc-items">
-                <div class="receipt-doc-items-header">
-                  <span>收費項目</span>
-                  <span class="receipt-doc-amount-col">金額</span>
-                </div>
-                <div
-                  v-for="(item, i) in (snapshot.items || [])"
-                  :key="i"
-                  class="receipt-doc-item-row"
-                >
-                  <span>{{ item.description }}</span>
-                  <span class="receipt-doc-amount-col">{{ formatCurrency(item.amount) }}</span>
-                </div>
-                <div class="receipt-doc-item-row receipt-doc-total-row">
-                  <span>合計</span>
-                  <span class="receipt-doc-amount-col">{{ formatCurrency(snapshot.total_amount) }}</span>
-                </div>
-              </div>
-
-              <div v-if="(snapshot.session_dates || []).length" class="receipt-doc-sessions">
-                <div class="receipt-doc-label">上課日期</div>
-                  <div class="receipt-doc-session-list">
-                    <span v-for="(s, i) in snapshot.session_dates.slice(0, 16)" :key="i">
-                    {{ s.lesson ? `第${s.lesson}堂 ` : '' }}{{ s.date }}<template v-if="s.start_time"> {{ s.start_time }}<template v-if="s.end_time">-{{ s.end_time }}</template></template><template v-if="s.subject"> · {{ s.subject }}</template><template v-if="s.expected">（預計）</template>
-                  </span>
-                  <span v-if="snapshot.session_dates.length > 16">…共 {{ snapshot.session_dates.length }} 堂</span>
-                </div>
-              </div>
-
-              <div class="receipt-doc-row">
-                <span class="receipt-doc-label">收款日期</span>
-                <span class="receipt-doc-value">{{ snapshot.paid_at || '—' }}</span>
-              </div>
-              <div class="receipt-doc-row">
-                <span class="receipt-doc-label">收款方式</span>
-                <span class="receipt-doc-value">{{ paymentMethodLabel(snapshot.method) }}</span>
-              </div>
-              <div v-if="snapshot.note" class="receipt-doc-row receipt-doc-note-row">
-                <span class="receipt-doc-label">備註</span>
-                <span class="receipt-doc-value">{{ snapshot.note }}</span>
-              </div>
-
-              <div class="receipt-doc-refund" v-if="snapshot.refund_policy">
-                <div class="receipt-doc-label">退費規定</div>
-                <div class="receipt-doc-refund-text">{{ snapshot.refund_policy }}</div>
-              </div>
-            </div>
-
-            <div class="receipt-doc-footer">
-              <div>經辦人：__________</div>
-              <div>補習班用印：</div>
-              <div class="receipt-doc-footer-note">
-                此收據由 AllTrue 系統產生<br />
-                開立時間：{{ snapshot.confirmed_at || snapshot.paid_at || '—' }}
-              </div>
-            </div>
-
-            <div v-if="receipt.status === 'voided'" class="receipt-voided-watermark">作廢</div>
-          </div>
+          <BillingDocument ref="docRef" :doc="doc" class="receipt-document" />
         </div>
 
         <div v-if="snapshot.course_lifecycle_label || snapshot.first_session_note" class="receipt-ops" aria-label="帳務說明">
@@ -178,6 +90,8 @@ import {
   parsePositiveReportId,
 } from '../lib/paymentReportReceipt.js';
 import { receiptImageBlob } from '../lib/receiptImage.js';
+import { receiptView } from '../lib/billingDocumentView.js';
+import BillingDocument from './BillingDocument.vue';
 
 const props = defineProps({
   show: Boolean,
@@ -188,24 +102,16 @@ defineEmits(['close']);
 const loading = ref(false);
 const error = ref('');
 const receipt = ref(null);
-const receiptPrintRef = ref(null);
+const docRef = ref(null);
 const copyState = ref('idle');
 const copyError = ref('');
 
 const snapshot = computed(() => receipt.value?.content_snapshot || {});
-const schoolName = computed(() => snapshot.value.school_name || '台北全真一對一補習班');
+const doc = computed(() => (receipt.value ? receiptView(receipt.value) : null));
 
-function formatCurrency(v) {
-  if (v == null || isNaN(v)) return '—';
-  return 'NT$ ' + Number(v).toLocaleString('zh-TW');
-}
 function formatDateTime(dt) {
   if (!dt) return '—';
   try { return new Date(dt).toLocaleString('zh-TW'); } catch { return dt; }
-}
-function paymentMethodLabel(m) {
-  const labels = { cash: '現金', transfer: '匯款', card: '信用卡', line_pay: 'LINE Pay', backfill: '現金（補建）' };
-  return labels[m] || m || '—';
 }
 function getToken() {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
@@ -250,7 +156,7 @@ async function loadReceipt() {
 }
 
 function printReceipt() {
-  if (!receiptPrintRef.value) return;
+  if (!docRef.value) return;
   window.print();
 }
 
@@ -262,11 +168,7 @@ async function copyReceiptImage() {
     if (typeof navigator.clipboard?.write !== 'function' || typeof window.ClipboardItem !== 'function') {
       throw new Error('image_clipboard_unsupported');
     }
-    const blob = await receiptImageBlob({
-      source: receiptPrintRef.value,
-      snapshot: snapshot.value,
-      receiptNumber: receipt.value.receipt_number,
-    });
+    const blob = await receiptImageBlob({ source: docRef.value?.$el });
     await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
     copyState.value = 'copied-image';
   } catch (error) {
@@ -308,11 +210,7 @@ async function downloadReceiptImage() {
   copyState.value = 'copying';
   copyError.value = '';
   try {
-    const blob = await receiptImageBlob({
-      source: receiptPrintRef.value,
-      snapshot: snapshot.value,
-      receiptNumber: receipt.value.receipt_number,
-    });
+    const blob = await receiptImageBlob({ source: docRef.value?.$el });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -378,40 +276,10 @@ watch(() => [props.show, props.reportId], async ([visible]) => {
   display: flex; justify-content: center; overflow-x: auto;
 }
 .receipt-preview-wrap.voided { opacity: 0.7; }
-.receipt-document {
-  width: 100%; max-width: 560px; border: 1px solid var(--border);
-  border-radius: 8px; overflow: hidden; background: #fff; position: relative;
-}
-.receipt-doc-header { background: #14532d; color: #fff; padding: 20px; text-align: center; }
-.receipt-doc-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-.receipt-doc-brand { font-size: 13px; opacity: 0.85; }
-.receipt-doc-license { font-size: 11px; opacity: 0.7; margin-top: 2px; }
-.receipt-doc-address { font-size: 11px; opacity: 0.7; }
-.receipt-doc-body { padding: 16px 20px; }
-.receipt-doc-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
-.receipt-doc-label { color: var(--text-light); font-weight: 500; }
-.receipt-doc-value { font-weight: 500; text-align: right; }
-.receipt-doc-number { font-family: monospace; font-size: 14px; color: #14532d; }
-.receipt-doc-items { margin: 10px 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-.receipt-doc-items-header { display: flex; justify-content: space-between; padding: 7px 10px; background: var(--bg); font-size: 11px; font-weight: 600; color: var(--text-light); }
-.receipt-doc-item-row { display: flex; justify-content: space-between; padding: 7px 10px; border-top: 1px solid var(--border); font-size: 13px; }
-.receipt-doc-amount-col { text-align: right; font-variant-numeric: tabular-nums; }
-.receipt-doc-total-row { background: var(--ds-success-wash); font-weight: 700; }
-.receipt-doc-sessions { padding: 10px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
-.receipt-doc-session-list { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 6px; color: var(--ds-ink); }
 .receipt-ops { margin-top: 12px; padding: 10px 12px; background: var(--ds-canvas-soft); border-radius: 8px; font-size: 12px; color: var(--ds-ink-mute); }
 .receipt-ops p { margin: 0 0 4px; }
 .receipt-ops p:last-child { margin-bottom: 0; }
 @media print { .receipt-ops { display: none; } }
-.receipt-doc-refund { padding: 10px 0; font-size: 12px; }
-.receipt-doc-refund-text { margin-top: 4px; color: var(--text-light); line-height: 1.6; white-space: pre-line; }
-.receipt-doc-footer { padding: 12px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-light); display: flex; justify-content: space-between; align-items: flex-start; }
-.receipt-doc-footer-note { text-align: right; line-height: 1.4; }
-.receipt-voided-watermark {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-25deg);
-  font-size: 80px; font-weight: 900; color: rgba(220,38,38,.12);
-  pointer-events: none; white-space: nowrap; user-select: none;
-}
 
 .receipt-actions { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; align-items: center; }
 .receipt-actions button { display: inline-flex; align-items: center; gap: 6px; }
@@ -479,7 +347,5 @@ watch(() => [props.show, props.reportId], async ([visible]) => {
 
 @media (max-width: 640px) {
   .receipt-modal { max-width: 100%; padding: 14px; }
-  .receipt-doc-body { padding: 12px 14px; }
-  .receipt-doc-header { padding: 16px; }
 }
 </style>

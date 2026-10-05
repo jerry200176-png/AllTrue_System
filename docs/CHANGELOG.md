@@ -1,3 +1,7 @@
+## 2026-10-05 — feat(billing-ui): receipt shares the payment slip design (#3445)
+<!-- release-notes: staff_update=staff-2026-10-05-receipt-redesign -->
+- 電子收據改用 `BillingDocument`（`receiptView`），與繳費單同一套版面；收據圖片改由 `modern-screenshot` 擷取畫面，取代手寫 SVG 產生器（`receiptImage.js`）。複製文字、列印、作廢浮水印保留
+
 ## 2026-10-03 — fix(students): trial courses convert to a regular course instead of a new trial batch (in-app #374)
 <!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->
 - 學生管理的試聽課改走「轉為正式課程」（與課程管理一致）；後端加購端點拒絕試聽來源，避免再建立試聽批次

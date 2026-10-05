@@ -120,3 +120,44 @@ export function paymentSlipView(raw) {
   };
 }
 
+
+const METHOD_ZH = { cash: '現金', transfer: '匯款', card: '信用卡', line_pay: 'LINE Pay', backfill: '現金（補建）' };
+export function paymentMethodLabel(m) {
+  return METHOD_ZH[m] || m || '—';
+}
+
+/** Receipt (adaptPaymentReportReceipt output) → BillingDocument view model. */
+export function receiptView(receipt) {
+  const snap = receipt.content_snapshot || {};
+  const period = snap.study_period ? `${snap.study_period.start} – ${snap.study_period.end}` : null;
+  return {
+    tone: 'receipt',
+    campus_name: snap.campus_name,
+    title: '電子收據',
+    ref_label: `收據號碼 ${receipt.receipt_number}`,
+    amount_label: '已收金額',
+    amount: snap.total_amount,
+    sub_amounts: null,
+    due: { label: '收款日期', value: snap.paid_at || '—' },
+    meta: [
+      { label: '學生', value: snap.student_name || '—' },
+      ...(period ? [{ label: '修業期間', value: period }] : []),
+      { label: '收款方式', value: paymentMethodLabel(snap.method) },
+    ],
+    items: (snap.items || []).map(i => ({ description: i.description, amount: formatAmount(i.amount) })),
+    total: formatAmount(snap.total_amount),
+    session_title: '上課日期',
+    // Receipt dates are Y/m/d; expected = purchased lessons not yet held.
+    sessions: (snap.session_dates || []).map(s => ({
+      ...s,
+      date: String(s.date || '').replace(/\//g, '-'),
+      status: s.expected ? 'expected' : 'attended',
+    })),
+    note: snap.note,
+    sections: snap.refund_policy ? [{ label: '退費規定', text: snap.refund_policy }] : [],
+    sign_line: true,
+    footer_note: '此收據由 AllTrue 系統產生',
+    generated_on: `開立 ${snap.confirmed_at || snap.paid_at || '—'}`,
+    watermark: receipt.status === 'voided' ? '作廢' : null,
+  };
+}
