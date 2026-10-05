@@ -1,3 +1,4 @@
+import { courseProgress } from '../../lib/courseMoneyState.js';
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -42,8 +43,9 @@ describe('StudentsList course summary UX', () => {
 
   it('shows honest session progress and a separate monthly cadence state', () => {
     ['role="progressbar"', ':aria-valuemax="courseProgress(course).total"', '堂數未設定，請編輯課程確認。', '月結'].forEach((marker) => expect(activeCourseSlice).toContain(marker));
-    expect(source).toContain('const courseProgress = (course) =>');
-    expect(source).toContain("if (String(course?.payment_type || '').toLowerCase() === 'monthly') return null;");
+    expect(source).toMatch(/import \{[^}]*\bcourseProgress\b[^}]*\} from '..\/lib\/courseMoneyState.js'/);
+    expect(courseProgress({ payment_type: 'monthly', sessions_purchased: 8, remaining_sessions: 3 })).toBeNull();
+    expect(courseProgress({ payment_type: 'session', sessions_purchased: 8, remaining_sessions: 3 })).toMatchObject({ total: 8, used: 5 });
   });
 
   it('preserves the existing course actions behind the disclosure', () => {
