@@ -774,7 +774,13 @@ class AlertController extends Controller
             'days_until_settlement' => $daysUntilSettlement,
             'note'             => $sc->Memo ?? '',
             'sessions' => $mode === 'date'
-                ? $this->monthlyBilling->billableSessionDetailsForPeriod($sc, $billingPeriod)
+                ? $this->monthlyBilling->slipSessionDetailsForPeriod(
+                    $sc,
+                    $billingPeriod,
+                    ...($openInvoice
+                        ? $this->monthlyBilling->serviceRangeForCourse($openInvoice, $studentClassId)
+                        : [null, null]),
+                )
                 : ClassSession::sessionsForPaymentSlip(
                     [$studentClassId],
                     $billing['period_start'],
