@@ -86,7 +86,7 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $this->flag(true);
         $session = $this->plainSession();
 
-        $this->postSubstitute($session, $this->combined())->assertOk();
+        $this->postSubstitute($session, ['new_date' => '2026-04-20', 'new_start_time' => '14:00', 'new_end_time' => '16:00'])->assertOk();
 
         $live = Schedule::where('student_course_id', $this->sc->ID)->where('status', 'scheduled')->get();
         $this->assertCount(1, $live);
@@ -118,7 +118,7 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $this->flag(false);
         $session = $this->plainSession();
 
-        $this->postSubstitute($session, $this->combined())->assertOk();
+        $this->postSubstitute($session, ['new_date' => '2026-04-20', 'new_start_time' => '14:00', 'new_end_time' => '16:00'])->assertOk();
 
         $this->assertSame(1, Schedule::where('student_course_id', $this->sc->ID)->where('status', 'scheduled')->where('teacher_id', $this->bId)->where('schedule_date', '2026-04-20')->count());
         $this->assertSame(1, Schedule::where('student_course_id', $this->sc->ID)->where('status', 'rescheduled')->where('schedule_date', '2026-04-20')->count());
@@ -135,7 +135,7 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
             $mock->shouldReceive('createParentNotification')->andThrow(new \RuntimeException('forced'));
         });
 
-        $this->postSubstitute($session, $this->combined())->assertStatus(500);
+        $this->postSubstitute($session, ['new_date' => '2026-04-20', 'new_start_time' => '14:00', 'new_end_time' => '16:00'])->assertStatus(500);
 
         $session->refresh();
         $this->assertSame('2026-04-19', Carbon::parse($session->SessionDate)->toDateString());
@@ -149,7 +149,7 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $this->seedWorld();
         $this->flag(true);
         $session = $this->plainSession();
-        $this->postSubstitute($session, $this->combined())->assertOk();
+        $this->postSubstitute($session, ['new_date' => '2026-04-20', 'new_start_time' => '14:00', 'new_end_time' => '16:00'])->assertOk();
 
         $this->postSession($session, 'substitute/undo')->assertOk()->assertJsonFragment(['restored_time' => true]);
 
@@ -234,17 +234,10 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $this->assertSame(2, ScheduleChangeLog::where('reason', 'substitute')->count());
     }
 
-    // ──────────── helpers ────────────
-
     private function flag(bool $on): void
     {
         // per-campus override only, same style as production (FEATURE_..._CAMPUS_{id})
         config(['feature_flags.values' => ['FEATURE_SCHEDULE_OCCURRENCE_V2' => false, 'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1' => $on]]);
-    }
-
-    private function combined(): array
-    {
-        return ['new_date' => '2026-04-20', 'new_start_time' => '14:00', 'new_end_time' => '16:00'];
     }
 
     private function api()
@@ -302,7 +295,6 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         return $session;
     }
 
-    /** Sets $this->token (director), aId (contract teacher), bId (substitute), sc. */
     private function seedWorld(): void
     {
         $mk = function (string $name, string $type, int $admin) {
