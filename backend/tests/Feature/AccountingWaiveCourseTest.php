@@ -134,6 +134,14 @@ class AccountingWaiveCourseTest extends TestCase
             ->assertStatus(422)->assertJsonPath('message', '此合約在合併帳單中，請先到帳務處理該帳單');
         $this->assertSame('settled_pending', $b->fresh()->closed_reason);
 
+        // Inverse: the waived course anchors an invoice that also bills another course.
+        $c = $this->createStudentClass($student->id, ['Charge' => 500, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
+        $anchored = DB::table('Invoice')->insertGetId(['StudentID' => $student->id, 'StudentClassID' => $c->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 1500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => $anchored, 'StudentClassID' => $a->ID, 'Description' => 'a', 'Amount' => 1000]);
+        $this->postJson("/api/v1/accounting/courses/{$c->ID}/waive", ['reason' => '不收了', 'expected_amount' => 1500], ['Authorization' => "Bearer {$token}"])
+            ->assertStatus(422)->assertJsonPath('message', '此合約在合併帳單中，請先到帳務處理該帳單');
+
         // A paid shared invoice still references the course: also a conflict.
         DB::table('Invoice')->where('id', $invoiceId)->update(['Status' => 'paid', 'PaidAmount' => 3000]);
         $this->postJson("/api/v1/accounting/courses/{$b->ID}/waive", ['reason' => '不收了', 'expected_amount' => 2000], ['Authorization' => "Bearer {$token}"])

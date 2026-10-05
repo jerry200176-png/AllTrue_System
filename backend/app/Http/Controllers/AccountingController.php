@@ -229,11 +229,16 @@ class AccountingController extends Controller
             if ($invoices->contains(fn ($i) => $i->payments->isNotEmpty() || (int) ($i->PaidAmount ?? 0) !== 0)) {
                 return response()->json(['message' => '此合約已有收款紀錄，請先到帳務更正後再處理'], 422);
             }
-            // A line on another course's open invoice cannot be voided from here without touching that invoice.
-            $sharedInvoice = DB::table('InvoiceItem')->join('Invoice', 'Invoice.id', '=', 'InvoiceItem.InvoiceID')
-                ->where('InvoiceItem.StudentClassID', $id)->where('Invoice.StudentClassID', '!=', $id)
-                ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))->exists();
-            if ($sharedInvoice) {
+            // A waiver may only touch invoices that belong to this course alone. Any non-void invoice involving this
+            // course (as anchor or line) that also involves another course, or has no anchor, needs accounting first.
+            $involved = DB::table('Invoice')->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+                ->where(fn ($q) => $q->where('StudentClassID', $id)
+                    ->orWhereIn('id', DB::table('InvoiceItem')->where('StudentClassID', $id)->select('InvoiceID')))
+                ->get(['id', 'StudentClassID']);
+            $shared = $involved->contains(fn ($inv) => (int) ($inv->StudentClassID ?? 0) !== $id)
+                || ($involved->isNotEmpty() && DB::table('InvoiceItem')->whereIn('InvoiceID', $involved->pluck('id')->all())
+                    ->whereNotNull('StudentClassID')->where('StudentClassID', '!=', $id)->exists());
+            if ($shared) {
                 return response()->json(['message' => '此合約在合併帳單中，請先到帳務處理該帳單'], 422);
             }
             if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'pending')->exists()) {
