@@ -3829,6 +3829,12 @@ parameters:
 			path: app/Http/Controllers/ScheduleDiscrepancyController.php
 
 		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/StudentClassController.php
+
+		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:findOrFail\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
