@@ -15,22 +15,31 @@ describe('authedFetch', () => {
     getSession.mockResolvedValue({ data: { session: { access_token: 'tok' } } });
     const res = await authedFetch('/x', { method: 'POST', credentials: 'include', headers: { Accept: 'application/json' }, body: '{}' });
     expect(res).toEqual({ ok: true });
-    expect(fetch).toHaveBeenCalledWith('/x', {
-      method: 'POST', credentials: 'include', body: '{}',
-      headers: { Accept: 'application/json', Authorization: 'Bearer tok' },
-    });
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('/x');
+    expect(init).toMatchObject({ method: 'POST', credentials: 'include', body: '{}' });
+    expect(init.headers.get('Accept')).toBe('application/json');
+    expect(init.headers.get('Authorization')).toBe('Bearer tok');
+  });
+
+  it('keeps Headers instances and tuple arrays from the caller', async () => {
+    await authedFetch('/x', { headers: new Headers({ Accept: 'application/json' }) }, 't1');
+    expect(fetch.mock.calls[0][1].headers.get('Accept')).toBe('application/json');
+    await authedFetch('/x', { headers: [['Content-Type', 'application/json']] }, 't2');
+    expect(fetch.mock.calls[1][1].headers.get('Content-Type')).toBe('application/json');
+    expect(fetch.mock.calls[1][1].headers.get('Authorization')).toBe('Bearer t2');
   });
 
   it('uses a caller-supplied token without touching the session', async () => {
     await authedFetch('/x', {}, 'given');
     expect(getSession).not.toHaveBeenCalled();
-    expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer given');
+    expect(fetch.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer given');
   });
 
   it('keeps the legacy "Bearer undefined" when no session exists', async () => {
     getSession.mockResolvedValue({ data: { session: null } });
     expect(await getAccessToken()).toBeUndefined();
     await authedFetch('/x');
-    expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer undefined');
+    expect(fetch.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer undefined');
   });
 });

@@ -11,5 +11,8 @@ export async function getAccessToken() {
 // sent as "Bearer undefined" exactly like the old hand-built headers.
 export async function authedFetch(url, init = {}, token) {
   const t = token === undefined ? await getAccessToken() : token;
-  return fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${t}` } });
+  // new Headers() keeps every HeadersInit form (object, Headers, tuple array).
+  const headers = new Headers(init.headers);
+  headers.set('Authorization', `Bearer ${t}`);
+  return fetch(url, { ...init, headers });
 }
