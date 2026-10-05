@@ -103,6 +103,7 @@ jobs:
           [ "$CONFIRM" = "I_APPROVE_UNPAID_HIDDEN_CLOSURES" ] || { echo "::error::exact confirmation string required"; exit 1; }
           [[ "$DEPLOYED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::deployed_backend_sha must be a full commit SHA"; exit 1; }
           [[ "$ACTOR" =~ ^[A-Za-z0-9:._-]{1,64}$ ]] || { echo "::error::invalid actor"; exit 1; }
+          [[ -z "$EXPECT_DIGEST" || "$EXPECT_DIGEST" =~ ^[0-9a-f]{16}$ ]] || { echo "::error::invalid digest"; exit 1; }
           if [ "$MODE" = "execute" ]; then
             [[ "$EXPECT_DIGEST" =~ ^[0-9a-f]{16}$ ]] || { echo "::error::execute requires the 16-hex DIGEST from the reviewed dry-run"; exit 1; }
           fi
