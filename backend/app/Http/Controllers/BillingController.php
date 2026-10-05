@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\StudentClass;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyBillingService;
 use Carbon\Carbon;
@@ -112,8 +113,8 @@ class BillingController extends Controller
             }
             if (!empty($data['StudentClassID'])) {
                 $course = StudentClass::query()->whereKey($data['StudentClassID'])->lockForUpdate()->first();
-                if ($course && (string) $course->getAttribute('closed_reason') === 'waived') {
-                    return response()->json(['message' => '此合約已確認不收，不能再建立帳單', 'code' => 'course_waived'], 422);
+                if ($refusal = ContractMoneyState::waivedRefusal($course, '此合約已確認不收，不能再建立帳單', 'course_waived')) {
+                    return $refusal;
                 }
                 if ($course && strtolower(trim((string) ($course->ClassType ?? ''))) === 'tutoring') {
                     return response()->json([
