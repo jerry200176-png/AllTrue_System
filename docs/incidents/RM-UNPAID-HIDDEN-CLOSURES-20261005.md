@@ -65,3 +65,11 @@ Dry-run not ok or any drift code; manifest row count differs from the approved p
 verify failure; any sign money fields changed. Do not retry blindly: re-run a read-only probe and get a new manifest.
 
 Attach the POP request id, sanitized dry-run/execute/verify records and the deployed SHA to closeout.
+
+## Dispatch adapter
+
+`.github/workflows/pop-unpaid-hidden-closures.yml` (production-activation environment). `mode=dry-run` with
+`DRY_RUN_UNPAID_HIDDEN_CLOSURES_20261005` drafts the request and prints the dry-run result; `mode=approve` with
+`APPROVE_UNPAID_HIDDEN_CLOSURES_20261005` approves with `founder-go-unpaid-hidden-closures-20261005` bound to the
+deployed backend SHA, then observes the Pi-local execute + verify. Both require `deployed_backend_sha` equal to
+`deployment.json` and an unexpired super_admin session on the Pi.
