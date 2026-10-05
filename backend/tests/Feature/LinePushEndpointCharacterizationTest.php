@@ -250,6 +250,18 @@ class LinePushEndpointCharacterizationTest extends TestCase
         $this->assertSame('查看學習狀況', $body['messages'][0]['contents']['footer']['contents'][0]['action']['label']);
     }
 
+    public function test_only_line_push_module_knows_the_push_endpoint(): void
+    {
+        $hits = [];
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(app_path())) as $f) {
+            if ($f->isFile() && str_ends_with($f->getFilename(), '.php')
+                && str_contains(file_get_contents($f->getPathname()), 'message/push')) {
+                $hits[] = $f->getFilename();
+            }
+        }
+        $this->assertSame(['LinePush.php'], $hits);
+    }
+
     private function assertAuditEvent(string $type, string $outcome, string $status): void
     {
         $row = DB::table('security_audit_events')->where('event_type', 'notification.delivery')->first();
