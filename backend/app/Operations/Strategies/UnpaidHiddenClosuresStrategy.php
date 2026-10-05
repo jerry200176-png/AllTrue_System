@@ -41,7 +41,15 @@ final class UnpaidHiddenClosuresStrategy
     {
         if (($plan['ok'] ?? false) && ($plan['state'] ?? null) === 'after') {
             // Already applied (e.g. a retry after the execution record failed to persist): idempotent, let verify run.
-            return ['ok' => true, 'already_applied' => true, 'updated' => 0, 'snapshot' => []];
+            // Rebuild the rollback snapshot: old reasons come from the manifest, the ledger from the live rows.
+            $rows = $this->inspect(false);
+            foreach (UnpaidHiddenClosuresManifest::cases() as $id => $case) {
+                if (isset($rows[$id])) {
+                    $rows[$id]['closed_reason'] = $case['closed_reason'];
+                }
+            }
+
+            return ['ok' => true, 'already_applied' => true, 'updated' => 0, 'snapshot' => $this->snapshot($rows)];
         }
         if (!($plan['ok'] ?? false) || ($plan['state'] ?? null) !== 'before') {
             throw new RuntimeException('unpaid_hidden_plan_not_ready');
@@ -89,7 +97,7 @@ final class UnpaidHiddenClosuresStrategy
                 $row = $now[$id] ?? null;
                 if (!$row || $row['closed_reason'] !== 'settled_pending'
                     || $row['outstanding'] !== $old['outstanding'] || $row['payments'] !== $old['payments']
-                    || $row['invoices'] !== $old['invoices']) {
+                    || $row['invoices'] !== $old['invoices'] || $row['pending_report']) {
                     $skippedIds[] = $id; // later financial activity or already moved on: leave it alone
                     continue;
                 }
