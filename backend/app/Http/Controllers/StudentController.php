@@ -299,7 +299,7 @@ class StudentController extends Controller
     {
         $paid = DB::table('Payment')->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')
             ->whereIn('Invoice.StudentID', $studentIds)->pluck('Invoice.StudentID');
-        $reported = DB::table('payment_reports')->whereIn('StudentID', $studentIds)->where('status', 'confirmed')->pluck('StudentID');
+        $reported = DB::table('payment_reports')->whereIn('StudentID', $studentIds)->whereIn('status', ['confirmed', 'pending'])->pluck('StudentID'); // a pending claim is also money evidence
 
         return $paid->merge($reported)->map(fn ($id) => (int) $id)->unique()->values()->all();
     }
