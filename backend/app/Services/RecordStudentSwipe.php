@@ -19,117 +19,128 @@ class RecordStudentSwipe
     private const DEBOUNCE_SECONDS = 60;
 
     /**
-     * @return array{status:int, action:string, record:StudentSignIn, class:?array{id:mixed, teacher_id:mixed}}
+     * $respond builds the caller's response from the result and runs INSIDE the transaction, so a
+     * failure while building it still rolls the swipe back (same as before this was extracted).
+     *
+     * @param  callable(array{status:int, action:string, record:StudentSignIn, class:?array{id:mixed, teacher_id:mixed}}): mixed  $respond
      */
-    public function handle(Student $student, Campus $campus, Carbon $swipeAt): array
+    public function handle(Student $student, Campus $campus, Carbon $swipeAt, callable $respond): mixed
     {
         $campusId = $campus->id;
 
-        return DB::transaction(function () use ($student, $campusId, $swipeAt) {
-            $today = $swipeAt->toDateString();
+        return DB::transaction(function () use ($student, $campusId, $swipeAt, $respond) {
+            return $respond($this->record($student, $campusId, $swipeAt));
+        });
+    }
 
-            $openRecord = StudentSignIn::where('StudentID', $student->id)
-                ->whereDate('SignInDT', $today)
-                ->whereNull('SignOutDT')
-                ->orderBy('id', 'desc')
+    /**
+     * @return array{status:int, action:string, record:StudentSignIn, class:?array{id:mixed, teacher_id:mixed}}
+     */
+    private function record(Student $student, int $campusId, Carbon $swipeAt): array
+    {
+        $today = $swipeAt->toDateString();
+
+        $openRecord = StudentSignIn::where('StudentID', $student->id)
+            ->whereDate('SignInDT', $today)
+            ->whereNull('SignOutDT')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if ($openRecord) {
+            // TD-006: debounce — RF bounce 在 60 秒內的重複訊號直接忽略，不自動簽退
+            $ageSeconds = Carbon::parse($openRecord->SignInDT)->diffInSeconds($swipeAt);
+            if ($ageSeconds <= self::DEBOUNCE_SECONDS) {
+                return ['status' => 200, 'action' => 'duplicate_ignored', 'record' => $openRecord, 'class' => null];
+            }
+
+            $openRecord->SignOutDT = $swipeAt;
+            $openRecord->MDT = $swipeAt;
+            $openRecord->save();
+
+            StudentPresenceBackfillService::backfill(
+                $student,
+                Carbon::parse($openRecord->SignInDT),
+                $swipeAt,
+                $campusId
+            );
+
+            return ['status' => 200, 'action' => 'sign_out', 'record' => $openRecord, 'class' => null];
+        }
+
+        [$studentClass, $hours, $classSessionId] = $this->findMatchingClass($student, $swipeAt);
+
+        // TD-007: duplicate sign-in guard — 若同一個 ClassSession 當天已有未作廢的記錄則不重複建立
+        if ($classSessionId !== null) {
+            $existingSignIn = StudentSignIn::where('StudentID', $student->id)
+                ->where('ClassSessionID', $classSessionId)
+                ->whereNull('VoidedAt')
                 ->first();
 
-            if ($openRecord) {
-                // TD-006: debounce — RF bounce 在 60 秒內的重複訊號直接忽略，不自動簽退
-                $ageSeconds = Carbon::parse($openRecord->SignInDT)->diffInSeconds($swipeAt);
-                if ($ageSeconds <= self::DEBOUNCE_SECONDS) {
-                    return ['status' => 200, 'action' => 'duplicate_ignored', 'record' => $openRecord, 'class' => null];
-                }
-
-                $openRecord->SignOutDT = $swipeAt;
-                $openRecord->MDT = $swipeAt;
-                $openRecord->save();
-
-                StudentPresenceBackfillService::backfill(
-                    $student,
-                    Carbon::parse($openRecord->SignInDT),
-                    $swipeAt,
-                    $campusId
-                );
-
-                return ['status' => 200, 'action' => 'sign_out', 'record' => $openRecord, 'class' => null];
+            if ($existingSignIn) {
+                return ['status' => 200, 'action' => 'duplicate_ignored', 'record' => $existingSignIn, 'class' => null];
             }
+        }
 
-            [$studentClass, $hours, $classSessionId] = $this->findMatchingClass($student, $swipeAt);
-
-            // TD-007: duplicate sign-in guard — 若同一個 ClassSession 當天已有未作廢的記錄則不重複建立
-            if ($classSessionId !== null) {
-                $existingSignIn = StudentSignIn::where('StudentID', $student->id)
-                    ->where('ClassSessionID', $classSessionId)
-                    ->whereNull('VoidedAt')
-                    ->first();
-
-                if ($existingSignIn) {
-                    return ['status' => 200, 'action' => 'duplicate_ignored', 'record' => $existingSignIn, 'class' => null];
-                }
+        // FR-005: TeacherID fallback — if StudentClass.TeacherID is null but we have
+        // a ClassSession, try to get TeacherID from the ClassSession's StudentClass.
+        $resolvedTeacherId = $studentClass?->TeacherID;
+        if ($resolvedTeacherId === null && $classSessionId !== null) {
+            $fallbackSc = ClassSession::find($classSessionId)?->studentClass;
+            $resolvedTeacherId = $fallbackSc?->TeacherID ?? null;
+            if ($resolvedTeacherId === null) {
+                Log::warning('[swipe] TeacherID resolved to null', [
+                    'student_id'       => $student->id,
+                    'class_session_id' => $classSessionId,
+                    'student_class_id' => $studentClass?->ID,
+                ]);
             }
+        }
 
-            // FR-005: TeacherID fallback — if StudentClass.TeacherID is null but we have
-            // a ClassSession, try to get TeacherID from the ClassSession's StudentClass.
-            $resolvedTeacherId = $studentClass?->TeacherID;
-            if ($resolvedTeacherId === null && $classSessionId !== null) {
-                $fallbackSc = ClassSession::find($classSessionId)?->studentClass;
-                $resolvedTeacherId = $fallbackSc?->TeacherID ?? null;
-                if ($resolvedTeacherId === null) {
-                    Log::warning('[swipe] TeacherID resolved to null', [
-                        'student_id'       => $student->id,
-                        'class_session_id' => $classSessionId,
-                        'student_class_id' => $studentClass?->ID,
-                    ]);
-                }
+        $signIn = StudentSignIn::create([
+            'StudentClassID'   => $studentClass?->ID,
+            'StudentID'        => $student->id,
+            'TeacherID'        => $resolvedTeacherId,
+            'RecordedByUserID' => null,
+            'GradeID'          => $studentClass?->GradeID,
+            'SubjectID'        => $studentClass?->SubjectID,
+            'Get1byID'         => $studentClass?->by1,
+            'Hours'            => $hours,
+            'Memo'             => $studentClass ? 'swipe-rfid' : 'self_study',
+            'SignInDT'         => $swipeAt,
+            'SignOutDT'        => null,
+            'MDT'              => $swipeAt,
+            'ClassSessionID'   => $classSessionId,
+            'Status'           => 'present',
+            'CampusID'         => $campusId,
+            'PersonType'       => 'student',
+            'SessionDeducted'  => false,
+        ]);
+
+        // FR-001/FR-002: Sync ClassSession.Status after successful swipe.
+        // Only updates when Status = 'scheduled' (guard prevents overwriting human decisions).
+        if ($classSessionId !== null) {
+            $classSession = ClassSession::find($classSessionId);
+            if ($classSession) {
+                $swipeStatus = AttendanceEffectsService::resolveSwipeStatus($classSession, $swipeAt);
+                AttendanceEffectsService::applySessionStatus($classSession, $swipeStatus);
             }
+        }
 
-            $signIn = StudentSignIn::create([
-                'StudentClassID'   => $studentClass?->ID,
-                'StudentID'        => $student->id,
-                'TeacherID'        => $resolvedTeacherId,
-                'RecordedByUserID' => null,
-                'GradeID'          => $studentClass?->GradeID,
-                'SubjectID'        => $studentClass?->SubjectID,
-                'Get1byID'         => $studentClass?->by1,
-                'Hours'            => $hours,
-                'Memo'             => $studentClass ? 'swipe-rfid' : 'self_study',
-                'SignInDT'         => $swipeAt,
-                'SignOutDT'        => null,
-                'MDT'              => $swipeAt,
-                'ClassSessionID'   => $classSessionId,
-                'Status'           => 'present',
-                'CampusID'         => $campusId,
-                'PersonType'       => 'student',
-                'SessionDeducted'  => false,
-            ]);
+        // Deduct session on sign-in (點名成功才扣堂)
+        if ($studentClass && !$signIn->SessionDeducted) {
+            SessionDeductionService::deductOnAttendance($studentClass, $signIn);
+            StudentPresenceBackfillService::alertIfNotDeducted($signIn, $campusId);
+        }
 
-            // FR-001/FR-002: Sync ClassSession.Status after successful swipe.
-            // Only updates when Status = 'scheduled' (guard prevents overwriting human decisions).
-            if ($classSessionId !== null) {
-                $classSession = ClassSession::find($classSessionId);
-                if ($classSession) {
-                    $swipeStatus = AttendanceEffectsService::resolveSwipeStatus($classSession, $swipeAt);
-                    AttendanceEffectsService::applySessionStatus($classSession, $swipeStatus);
-                }
-            }
-
-            // Deduct session on sign-in (點名成功才扣堂)
-            if ($studentClass && !$signIn->SessionDeducted) {
-                SessionDeductionService::deductOnAttendance($studentClass, $signIn);
-                StudentPresenceBackfillService::alertIfNotDeducted($signIn, $campusId);
-            }
-
-            return [
-                'status' => 201,
-                'action' => 'sign_in',
-                'record' => $signIn,
-                'class'  => $studentClass ? [
-                    'id'         => $studentClass->ID,
-                    'teacher_id' => $studentClass->TeacherID,
-                ] : null,
-            ];
-        });
+        return [
+            'status' => 201,
+            'action' => 'sign_in',
+            'record' => $signIn,
+            'class'  => $studentClass ? [
+                'id'         => $studentClass->ID,
+                'teacher_id' => $studentClass->TeacherID,
+            ] : null,
+        ];
     }
 
     /**

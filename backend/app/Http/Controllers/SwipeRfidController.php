@@ -227,21 +227,22 @@ class SwipeRfidController extends Controller
 
     private function handleStudentSwipe(Student $student, Campus $campus, Carbon $swipeAt)
     {
-        $result = app(RecordStudentSwipe::class)->handle($student, $campus, $swipeAt);
+        // 回應（含 studentPayload）在 transaction 內組好：組不出來就整筆刷卡 rollback，跟抽出前一樣。
+        return app(RecordStudentSwipe::class)->handle($student, $campus, $swipeAt, function (array $result) use ($student, $campus) {
+            $body = [
+                'ok'      => true,
+                'type'    => 'student',
+                'action'  => $result['action'],
+                'record'  => $result['record'],
+                'student' => $this->studentPayload($student),
+            ];
+            if ($result['action'] === 'sign_in') {
+                $body['class'] = $result['class']; // null = 自習（沒有符合的課堂）
+            }
+            $body['campus'] = ['TelegramToken' => $campus->TelegramToken ?? null];
 
-        $body = [
-            'ok'      => true,
-            'type'    => 'student',
-            'action'  => $result['action'],
-            'record'  => $result['record'],
-            'student' => $this->studentPayload($student),
-        ];
-        if ($result['action'] === 'sign_in') {
-            $body['class'] = $result['class']; // null = 自習（沒有符合的課堂）
-        }
-        $body['campus'] = ['TelegramToken' => $campus->TelegramToken ?? null];
-
-        return response()->json($body, $result['status']);
+            return response()->json($body, $result['status']);
+        });
     }
 
     /**

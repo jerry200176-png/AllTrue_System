@@ -41,4 +41,26 @@ class StudentSwipeResponseShapeTest extends TestCase
         $this->assertNotNull($out->json('record.SignOutDT'));
         $this->assertSame(1, \App\Models\StudentSignIn::count());
     }
+
+    public function test_failure_while_building_the_response_rolls_the_swipe_back(): void
+    {
+        $campus = Campus::create([
+            'name' => 'RbCampus', 'Token' => 'rb-token', 'code' => 'rb', 'Current' => 0,
+            'LineNotifyID' => '', 'Client_ID' => '', 'Client_Secret' => '', 'LIFFID' => '', 'LIFF_URL' => '',
+            'URL' => '', 'TelegramToken' => '', 'TelegramChatID' => '', 'TelegramURL' => '',
+            'TeachLIFFID' => '', 'TeachLIFF_URL' => '',
+        ]);
+        $student = Student::create(['name' => 'RbKid', 'CampusID' => $campus->id, 'ClassID' => 1, 'RFID' => 'RB-1', 'enable' => 1]);
+
+        try {
+            app(\App\Services\RecordStudentSwipe::class)->handle($student, $campus, now(), function () {
+                throw new \RuntimeException('payload failed');
+            });
+            $this->fail('expected exception');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('payload failed', $e->getMessage());
+        }
+
+        $this->assertSame(0, \App\Models\StudentSignIn::count());
+    }
 }
