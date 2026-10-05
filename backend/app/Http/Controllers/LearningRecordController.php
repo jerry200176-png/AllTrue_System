@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
+use App\Services\OccurrenceAssignmentService;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordFeedback;
 use App\Models\LearningRecordTeacherComment;
@@ -1376,7 +1377,17 @@ class LearningRecordController extends Controller
 
         $updateClass = (bool) ($data['update_class'] ?? false);
 
-        return DB::transaction(function () use ($request, $learningRecord, $newTeacherId, $oldTeacherId, $data, $updateClass) {
+        return DB::transaction(function () use ($request, $learningRecord, $newTeacherId, $oldTeacherId, $data, $updateClass, $targetCampusId) {
+            // TD-076 B2 (flag on): pin taught occurrences while the old contract/LR evidence is still intact.
+            $occurrenceV2 = OccurrenceAssignmentService::enabledFor($targetCampusId);
+            if ($occurrenceV2 && $updateClass) {
+                $course = StudentClass::find($learningRecord->StudentClassID);
+                if ($course && (int) $course->TeacherID > 0 && (int) $course->TeacherID !== $newTeacherId) {
+                    \App\Services\Scheduling\ContractTeacherChangeCascade::pinTaughtOccurrencesBeforeContractTeacherChange(
+                        $course, $newTeacherId, null, (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null
+                    );
+                }
+            }
             $learningRecord->TeacherID = $newTeacherId;
             $learningRecord->save();
 
@@ -1401,6 +1412,12 @@ class LearningRecordController extends Controller
             $changedBy = (int) ($authUser->id ?? 0);
             if ($changedBy <= 0) {
                 $changedBy = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+            }
+
+            $session = $occurrenceV2 && $learningRecord->ClassSessionID ? ClassSession::find($learningRecord->ClassSessionID) : null;
+            if ($session && !OccurrenceAssignmentService::onLeave($session) && \App\Services\Scheduling\ContractTeacherChangeCascade::isPinnableOccurrence($session)) {
+                // The occurrence row agrees with the corrected LR (also for update_class=true, after its pin pass).
+                app(OccurrenceAssignmentService::class)->assignTeacher($session, $newTeacherId, (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null);
             }
 
             LearningRecordTeacherChange::create([

@@ -1,3 +1,4 @@
+import { isDirectorRole } from './roleCapabilities.js';
 /**
  * Decide whether a /me profile refresh may change the SPA active page.
  *
@@ -34,7 +35,7 @@ export function resolveActiveAfterProfileLoad({
     return current;
   }
 
-  if (normalizedRole === 'director' || normalizedRole === 'admin' || normalizedRole === 'super_admin') {
+  if (isDirectorRole(normalizedRole)) {
     // Role mismatch cleanup only (e.g. leftover teacher landing). Never reset
     // an intentional director page such as course-mgmt / calendar.
     if (current === 'teacher-home') return 'director';

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class ScheduleChangeLog extends Model
 {
-    public const REASONS = ['reschedule', 'substitute', 'restore', 'pin', 'repair_supersede'];
+    public const REASONS = ['reschedule', 'substitute', 'restore', 'pin', 'pin_conflict', 'repair_supersede'];
 
     protected $table = 'schedule_change_log';
 

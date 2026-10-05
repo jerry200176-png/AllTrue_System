@@ -12,6 +12,9 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\BackfillScheduleOccurrenceIdentityService;
 use App\Services\ClassSessionIndexReadService;
+use App\Services\Scheduling\NonstandardDurationInventoryReporter;
+use App\Services\SessionDeductionService;
+use Illuminate\Support\Carbon;
 use App\Services\ScheduleGuardService;
 use App\Services\SubstituteScheduleService;
 use App\Services\SubstituteService;
@@ -240,5 +243,91 @@ class SupersededScheduleInvisibleToReadersTest extends TestCase
 
         DB::table('schedules')->where('id', 301)->update(['status' => 'scheduled']);
         $this->assertNotEmpty($svc->collectTeacherBusySlots($this->aId, self::DATE), 'control: newer scheduled row is live');
+    }
+
+    public function test_session_dates_ignore_superseded_row_as_leave(): void
+    {
+        Carbon::setTestNow('2026-10-06 09:00:00');
+        $user = User::create(['LoginName' => 'sd-sup@example.com', 'Name' => 'sd', 'PSW' => bcrypt('x'), 'type' => 'A', 'status' => 'active']);
+        UserCampus::create(['UserID' => $user->id, 'CampusID' => 1, 'Admin' => 1, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+
+        // 3-session Friday contract: 10-09, 10-16, 10-23 with no ClassSession rows. A leave row on 10-16 pushes
+        // the walk to 10-30; a superseded row on 10-16 must leave the date in place.
+        $sc = StudentClass::create([
+            'StudentID' => $this->sc->StudentID, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => $this->aId,
+            'ClassType' => 'one_on_one', 'by1' => 1, 'Period' => 4, 'StartDate' => '2026-10-09', 'TotalHours' => 6,
+            'SessionCount' => 3, 'SessionDuration' => 120, 'RemainingSessions' => 3, 'UsedSessions' => 0,
+            'Charge' => 1600, 'Pay' => 4800, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
+            'MDate' => now(), 'ScheduleMode' => 'count', 'week' => 5,
+        ]);
+        $setRow = fn (string $status) => DB::table('schedules')->updateOrInsert(['id' => 500], [
+            'student_id' => $this->sc->StudentID, 'day_of_week' => 5, 'type' => 'normal', 'deduction' => 1,
+            'branch_id' => 1, 'student_course_id' => $sc->ID, 'teacher_id' => $this->aId, 'status' => $status,
+            'schedule_date' => '2026-10-16', 'start_time' => '10:00:00', 'end_time' => '12:00:00',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $range = ['branch_id' => 1, 'range_start' => '2026-10-01', 'range_end' => '2026-10-31'];
+        $datesOf = function ($res) use ($sc) {
+            $res->assertOk();
+            $p = $res->json((string) $sc->ID) ?? [];
+
+            return array_values(array_unique(array_merge(
+                array_column($p['materialized'] ?? [], 'session_date'),
+                array_column($p['projected'] ?? [], 'session_date')
+            )));
+        };
+        $viaBody = fn () => $datesOf($this->withHeaders($headers)->postJson('/api/v1/student-classes/session-dates', $range + [
+            'courses' => [['id' => $sc->ID, 'first_class_date' => '2026-10-09', 'sessions_purchased' => 3, 'days_of_week' => [5]]],
+        ]));
+        $viaQuery = fn () => $datesOf($this->withHeaders($headers)->getJson('/api/v1/student-classes/session-dates?' . http_build_query($range)));
+
+        $setRow(Schedule::STATUS_SUPERSEDED);
+        foreach ([$viaBody, $viaQuery] as $read) {
+            $this->assertContains('2026-10-16', $read(), 'superseded row is not a leave');
+        }
+
+        $setRow('leave');
+        foreach ([$viaBody, $viaQuery] as $read) {
+            $this->assertNotContains('2026-10-16', $read(), 'control: a leave row removes the date');
+        }
+        Carbon::setTestNow();
+    }
+
+    public function test_partial_makeup_detection_ignores_superseded_extra_row(): void
+    {
+        $this->session->update(['EndTime' => '11:00:00']); // 60 min vs the 120 min contract length
+        DB::table('schedules')->insert([
+            'id' => 400, 'student_id' => 1, 'day_of_week' => 5, 'type' => 'extra', 'deduction' => 1, 'branch_id' => 1,
+            'student_course_id' => $this->sc->ID, 'schedule_date' => self::DATE, 'teacher_id' => $this->aId,
+            'status' => Schedule::STATUS_SUPERSEDED, 'start_time' => '10:00:00', 'end_time' => '11:00:00',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $resolve = fn () => (new \ReflectionMethod(SessionDeductionService::class, 'resolvePartialMakeupMinutes'))
+            ->invoke(null, $this->sc->fresh(), (int) $this->session->id);
+
+        $this->assertNull($resolve());
+
+        DB::table('schedules')->where('id', 400)->update(['status' => 'scheduled']);
+        $this->assertSame(60, $resolve(), 'control: a scheduled extra row is a makeup');
+    }
+
+    public function test_nonstandard_duration_makeup_keys_ignore_superseded_extra_row(): void
+    {
+        DB::table('schedules')->insert([
+            'id' => 410, 'student_id' => 1, 'day_of_week' => 5, 'type' => 'extra', 'deduction' => 1, 'branch_id' => 1,
+            'student_course_id' => $this->sc->ID, 'schedule_date' => self::DATE, 'teacher_id' => $this->aId,
+            'status' => Schedule::STATUS_SUPERSEDED, 'start_time' => '10:00:00', 'end_time' => '11:00:00',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $keys = fn () => (new \ReflectionMethod(NonstandardDurationInventoryReporter::class, 'loadMakeupKeys'))
+            ->invoke(new NonstandardDurationInventoryReporter(), [(int) $this->sc->ID]);
+
+        $this->assertSame([], $keys());
+
+        DB::table('schedules')->where('id', 410)->update(['status' => 'scheduled']);
+        $this->assertNotEmpty($keys(), 'control');
     }
 }
