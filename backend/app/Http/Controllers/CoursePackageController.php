@@ -359,7 +359,7 @@ class CoursePackageController extends Controller
 
             $createdMembers = [];
             $membersScheduled = [];
-            $scController = app()->make(\App\Http\Controllers\StudentClassController::class);
+            $scController = app(\App\Services\Scheduling\ContractSessionSchedule::class);
             $materializer = app(ClassSessionMaterializationService::class);
 
             foreach ($data['subjects'] as $subjectSpec) {
@@ -1251,7 +1251,7 @@ class CoursePackageController extends Controller
                     $beforeActive = $beforeAll->count();
 
                     $scController->cancelExcessScheduledSessions((int) $member->ID, $newTotal);
-                    $scController->extendSessionsIfNeeded($member, $newTotal);
+                    app(\App\Services\Scheduling\ContractSessionSchedule::class)->extendSessionsIfNeeded($member, $newTotal);
 
                     $afterActive = ClassSession::where('StudentClassID', $member->ID)
                         ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
