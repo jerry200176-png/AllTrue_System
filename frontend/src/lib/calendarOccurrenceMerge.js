@@ -51,9 +51,11 @@ function normalizedSubject(row) {
   return String(row?.subject || row?.Subject || '').trim().toLowerCase();
 }
 
-// Backend (ClassSessionIndexReadService) already resolved the effective
-// substitute for this session: the newest substitute row, not any older
-// same-slot schedules row (e.g. a reschedule target still on the contract teacher).
+// R44: the backend (ClassSessionIndexReadService) already resolved the effective
+// substitute for this session (newest substitute row). An older same-slot
+// schedules row (e.g. a reschedule target still on the contract teacher) must
+// not override it. Only applied when a substitute is set: without one, the
+// session cache can lag a just-written substitute row (SC#382 lock).
 function sessionSubstituteId(sessionRow) {
   const id = sessionRow?.substituteTeacherId ?? sessionRow?.substitute_teacher_id;
   return id != null && id !== '' ? String(id) : '';

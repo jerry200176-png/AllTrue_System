@@ -253,7 +253,7 @@ Inventory: `rg -n "original_schedule_id|status=.rescheduled" backend/app`.
 | Path | Walks chain? | Notes |
 |---|---|---|
 | `frontend/src/lib/calendarExceptionMerge.js` | yes | R102 same-slot supersede (not same-date-only). Leave on that course/date hides the scheduled exception card. |
-| `frontend/src/lib/calendarOccurrenceMerge.js` | yes | R103: skip `scheduled`+`original_schedule_id` with no materialized `ClassSession`. |
+| `frontend/src/lib/calendarOccurrenceMerge.js` | yes | R103: skip `scheduled`+`original_schedule_id` with no materialized `ClassSession`. R44 (2026-10-05, 新莊 session 41612): two chains on one slot overlaid in turn; the contract-teacher row overwrote the substitute. Now a backend-resolved `substitute_teacher_id` on the session row wins. |
 | `frontend/src/lib/sessionDates.js` | yes | Treats `scheduled`+`original_schedule_id` as a reschedule destination. |
 | `frontend/src/composables/course-management/useRescheduleAndMakeup.js` | yes | Splits leave vs destination lists. |
 | `frontend/src/pages/SmartCalendar.vue` | yes | Uses `original_schedule_id` when matching a cell. |
