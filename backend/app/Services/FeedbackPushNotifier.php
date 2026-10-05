@@ -3,13 +3,13 @@
 namespace App\Services;
 
 use App\Models\FeedbackPushLog;
+use App\Services\Line\LinePush;
 use App\Models\LearningRecordFeedback;
 use App\Models\Notification;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
 use App\Models\SecurityAuditEvent;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -195,10 +195,7 @@ class FeedbackPushNotifier
             return false;
         }
         try {
-            $resp = Http::withToken($token)->post('https://api.line.me/v2/bot/message/push', [
-                'to' => $lineUserId,
-                'messages' => [['type' => 'text', 'text' => $text]],
-            ]);
+            $resp = app(LinePush::class)->send($token, $lineUserId, [['type' => 'text', 'text' => $text]]);
             return $resp->successful();
         } catch (\Throwable $e) {
             Log::warning('feedback_push_line_failed: ' . $e->getMessage());
