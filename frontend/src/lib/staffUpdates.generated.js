@@ -4,36 +4,6 @@
  */
 export const staffUpdates = [
   {
-    "id": "staff-2026-10-05-unpaid-backlog-pending",
-    "publishedAt": "2026-10-05",
-    "effectiveAt": null,
-    "audiences": [
-      "director"
-    ],
-    "audience": [
-      "director"
-    ],
-    "importance": "action_required",
-    "title": "舊的未繳月份回來了",
-    "summary": "先前被誤標已結算的未繳月份，已回到帳務中心「待對帳」。",
-    "items": [
-      "款項已收請記錄收款；還沒收請跟進；確定不收就按「確認不收」並寫原因。"
-    ],
-    "sections": [
-      {
-        "title": "需要你注意",
-        "items": [
-          "款項已收請記錄收款；還沒收請跟進；確定不收就按「確認不收」並寫原因。"
-        ]
-      }
-    ],
-    "sourceRefs": [
-      "changelog:2026-10-05:unpaid-backlog-pending"
-    ],
-    "date": "2026-10-05",
-    "version": "2026.10.05"
-  },
-  {
     "id": "staff-2026-10-05-waive-unpaid-contract",
     "publishedAt": "2026-10-05",
     "effectiveAt": null,

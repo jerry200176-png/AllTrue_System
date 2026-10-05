@@ -1,6 +1,6 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 4
+version: 5
 
 operations:
   muzha-fixed-schedule-20261001:

@@ -486,7 +486,8 @@ class PaymentReportController extends Controller
                 'reconciled_by'  => $userId,
             ]);
 
-            if ($sc && !$sc->Paid) {
+            // A partial confirmation must not settle the course: the remaining balance stays in 待對帳.
+            if ($sc && !$sc->Paid && $status === 'paid') {
                 $sc->update([
                     'Paid' => 1,
                     'PayDate' => Carbon::today()->toDateString(),

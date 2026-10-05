@@ -720,3 +720,7 @@ exemptions:
     changelog_date: "2026-10-04"
     changelog_title: "fix(course-edit): slot edits check exactly the lessons that move; no false block on own lessons, no self-overlap (in-app #347, part 2)"
     reason: 課程時段編輯的可見變化（不再擋自己的課）待正式站驗證後另 PR 發布教職員卡片
+  - id: silent-2026-10-05-unpaid-backlog-pop
+    changelog_date: "2026-10-05"
+    changelog_title: "chore(ops): POP operation puts unpaid hidden closures back in the reconciliation queue"
+    reason: POP 修復需部署後另經 Founder 核准執行；教職員卡片於正式站執行並驗證成功後另 PR 發布

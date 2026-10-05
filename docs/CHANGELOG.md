@@ -14,7 +14,7 @@
 - 學生管理的試聽課改走「轉為正式課程」（與課程管理一致）；後端加購端點拒絕試聽來源，避免再建立試聽批次
 
 ## 2026-10-05 — chore(ops): POP operation puts unpaid hidden closures back in the reconciliation queue
-<!-- release-notes: staff_update=staff-2026-10-05-unpaid-backlog-pending -->
+<!-- release-notes: silent_ship=silent-2026-10-05-unpaid-backlog-pop -->
 - 新增 POP 營運操作 `unpaid-hidden-closures-20261005`（`UnpaidHiddenClosuresStrategy`，精確名單、Founder 核准、可回滾）：把先前被標成 `settled`／`completed` 卻仍有欠款的合約改標 `settled_pending`（待對帳）；只改 `closed_reason`，不動 Invoice／Payment／Charge／Paid。Runbook：`docs/incidents/RM-UNPAID-HIDDEN-CLOSURES-20261005.md`
 
 ## 2026-10-04 — fix(course-edit): slot edits check exactly the lessons that move; no false block on own lessons, no self-overlap (in-app #347, part 2)

@@ -86,7 +86,8 @@ final class UnpaidHiddenClosuresStrategy
             foreach ($before as $id => $old) {
                 $row = $now[$id] ?? null;
                 if (!$row || $row['closed_reason'] !== 'settled_pending'
-                    || $row['outstanding'] !== $old['outstanding'] || $row['payments'] !== $old['payments']) {
+                    || $row['outstanding'] !== $old['outstanding'] || $row['payments'] !== $old['payments']
+                    || $row['invoices'] !== $old['invoices']) {
                     $skippedIds[] = $id; // later financial activity or already moved on: leave it alone
                     continue;
                 }
@@ -135,6 +136,7 @@ final class UnpaidHiddenClosuresStrategy
                 'closed_reason' => (string) $c->getAttribute('closed_reason'), 'outstanding' => $owed,
                 'invoices' => $invoiceIds, 'payments' => $payments,
                 'stop' => (int) $c->getAttribute('Stop'), 'paid' => (int) $c->getAttribute('Paid'),
+                'effectively_paid' => $c->isEffectivelyPaid(),
                 'tutoring' => strtolower(trim((string) $c->getAttribute('ClassType'))) === 'tutoring',
                 'campus_id' => (int) $c->student?->getAttribute('CampusID'),
             ];
@@ -153,7 +155,7 @@ final class UnpaidHiddenClosuresStrategy
             if ($r['campus_id'] !== $case['campus_id']) $errors[] = "campus_{$id}";
             if ($r['stop'] !== 1) $errors[] = "not_closed_{$id}";
             if ($r['closed_reason'] !== $case['closed_reason']) $errors[] = "reason_{$id}";
-            if ($r['paid'] === 1) $errors[] = "paid_{$id}";
+            if ($r['paid'] === 1 || $r['effectively_paid']) $errors[] = "paid_{$id}"; // incl. paid package
             if ($r['tutoring']) $errors[] = "tutoring_{$id}";
             if ($r['outstanding'] !== $case['outstanding']) $errors[] = "outstanding_{$id}";
         }
