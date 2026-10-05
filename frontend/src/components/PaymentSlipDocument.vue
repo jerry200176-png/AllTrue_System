@@ -204,23 +204,23 @@ defineExpose({ slip });
 
 <style scoped>
 /* ─── The slip (exported as PNG) ───────────────────────────────
-   Fixed light palette on purpose: the image goes to parents and must look
-   the same regardless of the staff member's dark-mode setting. */
+   Uses the fixed --ds-print-* palette: the image goes to parents and must
+   look the same regardless of the staff member's dark-mode setting. */
 .slip {
-  --slip-accent: #EF6C00;
-  --slip-accent-wash: #FFF3E0;
-  --slip-ink: #1F2937;
-  --slip-ink-2: #4B5563;
-  --slip-mute: #6B7280;
-  --slip-line: #E5E7EB;
-  --slip-soft: #F9FAFB;
-  --slip-done: #15803D;
-  --slip-done-wash: #DCFCE7;
-  --slip-warn: #B45309;
-  --slip-warn-wash: #FEF3C7;
-  --slip-leave: #6D28D9;
-  --slip-leave-wash: #EDE9FE;
-  --slip-paper: #FFFFFF;
+  --slip-accent: var(--ds-print-accent);
+  --slip-accent-wash: var(--ds-print-accent-wash);
+  --slip-ink: var(--ds-print-ink);
+  --slip-ink-2: var(--ds-print-ink-2);
+  --slip-mute: var(--ds-print-mute);
+  --slip-line: var(--ds-print-line);
+  --slip-soft: var(--ds-print-soft);
+  --slip-done: var(--ds-print-done);
+  --slip-done-wash: var(--ds-print-done-wash);
+  --slip-warn: var(--ds-print-warn);
+  --slip-warn-wash: var(--ds-print-warn-wash);
+  --slip-leave: var(--ds-print-leave);
+  --slip-leave-wash: var(--ds-print-leave-wash);
+  --slip-paper: var(--ds-print-paper);
   flex: 0 0 auto;
   width: 580px;
   box-sizing: border-box;
@@ -235,8 +235,8 @@ defineExpose({ slip });
   line-height: 1.5;
 }
 .slip--tuition {
-  --slip-accent: #C2410C;
-  --slip-accent-wash: #FFEDD5;
+  --slip-accent: var(--ds-print-accent-strong);
+  --slip-accent-wash: var(--ds-print-accent-strong-wash);
 }
 .slip-top {
   display: flex;
