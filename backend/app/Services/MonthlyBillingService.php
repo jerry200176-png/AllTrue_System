@@ -257,6 +257,16 @@ class MonthlyBillingService
             $sessions = $held->concat($this->plannedSessions($upcomingQuery))
                 ->sortBy(fn (ClassSession $session) => sprintf('%s %s %010d', substr((string) $session->SessionDate, 0, 10), (string) $session->StartTime, (int) $session->getKey()))
                 ->values();
+            if ($rangeStart !== null) {
+                // The item range is authoritative: never widen to the whole month.
+                // Nothing held or upcoming (e.g. attendance not recorded yet):
+                // list every planned lesson inside that range.
+                if ($sessions->isEmpty()) {
+                    $sessions = $this->plannedSessions($this->periodSessionQuery($course, $billingPeriod, $rangeStart, $rangeEnd));
+                }
+
+                return $this->sessionDetails($course, $sessions);
+            }
         }
         if ($sessions->isEmpty()) {
             $sessions = $this->plannedSessions($this->periodSessionQuery($course, $billingPeriod));

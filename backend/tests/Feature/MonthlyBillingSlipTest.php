@@ -427,6 +427,13 @@ class MonthlyBillingSlipTest extends TestCase
             ->map(fn ($i) => [Carbon::parse($i->PeriodStart)->toDateString(), Carbon::parse($i->PeriodEnd)->toDateString(), (int) $i->Amount])
             ->all();
         $this->assertSame([['2026-08-30', '2026-08-31', 3300], ['2026-09-01', '2026-09-28', 3300]], $bounds);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/invoices', [
+                'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-20', 'TotalAmount' => 6600,
+                'MonthlySplit' => true, 'SplitStart' => '2026-08-20', 'SplitEnd' => '2026-08-10',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('SplitEnd');
     }
 
     public function test_partly_paid_slip_uses_item_range_and_unpaid_equal_total_stays_billed_only(): void
@@ -450,8 +457,13 @@ class MonthlyBillingSlipTest extends TestCase
 
         // Partly paid: fixed amount → held + upcoming inside the 8/10–8/20 item range only.
         $this->assertSame(['2026-08-11', '2026-08-15'], $slipDates('partial', 1000));
-        // Unpaid with total equal to the held lessons: still billed-only.
+        // Unpaid with total equal to the held lessons, and void: still billed-only.
         $this->assertSame(['2026-08-05', '2026-08-11'], $slipDates('unpaid', 0));
+        $this->assertSame(['2026-08-05', '2026-08-11'], $slipDates('void', 0));
+
+        // Paid but nothing inside the item range: stays empty, never widens to 8/25.
+        ClassSession::where('StudentClassID', $course->ID)->whereIn('SessionDate', ['2026-08-11', '2026-08-15'])->delete();
+        $this->assertSame([], $slipDates('paid', 3000));
     }
 
     /** @return array{0: Student, 1: StudentClass} */

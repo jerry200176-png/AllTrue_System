@@ -100,7 +100,7 @@ class BillingController extends Controller
             'Items.*.PeriodEnd' => 'nullable|date',
             'MonthlySplit' => 'nullable|boolean',
             'SplitStart' => 'nullable|date',
-            'SplitEnd' => 'nullable|date',
+            'SplitEnd' => 'nullable|date|after_or_equal:SplitStart',
         ]);
 
         return DB::transaction(function () use ($data) {
@@ -459,8 +459,9 @@ class BillingController extends Controller
                 $serviceStart,
                 $serviceEnd,
                 // Once paid (fully or partly) the amount is fixed and is never
-                // repriced from held lessons, so it covers upcoming lessons too.
-                includeUpcoming: (string) ($invoice->Status ?? '') !== 'unpaid',
+                // repriced from held lessons, so it covers upcoming lessons too
+                // (unpaid and void invoices keep the billed-only list).
+                includeUpcoming: in_array((string) ($invoice->Status ?? ''), ['paid', 'partial'], true),
             );
         } else {
             $sessions = ClassSession::sessionsForPaymentSlip(
