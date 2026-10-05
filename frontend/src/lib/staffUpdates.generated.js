@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-05-monthly-slip-dates",
+    "publishedAt": "2026-10-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結繳費單會列上課日期",
+    "summary": "月結繳費單不再只有一行費用，會列出這一期的上課日期。",
+    "items": [
+      "還沒點名時列排定的課；預繳下一期的單列服務期間內的課。金額不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "還沒點名時列排定的課；預繳下一期的單列服務期間內的課。金額不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-05:monthly-slip-dates"
+    ],
+    "date": "2026-10-05",
+    "version": "2026.10.05"
+  },
+  {
     "id": "staff-2026-10-03-trial-convert-from-students",
     "publishedAt": "2026-10-03",
     "effectiveAt": null,

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ClassSession;
+use App\Models\Invoice;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
@@ -20,6 +21,7 @@ class MonthlyBillingService
 {
     /** @var list<string> */
     private const BILLABLE_STATUSES = ['attended', 'completed', 'late'];
+    private const PLANNED_STATUSES = ['scheduled', 'rescheduled'];
 
     public function __construct(private StudentClassPricingService $pricing)
     {
@@ -169,16 +171,28 @@ class MonthlyBillingService
             ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
     }
 
-    private function periodSessionQuery(Model $course, string $billingPeriod): Builder
-    {
+    private function periodSessionQuery(
+        Model $course,
+        string $billingPeriod,
+        ?string $serviceStart = null,
+        ?string $serviceEnd = null,
+    ): Builder {
         try {
             $anchor = Carbon::createFromFormat('!Y-m', $billingPeriod);
         } catch (\Throwable) {
             $anchor = Carbon::today();
         }
 
-        $periodStart = $anchor->copy()->startOfMonth()->toDateString();
-        $periodEnd = $anchor->copy()->endOfMonth()->toDateString();
+        // A prepaid next-period invoice is labelled with the month its service
+        // starts in (e.g. 8/30–9/28 → 2026-08); its own service range, when
+        // known, is the window instead of the calendar month (#3445).
+        $hasServiceRange = $serviceStart !== null && $serviceEnd !== null;
+        $periodStart = $hasServiceRange
+            ? Carbon::parse($serviceStart)->toDateString()
+            : $anchor->copy()->startOfMonth()->toDateString();
+        $periodEnd = $hasServiceRange
+            ? Carbon::parse($serviceEnd)->toDateString()
+            : $anchor->copy()->endOfMonth()->toDateString();
 
         $query = ClassSession::query();
         $query->where('StudentClassID', (int) $course->getKey())
@@ -208,11 +222,79 @@ class MonthlyBillingService
     /** @return list<array{class_session_id:int,date:string,start_time:?string,end_time:?string,subject:string,lesson:int,status:string}> */
     public function billableSessionDetailsForPeriod(Model $course, string $billingPeriod): array
     {
+        return $this->sessionDetails($course, $this->billableSessionsForPeriod($course, $billingPeriod));
+    }
+
+    /**
+     * Display only (amounts and billing snapshots never use this). Prefers the
+     * billed lessons so the list matches the amount; with none billed yet it
+     * lists the month's planned lessons, and for a prepaid next-period invoice
+     * (month window empty) the lessons in its own service range (#3445).
+     *
+     * @return list<array{class_session_id:int,date:string,start_time:?string,end_time:?string,subject:string,lesson:int,status:string}>
+     */
+    public function slipSessionDetailsForPeriod(
+        Model $course,
+        string $billingPeriod,
+        \DateTimeInterface|string|null $serviceStart = null,
+        \DateTimeInterface|string|null $serviceEnd = null,
+    ): array {
+        $sessions = $this->billableSessionsForPeriod($course, $billingPeriod);
+        if ($sessions->isEmpty()) {
+            $sessions = $this->plannedSessions($this->periodSessionQuery($course, $billingPeriod));
+        }
+        if ($sessions->isEmpty() && $serviceStart !== null && $serviceEnd !== null) {
+            // The service range is the whole prepaid period: held and still-to-happen lessons.
+            $sessions = $this->periodSessionQuery($course, $billingPeriod, (string) $serviceStart, (string) $serviceEnd)
+                ->whereIn('Status', [...self::BILLABLE_STATUSES, ...self::PLANNED_STATUSES])
+                ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
+                ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+        }
+
+        return $this->sessionDetails($course, $sessions);
+    }
+
+    /**
+     * This course's service range on the invoice: the span of its linked
+     * items with both bounds (a MonthlySplit invoice has several), else the
+     * invoice's only item.
+     *
+     * @return array{0:?string,1:?string}
+     */
+    public function serviceRangeForCourse(Invoice $invoice, int $courseId): array
+    {
+        $items = $invoice->loadMissing('items')->getRelationValue('items');
+        $bounded = $items->filter(fn ($item) => $item->PeriodStart && $item->PeriodEnd);
+        $linked = $bounded->filter(fn ($item) => (int) ($item->StudentClassID ?? 0) === $courseId);
+        $source = $linked->isNotEmpty() ? $linked : ($items->count() === 1 ? $bounded : collect());
+        if ($source->isEmpty()) {
+            return [null, null];
+        }
+
+        return [
+            $source->map(fn ($item) => Carbon::parse($item->PeriodStart)->toDateString())->min(),
+            $source->map(fn ($item) => Carbon::parse($item->PeriodEnd)->toDateString())->max(),
+        ];
+    }
+
+    /** @return Collection<int, ClassSession> */
+    private function plannedSessions(Builder $query): Collection
+    {
+        // Still-to-happen lessons only (same set as receipts' upcoming list);
+        // leave/excused/absent outcomes are not lessons the charge covers.
+        return $query->whereIn('Status', self::PLANNED_STATUSES)
+            ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
+            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+    }
+
+    /** @param Collection<int, ClassSession> $sessions */
+    private function sessionDetails(Model $course, Collection $sessions): array
+    {
         $subject = method_exists($course, 'displaySubjectName')
             ? (string) $course->displaySubjectName()
             : '課程';
 
-        return $this->billableSessionsForPeriod($course, $billingPeriod)
+        return $sessions
             ->values()
             ->map(function (ClassSession $session, int $index) use ($subject): array {
                 return [

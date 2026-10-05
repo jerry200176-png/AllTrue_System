@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.10.05",
+    "date": "2026-10-05",
+    "title": "2026.10.05 草稿（未發布）",
+    "summary": "slips always list lesson dates",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "slips always list lesson dates"
+        ]
+      }
+    ],
+    "items": [
+      "slips always list lesson dates"
+    ]
+  },
+  {
     "version": "2026.10.04",
     "date": "2026-10-04",
     "title": "2026.10.04 草稿（未發布）",
@@ -655,43 +677,6 @@ export const changelogDraftNotes = [
       "綁定健康狀態與控制項更清楚",
       "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "堂數待對帳提示提供處理入口"
-    ]
-  },
-  {
-    "version": "2026.09.14",
-    "date": "2026-09-14",
-    "title": "2026.09.14 草稿（未發布）",
-    "summary": "主任繳費入口回到帳務中心；已完成堂數的未來預排不再誤顯示",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "主任繳費入口回到帳務中心",
-          "已完成堂數的未來預排不再誤顯示"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "課表回報狀態提示更容易被讀取",
-          "重複課程審核的狀態與重試更清楚",
-          "綁定清單在手機更容易查看",
-          "分校管理在手機更容易操作"
-        ]
-      }
-    ],
-    "items": [
-      "主任繳費入口回到帳務中心",
-      "已完成堂數的未來預排不再誤顯示",
-      "課表回報狀態提示更容易被讀取",
-      "重複課程審核的狀態與重試更清楚",
-      "綁定清單在手機更容易查看",
-      "分校管理在手機更容易操作"
     ]
   }
 ];

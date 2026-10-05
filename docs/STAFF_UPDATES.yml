@@ -3,6 +3,18 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-05-monthly-slip-dates
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: digest
+    title: 月結繳費單會列上課日期
+    summary: 月結繳費單不再只有一行費用，會列出這一期的上課日期。
+    items:
+      - category: fixed
+        text: 還沒點名時列排定的課；預繳下一期的單列服務期間內的課。金額不變。
+    source_refs:
+      - "changelog:2026-10-05:monthly-slip-dates"
   - id: staff-2026-10-03-trial-convert-from-students
     published_at: "2026-10-03"
     audiences:
