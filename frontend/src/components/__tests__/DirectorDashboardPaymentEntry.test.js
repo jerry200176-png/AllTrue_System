@@ -50,7 +50,7 @@ describe('director payment shortcuts', () => {
   });
 
   it('keeps notice generation limited to outstanding payment states', () => {
-    expect(dashboard).toContain("['unpaid', 'partial', 'pending_report'].includes(student?.payment_status)");
+    expect(dashboard).toContain('isPaymentNoticeStatus(student?.payment_status)');
     expect(dashboard).toContain('invoice_id: c.invoice_id || null');
     expect(dashboard).toContain('student_class_id: c.student_class_id || c.id || c.class_id || null');
   });
@@ -67,9 +67,7 @@ describe('director payment shortcuts', () => {
   });
 
   it('keeps dashboard payment actions on the Billing Center authority', () => {
-    expect(dashboard).toContain("if (status === 'pending_report') return 'pending_report';");
-    expect(dashboard).toContain("if (status === 'pending_reconciliation') return 'pending_reconciliation';");
-    expect(dashboard).toContain("if (status === 'unpaid' || status === 'partial'");
+    expect(dashboard).toContain('paymentCenterIntentFor');
     expect(tuition).toContain("activeTab.value = 'pending_reconciliation';");
   });
 

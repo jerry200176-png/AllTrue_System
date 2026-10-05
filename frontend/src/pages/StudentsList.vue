@@ -446,7 +446,7 @@
                       <div>
                         <dt>付款</dt>
                         <dd>
-                          <span :class="['student-course-card__payment', `student-course-card__payment--${course.payment_status || 'unpaid'}`]">{{ paymentStatusButtonLabel(course) }}</span>
+                          <span :class="['student-course-card__payment', `student-course-card__payment--${course.payment_status || 'unknown'}`]">{{ paymentStatusButtonLabel(course) }}</span>
                           <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需修正</span>
                           <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
                         </dd>
@@ -1034,6 +1034,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick, reactive } from 'vue';
 import { supabase } from '../supabase';
+import { isCourseSettled } from '../lib/paymentStatus.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { getStudentCourseSubjectDisplayLabel } from '../lib/studentCourseSubjectDisplay.js';
@@ -1318,20 +1319,21 @@ const forceSubmitting = ref(false);
 const paymentStatusButtonClass = (course) => {
   if (isTutoringBillingAnomaly(course)) return 'tag-billing-anomaly';
   if (isTutoringCourse(course)) return 'tag-no-payment';
-  if (course?.payment_status === 'paid') return 'ghost';
+  if (course?.payment_status === 'paid' || isCourseSettled(course) === null) return 'ghost';
   if (course?.payment_status === 'pending_report') return 'ghost';
   return 'primary';
 };
 const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isTutoringCourse(course)) return '無須繳費';
+  if (isCourseSettled(course) === null) return '繳費狀態載入中';
   if (course?.payment_status === 'paid') return '已繳費';
   if (course?.payment_status === 'pending_report') return '待對帳';
   if (course?.payment_status === 'partial') return '部分繳';
   return '未繳費';
 };
 const paymentNextActionLabel = (course) => {
-  if (isTutoringCourse(course)) return '';
+  if (isTutoringCourse(course) || isCourseSettled(course) === null) return '';
   if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
   if (course?.payment_status === 'pending_report') return '查看待對帳';
   return '前往帳務中心';
@@ -1463,15 +1465,6 @@ const isSessionPaymentLowRemaining = (course) => {
   const r = getCourseRemainingSessions(course);
   if (r == null) return false;
   return r <= 2;
-};
-const isCourseSettled = (course) => {
-  const paymentStatus = String(course?.payment_status || '').toLowerCase();
-  if (paymentStatus === 'paid') return true;
-  const paid = parseCourseNumber(course?.Paid ?? course?.paid);
-  const charge = parseCourseNumber(course?.Charge ?? course?.charge ?? course?.Pay ?? course?.pay);
-  if (paid != null && charge != null) return paid >= charge && charge > 0;
-  if (paid != null) return paid > 0;
-  return false;
 };
 function effectiveClosedReason(course) {
   if (course?.closed_reason) return course.closed_reason;
@@ -2156,7 +2149,7 @@ const loadStudentCourses = async (studentId) => {
           class_type: c.class_type,
           tutoring_billing_anomaly: c.tutoring_billing_anomaly === true,
           tutoring_billing_anomaly_reasons: c.tutoring_billing_anomaly_reasons || [],
-          payment_status: c.payment_status || 'unpaid',
+          payment_status: c.payment_status ?? null,
           rate_per_30min: c.rate_per_30min,
           duration_hours: c.duration_hours,
           payment_type: c.payment_type,
@@ -2207,9 +2200,9 @@ const loadStudentCourses = async (studentId) => {
 
   const courses = (data || []).map(c => ({
     ...c,
-    payment_status: c.payment_status || 'unpaid',
     teacher_name: c.teacher?.username || '',
-    data_source: 'supabase'
+    data_source: 'supabase',
+    _noncanonical: true
   }));
   studentCourses.value = { ...studentCourses.value, [studentId]: courses };
   await loadStudentCourseSessions(studentId, courses);
@@ -2243,7 +2236,7 @@ const loadAllStudentCourses = async () => {
             class_type: c.class_type,
             tutoring_billing_anomaly: c.tutoring_billing_anomaly === true,
             tutoring_billing_anomaly_reasons: c.tutoring_billing_anomaly_reasons || [],
-            payment_status: c.payment_status || (Number(c?.Paid || 0) > 0 ? 'paid' : 'unpaid'),
+            payment_status: c.payment_status ?? null,
             rate_per_30min: c.rate_per_30min,
             duration_hours: c.duration_hours,
             payment_type: c.payment_type,
@@ -2298,7 +2291,7 @@ const loadAllStudentCourses = async () => {
   (data || []).forEach(c => {
     const sid = c.student_id;
     if (!map[sid]) map[sid] = [];
-    map[sid].push({ ...c, teacher_name: c.teacher?.username || '', data_source: 'supabase' });
+    map[sid].push({ ...c, teacher_name: c.teacher?.username || '', data_source: 'supabase', _noncanonical: true });
   });
   studentCourses.value = map;
 };
