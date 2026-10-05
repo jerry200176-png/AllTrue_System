@@ -48,9 +48,7 @@ class OccurrenceAssignmentService
     public static function onLeave(ClassSession $session): bool
     {
         return strtolower((string) $session->Status) === 'leave'
-            || Schedule::where('student_course_id', (int) $session->StudentClassID)->where('status', 'leave')
-                ->whereDate('schedule_date', Carbon::parse((string) $session->SessionDate)->toDateString())
-                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr((string) $session->StartTime, 0, 5)])->exists();
+            || self::at((int) $session->StudentClassID, Carbon::parse((string) $session->SessionDate)->toDateString(), substr((string) $session->StartTime, 0, 5), 'leave')->exists();
     }
 
     /**
@@ -71,15 +69,13 @@ class OccurrenceAssignmentService
             $anchor = $live && $live->original_schedule_id
                 ? Schedule::where('id', (int) $live->original_schedule_id)->lockForUpdate()->first()
                 : null;
-            $anchor ??= $this->findAnchor((int) $course->ID, $date, $start);
+            $anchor ??= self::at((int) $course->ID, $date, $start, 'rescheduled')->lockForUpdate()->orderByDesc('id')->first();
             $anchor ??= $this->createRow($course, 'rescheduled', $contractTeacherId, $date, $start, $end, null);
             $fromTeacherId = $live ? (int) $live->teacher_id : $contractTeacherId;
             $fromStatus = $live ? (string) $live->status : null;
 
             $live ??= $this->createRow($course, 'scheduled', $newTeacherId, $date, $start, $end, (int) $anchor->id);
-            if ((int) $live->original_schedule_id !== (int) $anchor->id) {
-                $live->original_schedule_id = (int) $anchor->id;
-            }
+            $live->original_schedule_id = (int) $anchor->id;
             [$frozenDate, $frozenTime] = RescheduleSessionService::freezeOccurrenceIdentity(
                 $live,
                 Carbon::parse((string) $anchor->schedule_date)->toDateString(),
@@ -172,27 +168,18 @@ class OccurrenceAssignmentService
         ];
     }
 
-    private function findLive(int $courseId, string $date, string $start, int $contractTeacherId): ?Schedule
+    /** Rows of one status at a slot; makeup (`extra`) rows are never occurrences. */
+    private static function at(int $courseId, string $date, string $start, string $status)
     {
-        return Schedule::where('student_course_id', $courseId)
-            ->whereDate('schedule_date', $date)
-            ->where('status', 'scheduled')
-            ->where(fn ($q) => $q->whereNull('type')->orWhere('type', '<>', 'extra')) // makeup rows are not occurrences
-            ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start])
-            ->lockForUpdate()
-            ->orderByRaw('CASE WHEN teacher_id <> ? THEN 0 ELSE 1 END', [$contractTeacherId])
-            ->orderByDesc('id')
-            ->first();
+        return Schedule::where('student_course_id', $courseId)->whereDate('schedule_date', $date)->where('status', $status)
+            ->where(fn ($q) => $q->whereNull('type')->orWhere('type', '<>', 'extra'))
+            ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start]);
     }
 
-    private function findAnchor(int $courseId, string $date, string $start): ?Schedule
+    private function findLive(int $courseId, string $date, string $start, int $contractTeacherId): ?Schedule
     {
-        return Schedule::where('student_course_id', $courseId)
-            ->whereDate('schedule_date', $date)
-            ->where('status', 'rescheduled')
-            ->where(fn ($q) => $q->whereNull('type')->orWhere('type', '<>', 'extra'))
-            ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start])
-            ->lockForUpdate()
+        return self::at($courseId, $date, $start, 'scheduled')->lockForUpdate()
+            ->orderByRaw('CASE WHEN teacher_id <> ? THEN 0 ELSE 1 END', [$contractTeacherId])
             ->orderByDesc('id')
             ->first();
     }
