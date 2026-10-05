@@ -691,11 +691,16 @@ jobs:
               ->get()->groupBy('campus_id');
             $missing = $live()->where(fn ($q) => $q->whereNull('s.original_schedule_date')->orWhereNull('s.original_start_time'))
               ->get(['s.id', 'st.CampusID as campus_id', 's.schedule_date'])->groupBy('campus_id');
-            $slots = $live()->where('s.status', 'scheduled')->whereBetween('s.schedule_date', [now()->subDays(7)->toDateString(), now()->addDays(60)->toDateString()])
+            $slots = $db::table('schedules as s')->join('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+              ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+              ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+              ->where('s.status', 'scheduled')->whereBetween('s.schedule_date', [now()->subDays(7)->toDateString(), now()->addDays(60)->toDateString()])
               ->groupByRaw('st.CampusID, s.student_course_id, s.schedule_date, SUBSTRING(s.start_time, 1, 5)')
               ->havingRaw('COUNT(*) > 1 AND COUNT(DISTINCT s.teacher_id) > 1')
               ->selectRaw('st.CampusID as campus_id')->get()->groupBy('campus_id');
-            $campuses = collect([$dups->keys(), $missing->keys(), $slots->keys()])->flatten()->unique()->sort()->values();
+            // seed from every campus with an active contract so healthy campuses show explicit zeros
+            $campuses = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+              ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))->distinct()->orderBy('st.CampusID')->pluck('st.CampusID');
             $out['today'] = $today;
             $out['quarantine_note'] = 'quarantine table not built yet (PR-E)';
             $out['by_campus'] = $campuses->map(function ($cid) use ($dups, $missing, $slots, $today) {{
@@ -708,7 +713,7 @@ jobs:
                 'missing_identity_future' => $future->count(),
                 'missing_identity_past' => $m->count() - $future->count(),
                 'missing_identity_ids' => $m->take(50)->pluck('id')->map(fn ($v) => (int)$v)->values()->all(),
-                'quarantine_open' => 0,
+                'quarantine_open' => 0, 'quarantine_gate_ready' => false, // quarantine table not built yet (PR-E): NOT a pass
                 'conflict_slots' => $slots->get($cid, collect())->count()];
             }})->all();
           }} elseif ($case === 'unpaid_hidden_candidates') {{
