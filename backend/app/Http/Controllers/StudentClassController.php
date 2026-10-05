@@ -5397,6 +5397,10 @@ class StudentClassController extends Controller
             }
             $invoiceIds = $invoices->pluck('id')->all();
             $locked = StudentClass::query()->whereKey($id)->first();
+            // Package members share ledger/entitlement history with the package: never erase one in isolation.
+            if ((int) ($locked?->getAttribute('PackageID') ?? 0) > 0) {
+                return response()->json(['message' => '套裝課程的合約不能單獨刪除，請到套裝處理'], 422);
+            }
             // isEffectivelyPaid() also honours a paid CoursePackage (package members can have no invoice).
             $hasMoney = (bool) $locked?->isEffectivelyPaid()
                 || $invoices->contains(fn ($i) => in_array((string) ($i->Status ?? ''), ['paid', 'partial'], true)

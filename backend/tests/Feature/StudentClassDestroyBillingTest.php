@@ -104,6 +104,14 @@ class StudentClassDestroyBillingTest extends TestCase
         $this->assertUntouched($c, $inv, 'unpaid');
     }
 
+    public function test_package_member_is_never_deleted_alone(): void
+    {
+        $c = $this->course($this->student()->id);
+        $c->forceFill(['PackageID' => 7])->save();
+        $this->deleteJson("/api/v1/student-classes/{$c->ID}", [], $this->auth())->assertStatus(422);
+        $this->assertNotNull(StudentClass::find($c->ID));
+    }
+
     public function test_payment_blocks_delete(): void
     {
         $c = $this->course($this->student()->id);
