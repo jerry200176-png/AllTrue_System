@@ -32,4 +32,27 @@ class ContractSessionScheduleEffectiveDatesTest extends TestCase
         $this->assertSame('09:05:00', ContractSessionSchedule::normalizeSessionTime('9:05'));
         $this->assertSame('16:00:00', ContractSessionSchedule::normalizeSessionTime(null));
     }
+
+    public function test_monthly_effective_dates_use_weekdays_minus_leave_plus_scheduled(): void
+    {
+        $class = new \App\Models\StudentClass(['StartDate' => '2026-09-01', 'EndDate' => '2026-09-30', 'week' => 6, 'time' => '13:00:00']);
+
+        $dates = ContractSessionSchedule::computeMonthlyEffectiveSessionDates(
+            $class, '2026-09-01', '2026-09-30', ['2026-09-12' => true], ['2026-09-16' => true], []
+        );
+
+        $this->assertSame(['2026-09-05', '2026-09-16', '2026-09-19', '2026-09-26'], $dates);
+    }
+
+    public function test_resolve_slots_from_columns_dedupes_and_orders(): void
+    {
+        $class = new \App\Models\StudentClass([
+            'week' => 6, 'time' => '17:00:00', 'week1' => 6, 'time1' => '17:00:00', 'week2' => 2, 'time2' => '09:00', 'SessionDuration' => 90,
+        ]);
+
+        $this->assertSame([
+            ['weekday' => 2, 'time' => '09:00', 'duration_minutes' => 90],
+            ['weekday' => 6, 'time' => '17:00', 'duration_minutes' => 90],
+        ], ContractSessionSchedule::resolveScheduleSlotsForRebuild($class));
+    }
 }
