@@ -64,6 +64,36 @@ export const staffUpdates = [
     "version": "2026.10.05"
   },
   {
+    "id": "staff-2026-10-05-paid-slip-upcoming",
+    "publishedAt": "2026-10-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "已繳月結單也列之後的課",
+    "summary": "已繳清的月結繳費單，除了上過的課，也會列出這一期之後排定的課。",
+    "items": [
+      "已繳清的月結單會列上過的課和今天以後排定的課，堂數和繳的錢對得上。金額不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "已繳清的月結單會列上過的課和今天以後排定的課，堂數和繳的錢對得上。金額不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-05:paid-slip-upcoming"
+    ],
+    "date": "2026-10-05",
+    "version": "2026.10.05"
+  },
+  {
     "id": "staff-2026-10-05-monthly-slip-dates",
     "publishedAt": "2026-10-05",
     "effectiveAt": null,
