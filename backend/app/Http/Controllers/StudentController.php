@@ -318,6 +318,11 @@ class StudentController extends Controller
         }
 
         DB::transaction(function () use ($studentId, &$deleted, $tableExists) {
+            // A 確認不收 contract keeps its void invoices and audit trail; purging the student would strand them.
+            if ($tableExists['StudentClass'] && DB::table('StudentClass')->where('StudentID', $studentId)
+                ->where('closed_reason', 'waived')->lockForUpdate()->exists()) {
+                abort(422, '此學生有已確認不收的合約，不能刪除');
+            }
             $studentClassIds = [];
             if ($tableExists['StudentClass']) {
                 $studentClassIds = DB::table('StudentClass')
@@ -478,11 +483,26 @@ class StudentController extends Controller
             'Student' => 0,
         ];
 
-        foreach ($foundIds as $studentId) {
-            $deleted = $this->purgeStudentRecords((int) $studentId);
-            foreach ($deleted as $table => $count) {
-                $deletedTotals[$table] += (int) $count;
+        // All-or-nothing: preflight under lock and purge every student in one transaction, so a 確認不收
+        // contract (here or waived concurrently) aborts the whole batch before anything is deleted.
+        $refusal = DB::transaction(function () use ($foundIds, &$deletedTotals) {
+            $waivedStudentIds = DB::table('StudentClass')->whereIn('StudentID', $foundIds)->orderBy('ID')->lockForUpdate()
+                ->get(['StudentID', 'closed_reason'])->where('closed_reason', 'waived')->pluck('StudentID')
+                ->map(fn ($id) => (int) $id)->unique()->values()->all();
+            if ($waivedStudentIds !== []) {
+                return response()->json(['message' => '部分學生有已確認不收的合約，不能刪除', 'waived_student_ids' => $waivedStudentIds], 422);
             }
+            foreach ($foundIds as $studentId) {
+                $deleted = $this->purgeStudentRecords((int) $studentId);
+                foreach ($deleted as $table => $count) {
+                    $deletedTotals[$table] += (int) $count;
+                }
+            }
+
+            return null;
+        });
+        if ($refusal !== null) {
+            return $refusal;
         }
 
         return response()->json([
