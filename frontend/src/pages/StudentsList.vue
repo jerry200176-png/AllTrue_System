@@ -1034,6 +1034,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick, reactive } from 'vue';
 import { supabase } from '../supabase';
+import { isCourseSettled } from '../lib/paymentStatus.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { getStudentCourseSubjectDisplayLabel } from '../lib/studentCourseSubjectDisplay.js';
@@ -1463,15 +1464,6 @@ const isSessionPaymentLowRemaining = (course) => {
   const r = getCourseRemainingSessions(course);
   if (r == null) return false;
   return r <= 2;
-};
-const isCourseSettled = (course) => {
-  const paymentStatus = String(course?.payment_status || '').toLowerCase();
-  if (paymentStatus === 'paid') return true;
-  const paid = parseCourseNumber(course?.Paid ?? course?.paid);
-  const charge = parseCourseNumber(course?.Charge ?? course?.charge ?? course?.Pay ?? course?.pay);
-  if (paid != null && charge != null) return paid >= charge && charge > 0;
-  if (paid != null) return paid > 0;
-  return false;
 };
 function effectiveClosedReason(course) {
   if (course?.closed_reason) return course.closed_reason;
