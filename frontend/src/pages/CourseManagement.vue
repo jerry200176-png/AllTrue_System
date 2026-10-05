@@ -1531,6 +1531,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
+import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';
@@ -1712,22 +1713,13 @@ function courseRemainingSessionsForClose(course) {
   return Number.isFinite(value) ? value : null;
 }
 
-function courseIsSettledForClose(course) {
-  const paymentStatus = String(course?.payment_status || '').toLowerCase();
-  if (paymentStatus === 'paid') return true;
-  const paid = Number(course?.Paid ?? course?.paid);
-  const charge = Number(course?.Charge ?? course?.charge ?? course?.Pay ?? course?.pay);
-  if (Number.isFinite(paid) && Number.isFinite(charge)) return paid >= charge && charge > 0;
-  return Number.isFinite(paid) && paid > 0;
-}
-
 function closeCourseInPlace(course) {
   return runCloseCourseNoRenew({
     course,
     studentName: course?.student_name || course?.student?.name,
     getRemainingSessions: courseRemainingSessionsForClose,
     getSubjectLabel,
-    isCourseSettled: courseIsSettledForClose,
+    isCourseSettled,
     supabase,
     reloadCourses: () => loadCourses(pagination.value.page),
   });
@@ -4853,6 +4845,7 @@ const loadCourses = async (page = 1) => {
     ...c,
     id: Number(c?.id ?? c?.ID ?? 0),
     data_source: 'supabase',
+    _noncanonical: true,
     student_name: c.student?.name || '—',
     teacher_name: c.teacher_name || c.teacher?.username || '',
     memo: c.memo ?? c.Memo ?? '',
@@ -5517,8 +5510,7 @@ const paymentSlipOpen = ref(false);
 const paymentSlipStudentClassId = ref(null);
 
 const isPaymentNoticeAvailable = (course) =>
-  shouldShowPaymentAction(course)
-  && ['unpaid', 'partial', 'pending_report'].includes(course?.payment_status);
+  shouldShowPaymentAction(course) && isPaymentNoticeStatus(course?.payment_status);
 
 const openPaymentSlip = (course) => {
   const studentClassId = Number(course?.id || 0);
