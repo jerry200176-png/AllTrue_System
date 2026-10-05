@@ -25,6 +25,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "monthly closes stay in accounting queue",
           "slips always list lesson dates",
           "monthly slips list upcoming lessons; MonthlySplit keeps requested endpoints"
         ]
@@ -33,6 +34,7 @@ export const changelogDraftNotes = [
     "items": [
       "shares the payment slip design",
       "slip redesign with logo",
+      "monthly closes stay in accounting queue",
       "slips always list lesson dates",
       "monthly slips list upcoming lessons; MonthlySplit keeps requested endpoints"
     ]

@@ -34,6 +34,36 @@ export const staffUpdates = [
     "version": "2026.10.05"
   },
   {
+    "id": "staff-2026-10-05-unpaid-close-pending",
+    "publishedAt": "2026-10-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "未繳月份續約後不會消失",
+    "summary": "月結課續下一期或停用時，舊月份沒繳清會留在帳務中心待對帳。",
+    "items": [
+      "以前續約後舊月份會變「已結算」而看不到欠款；現在會標「待對帳」。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "以前續約後舊月份會變「已結算」而看不到欠款；現在會標「待對帳」。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-05:unpaid-close-pending"
+    ],
+    "date": "2026-10-05",
+    "version": "2026.10.05"
+  },
+  {
     "id": "staff-2026-10-05-receipt-redesign",
     "publishedAt": "2026-10-05",
     "effectiveAt": null,
