@@ -6,6 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class Schedule extends Model
 {
+    /** Retired by a TD-076 repair; not live. Readers whitelist 'scheduled' / 'leave', so it is invisible to them. */
+    public const STATUS_SUPERSEDED = 'superseded';
+
     protected $table = 'schedules';
 
     protected $fillable = [

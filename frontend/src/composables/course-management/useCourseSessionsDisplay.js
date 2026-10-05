@@ -542,7 +542,7 @@ export function useCourseSessionsDisplay({
   const displayRemainingSessions = (course) => {
     if (!isSessionMode(course)) return null;
     if (course?.PackageID) {
-      return Math.max(0, poolRemainingSessions(course) ?? 0);
+      return Math.max(0, poolRemainingSessions(course, { pascalAlias: false }) ?? 0);
     }
     const purchased = getPurchasedSessions(course);
     const rows = getCourseSessionRows(course);
