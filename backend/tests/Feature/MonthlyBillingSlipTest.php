@@ -386,6 +386,64 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('sessions.0.date', '2026-09-01');
     }
 
+    public function test_paid_monthly_slip_lists_held_and_upcoming_lessons(): void
+    {
+        // #3525: a paid (fixed-amount) invoice covers the whole period, so the
+        // slip lists held lessons plus the ones still to come — not a stale past 排定.
+        Carbon::setTestNow(Carbon::parse('2026-08-10 09:00:00', 'Asia/Taipei'));
+        $token = $this->createDirectorToken('director-monthly-paid-upcoming@example.com');
+        [$student, $course] = $this->makeMonthlyCourse('月結已繳預排測試', '2026-08-01', '2026-08-31');
+        foreach ([['2026-08-03', 'attended'], ['2026-08-05', 'scheduled'], ['2026-08-10', 'scheduled'], ['2026-08-17', 'scheduled'], ['2026-08-24', 'leave']] as [$date, $status]) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-01', 'DueDate' => '2026-08-17',
+            'TotalAmount' => 6000, 'PaidAmount' => 6000, 'Status' => 'paid', 'billing_period' => '2026-08',
+        ]);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => '月結費用 2026年8月', 'Amount' => 6000, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
+
+        $dates = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->json('sessions.*.date');
+        $this->assertSame(['2026-08-03', '2026-08-10', '2026-08-17'], $dates);
+    }
+
+    public function test_monthly_split_items_keep_the_requested_endpoints(): void
+    {
+        // #3525: SplitStart/SplitEnd off a month boundary must not widen to whole months.
+        $token = $this->createDirectorToken('director-monthly-split@example.com');
+        [$student, $course] = $this->makeMonthlyCourse('月結拆月測試', '2026-08-30', '2026-09-28');
+
+        $id = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/invoices', [
+                'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-20', 'TotalAmount' => 6600,
+                'MonthlySplit' => true, 'SplitStart' => '2026-08-30', 'SplitEnd' => '2026-09-28',
+            ])
+            ->assertSuccessful()
+            ->json('id') ?? Invoice::query()->latest('id')->value('id');
+
+        $bounds = InvoiceItem::where('InvoiceID', $id)->orderBy('PeriodStart')->get()
+            ->map(fn ($i) => [Carbon::parse($i->PeriodStart)->toDateString(), Carbon::parse($i->PeriodEnd)->toDateString(), (int) $i->Amount])
+            ->all();
+        $this->assertSame([['2026-08-30', '2026-08-31', 3300], ['2026-09-01', '2026-09-28', 3300]], $bounds);
+    }
+
+    /** @return array{0: Student, 1: StudentClass} */
+    private function makeMonthlyCourse(string $name, string $start, string $end): array
+    {
+        $student = Student::create(['name' => $name, 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $course = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
+            'StartDate' => $start, 'EndDate' => $end, 'TotalHours' => 8, 'Charge' => 6000, 'Paid' => 0, 'Rate' => 1500,
+            'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'date', 'SessionCount' => 4, 'SessionDuration' => 120,
+            'RemainingSessions' => 4, 'ClassType' => 'one_on_one', 'UsedSessions' => 0, 'settlement_day' => 17,
+            'monthly_sessions' => 4, 'rate_unit' => 'session',
+        ]);
+
+        return [$student, $course];
+    }
+
     public function test_count_mode_slip_uses_contract_charge_when_stored_charge_is_stale(): void
     {
         $token = $this->createDirectorToken('director-count-stale-charge@example.com');

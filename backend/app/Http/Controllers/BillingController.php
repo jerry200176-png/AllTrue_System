@@ -451,18 +451,23 @@ class BillingController extends Controller
         if (! $monthlyCourse instanceof StudentClass) {
             $monthlyCourse = null;
         }
-        $sessions = ($monthlyCourse && $monthlyCourse->getAttribute('ScheduleMode') === 'date'
-            && $projection['billing_period'])
-            ? $this->monthlyBilling->slipSessionDetailsForPeriod(
+        if ($monthlyCourse && $monthlyCourse->getAttribute('ScheduleMode') === 'date' && $projection['billing_period']) {
+            [$serviceStart, $serviceEnd] = $this->monthlyBilling->serviceRangeForCourse($invoice, (int) $monthlyCourse->getKey());
+            $sessions = $this->monthlyBilling->slipSessionDetailsForPeriod(
                 $monthlyCourse,
                 $projection['billing_period'],
-                ...$this->monthlyBilling->serviceRangeForCourse($invoice, (int) $monthlyCourse->getKey()),
-            )
-            : ClassSession::sessionsForPaymentSlip(
+                $serviceStart,
+                $serviceEnd,
+                // A fixed (stored/paid) amount covers the period's upcoming lessons too.
+                includeUpcoming: $projection['amount_source'] !== 'billable_sessions',
+            );
+        } else {
+            $sessions = ClassSession::sessionsForPaymentSlip(
                 $studentClassIds,
                 $projection['period_start'],
                 $projection['period_end']
             );
+        }
 
         $authUser = $request->attributes->get('auth_user');
         Log::info('[InvoiceSlip] generated', [
@@ -587,8 +592,10 @@ class BillingController extends Controller
 
         foreach ($months as $index => $month) {
             $amount = $base + ($index === ($count - 1) ? $remainder : 0);
-            $periodStart = $month->copy()->startOfMonth()->toDateString();
-            $periodEnd = $month->copy()->endOfMonth()->toDateString();
+            // Whole months in between; the first and last items keep the
+            // requested endpoints (amounts are still split evenly per month).
+            $periodStart = max($month->copy()->startOfMonth()->toDateString(), Carbon::parse($start)->toDateString());
+            $periodEnd = min($month->copy()->endOfMonth()->toDateString(), Carbon::parse($end)->toDateString());
             $items[] = [
                 'Description' => 'Monthly tuition ' . $month->format('Y-m'),
                 'Amount' => $amount,

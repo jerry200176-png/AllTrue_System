@@ -227,7 +227,8 @@ class MonthlyBillingService
 
     /**
      * Display only (amounts and billing snapshots never use this). Prefers the
-     * billed lessons so the list matches the amount; with none billed yet it
+     * billed lessons so the list matches the amount (plus upcoming lessons when
+     * the amount is fixed, $includeUpcoming); with none billed yet it
      * lists the month's planned lessons, and for a prepaid next-period invoice
      * (month window empty) the lessons in its own service range (#3445).
      *
@@ -238,8 +239,19 @@ class MonthlyBillingService
         string $billingPeriod,
         \DateTimeInterface|string|null $serviceStart = null,
         \DateTimeInterface|string|null $serviceEnd = null,
+        bool $includeUpcoming = false,
     ): array {
         $sessions = $this->billableSessionsForPeriod($course, $billingPeriod);
+        if ($sessions->isNotEmpty() && $includeUpcoming) {
+            // A fixed (stored / paid) amount also covers the period's lessons
+            // still to come; a billed-session amount covers only what was held.
+            $upcomingQuery = $this->periodSessionQuery($course, $billingPeriod);
+            $upcomingQuery->whereDate('SessionDate', '>=', Carbon::today()->toDateString());
+            $upcoming = $this->plannedSessions($upcomingQuery);
+            $sessions = $sessions->concat($upcoming)
+                ->sortBy(fn (ClassSession $session) => sprintf('%s %s %010d', substr((string) $session->SessionDate, 0, 10), (string) $session->StartTime, (int) $session->getKey()))
+                ->values();
+        }
         if ($sessions->isEmpty()) {
             $sessions = $this->plannedSessions($this->periodSessionQuery($course, $billingPeriod));
         }
