@@ -3043,8 +3043,7 @@ class ClassSessionController extends Controller
 
             $scheduledDeleted = 0;
             $rescheduledDeleted = 0;
-            // TD-076 B1: one writer sets the live row back (or removes a substitute-only row), one log row.
-            // No live row at the slot (stranded legacy row): fall through to the legacy cleanup below.
+            // TD-076 B1: one writer restores the live row; none at the slot (stranded legacy row) = legacy cleanup below.
             $restored = OccurrenceAssignmentService::handles($session, (int) Student::where('id', $studentClass->StudentID)->value('CampusID'))
                 ? app(OccurrenceAssignmentService::class)->restoreContractTeacher($session, $changedBy ?: null)
                 : null;

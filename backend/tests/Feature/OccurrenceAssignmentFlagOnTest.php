@@ -205,6 +205,7 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
             'schedule_date' => '2026-04-19', 'start_time' => '13:00', 'end_time' => '15:00', 'created_at' => now(), 'updated_at' => now()]);
 
         $this->postSubstitute($session)->assertStatus(422);
+        $this->api()->postJson('/api/v1/teacher-leaves/batch-substitute', ['assignments' => [['class_session_id' => $session->id, 'substitute_teacher_id' => $this->bId]]])->assertStatus(422);
 
         $this->assertSame([1, 0], [Schedule::count(), ScheduleChangeLog::count()]);
     }

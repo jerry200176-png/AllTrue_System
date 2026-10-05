@@ -241,8 +241,7 @@ class SubstituteController extends Controller
                 $lastNotification, $currentOperatorId, $payload,
                 $shouldRestoreTime, $origDate, $origStart, $origEnd, $campusId
             ) {
-                // TD-076 B1: one writer restores the live row (slot too when the substitute moved it), one
-                // log row. No live row at the slot: legacy delete path below.
+                // TD-076 B1: one writer restores the live row (and slot); none at the slot = legacy delete path below.
                 $rescheduled = null;
                 $scheduledRow = OccurrenceAssignmentService::handles($session, $campusId)
                     ? app(OccurrenceAssignmentService::class)->restoreContractTeacher(
