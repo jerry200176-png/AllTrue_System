@@ -222,6 +222,55 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $this->assertSame(['substitute', 'restore'], ScheduleChangeLog::orderBy('id')->pluck('reason')->all());
     }
 
+    public function test_pending_leave_without_a_leave_row_is_refused_flag_on(): void
+    {
+        $this->seedWorld();
+        $this->flag(true);
+        $session = $this->plainSession();
+        $session->Status = 'leave_requested';
+        $session->save();
+        $this->postSubstitute($session)->assertStatus(422);
+        $this->assertSame([0, 0], [Schedule::count(), ScheduleChangeLog::count()]);
+    }
+
+    public function test_pure_substitution_syncs_live_row_end_time_to_the_session_flag_on(): void
+    {
+        $this->seedWorld();
+        $this->flag(true);
+        $session = $this->crossDateShape();
+        $session->EndTime = '16:00';
+        $session->save();
+
+        $this->postSubstitute($session)->assertOk();
+
+        $live = Schedule::findOrFail(9001);
+        $this->assertSame($this->bId, (int) $live->teacher_id);
+        $this->assertSame('16:00', substr((string) $live->end_time, 0, 5));
+        $this->assertEquals(3.0, (float) $live->duration_hours);
+    }
+
+    public function test_batch_substitute_one_live_row_and_one_log_per_lesson_flag_on(): void
+    {
+        $this->seedWorld();
+        $this->flag(true);
+        $s1 = $this->plainSession();
+        $s2 = ClassSession::create([
+            'StudentClassID' => $this->sc->ID, 'SessionDate' => '2026-04-20',
+            'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled',
+        ]);
+
+        $this->api()->postJson('/api/v1/teacher-leaves/batch-substitute', [
+                'assignments' => [
+                    ['class_session_id' => $s1->id, 'substitute_teacher_id' => $this->bId],
+                    ['class_session_id' => $s2->id, 'substitute_teacher_id' => $this->bId],
+                ],
+                'atomic' => true,
+            ])->assertOk()->assertJsonFragment(['success' => 2, 'fail' => 0]);
+
+        $this->assertSame(2, Schedule::where('status', 'scheduled')->where('teacher_id', $this->bId)->whereNotNull('original_schedule_id')->count());
+        $this->assertSame(2, ScheduleChangeLog::where('reason', 'substitute')->count());
+    }
+
     private function flag(bool $on): void
     {
         config(['feature_flags.values' => ['FEATURE_SCHEDULE_OCCURRENCE_V2' => false, 'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1' => $on]]);
