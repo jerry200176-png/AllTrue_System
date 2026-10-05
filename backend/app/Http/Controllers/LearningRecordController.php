@@ -2279,6 +2279,9 @@ class LearningRecordController extends Controller
             if (!$date) {
                 continue;
             }
+            if ((string) $row->status === Schedule::STATUS_SUPERSEDED) {
+                continue;
+            }
             if ((string) $row->status === 'scheduled') {
                 $scheduledSet[$date] = true;
             } else {

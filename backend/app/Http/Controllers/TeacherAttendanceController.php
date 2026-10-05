@@ -64,7 +64,7 @@ class TeacherAttendanceController extends Controller
         $firstClass = DB::table('schedules')
             ->where('teacher_id', $teacherId)
             ->where('schedule_date', $today)
-            ->where('status', '!=', 'cancelled')
+            ->whereNotIn('status', ['cancelled', \App\Models\Schedule::STATUS_SUPERSEDED])
             ->orderBy('start_time')
             ->first();
 

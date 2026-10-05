@@ -15,7 +15,7 @@ use Tests\TestCase;
  *
  * `tuition()` itself already narrows count-mode/date-mode courses with SQL WHERE
  * clauses and batches the payment/invoice lookups by StudentClassID
- * (lastPaidAtByStudentClassIds, invoiceAggregateByStudentClassIds, etc.) instead
+ * (ContractMoneyState::lastPaidAtByStudentClassIds, invoiceAggregateByStudentClassIds, etc.) instead
  * of querying per row. But this test caught a real N+1 hiding one layer deeper:
  * `subjectLabel()` called `StudentClass::displaySubjectName()`, which falls back
  * to a `Subject`/`BaseData` table lookup *per course* whenever the StudentClass
