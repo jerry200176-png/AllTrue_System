@@ -126,6 +126,16 @@ class StudentClassDestroyBillingTest extends TestCase
         $this->assertNotNull(StudentClass::find($attended->ID));
     }
 
+    public function test_student_with_deduction_history_is_not_purged(): void
+    {
+        $student = $this->student();
+        $c = $this->course($student->id);
+        DB::table('session_deduction_ledger')->insert(['student_class_id' => $c->ID, 'event_type' => 'deduct', 'source' => 'attendance',
+            'created_at' => now(), 'updated_at' => now()]);
+        $this->deleteJson("/api/v1/students/{$student->id}", [], $this->auth())->assertStatus(422);
+        $this->assertNotNull(Student::find($student->id));
+    }
+
     public function test_payment_blocks_delete(): void
     {
         $c = $this->course($this->student()->id);
