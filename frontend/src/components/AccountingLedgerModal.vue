@@ -198,6 +198,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { isDirectorRole } from '../lib/roleCapabilities.js';
 import {
   formatAccountingLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
@@ -339,7 +340,7 @@ function getAuthRole() {
 }
 
 async function voidReport(reportId) {
-  if (!reportId || !['director', 'admin', 'super_admin'].includes(getAuthRole())) return;
+  if (!reportId || !isDirectorRole(getAuthRole())) return;
   const reason = window.prompt('請輸入撤銷原因（會保留稽核紀錄）');
   if (!reason || !reason.trim()) return;
   busyReportId.value = reportId;
@@ -362,7 +363,7 @@ async function voidReport(reportId) {
   }
 }
 
-const canManageInvoices = () => ['director', 'admin', 'super_admin'].includes(getAuthRole());
+const canManageInvoices = () => isDirectorRole(getAuthRole());
 const canDirectVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_direct_void;
 const canExceptionVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_exception_void;
 const isBusyInvoice = (invoice) => busyInvoiceId.value === invoice?.id;
