@@ -1,3 +1,6 @@
+## 2026-10-05 — chore(arch): weekly/count session builders into ContractSessionSchedule (slice 2/10)
+- 行為不變的搬移（ADR-003／#966）：`buildSessionsFromWeeklySchedule`／`buildSessionsForCount` 移到 `ContractSessionSchedule`；EnrollmentService、CoursePackageController 直接呼叫該模組
+
 ## 2026-10-05 — chore(arch): date/time normalizers and count-mode effective dates into ContractSessionSchedule (slice 1/9)
 - 行為不變的搬移（ADR-003／#966）：日期／時間正規化、取消日期集合與堂數制有效日期計算移到新的 `App\Services\Scheduling\ContractSessionSchedule`
 

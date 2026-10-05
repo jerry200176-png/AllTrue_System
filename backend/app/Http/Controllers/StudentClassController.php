@@ -1578,7 +1578,7 @@ class StudentClassController extends Controller
 
             if (!$skipAutoSessions && $data['ScheduleMode'] === 'date') {
                 if (!empty($scheduleSlots) && !empty($data['EndDate'])) {
-                    $sessions = $this->buildSessionsFromWeeklySchedule(
+                    $sessions = ContractSessionSchedule::buildSessionsFromWeeklySchedule(
                         $studentClass->ID,
                         $data['StartDate'],
                         $data['EndDate'],
@@ -1590,7 +1590,7 @@ class StudentClassController extends Controller
 
             if (!$skipAutoSessions && $data['ScheduleMode'] === 'count') {
                 if (!empty($scheduleSlots) && !empty($data['SessionCount'])) {
-                    $sessions = $this->buildSessionsForCount(
+                    $sessions = ContractSessionSchedule::buildSessionsForCount(
                         $studentClass->ID,
                         $data['StartDate'],
                         (int) $data['SessionCount'],
@@ -3138,7 +3138,7 @@ class StudentClassController extends Controller
                     'duration_minutes' => max(30, (int) ($source->getAttribute('SessionDuration') ?? 120)),
                 ]];
             }
-            $futureSessions = $this->buildSessionsForCount(
+            $futureSessions = ContractSessionSchedule::buildSessionsForCount(
                 (int) $newCourse->getAttribute('ID'),
                 $plan['start_date'],
                 $plan['future_session_count'],
@@ -3382,8 +3382,8 @@ class StudentClassController extends Controller
             $new->save();
             $new->setAttribute('scheduling_policy', $manual ? 'manual_occurrence' : 'auto_recurrence');
             $rows = $manual ? [] : ($mode === 'count'
-                ? $this->buildSessionsForCount((int) $new->getAttribute('ID'), $firstDate->toDateString(), (int) $data['sessions'], $slots, $duration)
-                : $this->buildSessionsFromWeeklySchedule((int) $new->getAttribute('ID'), $start, $payload['EndDate'], $slots, $duration));
+                ? ContractSessionSchedule::buildSessionsForCount((int) $new->getAttribute('ID'), $firstDate->toDateString(), (int) $data['sessions'], $slots, $duration)
+                : ContractSessionSchedule::buildSessionsFromWeeklySchedule((int) $new->getAttribute('ID'), $start, $payload['EndDate'], $slots, $duration));
             if ((!$rows && !$manual) || count($rows) > 500) {
                 abort(422, '下一期須包含 1 至 500 堂課，請調整期間或堂數。');
             }
@@ -3684,7 +3684,7 @@ class StudentClassController extends Controller
             $globalDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
             $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
             $periodSessions = !empty($slots)
-                ? $this->buildSessionsFromWeeklySchedule(
+                ? ContractSessionSchedule::buildSessionsFromWeeklySchedule(
                     (int) $studentClass->getKey(),
                     $newStartDate,
                     $newEndDate,
@@ -4184,7 +4184,7 @@ class StudentClassController extends Controller
                     $slots[0]['duration_minutes'] = $globalDur;
                 }
             }
-            $builtSessions = $this->buildSessionsForCount(
+            $builtSessions = ContractSessionSchedule::buildSessionsForCount(
                 (int) $newCourse->ID, $startDate, $sessions, $slots, $globalDur
             );
 
@@ -4317,7 +4317,7 @@ class StudentClassController extends Controller
                 $slots = [['weekday' => $isoDow, 'time' => substr($fallbackTime, 0, 5)]];
             }
             $duration = max(30, (int) ($source->getAttribute('SessionDuration') ?? 120));
-            $previewSessions = $this->buildSessionsForCount(0, $startDate, $sessions, $slots, $duration);
+            $previewSessions = ContractSessionSchedule::buildSessionsForCount(0, $startDate, $sessions, $slots, $duration);
             if (count($previewSessions) !== $sessions) {
                 return response()->json([
                     'message' => '無法依目前固定時段排出完整正式課程，請先補齊試聽課程的星期與時段。',
@@ -5577,7 +5577,7 @@ class StudentClassController extends Controller
             }
 
             if ($startDate && $sessions > 0 && !empty($slots)) {
-                $sessionsPreview = $this->buildSessionsForCount((int) $studentClass->ID, $startDate, $sessions, $slots, $globalDur);
+                $sessionsPreview = ContractSessionSchedule::buildSessionsForCount((int) $studentClass->ID, $startDate, $sessions, $slots, $globalDur);
                 $schedule['created_sessions'] = count($sessionsPreview);
                 $schedule['first_session_date'] = isset($sessionsPreview[0])
                     ? ContractSessionSchedule::normalizeDateString($sessionsPreview[0]['SessionDate'])
@@ -5668,7 +5668,7 @@ class StudentClassController extends Controller
                 $previewSlots = $this->resolveScheduleSlotsForRebuild($studentClass);
                 $previewDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
                 $previewSessions = !empty($previewSlots)
-                    ? $this->buildSessionsFromWeeklySchedule(
+                    ? ContractSessionSchedule::buildSessionsFromWeeklySchedule(
                         (int) $studentClass->getKey(),
                         $newStart,
                         $newEnd,
@@ -6950,7 +6950,7 @@ class StudentClassController extends Controller
         }
 
         $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
-        $proposedSessions = $this->buildSessionsFromWeeklySchedule(
+        $proposedSessions = ContractSessionSchedule::buildSessionsFromWeeklySchedule(
             (int) $studentClass->ID,
             $startDate,
             $endDate,
@@ -7259,7 +7259,7 @@ class StudentClassController extends Controller
                     $studentClass->EndDate = $endDate;
                     $studentClass->save();
                 }
-                $sessions = $this->buildSessionsFromWeeklySchedule(
+                $sessions = ContractSessionSchedule::buildSessionsFromWeeklySchedule(
                     $classId,
                     $startDate,
                     $endDate,
@@ -7273,7 +7273,7 @@ class StudentClassController extends Controller
                 if ($sessionCount <= 0) {
                     return ['rebuilt' => false, 'reason' => 'session_count_missing'];
                 }
-                $sessions = $this->buildSessionsForCount(
+                $sessions = ContractSessionSchedule::buildSessionsForCount(
                     $classId,
                     $startDate,
                     $sessionCount,
@@ -7426,7 +7426,7 @@ class StudentClassController extends Controller
                 $studentClass->EndDate = $endDate;
                 $studentClass->save();
             }
-            $sessions = $this->buildSessionsFromWeeklySchedule(
+            $sessions = ContractSessionSchedule::buildSessionsFromWeeklySchedule(
                 (int) $studentClass->ID,
                 $newStartDate,
                 $endDate,
@@ -7437,7 +7437,7 @@ class StudentClassController extends Controller
                 $sessions = array_slice($sessions, 0, $sessionCount);
             }
         } else {
-            $sessions = $this->buildSessionsForCount(
+            $sessions = ContractSessionSchedule::buildSessionsForCount(
                 (int) $studentClass->ID,
                 $newStartDate,
                 $sessionCount,
@@ -7641,7 +7641,7 @@ class StudentClassController extends Controller
         // booking conflict. Generate enough cadence candidates to skip the
         // retained occurrence and place the row on the next valid occurrence.
         $candidateCount = $k + count($skipOccupiedTargetKeys);
-        $candidateSessions = $this->buildSessionsForCount(0, $snapped, $candidateCount, $slots, $durationMinutes);
+        $candidateSessions = ContractSessionSchedule::buildSessionsForCount(0, $snapped, $candidateCount, $slots, $durationMinutes);
         $proposed = [];
         foreach ($candidateSessions as $candidate) {
             $date = ContractSessionSchedule::normalizeDateString($candidate['SessionDate'] ?? null);
@@ -7881,7 +7881,7 @@ class StudentClassController extends Controller
         $globalDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
         $startFrom = ContractSessionSchedule::normalizeDateString($studentClass->StartDate ?? null)
             ?: Carbon::today()->toDateString();
-        $expectedSessions = $this->buildSessionsForCount($classId, $startFrom, $newCount, $slots, $globalDur);
+        $expectedSessions = ContractSessionSchedule::buildSessionsForCount($classId, $startFrom, $newCount, $slots, $globalDur);
         if (empty($expectedSessions)) {
             return;
         }
@@ -7991,7 +7991,7 @@ class StudentClassController extends Controller
             if ($appendGuard >= 14) {
                 return;
             }
-            $newSessions = $this->buildSessionsForCount(
+            $newSessions = ContractSessionSchedule::buildSessionsForCount(
                 $classId,
                 $appendFromDate->toDateString(),
                 $newCount - $currentCount,
@@ -9011,135 +9011,6 @@ class StudentClassController extends Controller
         }
 
         return $conflicts;
-    }
-
-    public function buildSessionsFromWeeklySchedule(
-        int $studentClassId,
-        string $startDate,
-        string $endDate,
-        array $slots,
-        int $durationMinutes,
-        bool $includeStartDate = false
-    ): array {
-        $sessions = [];
-        $start = Carbon::parse($startDate)->startOfDay();
-        $end = Carbon::parse($endDate)->endOfDay();
-
-        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
-            $matchingSlots = array_values(array_filter($slots, function ($slot) use ($date) {
-                // Slots arrive in two conventions: ISO 1-7 (DB week columns, day_time_slots)
-                // and legacy JS 0-6 (ScheduleSlots param). Both agree on Mon-Sat (1-6);
-                // Sunday is 7 (ISO) or 0 (JS). Comparing raw dayOfWeek (0-6) silently
-                // dropped every ISO-Sunday slot (GitHub #1096: 0-amount monthly invoices).
-                return (int) $date->dayOfWeekIso === ContractSessionSchedule::isoWeekday($slot['weekday']);
-            }));
-
-            // Monthly courses have an explicit opening date that is the first lesson,
-            // even when recurrence starts on a different fixed weekday. Keep the
-            // default false so date-based imports/rebuilds retain their old contract.
-            if ($includeStartDate && $date->isSameDay($start) && empty($matchingSlots) && !empty($slots)) {
-                $matchingSlots = [$slots[0]];
-            }
-
-            foreach ($matchingSlots as $slot) {
-                    $startTime = Carbon::parse($date->toDateString() . ' ' . $slot['time']);
-                    $slotDur = !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $durationMinutes;
-                    $endTime = $startTime->copy()->addMinutes($slotDur);
-
-                    $sessions[] = [
-                        'StudentClassID' => $studentClassId,
-                        'SessionDate' => $startTime->toDateString(),
-                        'StartTime' => $startTime->format('H:i:s'),
-                        'EndTime' => $endTime->format('H:i:s'),
-                        'Status' => 'scheduled',
-                        'Note' => '',
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ];
-            }
-        }
-
-        return $sessions;
-    }
-
-    /**
-     * 堂數制：排定共 sessionCount 堂。
-     * 第 1 堂固定為「首堂日」startDate（不論星期幾），使用該日匹配的所有時段；
-     * 第 2～N 堂從 startDate 的隔天起，依序取「星期符合 slots」的日期。
-     * 支援同日多時段（如週六 13:00 + 17:00 各算一堂）。
-     */
-    private function buildSessionsForCount(
-        int $studentClassId,
-        string $startDate,
-        int $sessionCount,
-        array $slots,
-        int $durationMinutes
-    ): array {
-        $sessions = [];
-        if ($sessionCount < 1 || empty($slots)) {
-            return $sessions;
-        }
-
-        $slotsByWeekday = [];
-        foreach ($slots as $s) {
-            $wd = (int) ($s['weekday'] ?? 0);
-            if ($wd < 1 || $wd > 7) {
-                continue;
-            }
-            $slotsByWeekday[$wd][] = $s;
-        }
-        foreach ($slotsByWeekday as &$group) {
-            usort($group, fn ($a, $b) => strcmp((string) ($a['time'] ?? ''), (string) ($b['time'] ?? '')));
-        }
-        unset($group);
-
-        $slotWeekdays = array_keys($slotsByWeekday);
-        $firstSlot = $slots[0];
-        $firstTime = $firstSlot['time'] ?? '16:00';
-
-        $appendSessionsForDate = function (Carbon $dateObj) use (
-            $studentClassId, $durationMinutes, $slotsByWeekday,
-            $firstTime, $sessionCount, &$sessions
-        ) {
-            $isoDow = (int) $dateObj->dayOfWeekIso;
-            $daySlots = $slotsByWeekday[$isoDow] ?? [['time' => $firstTime]];
-            foreach ($daySlots as $slot) {
-                if (count($sessions) >= $sessionCount) {
-                    return;
-                }
-                $time = $slot['time'] ?? $firstTime;
-                $dur = (!empty($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30)
-                    ? (int) $slot['duration_minutes']
-                    : $durationMinutes;
-                $start = Carbon::parse($dateObj->toDateString() . ' ' . $time);
-                $end = $start->copy()->addMinutes($dur);
-                $sessions[] = [
-                    'StudentClassID' => $studentClassId,
-                    'SessionDate' => $start->toDateString(),
-                    'StartTime' => $start->format('H:i:s'),
-                    'EndTime' => $end->format('H:i:s'),
-                    'Status' => 'scheduled',
-                    'Note' => '',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
-            }
-        };
-
-        $firstDate = Carbon::parse($startDate)->startOfDay();
-        $appendSessionsForDate($firstDate);
-
-        $date = Carbon::parse($startDate)->addDay()->startOfDay();
-        $maxDate = Carbon::parse($startDate)->addYears(2);
-        while (count($sessions) < $sessionCount && $date->lte($maxDate)) {
-            $isoDow = (int) $date->dayOfWeekIso;
-            if (isset($slotsByWeekday[$isoDow])) {
-                $appendSessionsForDate($date);
-            }
-            $date->addDay();
-        }
-
-        return $sessions;
     }
 
     /**
