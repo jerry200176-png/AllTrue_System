@@ -16,9 +16,9 @@ class StudentClassDestroyBillingTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function auth(): array
+    private function auth(string $type = 'D'): array
     {
-        $user = User::create(['LoginName' => 'del-' . uniqid() . '@example.com', 'Name' => '帳務測試', 'PSW' => 'secret', 'type' => 'D', 'phone' => '0900000000']);
+        $user = User::create(['LoginName' => 'del-' . uniqid() . '@example.com', 'Name' => '帳務測試', 'PSW' => 'secret', 'type' => $type, 'phone' => '0900000000']);
         UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
         $token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
@@ -94,6 +94,14 @@ class StudentClassDestroyBillingTest extends TestCase
         $this->assertLessThanOrEqual(255, mb_strlen($note));
         $this->assertStringContainsString("合約 #{$c->ID} 刪除", $note);
         $this->assertStringNotContainsString('by -', $note);
+    }
+
+    public function test_teacher_cannot_void_invoices_by_deleting(): void
+    {
+        $c = $this->course($this->student()->id);
+        $inv = $this->invoice($c);
+        $this->deleteJson("/api/v1/student-classes/{$c->ID}", [], $this->auth('T'))->assertStatus(403);
+        $this->assertUntouched($c, $inv, 'unpaid');
     }
 
     public function test_payment_blocks_delete(): void

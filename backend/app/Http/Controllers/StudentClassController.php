@@ -5391,7 +5391,8 @@ class StudentClassController extends Controller
             $invoices = Invoice::query()->where('StudentClassID', $id)->lockForUpdate()->get();
             $invoiceIds = $invoices->pluck('id')->all();
             $locked = StudentClass::query()->whereKey($id)->first();
-            $hasMoney = (int) ($locked?->getAttribute('Paid') ?? 0) === 1
+            // isEffectivelyPaid() also honours a paid CoursePackage (package members can have no invoice).
+            $hasMoney = (bool) $locked?->isEffectivelyPaid()
                 || $invoices->contains(fn ($i) => (string) ($i->Status ?? '') !== 'void' && (int) ($i->PaidAmount ?? 0) > 0)
                 || ($invoiceIds !== [] && DB::table('Payment')->whereIn('InvoiceID', $invoiceIds)->exists())
                 || DB::table('payment_reports')->where('StudentClassID', $id)->exists();
@@ -5406,6 +5407,10 @@ class StudentClassController extends Controller
                 return response()->json(['message' => '此合約在合併帳單中，請先到帳務處理該帳單'], 422);
             }
             $voided = $invoices->filter(fn ($i) => (string) ($i->Status ?? '') !== 'void');
+            // Voiding invoices is an accounting action: only directors / super_admin may delete a billed contract.
+            if ($voided->isNotEmpty() && !in_array((string) request()->attributes->get('auth_role'), ['director', 'super_admin'], true)) {
+                return response()->json(['message' => '此合約有帳單，請由主任刪除'], 403);
+            }
             foreach ($voided as $invoice) {
                 $invoice->update([
                     'Status' => 'void',
