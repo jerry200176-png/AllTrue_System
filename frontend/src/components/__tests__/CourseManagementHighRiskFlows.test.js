@@ -22,7 +22,7 @@ describe('CourseManagement high-risk flow characterization', () => {
     expect(flow).toContain('const course = pauseConfirmTarget.value;');
     expect(flow).toContain('if (!course) return;');
     expect(flow).toContain('pauseConfirmSubmitting.value = true;');
-    expect(flow).toContain('await supabase.auth.getSession()');
+    expect(flow).toContain('await getAccessToken()');
     expect(flow).toContain("if (!token) { alert('請重新登入'); return; }");
     expect(flow).toContain('pauseConfirmSubmitting.value = false;');
   });
@@ -35,7 +35,8 @@ describe('CourseManagement high-risk flow characterization', () => {
     expect(flow).toContain("method: 'POST'");
     expect(flow).toContain('`/api/v1/student-classes/${course.id}/pause`');
     expect(flow).toContain('body: JSON.stringify(body)');
-    expect(flow).toContain("'Authorization': `Bearer ${token}`");
+    expect(flow).toContain('}, token);');
+    expect(flow).toContain('await authedFetch(');
     expect(flow).toContain('pauseConfirmTarget.value = null;');
     expect(flow).toContain('await loadCourses();');
   });
