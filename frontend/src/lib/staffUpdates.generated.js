@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-05-waive-unpaid-contract",
+    "publishedAt": "2026-10-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "結案欠款可確認不收",
+    "summary": "結案待對帳的欠款，主任可按「確認不收」移出待處理，並留下原因紀錄。",
+    "items": [
+      "要填原因；未繳帳單改為作廢並留紀錄。已有收款或待確認回報時不能按。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "要填原因；未繳帳單改為作廢並留紀錄。已有收款或待確認回報時不能按。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-05:waive-unpaid-contract"
+    ],
+    "date": "2026-10-05",
+    "version": "2026.10.05"
+  },
+  {
     "id": "staff-2026-10-05-unpaid-close-pending",
     "publishedAt": "2026-10-05",
     "effectiveAt": null,

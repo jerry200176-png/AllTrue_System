@@ -488,6 +488,7 @@ Route::prefix('v1')->group(function () {
         // 帳務中心（tuition-collect）前端不掛 PIN 覆蓋層，避免整頁空白。
         // 收據流水／已結清與催繳、ledger 同頁，不可單獨 require_pin，否則 423 卻沒輸入框。
         Route::get('accounting/settled-courses', [AccountingController::class, 'settledCourses']);
+        Route::post('accounting/courses/{id}/waive', [AccountingController::class, 'waiveCourse'])->whereNumber('id');
         Route::get('accounting/payments', [AccountingController::class, 'payments']);
         Route::get('accounting/payments/export', [AccountingController::class, 'paymentsExport']);
         Route::post('payment-reports/director-record', [PaymentReportController::class, 'directorRecord']);

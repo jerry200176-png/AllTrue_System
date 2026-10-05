@@ -467,7 +467,7 @@ jobs:
               $classes = $linkedClassIds === [] ? collect() : $db::table('StudentClass')->whereIn('ID', $linkedClassIds)->orderBy('ID')
                 ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'SessionCount', 'RemainingSessions', 'closed_reason']);
               // Every closed_reason value StudentClass writers set (grep backend/app, 2026-10-02); anything else is free text → 'other'.
-              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled'];
+              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled', 'waived'];
               $classes = $classes->map(function ($r) use ($knownReasons) {{
                 $reason = (string)($r->closed_reason ?? '');
                 $r->closed_reason = $reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other');
@@ -498,7 +498,7 @@ jobs:
                 ->where(fn ($q) => $q->whereNull('EndDate')->orWhereDate('EndDate', '>=', $from))
                 ->where(fn ($q) => $q->whereNull('StartDate')->orWhereDate('StartDate', '<=', $to))
                 ->pluck('ID')->map(fn ($id) => (int)$id)->all();
-              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled'];
+              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled', 'waived'];
               $out['student_ids'] = $studentIds;
               $out['window'] = [$from, $to];
               $out['classes'] = $db::table('StudentClass')->whereIn('ID', $classIds ?: [0])->orderBy('ID')

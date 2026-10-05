@@ -190,19 +190,30 @@ class PaymentReportController extends Controller
             return $blockedTutoringPayment;
         }
 
-        $report = PaymentReport::create([
-            'StudentID'        => $sc->StudentID,
-            'StudentClassID'   => $sc->ID,
-            'InvoiceID'        => null,
-            'reported_by_name' => $sc->student->name,
-            'payment_date'     => $data['payment_date'],
-            'payment_method'   => $data['payment_method'],
-            'reported_amount'  => $data['reported_amount'],
-            'account_last5'    => $data['account_last5'] ?? null,
-            'status'           => 'pending',
-            'report_token_hash' => $tokenHash,
-            'token_expires_at' => Carbon::createFromTimestamp($payload['exp']),
-        ]);
+        // 確認不收（waived）為終態：鎖課程後再建立回報，避免與 waive 競爭。
+        $report = DB::transaction(function () use ($sc, $data, $tokenHash, $payload) {
+            $locked = StudentClass::query()->whereKey($sc->getKey())->lockForUpdate()->first();
+            if (!$locked || (string) $locked->getAttribute('closed_reason') === 'waived') {
+                return null;
+            }
+
+            return PaymentReport::create([
+                'StudentID'        => $sc->StudentID,
+                'StudentClassID'   => $sc->ID,
+                'InvoiceID'        => null,
+                'reported_by_name' => $sc->student->name,
+                'payment_date'     => $data['payment_date'],
+                'payment_method'   => $data['payment_method'],
+                'reported_amount'  => $data['reported_amount'],
+                'account_last5'    => $data['account_last5'] ?? null,
+                'status'           => 'pending',
+                'report_token_hash' => $tokenHash,
+                'token_expires_at' => Carbon::createFromTimestamp($payload['exp']),
+            ]);
+        });
+        if (!$report) {
+            return response()->json(['message' => '此課程已確認不收，無需繳費'], 422);
+        }
 
         Log::info('PaymentReport submitted', [
             'report_id'       => $report->id,
@@ -337,7 +348,11 @@ class PaymentReportController extends Controller
             $note = $confirmationNote !== ''
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));
-            $sc = StudentClass::find($report->StudentClassID);
+            // Lock the course so a concurrent 確認不收 cannot interleave with this confirmation.
+            $sc = StudentClass::query()->whereKey($report->StudentClassID)->lockForUpdate()->first();
+            if ($sc && (string) $sc->getAttribute('closed_reason') === 'waived') {
+                return response()->json(['message' => '此合約已確認不收，不能再確認回報'], 422);
+            }
             if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
                 return $blockedTutoringPayment;
             }
@@ -550,6 +565,10 @@ class PaymentReportController extends Controller
 
         return DB::transaction(function () use ($data, $sc, $userId) {
             $invoice = null;
+            $lockedCourse = StudentClass::query()->whereKey($sc->getKey())->lockForUpdate()->first();
+            if ($lockedCourse && (string) $lockedCourse->getAttribute('closed_reason') === 'waived') {
+                return response()->json(['message' => '此合約已確認不收，不能登記收款'], 422);
+            }
             $package = $this->lockPackageForCourse($sc);
 
             if ($this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0)) || ($package && (bool) $package->paid)) {
