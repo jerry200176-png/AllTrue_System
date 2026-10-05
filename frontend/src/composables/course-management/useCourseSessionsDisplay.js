@@ -25,6 +25,7 @@ import {
   planningStatusToLegacyWarning,
 } from '../../lib/sessionPlanningStatus';
 import { FINAL_LEAVE_STATUSES, LEAVE_STATUSES } from '../../lib/sessionStatus';
+import { isSessionPayment, ownRemainingSessions, poolRemainingSessions, purchasedSessions } from '../../lib/courseMoneyState.js';
 const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
 const UPCOMING_NON_LESSON_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
@@ -523,18 +524,11 @@ export function useCourseSessionsDisplay({
 
   const displaySessions = (course) => sessions(course);
 
-  const isSessionMode = (course) => {
-    const paymentType = String(course?.payment_type || '').trim();
-    if (paymentType) return paymentType === 'session';
-    return Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) > 0;
-  };
+  const isSessionMode = isSessionPayment;
 
-  const getPurchasedSessions = (course) => Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
+  const getPurchasedSessions = purchasedSessions;
 
-  const getRawRemainingSessions = (course) => {
-    const v = course?.remaining_sessions ?? course?.RemainingSessions;
-    return Number.isFinite(Number(v)) ? Number(v) : null;
-  };
+  const getRawRemainingSessions = ownRemainingSessions;
 
   const getUsedSessions = (course) => {
     const purchased = getPurchasedSessions(course);
@@ -548,7 +542,7 @@ export function useCourseSessionsDisplay({
   const displayRemainingSessions = (course) => {
     if (!isSessionMode(course)) return null;
     if (course?.PackageID) {
-      return Math.max(0, Number(course?.package_remaining_sessions ?? 0) || 0);
+      return Math.max(0, poolRemainingSessions(course) ?? 0);
     }
     const purchased = getPurchasedSessions(course);
     const rows = getCourseSessionRows(course);
