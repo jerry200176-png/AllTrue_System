@@ -229,6 +229,13 @@ class AccountingController extends Controller
             if ($invoices->contains(fn ($i) => $i->payments->isNotEmpty() || (int) ($i->PaidAmount ?? 0) !== 0)) {
                 return response()->json(['message' => '此合約已有收款紀錄，請先到帳務更正後再處理'], 422);
             }
+            // A line on another course's open invoice cannot be voided from here without touching that invoice.
+            $sharedInvoice = DB::table('InvoiceItem')->join('Invoice', 'Invoice.id', '=', 'InvoiceItem.InvoiceID')
+                ->where('InvoiceItem.StudentClassID', $id)->where('Invoice.StudentClassID', '!=', $id)
+                ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhereNotIn('Invoice.Status', ['void', 'paid']))->exists();
+            if ($sharedInvoice) {
+                return response()->json(['message' => '此合約在合併帳單中，請先到帳務處理該帳單'], 422);
+            }
             if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'pending')->exists()) {
                 return response()->json(['message' => '有待確認的繳費回報，請先確認或退回'], 422);
             }

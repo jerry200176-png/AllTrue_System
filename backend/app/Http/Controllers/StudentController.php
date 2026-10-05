@@ -470,6 +470,13 @@ class StudentController extends Controller
             ], 403);
         }
 
+        // Preflight: never delete part of a batch and then stop on a 確認不收 contract.
+        $waivedStudentIds = DB::table('StudentClass')->whereIn('StudentID', $foundIds)->where('closed_reason', 'waived')
+            ->distinct()->pluck('StudentID')->map(fn ($id) => (int) $id)->values()->all();
+        if ($waivedStudentIds !== []) {
+            return response()->json(['message' => '部分學生有已確認不收的合約，不能刪除', 'waived_student_ids' => $waivedStudentIds], 422);
+        }
+
         $deletedTotals = [
             'StudentClass' => 0,
             'ClassSession' => 0,

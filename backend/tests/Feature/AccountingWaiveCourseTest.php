@@ -114,7 +114,25 @@ class AccountingWaiveCourseTest extends TestCase
 
         // Purging the student would strand the waived contract's void invoices and audit trail.
         $this->deleteJson("/api/v1/students/{$course->StudentID}", [], $h)->assertStatus(422);
+        $plain = $this->createStudent();
+        $this->postJson('/api/v1/students/bulk-delete', ['student_ids' => [$plain->id, $course->StudentID]], $h)->assertStatus(422);
+        $this->assertNotNull(Student::query()->find($plain->id)); // nothing deleted before the refusal
         $this->assertSame('waived', $course->fresh()->closed_reason);
+    }
+
+    public function test_course_billed_on_another_courses_open_invoice_cannot_be_waived(): void
+    {
+        $token = $this->createToken([1]);
+        $student = $this->createStudent();
+        $a = $this->createStudentClass($student->id, ['Charge' => 1000]);
+        $b = $this->createStudentClass($student->id, ['Charge' => 2000, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
+        $invoiceId = DB::table('Invoice')->insertGetId(['StudentID' => $student->id, 'StudentClassID' => $a->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 3000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => $invoiceId, 'StudentClassID' => $b->ID, 'Description' => 'b', 'Amount' => 2000]);
+
+        $this->postJson("/api/v1/accounting/courses/{$b->ID}/waive", ['reason' => '不收了', 'expected_amount' => 2000], ['Authorization' => "Bearer {$token}"])
+            ->assertStatus(422)->assertJsonPath('message', '此合約在合併帳單中，請先到帳務處理該帳單');
+        $this->assertSame('settled_pending', $b->fresh()->closed_reason);
     }
 
     private function createToken(array $campusIds, string $type = 'D'): string
