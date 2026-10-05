@@ -714,9 +714,11 @@ jobs:
             // (BillingPayableResolver::courseStatusesByStudentClassIds) next to the legacy signals over every contract
             // that is active or ended in 2026, and aggregate. Aggregate counts, amounts and example IDs only; no names.
             $resolver = app(\App\Services\BillingPayableResolver::class);
-            $ids = $db::table('StudentClass')->where(fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop')->orWhereDate('EndDate', '>=', '2026-01-01'))
+            // One consistent read view (InnoDB REPEATABLE READ) for the whole scan; nothing is written.
+            \Illuminate\Support\Facades\DB::beginTransaction();
+            $ids = $db::table('StudentClass')->where(fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop')->orWhereNull('EndDate')->orWhereDate('EndDate', '>=', '2026-01-01'))
               ->orderBy('ID')->pluck('ID')->map(fn ($id) => (int)$id)->all();
-            $buckets = []; $hidden = []; $flagOnlyPaid = 0; $total = 0;
+            $buckets = []; $hidden = []; $flagOnlyPaid = 0; $total = 0; $divergent = [];
             foreach (array_chunk($ids, 400) as $chunk) {{
               $models = \App\Models\StudentClass::query()->whereIn('ID', $chunk)->get();
               $statuses = $resolver->courseStatusesByStudentClassIds($chunk, $models);
@@ -744,6 +746,12 @@ jobs:
                     'status' => $status, 'outstanding' => $out_amt, 'closed_reason' => $reasonClass];
                 }}
                 if ($legacyPaid && in_array($status, ['unpaid', 'partial'], true)) $flagOnlyPaid++;
+                // Every course whose legacy answer differs from the resolver (S0 asks for the full list, not samples).
+                $resolverPaid = in_array($status, ['paid', 'free'], true);
+                $storedSaysPaid = $storedState === 'stored_paid';
+                if ($status !== 'review_required' && ($legacyPaid !== $resolverPaid || ($storedState !== 'no_invoice' && $storedSaysPaid !== $resolverPaid))) {{
+                  $divergent[] = ['id' => $cid, 'status' => $status, 'legacy' => $legacyPaid ? 'paid' : 'unpaid', 'stored' => $storedState, 'outstanding' => $out_amt];
+                }}
               }}
             }}
             uasort($buckets, fn ($a, $b) => $b['count'] <=> $a['count']);
@@ -752,12 +760,15 @@ jobs:
             $out['hidden_debt_count'] = count($hidden);
             $out['hidden_debt_outstanding'] = array_sum(array_column($hidden, 'outstanding'));
             $out['hidden_debt'] = array_slice($hidden, 0, 200);
+            \Illuminate\Support\Facades\DB::rollBack();
             $out['legacy_paid_but_resolver_owes'] = $flagOnlyPaid;
+            $out['divergent_count'] = count($divergent);
+            $out['divergent'] = $divergent;
             // This report gates F7 S3: an empty or incomplete resolution must not look like a clean result.
             $missing = array_sum(array_map(fn ($b) => $b['status'] === 'missing' ? $b['count'] : 0, $buckets));
             if ($total === 0 || $missing > 0) {{
               $out['ok'] = false;
-              $out['error'] = "f7 snapshot incomplete: scanned={$total} missing={$missing}";
+              $out['error'] = "f7 snapshot incomplete: scanned=" . $total . " missing=" . $missing;
             }}
           }} elseif ($case === 'contract_yang_binghe') {{
             $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
