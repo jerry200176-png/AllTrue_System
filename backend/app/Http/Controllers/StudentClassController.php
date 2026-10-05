@@ -26,6 +26,7 @@ use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\Scheduling\BillingContractLockGuard;
 use App\Services\Scheduling\ContractSessionSchedule;
+use App\Services\Scheduling\ContractTeacherChangeCascade;
 use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\FrontendSubjectIdResolver;
@@ -1910,13 +1911,13 @@ class StudentClassController extends Controller
             if ($newTeacherId > 0 && $newTeacherId !== $oldTeacherSnapshot) {
                 // in-app #207: pin past attended/history to former teacher BEFORE
                 // future schedule rows move to the new contract teacher.
-                $this->pinPastSessionsToFormerTeacherAfterContractTeacherChange(
+                ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange(
                     $courseIdForTeacherSync,
                     $oldTeacherSnapshot,
                     $newTeacherId,
                     $teacherEffectiveDate
                 );
-                $this->syncFutureScheduleTeachersAfterContractTeacherChange(
+                ContractTeacherChangeCascade::syncFutureScheduleTeachersAfterContractTeacherChange(
                     $courseIdForTeacherSync,
                     $oldTeacherSnapshot,
                     $newTeacherId
@@ -6272,7 +6273,7 @@ class StudentClassController extends Controller
         $this->contractSchedule->extendSessionsIfNeeded($new, $remaining);
         $this->contractSchedule->cancelExcessScheduledSessions($newId, $remaining);
         if ($newTeacher !== $oldTeacher) {
-            $this->syncFutureScheduleTeachersAfterContractTeacherChange($newId, $oldTeacher, $newTeacher);
+            ContractTeacherChangeCascade::syncFutureScheduleTeachersAfterContractTeacherChange($newId, $oldTeacher, $newTeacher);
             $this->alignMutableLearningRecordTeachersAfterContractTeacherChange($newId, $oldTeacher, $newTeacher, $this->currentActorId(), $start);
         }
         SessionDeductionService::recomputeCounters($cid);
@@ -7200,218 +7201,6 @@ class StudentClassController extends Controller
         ];
 
         return hash_hmac('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), (string) config('app.key'));
-    }
-
-    /**
-     * Keep past / already-taught sessions on the former contract teacher when
-     * StudentClass.TeacherID changes (in-app #207).
-     *
-     * Calendar display prefers substitute schedule rows (original_schedule_id NOT NULL
-     * + teacher_id <> contract). Without pinning, past attended sessions fall through
-     * to the new contract teacher and look like history was rewritten.
-     */
-    private function pinPastSessionsToFormerTeacherAfterContractTeacherChange(
-        int $courseId,
-        int $oldTeacherId,
-        int $newTeacherId,
-        ?string $effectiveDate = null
-    ): void {
-        if ($courseId <= 0 || $oldTeacherId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
-            return;
-        }
-        // Sessions before this date keep the former teacher (default: today).
-        $effectiveDate = $effectiveDate ?: Carbon::today()->toDateString();
-
-        $course = DB::table('StudentClass')->where('ID', $courseId)->first();
-        if (!$course) {
-            return;
-        }
-
-        $studentId = (int) ($course->StudentID ?? 0);
-        $campusId = $studentId > 0
-            ? (int) (DB::table('Student')->where('id', $studentId)->value('CampusID') ?? 0)
-            : 0;
-        if ($studentId <= 0 || $campusId <= 0) {
-            return;
-        }
-
-        $today = Carbon::today()->toDateString();
-        $subject = (string) (DB::table('Subject')->where('id', $course->SubjectID)->value('Subject_Name') ?? '');
-        $classType = (string) ($course->class_type ?? $course->ClassType ?? 'one_on_one');
-
-        // in-app #207: only pin sessions with teaching evidence so calendar history
-        // stays on the former teacher. Past rows that are still merely `scheduled`
-        // must NOT become fake substitute pins — otherwise calendar keeps showing
-        // the old teacher after a contract TeacherID change (in-app #312).
-        $taughtStatuses = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
-        $pastSessions = DB::table('ClassSession as cs')
-            ->where('cs.StudentClassID', $courseId)
-            ->where(function ($q) use ($today, $taughtStatuses, $effectiveDate) {
-                // Past lessons are history regardless of attendance evidence.
-                $q->where(function ($before) use ($effectiveDate) {
-                    $before->whereDate('cs.SessionDate', '<', $effectiveDate)
-                        ->whereRaw("COALESCE(cs.Status, '') != 'cancelled'");
-                })
-                    ->orWhereIn('cs.Status', $taughtStatuses)
-                    ->orWhere(function ($q2) use ($today) {
-                        $q2->whereDate('cs.SessionDate', '<', $today)
-                            ->whereExists(function ($sub) {
-                                $sub->select(DB::raw(1))
-                                    ->from('StudentSingIn as ssi')
-                                    ->whereColumn('ssi.ClassSessionID', 'cs.id');
-                            });
-                    })
-                    // Historical LR authorship only — bare pending placeholders must
-                    // not become false #207 pins (#312 / #314 Option 2B).
-                    ->orWhere(function ($q2) use ($today) {
-                        $q2->whereDate('cs.SessionDate', '<', $today)
-                            ->whereExists(function ($sub) {
-                                $sub->select(DB::raw(1))
-                                    ->from('LearningRecord as lr')
-                                    ->whereColumn('lr.ClassSessionID', 'cs.id')
-                                    ->whereNull('lr.VoidedAt')
-                                    ->where(function ($hist) {
-                                        $hist->whereRaw("LOWER(TRIM(COALESCE(lr.Status, ''))) != ?", ['pending'])
-                                            ->orWhereNotNull('lr.ApprovedAt')
-                                            ->orWhere('lr.SessionDeducted', 1)
-                                            ->orWhere(function ($c) {
-                                                $c->whereNotNull('lr.Content')
-                                                    ->whereRaw("TRIM(lr.Content) != ''")
-                                                    ->whereRaw("TRIM(lr.Content) != ?", ['（評量表）']);
-                                            })
-                                            ->orWhere(function ($p) {
-                                                $p->whereNotNull('lr.Progress')->whereRaw("TRIM(lr.Progress) != ''");
-                                            })
-                                            ->orWhere(function ($p) {
-                                                $p->whereNotNull('lr.NextHomework')->whereRaw("TRIM(lr.NextHomework) != ''");
-                                            });
-                                    });
-                            });
-                    });
-            })
-            ->orderBy('cs.SessionDate')
-            ->orderBy('cs.StartTime')
-            ->select('cs.*')
-            ->get();
-
-        foreach ($pastSessions as $session) {
-            try {
-                $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
-            } catch (\Throwable $e) {
-                continue;
-            }
-            $startTime = substr((string) ($session->StartTime ?? ''), 0, 5);
-            $endTime = substr((string) ($session->EndTime ?? ''), 0, 5);
-            if ($startTime === '' || $endTime === '') {
-                continue;
-            }
-
-            // Already has a substitute-style exception with a non-contract teacher → leave it.
-            $existingPin = DB::table('schedules')
-                ->where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $sessionDate)
-                ->where('status', 'scheduled')
-                ->whereNotNull('original_schedule_id')
-                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                ->where('teacher_id', '<>', $newTeacherId)
-                ->exists();
-            if ($existingPin) {
-                continue;
-            }
-
-            $dayOfWeek = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
-            $startM = ((int) substr($startTime, 0, 2)) * 60 + (int) substr($startTime, 3, 2);
-            $endM = ((int) substr($endTime, 0, 2)) * 60 + (int) substr($endTime, 3, 2);
-            $durationHours = max(0.5, round(max(0, $endM - $startM) / 60, 1));
-            $now = now();
-
-            $rescheduledId = DB::table('schedules')->insertGetId([
-                'student_id' => $studentId,
-                'teacher_id' => $oldTeacherId,
-                'subject' => $subject,
-                'day_of_week' => $dayOfWeek,
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'duration_hours' => $durationHours,
-                'class_type' => $classType,
-                'status' => 'rescheduled',
-                'type' => 'normal',
-                'deduction' => 0,
-                'branch_id' => $campusId,
-                'schedule_date' => $sessionDate,
-                'student_course_id' => $courseId,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
-
-            DB::table('schedules')->insert([
-                'student_id' => $studentId,
-                'teacher_id' => $oldTeacherId,
-                'subject' => $subject,
-                'day_of_week' => $dayOfWeek,
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'duration_hours' => $durationHours,
-                'class_type' => $classType,
-                'status' => 'scheduled',
-                'type' => 'normal',
-                'deduction' => 1,
-                'branch_id' => $campusId,
-                'schedule_date' => $sessionDate,
-                'student_course_id' => $courseId,
-                'original_schedule_id' => (int) $rescheduledId,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
-        }
-    }
-
-    /**
-     * Keep future schedule rows aligned when contract teacher changes.
-     */
-    private function syncFutureScheduleTeachersAfterContractTeacherChange(int $courseId, int $oldTeacherId, int $newTeacherId): void
-    {
-        if ($courseId <= 0 || $newTeacherId <= 0 || $oldTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
-            return;
-        }
-
-        $today = Carbon::today()->toDateString();
-
-        Schedule::where('student_course_id', $courseId)
-            ->where('status', 'scheduled')
-            ->whereDate('schedule_date', '>=', $today)
-            ->whereNull('original_schedule_id')
-            ->where('teacher_id', $oldTeacherId)
-            ->update([
-                'teacher_id' => $newTeacherId,
-                'updated_at' => now(),
-            ]);
-
-        $staleAnchorIds = Schedule::where('student_course_id', $courseId)
-            ->where('status', 'scheduled')
-            ->whereDate('schedule_date', '>=', $today)
-            ->whereNotNull('original_schedule_id')
-            ->where('teacher_id', $oldTeacherId)
-            ->pluck('original_schedule_id')
-            ->filter(fn ($id) => (int) $id > 0)
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values()
-            ->all();
-
-        if (!empty($staleAnchorIds)) {
-            Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', '>=', $today)
-                ->where('status', 'scheduled')
-                ->whereIn('original_schedule_id', $staleAnchorIds)
-                ->delete();
-
-            Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', '>=', $today)
-                ->where('status', 'rescheduled')
-                ->whereIn('id', $staleAnchorIds)
-                ->delete();
-        }
     }
 
     /** in-app #314: restamp mutable LRs onto new contract teacher; leave history/subs. */
