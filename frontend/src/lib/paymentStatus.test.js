@@ -42,3 +42,13 @@ describe('F7 S2 payment status helpers', () => {
     expect(paymentCenterIntentFor({})).toBe('pending');
   });
 });
+
+describe('degraded load (direct Supabase fallback rows)', () => {
+  it('returns unknown, not unpaid/paid, without a canonical server status', () => {
+    expect(isCourseSettled({ _noncanonical: true, Paid: 1, payment_status: 'unpaid' })).toBeNull();
+    expect(isCourseSettled({ _noncanonical: true, payment_status: 'paid' })).toBeNull();
+    expect(isCourseSettled({ Paid: 1 })).toBeNull();
+    expect(isCourseSettled({ payment_status: 'paid' })).toBe(true);
+    expect(isCourseSettled({ payment_status: 'unpaid' })).toBe(false);
+  });
+});

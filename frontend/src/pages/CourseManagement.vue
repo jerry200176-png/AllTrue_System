@@ -4845,6 +4845,7 @@ const loadCourses = async (page = 1) => {
     ...c,
     id: Number(c?.id ?? c?.ID ?? 0),
     data_source: 'supabase',
+    _noncanonical: true,
     student_name: c.student?.name || '—',
     teacher_name: c.teacher_name || c.teacher?.username || '',
     memo: c.memo ?? c.Memo ?? '',
