@@ -566,11 +566,11 @@ jobs:
               $out['student_campus_id'] = (int)$db::table('Student')->where('id', $studentIds[0])->value('CampusID');
               $classes = $db::table('StudentClass')->where('StudentID', $studentIds[0])
                 ->where(fn ($q) => $q->whereNull('EndDate')->orWhereDate('EndDate', '>=', '2026-09-01'))
-                ->orderBy('ID')->get(['ID', 'SubjectID', 'TeacherID', 'ClassType', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'closed_reason', 'updated_at']);
+                ->orderBy('ID')->get(['ID', 'SubjectID', 'TeacherID', 'ClassType', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'closed_reason']);
               $classIds = $classes->pluck('ID')->map(fn ($id) => (int)$id)->all();
               $out['classes'] = $classes->map(fn ($r) => (array)$r)->values()->all();
               $sessions = $db::table('ClassSession')->whereIn('StudentClassID', $classIds ?: [0])->whereDate('SessionDate', $targetDate)
-                ->orderBy('id')->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'created_at', 'updated_at']);
+                ->orderBy('id')->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status']);
               $sessionIds = $sessions->pluck('id')->map(fn ($id) => (int)$id)->all();
               $out['sessions'] = $sessions->map(fn ($r) => (array)$r)->values()->all();
               $schedules = $db::table('schedules')->whereIn('student_course_id', $classIds ?: [0])->whereDate('schedule_date', $targetDate)
@@ -578,7 +578,7 @@ jobs:
                   'schedule_date', 'start_time', 'end_time', 'branch_id', 'created_at', 'updated_at']);
               $out['schedules'] = $schedules->map(fn ($r) => (array)$r)->values()->all();
               $out['learning_records'] = $db::table('LearningRecord')->whereIn('ClassSessionID', $sessionIds ?: [0])
-                ->get(['id', 'ClassSessionID', 'TeacherID', 'VoidedAt', 'updated_at'])->map(fn ($r) => (array)$r)->values()->all();
+                ->get(['id', 'ClassSessionID', 'TeacherID', 'VoidedAt'])->map(fn ($r) => (array)$r)->values()->all();
               // Same read the calendar uses (ClassSessionIndexReadService), narrowed to this student's classes.
               try {{
                 $req = new \\Illuminate\\Http\\Request(['start' => $targetDate, 'end' => $targetDate, 'branch_id' => $out['student_campus_id'], 'per_page' => 1000]);
