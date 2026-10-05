@@ -997,12 +997,6 @@ parameters:
 			path: app/Http/Controllers/BillingController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$PaidAmount\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/BillingController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$Status\.$#'
 			identifier: property.notFound
 			count: 1
@@ -1016,12 +1010,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$StudentID\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/BillingController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$TotalAmount\.$#'
 			identifier: property.notFound
 			count: 1
 			path: app/Http/Controllers/BillingController.php

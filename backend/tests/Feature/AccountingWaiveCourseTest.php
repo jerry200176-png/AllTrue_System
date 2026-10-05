@@ -116,39 +116,17 @@ class AccountingWaiveCourseTest extends TestCase
 
     private function createStudent(): Student
     {
-        return Student::create([
-            'name' => '周宏謙測試生',
-            'CampusID' => 1,
-            'ClassID' => 1,
-            'SchoolName' => 'Test School',
-            'enable' => 1,
-            'MDT' => now(),
-            'Notify_Token' => '',
-        ]);
+        return Student::create(['name' => '周宏謙測試生', 'CampusID' => 1, 'ClassID' => 1, 'SchoolName' => 'Test School',
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
     }
 
     private function createStudentClass(int $studentId, array $overrides = []): StudentClass
     {
         return StudentClass::create(array_merge([
-            'StudentID' => $studentId,
-            'GradeID' => 1,
-            'SubjectID' => 1,
-            'TeacherID' => 99,
-            'by1' => 1,
-            'Period' => 4,
-            'StartDate' => '2026-04-01',
-            'TotalHours' => 20,
-            'Charge' => 0,
-            'Paid' => 0,
-            'Rate' => 0,
-            'MDate' => now(),
-            'Stop' => 0,
-            'ScheduleMode' => 'count',
-            'SessionCount' => 8,
-            'SessionDuration' => 60,
-            'RemainingSessions' => 8,
-            'ClassType' => 'one_on_one',
-            'UsedSessions' => 0,
+            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
+            'StartDate' => '2026-04-01', 'TotalHours' => 20, 'Charge' => 0, 'Paid' => 0, 'Rate' => 0, 'MDate' => now(),
+            'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 60, 'RemainingSessions' => 8,
+            'ClassType' => 'one_on_one', 'UsedSessions' => 0,
         ], $overrides));
     }
 
