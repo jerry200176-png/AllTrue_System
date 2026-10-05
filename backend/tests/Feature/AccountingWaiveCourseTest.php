@@ -96,9 +96,21 @@ class AccountingWaiveCourseTest extends TestCase
         $this->postJson("/api/v1/student-classes/{$course->ID}/confirm-payment", [], $h)->assertStatus(422);
         $this->deleteJson("/api/v1/student-classes/{$course->ID}", [], $h)->assertStatus(422);
 
+        // Any other writer is blocked at the model: general edit, renewal, and a billing line on another invoice.
+        $this->putJson("/api/v1/student-classes/{$course->ID}", ['status' => 'active', 'paid_at' => '2026-10-01'], $h)
+            ->assertStatus(422)->assertJsonPath('message', '此合約已確認不收，不能再變更繳費或結案狀態');
+        $this->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", ['end_date' => '2026-11-30'], $h)->assertStatus(422);
+        $other = $this->createStudentClass($course->StudentID, ['Charge' => 100]);
+        $this->postJson('/api/v1/invoices', ['StudentID' => $course->StudentID, 'StudentClassID' => $other->ID, 'IssueDate' => '2026-10-01',
+            'TotalAmount' => 100, 'Items' => [['Description' => 'x', 'Amount' => 100, 'StudentClassID' => $course->ID]]], $h)
+            ->assertStatus(422)->assertJsonPath('message', '此合約已確認不收，不能再建立帳單');
+
         $course->refresh();
         $this->assertSame(0, (int) $course->Paid);
+        $this->assertSame(1, (int) $course->Stop);
+        $this->assertSame('waived', $course->closed_reason);
         $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
+        $this->assertSame(0, Invoice::query()->where('StudentClassID', $other->ID)->count());
     }
 
     private function createToken(array $campusIds, string $type = 'D'): string

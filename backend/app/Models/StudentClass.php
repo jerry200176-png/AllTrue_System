@@ -59,11 +59,29 @@ class StudentClass extends Model
                 throw new \LogicException('pricing_snapshot is immutable');
             }
         });
+        // 確認不收 is terminal: no writer (update, renewal, pause, payment, delete) may reopen or settle it.
+        // Checked against the committed row so a model loaded before the waiver cannot slip through.
+        static::saving(function (StudentClass $course): void {
+            if ($course->exists && $course->isDirty(['Paid', 'PayDate', 'Stop', 'closed_reason', 'Charge'])
+                && self::isWaivedInDb((int) $course->getKey())) {
+                abort(422, '此合約已確認不收，不能再變更繳費或結案狀態');
+            }
+        });
+        static::deleting(function (StudentClass $course): void {
+            if (self::isWaivedInDb((int) $course->getKey())) {
+                abort(422, '此合約已確認不收，不能刪除');
+            }
+        });
         static::saved(function (StudentClass $course): void {
             if ($course->wasChanged(['settlement_locked_at', 'closed_reason'])) {
                 ClassSession::resetSettlementLockCache();
             }
         });
+    }
+
+    public static function isWaivedInDb(int $id): bool
+    {
+        return $id > 0 && DB::table('StudentClass')->where('ID', $id)->lockForUpdate()->value('closed_reason') === 'waived';
     }
 
     /** Initialize the immutable snapshot exactly once, immediately after creation. */

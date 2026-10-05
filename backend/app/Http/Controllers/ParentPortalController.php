@@ -1360,11 +1360,11 @@ class ParentPortalController extends Controller
         }
 
         $unpaidCount = is_countable($paymentAlerts) ? count($paymentAlerts) : 0;
-        $totalCourses = is_countable($perCourse) ? count($perCourse) : 0;
-        $freeCount = $perCourse->filter(fn ($course) => (bool) ($course['is_tutoring'] ?? false))->count();
-        // A written-off (確認不收) contract is neither paid nor owed: leave it out of the payable denominator.
         $waivedCount = $perCourse->filter(fn ($course) => ($course['payment_status'] ?? null) === 'waived')->count();
-        $payableCourses = max(0, $totalCourses - $freeCount - $waivedCount);
+        // A written-off (確認不收) contract is neither paid nor owed: keep it out of every payment count.
+        $totalCourses = (is_countable($perCourse) ? count($perCourse) : 0) - $waivedCount;
+        $freeCount = $perCourse->filter(fn ($course) => (bool) ($course['is_tutoring'] ?? false))->count();
+        $payableCourses = max(0, $totalCourses - $freeCount);
         $paidCount = max(0, $payableCourses - $unpaidCount);
         $paymentStatus = $unpaidCount === 0
             ? 'all_clear'
