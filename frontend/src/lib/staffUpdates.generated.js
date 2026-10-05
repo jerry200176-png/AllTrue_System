@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-05-receipt-redesign",
+    "publishedAt": "2026-10-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "電子收據換新版面",
+    "summary": "電子收據和繳費單同一套樣子：有 logo，已收金額和收款日期更清楚。",
+    "items": [
+      "收據上方 logo 和分校，已收金額最醒目；每堂課列日期、星期，已上和預計分開標示。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "收據上方 logo 和分校，已收金額最醒目；每堂課列日期、星期，已上和預計分開標示。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-05:receipt-redesign"
+    ],
+    "date": "2026-10-05",
+    "version": "2026.10.05"
+  },
+  {
     "id": "staff-2026-10-05-payment-slip-redesign",
     "publishedAt": "2026-10-05",
     "effectiveAt": null,

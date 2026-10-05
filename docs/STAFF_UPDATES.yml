@@ -39,6 +39,18 @@ updates:
         text: 補卡原因至少要寫兩個字；送不出去時會顯示真正原因，不再只寫「網路錯誤」。
     source_refs:
       - "alltrue:bug_report:375"
+  - id: staff-2026-10-05-receipt-redesign
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: digest
+    title: 電子收據換新版面
+    summary: 電子收據和繳費單同一套樣子：有 logo，已收金額和收款日期更清楚。
+    items:
+      - category: improved
+        text: 收據上方 logo 和分校，已收金額最醒目；每堂課列日期、星期，已上和預計分開標示。
+    source_refs:
+      - "changelog:2026-10-05:receipt-redesign"
   - id: staff-2026-10-05-payment-slip-redesign
     published_at: "2026-10-05"
     audiences:
