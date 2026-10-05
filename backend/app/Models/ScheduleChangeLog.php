@@ -23,6 +23,8 @@ class ScheduleChangeLog extends Model
         'to_time',
         'from_teacher_id',
         'to_teacher_id',
+        'from_status',
+        'to_status',
         'actor_id',
         'reason',
         'created_at',

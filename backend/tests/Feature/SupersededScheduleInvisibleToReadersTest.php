@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Console\Commands\RecoverTeacherRfidCollisionSignIns;
+use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\Schedule;
 use App\Models\Student;
@@ -159,5 +161,66 @@ class SupersededScheduleInvisibleToReadersTest extends TestCase
 
         $this->setSupersededRowStatus('scheduled');
         $this->assertNotSame([], $plan()['collisions'], 'control: scheduled row collides with the live row');
+    }
+
+    /** Teacher A gets an earlier row (id 200) in the given status and a later 'scheduled' row (id 201) on $date. */
+    private function seedEarlyRowAndLaterLiveRow(string $date, string $earlyStatus): void
+    {
+        $base = [
+            'student_id' => 1, 'day_of_week' => 1, 'type' => 'normal', 'deduction' => 1, 'branch_id' => 1,
+            'student_course_id' => $this->sc->ID, 'schedule_date' => $date, 'teacher_id' => $this->aId,
+            'created_at' => now(), 'updated_at' => now(),
+        ];
+        DB::table('schedules')->insert($base + ['id' => 200, 'status' => $earlyStatus, 'start_time' => '08:00:00', 'end_time' => '10:00:00']);
+        DB::table('schedules')->insert($base + ['id' => 201, 'status' => 'scheduled', 'start_time' => '10:00:00', 'end_time' => '12:00:00']);
+    }
+
+    public function test_teacher_attendance_first_class_ignores_superseded_row(): void
+    {
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $this->aId, 'token' => $token, 'expires_at' => now()->addDay()]);
+        $firstClass = fn () => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/teacher-attendance/today')->assertOk()->json('first_class_start_time');
+
+        $this->seedEarlyRowAndLaterLiveRow(now()->toDateString(), Schedule::STATUS_SUPERSEDED);
+        $this->assertSame('10:00:00', $firstClass());
+
+        DB::table('schedules')->where('id', 200)->update(['status' => 'scheduled']);
+        $this->assertSame('08:00:00', $firstClass(), 'control');
+    }
+
+    public function test_rfid_recovery_first_class_ignores_superseded_row(): void
+    {
+        $this->seedEarlyRowAndLaterLiveRow('2026-10-12', Schedule::STATUS_SUPERSEDED);
+        $resolve = (new \ReflectionClass(RecoverTeacherRfidCollisionSignIns::class))->getMethod('resolveStatus');
+        $status = fn () => $resolve->invoke(new RecoverTeacherRfidCollisionSignIns(), $this->aId, '2026-10-12 10:05:00');
+
+        $this->assertSame('normal', $status());
+
+        DB::table('schedules')->where('id', 200)->update(['status' => 'scheduled']);
+        $this->assertSame('late', $status(), 'control: 08:00 row makes a 10:05 swipe late');
+    }
+
+    public function test_teacher_eligibility_ignores_superseded_row(): void
+    {
+        $dir = User::create([
+            'LoginName' => 'dir-superseded@example.com', 'Name' => '主任', 'PSW' => 'x', 'type' => 'A',
+            'phone' => '0910000019', 'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $dir->id, 'Admin' => 1, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $dir->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+
+        // 2026-08-03 is a Monday; only id 201 (10:00-12:00) may count toward weekday hours.
+        $this->seedEarlyRowAndLaterLiveRow('2026-08-03', Schedule::STATUS_SUPERSEDED);
+        $hours = fn () => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')
+            ->assertOk()
+            ->json('teachers.0.weekday_hours.2026-08-03');
+
+        $this->assertEquals(2.0, $hours());
+
+        DB::table('schedules')->where('id', 200)->update(['status' => 'scheduled']);
+        $this->assertEquals(4.0, $hours(), 'control: scheduled 08:00-10:00 row is counted');
     }
 }

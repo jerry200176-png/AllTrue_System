@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * TD-076 Track B PR-A: additive nullable teacher columns on the append-only log.
+ * TD-076 Track B PR-A: additive nullable teacher + status transition columns on the append-only log.
  * Existing rows keep reason=reschedule and null teachers. No writer uses them yet.
  */
 return new class extends Migration
@@ -22,6 +22,12 @@ return new class extends Migration
             if (!Schema::hasColumn('schedule_change_log', 'to_teacher_id')) {
                 $table->unsignedInteger('to_teacher_id')->nullable()->after('from_teacher_id');
             }
+            if (!Schema::hasColumn('schedule_change_log', 'from_status')) {
+                $table->string('from_status', 32)->nullable()->after('to_teacher_id');
+            }
+            if (!Schema::hasColumn('schedule_change_log', 'to_status')) {
+                $table->string('to_status', 32)->nullable()->after('from_status');
+            }
         });
     }
 
@@ -31,6 +37,11 @@ return new class extends Migration
             return;
         }
         Schema::table('schedule_change_log', function (Blueprint $table) {
+            foreach (['to_status', 'from_status'] as $col) {
+                if (Schema::hasColumn('schedule_change_log', $col)) {
+                    $table->dropColumn($col);
+                }
+            }
             if (Schema::hasColumn('schedule_change_log', 'to_teacher_id')) {
                 $table->dropColumn('to_teacher_id');
             }
