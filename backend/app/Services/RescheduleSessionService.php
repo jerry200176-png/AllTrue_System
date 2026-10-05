@@ -311,28 +311,14 @@ class RescheduleSessionService
     }
 
     /**
-     * Flag default off: production keeps today's chain-only writes.
-     * When on: stamp frozen identity on the destination and append one log row.
-     * Readers still walk the chain (Phase 4).
+     * Freeze the occurrence identity on a live row (no-op if already stamped) and
+     * return [Y-m-d, HH:MM]. Shared with OccurrenceAssignmentService.
+     *
+     * @return array{0: string, 1: string}
      */
-    private function maybeDualWriteOccurrenceIdentity(
-        Student $student,
-        Schedule $target,
-        string $oldDate,
-        string $oldStartTime,
-        string $newDate,
-        string $newStartTime,
-        int $authUserId
-    ): void {
-        if (!FeatureFlag::enabled(self::OCCURRENCE_V2_FLAG, (int) $student->CampusID)) {
-            return;
-        }
-        if (!Schema::hasColumn('schedules', 'original_schedule_date')) {
-            return;
-        }
-
+    public static function freezeOccurrenceIdentity(Schedule $target, string $oldDate, string $oldStartTime): array
+    {
         $fromTime = substr($oldStartTime, 0, 5);
-        $toTime = substr($newStartTime, 0, 5);
         $frozenDate = $target->original_schedule_date
             ? Carbon::parse((string) $target->original_schedule_date)->toDateString()
             : null;
@@ -361,6 +347,34 @@ class RescheduleSessionService
         $target->original_schedule_date = $frozenDate;
         $target->original_start_time = $frozenTime;
         $target->save();
+
+        return [$frozenDate, $frozenTime];
+    }
+
+    /**
+     * Flag default off: production keeps today's chain-only writes.
+     * When on: stamp frozen identity on the destination and append one log row.
+     * Readers still walk the chain (Phase 4).
+     */
+    private function maybeDualWriteOccurrenceIdentity(
+        Student $student,
+        Schedule $target,
+        string $oldDate,
+        string $oldStartTime,
+        string $newDate,
+        string $newStartTime,
+        int $authUserId
+    ): void {
+        if (!FeatureFlag::enabled(self::OCCURRENCE_V2_FLAG, (int) $student->CampusID)) {
+            return;
+        }
+        if (!Schema::hasColumn('schedules', 'original_schedule_date')) {
+            return;
+        }
+
+        $fromTime = substr($oldStartTime, 0, 5);
+        $toTime = substr($newStartTime, 0, 5);
+        [$frozenDate, $frozenTime] = self::freezeOccurrenceIdentity($target, $oldDate, $oldStartTime);
 
         if (!Schema::hasTable('schedule_change_log')) {
             return;
