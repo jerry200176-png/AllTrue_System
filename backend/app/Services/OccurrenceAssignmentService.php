@@ -13,12 +13,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * TD-076 Track B: the single writer for "who teaches this occurrence".
- * Callers use it ONLY when enabledFor(campus) is true; flag-off paths stay on today's code.
- *
- * Keeps today's chain shape (one live `scheduled` row whose original_schedule_id points at
- * a `rescheduled` anchor) so chain readers, which are not migrated until PR-C, still work.
- * Never creates a second live row for a slot that already has one.
+ * TD-076 Track B: the single writer for "who teaches this occurrence"; callers gate on enabledFor(campus).
+ * Keeps today's chain shape (live `scheduled` row -> `rescheduled` anchor) so unmigrated readers still work,
+ * and never creates a second live row for a slot that already has one.
  */
 class OccurrenceAssignmentService
 {
@@ -29,10 +26,7 @@ class OccurrenceAssignmentService
             && Schema::hasColumn('schedule_change_log', 'to_teacher_id');
     }
 
-    /**
-     * Flag on, OR this slot was written by this service earlier: a flag rollback must still
-     * undo/restore rows through the same writer (they may hang off a cross-date anchor).
-     */
+    /** Flag on, or this slot was written by this service earlier (a flag rollback must still undo through it). */
     public static function handles(ClassSession $session, int $campusId): bool
     {
         return self::enabledFor($campusId)
@@ -101,12 +95,11 @@ class OccurrenceAssignmentService
     }
 
     /**
-     * Put the contract teacher back (reason=restore). A row that exists only to carry the
-     * substitute (same-slot anchor, not moved from its identity) is deleted, like today's undo;
-     * a row that also carries a reschedule keeps its slot and gets the contract teacher.
+     * reason=restore. A substitute-only row (same-slot anchor, identity unmoved) is deleted like today's undo;
+     * a row that also carries a reschedule keeps its slot with the contract teacher.
      *
      * @param array{date:string,start:string,end:string}|null $restoreSlot
-     * @return Schedule|null the live row (->exists is false when it was removed); null if none, caller falls back to the legacy cleanup
+     * @return Schedule|null the live row (->exists false if removed); null if none: caller uses the legacy cleanup
      */
     public function restoreContractTeacher(ClassSession $session, ?int $actorId, ?array $restoreSlot = null): ?Schedule
     {
