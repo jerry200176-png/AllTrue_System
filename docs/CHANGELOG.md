@@ -1,3 +1,6 @@
+## 2026-10-05 — chore(arch): pin-past and future-schedule teacher cascade into ContractTeacherChangeCascade (slice 10/11)
+- 行為不變的搬移（ADR-003／#966）：改合約老師時的 `pinPastSessionsToFormerTeacher…` 與 `syncFutureScheduleTeachers…` 移到新的 `ContractTeacherChangeCascade`
+
 ## 2026-10-05 — chore(arch): monthly top-up and week/time reconcile into ContractSessionSchedule (slice 9/10)
 - 行為不變的搬移（ADR-003／#966）：`ensureMonthlyFutureScheduledSessions`、`reconcileWeekTimeFieldsFromSessions`、`countUnalignedFutureContractSessions` 移到 `ContractSessionSchedule`
 
