@@ -36,14 +36,16 @@ final class UnpaidHiddenClosuresStrategyTest extends TestCase
 
     private function course(int $id, string $reason, int $total, array $over = []): void
     {
-        DB::table('Student')->insert(['id' => $id, 'name' => "s{$id}", 'CampusID' => 1, 'ClassID' => 1]);
+        DB::table('Student')->insert(['id' => $id, 'name' => "s{$id}", 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1]);
         DB::table('StudentClass')->insert(array_merge([
             'ID' => $id, 'StudentID' => $id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1, 'by1' => 1,
-            'TotalHours' => 4, 'StartDate' => '2026-08-01', 'ClassType' => 'one_on_one', 'ScheduleMode' => 'date',
+            'Period' => 4, 'Pay' => 0, 'Rate' => 0, 'TotalHours' => 4, 'StartDate' => '2026-08-01', 'EndDate' => '2026-08-31',
+            'ClassType' => 'one_on_one', 'ScheduleMode' => 'date',
             'Stop' => 1, 'Paid' => 0, 'closed_reason' => $reason, 'Charge' => $total,
         ], $over));
         DB::table('Invoice')->insert(['id' => $id, 'StudentID' => $id, 'StudentClassID' => $id,
-            'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+            'IssueDate' => '2026-09-01', 'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
+            'created_at' => now(), 'updated_at' => now()]);
     }
 
     private function reason(int $id): ?string
@@ -53,7 +55,7 @@ final class UnpaidHiddenClosuresStrategyTest extends TestCase
 
     private function pay(int $id, int $amount): void
     {
-        DB::table('Payment')->insert(['InvoiceID' => $id, 'Amount' => $amount, 'PaidAt' => now(), 'Method' => 'cash']);
+        DB::table('Payment')->insert(['InvoiceID' => $id, 'Amount' => $amount, 'PaidAt' => now(), 'Method' => 'cash', 'created_at' => now()]);
     }
 
     private function applied(): array
