@@ -141,12 +141,17 @@ jobs:
           set -euo pipefail
           cd /home/admin/backend
           manifest_sha="$(curl -fsSL --proto '=https' --tlsv1.2 https://daan.lifenet.com.tw/deployment.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
-          [ "$manifest_sha" = "$DEPLOYED_SHA" ] || { echo "::error::production SHA drift: $manifest_sha (reviewed $DEPLOYED_SHA)"; exit 1; }
           CMD="php artisan repair:unpaid-hidden-closures"
           if [ "${MODE}" = "rollback" ]; then
+            # Later releases are fine as long as the reviewed repair implementation is byte-identical.
+            CMD_FILE=backend/app/Console/Commands/RepairUnpaidHiddenClosures.php
+            git -C /home/admin cat-file -e "${DEPLOYED_SHA}^{commit}" || { echo "::error::reviewed SHA not in production history"; exit 1; }
+            git -C /home/admin diff --quiet "$DEPLOYED_SHA" "$manifest_sha" -- "$CMD_FILE" \
+              || { echo "::error::repair implementation changed since reviewed $DEPLOYED_SHA"; exit 1; }
             ALLOW_PROD_REPAIR=1 $CMD --rollback --execute --force --actor="${ACTOR}"
             exit $?
           fi
+          [ "$manifest_sha" = "$DEPLOYED_SHA" ] || { echo "::error::production SHA drift: $manifest_sha (reviewed $DEPLOYED_SHA)"; exit 1; }
           # execute: exact-state preflight first (ALREADY_APPLIED short-circuits)
           PRE=$($CMD 2>&1) || { echo "$PRE"; echo "REPAIR_STATE=NOT_APPLIED"; exit 1; }
           echo "$PRE"
@@ -155,11 +160,16 @@ jobs:
             exit 0
           fi
           set +e
-          ALLOW_PROD_REPAIR=1 $CMD --execute --force --expect-digest="${EXPECT_DIGEST}" --actor="${ACTOR}"
+          MUT_OUT=$(ALLOW_PROD_REPAIR=1 $CMD --execute --force --expect-digest="${EXPECT_DIGEST}" --actor="${ACTOR}" 2>&1)
           MUT_EC=$?
+          echo "$MUT_OUT"
           $CMD --verify
           VER_EC=$?
           set -e
+          # A committed write whose post-check failed must never look retryable.
+          if echo "$MUT_OUT" | grep -q 'REPAIR_STATE=APPLIED_POSTVERIFY_FAILED'; then
+            echo "REPAIR_STATE=APPLIED_POSTVERIFY_FAILED; do NOT re-run execute"; exit 42
+          fi
           [ "$MUT_EC" -eq 0 ] || { echo "REPAIR_STATE=NOT_APPLIED_OR_FAILED"; exit "$MUT_EC"; }
           [ "$VER_EC" -eq 0 ] || { echo "REPAIR_STATE=APPLIED_POSTVERIFY_FAILED; do NOT re-run execute"; exit 42; }
           echo "REPAIR_STATE=APPLIED_AND_VERIFIED"

@@ -96,6 +96,10 @@ class RepairUnpaidHiddenClosuresTest extends TestCase
         // A director confirming payment afterwards is a legitimate forward move, not a verify failure.
         DB::table('StudentClass')->where('ID', 3517)->update(['Paid' => 1, 'closed_reason' => 'settled']);
         $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures', ['--verify' => true]));
+        // Falling back to any hidden reason while unpaid is caught.
+        DB::table('StudentClass')->where('ID', 3516)->update(['closed_reason' => 'completed']);
+        $this->assertSame(1, Artisan::call('repair:unpaid-hidden-closures', ['--verify' => true]));
+        DB::table('StudentClass')->where('ID', 3516)->update(['closed_reason' => 'settled_pending']);
 
         // Rollback skips the reconciled row and records the actor.
         $this->assertSame(0, Artisan::call('repair:unpaid-hidden-closures', ['--rollback' => true, '--execute' => true, '--actor' => 'gha:test']));

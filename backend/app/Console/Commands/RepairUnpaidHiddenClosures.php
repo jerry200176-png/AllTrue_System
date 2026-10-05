@@ -163,8 +163,9 @@ class RepairUnpaidHiddenClosures extends Command
     }
 
     /**
-     * A repaired row may legitimately move on (payment confirmed -> settled, written off -> waived).
-     * Only a row that fell back to its old hidden reason, or vanished, is an error.
+     * A repaired row may legitimately move on (payment confirmed -> Paid=1, written off -> waived). Any row
+     * that is unpaid and not in a reason the accounting queue lists (settled_pending / contract_amended)
+     * or the explicit waived state has vanished again - or the row is missing - is an error.
      *
      * @return list<string>
      */
@@ -173,15 +174,16 @@ class RepairUnpaidHiddenClosures extends Command
         if (!$corr) {
             return ['no open correction'];
         }
-        $old = collect($corr->snapshot_before['rows'] ?? [])->pluck('closed_reason', 'id');
-        $now = DB::table('StudentClass')->whereIn('ID', $old->keys()->all() ?: [0])->get(['ID', 'closed_reason', 'Paid'])->keyBy('ID');
-        $bad = $old->keys()->filter(function ($id) use ($old, $now) {
+        $ids = collect($corr->snapshot_before['rows'] ?? [])->pluck('id');
+        $now = DB::table('StudentClass')->whereIn('ID', $ids->all() ?: [0])->get(['ID', 'closed_reason', 'Paid'])->keyBy('ID');
+        $bad = $ids->filter(function ($id) use ($now) {
             $row = $now->get($id);
 
-            return !$row || ($row->closed_reason === $old[$id] && (int) $row->Paid !== 1);
+            return !$row || ((int) $row->Paid !== 1
+                && !in_array((string) $row->closed_reason, ['settled_pending', 'contract_amended', 'waived'], true));
         })->values()->all();
 
-        return $bad === [] ? [] : ['back to hidden reason or missing: ' . implode(',', $bad)];
+        return $bad === [] ? [] : ['unpaid and hidden again, or missing: ' . implode(',', $bad)];
     }
 
     private function openCorrection(): ?SessionCorrection
