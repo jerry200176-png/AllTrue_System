@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.05",
     "date": "2026-10-05",
     "title": "2026.10.05 草稿（未發布）",
-    "summary": "slip redesign with logo",
+    "summary": "slip redesign with logo；slips always list lesson dates",
     "audience": [
       "teacher",
       "director"
@@ -20,10 +20,17 @@ export const changelogDraftNotes = [
         "items": [
           "slip redesign with logo"
         ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "slips always list lesson dates"
+        ]
       }
     ],
     "items": [
-      "slip redesign with logo"
+      "slip redesign with logo",
+      "slips always list lesson dates"
     ]
   },
   {
