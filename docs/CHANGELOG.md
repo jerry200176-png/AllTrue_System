@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-10-04-course-edit-guard -->
 - 修改課程時段時的檢查改用與實際搬移相同的「同日重排計畫」：不再被自己會被搬走的堂次或不同日期的學生加總擋下；會留在原地的堂次（已簽到、待審請假、多出來的）仍會擋；搬完會跟自己的課重疊時直接拒絕，不會半套成功
 
+## 2026-10-05 — fix(billing): paid monthly slips list upcoming lessons; MonthlySplit keeps requested endpoints (#3525)
+<!-- release-notes: staff_update=staff-2026-10-05-paid-slip-upcoming -->
+- 金額固定（已繳／非依堂數重算）的月結帳單，繳費單列計費堂次加上今天以後的排定堂次；依堂數重算金額的未繳帳單維持只列計費堂次。`MonthlySplit` 產生的帳單項目，第一段起日與最後一段迄日改用實際指定日期（金額仍按月平分）
+
 ## 2026-10-05 — feat(billing-ui): receipt shares the payment slip design (#3445)
 <!-- release-notes: staff_update=staff-2026-10-05-receipt-redesign -->
 - 電子收據改用 `BillingDocument`（`receiptView`），與繳費單同一套版面；收據圖片改由 `modern-screenshot` 擷取畫面，取代手寫 SVG 產生器（`receiptImage.js`）。複製文字、列印、作廢浮水印保留；列印時不受彈窗高度限制

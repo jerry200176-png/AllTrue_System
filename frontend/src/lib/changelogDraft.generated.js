@@ -25,14 +25,16 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "slips always list lesson dates"
+          "slips always list lesson dates",
+          "monthly slips list upcoming lessons; MonthlySplit keeps requested endpoints"
         ]
       }
     ],
     "items": [
       "shares the payment slip design",
       "slip redesign with logo",
-      "slips always list lesson dates"
+      "slips always list lesson dates",
+      "monthly slips list upcoming lessons; MonthlySplit keeps requested endpoints"
     ]
   },
   {
