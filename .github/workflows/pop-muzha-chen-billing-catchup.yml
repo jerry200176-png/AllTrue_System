@@ -50,7 +50,7 @@ jobs:
     needs: guard
     if: ${{ needs.guard.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     environment:
       name: production-activation
     steps:
@@ -168,7 +168,8 @@ jobs:
           unset TOKEN
           # Observe only. The Pi scheduler consumes the approved request and records execute+verify.
           status_file="$WORK_DIR/status.json"
-          for attempt in $(seq 1 45); do
+          # Observe past the 15-minute approval TTL so a late Pi claim is still verified, never reported as failed.
+          for attempt in $(seq 1 72); do
             REQUEST_ID="$REQUEST_ID" php artisan tinker --no-ansi --execute='
             $request = \Illuminate\Support\Facades\DB::table("pop_operation_requests")->where("id", getenv("REQUEST_ID"))->first();
             $records = \Illuminate\Support\Facades\DB::table("pop_execution_records")->where("operation_id", getenv("REQUEST_ID"))->orderBy("created_at")->get(["phase", "result", "actor", "commit_sha", "approval_reference", "snapshot"]);
