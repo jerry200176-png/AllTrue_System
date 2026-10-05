@@ -487,7 +487,7 @@ class CoursePackageController extends Controller
                 $firstSessionDate = null;
 
                 if ($isMonthly && $hasSchedule && $pkgEndDate) {
-                    $sessions = $scController->buildSessionsFromWeeklySchedule(
+                    $sessions = \App\Services\Scheduling\ContractSessionSchedule::buildSessionsFromWeeklySchedule(
                         (int) $sc->ID,
                         $startDate,
                         $pkgEndDate,
