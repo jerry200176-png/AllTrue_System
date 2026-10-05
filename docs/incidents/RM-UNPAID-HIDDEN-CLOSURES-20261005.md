@@ -51,7 +51,12 @@ Every manifest row is `settled_pending`, or has legitimately moved on (ledger sh
 
 Uses the stored snapshot. Restores the old reason only for rows still `settled_pending` whose ledger is unchanged
 (same outstanding and payment-row count). Rows with later payments or other changes are skipped and reported in
-`skipped_ids`. Needs the rollback approval; reverting code does not reverse committed data.
+`skipped_ids`, and the result is `ok=false, partial=true` so it is never reported as a complete rollback.
+
+POP currently has no production adapter that runs a strategy's `rollback` (the API only drafts, dry-runs and
+approves; `pop:execute` runs execute + verify). A rollback is therefore a new Founder-approved POP request built from
+the stored snapshot, not an extra button; until that adapter exists, treat this repair as forward-fix only.
+Reverting code does not reverse committed data.
 
 ## Stop conditions
 

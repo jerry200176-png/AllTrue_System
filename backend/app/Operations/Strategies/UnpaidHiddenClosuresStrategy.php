@@ -12,8 +12,8 @@ use RuntimeException;
 /**
  * Exact-case POP strategy: unpaid contracts closed as settled/completed go back to settled_pending
  * (待對帳). Only StudentClass.closed_reason changes; Invoice/Payment/Charge/Paid are never written.
- * Pending payment reports are deliberately not excluded: the course + invoice locks serialize against
- * PaymentReportController::confirm, and a later rejection leaves the course visible in settled_pending.
+ * A pending payment report on a manifest row blocks the plan: a partial confirmation would settle the course
+ * again (#3536), so those rows wait for the report to be handled.
  */
 final class UnpaidHiddenClosuresStrategy
 {
@@ -102,7 +102,8 @@ final class UnpaidHiddenClosuresStrategy
                 'actor_type' => 'pop-runner', 'subject_type' => 'student_class_batch',
             ], ['reason_code' => self::REF, 'restored' => $restored, 'skipped' => count($skippedIds), 'outcome' => 'success']);
 
-            return ['ok' => true, 'restored' => $restored, 'skipped_ids' => $skippedIds];
+            // Any skipped row means the repair is only partly undone: surface it for operator resolution.
+            return ['ok' => $skippedIds === [], 'partial' => $skippedIds !== [], 'restored' => $restored, 'skipped_ids' => $skippedIds];
         }, 3);
     }
 
@@ -116,6 +117,8 @@ final class UnpaidHiddenClosuresStrategy
             ->where(fn ($w) => $w->whereNull('Status')->orWhere('Status', '!=', 'void'))->orderBy('id');
         $invoices = ($lock ? $iq->lockForUpdate() : $iq)->get()->groupBy('StudentClassID');
         $amounts = app(InvoiceAmountReconciliationService::class);
+        $pending = DB::table('payment_reports')->whereIn('StudentClassID', $ids)->where('status', 'pending')
+            ->pluck('StudentClassID')->map(fn ($v) => (int) $v)->all();
         $out = [];
         foreach ($courses as $id => $c) {
             $owed = 0;
@@ -138,6 +141,7 @@ final class UnpaidHiddenClosuresStrategy
                 'stop' => (int) $c->getAttribute('Stop'), 'paid' => (int) $c->getAttribute('Paid'),
                 'effectively_paid' => $c->isEffectivelyPaid(),
                 'tutoring' => strtolower(trim((string) $c->getAttribute('ClassType'))) === 'tutoring',
+                'pending_report' => in_array($id, $pending, true),
                 'campus_id' => (int) $c->student?->getAttribute('CampusID'),
             ];
         }
@@ -157,6 +161,7 @@ final class UnpaidHiddenClosuresStrategy
             if ($r['closed_reason'] !== $case['closed_reason']) $errors[] = "reason_{$id}";
             if ($r['paid'] === 1 || $r['effectively_paid']) $errors[] = "paid_{$id}"; // incl. paid package
             if ($r['tutoring']) $errors[] = "tutoring_{$id}";
+            if ($r['pending_report']) $errors[] = "pending_report_{$id}";
             if ($r['outstanding'] !== $case['outstanding']) $errors[] = "outstanding_{$id}";
         }
 

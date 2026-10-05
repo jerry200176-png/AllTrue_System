@@ -94,11 +94,13 @@ final class UnpaidHiddenClosuresStrategyTest extends TestCase
         self::assertSame(['outstanding_9102'], $s->plan(self::PARAMS)['errors']);
     }
 
-    public function test_execute_flips_exactly_manifest_rows_and_pending_report_does_not_block(): void
+    public function test_execute_flips_exactly_manifest_rows_and_pending_report_blocks_plan(): void
     {
-        PaymentReport::create(['StudentID' => 9101, 'StudentClassID' => 9101, 'InvoiceID' => 9101,
+        $report = PaymentReport::create(['StudentID' => 9101, 'StudentClassID' => 9101, 'InvoiceID' => 9101,
             'reported_by_name' => 'x', 'payment_date' => '2026-10-01', 'payment_method' => 'cash',
             'reported_amount' => 3000, 'status' => 'pending', 'report_token_hash' => 'h', 'token_expires_at' => now()->addDay()]);
+        self::assertContains('pending_report_9101', (new UnpaidHiddenClosuresStrategy())->plan(self::PARAMS)['errors']);
+        $report->update(['status' => 'rejected']);
         [$s, $plan, $result] = $this->applied();
         self::assertSame(2, $result['updated']);
         self::assertSame('settled_pending', $this->reason(9101));
@@ -130,6 +132,8 @@ final class UnpaidHiddenClosuresStrategyTest extends TestCase
         $out = $s->rollback($result['snapshot'], []);
         self::assertSame(1, $out['restored']);
         self::assertSame([9102], $out['skipped_ids']);
+        self::assertFalse($out['ok']); // partly undone: needs operator resolution
+        self::assertTrue($out['partial']);
         self::assertSame('settled', $this->reason(9101));
         self::assertSame('settled_pending', $this->reason(9102));
     }
