@@ -183,7 +183,7 @@
                 >
                   {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong>{{ courseBadgeSessionLabel(course) }}</strong>
-                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ effectiveClosedReason(course) === 'settled_pending' ? '已結算 · 待對帳' : (effectiveClosedReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
+                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ effectiveClosedReason(course) === 'waived' ? '確認不收' : effectiveClosedReason(course) === 'settled_pending' ? '已結算 · 待對帳' : (effectiveClosedReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
                 </span>
               </div>
               <span class="hint" v-else>尚未設定</span>
@@ -1489,7 +1489,7 @@ function effectiveClosedReason(course) {
   return null;
 }
 const isHistoricalCourse = (course) => {
-  if (course?.closed_reason === 'settled_pending') return true;
+  if (course?.closed_reason === 'settled_pending' || course?.closed_reason === 'waived') return true;
   // 月結制課程 RemainingSessions 通常為 0（月結不扣堂），不可用 remaining ≤ 0 判斷歷史。
   // 月結課程只有明確停課（status=inactive，即 Stop=1）才視為歷史課程。
   if (String(course?.payment_type || '').toLowerCase() === 'monthly') {
@@ -1507,7 +1507,7 @@ const isHistoricalCourse = (course) => {
 };
 const isHistoryCourseByReason = (course) => {
   const reason = effectiveClosedReason(course);
-  return reason === 'settled' || reason === 'settled_pending' || reason === 'completed';
+  return reason === 'settled' || reason === 'settled_pending' || reason === 'completed' || reason === 'waived';
 };
 const getActiveStudentCourses = (id) => {
   return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));

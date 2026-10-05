@@ -3,6 +3,18 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-05-waive-unpaid-contract
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: digest
+    title: 結案欠款可確認不收
+    summary: 結案待對帳的欠款，主任可按「確認不收」移出待處理，並留下原因紀錄。
+    items:
+      - category: added
+        text: 帳務中心結案待對帳列新增「確認不收」，要填原因；帳單與收款紀錄保留，課程轉為歷史。
+    source_refs:
+      - "changelog:2026-10-05:waive-unpaid-contract"
   - id: staff-2026-10-05-monthly-slip-dates
     published_at: "2026-10-05"
     audiences:

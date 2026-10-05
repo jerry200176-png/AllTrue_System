@@ -437,6 +437,10 @@
                         <span class="material-symbols-outlined">check_circle</span>
                         登記已回報
                       </button>
+                      <button v-if="canWaive" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)" title="確認這筆不會收，從待處理移除並留稽核紀錄">
+                        <span class="material-symbols-outlined">money_off</span>
+                        確認不收
+                      </button>
                     </template>
 
                     <!-- pending_report: confirm / reject -->
@@ -917,6 +921,33 @@
             <button class="tc-btn tc-btn--danger" @click="confirmVoid" :disabled="!voidReason.trim() || voidLoading">
               <span v-if="voidLoading" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
               確認撤銷
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Waive (確認不收) Dialog -->
+    <Transition name="fade">
+      <div v-if="waiveDialogOpen" class="tc-overlay" @click.self="waiveDialogOpen = false">
+        <div class="tc-dialog">
+          <h3 class="tc-dialog-title">
+            <span class="material-symbols-outlined" style="font-size:22px;color:var(--danger)">money_off</span>
+            確認不收
+          </h3>
+          <p class="tc-dialog-desc">這筆欠款將轉為歷史（確認不收），不再出現在待處理；帳單與收款紀錄保留，並記錄操作人與原因。</p>
+          <div class="tc-dialog-info" v-if="waiveTarget">
+            <span>{{ waiveTarget.student_name }} — {{ waiveTarget.subject }}</span>
+            <small>未收金額 {{ formatCurrency(waiveTarget.payable_outstanding ?? waiveTarget.outstanding ?? 0) }}</small>
+          </div>
+          <label class="tc-dialog-label">不收原因（必填）</label>
+          <textarea v-model="waiveReason" class="tc-dialog-textarea" placeholder="請輸入不收原因…" maxlength="200" rows="3"></textarea>
+          <div class="tc-dialog-charcount">{{ waiveReason.length }} / 200</div>
+          <div class="tc-dialog-btns">
+            <button class="tc-btn tc-btn--ghost" @click="waiveDialogOpen = false" :disabled="waiveLoading">取消</button>
+            <button class="tc-btn tc-btn--danger" @click="confirmWaive" :disabled="waiveReason.trim().length < 2 || waiveLoading">
+              <span v-if="waiveLoading" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
+              確認不收
             </button>
           </div>
         </div>
@@ -2105,6 +2136,43 @@ async function rejectReport(row) {
     showToast(e.message || '退回失敗', 'error');
   } finally {
     actionLoading.value = null;
+  }
+}
+
+// ═══ Waive (確認不收) Dialog — director only ═══
+const canWaive = computed(() => ['director', 'super_admin'].includes(getAuthRole()));
+const waiveDialogOpen = ref(false);
+const waiveTarget = ref(null);
+const waiveReason = ref('');
+const waiveLoading = ref(false);
+
+function openWaiveDialog(row) {
+  waiveTarget.value = row;
+  waiveReason.value = '';
+  waiveDialogOpen.value = true;
+}
+
+async function confirmWaive() {
+  const reason = waiveReason.value.trim();
+  if (!waiveTarget.value || reason.length < 2) return;
+  waiveLoading.value = true;
+  try {
+    const resp = await fetch(`/api/v1/accounting/courses/${waiveTarget.value.id}/waive`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.message || `操作失敗（${resp.status}）`);
+    }
+    waiveDialogOpen.value = false;
+    showToast('已確認不收，移至歷史', 'warning');
+    await Promise.all([loadAlerts(), loadSettledCourses()]);
+  } catch (e) {
+    showToast(e.message || '確認不收失敗', 'error');
+  } finally {
+    waiveLoading.value = false;
   }
 }
 

@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.05",
     "date": "2026-10-05",
     "title": "2026.10.05 草稿（未發布）",
-    "summary": "shares the payment slip design；slip redesign with logo",
+    "summary": "can waive (確認不收) a closed unpaid contract with an audited reason；shares the payment slip design",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "can waive (確認不收) a closed unpaid contract with an audited reason",
           "shares the payment slip design",
           "slip redesign with logo"
         ]
@@ -31,6 +32,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "can waive (確認不收) a closed unpaid contract with an audited reason",
       "shares the payment slip design",
       "slip redesign with logo",
       "slips always list lesson dates",

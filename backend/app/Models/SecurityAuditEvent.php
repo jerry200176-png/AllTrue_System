@@ -25,7 +25,7 @@ final class SecurityAuditEvent
         'reason_code', 'row_count', 'source', 'student_count',
         'verification_method',
         'transferred_session_count', 'recovered_session_count', 'reason_hash',
-        'acting_as', 'capability_campus_count',
+        'acting_as', 'capability_campus_count', 'outstanding_amount',
     ];
 
     public static function ref(string $kind, int|string|null $value): ?string

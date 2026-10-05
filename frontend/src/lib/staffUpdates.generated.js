@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-05-waive-unpaid-contract",
+    "publishedAt": "2026-10-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "結案欠款可確認不收",
+    "summary": "結案待對帳的欠款，主任可按「確認不收」移出待處理，並留下原因紀錄。",
+    "items": [
+      "帳務中心結案待對帳列新增「確認不收」，要填原因；帳單與收款紀錄保留，課程轉為歷史。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "帳務中心結案待對帳列新增「確認不收」，要填原因；帳單與收款紀錄保留，課程轉為歷史。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-05:waive-unpaid-contract"
+    ],
+    "date": "2026-10-05",
+    "version": "2026.10.05"
+  },
+  {
     "id": "staff-2026-10-05-receipt-redesign",
     "publishedAt": "2026-10-05",
     "effectiveAt": null,
