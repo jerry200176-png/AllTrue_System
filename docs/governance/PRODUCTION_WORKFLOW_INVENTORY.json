@@ -21,6 +21,8 @@
     "scp"
   ],
   "retired_workflows": {
+    "173-lr-merge-repair.yml": {"retired_at": "2026-10-06", "reason": "In-app #173 LR-MERGE-C repair was executed and verified; GitHub issue #932 is closed.", "evidence": ["Execute run 29634620021 reported REPAIR_STATE=APPLIED_AND_VERIFIED (correction_id 2); dry-run 29634584946; idempotent re-dry-run ALREADY_APPLIED.", "docs/incidents/RM-173-LR-MERGE-C-2026-07-18.md; introduced in PR #1312."], "replacement": "None; git history keeps the command/test", "production_authority_removed": true},
+    "173-supersede-repair.yml": {"retired_at": "2026-10-06", "reason": "In-app #173 Option B supersede repair was executed; GitHub issue #932 is closed.", "evidence": ["Execute run 29633391473 applied (issue #1309; post-verify cosmetic failure fixed afterwards); dry-run 29633309003.", "docs/incidents/RM-173-SUPERSEDE-B-2026-07-18.md; introduced in PR #1243; ADR-POP-010 scheduled its sunset."], "replacement": "None; git history keeps the command/test", "production_authority_removed": true},
     "yu-shengrui-3499-transfer-repair.yml": {"retired_at": "2026-10-06", "reason": "The single 余晟睿 contract 3499 paid 轉課 repair was executed and verified on 2026-09-30.", "evidence": ["Execute run 36692638312 created contract 4138 and transfer payments 2005/2006 with session_corrections row 19 (decision_reference repair-yu-shengrui-3499).", "Introduced in #3394 (75fe7f894); deployed by run 36691731538."], "replacement": "None. Founder decision 2026-10-05 removed the command, test and workflow (#3561) because the command called a private StudentClassController method; git history (75fe7f894) preserves them and the session_corrections audit row stays in the DB.", "production_authority_removed": true},
     "234-renewal-overlap-repair.yml": {
       "retired_at": "2026-09-08",
@@ -73,31 +75,7 @@
       "future_state": "Founder-approved controlled operation or retire after credential migration"
     },
     "1401-impact-audit.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"SSH/artisan audit command reviewed; SELECT/report path only, no apply or committed write."},
-    "173-lr-merge-repair.yml": {
-      "classification": "legacy-case-specific-mutation",
-      "production_mutation": "confirmed",
-      "trigger": "workflow_dispatch",
-      "production_command_or_path": "repair:merge-renewal-learning-record --execute/--rollback --force",
-      "authorization": "Manual exact case confirmation and actor, pinned production SSH trust",
-      "concurrency": "repair-173-lr-merge; cancel-in-progress=false",
-      "rollback": "Command rollback plus pre/post verification; no live execution in Phase 1",
-      "canonical": false,
-      "required": "case-specific repair",
-      "future_state": "Retire after case closure or migrate through Founder-approved POP"
-    },
     "yang-1445-contract-repair.yml": {"classification":"legacy-case-specific-mutation","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"repair:yang-1445-contract-move --execute/--rollback --force","authorization":"Manual exact phrase, actor, pinned production SSH trust; dry-run default; Founder GO before execute","concurrency":"repair-yang-1445; cancel-in-progress=false","rollback":"Command --rollback restores snapshot_before rows from session_corrections; in-transaction and independent post-verify","canonical":false,"required":"case-specific repair","future_state":"Retire after case closure"},
-    "173-supersede-repair.yml": {
-      "classification": "legacy-case-specific-mutation",
-      "production_mutation": "confirmed",
-      "trigger": "workflow_dispatch",
-      "production_command_or_path": "repair:supersede-renewal-session --execute/--rollback --force",
-      "authorization": "Manual exact phrase, actor, and pinned production SSH trust",
-      "concurrency": "repair-173-supersede; cancel-in-progress=false",
-      "rollback": "Command rollback with snapshot/preflight and post-verification",
-      "canonical": false,
-      "required": "case-specific repair",
-      "future_state": "Retire after case closure or migrate through Founder-approved POP"
-    },
     "actual-duration-acceptance.yml": {
       "classification": "legacy-case-specific-mutation",
       "production_mutation": "confirmed",
