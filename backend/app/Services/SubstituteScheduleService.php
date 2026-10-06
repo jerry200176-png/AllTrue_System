@@ -254,6 +254,46 @@ class SubstituteScheduleService
         return [$contract, $contract];
     }
 
+    /**
+     * #3590 item 9: makeup (extra) occurrences on $ymd that $teacherId teaches only as a substitute (recorded on the
+     * non-voided LearningRecord; the makeup row keeps its own teacher), so busy-slot readers can count them.
+     * Candidates are narrowed in SQL, then confirmed with teacherForOccurrence (no second rule). Flag off: [] with no query.
+     *
+     * @param  int[]  $excludeScheduleIds
+     * @return list<object>  id, start_time, end_time, branch_id, student_course_id, student_id, class_type
+     */
+    public static function makeupOccurrencesTaughtBy(int $teacherId, string $ymd, array $excludeScheduleIds = [], ?int $excludeStudentId = null, ?int $branchId = null): array
+    {
+        if ($teacherId <= 0 || !self::anyCampusOn()) {
+            return [];
+        }
+        $q = DB::table('schedules as m')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'm.student_course_id')
+            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->whereDate('m.schedule_date', $ymd)
+            ->where('m.status', 'scheduled')->where('m.type', 'extra')
+            ->where(fn ($t) => $t->whereNull('m.teacher_id')->orWhere('m.teacher_id', '<>', $teacherId)) // own-teacher rows are already counted
+            ->whereRaw(self::campusOnSql('st.CampusID'))
+            ->whereExists(fn ($e) => $e->select(DB::raw(1))->from('LearningRecord as lr')
+                ->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID')
+                ->whereColumn('cs.StudentClassID', 'm.student_course_id')
+                ->whereDate('cs.SessionDate', $ymd)
+                ->whereNull('lr.VoidedAt')->where('lr.TeacherID', $teacherId));
+        if ($excludeScheduleIds) {
+            $q->whereNotIn('m.id', $excludeScheduleIds);
+        }
+        if ($excludeStudentId) {
+            $q->whereRaw('COALESCE(m.student_id, sc.StudentID) <> ?', [$excludeStudentId]);
+        }
+        if ($branchId) {
+            $q->where('m.branch_id', $branchId);
+        }
+        $rows = $q->get(['m.id', 'm.start_time', 'm.end_time', 'm.branch_id', 'm.student_course_id', 'sc.TeacherID as contract_teacher_id',
+            DB::raw('COALESCE(m.student_id, sc.StudentID) as student_id'), DB::raw("COALESCE(sc.ClassType, 'one_on_one') as class_type")]);
+
+        return $rows->filter(fn ($r) => self::teacherForOccurrence((int) $r->student_course_id, $ymd, (int) $r->contract_teacher_id, (string) $r->start_time) === $teacherId)->values()->all();
+    }
+
     private static function legacySubstituteUserId(int $studentClassId, $sessionDate, ?string $startTime): ?int
     {
         if ($studentClassId <= 0) {

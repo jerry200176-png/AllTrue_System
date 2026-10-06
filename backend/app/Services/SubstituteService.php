@@ -98,6 +98,8 @@ class SubstituteService
             ->reject(fn ($r) => $this->substitutedAway($r, $ymd));
 
         [$sessionRows, $scheduleRows] = $this->applyGuardLiveRowRules($teacherId, $ymd, $excludeScheduleIds, $sessionRows, $scheduleRows);
+        // #3590 item 9 (flag on): a substitute on a makeup occurrence is busy too.
+        $scheduleRows = $scheduleRows->concat(SubstituteScheduleService::makeupOccurrencesTaughtBy($teacherId, $ymd, $excludeScheduleIds, $excludeStudentId));
 
         $busy = [];
         foreach ($scheduleRows as $row) {
@@ -217,6 +219,8 @@ class SubstituteService
             ->rejectStale($scheduleQuery->get(), $ymd);
 
         [$sessionRows, $scheduleRows] = $this->applyGuardLiveRowRules($teacherId, $ymd, $excludeScheduleIds, $sessionRows, $scheduleRows);
+        // #3590 item 9 (flag on): a substitute on a makeup occurrence is busy too.
+        $scheduleRows = $scheduleRows->concat(SubstituteScheduleService::makeupOccurrencesTaughtBy($teacherId, $ymd, $excludeScheduleIds, $excludeStudentId));
 
         // 彙整原始 slots（每個 slot = 1 位學生的 1 堂課）
         $rawSlots = [];
