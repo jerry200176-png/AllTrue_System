@@ -92,6 +92,43 @@ final class Td076CollisionKeepersStrategyTest extends TestCase
         $this->assertSame(['scheduled', 'scheduled'], [Schedule::find(12696)->status, Schedule::find(12698)->status]);
     }
 
+    /** Campus 11 / 新莊 10/9: contract-teacher reschedule target vs a newer substitute row, future lesson with no LearningRecord. */
+    public function test_no_learning_record_falls_back_to_the_newest_live_substitute_row(): void
+    {
+        $this->twoChains();
+        Schedule::whereKey(12696)->update(['teacher_id' => $this->contract]);
+        $this->makeSession('2026-04-10');
+
+        $plan = $this->strategy()->plan($this->params());
+
+        $this->assertSame([['type' => 'supersede', 'schedule_id' => 12696, 'keeper_id' => 12698, 'from_status' => 'scheduled', 'teacher_id' => $this->contract]], $plan['manifest']['actions']);
+        $this->assertSame([], $plan['manifest']['quarantine']);
+    }
+
+    public function test_no_learning_record_and_no_substitute_row_stays_quarantined(): void
+    {
+        $this->twoChains();
+        Schedule::whereIn('id', [12696, 12698])->update(['teacher_id' => $this->contract]);
+        $this->makeSession('2026-04-10');
+
+        $plan = $this->strategy()->plan($this->params());
+
+        $this->assertSame([], $plan['manifest']['actions']);
+        $this->assertSame('teacher_conflict', $plan['manifest']['quarantine'][0]['reason']);
+    }
+
+    public function test_learning_record_on_the_contract_teacher_overrides_the_substitute_fallback(): void
+    {
+        $this->twoChains();
+        Schedule::whereKey(12696)->update(['teacher_id' => $this->contract]);
+        $this->lr($this->makeSession('2026-04-10'), $this->contract);
+
+        $plan = $this->strategy()->plan($this->params());
+
+        $this->assertSame([], $plan['manifest']['actions']);
+        $this->assertSame('teacher_conflict', $plan['manifest']['quarantine'][0]['reason']);
+    }
+
     public function test_frozen_identity_that_differs_from_the_anchor_slot_is_quarantined(): void
     {
         $this->twoChains();
