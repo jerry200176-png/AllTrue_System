@@ -56,7 +56,7 @@ class DeployActivationPolicyTest(unittest.TestCase):
         }
 
     def test_merged_pr_uses_landed_effect_not_historical_branch_files(self):
-        protected_workflow = ".github/workflows/inapp-289-course-2817-restore.yml"
+        protected_workflow = ".github/workflows/deploy.yml"
         landed = aggregate_landed_pr_effects([
             self._landed_effect(
                 "B", "a" * 40,
@@ -83,8 +83,8 @@ class DeployActivationPolicyTest(unittest.TestCase):
         landed = aggregate_landed_pr_effects([
             self._landed_effect(
                 "A", "a" * 40,
-                [".github/workflows/inapp-289-course-2817-restore.yml", "frontend/src/pages/One.vue"],
-                "diff --git a/.github/workflows/inapp-289-course-2817-restore.yml b/.github/workflows/inapp-289-course-2817-restore.yml\n+@@ -1 +1 @@\n-old\n+new",
+                [".github/workflows/deploy.yml", "frontend/src/pages/One.vue"],
+                "diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml\n+@@ -1 +1 @@\n-old\n+new",
                 risk=3,
                 tier=3,
             ),

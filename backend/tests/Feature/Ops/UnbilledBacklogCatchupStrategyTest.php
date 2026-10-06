@@ -152,4 +152,117 @@ final class UnbilledBacklogCatchupStrategyTest extends TestCase
         self::assertSame([false, true, 2], [$out['ok'], $out['partial'], $out['deleted']]);
         self::assertSame(1, DB::table('Invoice')->where('Note', self::REF)->count());
     }
+
+    public function test_other_contract_covering_the_month_blocks_double_billing(): void
+    {
+        // Student 8 (campus 9): contract A ended 06-30 (attended July sessions left on A); contract B, same subject, invoiced July.
+        DB::table('Student')->insert(['id' => 8, 'name' => 's8', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1]);
+        $this->course(200, 8, ['Rate' => 1000, 'EndDate' => '2026-06-30']);
+        $this->lesson(200, '2026-07-04');
+        $this->lesson(200, '2026-07-11');
+        $this->course(201, 8, ['Rate' => 1000, 'StartDate' => '2026-07-01', 'EndDate' => '2026-07-31']);
+        DB::table('Invoice')->insert(['id' => 2, 'StudentID' => 8, 'StudentClassID' => 201, 'IssueDate' => '2026-07-01', 'TotalAmount' => 1000,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '', 'billing_period' => '2026-07', 'created_at' => now(), 'updated_at' => now()]);
+        $plan = (new UnbilledBacklogCatchupStrategy())->plan($this->params([9]));
+        self::assertSame(['skipped', 'other_contract_covers_month'], [$this->rows($plan)['200|2026-07']['status'], $this->rows($plan)['200|2026-07']['reason']]);
+        [, , $result] = $this->applied();
+        self::assertNotContains(200, array_column($result['snapshot']['rows'], 'source_id'));
+        self::assertSame(0, DB::table('Invoice')->where('StudentID', 8)->where('Note', self::REF)->count());
+        // Without B's invoice, a live date-mode contract B covering the date also blocks; a different subject does not.
+        DB::table('Invoice')->where('id', 2)->delete();
+        self::assertSame('other_contract_covers_month', $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-07']['reason']);
+        DB::table('StudentClass')->where('ID', 201)->update(['SubjectID' => 2]);
+        self::assertSame('ready', $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-07']['status']);
+    }
+
+    public function test_mid_month_contract_with_dated_items_does_not_hide_earlier_lessons(): void
+    {
+        DB::table('Student')->insert(['id' => 8, 'name' => 's8', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1]);
+        $this->course(200, 8, ['Rate' => 1000, 'EndDate' => '2026-06-30']);
+        $this->lesson(200, '2026-07-04');
+        $this->course(201, 8, ['Rate' => 1000, 'StartDate' => '2026-07-15', 'EndDate' => '2026-07-31']);
+        DB::table('Invoice')->insert(['id' => 3, 'StudentID' => 8, 'StudentClassID' => 201, 'IssueDate' => '2026-07-15', 'TotalAmount' => 1000,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '', 'billing_period' => '2026-07', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => 3, 'StudentClassID' => 201, 'Description' => 'B', 'Amount' => 1000,
+            'PeriodStart' => '2026-07-15', 'PeriodEnd' => '2026-07-31']);
+
+        self::assertSame('ready', $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-07']['status']);
+    }
+
+    public function test_lessons_left_on_a_renewed_contract_are_covered_by_the_renewal_invoice(): void
+    {
+        // A ended 06-15 (settled_pending after renewMonthly); attended 06-20 / 06-27 stayed on A; renewal B invoiced 06-16..07-15.
+        DB::table('Student')->insert(['id' => 8, 'name' => 's8', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1]);
+        $this->course(200, 8, ['Rate' => 1000, 'EndDate' => '2026-06-15']);
+        DB::table('StudentClass')->where('ID', 200)->update(['Stop' => 1, 'closed_reason' => 'settled_pending']);
+        $this->lesson(200, '2026-06-20');
+        $this->lesson(200, '2026-06-27');
+        $this->course(201, 8, ['Rate' => 1000, 'StartDate' => '2026-06-16', 'EndDate' => '2026-07-15']);
+        DB::table('Invoice')->insert(['id' => 4, 'StudentID' => 8, 'StudentClassID' => 201, 'IssueDate' => '2026-06-16', 'TotalAmount' => 4000,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '', 'billing_period' => '2026-06', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => 4, 'StudentClassID' => 201, 'Description' => 'B', 'Amount' => 4000,
+            'PeriodStart' => '2026-06-16', 'PeriodEnd' => '2026-07-15']);
+
+        $row = $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-06'] ?? null;
+        self::assertSame(['skipped', 'other_contract_covers_month'], [$row['status'] ?? null, $row['reason'] ?? null]);
+    }
+
+    public function test_catch_up_found_by_note_only_still_covers_and_items_are_judged_per_owner(): void
+    {
+        [$s] = $this->applied();
+        // Memo wiped (no [src:]) but the catch-up invoice still carries Note = REF: the month stays covered.
+        DB::table('StudentClass')->where('Memo', 'like', '%' . self::REF . '%')->update(['Memo' => 'edited', 'SubjectID' => 99]);
+        self::assertSame(0, $s->plan($this->params([9]))['totals']['ready_rows']);
+
+        // Mixed invoice anchored on another subject: an item owned by a same-subject contract still covers.
+        DB::table('Student')->insert(['id' => 8, 'name' => 's8', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1]);
+        $this->course(200, 8, ['Rate' => 1000, 'EndDate' => '2026-06-30']);
+        $this->lesson(200, '2026-07-04');
+        $this->course(201, 8, ['Rate' => 1000, 'StartDate' => '2026-07-01', 'EndDate' => '2026-07-31']);
+        $this->course(202, 8, ['Rate' => 1000, 'StartDate' => '2026-07-01', 'EndDate' => '2026-07-31']);
+        DB::table('StudentClass')->whereIn('ID', [201, 202])->update(['Stop' => 1]);
+        DB::table('StudentClass')->where('ID', 202)->update(['SubjectID' => 7]);
+        DB::table('Invoice')->insert(['id' => 5, 'StudentID' => 8, 'StudentClassID' => 202, 'IssueDate' => '2026-07-01', 'TotalAmount' => 2000,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '', 'billing_period' => '2026-07', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('InvoiceItem')->insert([
+            ['InvoiceID' => 5, 'StudentClassID' => 202, 'Description' => 'other subject', 'Amount' => 1000, 'PeriodStart' => '2026-07-01', 'PeriodEnd' => '2026-07-31'],
+            ['InvoiceID' => 5, 'StudentClassID' => 201, 'Description' => 'same subject', 'Amount' => 1000, 'PeriodStart' => '2026-07-01', 'PeriodEnd' => '2026-07-31'],
+        ]);
+        self::assertSame('other_contract_covers_month', $this->rows($s->plan($this->params([9])))['200|2026-07']['reason']);
+        // Without the same-subject item, the other-subject item does not hide the backlog.
+        DB::table('InvoiceItem')->where('InvoiceID', 5)->where('StudentClassID', 201)->delete();
+        self::assertSame('ready', $this->rows($s->plan($this->params([9])))['200|2026-07']['status']);
+    }
+
+    public function test_verify_fails_closed_without_a_plan(): void
+    {
+        [$s, , $result] = $this->applied();
+        self::assertFalse($s->verify(['ok' => false, 'errors' => ['strategy_plan_failed']], $result)['ok']);
+    }
+
+    public function test_retry_does_not_guess_a_snapshot_and_edited_markers_cannot_cause_double_billing_or_foreign_deletes(): void
+    {
+        [$s, $plan, $result] = $this->applied();
+        $retry = $s->execute($s->plan($this->params([9], $plan['digest'])), []);
+        self::assertTrue($retry['already_applied']);
+        self::assertSame([], $retry['snapshot']['rows']);
+        self::assertTrue($retry['snapshot']['incomplete']);
+        // An incomplete snapshot never verifies or rolls back as success.
+        self::assertFalse($s->verify($s->plan($this->params([9])), $retry)['ok']);
+        self::assertFalse($s->rollback($retry['snapshot'], [])['ok']);
+
+        // Staff edits the catch-up Memo: the month is still covered by its billing_period invoice, so nothing is billed again.
+        DB::table('StudentClass')->where('Memo', 'like', '%' . self::REF . '%')->update(['Memo' => 'edited']);
+        self::assertSame(0, $s->plan($this->params([9]))['totals']['ready_rows']);
+        // ...or edits the invoice Note instead: still covered, never billed twice.
+        DB::table('StudentClass')->where('Memo', 'edited')->update(['Memo' => 'x [src:100]']);
+        DB::table('Invoice')->where('Note', self::REF)->update(['Note' => '']);
+        self::assertSame(0, $s->plan($this->params([9]))['totals']['ready_rows']);
+
+        // A forged snapshot row pointing at a contract without this operation's Memo markers is never deleted.
+        $row = $result['snapshot']['rows'][0];
+        $out = $s->rollback(['rows' => [$row]], []);
+        self::assertFalse($out['ok']);
+        self::assertNotNull(DB::table('StudentClass')->where('ID', $row['contract_id'])->first());
+    }
 }
