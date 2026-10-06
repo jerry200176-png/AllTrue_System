@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Maps docs/CHANGELOG.md → frontend/src/lib/changelogDraft.generated.js
+ * Maps docs/CHANGELOG.md + docs/changes/*.md → frontend/src/lib/changelogDraft.generated.js
  *
  * DRAFT ONLY for AI / human curation. Does NOT publish to the in-app「版本更新」page.
  * Staff communication truth: docs/STAFF_UPDATES.yml → staffUpdates.generated.js
@@ -11,10 +11,10 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { readChangelogText } from './lib/changeFragments.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
-const mdPath = path.join(root, 'docs', 'CHANGELOG.md');
 const outPath = path.join(root, 'frontend', 'src', 'lib', 'changelogDraft.generated.js');
 
 const headingRe = /^## (\d{4}-\d{2}-\d{2}) — (.+)$/;
@@ -227,7 +227,7 @@ function parseChangelog(md) {
   return notes;
 }
 
-const md = fs.readFileSync(mdPath, 'utf8');
+const md = readChangelogText(root);
 const data = parseChangelog(md);
 
 const banner = `/**

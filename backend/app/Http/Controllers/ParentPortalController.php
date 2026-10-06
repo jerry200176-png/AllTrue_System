@@ -801,6 +801,8 @@ class ParentPortalController extends Controller
                     'campus_name'          => $campus['campus_name'] ?? null,
                     'subject'              => $this->resolveSubjectName($c),
                     'schedule_mode'        => $c->ScheduleMode,
+                    // Same rule as StudentClassController::index: only ScheduleMode=count is a session course.
+                    'payment_type'         => $isMonthly ? 'monthly' : 'session',
                     'sessions_purchased'   => $c->SessionCount,
                     'remaining_sessions'   => $metrics['remaining'],
                     'used_sessions'        => $metrics['used'],

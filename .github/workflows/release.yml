@@ -5,7 +5,7 @@ name: Release Tag
 #  - 採 CalVer `vYYYY.MM.DD[.N]`（非 SemVer）：本系統是「持續部署的內部應用」而非對外版本化的
 #    library/API，無 major/minor/patch 的相容性語意；日期制與既有 dated CHANGELOG 1:1 對應，
 #    多次同日合併以 .2/.3 遞增。SemVer 適用於被他人依賴的 API/套件，這裡刻意不採。
-#  - 觸發條件用「docs/CHANGELOG.md 變更」當 notable-release proxy（repo 慣例要求 production
+#  - 觸發條件用「docs/CHANGELOG.md 或 docs/changes/ fragment 變更」當 notable-release proxy（repo 慣例要求 production
 #    變更必更新 CHANGELOG，presubmit CHECK 4 會提醒），避免對瑣碎 merge 都打 tag。
 #  - 不碰 deploy.yml（事故 A 教訓：部署路徑高風險）；本工作流獨立、唯一副作用是建立 tag/release。
 on:
@@ -13,6 +13,7 @@ on:
     branches: ["main"]
     paths:
       - "docs/CHANGELOG.md"
+      - "docs/changes/**"
   workflow_dispatch:
 
 concurrency:
@@ -38,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x .github/scripts/changelog-latest.sh
-          ./.github/scripts/changelog-latest.sh docs/CHANGELOG.md > release-notes.md
+          ./.github/scripts/changelog-latest.sh > release-notes.md
 
           HEADING=$(head -1 release-notes.md)
           DATE=$(printf '%s' "$HEADING" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1 || true)

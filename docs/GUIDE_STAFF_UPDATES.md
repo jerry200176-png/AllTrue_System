@@ -1,38 +1,48 @@
 # 教職員「版本更新」指南
 
-> **權威**：`docs/STAFF_UPDATES.yml` ≠ `docs/CHANGELOG.md`  
-> **家長**：只讀 `docs/PARENT_UPDATES.yml`（R45）；STAFF 禁止 `parent`（R85）。
+> **權威**：教職員卡 = `docs/STAFF_UPDATES.yml`（凍結歷史）+ `docs/staff-updates/*.yml`；≠ `docs/CHANGELOG.md`  
+> **家長**：只讀 `docs/PARENT_UPDATES.yml` + `docs/parent-updates/*.yml`（R45）；STAFF 禁止 `parent`（R85）。
+
+## 規則：PR 只「新增檔案」，不改共用清單
+
+`docs/CHANGELOG.md`、`RELEASE_NOTES_EXEMPTIONS.yml`、`STAFF_UPDATES.yml`、`PARENT_UPDATES.yml` 已**凍結為歷史**，不要再改（改了會跟其他 PR 衝突）。`*.generated.js` 不進 git（`npm run build` / `postinstall` / `dev` / `test:unit` 會自動產生）。
+
+| 要做的事 | 新增檔案 |
+| --- | --- |
+| CHANGELOG 條目 | `docs/changes/<YYYY-MM-DD>-<slug>.md` |
+| 教職員版本卡 | `docs/staff-updates/<id>.yml` |
+| 家長更新卡 | `docs/parent-updates/<id>.yml` |
+| 不公告（silent ship） | 同一份 fragment 內的 `<!-- silent-reason: ... -->` |
+
+範例：`docs/changes/2026-10-06-change-fragments.md`。fragment 格式與舊 CHANGELOG 條目完全相同（標題行 + 標記 + 條列）：
+
+```md
+## 2026-10-06 — chore(ci): 標題
+<!-- release-notes: staff_update=staff-2026-10-06-short-name -->
+<!-- 或：release-notes: silent_ship=silent-2026-10-06-short-name + 下一行 -->
+<!-- silent-reason: 一句白話原因（教職員看不到差異） -->
+- 變更內容
+```
+
+卡片檔 `docs/staff-updates/<id>.yml` / `docs/parent-updates/<id>.yml` 與舊清單的單筆項目 schema 相同（含 `updates:` 開頭，只放一筆）。
 
 ## 流程
 
 1. merge + deploy + production 驗證後才公告。  
-2. （可選）參考 `changelogDraft.generated.js` 起草。  
-3. 人工核准後寫入 `STAFF_UPDATES.yml`。  
-4. `cd frontend && npm run sync-release-notes && npm run test:release-notes`
-5. commit YAML + generated JS → PR merge 才算發布。
+2. 人工核准後新增 `docs/staff-updates/<id>.yml`。  
+3. `cd frontend && npm run sync-release-notes && npm run test:release-notes`
+4. PR merge 才算發布（不要 commit generated JS）。
 
 ## 不漏公告的強制規則
 
-每一筆近期 `CHANGELOG.md` 產品變更都必須在標題下方放一個決策標記：
+每一筆近期產品變更（fragment）都必須在標題下方放一個決策標記：`staff_update=<id>`，或（只影響內部治理、CI、文件、安全作業時）`silent_ship=<id>` 加 `silent-reason`。`staff_update` 的 id 必須存在於 `STAFF_UPDATES.yml` 或 `docs/staff-updates/`；Presubmit 的 CHECK 4A 會 fail-closed 檢查，沒有決策就不能 merge。
 
-```md
-<!-- release-notes: staff_update=staff-YYYY-MM-DD-short-name -->
-```
+PR checklist：
 
-若是只影響內部治理、CI、文件或安全作業，不能直接省略，必須改用：
-
-```md
-<!-- release-notes: silent_ship=silent-YYYY-MM-DD-short-name -->
-```
-
-並在 `docs/RELEASE_NOTES_EXEMPTIONS.yml` 寫明不公告的原因。`staff_update` 的 id 必須存在於 `STAFF_UPDATES.yml`，`silent_ship` 的 id 必須存在於例外清單；Presubmit 的 CHECK 4A 會 fail-closed 檢查，沒有決策就不能 merge。
-
-因此每次完成 production 修正時，PR checklist 必須同時完成：
-
-1. 寫 `CHANGELOG`。
-2. 判斷教職員是否需要知道；需要就寫 `STAFF_UPDATES.yml`，不需要就寫例外清單。
+1. 新增 `docs/changes/` fragment。
+2. 教職員需要知道 → 新增 `docs/staff-updates/<id>.yml`；不需要 → `silent-reason`。
 3. 跑 `npm run sync-release-notes`、`npm run test:release-notes-coverage`。
-4. 確認 generated JS、CI、deploy、production smoke 都以同一個 merge SHA 通過。
+4. CI、deploy、production smoke 都以同一個 merge SHA 通過。
 
 AI 不得把未核准草稿寫進 YAML 並宣稱已發布。
 

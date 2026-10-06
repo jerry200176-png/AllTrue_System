@@ -332,7 +332,7 @@
                         <h5>{{ getStudentCourseSubjectDisplayLabel(course) }}</h5>
                         <div class="student-course-card__badges">
                           <span class="status-tag" :class="course.class_type">{{ classTypeLabel(course.class_type) }}</span>
-                          <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
+                          <span v-if="isPackageMember(course)" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
                           <span v-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
                           <span v-else-if="isSessionPaymentLow(course)" class="tag tag-expiring">即將用完</span>
                         </div>
@@ -406,7 +406,7 @@
                       >
                         <span class="student-course-card__progress-fill" :style="{ width: `${courseProgress(course).percent}%` }"></span>
                       </div>
-                      <span class="student-course-card__progress-caption">已使用 {{ courseProgress(course).used }} 堂<span v-if="course.PackageID"> · 方案共用堂數</span></span>
+                      <span class="student-course-card__progress-caption">已使用 {{ courseProgress(course).used }} 堂<span v-if="isPackageMember(course)"> · 方案共用堂數</span></span>
                     </section>
                     <div v-else-if="isPackageMember(course)" class="student-course-card__progress-empty" role="note">
                       本課程使用共用方案；堂數請見上方方案摘要，上課日期見本課程明細。
@@ -504,7 +504,7 @@
                       <div class="sl-history-card__header">
                         <span class="tag sl-history-card__subject">{{ getStudentCourseSubjectDisplayLabel(hc) }}</span>
                         <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
-                        <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
+                        <span v-if="isPackageMember(hc)" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
                         <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">已結算 · 待對帳</span>
                         <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag sl-tag-history sl-tag-history--settled">確認不收</span>
                         <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
@@ -845,7 +845,7 @@
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
         </div>
         <div class="form-group">
-          <label>{{ selectedCourse?.PackageID ? '目前剩餘（方案池）' : '目前剩餘（此課程）' }}</label>
+          <label>{{ isPackageMember(selectedCourse) ? '目前剩餘（方案池）' : '目前剩餘（此課程）' }}</label>
           <p :style="{ fontSize: '20px', fontWeight: 700, color: isLowRemaining(modalRemainingSessions(selectedCourse)) ? '#e65100' : 'var(--primary)' }">
             {{ modalRemainingSessions(selectedCourse) }} 堂
             <span v-if="isLowRemaining(modalRemainingSessions(selectedCourse))" class="sessions-near-empty-hint">{{ isTutoringCourse(selectedCourse) ? '（即將用完，可建立下一期）' : '（即將用完，建議盡快加購）' }}</span>
@@ -854,7 +854,7 @@
         <p class="hint sessions-package-hint">
           {{ isTutoringCourse(selectedCourse)
             ? '複製原課程設定建立下一期，保留前後期關聯。固定排課沿用原星期時段，手動排課仍需逐堂安排。費用 0 元、不建立帳單或付款義務；原課程及歷史紀錄不變。'
-            : selectedCourse?.PackageID
+            : isPackageMember(selectedCourse)
             ? '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
             : '此加購會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
           }}
@@ -863,7 +863,7 @@
           <label>{{ isTutoringCourse(selectedCourse) ? '下一期堂數' : '加購堂數' }}</label>
           <input v-model.number="addSessionCount" type="number" placeholder="8" />
         </div>
-        <div v-if="!selectedCourse?.PackageID" class="form-group">
+        <div v-if="!isPackageMember(selectedCourse)" class="form-group">
           <label>{{ isTutoringCourse(selectedCourse) ? '下一期開始日期（須在原課程最後堂次之後）' : '新批次開始日期' }}</label>
           <input v-model="addSessionStartDate" type="date" />
         </div>
@@ -871,7 +871,7 @@
           <label>下一期結束日期</label>
           <input v-model="tutoringEndDate" type="date" :min="addSessionStartDate" />
         </div>
-        <div v-if="selectedCourse && !isTutoringCourse(selectedCourse) && !selectedCourse?.PackageID" class="form-group" data-testid="purchase-transaction-discount">
+        <div v-if="selectedCourse && !isTutoringCourse(selectedCourse) && !isPackageMember(selectedCourse)" class="form-group" data-testid="purchase-transaction-discount">
           <label>交易折扣</label>
           <select v-model="purchaseDiscount.type"><option value="NONE">無折扣</option><option value="FIXED_AMOUNT">固定金額</option><option value="PERCENTAGE">百分比</option></select>
           <input v-if="purchaseDiscount.type !== 'NONE'" v-model="purchaseDiscount.value" type="text" inputmode="decimal" placeholder="折扣值" />
@@ -880,7 +880,7 @@
         </div>
         <p class="hint" v-if="addSessionCount > 0">
           <template v-if="isTutoringCourse(selectedCourse)">下一期費用：<strong>0 元，無須繳費</strong></template>
-          <template v-else-if="selectedCourse?.PackageID">
+          <template v-else-if="isPackageMember(selectedCourse)">
             將共用方案總堂數增加 <strong>{{ addSessionCount }}</strong> 堂（不拆成單科新契約）
           </template>
           <template v-else>
@@ -1034,10 +1034,11 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick, reactive } from 'vue';
 import { supabase } from '../supabase';
+import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled } from '../lib/paymentStatus.js';
 import {
   courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
-  modalRemainingSessions, ownRemainingSessions, poolTotalSessions,
+  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, WAIVED_LABEL,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1338,6 +1339,7 @@ const paymentStatusButtonClass = (course) => {
 const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isTutoringCourse(course)) return '無須繳費';
+  if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
   if (isCourseSettled(course) === null) return '繳費狀態載入中';
   if (course?.payment_status === 'paid') return '已繳費';
   if (course?.payment_status === 'pending_report') return '待對帳';
@@ -1458,7 +1460,7 @@ const isHistoricalCourse = (course) => {
   // FR-001：共用方案課程（PackageID）以方案共用池記錄剩餘，個別 StudentClass 的 remaining 欄可能
   // 被 over-deduction 誤設為 0；若此時又已繳費，舊邏輯會把 active 方案課程誤判為「歷史課程」並隱藏，
   // 造成學生管理欄位顯示「尚未設定」。僅在明確停課（status=inactive，即 Stop=1）時才視為歷史。
-  if (course?.PackageID && String(course?.status || '').toLowerCase() !== 'inactive') {
+  if (isPackageMember(course) && String(course?.status || '').toLowerCase() !== 'inactive') {
     return false;
   }
   const remaining = ownRemainingSessions(course);
@@ -1790,16 +1792,15 @@ async function openGradePromotion() {
   gradePromotionExcluded.value = new Set();
   gradePromotionIdempotencyKey.value = createGradePromotionIdempotencyKey();
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token || !props.branchId) {
       gradePromotionError.value = '無法取得登入或分校';
       return;
     }
     const params = new URLSearchParams({ branch_id: String(props.branchId) });
-    const res = await fetch(`/api/v1/grade-promotions/preview?${params}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
+    const res = await authedFetch(`/api/v1/grade-promotions/preview?${params}`, {
+      headers: { Accept: 'application/json' },
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       gradePromotionError.value = json?.message || '預覽載入失敗';
@@ -1822,16 +1823,14 @@ const executeGradePromotion = async () => {
   gradePromotionConfirming.value = true;
   gradePromotionError.value = '';
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       gradePromotionError.value = '未登入';
       return;
     }
-    const res = await fetch('/api/v1/grade-promotions/confirm', {
+    const res = await authedFetch('/api/v1/grade-promotions/confirm', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
         Accept: 'application/json',
         'Content-Type': 'application/json',
       },
@@ -1841,7 +1840,7 @@ const executeGradePromotion = async () => {
         idempotencyKey: gradePromotionIdempotencyKey.value,
         excludeStudentIds: gradePromotionExcluded.value,
       })),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const msg = json?.message
@@ -1869,12 +1868,11 @@ const loadBranchStudentTotal = async () => {
   }
 
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (token) {
-      const res = await fetch(`/api/v1/students?branch_id=${branchId}&per_page=1`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const res = await authedFetch(`/api/v1/students?branch_id=${branchId}&per_page=1`, {
+        headers: {}
+      }, token);
       if (res.ok) {
         const json = await res.json();
         const total = Number(json?.total);
@@ -1912,8 +1910,7 @@ const loadStudents = async () => {
     }
     loadBranchStudentTotal();
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (token) {
         const params = new URLSearchParams({
           branch_id: String(props.branchId),
@@ -1922,9 +1919,9 @@ const loadStudents = async () => {
         if (filters.value.search?.trim()) params.set('search', filters.value.search);
         if (filters.value.status) params.set('status', filters.value.status || '');
         if (filters.value.grade && GRADE_TO_CLASS_ID[filters.value.grade]) params.set('class_id', GRADE_TO_CLASS_ID[filters.value.grade]);
-        const res = await fetch(`/api/v1/students?${params}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await authedFetch(`/api/v1/students?${params}`, {
+          headers: {}
+        }, token);
         if (res.ok) {
           const json = await res.json();
           const laravelList = json?.data ?? json;
@@ -1952,12 +1949,11 @@ const loadStudents = async () => {
     if (error) throw error;
     let list = data || [];
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (token) {
-        const res = await fetch(`/api/v1/students?branch_id=${props.branchId}&per_page=500`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await authedFetch(`/api/v1/students?branch_id=${props.branchId}&per_page=500`, {
+          headers: {}
+        }, token);
         if (res.ok) {
           const json = await res.json();
           const laravelList = json?.data ?? json;
@@ -1996,15 +1992,14 @@ const loadStudents = async () => {
 
 const loadTeachers = async () => {
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) { teachers.value = []; return; }
     const branch = Number(props.branchId || 0);
     const params = new URLSearchParams({ per_page: 'all' });
     if (branch > 0) params.set('branch_id', String(branch));
-    const res = await fetch(`/api/v1/teachers?${params.toString()}`, {
-      headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
-    });
+    const res = await authedFetch(`/api/v1/teachers?${params.toString()}`, {
+      headers: { 'Accept': 'application/json' }
+    }, token);
     const data = await res.json().catch(() => ({}));
     const list = Array.isArray(data) ? data : (data?.data ?? []);
     const normalized = list
@@ -2056,8 +2051,7 @@ const loadStudentCourseSessions = async (studentId, courses = getStudentAllCours
   studentCourseSessionsLoading.value = { ...studentCourseSessionsLoading.value, [studentKey]: true };
   studentCourseSessionsError.value = { ...studentCourseSessionsError.value, [studentKey]: '' };
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error('登入狀態已過期，請重新登入');
 
     // One batched canonical read for the expanded student's contracts. The
@@ -2094,13 +2088,12 @@ const loadStudentCourses = async (studentId) => {
   const student = students.value.find(s => s.id === studentId);
   const laravelId = student?._laravelId ?? studentId;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (token) {
-      const res = await fetch(`/api/v1/student-classes?student_id=${laravelId}&per_page=100`, {
+      const res = await authedFetch(`/api/v1/student-classes?student_id=${laravelId}&per_page=100`, {
         credentials: 'include',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+        headers: {}
+      }, token);
       if (res.ok) {
         const json = await res.json();
         const list = json?.data ?? json;
@@ -2180,8 +2173,7 @@ const loadAllStudentCourses = async () => {
     return;
   }
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (token) {
       const apiUrl = `/api/v1/student-classes?branch_id=${props.branchId}`;
       const { data: allData } = await fetchAllPages(apiUrl, token, { perPage: 200 });
@@ -2371,9 +2363,9 @@ const fetchLineBindings = async (studentId) => {
     const sess = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
     const token = sess?.access_token;
     if (!token) return;
-    const res = await fetch(`/api/v1/students/${studentId}/line-bindings`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res = await authedFetch(`/api/v1/students/${studentId}/line-bindings`, {
+      headers: {}
+    }, token);
     if (res.ok) {
       const json = await res.json();
       lineBindings.value = json.bindings || [];
@@ -2603,22 +2595,20 @@ const deleteSelectedStudents = async () => {
   if (!confirm(`確定要批量刪除 ${ids.length} 位學生嗎？\n\n系統會一併刪除相關課程、排課、評量與帳務資料。已有帳務紀錄（帳單、收款、繳費回報）的學生不能刪除，請改用停用。`)) return;
 
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請重新登入後再試');
       return;
     }
 
-    const res = await fetch('/api/v1/students/bulk-delete', {
+    const res = await authedFetch('/api/v1/students/bulk-delete', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
         'Accept': 'application/json'
       },
       body: JSON.stringify({ student_ids: ids })
-    });
+    }, token);
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -2649,20 +2639,18 @@ const deleteStudent = async (student) => {
   }
 
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請重新登入後再試');
       return;
     }
 
-    const res = await fetch(`/api/v1/students/${laravelId}`, {
+    const res = await authedFetch(`/api/v1/students/${laravelId}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${token}`,
         'Accept': 'application/json'
       }
-    });
+    }, token);
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -2686,12 +2674,11 @@ const deleteStudent = async (student) => {
 const bindRfidFromTemp = async () => {
   if (!props.branchId) { alert('請先選擇分校'); return; }
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) { alert('請重新登入'); return; }
-    const res = await fetch(`/api/v1/temp-rfid?campus_id=${props.branchId}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res = await authedFetch(`/api/v1/temp-rfid?campus_id=${props.branchId}`, {
+      headers: {}
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       alert(`取得暫存 RFID 失敗（HTTP ${res.status}）${json?.message ? '：' + json.message : ''}`);
@@ -2734,21 +2721,20 @@ const submitStudent = async () => {
     const laravelId = st?._laravelId ?? st?.id;
     if (laravelId) {
       try {
-        const { data: { session: sess } } = await supabase.auth.getSession();
-        const token = sess?.access_token;
+        const token = await getAccessToken();
         if (token) {
-          const res = await fetch(`/api/v1/students/${laravelId}`, {
+          const res = await authedFetch(`/api/v1/students/${laravelId}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
-          });
+          }, token);
           if (res.ok) {
             if (payload.rfid) {
-              await fetch(`/api/v1/students/${laravelId}/bind-card`, {
+              await authedFetch(`/api/v1/students/${laravelId}/bind-card`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ rfid: payload.rfid })
-              });
+              }, token);
             }
             // Dual-source sync: Laravel (primary) succeeded — mirror to Supabase so
             // loadStudents() fallback path reads the same cleared/updated values
@@ -2770,14 +2756,13 @@ const submitStudent = async () => {
     }
     await supabase.from('students').update(payload).eq('id', editingStudentId.value);
     if (payload.rfid && laravelId) {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (token) {
-        await fetch(`/api/v1/students/${laravelId}/bind-card`, {
+        await authedFetch(`/api/v1/students/${laravelId}/bind-card`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ rfid: payload.rfid })
-        });
+        }, token);
       }
     }
     if (payload.status !== 'active') {
@@ -2786,8 +2771,7 @@ const submitStudent = async () => {
   } else {
     // 新增：優先呼叫 Laravel API，成功後列表會從 Laravel 載入並顯示
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (!token) {
         alert('無法新增：請重新登入後再試');
         return;
@@ -2804,11 +2788,11 @@ const submitStudent = async () => {
         status: 'active'
       };
       if (payload.rfid) body.rfid = payload.rfid;
-      const res = await fetch('/api/v1/students', {
+      const res = await authedFetch('/api/v1/students', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(body)
-      });
+      }, token);
       if (res.ok) {
         closeStudentModal();
         loadStudents();
@@ -2838,8 +2822,7 @@ const submitStudent = async () => {
 const loadRoomsForBranch = async () => {
   if (!props.branchId) { rooms.value = []; return; }
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     const headers = { 'Accept': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(`/api/v1/rooms?branch_id=${props.branchId}`, { credentials: 'include', headers });
@@ -2858,12 +2841,11 @@ const openAddCourse = async (student) => {
   const sid = Number(student?._laravelId ?? student?.id ?? 0);
   if (sid > 0) {
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (token) {
-        const res = await fetch(`/api/v1/students/${sid}/active-courses`, {
-          headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-        });
+        const res = await authedFetch(`/api/v1/students/${sid}/active-courses`, {
+          headers: { 'Accept': 'application/json' },
+        }, token);
         if (res.ok) {
           const json = await res.json();
           const active = json?.courses || [];
@@ -3149,8 +3131,7 @@ const submitCourse = async () => {
       return;
     }
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (!token) {
         alert('請重新登入後再試');
         return;
@@ -3180,12 +3161,12 @@ const submitCourse = async () => {
         monthly_sessions: form.payment_type === 'monthly' ? (form.monthly_sessions || null) : null,
         Memo: form.memo || null
       };
-      const res = await fetch('/api/v1/student-classes', {
+      const res = await authedFetch('/api/v1/student-classes', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(body)
-      });
+      }, token);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(parseApiErrorMessage(err, '新增課程失敗'));
@@ -3204,13 +3185,12 @@ const submitCourse = async () => {
 
   if (editingCourseFromLaravel.value) {
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (!token) {
         alert('請重新登入後再試');
         return;
       }
-      const isPackageCourse = !!editingCourseRaw.value?.PackageID;
+      const isPackageCourse = isPackageMember(editingCourseRaw.value);
       const originalForm = courseFormSnapshot.value ? JSON.parse(courseFormSnapshot.value) : null;
       const scheduleChanged = !originalForm || courseScheduleFingerprint(form) !== courseScheduleFingerprint(originalForm);
       const body = {
@@ -3247,12 +3227,12 @@ const submitCourse = async () => {
       if (String(form.paid_at || '') !== String(form.original_paid_at || '')) {
         body.paid_at = form.paid_at || null;
       }
-      const res = await fetch(`/api/v1/student-classes/${editingCourseId.value}`, {
+      const res = await authedFetch(`/api/v1/student-classes/${editingCourseId.value}`, {
         method: 'PUT',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(body)
-      });
+      }, token);
       if (res.ok) {
         const payload = await res.json().catch(() => ({}));
         const sync = payload?.session_sync || {};
@@ -3339,17 +3319,16 @@ const deleteCourse = async (course) => {
   if (!confirm('確定刪除此課程設定？')) return;
   if (isLaravelCourse(course)) {
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (!token) {
         alert('請重新登入後再試');
         return;
       }
-      const res = await fetch(`/api/v1/student-classes/${course.id}`, {
+      const res = await authedFetch(`/api/v1/student-classes/${course.id}`, {
         method: 'DELETE',
         credentials: 'include',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+        headers: {}
+      }, token);
       if (res.ok) {
         const sid = selectedStudent.value?.id ?? Object.keys(studentCourses.value).find(sid => (studentCourses.value[sid] || []).some(c => c.id === course.id));
         if (sid) await loadStudentCourses(sid);
@@ -3469,8 +3448,7 @@ const submitAddSessions = async () => {
       return;
     }
 
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請重新登入後再試');
       return;
@@ -3480,13 +3458,12 @@ const submitAddSessions = async () => {
     const endpoint = tutoring
       ? `/api/v1/student-classes/${course.id}/continue-tutoring`
       : `/api/v1/student-classes/${course.id}/purchase-batch`;
-    const res = await fetch(endpoint, {
+    const res = await authedFetch(endpoint, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Accept': 'application/json'
       },
       body: JSON.stringify({
         sessions: Number(submittedCount),
@@ -3502,7 +3479,7 @@ const submitAddSessions = async () => {
               : {}),
           })
       })
-    });
+    }, token);
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -3561,14 +3538,13 @@ const openInvoiceModal = async (course) => {
   showInvoiceModal.value = true;
 
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) return;
 
-    const res = await fetch(`/api/v1/student-classes/${course.id}/invoices`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/invoices`, {
       credentials: 'include',
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
+      headers: { Accept: 'application/json' },
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (res.ok) {
       invoiceModalList.value = json.invoices || [];
@@ -3632,8 +3608,7 @@ const importStudents = async (event) => {
   }
 
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請重新登入後再試');
       return;
@@ -3643,11 +3618,11 @@ const importStudents = async (event) => {
     formData.append('file', file);
     formData.append('branch_id', String(props.branchId));
 
-    const res = await fetch('/api/v1/students/import', {
+    const res = await authedFetch('/api/v1/students/import', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {},
       body: formData
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
 
     if (!res.ok) {

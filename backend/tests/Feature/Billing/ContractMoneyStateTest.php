@@ -54,7 +54,8 @@ class ContractMoneyStateTest extends TestCase
         $this->assertSame('paid', ContractMoneyState::listStatus(true, 0, 100, true), 'paid wins over older pending report (#249)');
         $this->assertSame('paid', ContractMoneyState::listStatus(false, 100, 100, false));
         $this->assertSame('pending_report', ContractMoneyState::listStatus(false, 40, 100, true));
-        $this->assertSame('unpaid', ContractMoneyState::listStatus(false, 40, 100, false));
+        $this->assertSame('partial', ContractMoneyState::listStatus(false, 40, 100, false), 'part-paid reads partial like the alert ladder');
+        $this->assertSame('unpaid', ContractMoneyState::listStatus(false, 0, 100, false));
     }
 
     public function test_parent_card_and_record_status(): void
@@ -70,22 +71,22 @@ class ContractMoneyStateTest extends TestCase
         $this->assertSame('unpaid', ContractMoneyState::parentRecordStatus(false, 0, 100));
     }
 
-    /**
-     * Known divergences between the legacy copies, preserved on purpose (report in PR):
-     *  - alert ladder has no waived/free value; a waived-unpaid course reads `unpaid`, the parent card reads `waived`.
-     *  - list status ignores partial payments (`unpaid`), the alert ladder says `partial`.
-     *  - parent card `paid` = flag/package OR any invoice payment; parent record `paid` = Pay >= Charge (true for Charge 0).
-     */
-    public function test_documented_divergences_between_copies(): void
+    /** Founder-approved 2026-10-06: one answer per case across the classifiers (waived, partial, free). */
+    public function test_unified_waived_partial_and_free(): void
     {
         $waived = $this->course(['closed_reason' => 'waived']);
-        $this->assertSame('unpaid', ContractMoneyState::alertStatus($waived, 0, 100, false));
+        $this->assertSame('waived', ContractMoneyState::alertStatus($waived, 0, 100, false));
+        $this->assertSame('waived', ContractMoneyState::alertStatus($waived, 0, 100, true));
         $this->assertSame('waived', ContractMoneyState::parentCardStatus(false, true, false)[0]);
 
-        $this->assertSame('unpaid', ContractMoneyState::listStatus(false, 40, 100, false));
+        $this->assertSame('partial', ContractMoneyState::listStatus(false, 40, 100, false));
         $this->assertSame('partial', ContractMoneyState::alertStatus($this->course(), 40, 100, false));
+        $this->assertSame('partial', ContractMoneyState::parentRecordStatus(false, 40, 100));
+        $this->assertSame('pending_report', ContractMoneyState::listStatus(false, 40, 100, true));
+        $this->assertSame('unpaid', ContractMoneyState::listStatus(false, 0, 100, false));
 
-        $this->assertSame('paid', ContractMoneyState::parentRecordStatus(false, 0, 0));
+        $this->assertSame('free', ContractMoneyState::parentRecordStatus(false, 0, 0));
+        $this->assertSame('free', ContractMoneyState::parentRecordStatus(false, 50, 0));
     }
 
     public function test_waived_guard(): void
