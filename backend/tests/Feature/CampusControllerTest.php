@@ -28,6 +28,20 @@ class CampusControllerTest extends TestCase
         return ['token' => $raw, 'user_id' => $user->id];
     }
 
+    private function unassignedDirectorToken(): array
+    {
+        $user = User::create([
+            'LoginName' => 'campus-unassigned-' . uniqid() . '@test.com',
+            'Name'      => 'Unassigned Director',
+            'PSW'       => 'secret',
+            'type'      => 'A',
+            'phone'     => 912000003,
+        ]);
+        $raw = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => now()->addDay()]);
+        return ['token' => $raw, 'user_id' => $user->id];
+    }
+
     public function test_list_public_returns_campuses(): void
     {
         Campus::factory()->create(['name' => '大安分校']);
@@ -73,5 +87,27 @@ class CampusControllerTest extends TestCase
         $res->assertOk();
         $ids = collect($res->json())->pluck('id')->all();
         $this->assertContains($campus->id, $ids);
+    }
+
+    public function test_unassigned_director_sees_no_campuses(): void
+    {
+        Campus::factory()->create(['name' => '不可見分校']);
+        $dir = $this->unassignedDirectorToken();
+
+        $this->withToken($dir['token'])
+            ->getJson('/api/v1/campuses')
+            ->assertForbidden();
+    }
+
+    public function test_campus_controller_returns_empty_list_for_empty_non_admin_scope(): void
+    {
+        Campus::factory()->create(['name' => '不可見分校']);
+        $request = \Illuminate\Http\Request::create('/api/v1/campuses', 'GET');
+        $request->attributes->set('auth_role', 'director');
+        $request->attributes->set('auth_campus_ids', []);
+
+        $response = app(\App\Http\Controllers\CampusController::class)->index($request);
+
+        $this->assertSame([], $response->getData(true));
     }
 }

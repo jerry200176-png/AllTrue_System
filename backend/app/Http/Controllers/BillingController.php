@@ -436,7 +436,7 @@ class BillingController extends Controller
         $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
         $totalAmount = $projection['total_amount'];
         $paidAmount = $projection['net_applied'];
-        $remaining = max(0, $totalAmount - min($totalAmount, $paidAmount));
+        $remaining = $projection['outstanding_amount'];
 
         $singleItem = $invoice->items->first();
         $singleCourseItem = $invoice->items->count() === 1

@@ -183,6 +183,45 @@ final class PopOperationServiceIdempotencyTest extends TestCase
         self::assertSame(1, DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'execute')->count());
     }
 
+    public function test_verify_and_rollback_after_successful_execute_ignore_plan_drift(): void
+    {
+        PopRetryTestStrategy::$planResults = [true, true, false, false];
+        [$requestId, , $context] = $this->draft();
+        $this->dryRun($requestId, $context);
+        [$sha, $token] = $this->approved($requestId);
+
+        self::assertSame('succeeded', $this->service->run($requestId, 'execute', $token, $sha, 'pop-pi-local', null, null, $context)['result']);
+        self::assertSame('succeeded', $this->service->run($requestId, 'verify', $token, $sha, 'pop-pi-local', null, null, $context)['result']);
+        self::assertSame('succeeded', $this->service->run($requestId, 'rollback', $token, $sha, 'pop-pi-local', null, null, $context)['result']);
+    }
+
+    public function test_verify_and_rollback_keep_the_strict_gate_without_a_successful_execute(): void
+    {
+        // dry-run ok, execute plan fails (failed execute record), verify/rollback plans fail too.
+        PopRetryTestStrategy::$planResults = [true, false, false, false];
+        [$requestId, , $context] = $this->draft();
+        $this->dryRun($requestId, $context);
+        [$sha, $token] = $this->approved($requestId);
+
+        $execute = $this->service->run($requestId, 'execute', $token, $sha, 'pop-pi-local', null, null, $context);
+        self::assertSame('failed', $execute['result']);
+        foreach (['verify', 'rollback'] as $phase) {
+            $out = $this->service->run($requestId, $phase, $token, $sha, 'pop-pi-local', null, null, $context);
+            self::assertNotSame('succeeded', $out['result'], $phase);
+            self::assertSame(['temporary_plan_failure'], $out['errors'], $phase);
+            self::assertSame('precondition_failed', $out['failure_reason'], $phase);
+        }
+        self::assertSame(0, PopRetryTestStrategy::$executeCalls);
+    }
+
+    /** @return array{0:string,1:string} */
+    private function approved(string $requestId): array
+    {
+        $sha = str_repeat('c', 40);
+
+        return [$sha, $this->service->approve($requestId, 'founder-go-pop-retry-test', 'user:2', 'super_admin', $sha, 2, [9], 15)['token']];
+    }
+
     public function test_dual_approval_financial_repair_still_requires_founder_reference(): void
     {
         $path = $this->catalogDir . '/catalog.yaml';
