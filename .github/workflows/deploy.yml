@@ -105,6 +105,9 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PHASE: ${{ inputs.phase }}
+          FLAG_ADMISSIONS: ${{ inputs.admissions_funnel_v1 }}
+          FLAG_CALENDAR: ${{ inputs.course_session_calendar_v1 }}
+          FLAG_MANAGER: ${{ inputs.course_manager_v1 }}
           WORKFLOW_REF: ${{ github.ref }}
           TARGET_SHA_INPUT: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || inputs.target_sha }}
           REPO: ${{ github.repository }}
@@ -114,18 +117,24 @@ jobs:
           RELEASE_TRAIN=false
           if [[ "$EVENT_NAME" == "schedule" || ( "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "release-train" ) ]]; then
             RELEASE_TRAIN=true
-            # The train takes the newest main commit whose own main CI succeeded.
-            TARGET_SHA_INPUT=""
-            for sha in $(gh api "/repos/${REPO}/commits?sha=main&per_page=30" --jq '.[].sha'); do
-              ok="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${sha}&status=completed&per_page=100" \
-                --jq '[.workflow_runs[] | select(.name == "CI — PHPUnit Tests" and .conclusion == "success")] | length')"
-              if [[ "$ok" -ge 1 ]]; then TARGET_SHA_INPUT="$sha"; break; fi
+            for flag in "$FLAG_ADMISSIONS" "$FLAG_CALENDAR" "$FLAG_MANAGER"; do
+              if [[ -n "$flag" && "$flag" != "unchanged" ]]; then
+                echo "::error::A release train never changes feature flags; use phase=application-deploy for a flag change."
+                exit 1
+              fi
             done
-            if [[ -z "$TARGET_SHA_INPUT" ]]; then
-              echo "::notice::Release train: no main commit with successful CI among the last 30; nothing to offer."
+            # The train offers only the current main tip (deploy provenance is keyed on the
+            # run's head_sha, which is that tip). If the tip's main CI is not green yet,
+            # wait for the next train instead of offering an older commit.
+            TIP="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+            OK="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TIP}&status=completed&per_page=100" \
+              --jq '[.workflow_runs[] | select(.name == "CI — PHPUnit Tests" and .conclusion == "success" and (.event == "push" or .event == "workflow_dispatch"))] | length')"
+            if [[ "$OK" -lt 1 ]]; then
+              echo "::notice::Release train: main tip ${TIP} has no successful main CI yet; nothing to offer this time."
               echo "superseded=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            TARGET_SHA_INPUT="$TIP"
           fi
           echo "release_train=${RELEASE_TRAIN}" >> "$GITHUB_OUTPUT"
           TARGET_SHA="${TARGET_SHA_INPUT,,}"
@@ -560,7 +569,7 @@ jobs:
           # deployment is pending. It still reaches the existing protected
           # activation gate, but it must not require a second Founder
           # authorization merely because production has not caught up yet.
-          if [[ "$EVENT_NAME" == "workflow_dispatch" || "$EVENT_NAME" == "schedule" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" != "release-train" ]]; then
             if [[ "$RUNTIME_STATE" != "normal-version-lag" && "$RUNTIME_STATE" != "current" ]]; then
               hold "unknown" "none" "read-only manifest evidence must be valid before manual activation: ${RUNTIME_STATE}"
               exit 0
@@ -878,8 +887,10 @@ jobs:
               declaration_risk = f"R{provenance['declared_risk']}"
               declaration_tier = f"T{provenance['declared_tier']}"
 
+              # A dispatched release train is classified exactly like a scheduled one.
+              classify_event = "schedule" if os.environ.get("PHASE") == "release-train" else os.environ["EVENT_NAME"]
               decision = decide_activation(
-                  event_name=os.environ["EVENT_NAME"], deployable=True,
+                  event_name=classify_event, deployable=True,
                   classifier_available=True, machine_validated=True,
                   machine_tier=machine_tier, declared_risk=declaration_risk,
                   declared_tier=declaration_tier,
@@ -961,25 +972,33 @@ jobs:
                 } >> "$GITHUB_STEP_SUMMARY"
                 exit 1
               fi
+              if [[ "$RELEASE_TRAIN" != "true" ]]; then
+                {
+                  echo "## state=queued-for-release-train"
+                  echo "Not deployed. Founder-gated changes ride the next release train (07:30/12:30 Asia/Taipei, or dispatch phase=release-train). While one is pending, later R0-R2 merges wait for that train too."
+                  echo "Reason: ${REASON}"
+                } >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
               {
                 echo "## state=awaiting-approval"
                 echo "This state is not deployed. The same workflow run is held by the production-activation Environment; no second dispatch is required."
                 echo "Reason: ${REASON}"
+                echo ""
+                echo "### Release train: approving exactly \`${TARGET_SHA}\`"
+                echo "Production now: \`${RUNTIME_BASE_SHA:-unknown}\`. Merged changes in this train (newest first):"
               } >> "$GITHUB_STEP_SUMMARY"
+              if [[ "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] && COMMITS="$(gh api "/repos/${REPO}/compare/${RUNTIME_BASE_SHA}...${TARGET_SHA}" \
+                  --jq '[.commits[] | (.commit.message | split("\n")[0] | gsub("`"; "\u0027"))] | reverse | .[:100] | .[] | "- `" + . + "`"')"; then
+                printf '%s\n' "$COMMITS" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "- (commit list unavailable)" >> "$GITHUB_STEP_SUMMARY"
+              fi
               ;;
             manual)
               {
                 echo "## state=awaiting-approval"
                 echo "This explicit exceptional operation remains Founder-controlled and is not deployed until its gate succeeds."
-                if [[ "$RELEASE_TRAIN" == "true" ]]; then
-                  echo ""
-                  echo "### Release train: approving exactly \`${TARGET_SHA}\`"
-                  echo "Production now: \`${RUNTIME_BASE_SHA:-unknown}\`. Merged changes in this train:"
-                  if [[ "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-                    gh api "/repos/${REPO}/compare/${RUNTIME_BASE_SHA}...${TARGET_SHA}" \
-                      --jq '.commits[] | "- " + (.commit.message | split("\n")[0])' | head -100 || echo "- (commit list unavailable)"
-                  fi
-                fi
               } >> "$GITHUB_STEP_SUMMARY"
               ;;
             ""|*)
@@ -997,9 +1016,11 @@ jobs:
   production-activation:
     name: Founder production approval (same run)
     needs: [resolve-target, detect-deployable, classify-activation]
-    if: ${{ always() && needs.classify-activation.result == 'success' && ((github.event_name == 'repository_dispatch' && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && needs.classify-activation.outputs.mode == 'manual')) }}
-    # Release train: a merge's own CI (github.event_name == 'workflow_run') never opens
-    # an approval; R3 changes wait for the next scheduled or dispatched train.
+    if: ${{ always() && needs.classify-activation.result == 'success' && ((needs.resolve-target.outputs.release_train == 'true' && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true') || (github.event_name == 'workflow_dispatch' && inputs.phase != 'release-train' && needs.classify-activation.outputs.mode == 'manual')) }}
+    # Release train: a merge's own CI (github.event_name == 'workflow_run') and the
+    # bot-merge follow-up (github.event_name == 'repository_dispatch') never open an
+    # approval; R3 changes wait for the next scheduled (github.event_name == 'schedule')
+    # or dispatched train, classified by the same PR classifier.
     # A newer exact-main target supersedes an older approval request. The
     # protected environment still requires the Founder reviewer; this only
     # prevents stale waiting runs from accumulating behind the live target.
@@ -1109,7 +1130,10 @@ jobs:
           MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
           # Release train: main may move while the approval waits; the approved target
           # stays valid while main still contains it (compare TARGET...main is ahead/identical).
-          IN_MAIN="$(gh api "/repos/${REPO}/compare/${TARGET_SHA}...${MAIN_SHA}" --jq '.status')"
+          IN_MAIN=""
+          if [[ "$RELEASE_TRAIN" == "true" ]]; then
+            IN_MAIN="$(gh api "/repos/${REPO}/compare/${TARGET_SHA}...${MAIN_SHA}" --jq '.status')"
+          fi
           CI_RUNS="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TARGET_SHA}&status=completed&per_page=100")"
           CI_OK="$(CI_RUNS="$CI_RUNS" python3 - <<'PY'
           import json

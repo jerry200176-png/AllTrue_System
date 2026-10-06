@@ -719,7 +719,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         workflow = WORKFLOW.read_text(encoding="utf-8")
         classify = workflow[workflow.index("  classify-activation:"):]
         pop_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "pop-bootstrap" ]]')
-        manual_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" || "$EVENT_NAME" == "schedule" ]]; then')
+        manual_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" != "release-train" ]]; then')
         identity_guard = classify.index('if [[ ! "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]')
         runtime_state_guard = classify.index('if [[ "$RUNTIME_STATE" != "normal-version-lag"')
         manual_mode = classify.index('echo "mode=manual"', runtime_state_guard)
@@ -1008,6 +1008,12 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('git merge-base --is-ancestor "$PREV_COMMIT" "$TARGET_SHA"', self.workflow)
         # The approver sees the exact target and the merged changes before approving.
         self.assertIn("Release train: approving exactly", self.workflow)
+        self.assertIn("state=queued-for-release-train", self.workflow)
+        # Trains offer only the main tip, never an older commit, and never change flags.
+        self.assertIn('TIP="$(gh api "/repos/${REPO}/git/ref/heads/main"', self.workflow)
+        self.assertIn("A release train never changes feature flags", self.workflow)
+        # A dispatched train is classified like a scheduled one (no manual shortcut).
+        self.assertIn('classify_event = "schedule" if os.environ.get("PHASE") == "release-train"', self.workflow)
         self.assertIn("target_in_main=os.environ.get(\"IN_MAIN\") in {\"ahead\", \"identical\"}", self.workflow)
 
     def test_existing_ci_completion_trigger_is_preserved(self):
@@ -1042,10 +1048,14 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         for event_name in ("repository_dispatch", "workflow_dispatch", "schedule"):
             with self.subTest(event_name=event_name):
                 self.assertIn(f"github.event_name == '{event_name}'", gate)
-        # Release train: a merge's own CI completion never opens a Founder approval.
+        # Release train: neither a merge's own CI nor the bot-merge follow-up opens a
+        # Founder approval; only a train (classifier-approved) or an explicit manual phase.
         gate_if = gate.split("\n")[3]
         self.assertTrue(gate_if.lstrip().startswith("if:"), gate_if)
         self.assertNotIn("workflow_run", gate_if)
+        self.assertNotIn("repository_dispatch", gate_if)
+        self.assertIn("needs.resolve-target.outputs.release_train == 'true' && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true'", gate_if)
+        self.assertIn("inputs.phase != 'release-train'", gate_if)
         self.assertEqual(gate.count("environment:\n      name: production-activation"), 1)
         self.assertIn("required_reviewers_configured", gate)
         self.assertIn("prevent_self_review", gate)

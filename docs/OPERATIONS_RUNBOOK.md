@@ -46,13 +46,17 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
    ```
 5. **PR merge 後**：`deploy.yml` 依風險分類處理。R0–R2 自動部署；需要 Founder
    approval 的改動**不再每次 merge 各要一次核准**，改搭「發車班表（release train）」：
-   每天 07:30、12:30（台北）`schedule` 自動取「最近一個 main CI 綠燈的 commit」，在
+   每天 07:30、12:30（台北）`schedule` 只取「main 最新 commit」（它的 main CI 必須已綠燈；
+   還沒綠就這班不發，等下一班），用同一個 PR 分類器分級後，在
    `production-activation` Environment 等 Founder 核准一次；急件可手動
    `workflow_dispatch phase=release-train confirm=RELEASE_TRAIN`。核准的是那一個
    exact SHA；核准期間 main 前進不會讓它作廢，只要 main 仍包含它（compare 為
    ahead/identical，Pi 端 `git merge-base --is-ancestor`）。同一個 protected
    activation queue 只保留最新的等待 run，較舊的自動取消；這不會略過 Founder reviewer。
-   其他手動 phase（application-deploy、POP、parent smoke）仍維持 exact-main。唯一 production executor 另有
+   其他手動 phase（application-deploy、POP、parent smoke）仍維持 exact-main。
+   有 Founder 級改動在等車時，之後合併的 R0–R2 也會一起等同一班車。release train 不改
+   feature flag（要改 flag 用 phase=application-deploy）。merge 自己的 CI 與 bot merge 的
+   `repository_dispatch` 都不再各自跳核准。唯一 production executor 另有
    30 分鐘 runner deadline 與 SSH keepalive，避免斷線造成無界等待。
 6. **驗證**：只以 deploy workflow 的 exact target SHA、`deployment.json`、health、
    critical smoke 與 rollback evidence 判定 `production-verified`；單獨 health
