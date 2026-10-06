@@ -40,6 +40,11 @@ class SendTuitionReminders extends Command
                 ->whereDate($overdueColumn, '<=', $cutoff)
                 ->get();
 
+        // F7 S5: the resolver can only remove courses (paid/free); review_required/unknown keep the legacy decision.
+        $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
+        $settled = app(\App\Services\BillingPayableResolver::class)->settledCourseIds($unpaidCourses, 'tuition_reminders');
+        $unpaidCourses = $unpaidCourses->reject(fn (StudentClass $c) => isset($settled[(int) $c->ID]))->values();
+
         if ($unpaidCourses->isEmpty()) {
             $this->info('No overdue unpaid courses found.');
             return self::SUCCESS;
@@ -133,7 +138,9 @@ class SendTuitionReminders extends Command
             ]);
         }
 
-        app(\App\Services\Billing\PaidStatusShadow::class)->compare($unpaidCourses, 'tuition_reminders');
+        if (!$onResolver) {
+            app(\App\Services\Billing\PaidStatusShadow::class)->compare($unpaidCourses, 'tuition_reminders');
+        }
 
         $this->info($dryRun ? 'Dry-run complete.' : 'Reminders sent.');
         return self::SUCCESS;
