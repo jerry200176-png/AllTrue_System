@@ -51,8 +51,14 @@ jobs:
             [ -z "$wf" ] && continue
             wid=$(awk -v f="$wf" '$1 == f {print $2; exit}' "$RUNNER_TEMP/wf-ids.txt")
             if [ -z "$wid" ]; then
-              # GitHub drops a workflow whose file left main once its last run is deleted.
-              echo "::notice::$wf has no workflow entry (file removed, no runs left)"; continue
+              # Only a file that left main may lack an entry (GitHub drops it once its last
+              # run is deleted). A file still on main without an id is a real error.
+              if [ -f ".github/workflows/$wf" ]; then
+                echo "::error::$wf exists on main but has no workflow id"; failed=$((failed+1))
+              else
+                echo "::notice::$wf left main and has no runs left"
+              fi
+              continue
             fi
             # Page until nothing older than the cutoff remains (a backlog can exceed one page).
             for _ in $(seq 1 50); do
