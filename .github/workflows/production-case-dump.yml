@@ -30,6 +30,7 @@ on:
           - substitute_slot_conflicts
           - occurrence_identity_health
           - td076_r2_plan_probe
+          - paid_status_shadow_log
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
@@ -105,7 +106,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'td076_r2_plan_probe'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'td076_r2_plan_probe', 'paid_status_shadow_log'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -725,6 +726,25 @@ jobs:
                 'quarantine_open' => 0, 'quarantine_gate_ready' => false, // quarantine table not built yet (PR-E): NOT a pass
                 'conflict_slots' => $slots->get($cid, collect())->count()];
             }})->all();
+          }} elseif ($case === 'paid_status_shadow_log') {{
+            // Read-only (F7 S7 gate, 2026-10-07): summarize paid_status_shadow log lines from the last 3 days.
+            // Counts, sites and course IDs only (the logger never writes names).
+            $since = strtotime('-3 days');
+            $lines = [];
+            foreach (glob(storage_path('logs/*.log')) ?: [] as $f) {{
+              if (@filemtime($f) < $since) {{ continue; }}
+              $h = @fopen($f, 'r');
+              while ($h && ($line = fgets($h)) !== false) {{
+                if (!str_contains($line, 'paid_status_shadow')) {{ continue; }}
+                $ctx = json_decode((string)substr($line, (int)strpos($line, '{{')), true) ?: [];
+                $lines[] = ['at' => substr($line, 1, 19), 'failed' => str_contains($line, 'paid_status_shadow_failed')]
+                  + array_intersect_key($ctx, array_flip(['site', 'total', 'diff_total', 'diff_course_ids', 'old_owes_resolver_settled', 'old_settled_resolver_owes', 'review_required', 'missing', 'error']));
+              }}
+              if ($h) {{ fclose($h); }}
+            }}
+            $out['line_count'] = count($lines);
+            $out['failed_count'] = count(array_filter($lines, fn ($l) => $l['failed']));
+            $out['latest'] = array_slice($lines, -20);
           }} elseif ($case === 'td076_r2_plan_probe') {{
             // Read-only: calls only the R-2 strategy plan() (dry-run path, SELECT only, no POP request row) for campus 11.
             // Output: exception class, truncated message, file:line, top 5 frames (file:line), elapsed ms, peak memory. No row data.
