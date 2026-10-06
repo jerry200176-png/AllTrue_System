@@ -97,6 +97,38 @@ class SubstituteScheduleService
     }
 
     /**
+     * TD-076 flag on, #3590 item 8: a substitute for a makeup (`extra`) occurrence lives on the LearningRecord only, so
+     * course-level "does this teacher teach here" scopes need it too. Adds an OR EXISTS to the scope builder
+     * (no-op with no flag on).
+     *
+     * @param \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder $scope
+     */
+    public static function orWhereTeachesMakeup($scope, string $courseIdColumn, int $teacherId): void
+    {
+        if (!self::anyCampusOn()) {
+            return;
+        }
+        $scope->orWhereExists(function ($sub) use ($courseIdColumn, $teacherId) {
+            $sub->select(DB::raw(1))->from('LearningRecord as mk_lr')
+                ->join('ClassSession as mk_cs', 'mk_cs.id', '=', 'mk_lr.ClassSessionID')
+                ->join('StudentClass as mk_sc', 'mk_sc.ID', '=', 'mk_cs.StudentClassID')
+                ->join('Student as mk_s', 'mk_s.id', '=', 'mk_sc.StudentID')
+                ->whereColumn('mk_cs.StudentClassID', $courseIdColumn)
+                ->where('mk_lr.TeacherID', $teacherId)
+                ->whereNull('mk_lr.VoidedAt')
+                ->whereRaw(self::campusOnSql('mk_s.CampusID'))
+                ->whereExists(function ($x) {
+                    $x->select(DB::raw(1))->from('schedules as mk_x')
+                        ->whereColumn('mk_x.student_course_id', 'mk_cs.StudentClassID')
+                        ->whereColumn('mk_x.schedule_date', 'mk_cs.SessionDate')
+                        ->whereRaw('SUBSTRING(mk_x.start_time, 1, 5) = SUBSTRING(mk_cs.StartTime, 1, 5)')
+                        ->where('mk_x.status', 'scheduled')
+                        ->where('mk_x.type', 'extra');
+                });
+        });
+    }
+
+    /**
      * Derived table `sub_sched` (one row per course/date/slot) for list queries; callers join it on
      * course + date + start. No flag on: the legacy "latest substitute row" table. Flag on: per slot the
      * stamped live row wins, then the legacy substitute row, then (flag-on campus) a makeup row.

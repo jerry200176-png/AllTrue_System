@@ -634,6 +634,10 @@ class ScheduleGuardService
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId . '|' . $sessionDate])) {
                 continue;
             }
+            // TD-076 flag on: another teacher teaches this occurrence, so the contract teacher is free.
+            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $sessionDate, (string) ($row->StartTime ?? ''))) {
+                continue;
+            }
 
             // Same-student dual-contract / other-course occupancy: exclude.
             // Same-course rows keep the bounded time-match exclusion below so
@@ -1250,6 +1254,9 @@ class ScheduleGuardService
         foreach ($classSessions as $row) {
             $courseId = (int) ($row->StudentClassID ?? 0);
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])) {
+                continue;
+            }
+            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $date, (string) ($row->StartTime ?? ''))) {
                 continue;
             }
             if ($excludeStudentId && (int) ($row->StudentID ?? 0) === $excludeStudentId) {
