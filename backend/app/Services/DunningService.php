@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\DunningEvent;
 use App\Models\StudentClass;
+use App\Services\Billing\PaidStatusShadow;
 use Illuminate\Support\Facades\Schema;
 
 class DunningService
@@ -73,7 +74,9 @@ class DunningService
         }
 
         $events = [];
+        $seen = collect();
         foreach ($query->cursor() as $course) {
+            $seen->push($course);
             if (!$course->isEffectivelyPaid()) {
                 $event = $this->tryCreateEvent(
                     (int) $course->StudentID,
@@ -103,6 +106,8 @@ class DunningService
             }
         }
 
+        app(PaidStatusShadow::class)->compare($seen, 'dunning_count');
+
         return $events;
     }
 
@@ -123,8 +128,10 @@ class DunningService
 
         $today = now()->startOfDay();
         $events = [];
+        $seen = collect();
 
         foreach ($query->cursor() as $course) {
+            $seen->push($course);
             $settlementDay = (int) $course->settlement_day;
             $maxDay = $today->copy()->endOfMonth()->day;
             $effectiveDay = min($settlementDay, $maxDay);
@@ -167,6 +174,8 @@ class DunningService
                 }
             }
         }
+
+        app(PaidStatusShadow::class)->compare($seen, 'dunning_date');
 
         return $events;
     }
