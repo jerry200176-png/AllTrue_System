@@ -11,6 +11,7 @@ use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\SubstituteScheduleService;
+use App\Services\SubstituteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -174,6 +175,14 @@ class SubstituteTwoChainsSameSlotParityTest extends TestCase
         $this->assertSame($expected, SubstituteScheduleService::effectiveInstructorUserId((int) $sc->ID, self::DATE, $contract, '10:00:00'));
         $this->assertSame($expected, SubstituteScheduleService::teacherForOccurrence((int) $sc->ID, self::DATE, $contract, '10:00'));
         $this->assertSame($expected === $contract ? null : $expected, SubstituteScheduleService::resolveSubstituteUserId((int) $sc->ID, self::DATE, '10:00:00'));
+
+        // capacity release: the contract teacher is busy at the slot only when he/she teaches it
+        $busy = fn (int $tid) => collect(app(SubstituteService::class)->collectTeacherBusySlots($tid, self::DATE))->contains(fn ($b) => ($b['source'] ?? '') === 'class_session' && $b['start_time'] === '10:00');
+        if ($contract !== $expected) {
+            $this->assertFalse($busy($contract), 'contract teacher freed');
+        } elseif ($attendanceAndPayroll) {
+            $this->assertTrue($busy($contract), 'contract teacher still busy');
+        }
 
         if (!$attendanceAndPayroll) {
             return;
