@@ -8,6 +8,7 @@ use App\Models\Schedule;
 use App\Models\ScheduleChangeLog;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -43,7 +44,51 @@ class OccurrenceAssignmentService
     public static function onLeave(ClassSession $session): bool
     {
         return SessionStatus::isLeaveLike((string) $session->Status)
-            || self::at((int) $session->StudentClassID, Carbon::parse((string) $session->SessionDate)->toDateString(), substr((string) $session->StartTime, 0, 5), 'leave')->exists();
+            || self::at((int) $session->StudentClassID, Carbon::parse((string) $session->SessionDate)->toDateString(), substr((string) $session->StartTime, 0, 5), 'leave')->exists()
+            // Sign-in-only leave: a live leave-family sign-in with no leave schedules row.
+            || StudentSignIn::query()->where('ClassSessionID', (int) $session->id)->whereNull('VoidedAt')
+                ->whereIn(DB::raw("LOWER(TRIM(COALESCE(Status, '')))"), SessionStatus::leaveFamily())->exists();
+    }
+
+    /** A makeup session (`schedules.type='extra'` at its slot) has no contract chain; a substitute row would be a second live row. */
+    public static function onMakeup(ClassSession $session): bool
+    {
+        return Schedule::query()->where('student_course_id', (int) $session->StudentClassID)->where('type', 'extra')->where('status', 'scheduled')
+            ->whereDate('schedule_date', Carbon::parse((string) $session->SessionDate)->toDateString())
+            ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr((string) $session->StartTime, 0, 5)])->exists();
+    }
+
+    /**
+     * Same ScheduleGuardService check as ClassSessionController::substitute, for a FUTURE occurrence only
+     * (a past one is bookkeeping). Empty when there is nothing to check.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function futureConflicts(ClassSession $session, int $teacherId): array
+    {
+        $course = StudentClass::query()->where('ID', (int) $session->StudentClassID)->first();
+        if (!$course || $teacherId === (int) $course->TeacherID) {
+            return [];
+        }
+        $date = Carbon::parse((string) $session->SessionDate)->toDateString();
+        $start = substr((string) $session->StartTime, 0, 5);
+        $end = substr((string) $session->EndTime, 0, 5);
+        if (Carbon::parse($date . ' ' . ($end ?: '23:59'))->lte(Carbon::now())) {
+            return [];
+        }
+        $live = self::at((int) $course->ID, $date, $start, 'scheduled')->orderByDesc('id')->first();
+
+        return app(ScheduleGuardService::class)->validateScheduleOccurrence([
+            'teacher_id' => $teacherId,
+            'class_type' => (string) ($course->ClassType ?: 'one_on_one'),
+            'room_id' => (int) ($course->room_id ?? 0) > 0 ? (int) $course->room_id : null,
+            'branch_id' => (int) Student::query()->where('id', $course->StudentID)->value('CampusID'),
+            'schedule_date' => $date,
+            'start_time' => $start,
+            'end_time' => $end,
+            'exclude_schedule_id' => $live ? (int) $live->id : null,
+            'exclude_student_id' => (int) $course->StudentID > 0 ? (int) $course->StudentID : null,
+        ]);
     }
 
     /**
