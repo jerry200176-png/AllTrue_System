@@ -405,6 +405,7 @@ class ParentPortalLoginIsolationTest extends TestCase
         $this->assertSame('free', $tutoringCard['payment_status']);
         $this->assertSame('免費（不適用）', $tutoringCard['payment_status_label']);
         $this->assertTrue($tutoringCard['is_tutoring']);
+        $this->assertSame('session', $tutoringCard['payment_type'], 'count-mode course is not monthly');
         $alertClassIds = collect($res->json('payment_alerts'))->pluck('class_id')->all();
         $this->assertNotContains($tutoringCourse->ID, $alertClassIds);
         $this->assertContains($unpaidCourse->ID, $alertClassIds);

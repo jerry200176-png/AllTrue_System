@@ -332,7 +332,7 @@
                         <h5>{{ getStudentCourseSubjectDisplayLabel(course) }}</h5>
                         <div class="student-course-card__badges">
                           <span class="status-tag" :class="course.class_type">{{ classTypeLabel(course.class_type) }}</span>
-                          <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
+                          <span v-if="isPackageMember(course)" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
                           <span v-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
                           <span v-else-if="isSessionPaymentLow(course)" class="tag tag-expiring">即將用完</span>
                         </div>
@@ -406,7 +406,7 @@
                       >
                         <span class="student-course-card__progress-fill" :style="{ width: `${courseProgress(course).percent}%` }"></span>
                       </div>
-                      <span class="student-course-card__progress-caption">已使用 {{ courseProgress(course).used }} 堂<span v-if="course.PackageID"> · 方案共用堂數</span></span>
+                      <span class="student-course-card__progress-caption">已使用 {{ courseProgress(course).used }} 堂<span v-if="isPackageMember(course)"> · 方案共用堂數</span></span>
                     </section>
                     <div v-else-if="isPackageMember(course)" class="student-course-card__progress-empty" role="note">
                       本課程使用共用方案；堂數請見上方方案摘要，上課日期見本課程明細。
@@ -504,7 +504,7 @@
                       <div class="sl-history-card__header">
                         <span class="tag sl-history-card__subject">{{ getStudentCourseSubjectDisplayLabel(hc) }}</span>
                         <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
-                        <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
+                        <span v-if="isPackageMember(hc)" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
                         <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">已結算 · 待對帳</span>
                         <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag sl-tag-history sl-tag-history--settled">確認不收</span>
                         <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
@@ -845,7 +845,7 @@
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
         </div>
         <div class="form-group">
-          <label>{{ selectedCourse?.PackageID ? '目前剩餘（方案池）' : '目前剩餘（此課程）' }}</label>
+          <label>{{ isPackageMember(selectedCourse) ? '目前剩餘（方案池）' : '目前剩餘（此課程）' }}</label>
           <p :style="{ fontSize: '20px', fontWeight: 700, color: isLowRemaining(modalRemainingSessions(selectedCourse)) ? '#e65100' : 'var(--primary)' }">
             {{ modalRemainingSessions(selectedCourse) }} 堂
             <span v-if="isLowRemaining(modalRemainingSessions(selectedCourse))" class="sessions-near-empty-hint">{{ isTutoringCourse(selectedCourse) ? '（即將用完，可建立下一期）' : '（即將用完，建議盡快加購）' }}</span>
@@ -854,7 +854,7 @@
         <p class="hint sessions-package-hint">
           {{ isTutoringCourse(selectedCourse)
             ? '複製原課程設定建立下一期，保留前後期關聯。固定排課沿用原星期時段，手動排課仍需逐堂安排。費用 0 元、不建立帳單或付款義務；原課程及歷史紀錄不變。'
-            : selectedCourse?.PackageID
+            : isPackageMember(selectedCourse)
             ? '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
             : '此加購會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
           }}
@@ -863,7 +863,7 @@
           <label>{{ isTutoringCourse(selectedCourse) ? '下一期堂數' : '加購堂數' }}</label>
           <input v-model.number="addSessionCount" type="number" placeholder="8" />
         </div>
-        <div v-if="!selectedCourse?.PackageID" class="form-group">
+        <div v-if="!isPackageMember(selectedCourse)" class="form-group">
           <label>{{ isTutoringCourse(selectedCourse) ? '下一期開始日期（須在原課程最後堂次之後）' : '新批次開始日期' }}</label>
           <input v-model="addSessionStartDate" type="date" />
         </div>
@@ -871,7 +871,7 @@
           <label>下一期結束日期</label>
           <input v-model="tutoringEndDate" type="date" :min="addSessionStartDate" />
         </div>
-        <div v-if="selectedCourse && !isTutoringCourse(selectedCourse) && !selectedCourse?.PackageID" class="form-group" data-testid="purchase-transaction-discount">
+        <div v-if="selectedCourse && !isTutoringCourse(selectedCourse) && !isPackageMember(selectedCourse)" class="form-group" data-testid="purchase-transaction-discount">
           <label>交易折扣</label>
           <select v-model="purchaseDiscount.type"><option value="NONE">無折扣</option><option value="FIXED_AMOUNT">固定金額</option><option value="PERCENTAGE">百分比</option></select>
           <input v-if="purchaseDiscount.type !== 'NONE'" v-model="purchaseDiscount.value" type="text" inputmode="decimal" placeholder="折扣值" />
@@ -880,7 +880,7 @@
         </div>
         <p class="hint" v-if="addSessionCount > 0">
           <template v-if="isTutoringCourse(selectedCourse)">下一期費用：<strong>0 元，無須繳費</strong></template>
-          <template v-else-if="selectedCourse?.PackageID">
+          <template v-else-if="isPackageMember(selectedCourse)">
             將共用方案總堂數增加 <strong>{{ addSessionCount }}</strong> 堂（不拆成單科新契約）
           </template>
           <template v-else>
@@ -1038,7 +1038,7 @@ import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled } from '../lib/paymentStatus.js';
 import {
   courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
-  modalRemainingSessions, ownRemainingSessions, poolTotalSessions,
+  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, WAIVED_LABEL,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1339,6 +1339,7 @@ const paymentStatusButtonClass = (course) => {
 const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isTutoringCourse(course)) return '無須繳費';
+  if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
   if (isCourseSettled(course) === null) return '繳費狀態載入中';
   if (course?.payment_status === 'paid') return '已繳費';
   if (course?.payment_status === 'pending_report') return '待對帳';
@@ -1459,7 +1460,7 @@ const isHistoricalCourse = (course) => {
   // FR-001：共用方案課程（PackageID）以方案共用池記錄剩餘，個別 StudentClass 的 remaining 欄可能
   // 被 over-deduction 誤設為 0；若此時又已繳費，舊邏輯會把 active 方案課程誤判為「歷史課程」並隱藏，
   // 造成學生管理欄位顯示「尚未設定」。僅在明確停課（status=inactive，即 Stop=1）時才視為歷史。
-  if (course?.PackageID && String(course?.status || '').toLowerCase() !== 'inactive') {
+  if (isPackageMember(course) && String(course?.status || '').toLowerCase() !== 'inactive') {
     return false;
   }
   const remaining = ownRemainingSessions(course);
@@ -3189,7 +3190,7 @@ const submitCourse = async () => {
         alert('請重新登入後再試');
         return;
       }
-      const isPackageCourse = !!editingCourseRaw.value?.PackageID;
+      const isPackageCourse = isPackageMember(editingCourseRaw.value);
       const originalForm = courseFormSnapshot.value ? JSON.parse(courseFormSnapshot.value) : null;
       const scheduleChanged = !originalForm || courseScheduleFingerprint(form) !== courseScheduleFingerprint(originalForm);
       const body = {

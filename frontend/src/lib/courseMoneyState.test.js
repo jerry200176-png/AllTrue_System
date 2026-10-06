@@ -38,12 +38,10 @@ const legacy = {
     const used = total - (Number.isFinite(remaining) ? remaining : 0);
     return used > 0 ? used : 0;
   },
-  cmIsMonthlyMode: (c) => (c?.payment_type || 'session') !== 'session',
   cmIsSessionMode: (c) => { const t = String(c?.payment_type || '').trim(); if (t) return t === 'session'; return Number(c?.sessions_purchased ?? c?.SessionCount ?? 0) > 0; },
   cmPkgDisplay: (c) => Math.max(0, Number(c?.package_remaining_sessions ?? 0) || 0),
   cmPurchased: (c) => Math.max(0, Number(c?.sessions_purchased ?? c?.SessionCount ?? 0) || 0),
   // ParentPortal.vue
-  ppMonthly: (c) => String(c?.schedule_mode ?? 'count') !== 'count',
 };
 
 // ─── fixture table ───
@@ -84,12 +82,12 @@ for (const [name, c] of Object.entries(F)) {
   assert.equal(M.poolTotalSessions(c, { fallbackToPurchased: true }), legacy.slPkgTotal(c), at('pool total (SL)'));
   assert.equal(M.poolTotalSessions(c, { fallbackToPurchased: true }), legacy.cmPkgTotal(c), at('pool total (CM)'));
   assert.equal(M.poolUsedSessions(c), legacy.cmPkgUsed(c), at('pool used'));
-  assert.deepEqual(M.courseProgress(c), legacy.slProgress(c), at('courseProgress'));
-  assert.equal(M.isSessionPaymentLow(c), legacy.slLow(c), at('list low badge'));
-  assert.equal(M.modalRemainingSessions(c), legacy.slModalRemaining(c), at('加購 modal remaining'));
-  assert.equal(M.isNonSessionPayment(c), legacy.cmIsMonthlyMode(c), at('CM isMonthlyMode'));
+  if (name !== 'packageLowercaseIdOnly') { // unified below: package_id alone now counts as a package everywhere
+    assert.deepEqual(M.courseProgress(c), legacy.slProgress(c), at('courseProgress'));
+    assert.equal(M.isSessionPaymentLow(c), legacy.slLow(c), at('list low badge'));
+    assert.equal(M.modalRemainingSessions(c), legacy.slModalRemaining(c), at('加購 modal remaining'));
+  }
   assert.equal(M.isSessionPayment(c), legacy.cmIsSessionMode(c), at('CM isSessionMode'));
-  assert.equal(M.isNonCountSchedule(c), legacy.ppMonthly(c), at('ParentPortal monthly'));
   assert.equal(M.purchasedSessions(c), legacy.cmPurchased(c), at('purchased'));
   assert.equal(M.isMonthlyPaymentType(c), String(c?.payment_type || '').toLowerCase() === 'monthly', at('monthly type'));
 }
@@ -104,25 +102,27 @@ assert.equal(packageMemberSessionSummary(F.packageNoPool).total, 0, 'summary doe
 assert.equal(packageMemberSessionSummary(F.sessionCourse, { completed: 3 }).text, '已上 3 / 購買 10 堂');
 assert.equal(packageMemberSessionSummary(F.monthly, { completed: 2 }).text, '已上 2 堂');
 
-// ─── DIVERGENCES (legacy copies disagree; kept per-caller, Founder decides) ───
-// D1 monthly detection: three different rules.
-assert.deepEqual(
-  [M.isMonthlyPaymentType(F.monthlyCapitalized), M.isNonSessionPayment(F.monthlyCapitalized), M.isNonCountSchedule(F.monthlyCapitalized)],
-  [true, true, false], 'payment_type "Monthly": StudentsList+CM monthly, ParentPortal (schedule_mode) not');
-assert.deepEqual(
-  [M.isMonthlyPaymentType(F.hourly), M.isNonSessionPayment(F.hourly)], [false, true],
-  'payment_type "hourly": StudentsList treats as session-like, CM isMonthlyMode treats as monthly-like');
-assert.deepEqual(
-  [M.isSessionPayment(F.noTypeNoSessions), M.isNonSessionPayment(F.noTypeNoSessions)], [false, false],
-  'no payment_type, no sessions: CM is neither session nor monthly');
-assert.deepEqual([M.isMonthlyPaymentType(F.monthly), M.isNonCountSchedule(F.monthly)], [true, true]);
+// ─── UNIFIED (Founder-approved 2026-10-06) ───
+// Rule 4: monthly is payment_type === 'monthly', case-insensitive, on every page (one function, one answer).
+assert.equal(M.isMonthlyPaymentType(F.monthlyCapitalized), true);
+assert.equal(M.isMonthlyPaymentType(F.monthly), true);
+assert.equal(M.isMonthlyPaymentType(F.hourly), false, 'unknown billing type is not monthly');
+assert.equal(M.isMonthlyPaymentType(F.noTypeNoSessions), false);
+assert.equal(M.isSessionPayment(F.noTypeNoSessions), false);
+// the backend emits only 'session' | 'monthly' (ScheduleMode count -> session), so no real course changes category
+for (const [mode, type] of [['count', 'session'], ['date', 'monthly']]) {
+  assert.equal(M.isMonthlyPaymentType({ payment_type: type, schedule_mode: mode }), mode !== 'count');
+}
 // D2 pool total: summary never falls back to sessions_purchased; StudentsList/CM do; progress ignores Pascal alias.
 assert.equal(M.poolTotalSessions(F.packageNoPool), null);
 assert.equal(M.poolTotalSessions(F.packageNoPool, { fallbackToPurchased: true }), 12);
-// D3 `PackageID` truthy vs `PackageID ?? package_id`: lowercase-only id is a package for isPackageMember, not for CM/list-badge/progress.
+// Rule 5: PackageID or package_id counts everywhere (list badge / progress / modal follow the pool too).
 assert.equal(M.isPackageMember(F.packageLowercaseIdOnly), true);
-assert.equal(M.isPackageMember(F.packageLowercaseIdOnly, { strictPackageId: true }), false);
-assert.equal(M.isSessionPaymentLow(F.packageLowercaseIdOnly), false, 'list badge reads own remaining (undefined) for lowercase-only id');
+assert.equal(M.isPackageMember({ PackageID: 3 }), true);
+assert.equal(M.isPackageMember({ PackageID: 0, package_id: 0 }), false);
+assert.equal(M.isSessionPaymentLow(F.packageLowercaseIdOnly), true, 'pool remaining 1 is low for a package_id-only course');
+assert.equal(M.courseProgress(F.packageLowercaseIdOnly), null);
+assert.equal(M.modalRemainingSessions(F.packageLowercaseIdOnly), 1);
 // D4 加購 modal: missing remaining counts as 0 -> low hint; list badge says not low (null).
 assert.equal(M.modalRemainingSessions(F.sessionNoRemaining), 0);
 assert.equal(M.isSessionPaymentLow(F.sessionNoRemaining), false);
@@ -150,15 +150,16 @@ assert.deepEqual([0, 1, 2, 3, 4, 5, null].map((n) => M.remainingTone(n)), ['empt
 assert.equal(M.remainingTone(8, { watchAt: 8 }), 'watch');
 assert.equal(M.remainingTone(9, { watchAt: 8 }), 'ok');
 
-// ─── payment status labels: per-surface wording preserved ───
+// ─── payment status labels: one wording per status (Rule 6) ───
 assert.equal(M.TUITION_STATUS_CONFIG.paid.label, '已確認入帳');
+assert.equal(M.TUITION_STATUS_CONFIG.partial.label, '部分繳');
+assert.equal(M.TUITION_STATUS_CONFIG.waived.label, '確認不收', 'Rule 1: the alert ladder shows waived too');
+assert.equal(M.WAIVED_LABEL, '確認不收');
 assert.equal(M.TUITION_STATUS_CONFIG.pending_report.cls, 'st-pending');
 assert.equal(M.TUITION_STATUS_CONFIG.pending_reconciliation.label, '結案／待查帳');
-assert.equal(M.INVOICE_STATUS_LABELS.course.partial, '部分繳');
-assert.equal(M.INVOICE_STATUS_LABELS.ledger.partial, '部分付款', 'D7 invoice partial wording differs course vs ledger');
-assert.equal(M.REPORT_STATUS_LABELS.course.confirmed, '已入帳');
-assert.equal(M.REPORT_STATUS_LABELS.ledger.confirmed, '已核帳', 'D8 report confirmed wording differs course vs ledger');
-assert.equal(M.REPORT_STATUS_LABELS.course.voided, undefined, 'CM has no voided label; ledger does');
+assert.equal(M.INVOICE_STATUS_LABELS.partial, '部分繳');
+assert.equal(M.REPORT_STATUS_LABELS.confirmed, '已入帳');
+assert.equal(M.REPORT_STATUS_LABELS.voided, '已撤銷', 'ledger keeps its voided label');
 
 // ─── folded monthlyPaymentDisplay ───
 assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'paid' }), '2026-09 未繳費');

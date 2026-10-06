@@ -302,7 +302,7 @@
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
-                        <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
+                        <span v-if="isPackageMember(c)" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
                         <span v-else-if="['settled', 'settled_pending', 'waived', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">{{ effectiveClosedReason(c) === 'waived' ? '確認不收' : (effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? '待對帳結案' : '已結案' }}</span>
                         <button
                           v-if="c.usage_balance_status === 'review_required'"
@@ -389,7 +389,7 @@
                       </div>
                     </td>
                     <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
-                      <template v-if="isSessionMode(c)">{{ displayRemainingSessions(c) ?? '—' }}<span v-if="c.PackageID" class="tag-package-hint">（方案共用）</span></template>
+                      <template v-if="isSessionMode(c)">{{ displayRemainingSessions(c) ?? '—' }}<span v-if="isPackageMember(c)" class="tag-package-hint">（方案共用）</span></template>
                       <template v-else>已上 {{ getCompletedSessionCount(c) }} 堂</template>
                     </td>
                     <td class="cell-actions">
@@ -448,7 +448,7 @@
                             <p class="action-section-label">帳務與合約</p>
                             <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單（唯讀）</button>
                             <button
-                              v-if="isSessionMode(c) && !c.PackageID"
+                              v-if="isSessionMode(c) && !isPackageMember(c)"
                               class="action-dropdown-item action-dropdown-package-preview"
                               role="menuitem"
                               @click="openPackageConversionPreview(c); closeActionMenu()"
@@ -629,7 +629,7 @@
                   <div class="history-course-card__header">
                     <span class="tag subject-tag history-course-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
                     <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
-                    <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
+                    <span v-if="isPackageMember(hc)" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
                     <span v-if="effectiveClosedReason(hc) === 'converted_trial'" class="tag tag-history tag-history--settled">已轉正式</span>
                     <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag tag-history tag-history--settled">歷史 · 確認不收</span>
                     <span v-else-if="effectiveClosedReason(hc) === 'settled_pending' || (effectiveClosedReason(hc) === 'contract_amended' && hc.payment_status !== 'paid')" class="tag tag-history tag-history--pending">已結算 · 待對帳</span>
@@ -647,7 +647,7 @@
                   <div class="history-course-card__details">
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">費用</span> ${{ totalPrice(hc) }}（{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}）</span>
-                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> <template v-if="hc.PackageID">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></span>
+                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> <template v-if="isPackageMember(hc)">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></span>
                     <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
                   </div>
                   <div class="history-course-card__actions">
@@ -868,7 +868,7 @@
       :is-manual-occurrence="isManualOccurrenceCourse(courseManagerCourse)"
       :purchase-label="purchaseActionLabel(courseManagerCourse)"
       :payment-notice-available="isPaymentNoticeAvailable(courseManagerCourse)"
-      :can-package-preview="isSessionMode(courseManagerCourse) && !courseManagerCourse.PackageID"
+      :can-package-preview="isSessionMode(courseManagerCourse) && !isPackageMember(courseManagerCourse)"
       :format-session-chip-date="formatSessionChipDate" :get-session-state-class="getSessionStateClass"
       :get-session-state-label="getSessionStateLabel" :get-session-number="getSessionNumber" :get-session-number-map="getSessionNumberMap"
       :session-row-key="sessionRowKey" :is-user-note="isUserNote" :format-makeup-date="formatMakeupDate"
@@ -1583,7 +1583,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, isLowRemaining, isNonSessionPayment, monthlyPaymentLabel,
+  INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, WAIVED_LABEL,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -1638,7 +1638,6 @@ const DAY_OPTIONS = [
   { value: 4, label: '四' }, { value: 5, label: '五' }, { value: 6, label: '六' },
   { value: 7, label: '日' },
 ];
-const isPackageMember = (course) => Number(course?.PackageID ?? course?.package_id ?? 0) > 0;
 const getPackageTotalSessions = (course) => poolTotalSessions(course, { fallbackToPurchased: true });
 const getPackageUsedSessions = poolUsedSessions;
 // 時間以半小時為單位：07:00 ~ 22:30
@@ -2534,7 +2533,7 @@ function openBillingCorrectionCalendar() {
 function isBillingCorrectionStructureEligible(course) {
   return Boolean(course)
     && isSessionMode(course)
-    && !course?.PackageID
+    && !isPackageMember(course)
     && !isTutoringCourse(course)
     && !isTutoringBillingAnomaly(course);
 }
@@ -2545,7 +2544,7 @@ function isUnpaidCountCourse(course) {
 
 function openContractAdjustmentModal(course) {
   contractAdjustmentCourse.value = course;
-  if (!isSessionMode(course) || course?.PackageID) {
+  if (!isSessionMode(course) || isPackageMember(course)) {
     openTransferSessionsModal(course);
     return;
   }
@@ -3213,7 +3212,7 @@ function openPurchaseModal(course) {
     return;
   }
   // convert-trial ignores package totals; a package-member trial must be handled in package settings first.
-  if (course?.class_type === 'trial' && (course?.PackageID || course?.package_id)) {
+  if (course?.class_type === 'trial' && isPackageMember(course)) {
     alert('此試聽屬於多科共用方案，不能直接轉為正式課程；請先調整方案設定，避免方案堂數錯誤。');
     return;
   }
@@ -4345,7 +4344,7 @@ const formatDayTimeSlots = (course) => formatDayTimeSlotLines(course).join('、'
 const sessionPrice = (c) => getPerSessionFee(c);
 const totalPrice = (c) => getCourseTotalFee(c);
 // 月結制：已上堂費用 = 實際已上堂數 × 每堂費用（月結無預購堂數，用 completed count）
-const isMonthlyMode = isNonSessionPayment;
+const isMonthlyMode = isMonthlyPaymentType;
 const monthlyAttendedFee = (c) => Math.round(getPerSessionFee(c) * getCompletedSessionCount(c));
 
 // 備註開關（預設關閉，截圖給家長時保持乾淨）
@@ -4557,6 +4556,7 @@ const currentInvoiceForBillingRow = (row) => {
 const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isTutoringCourse(course)) return '無須繳費';
+  if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
   if (monthlyPaymentLabel(course)) return monthlyPaymentLabel(course);
   if (course?.payment_status === 'review_required') return '付款期間待確認';
   if (course?.payment_status === 'paid') return '已繳費';
@@ -4578,7 +4578,7 @@ const paymentStatusHelpTitle = (course) => {
   if (isTutoringCourse(course)) return '無須繳費；輔導課不產生付款義務。';
   return `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
 };
-const reportStatusLabel = (status) => REPORT_STATUS_LABELS.course[status] || status || '—';
+const reportStatusLabel = (status) => REPORT_STATUS_LABELS[status] || status || '—';
 const hasMixedPackagePaymentStatuses = (key) => {
   const rows = studentBillingState.value[key]?.rows || [];
   const packageStatuses = rows
@@ -4602,7 +4602,7 @@ const formatBillingPeriod = (period) => {
 const invoiceStatusLabel = (invoice) => {
   if (invoice?.ledger_label) return invoice.ledger_label;
   const status = typeof invoice === 'string' ? invoice : invoice?.status;
-  return INVOICE_STATUS_LABELS.course[status] || status || '未知';
+  return INVOICE_STATUS_LABELS[status] || status || '未知';
 };
 const invoiceStatusClass = (invoice) => {
   const ledgerStatus = invoice?.ledger_status || '';
@@ -5186,7 +5186,7 @@ const submitEdit = async () => {
       const token = await getAccessToken();
       if (token) {
         const endTime = computeEndTime(form.start_time, form.duration_hours);
-        const isPackageCourse = !!editingCourseRaw.value?.PackageID;
+        const isPackageCourse = isPackageMember(editingCourseRaw.value);
         // A memo/payment/teacher edit must not be interpreted as a schedule
         // edit. Sending the schedule fields on every save caused the backend
         // to reconcile or rebuild future projected sessions even when the
