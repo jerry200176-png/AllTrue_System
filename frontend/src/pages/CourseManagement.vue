@@ -1512,7 +1512,7 @@
             <strong>{{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}</strong>
             <span v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</span>
           </p>
-          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除。</p>
+          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
         </div>
         <div class="actions">
           <button class="ghost" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</button>

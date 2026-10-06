@@ -109,7 +109,10 @@ class BillingController extends Controller
             $courseIds = collect([$data['StudentClassID'] ?? null])->merge(array_column($data['Items'] ?? [], 'StudentClassID'))
                 ->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
             if ($courseIds !== []) {
-                StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+                $found = StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+                if ($found->count() !== count($courseIds)) {
+                    return response()->json(['message' => '找不到部分課程，可能已被刪除'], 404); // never bill a deleted contract
+                }
             }
             if (!empty($data['StudentClassID'])) {
                 $course = StudentClass::query()->whereKey($data['StudentClassID'])->lockForUpdate()->first();
