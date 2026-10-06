@@ -10,6 +10,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\BillingPayableResolver;
 use App\Services\InvoiceAmountReconciliationService;
+use App\Services\MonthlyRenewalPeriodService;
 use App\Support\AccountingCourseClarity;
 use App\Support\Utf8mb3SearchSanitizer;
 use Carbon\Carbon;
@@ -31,6 +32,62 @@ class AccountingController extends Controller
     public function paymentsExport(Request $request)
     {
         return $this->paymentResponse($request, true);
+    }
+
+    /**
+     * Plan B step 1: read-only proposal of monthly contracts needing next-period billing.
+     * Price/period come from MonthlyRenewalPeriodService, the same code renewMonthly uses.
+     * Contracts that already have the proposed renewal are excluded, not listed.
+     */
+    public function monthlyDrafts(Request $request)
+    {
+        $request->validate(['month' => ['nullable', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/']]);
+        $monthStart = Carbon::createFromFormat('!Y-m', (string) $request->input('month', now('Asia/Taipei')->format('Y-m')), 'Asia/Taipei');
+        $end = $monthStart->copy()->endOfMonth()->toDateString();
+
+        $query = StudentClass::with(['student', 'subjectRecord'])
+            ->where('Stop', 0)
+            ->where('ScheduleMode', 'date')
+            ->where(fn ($q) => $q->whereNull('PackageID')->orWhere('PackageID', 0))
+            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) NOT IN ('tutoring', 'trial')")
+            ->whereNotNull('EndDate')
+            ->whereDate('EndDate', '<', $end);
+        if (($guard = $this->applyStudentClassCampusGuard($request, $query)) !== null) {
+            return $guard;
+        }
+
+        $svc = app(MonthlyRenewalPeriodService::class);
+        $rows = [];
+        $totals = ['ready' => 0, 'blocked' => 0, 'lapsed_no_lessons' => 0];
+        foreach ($query->orderBy('ID')->get() as $course) {
+            $review = $svc->inspect($course, $end);
+            if ($svc->findDuplicate($course, $review['start_date'], $end) !== null) {
+                continue;
+            }
+            $blocker = $review['blockers'][0] ?? null;
+            $oldEnd = Carbon::parse($course->getAttribute('EndDate'))->toDateString();
+            $status = $blocker ? 'blocked' : ($oldEnd < $monthStart->toDateString() ? 'lapsed_no_lessons' : 'ready');
+            $preview = $svc->previewPeriod($course, $review['start_date'], $end);
+            $totals[$status]++;
+            $rows[] = [
+                'student_class_id' => (int) $course->getKey(),
+                'student_id' => (int) $course->getAttribute('StudentID'),
+                'student_name' => $course->student?->getAttribute('name'),
+                'subject' => $course->subjectRecord?->getAttribute('Subject_Name'),
+                'teacher_id' => (int) $course->getAttribute('TeacherID'),
+                'current_end_date' => $oldEnd,
+                'proposed_start_date' => $review['start_date'],
+                'proposed_end_date' => $end,
+                'period_sessions' => $preview['sessions'],
+                'amount' => $preview['charge'],
+                'due_date' => $review['due_date'],
+                'status' => $status,
+                'blocker_code' => $blocker['code'] ?? null,
+                'blocker_message' => $blocker['message'] ?? null,
+            ];
+        }
+
+        return response()->json(['month' => $monthStart->format('Y-m'), 'data' => $rows, 'totals' => $totals]);
     }
 
     public function settledCourses(Request $request)
