@@ -124,17 +124,28 @@ class BankReconciliationController extends Controller
         }
 
         $txn = BankTransaction::findOrFail($id);
+        $role = $request->attributes->get('auth_role');
+        $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if ($role !== 'super_admin' && !in_array((int) $txn->campus_id, $campusIds, true)) {
+            abort(403);
+        }
         $amount = (int) $txn->amount;
         // F7 S3d (B24): match the bank amount against what is still owed on open invoices (resolver
         // outstanding of unpaid/partial courses), not the legacy StudentClass.Pay / Paid=1 pair.
         // No date window any more (an unsettled invoice has no payment date): payment_date is the oldest
         // open invoice IssueDate and confidence is high only when exactly one course matches.
+        // Bounded: only the transaction's campus, and only invoices whose stored remaining or total equals
+        // the bank amount (cheap SQL pre-filter); the resolver then confirms the real outstanding.
         $open = DB::table('Invoice')
-            ->whereNotNull('StudentClassID')
-            ->where('TotalAmount', '>=', $amount)
-            ->where(fn ($q) => $q->whereNull('Status')->orWhereNotIn('Status', ['void', 'paid']))
-            ->groupBy('StudentClassID')
-            ->selectRaw('StudentClassID, MIN(IssueDate) AS oldest_issue')
+            ->join('Student', 'Student.id', '=', 'Invoice.StudentID')
+            ->where('Student.CampusID', (int) $txn->campus_id)
+            ->whereNotNull('Invoice.StudentClassID')
+            ->where(fn ($q) => $q->where('Invoice.TotalAmount', $amount)
+                ->orWhereRaw('Invoice.TotalAmount - COALESCE(Invoice.PaidAmount, 0) = ?', [$amount]))
+            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhereNotIn('Invoice.Status', ['void', 'paid']))
+            ->groupBy('Invoice.StudentClassID')
+            ->selectRaw('Invoice.StudentClassID AS StudentClassID, MIN(Invoice.IssueDate) AS oldest_issue')
+            ->limit(200)
             ->pluck('oldest_issue', 'StudentClassID');
         $matches = [];
         foreach ($open->keys()->chunk(500) as $ids) {

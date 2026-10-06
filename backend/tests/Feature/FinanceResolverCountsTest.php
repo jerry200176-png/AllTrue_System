@@ -81,6 +81,22 @@ class FinanceResolverCountsTest extends TestCase
         $this->assertSame('high', $r->json('suggestions.0.confidence'));
     }
 
+    public function test_bank_suggest_is_campus_scoped(): void
+    {
+        [$token, $campus] = $this->seedDirector();
+        $other = CampusFactory::new()->create();
+        $foreign = Student::create(['name' => 'Other', 'CampusID' => $other->id, 'ClassID' => 0, 'SchoolName' => 'T']);
+        $this->invoice($this->course($foreign), 3000, 0);                    // same amount, other campus
+        $mine = BankTransaction::create(['campus_id' => $campus->id, 'transaction_date' => now()->toDateString(),
+            'amount' => 3000, 'reference' => 'r2', 'status' => 'unmatched']);
+        $theirs = BankTransaction::create(['campus_id' => $other->id, 'transaction_date' => now()->toDateString(),
+            'amount' => 3000, 'reference' => 'r3', 'status' => 'unmatched']);
+
+        $this->getJson("/api/v1/bank-reconciliation/{$mine->id}/suggest", $this->bearer($token))
+            ->assertOk()->assertJsonCount(0, 'suggestions');
+        $this->getJson("/api/v1/bank-reconciliation/{$theirs->id}/suggest", $this->bearer($token))->assertForbidden();
+    }
+
     private function seedDirector(): array
     {
         $campus = CampusFactory::new()->create();
