@@ -139,7 +139,7 @@ function processQueue() {
     if (d.action === 'reject') { reject(n, pr.sha, d); continue; }
     if (d.action === 'merge') { gh('pr', 'merge', String(n), '--repo', REPO, '--squash', '--delete-branch', '--match-head-commit', pr.sha); merged = true; continue; }
     kickChecksIfMissing(n, pr);
-    break; // wait: a later trigger continues
+    continue; // wait: don't block the PRs behind it (no head-of-line blocking)
   }
 }
 
