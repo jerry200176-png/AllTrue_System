@@ -196,11 +196,13 @@ class ParentPortalLoginIsolationTest extends TestCase
             'IssueDate' => '2026-05-01',
             'DueDate' => '2026-05-15',
             'TotalAmount' => 8800,
-            'PaidAmount' => 0,
-            'Status' => 'unpaid',
+            'PaidAmount' => 8800,
+            'Status' => 'paid',
             'Note' => '',
             'billing_period' => '2026-05',
         ]);
+        // F7 S4: "settled" now means the resolver sees real payments, not just Paid=1.
+        Payment::create(['InvoiceID' => $hiddenInvoice->id, 'Amount' => 8800, 'PaidAt' => '2026-05-05', 'Method' => 'cash']);
 
         $token = $this->parentLogin('吳艾潼', '0912555000');
         $res = $this->getJson('/api/v1/parent/dashboard', [
