@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Invoice;
 use App\Models\StudentClass;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 /** Resolve the settlement amount that may be presented as a confirmed payable. */
 class BillingPayableResolver
@@ -13,6 +14,37 @@ class BillingPayableResolver
         private InvoiceAmountReconciliationService $invoiceAmounts,
         private MonthlyPeriodPaymentService $monthlyPeriods,
     ) {
+    }
+
+    /**
+     * F7 S5 outbound reminders: ids of courses that owe nothing (paid/free). review_required / unknown are NOT
+     * returned (callers keep their legacy decision). Resolver failure => [] (legacy fallback) plus a warning.
+     * Flag billing.paid_status_outbound_notifications=false => [] (callers then run the shadow comparison).
+     *
+     * @param iterable<StudentClass> $courses
+     * @return array<int, true> keyed by StudentClass ID
+     */
+    public function settledCourseIds(iterable $courses, string $site): array
+    {
+        if (!config('billing.paid_status_outbound_notifications', true)) {
+            return [];
+        }
+        $courses = collect($courses);
+        if ($courses->isEmpty()) {
+            return [];
+        }
+        try {
+            $statuses = $this->courseStatusesByStudentClassIds(
+                $courses->map(fn (StudentClass $c) => (int) $c->getAttribute('ID'))->all(),
+                $courses
+            );
+        } catch (\Throwable $e) {
+            Log::warning($site . '_resolver_failed', ['error' => $e::class]);
+
+            return [];
+        }
+
+        return collect($statuses)->filter(fn ($s) => in_array($s['status'] ?? null, ['paid', 'free'], true))->map(fn () => true)->all();
     }
 
     /**

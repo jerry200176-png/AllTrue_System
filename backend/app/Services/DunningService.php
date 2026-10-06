@@ -74,10 +74,11 @@ class DunningService
         }
 
         $events = [];
-        $seen = collect();
-        foreach ($query->cursor() as $course) {
-            $seen->push($course);
-            if (!$course->isEffectivelyPaid()) {
+        /** @var \Illuminate\Database\Eloquent\Collection<int, StudentClass> $seen */
+        $seen = $query->get();
+        $settled = app(BillingPayableResolver::class)->settledCourseIds($seen, 'dunning_count');
+        foreach ($seen as $course) {
+            if (!isset($settled[(int) $course->ID]) && !$course->isEffectivelyPaid()) {
                 $event = $this->tryCreateEvent(
                     (int) $course->StudentID,
                     (int) $course->ID,
@@ -106,7 +107,9 @@ class DunningService
             }
         }
 
-        app(PaidStatusShadow::class)->compare($seen, 'dunning_count');
+        if (!config('billing.paid_status_outbound_notifications', true)) {
+            app(PaidStatusShadow::class)->compare($seen, 'dunning_count');
+        }
 
         return $events;
     }
@@ -128,10 +131,11 @@ class DunningService
 
         $today = now()->startOfDay();
         $events = [];
-        $seen = collect();
+        /** @var \Illuminate\Database\Eloquent\Collection<int, StudentClass> $seen */
+        $seen = $query->get();
+        $settled = app(BillingPayableResolver::class)->settledCourseIds($seen, 'dunning_date');
 
-        foreach ($query->cursor() as $course) {
-            $seen->push($course);
+        foreach ($seen as $course) {
             $settlementDay = (int) $course->settlement_day;
             $maxDay = $today->copy()->endOfMonth()->day;
             $effectiveDay = min($settlementDay, $maxDay);
@@ -141,7 +145,7 @@ class DunningService
                 $dueDate = $today->copy()->subMonth()->setDay(min($settlementDay, $today->copy()->subMonth()->endOfMonth()->day))->startOfDay();
             }
 
-            $isPaid = $course->isEffectivelyPaid();
+            $isPaid = isset($settled[(int) $course->ID]) || $course->isEffectivelyPaid();
             $daysFromDue = $today->diffInDays($dueDate, false);
 
             // Paid date-mode courses may still show monthly_due_soon in director alerts,
@@ -175,7 +179,9 @@ class DunningService
             }
         }
 
-        app(PaidStatusShadow::class)->compare($seen, 'dunning_date');
+        if (!config('billing.paid_status_outbound_notifications', true)) {
+            app(PaidStatusShadow::class)->compare($seen, 'dunning_date');
+        }
 
         return $events;
     }

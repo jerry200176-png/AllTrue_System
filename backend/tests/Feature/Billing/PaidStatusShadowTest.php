@@ -50,6 +50,7 @@ class PaidStatusShadowTest extends TestCase
     public function test_dunning_sends_nothing_new_and_logs_shadow(): void
     {
         $this->partialPaidFlagCourse();
+        config(['billing.paid_status_outbound_notifications' => false]); // F7 S5: shadow only runs while the flag is off
         Log::spy();
 
         $events = (new DunningService())->evaluateAll(null, false);
