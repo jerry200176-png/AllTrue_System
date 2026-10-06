@@ -34,25 +34,40 @@ final class Td076HistoryPinsStrategy extends Td076OccurrenceRepair
     {
         $today = Carbon::today()->toDateString();
         $actions = $quarantine = [];
-        $courses = StudentClass::query()->whereIn('StudentID', fn ($q) => $q->select('id')->from('Student')->where('CampusID', $campusId))->get();
-        // ponytail: per-course scan reuses the #207 taught-session set; batch it if a campus dry-run gets slow.
-        foreach ($courses as $course) {
-            foreach (ContractTeacherChangeCascade::taughtPastSessions((int) $course->ID, $today) as $row) {
-                $session = ClassSession::query()->whereKey($row->id)->first();
-                if (!$session || substr((string) $session->SessionDate, 0, 10) >= $today
-                    || !ContractTeacherChangeCascade::isPinnableOccurrence($session)
-                    || OccurrenceAssignmentService::onLeave($session) || $this->liveRow($session)->exists()) {
-                    continue;
+        // Chunked: the per-session checks below used to run for every taught session (~10 queries each) and a full
+        // campus dry-run outlived the web request limit (HTTP 500). Evidence is read in bulk and only sessions that
+        // can matter (a conflict, or a teacher other than the contract teacher) reach the per-session checks.
+        StudentClass::query()->select('ID', 'TeacherID')
+            ->whereIn('StudentID', fn ($q) => $q->select('id')->from('Student')->where('CampusID', $campusId))
+            ->chunkById(200, function ($courses) use ($today, &$actions, &$quarantine) {
+                $rows = [];
+                foreach ($courses as $course) {
+                    foreach (ContractTeacherChangeCascade::taughtPastSessions((int) $course->ID, $today) as $row) {
+                        if (substr((string) $row->SessionDate, 0, 10) < $today) {
+                            $rows[(int) $row->id] = (int) $course->ID;
+                        }
+                    }
                 }
-                $teachers = $this->evidence($session);
-                if (count($teachers) > 1) {
-                    $quarantine[] = ['reason' => 'evidence_conflict', 'class_session_id' => (int) $session->id];
-                } elseif ($teachers && $teachers[0] !== (int) $course->TeacherID) {
-                    $actions[] = ['type' => 'pin', 'class_session_id' => (int) $session->id,
-                        'student_class_id' => (int) $course->ID, 'teacher_id' => $teachers[0]];
+                $evidence = $this->evidence(array_keys($rows));
+                $contract = $courses->pluck('TeacherID', 'ID');
+                foreach ($evidence as $sessionId => $teachers) {
+                    $courseId = $rows[$sessionId];
+                    if (count($teachers) === 1 && $teachers[0] === (int) $contract[$courseId]) {
+                        continue;
+                    }
+                    $session = ClassSession::query()->whereKey($sessionId)->first();
+                    if (!$session || !ContractTeacherChangeCascade::isPinnableOccurrence($session)
+                        || OccurrenceAssignmentService::onLeave($session) || $this->liveRow($session)->exists()) {
+                        continue;
+                    }
+                    if (count($teachers) > 1) {
+                        $quarantine[] = ['reason' => 'evidence_conflict', 'class_session_id' => $sessionId];
+                    } else {
+                        $actions[] = ['type' => 'pin', 'class_session_id' => $sessionId,
+                            'student_class_id' => $courseId, 'teacher_id' => $teachers[0]];
+                    }
                 }
-            }
-        }
+            }, 'ID');
         usort($actions, fn ($a, $b) => $a['class_session_id'] <=> $b['class_session_id']);
         usort($quarantine, fn ($a, $b) => $a['class_session_id'] <=> $b['class_session_id']);
 
@@ -68,13 +83,32 @@ final class Td076HistoryPinsStrategy extends Td076OccurrenceRepair
             ->where(fn ($q) => $q->whereNull('type')->orWhere('type', '<>', 'extra'))->whereNotNull('original_schedule_id');
     }
 
-    /** @return list<int> distinct teachers named by the non-voided learning record and sign-ins (LR, manual, RFID) */
-    private function evidence(ClassSession $session): array
+    /**
+     * Distinct teachers named by the non-voided learning records and sign-ins (LR, manual, RFID), keyed by session id.
+     * Sessions with no evidence are absent.
+     *
+     * @param list<int> $sessionIds
+     * @return array<int, list<int>>
+     */
+    private function evidence(array $sessionIds): array
     {
-        $ids = LearningRecord::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')->pluck('TeacherID')
-            ->merge(StudentSignIn::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')->pluck('TeacherID'));
+        $found = [];
+        foreach (array_chunk($sessionIds, 1000) as $ids) {
+            foreach ([LearningRecord::query(), StudentSignIn::query()] as $q) {
+                foreach ($q->whereIn('ClassSessionID', $ids)->whereNull('VoidedAt')->get(['ClassSessionID', 'TeacherID']) as $r) {
+                    if ((int) $r->TeacherID) {
+                        $found[(int) $r->ClassSessionID][(int) $r->TeacherID] = true;
+                    }
+                }
+            }
+        }
 
-        return $ids->map(fn ($t) => (int) $t)->filter()->unique()->sort()->values()->all();
+        foreach ($found as &$teachers) {
+            ksort($teachers);
+            $teachers = array_keys($teachers);
+        }
+
+        return $found;
     }
 
     protected function apply(array $actions): array
