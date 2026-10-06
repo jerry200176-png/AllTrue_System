@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Carbon\Carbon;
+use App\Console\Concerns\MasksPersonData;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -17,12 +18,16 @@ use Illuminate\Support\Facades\Schema;
  */
 class RecoverTeacherRfidCollisionSignIns extends Command
 {
+    use MasksPersonData;
+
     protected $signature = 'teacher-signin:recover-rfid-collisions
         {--date= : Local date to inspect, format YYYY-MM-DD}
         {--teacher-id= : Required with --apply; limits recovery to one teacher}
         {--campus-id= : Optional campus filter}
         {--limit=50 : Maximum candidate rows to inspect}
-        {--apply : Insert recovered TeacherSingIn rows}';
+        {--apply : Insert recovered TeacherSingIn rows}
+        {--with-names : Print teacher/student names (operator only; never in workflows)}
+        {--json : Print one JSON object of ids/dates only (used by the workflow)}';
 
     protected $description = 'Dry-run or recover TeacherSingIn rows from historical teacher/student RFID collisions';
 
@@ -45,6 +50,10 @@ class RecoverTeacherRfidCollisionSignIns extends Command
         }
 
         $candidates = $this->candidateRows($date, $teacherId, $campusId, $limit);
+        $json = (bool) $this->option('json');
+        if ($json) {
+            return $this->runJson($candidates, $date, $apply);
+        }
         $this->info(($apply ? 'APPLY' : 'DRY-RUN') . " teacher RFID collision recovery for {$date}");
         $this->info("Candidates: {$candidates->count()}");
 
@@ -55,10 +64,10 @@ class RecoverTeacherRfidCollisionSignIns extends Command
         $rows = $candidates->map(fn ($row) => [
             'student_signin_id' => $row->student_signin_id,
             'teacher_id' => $row->teacher_id,
-            'teacher_name' => $row->teacher_name,
+            'teacher_name' => $this->personText($row->teacher_name),
             'campus_id' => $row->campus_id,
             'student_id' => $row->student_id,
-            'student_name' => $row->student_name,
+            'student_name' => $this->personText($row->student_name),
             'sign_in_dt' => $row->sign_in_dt,
             'sign_out_dt' => $row->sign_out_dt ?? '',
             'rfid' => $row->rfid,
@@ -70,6 +79,38 @@ class RecoverTeacherRfidCollisionSignIns extends Command
             return self::SUCCESS;
         }
 
+        $inserted = $this->insertRecovered($candidates, $date);
+
+        $this->info("Inserted {$inserted} TeacherSingIn record(s).");
+        return self::SUCCESS;
+    }
+
+    /** One JSON object, ids and dates only (no names, no RFID); the workflow re-filters it. */
+    private function runJson($candidates, string $date, bool $apply): int
+    {
+        $out = [
+            'mode' => $apply ? 'apply' : 'dry-run',
+            'date' => $date,
+            'candidates' => $candidates->count(),
+            'rows' => $candidates->map(fn ($row) => [
+                'student_signin_id' => (int) $row->student_signin_id,
+                'teacher_id' => (int) $row->teacher_id,
+                'campus_id' => (int) $row->campus_id,
+                'student_id' => (int) $row->student_id,
+                'sign_in_dt' => (string) $row->sign_in_dt,
+                'sign_out_dt' => (string) ($row->sign_out_dt ?? ''),
+            ])->all(),
+        ];
+        if ($apply) {
+            $out['inserted'] = $this->insertRecovered($candidates, $date);
+        }
+        $this->line(json_encode($out));
+
+        return self::SUCCESS;
+    }
+
+    private function insertRecovered($candidates, string $date): int
+    {
         $inserted = 0;
         DB::transaction(function () use ($candidates, $date, &$inserted) {
             foreach ($candidates as $row) {
@@ -96,8 +137,7 @@ class RecoverTeacherRfidCollisionSignIns extends Command
             }
         });
 
-        $this->info("Inserted {$inserted} TeacherSingIn record(s).");
-        return self::SUCCESS;
+        return $inserted;
     }
 
     private function candidateRows(string $date, ?int $teacherId, ?int $campusId, int $limit)

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\SessionCorrection;
+use App\Console\Concerns\MasksPersonData;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -13,9 +14,12 @@ use Illuminate\Support\Facades\Schema;
  */
 class RepairMergeRenewalLearningRecord extends Command
 {
+    use MasksPersonData;
+
     protected $signature = 'repair:merge-renewal-learning-record
                             {--case=173} {--dry-run} {--execute} {--force} {--snapshot=}
-                            {--actor=} {--actor-user-id=} {--rollback} {--verify}';
+                            {--actor=} {--actor-user-id=} {--rollback} {--verify}
+                            {--with-names : Print evaluation text (operator only; never in workflows)}';
 
     protected $description = 'Merge superseded LR eval into keeper LR (#173 FD1b C)';
 
@@ -62,7 +66,7 @@ class RepairMergeRenewalLearningRecord extends Command
         if ($plan['error']) {
             $this->error($plan['error']);
             if (!empty($plan['conflicts'])) {
-                $this->line('CONFLICTS: ' . json_encode($plan['conflicts'], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+                $this->line('CONFLICTS: ' . json_encode($this->maskTree($plan['conflicts']), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
             }
 
             return self::FAILURE;
@@ -308,15 +312,15 @@ class RepairMergeRenewalLearningRecord extends Command
             $this->line('post_hash=' . ($a['post_hash'] ?? ''));
         }
         $this->line('--- MERGE FILL ---');
-        $this->line(json_encode($plan['merge']['fill'] ?? [], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        $this->line(json_encode($this->maskTree($plan['merge']['fill'] ?? []), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         $this->line('--- MERGE KEEP ---');
-        $this->line(json_encode($plan['merge']['keep'] ?? [], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        $this->line(json_encode($this->maskTree($plan['merge']['keep'] ?? []), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         $this->line('--- CHILDREN ---');
         $this->line(json_encode($plan['children'] ?? [], JSON_UNESCAPED_UNICODE));
         $this->line('--- USER PROJECTION AFTER ---');
-        $this->line(json_encode($plan['projection']['user_visible_after'] ?? [], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        $this->line(json_encode($this->maskTree($plan['projection']['user_visible_after'] ?? []), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         $this->line('--- ROLLBACK PAYLOAD ---');
-        $this->line(json_encode($plan['rollback_payload'] ?? [], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        $this->line(json_encode($this->maskTree($plan['rollback_payload'] ?? []), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         if (!empty($plan['snapshot']['oldSc'])) {
             $o = $plan['snapshot']['oldSc'];
             $n = $plan['snapshot']['newSc'];
@@ -391,7 +395,7 @@ class RepairMergeRenewalLearningRecord extends Command
         }
         $fields = $corr->snapshot_before['rollback_fields'] ?? [];
         $this->line($execute ? '=== EXECUTE ROLLBACK LR-MERGE-C ===' : '=== DRY RUN ROLLBACK LR-MERGE-C ===');
-        $this->line('correction_id=' . $corr->id . ' restore=' . json_encode($fields, JSON_UNESCAPED_UNICODE));
+        $this->line('correction_id=' . $corr->id . ' restore=' . json_encode($this->maskTree($fields), JSON_UNESCAPED_UNICODE));
         if (!$execute) {
             return self::SUCCESS;
         }

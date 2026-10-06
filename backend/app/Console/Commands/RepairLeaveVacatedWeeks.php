@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\StudentClass;
 use App\Services\CourseLeaveCascadeService;
 use Carbon\Carbon;
+use App\Console\Concerns\MasksPersonData;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -23,6 +24,8 @@ use Illuminate\Support\Facades\Schema;
  */
 class RepairLeaveVacatedWeeks extends Command
 {
+    use MasksPersonData;
+
     protected $signature = 'repair:leave-vacated-weeks
                             {--dry-run : Preview only (default)}
                             {--apply : Apply future-safe repairs}
@@ -33,7 +36,8 @@ class RepairLeaveVacatedWeeks extends Command
                             {--to= : Leave date to (YYYY-MM-DD)}
                             {--limit=200 : Max leave rows to scan}
                             {--force : Required with --apply on production}
-                            {--actor= : Executor audit label}';
+                            {--actor= : Executor audit label}
+                            {--with-names : Include student_name in JSON (operator only; never in workflows)}';
 
     protected $description = 'Scan/repair silent vacated weeks from legacy leave shift cascade';
 
@@ -218,7 +222,7 @@ class RepairLeaveVacatedWeeks extends Command
                 'reason' => $reason,
                 'campus_id' => (int) $row->campus_id,
                 'student_id' => (int) $row->student_id,
-                'student_name' => (string) $row->student_name,
+                ...($this->withNames() ? ['student_name' => (string) $row->student_name] : []),
                 'course_id' => (int) $row->course_id,
                 'leave_session_id' => (int) $row->leave_session_id,
                 'leave_date' => $leaveDate,
