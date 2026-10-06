@@ -235,7 +235,8 @@ class NotificationSyncService
         }
 
         $rows = [];
-        foreach ($query->get() as $class) {
+        $classes = $query->get();
+        foreach ($classes as $class) {
             $student = $class->student;
             if (!$student) {
                 continue;
@@ -274,6 +275,8 @@ class NotificationSyncService
                 'ResolvedAt' => null,
             ];
         }
+
+        app(\App\Services\Billing\PaidStatusShadow::class)->compare($classes, 'notification_tuition');
 
         return $rows;
     }

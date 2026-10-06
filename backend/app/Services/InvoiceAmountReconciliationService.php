@@ -32,7 +32,11 @@ class InvoiceAmountReconciliationService
      *   period_start:string|null,
      *   period_end:string|null,
      *   billing_period:string|null,
-     *   net_applied:int
+     *   net_applied:int,
+     *   voided_amount:int,
+     *   applied_amount:int,
+     *   overpaid_amount:int,
+     *   outstanding_amount:int
      * }
      */
     public function resolve(Invoice $invoice, ?StudentClass $course = null): array
@@ -127,6 +131,11 @@ class InvoiceAmountReconciliationService
                 ? (string) $billingPeriod
                 : null,
             'net_applied' => $netApplied,
+            'voided_amount' => $voidedTotal,
+            // Capped at the total; the excess is overpaid. Void-status handling stays with the caller.
+            'applied_amount' => min($totalAmount, $netApplied),
+            'overpaid_amount' => max(0, $netApplied - $totalAmount),
+            'outstanding_amount' => max(0, $totalAmount - $netApplied),
         ];
     }
 }

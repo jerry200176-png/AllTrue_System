@@ -160,7 +160,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 12. **Actions minutes 用完仍不可在 Pi 跑測試**：若 production bug 必須先救且 deploy workflow 無法使用，只能走 `docs/DEPLOYMENT.md` 的緊急手動前端部署路徑；完成後仍要補 PR/CI，並在 `CHANGELOG` + `AI_REGRESSION_LESSONS` 記錄本次例外。
 13. **runner topology 是安全邊界**：所有直接執行的 jobs 必須使用 GitHub-hosted `ubuntu-latest`；delegated reusable job 必須鎖定 immutable commit 並列入 reviewed allow-list。不得把 production deploy secrets 下放到個人電腦或 production Pi。變更前須同步更新 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md) 並通過 security/operations review。
 14. **低價值排程工作降頻**：`branch-hygiene.yml` 改為 weekly；`pi-health.yml` 改為 daily，關鍵即時告警改由 Pi 本機 `monitor-alert.sh` cron + UptimeRobot 承接。
-15. **E2E 只在前端 PR 跑（#730）**：`ui-smoke.yml` 在 PR 一律啟動（穩定 check 名稱、可當 required），但內部 `Detect frontend diff` 判斷是否動到 `frontend/src/**` 或 `frontend/e2e/**`；沒動就秒過、不下載 Chromium、不跑 Playwright；有動才跑。**刻意不用 workflow 層 `paths:`**（path-filtered 的 required check 在不符路徑時會永遠 pending、卡 merge）。週排程 + 手動觸發仍完整跑。
+15. **UI smoke 在相關 PR 跑（#730、#3510）**：`ui-smoke.yml` 在 PR 一律啟動，但只在 `frontend/src/**`、`frontend/e2e/**`、`frontend/playwright.config.js`、前端依賴或本 workflow 變更時執行 Playwright；比較 diff 失敗與必要 smoke secrets 缺失都讓 job 失敗，不算略過或通過。其他 PR 可略過瀏覽器；週排程與手動觸發完整執行。刻意不用 workflow 層 `paths:`，避免 context pending。**目前 GitHub ruleset 尚未要求 UI Smoke；#3506 正式站 dashboard 仍會先回 tuition 403，不能因 job 可執行就把它加為 required。**
 
 **Token Conservation SOP**
 - 先讀 `docs/INDEX.md`，再按任務讀對應章節；不要全讀大型文件或完整 transcript。

@@ -5,11 +5,12 @@ import { defineConfig, devices } from '@playwright/test';
  * #547 / Epic #535 Phase 4.3 — 前端 UI smoke（最小集）。
  *
  * 設計原則：
- *  - 預設「無 secrets 即 skip」：未設定 SMOKE_BASE_URL 時 spec 內 test.skip()，
- *    讓本檔可安全存在於 repo、不阻塞任何人；實際執行需 #537 提供登入 secrets。
+ *  - 本機未設定 SMOKE_BASE_URL 時 spec 可 skip；正式 ui-smoke workflow
+ *    先檢查必要 secrets，缺少時 job 失敗，不能以 skip 當作驗證通過。
  *  - 只跑 chromium，single retry，trace/screenshot on-failure 以利分診。
- *  - 不掛在每次 PR 的 CI（避免 Actions minutes 浪費，見 OPERATIONS_RUNBOOK §B2）；
- *    由 .github/workflows/ui-smoke.yml 以 workflow_dispatch 手動 / 排程觸發。
+ *  - .github/workflows/ui-smoke.yml 在 PR、workflow_dispatch、排程啟動；
+ *    PR 在產品前端、smoke 定義、Playwright 設定、依賴或 workflow 有變動時
+ *    執行瀏覽器測試。
  *
  * 本機跑：SMOKE_BASE_URL=https://daan.lifenet.com.tw \
  *         SMOKE_DIRECTOR_USER=... SMOKE_DIRECTOR_PASS=... \
