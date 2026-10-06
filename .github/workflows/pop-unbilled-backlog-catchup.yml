@@ -96,7 +96,7 @@ jobs:
           test -n "$PI_SSH_KEY" && test -n "$PI_HOST_KEY"
           # Both values were allowlisted by the guard job (mode choice, 40-hex SHA) before reaching the remote shell.
           [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$CAMPUS" =~ ^[1-9][0-9]{0,5}$ ]] && [[ "$DIGEST" =~ ^([0-9a-f]{64})?$ ]] && [[ "$RUN_ID" =~ ^[1-9][0-9]{0,5}$ ]]
+          [[ "$CAMPUS" =~ ^[1-9][0-9]{0,5}$ ]] && [[ "$DIGEST" =~ ^([0-9a-f]{64})?$ ]] && [[ "$RUN_ID" =~ ^[0-9]+$ ]]
           SSH_DIR="$RUNNER_TEMP/pop-backlog-ssh"
           install -d -m 700 "$SSH_DIR"
           printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
