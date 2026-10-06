@@ -494,7 +494,8 @@ class PaymentReportController extends Controller
                 'reconciled_by'  => $userId,
             ]);
 
-            if ($sc && !$sc->Paid) {
+            // F7 S7: only the resolver (all non-void invoices) may settle the course; a partial leaves Paid=0.
+            if ($sc && !$sc->Paid && $this->courseResolvedPaid($sc)) {
                 $sc->update([
                     'Paid' => 1,
                     'PayDate' => Carbon::today()->toDateString(),
@@ -808,6 +809,14 @@ class PaymentReportController extends Controller
         ], $accepted === count($results) ? 200 : 207);
     }
 
+    private function courseResolvedPaid(StudentClass $sc): bool
+    {
+        $id = (int) $sc->ID;
+        $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id])[$id]['status'] ?? null;
+
+        return $status === 'paid';
+    }
+
     private function courseAlreadyHasConfirmedPayment(int $studentClassId, int $coursePaid): bool
     {
         if ($coursePaid === 1) {
@@ -943,12 +952,12 @@ class PaymentReportController extends Controller
             $sc = StudentClass::find($report->StudentClassID);
             $scPaid = 0;
             if ($sc) {
-                $invoiceStatus = $invoice->Status ?? 'unpaid';
-                if ($invoiceStatus === 'unpaid') {
-                    $sc->update(['Paid' => 0, 'PayDate' => null]);
-                    $scPaid = 0;
-                } else {
+                // F7 S7: recompute from the resolver; no invoice or no longer paid (partial or unpaid) clears the flag.
+                if ($invoice && $this->courseResolvedPaid($sc)) {
                     $scPaid = (int) $sc->Paid;
+                } else {
+                    $reopen = $sc->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
+                    $sc->update(['Paid' => 0, 'PayDate' => null] + $reopen);
                 }
             }
 

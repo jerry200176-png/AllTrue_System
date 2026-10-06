@@ -447,9 +447,9 @@ class StudentClassPaidStatusTest extends TestCase
     }
 
     /**
-     * Partial payment should also mark the course as paid.
+     * F7 S7: a partial payment must NOT mark the course paid.
      */
-    public function test_partial_payment_syncs_student_class_paid(): void
+    public function test_partial_payment_does_not_sync_student_class_paid(): void
     {
         $token = $this->createDirectorToken([1]);
         $student = $this->createStudent();
@@ -475,7 +475,7 @@ class StudentClassPaidStatusTest extends TestCase
 
         $res->assertOk();
         $sc->refresh();
-        $this->assertSame(1, (int) $sc->Paid, 'Partial payment must also sync Paid=1');
+        $this->assertSame(0, (int) $sc->Paid, 'Partial payment must leave Paid=0');
     }
 
     /**
