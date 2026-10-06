@@ -306,7 +306,7 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
         $session = $this->plainSession();
         StudentSignIn::create([
             'StudentClassID' => $this->sc->ID, 'StudentID' => $this->sc->StudentID, 'TeacherID' => $this->aId,
-            'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-19 13:00:00', 'MDT' => now(),
+            'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-19 13:00:00', 'SignOutDT' => '2026-04-19 15:00:00', 'MDT' => now(),
             'ClassSessionID' => $session->id, 'Status' => 'leave', 'SessionDeducted' => 0,
         ]);
 

@@ -179,7 +179,7 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
 
         $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
         $this->assertSame(0, ScheduleChangeLog::count());
-        $this->assertSame(1, Schedule::where('student_course_id', '!=', $this->sc->ID)->count(), 'only the busy row');
+        $this->assertSame(1, Schedule::count(), 'only the busy row');
     }
 
     public function test_lr_update_teacher_conflict_check_is_skipped_for_past_and_flag_off(): void
