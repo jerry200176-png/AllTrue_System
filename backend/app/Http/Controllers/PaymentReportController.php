@@ -290,11 +290,9 @@ class PaymentReportController extends Controller
             $payable = $r->invoice
                 ? (function () use ($r, $invoiceAmounts) {
                     $projection = $invoiceAmounts->resolve($r->invoice, $r->studentClass);
-                    $amount = max(0, (int) $projection['total_amount']);
-                    $applied = min($amount, max(0, (int) $projection['net_applied']));
                     return [
-                        'payable_amount' => $amount,
-                        'payable_outstanding' => max(0, $amount - $applied),
+                        'payable_amount' => $projection['total_amount'],
+                        'payable_outstanding' => $projection['outstanding_amount'],
                         'payable_status' => 'invoiced',
                         'payable_source' => 'invoice',
                         'payable_invoice_id' => (int) $r->invoice->id,

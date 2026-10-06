@@ -12,6 +12,7 @@ use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Operations\Strategies\Td076HistoryPinsStrategy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class Td076HistoryPinsStrategyTest extends TestCase
@@ -83,6 +84,40 @@ final class Td076HistoryPinsStrategyTest extends TestCase
             'original_schedule_id' => $anchor->id]);
 
         $this->assertSame([], $this->strategy()->plan($this->params())['manifest']['actions']);
+    }
+
+    public function test_dry_run_query_count_does_not_grow_with_taught_sessions(): void
+    {
+        // Regression: production dry-run (campus 11) took ~70s of per-session queries and returned HTTP 500.
+        foreach (range(1, 20) as $day) {
+            $this->taught(sprintf('2026-04-%02d', $day), [$this->contract]);
+        }
+        $other = $this->taught('2026-05-01', [$this->other]);
+        $queries = 0;
+        DB::listen(function () use (&$queries) {
+            $queries++;
+        });
+
+        $plan = $this->strategy()->plan($this->params());
+
+        $this->assertSame([(int) $other->id], array_column($plan['manifest']['actions'], 'class_session_id'));
+        $this->assertLessThan(25, $queries, 'queries must not scale with the number of taught sessions');
+    }
+
+    public function test_each_course_is_compared_with_its_own_contract_teacher(): void
+    {
+        $second = $this->sc->replicate();
+        $second->TeacherID = $this->other;
+        $second->save();
+        $mine = $this->taught('2026-04-10', [$this->other]);
+        $theirs = ClassSession::create(['StudentClassID' => $second->ID, 'SessionDate' => '2026-04-10', 'StartTime' => '16:00:00', 'EndTime' => '18:00:00', 'Status' => 'attended']);
+        LearningRecord::create(['StudentClassID' => $second->ID, 'ClassSessionID' => $theirs->id, 'TeacherID' => $this->contract,
+            'Status' => 'approved', 'Content' => 'x', 'SessionDate' => '2026-04-10', 'StartTime' => '16:00', 'EndTime' => '18:00']);
+
+        $plan = $this->strategy()->plan($this->params());
+
+        $this->assertEqualsCanonicalizing([[(int) $mine->id, $this->other], [(int) $theirs->id, $this->contract]],
+            array_map(fn ($a) => [$a['class_session_id'], $a['teacher_id']], $plan['manifest']['actions']));
     }
 
     private function strategy(): Td076HistoryPinsStrategy
