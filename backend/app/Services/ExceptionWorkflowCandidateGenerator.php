@@ -145,35 +145,47 @@ class ExceptionWorkflowCandidateGenerator
             return [];
         }
 
-        $sessions = ClassSession::query()
-            ->join('StudentClass as sc', 'sc.ID', '=', 'ClassSession.StudentClassID')
-            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
-            ->where('sc.TeacherID', $teacherId)
-            ->where('st.CampusID', (int) $workflow->campus_id)
-            ->whereBetween('ClassSession.SessionDate', [$start->toDateString(), $end->toDateString()])
-            ->whereNotIn('ClassSession.Status', array_merge(['cancelled'], SessionStatus::leaveFamily()))
-            ->where('ClassSession.id', '!=', (int) $workflow->class_session_id)
-            ->select([
-                'ClassSession.SessionDate',
-                'ClassSession.StartTime',
-                'ClassSession.EndTime',
-                'st.name as student_name',
-            ])
-            ->get();
-
-        $occupancy = [];
-        foreach ($sessions as $session) {
-            $date = Carbon::parse($session->SessionDate)->toDateString();
-            $startSlot = $this->slotIndex((string) $session->StartTime);
-            $endSlot = $this->slotIndex((string) $session->EndTime);
-            for ($slot = $startSlot; $slot < $endSlot; $slot += 1) {
-                if (!isset($occupancy[$date][$slot])) {
-                    $occupancy[$date][$slot] = ['count' => 0, 'students' => []];
-                }
-                $occupancy[$date][$slot]['count'] += 1;
-                $occupancy[$date][$slot]['students'][] = (string) ($session->student_name ?? '');
+        // #3639: ScheduleGuardService is the single source of truth for "is the teacher
+        // busy" (Stop, voided/leave, branch, stale/leave schedule rows, TD-076 makeups).
+        // Self-exclusions match validateCourseOccurrence: same course and same student.
+        $guard = app(ScheduleGuardService::class);
+        $courseId = (int) $workflow->getAttribute('student_class_id');
+        $studentId = (int) $workflow->getAttribute('student_id');
+        $entriesByDate = [];
+        $studentIds = [];
+        for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
+            $date = $cursor->toDateString();
+            $entriesByDate[$date] = $guard->buildTeacherDateOccupancyEntries(
+                $teacherId,
+                (int) $workflow->campus_id,
+                $date,
+                null,
+                $studentId ?: null,
+                $courseId ?: null,
+            );
+            foreach ($entriesByDate[$date] as $entry) {
+                $studentIds[(int) ($entry['student_id'] ?? 0)] = true;
             }
         }
+        $names = DB::table('Student')->whereIn('id', array_keys($studentIds))->pluck('name', 'id');
+
+        $occupancy = [];
+        foreach ($entriesByDate as $date => $entries) {
+            foreach ($entries as $entry) {
+                $sid = (int) ($entry['student_id'] ?? 0);
+                $who = $sid > 0 ? 's' . $sid : 'r' . ($entry['source'] ?? '') . ($entry['source_id'] ?? '');
+                $endSlot = $this->slotIndex((string) $entry['end_time']);
+                for ($slot = $this->slotIndex((string) $entry['start_time']); $slot < $endSlot; $slot += 1) {
+                    $occupancy[$date][$slot]['students'][$who] = (string) ($names[$sid] ?? '');
+                }
+            }
+        }
+        foreach ($occupancy as &$cells) {
+            foreach ($cells as &$cell) {
+                $cell = ['count' => count($cell['students']), 'students' => array_values($cell['students'])];
+            }
+        }
+        unset($cells, $cell);
 
         return $occupancy;
     }
