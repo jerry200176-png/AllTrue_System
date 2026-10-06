@@ -15,30 +15,31 @@ function section(startMarker, endMarker) {
 }
 
 describe('CourseManagement high-risk flow characterization', () => {
-  it('preserves the pause/resume re-entry and authentication guards', () => {
-    const flow = section('async function confirmCoursePause()', 'function canCloseCourse');
+  // Pause/resume now lives in useCoursePause (behavior pinned in its own unit test);
+  // these keep the source-level intent and check the page still delegates to it.
+  const pauseFlow = readFileSync(resolve(__dirname, '../../composables/course-management/useCoursePause.js'), 'utf8');
 
-    expect(flow).toContain('if (pauseConfirmSubmitting.value) return;');
-    expect(flow).toContain('const course = pauseConfirmTarget.value;');
-    expect(flow).toContain('if (!course) return;');
-    expect(flow).toContain('pauseConfirmSubmitting.value = true;');
-    expect(flow).toContain('await getAccessToken()');
-    expect(flow).toContain("if (!token) { alert('請重新登入'); return; }");
-    expect(flow).toContain('pauseConfirmSubmitting.value = false;');
+  it('preserves the pause/resume re-entry and authentication guards', () => {
+    expect(pauseFlow).toContain('if (submitting.value) return;');
+    expect(pauseFlow).toContain('const course = target.value;');
+    expect(pauseFlow).toContain('if (!course) return;');
+    expect(pauseFlow).toContain('submitting.value = true;');
+    expect(pauseFlow).toContain('await getAccessToken()');
+    expect(pauseFlow).toContain("if (!token) { notify('請重新登入'); return; }");
+    expect(pauseFlow).toContain('submitting.value = false;');
+    expect(source).toContain('} = useCoursePause({');
   });
 
   it('keeps pause and resume as explicit actions with asymmetric cancellation semantics', () => {
-    const flow = section('async function confirmCoursePause()', 'function canCloseCourse');
-
-    expect(flow).toContain("const body = { action: isPaused ? 'resume' : 'pause' };");
-    expect(flow).toContain('if (!isPaused) body.cancel_remaining = !!pauseCancelRemaining.value;');
-    expect(flow).toContain("method: 'POST'");
-    expect(flow).toContain('`/api/v1/student-classes/${course.id}/pause`');
-    expect(flow).toContain('body: JSON.stringify(body)');
-    expect(flow).toContain('}, token);');
-    expect(flow).toContain('await authedFetch(');
-    expect(flow).toContain('pauseConfirmTarget.value = null;');
-    expect(flow).toContain('await loadCourses();');
+    expect(pauseFlow).toContain("const body = { action: paused ? 'resume' : 'pause' };");
+    expect(pauseFlow).toContain('if (!paused) body.cancel_remaining = !!cancelRemaining.value;');
+    expect(pauseFlow).toContain("method: 'POST'");
+    expect(pauseFlow).toContain('`/api/v1/student-classes/${course.id}/pause`');
+    expect(pauseFlow).toContain('body: JSON.stringify(body)');
+    expect(pauseFlow).toContain('}, token);');
+    expect(pauseFlow).toContain('target.value = null;');
+    expect(pauseFlow).toContain('await onChanged();');
+    expect(source).toContain('await loadCourses();\n    syncCourseManagerCourseFromList();');
   });
 
   it('preserves transfer candidate identity and subject boundaries before mutation', () => {
@@ -85,18 +86,20 @@ describe('CourseManagement high-risk flow characterization', () => {
   });
 
   it('preserves monthly renewal preview and mutation contracts', () => {
-    const preview = section('async function loadRenewMonthlyPreview(course)', 'async function submitPurchaseSessions');
+    // Request/payload logic lives in the shared composable; the page keeps its guards and post-success UI.
+    const composable = readFileSync(`${process.cwd()}/src/composables/course-management/useMonthlyRenewal.js`, 'utf8');
     const submit = section('async function submitRenewMonthly', 'function openQuickAddSessionModal');
 
-    expect(preview).toContain('`/api/v1/student-classes/${course.id}/renewal-preview`');
-    expect(preview).toContain("mode: 'renew_monthly'");
-    expect(preview).toContain("if (res.ok || json.severity === 'blocked')");
-    expect(preview).toContain('renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];');
-    expect(preview).toContain('applyMonthlyRenewalPreview(renewMonthlyForm.value, json);');
+    expect(composable).toContain('`/api/v1/student-classes/${course.id}/renewal-preview`');
+    expect(composable).toContain("mode: 'renew_monthly'");
+    expect(composable).toContain("if (res.ok || json.severity === 'blocked')");
+    expect(composable).toContain('warnings.value = [...(json.warnings || []), ...(json.blockers || [])];');
+    expect(composable).toContain('applyMonthlyRenewalPreview(form.value, json);');
     expect(submit).toContain('if (renewMonthlySubmitting.value) return;');
     expect(submit).toContain("alert('請選擇新到期日或延長月數')");
-    expect(submit).toContain('`/api/v1/student-classes/${course.id}/renew-monthly`');
-    expect(submit).toContain('body: JSON.stringify({ end_date: endDate })');
+    expect(composable).toContain('`/api/v1/student-classes/${course.id}/renew-monthly`');
+    expect(composable).toContain('JSON.stringify({ end_date: endDate, ...(');
+    expect(submit).toContain('monthlyRenewal.submit(course, endDate)');
     expect(submit).toContain('showRenewMonthlyModal.value = false;');
     expect(submit).toContain('await loadCourses();');
     expect(submit).toContain('renewMonthlySubmitting.value = false;');
