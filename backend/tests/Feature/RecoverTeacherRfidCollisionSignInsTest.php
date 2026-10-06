@@ -49,6 +49,25 @@ class RecoverTeacherRfidCollisionSignInsTest extends TestCase
     }
 
 
+    public function test_json_mode_prints_one_ids_only_object_and_applies_once(): void
+    {
+        [$teacherId] = $this->makeCollisionFixture();
+        $args = ['--date' => '2026-04-28', '--teacher-id' => $teacherId, '--json' => true];
+
+        Artisan::call('teacher-signin:recover-rfid-collisions', $args);
+        $dry = json_decode(trim(Artisan::output()), true);
+        $this->assertSame('dry-run', $dry['mode']);
+        $this->assertSame(1, $dry['candidates']);
+        $this->assertSame($teacherId, $dry['rows'][0]['teacher_id']);
+        $this->assertStringNotContainsString('誤綁學生', json_encode($dry, JSON_UNESCAPED_UNICODE));
+        $this->assertDatabaseCount('TeacherSingIn', 0);
+
+        Artisan::call('teacher-signin:recover-rfid-collisions', $args + ['--apply' => true]);
+        $applied = json_decode(trim(Artisan::output()), true);
+        $this->assertSame(1, $applied['inserted']);
+        $this->assertDatabaseCount('TeacherSingIn', 1);
+    }
+
     public function test_apply_requires_teacher_id_to_prevent_broad_writes(): void
     {
         $this->makeCollisionFixture();

@@ -26,7 +26,8 @@ class RecoverTeacherRfidCollisionSignIns extends Command
         {--campus-id= : Optional campus filter}
         {--limit=50 : Maximum candidate rows to inspect}
         {--apply : Insert recovered TeacherSingIn rows}
-        {--with-names : Print teacher/student names (operator only; never in workflows)}';
+        {--with-names : Print teacher/student names (operator only; never in workflows)}
+        {--json : Print one JSON object of ids/dates only (used by the workflow)}';
 
     protected $description = 'Dry-run or recover TeacherSingIn rows from historical teacher/student RFID collisions';
 
@@ -49,6 +50,10 @@ class RecoverTeacherRfidCollisionSignIns extends Command
         }
 
         $candidates = $this->candidateRows($date, $teacherId, $campusId, $limit);
+        $json = (bool) $this->option('json');
+        if ($json) {
+            return $this->runJson($candidates, $date, $apply);
+        }
         $this->info(($apply ? 'APPLY' : 'DRY-RUN') . " teacher RFID collision recovery for {$date}");
         $this->info("Candidates: {$candidates->count()}");
 
@@ -74,6 +79,38 @@ class RecoverTeacherRfidCollisionSignIns extends Command
             return self::SUCCESS;
         }
 
+        $inserted = $this->insertRecovered($candidates, $date);
+
+        $this->info("Inserted {$inserted} TeacherSingIn record(s).");
+        return self::SUCCESS;
+    }
+
+    /** One JSON object, ids and dates only (no names, no RFID); the workflow re-filters it. */
+    private function runJson($candidates, string $date, bool $apply): int
+    {
+        $out = [
+            'mode' => $apply ? 'apply' : 'dry-run',
+            'date' => $date,
+            'candidates' => $candidates->count(),
+            'rows' => $candidates->map(fn ($row) => [
+                'student_signin_id' => (int) $row->student_signin_id,
+                'teacher_id' => (int) $row->teacher_id,
+                'campus_id' => (int) $row->campus_id,
+                'student_id' => (int) $row->student_id,
+                'sign_in_dt' => (string) $row->sign_in_dt,
+                'sign_out_dt' => (string) ($row->sign_out_dt ?? ''),
+            ])->all(),
+        ];
+        if ($apply) {
+            $out['inserted'] = $this->insertRecovered($candidates, $date);
+        }
+        $this->line(json_encode($out));
+
+        return self::SUCCESS;
+    }
+
+    private function insertRecovered($candidates, string $date): int
+    {
         $inserted = 0;
         DB::transaction(function () use ($candidates, $date, &$inserted) {
             foreach ($candidates as $row) {
@@ -100,8 +137,7 @@ class RecoverTeacherRfidCollisionSignIns extends Command
             }
         });
 
-        $this->info("Inserted {$inserted} TeacherSingIn record(s).");
-        return self::SUCCESS;
+        return $inserted;
     }
 
     private function candidateRows(string $date, ?int $teacherId, ?int $campusId, int $limit)
