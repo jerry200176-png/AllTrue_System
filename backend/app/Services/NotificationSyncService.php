@@ -236,9 +236,25 @@ class NotificationSyncService
 
         $rows = [];
         $classes = $query->get();
-        foreach ($classes as $class) {
+        // F7 S5: the resolver decides who still owes; flag off = legacy predicate only (plus shadow comparison).
+        $statuses = [];
+        $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
+        if ($onResolver && $classes->isNotEmpty()) {
+            try {
+                $statuses = app(\App\Services\BillingPayableResolver::class)
+                    ->courseStatusesByStudentClassIds($classes->pluck('ID')->map(fn ($id) => (int) $id)->all(), $classes);
+            } catch (\Throwable $e) {
+                Log::warning('notification_tuition_resolver_failed', ['error' => $e::class]); // fall back to the legacy decision
+            }
+        }
+        foreach ($classes->keyBy(fn (StudentClass $c) => (int) $c->getAttribute('ID')) as $classId => $class) {
             $student = $class->student;
             if (!$student) {
+                continue;
+            }
+            $resolved = $statuses[$classId] ?? null;
+            // paid / free: nothing owed. review_required / unknown: keep the legacy decision (it is in the query).
+            if ($resolved && in_array($resolved['status'], ['paid', 'free'], true)) {
                 continue;
             }
 
@@ -268,7 +284,9 @@ class NotificationSyncService
                     'subject' => $subject,
                     'remaining_sessions' => $remaining,
                     'charge' => $charge,
-                    'outstanding' => $isUnpaid ? $charge : 0,
+                    'outstanding' => ($resolved['source'] ?? null) === 'invoice' && in_array($resolved['status'], ['unpaid', 'partial'], true)
+                        ? (int) $resolved['outstanding']
+                        : ($isUnpaid ? $charge : 0),
                     'paid' => !$isUnpaid,
                 ],
                 'OccurredAt' => null, // TD-086: null = now() on create/reopen only
@@ -276,7 +294,9 @@ class NotificationSyncService
             ];
         }
 
-        app(\App\Services\Billing\PaidStatusShadow::class)->compare($classes, 'notification_tuition');
+        if (!$onResolver) {
+            app(\App\Services\Billing\PaidStatusShadow::class)->compare($classes, 'notification_tuition');
+        }
 
         return $rows;
     }
