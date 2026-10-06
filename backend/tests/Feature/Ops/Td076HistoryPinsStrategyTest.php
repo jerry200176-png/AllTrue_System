@@ -12,6 +12,7 @@ use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Operations\Strategies\Td076HistoryPinsStrategy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class Td076HistoryPinsStrategyTest extends TestCase
@@ -93,7 +94,7 @@ final class Td076HistoryPinsStrategyTest extends TestCase
         }
         $other = $this->taught('2026-05-01', [$this->other]);
         $queries = 0;
-        \DB::listen(function () use (&$queries) {
+        DB::listen(function () use (&$queries) {
             $queries++;
         });
 
