@@ -16,7 +16,6 @@ on:
       - '.github/pii-log-workflows*.txt'
 
 permissions:
-  actions: write
   contents: read
 
 concurrency:
@@ -27,6 +26,9 @@ jobs:
   # Independent of the registry check below, so a registry gap can never stop the purge.
   purge:
     if: github.event_name != 'pull_request'
+    permissions:
+      actions: write
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
