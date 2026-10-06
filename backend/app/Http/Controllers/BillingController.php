@@ -7,8 +7,10 @@ use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
+use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\ContractMoneyState;
+use App\Services\BillingPayableResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyBillingService;
 use Carbon\Carbon;
@@ -104,7 +106,20 @@ class BillingController extends Controller
             'SplitEnd' => 'nullable|date|after_or_equal:SplitStart',
         ]);
 
+        // Campus scope: the invoice student, the anchor contract and every item contract.
+        $this->assertInvoiceStudentCampusAllowed($request, (int) (Student::query()->whereKey($data['StudentID'])->value('CampusID') ?? 0));
+        $itemCourseIds = collect($data['Items'] ?? [])->pluck('StudentClassID')->push($data['StudentClassID'] ?? null)
+            ->filter()->map(fn ($id) => (int) $id)->unique()->all();
+        foreach (StudentClass::with('student:id,CampusID')->whereIn('ID', $itemCourseIds)->get() as $itemCourse) {
+            $this->assertInvoiceStudentCampusAllowed($request, (int) $itemCourse->student?->CampusID);
+        }
+
         return DB::transaction(function () use ($data) {
+            // Lock order everywhere: student, then courses, then invoices. Purge locks the student
+            // first too, so an invoice can never be written for a student deleted concurrently (#3593).
+            if (!Student::query()->whereKey($data['StudentID'])->lockForUpdate()->first(['id'])) {
+                return response()->json(['message' => '找不到此學生，可能已被刪除'], 404);
+            }
             // Lock every referenced course once, in ID order, so concurrent multi-course invoices cannot deadlock.
             $courseIds = collect([$data['StudentClassID'] ?? null])->merge(array_column($data['Items'] ?? [], 'StudentClassID'))
                 ->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
@@ -125,6 +140,14 @@ class BillingController extends Controller
                         'code' => 'tutoring_no_payment_obligation',
                     ], 422);
                 }
+            }
+            $tutoringItem = StudentClass::query()->whereIn('ID', $courseIds)
+                ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) = 'tutoring'")->exists();
+            if ($tutoringItem) {
+                return response()->json([
+                    'message' => '輔導課無須繳費，不能建立帳單或付款義務。請先檢查課程帳務資料。',
+                    'code' => 'tutoring_no_payment_obligation',
+                ], 422);
             }
             $scheduleModeAtIssue = !empty($data['StudentClassID'])
                 ? StudentClass::where('ID', $data['StudentClassID'])->first()?->ScheduleMode
@@ -414,7 +437,7 @@ class BillingController extends Controller
         $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
         $totalAmount = $projection['total_amount'];
         $paidAmount = $projection['net_applied'];
-        $remaining = max(0, $totalAmount - min($totalAmount, $paidAmount));
+        $remaining = $projection['outstanding_amount'];
 
         $singleItem = $invoice->items->first();
         $singleCourseItem = $invoice->items->count() === 1
@@ -532,10 +555,11 @@ class BillingController extends Controller
      * | Scenario                            | Paid  | PayDate                  |
      * |-------------------------------------|-------|--------------------------|
      * | Invoice fully paid (PaidAmount>=Total)| 1    | MAX(Payment.PaidAt)      |
-     * | Invoice partially paid              | 1     | MAX(Payment.PaidAt)      |
+     * | Invoice partially paid              | (unchanged) | (unchanged)        |
      * | Director explicitly marks unpaid    | 0     | (preserved via PUT API)  |
      *
-     * Called inside the recordPayment transaction.
+     * F7 S7: Paid=1 only when BillingPayableResolver says the course is `paid` over all its non-void
+     * invoices; a partial payment leaves the flag as is. Called inside the recordPayment transaction.
      */
     public static function syncStudentClassPaidFromInvoice(Invoice $invoice): void
     {
@@ -552,6 +576,9 @@ class BillingController extends Controller
         foreach ($classIds as $classId) {
             $sc = StudentClass::where('ID', $classId)->first();
             if (!$sc) {
+                continue;
+            }
+            if ((app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $classId])[(int) $classId]['status'] ?? null) !== 'paid') {
                 continue;
             }
             $oldPaid = (int) ($sc->Paid ?? 0);

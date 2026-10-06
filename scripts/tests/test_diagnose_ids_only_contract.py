@@ -169,16 +169,12 @@ namespace {
 class WorkflowContractTest(unittest.TestCase):
     def test_diagnose_workflows_take_ids_not_names(self):
         for wf in ("attendance-case-diagnose.yml", "student-session-diagnose.yml", "teacher-signin-diagnose.yml",
-                   "classsession-duplicate-diagnose-push.yml", "ops-chinese-renewal-unpaid.yml",
-                   "ops-move-aug05-to-chinese-renewal.yml", "ops-session-entitlement-transfer.yml"):
+                   "classsession-duplicate-diagnose-push.yml"):
             for key in dispatch_inputs(wf):
                 self.assertNotRegex(key, r"name|login|phone|email|line", f"{wf}: input {key}")
         self.assertIn("student_id", dispatch_inputs("student-session-diagnose.yml"))
         self.assertIn("student_id", dispatch_inputs("attendance-case-diagnose.yml"))
         self.assertIn("teacher_id", dispatch_inputs("teacher-signin-diagnose.yml"))
-        text = (WF / "ops-session-entitlement-transfer.yml").read_text(encoding="utf-8")
-        self.assertNotIn("STUDENT_NAME", text)
-        self.assertIn('STUDENT_ID="$STUDENT_ID" DATE=2026-08-05', text)
 
     def test_attendance_workflow_never_tees_raw_output_and_redacts_artifact(self):
         src = (WF / "attendance-case-diagnose.yml").read_text(encoding="utf-8")
@@ -240,9 +236,6 @@ class WorkflowContractTest(unittest.TestCase):
         lu = (WF / "lu-yue-1513-unpaid-rollback.yml").read_text(encoding="utf-8")
         self.assertNotRegex(lu, r'first\(\[[^\]]*"name"')
         self.assertNotRegex(lu, r'"Note"\]\);')
-        for wf in ("ops-inapp-308-shen-restore.yml", "ops-inapp-259-billing-repair.yml"):
-            self.assertNotRegex((WF / wf).read_text(encoding="utf-8"), r'first\(\[[^\]]*"name"')
-        self.assertNotRegex((WF / "ops-inapp-308-shen-restore.yml").read_text(encoding="utf-8"), r'get\(\["id","SessionDate","Status","Note"\]\)')
 
     def run_filter(self, source, text):
         return subprocess.run(["python3", "-c", textwrap.dedent(source)], input=text, text=True, capture_output=True)

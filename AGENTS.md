@@ -12,7 +12,7 @@
 **Tasks:** `/home/jerry/workspace/tasks/alltrue/<task-id>/`
 **Forbidden checkouts:** `/home/jerry/alltrue`, `/home/jerry/workspace/AllTrue_System`, `/home/jerry/workspace/AllTrue_System-clean`
 **Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
-**Provenance:** `.agent-session/manifest.json` is the local agent-start session file (git-ignored, not committed); a PR that claims a session force-adds it or updates `human-authored.json` — see WORKTREE_POLICY.
+**Provenance:** `agent-start` writes `.agent-session/manifest.json` locally. Keep it git-ignored; CI rejects a tracked copy. Use the task worktree/session record, PR declaration, git diff, review, and required checks as delivery evidence. Do not update `human-authored.json` to represent agent work — see WORKTREE_POLICY.
 
 ## Code Review Rules
 
@@ -145,6 +145,23 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 Add the label `queue` to a green-ready PR instead of looping on `gh pr update-branch` or `gh pr merge --auto`.
 `.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict, failed check, or unresolved review thread. Re-add `queue` after fixing.
 GitHub's native merge queue is not used: it is unavailable for this user-owned repo (a `merge_queue` ruleset probe returned 422).
+
+## Parallel agents
+
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs (under ~400 lines) that merge fast.
+- Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
+- No stacked PRs: branch from main after the dependency merges.
+- Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
+- Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
+- Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add label `intentional-revert` + reason in the PR body, then re-run presubmit.
+- Deploys: release train only.
+- Helpers (subagents) start from fresh `origin/main` in their own `agent-start` worktree; never copy files from another worktree.
+- Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
+- Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.
+- A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
+- Codex review threads must be replied to and resolved, or they block merge.
+- New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
+- Anything that needs Jerry: collect it into one list and send it to the coordinating session, not one message per item.
 
 ## Commit SOP
 

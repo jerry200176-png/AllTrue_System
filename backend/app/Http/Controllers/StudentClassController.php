@@ -205,6 +205,9 @@ class StudentClassController extends Controller
         $paidAtMap = ContractMoneyState::lastPaidAtByStudentClassIds($classIds);
         $invoiceAggMap = ContractMoneyState::invoiceAggregateByStudentClassIds($classIds);
         $monthlyPayments = app(\App\Services\MonthlyPeriodPaymentService::class)->batch(collect($classes->items()));
+        // F7 S3b: one resolver batch per page is the payment_status authority (B7).
+        $courseStatuses = app(\App\Services\BillingPayableResolver::class)
+            ->courseStatusesByStudentClassIds($classIds, $classes->items());
         $pendingReportByClassId = !empty($classIds)
             ? PaymentReport::query()
                 ->whereIn('StudentClassID', $classIds)
@@ -320,7 +323,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role) {
+        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses) {
             $class->setAttribute('subject_name', $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null);
@@ -563,12 +566,15 @@ class StudentClassController extends Controller
             // not undo that projection. Keep its ID/summary for explicit review,
             // never silently confirm/reject it from this read-only endpoint.
             $effectivePaid = $class->isEffectivelyPaid($pkg);
-            $class->setAttribute('payment_status', ContractMoneyState::listStatus(
-                $effectivePaid,
-                $invoicePaidAmount,
-                $effectiveCharge,
-                $pendingReportId !== null
-            ));
+            $resolved = $courseStatuses[(int) $class->ID]['status'] ?? 'review_required';
+            $class->setAttribute('payment_status', match (true) {
+                // Waived (確認不收) stays `paid` here; the client labels it from closed_reason.
+                ContractMoneyState::isWaived($class) => 'paid',
+                in_array($resolved, ['paid', 'partial', 'free'], true) => $resolved,
+                in_array($resolved, ['unpaid', 'unbilled'], true) => $pendingReportId !== null ? 'pending_report' : 'unpaid',
+                // review_required: the resolver has no verdict to show; keep the legacy projection.
+                default => ContractMoneyState::listStatus($effectivePaid, $invoicePaidAmount, $effectiveCharge, $pendingReportId !== null),
+            });
 
             $tutoringBillingAnomalyReasons = [];
             if ($isTutoringCourse) {
@@ -4347,6 +4353,10 @@ class StudentClassController extends Controller
                     ->first();
                 $studentClass->refresh();
             }
+            // Serialize with destroy(): a contract deleted after route binding must not get a new session (#3593).
+            if (!StudentClass::query()->whereKey($studentClass->getKey())->lockForUpdate()->first(['ID'])) {
+                return response()->json(['message' => '找不到此課程，可能已被刪除'], 404);
+            }
             $authUser = request()->attributes->get('auth_user');
             $authUserId = is_object($authUser) ? (int) ($authUser->id ?? 0) : 0;
             $hasLearningRecordSessionDeducted = Schema::hasColumn('LearningRecord', 'SessionDeducted');
@@ -7595,38 +7605,42 @@ class StudentClassController extends Controller
      */
     private function courseNeedsPaymentReconciliation(StudentClass $studentClass): bool
     {
-        // Ledger first: any non-void invoice not covered by its payment rows is open debt,
-        // even when a stale Paid flag or another period's PaidAmount says otherwise.
-        $hasOpenInvoice = Invoice::query()->with('payments')
-            ->where(function ($query) {
-                $query->whereNull('Status')->orWhere('Status', '!=', 'void');
-            })
-            ->where('StudentClassID', $studentClass->getAttribute('ID'))
-            ->get()
-            ->contains(function (Invoice $invoice) use ($studentClass) {
-                $amounts = $this->invoiceAmounts->resolve($invoice, $studentClass);
-                // Legacy invoices carry PaidAmount without Payment rows (same rule as MonthlyPeriodPaymentService).
-                $paid = $invoice->getRelationValue('payments')->isEmpty() ? max(0, (int) $invoice->getAttribute('PaidAmount')) : (int) $amounts['net_applied'];
-
-                return (int) $amounts['total_amount'] > $paid;
-            });
-        if ($hasOpenInvoice) {
+        // F7 S6 (B8): the resolver decides. Fail closed (resolver failure = needs reconciliation).
+        try {
+            $id = (int) $studentClass->getAttribute('ID');
+            $row = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id], [$studentClass])[$id] ?? null;
+        } catch (\Throwable) {
             return true;
         }
-
-        $charge = (int) ($studentClass->Charge ?? 0);
-        if ($charge <= 0 || $studentClass->isEffectivelyPaid()) {
+        $status = $row['status'] ?? null;
+        if ($status === null) {
+            return true;
+        }
+        if ($status === 'free') {
             return false;
         }
+        if (($row['source'] ?? '') !== 'invoice') {
+            // No non-void invoice: the legacy Paid flag / paid package decides (also for an unattributed month).
+            return $status === 'review_required'
+                ? (int) ($studentClass->getAttribute('Charge') ?? 0) > 0 && !$studentClass->isEffectivelyPaid()
+                : $status !== 'paid';
+        }
+        // Invoiced: any unattributed period, or any open invoice not covered by legacy stored PaidAmount
+        // (an invoice with PaidAmount but no Payment rows counts as received, as before S6), is open debt.
+        $periods = collect($row['periods'] ?? []);
+        if ($periods->contains(fn ($period) => ($period['status'] ?? '') === 'review_required')) {
+            return true;
+        }
+        $openIds = $periods->flatMap(fn ($period) => $period['open_invoice_ids'] ?? [])->all();
+        if ($openIds === []) {
+            return false;
+        }
+        $legacyCovered = Invoice::query()->with('payments')->whereIn('id', $openIds)->get()
+            ->filter(fn (Invoice $invoice) => $invoice->getRelationValue('payments')->isEmpty()
+                && (int) $invoice->getAttribute('PaidAmount') >= (int) $invoice->getAttribute('TotalAmount'))
+            ->count();
 
-        $paidAmount = (int) Invoice::query()
-            ->where(function ($query) {
-                $query->whereNull('Status')->orWhere('Status', '!=', 'void');
-            })
-            ->where('StudentClassID', $studentClass->getAttribute('ID'))
-            ->sum('PaidAmount');
-
-        return !$studentClass->isFullyPaidWithInvoiceAmount($paidAmount, $charge);
+        return count($openIds) > $legacyCovered;
     }
 
     private function cancelFutureScheduledSessions(StudentClass $studentClass, ?string $reason): int

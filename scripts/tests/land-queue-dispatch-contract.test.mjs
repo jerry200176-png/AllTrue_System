@@ -36,7 +36,7 @@ for (const [wf, names] of Object.entries(jobNames)) {
 
 test('presubmit reads PR number and runs the declaration gate under dispatch', () => {
   const y = read('.github/workflows/presubmit.yml');
-  assert.equal(y.split('github.event.pull_request.number || inputs.pr_number').length - 1, 3);
+  assert.equal(y.split('github.event.pull_request.number || inputs.pr_number').length - 1, 4);
   assert.match(y, /workflow_dispatch' && inputs\.pr_number != ''/);
 });
 

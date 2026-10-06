@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\Schedule;
 use App\Models\ScheduleChangeLog;
+use App\Models\StudentClass;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -124,9 +125,15 @@ final class Td076CollisionKeepersStrategy extends Td076OccurrenceRepair
         }
         $teachers = LearningRecord::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')
             ->pluck('TeacherID')->map(fn ($t) => (int) $t)->filter()->unique();
-        $pick = $teachers->count() === 1
-            ? $match->filter(fn ($r) => $r->original_schedule_id && (int) $r->teacher_id === $teachers->first())->sortByDesc('id')->first()
-            : null;
+        if ($teachers->isEmpty()) { // no LearningRecord: the calendar's rule (SubstituteScheduleService::occurrence step 2), newest live substitute row
+            $contract = (int) StudentClass::query()->whereKey($course)->value('TeacherID');
+            $pick = $match->filter(fn ($r) => $r->original_schedule_id && (int) $r->teacher_id > 0 && (int) $r->teacher_id !== $contract)
+                ->sortByDesc('id')->first();
+        } else {
+            $pick = $teachers->count() === 1
+                ? $match->filter(fn ($r) => $r->original_schedule_id && (int) $r->teacher_id === $teachers->first())->sortByDesc('id')->first()
+                : null;
+        }
 
         return [$pick, 'teacher_conflict'];
     }

@@ -48,8 +48,8 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 | R2 | 要在 Pi 執行任何含 `test` / `phpunit` / `config:clear` 的指令 | ❌ 停。測試只走 GitHub Actions |
 | R3 | 要執行 `git push --force` / `-f` / 直接 push main | ❌ 停。一律推 feature branch，等 PR merge |
 | R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` **完整**還原，禁止部分還原 |
-| R5 | 要執行 `php artisan migrate` | ✅ PR merge 後才可 `migrate --force` |
-| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動走 WSL2 → feature branch → PR → CI → auto-deploy |
+| R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；正式 migration 須先有 Founder 對確切範圍的批准，再由既有授權的 `deploy.yml` 執行器處理 |
+| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動走隔離 task worktree → PR → CI → 依現行授權由 `deploy.yml` 控制部署 |
 
 ## ⚠️ 4 條黃線（違反 = CI 反覆失敗）
 
@@ -57,7 +57,7 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 |---|---------|---------|
 | Y1 | 要在測試插入任何 DB 資料 | 先查 NOT NULL 欄位。`Campus` 用 Factory。`schedules` 記 **S.D.B.**（student_id, day_of_week, branch_id）|
 | Y2 | 要在測試用「今日日期」作為 future session | `start_time` 設 `23:00`，避免 `isEndedAtCreateTime=true` |
-| Y3 | 前端有改動要上線 | CI 全綠 → PR merge → 等 `deploy.yml` → 驗 health / `version.json` |
+| Y3 | 前端有改動要上線 | CI 全綠後依合併與正式啟用授權推進；核對 `deploy.yml` 的實際部署結果，再驗 health / `version.json` |
 | Y4 | PHPStan 報 `undefined property Model::$X` | 到 Model 補 `@property` docblock（欄位來自 migration），**不要**加 `backend/phpstan-baseline.neon`；baseline 只能縮不能長（Presubmit CHECK 0c），罕見例外貼 PR label `phpstan-baseline-growth` 後重跑 |
 
 ---
@@ -80,9 +80,9 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 | 環境 | 說明 |
 |---|---|
 | **本地開發** | WSL2 task worktree — **never** `/home/jerry/alltrue` / `~/alltrue` if it resolves there. Canonical policy: [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md) |
-| **多 agent 並行** | ⛔ 禁止共用 forbidden dirty tree。用 `git worktree add /home/jerry/alltrue-<task> origin/main -b <type>/<slug>` + `make agent-preflight`。見 WORKTREE_POLICY + `AI_REGRESSION_LESSONS` §Y6 |
+| **多 agent 並行** | ⛔ 禁止共用 forbidden dirty tree。用 `agent-start alltrue <task-id>` 建立 `/home/jerry/workspace/tasks/alltrue/<task-id>/` 並通過 preflight。見 WORKTREE_POLICY + `AI_REGRESSION_LESSONS` §Y6 |
 | **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼 |
-| **部署方式** | WSL2 push → GitHub CI 通過 → `deploy.yml` 自動 SSH 部署到 Pi |
+| **部署方式** | `deploy.yml` 是正式應用部署控制面；CI 通過不等於已有正式啟用授權，依實際 environment gate 與完整 production→candidate 風險執行 |
 
 ---
 
@@ -145,6 +145,23 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 | 複雜系統流程 / 架構決策 | `docs/SYSTEM_TECH_GUIDE.md` |
 
 ---
+
+## Parallel agents
+
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs (under ~400 lines) that merge fast.
+- Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
+- No stacked PRs: branch from main after the dependency merges.
+- Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
+- Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
+- Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add label `intentional-revert` + reason in the PR body, then re-run presubmit.
+- Deploys: release train only.
+- Helpers (subagents) start from fresh `origin/main` in their own `agent-start` worktree; never copy files from another worktree.
+- Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
+- Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.
+- A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
+- Codex review threads must be replied to and resolved, or they block merge.
+- New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
+- Anything that needs Jerry: collect it into one list and send it to the coordinating session, not one message per item.
 
 ## On-demand 快查（按需讀，不用全讀）
 

@@ -73,9 +73,11 @@ jobs:
           node scripts/ci/inapp-product-loop-entry.test.mjs
           node scripts/ci/staff-multirole-activation-workflow.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
-          node --test scripts/tests/land-queue.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
+          node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
+          python3 -m unittest scripts.tests.test_pr_declaration_gate
+          python3 -m unittest scripts.tests.test_ui_smoke_gate
           python3 -m unittest scripts.tests.test_autonomous_convergence
           python3 scripts/tests/test_required_php_checks.py
           bash scripts/tests/production-acceptance-stage-contract.test.sh
@@ -100,8 +102,6 @@ jobs:
         run: |
           python3 scripts/tests/test_diagnose_ids_only_contract.py
           python3 scripts/tests/test_student_session_diagnose.py
-          python3 scripts/tests/test_ops_chinese_renewal_unpaid.py
-          python3 scripts/tests/test_ops_move_aug05_to_chinese_renewal.py
       - name: In-app ↔ issue reconcile tests (F14)
         run: python3 scripts/tests/test_inapp_issue_reconcile.py
 

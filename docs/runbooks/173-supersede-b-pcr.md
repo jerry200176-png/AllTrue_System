@@ -38,7 +38,7 @@ Post-prod：in-app #173 公開留言（白話）→ `resolved` → 請主任確�
 
 ## Preferred execution (GitHub Actions)
 
-Workflow: `.github/workflows/173-supersede-repair.yml`（Actions → **In-app #173 Supersede Repair**）
+Workflow（已於 2026-10-06 退役，見 `docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json` 的 `retired_workflows`；歷史紀錄，勿再使用）：`173-supersede-repair.yml`
 
 1. `mode=dry-run` → 存 log  
 2. `mode=execute` + confirm `I_APPROVE_173_SUPERSEDE_B` → 表級備份 + apply + 驗證 JSON  

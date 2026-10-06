@@ -56,7 +56,7 @@ class DeployActivationPolicyTest(unittest.TestCase):
         }
 
     def test_merged_pr_uses_landed_effect_not_historical_branch_files(self):
-        protected_workflow = ".github/workflows/inapp-289-course-2817-restore.yml"
+        protected_workflow = ".github/workflows/deploy.yml"
         landed = aggregate_landed_pr_effects([
             self._landed_effect(
                 "B", "a" * 40,
@@ -83,8 +83,8 @@ class DeployActivationPolicyTest(unittest.TestCase):
         landed = aggregate_landed_pr_effects([
             self._landed_effect(
                 "A", "a" * 40,
-                [".github/workflows/inapp-289-course-2817-restore.yml", "frontend/src/pages/One.vue"],
-                "diff --git a/.github/workflows/inapp-289-course-2817-restore.yml b/.github/workflows/inapp-289-course-2817-restore.yml\n+@@ -1 +1 @@\n-old\n+new",
+                [".github/workflows/deploy.yml", "frontend/src/pages/One.vue"],
+                "diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml\n+@@ -1 +1 @@\n-old\n+new",
                 risk=3,
                 tier=3,
             ),
@@ -998,6 +998,10 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
     def test_release_train_schedule_and_dispatch_are_wired(self):
         self.assertIn("schedule:\n    - cron: '30 23 * * *'\n    - cron: '30 4 * * *'", self.workflow)
+        # Retries inside each window, and a retry never cancels a train already awaiting approval.
+        self.assertIn("    - cron: '45,59 23 * * *'", self.workflow)
+        self.assertIn("    - cron: '45,59 4 * * *'", self.workflow)
+        self.assertIn("another deploy run is already waiting for approval; standing down", self.workflow)
         self.assertIn("- release-train", self.workflow)
         self.assertIn('release-train) EXPECTED="RELEASE_TRAIN" ;;', self.workflow)
         self.assertIn("release_train: ${{ steps.resolve.outputs.release_train }}", self.workflow)
@@ -1250,7 +1254,6 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         for filename in (
             "deploy.yml",
             "1387-db-password-rotation.yml",
-            "1387-db-grant-repair.yml",
         ):
             workflow = (WORKFLOW.parent / filename).read_text(encoding="utf-8")
             self.assertIn("group: alltrue-production-side-effects-v2", workflow)

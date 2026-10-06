@@ -128,6 +128,15 @@ marker scanning. This removes false T3 classifications caused by old words in a
 generated asset while preserving the real business/security operation when the
 changed code expresses it. Unknown or missing evidence fails closed.
 
+### Parallel agents
+
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs (under ~400 lines) that merge fast.
+- Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
+- No stacked PRs: branch from main after the dependency merges.
+- Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
+- Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
+- Deploys: release train only.
+
 ## Review checklist (R2/T2)
 
 R2/T2 requires exact-target required CI, rollback readiness, a documented

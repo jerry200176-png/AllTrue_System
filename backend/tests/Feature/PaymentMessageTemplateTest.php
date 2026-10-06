@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\CoursePackage;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\Subject;
@@ -75,6 +78,51 @@ class PaymentMessageTemplateTest extends TestCase
         $this->assertStringContainsString("生物\n115.3.3~8堂\n1500*8 = *12,000*", $message);
         $this->assertStringContainsString('共24,000元', $message);
         $this->assertStringContainsString('再麻煩媽媽 幫我繳款 謝謝你', $message);
+    }
+
+    public function test_payment_message_uses_invoice_outstanding_not_rate_estimate_for_billed_course(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-billed@example.com');
+        $student = Student::create(['name' => '王小明', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $course = $this->createStudentClass($student->id, [
+            'StartDate' => '2026-03-16', 'SessionCount' => 8, 'RemainingSessions' => 4,
+            'Rate' => 1500, 'Charge' => 12000, 'Paid' => 1,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-03-16',
+            'TotalAmount' => 12000, 'PaidAmount' => 5000, 'Status' => 'partial', 'Note' => '', 'billing_period' => '2026-03',
+        ]);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-03-16', 'Method' => 'cash']);
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/parent/payment-message/{$student->id}");
+
+        $res->assertOk()->assertJsonPath('total_amount', 7000);
+        $this->assertStringContainsString('待繳 *7,000*', (string) $res->json('message'));
+    }
+
+    public function test_payment_message_keeps_package_flag_rule_for_package_members_without_invoice(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-pkg@example.com');
+        $ids = [];
+        foreach ([false, true] as $pkgPaid) {
+            $student = Student::create(['name' => $pkgPaid ? '已繳' : '未繳', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+            $pkg = CoursePackage::create([
+                'student_id' => $student->id, 'campus_id' => 1, 'name' => '方案', 'total_sessions' => 8,
+                'remaining_sessions' => 8, 'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session',
+                'class_type' => 'one_on_one', 'paid' => $pkgPaid, 'stop' => false, 'enabled' => true,
+            ]);
+            $this->createStudentClass($student->id, [
+                'StartDate' => '2026-03-16', 'SessionCount' => 8, 'RemainingSessions' => 8,
+                'Rate' => 1000, 'Charge' => 0, 'Paid' => 0, 'PackageID' => $pkg->id,
+            ]);
+            $ids[$pkgPaid ? 'paid' : 'unpaid'] = $student->id;
+        }
+        $get = fn (int $id) => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/parent/payment-message/{$id}");
+
+        $get($ids['unpaid'])->assertOk()->assertJsonPath('total_amount', 8000);
+        $this->assertStringContainsString('無待繳費課程', (string) $get($ids['paid'])->json('message'));
     }
 
     public function test_payment_message_rejects_cross_campus_access_for_director(): void

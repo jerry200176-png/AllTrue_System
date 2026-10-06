@@ -29,6 +29,7 @@ on:
           - substitute_calendar_xinzhuang
           - substitute_slot_conflicts
           - occurrence_identity_health
+          - td076_r2_plan_probe
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
@@ -104,7 +105,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'td076_r2_plan_probe'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -724,6 +725,32 @@ jobs:
                 'quarantine_open' => 0, 'quarantine_gate_ready' => false, // quarantine table not built yet (PR-E): NOT a pass
                 'conflict_slots' => $slots->get($cid, collect())->count()];
             }})->all();
+          }} elseif ($case === 'td076_r2_plan_probe') {{
+            // Read-only: calls only the R-2 strategy plan() (dry-run path, SELECT only, no POP request row) for campus 11.
+            // Output: exception class, truncated message, file:line, top 5 frames (file:line), elapsed ms, peak memory. No row data.
+            $t0 = microtime(true);
+            $done = false;
+            register_shutdown_function(function () use (&$done, $t0) {{
+              $err = error_get_last();
+              if (!$done && $err) {{
+                echo json_encode(['ok' => true, 'case' => 'td076_r2_plan_probe', 'fatal' => ['type' => $err['type'], 'message' => mb_substr((string)$err['message'], 0, 300), 'at' => basename((string)$err['file']).':'.$err['line']],
+                  'elapsed_ms' => round((microtime(true) - $t0) * 1000, 1), 'peak_mb' => round(memory_get_peak_usage(true) / 1048576, 1)]), PHP_EOL;
+              }}
+            }});
+            try {{
+              $plan = (new \\App\\Operations\\Strategies\\Td076HistoryPinsStrategy())->plan(
+                ['campus_id' => 11, 'decision_reference' => 'repair-td076-r2-history-pins-20261006', 'expected_digest' => '']);
+              $out['plan'] = ['ok' => $plan['ok'], 'state' => $plan['state'], 'errors' => $plan['errors'] ?? [], 'counts' => $plan['counts'] ?? null,
+                'actions' => count($plan['manifest']['actions'] ?? []), 'quarantine' => count($plan['manifest']['quarantine'] ?? [])];
+            }} catch (\\Throwable $e) {{
+              $rel = fn ($f) => str_replace(base_path().'/', '', (string)$f);
+              $out['exception'] = ['class' => get_class($e), 'message' => mb_substr($e->getMessage(), 0, 300),
+                'at' => $rel($e->getFile()).':'.$e->getLine(),
+                'frames' => array_map(fn ($f) => $rel($f['file'] ?? '?').':'.($f['line'] ?? 0), array_slice($e->getTrace(), 0, 5))];
+            }}
+            $done = true;
+            $out['elapsed_ms'] = round((microtime(true) - $t0) * 1000, 1);
+            $out['peak_mb'] = round(memory_get_peak_usage(true) / 1048576, 1);
           }} elseif ($case === 'unpaid_hidden_candidates') {{
             // Read-only, Founder decision 2026-10-05: list contracts closed as settled/completed that still owe
             // money per the invoice ledger (input for the POP repair manifest). IDs and amounts only, no names.
