@@ -36,8 +36,10 @@ class PaymentReportController extends Controller
             'student_class_id' => 'required|integer',
         ]);
 
-        $sc = StudentClass::with('student', 'subjectRecord')->findOrFail($data['student_class_id']);
-        /** @var StudentClass $sc */
+        $sc = StudentClass::query()->with(['student', 'subjectRecord'])->whereKey($data['student_class_id'])->first();
+        if (!$sc) {
+            abort(404);
+        }
         if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc)) {
             return $blockedTutoringPayment;
         }
@@ -111,8 +113,7 @@ class PaymentReportController extends Controller
             return response()->json(['message' => '此連結已提交過繳費回報，請勿重複提交'], 409);
         }
 
-        $sc = StudentClass::with('student', 'subjectRecord')->find($payload['scid']);
-        /** @var StudentClass|null $sc */
+        $sc = StudentClass::query()->with(['student', 'subjectRecord'])->whereKey($payload['scid'])->first();
         if (!$sc || !$sc->student) {
             return response()->json(['message' => '課程資料不存在'], 404);
         }

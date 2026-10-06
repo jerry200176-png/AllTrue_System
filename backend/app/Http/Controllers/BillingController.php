@@ -7,6 +7,7 @@ use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
+use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\InvoiceAmountReconciliationService;
@@ -104,7 +105,10 @@ class BillingController extends Controller
             'SplitEnd' => 'nullable|date|after_or_equal:SplitStart',
         ]);
 
-        $itemCourseIds = collect($data['Items'] ?? [])->pluck('StudentClassID')->filter()->map(fn ($id) => (int) $id)->unique()->all();
+        // Campus scope: the invoice student, the anchor contract and every item contract.
+        $this->assertInvoiceStudentCampusAllowed($request, (int) (Student::query()->whereKey($data['StudentID'])->value('CampusID') ?? 0));
+        $itemCourseIds = collect($data['Items'] ?? [])->pluck('StudentClassID')->push($data['StudentClassID'] ?? null)
+            ->filter()->map(fn ($id) => (int) $id)->unique()->all();
         foreach (StudentClass::with('student:id,CampusID')->whereIn('ID', $itemCourseIds)->get() as $itemCourse) {
             $this->assertInvoiceStudentCampusAllowed($request, (int) $itemCourse->student?->CampusID);
         }

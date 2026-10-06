@@ -76,6 +76,9 @@ class WaiveFollowupsTest extends TestCase
 
         $this->postJson('/api/v1/invoices', $body($foreign->ID), $h)->assertForbidden();
         $this->assertSame(0, DB::table('Invoice')->count());
+        $this->postJson('/api/v1/invoices', ['StudentID' => $foreign->StudentID, 'IssueDate' => '2026-10-01', 'TotalAmount' => 100], $h)
+            ->assertForbidden(); // top-level student of another campus, no contract
+        $this->assertSame(0, DB::table('Invoice')->count());
         $this->postJson('/api/v1/invoices', $body($mine->ID), $h)->assertCreated();
     }
 
