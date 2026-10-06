@@ -4347,6 +4347,10 @@ class StudentClassController extends Controller
                     ->first();
                 $studentClass->refresh();
             }
+            // Serialize with destroy(): a contract deleted after route binding must not get a new session (#3593).
+            if (!StudentClass::query()->whereKey($studentClass->getKey())->lockForUpdate()->first(['ID'])) {
+                return response()->json(['message' => '找不到此課程，可能已被刪除'], 404);
+            }
             $authUser = request()->attributes->get('auth_user');
             $authUserId = is_object($authUser) ? (int) ($authUser->id ?? 0) : 0;
             $hasLearningRecordSessionDeducted = Schema::hasColumn('LearningRecord', 'SessionDeducted');
