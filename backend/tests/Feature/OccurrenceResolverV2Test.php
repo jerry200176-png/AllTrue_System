@@ -64,8 +64,8 @@ class OccurrenceResolverV2Test extends TestCase
     public function test_flag_on_stamped_live_row_wins_over_a_stale_unstamped_chain_row(): void
     {
         $this->row(1, 'rescheduled', $this->aId);
-        $this->row(2, 'scheduled', $this->bId, ['original_schedule_id' => 1]);                        // stale, older, unstamped
-        $this->row(3, 'scheduled', $this->aId, ['original_schedule_id' => 1, 'original_schedule_date' => self::DATE, 'original_start_time' => '13:00']); // restored live row
+        $this->row(2, 'scheduled', $this->aId, ['original_schedule_id' => 1, 'original_schedule_date' => self::DATE, 'original_start_time' => '13:00']); // restored live row
+        $this->row(3, 'scheduled', $this->bId, ['original_schedule_id' => 1]);                        // stale, newer id, unstamped
         $this->flag(false);
         $this->assertSame($this->bId, SubstituteScheduleService::teacherForOccurrence((int) $this->sc->ID, self::DATE, $this->aId, '13:00'), 'flag off keeps the legacy pick');
 
