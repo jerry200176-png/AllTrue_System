@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Require every deployable PR to declare its user-facing release impact.
- * The declaration is deliberately small; the existing CHANGELOG/STAFF_UPDATES
- * pipeline remains the publication path.
+ * The declaration is deliberately small; the docs/changes + docs/staff-updates
+ * fragment pipeline (plus the frozen CHANGELOG/STAFF_UPDATES) remains the publication path.
  */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -62,10 +62,10 @@ function validate({ body, files }) {
     errors.push('exactly one Release-Impact declaration is required: user-visible, internal, or no-user-facing-note');
   }
   const impact = impacts[0] || null;
-  if (impact === 'user-visible' && !files.includes('docs/CHANGELOG.md')) {
-    errors.push('user-visible production changes must update docs/CHANGELOG.md before merge');
+  if (impact === 'user-visible' && !files.some((f) => f === 'docs/CHANGELOG.md' || /^docs\/changes\/\d{4}-\d{2}-\d{2}-.+\.md$/.test(f))) {
+    errors.push('user-visible production changes must add a docs/changes/<date>-<slug>.md fragment before merge');
   }
-  if ((impact === 'internal' || impact === 'no-user-facing-note') && files.includes('docs/STAFF_UPDATES.yml')) {
+  if ((impact === 'internal' || impact === 'no-user-facing-note') && files.some((f) => f === 'docs/STAFF_UPDATES.yml' || f.startsWith('docs/staff-updates/'))) {
     errors.push(impact + ' changes must not publish a staff Version Update');
   }
   return { ok: errors.length === 0, runtimeFiles, impact, errors };
@@ -76,6 +76,8 @@ function selfTest() {
   assert.equal(validate({ body: 'Release-Impact: internal', files: ['backend/app/Services/Foo.php'] }).ok, true);
   assert.equal(validate({ body: 'Release-Impact: no-user-facing-note', files: ['.github/workflows/ci.yml'] }).ok, true);
   assert.equal(validate({ body: 'Release-Impact: user-visible', files: ['frontend/src/App.vue'] }).ok, false);
+  assert.equal(validate({ body: 'Release-Impact: user-visible', files: ['frontend/src/App.vue', 'docs/changes/2026-10-06-x.md'] }).ok, true);
+  assert.equal(validate({ body: 'Release-Impact: internal', files: ['backend/app/Foo.php', 'docs/staff-updates/staff-x.yml'] }).ok, false);
   assert.equal(validate({ body: 'Release-Impact: internal\nRelease-Impact: no-user-facing-note', files: ['backend/app/Foo.php'] }).ok, false);
   assert.equal(validate({ body: '', files: ['docs/CHANGELOG.md'] }).ok, true);
   console.log('check-production-release-classification self-test: ok');

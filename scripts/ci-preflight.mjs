@@ -130,9 +130,9 @@ function checkGenerated(errors) {
   if (r.status !== 0) {
     errors.push(formatGovError({
       code: GOV_CODES.GENERATED,
-      message: (r.stderr || r.stdout || 'generated drift').trim().slice(0, 400),
-      actual: 'drift', policy: 'scripts/sync-generated.mjs',
-      fix: 'npm run sync:generated && git add frontend/src/lib/*.generated.js',
+      message: (r.stderr || r.stdout || 'generate failed').trim().slice(0, 400),
+      actual: 'generate failed', policy: 'scripts/sync-generated.mjs',
+      fix: 'npm run sync:generated (generated files are git-ignored; fix the bad docs/changes, docs/staff-updates or docs/parent-updates file)',
     }));
   }
 }
