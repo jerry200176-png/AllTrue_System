@@ -86,6 +86,19 @@ class MonthlyDraftsTest extends TestCase
             ->assertJsonPath('data.0.blocker_code', 'monthly_completed_sessions_outside_contract');
     }
 
+    public function test_month_billed_by_a_catch_up_no_longer_blocks(): void
+    {
+        $course = $this->course();
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-09-17', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        $catchUp = StudentClass::create(array_merge($course->only(['StudentID', 'GradeID', 'SubjectID', 'TeacherID', 'by1', 'Period', 'TotalHours', 'Rate', 'ClassType']),
+            ['StartDate' => '2026-09-16', 'EndDate' => '2026-09-30', 'Charge' => 1000, 'Paid' => 0, 'Stop' => 1, 'ScheduleMode' => 'date',
+             'SessionCount' => 0, 'RemainingSessions' => 0, 'UsedSessions' => 0, 'SessionDuration' => 120, 'MDate' => now()]));
+        Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $catchUp->ID, 'IssueDate' => '2026-10-01',
+            'TotalAmount' => 1000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-09']);
+
+        $this->drafts()->assertOk()->assertJsonPath('totals.blocked', 0);
+    }
+
     public function test_lapsed_contract_without_lessons_is_flagged(): void
     {
         $this->course(['EndDate' => '2026-07-31']);
