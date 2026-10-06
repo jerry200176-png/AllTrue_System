@@ -154,6 +154,13 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 - Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
 - Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
 - Deploys: release train only.
+- Helpers (subagents) start from fresh `origin/main` in their own `agent-start` worktree; never copy files from another worktree.
+- Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
+- Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.
+- A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
+- Codex review threads must be replied to and resolved, or they block merge.
+- New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
+- Anything that needs Jerry: collect it into one list and send it to the coordinating session, not one message per item.
 
 ## Commit SOP
 
