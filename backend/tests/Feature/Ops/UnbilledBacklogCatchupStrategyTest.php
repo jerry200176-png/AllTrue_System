@@ -175,16 +175,42 @@ final class UnbilledBacklogCatchupStrategyTest extends TestCase
         self::assertSame('ready', $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-07']['status']);
     }
 
-    public function test_execute_retry_after_completion_rebuilds_the_rollback_snapshot(): void
+    public function test_mid_month_contract_with_dated_items_does_not_hide_earlier_lessons(): void
+    {
+        DB::table('Student')->insert(['id' => 8, 'name' => 's8', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1]);
+        $this->course(200, 8, ['Rate' => 1000, 'EndDate' => '2026-06-30']);
+        $this->lesson(200, '2026-07-04');
+        $this->course(201, 8, ['Rate' => 1000, 'StartDate' => '2026-07-15', 'EndDate' => '2026-07-31']);
+        DB::table('Invoice')->insert(['id' => 3, 'StudentID' => 8, 'StudentClassID' => 201, 'IssueDate' => '2026-07-15', 'TotalAmount' => 1000,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '', 'billing_period' => '2026-07', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => 3, 'StudentClassID' => 201, 'Description' => 'B', 'Amount' => 1000,
+            'PeriodStart' => '2026-07-15', 'PeriodEnd' => '2026-07-31']);
+
+        self::assertSame('ready', $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-07']['status']);
+    }
+
+    public function test_verify_fails_closed_without_a_plan(): void
+    {
+        [$s, , $result] = $this->applied();
+        self::assertFalse($s->verify(['ok' => false, 'errors' => ['strategy_plan_failed']], $result)['ok']);
+    }
+
+    public function test_retry_does_not_guess_a_snapshot_and_edited_markers_cannot_cause_double_billing_or_foreign_deletes(): void
     {
         [$s, $plan, $result] = $this->applied();
-        $again = $s->plan($this->params([9], $plan['digest']));
-        $retry = $s->execute($again, []);
+        $retry = $s->execute($s->plan($this->params([9], $plan['digest'])), []);
         self::assertTrue($retry['already_applied']);
-        $strip = fn (array $rows) => collect($rows)->sortBy('contract_id')->values()->all();
-        self::assertSame($strip($result['snapshot']['rows']), $strip($retry['snapshot']['rows']));
-        // Recognised by Note alone (Memo tag only carries [src:]) too.
-        DB::table('StudentClass')->where('Memo', 'like', '%' . self::REF . '%')->update(['Memo' => 'x [src:100]']);
-        self::assertSame(2, count($s->execute($s->plan($this->params([9], $plan['digest'])), [])['snapshot']['rows']));
+        self::assertSame([], $retry['snapshot']['rows']);
+        self::assertTrue($retry['snapshot']['incomplete']);
+
+        // Staff edits the catch-up Memo: the month is still covered by its billing_period invoice, so nothing is billed again.
+        DB::table('StudentClass')->where('Memo', 'like', '%' . self::REF . '%')->update(['Memo' => 'edited']);
+        self::assertSame(0, $s->plan($this->params([9]))['totals']['ready_rows']);
+
+        // A forged snapshot row pointing at a contract without this operation's Memo markers is never deleted.
+        $row = $result['snapshot']['rows'][0];
+        $out = $s->rollback(['rows' => [$row]], []);
+        self::assertFalse($out['ok']);
+        self::assertNotNull(DB::table('StudentClass')->where('ID', $row['contract_id'])->first());
     }
 }
