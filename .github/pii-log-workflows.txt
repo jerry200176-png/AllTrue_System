@@ -29,6 +29,7 @@ lr-missing-diagnose.yml
 lu-yue-1513-unpaid-rollback.yml
 manual-session-diagnose.yml
 monthly-leave-boundary-inventory.yml
+multi-guardian-activation.yml
 ops-attendance-root-fix-826.yml
 ops-chinese-renewal-unpaid.yml
 ops-director-285-diagnose.yml
@@ -61,6 +62,7 @@ security-1124-migrate-uploads.yml
 security-1124-restore-recovered-uploads.yml
 slow-query-report.yml
 staff-identity-merge.yml
+staff-multirole-activation.yml
 student-session-diagnose.yml
 td076-collision-evidence.yml
 td076-occurrence-backfill-dryrun.yml
