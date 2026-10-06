@@ -104,6 +104,11 @@ class BillingController extends Controller
             'SplitEnd' => 'nullable|date|after_or_equal:SplitStart',
         ]);
 
+        $itemCourseIds = collect($data['Items'] ?? [])->pluck('StudentClassID')->filter()->map(fn ($id) => (int) $id)->unique()->all();
+        foreach (StudentClass::with('student:id,CampusID')->whereIn('ID', $itemCourseIds)->get() as $itemCourse) {
+            $this->assertInvoiceStudentCampusAllowed($request, (int) $itemCourse->student?->CampusID);
+        }
+
         return DB::transaction(function () use ($data) {
             // Lock every referenced course once, in ID order, so concurrent multi-course invoices cannot deadlock.
             $courseIds = collect([$data['StudentClassID'] ?? null])->merge(array_column($data['Items'] ?? [], 'StudentClassID'))
@@ -125,6 +130,14 @@ class BillingController extends Controller
                         'code' => 'tutoring_no_payment_obligation',
                     ], 422);
                 }
+            }
+            $tutoringItem = StudentClass::query()->whereIn('ID', $courseIds)
+                ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) = 'tutoring'")->exists();
+            if ($tutoringItem) {
+                return response()->json([
+                    'message' => '輔導課無須繳費，不能建立帳單或付款義務。請先檢查課程帳務資料。',
+                    'code' => 'tutoring_no_payment_obligation',
+                ], 422);
             }
             $scheduleModeAtIssue = !empty($data['StudentClassID'])
                 ? StudentClass::where('ID', $data['StudentClassID'])->first()?->ScheduleMode

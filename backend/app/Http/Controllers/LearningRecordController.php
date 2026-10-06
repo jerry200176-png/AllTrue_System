@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Exceptions\RescheduleSessionException;
 use App\Services\ApprovalSessionSyncService;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\LearningRecordBackfillService;
 use App\Services\LearningRecordResurrectionPolicy;
@@ -1486,6 +1487,11 @@ class LearningRecordController extends Controller
                 return response()->json(['message' => 'Only approved records can be rolled back'], 409);
             }
 
+            $sc = StudentClass::query()->whereKey($learningRecord->StudentClassID)->lockForUpdate()->first();
+            if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能退回核准', 'course_waived')) {
+                return $refusal;
+            }
+
             app(UserEngagementXpAwardService::class)->revokeLearningRecordApproved((int) $learningRecord->id);
 
             $learningRecord->Status = 'pending';
@@ -1499,7 +1505,6 @@ class LearningRecordController extends Controller
                 ->where('TeachingSessionCount', '>', 0)
                 ->decrement('TeachingSessionCount');
 
-            $sc = StudentClass::find($learningRecord->StudentClassID);
             if ($sc) {
                 ApprovalSessionSyncService::syncOnRollback($learningRecord, $sc, (int) ($data['DirectorID'] ?? 0));
             }

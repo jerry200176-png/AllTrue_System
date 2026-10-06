@@ -37,8 +37,12 @@ class PaymentReportController extends Controller
         ]);
 
         $sc = StudentClass::with('student', 'subjectRecord')->findOrFail($data['student_class_id']);
+        /** @var StudentClass $sc */
         if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc)) {
             return $blockedTutoringPayment;
+        }
+        if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能產生繳費連結', 'course_waived')) {
+            return $refusal;
         }
 
         $branchId = $sc->student->CampusID ?? 0;
@@ -108,11 +112,15 @@ class PaymentReportController extends Controller
         }
 
         $sc = StudentClass::with('student', 'subjectRecord')->find($payload['scid']);
+        /** @var StudentClass|null $sc */
         if (!$sc || !$sc->student) {
             return response()->json(['message' => '課程資料不存在'], 404);
         }
         if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc)) {
             return $blockedTutoringPayment;
+        }
+        if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，無須繳費回報', 'course_waived')) {
+            return $refusal;
         }
 
         $subjectName = $sc->subjectRecord->Subject_Name ?? '課程';
