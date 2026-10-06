@@ -352,6 +352,8 @@ class StudentController extends Controller
         }
 
         DB::transaction(function () use ($studentId, &$deleted, $tableExists) {
+            // Student row first (same order as invoice creation) so a concurrent invoice cannot orphan (#3593).
+            DB::table('Student')->where('id', $studentId)->lockForUpdate()->first(['id']);
             // A 確認不收 contract keeps its void invoices and audit trail; purging the student would strand them.
             if ($tableExists['StudentClass'] && DB::table('StudentClass')->where('StudentID', $studentId)
                 ->where('closed_reason', 'waived')->lockForUpdate()->exists()) {
@@ -526,6 +528,7 @@ class StudentController extends Controller
         // All-or-nothing: preflight under lock and purge every student in one transaction, so a 確認不收
         // contract (here or waived concurrently) aborts the whole batch before anything is deleted.
         $refusal = DB::transaction(function () use ($foundIds, &$deletedTotals) {
+            DB::table('Student')->whereIn('id', $foundIds)->orderBy('id')->lockForUpdate()->get(['id']); // #3593 lock order
             $waivedStudentIds = DB::table('StudentClass')->whereIn('StudentID', $foundIds)->orderBy('ID')->lockForUpdate()
                 ->get(['StudentID', 'closed_reason'])->where('closed_reason', 'waived')->pluck('StudentID')
                 ->map(fn ($id) => (int) $id)->unique()->values()->all();
