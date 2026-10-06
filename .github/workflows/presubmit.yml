@@ -221,14 +221,14 @@ jobs:
           CHANGED_PROD=$(git diff --name-only origin/main...HEAD \
             | grep -cE '^(backend/app/|backend/routes/|frontend/src/)' || true)
           CHANGED_LOG=$(git diff --name-only origin/main...HEAD \
-            | grep -cE '^docs/CHANGELOG\.md$' || true)
+            | grep -cE '^(docs/CHANGELOG\.md|docs/changes/[0-9]{4}-[0-9]{2}-[0-9]{2}-.+\.md)$' || true)
 
           echo "Production files changed: $CHANGED_PROD"
-          echo "CHANGELOG.md updated: $CHANGED_LOG"
+          echo "CHANGELOG fragment/file updated: $CHANGED_LOG"
 
           if [ "$CHANGED_PROD" -gt 0 ] && [ "$CHANGED_LOG" -eq 0 ]; then
-            echo "::warning title=Missing CHANGELOG::Production code changed ($CHANGED_PROD files) but docs/CHANGELOG.md not updated."
-            echo "::warning::Please add an entry per SOP Phase 6 [DOCS]: ## YYYY-MM-DD — feat/fix: title"
+            echo "::warning title=Missing CHANGELOG::Production code changed ($CHANGED_PROD files) but no docs/changes/<date>-<slug>.md fragment added."
+            echo "::warning::Add a new file docs/changes/YYYY-MM-DD-slug.md (## YYYY-MM-DD — feat/fix: title + release-notes marker); do not edit docs/CHANGELOG.md"
           else
             echo "✅ CHANGELOG check OK"
           fi

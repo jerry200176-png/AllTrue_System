@@ -22,7 +22,7 @@ and patch, so a missing or understated declaration cannot merge.
 -->
 
 ## Production Release Impact (required for deployable changes)
-<!-- Pick exactly one. This is machine-readable; publication still uses the existing CHANGELOG/STAFF_UPDATES flow. -->
+<!-- Pick exactly one. This is machine-readable; publication uses new files only: docs/changes/<date>-<slug>.md and docs/staff-updates/<id>.yml (see docs/GUIDE_STAFF_UPDATES.md). -->
 Release-Impact: user-visible
 <!-- Replace the value with exactly one of: user-visible, internal, no-user-facing-note. -->
 
@@ -68,8 +68,8 @@ Release-Impact: user-visible
 ## Checklist
 - [ ] 已 push feature branch；**merge 前** CI / Presubmit / Security 需全綠（由負責人跟到 completed）
 - [ ] Risk-Class 已宣告且與實際 diff 一致
-- [ ] `Release-Impact` 已宣告且與實際 diff 一致；`user-visible` 已更新 CHANGELOG
-- [ ] 有改 `backend/app/`、`backend/routes/`、`frontend/src/` → 已更新 `docs/CHANGELOG.md`（docs-only / 純 workflow 可略，見團隊慣例）
+- [ ] `Release-Impact` 已宣告且與實際 diff 一致；`user-visible` 已新增 `docs/changes/` fragment
+- [ ] 有改 `backend/app/`、`backend/routes/`、`frontend/src/` → 已新增 `docs/changes/<date>-<slug>.md`（不要改凍結的 CHANGELOG / STAFF_UPDATES 清單；docs-only / 純 workflow 可略，見團隊慣例）
 - [ ] 有 DB migration → 併 PR 說明上線後由 `deploy.yml` migrate；不在 production 手動試跑 full test
 - [ ] 有前端 deployable diff → merge 後確認 `deploy.yml` 成功，必要時驗 `version.json` / health
 - [ ] 未擅自改 `AlertController::tuition` / `SessionDeductionService` 等高風險邏輯（若有改必須有測試 + 審核）
