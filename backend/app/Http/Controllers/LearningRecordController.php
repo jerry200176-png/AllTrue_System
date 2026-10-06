@@ -1379,7 +1379,7 @@ class LearningRecordController extends Controller
 
         // TD-076 B1 (flag on): a future occurrence gets the same conflict check as substitute, before any write.
         if (OccurrenceAssignmentService::enabledFor($targetCampusId) && $learningRecord->ClassSessionID) {
-            $guardSession = ClassSession::query()->find($learningRecord->ClassSessionID);
+            $guardSession = ClassSession::query()->where('id', (int) $learningRecord->ClassSessionID)->first();
             if ($guardSession && !OccurrenceAssignmentService::onLeave($guardSession)
                 && \App\Services\Scheduling\ContractTeacherChangeCascade::isPinnableOccurrence($guardSession)) {
                 $conflicts = OccurrenceAssignmentService::futureConflicts($guardSession, $newTeacherId);

@@ -66,7 +66,7 @@ class OccurrenceAssignmentService
      */
     public static function futureConflicts(ClassSession $session, int $teacherId): array
     {
-        $course = StudentClass::query()->find((int) $session->StudentClassID);
+        $course = StudentClass::query()->where('ID', (int) $session->StudentClassID)->first();
         if (!$course || $teacherId === (int) $course->TeacherID) {
             return [];
         }
