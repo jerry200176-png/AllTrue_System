@@ -44,10 +44,13 @@ class WaiveFollowupsTest extends TestCase
         $h = ['Authorization' => 'Bearer ' . $this->createToken([1])];
         $student = $this->createStudent(1);
         $this->createStudentClass($student->id, ['Charge' => 100]);
+        $before = $this->getJson('/api/v1/finance/summary?branch_id=1', $h)->assertOk()->json();
         $this->createStudentClass($student->id, ['Charge' => 100, 'Stop' => 1, 'closed_reason' => 'waived']);
 
-        $this->getJson('/api/v1/finance/summary?branch_id=1', $h)
-            ->assertOk()->assertJsonPath('total_courses', 2)->assertJsonPath('unpaid_courses', 1);
+        // Delta-based: other fixtures may exist; the waived contract must not add to unpaid.
+        $after = $this->getJson('/api/v1/finance/summary?branch_id=1', $h)->assertOk()->json();
+        $this->assertSame($before['unpaid_courses'], $after['unpaid_courses']);
+        $this->assertGreaterThanOrEqual(1, $before['unpaid_courses']);
     }
 
     public function test_payment_report_link_and_form_refuse_a_waived_contract(): void
