@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Carbon\Carbon;
+use App\Console\Concerns\MasksPersonData;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -17,12 +18,15 @@ use Illuminate\Support\Facades\Schema;
  */
 class RecoverTeacherRfidCollisionSignIns extends Command
 {
+    use MasksPersonData;
+
     protected $signature = 'teacher-signin:recover-rfid-collisions
         {--date= : Local date to inspect, format YYYY-MM-DD}
         {--teacher-id= : Required with --apply; limits recovery to one teacher}
         {--campus-id= : Optional campus filter}
         {--limit=50 : Maximum candidate rows to inspect}
-        {--apply : Insert recovered TeacherSingIn rows}';
+        {--apply : Insert recovered TeacherSingIn rows}
+        {--with-names : Print teacher/student names (operator only; never in workflows)}';
 
     protected $description = 'Dry-run or recover TeacherSingIn rows from historical teacher/student RFID collisions';
 
@@ -55,10 +59,10 @@ class RecoverTeacherRfidCollisionSignIns extends Command
         $rows = $candidates->map(fn ($row) => [
             'student_signin_id' => $row->student_signin_id,
             'teacher_id' => $row->teacher_id,
-            'teacher_name' => $row->teacher_name,
+            'teacher_name' => $this->personText($row->teacher_name),
             'campus_id' => $row->campus_id,
             'student_id' => $row->student_id,
-            'student_name' => $row->student_name,
+            'student_name' => $this->personText($row->student_name),
             'sign_in_dt' => $row->sign_in_dt,
             'sign_out_dt' => $row->sign_out_dt ?? '',
             'rfid' => $row->rfid,
