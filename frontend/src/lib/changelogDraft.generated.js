@@ -25,6 +25,7 @@ export const changelogDraftNotes = [
         "title": "修正內容",
         "items": [
           "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
+          "a contract never orphans invoices (plan D)",
           "待對帳 lists every stopped contract that still owes (F7 S3a)"
         ]
       }
@@ -32,6 +33,7 @@ export const changelogDraftNotes = [
     "items": [
       "money/status answer per course on every screen (Founder option A)",
       "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
+      "a contract never orphans invoices (plan D)",
       "待對帳 lists every stopped contract that still owes (F7 S3a)"
     ]
   },

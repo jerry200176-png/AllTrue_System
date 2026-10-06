@@ -82,6 +82,36 @@ export const staffUpdates = [
     "version": "2026.10.06"
   },
   {
+    "id": "staff-2026-10-06-delete-contract-keeps-billing",
+    "publishedAt": "2026-10-06",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "刪除合約不會留下孤兒帳單",
+    "summary": "有上課或帳務紀錄的合約與學生不能刪除，請改用結案或停用。",
+    "items": [
+      "合約或學生只要有收款、繳費回報、上課點名或扣堂紀錄，系統會擋下刪除並提示改用結案／停用，帳務紀錄不再消失。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "合約或學生只要有收款、繳費回報、上課點名或扣堂紀錄，系統會擋下刪除並提示改用結案／停用，帳務紀錄不再消失。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-06:delete-contract-keeps-billing"
+    ],
+    "date": "2026-10-06",
+    "version": "2026.10.06"
+  },
+  {
     "id": "staff-2026-10-05-waive-unpaid-contract",
     "publishedAt": "2026-10-05",
     "effectiveAt": null,

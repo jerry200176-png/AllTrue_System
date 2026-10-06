@@ -567,6 +567,9 @@ class PaymentReportController extends Controller
         return DB::transaction(function () use ($data, $sc, $userId) {
             $invoice = null;
             $lockedCourse = StudentClass::query()->whereKey($sc->getKey())->lockForUpdate()->first();
+            if (!$lockedCourse) {
+                return response()->json(['message' => '找不到此課程'], 404); // deleted concurrently
+            }
             if ($refusal = ContractMoneyState::waivedRefusal($lockedCourse, '此合約已確認不收，不能登記收款')) {
                 return $refusal;
             }

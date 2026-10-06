@@ -24,6 +24,9 @@
 ## 2026-10-06 — chore(schedule): TD-076 Track B PR-B2 history pins and learning-record teacher fix through the occurrence writer
 <!-- release-notes: silent_ship=silent-2026-10-06-td076-pr-b2-pins-lr -->
 - `schedule-occurrence-v2` 對該分校開啟時：改合約老師前，已上過的過去堂次先依證據（代課列 > 學習紀錄 > 手動簽到 > 刷卡簽到）經單一寫入端釘住原老師並寫 `pin` 日誌，證據互相矛盾者不釘；學習紀錄改老師（不連動合約）時同步更正該堂排程老師，連動合約時先走同一條釘住路徑。旗標預設關閉，關閉時行為與資料不變。
+## 2026-10-06 — fix(billing): deleting a contract never orphans invoices (plan D)
+<!-- release-notes: staff_update=staff-2026-10-06-delete-contract-keeps-billing -->
+- 合約刪除（`StudentClassController::destroy`）與學生刪除（單筆／批量）改成「有紀錄就不能硬刪」：有收款、已付／部分付款帳單、任何繳費回報、Paid／Pay／PayDate、套裝成員，或上課／點名／扣堂／轉堂／改堂／調價／催繳等紀錄（`StudentClass::hasOperationalHistory`）一律回 422，請改用結案或停用。只剩未繳帳單的合約：限主任／超管，同一交易鎖合約→帳單、只作廢同一學生的帳單（Note 加註操作者與日期，限 255 字）、合併帳單任一方向回 422，寫入嚴格稽核 `student_class.deleted` 後才刪除。建帳單／登記收款遇到同時被刪的合約回 404。避免再出現帳單 1053 指向已刪合約 2564 的孤兒。
 
 ## 2026-10-06 — fix(accounting): 待對帳 lists every stopped contract that still owes (F7 S3a)
 <!-- release-notes: staff_update=staff-2026-10-06-pending-reconciliation-all-owed -->
