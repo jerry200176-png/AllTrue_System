@@ -232,6 +232,7 @@ class WorkflowContractTest(unittest.TestCase):
         dur = (WF / "actual-duration-acceptance.yml").read_text(encoding="utf-8")
         self.assertNotRegex(dur, r"cat /tmp/(lock|pause)-body\.json\n")
         self.assertNotIn('echo "create-response-body', dur)
+        self.assertNotIn("VoidReason", (WF / "lr-missing-diagnose.yml").read_text(encoding="utf-8").split("PHP")[1])
         director = (ROOT / "scripts/diagnose-director-285.sh").read_text(encoding="utf-8")
         self.assertNotIn("observed=${IDENTITY}", director)
         for wf in ("bug-phase-a-triage.yml", "bug-followup-comment.yml"):
