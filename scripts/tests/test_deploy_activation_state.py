@@ -1055,8 +1055,13 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertTrue(gate_if.lstrip().startswith("if:"), gate_if)
         self.assertNotIn("workflow_run", gate_if)
         self.assertNotIn("repository_dispatch", gate_if)
-        self.assertIn("needs.resolve-target.outputs.release_train == 'true' && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true'", gate_if)
+        self.assertIn("(needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')", gate_if)
         self.assertIn("inputs.phase != 'release-train'", gate_if)
+        # A train always needs the Founder gate, even if every change is auto-eligible.
+        self.assertIn("needs.resolve-target.outputs.release_train == 'true' && (needs.classify-activation.outputs.mode == 'auto' ||", gate_if)
+        deploy_if = self.workflow[self.workflow.index("  deploy:\n"):].split("\n")[3]
+        self.assertIn("(needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train != 'true')", deploy_if)
+        self.assertIn("(needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true')", deploy_if)
         self.assertEqual(gate.count("environment:\n      name: production-activation"), 1)
         self.assertIn("required_reviewers_configured", gate)
         self.assertIn("prevent_self_review", gate)

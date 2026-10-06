@@ -947,6 +947,10 @@ jobs:
           MODE="${MODE//$'\r'/}"
           APPROVAL_ELIGIBLE="${APPROVAL_ELIGIBLE//$'\r'/}"
           REASON="${REASON//$'\r'/}"
+          # A release train always waits for the Founder gate, even when every change is auto-eligible.
+          if [[ "$RELEASE_TRAIN" == "true" && "$MODE" == "auto" ]]; then
+            MODE="awaiting-activation"; APPROVAL_ELIGIBLE="true"
+          fi
           case "$MODE" in
             control-plane-verified)
               {
@@ -1017,7 +1021,7 @@ jobs:
   production-activation:
     name: Founder production approval (same run)
     needs: [resolve-target, detect-deployable, classify-activation]
-    if: ${{ always() && needs.classify-activation.result == 'success' && ((needs.resolve-target.outputs.release_train == 'true' && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true') || (github.event_name == 'workflow_dispatch' && inputs.phase != 'release-train' && needs.classify-activation.outputs.mode == 'manual')) }}
+    if: ${{ always() && needs.classify-activation.result == 'success' && ((needs.resolve-target.outputs.release_train == 'true' && (needs.classify-activation.outputs.mode == 'auto' || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true'))) || (github.event_name == 'workflow_dispatch' && inputs.phase != 'release-train' && needs.classify-activation.outputs.mode == 'manual')) }}
     # Release train: a merge's own CI (github.event_name == 'workflow_run') and the
     # bot-merge follow-up (github.event_name == 'repository_dispatch') never open an
     # approval; R3 changes wait for the next scheduled (github.event_name == 'schedule')
@@ -1174,7 +1178,7 @@ jobs:
   deploy:
     name: Deploy to Production
     needs: [resolve-target, detect-deployable, classify-activation, production-activation]
-    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || ((needs.classify-activation.outputs.mode == 'manual' || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')) && needs.production-activation.result == 'success')) }}
+    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && ((needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train != 'true') || ((needs.classify-activation.outputs.mode == 'manual' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true') || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')) && needs.production-activation.result == 'success')) }}
     # Production credentials remain on the ephemeral GitHub-hosted runner.
     runs-on: ubuntu-latest
     # Bound the sole production executor so a lost SSH session cannot leave a
