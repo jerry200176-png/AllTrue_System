@@ -70,6 +70,19 @@ final class PopOperationCatalogTest extends TestCase
         $method->invoke($service, $entry);
     }
 
+    public function test_td076_repairs_require_exact_pop_policy_shape_and_digest_parameter(): void
+    {
+        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
+        $service = new PopOperationService($catalog);
+        $method = new ReflectionMethod($service, 'approvalRoles');
+        $entry = $catalog->operation('td076-r1-collision-keepers-20261006');
+        self::assertSame(['campus_id', 'decision_reference', 'expected_digest'], $entry['parameter_keys']);
+        self::assertSame(['super_admin'], $method->invoke($service, $entry));
+        $entry['parameter_keys'] = ['campus_id', 'decision_reference'];
+        $this->expectException(RuntimeException::class);
+        $method->invoke($service, $entry);
+    }
+
     public function test_muzha_chen_billing_catchup_requires_exact_pop_policy_shape(): void
     {
         $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
