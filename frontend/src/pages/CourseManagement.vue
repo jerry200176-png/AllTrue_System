@@ -446,7 +446,7 @@
                               @click="isMonthlyMode(c) ? (openMonthlySessionModal(c), closeActionMenu()) : (canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu()))"
                             ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> {{ isMonthlyMode(c) ? '新增月結堂次' : '補課 / 補登' }}</button>
                             <p class="action-section-label">帳務與合約</p>
-                            <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單（唯讀）</button>
+                            <button class="action-dropdown-item" role="menuitem" title="在帳務中心打開學生帳務" @click="openTuitionLedger(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 學生帳務</button>
                             <button
                               v-if="isSessionMode(c) && !isPackageMember(c)"
                               class="action-dropdown-item action-dropdown-package-preview"
@@ -667,7 +667,7 @@
                       <div v-if="activeActionMenu === hc.id" :ref="(el) => setActionMenu(hc.id, el)" class="action-dropdown" role="menu" aria-label="其他歷史課程操作" @click.stop @keydown="handleActionMenuKeydown(hc.id, $event)">
                         <p class="action-section-label">課程與帳務</p>
                         <button class="action-dropdown-item" role="menuitem" @click="navigateToStudentCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
-                        <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
+                        <button class="action-dropdown-item" role="menuitem" title="在帳務中心打開學生帳務" @click="openTuitionLedger(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 學生帳務</button>
                         <button
                           v-if="effectiveClosedReason(hc) === 'completed'"
                           class="action-dropdown-item action-dropdown-renew"
@@ -792,7 +792,7 @@
                         title="產生繳費通知單"
                         @click="openPaymentSlip(row.course)"
                       >繳費通知</button>
-                      <button class="small ghost btn-invoices" type="button" @click="openInvoiceModal(row.course)">帳單（唯讀）</button>
+                      <button class="small ghost btn-invoices" type="button" title="在帳務中心打開學生帳務" @click="openTuitionLedger(row.course)">學生帳務</button>
                       <button v-if="shouldShowPaymentAction(row.course)" class="small primary" type="button" @click="goToTuitionBilling(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
                       <span v-if="isTutoringBillingAnomaly(row.course)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                     </div>
@@ -1367,105 +1367,6 @@
       @changed="loadCourses(pagination.page)"
     />
 
-    <!-- 帳單記錄 Modal -->
-    <div v-if="invoiceModalOpen" class="modal-overlay" @click.self="closeInvoiceModal">
-      <div class="modal course-modal invoice-modal">
-        <div class="invoice-modal-header">
-          <div>
-            <h3 class="modal-title">帳單與對帳紀錄</h3>
-            <p class="modal-desc">
-              {{ invoiceModalCourse?.student_name || '學生' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
-            </p>
-          </div>
-          <div class="invoice-modal-tools">
-            <button class="small ghost btn-ledger" type="button" @click="openLedgerForCourse(invoiceModalCourse)">
-              對帳
-            </button>
-            <button class="icon-btn" type="button" aria-label="關閉帳單記錄" @click="closeInvoiceModal">×</button>
-          </div>
-        </div>
-
-        <div v-if="invoiceModalLoading" class="invoice-modal-state" role="status">
-          <div class="invoice-skeleton"></div>
-          <div class="invoice-skeleton invoice-skeleton-short"></div>
-        </div>
-        <div v-else-if="invoiceModalError" class="invoice-modal-state invoice-modal-error" role="alert">
-          {{ invoiceModalError }}
-        </div>
-        <div v-else-if="invoiceModalList.length === 0" class="invoice-modal-state">
-          尚無帳單流水（舊有或堂數制課程可能只保留課程主檔繳費狀態）。可按「對帳」查看同學生收據與例外資料。
-        </div>
-        <div v-else class="invoice-table-scroll">
-          <table class="invoice-table">
-            <thead>
-              <tr>
-                <th>帳單（期別）</th>
-                <th>應繳日</th>
-                <th>付款日</th>
-                <th>已收款紀錄</th>
-                <th class="invoice-amount-cell">金額</th>
-                <th class="invoice-amount-cell">已繳</th>
-                <th class="invoice-status-cell">狀態</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="inv in invoiceModalList" :key="inv.id">
-                <td>
-                  <strong>{{ formatLedgerInvoiceLabel(inv) }}</strong>
-                  <div class="hint">{{ formatLedgerCourseLabel({ course_ref: inv.course_ref, subject: invoiceModalCourse?.subject_name || invoiceModalCourse?.subject }) }} · {{ formatBillingPeriod(inv.billing_period) }}</div>
-                </td>
-                <td>{{ inv.due_date || '—' }}</td>
-                <td>{{ invoicePaidDateLabel(inv) }}</td>
-                <td>
-                  <div v-if="inv.payments?.length" class="invoice-payment-list">
-                    <div
-                      v-for="payment in inv.payments"
-                      :key="payment.id"
-                      :class="['invoice-payment-row', { 'invoice-payment-row--void': payment.is_void }]"
-                    >
-                      <span class="invoice-payment-date">{{ payment.paid_at || '未記錄日期' }}</span>
-                      <span class="invoice-payment-amount">{{ payment.is_void ? '已更正 ' : '已收 ' }}${{ formatMoney(Math.abs(payment.amount || 0)) }}</span>
-                      <span class="invoice-payment-method">{{ invoicePaymentMethodLabel(payment.method) }}</span>
-                      <span v-if="payment.receipt_no" class="invoice-payment-receipt">{{ humanizeDocumentRef(payment.receipt_no) }}</span>
-                      <span v-if="payment.is_void" class="invoice-payment-void">更正</span>
-                    </div>
-                  </div>
-                  <span v-else class="hint">—</span>
-                </td>
-                <td class="invoice-amount-cell">
-                  <strong>${{ formatMoney(inv.total_amount) }}</strong>
-                  <div v-if="inv.amount_discrepancy" class="invoice-amount-warning" role="status">
-                    依實際 {{ inv.period_sessions }} 堂計算；原帳單 ${{ formatMoney(inv.stored_total_amount) }}
-                  </div>
-                </td>
-                <td class="invoice-amount-cell">${{ formatMoney(inv.paid_amount) }}</td>
-                <td class="invoice-status-cell">
-                  <span :class="['invoice-status-chip', invoiceStatusClass(inv)]">
-                    {{ invoiceStatusLabel(inv) }}
-                  </span>
-                </td>
-                <td>
-                  <div class="invoice-row-actions">
-                    <button
-                      class="small primary invoice-pay-btn"
-                      type="button"
-                      @click="goToTuitionBilling(invoiceModalCourse)"
-                    >前往帳務中心</button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="actions invoice-modal-actions">
-          <button class="ghost" type="button" @click="closeInvoiceModal">關閉</button>
-          <button class="small primary" type="button" @click="goToTuitionBilling(invoiceModalCourse); closeInvoiceModal()">前往帳務中心</button>
-        </div>
-      </div>
-    </div>
-
     <div v-if="pauseConfirmTarget" class="modal-overlay" @click.self="!pauseConfirmSubmitting && (pauseConfirmTarget = null)">
       <div class="modal course-modal pause-confirm-modal">
         <div class="pause-confirm-header">
@@ -1556,9 +1457,6 @@ import { courseRowWarningSummary, usageBalanceWarningTitle } from '../lib/course
 import {
   formatRenewSuccessMessage,
   formatDuplicatePurchaseHint,
-  formatLedgerCourseLabel,
-  formatLedgerInvoiceLabel,
-  humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { convertSingleCourseToPackage, previewSingleCoursePackageConversion, updatePackage } from '../lib/coursePackagesApi';
@@ -1584,7 +1482,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, WAIVED_LABEL,
+  REPORT_STATUS_LABELS, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, WAIVED_LABEL,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -1619,6 +1517,7 @@ import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
   buildTuitionCollectNav,
+  buildTuitionLedgerNav,
   buildStudentsCommercialNav,
   tuitionIntentForPaymentStatus,
 } from '../lib/authoritativeMutationRoutes.js';
@@ -1700,6 +1599,10 @@ const goToTuitionBilling = (course) => {
   emit('navigate', buildTuitionCollectNav(course, {
     intent: tuitionIntentForPaymentStatus(course?.payment_status),
   }));
+};
+
+const openTuitionLedger = (course) => {
+  emit('navigate', buildTuitionLedgerNav(course));
 };
 
 const goToStudentsCommercial = (course, intent = 'edit') => {
@@ -2781,7 +2684,7 @@ function onCourseManagerAction({ name, payload } = {}) {
     'quick-add': () => { if (canQuickAddSession(c) || isMonthlyMode(c)) openQuickAddSessionModal(c); },
     'retry-sessions': () => retryLoadCourseSessions(c),
     'cancel-makeup': () => { if (payload) cancelMakeupSchedule(payload, c); },
-    invoice: () => openInvoiceModal(c), tuition: () => goToTuitionBilling(c), ledger: () => openLedgerForCourse(c),
+    invoice: () => openTuitionLedger(c), tuition: () => goToTuitionBilling(c), ledger: () => openLedgerForCourse(c),
     purchase: () => openCommercialPurchaseEntry(c), 'contract-adjust': () => openContractAdjustmentModal(c),
     'package-preview': () => openPackageConversionPreview(c), 'payment-slip': () => openPaymentSlip(c),
     duplicate: () => duplicateCourseForTeacher(c),
@@ -4329,33 +4232,6 @@ const formatMoney = (value) => {
   return Number.isFinite(n) ? n.toLocaleString() : '0';
 };
 
-const formatBillingPeriod = (period) => {
-  if (!period || String(period).length < 7) return period || '—';
-  const [year, month] = String(period).split('-');
-  const monthNum = Number.parseInt(month, 10);
-  return monthNum ? `${year}年${monthNum}月` : period;
-};
-
-const invoiceStatusLabel = (invoice) => {
-  if (invoice?.ledger_label) return invoice.ledger_label;
-  const status = typeof invoice === 'string' ? invoice : invoice?.status;
-  return INVOICE_STATUS_LABELS[status] || status || '未知';
-};
-const invoiceStatusClass = (invoice) => {
-  const ledgerStatus = invoice?.ledger_status || '';
-  if (ledgerStatus && ledgerStatus !== invoice?.status) return 'invoice-status-exception';
-  return `invoice-status-${invoice?.status || 'unknown'}`;
-};
-const invoicePaidDateLabel = (invoice) => {
-  if (invoice?.paid_at) return invoice.paid_at;
-  return invoice?.status === 'paid' ? '舊資料未記錄' : '—';
-};
-const invoicePaymentMethodLabel = (method) => ({
-  cash: '現金',
-  transfer: '匯款',
-  void: '更正收款',
-}[method] || method || '—');
-
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
   if (!props.branchId) {
@@ -5094,11 +4970,6 @@ const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
 const studentGroupTabs = ref({});
 const studentBillingState = ref({});
-const invoiceModalOpen = ref(false);
-const invoiceModalCourse = ref(null);
-const invoiceModalList = ref([]);
-const invoiceModalLoading = ref(false);
-const invoiceModalError = ref('');
 const paymentSlipOpen = ref(false);
 const paymentSlipStudentClassId = ref(null);
 
@@ -5115,10 +4986,6 @@ const openPaymentSlip = (course) => {
 const closePaymentSlip = () => {
   paymentSlipOpen.value = false;
   paymentSlipStudentClassId.value = null;
-};
-
-const closeInvoiceModal = () => {
-  invoiceModalOpen.value = false;
 };
 
 const studentGroupTab = (key) => studentGroupTabs.value[key] || 'courses';
@@ -5226,38 +5093,6 @@ const openLedgerForCourse = (course) => {
   if (!course?.id) return;
   ledgerStudentClassId.value = course.id;
   ledgerOpen.value = true;
-};
-
-const openInvoiceModal = async (course) => {
-  if (!course?.id) return;
-  invoiceModalCourse.value = course;
-  invoiceModalList.value = [];
-  invoiceModalError.value = '';
-  invoiceModalLoading.value = true;
-  invoiceModalOpen.value = true;
-
-  try {
-    const token = await getAccessToken();
-    if (!token) {
-      invoiceModalError.value = '請重新登入後再查看帳單。';
-      return;
-    }
-
-    const res = await authedFetch(`/api/v1/student-classes/${course.id}/invoices`, {
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-    }, token);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      invoiceModalError.value = json?.message || '帳單載入失敗，請稍後再試。';
-      return;
-    }
-    invoiceModalList.value = Array.isArray(json?.invoices) ? json.invoices : [];
-  } catch (e) {
-    invoiceModalError.value = e?.message || '帳單載入失敗，請稍後再試。';
-  } finally {
-    invoiceModalLoading.value = false;
-  }
 };
 
 const executeDeleteCourse = async () => {

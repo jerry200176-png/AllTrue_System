@@ -5,7 +5,6 @@ const source = readFileSync(new URL('../pages/StudentsList.vue', import.meta.url
 const dialogs = [
   ['student-modal-title', 'showStudentModal'],
   ['course-modal-title', 'showCourseModal && editingCourseId'],
-  ['invoice-modal-title', 'showInvoiceModal'],
   ['sessions-modal-title', 'showSessionsModal'],
   ['grade-promotion-modal-title', 'showGradePromotion'],
   ['identity-modal-title', 'showIdentityModal'],

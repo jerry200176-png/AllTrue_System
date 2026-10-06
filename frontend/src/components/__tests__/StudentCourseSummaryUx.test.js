@@ -49,7 +49,7 @@ describe('StudentsList course summary UX', () => {
   });
 
   it('preserves the existing course actions behind the disclosure', () => {
-    ['goToTuitionBilling(course)', 'openAddSessionsForCourse(course)', 'openInvoiceModal(course)', 'editCourse(course)', 'closeCourseNoRenew(course, student.name)', 'deleteCourse(course)']
+    ['goToTuitionBilling(course)', 'openAddSessionsForCourse(course)', 'openTuitionLedger(course)', 'editCourse(course)', 'closeCourseNoRenew(course, student.name)', 'deleteCourse(course)']
       .forEach((handler) => expect(activeCourseSlice).toContain(handler));
     expect(activeCourseSlice).not.toContain('togglePaymentStatus');
     expect(activeCourseSlice).not.toContain('openLatestPaymentInfo');

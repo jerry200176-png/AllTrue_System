@@ -14,6 +14,11 @@ export function buildTuitionCollectNav(courseOrRow, { intent = 'unpaid', tab = '
   };
 }
 
+/** Opens the student billing file (學生帳務檔) for this course inside 帳務中心. */
+export function buildTuitionLedgerNav(courseOrRow) {
+  return buildTuitionCollectNav(courseOrRow, { intent: 'ledger' });
+}
+
 /** Contract create / renew / purchase / settle live on students. */
 export function buildStudentsCommercialNav(courseOrRow, { intent = 'edit' } = {}) {
   const studentId = normalizeNavigationId(
