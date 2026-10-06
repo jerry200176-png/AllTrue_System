@@ -6,7 +6,7 @@ on:
       student:
         required: true
         type: choice
-        options: [both, zhang_zheng_ning, zhang_zheng_le]
+        options: [both, student_374, student_373]
       mode:
         required: true
         default: dry-run
@@ -98,11 +98,11 @@ jobs:
           fi
           : > out/operation.txt
           run_one() {
-            local key="$1" sid="$2" sname="$3" source="$4" target="$5" session="$6"
+            local key="$1" sid="$2" source="$3" target="$4" session="$5"
             ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
               "${PI_SSH_USER}@${PI_SSH_HOST}" \
               MODE="$MODE" CONFIRM="$CONFIRM" STUDENT_KEY="$key" STUDENT_ID="$sid" \
-              STUDENT_NAME="$sname" SOURCE_CLASS="$source" TARGET_CLASS="$target" \
+              SOURCE_CLASS="$source" TARGET_CLASS="$target" \
               SESSION_ID="$session" RUN_ID="$RUN_ID" ACTOR="$ACTOR" \
               SCRIPT_B64="$SCRIPT_B64" PHP_B64="$PHP_B64" \
               'bash -s' <<'ENDSSH' | tee -a out/operation.txt
@@ -114,10 +114,10 @@ jobs:
           ENDSSH
           }
           case "$STUDENT" in
-            both|zhang_zheng_ning) run_one zhang_zheng_ning 374 '張正甯' 1681 3230 23157 ;;
+            both|student_374) run_one student_374 374 1681 3230 23157 ;;
           esac
           case "$STUDENT" in
-            both|zhang_zheng_le) run_one zhang_zheng_le 373 '張正樂' 1682 3231 27156 ;;
+            both|student_373) run_one student_373 373 1682 3231 27156 ;;
           esac
           expected=1
           [ "$STUDENT" = both ] && expected=2
