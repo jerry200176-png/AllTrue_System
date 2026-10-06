@@ -1,10 +1,76 @@
+## 2026-10-06 — chore(ci): PHPStan baseline is shrink-only; core models get `@property` docblocks
+<!-- release-notes: silent_ship=silent-2026-10-06-phpstan-baseline-shrink-only -->
+- Schedule／StudentClass／ClassSession／LearningRecord／Student／User／ScheduleChangeLog／StudentSignIn／Invoice 補上資料表欄位的 `@property` docblock，`phpstan-baseline.neon` 重新產生（1962 → 1448 筆）；Presubmit 新增 CHECK 0c，PR 不得新增或增加 baseline 項目（例外：PR label `phpstan-baseline-growth`）。只有型別註解與 CI 檢查，執行行為不變。
+
+## 2026-10-06 — chore(schedule): TD-076 Track B PR-B1 OccurrenceAssignmentService behind schedule-occurrence-v2
+<!-- release-notes: silent_ship=silent-2026-10-06-td076-pr-b1-assignment-writer -->
+- 新增單一寫入端 `OccurrenceAssignmentService`（找或建立唯一的 live 排程列、設定老師／時段、每次只寫一筆 `schedule_change_log`），並接上代課（含代課＋換時合併）、回復正班、代課復原與批次代課；僅在 `schedule-occurrence-v2` 對該分校開啟時生效，預設關閉，關閉時走原本程式路徑、資料與畫面完全不變。可修正「換日調課後再代課會多出第二條鏈」的新莊問題。讀取端尚未改，PR-C 才處理。
+
+## 2026-10-05 — feat(accounting): director can waive (確認不收) a closed unpaid contract with an audited reason
+<!-- release-notes: staff_update=staff-2026-10-05-waive-unpaid-contract -->
+- 新增 `POST /api/v1/accounting/courses/{id}/waive`（主任／同分校）：僅 Stop=1 且 `settled_pending`／未繳 `contract_amended` 且仍有欠款可用，需 2–200 字原因。同一交易內設 `closed_reason='waived'`、未結帳單 Status 改 `void`（Paid／Charge／收款不動），並寫 `security_audit_events`（`accounting.course_waived`，含欠款金額、原因雜湊）與 `settlement_snapshot`（原因、前後狀態）。套裝課程拒絕、waived 為終態（不可恢復）、void 帳單不可登記收款。套裝課程拒絕、waived 為終態（不可暫停／恢復）、void 帳單不可登記收款。waived 合約離開待對帳／學收提醒佇列，於已結清清單與課程管理顯示「歷史 · 確認不收」，不計入已收
+## 2026-10-05 — fix(billing): unpaid monthly closes stay in accounting queue
+<!-- release-notes: staff_update=staff-2026-10-05-unpaid-close-pending -->
+- 月結「續下一期」與月結課程停用，原本不論有沒有繳費都把舊合約標成 `settled`／`completed`，未繳的月份因此從帳務中心與學費提醒消失；改用既有 `courseNeedsPaymentReconciliation()`，未繳清時改標 `settled_pending`（待對帳）
+
+## 2026-10-05 — fix(billing): monthly slips always list lesson dates (#3445)
+<!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
+- 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
+
+## 2026-10-06 — fix(schedule): TD-076 sweep so no reader treats a `superseded` schedules row as live, leave or scheduled
+<!-- release-notes: silent_ship=silent-2026-10-06-td076-superseded-sweep -->
+- 課程管理「排課日期」（`sessionDates`）原把任何非 `scheduled` 的 schedules 列當成請假而移除該日；補課時長判斷與非標準時長盤點原把 `superseded` 補課列當成補課；主任儀表板備援讀取原只排除 cancelled／leave。現在三處與前端判斷都先略過 `superseded` 列（既有狀態行為不變），並以測試證明；目前沒有任何寫入端產生 `superseded`，畫面與行為不變。
+
+## 2026-10-06 — chore(schedule): TD-076 Track B PR-B2 history pins and learning-record teacher fix through the occurrence writer
+<!-- release-notes: silent_ship=silent-2026-10-06-td076-pr-b2-pins-lr -->
+- `schedule-occurrence-v2` 對該分校開啟時：改合約老師前，已上過的過去堂次先依證據（代課列 > 學習紀錄 > 手動簽到 > 刷卡簽到）經單一寫入端釘住原老師並寫 `pin` 日誌，證據互相矛盾者不釘；學習紀錄改老師（不連動合約）時同步更正該堂排程老師，連動合約時先走同一條釘住路徑。旗標預設關閉，關閉時行為與資料不變。
+## 2026-10-06 — fix(billing): deleting a contract never orphans invoices (plan D)
+<!-- release-notes: staff_update=staff-2026-10-06-delete-contract-keeps-billing -->
+- 合約刪除（`StudentClassController::destroy`）與學生刪除（單筆／批量）改成「有紀錄就不能硬刪」：有收款、已付／部分付款帳單、任何繳費回報、Paid／Pay／PayDate、套裝成員，或上課／點名／扣堂／轉堂／改堂／調價／催繳等紀錄（`StudentClass::hasOperationalHistory`）一律回 422，請改用結案或停用。只剩未繳帳單的合約：限主任／超管，同一交易鎖合約→帳單、只作廢同一學生的帳單（Note 加註操作者與日期，限 255 字）、合併帳單任一方向回 422，寫入嚴格稽核 `student_class.deleted` 後才刪除。建帳單／登記收款遇到同時被刪的合約回 404。避免再出現帳單 1053 指向已刪合約 2564 的孤兒。
+
+## 2026-10-06 — fix(accounting): 待對帳 lists every stopped contract that still owes (F7 S3a)
+<!-- release-notes: staff_update=staff-2026-10-06-pending-reconciliation-all-owed -->
+- `AccountingController::settledCourses` 與學費提醒 `AlertController` 的結案待對帳改用 `BillingPayableResolver::courseStatusesByStudentClassIds()`（整批一次查）：Stop=1 且解析結果為 unpaid／partial／unbilled 且欠款 > 0 即列入，不再依 `closed_reason` 白名單，暫停中（無 reason）也會顯示，標「暫停中 · 待對帳」，欠款金額取自解析結果。解析結果為 `review_required` 的結案合約獨立顯示「付款期間待確認」（`payment_review_required`）。`waived` 仍為歷史、欠款 0；Paid=1／已付帳單的已結清清單不變；現行（Stop=0）合約的提醒規則不變
+
+## 2026-10-05 — chore(schedule): TD-076 Track B PR-A log teacher columns + `superseded` status constant
+<!-- release-notes: silent_ship=silent-2026-10-05-td076-pr-a-log-superseded -->
+- `schedule_change_log` 新增可為空的 `from_teacher_id`／`to_teacher_id`（加欄位 migration，可回滾）、`ScheduleChangeLog::REASONS` 與 `Schedule::STATUS_SUPERSEDED`；目前沒有任何寫入端使用，並以測試證明 `superseded` 排程列對日曆、代課解析、忙碌時段、衝堂檢查、回填與前端合併皆不可見。畫面與行為不變。
+
+## 2026-10-05 — chore(ops): POP catch-up billing for 宥翰 Jun–Aug + void orphan invoice 1053
+<!-- release-notes: silent_ship=silent-2026-10-05-muzha-chen-catchup -->
+- 新增 POP 營運操作 `muzha-chen-billing-catchup-20261005`（`MuzhaChenBillingCatchupStrategy`，精確個案、Founder 核准、可回滾）：木柵學生 164 在合約 1249 於 2026-06／07／08 已上課卻沒有帳單的 7 堂，依 Founder 決議每堂 $1,650 建立一份補收合約與三張未繳帳單（$4,950／$4,950／$1,650）；同時作廢查無合約的孤兒帳單 1053。不移動任何課堂、簽到或學習紀錄。需部署後另經 Founder 核准執行。
+
+## 2026-10-05 — refactor(frontend): F7 S2 paid status comes only from the server `payment_status`
+<!-- release-notes: silent_ship=silent-2026-10-05-f7-s2 -->
+- 課程已繳判斷（學生管理、課程管理結案警告）、繳費通知可用狀態與帳務中心導向，改共用 `lib/paymentStatus.js` 只讀後端 `payment_status`；移除前端 `Paid >= Charge` 推算（Paid 為 0/1 旗標，Charge>1 時恆為 false）與無 `payment_status` 時視為未繳的 alert 備援。收款視窗與繳費單金額不再以課程 `charge` 備援，只用 `payable_*`／`estimated_amount`。後端一律下發 `payment_status`，正常情況畫面不變。F4 死碼（OverdueBucketsPanel／BatchInvoiceModal，後端無對應路由）留待獨立 PR 刪除。
+
+## 2026-10-05 — fix(calendar): substitute teacher no longer flips back to the contract teacher
+<!-- release-notes: staff_update=staff-2026-10-05-calendar-substitute-sticks -->
+- 行事曆合併同一時段的 schedules 列時，若後端 `ClassSessionIndexReadService` 已解析出代課老師（`substitute_teacher_id`），其他同時段的合約老師列（例如舊的調課目標列）不再覆蓋；課程查找與行事曆顯示一致
+
 ## 2026-10-03 — fix(students): trial courses convert to a regular course instead of a new trial batch (in-app #374)
 <!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->
 - 學生管理的試聽課改走「轉為正式課程」（與課程管理一致）；後端加購端點拒絕試聽來源，避免再建立試聽批次
 
+## 2026-10-05 — chore(ops): POP operation puts unpaid hidden closures back in the reconciliation queue
+<!-- release-notes: silent_ship=silent-2026-10-05-unpaid-backlog-pop -->
+- 新增 POP 營運操作 `unpaid-hidden-closures-20261005`（`UnpaidHiddenClosuresStrategy`，精確名單、Founder 核准、可回滾）：把先前被標成 `settled`／`completed` 卻仍有欠款的合約改標 `settled_pending`（待對帳）；只改 `closed_reason`，不動 Invoice／Payment／Charge／Paid。Runbook：`docs/incidents/RM-UNPAID-HIDDEN-CLOSURES-20261005.md`
+
 ## 2026-10-04 — fix(course-edit): slot edits check exactly the lessons that move; no false block on own lessons, no self-overlap (in-app #347, part 2)
 <!-- release-notes: silent_ship=silent-2026-10-04-course-edit-guard -->
 - 修改課程時段時的檢查改用與實際搬移相同的「同日重排計畫」：不再被自己會被搬走的堂次或不同日期的學生加總擋下；會留在原地的堂次（已簽到、待審請假、多出來的）仍會擋；搬完會跟自己的課重疊時直接拒絕，不會半套成功
+
+## 2026-10-05 — fix(billing): paid monthly slips list upcoming lessons; MonthlySplit keeps requested endpoints (#3525)
+<!-- release-notes: staff_update=staff-2026-10-05-paid-slip-upcoming -->
+- 金額固定（已繳／非依堂數重算）的月結帳單，繳費單列計費堂次加上今天以後的排定堂次；依堂數重算金額的未繳帳單維持只列計費堂次。`MonthlySplit` 產生的帳單項目，第一段起日與最後一段迄日改用實際指定日期（金額仍按月平分）
+
+## 2026-10-05 — feat(billing-ui): receipt shares the payment slip design (#3445)
+<!-- release-notes: staff_update=staff-2026-10-05-receipt-redesign -->
+- 電子收據改用 `BillingDocument`（`receiptView`），與繳費單同一套版面；收據圖片改由 `modern-screenshot` 擷取畫面，取代手寫 SVG 產生器（`receiptImage.js`）。複製文字、列印、作廢浮水印保留；列印時不受彈窗高度限制
+
+## 2026-10-05 — feat(billing-ui): payment slip redesign with logo (#3445)
+<!-- release-notes: staff_update=staff-2026-10-05-payment-slip-redesign -->
+- 繳費單由手畫 canvas 改為 `BillingDocument`（HTML/CSS），用 `modern-screenshot`（MIT，按下載／複製時才載入）匯出 PNG；加 logo、金額／期限主視覺、服務期間、上課日期含星期。下載與複製、檔名不變
 
 ## 2026-10-04 — fix(course-edit): course slot edits move the right lessons (locked lessons stay; shared same-day remap plan) (in-app #347)
 <!-- release-notes: silent_ship=silent-2026-10-04-course-edit-remap -->

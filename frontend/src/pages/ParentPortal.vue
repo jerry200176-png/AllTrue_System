@@ -827,7 +827,9 @@
                 <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">月結</span>
                 <span v-if="c.is_package" class="pp-badge pp-badge-info-soft">共用方案</span>
                 <span v-if="c.is_tutoring || c.payment_status === 'free'" class="pp-badge pp-badge-info-soft">{{ c.payment_status_label || '免費（不適用）' }}</span>
+                <span v-else-if="c.payment_status === 'waived'" class="pp-badge pp-badge-info-soft">{{ c.payment_status_label || '已確認不收' }}</span>
                 <span v-else-if="c.paid" class="pp-badge pp-badge-success">{{ c.payment_status_label || '已繳費' }}</span>
+                <span v-else-if="['partial', 'review_required'].includes(c.payment_status)" class="pp-badge pp-badge-warning">{{ c.payment_status_label }}</span>
                 <span v-else class="pp-badge pp-badge-warning">未繳費</span>
                 <span v-if="c.is_stopped" class="pp-badge pp-badge-neutral">{{ c.lifecycle_status_label || '課程已結束' }}</span>
               </div>
@@ -984,6 +986,7 @@ import { notesForRole, parentReleaseNoteTeaser } from '../lib/releaseNotes';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
 import { buildParentActionItems, buildParentHomeSummary } from '../lib/parentActionItems';
 import { formatAssessmentProgressDate, assessmentProgressScoreLabel, assessmentProgressPercentLabel } from '../lib/parentAssessmentProgress';
+import { isMonthlyPaymentType, remainingTone } from '../lib/courseMoneyState';
 import { isSessionStartedOrPast, isLateLeave, canRequestParentLeave } from '../lib/parentLeavePolicy';
 
 function resolveParentLiffId() {
@@ -1499,10 +1502,7 @@ const progressPercent = (c) => {
   return Math.min(100, Math.round((used / total) * 100));
 };
 
-const isMonthlyCourse = (c) => {
-  const mode = String(c?.schedule_mode ?? 'count');
-  return mode !== 'count';
-};
+const isMonthlyCourse = isMonthlyPaymentType;
 
 const monthlyProgressPercent = (c) => {
   const target = c?.monthly_target || 0;
@@ -1519,21 +1519,13 @@ const formatMoney = (v) => {
   return n.toLocaleString('en-US');
 };
 
+const REMAINING_TONE_COLORS = { empty: '#c62828', low: '#e65100', watch: '#f57c00', ok: '#2e7d32' };
 const progressColor = (c) => {
-  const remaining = c.remaining_sessions ?? 0;
-  if (remaining <= 0) return '#c62828';
-  if (remaining <= 2) return '#e65100';
-  if (remaining <= 4) return '#f9a825';
-  return '#2e7d32';
+  const tone = remainingTone(c.remaining_sessions);
+  return tone === 'watch' ? '#f9a825' : REMAINING_TONE_COLORS[tone];
 };
 
-const remainingColor = (c) => {
-  const r = c.remaining_sessions ?? 0;
-  if (r <= 0) return '#c62828';
-  if (r <= 2) return '#e65100';
-  if (r <= 4) return '#f57c00';
-  return '#2e7d32';
-};
+const remainingColor = (c) => REMAINING_TONE_COLORS[remainingTone(c.remaining_sessions)];
 
 // Performance helpers for learning record report card
 const perfColor = (v) => ({ good: 'var(--ds-success)', average: 'var(--ds-warning)', bad: 'var(--ds-danger)' }[v] || 'var(--ds-ink-mute)');
@@ -1547,14 +1539,15 @@ const hwLabel = (v) => ({ completed: '已完成', partial: '部分完成', incom
 
 const courseCardClass = (c) => {
   if (c.is_tutoring || c.payment_status === 'free') return '';
+  if (c.payment_status === 'waived') return '';
   if (c.is_stopped) return c.paid ? 'settled' : 'stopped';
   if (isMonthlyCourse(c)) {
     if (!c.paid) return 'warning';
     return '';
   }
-  const r = c.remaining_sessions ?? 0;
-  if (r <= 0) return 'danger';
-  if (r <= 2) return 'warning';
+  const tone = remainingTone(c.remaining_sessions);
+  if (tone === 'empty') return 'danger';
+  if (tone === 'low') return 'warning';
   return '';
 };
 
@@ -1814,12 +1807,7 @@ const attendanceLabel = (status) => {
   })[s] || String(status || '—');
 };
 
-const remainingPillColor = (count) => {
-  if (count <= 0) return '#c62828';
-  if (count <= 2) return '#e65100';
-  if (count <= 4) return '#f57c00';
-  return '#2e7d32';
-};
+const remainingPillColor = (count) => REMAINING_TONE_COLORS[remainingTone(count)];
 
 const switchError = ref('');
 

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\ScheduleGuardService;
+use App\Services\Scheduling\ContractSessionSchedule;
 use PHPUnit\Framework\TestCase;
 
 class ScheduleGuardPlanSameDayRemapTest extends TestCase
@@ -20,7 +21,7 @@ class ScheduleGuardPlanSameDayRemapTest extends TestCase
     /** @return array<int, string> id => target start */
     private static function moves(array $rows, array $slots, array $locked = []): array
     {
-        return array_map(fn ($s) => $s['start'], ScheduleGuardService::planSameDayRemap($rows, $slots, $locked)['moves']);
+        return array_map(fn ($s) => $s['start'], ContractSessionSchedule::planSameDayRemap($rows, $slots, $locked)['moves']);
     }
 
     public function test_unlocked_rows_pair_in_start_order_with_slots_and_excess_stays(): void
@@ -46,18 +47,18 @@ class ScheduleGuardPlanSameDayRemapTest extends TestCase
         // Codex P1: locked exception 15:00 on a slot is adopted and consumes it; only 16:00 moves, 18:00 stays.
         $rows = [self::row(1, '15:00', '16:00', true), self::row(2, '16:00', '17:00'), self::row(3, '18:00', '19:00')];
         $slots = [self::slot('15:00', '16:00'), self::slot('17:30', '18:30')];
-        $plan = ScheduleGuardService::planSameDayRemap($rows, $slots, [1 => true]);
+        $plan = ContractSessionSchedule::planSameDayRemap($rows, $slots, [1 => true]);
         self::assertSame([1 => true], $plan['adopted']);
         self::assertSame([2 => '17:30'], array_map(fn ($s) => $s['start'], $plan['moves']));
 
         // Unlocked adopted exception joins the pairing as a regular row.
-        $plan = ScheduleGuardService::planSameDayRemap($rows, $slots, []);
+        $plan = ContractSessionSchedule::planSameDayRemap($rows, $slots, []);
         self::assertSame([1 => true], $plan['adopted']);
         self::assertSame([2 => '17:30'], array_map(fn ($s) => $s['start'], $plan['moves']));
 
         // Exception off-slot (other duration): not adopted, never paired.
         $rows = [self::row(1, '15:00', '15:30', true), self::row(2, '16:00', '17:00')];
-        $plan = ScheduleGuardService::planSameDayRemap($rows, [self::slot('15:00', '16:00')], []);
+        $plan = ContractSessionSchedule::planSameDayRemap($rows, [self::slot('15:00', '16:00')], []);
         self::assertSame([], $plan['adopted']);
         self::assertSame([2 => '15:00'], array_map(fn ($s) => $s['start'], $plan['moves']));
     }
@@ -80,18 +81,18 @@ class ScheduleGuardPlanSameDayRemapTest extends TestCase
         // Codex P1: locked 15:30, unlocked 17:00 and 19:00; slots 15:00 and 17:00 → 17:00 moves to 15:00 (19:00 stays).
         $rows = [self::row(1, '15:30:00', '16:30:00'), self::row(2, '17:00:00', '18:00:00'), self::row(3, '19:00:00', '20:00:00')];
         $slots = [self::slot('15:00', '16:00'), self::slot('17:00', '18:00')];
-        $moves = ScheduleGuardService::planSameDayRemap($rows, $slots, [1 => true])['moves'];
+        $moves = ContractSessionSchedule::planSameDayRemap($rows, $slots, [1 => true])['moves'];
         self::assertSame([['15:30-16:30', '15:00-16:00']], ScheduleGuardService::planSelfOverlaps($rows, $moves, $slots));
 
         // Clean remap: unlocked rows shift onto non-overlapping slots.
         $rows = [self::row(1, '15:00', '16:00'), self::row(2, '17:00', '18:00')];
         $slots = [self::slot('15:30', '16:30'), self::slot('17:30', '18:30')];
-        $moves = ScheduleGuardService::planSameDayRemap($rows, $slots, [])['moves'];
+        $moves = ContractSessionSchedule::planSameDayRemap($rows, $slots, [])['moves'];
         self::assertSame([], ScheduleGuardService::planSelfOverlaps($rows, $moves, $slots));
 
         // A move onto a row that stays is skipped by the sync (unique start), so rows 15:00/17:00 with slot 17:00 are clean.
         $rows = [self::row(1, '15:00', '16:00'), self::row(2, '17:00', '18:00')];
-        $moves = ScheduleGuardService::planSameDayRemap($rows, [self::slot('17:00', '18:00')], [])['moves'];
+        $moves = ContractSessionSchedule::planSameDayRemap($rows, [self::slot('17:00', '18:00')], [])['moves'];
         self::assertSame([], ScheduleGuardService::planSelfOverlaps($rows, $moves, [self::slot('17:00', '18:00')]));
 
         // A slot no row reaches is still filled by the reflow, so it counts against a non-scheduled row left in place.
@@ -103,7 +104,7 @@ class ScheduleGuardPlanSameDayRemapTest extends TestCase
         // Locked exception 15:00-16:30 holds 15:00; slots 15:00-16:00 and 17:30-18:30; unlocked 16:00 and 18:00.
         $rows = [self::row(1, '15:00', '16:30', true), self::row(2, '16:00', '17:00'), self::row(3, '18:00', '19:00')];
         $slots = [self::slot('15:00', '16:00'), self::slot('17:30', '18:30')];
-        $moves = ScheduleGuardService::planSameDayRemap($rows, $slots, [1 => true])['moves'];
+        $moves = ContractSessionSchedule::planSameDayRemap($rows, $slots, [1 => true])['moves'];
         self::assertNotSame([], $moves);
         self::assertContains(['15:00-16:30', '15:00-16:00'], ScheduleGuardService::planSelfOverlaps($rows, $moves, $slots));
         // Same row on a day the edit doesn't touch: no report.

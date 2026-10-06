@@ -12,6 +12,8 @@ rules:
       - auto-merge-safe.yml
       # Only calls gh api with github.token; no checkout of PR code.
       - autonomous-convergence.yml
+      # Runs the script from the default branch only; never checks out or runs PR code.
+      - land-queue.yml
       # workflow_run restricted to branches [main]; target SHA must have a
       # successful main CI run before deploy.
       - deploy.yml

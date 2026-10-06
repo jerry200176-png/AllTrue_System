@@ -58,7 +58,7 @@ class ScheduleGuardService
         $conflicts = [];
         $selfOverlaps = [];
         // Lock state of the edited course's sessions, loaded once for all slots.
-        $lockedOwn = $excludeStudentClassId ? self::lockedClassSessionIds($excludeStudentClassId) : [];
+        $lockedOwn = $excludeStudentClassId ? \App\Services\Scheduling\ContractSessionSchedule::lockedClassSessionIds($excludeStudentClassId) : [];
 
         foreach ($slots as $slot) {
             $recurringOverlaps = $this->collectRecurringOverlaps($teacherCourses, $slot);
@@ -186,6 +186,91 @@ class ScheduleGuardService
         }
 
         return $conflicts;
+    }
+
+    /**
+     * Teacher/room conflicts for one new session of an existing course: the course
+     * supplies teacher, class type, room, and the self-exclusions (same course and
+     * same student never conflict with themselves).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime): array
+    {
+        return $this->validateScheduleOccurrence([
+            'teacher_id' => (int) $course->getAttribute('TeacherID'),
+            'class_type' => (string) ($course->getAttribute('ClassType') ?: 'one_on_one'),
+            'room_id' => $course->getAttribute('room_id') ? (int) $course->getAttribute('room_id') : null,
+            'branch_id' => $branchId,
+            'schedule_date' => $date,
+            'start_time' => $startTime,
+            'end_time' => $endTime,
+            'exclude_course_id' => (int) $course->getAttribute('ID') ?: null,
+            'exclude_student_id' => (int) ($course->getAttribute('StudentID') ?? 0) ?: null,
+        ]);
+    }
+
+    /**
+     * Does the course's student already have another live session overlapping the slot?
+     * Occupancy: that student's sessions on the date, excluding futureReservationExclusionStatuses;
+     * rows of OTHER stopped courses are ignored, the course's own rows always count.
+     */
+    public function studentHasOverlap(\App\Models\StudentClass $course, string $date, string $startTime, string $endTime): bool
+    {
+        $rows = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->where('sc.StudentID', (int) $course->getAttribute('StudentID'))
+            ->whereDate('cs.SessionDate', $date)
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
+            ->where(function ($query) use ($course) {
+                $query->where('sc.Stop', 0)->orWhereNull('sc.Stop')
+                    ->orWhere('cs.StudentClassID', (int) $course->getKey());
+            })
+            ->select(['cs.StartTime', 'cs.EndTime'])
+            ->get();
+        foreach ($rows as $row) {
+            if ($this->timesOverlap($startTime, $endTime, (string) $row->StartTime, (string) $row->EndTime)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Validate many concrete occurrences with one shared payload; every conflict is
+     * tagged with the proposed date/time. Single conflict shape for write paths.
+     *
+     * @param  array<string, mixed>  $base   teacher_id, class_type, room_id, branch_id, exclude_*
+     * @param  iterable<array{date: string, start_time: string, end_time: string}>  $slots
+     * @param  bool  $dedupe  collapse repeats of the same type/date/time/room (edit paths)
+     * @return array<int, array<string, mixed>>
+     */
+    public function validateOccurrences(array $base, iterable $slots, bool $dedupe = false): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($slots as $slot) {
+            $conflicts = $this->validateScheduleOccurrence($base + [
+                'schedule_date' => $slot['date'],
+                'start_time' => $slot['start_time'],
+                'end_time' => $slot['end_time'],
+            ]);
+            $start = substr((string) $slot['start_time'], 0, 5);
+            $end = substr((string) $slot['end_time'], 0, 5);
+            foreach ($conflicts as $conflict) {
+                if ($dedupe) {
+                    $key = implode('|', [(string) ($conflict['type'] ?? ''), $slot['date'], $start, $end, (string) ($conflict['room_id'] ?? '')]);
+                    if (isset($seen[$key])) {
+                        continue;
+                    }
+                    $seen[$key] = true;
+                }
+                $out[] = array_merge(['date' => $slot['date'], 'proposed_time' => $start . '-' . $end], $conflict);
+            }
+        }
+
+        return $out;
     }
 
     private function capacityForClassType(?string $classType): int
@@ -353,88 +438,13 @@ class ScheduleGuardService
     }
 
     /**
-     * Sessions of a course that a schedule edit must leave in place: an approved LearningRecord or any
-     * StudentSignIn points at them. Shared with StudentClassController::syncFutureScheduledSessionTimes().
-     *
-     * @return array<int, true> class_session_id => true
-     */
-    public static function lockedClassSessionIds(int $studentClassId): array
-    {
-        $locked = [];
-        $ids = LearningRecord::query()->where('StudentClassID', $studentClassId)->where('Status', 'approved')->whereNotNull('ClassSessionID')->pluck('ClassSessionID')
-            ->merge(StudentSignIn::query()->where('StudentClassID', $studentClassId)->whereNotNull('ClassSessionID')->pluck('ClassSessionID'));
-        foreach ($ids as $id) {
-            if ((int) $id > 0) {
-                $locked[(int) $id] = true;
-            }
-        }
-
-        return $locked;
-    }
-
-    /**
-     * The same-day pairing of StudentClassController::syncFutureScheduledSessionTimes(), as a pure function so the
-     * sync and the course-edit guard cannot drift. Times are compared on their H:i prefix (H:i and H:i:s both work).
-     * - An exception row exactly on a slot is adopted (becomes regular); other exception rows are left alone.
-     * - A locked regular row stays; any slot starting at its start time is consumed (unique course/date/start key).
-     * - Unlocked regular rows sorted by start pair in order with the remaining slots (sorted by start); a duplicate
-     *   target start is skipped; rows beyond the slot count keep their time.
-     *
-     * @param  array<int, array{id:int, start:string, end:string, exception:bool}>  $rowsOnDate  'scheduled' rows of one course on one date
-     * @param  array<int, array<string, mixed>>  $daySlots  contract slots of that weekday, each with 'start' and 'end'
-     * @param  array<int, true>  $lockedIds
-     * @return array{adopted: array<int, true>, moves: array<int, array<string, mixed>>} moves: id => target slot (as passed); every other row stays
-     */
-    public static function planSameDayRemap(array $rowsOnDate, array $daySlots, array $lockedIds): array
-    {
-        $hm = fn ($t) => substr((string) $t, 0, 5);
-        $at = fn ($r, $s) => $hm($r['start']) === $hm($s['start']) && $hm($r['end']) === $hm($s['end']);
-        usort($daySlots, fn ($a, $b) => strcmp($hm($a['start']), $hm($b['start'])));
-
-        $adopted = [];
-        $locked = [];
-        $free = [];
-        foreach ($rowsOnDate as $r) {
-            if ($r['exception']) {
-                if (!array_filter($daySlots, fn ($s) => $at($r, $s))) {
-                    continue;
-                }
-                $adopted[(int) $r['id']] = true;
-            }
-            if (isset($lockedIds[(int) $r['id']])) {
-                $locked[] = $r;
-            } else {
-                $free[] = $r;
-            }
-        }
-        usort($free, fn ($a, $b) => strcmp($hm($a['start']), $hm($b['start'])));
-        // A locked row holds its (course, date, start) key (uq_class_session_slot): any slot starting there is consumed.
-        $slots = array_values(array_filter($daySlots, fn ($s) => !array_filter($locked, fn ($l) => $hm($l['start']) === $hm($s['start']))));
-
-        $moves = [];
-        $claimed = [];
-        foreach (array_slice($free, 0, count($slots)) as $idx => $r) {
-            $slot = $slots[$idx];
-            if (isset($claimed[$hm($slot['start'])])) {
-                continue;
-            }
-            $claimed[$hm($slot['start'])] = true;
-            if (!$at($r, $slot)) {
-                $moves[(int) $r['id']] = $slot;
-            }
-        }
-
-        return ['adopted' => $adopted, 'moves' => $moves];
-    }
-
-    /**
-     * Final same-day layout of one course after planSameDayRemap(): moved rows at their target slot, every other
+     * Final same-day layout of one course after ContractSessionSchedule::planSameDayRemap(): moved rows at their target slot, every other
      * live own row (locked, excess, exception, non-scheduled) where it is, plus each slot no row already starts at
      * (the reflow fills it). Capacity counting dedupes the course's own student, so a course overlapping itself
      * must be caught here. Times compare on their H:i prefix.
      *
      * @param  array<int, array{id:int, start:string, end:string}>  $rowsOnDate  live rows of one course on one date
-     * @param  array<int, array<string, mixed>>  $moves  planSameDayRemap()['moves']
+     * @param  array<int, array<string, mixed>>  $moves  ContractSessionSchedule::planSameDayRemap()['moves']
      * @param  array<int, array<string, mixed>>  $daySlots  each with 'start' and 'end'
      * @return array<int, array{0: string, 1: string}> overlapping pairs as 'H:i-H:i'
      */
@@ -561,7 +571,7 @@ class ScheduleGuardService
 
         $overlaps = [];
         $seenKeys = [];
-        // Own rows the edit moves to a new slot (same plan as syncFutureScheduledSessionTimes()) never block it;
+        // Own rows the edit moves to a new slot (same plan as ContractSessionSchedule::syncFutureScheduledSessionTimes()) never block it;
         // rows the plan leaves in place keep conflicting. Their paired schedules rows move with them.
         $remappedIds = [];
         $movedScheduleKeys = [];
@@ -597,7 +607,7 @@ class ScheduleGuardService
             // Every date with an own live row, including dates whose only rows are non-'scheduled' (e.g. pending leave).
             foreach (array_keys($ownByDate + $ownLiveByDate) as $d) {
                 $rows = $ownByDate[$d] ?? [];
-                $moves = self::planSameDayRemap($rows, $planSlots, $locked)['moves'];
+                $moves = \App\Services\Scheduling\ContractSessionSchedule::planSameDayRemap($rows, $planSlots, $locked)['moves'];
                 foreach ($rows as $r) {
                     if (isset($moves[$r['id']])) {
                         $remappedIds[$r['id']] = true;
@@ -622,6 +632,10 @@ class ScheduleGuardService
 
             $courseId = (int) ($row->StudentClassID ?? 0);
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId . '|' . $sessionDate])) {
+                continue;
+            }
+            // TD-076 flag on: another teacher teaches this occurrence, so the contract teacher is free.
+            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $sessionDate, (string) ($row->StartTime ?? ''))) {
                 continue;
             }
 
@@ -1242,6 +1256,9 @@ class ScheduleGuardService
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])) {
                 continue;
             }
+            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $date, (string) ($row->StartTime ?? ''))) {
+                continue;
+            }
             if ($excludeStudentId && (int) ($row->StudentID ?? 0) === $excludeStudentId) {
                 continue;
             }
@@ -1326,6 +1343,26 @@ class ScheduleGuardService
                 'student_id' => (int) ($row->student_id ?? 0),
                 'class_type' => $classType,
                 'room_id' => $roomId,
+                'start_time' => $start,
+                'end_time' => $end,
+            ];
+        }
+
+        // #3590 item 9 (flag on): a substitute on a makeup occurrence is busy too.
+        foreach (SubstituteScheduleService::makeupOccurrencesTaughtBy($teacherId, $date, $excludeScheduleId ? [$excludeScheduleId] : [], $excludeStudentId, $branchId) as $row) {
+            $start = $this->normalizeTime($row->start_time);
+            $end = $this->normalizeTime($row->end_time);
+            $courseId = (int) $row->student_course_id;
+            if (!$start || !$end || ($excludeCourseId && $courseId === $excludeCourseId && ($targetStartTime === null || $targetEndTime === null || ($start === $targetStartTime && $end === $targetEndTime)))) {
+                continue;
+            }
+            $entries[] = [
+                'source' => 'schedule',
+                'source_id' => (int) $row->id,
+                'course_id' => $courseId,
+                'student_id' => (int) $row->student_id,
+                'class_type' => (string) $row->class_type,
+                'room_id' => null,
                 'start_time' => $start,
                 'end_time' => $end,
             ];

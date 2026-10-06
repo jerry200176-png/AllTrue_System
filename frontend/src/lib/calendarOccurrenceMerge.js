@@ -51,6 +51,16 @@ function normalizedSubject(row) {
   return String(row?.subject || row?.Subject || '').trim().toLowerCase();
 }
 
+// R44: the backend (ClassSessionIndexReadService) already resolved the effective
+// substitute for this session (newest substitute row). An older same-slot
+// schedules row (e.g. a reschedule target still on the contract teacher) must
+// not override it. Only applied when a substitute is set: without one, the
+// session cache can lag a just-written substitute row (SC#382 lock).
+function sessionSubstituteId(sessionRow) {
+  const id = sessionRow?.substituteTeacherId ?? sessionRow?.substitute_teacher_id;
+  return id != null && id !== '' ? String(id) : '';
+}
+
 function isMaterializedOccurrence(row) {
   return row?.class_session_id != null && row.class_session_id !== '';
 }
@@ -230,7 +240,7 @@ export function mergeWeekCalendarOccurrences({
           ...course,
           ...timeSlot,
           ...(sessionRow?.teacher_id != null ? { teacher_id: sessionRow.teacher_id, teacher_name: sessionRow.teacher_name || course.teacher_name } : {}),
-          ...(scheduledForSlot && sessionRow ? {
+          ...(scheduledForSlot && sessionRow && !sessionSubstituteId(sessionRow) ? {
             teacher_id: scheduledForSlot.teacher_id ?? timeSlot.teacher_id ?? course.teacher_id,
             teacher_name: scheduledForSlot.teacher?.username || resolveTeacherName(scheduledForSlot.teacher_id) || timeSlot.teacher_name || course.teacher_name,
             original_schedule_id: scheduledForSlot.original_schedule_id || null,
@@ -289,6 +299,8 @@ export function mergeWeekCalendarOccurrences({
       const sessionRow = scid ? exactSessionRow(scid, targetDate, exStart) : null;
       const occurrenceKey = sessionRow?.id ? `session:${sessionRow.id}` : makeFallbackOccurrenceKey(ex, dow, normalizeTime);
       if (sessionRow && mergedByOccurrence.has(occurrenceKey)) {
+        const subId = sessionSubstituteId(sessionRow);
+        if (subId && String(ex.teacher_id ?? '') !== subId) continue;
         putOccurrence({
           ...mergedByOccurrence.get(occurrenceKey),
           teacher_id: ex.teacher_id,

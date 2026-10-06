@@ -27,9 +27,11 @@ class AccountingCourseClarity
     }
 
     /**
+     * @param  ?string  $resolvedStatus  BillingPayableResolver course status when the caller already has it
+     *                                   (F7 S3d, B25); null falls back to the legacy isEffectivelyPaid().
      * @return array{code:string,label:string,is_history:bool}
      */
-    public static function lifecycle(?Model $sc): array
+    public static function lifecycle(?Model $sc, ?string $resolvedStatus = null): array
     {
         if (!$sc) {
             return ['code' => 'unknown', 'label' => '', 'is_history' => false];
@@ -42,12 +44,17 @@ class AccountingCourseClarity
         if ($reason === 'settled') {
             return ['code' => 'history_settled', 'label' => '已結算', 'is_history' => true];
         }
+        if ($reason === 'waived') {
+            return ['code' => 'history_waived', 'label' => '歷史 · 確認不收', 'is_history' => true];
+        }
         if ($reason === 'completed') {
             return ['code' => 'history_completed', 'label' => '已完課', 'is_history' => true];
         }
-        $isPaid = $sc instanceof \App\Models\StudentClass
+        $isPaid = $resolvedStatus !== null
+            ? in_array($resolvedStatus, ['paid', 'free'], true)
+            : ($sc instanceof \App\Models\StudentClass
             ? $sc->isEffectivelyPaid()
-            : ((int) ($sc->getAttribute('Paid') ?? 0) === 1);
+            : ((int) ($sc->getAttribute('Paid') ?? 0) === 1));
         if ($stop && $mode !== 'date' && $isPaid && (int) ($sc->getAttribute('RemainingSessions') ?? 0) <= 0) {
             return ['code' => 'history_completed', 'label' => '已完課', 'is_history' => true];
         }

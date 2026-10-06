@@ -75,8 +75,14 @@ class SystemTrustController extends Controller
             return [];
         }
 
-        $content = (string) file_get_contents($path);
-        if ($content === '') {
+        // New entries live in docs/changes/<date>-<slug>.md fragments; CHANGELOG.md is frozen history.
+        $fragments = glob(dirname($path) . '/changes/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md') ?: [];
+        $content = '';
+        foreach ($fragments as $fragment) {
+            $content .= (string) file_get_contents($fragment) . "\n\n";
+        }
+        $content .= (string) file_get_contents($path);
+        if (trim($content) === '') {
             return [];
         }
 

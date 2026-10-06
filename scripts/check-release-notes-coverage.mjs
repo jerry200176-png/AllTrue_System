@@ -2,8 +2,10 @@
 /**
  * Fail closed when a recent CHANGELOG entry has no staff-update decision.
  *
- * A product-facing entry must point at a STAFF_UPDATES id. Internal-only work
- * must point at an id in RELEASE_NOTES_EXEMPTIONS.yml. This keeps the explicit
+ * A product-facing entry must point at a staff-update id (docs/STAFF_UPDATES.yml or
+ * docs/staff-updates/*.yml). Internal-only work must point at an id in
+ * RELEASE_NOTES_EXEMPTIONS.yml, or carry its own `<!-- silent-reason: ... -->` line
+ * (fragment entries under docs/changes/). Entries come from docs/CHANGELOG.md + docs/changes/*.md. This keeps the explicit
  * STAFF_UPDATES source of truth while preventing silent omissions.
  */
 import assert from 'node:assert/strict';
@@ -11,10 +13,9 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readChangelogText, readUpdatesYaml } from './lib/changeFragments.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CHANGELOG = path.join(ROOT, 'docs', 'CHANGELOG.md');
-const STAFF_UPDATES = path.join(ROOT, 'docs', 'STAFF_UPDATES.yml');
 const EXEMPTIONS = path.join(ROOT, 'docs', 'RELEASE_NOTES_EXEMPTIONS.yml');
 const BASELINE_DATE = '2026-08-08';
 const HEADING_RE = /^## (\d{4}-\d{2}-\d{2}) — (.+)$/;
@@ -38,6 +39,8 @@ function parseEntries(markdown) {
   }
   return entries;
 }
+
+const REASON_RE = /<!--\s*silent-reason:\s*(\S.*?)\s*-->/i;
 
 function markerFor(entry) {
   const match = entry.body.match(MARKER_RE);
@@ -70,6 +73,7 @@ function selfTest() {
     '- body',
   ].join('\n'));
   assert.equal(entries.length, 2);
+  assert.match('<!-- silent-reason: 內部重構 -->', REASON_RE);
   assert.deepEqual(markerFor(entries[0]), { kind: 'staff_update', id: 'staff-sample' });
   assert.equal(markerFor(entries[1]), null);
   console.log('check-release-notes-coverage self-test: ok');
@@ -87,8 +91,8 @@ function main() {
   };
   const base = argValue('--base', 'origin/main');
   const head = argValue('--head', 'HEAD');
-  const changelog = read(CHANGELOG);
-  const staff = read(STAFF_UPDATES);
+  const changelog = readChangelogText(ROOT);
+  const staff = readUpdatesYaml(ROOT, 'STAFF_UPDATES.yml', 'docs/staff-updates');
   const exemptions = fs.existsSync(EXEMPTIONS) ? read(EXEMPTIONS) : '';
   const errors = [];
 
@@ -101,18 +105,19 @@ function main() {
     if (marker.kind === 'staff_update' && !staff.includes(`id: ${marker.id}`)) {
       errors.push(`${entry.date} ${entry.title}: ${marker.id} is not in docs/STAFF_UPDATES.yml`);
     }
-    if (marker.kind === 'silent_ship' && !exemptions.includes(`id: ${marker.id}`)) {
-      errors.push(`${entry.date} ${entry.title}: ${marker.id} is not in docs/RELEASE_NOTES_EXEMPTIONS.yml`);
+    if (marker.kind === 'silent_ship' && !exemptions.includes(`id: ${marker.id}`) && !REASON_RE.test(entry.body)) {
+      errors.push(`${entry.date} ${entry.title}: ${marker.id} is not in docs/RELEASE_NOTES_EXEMPTIONS.yml and has no <!-- silent-reason: ... --> line`);
     }
   }
 
   const changed = changedFiles(base, head);
   const changelogChanged = changed.includes('docs/CHANGELOG.md');
   const coverageSourceChanged = changed.includes('docs/STAFF_UPDATES.yml')
-    || changed.includes('docs/RELEASE_NOTES_EXEMPTIONS.yml');
+    || changed.includes('docs/RELEASE_NOTES_EXEMPTIONS.yml')
+    || changed.some((f) => f.startsWith('docs/staff-updates/'));
   const newHeadings = addedHeadings(base, head);
   if (changelogChanged && (newHeadings.length > 0 || changed.includes('docs/CHANGELOG.md')) && !coverageSourceChanged) {
-    errors.push('docs/CHANGELOG.md changed without docs/STAFF_UPDATES.yml or docs/RELEASE_NOTES_EXEMPTIONS.yml');
+    errors.push('docs/CHANGELOG.md changed without a staff-update or exemption source (prefer a new docs/changes/*.md fragment instead of editing the frozen CHANGELOG)');
   }
 
   if (errors.length) {

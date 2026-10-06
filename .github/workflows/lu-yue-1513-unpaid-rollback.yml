@@ -1,6 +1,6 @@
-name: 大安盧越 SC1513 unpaid rollback (guarded)
+name: SC1513 unpaid rollback (guarded)
 
-# One-off data repair: previous-period contract StudentClass.ID=1513 (盧越 / campus 15)
+# One-off data repair: previous-period contract StudentClass.ID=1513 (student 375 / campus 15)
 # was marked paid via 主任核帳登記 on 2026-07-06 (Invoice 1070 / Payment 1049) but parent
 # has not actually paid that period. Current period SC 2828 is correctly unpaid and must
 # not be touched. Older settled SC 325 must not be touched.
@@ -85,12 +85,12 @@ jobs:
           echo "=== Before state ==="
           php artisan tinker --execute='
             $db = \Illuminate\Support\Facades\DB::class;
-            $student = $db::table("Student")->where("id", 375)->first(["id","name","CampusID"]);
+            $student = $db::table("Student")->where("id", 375)->first(["id","CampusID"]);
             $sc1513 = $db::table("StudentClass")->where("ID", 1513)->first(["ID","StudentID","Charge","Rate","Paid","PayDate","Stop","SessionCount","UsedSessions","RemainingSessions"]);
             $sc2828 = $db::table("StudentClass")->where("ID", 2828)->first(["ID","Paid","Charge","Rate"]);
             $sc325 = $db::table("StudentClass")->where("ID", 325)->first(["ID","Paid","Stop"]);
             $inv = $db::table("Invoice")->where("id", 1070)->first(["id","StudentClassID","TotalAmount","PaidAmount","Status"]);
-            $pay = $db::table("Payment")->where("id", 1049)->first(["id","InvoiceID","Amount","Method","Note","PaidAt"]);
+            $pay = $db::table("Payment")->where("id", 1049)->first(["id","InvoiceID","Amount","Method","PaidAt"]);
             $reports = $db::table("payment_reports")->where("StudentClassID", 1513)->get(["id","status","InvoiceID","reported_amount","payment_date"]);
             echo json_encode(compact("student","sc1513","sc2828","sc325","inv","pay","reports"), JSON_UNESCAPED_UNICODE), PHP_EOL;
           ' || { echo "TINKER_BEFORE_FAILED"; exit 1; }
@@ -123,7 +123,7 @@ jobs:
               $sc325 = $db::table("StudentClass")->where("ID", 325)->lockForUpdate()->first();
 
               $checks = [
-                "student_name" => $student && $student->name === "盧越",
+                "student_id" => $student && (int) $student->id === 375,
                 "student_campus" => $student && (int) $student->CampusID === 15,
                 "sc_student" => $sc && (int) $sc->StudentID === 375,
                 "sc_charge" => $sc && (int) $sc->Charge === 12000,
@@ -144,7 +144,7 @@ jobs:
                 throw new RuntimeException("precondition failed; aborting with no write");
               }
 
-              $reason = "Founder-authorized rollback: 大安盧越上期(SC1513)實際未繳，撤銷 2026-07-06 主任核帳登記 Invoice1070/Payment1049; run=".$runId;
+              $reason = "Founder-authorized rollback: SC1513 上期實際未繳，撤銷 2026-07-06 主任核帳登記 Invoice1070/Payment1049; run=".$runId;
               $existingVoid = $db::table("Payment")
                 ->where("InvoiceID", 1070)
                 ->where("Method", "void")
@@ -218,8 +218,8 @@ jobs:
           php artisan tinker --execute='
             $db = \Illuminate\Support\Facades\DB::class;
             $sc1513 = $db::table("StudentClass")->where("ID", 1513)->first(["ID","Paid","PayDate","Charge"]);
-            $inv = $db::table("Invoice")->where("id", 1070)->first(["id","Status","PaidAmount","Note"]);
-            $pays = $db::table("Payment")->where("InvoiceID", 1070)->orderBy("id")->get(["id","Amount","Method","Note"]);
+            $inv = $db::table("Invoice")->where("id", 1070)->first(["id","Status","PaidAmount"]);
+            $pays = $db::table("Payment")->where("InvoiceID", 1070)->orderBy("id")->get(["id","Amount","Method"]);
             $sc2828 = $db::table("StudentClass")->where("ID", 2828)->first(["ID","Paid","Charge"]);
             echo json_encode(compact("sc1513","inv","pays","sc2828"), JSON_UNESCAPED_UNICODE), PHP_EOL;
           ' || { echo "TINKER_AFTER_FAILED"; exit 1; }

@@ -815,6 +815,7 @@
 
 <script setup>
 import { computed, defineAsyncComponent, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { isDirectorRole } from './lib/roleCapabilities.js';
 import AtSkeleton from './components/design-system/AtSkeleton.vue';
 import { supabase } from './supabase';
 import {
@@ -2040,7 +2041,7 @@ function onUnreadChange(count) {
 
 // Prefer role from session (set by backend at login); profile API only returns teachers, so directors/super_admin would get wrong role otherwise
 const role = computed(() => session.value?.user?.role ?? userProfile.value?.role ?? 'student');
-const isDirector = computed(() => role.value === 'director' || role.value === 'admin' || role.value === 'super_admin');
+const isDirector = computed(() => isDirectorRole(role.value));
 const isTeacher = computed(() => role.value === 'teacher');
 const showStaffModeSwitch = computed(() => canSwitchStaffMode(staffCapabilities.value));
 
@@ -2487,7 +2488,7 @@ async function ensureDirectorBranches() {
     const s = session.value;
     if (!s?.user) return;
     const r = s.user.role ?? userProfile.value?.role;
-    if (r !== 'director' && r !== 'admin' && r !== 'super_admin') return;
+    if (!isDirectorRole(r)) return;
 
     let list = [];
     if (s?.access_token) list = await loadBranchesForDirector(s.access_token);
@@ -2657,7 +2658,7 @@ const fetchProfile = async (_uid, revision = authRevision) => {
         if (me.role === 'teacher') {
             ensureTeacherBranch();
             applyDeepLinkFromUrl();
-        } else if (me.role === 'director' || me.role === 'admin' || me.role === 'super_admin') {
+        } else if (isDirectorRole(me.role)) {
             applyDeepLinkFromUrl();
         }
     } catch { /* Preserve the current authenticated identity on transport failure. */ }

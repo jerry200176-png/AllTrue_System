@@ -1,4 +1,5 @@
 import { isSessionModeCourse } from './sessionPlanningStatus.js';
+import { isPackageMember, poolTotalSessions, poolRemainingSessions, purchasedSessions } from './courseMoneyState.js';
 
 /**
  * Pure helpers for shared-package (共用方案) total-session edits.
@@ -76,11 +77,11 @@ export function packageMemberSessionSummary(course, { completed = 0, cancelled =
   const done = Math.max(0, Number(completed) || 0);
   const cancelledN = Math.max(0, Number(cancelled) || 0);
   const cancelledSuffix = cancelledN > 0 ? `，${cancelledN} 堂已取消` : '';
-  const isPackage = Number(course?.PackageID ?? course?.package_id ?? 0) > 0;
+  const isPackage = isPackageMember(course);
 
   if (isPackage) {
-    const total = Math.max(0, Number(course?.package_total_sessions ?? course?.PackageTotalSessions ?? 0) || 0);
-    const remaining = Math.max(0, Number(course?.package_remaining_sessions ?? course?.PackageRemainingSessions ?? 0) || 0);
+    const total = Math.max(0, poolTotalSessions(course) ?? 0);
+    const remaining = Math.max(0, poolRemainingSessions(course) ?? 0);
     const used = Math.max(0, total - remaining);
     return {
       isPackage: true,
@@ -92,7 +93,7 @@ export function packageMemberSessionSummary(course, { completed = 0, cancelled =
     };
   }
 
-  const purchased = Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
+  const purchased = purchasedSessions(course);
   if (!isSessionModeCourse(course)) {
     return {
       isPackage: false,

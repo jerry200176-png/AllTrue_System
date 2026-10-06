@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\OccurrenceAssignmentService;
 use App\Services\SubstituteService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -271,6 +272,9 @@ class TeacherLeaveController extends Controller
         $campusId = (int) ($student->CampusID ?? 0);
         if (!empty($managedCampusIds) && !in_array($campusId, $managedCampusIds, true)) {
             return ['ok' => false, 'error' => '此堂次不在您管理分校', 'class_session_id' => $classSessionId];
+        }
+        if (OccurrenceAssignmentService::enabledFor($campusId) && OccurrenceAssignmentService::onLeave($session)) {
+            return ['ok' => false, 'error' => '此堂已請假，無法代課', 'class_session_id' => $classSessionId];
         }
         if (!$svc->teacherBoundToAny($teacherId, $managedCampusIds)) {
             return ['ok' => false, 'error' => '代課老師未綁定任一您管理的分校', 'class_session_id' => $classSessionId];

@@ -4,6 +4,7 @@
  * Without package-level scheduled allocation aggregate: never surface
  * package_remaining / pool leftover as member-course scheduling capacity.
  */
+import { isPackageMember } from './courseMoneyState.js';
 
 export function isSessionModeCourse(course) {
   const paymentType = String(course?.payment_type || '').trim();
@@ -50,7 +51,7 @@ export function buildSessionPlanningStatus({
   if (!isSessionModeCourse(course)) return null;
   if (String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence') return null;
 
-  const isPackage = !!course?.PackageID;
+  const isPackage = isPackageMember(course);
   const poolTotal = isPackage ? Math.max(0, Number(course?.package_total_sessions ?? 0) || 0) : 0;
   const poolRemaining = isPackage ? Math.max(0, Number(course?.package_remaining_sessions ?? 0) || 0) : 0;
   const poolUsed = isPackage ? Math.max(0, poolTotal - poolRemaining) : 0;

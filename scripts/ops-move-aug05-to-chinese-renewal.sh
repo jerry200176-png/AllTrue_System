@@ -6,7 +6,6 @@ set -euo pipefail
 MODE="${MODE:-dry-run}"
 STUDENT_KEY="${STUDENT_KEY:-}"
 STUDENT_ID="${STUDENT_ID:-}"
-STUDENT_NAME="${STUDENT_NAME:-}"
 SOURCE_CLASS="${SOURCE_CLASS:-}"
 TARGET_CLASS="${TARGET_CLASS:-}"
 SESSION_ID="${SESSION_ID:-}"
@@ -17,9 +16,10 @@ ENV_FILE="${ENV_FILE:-/home/admin/backend/.env}"
 BACKEND_DIR="${BACKEND_DIR:-/home/admin/backend}"
 APPLY_CONFIRM='APPROVE_MOVE_20260805_TO_3230_3231'
 
-case "$STUDENT_KEY:$STUDENT_ID:$SOURCE_CLASS:$TARGET_CLASS:$SESSION_ID:$STUDENT_NAME" in
-  zhang_zheng_ning:374:1681:3230:23157:張正甯) ;;
-  zhang_zheng_le:373:1682:3231:27156:張正樂) ;;
+# Public repo (#3605): scope is ids only; no student name is accepted, compared or printed.
+case "$STUDENT_KEY:$STUDENT_ID:$SOURCE_CLASS:$TARGET_CLASS:$SESSION_ID" in
+  student_374:374:1681:3230:23157) ;;
+  student_373:373:1682:3231:27156) ;;
   *)
     echo "SCOPE_MISMATCH: exact allowlist rejected"
     exit 1
@@ -49,7 +49,7 @@ echo "=== move 8/5 to chinese renewal mode=$MODE student=$STUDENT_KEY source=$SO
 
 echo "--- source 8/5 session ---"
 SRC=$("${M[@]}" -e "
-SELECT CONCAT_WS('|',cs.id,cs.StudentClassID,sc.StudentID,s.name,IFNULL(sub.Subject_Name,'null'),
+SELECT CONCAT_WS('|',cs.id,cs.StudentClassID,sc.StudentID,IFNULL(sub.Subject_Name,'null'),
  DATE(cs.SessionDate),LEFT(cs.StartTime,5),LOWER(cs.Status),sc.Stop,IFNULL(sc.closed_reason,'null'),IFNULL(sc.Paid,'null'))
 FROM ClassSession cs
 JOIN StudentClass sc ON sc.ID=cs.StudentClassID
@@ -82,7 +82,7 @@ LIMIT 1;")
 echo "${SLOT:-none}"
 
 errors=()
-[[ "$SRC" == "${SESSION_ID}|${SOURCE_CLASS}|${STUDENT_ID}|${STUDENT_NAME}|國文|2026-08-05|19:30|attended|"* ]] || errors+=("source_session")
+[[ "$SRC" == "${SESSION_ID}|${SOURCE_CLASS}|${STUDENT_ID}|國文|2026-08-05|19:30|attended|"* ]] || errors+=("source_session")
 [[ "$TGT" == "${TARGET_CLASS}|${STUDENT_ID}|國文|8|"*"|0|10800|0|"* ]] || errors+=("target_batch")
 [ -n "$SLOT" ] || errors+=("no_future_slot")
 slot_signin=$(echo "$SLOT" | cut -d'|' -f5)
