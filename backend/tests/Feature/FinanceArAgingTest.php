@@ -4,122 +4,91 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class FinanceArAgingTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_ar_aging_returns_buckets_for_overdue_courses(): void
+    private function course(Student $student, array $over = []): StudentClass
     {
-        [$token, $campus] = $this->seedDirector();
-
-        $student = Student::create([
-            'name' => 'Test Student',
-            'CampusID' => $campus->id,
-            'ClassID' => 0,
-            'SchoolName' => 'Test School',
-        ]);
-
-        StudentClass::create([
+        return StudentClass::create($over + [
             'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
             'TeacherID' => 1, 'ClassType' => 'one_on_one',
-            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(45)->toDateString(),
+            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(100)->toDateString(),
             'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
             'RemainingSessions' => 5, 'UsedSessions' => 0,
-            'Charge' => 5000, 'Pay' => 2000, 'Paid' => 0, 'Rate' => 100, 'Stop' => 0,
+            'Charge' => 5000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 100, 'Stop' => 0,
             'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
+    }
 
-        $r = $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token));
-        $r->assertOk();
-        $this->assertArrayHasKey('students', $r->json());
-        $this->assertArrayHasKey('totals', $r->json());
+    private function invoice(StudentClass $course, int $total, int $paid, int $daysAgo): Invoice
+    {
+        $invoice = Invoice::create([
+            'StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+            'IssueDate' => now()->subDays($daysAgo)->toDateString(),
+            'TotalAmount' => $total, 'PaidAmount' => $paid,
+            'Status' => $paid >= $total ? 'paid' : ($paid > 0 ? 'partial' : 'unpaid'),
+        ]);
+        if ($paid > 0) {
+            Payment::create(['InvoiceID' => $invoice->id, 'Amount' => $paid, 'PaidAt' => now(), 'Method' => 'cash']);
+        }
+
+        return $invoice;
+    }
+
+    private function student(Campus $campus, string $name): Student
+    {
+        return Student::create(['name' => $name, 'CampusID' => $campus->id, 'ClassID' => 0, 'SchoolName' => 'Test School']);
+    }
+
+    public function test_buckets_come_from_invoices_and_payments_aged_by_oldest_open_invoice(): void
+    {
+        [$token, $campus] = $this->seedDirector();
+        $this->invoice($this->course($this->student($campus, 'Partial')), 5000, 2000, 45);
+
+        $r = $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token))->assertOk();
         $this->assertEquals(3000, $r->json('totals.grand_total'));
         $this->assertEquals(3000, $r->json('students.0.thirty'));
+        $this->assertEquals(now()->subDays(45)->toDateString(), $r->json('students.0.oldest_unpaid_date'));
     }
 
-    public function test_ar_aging_excludes_fully_paid(): void
+    public function test_stopped_contract_debt_is_still_receivable(): void
+    {
+        // The 宥翰 bug: a closed contract with an unpaid invoice must not vanish from AR.
+        [$token, $campus] = $this->seedDirector();
+        $this->invoice($this->course($this->student($campus, 'Closed'), ['Stop' => 1, 'closed_reason' => 'settled_pending']), 4950, 0, 95);
+
+        $r = $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token))->assertOk();
+        $this->assertEquals(4950, $r->json('students.0.ninety_plus'));
+    }
+
+    public function test_excludes_paid_waived_tutoring_and_unbilled(): void
     {
         [$token, $campus] = $this->seedDirector();
+        $s = $this->student($campus, 'Mixed');
+        $this->invoice($this->course($s), 3000, 3000, 40);
+        $waived = $this->course($s, ['Stop' => 1]);
+        $this->invoice($waived, 3000, 0, 40);
+        DB::table('StudentClass')->where('ID', $waived->ID)->update(['closed_reason' => 'waived']);
+        $this->invoice($this->course($s, ['ClassType' => '  TUTORING  ']), 3000, 0, 40);
+        $this->course($s, ['Charge' => 9000, 'Pay' => 0]); // legacy Charge>Pay with no invoice is not AR
+        $this->invoice($this->course($s), 1200, 0, 5);
 
-        $student = Student::create([
-            'name' => 'Paid Student',
-            'CampusID' => $campus->id,
-            'ClassID' => 0,
-            'SchoolName' => 'Good School',
-        ]);
-
-        StudentClass::create([
-            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
-            'TeacherID' => 1, 'ClassType' => 'one_on_one',
-            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(45)->toDateString(),
-            'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
-            'RemainingSessions' => 0, 'UsedSessions' => 5,
-            'Charge' => 5000, 'Pay' => 5000, 'Paid' => 1, 'Rate' => 100, 'Stop' => 0,
-            'MDate' => now(), 'ScheduleMode' => 'count',
-        ]);
-
-        $r = $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token));
-        $r->assertOk();
-        $this->assertEmpty($r->json('students'));
-        $this->assertEquals(0, $r->json('totals.grand_total'));
+        $r = $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token))->assertOk();
+        $this->assertEquals(1200, $r->json('totals.grand_total'));
+        $this->assertEquals(1200, $r->json('students.0.current'));
     }
 
-    public function test_ar_aging_excludes_tutoring_but_keeps_regular_control(): void
-    {
-        [$token, $campus] = $this->seedDirector();
-        $student = Student::create([
-            'name' => 'Tutoring AR Control', 'CampusID' => $campus->id, 'ClassID' => 0,
-            'SchoolName' => 'Test School',
-        ]);
-        $base = [
-            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
-            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(45)->toDateString(),
-            'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
-            'RemainingSessions' => 5, 'UsedSessions' => 0, 'Stop' => 0,
-            'MDate' => now(), 'ScheduleMode' => 'count',
-        ];
-        StudentClass::create($base + [
-            'ClassType' => '  TUTORING  ', 'Charge' => 5000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 100,
-        ]);
-        StudentClass::create($base + [
-            'ClassType' => 'one_on_one', 'Charge' => 3000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 100,
-        ]);
-
-        $r = $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token));
-        $r->assertOk();
-        $this->assertEquals(3000, $r->json('totals.grand_total'));
-        $this->assertEquals(3000, $r->json('students.0.total'));
-    }
-
-    public function test_historical_as_of_keeps_legacy_future_start_bucket(): void
-    {
-        // #2833 compatibility only: do not redesign AR aging during framework activation.
-        [$token, $campus] = $this->seedDirector();
-        $student = Student::create([
-            'name' => 'AR compatibility fixture', 'CampusID' => $campus->id,
-            'ClassID' => 0, 'SchoolName' => 'Test School',
-        ]);
-        StudentClass::create([
-            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
-            'TeacherID' => 1, 'ClassType' => 'one_on_one', 'by1' => 1, 'Period' => 4,
-            'StartDate' => '2026-09-15', 'TotalHours' => 10, 'SessionCount' => 5,
-            'SessionDuration' => 120, 'RemainingSessions' => 5, 'UsedSessions' => 0,
-            'Charge' => 5000, 'Pay' => 2000, 'Paid' => 0, 'Rate' => 100, 'Stop' => 0,
-            'MDate' => now(), 'ScheduleMode' => 'count',
-        ]);
-        $this->getJson('/api/v1/finance/ar-aging?branch_id='.$campus->id.'&as_of=2026-08-01', $this->bearer($token))
-            ->assertOk()->assertJsonPath('students.0.thirty', 3000)
-            ->assertJsonPath('students.0.current', 0)->assertJsonPath('totals.grand_total', 3000);
-    }
-
-    /** @return array{string, Campus} */
     private function seedDirector(): array
     {
         $campus = CampusFactory::new()->create();
