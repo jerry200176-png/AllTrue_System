@@ -1,0 +1,47 @@
+name: PII log purge (public repo)
+
+# The repo is public and production-data workflows (bug dumps, case probes, ops repairs, diagnoses)
+# can print student/teacher names into run logs, inputs and artifacts. Founder decision 2026-10-06:
+# keep the repo public, delete those runs. This deletes completed runs of every workflow listed in
+# .github/pii-log-workflows.txt once they are older than RETAIN_HOURS (time to read the result).
+# Add any new workflow that reads production data to that list in the same PR.
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: pii-log-purge
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RETAIN_HOURS: '6'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Delete old runs of listed workflows
+        run: |
+          set -uo pipefail
+          cutoff=$(date -u -d "${RETAIN_HOURS} hours ago" +%Y-%m-%dT%H:%M:%SZ)
+          deleted=0
+          while read -r wf; do
+            [ -z "$wf" ] && continue
+            ids=$(gh api "repos/$REPO/actions/workflows/$wf/runs?per_page=100&created=<$cutoff" \
+              -q '.workflow_runs[]|select(.status=="completed")|.id' 2>/dev/null || true)
+            for id in $ids; do
+              gh api -X DELETE "repos/$REPO/actions/runs/$id" >/dev/null 2>&1 && deleted=$((deleted+1))
+            done
+          done < .github/pii-log-workflows.txt
+          echo "deleted=$deleted"
