@@ -140,7 +140,7 @@ jobs:
               "from" => $status,
               "final" => $fresh ? (string)$fresh->status : "missing",
               "transition" => $transition,
-              "comment" => $comment,
+              "comment_id" => is_array($comment) ? ($comment["skipped"] ?? false) : $comment->id,
               "issue" => $issueUrl,
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           }
