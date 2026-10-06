@@ -901,6 +901,86 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(0, PaymentReport::where('InvoiceID', $staleInvoice->id)->count());
     }
 
+    private function recordDirect(string $token, int $classId, int $amount, ?int $invoiceId = null)
+    {
+        return $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/payment-reports/director-record', array_filter([
+                'student_class_id' => $classId, 'invoice_id' => $invoiceId,
+                'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => $amount,
+            ]));
+    }
+
+    private function invoiceWithCash(StudentClass $sc, int $total, int $cash): Invoice
+    {
+        $invoice = Invoice::create([
+            'StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01',
+            'TotalAmount' => $total, 'PaidAmount' => $cash, 'Status' => $cash >= $total ? 'paid' : ($cash > 0 ? 'partial' : 'unpaid'),
+            'billing_period' => '2026-04',
+        ]);
+        if ($cash > 0) {
+            Payment::create(['InvoiceID' => $invoice->id, 'Amount' => $cash, 'PaidAt' => '2026-04-10', 'Method' => 'cash', 'Note' => 'x']);
+        }
+
+        return $invoice;
+    }
+
+    public function test_f7_s6_partial_course_takes_the_remainder_then_is_blocked_once_paid(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        // Paid=1 is what the writer leaves on a partial receipt: it must not block the remainder.
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1, 'PayDate' => '2026-04-10']);
+        $invoice = $this->invoiceWithCash($sc, 8800, 4000);
+
+        $reportId = $this->recordDirect($token, $sc->ID, 4800, $invoice->id)->assertOk()->json('report_id');
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/payment-reports/{$reportId}/confirm")->assertOk();
+        $this->assertSame(2, Payment::where('InvoiceID', $invoice->id)->count());
+
+        $this->recordDirect($token, $sc->ID, 100)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        $this->assertSame(2, Payment::where('InvoiceID', $invoice->id)->count());
+    }
+
+    public function test_f7_s6_zero_charge_count_course_with_rate_uses_resolver_not_raw_charge(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        // Raw Charge is 0 but Rate x qty > 0 and the invoice is fully paid: the old guard (charge > 0) let a duplicate through.
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 0, 'Rate' => 1100, 'SessionCount' => 8]);
+        $this->invoiceWithCash($sc, 8800, 8800);
+
+        $this->recordDirect($token, $sc->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        $this->assertSame(1, Payment::count());
+    }
+
+    public function test_f7_s6_package_member_paid_blocks_and_unpaid_allows(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $package = CoursePackage::create(['student_id' => $student->id, 'campus_id' => 1, 'name' => 'S6', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8, 'used_sessions' => 0, 'rate' => 1100, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true, 'paid_at' => '2026-04-10']);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 8800, 'PackageID' => $package->id]);
+        $this->recordDirect($token, $sc->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+
+        $package->update(['paid' => false, 'paid_at' => null]);
+        $this->recordDirect($token, $sc->ID, 8800)->assertOk();
+    }
+
+    public function test_f7_s6_guard_fails_closed_when_the_resolver_throws(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 8800]);
+        $this->mock(\App\Services\BillingPayableResolver::class)
+            ->shouldReceive('courseStatusesByStudentClassIds')->andThrow(new \RuntimeException('boom'));
+
+        $this->recordDirect($token, $sc->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        $this->assertSame(0, Payment::count());
+    }
+
     public function test_confirm_rejects_duplicate_payment_when_course_already_paid(): void
     {
         Carbon::setTestNow('2026-04-28 10:00:00');

@@ -7605,38 +7605,21 @@ class StudentClassController extends Controller
      */
     private function courseNeedsPaymentReconciliation(StudentClass $studentClass): bool
     {
-        // Ledger first: any non-void invoice not covered by its payment rows is open debt,
-        // even when a stale Paid flag or another period's PaidAmount says otherwise.
-        $hasOpenInvoice = Invoice::query()->with('payments')
-            ->where(function ($query) {
-                $query->whereNull('Status')->orWhere('Status', '!=', 'void');
-            })
-            ->where('StudentClassID', $studentClass->getAttribute('ID'))
-            ->get()
-            ->contains(function (Invoice $invoice) use ($studentClass) {
-                $amounts = $this->invoiceAmounts->resolve($invoice, $studentClass);
-                // Legacy invoices carry PaidAmount without Payment rows (same rule as MonthlyPeriodPaymentService).
-                $paid = $invoice->getRelationValue('payments')->isEmpty() ? max(0, (int) $invoice->getAttribute('PaidAmount')) : (int) $amounts['net_applied'];
-
-                return (int) $amounts['total_amount'] > $paid;
-            });
-        if ($hasOpenInvoice) {
+        // F7 S6 (B8): the resolver decides (net of voids, per period, free/zero-fee never owes). Only paid / free
+        // may close as settled; unpaid / partial / unbilled, and a resolver failure, stay in the accounting queue.
+        // review_required (unattributed legacy month) states no amount: fall back to the legacy Paid flag for that shape only.
+        try {
+            $id = (int) $studentClass->getAttribute('ID');
+            $status = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id], [$studentClass])[$id]['status'] ?? null;
+        } catch (\Throwable) {
             return true;
         }
 
-        $charge = (int) ($studentClass->Charge ?? 0);
-        if ($charge <= 0 || $studentClass->isEffectivelyPaid()) {
-            return false;
+        if ($status === 'review_required') {
+            return (int) ($studentClass->getAttribute('Charge') ?? 0) > 0 && !$studentClass->isEffectivelyPaid();
         }
 
-        $paidAmount = (int) Invoice::query()
-            ->where(function ($query) {
-                $query->whereNull('Status')->orWhere('Status', '!=', 'void');
-            })
-            ->where('StudentClassID', $studentClass->getAttribute('ID'))
-            ->sum('PaidAmount');
-
-        return !$studentClass->isFullyPaidWithInvoiceAmount($paidAmount, $charge);
+        return $status === null || in_array($status, ['unpaid', 'partial', 'unbilled'], true);
     }
 
     private function cancelFutureScheduledSessions(StudentClass $studentClass, ?string $reason): int
