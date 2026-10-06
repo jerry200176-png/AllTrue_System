@@ -318,7 +318,8 @@ class AlertController extends Controller
                 'payable_invoice_id' => $payable['payable_invoice_id'],
                 'billing_period'    => $payable['payable_billing_period'],
                 'paid_amount'        => $paidAmount,
-                'outstanding'        => $isPaid ? 0 : max(0, $charge - $paidAmount),
+                // F7 S3b: one outstanding answer = the resolver's (same value as payable_outstanding); no invoice => estimate.
+                'outstanding'        => $payable['payable_outstanding'] ?? ($isPaid ? 0 : max(0, $charge - $paidAmount)),
                 'payment_status'     => $this->computePackageCountPaymentStatus($pkg, $paidAmount, $charge, $pendingReportId !== null),
                 'latest_payment_report_id' => $pendingReportId,
                 'has_newer_course'         => false,
@@ -362,7 +363,8 @@ class AlertController extends Controller
                 $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
                 $rawPaid = (int) ($sc->Paid ?? 0) === 1;
                 $scIsPaid = $this->isFullyPaid($rawPaid || ($sc ? $sc->isEffectivelyPaid() : false), $paidAmount, $charge);
-                $outstanding = $scIsPaid ? 0 : max(0, $charge - $paidAmount);
+                // F7 S3b: one outstanding answer = the resolver's (same value as payable_outstanding); no invoice => estimate.
+                $outstanding = $payable['payable_outstanding'] ?? ($scIsPaid ? 0 : max(0, $charge - $paidAmount));
 
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
 
