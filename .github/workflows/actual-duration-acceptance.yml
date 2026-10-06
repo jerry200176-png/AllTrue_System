@@ -256,7 +256,8 @@ jobs:
           HTTP_CODE="$(echo "$RESP" | tail -1)"
           BODY="$(echo "$RESP" | sed '$d')"
           echo "create-response-http-code=$HTTP_CODE"
-          echo "create-response-body=$BODY"
+          # #3605: public repo -- API bodies can carry person data; log only their top-level keys.
+          echo "create-response-keys=$(echo "$BODY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(",".join(sorted(d)) if isinstance(d,dict) else "non-object")' 2>/dev/null || echo unparsable)"
           if [ "$HTTP_CODE" != "201" ]; then
             echo "::error::Course creation did not return 201 -- see body above. Nothing further will run."
             exit 1
@@ -313,7 +314,7 @@ jobs:
             -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
             --data '{"standard_lesson_minutes": 180}')"
           echo "contract-edit-after-first-deduction-http-code=$CODE"
-          cat /tmp/lock-body.json
+          echo "contract-edit-response-keys=$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); print(",".join(sorted(d)) if isinstance(d,dict) else "non-object")' /tmp/lock-body.json 2>/dev/null || echo unparsable)"
           if [ "$CODE" != "422" ]; then
             echo "::error::Expected 422 (contract locked after first deduction), got $CODE -- this is a real regression, investigate before declaring acceptance passed."
             exit 1
@@ -330,7 +331,7 @@ jobs:
           CODE="$(curl -sk -o /tmp/pause-body.json -w '%{http_code}' -X POST "$BASE_URL/api/v1/student-classes/$SCID/pause" \
             -H "Authorization: Bearer $TOKEN")"
           echo "pause-http-code=$CODE"
-          cat /tmp/pause-body.json
+          echo "pause-response-keys=$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); print(",".join(sorted(d)) if isinstance(d,dict) else "non-object")' /tmp/pause-body.json 2>/dev/null || echo unparsable)"
           echo "Note: this pauses (Stop=1), it does not delete. The course and its ledger remain as inspectable evidence."
 
       - name: Compose full evidence artifact (redacted)
@@ -347,10 +348,10 @@ jobs:
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- ledger + schema verification (read-only) ----"
             cat /tmp/verify-output.txt 2>/dev/null || true
-            echo "---- contract-lock HTTP check ----"
-            cat /tmp/lock-body.json 2>/dev/null || true
-            echo "---- pause confirmation ----"
-            cat /tmp/pause-body.json 2>/dev/null || true
+            echo "---- contract-lock HTTP check (response keys only) ----"
+            python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); print(",".join(sorted(d)) if isinstance(d,dict) else "non-object")' /tmp/lock-body.json 2>/dev/null || true
+            echo "---- pause confirmation (response keys only) ----"
+            python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); print(",".join(sorted(d)) if isinstance(d,dict) else "non-object")' /tmp/pause-body.json 2>/dev/null || true
           } > /tmp/acceptance-audit.txt
         env:
           GITHUB_EVENT_INPUTS_STUDENT_ID: ${{ github.event.inputs.student_id }}

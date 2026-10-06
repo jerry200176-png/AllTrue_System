@@ -154,7 +154,7 @@ class ClassSessionsHideStoppedScheduledTest extends TestCase
     {
         $campusId = 9;
         $teacher = User::create([
-            'LoginName' => 't-stop-sched@example.com', 'Name' => '黃芝琳測試', 'PSW' => 'x',
+            'LoginName' => 't-stop-sched@example.com', 'Name' => '測試老師甲測試', 'PSW' => 'x',
             'type' => 'T', 'phone' => '0912003001', 'MustChangePassword' => false,
         ]);
         UserCampus::create(['CampusID' => $campusId, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
