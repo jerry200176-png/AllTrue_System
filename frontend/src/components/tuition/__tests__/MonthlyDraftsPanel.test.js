@@ -40,7 +40,7 @@ it('renders three sections', async () => {
 });
 
 it('batch confirm renews each selected row with proposed_end_date; failure shows message', async () => {
-  mockFetch.mockImplementation(async (url, opts) => {
+  mockFetch.mockImplementation(async (url) => {
     if (String(url).includes('monthly-drafts')) return res({ data });
     if (String(url).includes('/student-classes/2/')) return res({ message: '已有重複續約' }, false, 409);
     return res({});
