@@ -205,6 +205,9 @@ class StudentClassController extends Controller
         $paidAtMap = ContractMoneyState::lastPaidAtByStudentClassIds($classIds);
         $invoiceAggMap = ContractMoneyState::invoiceAggregateByStudentClassIds($classIds);
         $monthlyPayments = app(\App\Services\MonthlyPeriodPaymentService::class)->batch(collect($classes->items()));
+        // F7 S3b: one resolver batch per page is the payment_status authority (B7).
+        $courseStatuses = app(\App\Services\BillingPayableResolver::class)
+            ->courseStatusesByStudentClassIds($classIds, $classes->items());
         $pendingReportByClassId = !empty($classIds)
             ? PaymentReport::query()
                 ->whereIn('StudentClassID', $classIds)
@@ -320,7 +323,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role) {
+        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses) {
             $class->setAttribute('subject_name', $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null);
@@ -563,12 +566,15 @@ class StudentClassController extends Controller
             // not undo that projection. Keep its ID/summary for explicit review,
             // never silently confirm/reject it from this read-only endpoint.
             $effectivePaid = $class->isEffectivelyPaid($pkg);
-            $class->setAttribute('payment_status', ContractMoneyState::listStatus(
-                $effectivePaid,
-                $invoicePaidAmount,
-                $effectiveCharge,
-                $pendingReportId !== null
-            ));
+            $resolved = $courseStatuses[(int) $class->ID]['status'] ?? 'review_required';
+            $class->setAttribute('payment_status', match (true) {
+                // Waived (確認不收) stays `paid` here; the client labels it from closed_reason.
+                ContractMoneyState::isWaived($class) => 'paid',
+                in_array($resolved, ['paid', 'partial', 'free'], true) => $resolved,
+                in_array($resolved, ['unpaid', 'unbilled'], true) => $pendingReportId !== null ? 'pending_report' : 'unpaid',
+                // review_required: the resolver has no verdict to show; keep the legacy projection.
+                default => ContractMoneyState::listStatus($effectivePaid, $invoicePaidAmount, $effectiveCharge, $pendingReportId !== null),
+            });
 
             $tutoringBillingAnomalyReasons = [];
             if ($isTutoringCourse) {

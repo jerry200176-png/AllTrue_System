@@ -76,7 +76,7 @@ class StudentClassResponseContractTest extends TestCase
     {
         [$teacherToken, $teacher] = $this->makeUserToken(1, 'student-class-own-teacher@test.com', 'T');
         [, $otherTeacher] = $this->makeUserToken(1, 'student-class-other-teacher@test.com', 'T');
-        $ownCourse = $this->makeCourse($teacher, 1, ['student_name' => '自己的學生']);
+        $ownCourse = $this->makeCourse($teacher, 1, ['student_name' => '自己的學生', 'Charge' => 8000]); // a billable course (zero-fee reads free, F7 S3b)
         $this->makeCourse($otherTeacher, 1, ['student_name' => '別人的學生']);
 
         PaymentReport::create([
