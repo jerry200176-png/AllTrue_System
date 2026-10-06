@@ -510,7 +510,7 @@ assert.equal(
 // reschedule re-submitted to the *same* start_time as the first (14:30), not a
 // different one. Both passed shouldRenderScheduledException (both status='scheduled',
 // no leave that day), producing a ghost box in the calendar alongside the real one.
-const muzhaWuAitongCourse = {
+const muzhaCourse2688 = {
   ...baseCourse,
   id: 2688,
   student_id: 178,
@@ -520,8 +520,8 @@ const muzhaWuAitongCourse = {
 };
 const muzhaStaleRescheduleWeek = { 6: '2026-08-08', 7: '2026-08-09' };
 const muzhaStaleRescheduleMerge = merge({
-  courses: [muzhaWuAitongCourse],
-  allCourses: [muzhaWuAitongCourse],
+  courses: [muzhaCourse2688],
+  allCourses: [muzhaCourse2688],
   weekDatesByDow: muzhaStaleRescheduleWeek,
   sessionDatesByCourseId: {
     2688: [

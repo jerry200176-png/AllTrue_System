@@ -67,19 +67,19 @@ assert.equal(
 // 'scheduled' markers share the same date, so a same-date-only dedupe would work, but
 // the precise rule (a later same-slot 'rescheduled' marker supersedes) is what's
 // actually shipped and must cover this case too.
-const wuAitongExceptions = [
+const course2688Exceptions = [
   { id: 7583, status: 'rescheduled', schedule_date: '2026-08-08', student_course_id: 2688, start_time: '15:00' },
   { id: 7584, status: 'scheduled', schedule_date: '2026-08-08', student_course_id: 2688, start_time: '14:30', original_schedule_id: 7583 },
   { id: 7588, status: 'rescheduled', schedule_date: '2026-08-08', student_course_id: 2688, start_time: '14:30' },
   { id: 7589, status: 'scheduled', schedule_date: '2026-08-08', student_course_id: 2688, start_time: '14:30', original_schedule_id: 7588 },
 ];
 assert.equal(
-  shouldRenderScheduledException(wuAitongExceptions[1], wuAitongExceptions, '2026-08-08'),
+  shouldRenderScheduledException(course2688Exceptions[1], course2688Exceptions, '2026-08-08'),
   false,
   '木柵吳艾潼 SC#2688: stale scheduled marker (7584) superseded by a later same-slot rescheduled marker (7588) must not render',
 );
 assert.equal(
-  shouldRenderScheduledException(wuAitongExceptions[3], wuAitongExceptions, '2026-08-08'),
+  shouldRenderScheduledException(course2688Exceptions[3], course2688Exceptions, '2026-08-08'),
   true,
   '木柵吳艾潼 SC#2688: the current scheduled marker (7589) must still render',
 );
