@@ -28,8 +28,10 @@ describe('StudentsList monthly renewal preview', () => {
   });
 
   it('wires preview state, warnings, submitting and the old end date', () => {
-    expect(source).toContain('invalidateMonthlyRenewalPreview(renewMonthlyForm.value, targetEnd)');
-    expect(source).toContain('applyMonthlyRenewalPreview(renewMonthlyForm.value, json)');
+    const composable = readFileSync(resolve(__dirname, '../../composables/course-management/useMonthlyRenewal.js'), 'utf8');
+    expect(composable).toContain('invalidateMonthlyRenewalPreview(form.value, endDate)');
+    expect(composable).toContain('applyMonthlyRenewalPreview(form.value, json)');
+    expect(source).toContain('monthlyRenewal.loadPreview(course, endDate)');
     expect(source).toContain(':warnings="renewMonthlyWarnings"');
     expect(source).toContain(':submitting="renewMonthlySubmitting"');
     expect(source.match(/end_date: c\.end_date \|\| \(c\.EndDate/g)?.length).toBe(2);
