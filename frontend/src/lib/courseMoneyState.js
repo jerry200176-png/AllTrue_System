@@ -2,9 +2,10 @@
 // sessions / payment mode / payment labels lives here. Pages ask, they do not read
 // RemainingSessions / PackageRemainingSessions / payment_type themselves.
 //
-// Behavior-preserving extraction: where earlier page copies disagreed, the variant is an
-// explicit option or a separately named export (see courseMoneyState.test.js for the
-// legacy copies this is pinned against). Do not merge variants without a Founder decision.
+// Founder-approved 2026-10-06 (option A): one verdict per course on every page. Monthly is
+// payment_type === 'monthly' (case-insensitive); package membership is PackageID or package_id;
+// one wording per payment status (see courseMoneyState.test.js). Remaining per-caller options
+// (pascalAlias, fallbackToPurchased) are session-count display aliases, not money status.
 
 /** 低堂數門檻：剩餘 <= 2 視為即將用完 */
 export const LOW_SESSIONS_THRESHOLD = 2;
@@ -30,10 +31,8 @@ export const remainingTone = (remaining, { watchAt = 4 } = {}) => {
 };
 
 // ── package pool ─────────────────────────────────────────────
-/** @param {{strictPackageId?: boolean}} [opt] strictPackageId: truthy `PackageID` only (CourseManagement legacy) */
-export const isPackageMember = (course, { strictPackageId = false } = {}) => (
-  strictPackageId ? !!course?.PackageID : Number(course?.PackageID ?? course?.package_id ?? 0) > 0
-);
+/** PackageID or package_id > 0 */
+export const isPackageMember = (course) => Number(course?.PackageID ?? course?.package_id ?? 0) > 0;
 
 /** own-course remaining (`remaining_sessions` ?? `RemainingSessions`), null when absent */
 export const ownRemainingSessions = (course) => finiteOrNull(course?.remaining_sessions ?? course?.RemainingSessions);
@@ -64,11 +63,8 @@ export const poolUsedSessions = (course) => {
 export const purchasedSessions = (course) => Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
 
 // ── payment mode ─────────────────────────────────────────────
-/** StudentsList: payment_type compared case-insensitively to 'monthly' */
+/** The one monthly rule: backend billing type payment_type === 'monthly', case-insensitive */
 export const isMonthlyPaymentType = (course) => String(course?.payment_type || '').toLowerCase() === 'monthly';
-
-/** CourseManagement isMonthlyMode: anything that is not literally 'session' (blank -> session) */
-export const isNonSessionPayment = (course) => (course?.payment_type || 'session') !== 'session';
 
 /** CourseManagement isSessionMode: explicit payment_type wins, else purchased > 0 */
 export const isSessionPayment = (course) => {
@@ -77,9 +73,6 @@ export const isSessionPayment = (course) => {
   return Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) > 0;
 };
 
-/** ParentPortal: server schedule_mode other than 'count' (default count) */
-export const isNonCountSchedule = (course) => String(course?.schedule_mode ?? 'count') !== 'count';
-
 // ── remaining verdicts ───────────────────────────────────────
 /**
  * StudentsList list badge: sessions-only, pool for package members, own count otherwise.
@@ -87,7 +80,7 @@ export const isNonCountSchedule = (course) => String(course?.schedule_mode ?? 'c
  */
 export const isSessionPaymentLow = (course) => {
   if (isMonthlyPaymentType(course)) return false;
-  if (course?.PackageID) {
+  if (isPackageMember(course)) {
     const pr = Number(course?.package_remaining_sessions ?? NaN);
     return Number.isFinite(pr) && pr <= LOW_SESSIONS_THRESHOLD;
   }
@@ -99,17 +92,17 @@ export const isSessionPaymentLow = (course) => {
  * No monthly exclusion and no Pascal alias — kept as-is from the page.
  */
 export const modalRemainingSessions = (course) => (
-  course?.PackageID ? (course?.package_remaining_sessions ?? 0) : (course?.remaining_sessions ?? 0)
+  isPackageMember(course) ? (course?.package_remaining_sessions ?? 0) : (course?.remaining_sessions ?? 0)
 );
 
 /** StudentsList 堂數進度條; null for package members / monthly / unverifiable data */
 export const courseProgress = (course) => {
   if (isPackageMember(course)) return null;
   if (isMonthlyPaymentType(course)) return null;
-  const total = finiteOrNull(course?.PackageID ? course?.package_total_sessions : course?.sessions_purchased);
-  const remaining = finiteOrNull(course?.PackageID ? course?.package_remaining_sessions : (course?.remaining_sessions ?? course?.RemainingSessions));
+  const total = finiteOrNull(isPackageMember(course) ? course?.package_total_sessions : course?.sessions_purchased);
+  const remaining = finiteOrNull(isPackageMember(course) ? course?.package_remaining_sessions : (course?.remaining_sessions ?? course?.RemainingSessions));
   if (total == null || total <= 0 || remaining == null || remaining < 0) return null;
-  const reportedUsed = finiteOrNull(course?.PackageID ? course?.package_used_sessions : (course?.used_sessions ?? course?.sessions_used));
+  const reportedUsed = finiteOrNull(isPackageMember(course) ? course?.package_used_sessions : (course?.used_sessions ?? course?.sessions_used));
   const used = Math.max(0, reportedUsed == null ? total - remaining : reportedUsed);
   const boundedUsed = Math.min(total, used);
   return {
@@ -121,24 +114,20 @@ export const courseProgress = (course) => {
 };
 
 // ── payment-status labels (display only; the server owns the status itself) ──
-// Each surface historically used its own wording. Variants are kept, not unified.
 export const TUITION_STATUS_CONFIG = {
   unpaid: { label: '應收／尚未回報', cls: 'st-unpaid' },
-  partial: { label: '部分已入帳', cls: 'st-partial' },
+  partial: { label: '部分繳', cls: 'st-partial' },
+  waived: { label: '確認不收', cls: 'st-paid' },
   pending_report: { label: '已回報／待查帳', cls: 'st-pending' },
   pending_reconciliation: { label: '結案／待查帳', cls: 'st-pending' },
   paid: { label: '已確認入帳', cls: 'st-paid' },
   renew_needed: { label: '續課待處理', cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期', cls: 'st-monthly' },
 };
-export const INVOICE_STATUS_LABELS = {
-  course: { paid: '已繳', unpaid: '未繳', partial: '部分繳', void: '已作廢' },
-  ledger: { paid: '已繳', unpaid: '未繳', partial: '部分付款', void: '已作廢' },
-};
-export const REPORT_STATUS_LABELS = {
-  course: { pending: '待對帳', confirmed: '已入帳', rejected: '已退回' },
-  ledger: { confirmed: '已核帳', pending: '待對帳', voided: '已撤銷', rejected: '已退回' },
-};
+export const WAIVED_LABEL = '確認不收';
+export const INVOICE_STATUS_LABELS = { paid: '已繳', unpaid: '未繳', partial: '部分繳', void: '已作廢' };
+// `voided` only exists in the ledger, the one screen that lists voids.
+export const REPORT_STATUS_LABELS = { pending: '待對帳', confirmed: '已入帳', rejected: '已退回', voided: '已撤銷' };
 
 // ── monthly period payment labels (folded from monthlyPaymentDisplay.js) ──
 export const periodPaymentLabel = (status) => ({

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Maps docs/PARENT_UPDATES.yml → frontend/src/lib/parentUpdates.generated.js
+ * Maps docs/PARENT_UPDATES.yml + docs/parent-updates/*.yml → frontend/src/lib/parentUpdates.generated.js
  * Explicit parent copy only — never keyword-derived from CHANGELOG.
  */
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { readUpdatesYaml } from './lib/changeFragments.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
-const ymlPath = path.join(root, 'docs', 'PARENT_UPDATES.yml');
 const outPath = path.join(root, 'frontend', 'src', 'lib', 'parentUpdates.generated.js');
 
 const ALLOWED_KINDS = new Set(['improvement', 'policy', 'resolved_issue']);
@@ -140,7 +140,7 @@ function validateAndNormalize(rawList) {
   return out;
 }
 
-const md = fs.readFileSync(ymlPath, 'utf8');
+const md = readUpdatesYaml(root, 'PARENT_UPDATES.yml', 'docs/parent-updates');
 const data = validateAndNormalize(parseParentUpdatesYml(md));
 
 const banner = `/**
