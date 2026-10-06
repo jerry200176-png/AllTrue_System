@@ -25,13 +25,14 @@ make production-identity
 ```
 
 `.agent-session/manifest.json` is written locally by `agent-start` and is
-git-ignored: normal PRs do not commit it. A PR that claims a session must
-**add or update** `.agent-session/manifest.json` (Agent, `git add -f`) or
-`.agent-session/human-authored.json` (human) **in that PR's diff**.
-CI validates that claim (branch / task_id / `base_sha` ancestor / no
-`production_mutation`). An inherited singleton from `main` is leftover from a
-previous task and is not evidence for this PR — do not rewrite it just to
-satisfy CI. Self-authored JSON is not a substitute for git evidence.
+git-ignored. Never force-add it: `scripts/check-agent-provenance.sh` rejects
+any tracked copy, including one added by the current PR. The local manifest
+and agent-control session record identify the task worktree; the PR's diff,
+risk declaration, review, and required CI provide delivery evidence. Do not
+rewrite an inherited singleton from `main` or update
+`.agent-session/human-authored.json` to represent agent work. A genuine human
+authorship claim in the PR diff is checked by CI, but self-authored JSON does
+not replace git or platform evidence.
 
 ## WIP protection
 
