@@ -47,6 +47,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -5393,7 +5394,72 @@ class StudentClassController extends Controller
             return $refusal;
         }
 
-        return DB::transaction(function () use ($studentClass) {
+        $authUser = request()->attributes->get('auth_user');
+        $actorId = (int) ($authUser?->getKey() ?? 0);
+
+        return DB::transaction(function () use ($studentClass, $actorId) {
+            $id = (int) $studentClass->ID;
+            // Same lock order as payment/waive flows (course, then invoices) so concurrent writers serialize.
+            if (!StudentClass::query()->whereKey($id)->lockForUpdate()->first()) {
+                return response()->json(['message' => '找不到此課程'], 404); // deleted concurrently
+            }
+            // Billing records are never orphaned: a contract with collected money or a payment report is not erasable.
+            $invoices = Invoice::query()->where('StudentClassID', $id)->lockForUpdate()->get();
+            // Only void invoices that belong to this contract's student; a mismatched owner needs accounting review.
+            if ($invoices->contains(fn ($i) => (int) $i->getAttribute('StudentID') !== (int) $studentClass->getAttribute('StudentID'))) {
+                return response()->json(['message' => '此合約的帳單學生不一致，請先到帳務處理'], 422);
+            }
+            $invoiceIds = $invoices->pluck('id')->all();
+            $locked = StudentClass::query()->whereKey($id)->first();
+            // Package members share ledger/entitlement history with the package: never erase one in isolation.
+            if ((int) ($locked?->getAttribute('PackageID') ?? 0) > 0) {
+                return response()->json(['message' => '套裝課程的合約不能單獨刪除，請到套裝處理'], 422);
+            }
+            // Attendance / entitlement history is never erased with the contract: close it instead.
+            if (StudentClass::hasOperationalHistory([$id])) {
+                return response()->json(['message' => '此合約已有上課、點名、扣堂、轉堂或調價紀錄，不能刪除，請改用結案'], 422);
+            }
+            // isEffectivelyPaid() also honours a paid CoursePackage (package members can have no invoice);
+            // legacy Pay / PayDate are payment state too.
+            $hasMoney = (bool) $locked?->isEffectivelyPaid()
+                || (int) ($locked?->getAttribute('Pay') ?? 0) > 0 || $locked?->getAttribute('PayDate') !== null
+                || $invoices->contains(fn ($i) => in_array((string) ($i->Status ?? ''), ['paid', 'partial'], true)
+                    || ((string) ($i->Status ?? '') !== 'void' && (int) ($i->PaidAmount ?? 0) > 0))
+                || ($invoiceIds !== [] && DB::table('Payment')->whereIn('InvoiceID', $invoiceIds)->exists())
+                || DB::table('payment_reports')->where('StudentClassID', $id)->exists();
+            if ($hasMoney) {
+                return response()->json(['message' => '此合約已有收款或繳費回報，請先到帳務處理後再刪除'], 422);
+            }
+            // Consolidated invoices in either direction: this contract on another invoice, or another contract on this one's.
+            $sharedOut = DB::table('InvoiceItem')->where('StudentClassID', $id)->whereNotIn('InvoiceID', $invoiceIds ?: [0])->exists();
+            $sharedIn = $invoiceIds !== [] && DB::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)
+                ->whereNotNull('StudentClassID')->where('StudentClassID', '!=', $id)->exists();
+            if ($sharedOut || $sharedIn) {
+                return response()->json(['message' => '此合約在合併帳單中，請先到帳務處理該帳單'], 422);
+            }
+            $voided = $invoices->filter(fn ($i) => (string) ($i->Status ?? '') !== 'void');
+            // Voiding invoices is an accounting action: only directors / super_admin may delete a billed contract.
+            if ($voided->isNotEmpty() && !in_array((string) request()->attributes->get('auth_role'), ['director', 'super_admin'], true)) {
+                return response()->json(['message' => '此合約有帳單，請由主任刪除'], 403);
+            }
+            foreach ($voided as $invoice) {
+                $invoice->update([
+                    'Status' => 'void',
+                    'Note' => mb_substr(trim(((string) $invoice->Note) . ' [合約 #' . $id . ' 刪除，帳單作廢 by ' . ($actorId ?: '-') . ' ' . now()->toDateString() . ']'), -255),
+                ]);
+            }
+            $correlationId = (string) Str::uuid();
+            SecurityAuditEvent::append('student_class.deleted', 'success', [
+                'correlation_id' => $correlationId,
+                'actor_type' => 'user', 'actor_id' => $actorId ?: null,
+                'subject_type' => 'student_class', 'subject_id' => $id,
+                'campus_id' => (int) (Student::where('id', $studentClass->StudentID)->value('CampusID') ?? 0) ?: null,
+            ], ['reason_code' => 'contract_deleted', 'row_count' => $voided->count(), 'outcome' => 'success']);
+            // append() swallows write failures; a deletion without its audit row must roll back.
+            if (!DB::table('security_audit_events')->where('correlation_id', $correlationId)->exists()) {
+                throw new \RuntimeException('刪除合約稽核紀錄寫入失敗，已取消操作');
+            }
+
             // Delete associated class sessions first
             ClassSession::where('StudentClassID', $studentClass->ID)->delete();
 
