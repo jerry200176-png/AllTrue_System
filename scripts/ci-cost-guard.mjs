@@ -21,6 +21,14 @@ const contracts = {
   '.github/workflows/missing-tests-warn.yml': ['warn'],
 };
 
+// These push entry jobs pass github.event.before to dorny/paths-filter.
+// Without local history, its fallback fetch fails after checkout removes credentials.
+// ci.yml keeps credentials (#3519); codeql.yml uses full history without credentials.
+const pushDiffJobs = new Map([
+  ['.github/workflows/ci.yml', { job: 'changes', persist: 'true' }],
+  ['.github/workflows/codeql.yml', { job: 'changes', persist: 'false', depth0: true }],
+]);
+
 const errors = [];
 
 function read(relativePath) {
@@ -35,12 +43,26 @@ function jobBlock(workflow, jobId) {
   return lines.slice(start + 1, next < 0 ? lines.length : next).join('\n');
 }
 
+function firstCheckoutBlock(job) {
+  const lines = job.split('\n');
+  const start = lines.findIndex((line) => /^\s{6}- (?:name: Checkout|uses: actions\/checkout@)/.test(line));
+  if (start < 0) return '';
+  const next = lines.findIndex((line, index) => index > start && /^\s{6}- /.test(line));
+  return lines.slice(start, next < 0 ? lines.length : next).join('\n');
+}
+
 for (const [relativePath, entryJobs] of Object.entries(contracts)) {
   let workflow = read(relativePath);
   if (selfTest && relativePath === '.github/workflows/ci.yml') {
     workflow = workflow
       .replace('ready_for_review', 'self_test_removed_event')
       .replace('!github.event.pull_request.draft', 'self_test_removed_draft_gate');
+    const changes = jobBlock(workflow, 'changes');
+    workflow = workflow.replace(changes, changes.replace('persist-credentials: true', 'persist-credentials: false'));
+  }
+  if (selfTest && relativePath === '.github/workflows/codeql.yml') {
+    const changes = jobBlock(workflow, 'changes');
+    workflow = workflow.replace(changes, changes.replace('persist-credentials: false', 'persist-credentials: true'));
   }
 
   if (!/^\s{4}types:.*\bready_for_review\b/m.test(workflow)) {
@@ -57,16 +79,28 @@ for (const [relativePath, entryJobs] of Object.entries(contracts)) {
       errors.push(`${relativePath}: entry job ${jobId} must skip draft PRs`);
     }
   }
+
+  const pushDiff = pushDiffJobs.get(relativePath);
+  if (pushDiff) {
+    const checkout = firstCheckoutBlock(jobBlock(workflow, pushDiff.job));
+    if (!/^\s{6}- (?:name: Checkout\n\s{8})?uses: actions\/checkout@/m.test(checkout)
+        || (pushDiff.depth0 && !/^\s{10}fetch-depth: 0$/m.test(checkout))
+        || !new RegExp(`^\\s{10}persist-credentials: ${pushDiff.persist}$`, 'm').test(checkout)) {
+      errors.push(`${relativePath}: ${pushDiff.job} checkout must be able to fetch the push base (checkout must include full history or persisted credentials)`);
+    }
+  }
 }
 
 if (selfTest) {
   const detectedEvent = errors.some((error) => error.includes('must include ready_for_review'));
   const detectedGate = errors.some((error) => error.includes('must skip draft PRs'));
-  if (!detectedEvent || !detectedGate) {
-    console.error('ERROR: ci-cost-guard self-test did not detect both injected violations');
+  const detectedHistory = [...pushDiffJobs.keys()].every((file) =>
+    errors.some((error) => error.startsWith(`${file}:`) && error.includes('checkout must')));
+  if (!detectedEvent || !detectedGate || !detectedHistory) {
+    console.error('ERROR: ci-cost-guard self-test did not detect all injected violations');
     process.exit(1);
   }
-  console.log('ci-cost-guard self-test: OK (injected violations detected)');
+  console.log('ci-cost-guard self-test: OK (injected event, draft gate, and both checkout violations detected)');
   process.exit(0);
 }
 
