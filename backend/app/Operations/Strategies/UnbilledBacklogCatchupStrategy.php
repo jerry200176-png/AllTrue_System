@@ -80,6 +80,8 @@ final class UnbilledBacklogCatchupStrategy
     public function verify(array $plan, array $result): array
     {
         $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
+        // A retry could not tell which rows this run created: never report verified; an operator resolves it.
+        if (($result['snapshot']['incomplete'] ?? false) === true) $errors[] = 'snapshot_incomplete_manual_resolution';
         // Verify may run after drift without the plan gate; it still needs a plan that actually ran (fail closed otherwise).
         if (($plan['campus_ids'] ?? []) === []) $errors[] = 'verify_plan_missing';
         $done = [];
@@ -105,6 +107,9 @@ final class UnbilledBacklogCatchupStrategy
     public function rollback(array $snapshot, array $context): array
     {
         $rows = $snapshot['rows'] ?? null;
+        if (($snapshot['incomplete'] ?? false) === true) {
+            return ['ok' => false, 'partial' => true, 'deleted' => 0, 'errors' => ['snapshot_incomplete_manual_resolution']];
+        }
         if (!is_array($rows)) {
             throw new RuntimeException('unbilled_backlog_rollback_snapshot_invalid');
         }
@@ -228,7 +233,9 @@ final class UnbilledBacklogCatchupStrategy
         // Other contracts' coverage (same student + subject): non-void invoices anchored elsewhere, and live date-mode contracts.
         $students = $contracts->pluck('StudentID')->unique()->all();
         $studentInvoices = Invoice::query()->with('items')->whereIn('StudentID', $students)->where(fn ($v) => $v->whereNull('Status')->orWhere('Status', '!=', 'void'))->get();
-        $subjects = StudentClass::query()->whereIn('ID', $studentInvoices->pluck('StudentClassID')->filter()->unique())->pluck('SubjectID', 'ID');
+        $subjectIds = $studentInvoices->pluck('StudentClassID')
+            ->merge($studentInvoices->flatMap(fn ($inv) => $inv->getRelationValue('items')->pluck('StudentClassID')))->filter()->unique();
+        $subjects = StudentClass::query()->whereIn('ID', $subjectIds)->pluck('SubjectID', 'ID');
         $dated = StudentClass::query()->whereIn('StudentID', $students)->where('ScheduleMode', 'date')->where('Stop', 0)->get();
         $pricing = app(StudentClassPricingService::class);
 
@@ -273,24 +280,29 @@ final class UnbilledBacklogCatchupStrategy
     /** Same student + subject but another contract: its invoice for that month/period, or its live date-mode contract range, holds the date. */
     private function otherCovers(string $date, StudentClass $c, array $own, $invoices, $subjects, $dated): bool
     {
-        $subject = $c->getAttribute('SubjectID'); // null compares as 0: over-skipping is the safe direction
+        $subject = (int) $c->getAttribute('SubjectID');
+        // Same subject on both sides; an unknown owner (no contract row) counts as the same subject: over-skipping is safe.
+        $sameSubject = fn (int $owner) => !isset($subjects[$owner]) || (int) $subjects[$owner] === $subject;
         foreach ($invoices as $inv) {
             $anchor = (int) $inv->getAttribute('StudentClassID');
-            if ((int) $inv->getAttribute('StudentID') !== (int) $c->getAttribute('StudentID') || in_array($anchor, $own, true)
-                || (int) ($subjects[$anchor] ?? -1) !== (int) $subject) continue;
-            // Same rule as covered(): dated items decide; billing_period only for an invoice without dated items.
+            if ((int) $inv->getAttribute('StudentID') !== (int) $c->getAttribute('StudentID')) continue;
+            // This operation's own catch-up invoices (Note = REF) always cover their period, whatever the Memo now says.
+            $ours = (string) $inv->getAttribute('Note') === self::REF;
+            // Same rule as covered(): dated items decide, per item owner (falls back to the anchor); billing_period only without dated items.
             $items = $inv->getRelationValue('items')->filter(fn ($i) => $i->getAttribute('PeriodStart') && $i->getAttribute('PeriodEnd'));
             if ($items->isEmpty()) {
-                if ((string) $inv->getAttribute('billing_period') === substr($date, 0, 7)) return true;
+                if (!in_array($anchor, $own, true) && ($ours || $sameSubject($anchor)) && (string) $inv->getAttribute('billing_period') === substr($date, 0, 7)) return true;
                 continue;
             }
             foreach ($items as $i) {
+                $owner = (int) ($i->getAttribute('StudentClassID') ?: $anchor);
+                if (in_array($owner, $own, true) || !($ours || $sameSubject($owner))) continue;
                 if (substr((string) $i->getAttribute('PeriodStart'), 0, 10) <= $date && $date <= substr((string) $i->getAttribute('PeriodEnd'), 0, 10)) return true;
             }
         }
         foreach ($dated as $o) {
             if ((int) $o->getKey() !== (int) $c->getKey() && !in_array((int) $o->getKey(), $own, true) && (int) $o->getAttribute('StudentID') === (int) $c->getAttribute('StudentID')
-                && (int) $o->getAttribute('SubjectID') === (int) $subject && substr((string) $o->getAttribute('StartDate'), 0, 10) <= $date && $date <= substr((string) $o->getAttribute('EndDate'), 0, 10)) return true;
+                && (int) $o->getAttribute('SubjectID') === $subject && substr((string) $o->getAttribute('StartDate'), 0, 10) <= $date && $date <= substr((string) $o->getAttribute('EndDate'), 0, 10)) return true;
         }
 
         return false;
