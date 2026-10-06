@@ -1,6 +1,8 @@
 import unittest
+from pathlib import Path
 
 from scripts.governance.autonomy_gate import (
+    _LOCAL_ONLY_E2E_SPECS,
     classify_activation_scope,
     classify_scope,
     machine_declaration,
@@ -9,6 +11,71 @@ from scripts.governance.autonomy_gate import (
 
 
 class PrDeclarationGateTest(unittest.TestCase):
+    def test_production_smoke_assertion_cannot_take_t0_auto_merge(self):
+        path = "frontend/e2e/dashboard-workbench.spec.js"
+        patch = (
+            f"diff --git a/{path} b/{path}\n"
+            "@@ -1 +1 @@\n"
+            "-    expect(tuitionAlertsResponse.status()).toBe(200);\n"
+            "+    test.skip(true, 'temporarily bypass tuition smoke');\n"
+        )
+        generated = machine_declaration([path], patch)
+        self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R3", "T3"))
+        rejected = validate_declaration("Risk-Class: R0\nAutonomy-Tier: T0", [path], patch)
+        self.assertFalse(rejected["valid"])
+        self.assertIn("below", rejected["error"])
+
+    def test_only_production_smoke_controls_raise_test_only_scope(self):
+        for path in (
+            "frontend/playwright.config.js",
+            "frontend/e2e/classroom-management-production-smoke.spec.js",
+            "frontend/e2e/smoke.spec.js",
+            "frontend/e2e/parent-portal-production.spec.js",
+            "frontend/e2e/fixtures/dismissOverlays.js",
+            "frontend/e2e/fixtures/directorDashboardTelemetry.js",
+            "frontend/e2e/fixtures/tutoringReceivableControls.js",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(classify_scope([path], "")["tier_name"], "T3")
+        for path in (
+            "frontend/e2e/assessment-playwright.config.js",
+            "frontend/e2e/README.md",
+            "frontend/e2e/fixtures/ui-foundation/pilot-mount.js",
+            "frontend/src/components/__tests__/Widget.test.js",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(classify_scope([path], "")["tier_name"], "T0")
+
+    def test_npm_smoke_entrypoint_change_is_protected(self):
+        patch = '-    "test:e2e": "playwright test"\n+    "test:e2e": "echo skipped"'
+        self.assertEqual(classify_scope(["frontend/package.json"], patch)["tier_name"], "T3")
+        self.assertNotEqual(classify_scope(["frontend/package.json"], '+    "vue": "3.5.1"')["tier_name"], "T3")
+
+    def test_every_default_ui_smoke_spec_is_a_protected_control(self):
+        paths = (
+            "after-class-confirmed-save", "attendance-runtime", "billing-correction-guidance",
+            "branch-health-clarity", "calendar-course-consistency", "calendar-print-production",
+            "classroom-clarity", "classroom-management-production-smoke", "classroom-management-recovery",
+            "dashboard-workbench", "duplicate-review-human-labels", "feedback-launcher-production",
+            "navigation-history", "navigation-more-search", "parent-portal-production",
+            "role-onboarding", "school-directory-production", "smoke", "tutoring-continuation",
+            "tutoring-free-production",
+        )
+        for stem in paths:
+            path = f"frontend/e2e/{stem}.spec.js"
+            with self.subTest(path=path):
+                declaration = machine_declaration([path], "+ weaken production smoke evidence")
+                self.assertEqual((declaration["risk_class"], declaration["autonomy_tier"]), ("R3", "T3"))
+
+    def test_local_only_playwright_specs_remain_test_only(self):
+        config = (Path(__file__).resolve().parents[2] / "frontend/playwright.config.js").read_text(encoding="utf-8")
+        for path in _LOCAL_ONLY_E2E_SPECS:
+            with self.subTest(path=path):
+                self.assertTrue((Path(__file__).resolve().parents[2] / path).is_file())
+                stem = Path(path).name.removesuffix(".spec.js")
+                self.assertIn(stem, config, f"{stem} must remain ignored by the default production smoke config")
+                self.assertEqual(classify_scope([path], "")["tier_name"], "T0")
+
     def test_missing_declaration_fails_before_merge(self):
         result = validate_declaration(
             "",
