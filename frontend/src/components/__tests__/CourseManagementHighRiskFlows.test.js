@@ -42,33 +42,45 @@ describe('CourseManagement high-risk flow characterization', () => {
     expect(source).toContain('await loadCourses();\n    syncCourseManagerCourseFromList();');
   });
 
-  it('preserves transfer candidate identity and subject boundaries before mutation', () => {
-    const lookup = section('async function loadTransferTargetCourses(sourceCourse)', 'async function submitTransferSessions');
+  // Transfer sessions now lives in useTransferSessions (behavior pinned in its own unit test);
+  // these keep the source-level intent and check the page still delegates to it.
+  const transferFlow = readFileSync(resolve(__dirname, '../../composables/course-management/useTransferSessions.js'), 'utf8');
+  const transferSection = (startMarker, endMarker) => {
+    const start = transferFlow.indexOf(startMarker);
+    const end = transferFlow.indexOf(endMarker, start + startMarker.length);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThanOrEqual(0);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return transferFlow.slice(start, end);
+  };
 
+  it('preserves transfer candidate identity and subject boundaries before mutation', () => {
+    const lookup = transferSection('async function loadTargetCourses(sourceCourse)', 'async function submit(');
+
+    expect(source).toContain('} = useTransferSessions({');
     expect(lookup).toContain('per_page: \'100\'');
     expect(lookup).toContain('params.set(\'student_id\', String(studentId));');
     expect(lookup).not.toContain('branch_id: String(props.branchId)');
     expect(lookup).toContain('.filter((course) => course.id !== Number(sourceCourse.id))');
     expect(lookup).toContain('.filter((course) => sameCourseStudent(sourceCourse, course))');
     expect(lookup).toContain('.filter((course) => sameCourseSubject(sourceCourse, course))');
-    expect(lookup).toContain('if (requestId === transferTargetCoursesRequest) transferTargetCourses.value = candidates;');
-    expect(lookup).toContain('if (requestId === transferTargetCoursesRequest) transferTargetCoursesLoading.value = false;');
+    expect(lookup).toContain('if (requestId === targetCoursesRequest) targetCourses.value = candidates;');
+    expect(lookup).toContain('if (requestId === targetCoursesRequest) targetCoursesLoading.value = false;');
   });
 
   it('preserves the recover-versus-transfer endpoint and reason contract', () => {
-    const flow = section('async function submitTransferSessions', 'const purchaseForm = ref');
+    const flow = transferFlow.slice(transferFlow.indexOf('async function submit('));
 
-    expect(flow).toContain('if (!course || sessionIds.length === 0) return;');
-    expect(flow).toContain('const hasRecovery = transferSessionsSessionOptions.value.some(');
+    expect(flow).toContain('if (!c || sessionIds.length === 0) return;');
+    expect(flow).toContain('const hasRecovery = sessionOptions.value.some(');
     expect(flow).toContain("const endpoint = hasRecovery ? 'recover-transfer-sessions' : 'transfer-sessions';");
-    expect(flow).toContain('`/api/v1/student-classes/${course.id}/${endpoint}`');
+    expect(flow).toContain('`/api/v1/student-classes/${c.id}/${endpoint}`');
     expect(flow).toContain('session_ids: sessionIds,');
     expect(flow).toContain('target_student_class_id: targetCourseId,');
     expect(flow).toContain('...(hasRecovery ? { reason } : {}),');
     expect(flow).toContain('json?.conflict_session_id');
     expect(flow).toContain('json?.conflict_schedule_id');
-    expect(flow).toContain('showTransferSessionsModal.value = false;');
-    expect(flow).toContain('await loadCourses();');
+    expect(flow).toContain('showModal.value = false;');
+    expect(flow).toContain('await reload();');
   });
 
   it('preserves purchase validation, authentication, and mode-specific endpoints', () => {
