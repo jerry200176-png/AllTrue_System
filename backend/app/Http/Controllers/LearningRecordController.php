@@ -1377,6 +1377,18 @@ class LearningRecordController extends Controller
 
         $updateClass = (bool) ($data['update_class'] ?? false);
 
+        // TD-076 B1 (flag on): a future occurrence gets the same conflict check as substitute, before any write.
+        if (OccurrenceAssignmentService::enabledFor($targetCampusId) && $learningRecord->ClassSessionID) {
+            $guardSession = ClassSession::find($learningRecord->ClassSessionID);
+            if ($guardSession && !OccurrenceAssignmentService::onLeave($guardSession)
+                && \App\Services\Scheduling\ContractTeacherChangeCascade::isPinnableOccurrence($guardSession)) {
+                $conflicts = OccurrenceAssignmentService::futureConflicts($guardSession, $newTeacherId);
+                if ($conflicts) {
+                    return response()->json(['message' => $conflicts[0]['message'] ?? '老師此時段與既有課程衝突', 'conflicts' => $conflicts], 409);
+                }
+            }
+        }
+
         return DB::transaction(function () use ($request, $learningRecord, $newTeacherId, $oldTeacherId, $data, $updateClass, $targetCampusId) {
             // TD-076 B2 (flag on): pin taught occurrences while the old contract/LR evidence is still intact.
             $occurrenceV2 = OccurrenceAssignmentService::enabledFor($targetCampusId);

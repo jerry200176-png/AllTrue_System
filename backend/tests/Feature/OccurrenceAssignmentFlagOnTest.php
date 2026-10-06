@@ -10,6 +10,7 @@ use App\Models\Schedule;
 use App\Models\ScheduleChangeLog;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\SubstituteService;
@@ -269,6 +270,64 @@ class OccurrenceAssignmentFlagOnTest extends TestCase
 
         $this->assertSame(2, Schedule::where('status', 'scheduled')->where('teacher_id', $this->bId)->whereNotNull('original_schedule_id')->count());
         $this->assertSame(2, ScheduleChangeLog::where('reason', 'substitute')->count());
+    }
+
+    public function test_substitute_on_a_makeup_session_writes_no_second_live_row_flag_on(): void
+    {
+        $this->seedWorld();
+        $this->flag(true);
+        $session = $this->plainSession();
+        $this->insertMakeupRow();
+
+        $this->postSubstitute($session)->assertOk();
+
+        $this->assertSame([1, 0], [Schedule::where('student_course_id', $this->sc->ID)->count(), ScheduleChangeLog::count()], 'only the makeup row');
+        $this->assertSame($this->bId, (int) LearningRecord::where('ClassSessionID', $session->id)->value('TeacherID'));
+        $this->postSubstitute($session, ['new_date' => '2026-04-20', 'new_start_time' => '14:00', 'new_end_time' => '16:00'], $this->bId)->assertStatus(422);
+        $this->assertSame(1, Schedule::where('student_course_id', $this->sc->ID)->count());
+    }
+
+    public function test_substitute_on_a_makeup_session_flag_off_parity_keeps_todays_rows(): void
+    {
+        $this->seedWorld();
+        $this->flag(false);
+        $session = $this->plainSession();
+        $this->insertMakeupRow();
+
+        $this->postSubstitute($session)->assertOk();
+
+        $this->assertSame(1, Schedule::where('student_course_id', $this->sc->ID)->where('status', 'scheduled')->where('teacher_id', $this->bId)->count());
+        $this->assertSame(0, ScheduleChangeLog::count());
+    }
+
+    public function test_sign_in_only_leave_is_refused_flag_on_and_unchanged_flag_off(): void
+    {
+        $this->seedWorld();
+        $session = $this->plainSession();
+        StudentSignIn::create([
+            'StudentClassID' => $this->sc->ID, 'StudentID' => $this->sc->StudentID, 'TeacherID' => $this->aId,
+            'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-19 13:00:00', 'MDT' => now(),
+            'ClassSessionID' => $session->id, 'Status' => 'leave', 'SessionDeducted' => 0,
+        ]);
+
+        $this->flag(true);
+        $this->postSubstitute($session)->assertStatus(422);
+        $this->api()->postJson('/api/v1/teacher-leaves/batch-substitute', ['assignments' => [['class_session_id' => $session->id, 'substitute_teacher_id' => $this->bId]]])->assertStatus(422);
+        $this->assertSame([0, 0], [Schedule::count(), ScheduleChangeLog::count()]);
+
+        $this->flag(false);
+        $this->postSubstitute($session)->assertOk();
+    }
+
+    private function insertMakeupRow(): void
+    {
+        DB::table('schedules')->insert([
+            'id' => 9100, 'student_id' => $this->sc->StudentID, 'teacher_id' => $this->aId, 'day_of_week' => 7,
+            'type' => 'extra', 'status' => 'scheduled', 'deduction' => 1, 'branch_id' => 1,
+            'student_course_id' => $this->sc->ID, 'schedule_date' => '2026-04-19',
+            'start_time' => '13:00', 'end_time' => '15:00', 'original_schedule_id' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     private function flag(bool $on): void
