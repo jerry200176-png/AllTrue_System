@@ -146,7 +146,7 @@ jobs:
               "checks" => $checks,
               "report_id" => 1489,
               "status" => "rejected",
-              "rejection_note" => (string) $pr1489->rejection_note,
+              "rejection_note_length" => strlen((string) $pr1489->rejection_note),
               "confirmed_by" => (int) $pr1489->confirmed_by,
               "confirmed_at" => (string) $pr1489->confirmed_at,
               "prod_head" => $prodHead,
@@ -164,7 +164,7 @@ jobs:
             "status" => (string) $pr1489->status,
             "confirmed_by" => $pr1489->confirmed_by ? (int) $pr1489->confirmed_by : null,
             "confirmed_at" => $pr1489->confirmed_at ? (string) $pr1489->confirmed_at : null,
-            "rejection_note" => $pr1489->rejection_note ? (string) $pr1489->rejection_note : null,
+            "rejection_note_length" => strlen((string) $pr1489->rejection_note),
           ];
 
           $now = \Carbon\Carbon::now();
@@ -193,7 +193,7 @@ jobs:
               "status" => (string) $locked->status,
               "confirmed_by" => (int) $locked->confirmed_by,
               "confirmed_at" => (string) $locked->confirmed_at,
-              "rejection_note" => (string) $locked->rejection_note,
+              "rejection_note_length" => strlen((string) $locked->rejection_note),
             ];
           });
 
@@ -266,7 +266,7 @@ jobs:
                 obj = json.loads(line)
               except Exception:
                 pass
-          Path("out/repair-result.json").write_text(json.dumps(obj or {"ok": False, "raw_tail": text[-3000:]}, ensure_ascii=False, indent=2), encoding="utf-8")
+          Path("out/repair-result.json").write_text(json.dumps(obj or {"ok": False, "error": "no_json_result"}, ensure_ascii=False, indent=2), encoding="utf-8")
           print("parsed", bool(obj is not None))
           print("ok", obj.get("ok") if obj else None)
           print("aborted", obj.get("aborted") if obj else None)

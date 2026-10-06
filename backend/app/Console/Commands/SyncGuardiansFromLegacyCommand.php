@@ -6,6 +6,7 @@ use App\Models\Guardian;
 use App\Models\Student;
 use App\Models\StudentGuardian;
 use App\Services\ParentBinding\GuardianSyncService;
+use App\Console\Concerns\MasksPersonData;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -20,6 +21,8 @@ use Illuminate\Support\Facades\Log;
  */
 class SyncGuardiansFromLegacyCommand extends Command
 {
+    use MasksPersonData;
+
     protected $signature = 'guardians:sync-from-legacy
                             {--dry-run : Preview only (default when --apply/--verify omitted)}
                             {--apply : Write primary guardian dual-write rows}
@@ -27,7 +30,8 @@ class SyncGuardiansFromLegacyCommand extends Command
                             {--campus-id= : Limit to CampusID}
                             {--student-id= : Limit to one Student id}
                             {--limit=20000 : Max students to scan}
-                            {--force : Required with --apply outside local/testing}';
+                            {--force : Required with --apply outside local/testing}
+                            {--with-names : Print parent phone/name (operator only; never in workflows)}';
 
     protected $description = 'Dry-run / apply / verify dual-write of legacy parent_* into primary guardians';
 
@@ -92,8 +96,8 @@ class SyncGuardiansFromLegacyCommand extends Command
                 '  student_id=%d campus=%s phone=%s name=%s',
                 (int) $student->getKey(),
                 (string) ($student->CampusID ?? ''),
-                $phone !== '' ? $phone : '-',
-                $name !== '' ? $name : '-'
+                $this->personText($phone),
+                $this->personText($name)
             ));
 
             if ($dryRun) {

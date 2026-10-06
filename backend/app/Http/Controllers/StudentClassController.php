@@ -3591,47 +3591,13 @@ class StudentClassController extends Controller
                 ], 409);
             }
 
-            $rate = (float) ($studentClass->Rate ?? 0);
-            $rateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
-            if (!in_array($rateUnit, ['session', 'hour'], true)) {
-                $rateUnit = 'session';
-            }
-            $globalDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
-            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
-            $periodSessions = !empty($slots)
-                ? ContractSessionSchedule::buildSessionsFromWeeklySchedule(
-                    (int) $studentClass->getKey(),
-                    $newStartDate,
-                    $newEndDate,
-                    $slots,
-                    $globalDur
-                )
-                : [];
-            $periodSessionCount = count($periodSessions);
-            if ($periodSessionCount <= 0) {
-                $periodSessionCount = max(0, (int) ($studentClass->monthly_sessions ?? 0));
-            }
-            $periodTotalHours = !empty($periodSessions)
-                ? (int) round(array_reduce($periodSessions, function ($carry, $session) {
-                    $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
-                    $end = substr((string) ($session['EndTime'] ?? ''), 0, 5);
-                    if ($start === '' || $end === '') {
-                        return $carry;
-                    }
-                    $startM = ((int) substr($start, 0, 2)) * 60 + (int) substr($start, 3, 2);
-                    $endM = ((int) substr($end, 0, 2)) * 60 + (int) substr($end, 3, 2);
-                    return $carry + max(0, $endM - $startM);
-                }, 0) / 60)
-                : (int) round(($periodSessionCount * $globalDur) / 60);
-            $periodCharge = $this->calculateCourseChargeFromRate(
-                $rate,
-                $rateUnit,
-                $periodSessionCount,
-                $periodTotalHours
-            );
-            if ($periodCharge <= 0) {
-                $periodCharge = max(0, (int) ($studentClass->Charge ?? 0));
-            }
+            $preview = app(\App\Services\MonthlyRenewalPeriodService::class)->previewPeriod($studentClass, $newStartDate, $newEndDate);
+            $rate = $preview['rate'];
+            $rateUnit = $preview['rate_unit'];
+            $globalDur = $preview['session_duration'];
+            $periodSessionCount = $preview['sessions'];
+            $periodTotalHours = $preview['hours'];
+            $periodCharge = $preview['charge'];
 
             $discountSnapshot = app(TransactionDiscountCalculator::class)->calculate(
                 max(0, $periodCharge), $discountInput, $actorId, $actorRole
@@ -5812,17 +5778,7 @@ class StudentClassController extends Controller
 
     private function findDuplicateMonthlyRenewal(StudentClass $studentClass, string $startDate, string $endDate): ?StudentClass
     {
-        return StudentClass::where('ID', '<>', $studentClass->ID)
-            ->where('StudentID', $studentClass->StudentID)
-            ->where('SubjectID', $studentClass->SubjectID)
-            ->where('ScheduleMode', 'date')
-            ->whereDate('StartDate', $startDate)
-            ->whereDate('EndDate', $endDate)
-            ->where(function ($q) {
-                $q->whereNull('Stop')->orWhere('Stop', 0);
-            })
-            ->orderBy('ID')
-            ->first();
+        return app(\App\Services\MonthlyRenewalPeriodService::class)->findDuplicate($studentClass, $startDate, $endDate);
     }
 
     /**
@@ -7310,15 +7266,7 @@ class StudentClassController extends Controller
         int $sessionCount,
         int $totalHours
     ): int {
-        if ($rate <= 0) {
-            return 0;
-        }
-
-        if ($rateUnit === 'hour') {
-            return (int) round($rate * max(0, $totalHours));
-        }
-
-        return (int) round($rate * max(0, $sessionCount));
+        return \App\Services\MonthlyRenewalPeriodService::chargeFromRate($rate, $rateUnit, $sessionCount, $totalHours);
     }
 
     /**

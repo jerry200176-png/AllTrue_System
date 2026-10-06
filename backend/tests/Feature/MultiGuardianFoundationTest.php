@@ -135,4 +135,24 @@ class MultiGuardianFoundationTest extends TestCase
         // Dual-read still prefers guardian after successful sync of new legacy values.
         $this->assertSame('0933333333', StudentContactPhone::forStudent($student->fresh()));
     }
+
+    public function test_cutover_audit_does_not_expose_line_id_or_phone_fragments(): void
+    {
+        $student = $this->student();
+        \App\Models\StudentLineBinding::create([
+            'student_id' => $student->id,
+            'line_user_id' => 'U00000000000000000000000000ABCDEF',
+            'campus_id' => 1,
+            'bound_at' => now(),
+            'verified_at' => now(),
+            'verification_method' => 'contact_phone',
+        ]);
+
+        $audit = app(\App\Services\ParentBinding\ParentGuardianAccessService::class)->cutoverAudit();
+
+        $this->assertSame(1, $audit['slb_orphan_count']);
+        $json = json_encode($audit);
+        $this->assertStringNotContainsString('ABCDEF', $json);
+        $this->assertStringNotContainsString('suffix', $json);
+    }
 }

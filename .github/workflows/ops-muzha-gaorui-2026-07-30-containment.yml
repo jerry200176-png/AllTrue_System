@@ -1,6 +1,6 @@
 name: Muzha Gaorui 2026-07-30 Containment (manual)
 
-# Dedicated lane for 木柵・高瑞樸・楊智超・數學・2026-07-30 19:00–21:00.
+# Dedicated lane for 木柵・數學・2026-07-30 19:00–21:00 (student/teacher resolved inside the script).
 # Not Deploy to Pi. Successor to docs PR #1466. Owner-approved Option 1.
 
 on:
