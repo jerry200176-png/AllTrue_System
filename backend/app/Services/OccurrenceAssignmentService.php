@@ -37,7 +37,39 @@ class OccurrenceAssignmentService
                     ->where('reason', 'substitute')
                     ->whereDate('to_date', Carbon::parse((string) $session->SessionDate)->toDateString())
                     ->where('to_time', substr((string) $session->StartTime, 0, 5))
-                    ->exists());
+                    ->exists())
+            || self::ownedByLineage($session);
+    }
+
+    /**
+     * Lineage key (#3590 item 1): the identity (course, original date, original time) of the live row at the session's
+     * slot, matched to the writer's `substitute` log rows by schedule id or identity. A legacy reschedule after a flag
+     * rollback moves the slot but keeps the stamped identity, so the slot-only match above would miss the row.
+     */
+    private static function ownedByLineage(ClassSession $session): bool
+    {
+        if (!Schema::hasColumn('schedule_change_log', 'to_teacher_id')) {
+            return false;
+        }
+        $course = (int) $session->StudentClassID;
+        $stamped = Schedule::query()->where('student_course_id', $course)
+            ->whereDate('schedule_date', Carbon::parse((string) $session->SessionDate)->toDateString())
+            ->whereIn('status', ['scheduled', 'leave'])
+            ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr((string) $session->StartTime, 0, 5)])
+            ->whereNotNull('original_schedule_date')->whereNotNull('original_start_time')
+            ->get(['id', 'original_schedule_date', 'original_start_time']);
+        foreach ($stamped as $row) {
+            $owned = ScheduleChangeLog::query()->where('student_course_id', $course)->where('reason', 'substitute')
+                ->where(fn ($q) => $q->where('schedule_id', (int) $row->id)->orWhere(fn ($i) => $i
+                    ->whereDate('original_schedule_date', Carbon::parse((string) $row->original_schedule_date)->toDateString())
+                    ->where('original_start_time', substr((string) $row->original_start_time, 0, 5))))
+                ->exists();
+            if ($owned) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** A leave occurrence already has its live row; a substitute must not add a second one. */

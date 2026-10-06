@@ -1,6 +1,6 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 7
+version: 8
 
 operations:
   muzha-fixed-schedule-20261001:
@@ -361,3 +361,32 @@ operations:
     parameter_keys: [campus_id, decision_reference, expected_digest]
     tags: [repair, session, scheduling, td076]
     notes: R-1. Dry-run first (expected_digest empty) returns an ids-only digest-pinned manifest; execute needs that exact digest. Ambiguous groups are quarantined untouched. Pi-local POP only.
+
+  td076-r2-history-pins-20261006:
+    lifecycle: active
+    domain: session
+    business_owner: director-scheduling
+    technical_owner: platform-scheduling
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-td076-occurrence-repair
+    founder_approval_required: true
+    runbook: docs/incidents/RM-TD076-OCCURRENCE-REPAIRS-20261006.md
+    alert_group: LINE:ops-scheduling
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: campus_scoped_history_pin_rows_created_only
+    estimated_duration: 5m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\Td076HistoryPinsStrategy
+    parameter_keys: [campus_id, decision_reference, expected_digest]
+    tags: [repair, session, scheduling, td076]
+    notes: R-2. Dry-run first (expected_digest empty) returns an ids-only digest-pinned manifest; execute needs that exact digest. Taught past occurrences whose evidence teachers disagree are quarantined, never pinned. Inverse removes exactly the created pins. Pi-local POP only.

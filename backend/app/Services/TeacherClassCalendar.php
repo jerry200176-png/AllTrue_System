@@ -56,7 +56,7 @@ class TeacherClassCalendar
         foreach ($sessionQuery->get() as $row) {
             $subs = $substitutedBy[self::key($row->course_id, $row->d, $row->start_time)] ?? [];
             unset($subs[(int) $row->teacher_id]);
-            if ($subs !== []) {
+            if ($subs !== [] || SubstituteScheduleService::isSubstitutedAway((int) $row->course_id, $row->d, (string) $row->start_time)) {
                 continue;
             }
             self::push($out, $row->teacher_id, $row->d, $row->start_time, $row->campus_id);
