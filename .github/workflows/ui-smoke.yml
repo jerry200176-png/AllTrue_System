@@ -2,16 +2,19 @@ name: UI Smoke (Playwright)
 
 # #547 / Epic #535 Phase 4.3 起 — 前端 UI smoke（對 production 只讀導航）。
 #
-# 觸發策略（#730，FinOps 節流 + 可當 required check）：
+# 觸發策略（#730，FinOps 節流；目前不是 required check，#3506 實站 smoke 仍失敗）：
 #   - pull_request：job 一律啟動（check 名稱穩定，可加入 branch protection required），
-#     但「Detect frontend diff」判斷本 PR 是否動到 frontend/src/** 或 frontend/e2e/**；
+#     但「Detect frontend diff」判斷本 PR 是否動到產品前端、smoke 定義、
+#     Playwright 設定、依賴或本 workflow；
 #     沒動 → 秒過、不下載瀏覽器、不跑 Playwright（省 Actions minutes）；
 #     有動 → 才真正跑 E2E。
 #     ⚠️ 刻意「不用 workflow 層 paths:」過濾——path-filtered 的 required check 在不符路徑時
 #     會永遠 pending、卡住 merge（GitHub 已知陷阱）。改用「always-run + 內部偵測」。
 #   - schedule / workflow_dispatch：一律完整跑（對 production 週檢 / 手動）。
 #
-# Secrets：teacher 路徑只需 SMOKE_TEACHER_*；director 路徑需 SMOKE_DIRECTOR_*（缺則 spec 內 skip）。
+# Secrets：完整 production smoke 需 SMOKE_BASE_URL、SMOKE_DIRECTOR_*、SMOKE_TEACHER_*；
+# 缺少任一項時在安裝依賴前明確失敗，不能以 spec skip 產生綠燈。
+# 家長入口 smoke（SMOKE_PARENT_*）尚無 repo secrets，不在本 gate 宣稱的驗證範圍；補上 secrets 後再納入必要項。
 # 見 OPERATIONS_RUNBOOK §B2 節流原則。
 
 on:
@@ -57,19 +60,42 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || true)
+          if ! CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA"); then
+            echo "::error title=UI Smoke changed-path detection failed::Cannot compare PR base and head; refusing to skip Playwright."
+            exit 1
+          fi
           echo "Changed files:"; echo "$CHANGED"
-          if echo "$CHANGED" | grep -qE '^frontend/(src|e2e)/'; then
-            echo "→ 前端有變動，跑 E2E"
+          if grep -qE '^frontend/(src/|e2e/|playwright\.config\.js$|package(-lock)?\.json$)|^\.github/workflows/ui-smoke\.yml$' <<< "$CHANGED"; then
+            echo "→ UI smoke 相關路徑有變動，跑 E2E"
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
-            echo "→ 本 PR 未動 frontend/src 或 frontend/e2e，略過 E2E（FinOps 節流）"
+            echo "→ 本 PR 未動 UI smoke 相關路徑，略過 E2E（FinOps 節流）"
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: No frontend diff — skipping E2E
+      - name: No smoke-relevant diff — skipping E2E
         if: steps.detect.outputs.run != 'true'
-        run: echo "✅ 無前端 diff，UI smoke 略過（gate 視為通過）。"
+        run: echo "✅ 無 UI smoke 相關 diff，Playwright 略過；本 job 未驗證正式站。"
+
+      - name: Require production smoke secrets (TD-070)
+        if: steps.detect.outputs.run == 'true'
+        env:
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+          SMOKE_DIRECTOR_USER: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASS: ${{ secrets.SMOKE_DIRECTOR_PASS }}
+          SMOKE_TEACHER_USER: ${{ secrets.SMOKE_TEACHER_USER }}
+          SMOKE_TEACHER_PASS: ${{ secrets.SMOKE_TEACHER_PASS }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in SMOKE_BASE_URL SMOKE_DIRECTOR_USER SMOKE_DIRECTOR_PASS SMOKE_TEACHER_USER SMOKE_TEACHER_PASS; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=UI Smoke credentials unavailable::Missing required smoke inputs: ${missing[*]}"
+            exit 1
+          fi
+          echo "Required smoke inputs are present; Playwright must execute."
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         if: steps.detect.outputs.run == 'true'
@@ -93,24 +119,6 @@ jobs:
           sudo rm -rf /var/lib/apt/lists/partial /var/lib/apt/lists/*chrome* || true
           sudo apt-get update -y || true
           npx playwright install --with-deps chromium
-
-      - name: Warn if smoke secrets are missing (TD-070)
-        if: steps.detect.outputs.run == 'true'
-        env:
-          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
-          SMOKE_DIRECTOR_USER: ${{ secrets.SMOKE_DIRECTOR_USER }}
-          SMOKE_TEACHER_USER: ${{ secrets.SMOKE_TEACHER_USER }}
-        run: |
-          # A missing secret makes smoke.spec.js silently `test.skip()` its whole
-          # describe block — the job still reports green, so without this
-          # annotation "the smoke path isn't exercised" is invisible unless
-          # someone opens the raw Playwright log. See docs/TECH_DEBT.md TD-070
-          # (director path was unset for an unknown period; the exact page/bug
-          # class it exists to catch shipped to production undetected).
-          [ -z "$SMOKE_BASE_URL" ] && echo "::warning title=UI Smoke — no BASE_URL::SMOKE_BASE_URL not set — the ENTIRE UI smoke suite (director + teacher) is skipped this run, not just failing to find issues."
-          [ -n "$SMOKE_BASE_URL" ] && [ -z "$SMOKE_DIRECTOR_USER" ] && echo "::warning title=UI Smoke — director path skipped::SMOKE_DIRECTOR_USER/PASS not set — the 'director: 課程管理頁與待補課面板載入' test (and any other director-path smoke test) is skipped, not passing. This check going green does NOT mean the director path was verified."
-          [ -n "$SMOKE_BASE_URL" ] && [ -z "$SMOKE_TEACHER_USER" ] && echo "::warning title=UI Smoke — teacher path skipped::SMOKE_TEACHER_USER/PASS not set — the teacher-path smoke tests are skipped, not passing."
-          exit 0
 
       - name: Run UI smoke
         if: steps.detect.outputs.run == 'true'

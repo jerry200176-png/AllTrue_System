@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\BankTransaction;
+use App\Models\StudentClass;
+use App\Services\BillingPayableResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -122,24 +124,47 @@ class BankReconciliationController extends Controller
         }
 
         $txn = BankTransaction::findOrFail($id);
+        $role = $request->attributes->get('auth_role');
+        $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if ($role !== 'super_admin' && !in_array((int) $txn->campus_id, $campusIds, true)) {
+            abort(403);
+        }
         $amount = (int) $txn->amount;
-        $date = $txn->transaction_date;
-
-        $candidates = DB::table('StudentClass')
-            ->where('Pay', $amount)
-            ->where('Paid', 1)
-            ->whereBetween('PayDate', [$date->copy()->subDays(3)->toDateString(), $date->copy()->addDays(3)->toDateString()])
-            ->join('Student', 'StudentClass.StudentID', '=', 'Student.id')
-            ->select('StudentClass.ID as student_class_id', 'Student.name as student_name', 'StudentClass.Pay as amount', 'StudentClass.PayDate as payment_date')
-            ->limit(10)
-            ->get()
-            ->map(fn ($r) => [
-                'student_class_id' => (int) $r->student_class_id,
-                'student_name' => $r->student_name ?? '',
-                'amount' => (int) $r->amount,
-                'payment_date' => $r->payment_date,
-                'confidence' => $r->payment_date === $date->toDateString() ? 'high' : 'medium',
-            ]);
+        // F7 S3d (B24): match the bank amount against what is still owed on open invoices (resolver
+        // outstanding of unpaid/partial courses), not the legacy StudentClass.Pay / Paid=1 pair.
+        // No date window any more (an unsettled invoice has no payment date): payment_date is the oldest
+        // open invoice IssueDate and confidence is high only when exactly one course matches.
+        // Bounded: only the transaction's campus, and only invoices whose stored remaining or total equals
+        // the bank amount (cheap SQL pre-filter); the resolver then confirms the real outstanding.
+        $open = DB::table('Invoice')
+            ->join('Student', 'Student.id', '=', 'Invoice.StudentID')
+            ->where('Student.CampusID', (int) $txn->campus_id)
+            ->whereNotNull('Invoice.StudentClassID')
+            ->where(fn ($q) => $q->where('Invoice.TotalAmount', $amount)
+                ->orWhereRaw('Invoice.TotalAmount - COALESCE(Invoice.PaidAmount, 0) = ?', [$amount]))
+            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhereNotIn('Invoice.Status', ['void', 'paid']))
+            ->groupBy('Invoice.StudentClassID')
+            ->selectRaw('Invoice.StudentClassID AS StudentClassID, MIN(Invoice.IssueDate) AS oldest_issue')
+            ->limit(200)
+            ->pluck('oldest_issue', 'StudentClassID');
+        $matches = [];
+        foreach ($open->keys()->chunk(500) as $ids) {
+            $courses = StudentClass::with('student')->whereIn('ID', $ids->all())->get();
+            $statuses = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds($ids->all(), $courses);
+            foreach ($courses as $c) {
+                $st = $statuses[(int) $c->ID] ?? null;
+                if ($st && in_array($st['status'], ['unpaid', 'partial'], true) && (int) $st['outstanding'] === $amount) {
+                    $matches[] = [
+                        'student_class_id' => (int) $c->ID,
+                        'student_name' => $c->student->name ?? '',
+                        'amount' => $amount,
+                        'payment_date' => $open[(int) $c->ID] ? substr((string) $open[(int) $c->ID], 0, 10) : null,
+                    ];
+                }
+            }
+        }
+        $candidates = collect($matches)->take(10)
+            ->map(fn ($m) => $m + ['confidence' => count($matches) === 1 ? 'high' : 'medium']);
 
         return response()->json(['suggestions' => $candidates]);
     }
