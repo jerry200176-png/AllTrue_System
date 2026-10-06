@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ClassSession;
 use App\Models\StudentClass;
+use App\Services\Scheduling\ContractSessionSchedule;
 use Carbon\Carbon;
 
 /** Shared renewal dates and historical-session safety; does not move or price sessions. */
@@ -25,5 +26,60 @@ final class MonthlyRenewalPeriodService
             'due_date' => $end ? $month->day(min($day, $month->daysInMonth))->toDateString() : null,
             'blockers' => $outside ? [['code' => 'monthly_completed_sessions_outside_contract',
                 'message' => "有 {$outside} 堂已上課落在合約日期外。請先到月結核對確認堂次與帳務歸屬，再建立新一期。"]] : []];
+    }
+
+    public static function chargeFromRate(float $rate, string $rateUnit, int $sessionCount, int $totalHours): int
+    {
+        if ($rate <= 0) {
+            return 0;
+        }
+        return (int) round($rateUnit === 'hour' ? $rate * max(0, $totalHours) : $rate * max(0, $sessionCount));
+    }
+
+    public function findDuplicate(StudentClass $course, string $start, string $end): ?StudentClass
+    {
+        return StudentClass::query()->where('ID', '<>', $course->getKey())
+            ->where('StudentID', $course->getAttribute('StudentID'))
+            ->where('SubjectID', $course->getAttribute('SubjectID'))
+            ->where('ScheduleMode', 'date')
+            ->whereDate('StartDate', $start)
+            ->whereDate('EndDate', $end)
+            ->where(fn ($q) => $q->whereNull('Stop')->orWhere('Stop', 0))
+            ->orderBy('ID')
+            ->first();
+    }
+
+    /** Sessions, hours and charge BEFORE discount for one renewal period; shared by renewMonthly and the drafts preview. */
+    public function previewPeriod(StudentClass $course, string $start, string $end): array
+    {
+        $rate = (float) ($course->getAttribute('Rate') ?? 0);
+        $rateUnit = strtolower(trim((string) ($course->getAttribute('rate_unit') ?? 'session')));
+        if (!in_array($rateUnit, ['session', 'hour'], true)) {
+            $rateUnit = 'session';
+        }
+        $dur = max(30, (int) ($course->getAttribute('SessionDuration') ?? 120));
+        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($course);
+        $built = !empty($slots)
+            ? ContractSessionSchedule::buildSessionsFromWeeklySchedule((int) $course->getKey(), $start, $end, $slots, $dur)
+            : [];
+        $count = count($built);
+        if ($count <= 0) {
+            $count = max(0, (int) ($course->getAttribute('monthly_sessions') ?? 0));
+        }
+        $hours = !empty($built)
+            ? (int) round(array_reduce($built, function ($carry, $session) {
+                $s = substr((string) ($session['StartTime'] ?? ''), 0, 5);
+                $e = substr((string) ($session['EndTime'] ?? ''), 0, 5);
+                if ($s === '' || $e === '') {
+                    return $carry;
+                }
+                return $carry + max(0, ((int) substr($e, 0, 2)) * 60 + (int) substr($e, 3, 2) - ((int) substr($s, 0, 2)) * 60 - (int) substr($s, 3, 2));
+            }, 0) / 60)
+            : (int) round(($count * $dur) / 60);
+        $charge = self::chargeFromRate($rate, $rateUnit, $count, $hours);
+        if ($charge <= 0) {
+            $charge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
+        }
+        return ['rate' => $rate, 'rate_unit' => $rateUnit, 'session_duration' => $dur, 'sessions' => $count, 'hours' => $hours, 'charge' => $charge];
     }
 }

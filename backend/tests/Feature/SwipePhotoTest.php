@@ -189,4 +189,42 @@ class SwipePhotoTest extends TestCase
         $this->assertSame(5000, $w);
         Http::assertSent(fn ($req) => array_column($req['messages'], 'type') === ['text', 'image']);
     }
+
+    public function test_push_wire_format_bearer_audit_and_fallback_payload(): void
+    {
+        $url = $this->upload()->assertOk()->json('image_url');
+        $req = Http::recorded()->first()[0];
+        $this->assertSame('https://api.line.me/v2/bot/message/push', $req->url());
+        $this->assertSame('Bearer line-token', $req->header('Authorization')[0]);
+        $this->assertSame(['to', 'messages'], array_keys($req->data()));
+        $this->assertSame($url, $req['messages'][0]['contents']['hero']['url']);
+        $audit = DB::table('security_audit_events')->where('event_type', 'notification.delivery')->get();
+        $this->assertCount(1, $audit); // only the verified binding is attempted
+        $this->assertSame('success', $audit[0]->outcome);
+        // MySQL JSON columns reorder keys; compare as a map, not by key order.
+        $this->assertEqualsCanonicalizing(
+            ['method' => 'line_push', 'notification_type' => 'swipe_photo', 'delivery_status' => 'delivered', 'binding_verified' => true],
+            array_intersect_key(json_decode($audit[0]->metadata, true), array_flip(['method', 'notification_type', 'delivery_status', 'binding_verified']))
+        );
+
+        Http::swap(new \Illuminate\Http\Client\Factory()); // reset recorded
+        Http::fake(['api.line.me/*' => Http::response([], 200)]);
+        $url = $this->upload(['photo' => UploadedFile::fake()->image('bomb.png', 5000, 5000)])->assertOk()->json('image_url');
+        $m = Http::recorded()->first()[0]['messages'];
+        $this->assertSame(
+            ['type' => 'image', 'originalContentUrl' => $url, 'previewImageUrl' => $url],
+            $m[1]
+        );
+        $this->assertSame('text', $m[0]['type']);
+    }
+
+    public function test_failed_push_is_audited_as_failure_and_not_counted(): void
+    {
+        Http::swap(new \Illuminate\Http\Client\Factory());
+        Http::fake(['api.line.me/*' => Http::response('err', 500)]);
+        $this->upload()->assertOk()->assertJson(['sent' => 0]);
+        $row = DB::table('security_audit_events')->where('event_type', 'notification.delivery')->first();
+        $this->assertSame('failure', $row->outcome);
+        $this->assertSame('failed', json_decode($row->metadata, true)['delivery_status']);
+    }
 }

@@ -133,7 +133,7 @@ jobs:
           $comment = $already ? ["ok" => true, "skipped" => true] : \App\Services\BugReportService::addComment($bugId, $actor, $reply, false);
           $commentSucceeded = ($comment["ok"] ?? false) || isset($comment["id"]) || ($comment["skipped"] ?? false);
           if (!$commentSucceeded) { throw new \RuntimeException(json_encode($comment)); }
-          echo json_encode(["bug_id" => $bugId, "status" => (string)$bug->status, "comment" => $comment, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          echo json_encode(["bug_id" => $bugId, "status" => (string)$bug->status, "comment_id" => is_array($comment) ? ($comment["skipped"] ?? false) : $comment->id, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
           }
           '
           REMOTE

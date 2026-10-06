@@ -103,7 +103,9 @@ jobs:
           $activeAugust = $db::table("Invoice")->where("StudentClassID", 2885)->where("billing_period", "2026-08")->whereNotIn("Status", ["void"])->get(["id", "TotalAmount", "PaidAmount", "Status"]);
           $positivePayments = $db::table("Payment as p")->join("Invoice as i", "i.id", "=", "p.InvoiceID")->where("i.StudentClassID", 2885)->where("i.Status", "!=", "void")->where("p.Amount", ">", 0)->where("p.Method", "!=", "void")->count();
           $sc->EndDate = $sc->EndDate ? substr((string) $sc->EndDate, 0, 10) : null;
-          echo json_encode(["production_backend_sha" => getenv("DEPLOYED_SHA"), "class_2885" => $sc, "session_32086" => $s, "invoice_1274" => $oldInvoice, "report_1309" => $oldReport, "class_3361" => $sept, "invoice_1575" => $septInvoice, "active_august_invoices" => $activeAugust, "positive_payment_count_for_2885" => $positivePayments], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          // #3605: public repo -- whole rows can hold names and free text; keep only non-person keys.
+          $safe = static fn ($r) => $r ? array_filter((array) $r, static fn ($k) => !preg_match("/name|note|memo|reason|desc|phone|email|line|token/i", (string) $k), ARRAY_FILTER_USE_KEY) : $r;
+          echo json_encode(["production_backend_sha" => getenv("DEPLOYED_SHA"), "class_2885" => $safe($sc), "session_32086" => $safe($s), "invoice_1274" => $safe($oldInvoice), "report_1309" => $safe($oldReport), "class_3361" => $safe($sept), "invoice_1575" => $safe($septInvoice), "active_august_invoices" => $activeAugust, "positive_payment_count_for_2885" => $positivePayments], JSON_UNESCAPED_UNICODE), PHP_EOL;
           '
           REMOTE
 

@@ -40,7 +40,8 @@ echo "$IDENTITY"
 
 IFS='|' read -r GOT_ID GOT_LOGIN GOT_TYPE GOT_CAMPUSES <<<"$IDENTITY"
 if [ "$GOT_ID" != "$ALLOW_USER_ID" ] || [ "$GOT_LOGIN" != "$ALLOW_LOGIN" ] || [ "$GOT_TYPE" != "$ALLOW_TYPE" ] || [ "$GOT_CAMPUSES" != "$ALLOW_CAMPUS_ID" ]; then
-  echo "BLOCKED|identity_mismatch|expected=${ALLOW_USER_ID}|${ALLOW_LOGIN}|${ALLOW_TYPE}|${ALLOW_CAMPUS_ID}|observed=${IDENTITY}"
+  # #3605: never echo the observed row -- when the id is not the test account it holds a real login name.
+  echo "BLOCKED|identity_mismatch|expected=${ALLOW_USER_ID}|${ALLOW_TYPE}|${ALLOW_CAMPUS_ID}|observed_id=${GOT_ID}|observed_type=${GOT_TYPE}|observed_campuses=${GOT_CAMPUSES}"
   echo "=== END READ-ONLY DIAGNOSIS ==="
   exit 1
 fi

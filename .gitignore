@@ -211,3 +211,8 @@ tmp-cutover/
 
 # Pinned shfmt binary for the Bash guard hook (scripts/install-shfmt.sh).
 /.claude/hooks/bin/
+
+# Generated in-app release notes (built from docs/CHANGELOG.md + docs/changes, docs/*-updates fragments)
+frontend/src/lib/changelogDraft.generated.js
+frontend/src/lib/staffUpdates.generated.js
+frontend/src/lib/parentUpdates.generated.js

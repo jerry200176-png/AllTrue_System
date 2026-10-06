@@ -1,4 +1,4 @@
-name: 吳艾潼 StudentSignIn status repair (single-row, guarded)
+name: StudentSignIn 10229 status repair (single-row, guarded)
 
 # One-off data fix for the in-app bug fixed in code by
 # fix(class-sessions): sync stale leave StudentSignIn on leave->attended generic

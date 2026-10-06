@@ -30,6 +30,7 @@ use App\Models\AssessmentResult;
 use App\Models\AssessmentRemediationAction;
 use App\Models\User;
 use App\Http\Controllers\LearningRecordController;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\ExceptionWorkflowService;
 use App\Services\SessionDeductionService;
 use App\Services\StudentIdentityService;
@@ -522,7 +523,7 @@ class ParentPortalController extends Controller
 
         $classIds = $classes->pluck('ID')->all();
         $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
-        $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
+        $paidAtMap = ContractMoneyState::lastPaidAtByStudentClassIds($classIds);
 
         // 共用方案（course_packages）：同一池的多科課程，每筆 StudentClass.SessionCount 都 = 池總堂數。
         // 若用 per-member 計算，家長端會看到「每科都顯示總堂數」且總數被重複加總（in-app #158/#162 家族）。
@@ -783,6 +784,8 @@ class ParentPortalController extends Controller
                 $attended       = $isMonthly ? (int) ($attendedThisMonth[$c->ID] ?? 0) : 0;
                 $paid           = $this->isClassPaid($c, $paidAtMap);
                 $stopped        = (bool) $c->Stop;
+                $waived         = ContractMoneyState::isWaived($c);
+                $cardStatus     = ContractMoneyState::parentCardStatus($isTutoring, $waived, $paid);
 
                 // 共用方案成員：附帶池子資訊，讓前端把每張卡標記為「共用方案」並用同一池數字，
                 // 避免家長誤以為每科各有一份總堂數。
@@ -798,14 +801,16 @@ class ParentPortalController extends Controller
                     'campus_name'          => $campus['campus_name'] ?? null,
                     'subject'              => $this->resolveSubjectName($c),
                     'schedule_mode'        => $c->ScheduleMode,
+                    // Same rule as StudentClassController::index: only ScheduleMode=count is a session course.
+                    'payment_type'         => $isMonthly ? 'monthly' : 'session',
                     'sessions_purchased'   => $c->SessionCount,
                     'remaining_sessions'   => $metrics['remaining'],
                     'used_sessions'        => $metrics['used'],
                     'is_stopped'           => $stopped,
                     'paid'                 => $paid,
                     'is_tutoring'          => $isTutoring,
-                    'payment_status'       => $isTutoring ? 'free' : ($paid ? 'paid' : 'unpaid'),
-                    'payment_status_label' => $isTutoring ? '免費（不適用）' : ($paid ? '已繳費' : '未繳費'),
+                    'payment_status'       => $cardStatus[0],
+                    'payment_status_label' => $cardStatus[1],
                     'lifecycle_status'     => $stopped ? 'closed' : 'active',
                     'lifecycle_status_label' => $stopped ? '課程已結束' : '進行中',
                     // 共用方案池（堂數制）：null 代表非共用方案，前端維持原本 per-course 顯示。
@@ -1359,7 +1364,9 @@ class ParentPortalController extends Controller
         }
 
         $unpaidCount = is_countable($paymentAlerts) ? count($paymentAlerts) : 0;
-        $totalCourses = is_countable($perCourse) ? count($perCourse) : 0;
+        $waivedCount = $perCourse->filter(fn ($course) => ($course['payment_status'] ?? null) === 'waived')->count();
+        // A written-off (確認不收) contract is neither paid nor owed: keep it out of every payment count.
+        $totalCourses = (is_countable($perCourse) ? count($perCourse) : 0) - $waivedCount;
         $freeCount = $perCourse->filter(fn ($course) => (bool) ($course['is_tutoring'] ?? false))->count();
         $payableCourses = max(0, $totalCourses - $freeCount);
         $paidCount = max(0, $payableCourses - $unpaidCount);
@@ -2000,7 +2007,6 @@ class ParentPortalController extends Controller
         $records = $classes->map(function ($course) use ($billingCampusMap) {
             $charge = (int) ($course->Charge ?? 0);
             $paid = (int) ($course->Pay ?? 0);
-            $isPaid = $paid >= $charge;
             $campusId = (int) ($course->student->CampusID ?? 0);
 
             return [
@@ -2011,7 +2017,7 @@ class ParentPortalController extends Controller
                 'period' => $course->StartDate ? substr($course->StartDate, 0, 7) : null,
                 'charge' => $charge,
                 'paid' => min($paid, $charge),
-                'status' => $isPaid ? 'paid' : ($paid > 0 ? 'partial' : 'unpaid'),
+                'status' => ContractMoneyState::parentRecordStatus(ContractMoneyState::isWaived($course), $paid, $charge),
             ];
         })->values();
 

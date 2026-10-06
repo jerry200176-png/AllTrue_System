@@ -521,4 +521,56 @@ class ManualSessionBookingTest extends TestCase
             ->assertJsonPath('next_period.candidates.0.id', (int) $next->ID);
         $this->assertSame((int) $this->course->ID, (int) $stale->fresh()->StudentClassID);
     }
+
+    /** Characterization of the student-overlap rule (moved into ScheduleGuardService; behavior must not change). */
+    private function otherCourse(int $stop = 0): StudentClass
+    {
+        $other = $this->course->replicate();
+        $other->Stop = $stop;
+        $other->SubjectID = 2;
+        $other->save();
+
+        return $other;
+    }
+
+    private function checkStudentSlot(string $start, string $date): \Illuminate\Testing\TestResponse
+    {
+        return $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", ['session_date' => $date, 'start_time' => $start]);
+    }
+
+    public function test_student_overlap_with_another_active_course_blocks_with_student_conflict(): void
+    {
+        $other = $this->otherCourse();
+        $this->plannedSession($other, 7); // 16:00-17:00
+        $date = Carbon::today()->addDays(7)->toDateString();
+
+        $this->checkStudentSlot('16:30', $date)->assertStatus(422)
+            ->assertJsonPath('error_code', 'STUDENT_CONFLICT')
+            ->assertJsonPath('message', '學生在同一時間已有另一堂課，請改選其他時段');
+        $this->checkStudentSlot('15:30', $date)->assertStatus(422)->assertJsonPath('error_code', 'STUDENT_CONFLICT');
+        // Back-to-back is not an overlap.
+        $this->checkStudentSlot('17:00', $date)->assertOk()->assertJsonPath('can_add', true);
+        $this->checkStudentSlot('15:00', $date)->assertOk()->assertJsonPath('can_add', true);
+    }
+
+    public function test_student_overlap_ignores_stopped_other_course_and_excluded_statuses(): void
+    {
+        $date = Carbon::today()->addDays(7)->toDateString();
+        $this->plannedSession($this->otherCourse(1), 7);
+        $this->plannedSession($this->otherCourse(), 7, 'cancelled');
+
+        $this->checkStudentSlot('16:30', $date)->assertOk()->assertJsonPath('can_add', true);
+    }
+
+    public function test_student_overlap_counts_own_stopped_course_sessions(): void
+    {
+        $this->course->Stop = 1;
+        $this->course->closed_reason = 'settled';
+        $this->course->save();
+        $this->plannedSession($this->course, 7); // own course, 16:00-17:00
+
+        $this->checkStudentSlot('16:30', Carbon::today()->addDays(7)->toDateString())
+            ->assertStatus(422)->assertJsonPath('error_code', 'STUDENT_CONFLICT');
+    }
 }

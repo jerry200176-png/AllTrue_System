@@ -261,7 +261,7 @@ class SwipeRfidEdgeCaseTest extends TestCase
 
         $teacherId = DB::table('User')->insertGetId([
             'LoginName' => 'collision-teacher@example.com',
-            'Name' => '黃芝琳',
+            'Name' => '測試老師甲',
             'PSW' => 'secret',
             'type' => 'T',
             'phone' => '0900000000',

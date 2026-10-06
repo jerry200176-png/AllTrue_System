@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
+use App\Services\OccurrenceAssignmentService;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordFeedback;
 use App\Models\LearningRecordTeacherComment;
@@ -15,6 +16,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Exceptions\RescheduleSessionException;
 use App\Services\ApprovalSessionSyncService;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\LearningRecordBackfillService;
 use App\Services\LearningRecordResurrectionPolicy;
@@ -87,13 +89,15 @@ class LearningRecordController extends Controller
         $placeholders = implode(', ', array_fill(0, count($teacherIds), '?'));
         // The latest scheduled substitute for this occurrence wins, as in
         // SubstituteScheduleService::resolveSubstituteUserId().
+        // TD-076 flag on: the stamped live row outranks an older unstamped chain row (flag off: plain MAX(id)).
+        $stampedFirst = \App\Services\SubstituteScheduleService::anyCampusOn() ? '(s.original_schedule_date IS NOT NULL) DESC, ' : '';
         $substituteSql = "(SELECT NULLIF(s.teacher_id, 0) FROM schedules AS s
             WHERE s.student_course_id = {$lrTable}.StudentClassID
               AND DATE(s.schedule_date) = DATE({$lrTable}.SessionDate)
               AND (NULLIF(TRIM({$lrTable}.StartTime), '') IS NULL
                    OR SUBSTRING(s.start_time, 1, 5) = SUBSTRING({$lrTable}.StartTime, 1, 5))
               AND s.status = 'scheduled' AND s.original_schedule_id IS NOT NULL
-            ORDER BY s.id DESC LIMIT 1)";
+            ORDER BY {$stampedFirst}s.id DESC LIMIT 1)";
 
         $query->where(function ($scope) use ($lrTable, $placeholders, $substituteSql, $teacherIds) {
             $scope->whereRaw("{$substituteSql} IN ({$placeholders})", $teacherIds)
@@ -638,22 +642,7 @@ class LearningRecordController extends Controller
                 // #1185: TD-058 derived-table pattern (see #985 / ClassSessionController::index)
                 // replaces the per-row correlated MAX(sub2.id) subquery — latest substitute
                 // schedule per (student_course_id, schedule_date, start-time) resolved once.
-                ->leftJoin(DB::raw('(
-                    SELECT ss.*
-                    FROM `schedules` ss
-                    INNER JOIN (
-                        SELECT sub2.student_course_id,
-                               sub2.schedule_date,
-                               SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
-                               MAX(sub2.id) AS max_id
-                        FROM `schedules` sub2
-                        INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
-                        WHERE sub2.status = "scheduled"
-                          AND sub2.original_schedule_id IS NOT NULL
-                          AND sub2.teacher_id <> sc2.TeacherID
-                        GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
-                    ) sub_latest ON ss.id = sub_latest.max_id
-                ) as sub_sched'), function ($join) {
+                ->leftJoin(DB::raw(\App\Services\SubstituteScheduleService::substituteScheduleDerivedSql('', false) . ' as sub_sched'), function ($join) {
                     $join->on('sub_sched.student_course_id', '=', 'sc.ID')
                         ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
                         ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
@@ -827,22 +816,7 @@ class LearningRecordController extends Controller
             // #1185: TD-058 derived-table pattern (see #985 / ClassSessionController::index)
             // replaces the per-row correlated MAX(sub2.id) subquery — latest substitute
             // schedule per (student_course_id, schedule_date, start-time) resolved once.
-            ->leftJoin(DB::raw('(
-                SELECT ss.*
-                FROM `schedules` ss
-                INNER JOIN (
-                    SELECT sub2.student_course_id,
-                           sub2.schedule_date,
-                           SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
-                           MAX(sub2.id) AS max_id
-                    FROM `schedules` sub2
-                    INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
-                    WHERE sub2.status = "scheduled"
-                      AND sub2.original_schedule_id IS NOT NULL
-                      AND sub2.teacher_id <> sc2.TeacherID
-                    GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
-                ) sub_latest ON ss.id = sub_latest.max_id
-            ) as sub_sched'), function ($join) {
+            ->leftJoin(DB::raw(\App\Services\SubstituteScheduleService::substituteScheduleDerivedSql('', false) . ' as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
                     ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
                     ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
@@ -1376,7 +1350,29 @@ class LearningRecordController extends Controller
 
         $updateClass = (bool) ($data['update_class'] ?? false);
 
-        return DB::transaction(function () use ($request, $learningRecord, $newTeacherId, $oldTeacherId, $data, $updateClass) {
+        // TD-076 B1 (flag on): a future occurrence gets the same conflict check as substitute, before any write.
+        if (OccurrenceAssignmentService::enabledFor($targetCampusId) && $learningRecord->ClassSessionID) {
+            $guardSession = ClassSession::query()->where('id', (int) $learningRecord->ClassSessionID)->first();
+            if ($guardSession && !OccurrenceAssignmentService::onLeave($guardSession)
+                && \App\Services\Scheduling\ContractTeacherChangeCascade::isPinnableOccurrence($guardSession)) {
+                $conflicts = OccurrenceAssignmentService::futureConflicts($guardSession, $newTeacherId);
+                if ($conflicts) {
+                    return response()->json(['message' => $conflicts[0]['message'] ?? '老師此時段與既有課程衝突', 'conflicts' => $conflicts], 409);
+                }
+            }
+        }
+
+        return DB::transaction(function () use ($request, $learningRecord, $newTeacherId, $oldTeacherId, $data, $updateClass, $targetCampusId) {
+            // TD-076 B2 (flag on): pin taught occurrences while the old contract/LR evidence is still intact.
+            $occurrenceV2 = OccurrenceAssignmentService::enabledFor($targetCampusId);
+            if ($occurrenceV2 && $updateClass) {
+                $course = StudentClass::find($learningRecord->StudentClassID);
+                if ($course && (int) $course->TeacherID > 0 && (int) $course->TeacherID !== $newTeacherId) {
+                    \App\Services\Scheduling\ContractTeacherChangeCascade::pinTaughtOccurrencesBeforeContractTeacherChange(
+                        $course, $newTeacherId, null, (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null
+                    );
+                }
+            }
             $learningRecord->TeacherID = $newTeacherId;
             $learningRecord->save();
 
@@ -1401,6 +1397,12 @@ class LearningRecordController extends Controller
             $changedBy = (int) ($authUser->id ?? 0);
             if ($changedBy <= 0) {
                 $changedBy = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+            }
+
+            $session = $occurrenceV2 && $learningRecord->ClassSessionID ? ClassSession::find($learningRecord->ClassSessionID) : null;
+            if ($session && !OccurrenceAssignmentService::onLeave($session) && \App\Services\Scheduling\ContractTeacherChangeCascade::isPinnableOccurrence($session)) {
+                // The occurrence row agrees with the corrected LR (also for update_class=true, after its pin pass).
+                app(OccurrenceAssignmentService::class)->assignTeacher($session, $newTeacherId, (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null);
             }
 
             LearningRecordTeacherChange::create([
@@ -1485,6 +1487,11 @@ class LearningRecordController extends Controller
                 return response()->json(['message' => 'Only approved records can be rolled back'], 409);
             }
 
+            $sc = StudentClass::query()->whereKey($learningRecord->StudentClassID)->lockForUpdate()->first();
+            if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能退回核准', 'course_waived')) {
+                return $refusal;
+            }
+
             app(UserEngagementXpAwardService::class)->revokeLearningRecordApproved((int) $learningRecord->id);
 
             $learningRecord->Status = 'pending';
@@ -1498,7 +1505,6 @@ class LearningRecordController extends Controller
                 ->where('TeachingSessionCount', '>', 0)
                 ->decrement('TeachingSessionCount');
 
-            $sc = StudentClass::find($learningRecord->StudentClassID);
             if ($sc) {
                 ApprovalSessionSyncService::syncOnRollback($learningRecord, $sc, (int) ($data['DirectorID'] ?? 0));
             }
@@ -2277,6 +2283,9 @@ class LearningRecordController extends Controller
         foreach ($exceptions as $row) {
             $date = $this->normalizeDateValue($row->schedule_date ?? null);
             if (!$date) {
+                continue;
+            }
+            if ((string) $row->status === Schedule::STATUS_SUPERSEDED) {
                 continue;
             }
             if ((string) $row->status === 'scheduled') {

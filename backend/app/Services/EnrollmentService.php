@@ -105,8 +105,7 @@ class EnrollmentService
                 $slots[] = ['weekday' => $wd, 'time' => $startTimeStr];
             }
 
-            $scController = app()->make(\App\Http\Controllers\StudentClassController::class);
-            $generatedSessions = $scController->buildSessionsFromWeeklySchedule(
+            $generatedSessions = \App\Services\Scheduling\ContractSessionSchedule::buildSessionsFromWeeklySchedule(
                 0,
                 $courseStart,
                 $endDate,
@@ -667,38 +666,30 @@ class EnrollmentService
         // creates a course and its ClassSessions in one batch. Validate every
         // concrete occurrence before that transaction so this path cannot bypass
         // the teacher/class-size capacity rule (#253).
-        $scheduleGuard = app(ScheduleGuardService::class);
         $capacityConflicts = [];
         $classType = (string) ($data['class_type'] ?? 'one_on_one');
         $isTutoring = strtolower(trim($classType)) === 'tutoring';
         $roomId = !empty($data['room_id']) ? (int) $data['room_id'] : null;
         foreach ($subjectGroups as $groupKey => $rowsForSubject) {
-            $teacherId = $this->teacherFromGroupKey($groupKey, $globalTeacherId);
+            $slots = [];
             foreach ($rowsForSubject as $row) {
-                $date = $row['date'];
-                $start = $row['start_time'];
-                $duration = max(30, (int) $row['duration_minutes']);
-                if (!$date || !$start) {
+                if (!$row['date'] || !$row['start_time']) {
                     continue;
                 }
-                $end = $this->computeEndTime((string) $start, $duration);
-                $conflicts = $scheduleGuard->validateScheduleOccurrence([
-                    'teacher_id' => $teacherId,
-                    'class_type' => $classType,
-                    'room_id' => $roomId,
-                    'branch_id' => $targetCampusId,
-                    'schedule_date' => $date,
-                    'start_time' => $start,
-                    'end_time' => $end,
-                    'exclude_student_id' => $studentId > 0 ? $studentId : null,
-                ]);
-                foreach ($conflicts as $conflict) {
-                    $capacityConflicts[] = array_merge([
-                        'date' => $date,
-                        'proposed_time' => substr((string) $start, 0, 5) . '-' . substr($end, 0, 5),
-                    ], $conflict);
-                }
+                $duration = max(30, (int) $row['duration_minutes']);
+                $slots[] = [
+                    'date' => $row['date'],
+                    'start_time' => $row['start_time'],
+                    'end_time' => $this->computeEndTime((string) $row['start_time'], $duration),
+                ];
             }
+            $capacityConflicts = array_merge($capacityConflicts, app(ScheduleGuardService::class)->validateOccurrences([
+                'teacher_id' => $this->teacherFromGroupKey($groupKey, $globalTeacherId),
+                'class_type' => $classType,
+                'room_id' => $roomId,
+                'branch_id' => $targetCampusId,
+                'exclude_student_id' => $studentId > 0 ? $studentId : null,
+            ], $slots));
         }
         if (!empty($capacityConflicts)) {
             return response()->json([

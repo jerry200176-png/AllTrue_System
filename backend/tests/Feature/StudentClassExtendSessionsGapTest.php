@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\StudentClassController;
+use App\Services\Scheduling\ContractSessionSchedule;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -76,7 +76,7 @@ class StudentClassExtendSessionsGapTest extends TestCase
             ]);
         }
 
-        app(StudentClassController::class)->extendSessionsIfNeeded($course, 12);
+        app(ContractSessionSchedule::class)->extendSessionsIfNeeded($course, 12);
 
         $activeDates = ClassSession::where('StudentClassID', $course->ID)
             ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
@@ -158,7 +158,7 @@ class StudentClassExtendSessionsGapTest extends TestCase
             ->whereDate('SessionDate', '2026-05-13')
             ->update(['Status' => 'cancelled']);
 
-        app(StudentClassController::class)->extendSessionsIfNeeded($course, 12);
+        app(ContractSessionSchedule::class)->extendSessionsIfNeeded($course, 12);
 
         $may13 = ClassSession::where('StudentClassID', $course->ID)
             ->whereDate('SessionDate', '2026-05-13')
@@ -227,7 +227,7 @@ class StudentClassExtendSessionsGapTest extends TestCase
             ]);
         }
 
-        app(StudentClassController::class)->extendSessionsIfNeeded($course, 5);
+        app(ContractSessionSchedule::class)->extendSessionsIfNeeded($course, 5);
 
         $this->assertSame(1, ClassSession::where('StudentClassID', $course->ID)
             ->whereDate('SessionDate', '2026-08-08')->count());

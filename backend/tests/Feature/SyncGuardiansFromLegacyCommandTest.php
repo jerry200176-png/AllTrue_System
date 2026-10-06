@@ -6,6 +6,7 @@ use App\Models\Student;
 use App\Models\StudentGuardian;
 use App\Services\ParentBinding\GuardianSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 class SyncGuardiansFromLegacyCommandTest extends TestCase
@@ -39,6 +40,22 @@ class SyncGuardiansFromLegacyCommandTest extends TestCase
             StudentGuardian::where('student_id', $student->id)->count()
         );
     }
+
+    public function test_dry_run_output_has_no_parent_name_or_phone_by_default(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => false]);
+        $student = $this->student(['parent_name' => '測試家長乙', 'parent_phone' => '0918123456']);
+
+        Artisan::call('guardians:sync-from-legacy', ['--dry-run' => true]);
+        $out = Artisan::output();
+        $this->assertStringContainsString('student_id=' . $student->id, $out);
+        $this->assertStringNotContainsString('測試家長乙', $out);
+        $this->assertStringNotContainsString('0918123456', $out);
+
+        Artisan::call('guardians:sync-from-legacy', ['--dry-run' => true, '--with-names' => true]);
+        $this->assertStringContainsString('測試家長乙', Artisan::output());
+    }
+
 
     public function test_apply_writes_primary_in_testing(): void
     {

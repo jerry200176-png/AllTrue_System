@@ -15,6 +15,67 @@ use Illuminate\Support\Facades\DB;
  * @property array<string, mixed>|null $pricing_snapshot Immutable transaction pricing snapshot.
  * @property \App\Models\Student|null $student
  * @property \App\Models\CoursePackage|null $coursePackage
+ * @property int|null $ID
+ * @property int $StudentID
+ * @property int $GradeID
+ * @property int $SubjectID
+ * @property int $TeacherID
+ * @property int $by1
+ * @property int $Period
+ * @property string $StartDate
+ * @property string|null $EndDate
+ * @property int|null $week
+ * @property string|null $time
+ * @property int|null $week1
+ * @property string|null $time1
+ * @property int|null $week2
+ * @property string|null $time2
+ * @property int|null $week3
+ * @property string|null $time3
+ * @property int|null $week4
+ * @property string|null $time4
+ * @property int|null $week5
+ * @property string|null $time5
+ * @property int|null $week6
+ * @property string|null $time6
+ * @property int $TotalHours
+ * @property string|null $Memo
+ * @property int|null $Charge
+ * @property int|null $Pay
+ * @property string|null $PayDate
+ * @property int $Paid
+ * @property int|null $Disconunt
+ * @property float|null $Rate
+ * @property string $rate_unit
+ * @property int|null $PackageID
+ * @property int|null $PackageTotalSessions
+ * @property string|null $PackageName
+ * @property int|null $LearnTimeID
+ * @property int|null $room_id
+ * @property int|null $settlement_day
+ * @property int|null $monthly_sessions
+ * @property string $MDate
+ * @property int $Stop
+ * @property string|null $closed_reason
+ * @property string $ScheduleMode
+ * @property string $scheduling_policy
+ * @property int|null $SessionCount
+ * @property int|null $SessionDuration
+ * @property int|null $PurchasedMinutes
+ * @property int|null $RemainingMinutes
+ * @property int|null $duration1
+ * @property int|null $duration2
+ * @property int|null $duration3
+ * @property int|null $duration4
+ * @property int|null $duration5
+ * @property int|null $duration6
+ * @property int|null $RemainingSessions
+ * @property string $ClassType
+ * @property int $UsedSessions
+ * @property \Carbon\CarbonInterface|null $settlement_locked_at
+ * @property string|null $settlement_snapshot
+ * @property int|null $trial_converted_to_id
+ * @property \App\Models\Subject|null $subjectRecord
  */
 class StudentClass extends Model
 {
@@ -59,11 +120,62 @@ class StudentClass extends Model
                 throw new \LogicException('pricing_snapshot is immutable');
             }
         });
+        // 確認不收 is terminal: no writer (update, renewal, pause, payment, delete) may reopen or settle it.
+        // Checked against the committed row so a model loaded before the waiver cannot slip through.
+        static::saving(function (StudentClass $course): void {
+            if ($course->exists && $course->isDirty(['Paid', 'Pay', 'PayDate', 'Stop', 'closed_reason', 'Charge'])
+                && self::isWaivedInDb((int) $course->getKey())) {
+                abort(422, '此合約已確認不收，不能再變更繳費或結案狀態');
+            }
+        });
+        static::deleting(function (StudentClass $course): void {
+            if (self::isWaivedInDb((int) $course->getKey())) {
+                abort(422, '此合約已確認不收，不能刪除');
+            }
+        });
         static::saved(function (StudentClass $course): void {
             if ($course->wasChanged(['settlement_locked_at', 'closed_reason'])) {
                 ClassSession::resetSettlementLockCache();
             }
         });
+    }
+
+    /**
+     * Contracts whose history other ledgers point at (attendance, deductions, entitlement transfers, pricing
+     * amendments) must never be hard-deleted; close them instead.
+     */
+    public static function hasOperationalHistory(array $ids): bool
+    {
+        if ($ids === []) {
+            return false;
+        }
+        $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $ids)->pluck('ID')->all();
+
+        // Every append-only table that keeps a contract id. Add new ones here.
+        $refs = [
+            'session_deduction_ledger' => ['student_class_id'],
+            'session_entitlement_transfers' => ['source_student_class_id', 'target_student_class_id'],
+            'class_session_reassignments' => ['old_student_class_id', 'new_student_class_id'],
+            'student_class_pricing_amendments' => ['student_class_id'],
+            'dunning_events' => ['student_class_id'],
+            'course_contract_group_members' => ['student_class_id'],
+        ];
+        foreach ($refs as $table => $columns) {
+            foreach ($columns as $column) {
+                if (DB::table($table)->whereIn($column, $ids)->exists()) {
+                    return true;
+                }
+            }
+        }
+
+        return ($sessionIds !== [] && DB::table('StudentSingIn')->whereIn('ClassSessionID', $sessionIds)->exists())
+            || DB::table('ClassSession')->whereIn('StudentClassID', $ids)
+                ->whereRaw("LOWER(COALESCE(Status, '')) IN ('attended', 'completed', 'late', 'absent', 'leave')")->exists();
+    }
+
+    public static function isWaivedInDb(int $id): bool
+    {
+        return $id > 0 && DB::table('StudentClass')->where('ID', $id)->lockForUpdate()->value('closed_reason') === 'waived';
     }
 
     /** Initialize the immutable snapshot exactly once, immediately after creation. */
@@ -90,7 +202,7 @@ class StudentClass extends Model
     public function isUsageSettlementLocked(): bool
     {
         return $this->getAttribute('settlement_locked_at') !== null
-            || in_array((string) $this->getAttribute('closed_reason'), ['usage_settled', 'contract_amended'], true);
+            || in_array((string) $this->getAttribute('closed_reason'), ['usage_settled', 'contract_amended', 'waived'], true);
     }
 
     public function subjectRecord()
