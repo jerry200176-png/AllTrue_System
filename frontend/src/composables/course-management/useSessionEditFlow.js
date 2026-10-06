@@ -81,13 +81,18 @@ export function useSessionEditFlow({
     const dateYmdNorm = String(dateYmd || '').slice(0, 10);
     const startTime = unit?.startTime || '';
     const endTime = unit?.endTime || '';
+    const paused = Number(course?.Stop ?? course?.stop ?? 0) === 1
+      || String(course?.status || '').toLowerCase() === 'inactive';
     chipActionDialog.value = {
-      kind: 'projected_quick_add',
-      title: '這是預排日期，尚未建立正式堂次',
-      message: '堂數制不會自動產生可編輯堂次。請確認後手動補排；直接推算建立僅適用月結固定時段。',
+      kind: paused ? 'projected_paused_info' : 'projected_quick_add',
+      title: paused ? '課程暫停中' : '這是預排日期，尚未建立正式堂次',
+      message: paused
+        ? '課程暫停中，恢復後才會排課；這個日期不會上課。'
+        : '堂數制不會自動產生可編輯堂次。請確認後手動補排；直接推算建立僅適用月結固定時段。',
       meta: [dateYmdNorm, startTime && (endTime ? `${startTime}–${endTime}` : startTime)].filter(Boolean).join(' '),
-      primaryLabel: '補排此堂',
-      secondaryLabel: '返回',
+      // Paused: informational only (no 補排 action; quick add is gated on canQuickAddSession).
+      primaryLabel: paused ? '知道了' : '補排此堂',
+      secondaryLabel: paused ? '' : '返回',
       course,
       dateYmd: dateYmdNorm,
       startTime,
@@ -122,6 +127,7 @@ export function useSessionEditFlow({
       }
       return;
     }
+    if (dlg.kind === 'projected_paused_info') { closeChipActionDialog(); return; }
     if (dlg.kind === 'resolve_retry') await retrySessionResolve();
   }
 

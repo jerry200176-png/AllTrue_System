@@ -3,14 +3,13 @@
 namespace App\Console\Commands;
 
 use App\Models\Notification;
+use App\Services\Line\LinePush;
+use App\Services\Line\ParentLinePush;
 use App\Models\Student;
 use App\Models\StudentClass;
-use App\Models\StudentLineBinding;
-use App\Models\SecurityAuditEvent;
 use App\Services\StaffCapabilityAuthorizer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -66,10 +65,8 @@ class SendTuitionReminders extends Command
             $byCampus[$campusId][] = $studentName;
 
             // Fan-out to every verified LINE binding (dad + mom), not first() only.
-            $bindings = StudentLineBinding::where('student_id', $student->getKey())
-                ->verified()
-                ->where('campus_id', $campusId)
-                ->get();
+            $parents = app(ParentLinePush::class);
+            $bindings = $parents->bindings((int) $student->getKey(), $campusId);
 
             if ($bindings->isEmpty()) {
                 continue;
@@ -86,25 +83,20 @@ class SendTuitionReminders extends Command
                 . "請盡速聯繫補習班完成繳費，以確保課程正常進行。\n\n"
                 . "如已繳費請忽略此訊息，謝謝！";
 
-            foreach ($bindings as $binding) {
-                if ($dryRun) {
+            if ($dryRun) {
+                foreach ($bindings as $binding) {
                     $this->line("[dry-run] Would send LINE to {$binding->line_user_id} ({$studentName}): {$msg}");
-                    continue;
                 }
-
-                $delivered = $this->pushLine($binding->line_user_id, $msg, $campus->messaging_channel_token, $campus->name ?? '');
-                SecurityAuditEvent::append('notification.delivery', $delivered ? 'success' : 'failure', [
-                    'campus_id' => $campusId,
-                    'subject_type' => 'student',
-                    'subject_id' => $student->getKey(),
-                    'binding_id' => $binding->getKey(),
-                ], [
-                    'method' => 'line_push',
-                    'notification_type' => 'tuition_reminder',
-                    'delivery_status' => $delivered ? 'delivered' : 'failed',
-                    'binding_verified' => true,
-                ]);
+                continue;
             }
+
+            $parents->deliver(
+                $bindings,
+                (int) $student->getKey(),
+                $campusId,
+                'tuition_reminder',
+                fn ($binding) => $this->pushLine($binding->line_user_id, $msg, $campus->messaging_channel_token, $campus->name ?? '')
+            );
         }
 
         // Create system notifications for directors (one per campus)
@@ -141,6 +133,8 @@ class SendTuitionReminders extends Command
             ]);
         }
 
+        app(\App\Services\Billing\PaidStatusShadow::class)->compare($unpaidCourses, 'tuition_reminders');
+
         $this->info($dryRun ? 'Dry-run complete.' : 'Reminders sent.');
         return self::SUCCESS;
     }
@@ -154,10 +148,7 @@ class SendTuitionReminders extends Command
     private function pushLine(string $lineUserId, string $text, string $token, string $campusName): bool
     {
         try {
-            return Http::withToken($token)->post('https://api.line.me/v2/bot/message/push', [
-                'to'       => $lineUserId,
-                'messages' => [['type' => 'text', 'text' => $text]],
-            ])->successful();
+            return app(LinePush::class)->send($token, $lineUserId, [['type' => 'text', 'text' => $text]])->successful();
         } catch (\Exception $e) {
             Log::error("tuition_reminder_line_push [{$campusName}]: " . $e->getMessage());
             return false;

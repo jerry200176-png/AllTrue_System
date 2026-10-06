@@ -7,7 +7,6 @@ set -euo pipefail
 MODE="${MODE:-dry-run}"
 STUDENT_KEY="${STUDENT_KEY:-}"
 STUDENT_ID="${STUDENT_ID:-}"
-STUDENT_NAME="${STUDENT_NAME:-}"
 SOURCE_CLASS="${SOURCE_CLASS:-}"
 SESSIONS="${SESSIONS:-8}"
 START_DATE="${START_DATE:-2026-08-19}"
@@ -26,9 +25,10 @@ forbidden_source() {
   esac
 }
 
-case "$STUDENT_KEY:$STUDENT_ID:$SOURCE_CLASS:$STUDENT_NAME" in
-  zhang_zheng_ning:374:1681:張正甯) ;;
-  zhang_zheng_le:373:1682:張正樂) ;;
+# Public repo (#3605): scope is ids only; no student name is accepted, compared or printed.
+case "$STUDENT_KEY:$STUDENT_ID:$SOURCE_CLASS" in
+  student_374:374:1681) ;;
+  student_373:373:1682) ;;
   *)
     echo "SCOPE_MISMATCH: exact allowlist rejected ($STUDENT_KEY/$STUDENT_ID/$SOURCE_CLASS)"
     exit 1
@@ -66,7 +66,7 @@ echo "CONTRACT sessions=$SESSIONS start_date=$START_DATE paid=0 transfer=no"
 echo "--- source batch ---"
 SOURCE_ROW=$("${M[@]}" -e "
 SELECT CONCAT_WS('|',
- sc.ID,sc.StudentID,s.name,s.CampusID,IFNULL(sc.SubjectID,'null'),IFNULL(sub.Subject_Name,'null'),
+ sc.ID,sc.StudentID,s.CampusID,IFNULL(sc.SubjectID,'null'),IFNULL(sub.Subject_Name,'null'),
  sc.ScheduleMode,sc.SessionCount,IFNULL(sc.UsedSessions,'null'),IFNULL(sc.RemainingSessions,'null'),
  IFNULL(sc.Charge,'null'),IFNULL(sc.Rate,'null'),IFNULL(sc.rate_unit,'session'),
  IFNULL(sc.Paid,'null'),IFNULL(sc.Pay,'null'),sc.Stop,IFNULL(sc.PackageID,'null'))
@@ -76,12 +76,11 @@ LEFT JOIN Subject sub ON sub.id=sc.SubjectID
 WHERE sc.ID=${SOURCE_CLASS};")
 echo "$SOURCE_ROW"
 
-IFS='|' read -r sc_id sc_student sc_name sc_campus sc_subject sc_subject_name sc_mode sc_count sc_used sc_remaining sc_charge sc_rate sc_rate_unit sc_paid sc_pay sc_stop sc_package <<<"$SOURCE_ROW"
+IFS='|' read -r sc_id sc_student sc_campus sc_subject sc_subject_name sc_mode sc_count sc_used sc_remaining sc_charge sc_rate sc_rate_unit sc_paid sc_pay sc_stop sc_package <<<"$SOURCE_ROW"
 
 errors=()
 [ "$sc_id" = "$SOURCE_CLASS" ] || errors+=("source_id")
 [ "$sc_student" = "$STUDENT_ID" ] || errors+=("student_id")
-[ "$sc_name" = "$STUDENT_NAME" ] || errors+=("student_name")
 [ "$sc_campus" = "16" ] || errors+=("campus")
 [ "$sc_mode" = "count" ] || errors+=("schedule_mode")
 [ "$sc_count" = "8" ] || errors+=("source_session_count")
@@ -182,7 +181,7 @@ echo "$PHP_B64" | base64 -d > /tmp/ops-chinese-renewal-unpaid.php
 chmod 600 /tmp/ops-chinese-renewal-unpaid.php
 (
   cd "$BACKEND_DIR"
-  SOURCE_CLASS="$SOURCE_CLASS" STUDENT_ID="$STUDENT_ID" STUDENT_NAME="$STUDENT_NAME" \
+  SOURCE_CLASS="$SOURCE_CLASS" STUDENT_ID="$STUDENT_ID" \
   SESSIONS="$SESSIONS" START_DATE="$START_DATE" EXPECTED_CHARGE="$sc_charge" \
   php /tmp/ops-chinese-renewal-unpaid.php
 )

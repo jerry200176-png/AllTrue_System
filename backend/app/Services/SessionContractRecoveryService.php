@@ -197,7 +197,7 @@ final class SessionContractRecoveryService
                 ]
             );
         }
-        if ($source->hasDeductionHistory() && (string) $source->getAttribute('closed_reason') === 'usage_settled') {
+        if ((string) $source->getAttribute('closed_reason') === 'waived' || ($source->hasDeductionHistory() && (string) $source->getAttribute('closed_reason') === 'usage_settled')) {
             $this->blocked('來源課程已提前結清，堂次與紀錄已鎖定，無法恢復移轉。');
         }
     }

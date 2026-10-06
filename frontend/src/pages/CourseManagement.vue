@@ -288,22 +288,22 @@
                         <span class="paused-notice__label">課程暫停中</span>
                         <span class="paused-notice__sep" aria-hidden="true">·</span>
                         <span class="paused-notice__desc">未恢復前不排新課、不計入待辦</span>
-                        <button class="paused-notice__btn" type="button" @click.stop="requestCoursePause(c)">▶ 恢復課程</button>
+                        <button v-if="c.closed_reason !== 'waived'" class="paused-notice__btn" type="button" @click.stop="requestCoursePause(c)">▶ 恢復課程</button>
                       </div>
                     </td>
                   </tr>
                   <tr :class="['course-row', courseRowClass(c)]">
                     <td class="td-subject">
-                      <div v-if="['settled', 'settled_pending', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="settled-course-callout" role="status">
+                      <div v-if="['settled', 'settled_pending', 'waived', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
                         <span class="settled-course-callout__main">{{ effectiveClosedReason(c) === 'contract_amended' ? '合約已提前結束' : '已結案' }}</span>
-                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : ((effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? '尚未完成繳費，請至帳務中心對帳' : (effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : (effectiveClosedReason(c) === 'contract_amended' ? '堂數已調整結束' : '堂數已用完'))) }}</span>
+                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : ((effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? '尚未完成繳費，請至帳務中心對帳' : (effectiveClosedReason(c) === 'waived' ? '欠款已確認不收' : effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : (effectiveClosedReason(c) === 'contract_amended' ? '堂數已調整結束' : '堂數已用完'))) }}</span>
                       </div>
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
-                        <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
-                        <span v-else-if="['settled', 'settled_pending', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">{{ (effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? '待對帳結案' : '已結案' }}</span>
+                        <span v-if="isPackageMember(c)" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
+                        <span v-else-if="['settled', 'settled_pending', 'waived', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">{{ effectiveClosedReason(c) === 'waived' ? '確認不收' : (effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? '待對帳結案' : '已結案' }}</span>
                         <button
                           v-if="c.usage_balance_status === 'review_required'"
                           type="button"
@@ -388,8 +388,8 @@
                         <button type="button" class="small ghost" @click="emit('navigate', buildTuitionCollectNav(c, { intent: 'pending' }))">查看待核對回報</button>
                       </div>
                     </td>
-                    <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 }">
-                      <template v-if="isSessionMode(c)">{{ displayRemainingSessions(c) ?? '—' }}<span v-if="c.PackageID" class="tag-package-hint">（方案共用）</span></template>
+                    <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
+                      <template v-if="isSessionMode(c)">{{ displayRemainingSessions(c) ?? '—' }}<span v-if="isPackageMember(c)" class="tag-package-hint">（方案共用）</span></template>
                       <template v-else>已上 {{ getCompletedSessionCount(c) }} 堂</template>
                     </td>
                     <td class="cell-actions">
@@ -448,7 +448,7 @@
                             <p class="action-section-label">帳務與合約</p>
                             <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單（唯讀）</button>
                             <button
-                              v-if="isSessionMode(c) && !c.PackageID"
+                              v-if="isSessionMode(c) && !isPackageMember(c)"
                               class="action-dropdown-item action-dropdown-package-preview"
                               role="menuitem"
                               @click="openPackageConversionPreview(c); closeActionMenu()"
@@ -473,7 +473,7 @@
                             <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                             <p class="action-section-label">狀態管理</p>
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">pause_circle</span> 暫停課程</button>
-                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
+                            <button v-if="c.status === 'inactive' && c.closed_reason !== 'waived'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
                             <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒" @click="closeCourseInPlace(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結束課程（不再續課）</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
@@ -629,8 +629,9 @@
                   <div class="history-course-card__header">
                     <span class="tag subject-tag history-course-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
                     <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
-                    <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
+                    <span v-if="isPackageMember(hc)" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
                     <span v-if="effectiveClosedReason(hc) === 'converted_trial'" class="tag tag-history tag-history--settled">已轉正式</span>
+                    <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag tag-history tag-history--settled">歷史 · 確認不收</span>
                     <span v-else-if="effectiveClosedReason(hc) === 'settled_pending' || (effectiveClosedReason(hc) === 'contract_amended' && hc.payment_status !== 'paid')" class="tag tag-history tag-history--pending">已結算 · 待對帳</span>
                     <span v-else-if="effectiveClosedReason(hc) === 'settled' || effectiveClosedReason(hc) === 'contract_amended'" class="tag tag-history tag-history--settled">已結算</span>
                     <span v-else class="tag tag-history tag-history--completed">已完課</span>
@@ -646,7 +647,7 @@
                   <div class="history-course-card__details">
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">費用</span> ${{ totalPrice(hc) }}（{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}）</span>
-                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> <template v-if="hc.PackageID">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></span>
+                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> <template v-if="isPackageMember(hc)">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></span>
                     <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
                   </div>
                   <div class="history-course-card__actions">
@@ -676,10 +677,10 @@
                         ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(hc) }}</button>
                         <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                         <p class="action-section-label">狀態管理</p>
-                        <button class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
+                        <button v-if="hc.closed_reason !== 'waived'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
                         <hr class="action-dropdown-divider" />
                         <p class="action-section-label action-section-label--danger">危險操作</p>
-                        <button class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = hc; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
+                        <button v-if="effectiveClosedReason(hc) !== 'waived'" class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = hc; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
                       </div>
                     </div>
                   </div>
@@ -867,9 +868,9 @@
       :is-manual-occurrence="isManualOccurrenceCourse(courseManagerCourse)"
       :purchase-label="purchaseActionLabel(courseManagerCourse)"
       :payment-notice-available="isPaymentNoticeAvailable(courseManagerCourse)"
-      :can-package-preview="isSessionMode(courseManagerCourse) && !courseManagerCourse.PackageID"
+      :can-package-preview="isSessionMode(courseManagerCourse) && !isPackageMember(courseManagerCourse)"
       :format-session-chip-date="formatSessionChipDate" :get-session-state-class="getSessionStateClass"
-      :get-session-state-label="getSessionStateLabel" :get-session-number="getSessionNumber"
+      :get-session-state-label="getSessionStateLabel" :get-session-number="getSessionNumber" :get-session-number-map="getSessionNumberMap"
       :session-row-key="sessionRowKey" :is-user-note="isUserNote" :format-makeup-date="formatMakeupDate"
       @close="closeCourseManager" @update:tab="onCourseManagerTab" @action="onCourseManagerAction"
       @open-session="onCourseManagerOpenSession"
@@ -1331,7 +1332,7 @@
         <p class="modal-desc">{{ chipActionDialog.message }}</p>
         <p v-if="chipActionDialog.meta" class="modal-hint">{{ chipActionDialog.meta }}</p>
         <div class="actions">
-          <button type="button" class="ghost" @click="closeChipActionDialog">{{ chipActionDialog.secondaryLabel || '關閉' }}</button>
+          <button v-if="chipActionDialog.secondaryLabel !== ''" type="button" class="ghost" @click="closeChipActionDialog">{{ chipActionDialog.secondaryLabel || '關閉' }}</button>
           <button type="button" class="primary" :disabled="chipActionDialog.busy" @click="confirmChipActionDialog">
             {{ chipActionDialog.busy ? '載入中…' : (chipActionDialog.primaryLabel || '確定') }}
           </button>
@@ -1511,7 +1512,7 @@
             <strong>{{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}</strong>
             <span v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</span>
           </p>
-          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除。</p>
+          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
         </div>
         <div class="actions">
           <button class="ghost" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</button>
@@ -1527,24 +1528,29 @@
 <script setup>
 // Autonomous delivery canary: no runtime behavior change.
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { isDirectorRole } from '../lib/roleCapabilities.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
+import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';
+import { authedFetch, getAccessToken } from '../lib/authedFetch';
+import { useTransferSessions } from '../composables/course-management/useTransferSessions';
+import { useContractAmendment } from '../composables/course-management/useContractAmendment';
+import { useCoursePause } from '../composables/course-management/useCoursePause';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatchFromApi } from '../lib/classSessionsApi';
-import { buildTransferableSessionOption } from '../lib/sessionTransferEligibility';
 import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '../lib/coursePricing';
 import {
-  canApplyRenewalPreview,
   estimateMonthlyRenewalCharge,
 } from '../lib/coursePricing';
-import { applyMonthlyRenewalPreview, nextPeriodEnd, renewalErrorMessage, invalidateMonthlyRenewalPreview, canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
+import { canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
+import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
 import { courseRowWarningSummary, usageBalanceWarningTitle } from '../lib/courseRowWarnings';
 import {
@@ -1577,7 +1583,10 @@ import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import MonthlyCorrectionPreviewModal from '../components/course-management/MonthlyCorrectionPreviewModal.vue';
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
-import { monthlyPaymentLabel } from '../lib/monthlyPaymentDisplay.js';
+import {
+  INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, WAIVED_LABEL,
+  ownRemainingSessions, poolTotalSessions, poolUsedSessions,
+} from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import {
   buildBillingCorrectionBlockedState,
@@ -1630,17 +1639,8 @@ const DAY_OPTIONS = [
   { value: 4, label: '四' }, { value: 5, label: '五' }, { value: 6, label: '六' },
   { value: 7, label: '日' },
 ];
-const isPackageMember = (course) => Number(course?.PackageID ?? course?.package_id ?? 0) > 0;
-const getPackageTotalSessions = (course) => {
-  const total = Number(course?.package_total_sessions ?? course?.PackageTotalSessions ?? course?.sessions_purchased ?? 0);
-  return Number.isFinite(total) && total > 0 ? total : 0;
-};
-const getPackageUsedSessions = (course) => {
-  const total = getPackageTotalSessions(course);
-  const remaining = Number(course?.package_remaining_sessions ?? course?.PackageRemainingSessions ?? 0);
-  const used = total - (Number.isFinite(remaining) ? remaining : 0);
-  return used > 0 ? used : 0;
-};
+const getPackageTotalSessions = (course) => poolTotalSessions(course, { fallbackToPurchased: true });
+const getPackageUsedSessions = poolUsedSessions;
 // 時間以半小時為單位：07:00 ~ 22:30
 const TIME_OPTIONS_30 = (() => {
   const opts = [];
@@ -1693,7 +1693,7 @@ const props = defineProps({
   initialStudentName: { type: String, default: '' },
   initialCourseIntent: { type: String, default: '' },
 });
-const allowFinancialDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
+const allowFinancialDiscount = computed(() => isDirectorRole(props.userRole));
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
 
 const goToTuitionBilling = (course) => {
@@ -1706,28 +1706,13 @@ const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
 };
 
-function courseRemainingSessionsForClose(course) {
-  const value = Number(course?.remaining_sessions ?? course?.RemainingSessions);
-  return Number.isFinite(value) ? value : null;
-}
-
-function courseIsSettledForClose(course) {
-  const paymentStatus = String(course?.payment_status || '').toLowerCase();
-  if (paymentStatus === 'paid') return true;
-  const paid = Number(course?.Paid ?? course?.paid);
-  const charge = Number(course?.Charge ?? course?.charge ?? course?.Pay ?? course?.pay);
-  if (Number.isFinite(paid) && Number.isFinite(charge)) return paid >= charge && charge > 0;
-  return Number.isFinite(paid) && paid > 0;
-}
-
 function closeCourseInPlace(course) {
   return runCloseCourseNoRenew({
     course,
     studentName: course?.student_name || course?.student?.name,
-    getRemainingSessions: courseRemainingSessionsForClose,
+    getRemainingSessions: ownRemainingSessions,
     getSubjectLabel,
-    isCourseSettled: courseIsSettledForClose,
-    supabase,
+    isCourseSettled,
     reloadCourses: () => loadCourses(pagination.value.page),
   });
 }
@@ -1828,7 +1813,7 @@ const visibleGroups = computed(() =>
 );
 
 const {
-  expandedDates, toggleDates, sessions, sessionUnits, primarySessionUnits, upcomingSessionPreview, allSessionUnits, cancelledSessionCount, movedOrCancelledUnits, sessionRowKey, getSessionNumber, countNonLeaveSessions, effectiveSessionCount, leaveSessionCount,
+  expandedDates, toggleDates, sessions, sessionUnits, primarySessionUnits, upcomingSessionPreview, allSessionUnits, cancelledSessionCount, movedOrCancelledUnits, sessionRowKey, getSessionNumber, getSessionNumberMap, countNonLeaveSessions, effectiveSessionCount, leaveSessionCount,
   getSessionPlanningStatus, canMaterializeProjectedSession,
   getCourseSessionRows, getSessionRowsForDate, getSessionRowById, getSessionDisplayRow,
   getSessionState, getSessionStateLabel, getSessionStateClass, getSessionTooltip,
@@ -1875,8 +1860,7 @@ async function retryLoadCourseSessions(course) {
   // Single-course miss path uses the resolve dialog + reloadCourseSessions instead.
   if (sessionDataLoadFailed.value) {
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (!token) return;
       const ok = await loadClassSessionsForCourses(courses.value, token);
       if (ok !== false) {
@@ -2120,7 +2104,7 @@ async function importBackfillCoursesFromCsv(event) {
       teacherMap.set(normalizeTeacherName(t.username), t);
     });
 
-    const token = (await supabase.auth.getSession())?.data?.session?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請重新登入後再試');
       return;
@@ -2180,12 +2164,12 @@ async function importBackfillCoursesFromCsv(event) {
         skip_auto_sessions: true,
       };
 
-      const res = await fetch('/api/v1/student-classes', {
+      const res = await authedFetch('/api/v1/student-classes', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      });
+      }, token);
       if (res.ok) {
         created += 1;
       } else {
@@ -2395,13 +2379,12 @@ async function loadCourseEditability(courseId) {
   editabilityLoading.value = true;
   editabilityError.value = '';
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error('登入狀態已失效，無法完成預檢。');
-    const res = await fetch(`/api/v1/student-classes/${courseId}/editability`, {
+    const res = await authedFetch(`/api/v1/student-classes/${courseId}/editability`, {
       credentials: 'include',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
+      headers: { Accept: 'application/json' },
+    }, token);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body?.message || `預檢失敗（${res.status}）`);
     if (requestId === editabilityRequestId) editability.value = body;
@@ -2484,30 +2467,22 @@ const renewMonthlySubmitting = ref(false);
 const renewMonthlyWarnings = ref([]);
 const renewMonthlyPreviewRequestId = ref(0);
 
-const showTransferSessionsModal = ref(false);
-const transferSessionsCourse = ref(null);
-const transferSessionsSubmitting = ref(false);
-const transferSessionsError = ref('');
-const transferSessionsNextActions = ref([]);
-const transferTargetCourses = ref([]);
-const transferTargetCoursesLoading = ref(false);
-let transferTargetCoursesRequest = 0;
 
 const showBillingCorrectionModal = ref(false);
+const {
+  showModal: showContractAmendmentModal, course: contractAmendmentCourse, preview: contractAmendmentPreview,
+  previewLoading: contractAmendmentPreviewLoading, submitting: contractAmendmentSubmitting, error: contractAmendmentError,
+  open: openContractAmendmentModal, close: closeContractAmendmentModal,
+  loadPreview: previewContractAmendment, submit: submitContractAmendment,
+  showRevertModal: showContractRevertModal, revertCourse: contractRevertCourse, revertPreview: contractRevertPreview,
+  revertLoading: contractRevertLoading, revertSubmitting: contractRevertSubmitting, revertError: contractRevertError,
+  openRevert: openContractRevertModal, submitRevert: submitContractRevert,
+} = useContractAmendment({
+  reload: () => loadCourses(),
+  notify: (opts) => toastRef.value?.show?.(opts),
+});
 const showContractAdjustmentModal = ref(false);
 const contractAdjustmentCourse = ref(null);
-const showContractAmendmentModal = ref(false);
-const contractAmendmentCourse = ref(null);
-const contractAmendmentPreview = ref(null);
-const contractAmendmentPreviewLoading = ref(false);
-const contractAmendmentSubmitting = ref(false);
-const contractAmendmentError = ref('');
-const showContractRevertModal = ref(false);
-const contractRevertCourse = ref(null);
-const contractRevertPreview = ref(null);
-const contractRevertLoading = ref(false);
-const contractRevertSubmitting = ref(false);
-const contractRevertError = ref('');
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
@@ -2550,7 +2525,7 @@ function openBillingCorrectionCalendar() {
 function isBillingCorrectionStructureEligible(course) {
   return Boolean(course)
     && isSessionMode(course)
-    && !course?.PackageID
+    && !isPackageMember(course)
     && !isTutoringCourse(course)
     && !isTutoringBillingAnomaly(course);
 }
@@ -2561,7 +2536,7 @@ function isUnpaidCountCourse(course) {
 
 function openContractAdjustmentModal(course) {
   contractAdjustmentCourse.value = course;
-  if (!isSessionMode(course) || course?.PackageID) {
+  if (!isSessionMode(course) || isPackageMember(course)) {
     openTransferSessionsModal(course);
     return;
   }
@@ -2581,126 +2556,6 @@ function chooseContractAdjustment(action) {
   if (action === 'amendment') openContractAmendmentModal(course);
 }
 
-function openContractAmendmentModal(course) {
-  contractAmendmentCourse.value = course;
-  contractAmendmentPreview.value = null;
-  contractAmendmentError.value = '';
-  showContractAmendmentModal.value = true;
-}
-
-function closeContractAmendmentModal() {
-  if (contractAmendmentSubmitting.value || contractAmendmentPreviewLoading.value) return;
-  showContractAmendmentModal.value = false;
-  contractAmendmentPreview.value = null;
-  contractAmendmentError.value = '';
-}
-
-async function previewContractAmendment(newSessionCount) {
-  const course = contractAmendmentCourse.value;
-  if (!course?.id || contractAmendmentPreviewLoading.value) return;
-  contractAmendmentPreviewLoading.value = true;
-  contractAmendmentError.value = '';
-  contractAmendmentPreview.value = null;
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) throw new Error('登入狀態已失效，請重新登入。');
-    const res = await fetch(`/api/v1/student-classes/${course.id}/contract-amendment/preview`, {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ new_session_count: Number(newSessionCount) }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.message || '無法預覽合約調整。');
-    contractAmendmentPreview.value = body;
-  } catch (error) {
-    contractAmendmentError.value = error?.message || '無法預覽合約調整。';
-  } finally {
-    contractAmendmentPreviewLoading.value = false;
-  }
-}
-
-async function submitContractAmendment({ newSessionCount, reason }) {
-  const course = contractAmendmentCourse.value;
-  if (!course?.id || !contractAmendmentPreview.value || contractAmendmentSubmitting.value) return;
-  if (Number(contractAmendmentPreview.value.new_session_count) !== Number(newSessionCount)) {
-    contractAmendmentError.value = '預覽已過期，請重新預覽後再送出。';
-    contractAmendmentPreview.value = null;
-    return;
-  }
-  contractAmendmentSubmitting.value = true;
-  contractAmendmentError.value = '';
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) throw new Error('登入狀態已失效，請重新登入。');
-    const res = await fetch(`/api/v1/student-classes/${course.id}/contract-amendment`, {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ new_session_count: Number(newSessionCount), reason }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.message || '合約調整失敗。');
-    showContractAmendmentModal.value = false;
-    contractAmendmentPreview.value = null;
-    await loadCourses();
-    toastRef.value?.show?.({
-      title: '合約已提前結束',
-      description: body?.message || `已調整為 ${newSessionCount} 堂；已上課紀錄保留，帳務未變更。`,
-      variant: 'success', durationMs: 7000,
-    });
-  } catch (error) {
-    contractAmendmentError.value = error?.message || '合約調整失敗。';
-  } finally {
-    contractAmendmentSubmitting.value = false;
-  }
-}
-
-async function contractRevertRequest(path, body) {
-  const { data: { session: sess } } = await supabase.auth.getSession();
-  const token = sess?.access_token;
-  if (!token) throw new Error('登入狀態已失效，請重新登入。');
-  const res = await fetch(`/api/v1/student-classes/${contractRevertCourse.value.id}/contract-amendment/revert${path}`, {
-    method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '撤銷調整失敗。');
-  return data;
-}
-
-async function openContractRevertModal(course) {
-  contractRevertCourse.value = course;
-  contractRevertPreview.value = null;
-  contractRevertError.value = '';
-  showContractRevertModal.value = true;
-  contractRevertLoading.value = true;
-  try {
-    contractRevertPreview.value = await contractRevertRequest('/preview', {});
-  } catch (error) {
-    contractRevertError.value = error?.message || '無法預覽撤銷調整。';
-  } finally {
-    contractRevertLoading.value = false;
-  }
-}
-
-async function submitContractRevert(reason) {
-  if (contractRevertSubmitting.value) return;
-  contractRevertSubmitting.value = true;
-  contractRevertError.value = '';
-  try {
-    const body = await contractRevertRequest('', { reason });
-    showContractRevertModal.value = false;
-    await loadCourses();
-    toastRef.value?.show?.({ title: '已撤銷調整', description: body?.message, variant: 'success', durationMs: 7000 });
-  } catch (error) {
-    contractRevertError.value = error?.message || '撤銷調整失敗。';
-  } finally {
-    contractRevertSubmitting.value = false;
-  }
-}
-
 async function submitBillingCorrection() {
   const course = billingCorrectionCourse.value;
   if (!course || billingCorrectionSubmitting.value) return;
@@ -2714,13 +2569,12 @@ async function submitBillingCorrection() {
   billingCorrectionBlocked.value = null;
   billingCorrectionSubmitting.value = true;
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error('登入狀態已失效，請重新登入。');
-    const res = await fetch(`/api/v1/student-classes/${course.id}/billing-correction`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/billing-correction`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         new_session_count: count,
         new_charge: charge,
@@ -2729,7 +2583,7 @@ async function submitBillingCorrection() {
           ? { confirmation_token: billingCorrectionPreview.value.confirmation_token }
           : { preview: true }),
       }),
-    });
+    }, token);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       // Keep this on-screen (not just a toast that vanishes) — the person acting on
@@ -2760,158 +2614,17 @@ async function submitBillingCorrection() {
   }
 }
 
-const transferSessionsSessionOptions = computed(() => {
-  const c = transferSessionsCourse.value;
-  if (!c) return [];
-  return allSessionUnits(c)
-    .map(buildTransferableSessionOption)
-    .filter(Boolean);
+const {
+  showModal: showTransferSessionsModal, course: transferSessionsCourse, submitting: transferSessionsSubmitting,
+  error: transferSessionsError, nextActions: transferSessionsNextActions, targetCourses: transferTargetCourses,
+  targetCoursesLoading: transferTargetCoursesLoading, sessionOptions: transferSessionsSessionOptions,
+  open: openTransferSessionsModal, openBillingNextStep: openTransferBillingNextStep, submit: submitTransferSessions,
+} = useTransferSessions({
+  allSessionUnits,
+  goToBilling: (course) => goToTuitionBilling(course),
+  reload: () => loadCourses(),
+  notify: (opts) => toastRef.value?.show?.(opts),
 });
-
-function openTransferSessionsModal(course) {
-  transferSessionsCourse.value = course;
-  transferSessionsError.value = '';
-  transferSessionsNextActions.value = [];
-  transferTargetCourses.value = [];
-  showTransferSessionsModal.value = true;
-  if (String(course?.schedule_mode ?? course?.ScheduleMode ?? '').toLowerCase() !== 'date') {
-    loadTransferTargetCourses(course);
-  }
-}
-
-function openTransferBillingNextStep() {
-  const course = transferSessionsCourse.value;
-  showTransferSessionsModal.value = false;
-  if (course) goToTuitionBilling(course);
-}
-
-function normalizedCourseValue(value) {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function sameCourseSubject(source, target) {
-  const sourceValues = [source?.subject, source?.subject_name].filter(Boolean).map(normalizedCourseValue);
-  const targetValues = [target?.subject, target?.subject_name].filter(Boolean).map(normalizedCourseValue);
-  if (sourceValues.length === 0 || targetValues.length === 0) return true;
-  return sourceValues.some((value) => targetValues.includes(value))
-    || sourceValues.some((value) => getSubjectText(value) && targetValues.includes(normalizedCourseValue(getSubjectText(value))));
-}
-
-function sameCourseStudent(source, target) {
-  const sourceId = source?.student_id ?? source?.StudentID;
-  const targetId = target?.student_id ?? target?.StudentID;
-  if (sourceId != null && targetId != null && String(sourceId) !== String(targetId)) return false;
-  const sourceName = normalizedCourseValue(source?.student_name);
-  const targetName = normalizedCourseValue(target?.student_name);
-  return !sourceName || !targetName || sourceName === targetName;
-}
-
-async function loadTransferTargetCourses(sourceCourse) {
-  const requestId = ++transferTargetCoursesRequest;
-  transferTargetCoursesLoading.value = true;
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token || !sourceCourse) return;
-    const params = new URLSearchParams({
-      per_page: '100',
-      page: '1',
-    });
-    const studentId = Number(sourceCourse?.student_id ?? sourceCourse?.StudentID);
-    if (Number.isInteger(studentId) && studentId > 0) {
-      // The API applies the caller's campus/teacher scope. Query by the
-      // canonical student identity instead of branch + display name, which
-      // can hide a valid target course when room/campus metadata differs.
-      params.set('student_id', String(studentId));
-    } else if (sourceCourse.student_name) {
-      params.set('name', String(sourceCourse.student_name));
-    }
-    const res = await fetch(`/api/v1/student-classes?${params}`, {
-      credentials: 'include',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return;
-    const json = await res.json().catch(() => ({}));
-    const list = json?.data ?? json;
-    const rows = Array.isArray(list) ? list : (list?.data ?? []);
-    const candidates = rows
-      .map((course) => ({
-        ...course,
-        id: Number(course?.id ?? course?.ID),
-        student_name: course?.student_name ?? course?.student?.name ?? '',
-        subject_name: course?.subject_name ?? '',
-        teacher_name: course?.teacher_name ?? course?.teacher?.name ?? course?.teacher?.username ?? '',
-        start_date: course?.start_date ?? course?.StartDate ?? '',
-        remaining_sessions: course?.remaining_sessions ?? course?.RemainingSessions ?? 0,
-        start_time: course?.start_time ?? course?.time ?? '',
-        end_time: course?.end_time ?? '',
-      }))
-      .filter((course) => Number.isFinite(course.id) && course.id > 0)
-      .filter((course) => course.id !== Number(sourceCourse.id))
-      .filter((course) => sameCourseStudent(sourceCourse, course))
-      .filter((course) => sameCourseSubject(sourceCourse, course));
-    if (requestId === transferTargetCoursesRequest) transferTargetCourses.value = candidates;
-  } catch (_) {
-    // The manual ID fallback remains available if the lookup endpoint is unavailable.
-  } finally {
-    if (requestId === transferTargetCoursesRequest) transferTargetCoursesLoading.value = false;
-  }
-}
-
-async function submitTransferSessions({ targetCourseId, sessionIds, reason }) {
-  const course = transferSessionsCourse.value;
-  if (!course || sessionIds.length === 0) return;
-  transferSessionsSubmitting.value = true;
-  transferSessionsError.value = '';
-  transferSessionsNextActions.value = [];
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) { transferSessionsError.value = '請重新登入後再試'; return; }
-    const hasRecovery = transferSessionsSessionOptions.value.some(
-      (session) => sessionIds.includes(Number(session.id)) && session.recoverableCancelled
-    );
-    const endpoint = hasRecovery ? 'recover-transfer-sessions' : 'transfer-sessions';
-    const res = await fetch(`/api/v1/student-classes/${course.id}/${endpoint}`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        session_ids: sessionIds,
-        target_student_class_id: targetCourseId,
-        ...(hasRecovery ? { reason } : {}),
-      }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      transferSessionsNextActions.value = Array.isArray(json?.next_actions) ? json.next_actions : [];
-      const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
-      const conflict = json?.conflict_session_id
-        ? `衝突堂次 #${json.conflict_session_id}`
-        : json?.conflict_schedule_id
-          ? `衝突預排 #${json.conflict_schedule_id}`
-          : '';
-      transferSessionsError.value = [details, json?.message, conflict].filter(Boolean).join(' ') || '轉移失敗';
-      return;
-    }
-    showTransferSessionsModal.value = false;
-    toastRef.value?.show?.({
-      title: '已轉移堂次紀錄',
-      description: json?.message || `已轉移 ${sessionIds.length} 堂到課程 #${targetCourseId}`,
-      variant: 'success',
-      durationMs: 7000,
-    });
-    await loadCourses();
-  } catch (e) {
-    transferSessionsError.value = '轉移失敗：' + (e?.message || '請稍後再試');
-  } finally {
-    transferSessionsSubmitting.value = false;
-  }
-}
 const purchaseForm = ref({
   sessions: 8,
   start_date: '',
@@ -2958,17 +2671,16 @@ const packageConversionSubjects = computed(() => {
 });
 const courseIdForAction = (course) => Number(course?.id ?? course?.ID ?? 0);
 const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
-const pauseConfirmTarget = ref(null);
-const pauseConfirmSubmitting = ref(false);
-const pauseCancelRemaining = ref(true);
-const pauseConfirmIsResume = computed(() => pauseConfirmTarget.value?.status === 'inactive');
-const pauseConfirmImpacts = computed(() => pauseConfirmIsResume.value
-  ? ['恢復後可繼續排課與補課', '後續仍依原課程設定計算堂數與提醒', '已取消的未來堂次不會自動重建，需依需要重新排課']
-  : [
-      pauseCancelRemaining.value ? '取消未來尚未上課堂次' : '不取消剩餘排課（堂次仍會留在行事曆）',
-      '暫停期間不排新課、不計入待辦',
-      '可從歷史課程或暫停清單恢復',
-    ]);
+const {
+  target: pauseConfirmTarget, submitting: pauseConfirmSubmitting, cancelRemaining: pauseCancelRemaining,
+  isResume: pauseConfirmIsResume, impacts: pauseConfirmImpacts,
+  request: requestCoursePause, confirm: confirmCoursePause,
+} = useCoursePause({
+  onChanged: async () => {
+    await loadCourses();
+    syncCourseManagerCourseFromList();
+  },
+});
 
 const courseSessionCalendarEnabled = isCourseSessionCalendarEnabled(perfFlags);
 const courseSessionCalendarOpen = ref(new Set());
@@ -2980,7 +2692,7 @@ function courseManagerStatusLabel(c) {
   if (!c) return '';
   if (c.status === 'inactive' && !effectiveClosedReason(c)) return '暫停';
   const closed = effectiveClosedReason(c);
-  if (['settled', 'settled_pending', 'contract_amended', 'completed', 'converted_trial'].includes(closed)) {
+  if (['settled', 'settled_pending', 'waived', 'contract_amended', 'completed', 'converted_trial'].includes(closed)) {
     return closed === 'contract_amended' ? '合約已提前結束' : '已結案';
   }
   return '進行中';
@@ -3005,7 +2717,7 @@ function courseManagerNextSessionLabel(c) {
 }
 function courseManagerOverviewNeeds(c) {
   const needs = [];
-  if (isSessionMode(c) && Number(displayRemainingSessions(c) ?? 99) <= 2) {
+  if (isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 99))) {
     needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續報或加購', action: 'purchase', actionLabel: purchaseActionLabel(c) });
   }
   const makeups = pendingMakeupsByCourse.value?.[c.id] ?? [];
@@ -3180,48 +2892,6 @@ const localTodayYmd = () => {
   return `${y}-${m}-${day}`;
 };
 
-function requestCoursePause(course) {
-  pauseCancelRemaining.value = true;
-  pauseConfirmTarget.value = course;
-}
-
-async function confirmCoursePause() {
-  if (pauseConfirmSubmitting.value) return;
-  const course = pauseConfirmTarget.value;
-  if (!course) return;
-  const isPaused = course.status === 'inactive';
-  const action = isPaused ? '恢復' : '暫停';
-  pauseConfirmSubmitting.value = true;
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) { alert('請重新登入'); return; }
-
-    const body = { action: isPaused ? 'resume' : 'pause' };
-    if (!isPaused) body.cancel_remaining = !!pauseCancelRemaining.value;
-
-    const res = await fetch(`/api/v1/student-classes/${course.id}/pause`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify(body),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      alert(`${action}失敗：` + (json.message || res.statusText));
-      return;
-    }
-    alert(json.message || `已${action}`);
-    pauseConfirmTarget.value = null;
-    await loadCourses();
-    syncCourseManagerCourseFromList();
-  } catch (e) {
-    alert('操作失敗：' + (e?.message || '請稍後再試'));
-  } finally {
-    pauseConfirmSubmitting.value = false;
-  }
-}
-
 function canCloseCourse(c) {
   return c.status !== 'inactive'
     && !isPackageMember(c)
@@ -3260,11 +2930,11 @@ function duplicateCourseForTeacher(course) {
 function purchaseActionLabel(c) {
   if (c?.class_type === 'trial') return '轉為正式課程';
   if (!isSessionMode(c)) return '結算 / 續約下月';
-  return Number(displayRemainingSessions(c) ?? 0) <= 2 ? '續報加購' : '加購堂數';
+  return isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) ? '續報加購' : '加購堂數';
 }
 function purchaseActionIsRenew(c) {
   if (!isSessionMode(c)) return true;
-  return Number(displayRemainingSessions(c) ?? 0) <= 2;
+  return isLowRemaining(Number(displayRemainingSessions(c) ?? 0));
 }
 function purchaseActionTitle(c) {
   if (c?.class_type === 'trial') return '保留試聽紀錄並建立正式堂數課程';
@@ -3279,7 +2949,7 @@ function openPurchaseModal(course) {
     return;
   }
   // convert-trial ignores package totals; a package-member trial must be handled in package settings first.
-  if (course?.class_type === 'trial' && (course?.PackageID || course?.package_id)) {
+  if (course?.class_type === 'trial' && isPackageMember(course)) {
     alert('此試聽屬於多科共用方案，不能直接轉為正式課程；請先調整方案設定，避免方案堂數錯誤。');
     return;
   }
@@ -3338,51 +3008,14 @@ async function loadRenewMonthlyPreview(course) {
   return loadRenewMonthlyPreviewForEndDate(course);
 }
 
-async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') {
-  const requestId = ++renewMonthlyPreviewRequestId.value;
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token || !course?.id) {
-      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '請重新登入後再預覽新一期。' });
-      return;
-    }
-    const currentEnd = course?.end_date || course?.EndDate || null;
-    let endDate = requestedEndDate;
-    if (!endDate) endDate = nextPeriodEnd(currentEnd, course?.settlement_day);
-    invalidateMonthlyRenewalPreview(renewMonthlyForm.value, endDate);
-    const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ mode: 'renew_monthly', end_date: endDate }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (showRenewMonthlyModal.value && canApplyRenewalPreview({
-      requestId,
-      currentRequestId: renewMonthlyPreviewRequestId.value,
-      courseId: course.id,
-      currentCourseId: renewMonthlyCourse.value?.id,
-      requestedEndDate: endDate,
-      currentEndDate: renewMonthlyForm.value.preview_end_date,
-    })) {
-      if (res.ok || json.severity === 'blocked') {
-        renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];
-        applyMonthlyRenewalPreview(renewMonthlyForm.value, json);
-      } else {
-        Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: renewalErrorMessage(json, '無法取得期間預覽，請重試。') });
-      }
-    }
-  } catch {
-    if (requestId === renewMonthlyPreviewRequestId.value && course?.id === renewMonthlyCourse.value?.id) {
-      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '無法取得期間預覽，請檢查連線後重試。' });
-    }
-  }
-}
+const monthlyRenewal = useMonthlyRenewal({
+  form: renewMonthlyForm,
+  warnings: renewMonthlyWarnings,
+  previewRequestId: renewMonthlyPreviewRequestId,
+  isModalOpen: () => showRenewMonthlyModal.value,
+  currentCourseId: () => renewMonthlyCourse.value?.id,
+});
+const loadRenewMonthlyPreviewForEndDate = monthlyRenewal.loadPreview;
 
 function refreshRenewMonthlyPreview(endDate) {
   if (renewMonthlyCourse.value) loadRenewMonthlyPreviewForEndDate(renewMonthlyCourse.value, endDate);
@@ -3412,26 +3045,24 @@ async function submitPurchaseSessions() {
   purchaseSubmitting.value = true;
   try {
     if (course?.class_type === 'trial') {
-      const { data: { session: trialSession } } = await supabase.auth.getSession();
-      const trialToken = trialSession?.access_token;
+      const trialToken = await getAccessToken();
       if (!trialToken) {
         alert('請重新登入後再試');
         return;
       }
-      const res = await fetch(`/api/v1/student-classes/${course.id}/convert-trial`, {
+      const res = await authedFetch(`/api/v1/student-classes/${course.id}/convert-trial`, {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          Authorization: `Bearer ${trialToken}`,
         },
         body: JSON.stringify({
           sessions: Number(purchaseForm.value.sessions),
           start_date: purchaseForm.value.start_date,
           class_type: 'one_on_one',
         }),
-      });
+      }, trialToken);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         const details = json?.conflicts?.map((c) => c.message).filter(Boolean).join(' ') || '';
@@ -3491,26 +3122,24 @@ async function submitPurchaseSessions() {
       return;
     }
 
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請重新登入後再試');
       return;
     }
-    const res = await fetch(`/api/v1/student-classes/${course.id}/purchase-batch`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/purchase-batch`, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         sessions: Number(purchaseForm.value.sessions),
         start_date: purchaseForm.value.start_date,
         mode: 'new_purchase',
       }),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
@@ -3562,29 +3191,10 @@ async function submitRenewMonthly(endDate) {
   }
   renewMonthlySubmitting.value = true;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) { alert('請重新登入後再試'); return; }
-    const renewalRequest = {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ end_date: endDate }),
-    };
-    if (renewMonthlyForm.value.discount?.type && renewMonthlyForm.value.discount.type !== 'NONE') {
-      renewalRequest.body = JSON.stringify({ end_date: endDate, discount: renewMonthlyForm.value.discount });
-    }
-    const res = await fetch(`/api/v1/student-classes/${course.id}/renew-monthly`, renewalRequest);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
-      alert(details || json?.message || '續約失敗');
-      return;
-    }
+    const result = await monthlyRenewal.submit(course, endDate);
+    if (result.status === 'no-token') { alert('請重新登入後再試'); return; }
+    if (result.status === 'error') { alert(result.message); return; }
+    const { json, token } = result;
     showRenewMonthlyModal.value = false;
     const newCourse = json?.new_course || {};
     toastRef.value?.show?.({
@@ -3670,15 +3280,14 @@ async function runQuickAddCheck(courseIdOverride) {
     const controller = new AbortController();
     quickAddCheckController = controller;
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (!token) return;
-      const res = await fetch(`/api/v1/student-classes/${courseId}/add-session/check`, {
+      const res = await authedFetch(`/api/v1/student-classes/${courseId}/add-session/check`, {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
         signal: controller.signal,
-      });
+      }, token);
       const json = await res.json().catch(() => ({}));
       if (requestVersion !== quickAddCheckVersion) return;
       quickAddConflict.value = json;
@@ -3725,19 +3334,17 @@ async function submitQuickAddSession() {
     return;
   }
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請重新登入後再試');
       return;
     }
-    const res = await fetch(`/api/v1/student-classes/${course.id}/add-session`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/add-session`, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         session_date: quickAddSessionForm.value.session_date,
@@ -3746,7 +3353,7 @@ async function submitQuickAddSession() {
         note: quickAddSessionForm.value.note || null,
         auto_approve: !!quickAddSessionForm.value.auto_approve,
       }),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 409 && json?.suggested_actions?.length) {
@@ -3886,15 +3493,14 @@ async function runManualSessionCheck() {
   manualSessionCheckController = controller;
   manualSessionChecking.value = true;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error('請先登入');
-    const res = await fetch(`/api/v1/student-classes/${courseId}/manual-sessions/check`, {
+    const res = await authedFetch(`/api/v1/student-classes/${courseId}/manual-sessions/check`, {
       method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
       signal: controller.signal,
-    });
+    }, token);
     const result = await res.json().catch(() => ({ can_add: false, message: '檢查失敗' }));
     if (requestVersion !== manualSessionCheckVersion) return;
     manualSessionCheck.value = result;
@@ -3915,14 +3521,13 @@ async function submitManualSession() {
   if (!courseId || !manualSessionCheck.value?.can_add) return;
   manualSessionSubmitting.value = true;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error('請先登入');
-    const res = await fetch(`/api/v1/student-classes/${courseId}/manual-sessions`, {
+    const res = await authedFetch(`/api/v1/student-classes/${courseId}/manual-sessions`, {
       method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       manualSessionCheck.value = json;
@@ -4080,26 +3685,24 @@ async function refreshLeaveCascadePreview() {
   }
   leaveCascadePlanLoading.value = true;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       leaveCascadePlan.value = null;
       return;
     }
-    const res = await fetch('/api/v1/schedules/leave-cascade-preview', {
+    const res = await authedFetch('/api/v1/schedules/leave-cascade-preview', {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         student_course_id: courseId,
         schedule_date: date,
         class_session_id: form.session_id || undefined,
       }),
-    });
+    }, token);
     if (!res.ok) {
       leaveCascadePlan.value = null;
       return;
@@ -4146,8 +3749,7 @@ async function submitLeave() {
   const isRetro = isSelectedRetroLeave.value;
 
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       alert('請假登記失敗：請重新登入後再試');
       return;
@@ -4160,12 +3762,12 @@ async function submitLeave() {
         session_date: form.schedule_date,
         reason: form.reason || '',
       };
-      const res = await fetch('/api/v1/schedules/retro-leave', {
+      const res = await authedFetch('/api/v1/schedules/retro-leave', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(retroPayload)
-      });
+      }, token);
       if (res.ok) {
         const json = await res.json().catch(() => ({}));
         const monthly = json?.leave_mode === 'monthly_bounded' || isMonthlyMode(leaveCourse.value);
@@ -4206,12 +3808,12 @@ async function submitLeave() {
       schedule_date: form.schedule_date,
       student_course_id: form.course_id
     };
-    const res = await fetch('/api/v1/schedules', {
+    const res = await authedFetch('/api/v1/schedules', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(payload)
-    });
+    }, token);
     if (res.ok) {
       const json = await res.json().catch(() => ({}));
       const monthly = json?.leave_mode === 'monthly_bounded' || isMonthlyMode(leaveCourse.value);
@@ -4238,11 +3840,11 @@ async function submitLeave() {
           durationMs: undoWindowSec * 1000,
           undoDescription: '已撤銷請假，尾堂已回復',
           onUndo: async () => {
-            const undoRes = await fetch(`/api/v1/schedules/${undoScheduleId}/undo-leave`, {
+            const undoRes = await authedFetch(`/api/v1/schedules/${undoScheduleId}/undo-leave`, {
               method: 'POST',
               credentials: 'include',
-              headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-            });
+              headers: { 'Accept': 'application/json' },
+            }, token);
             const undoJson = await undoRes.json().catch(() => ({}));
             if (!undoRes.ok) {
               throw new Error(undoJson?.message || '撤銷請假失敗');
@@ -4280,19 +3882,18 @@ async function submitBulkLeave() {
   bulkLeaveSubmitting.value = true;
   bulkLeaveResult.value = null;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) { alert('請重新登入'); bulkLeaveSubmitting.value = false; return; }
-    const res = await fetch('/api/v1/schedules/bulk-leave', {
+    const res = await authedFetch('/api/v1/schedules/bulk-leave', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({
         branch_id: branchId,
         start_date: bulkLeaveForm.value.start_date,
         end_date: bulkLeaveForm.value.end_date,
       })
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (res.ok) {
       bulkLeaveResult.value = json;
@@ -4360,7 +3961,7 @@ function quickAddDisabledReason(c) {
 const courseRowClass = (c) => {
   if (c.status !== 'inactive') return {};
   const reason = effectiveClosedReason(c);
-  if (reason === 'settled' || reason === 'settled_pending' || reason === 'contract_amended' || reason === 'completed') return { 'course-settled': true };
+  if (reason === 'settled' || reason === 'settled_pending' || reason === 'waived' || reason === 'contract_amended' || reason === 'completed') return { 'course-settled': true };
   return { 'course-paused': true };
 };
 const getSubjectLabel = (val) => getSubjectText(val);
@@ -4480,7 +4081,7 @@ const formatDayTimeSlots = (course) => formatDayTimeSlotLines(course).join('、'
 const sessionPrice = (c) => getPerSessionFee(c);
 const totalPrice = (c) => getCourseTotalFee(c);
 // 月結制：已上堂費用 = 實際已上堂數 × 每堂費用（月結無預購堂數，用 completed count）
-const isMonthlyMode = (c) => (c?.payment_type || 'session') !== 'session';
+const isMonthlyMode = isMonthlyPaymentType;
 const monthlyAttendedFee = (c) => Math.round(getPerSessionFee(c) * getCompletedSessionCount(c));
 
 // 備註開關（預設關閉，截圖給家長時保持乾淨）
@@ -4555,7 +4156,7 @@ const groupHasPausedCourse = (group) =>
 
 const isHistoryCourse = (c) => {
   const reason = effectiveClosedReason(c);
-  return reason === 'settled' || reason === 'completed';
+  return reason === 'settled' || reason === 'completed' || reason === 'waived';
 };
 const activeCourses = (group) => (group?.courses || []).filter(c => !isHistoryCourse(c));
 const historyCourses = (group) => (group?.courses || []).filter(c => isHistoryCourse(c));
@@ -4632,7 +4233,7 @@ const courseLensMetrics = computed(() => {
     const remaining = displayRemainingSessions(course);
     return isSessionMode(course)
       && remaining != null
-      && Number(remaining) <= 2
+      && isLowRemaining(Number(remaining))
       && !effectiveClosedReason(course);
   }).length;
   const usageReviewCount = visibleCourses.filter((course) => course.usage_balance_status === 'review_required').length;
@@ -4692,6 +4293,7 @@ const currentInvoiceForBillingRow = (row) => {
 const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isTutoringCourse(course)) return '無須繳費';
+  if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
   if (monthlyPaymentLabel(course)) return monthlyPaymentLabel(course);
   if (course?.payment_status === 'review_required') return '付款期間待確認';
   if (course?.payment_status === 'paid') return '已繳費';
@@ -4713,11 +4315,7 @@ const paymentStatusHelpTitle = (course) => {
   if (isTutoringCourse(course)) return '無須繳費；輔導課不產生付款義務。';
   return `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
 };
-const reportStatusLabel = (status) => ({
-  pending: '待對帳',
-  confirmed: '已入帳',
-  rejected: '已退回',
-}[status] || status || '—');
+const reportStatusLabel = (status) => REPORT_STATUS_LABELS[status] || status || '—';
 const hasMixedPackagePaymentStatuses = (key) => {
   const rows = studentBillingState.value[key]?.rows || [];
   const packageStatuses = rows
@@ -4741,12 +4339,7 @@ const formatBillingPeriod = (period) => {
 const invoiceStatusLabel = (invoice) => {
   if (invoice?.ledger_label) return invoice.ledger_label;
   const status = typeof invoice === 'string' ? invoice : invoice?.status;
-  return ({
-  paid: '已繳',
-  unpaid: '未繳',
-  partial: '部分繳',
-  void: '已作廢',
-  }[status] || status || '未知');
+  return INVOICE_STATUS_LABELS[status] || status || '未知';
 };
 const invoiceStatusClass = (invoice) => {
   const ledgerStatus = invoice?.ledger_status || '';
@@ -4799,10 +4392,10 @@ const loadCourses = async (page = 1) => {
       if (filters.value.name) params.set('name', filters.value.name);
       // convert-trial deep link: pin the target student so same-name/pagination can't hide the course.
       if (pendingConvertTrialId.value && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
-      const res = await fetch(`/api/v1/student-classes?${params}`, {
+      const res = await authedFetch(`/api/v1/student-classes?${params}`, {
         credentials: 'include',
-        headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
-      });
+        headers: { 'Accept': 'application/json' }
+      }, token);
       if (res.ok) {
         const json = await res.json();
         const list = json?.data ?? json;
@@ -4852,6 +4445,7 @@ const loadCourses = async (page = 1) => {
     ...c,
     id: Number(c?.id ?? c?.ID ?? 0),
     data_source: 'supabase',
+    _noncanonical: true,
     student_name: c.student?.name || '—',
     teacher_name: c.teacher_name || c.teacher?.username || '',
     memo: c.memo ?? c.Memo ?? '',
@@ -4881,8 +4475,7 @@ const loadCourses = async (page = 1) => {
   resetExpandedStudentGroups(groupCoursesByStudent(result));
   const isCurrent = () => isCurrentListRequest(requestId, courseLoadRequestId);
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     sessionDataLoadFailed.value = false;
     const sessionsOk = await loadClassSessionsForCourses(result, token || '', isCurrent);
     if (!isCurrent()) return;
@@ -5032,8 +4625,7 @@ const onSubstituteV2Submit = async (submitPayload) => {
   const { substitute_teacher_id, reason, new_date, new_start_time, new_end_time } = submitPayload || {};
   const sessionId = substituteV2SessionId.value;
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       substituteV2PickerRef.value?.setError?.('請重新登入');
       return;
@@ -5048,15 +4640,14 @@ const onSubstituteV2Submit = async (submitPayload) => {
       body.new_start_time = new_start_time;
       body.new_end_time = new_end_time;
     }
-    const res = await fetch(`/api/v1/class-sessions/${sessionId}/substitute`, {
+    const res = await authedFetch(`/api/v1/class-sessions/${sessionId}/substitute`, {
       method: 'POST', credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(body),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const msg = json.message || res.statusText || '代課設定失敗';
@@ -5134,17 +4725,16 @@ const loadStudents = async () => {
     return;
   }
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (token) {
       const params = new URLSearchParams({
         branch_id: branchId,
         per_page: '500',
       });
-      const res = await fetch(`/api/v1/students?${params.toString()}`, {
+      const res = await authedFetch(`/api/v1/students?${params.toString()}`, {
         credentials: 'include',
-        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-      });
+        headers: { Accept: 'application/json' },
+      }, token);
       if (res.ok) {
         const json = await res.json().catch(() => ({}));
         const list = json?.data ?? json;
@@ -5172,16 +4762,15 @@ const loadTeachers = async () => {
     return;
   }
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) { teachers.value = []; return; }
     const params = new URLSearchParams({
       per_page: 'all',
       branch_id: currentBranchId,
     });
-    const res = await fetch(`/api/v1/teachers?${params.toString()}`, {
-      headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
-    });
+    const res = await authedFetch(`/api/v1/teachers?${params.toString()}`, {
+      headers: { 'Accept': 'application/json' }
+    }, token);
     const data = await res.json().catch(() => ({}));
     const list = Array.isArray(data) ? data : (data?.data ?? []);
     const filteredRows = (Array.isArray(list) ? list : []).filter((teacher) => {
@@ -5225,8 +4814,7 @@ const goToPage = (p) => {
 const loadRoomsForBranch = async () => {
   if (!props.branchId) { rooms.value = []; return; }
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     const headers = { 'Accept': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(`/api/v1/rooms?branch_id=${props.branchId}`, { credentials: 'include', headers });
@@ -5332,11 +4920,10 @@ const submitEdit = async () => {
   editSaveError.value = null;
   if (editingCourseFromLaravel.value) {
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (token) {
         const endTime = computeEndTime(form.start_time, form.duration_hours);
-        const isPackageCourse = !!editingCourseRaw.value?.PackageID;
+        const isPackageCourse = isPackageMember(editingCourseRaw.value);
         // A memo/payment/teacher edit must not be interpreted as a schedule
         // edit. Sending the schedule fields on every save caused the backend
         // to reconcile or rebuild future projected sessions even when the
@@ -5382,12 +4969,12 @@ const submitEdit = async () => {
         if (String(form.paid_at || '') !== String(form.original_paid_at || '')) {
           body.paid_at = form.paid_at ? form.paid_at : null;
         }
-        const res = await fetch(`/api/v1/student-classes/${id}`, {
+        const res = await authedFetch(`/api/v1/student-classes/${id}`, {
           method: 'PUT',
           credentials: 'include',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
-        });
+        }, token);
         if (res.ok) {
           const payload = await res.json().catch(() => ({}));
           const sync = payload?.session_sync || {};
@@ -5516,8 +5103,7 @@ const paymentSlipOpen = ref(false);
 const paymentSlipStudentClassId = ref(null);
 
 const isPaymentNoticeAvailable = (course) =>
-  shouldShowPaymentAction(course)
-  && ['unpaid', 'partial', 'pending_report'].includes(course?.payment_status);
+  shouldShowPaymentAction(course) && isPaymentNoticeStatus(course?.payment_status);
 
 const openPaymentSlip = (course) => {
   const studentClassId = Number(course?.id || 0);
@@ -5588,8 +5174,7 @@ const loadStudentGroupBilling = async (group) => {
     [key]: { loading: true, error: '', rows: studentBillingState.value[key]?.rows || [], ledgerSummary: null },
   };
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       studentBillingState.value = {
         ...studentBillingState.value,
@@ -5599,14 +5184,14 @@ const loadStudentGroupBilling = async (group) => {
     }
     const courses = [...activeCourses(group), ...historyCourses(group)];
     const anchorCourse = courses.find((course) => course?.id);
-    const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+    const headers = { Accept: 'application/json' };
     const ledgerPromise = anchorCourse
-      ? fetch(`/api/v1/accounting/ledger?student_class_id=${anchorCourse.id}`, { credentials: 'include', headers })
+      ? authedFetch(`/api/v1/accounting/ledger?student_class_id=${anchorCourse.id}`, { credentials: 'include', headers }, token)
       : null;
     const rows = await Promise.all(courses.map(async (c) => {
       const [invRes, rptRes] = await Promise.all([
-        fetch(`/api/v1/student-classes/${c.id}/invoices`, { credentials: 'include', headers }),
-        fetch(`/api/v1/payment-reports?student_class_id=${c.id}`, { credentials: 'include', headers }),
+        authedFetch(`/api/v1/student-classes/${c.id}/invoices`, { credentials: 'include', headers }, token),
+        authedFetch(`/api/v1/payment-reports?student_class_id=${c.id}`, { credentials: 'include', headers }, token),
       ]);
       const invJson = await invRes.json().catch(() => ({}));
       const rptJson = await rptRes.json().catch(() => ({}));
@@ -5652,17 +5237,16 @@ const openInvoiceModal = async (course) => {
   invoiceModalOpen.value = true;
 
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    const token = await getAccessToken();
     if (!token) {
       invoiceModalError.value = '請重新登入後再查看帳單。';
       return;
     }
 
-    const res = await fetch(`/api/v1/student-classes/${course.id}/invoices`, {
+    const res = await authedFetch(`/api/v1/student-classes/${course.id}/invoices`, {
       credentials: 'include',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
+      headers: { Accept: 'application/json' },
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       invoiceModalError.value = json?.message || '帳單載入失敗，請稍後再試。';
@@ -5684,14 +5268,13 @@ const executeDeleteCourse = async () => {
   const fromLaravel = c.data_source === 'laravel' || c.branch_name != null || c.room_name != null || c.settlement_day != null;
   if (fromLaravel) {
     try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
+      const token = await getAccessToken();
       if (token) {
-        const res = await fetch(`/api/v1/student-classes/${c.id}`, {
+        const res = await authedFetch(`/api/v1/student-classes/${c.id}`, {
           method: 'DELETE',
           credentials: 'include',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+          headers: {}
+        }, token);
         if (res.ok) {
           confirmDeleteTarget.value = null;
           courses.value = courses.value.filter(x => x.id !== c.id);
@@ -5783,12 +5366,12 @@ const submitBackfill = async () => {
         Memo: form.memo || null,
         skip_auto_sessions: isSessionPayment,
       };
-      const res = await fetch('/api/v1/student-classes', {
+      const res = await authedFetch('/api/v1/student-classes', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
-      });
+      }, token);
       if (res.ok) {
         const createdBody = await res.json().catch(() => ({}));
         const createdEntity = createdBody?.data ?? createdBody?.course ?? createdBody ?? {};
@@ -5840,10 +5423,10 @@ const submitBackfill = async () => {
 
   if (usedApi && isSessionPayment && selectedLegacyDates.length > 0 && createdCourseId && token) {
     if (!directorId) {
-      const meRes = await fetch('/api/v1/me', {
+      const meRes = await authedFetch('/api/v1/me', {
         credentials: 'include',
-        headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      }).catch(() => null);
+        headers: { 'Accept': 'application/json' },
+      }, token).catch(() => null);
       if (meRes?.ok) {
         const me = await meRes.json().catch(() => ({}));
         directorId = me?.id ?? null;
@@ -5853,17 +5436,17 @@ const submitBackfill = async () => {
       alert('課程已建立，但無法取得操作者身分，請重新登入後再補登上課日期。');
       return;
     }
-    const bulkRes = await fetch('/api/v1/learning-records/bulk-backdoor-approve', {
+    const bulkRes = await authedFetch('/api/v1/learning-records/bulk-backdoor-approve', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         StudentClassID: createdCourseId,
         TeacherID: Number(form.teacher_id),
         DirectorID: Number(directorId),
         session_dates: selectedLegacyDates,
       })
-    });
+    }, token);
     if (!bulkRes.ok) {
       const bulkErr = await bulkRes.json().catch(() => ({}));
       alert('課程已建立，但補登上課日期失敗：' + (bulkErr?.message || '請到學習評量頁補登'));
@@ -5871,12 +5454,12 @@ const submitBackfill = async () => {
     }
 
     // 以使用者勾選日期為最終依據，確保剩餘堂數與補登堂數一致。
-    const syncRemainingRes = await fetch(`/api/v1/student-classes/${createdCourseId}`, {
+    const syncRemainingRes = await authedFetch(`/api/v1/student-classes/${createdCourseId}`, {
       method: 'PUT',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remaining_sessions: remaining })
-    }).catch(() => null);
+    }, token).catch(() => null);
     if (!syncRemainingRes?.ok) {
       alert('課程與補登日期已建立，但剩餘堂數同步失敗，請重新整理後檢查。');
       return;

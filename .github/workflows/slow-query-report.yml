@@ -95,7 +95,7 @@ jobs:
           echo ""
           echo "--- 目前執行中的長查詢（> 3 秒）---"
           mysql -h 127.0.0.1 -u "$DB_USER" -p"${DB_PASS}" -e \
-            "SELECT ID, USER, HOST, DB, TIME, STATE, LEFT(INFO,120) AS QUERY FROM information_schema.PROCESSLIST WHERE COMMAND != 'Sleep' AND TIME > 3 ORDER BY TIME DESC;" \
+            "SELECT ID, USER, DB, TIME, STATE, COMMAND FROM information_schema.PROCESSLIST WHERE COMMAND != 'Sleep' AND TIME > 3 ORDER BY TIME DESC;" \
             2>/dev/null || echo "（無或無法讀取）"
           REMOTE
 

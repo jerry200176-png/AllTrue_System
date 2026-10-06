@@ -294,6 +294,40 @@ class StudentController extends Controller
         return response()->json($this->transformStudent($student));
     }
 
+    /**
+     * Students with ANY billing history may not be purged: invoices (any status, anchored to the student or to one
+     * of the student's contracts), payment reports, contracts carrying payment state (Paid/Pay/PayDate) or a package,
+     * or a contract billed as a line on another invoice. Only students with no billing record at all (e.g. created
+     * by mistake) are erasable; everything else must be closed through accounting. One rule instead of chasing shapes.
+     */
+    private function studentIdsWithCollectedMoney(array $studentIds): array
+    {
+        $out = [];
+        foreach ($studentIds as $studentId) {
+            $studentId = (int) $studentId;
+            $classIds = DB::table('StudentClass')->where('StudentID', $studentId)->pluck('ID')->map(fn ($id) => (int) $id)->all();
+            $byStudentOrClass = fn ($q, string $studentCol, string $classCol) => $q->where($studentCol, $studentId)
+                ->when($classIds !== [], fn ($w) => $w->orWhereIn($classCol, $classIds));
+            $history = DB::table('Invoice')->where(fn ($q) => $byStudentOrClass($q, 'StudentID', 'StudentClassID'))->exists()
+                || DB::table('payment_reports')->where(fn ($q) => $byStudentOrClass($q, 'StudentID', 'StudentClassID'))->exists()
+                || ($classIds !== [] && DB::table('StudentClass')->whereIn('ID', $classIds)->where(fn ($q) => $q->where('Paid', 1)
+                    ->orWhere('Pay', '>', 0)->orWhereNotNull('PayDate')->orWhere('PackageID', '>', 0))->exists())
+                || ($classIds !== [] && DB::table('InvoiceItem')->whereIn('StudentClassID', $classIds)->exists())
+                || DB::table('course_packages')->where('student_id', $studentId)->exists()
+                // Attendance / ledger history is authoritative too; same rule as contract delete.
+                || StudentClass::hasOperationalHistory($classIds)
+                // Student-level history that has no contract id (self-study sign-ins, dunning, continuity groups).
+                || DB::table('StudentSingIn')->where('StudentID', $studentId)->exists()
+                || DB::table('dunning_events')->where('student_id', $studentId)->exists()
+                || DB::table('course_contract_groups')->where('student_id', $studentId)->exists();
+            if ($history) {
+                $out[] = $studentId;
+            }
+        }
+
+        return $out;
+    }
+
     private function purgeStudentRecords(int $studentId): array
     {
         $deleted = [
@@ -318,6 +352,19 @@ class StudentController extends Controller
         }
 
         DB::transaction(function () use ($studentId, &$deleted, $tableExists) {
+            // Student row first (same order as invoice creation) so a concurrent invoice cannot orphan (#3593).
+            DB::table('Student')->where('id', $studentId)->lockForUpdate()->first(['id']);
+            // A 確認不收 contract keeps its void invoices and audit trail; purging the student would strand them.
+            if ($tableExists['StudentClass'] && DB::table('StudentClass')->where('StudentID', $studentId)
+                ->where('closed_reason', 'waived')->lockForUpdate()->exists()) {
+                abort(422, '此學生有已確認不收的合約，不能刪除');
+            }
+            // Lock the student's contracts, then invoices (payment flows use the same order) before the money check.
+            DB::table('StudentClass')->where('StudentID', $studentId)->orderBy('ID')->lockForUpdate()->get(['ID']);
+            DB::table('Invoice')->where('StudentID', $studentId)->orderBy('id')->lockForUpdate()->get(['id']);
+            if ($this->studentIdsWithCollectedMoney([$studentId]) !== []) {
+                abort(422, '此學生已有帳務紀錄（帳單、收款或繳費回報），不能刪除；請改用停用');
+            }
             $studentClassIds = [];
             if ($tableExists['StudentClass']) {
                 $studentClassIds = DB::table('StudentClass')
@@ -478,11 +525,30 @@ class StudentController extends Controller
             'Student' => 0,
         ];
 
-        foreach ($foundIds as $studentId) {
-            $deleted = $this->purgeStudentRecords((int) $studentId);
-            foreach ($deleted as $table => $count) {
-                $deletedTotals[$table] += (int) $count;
+        // All-or-nothing: preflight under lock and purge every student in one transaction, so a 確認不收
+        // contract (here or waived concurrently) aborts the whole batch before anything is deleted.
+        $refusal = DB::transaction(function () use ($foundIds, &$deletedTotals) {
+            DB::table('Student')->whereIn('id', $foundIds)->orderBy('id')->lockForUpdate()->get(['id']); // #3593 lock order
+            $waivedStudentIds = DB::table('StudentClass')->whereIn('StudentID', $foundIds)->orderBy('ID')->lockForUpdate()
+                ->get(['StudentID', 'closed_reason'])->where('closed_reason', 'waived')->pluck('StudentID')
+                ->map(fn ($id) => (int) $id)->unique()->values()->all();
+            if ($waivedStudentIds !== []) {
+                return response()->json(['message' => '部分學生有已確認不收的合約，不能刪除', 'waived_student_ids' => $waivedStudentIds], 422);
             }
+            if ($moneyStudentIds = $this->studentIdsWithCollectedMoney($foundIds)) {
+                return response()->json(['message' => '部分學生已有收款或繳費回報，不能刪除', 'paid_student_ids' => $moneyStudentIds], 422);
+            }
+            foreach ($foundIds as $studentId) {
+                $deleted = $this->purgeStudentRecords((int) $studentId);
+                foreach ($deleted as $table => $count) {
+                    $deletedTotals[$table] += (int) $count;
+                }
+            }
+
+            return null;
+        });
+        if ($refusal !== null) {
+            return $refusal;
         }
 
         return response()->json([

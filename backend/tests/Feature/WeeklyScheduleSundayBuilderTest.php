@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\StudentClassController;
+use App\Services\Scheduling\ContractSessionSchedule;
 use Tests\TestCase;
 
 /**
@@ -20,9 +20,7 @@ class WeeklyScheduleSundayBuilderTest extends TestCase
 {
     private function build(array $slots, string $start = '2026-06-01', string $end = '2026-06-30'): array
     {
-        $controller = app(StudentClassController::class);
-
-        return $controller->buildSessionsFromWeeklySchedule(1, $start, $end, $slots, 120);
+        return ContractSessionSchedule::buildSessionsFromWeeklySchedule(1, $start, $end, $slots, 120);
     }
 
     public function test_iso_sunday_slot_generates_sunday_sessions(): void

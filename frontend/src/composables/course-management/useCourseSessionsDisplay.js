@@ -25,6 +25,7 @@ import {
   planningStatusToLegacyWarning,
 } from '../../lib/sessionPlanningStatus';
 import { FINAL_LEAVE_STATUSES, LEAVE_STATUSES } from '../../lib/sessionStatus';
+import { isPackageMember, isSessionPayment, ownRemainingSessions, poolRemainingSessions, purchasedSessions } from '../../lib/courseMoneyState.js';
 const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
 const UPCOMING_NON_LESSON_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
@@ -266,26 +267,38 @@ export function useCourseSessionsDisplay({
   // Exceptions still occupy purchased quota (see schedule-occurrence: charge rescheduled against quota).
   const rowOccupiesPurchasedQuota = (row) => rowOccupiesPurchasedQuotaShared(row, { exceptionsOccupyQuota: true });
 
-  const isOverQuotaSession = (course, row) => {
+  // Builds the quota index once per course; the returned checker is O(1) per row.
+  const makeOverQuotaChecker = (course, units = sessionUnits(course)) => {
     // 月結課程沒有「購買堂數上限」的概念——後端 StudentClassController 對每門課都會把
     // sessions_purchased 設成 SessionCount（即使是月結課），所以不能只看 purchased>0，
     // 一定要先確認這是堂數制（isSessionMode）才適用超排判斷，否則月結課會被錯誤標記超排。
-    if (!row || course?.PackageID || !isSessionMode(course)) return false;
+    if (isPackageMember(course) || !isSessionMode(course)) return () => false;
     const purchased = getPurchasedSessions(course);
-    if (purchased <= 0 || !rowOccupiesPurchasedQuota(row)) return false;
+    if (purchased <= 0) return () => false;
 
+    // First quota-occupying unit wins (same as the old linear scan): index by id and by date|startTime.
+    const firstById = new Map();
+    const firstProjected = new Map();
     let quotaIndex = 0;
-    for (const unit of sessionUnits(course)) {
+    for (const unit of units) {
       if (!rowOccupiesPurchasedQuota(unit)) continue;
       quotaIndex += 1;
-      const sameId = unit.id && unit.id === row.id;
-      const sameProjected = unit.isProjected
-        && unit.date === row.date
-        && unit.startTime === row.startTime;
-      if (sameId || sameProjected) return quotaIndex > purchased;
+      if (unit.id && !firstById.has(unit.id)) firstById.set(unit.id, quotaIndex);
+      if (unit.isProjected) {
+        const k = `${unit.date}|${unit.startTime}`;
+        if (!firstProjected.has(k)) firstProjected.set(k, quotaIndex);
+      }
     }
-    return false;
+    return (row) => {
+      if (!row || !rowOccupiesPurchasedQuota(row)) return false;
+      const byId = row.id ? firstById.get(row.id) : undefined;
+      const byProj = firstProjected.get(`${row.date}|${row.startTime}`);
+      const hit = Math.min(byId ?? Infinity, byProj ?? Infinity);
+      return hit !== Infinity && hit > purchased;
+    };
   };
+
+  const isOverQuotaSession = (course, row) => makeOverQuotaChecker(course)(row);
 
   const formatAttendanceTooltipTime = (value) => {
     if (!value) return '';
@@ -350,16 +363,43 @@ export function useCourseSessionsDisplay({
 
   const isCompletedDate = (course, dateYmd) => getCourseCompletedDates(course).includes(String(dateYmd || ''));
 
-  const getSessionState = (course, dateYmd, sessionId) => {
+  // One lookup context per course rows array (rebuilt when the rows array or quota inputs change),
+  // so per-row state calls in long lists stay O(1) instead of rescanning and re-sorting.
+  const stateContextCache = new WeakMap();
+  const stateContext = (course) => {
+    const raw = getCourseSessions(course);
+    const sig = [course?.PackageID, isSessionMode(course), getPurchasedSessions(course), raw.length,
+      completedSessionDatesByCourse.value[String(course?.id ?? '')]];
+    const hit = stateContextCache.get(raw);
+    if (hit && hit.sig.every((v, i) => v === sig[i])) return hit.ctx;
+    const units = sessionUnits(course);
+    const rowById = new Map();
+    const rowsByDate = new Map();
+    for (const r of getCourseSessionRows(course)) {
+      const rid = Number(r?.id);
+      if (rid && !rowById.has(rid)) rowById.set(rid, r);
+      if (!rowsByDate.has(r.date)) rowsByDate.set(r.date, []);
+      rowsByDate.get(r.date).push(r);
+    }
+    const ctx = { units, rowById, rowsByDate, completedDates: new Set(getCourseCompletedDates(course)), isOver: makeOverQuotaChecker(course, units) };
+    stateContextCache.set(raw, { sig, ctx });
+    return ctx;
+  };
+
+  // ctx (optional): prebuilt { rowById, rowsByDate, completedDates, isOver } so bulk callers avoid per-call scans.
+  const getSessionState = (course, dateYmd, sessionId, ctx) => {
+    const rowsFor = (d) => (ctx ? ctx.rowsByDate.get(String(d || '').slice(0, 10)) || [] : getSessionRowsForDate(course, d));
+    const isOver = ctx ? ctx.isOver : (row) => isOverQuotaSession(course, row);
     let rows;
     if (sessionId) {
-      const exact = getSessionRowById(course, sessionId);
-      rows = exact ? [exact] : getSessionRowsForDate(course, dateYmd);
+      const exact = ctx ? ctx.rowById.get(Number(sessionId)) : getSessionRowById(course, sessionId);
+      rows = exact ? [exact] : rowsFor(dateYmd);
     } else {
-      rows = getSessionRowsForDate(course, dateYmd);
+      rows = rowsFor(dateYmd);
     }
     if (!rows.length) {
-      return isCompletedDate(course, dateYmd) ? { label: '已上', className: 'completed' } : null;
+      const done = ctx ? ctx.completedDates.has(String(dateYmd || '')) : isCompletedDate(course, dateYmd);
+      return done ? { label: '已上', className: 'completed' } : null;
     }
     const statuses = new Set(rows.map((row) => String(row?.status || '').toLowerCase()).filter(Boolean));
     if ([...statuses].some((status) => ATTENDED_SESSION_STATUSES.has(status))) return { label: '已上', className: 'completed' };
@@ -369,21 +409,25 @@ export function useCourseSessionsDisplay({
     if (statuses.has('excused') || statuses.has('leave')) return { label: '請假', className: 'leave' };
     if (statuses.has('cancelled')) return { label: '取消', className: 'cancelled' };
     if (rows.some((row) => isContractException(row))) return { label: '例外堂', className: 'exception' };
-    if (rows.some((row) => isOverQuotaSession(course, row))) return { label: '超排', className: 'over-quota' };
+    if (rows.some((row) => isOver(row))) return { label: '超排', className: 'over-quota' };
     if ((statuses.has('scheduled') || statuses.has('rescheduled')) && isSessionMode(course)
-      && !course?.PackageID && getRawRemainingSessions(course) === 0) {
+      && !isPackageMember(course) && getRawRemainingSessions(course) === 0) {
       return { label: '預排', className: 'scheduled-capacity-full' };
     }
     if (statuses.has('scheduled')) return null;
     return null;
   };
 
-  const getSessionNumber = (course, dateYmd, sessionId) => {
-    const units = sessionUnits(course);
+  // One pass over sessionUnits -> 第N堂 lookup (first match wins, like the old per-call scan).
+  const getSessionNumberMap = (course) => {
+    const byId = new Map();
+    const byDate = new Map();
     let num = 0;
+    const ctx = stateContext(course);
+    const { units, rowById, isOver } = ctx;
     for (const u of units) {
-      const row = u.id ? getSessionRowById(course, u.id) || u : u;
-      const state = getSessionState(course, u.date, u.id || undefined);
+      const row = u.id ? rowById.get(Number(u.id)) || u : u;
+      const state = getSessionState(course, u.date, u.id || undefined, ctx);
       const isLeave = state && LEAVE_STATUSES.has(state.className);
       // Projected chips are a read-model expansion (RFC 5545 virtual instance /
       // Google Calendar tentative / Open edX never-published draft). They must
@@ -392,12 +436,18 @@ export function useCourseSessionsDisplay({
       const skipNumber = !!(u.isProjected || row?.isProjected)
         || !rowOccupiesPurchasedQuota(row)
         || isLeave
-        || isOverQuotaSession(course, row);
-      const isMatch = sessionId ? (u.id && u.id === Number(sessionId)) : (u.date === dateYmd);
-      if (isMatch) return skipNumber ? null : num + 1;
+        || isOver(row);
+      const value = skipNumber ? null : num + 1;
+      if (u.id && !byId.has(u.id)) byId.set(u.id, value);
+      if (!byDate.has(u.date)) byDate.set(u.date, value);
       if (!skipNumber) num++;
     }
-    return null;
+    return { byId, byDate };
+  };
+
+  const getSessionNumber = (course, dateYmd, sessionId) => {
+    const { byId, byDate } = getSessionNumberMap(course);
+    return (sessionId ? byId.get(Number(sessionId)) : byDate.get(dateYmd)) ?? null;
   };
 
   const countNonLeaveSessions = (course) => {
@@ -449,8 +499,8 @@ export function useCourseSessionsDisplay({
     return count;
   };
 
-  const getSessionStateLabel = (course, dateYmd, sessionId) => getSessionState(course, dateYmd, sessionId)?.label || '';
-  const getSessionStateClass = (course, dateYmd, sessionId) => getSessionState(course, dateYmd, sessionId)?.className || '';
+  const getSessionStateLabel = (course, dateYmd, sessionId) => getSessionState(course, dateYmd, sessionId, stateContext(course))?.label || '';
+  const getSessionStateClass = (course, dateYmd, sessionId) => getSessionState(course, dateYmd, sessionId, stateContext(course))?.className || '';
 
   const getSessionTooltip = (course, dateYmd, sessionId) => {
     const row = getSessionDisplayRow(course, dateYmd, sessionId);
@@ -474,18 +524,11 @@ export function useCourseSessionsDisplay({
 
   const displaySessions = (course) => sessions(course);
 
-  const isSessionMode = (course) => {
-    const paymentType = String(course?.payment_type || '').trim();
-    if (paymentType) return paymentType === 'session';
-    return Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) > 0;
-  };
+  const isSessionMode = isSessionPayment;
 
-  const getPurchasedSessions = (course) => Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
+  const getPurchasedSessions = purchasedSessions;
 
-  const getRawRemainingSessions = (course) => {
-    const v = course?.remaining_sessions ?? course?.RemainingSessions;
-    return Number.isFinite(Number(v)) ? Number(v) : null;
-  };
+  const getRawRemainingSessions = ownRemainingSessions;
 
   const getUsedSessions = (course) => {
     const purchased = getPurchasedSessions(course);
@@ -498,8 +541,8 @@ export function useCourseSessionsDisplay({
 
   const displayRemainingSessions = (course) => {
     if (!isSessionMode(course)) return null;
-    if (course?.PackageID) {
-      return Math.max(0, Number(course?.package_remaining_sessions ?? 0) || 0);
+    if (isPackageMember(course)) {
+      return Math.max(0, poolRemainingSessions(course, { pascalAlias: false }) ?? 0);
     }
     const purchased = getPurchasedSessions(course);
     const rows = getCourseSessionRows(course);
@@ -587,6 +630,7 @@ export function useCourseSessionsDisplay({
     movedOrCancelledUnits,
     sessionRowKey,
     getSessionNumber,
+    getSessionNumberMap,
     countNonLeaveSessions,
     effectiveSessionCount,
     leaveSessionCount,

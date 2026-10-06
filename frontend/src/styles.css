@@ -110,6 +110,27 @@
   --ds-control-height-touch: 44px;
   --ds-border-width: 1px;
 
+  /* Print palette for documents sent to parents as images (payment slip).
+     Deliberately not redefined under [data-theme="dark"]: the exported PNG
+     must look the same whatever theme the staff member uses. */
+  --ds-print-paper: #FFFFFF;
+  --ds-print-accent: #EF6C00;
+  --ds-print-accent-wash: #FFF3E0;
+  --ds-print-accent-strong: #C2410C;
+  --ds-print-accent-strong-wash: #FFEDD5;
+  --ds-print-ink: #1F2937;
+  --ds-print-ink-2: #4B5563;
+  --ds-print-mute: #6B7280;
+  --ds-print-line: #E5E7EB;
+  --ds-print-soft: #F9FAFB;
+  --ds-print-done: #15803D;
+  --ds-print-done-wash: #DCFCE7;
+  --ds-print-warn: #B45309;
+  --ds-print-warn-wash: #FEF3C7;
+  --ds-print-leave: #6D28D9;
+  --ds-print-leave-wash: #EDE9FE;
+  --ds-print-void: rgba(220, 38, 38, 0.12);
+
   --ds-surface-0: var(--ds-canvas-soft);
   --ds-surface-1: var(--ds-canvas);
   --ds-surface-2: #eef2f6;

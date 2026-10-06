@@ -238,6 +238,7 @@ final class NonstandardDurationInventoryReporter
         $rows = DB::table('schedules')
             ->whereIn('student_course_id', $courseIds)
             ->where('type', 'extra')
+            ->where('status', '!=', \App\Models\Schedule::STATUS_SUPERSEDED)
             ->select(['student_course_id', 'schedule_date', 'start_time'])
             ->get();
 

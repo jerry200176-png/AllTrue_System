@@ -522,7 +522,7 @@ class StudentClassPaidStatusTest extends TestCase
     /**
      * TD-083 B1 / R94: partial invoice payment must NOT display as paid on the course list.
      */
-    public function test_index_shows_unpaid_when_invoice_only_partially_paid(): void
+    public function test_index_shows_partial_when_invoice_only_partially_paid(): void
     {
         $token = $this->createDirectorToken([1]);
         $student = $this->createStudent();
@@ -557,7 +557,7 @@ class StudentClassPaidStatusTest extends TestCase
         $data = $json['data'] ?? $json;
         $match = collect($data)->first(fn ($c) => (int) ($c['ID'] ?? $c['id'] ?? 0) === (int) $sc->ID);
         $this->assertNotNull($match, 'Course should appear in list');
-        $this->assertSame('unpaid', $match['payment_status'], 'partial cover must not count as paid');
+        $this->assertSame('partial', $match['payment_status'], 'partial cover must not count as paid, and reads 部分繳');
     }
 
     /**

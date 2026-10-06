@@ -1,4 +1,4 @@
-name: 翟君和 8/28 13:00 未上修復（受控）
+name: Session 29212 8/28 13:00 unattended repair (controlled)
 
 on:
   workflow_dispatch:

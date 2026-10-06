@@ -13,6 +13,13 @@ class CampusController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $request->attributes->get('auth_campus_ids', []);
 
+        // Keep the controller fail-closed too, even though the route currently
+        // requires a campus. This prevents a future route move from exposing
+        // every active campus to an empty authorization scope.
+        if ($role !== 'super_admin' && empty($campusIds)) {
+            return response()->json([]);
+        }
+
         $query = Campus::query()->select(['id', 'name', 'code']);
 
         // Filter by active flag when column exists
@@ -21,7 +28,7 @@ class CampusController extends Controller
         }
 
         // Super admin sees all active branches; others see only their assigned ones
-        if ($role !== 'super_admin' && !empty($campusIds)) {
+        if ($role !== 'super_admin') {
             $query->whereIn('id', $campusIds);
         }
 

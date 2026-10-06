@@ -2,15 +2,40 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
-  - id: silent-2026-10-04-class-sessions-date-validation
-    changelog_date: "2026-10-04"
-    changelog_title: "fix(class-sessions): reject invalid date filters before projection (#3493)"
-    reason: 僅修正 API 無效日期由伺服器錯誤改為驗證錯誤，介面、有效查詢與操作流程未變，不另公告。
+  - id: silent-2026-10-06-phpstan-baseline-shrink-only
+    changelog_date: "2026-10-06"
+    changelog_title: "chore(ci): PHPStan baseline is shrink-only; core models get `@property` docblocks"
+    reason: 只加型別註解與 CI 檢查，執行行為不變，教職員看不到任何差異。
+
+  - id: silent-2026-10-06-td076-pr-b1-assignment-writer
+    changelog_date: "2026-10-06"
+    changelog_title: "chore(schedule): TD-076 Track B PR-B1 OccurrenceAssignmentService behind schedule-occurrence-v2"
+    reason: 新寫入端只在預設關閉的 schedule-occurrence-v2 旗標開啟時使用，關閉時行為完全不變，教職員看不到任何差異。
+
+  - id: silent-2026-10-05-td076-pr-a-log-superseded
+    changelog_date: "2026-10-05"
+    changelog_title: "chore(schedule): TD-076 Track B PR-A log teacher columns + `superseded` status constant"
+    reason: 只加可為空的日誌欄位、常數與測試，尚無寫入端使用，教職員看到的畫面與行為不變。
+
+  - id: silent-2026-10-05-f7-s2
+    changelog_date: "2026-10-05"
+    changelog_title: "refactor(frontend): F7 S2 paid status comes only from the server `payment_status`"
+    reason: 前端改只讀後端既有的 payment_status，移除內部推算備援；後端本就下發該欄位，教職員看到的畫面不變。
+
+  - id: silent-2026-10-06-td076-pr-b2-pins-lr
+    changelog_date: "2026-10-06"
+    changelog_title: "chore(schedule): TD-076 Track B PR-B2 history pins and learning-record teacher fix through the occurrence writer"
+    reason: 只在預設關閉的 schedule-occurrence-v2 旗標開啟時生效，關閉時行為完全不變，教職員看不到任何差異。
 
   - id: silent-2026-10-01-calendar-tutoring-acceptance
     changelog_date: "2026-10-01"
     changelog_title: "fix(qa): production calendar and tutoring acceptance follow actual contracts"
     reason: 僅修正內部正式站驗收的事件、樣本前提、學生明細定位與有界 UI 時限，不改教職員操作或收費規則。
+
+  - id: silent-2026-10-06-td076-superseded-sweep
+    changelog_date: "2026-10-06"
+    changelog_title: "fix(schedule): TD-076 sweep so no reader treats a `superseded` schedules row as live, leave or scheduled"
+    reason: 目前沒有任何寫入端產生 superseded 排程列，只是讓讀取端先略過它並補測試，教職員看到的畫面與行為不變。
 
   - id: silent-2026-10-01-muzha-pop-schedule
     changelog_date: "2026-10-01"
@@ -692,6 +717,18 @@ exemptions:
     changelog_date: "2026-10-04"
     changelog_title: "perf(class-sessions): per-row latest sign-in/learning-record lookups; date-bounded substitutes (in-app #319)"
     reason: 只改查詢方式，回傳內容不變；依指南教職員卡片須 merge、deploy 並以正式站同一 EXPLAIN case 驗證變快後才發布，驗證後另 PR 發布。
+  - id: silent-2026-10-04-availability-parity
+    changelog_date: "2026-10-04"
+    changelog_title: "fix(scheduling): availability counts the same live lessons as booking (in-app #338 #359 #363 #365 #327)"
+    reason: 代課挑選的可見變化（他校有課、有空判斷）待正式站驗證後另 PR 發布教職員卡片
+  - id: silent-2026-10-04-paused-projection
+    changelog_date: "2026-10-04"
+    changelog_title: "fix(courses): paused courses stop showing 預排; clear paused message; cancelled dates no longer double as 預排; course sessions open as list (in-app #340 #342 #343)"
+    reason: 修正主任回報（#340/#342/#343）的顯示錯誤，屬單一分校的個案修正，不需另發全員版本更新卡。
+  - id: silent-2026-10-04-lr-form-multiteacher
+    changelog_date: "2026-10-04"
+    changelog_title: "fix: learning-record form opens the lesson you clicked; multi-teacher courses keep their own slots (in-app #334 #333)"
+    reason: 教職員卡片待正式站驗證後另 PR 發布
   - id: silent-2026-10-04-ledger-last5-notes
     changelog_date: "2026-10-04"
     changelog_title: "fix(billing-ui): ledger explains empty slips, shows rejected reports, 後5碼 and 備註 (in-app #354 #355 #356)"
@@ -705,3 +742,19 @@ exemptions:
     changelog_date: "2026-10-03"
     changelog_title: "fix(a11y): accessible names for attendance and profile form controls"
     reason: 僅補螢幕閱讀器可讀的欄位名稱（屬性），可見畫面與操作流程不變；依指南教職員卡片須 merge、deploy、production 驗證後才發布，如需公告於驗證後另 PR 發布。
+  - id: silent-2026-10-04-course-edit-remap
+    changelog_date: "2026-10-04"
+    changelog_title: "fix(course-edit): course slot edits move the right lessons (locked lessons stay; shared same-day remap plan) (in-app #347)"
+    reason: 搬移結果修正屬資料正確性；教職員卡片待時段檢查 follow-up 一併上線並於正式站驗證後另 PR 發布
+  - id: silent-2026-10-04-course-edit-guard
+    changelog_date: "2026-10-04"
+    changelog_title: "fix(course-edit): slot edits check exactly the lessons that move; no false block on own lessons, no self-overlap (in-app #347, part 2)"
+    reason: 課程時段編輯的可見變化（不再擋自己的課）待正式站驗證後另 PR 發布教職員卡片
+  - id: silent-2026-10-05-unpaid-backlog-pop
+    changelog_date: "2026-10-05"
+    changelog_title: "chore(ops): POP operation puts unpaid hidden closures back in the reconciliation queue"
+    reason: POP 修復需部署後另經 Founder 核准執行；教職員卡片於正式站執行並驗證成功後另 PR 發布
+  - id: silent-2026-10-05-muzha-chen-catchup
+    changelog_date: "2026-10-05"
+    changelog_title: "chore(ops): POP catch-up billing for 宥翰 Jun–Aug + void orphan invoice 1053"
+    reason: POP 修復需部署後另經 Founder 核准執行；教職員卡片於正式站執行並驗證成功後另 PR 發布

@@ -55,6 +55,9 @@ class ClassSessionIndexReadService
             }
         }
 
+        // Flag off: plain `sub_sched.teacher_id`. Flag on: stamped live row / makeup LearningRecord teacher, NULL = contract teacher.
+        $subTeacherSql = SubstituteScheduleService::substituteTeacherSql();
+
         $query = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
@@ -64,28 +67,11 @@ class ClassSessionIndexReadService
             // SUBSTRING()/DATE() — function-wrapped join columns defeat index usage.
             // cs.SessionDate and sub_sched.schedule_date are both native DATE columns, so
             // comparing them directly (no DATE() wrap) is behaviorally identical.
-            ->leftJoin(DB::raw('(
-                SELECT ss.*, SUBSTRING(ss.start_time, 1, 5) AS start_time_hm
-                FROM `schedules` ss
-                INNER JOIN (
-                    SELECT sub2.student_course_id,
-                           sub2.schedule_date,
-                           SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
-                           MAX(sub2.id) AS max_id
-                    FROM `schedules` sub2
-                    INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
-                    WHERE sub2.status = "scheduled"
-                      AND sub2.original_schedule_id IS NOT NULL
-                      AND sub2.teacher_id <> sc2.TeacherID
-                      ' . $subScheduleDateBound . '
-                    GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
-                ) sub_latest ON ss.id = sub_latest.max_id
-            ) as sub_sched'), function ($join) {
+            ->leftJoin(DB::raw(SubstituteScheduleService::substituteScheduleDerivedSql($subScheduleDateBound) . ' as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
                     ->on('sub_sched.schedule_date', '=', 'cs.SessionDate')
                     ->on('sub_sched.start_time_hm', '=', 'cs.StartTimeHM');
             })
-            ->leftJoin('User as subu', 'subu.id', '=', 'sub_sched.teacher_id')
             // in-app #319: per-row index lookups instead of whole-table "latest per session" derived tables
             // (production EXPLAIN run 37166542492 scanned all LearningRecord/StudentSingIn rows on every request).
             // LearningRecord.ClassSessionID is UNIQUE, so "latest non-voided" is the one row when not voided.
@@ -97,6 +83,7 @@ class ClassSessionIndexReadService
                 $join->on('si.ClassSessionID', '=', 'cs.id')
                     ->whereRaw('si.id = (SELECT MAX(si2.id) FROM `StudentSingIn` si2 WHERE si2.ClassSessionID = cs.id AND si2.VoidedAt IS NULL)');
             })
+            ->leftJoin('User as subu', fn ($join) => $join->whereRaw("subu.id = {$subTeacherSql}"))
             ->leftJoin('User as u', 'u.id', '=', 'sc.TeacherID')
             ->leftJoin('User as lru', 'lru.id', '=', 'lr.TeacherID')
             ->leftJoin('User as siu', 'siu.id', '=', 'si.TeacherID')
@@ -119,7 +106,7 @@ class ClassSessionIndexReadService
                 'sc.Rate as sc_rate',
                 'sc.SessionDuration as sc_session_duration',
                 'sc.rate_unit as sc_rate_unit',
-                'sub_sched.teacher_id as substitute_teacher_id',
+                DB::raw("{$subTeacherSql} as substitute_teacher_id"),
                 's.CampusID',
                 's.name as student_name',
                 DB::raw('COALESCE(subu.Name, u.Name, lru.Name, "") as teacher_name'),
@@ -159,11 +146,11 @@ class ClassSessionIndexReadService
         );
 
         if ($role === 'teacher') {
-            $query->where(function ($q) use ($teacherId) {
-                $q->where(function ($inner) use ($teacherId) {
-                    $inner->whereNull('sub_sched.teacher_id')
+            $query->where(function ($q) use ($teacherId, $subTeacherSql) {
+                $q->where(function ($inner) use ($teacherId, $subTeacherSql) {
+                    $inner->whereRaw("{$subTeacherSql} IS NULL")
                         ->where('sc.TeacherID', $teacherId);
-                })->orWhere('sub_sched.teacher_id', $teacherId);
+                })->orWhereRaw("{$subTeacherSql} = ?", [$teacherId]);
             });
         }
 
@@ -173,11 +160,11 @@ class ClassSessionIndexReadService
 
         if ($request->filled('teacher_id')) {
             $filterTid = (int) $request->input('teacher_id');
-            $query->where(function ($q) use ($filterTid) {
-                $q->where(function ($inner) use ($filterTid) {
-                    $inner->whereNull('sub_sched.teacher_id')
+            $query->where(function ($q) use ($filterTid, $subTeacherSql) {
+                $q->where(function ($inner) use ($filterTid, $subTeacherSql) {
+                    $inner->whereRaw("{$subTeacherSql} IS NULL")
                         ->where('sc.TeacherID', $filterTid);
-                })->orWhere('sub_sched.teacher_id', $filterTid);
+                })->orWhereRaw("{$subTeacherSql} = ?", [$filterTid]);
             });
         }
 

@@ -34,7 +34,7 @@
 
     <div class="acct-tabs at-tabs" role="tablist" aria-label="帳務中心分頁">
       <button
-        v-for="tab in ACCOUNTING_TABS"
+        v-for="tab in visibleAccountingTabs"
         :key="tab.key"
         type="button"
         class="acct-tab at-tab"
@@ -437,6 +437,10 @@
                         <span class="material-symbols-outlined">check_circle</span>
                         登記已回報
                       </button>
+                      <button v-if="canWaive && r.closed_reason" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)" title="確認這筆不會收，從待處理移除並留稽核紀錄">
+                        <span class="material-symbols-outlined">money_off</span>
+                        確認不收
+                      </button>
                     </template>
 
                     <!-- pending_report: confirm / reject -->
@@ -722,6 +726,10 @@
       </template>
     </section>
 
+    <section v-if="activeAccountingTab === 'monthly-drafts' && canVoid" id="tuition-accounting-panel-monthly-drafts" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly-drafts" tabindex="0">
+      <MonthlyDraftsPanel ref="monthlyDrafts" :branch-id="branchId" />
+    </section>
+
     <section
       v-if="activeAccountingTab === 'settled'"
       id="tuition-accounting-panel-settled"
@@ -789,8 +797,10 @@
                 <td>
                   <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
                   <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
-                  <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">結案待對帳</span>
-                  <span v-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation" class="text-light">正常</span>
+                  <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '結案待對帳' }}</span>
+                  <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '付款期間待確認' }}</span>
+                  <span v-if="row.closed_reason === 'waived'" class="acct-chip">確認不收</span>
+                  <span v-else-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation && !row.payment_review_required" class="text-light">正常</span>
                 </td>
                 <td>
                   <div class="tc-actions">
@@ -923,6 +933,33 @@
       </div>
     </Transition>
 
+    <!-- Waive (確認不收) Dialog -->
+    <Transition name="fade">
+      <div v-if="waiveDialogOpen" class="tc-overlay" @click.self="waiveDialogOpen = false">
+        <div class="tc-dialog">
+          <h3 class="tc-dialog-title">
+            <span class="material-symbols-outlined" style="font-size:22px;color:var(--danger)">money_off</span>
+            確認不收
+          </h3>
+          <p class="tc-dialog-desc">這筆欠款將轉為歷史（確認不收），不再出現在待處理；帳單與收款紀錄保留，並記錄操作人與原因。</p>
+          <div class="tc-dialog-info" v-if="waiveTarget">
+            <span>{{ waiveTarget.student_name }} — {{ waiveTarget.subject }}</span>
+            <small>{{ waivableAmount === null ? '金額載入中…' : `不收金額 ${formatCurrency(waivableAmount)}` }}</small>
+          </div>
+          <label class="tc-dialog-label">不收原因（必填）</label>
+          <textarea v-model="waiveReason" class="tc-dialog-textarea" placeholder="請輸入不收原因…" maxlength="200" rows="3"></textarea>
+          <div class="tc-dialog-charcount">{{ waiveReason.length }} / 200</div>
+          <div class="tc-dialog-btns">
+            <button class="tc-btn tc-btn--ghost" @click="waiveDialogOpen = false" :disabled="waiveLoading">取消</button>
+            <button class="tc-btn tc-btn--danger" @click="confirmWaive" :disabled="waiveReason.trim().length < 2 || waiveLoading || waivableAmount === null">
+              <span v-if="waiveLoading" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
+              確認不收
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Settle (Close) Confirmation Dialog -->
     <Transition name="fade">
       <div v-if="settleDialogOpen" class="tc-overlay" @click.self="settleDialogOpen = false">
@@ -1030,8 +1067,10 @@
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
+import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { useToast } from '../composables/useToast';
 import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
+import MonthlyDraftsPanel from '../components/tuition/MonthlyDraftsPanel.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
@@ -1059,6 +1098,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
+import { TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -1076,11 +1116,13 @@ const actionLoading = ref(null);
 const ACCOUNTING_TABS = [
   { key: 'receivables', label: '待處理', icon: 'payments' },
   { key: 'monthly-review', label: '月結待核對', icon: 'fact_check' },
+  { key: 'monthly-drafts', label: '本月待開帳單', icon: 'edit_document', directorOnly: true },
   { key: 'settled', label: '已結清課程彙總', icon: 'task_alt' },
   { key: 'payments', label: '收據紀錄', icon: 'receipt_long' },
 ];
 const activeAccountingTab = ref('receivables');
 const monthlyReview = ref(null);
+const monthlyDrafts = ref(null);
 const accountingLoading = ref(false);
 const accountingExporting = ref(false);
 const accountingError = ref('');
@@ -1176,7 +1218,7 @@ function exportSelectedAccountingCSV() {
 }
 
 const activeTabLoading = computed(() => (
-  activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
+  activeAccountingTab.value === 'monthly-drafts' ? Boolean(monthlyDrafts.value?.loading) : activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
 ));
 
 function getToken() {
@@ -1191,8 +1233,9 @@ function getAuthRole() {
 
 const canVoid = computed(() => {
   const role = getAuthRole();
-  return ['director', 'admin', 'super_admin'].includes(role);
+  return isDirectorRole(role);
 });
+const visibleAccountingTabs = computed(() => ACCOUNTING_TABS.filter((t) => !t.directorOnly || canVoid.value));
 
 function formatTodayYmd() {
   const d = new Date();
@@ -1265,8 +1308,12 @@ const batchForm = ref({
 
 const selectedIdSet = computed(() => new Set(selectedIds.value));
 
+// A batch report needs a real amount: unbilled rows with a null/0 payable would be sent as amount 0.
+const hasBatchAmount = (r) => Number(r?.payable_outstanding ?? r?.payable_amount ?? 0) > 0;
+
 function isRowSelectable(r) {
   const ps = r?.payment_status;
+  if (ps !== 'pending_report' && !hasBatchAmount(r)) return false;
   if (activeTab.value === 'pending_report') return ps === 'pending_report' && !!r.latest_payment_report_id;
   if (activeTab.value === 'pending_reconciliation') return ps === 'pending_reconciliation';
   if (r?.payable_status !== 'invoiced') return false;
@@ -1287,7 +1334,7 @@ const batchPreviewRows = computed(() => {
   if (batchPreviewMode.value === 'confirm') {
     return selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id);
   }
-  return selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
+  return selectedRows.value.filter((r) => (r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation') && hasBatchAmount(r));
 });
 const batchPreviewTotal = computed(() => batchPreviewRows.value.reduce((total, row) => total + Number(row.payable_outstanding ?? row.payable_amount ?? 0), 0));
 const allVisibleSelected = computed(() => selectableRows.value.length > 0 && selectableRows.value.every((r) => selectedIdSet.value.has(r.id)));
@@ -1324,7 +1371,7 @@ function openBatchPreview() {
   }
   const rows = mode === 'confirm'
     ? selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id)
-    : selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
+    : selectedRows.value.filter((r) => (r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation') && hasBatchAmount(r));
   if (!rows.length) {
     showToast(mode === 'confirm' ? '請先勾選待對帳課程' : '請先勾選未繳課程', 'warning');
     billingWorkflowError(mode === 'confirm' ? 'confirm' : 'report', 'validation');
@@ -1362,7 +1409,7 @@ watch(activeTab, () => {
 async function submitBatchReport() {
   const workflowStep = 'report';
   if (!batchPreviewOpen.value) return;
-  const rows = selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
+  const rows = selectedRows.value.filter((r) => (r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation') && hasBatchAmount(r));
   if (!rows.length) {
     showToast('請先勾選未繳課程', 'warning');
     billingWorkflowError(workflowStep, 'validation');
@@ -1455,15 +1502,7 @@ async function submitBatchConfirm() {
 }
 
 // ═══ Payment Status Helpers ═══
-const STATUS_CONFIG = {
-  unpaid:           { label: '應收／尚未回報', cls: 'st-unpaid' },
-  partial:          { label: '部分已入帳',      cls: 'st-partial' },
-  pending_report:   { label: '已回報／待查帳', cls: 'st-pending' },
-  pending_reconciliation: { label: '結案／待查帳', cls: 'st-pending' },
-  paid:             { label: '已確認入帳',        cls: 'st-paid' },
-  renew_needed:     { label: '續課待處理',    cls: 'st-renew' },
-  monthly_due_soon: { label: '月結將到期',    cls: 'st-monthly' },
-};
+const STATUS_CONFIG = TUITION_STATUS_CONFIG;
 
 function statusLabel(r) {
   const ps = r.payment_status;
@@ -1513,7 +1552,9 @@ function openReceiptByReport(reportId) {
 }
 
 function refreshActiveTab() {
-  if (activeAccountingTab.value === 'monthly-review') {
+  if (activeAccountingTab.value === 'monthly-drafts') {
+    monthlyDrafts.value?.reload();
+  } else if (activeAccountingTab.value === 'monthly-review') {
     monthlyReview.value?.reload();
   } else if (activeAccountingTab.value === 'receivables') {
     loadAlerts();
@@ -2108,6 +2149,55 @@ async function rejectReport(row) {
   }
 }
 
+// ═══ Waive (確認不收) Dialog — director only ═══
+const canWaive = computed(() => isDirectorRole(getAuthRole()));
+const waiveDialogOpen = ref(false);
+const waiveTarget = ref(null);
+const waiveReason = ref('');
+const waiveLoading = ref(false);
+const waivableAmount = ref(null); // 由後端 settled-courses 的 waivable_amount 提供（與確認不收同一算法）
+
+async function openWaiveDialog(row) {
+  waiveTarget.value = row;
+  waiveReason.value = '';
+  waivableAmount.value = null;
+  waiveDialogOpen.value = true;
+  try {
+    const resp = await fetch(`/api/v1/accounting/settled-courses?course_id=${encodeURIComponent(row.id)}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}` },
+    });
+    const match = resp.ok ? ((await resp.json()).data || [])[0] : null;
+    if (match) waivableAmount.value = Number(match.waivable_amount ?? 0);
+    else showToast('無法取得不收金額', 'error');
+  } catch (e) {
+    showToast('無法取得不收金額', 'error');
+  }
+}
+
+async function confirmWaive() {
+  const reason = waiveReason.value.trim();
+  if (!waiveTarget.value || reason.length < 2 || waivableAmount.value === null) return;
+  waiveLoading.value = true;
+  try {
+    const resp = await fetch(`/api/v1/accounting/courses/${waiveTarget.value.id}/waive`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason, expected_amount: waivableAmount.value }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.message || `操作失敗（${resp.status}）`);
+    }
+    waiveDialogOpen.value = false;
+    showToast('已確認不收，移至歷史', 'warning');
+    await Promise.all([loadAlerts(), loadSettledCourses()]);
+  } catch (e) {
+    showToast(e.message || '確認不收失敗', 'error');
+  } finally {
+    waiveLoading.value = false;
+  }
+}
+
 // ═══ Void Dialog ═══
 const voidDialogOpen = ref(false);
 const voidTarget = ref(null);
@@ -2347,7 +2437,7 @@ watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], 
 }, { immediate: true });
 
 watch(activeAccountingTab, (tab) => {
-  if (tab === 'monthly-review') return;
+  if (tab === 'monthly-review' || tab === 'monthly-drafts') return;
   if (tab === 'receivables') {
     if (!rows.value.length) loadAlerts();
   } else if (tab === 'settled') {

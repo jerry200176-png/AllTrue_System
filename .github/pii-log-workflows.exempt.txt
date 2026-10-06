@@ -1,0 +1,14 @@
+# Workflows that reach production but do not print person data (reviewed 2026-10-06).
+# Every workflow using production SSH must be listed here or in pii-log-workflows.txt.
+1387-db-password-rotation.yml  # credential rotation, prints fingerprints only
+actual-duration-activation.yml  # flag activation, no row data
+backup-restore-test.yml  # restore drill, counts only
+ci.yml  # test data only
+credential-fingerprint-audit.yml  # fingerprints only
+deploy.yml  # deploy/smoke output, no row data
+docs-integrity.yml  # docs checks
+pi-health.yml  # health probe
+secret-rotation-reminder.yml  # reminder only
+security-1128-remove-agent-artifacts.yml  # file cleanup, paths only
+migration-dryrun.yml  # inventory: non-production
+presubmit.yml  # inventory: non-production

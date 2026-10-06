@@ -56,7 +56,7 @@ Legend for "reads": Flag = `StudentClass.Paid`; Pkg = `CoursePackage.paid`; Chg 
 | F3 | `DirectorDashboard.vue:isPaymentNoticeAvailable`, `paymentCenterIntent` | `payment_status` / `alert_type` | slip + routing | Status string list hard-coded client side. |
 | F4 | `OverdueBucketsPanel.vue` | `total_amount - paid_amount` per row | no importer found in `frontend/src` | Possibly dead (TD-083 A class). Confirm before deleting. |
 | F5 | `PaymentSlipModal.vue`, `PaymentEntryModal.vue` | `payable_*` else `estimated_amount ?? charge` | slip, entry modal | Falls back to course Chg/R*q when unbilled; the amount a director records can come from a different source than the invoice. |
-| (pass-through) | `ParentPortal.vue c.paid`, `NotificationsCenter.vue payload.outstanding`, `lib/monthlyPaymentDisplay.js` | server fields | display | No logic of their own; inherit B18/B22/B15. |
+| (pass-through) | `ParentPortal.vue c.paid`, `NotificationsCenter.vue payload.outstanding`, `lib/courseMoneyState.js` (monthly labels; folded from monthlyPaymentDisplay.js in #3580) | server fields | display | No logic of their own; inherit B18/B22/B15. |
 
 Existing parity anchor: `backend/tests/Feature/BillingPayableSemanticsTest.php`, `TuitionAlertsApiTest.php`.
 

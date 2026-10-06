@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-10-06-renewal-preview-gate
+    published_at: "2026-10-06"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 學生頁月結續約先核對
+    summary: 學生列表的月結續約，要先看到新一期預覽才能送出。
+    items:
+      - category: improved
+        text: 預覽未完成或被擋下時無法送出，與課程管理一致。
+    source_refs:
+      - "changelog:2026-10-06:students-list-renewal-preview-gate"

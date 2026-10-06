@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Allowlisted, auditable repair for the 2026-08-28 翟君和 session.
+ * Allowlisted, auditable repair for the 2026-08-28 session 29212.
  *
  * This is deliberately a fixed incident command. It cannot be turned into a
  * general production status editor by passing arbitrary IDs. The operation
@@ -30,7 +30,7 @@ class RepairUnattendedSession29212 extends Command
                             {--actor=}
                             {--actor-user-id=4}';
 
-    protected $description = 'Revert the allowlisted 2026-08-28 翟君和 session to scheduled';
+    protected $description = 'Revert the allowlisted 2026-08-28 session 29212 to scheduled';
 
     private const REF = 'in-app #target-29212-unattended-2026-08-28';
 

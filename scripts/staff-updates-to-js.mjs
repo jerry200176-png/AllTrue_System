@@ -1,11 +1,11 @@
-/** docs/STAFF_UPDATES.yml → frontend/src/lib/staffUpdates.generated.js (never auto from CHANGELOG) */
+/** docs/STAFF_UPDATES.yml + docs/staff-updates/*.yml → frontend/src/lib/staffUpdates.generated.js (never auto from CHANGELOG) */
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { readUpdatesYaml } from './lib/changeFragments.mjs';
 import { assertUserFacingCopy, countChars } from './lib/userFacingCopyGate.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const ymlPath = path.join(root, 'docs', 'STAFF_UPDATES.yml');
 const outPath = path.join(root, 'frontend', 'src', 'lib', 'staffUpdates.generated.js');
 
 const ALLOWED_AUDIENCES = new Set(['director', 'teacher']);
@@ -187,7 +187,7 @@ function validateAndNormalize(rawList) {
   return out;
 }
 
-const data = validateAndNormalize(parseStaffUpdatesYml(fs.readFileSync(ymlPath, 'utf8')));
+const data = validateAndNormalize(parseStaffUpdatesYml(readUpdatesYaml(root, 'STAFF_UPDATES.yml', 'docs/staff-updates')));
 const banner = `/**
  * AUTO-GENERATED — source: docs/STAFF_UPDATES.yml
  * Regenerate: (cd frontend && npm run sync-release-notes)

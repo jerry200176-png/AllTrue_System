@@ -1528,6 +1528,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, nextTick } from 'vue';
+import { isDirectorRole as roleIsDirector } from '../lib/roleCapabilities.js';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
@@ -1555,7 +1556,7 @@ import {
 import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
 import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusState } from '../lib/learningRecordTarget';
 import { compareLearningRecords } from '../lib/learningRecordSort';
-import { deduplicateLearningRecordSessions } from '../lib/learningRecordSessionPolicy';
+import { deduplicateLearningRecordSessions, selectFormDaySession, pickSessionRecord, sessionRecordId } from '../lib/learningRecordSessionPolicy';
 import {
   resolveLearningRecordViewDefaults,
   resolveLearningRecordViewMode,
@@ -1600,7 +1601,7 @@ const toggleFeedbackPreview = (record) => {
 const perf = createPerfTracker('LearningRecordsPage');
 
 const isTeacher = computed(() => props.userRole === 'teacher');
-const isDirectorRole = computed(() => ['director', 'admin', 'super_admin'].includes(String(props.userRole || '')));
+const isDirectorRole = computed(() => roleIsDirector(String(props.userRole || '')));
 const initialViewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
 const initialViewDefaults = resolveLearningRecordViewDefaults({
   viewportWidth: initialViewportWidth,
@@ -2987,6 +2988,13 @@ const recordLookup = computed(() => {
       if (!prevT || scheduleStatusPriority(record.Status) > scheduleStatusPriority(prevT.Status)) {
         map.set(timeKey, record);
       }
+      if (!(csId > 0)) {
+        const unboundKey = `unbound:${timeKey}`;
+        const prevU = map.get(unboundKey);
+        if (!prevU || scheduleStatusPriority(record.Status) > scheduleStatusPriority(prevU.Status)) {
+          map.set(unboundKey, record);
+        }
+      }
     }
     const prev = map.get(dateKey);
     if (!prev || scheduleStatusPriority(record.Status) > scheduleStatusPriority(prev.Status)) {
@@ -3118,7 +3126,9 @@ const buildEvents = (targetDates) => {
       const byCs = csId > 0 ? recordLookup.value.get(`cs:${csId}`) : null;
       const byTime = startTime ? recordLookup.value.get(`${classId}|${dateStr}|${startTime}`) : null;
       const byDate = recordLookup.value.get(`${classId}|${dateStr}`);
-      const record = byCs || byTime || byDate;
+      // 已有 ClassSession id 時，只接受本堂或未綁堂的舊紀錄，不拿同時段／同日另一堂的紀錄。
+      const byUnboundTime = startTime ? recordLookup.value.get(`unbound:${classId}|${dateStr}|${startTime}`) : null;
+      const record = pickSessionRecord({ csId, byCs, byTime, byDate, byUnboundTime });
       const rowStatus = String(rawSession?.learningRecordStatus || '');
       const sessionStatus = String(rawSession?.status || '').toLowerCase();
       // 請假／取消堂次：一律不需填評量；與 SmartCalendar.evalBadge 的 LEAVE_STATUSES 行為對齊。
@@ -3141,11 +3151,7 @@ const buildEvents = (targetDates) => {
       if (isTeacher.value && isCancelledSession) continue;
       const formStatus = sessionState.formStatus;
       const apiLrId = rawSession?.learningRecordId != null ? Number(rawSession.learningRecordId) : null;
-      const safeLookupRecord = byCs || byTime;
-      let recordId = (apiLrId != null && apiLrId > 0) ? apiLrId : null;
-      if (!recordId && safeLookupRecord?.id) {
-        recordId = Number(safeLookupRecord.id);
-      }
+      const recordId = sessionRecordId({ apiLrId, csId, byCs, byTime, byUnboundTime });
 
       // 請假／取消／缺席：永遠鎖定不可填；其他沿用既有規則（代課 or 尚未開始）。
       const fillLocked = sessionState.fillLocked;
@@ -3306,15 +3312,17 @@ const syncFormTimesFromCourseSchedule = () => {
     const st = String(s.status || '').toLowerCase();
     return st !== 'cancelled' && st !== 'leave';
   });
-  let daySession = daySessions[0] || null;
-  if (daySessions.length > 1 && form.StartTime) {
-    const byTime = daySessions.find((s) => normalizeTime(s.startTime) === normalizeTime(form.StartTime));
-    if (byTime) daySession = byTime;
-  }
+  // 只信任落在當日候選堂次內的 id（手動換學生／日期後舊 id 會過期）。
+  const formCsId = Number(form.ClassSessionID || 0);
+  const daySession = selectFormDaySession(daySessions, {
+    classSessionId: daySessions.some((s) => Number(s.id) === formCsId) ? formCsId : 0,
+    startTime: form.StartTime,
+    normalizeTime,
+  });
 
   if (daySession && daySession.id) {
     form.ClassSessionID = Number(daySession.id);
-    form.StartTime = normalizeTime(daySession.startTime) || '18:00';
+    form.StartTime = normalizeTime(daySession.startTime) || form.StartTime;
     form.EndTime = normalizeTime(daySession.endTime) || addMinutesToTime(form.StartTime, 120);
     formTimesFromBinding.value = true;
     return;

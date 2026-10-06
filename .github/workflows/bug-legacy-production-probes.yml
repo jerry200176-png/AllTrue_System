@@ -5,6 +5,15 @@ name: Bug legacy production probes (read-only)
 # course/session/chat message, uploads a file, changes a bug, or writes evidence.
 on:
   workflow_dispatch:
+    inputs:
+      student_id_114:
+        description: "Student id for bug 114 (blank = skip the student/class probe; ids only, never a name)"
+        required: false
+        type: string
+      student_id_126:
+        description: "Student id for bug 126 (blank = skip the student probe; ids only, never a name)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -74,6 +83,8 @@ jobs:
         env:
           BUG_PROBE_SESSION_B64: ${{ env.BUG_PROBE_SESSION_B64 }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STUDENT_ID_114: ${{ inputs.student_id_114 }}
+          STUDENT_ID_126: ${{ inputs.student_id_126 }}
         run: |
           set -euo pipefail
           mkdir -p out
@@ -142,8 +153,8 @@ jobs:
                   # The public resolution names the student and calendar surface.
                   # GET-only student/class/session-dates calls verify that the
                   # current calendar projection has no occurrence for the target.
-                  students = rows(get("/api/v1/students?" + urlencode({"name": "陳詩翰", "per_page": "all"})))
-                  target_ids = [int(x["id"]) for x in students if x.get("id")]
+                  sid = os.environ.get("STUDENT_ID_114", "")
+                  target_ids = [int(sid)] if sid.isdigit() else []
                   class_ids = []
                   for sid in target_ids:
                       class_ids += [int(x.get("ID") or x.get("id")) for x in rows(get("/api/v1/student-classes?" + urlencode({"student_id": sid, "per_page": "all"}))) if x.get("ID") or x.get("id")]
@@ -174,8 +185,8 @@ jobs:
                   # class identifier is present in the public report. Read it and
                   # classify conservatively rather than treating a coincidental
                   # current course as the historical target.
-                  students = rows(get("/api/v1/students?" + urlencode({"name": "施景媛", "per_page": "all"})))
-                  target_ids = [int(x["id"]) for x in students if x.get("id")]
+                  sid = os.environ.get("STUDENT_ID_126", "")
+                  target_ids = [int(sid)] if sid.isdigit() else []
                   case["probe"] = {
                       "type": "targeted_current_production",
                       "health_only": False,
