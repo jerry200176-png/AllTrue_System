@@ -152,4 +152,39 @@ final class UnbilledBacklogCatchupStrategyTest extends TestCase
         self::assertSame([false, true, 2], [$out['ok'], $out['partial'], $out['deleted']]);
         self::assertSame(1, DB::table('Invoice')->where('Note', self::REF)->count());
     }
+
+    public function test_other_contract_covering_the_month_blocks_double_billing(): void
+    {
+        // Student 8 (campus 9): contract A ended 06-30 (attended July sessions left on A); contract B, same subject, invoiced July.
+        DB::table('Student')->insert(['id' => 8, 'name' => 's8', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1]);
+        $this->course(200, 8, ['Rate' => 1000, 'EndDate' => '2026-06-30']);
+        $this->lesson(200, '2026-07-04');
+        $this->lesson(200, '2026-07-11');
+        $this->course(201, 8, ['Rate' => 1000, 'StartDate' => '2026-07-01', 'EndDate' => '2026-07-31']);
+        DB::table('Invoice')->insert(['id' => 2, 'StudentID' => 8, 'StudentClassID' => 201, 'IssueDate' => '2026-07-01', 'TotalAmount' => 1000,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '', 'billing_period' => '2026-07', 'created_at' => now(), 'updated_at' => now()]);
+        $plan = (new UnbilledBacklogCatchupStrategy())->plan($this->params([9]));
+        self::assertSame(['skipped', 'other_contract_covers_month'], [$this->rows($plan)['200|2026-07']['status'], $this->rows($plan)['200|2026-07']['reason']]);
+        [, , $result] = $this->applied();
+        self::assertNotContains(200, array_column($result['snapshot']['rows'], 'source_id'));
+        self::assertSame(0, DB::table('Invoice')->where('StudentID', 8)->where('Note', self::REF)->count());
+        // Without B's invoice, a live date-mode contract B covering the date also blocks; a different subject does not.
+        DB::table('Invoice')->where('id', 2)->delete();
+        self::assertSame('other_contract_covers_month', $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-07']['reason']);
+        DB::table('StudentClass')->where('ID', 201)->update(['SubjectID' => 2]);
+        self::assertSame('ready', $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-07']['status']);
+    }
+
+    public function test_execute_retry_after_completion_rebuilds_the_rollback_snapshot(): void
+    {
+        [$s, $plan, $result] = $this->applied();
+        $again = $s->plan($this->params([9], $plan['digest']));
+        $retry = $s->execute($again, []);
+        self::assertTrue($retry['already_applied']);
+        $strip = fn (array $rows) => collect($rows)->sortBy('contract_id')->values()->all();
+        self::assertSame($strip($result['snapshot']['rows']), $strip($retry['snapshot']['rows']));
+        // Recognised by Note alone (Memo tag only carries [src:]) too.
+        DB::table('StudentClass')->where('Memo', 'like', '%' . self::REF . '%')->update(['Memo' => 'x [src:100]']);
+        self::assertSame(2, count($s->execute($s->plan($this->params([9], $plan['digest'])), [])['snapshot']['rows']));
+    }
 }

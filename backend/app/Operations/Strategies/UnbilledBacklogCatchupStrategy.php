@@ -51,8 +51,8 @@ final class UnbilledBacklogCatchupStrategy
     public function execute(array $plan, array $context): array
     {
         if (($plan['ok'] ?? false) && ($plan['state'] ?? null) === 'after') {
-            // Nothing left to bill (retry after the execution record failed to persist): the rollback snapshot is not rebuilt.
-            return ['ok' => true, 'already_applied' => true, 'created' => 0, 'snapshot' => ['rows' => []]];
+            // Nothing left to bill (retry after the execution record failed to persist): rebuild the rollback snapshot from live rows.
+            return ['ok' => true, 'already_applied' => true, 'created' => 0, 'snapshot' => ['rows' => $this->rebuiltRows($plan['campus_ids'])]];
         }
         if (!($plan['ok'] ?? false) || ($plan['state'] ?? null) !== 'pinned') {
             throw new RuntimeException('unbilled_backlog_plan_not_pinned');
@@ -146,6 +146,37 @@ final class UnbilledBacklogCatchupStrategy
         }, 3);
     }
 
+    /**
+     * Live catch-up rows of this operation (contract tagged `[src:` + REF in Memo or invoice Note) with their single invoice and item.
+     *
+     * @param list<int> $campuses @return list<array<string,mixed>>
+     */
+    private function rebuiltRows(array $campuses): array
+    {
+        $students = DB::table('Student')->whereIn('CampusID', $campuses)->pluck('id')->all();
+        $rows = [];
+        foreach ($this->catchups($students) as $c) {
+            $inv = Invoice::query()->with('items')->where('StudentClassID', $c->getKey())->first();
+            $item = $inv?->getRelationValue('items')->first();
+            preg_match('/\[src:(\d+)\]/', (string) $c->getAttribute('Memo'), $m);
+            $rows[] = ['source_id' => (int) $m[1], 'contract_id' => (int) $c->getKey(), 'invoice_id' => (int) $inv?->getKey(), 'item_id' => (int) $item?->getKey(),
+                'month' => (string) $inv?->getAttribute('billing_period'), 'amount' => (int) $c->getAttribute('Charge'),
+                'start' => substr((string) $item?->getAttribute('PeriodStart'), 0, 10), 'end' => substr((string) $item?->getAttribute('PeriodEnd'), 0, 10)];
+        }
+        usort($rows, fn ($a, $b) => [$a['source_id'], $a['month']] <=> [$b['source_id'], $b['month']]);
+
+        return $rows;
+    }
+
+    /** Catch-up contracts of these students: `[src:<id>]` in Memo, recognised by the REF in Memo or in the invoice Note. */
+    private function catchups(array $students)
+    {
+        $noted = Invoice::query()->whereIn('StudentID', $students)->where('Note', self::REF)->pluck('StudentClassID');
+
+        return StudentClass::query()->whereIn('StudentID', $students)->where('Memo', 'like', '%[src:%')
+            ->where(fn ($q) => $q->where('Memo', 'like', '%' . self::REF . '%')->orWhereIn('ID', $noted))->get();
+    }
+
     /** @return list<int> */
     private function campusIds(mixed $raw): array
     {
@@ -207,12 +238,17 @@ final class UnbilledBacklogCatchupStrategy
         $ids = $sessions->pluck('cid')->unique()->values()->all();
         $contracts = StudentClass::query()->whereIn('ID', $ids)->get()->keyBy('ID');
         $owners = [];
-        foreach (StudentClass::query()->whereIn('StudentID', $contracts->pluck('StudentID'))->where('Memo', 'like', '%' . self::REF . '%')->get(['ID', 'Memo']) as $c) {
+        foreach ($this->catchups($contracts->pluck('StudentID')->unique()->all()) as $c) {
             if (preg_match('/\[src:(\d+)\]/', (string) $c->getAttribute('Memo'), $m)) $owners[(int) $m[1]][] = (int) $c->getKey();
         }
         $allOwners = array_merge($ids, ...array_values($owners));
         $invoices = Invoice::query()->where(fn ($v) => $v->whereNull('Status')->orWhere('Status', '!=', 'void'))->with('items')
             ->where(fn ($w) => $w->whereIn('StudentClassID', $allOwners)->orWhereHas('items', fn ($i) => $i->whereIn('StudentClassID', $allOwners)))->get();
+        // Other contracts' coverage (same student + subject): non-void invoices anchored elsewhere, and live date-mode contracts.
+        $students = $contracts->pluck('StudentID')->unique()->all();
+        $studentInvoices = Invoice::query()->with('items')->whereIn('StudentID', $students)->where(fn ($v) => $v->whereNull('Status')->orWhere('Status', '!=', 'void'))->get();
+        $subjects = StudentClass::query()->whereIn('ID', $studentInvoices->pluck('StudentClassID')->filter()->unique())->pluck('SubjectID', 'ID');
+        $dated = StudentClass::query()->whereIn('StudentID', $students)->where('ScheduleMode', 'date')->where('Stop', 0)->get();
         $pricing = app(StudentClassPricingService::class);
 
         $rows = [];
@@ -229,6 +265,7 @@ final class UnbilledBacklogCatchupStrategy
             $to = $after ? $monthEnd : min($monthEnd, Carbon::parse($start)->subDay()->toDateString());
             $own = [(int) $cid, ...($owners[(int) $cid] ?? [])];
             $covered = count(array_filter($dates, fn ($d) => $this->covered($d, $invoices, $own)));
+            $other = count(array_filter($dates, fn ($d) => $this->covered($d, $invoices, $own) || $this->otherCovers($d, $c, $own, $studentInvoices, $subjects, $dated)));
             $rates = array_map(fn ($d) => $pricing->forDate($c, $d), $dates);
             $reason = match (true) {
                 (int) ($c->getAttribute('PackageID') ?? 0) > 0 => 'package',
@@ -236,7 +273,8 @@ final class UnbilledBacklogCatchupStrategy
                 $c->getAttribute('closed_reason') === 'waived' => 'waived',
                 (int) $c->getAttribute('Stop') !== 0 && $c->getAttribute('closed_reason') !== 'settled_pending' => 'contract_closed',
                 $covered === count($dates) => 'already_billed',
-                $covered > 0 => 'partially_billed',
+                $other === count($dates) => 'other_contract_covers_month',
+                $other > 0 => 'partially_billed',
                 $after && count($after) !== count($dates) => 'lessons_on_both_sides',
                 default => null,
             };
@@ -249,6 +287,26 @@ final class UnbilledBacklogCatchupStrategy
         usort($rows, fn ($a, $b) => [$a['campus_id'], $a['contract_id'], $a['month']] <=> [$b['campus_id'], $b['contract_id'], $b['month']]);
 
         return $rows;
+    }
+
+    /** Same student + subject but another contract: its invoice for that month/period, or its live date-mode contract range, holds the date. */
+    private function otherCovers(string $date, StudentClass $c, array $own, $invoices, $subjects, $dated): bool
+    {
+        $subject = $c->getAttribute('SubjectID');
+        foreach ($invoices as $inv) {
+            $anchor = (int) $inv->getAttribute('StudentClassID');
+            if ((int) $inv->getAttribute('StudentID') !== (int) $c->getAttribute('StudentID') || in_array($anchor, $own, true) || ($subjects[$anchor] ?? null) != $subject) continue;
+            if ((string) $inv->getAttribute('billing_period') === substr($date, 0, 7)) return true;
+            foreach ($inv->getRelationValue('items') as $i) {
+                if (substr((string) $i->getAttribute('PeriodStart'), 0, 10) <= $date && $date <= substr((string) $i->getAttribute('PeriodEnd'), 0, 10) && $i->getAttribute('PeriodStart')) return true;
+            }
+        }
+        foreach ($dated as $o) {
+            if ((int) $o->getKey() !== (int) $c->getKey() && !in_array((int) $o->getKey(), $own, true) && (int) $o->getAttribute('StudentID') === (int) $c->getAttribute('StudentID')
+                && $o->getAttribute('SubjectID') == $subject && substr((string) $o->getAttribute('StartDate'), 0, 10) <= $date && $date <= substr((string) $o->getAttribute('EndDate'), 0, 10)) return true;
+        }
+
+        return false;
     }
 
     /** Covered = an owned item (null item owner = the invoice anchor) whose period holds the date; period-less invoices cover by billing_period. */

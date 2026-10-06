@@ -292,7 +292,10 @@ final class PopOperationService
             return $existing;
         }
         $plan = $this->safePlan($entry, $parameters);
-        if (!(bool) ($plan['ok'] ?? false)) {
+        // After a successful execute, later drift (new work arriving) must not make the repair unverifiable or un-rollbackable.
+        $executed = in_array($phase, ['verify', 'rollback'], true) && DB::table('pop_execution_records')
+            ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
+        if (!(bool) ($plan['ok'] ?? false) && !$executed) {
             return $this->record($request, $entry, $parameters, $phase, [
                 'ok' => false,
                 'errors' => $plan['errors'] ?? ['precondition_failed'],
