@@ -476,12 +476,29 @@ jobs:
           node ../.github/scripts/acceptance-report-gate.mjs --self-test
           RESULTS_PATH="playwright-report/acceptance-results.json" EFFECTIVE_BRANCH_ID="$EFFECTIVE_BRANCH_ID" ACCEPTANCE_SCOPE="${ACCEPTANCE_SCOPE}" node ../.github/scripts/acceptance-report-gate.mjs
 
-      - name: Upload acceptance report
+      # Public repo (#3605/#3627): the Playwright JSON can embed calendar text (student names) in failure
+      # messages, so it is never uploaded in plaintext. Without DUMP_ARTIFACT_KEY nothing is uploaded.
+      - name: Encrypt acceptance report (plaintext never uploaded)
+        if: ${{ !cancelled() }}
+        env:
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p enc-report
+          if [ "${#DUMP_ARTIFACT_KEY}" -lt 16 ]; then
+            echo "DUMP_ARTIFACT_KEY missing or too short; acceptance report not uploaded."
+          elif [ -d frontend/playwright-report ]; then
+            tar czf - -C frontend playwright-report \
+              | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY \
+                  -out enc-report/calendar-course-acceptance-report.tar.gz.enc
+          fi
+
+      - name: Upload encrypted acceptance report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: calendar-course-acceptance-report
-          path: frontend/playwright-report/
+          path: enc-report/
           retention-days: 14
           if-no-files-found: ignore
 

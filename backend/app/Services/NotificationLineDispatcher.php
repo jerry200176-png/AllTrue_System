@@ -3,10 +3,10 @@
 namespace App\Services;
 
 use App\Models\Notification;
+use App\Services\Line\LinePush;
 use App\Models\UserNotificationPreference;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class NotificationLineDispatcher
@@ -84,12 +84,7 @@ class NotificationLineDispatcher
         }
 
         try {
-            Http::withToken($token)
-                ->timeout(5)
-                ->post('https://api.line.me/v2/bot/message/push', [
-                    'to'       => $lineUserId,
-                    'messages' => [['type' => 'text', 'text' => $text]],
-                ]);
+            app(LinePush::class)->send($token, $lineUserId, [['type' => 'text', 'text' => $text]], 5);
         } catch (\Throwable $e) {
             Log::warning('line_push_failed', [
                 'line_user_id'    => $lineUserId,

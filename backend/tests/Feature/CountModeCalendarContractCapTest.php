@@ -227,11 +227,11 @@ class CountModeCalendarContractCapTest extends TestCase
         $scheduled = ['2026-09-12' => true];
         $this->assertSame(
             ['2026-09-03', '2026-09-10', '2026-09-12'],
-            \App\Http\Controllers\StudentClassController::computeEffectiveSessionDates('2026-09-03', 3, [4], $leave, $scheduled)
+            \App\Services\Scheduling\ContractSessionSchedule::computeEffectiveSessionDates('2026-09-03', 3, [4], $leave, $scheduled)
         );
         $this->assertSame(
             ['2026-09-03', '2026-09-10', '2026-09-17'],
-            \App\Http\Controllers\StudentClassController::computeEffectiveSessionDates('2026-09-03', 3, [4], $leave, $scheduled, ['2026-09-12' => true])
+            \App\Services\Scheduling\ContractSessionSchedule::computeEffectiveSessionDates('2026-09-03', 3, [4], $leave, $scheduled, ['2026-09-12' => true])
         );
     }
 
@@ -287,7 +287,7 @@ class CountModeCalendarContractCapTest extends TestCase
     public function test_cancelled_date_set_matches_placeholders_by_slot(): void
     {
         $row = fn (string $start, string $status) => (object) ['SessionDate' => '2026-09-10', 'StartTime' => $start, 'Status' => $status];
-        $set = fn (array $rows) => \App\Http\Controllers\StudentClassController::cancelledDateSet($rows);
+        $set = fn (array $rows) => \App\Services\Scheduling\ContractSessionSchedule::cancelledDateSet($rows);
         // Same slot live + cancelled = placeholder; different slots = a real cancellation on that date.
         $this->assertSame([], $set([$row('19:00:00', 'scheduled'), $row('19:00:00', 'cancelled')]));
         $this->assertSame(['2026-09-10' => true], $set([$row('10:00:00', 'scheduled'), $row('19:00:00', 'cancelled')]));

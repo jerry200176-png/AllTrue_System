@@ -42,6 +42,9 @@ class AccountingCourseClarity
         if ($reason === 'settled') {
             return ['code' => 'history_settled', 'label' => '已結算', 'is_history' => true];
         }
+        if ($reason === 'waived') {
+            return ['code' => 'history_waived', 'label' => '歷史 · 確認不收', 'is_history' => true];
+        }
         if ($reason === 'completed') {
             return ['code' => 'history_completed', 'label' => '已完課', 'is_history' => true];
         }

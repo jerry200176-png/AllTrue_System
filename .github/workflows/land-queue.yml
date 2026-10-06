@@ -1,0 +1,57 @@
+name: Land queue
+
+# Self-hosted merge queue. GitHub's native merge queue is unavailable for this
+# user-owned repo (a probe ruleset with a merge_queue rule returned 422).
+# Agents add label `queue`; this workflow keeps the head PR up to date and
+# squash-merges it when every required check is green. It runs the script from
+# the default branch only and never checks out or executes PR code. Merging
+# stays subject to the main-protection ruleset (no --admin).
+on:
+  pull_request_target:
+    types: [labeled]
+  workflow_run:
+    workflows:
+      - "CI — PHPUnit Tests"
+      - "Presubmit Gate"
+      - "Docs Integrity"
+      - "Secret Scan"
+      - "Agent Session Provenance"
+    types: [completed]
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: land-queue
+  cancel-in-progress: false
+
+jobs:
+  land:
+    name: Land queue head
+    if: ${{ github.event_name != 'pull_request_target' || github.event.label.name == 'queue' }}
+    permissions:
+      contents: write       # update-branch, squash merge
+      pull-requests: write  # comment, label removal, merge
+      checks: read
+      statuses: read
+      actions: write        # dispatch check workflows after a token-made update-branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout default branch only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Process queue head
+        env:
+          # Optional fine-grained token (contents/pull-requests/workflows/actions: write on this repo):
+          # lets the queue update branches whose merge from main touches workflow files, and its
+          # pushes fire pull_request CI natively. Falls back to GITHUB_TOKEN.
+          GH_TOKEN: ${{ secrets.LAND_QUEUE_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+        run: node .github/scripts/land-queue.mjs

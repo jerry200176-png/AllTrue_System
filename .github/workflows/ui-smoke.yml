@@ -26,6 +26,12 @@ on:
 permissions:
   contents: read
 
+# A newer head for the same PR supersedes its older production smoke run.
+# Scheduled and manually dispatched checks get unique groups and keep running.
+concurrency:
+  group: ui-smoke-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   ui-smoke:
     name: UI Smoke (Playwright)

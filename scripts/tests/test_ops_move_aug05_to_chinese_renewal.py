@@ -11,8 +11,8 @@ WORKFLOW = ROOT / ".github" / "workflows" / "ops-move-aug05-to-chinese-renewal.y
 class MoveAug05ChineseRenewalTest(unittest.TestCase):
     def test_allowlist_excludes_math_batches(self):
         text = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn("zhang_zheng_ning:374:1681:3230:23157:張正甯", text)
-        self.assertIn("zhang_zheng_le:373:1682:3231:27156:張正樂", text)
+        self.assertIn("student_374:374:1681:3230:23157", text)
+        self.assertIn("student_373:373:1682:3231:27156", text)
         self.assertIn("2649|2606|1324", text)
         self.assertIn("DRY_RUN_ONLY", text)
         self.assertIn("APPROVE_MOVE_20260805_TO_3230_3231", text)

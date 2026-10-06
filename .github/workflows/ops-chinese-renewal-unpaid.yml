@@ -9,8 +9,8 @@ on:
         type: choice
         options:
           - both
-          - zhang_zheng_ning
-          - zhang_zheng_le
+          - student_374
+          - student_373
       mode:
         description: "dry-run is read-only; apply creates unpaid official purchase-batch only"
         required: true
@@ -109,11 +109,11 @@ jobs:
           fi
           : > out/operation.txt
           run_one() {
-            local key="$1" sid="$2" sname="$3" source="$4"
+            local key="$1" sid="$2" source="$3"
             ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
               "${PI_SSH_USER}@${PI_SSH_HOST}" \
               MODE="$MODE" CONFIRM="$CONFIRM" STUDENT_KEY="$key" STUDENT_ID="$sid" \
-              STUDENT_NAME="$sname" SOURCE_CLASS="$source" SESSIONS=8 START_DATE=2026-08-19 \
+              SOURCE_CLASS="$source" SESSIONS=8 START_DATE=2026-08-19 \
               RUN_ID="$RUN_ID" ACTOR="$ACTOR" SCRIPT_B64="$SCRIPT_B64" PHP_B64="$PHP_B64" \
               'bash -s' <<'ENDSSH' | tee -a out/operation.txt
           set -euo pipefail
@@ -124,10 +124,10 @@ jobs:
           ENDSSH
           }
           case "$STUDENT" in
-            both|zhang_zheng_ning) run_one zhang_zheng_ning 374 '張正甯' 1681 ;;
+            both|student_374) run_one student_374 374 1681 ;;
           esac
           case "$STUDENT" in
-            both|zhang_zheng_le) run_one zhang_zheng_le 373 '張正樂' 1682 ;;
+            both|student_373) run_one student_373 373 1682 ;;
           esac
           grep -q PLAN_OK out/operation.txt
           grep -q DRY_RUN_ONLY out/operation.txt || [ "$MODE" = apply ]

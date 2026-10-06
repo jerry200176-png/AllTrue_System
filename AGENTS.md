@@ -77,7 +77,7 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 
 ## 公司治理記錄原則
 
-- 新功能 / bug fix 上線：更新 `docs/CHANGELOG.md`，並依 [`docs/GUIDE_STAFF_UPDATES.md`](docs/GUIDE_STAFF_UPDATES.md) 加上 `staff_update` 或 `silent_ship` 決策標記；教職員可感知的變更必須同步 `docs/STAFF_UPDATES.yml`。
+- 新功能 / bug fix 上線：新增 `docs/changes/<date>-<slug>.md` fragment（不要改凍結的 `docs/CHANGELOG.md`），並依 [`docs/GUIDE_STAFF_UPDATES.md`](docs/GUIDE_STAFF_UPDATES.md) 加上 `staff_update` 或 `silent_ship` 決策標記；教職員可感知的變更必須新增 `docs/staff-updates/<id>.yml`（不要改 `docs/STAFF_UPDATES.yml`）。
 - AI 犯錯或發現防再犯規則：更新 `docs/AI_REGRESSION_LESSONS.md`。
 - 本次不修但會影響未來維護：更新 `docs/TECH_DEBT.md`。
 - 複雜架構、資料流或 SOP：更新 `docs/SYSTEM_TECH_GUIDE.md` 或 `docs/OPERATIONS_RUNBOOK.md`。
@@ -139,6 +139,29 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 - 發現可能寫 production DB、繞過 auth、暴露 token/PII、直接 push `main`、force push、或在 Pi production 跑測試。
 - CI/deploy 狀態不明但要回報「完成」。
 - 備份/restore 目標不確定，或無法確認 restore drill 不會碰 production `AllTrue`。
+
+## Land queue (merge, don't race update-branch)
+
+Add the label `queue` to a green-ready PR instead of looping on `gh pr update-branch` or `gh pr merge --auto`.
+`.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict, failed check, or unresolved review thread. Re-add `queue` after fixing.
+GitHub's native merge queue is not used: it is unavailable for this user-owned repo (a `merge_queue` ruleset probe returned 422).
+
+## Parallel agents
+
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs (under ~400 lines) that merge fast.
+- Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
+- No stacked PRs: branch from main after the dependency merges.
+- Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
+- Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
+- Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add label `intentional-revert` + reason in the PR body, then re-run presubmit.
+- Deploys: release train only.
+- Helpers (subagents) start from fresh `origin/main` in their own `agent-start` worktree; never copy files from another worktree.
+- Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
+- Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.
+- A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
+- Codex review threads must be replied to and resolved, or they block merge.
+- New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
+- Anything that needs Jerry: collect it into one list and send it to the coordinating session, not one message per item.
 
 ## Commit SOP
 

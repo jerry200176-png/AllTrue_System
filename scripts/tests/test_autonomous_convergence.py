@@ -5,6 +5,8 @@ import unittest
 
 
 WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "autonomous-convergence.yml"
+UI_SMOKE_WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "ui-smoke.yml"
+CI_WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "ci.yml"
 
 
 def should_dispatch(*, active_ci, recent_dispatch, deploy_present):
@@ -14,6 +16,17 @@ def should_dispatch(*, active_ci, recent_dispatch, deploy_present):
 
 
 class AutonomousConvergenceTest(unittest.TestCase):
+    def test_main_push_path_filter_keeps_read_only_fetch_credentials(self):
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        changes_job = workflow.split("\n  changes:\n", 1)[1].split("\n  golden_scenarios:\n", 1)[0]
+        checkout_step = changes_job.split("      - name: Detect changed paths", 1)[0]
+        permissions = workflow.split("\npermissions:\n", 1)[1].split("\n\njobs:\n", 1)[0]
+
+        self.assertIn("uses: dorny/paths-filter@", changes_job)
+        self.assertIn("persist-credentials: true", checkout_step)
+        self.assertIn("contents: read", permissions)
+        self.assertNotIn("contents: write", permissions)
+
     def test_merged_pr_event_reconciles_bot_merge_without_running_pr_code(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("pull_request_target:", workflow)
@@ -24,6 +37,18 @@ class AutonomousConvergenceTest(unittest.TestCase):
         self.assertIn("github.event.workflow_run.conclusion == 'success'", workflow)
         self.assertIn("github.event.workflow_run.pull_requests[0].number", workflow)
         self.assertIn("if .merged_at then \"merged\" else .state end", workflow)
+        self.assertIn("pull-requests: read", workflow)
+        self.assertNotIn("pull-requests: write", workflow)
+        permissions_block = workflow.split("\npermissions:\n", 1)[1].split("\n\nconcurrency:\n", 1)[0]
+        declared_permissions = [
+            line.strip()
+            for line in permissions_block.splitlines()
+            if line.startswith("  ")
+        ]
+        self.assertEqual(
+            ["actions: write", "contents: write", "pull-requests: read"],
+            declared_permissions,
+        )
         self.assertIn('[[ "$PR_STATE" == "merged" ]]', workflow)
         self.assertIn('[[ "$PR_STATE" == "closed" ]]', workflow)
         self.assertIn("contents: write", workflow)
@@ -43,6 +68,17 @@ class AutonomousConvergenceTest(unittest.TestCase):
         self.assertNotIn("github.event_name == 'schedule'", workflow)
         self.assertIn("group: autonomous-main-convergence", workflow)
         self.assertIn("cancel-in-progress: true", workflow)
+
+    def test_ui_smoke_cancels_only_older_runs_for_the_same_pr(self):
+        workflow = UI_SMOKE_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn(
+            "group: ui-smoke-${{ github.event.pull_request.number || github.run_id }}",
+            workflow,
+        )
+        self.assertIn(
+            "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+            workflow,
+        )
 
     def test_dispatches_when_merge_left_no_exact_main_evidence(self):
         self.assertTrue(should_dispatch(active_ci=False, recent_dispatch=False, deploy_present=False))

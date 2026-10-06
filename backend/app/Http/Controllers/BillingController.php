@@ -7,7 +7,9 @@ use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
+use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyBillingService;
 use Carbon\Carbon;
@@ -100,18 +102,51 @@ class BillingController extends Controller
             'Items.*.PeriodEnd' => 'nullable|date',
             'MonthlySplit' => 'nullable|boolean',
             'SplitStart' => 'nullable|date',
-            'SplitEnd' => 'nullable|date',
+            'SplitEnd' => 'nullable|date|after_or_equal:SplitStart',
         ]);
 
+        // Campus scope: the invoice student, the anchor contract and every item contract.
+        $this->assertInvoiceStudentCampusAllowed($request, (int) (Student::query()->whereKey($data['StudentID'])->value('CampusID') ?? 0));
+        $itemCourseIds = collect($data['Items'] ?? [])->pluck('StudentClassID')->push($data['StudentClassID'] ?? null)
+            ->filter()->map(fn ($id) => (int) $id)->unique()->all();
+        foreach (StudentClass::with('student:id,CampusID')->whereIn('ID', $itemCourseIds)->get() as $itemCourse) {
+            $this->assertInvoiceStudentCampusAllowed($request, (int) $itemCourse->student?->CampusID);
+        }
+
         return DB::transaction(function () use ($data) {
+            // Lock order everywhere: student, then courses, then invoices. Purge locks the student
+            // first too, so an invoice can never be written for a student deleted concurrently (#3593).
+            if (!Student::query()->whereKey($data['StudentID'])->lockForUpdate()->first(['id'])) {
+                return response()->json(['message' => '找不到此學生，可能已被刪除'], 404);
+            }
+            // Lock every referenced course once, in ID order, so concurrent multi-course invoices cannot deadlock.
+            $courseIds = collect([$data['StudentClassID'] ?? null])->merge(array_column($data['Items'] ?? [], 'StudentClassID'))
+                ->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+            if ($courseIds !== []) {
+                $found = StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+                if ($found->count() !== count($courseIds)) {
+                    return response()->json(['message' => '找不到部分課程，可能已被刪除'], 404); // never bill a deleted contract
+                }
+            }
             if (!empty($data['StudentClassID'])) {
-                $course = StudentClass::query()->find($data['StudentClassID']);
+                $course = StudentClass::query()->whereKey($data['StudentClassID'])->lockForUpdate()->first();
+                if ($refusal = ContractMoneyState::waivedRefusal($course, '此合約已確認不收，不能再建立帳單', 'course_waived')) {
+                    return $refusal;
+                }
                 if ($course && strtolower(trim((string) ($course->ClassType ?? ''))) === 'tutoring') {
                     return response()->json([
                         'message' => '輔導課無須繳費，不能建立帳單或付款義務。請先檢查課程帳務資料。',
                         'code' => 'tutoring_no_payment_obligation',
                     ], 422);
                 }
+            }
+            $tutoringItem = StudentClass::query()->whereIn('ID', $courseIds)
+                ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) = 'tutoring'")->exists();
+            if ($tutoringItem) {
+                return response()->json([
+                    'message' => '輔導課無須繳費，不能建立帳單或付款義務。請先檢查課程帳務資料。',
+                    'code' => 'tutoring_no_payment_obligation',
+                ], 422);
             }
             $scheduleModeAtIssue = !empty($data['StudentClassID'])
                 ? StudentClass::where('ID', $data['StudentClassID'])->first()?->ScheduleMode
@@ -183,6 +218,18 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($invoice, $data) {
+            // Same order as 確認不收 (courses, then invoice) so the two cannot deadlock.
+            $courseIds = DB::table('InvoiceItem')->where('InvoiceID', $invoice->getKey())->pluck('StudentClassID')
+                ->push($invoice->getAttribute('StudentClassID'))->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+            if ($courseIds !== []) {
+                StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+            }
+            // 先鎖帳單再判斷，避免與確認不收（void）競爭。
+            $fresh = Invoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
+            if (!$fresh || (string) $fresh->getAttribute('Status') === 'void') {
+                return response()->json(['message' => '作廢帳單不可登記收款'], 422);
+            }
+            $invoice = $fresh;
             $payment = Payment::create([
                 'InvoiceID' => $invoice->id,
                 'Amount' => $data['Amount'],
@@ -451,17 +498,26 @@ class BillingController extends Controller
         if (! $monthlyCourse instanceof StudentClass) {
             $monthlyCourse = null;
         }
-        $sessions = ($monthlyCourse && $monthlyCourse->getAttribute('ScheduleMode') === 'date'
-            && $projection['billing_period'])
-            ? $this->monthlyBilling->billableSessionDetailsForPeriod(
+        if ($monthlyCourse && $monthlyCourse->getAttribute('ScheduleMode') === 'date' && $projection['billing_period']) {
+            [$serviceStart, $serviceEnd] = $this->monthlyBilling->serviceRangeForCourse($invoice, (int) $monthlyCourse->getKey());
+            $sessions = $this->monthlyBilling->slipSessionDetailsForPeriod(
                 $monthlyCourse,
-                $projection['billing_period']
-            )
-            : ClassSession::sessionsForPaymentSlip(
+                $projection['billing_period'],
+                $serviceStart,
+                $serviceEnd,
+                // A fixed amount (never repriced from held lessons: paid, partly
+                // paid, or a cross-month cycle) covers upcoming lessons too.
+                // Void/cancelled invoices keep the billed-only list.
+                includeUpcoming: !$projection['repriceable']
+                    && !in_array((string) ($invoice->Status ?? ''), ['void', 'cancelled'], true),
+            );
+        } else {
+            $sessions = ClassSession::sessionsForPaymentSlip(
                 $studentClassIds,
                 $projection['period_start'],
                 $projection['period_end']
             );
+        }
 
         $authUser = $request->attributes->get('auth_user');
         Log::info('[InvoiceSlip] generated', [
@@ -586,8 +642,10 @@ class BillingController extends Controller
 
         foreach ($months as $index => $month) {
             $amount = $base + ($index === ($count - 1) ? $remainder : 0);
-            $periodStart = $month->copy()->startOfMonth()->toDateString();
-            $periodEnd = $month->copy()->endOfMonth()->toDateString();
+            // Whole months in between; the first and last items keep the
+            // requested endpoints (amounts are still split evenly per month).
+            $periodStart = max($month->copy()->startOfMonth()->toDateString(), Carbon::parse($start)->toDateString());
+            $periodEnd = min($month->copy()->endOfMonth()->toDateString(), Carbon::parse($end)->toDateString());
             $items[] = [
                 'Description' => 'Monthly tuition ' . $month->format('Y-m'),
                 'Amount' => $amount,

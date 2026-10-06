@@ -7,12 +7,17 @@ on:
     branches: ["main"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "land-queue: PR number whose head this run checks (guarded: head must equal github.sha, base main)"
+        required: false
+        default: ""
 
 # ⛔ 此 workflow 只跑測試，絕對不部署任何東西到生產環境
 # ⛔ 禁止在此新增任何 ssh、rsync、scp、ftp deploy 步驟
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -27,6 +32,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: PR dispatch guard (fail closed)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          read -r head base state < <(gh api "/repos/$REPO/pulls/$PR_NUMBER" --jq '[.head.sha,.base.ref,.state]|join(" ")')
+          [ "$head" = "$GITHUB_SHA" ] && [ "$base" = main ] && [ "$state" = open ] \
+            || { echo "::error::pr_number $PR_NUMBER is not an open PR to main with head $GITHUB_SHA"; exit 1; }
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -58,8 +73,10 @@ jobs:
           node scripts/ci/inapp-product-loop-entry.test.mjs
           node scripts/ci/staff-multirole-activation-workflow.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
+          node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
+          python3 -m unittest scripts.tests.test_autonomous_convergence
           python3 scripts/tests/test_required_php_checks.py
           bash scripts/tests/production-acceptance-stage-contract.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
@@ -79,6 +96,12 @@ jobs:
 
       - name: Test bug detail dump contract
         run: python3 scripts/tests/test_bug_detail_dump.py
+      - name: Test diagnose scripts print ids only (#3605)
+        run: |
+          python3 scripts/tests/test_diagnose_ids_only_contract.py
+          python3 scripts/tests/test_student_session_diagnose.py
+          python3 scripts/tests/test_ops_chinese_renewal_unpaid.py
+          python3 scripts/tests/test_ops_move_aug05_to_chinese_renewal.py
       - name: In-app ↔ issue reconcile tests (F14)
         run: python3 scripts/tests/test_inapp_issue_reconcile.py
 
@@ -105,7 +128,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          # paths-filter fetches the previous SHA for push events. Keep the
+          # existing contents:read token available for that read-only fetch.
+          persist-credentials: true
 
       - name: Detect changed paths
         id: filter
@@ -147,11 +172,21 @@ jobs:
   golden_scenarios:
     name: Golden scenarios report
     needs: changes
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.pr_number != ''
     # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
+      - name: PR dispatch guard (fail closed)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          read -r head base state < <(gh api "/repos/$REPO/pulls/$PR_NUMBER" --jq '[.head.sha,.base.ref,.state]|join(" ")')
+          [ "$head" = "$GITHUB_SHA" ] && [ "$base" = main ] && [ "$state" = open ] \
+            || { echo "::error::pr_number $PR_NUMBER is not an open PR to main with head $GITHUB_SHA"; exit 1; }
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -530,17 +565,9 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Sync in-app release notes from STAFF_UPDATES + PARENT_UPDATES (+ CHANGELOG draft)
+      - name: Generate in-app release notes (git-ignored; legacy files + docs/*-updates fragments)
         working-directory: frontend
         run: npm run sync-release-notes
-
-      - name: Generated in-app updates must match committed artifacts
-        working-directory: frontend
-        run: |
-          git diff --exit-code -- \
-            src/lib/staffUpdates.generated.js \
-            src/lib/parentUpdates.generated.js \
-            src/lib/changelogDraft.generated.js
 
       - name: Calendar occurrence regression tests
         working-directory: frontend

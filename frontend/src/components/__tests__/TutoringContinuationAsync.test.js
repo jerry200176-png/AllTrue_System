@@ -21,6 +21,9 @@ function setup() {
     fetch: vi.fn(async () => ({ ok: false, json: async () => ({ message: 'conflict' }) })),
     alert: vi.fn(), goToTrialConversion: vi.fn(),
   };
+  // authedFetch/getAccessToken are real-module shapes over the same deferred auth + fetch mocks.
+  context.getAccessToken = async () => (await auth).data.session.access_token;
+  context.authedFetch = (url, init, token) => context.fetch(url, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${token}` } });
   vm.createContext(context);
   vm.runInContext(`${open}\n${submit}\nglobalThis.handlers = { openAddSessionsForCourse, submitAddSessions };`, context);
   return { context, resolveAuth: () => resolveAuth({ data: { session: { access_token: 'fixture-only' } } }) };

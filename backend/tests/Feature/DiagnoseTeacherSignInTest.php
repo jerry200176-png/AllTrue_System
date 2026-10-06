@@ -20,7 +20,7 @@ class DiagnoseTeacherSignInTest extends TestCase
 
         $exit = Artisan::call('teacher-signin:diagnose', [
             '--date' => '2026-04-28',
-            '--teacher-name' => '黃芝琳',
+            '--teacher-name' => '測試老師甲',
         ]);
 
         $this->assertSame(0, $exit);
@@ -76,6 +76,34 @@ class DiagnoseTeacherSignInTest extends TestCase
         $this->assertDatabaseCount('StudentSingIn', 0);
     }
 
+    public function test_output_has_no_names_or_memo_by_default_and_with_names_opt_in(): void
+    {
+        [$teacherId] = $this->makeFixture();
+        DB::table('StudentSingIn')->update(['Memo' => '測試備註乙']);
+
+        Artisan::call('teacher-signin:diagnose', ['--date' => '2026-04-28', '--teacher-id' => $teacherId]);
+        $out = Artisan::output();
+        $this->assertStringContainsString("Teacher {$teacherId} /", $out);
+        foreach (['測試老師甲', '同卡學生', '測試備註乙'] as $secret) {
+            $this->assertStringNotContainsString($secret, $out);
+        }
+
+        Artisan::call('teacher-signin:diagnose', ['--date' => '2026-04-28', '--teacher-id' => $teacherId, '--with-names' => true]);
+        $this->assertStringContainsString('測試老師甲', Artisan::output());
+    }
+
+    public function test_login_fallback_output_has_no_user_name_by_default(): void
+    {
+        DB::table('User')->insert([
+            'LoginName' => 'login-only2@example.com', 'Name' => '登入帳號老師乙', 'PSW' => 'secret',
+            'type' => 'T', 'phone' => '0900000002',
+        ]);
+
+        Artisan::call('teacher-signin:diagnose', ['--date' => '2026-04-28', '--login-name' => 'login-only2@example.com']);
+        $this->assertStringNotContainsString('登入帳號老師乙', Artisan::output());
+    }
+
+
     private function makeFixture(?string $loginName = null): array
     {
         static $n = 0;
@@ -110,7 +138,7 @@ class DiagnoseTeacherSignInTest extends TestCase
 
         $teacherId = DB::table('User')->insertGetId([
             'LoginName' => $loginName ?: "diag-huang-{$n}@example.com",
-            'Name' => '黃芝琳',
+            'Name' => '測試老師甲',
             'PSW' => 'secret',
             'type' => 'T',
             'phone' => '0900000000',
