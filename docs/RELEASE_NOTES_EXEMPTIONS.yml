@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-10-06-director-billing-recon-ia
+    changelog_date: "2026-10-06"
+    changelog_title: "docs(billing): 主任學生帳務對帳 IA 重規劃契約"
+    reason: 只新增主任帳務對帳的規劃與接手文件，教職員看到的畫面與功能完全不變。
+
   - id: silent-2026-10-06-phpstan-baseline-shrink-only
     changelog_date: "2026-10-06"
     changelog_title: "chore(ci): PHPStan baseline is shrink-only; core models get `@property` docblocks"
