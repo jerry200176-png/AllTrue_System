@@ -128,6 +128,7 @@ final class PopOperationService
             $this->assertMonthlyApprover($request, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
         } elseif (!$this->isExactMuzhaSchedule($entry) && !$this->isExactUnpaidHiddenClosures($entry)
             && !$this->isExactMuzhaChenBillingCatchup($entry)
+            && !$this->isExactUnbilledBacklogCatchup($entry)
             && !$this->isExactTd076Repair($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
@@ -645,6 +646,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactUnbilledBacklogCatchup($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'new_contract_invoice_item_per_uncovered_contract_month'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactTd076Repair($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -701,6 +717,15 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'muzha-chen-billing-catchup-20261005'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\MuzhaChenBillingCatchupStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-muzha-chen-billing-catchup';
+    }
+
+    /** Same single-super_admin Founder-exact shape; campus_ids + expected_digest pin each run to its dry-run. */
+    private function isExactUnbilledBacklogCatchup(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'unbilled-backlog-catchup-20261006'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnbilledBacklogCatchupStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-unbilled-backlog-catchup'
+            && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
     }
 
     /** TD-076 Track B repairs: campus-scoped, digest-pinned, single super_admin Founder approver. */

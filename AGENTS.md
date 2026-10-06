@@ -12,7 +12,7 @@
 **Tasks:** `/home/jerry/workspace/tasks/alltrue/<task-id>/`
 **Forbidden checkouts:** `/home/jerry/alltrue`, `/home/jerry/workspace/AllTrue_System`, `/home/jerry/workspace/AllTrue_System-clean`
 **Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
-**Provenance:** `.agent-session/manifest.json` is the local agent-start session file (git-ignored, not committed); a PR that claims a session force-adds it or updates `human-authored.json` — see WORKTREE_POLICY.
+**Provenance:** `agent-start` writes `.agent-session/manifest.json` locally. Keep it git-ignored; CI rejects a tracked copy. Use the task worktree/session record, PR declaration, git diff, review, and required checks as delivery evidence. Do not update `human-authored.json` to represent agent work — see WORKTREE_POLICY.
 
 ## Code Review Rules
 
