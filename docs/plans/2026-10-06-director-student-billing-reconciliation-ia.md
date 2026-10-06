@@ -11,7 +11,7 @@
 |------|------|
 | 功能名稱 | 主任學生帳務對帳 IA（Information Architecture）重規劃 |
 | 版本 | v1.0 |
-| 狀態 | Accepted for phased implementation（本檔為產品／架構契約；程式未實作） |
+| 狀態 | Accepted — M0 契約；**實作交給 Claude Code／Codex worker**（見 IMPL_HANDOFF_M1） |
 | 目標角色 | 主任／行政（`director` / `admin` / `super_admin`） |
 | 日期 | 2026-10-06 |
 | 觸發 | Founder：學生對帳入口不明顯、資訊不完整（只見合約第一堂）、帳務中心與月結／堂數制混淆、學生個別對帳未發揮效用；最終目的＝主任對帳方便、知道哪筆錢對哪幾天課、入口不要一大堆 |
