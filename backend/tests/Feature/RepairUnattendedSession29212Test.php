@@ -16,7 +16,7 @@ class RepairUnattendedSession29212Test extends TestCase
         parent::setUp();
 
         DB::table('Student')->insert([
-            'id' => 9, 'name' => '翟君和', 'CampusID' => 15, 'ClassID' => 1, 'enable' => 1,
+            'id' => 9, 'name' => '測試學生甲', 'CampusID' => 15, 'ClassID' => 1, 'enable' => 1,
         ]);
         DB::table('StudentClass')->insert([
             'ID' => 3112, 'StudentID' => 9, 'GradeID' => 1, 'SubjectID' => 70, 'TeacherID' => 49,
@@ -55,6 +55,18 @@ class RepairUnattendedSession29212Test extends TestCase
         $this->assertNull(DB::table('LearningRecord')->where('id', 17922)->value('VoidedAt'));
         $this->assertSame(1, DB::table('session_deduction_ledger')->where('class_session_id', 29212)->where('event_type', 'deduct')->count());
     }
+
+    public function test_console_output_has_no_note_or_student_name(): void
+    {
+        DB::table('ClassSession')->where('id', 29212)->update(['Note' => '測試備註乙 含學生姓名']);
+
+        Artisan::call('repair:unattended-session-29212');
+        $out = Artisan::output();
+        $this->assertStringContainsString('"session_id": 29212', $out);
+        $this->assertStringNotContainsString('測試備註乙', $out);
+        $this->assertStringNotContainsString('測試學生甲', $out);
+    }
+
 
     public function test_execute_voids_live_artifacts_reverses_deduction_and_recomputes(): void
     {

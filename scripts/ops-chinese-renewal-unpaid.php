@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 $sourceId = (int) getenv('SOURCE_CLASS');
 $studentId = (int) getenv('STUDENT_ID');
-$studentName = (string) getenv('STUDENT_NAME');
 $sessions = (int) getenv('SESSIONS');
 $startDate = (string) getenv('START_DATE');
 $expectedCharge = (int) getenv('EXPECTED_CHARGE');
@@ -40,8 +39,8 @@ if ((string) ($source->ScheduleMode ?? '') !== 'count') {
 }
 
 $student = Student::query()->find($studentId);
-if (!$student || (string) $student->name !== $studentName) {
-    fwrite(STDERR, "NAME_MISMATCH\n");
+if (!$student) {
+    fwrite(STDERR, "STUDENT_MISSING\n");
     exit(1);
 }
 
@@ -76,7 +75,8 @@ $response = $controller->purchaseBatch($request, $source);
 $status = $response->getStatusCode();
 $content = (string) $response->getContent();
 echo "HTTP_STATUS={$status}\n";
-echo $content, "\n";
+// #3605: never echo the raw API body (it can carry person data); print only its top-level keys.
+echo "RESPONSE_KEYS=" . implode(',', array_keys(json_decode($content, true) ?: [])) . "\n";
 
 if ($status === 409) {
     echo "IDEMPOTENT_DUPLICATE\n";

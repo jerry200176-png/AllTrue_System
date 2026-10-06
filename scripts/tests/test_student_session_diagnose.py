@@ -18,7 +18,7 @@ class StudentSessionDiagnoseTest(unittest.TestCase):
             mysql.write_text('#!/usr/bin/env python3\nimport json, os, sys\nwith open(os.environ["QUERY_CAPTURE"], "a") as f:\n f.write(json.dumps(sys.argv[sys.argv.index("-e") + 1]) + "\\n")\n')
             mysql.chmod(0o755)
             env = dict(os.environ, PATH=f'{path}:{os.environ["PATH"]}', ENV_FILE=str(path / 'env'),
-                       QUERY_CAPTURE=str(capture), STUDENT_NAME='Fixture', TEACHER_NAME='',
+                       QUERY_CAPTURE=str(capture), STUDENT_ID='12',
                        CAMPUS_ID=campus, DATE=date)
             result = subprocess.run(['bash', str(ROOT / 'scripts/diagnose-student-session.sh')],
                                     env=env, text=True, capture_output=True)
@@ -32,7 +32,7 @@ class StudentSessionDiagnoseTest(unittest.TestCase):
             self.assertTrue(query.lstrip().startswith('SELECT'), query)
             self.assertRegex(query, r'CampusID=16')
         reports = next(query for query in queries if 'FROM payment_reports' in query)
-        self.assertIn("s.name='Fixture'", reports)
+        self.assertIn("s.id=12", reports)
         self.assertIn('reported_amount', reports)
         self.assertIn('confirmed_by', reports)
         self.assertIn('LIMIT 200', reports)
