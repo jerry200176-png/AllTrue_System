@@ -68,6 +68,7 @@ class FinanceController extends Controller
         $paidClasses = (clone $classQuery)->where('Paid', 1)->count();
         $unpaidClasses = (clone $classQuery)
             ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring'])
+            ->where(fn ($q) => $q->whereNull('closed_reason')->orWhere('closed_reason', '!=', 'waived'))
             ->where(fn ($q) => $q->where('Paid', 0)->orWhereNull('Paid'))
             ->count();
 
