@@ -1341,6 +1341,26 @@ class ScheduleGuardService
             ];
         }
 
+        // #3590 item 9 (flag on): a substitute on a makeup occurrence is busy too.
+        foreach (SubstituteScheduleService::makeupOccurrencesTaughtBy($teacherId, $date, $excludeScheduleId ? [$excludeScheduleId] : [], $excludeStudentId, $branchId) as $row) {
+            $start = $this->normalizeTime($row->start_time);
+            $end = $this->normalizeTime($row->end_time);
+            $courseId = (int) $row->student_course_id;
+            if (!$start || !$end || ($excludeCourseId && $courseId === $excludeCourseId && ($targetStartTime === null || $targetEndTime === null || ($start === $targetStartTime && $end === $targetEndTime)))) {
+                continue;
+            }
+            $entries[] = [
+                'source' => 'schedule',
+                'source_id' => (int) $row->id,
+                'course_id' => $courseId,
+                'student_id' => (int) $row->student_id,
+                'class_type' => (string) $row->class_type,
+                'room_id' => null,
+                'start_time' => $start,
+                'end_time' => $end,
+            ];
+        }
+
         return $entries;
     }
 }
