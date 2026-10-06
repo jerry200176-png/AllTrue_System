@@ -9,6 +9,22 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * @property string $name
  * @property int $CampusID
+ * @property int $id
+ * @property int $ClassID
+ * @property string|null $SchoolName
+ * @property string|null $RFID
+ * @property string|null $LineID
+ * @property string $TelegramID
+ * @property string|null $TelegramID1
+ * @property string|null $TelegramID2
+ * @property int $enable
+ * @property string $MDT
+ * @property string $Notify_Token
+ * @property string|null $Phone
+ * @property string|null $parent_name
+ * @property string|null $parent_phone
+ * @property string|null $notes
+ * @property string|null $status
  */
 class Student extends Model
 {

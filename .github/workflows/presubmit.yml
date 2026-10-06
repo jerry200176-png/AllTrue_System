@@ -71,6 +71,25 @@ jobs:
             --pr-json "$tmpdir/pr.json" \
             --files-json "$tmpdir/files.json"
 
+      # PHPStan baseline is shrink-only: parallel PRs appending to it conflict.
+      # Escape hatch: PR label `phpstan-baseline-growth` (labels are read live, so add it then re-run).
+      - name: "[CHECK 0c] PHPStan baseline may only shrink"
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          python3 scripts/check-phpstan-baseline-shrink.py --self-test
+          if gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name' | grep -qx 'phpstan-baseline-growth'; then
+            echo "::warning::label phpstan-baseline-growth set; baseline growth allowed"
+            exit 0
+          fi
+          base_file="$RUNNER_TEMP/phpstan-baseline.base.neon"
+          git show "$(git merge-base origin/main HEAD):backend/phpstan-baseline.neon" > "$base_file"
+          python3 scripts/check-phpstan-baseline-shrink.py "$base_file" backend/phpstan-baseline.neon
+
       - name: "[CHECK 1] Branch naming convention"
         env:
           # workflow_dispatch has no head_ref (pull_request-only); fall back

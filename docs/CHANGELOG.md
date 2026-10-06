@@ -1,3 +1,7 @@
+## 2026-10-06 — chore(ci): PHPStan baseline is shrink-only; core models get `@property` docblocks
+<!-- release-notes: silent_ship=silent-2026-10-06-phpstan-baseline-shrink-only -->
+- Schedule／StudentClass／ClassSession／LearningRecord／Student／User／ScheduleChangeLog／StudentSignIn／Invoice 補上資料表欄位的 `@property` docblock，`phpstan-baseline.neon` 重新產生（1962 → 1448 筆）；Presubmit 新增 CHECK 0c，PR 不得新增或增加 baseline 項目（例外：PR label `phpstan-baseline-growth`）。只有型別註解與 CI 檢查，執行行為不變。
+
 ## 2026-10-06 — chore(schedule): TD-076 Track B PR-B1 OccurrenceAssignmentService behind schedule-occurrence-v2
 <!-- release-notes: silent_ship=silent-2026-10-06-td076-pr-b1-assignment-writer -->
 - 新增單一寫入端 `OccurrenceAssignmentService`（找或建立唯一的 live 排程列、設定老師／時段、每次只寫一筆 `schedule_change_log`），並接上代課（含代課＋換時合併）、回復正班、代課復原與批次代課；僅在 `schedule-occurrence-v2` 對該分校開啟時生效，預設關閉，關閉時走原本程式路徑、資料與畫面完全不變。可修正「換日調課後再代課會多出第二條鏈」的新莊問題。讀取端尚未改，PR-C 才處理。

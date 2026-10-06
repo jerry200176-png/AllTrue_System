@@ -15,6 +15,14 @@ use App\Services\ClassSessionMaterializationService;
  * @property string $StartTime
  * @property string $EndTime
  * @property int|null $session_charge  Per-session charge override; null = use standard charge.
+ * @property string $Status
+ * @property string $Note
+ * @property bool $IsContractException
+ * @property \Carbon\CarbonInterface|null $created_at
+ * @property \Carbon\CarbonInterface|null $updated_at
+ * @property int|null $ActiveSlotFlag
+ * @property string|null $StartTimeHM
+ * @property \App\Models\StudentClass|null $studentClass
  */
 
 class ClassSession extends Model
