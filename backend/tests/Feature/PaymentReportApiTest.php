@@ -1774,6 +1774,51 @@ class PaymentReportApiTest extends TestCase
 
     // ── void ────────────────────────────────────────────────────────
 
+    private function pendingReportFor(Student $student, StudentClass $sc, int $amount, string $key, ?int $invoiceId = null): PaymentReport
+    {
+        return PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoiceId,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => $amount, 'status' => 'pending',
+            'report_token_hash' => hash('sha256', $key),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+    }
+
+    public function test_f7_s7_partial_confirm_keeps_course_unpaid_then_remainder_settles_and_void_reopens(): void
+    {
+        $h = ['Authorization' => 'Bearer ' . $this->createDirectorToken([1]), 'Accept' => 'application/json'];
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 0, 'Charge' => 8800, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
+
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'unpaid',
+        ]);
+        $first = $this->pendingReportFor($student, $sc, 4400, 's7-a', $invoice->id);
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$first->id}/confirm")->assertOk();
+        $sc->refresh();
+        $this->assertSame(0, (int) $sc->Paid);
+        $this->assertSame('settled_pending', $sc->closed_reason);
+        $this->assertNull($sc->PayDate);
+        $this->assertSame('partial', Invoice::where('StudentClassID', $sc->ID)->value('Status'));
+
+        $second = $this->pendingReportFor($student, $sc, 4400, 's7-b', $invoice->id);
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$second->id}/confirm")->assertOk();
+        $sc->refresh();
+        $this->assertSame(1, (int) $sc->Paid);
+        $this->assertSame('settled', $sc->closed_reason);
+        $this->assertNotNull($sc->PayDate);
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$second->id}/void", ['void_reason' => 'x'])->assertOk();
+        $sc->refresh();
+        $this->assertSame(0, (int) $sc->Paid);
+        $this->assertSame('settled_pending', $sc->closed_reason);
+        $this->assertNull($sc->PayDate);
+        $this->assertSame('partial', Invoice::where('StudentClassID', $sc->ID)->value('Status'));
+    }
+
     public function test_director_can_void_confirmed_report(): void
     {
         $token = $this->createDirectorToken([1]);
