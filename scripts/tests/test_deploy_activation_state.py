@@ -998,6 +998,10 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
     def test_release_train_schedule_and_dispatch_are_wired(self):
         self.assertIn("schedule:\n    - cron: '30 23 * * *'\n    - cron: '30 4 * * *'", self.workflow)
+        # Retries inside each window, and a retry never cancels a train already awaiting approval.
+        self.assertIn("    - cron: '45,59 23 * * *'", self.workflow)
+        self.assertIn("    - cron: '45,59 4 * * *'", self.workflow)
+        self.assertIn("another deploy run is already waiting for approval; standing down", self.workflow)
         self.assertIn("- release-train", self.workflow)
         self.assertIn('release-train) EXPECTED="RELEASE_TRAIN" ;;', self.workflow)
         self.assertIn("release_train: ${{ steps.resolve.outputs.release_train }}", self.workflow)
