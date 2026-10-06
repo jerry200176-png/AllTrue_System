@@ -49,6 +49,9 @@ jobs:
 
       - name: Process queue head
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Optional fine-grained token (contents/pull-requests/workflows/actions: write on this repo):
+          # lets the queue update branches whose merge from main touches workflow files, and its
+          # pushes fire pull_request CI natively. Falls back to GITHUB_TOKEN.
+          GH_TOKEN: ${{ secrets.LAND_QUEUE_TOKEN || github.token }}
           REPO: ${{ github.repository }}
         run: node .github/scripts/land-queue.mjs
