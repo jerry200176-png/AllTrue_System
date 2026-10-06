@@ -88,13 +88,15 @@ class LearningRecordController extends Controller
         $placeholders = implode(', ', array_fill(0, count($teacherIds), '?'));
         // The latest scheduled substitute for this occurrence wins, as in
         // SubstituteScheduleService::resolveSubstituteUserId().
+        // TD-076 flag on: the stamped live row outranks an older unstamped chain row (flag off: plain MAX(id)).
+        $stampedFirst = \App\Services\SubstituteScheduleService::anyCampusOn() ? '(s.original_schedule_date IS NOT NULL) DESC, ' : '';
         $substituteSql = "(SELECT NULLIF(s.teacher_id, 0) FROM schedules AS s
             WHERE s.student_course_id = {$lrTable}.StudentClassID
               AND DATE(s.schedule_date) = DATE({$lrTable}.SessionDate)
               AND (NULLIF(TRIM({$lrTable}.StartTime), '') IS NULL
                    OR SUBSTRING(s.start_time, 1, 5) = SUBSTRING({$lrTable}.StartTime, 1, 5))
               AND s.status = 'scheduled' AND s.original_schedule_id IS NOT NULL
-            ORDER BY s.id DESC LIMIT 1)";
+            ORDER BY {$stampedFirst}s.id DESC LIMIT 1)";
 
         $query->where(function ($scope) use ($lrTable, $placeholders, $substituteSql, $teacherIds) {
             $scope->whereRaw("{$substituteSql} IN ({$placeholders})", $teacherIds)
@@ -639,22 +641,7 @@ class LearningRecordController extends Controller
                 // #1185: TD-058 derived-table pattern (see #985 / ClassSessionController::index)
                 // replaces the per-row correlated MAX(sub2.id) subquery — latest substitute
                 // schedule per (student_course_id, schedule_date, start-time) resolved once.
-                ->leftJoin(DB::raw('(
-                    SELECT ss.*
-                    FROM `schedules` ss
-                    INNER JOIN (
-                        SELECT sub2.student_course_id,
-                               sub2.schedule_date,
-                               SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
-                               MAX(sub2.id) AS max_id
-                        FROM `schedules` sub2
-                        INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
-                        WHERE sub2.status = "scheduled"
-                          AND sub2.original_schedule_id IS NOT NULL
-                          AND sub2.teacher_id <> sc2.TeacherID
-                        GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
-                    ) sub_latest ON ss.id = sub_latest.max_id
-                ) as sub_sched'), function ($join) {
+                ->leftJoin(DB::raw(\App\Services\SubstituteScheduleService::substituteScheduleDerivedSql('', false) . ' as sub_sched'), function ($join) {
                     $join->on('sub_sched.student_course_id', '=', 'sc.ID')
                         ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
                         ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
@@ -828,22 +815,7 @@ class LearningRecordController extends Controller
             // #1185: TD-058 derived-table pattern (see #985 / ClassSessionController::index)
             // replaces the per-row correlated MAX(sub2.id) subquery — latest substitute
             // schedule per (student_course_id, schedule_date, start-time) resolved once.
-            ->leftJoin(DB::raw('(
-                SELECT ss.*
-                FROM `schedules` ss
-                INNER JOIN (
-                    SELECT sub2.student_course_id,
-                           sub2.schedule_date,
-                           SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
-                           MAX(sub2.id) AS max_id
-                    FROM `schedules` sub2
-                    INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
-                    WHERE sub2.status = "scheduled"
-                      AND sub2.original_schedule_id IS NOT NULL
-                      AND sub2.teacher_id <> sc2.TeacherID
-                    GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
-                ) sub_latest ON ss.id = sub_latest.max_id
-            ) as sub_sched'), function ($join) {
+            ->leftJoin(DB::raw(\App\Services\SubstituteScheduleService::substituteScheduleDerivedSql('', false) . ' as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
                     ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
                     ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
@@ -1376,18 +1348,6 @@ class LearningRecordController extends Controller
         }
 
         $updateClass = (bool) ($data['update_class'] ?? false);
-
-        // TD-076 B1 (flag on): a future occurrence gets the same conflict check as substitute, before any write.
-        if (OccurrenceAssignmentService::enabledFor($targetCampusId) && $learningRecord->ClassSessionID) {
-            $guardSession = ClassSession::query()->where('id', (int) $learningRecord->ClassSessionID)->first();
-            if ($guardSession && !OccurrenceAssignmentService::onLeave($guardSession)
-                && \App\Services\Scheduling\ContractTeacherChangeCascade::isPinnableOccurrence($guardSession)) {
-                $conflicts = OccurrenceAssignmentService::futureConflicts($guardSession, $newTeacherId);
-                if ($conflicts) {
-                    return response()->json(['message' => $conflicts[0]['message'] ?? '老師此時段與既有課程衝突', 'conflicts' => $conflicts], 409);
-                }
-            }
-        }
 
         return DB::transaction(function () use ($request, $learningRecord, $newTeacherId, $oldTeacherId, $data, $updateClass, $targetCampusId) {
             // TD-076 B2 (flag on): pin taught occurrences while the old contract/LR evidence is still intact.

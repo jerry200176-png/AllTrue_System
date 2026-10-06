@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
+use App\Models\Schedule;
+use App\Models\ScheduleChangeLog;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -17,7 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
-/** TD-076 Track B PR-C: flag-aware resolver (teacherForOccurrence) and the index/payroll/attendance readers. */
+/** TD-076 Track B PR-C: flag-aware resolver (teacherForOccurrence), lineage key (#3590 item 1), stranded fallback (item 3). */
 class OccurrenceResolverV2Test extends TestCase
 {
     use RefreshDatabase;
@@ -104,6 +106,48 @@ class OccurrenceResolverV2Test extends TestCase
 
         $lr->update(['VoidedAt' => now()]);
         $this->assertSame($this->aId, SubstituteScheduleService::teacherForOccurrence((int) $this->sc->ID, self::DATE, $this->aId, '13:00'), 'voided LR is ignored');
+    }
+
+    /** #3590 item 1: flag on -> substitute, flag rolled back, legacy reschedule moves the slot, undo must still go through the writer. */
+    public function test_undo_finds_writer_owned_row_after_flag_rollback_and_a_legacy_reschedule(): void
+    {
+        $this->flag(true);
+        $this->api()->postJson("/api/v1/class-sessions/{$this->session->id}/substitute", ['substitute_teacher_id' => $this->bId, 'reason' => 'lineage'])->assertOk();
+        $live = Schedule::where('student_course_id', $this->sc->ID)->where('status', 'scheduled')->firstOrFail();
+
+        $this->flag(false);
+        $this->api()->postJson('/api/v1/learning-records/reschedule-session', [
+            'student_class_id' => $this->sc->ID, 'old_date' => self::DATE, 'old_start_time' => '13:00',
+            'new_date' => '2026-04-21', 'start_time' => '15:00', 'end_time' => '17:00', 'ensure_schedule_exception' => true,
+        ])->assertOk();
+        $this->session->refresh();
+        $this->assertSame('2026-04-21', Carbon::parse($this->session->SessionDate)->toDateString(), 'the slot moved, so the writer log no longer matches it');
+        $moved = Schedule::findOrFail($live->id);
+        $this->assertSame('2026-04-21', Carbon::parse($moved->schedule_date)->toDateString());
+        $this->assertSame(self::DATE, Carbon::parse($moved->original_schedule_date)->toDateString(), 'identity stays frozen');
+
+        $this->api()->postJson("/api/v1/class-sessions/{$this->session->id}/substitute/undo")->assertOk();
+
+        $kept = Schedule::find($live->id);
+        $this->assertNotNull($kept, 'the legacy cleanup would have deleted the row that carries the reschedule');
+        $this->assertSame($this->aId, (int) $kept->teacher_id);
+        $this->assertContains('restore', ScheduleChangeLog::orderBy('id')->pluck('reason')->all());
+    }
+
+    /** #3590 item 3: flag on, the writer finds no live row at the slot (null) -> legacy cleanup still clears the stranded anchor and restores. */
+    public function test_restore_with_no_live_row_falls_back_to_the_legacy_cleanup_flag_on(): void
+    {
+        $this->flag(true);
+        $this->row(30, 'rescheduled', $this->aId);                       // stranded anchor, its live row is gone
+        LearningRecord::where('ClassSessionID', $this->session->id)->update(['TeacherID' => $this->bId]);
+        $before = ScheduleChangeLog::count();
+
+        $this->api()->postJson("/api/v1/class-sessions/{$this->session->id}/substitute", ['substitute_teacher_id' => $this->aId, 'reason' => 'restore'])
+            ->assertOk()->assertJsonFragment(['restored_teacher_id' => $this->aId]);
+
+        $this->assertNull(Schedule::find(30), 'legacy fallback removed the stranded anchor');
+        $this->assertSame($this->aId, (int) LearningRecord::where('ClassSessionID', $this->session->id)->value('TeacherID'));
+        $this->assertSame($before, ScheduleChangeLog::count(), 'the writer found nothing, so it logged nothing');
     }
 
     private function indexRow(): object
