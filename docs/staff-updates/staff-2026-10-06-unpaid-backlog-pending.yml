@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-06-unpaid-backlog-pending
+    published_at: "2026-10-06"
+    audiences:
+      - director
+    importance: action_required
+    title: 欠款合約回到待對帳
+    summary: 之前結案但還沒繳清的合約，已全部放回「待對帳」，請主任逐筆處理。
+    items:
+      - category: action_required
+        text: 到帳務中心「待對帳」逐筆處理：已收款就登記收款；不收就按「確認不收」並填原因。
+    source_refs:
+      - "changelog:2026-10-06:unpaid-backlog-pending"
