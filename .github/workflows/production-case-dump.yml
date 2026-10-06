@@ -31,6 +31,7 @@ on:
           - occurrence_identity_health
           - td076_r2_plan_probe
           - paid_status_shadow_log
+          - paid_status_shadow_courses
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
@@ -106,7 +107,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'td076_r2_plan_probe', 'paid_status_shadow_log'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -745,6 +746,35 @@ jobs:
             $out['line_count'] = count($lines);
             $out['failed_count'] = count(array_filter($lines, fn ($l) => $l['failed']));
             $out['latest'] = array_slice($lines, -20);
+          }} elseif ($case === 'paid_status_shadow_courses') {{
+            // Read-only (F7 S5 switch gate, 2026-10-07): the 5 courses where the old outbound predicate owes but the
+            // resolver says settled. IDs, flags and amounts only (no names).
+            $ids = [1995, 3621, 1052, 3852, 3715];
+            $statuses = app(\\App\\Services\\BillingPayableResolver::class)->courseStatusesByStudentClassIds($ids);
+            $rows = [];
+            foreach (\\App\\Models\\StudentClass::query()->whereIn('ID', $ids)->get() as $c) {{
+              $cid = (int) $c->getKey();
+              $invs = \\App\\Models\\Invoice::query()->with(['payments', 'items'])->where('StudentClassID', $cid)->get();
+              $pkg = (int) ($c->getAttribute('PackageID') ?? 0);
+              $rows[] = [
+                'id' => $cid, 'class_type' => (string) $c->getAttribute('ClassType'), 'schedule_mode' => (string) $c->getAttribute('ScheduleMode'),
+                'charge' => (int) $c->getAttribute('Charge'), 'rate' => (float) $c->getAttribute('Rate'), 'paid_flag' => (int) $c->getAttribute('Paid'),
+                'stop' => (int) $c->getAttribute('Stop'), 'closed_reason' => $c->getAttribute('closed_reason'),
+                'package_id' => $pkg, 'package_paid' => $pkg > 0 ? (bool) \\Illuminate\\Support\\Facades\\DB::table('course_packages')->where('id', $pkg)->value('paid') : null,
+                'start' => substr((string) $c->getAttribute('StartDate'), 0, 10), 'end' => substr((string) $c->getAttribute('EndDate'), 0, 10),
+                'old_effectively_paid' => (bool) $c->isEffectivelyPaid(),
+                'resolver' => array_intersect_key($statuses[$cid] ?? [], array_flip(['status', 'source', 'payable_total', 'applied', 'outstanding', 'overpaid'])),
+                'invoices' => $invs->map(fn ($i) => [
+                  'id' => (int) $i->getKey(), 'status' => $i->getAttribute('Status'), 'total' => (int) $i->getAttribute('TotalAmount'),
+                  'paid_amount' => (int) $i->getAttribute('PaidAmount'), 'period' => $i->getAttribute('billing_period'),
+                  'payments_net' => (int) $i->getRelationValue('payments')->sum(fn ($p) => (int) $p->getAttribute('Amount')),
+                  'payment_rows' => $i->getRelationValue('payments')->count(), 'items' => $i->getRelationValue('items')->count(),
+                ])->values()->all(),
+                'item_on_other_invoice' => \\Illuminate\\Support\\Facades\\DB::table('InvoiceItem')->where('StudentClassID', $cid)
+                  ->whereNotIn('InvoiceID', $invs->pluck('id')->all() ?: [0])->count(),
+              ];
+            }}
+            $out['courses'] = $rows;
           }} elseif ($case === 'td076_r2_plan_probe') {{
             // Read-only: calls only the R-2 strategy plan() (dry-run path, SELECT only, no POP request row) for campus 11.
             // Output: exception class, truncated message, file:line, top 5 frames (file:line), elapsed ms, peak memory. No row data.
