@@ -46,14 +46,14 @@ class OccurrenceAssignmentService
         return SessionStatus::isLeaveLike((string) $session->Status)
             || self::at((int) $session->StudentClassID, Carbon::parse((string) $session->SessionDate)->toDateString(), substr((string) $session->StartTime, 0, 5), 'leave')->exists()
             // Sign-in-only leave: a live leave-family sign-in with no leave schedules row.
-            || StudentSignIn::where('ClassSessionID', (int) $session->id)->whereNull('VoidedAt')
+            || StudentSignIn::query()->where('ClassSessionID', (int) $session->id)->whereNull('VoidedAt')
                 ->whereIn(DB::raw("LOWER(TRIM(COALESCE(Status, '')))"), SessionStatus::leaveFamily())->exists();
     }
 
     /** A makeup session (`schedules.type='extra'` at its slot) has no contract chain; a substitute row would be a second live row. */
     public static function onMakeup(ClassSession $session): bool
     {
-        return Schedule::where('student_course_id', (int) $session->StudentClassID)->where('type', 'extra')->where('status', 'scheduled')
+        return Schedule::query()->where('student_course_id', (int) $session->StudentClassID)->where('type', 'extra')->where('status', 'scheduled')
             ->whereDate('schedule_date', Carbon::parse((string) $session->SessionDate)->toDateString())
             ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr((string) $session->StartTime, 0, 5)])->exists();
     }
@@ -66,7 +66,7 @@ class OccurrenceAssignmentService
      */
     public static function futureConflicts(ClassSession $session, int $teacherId): array
     {
-        $course = StudentClass::find((int) $session->StudentClassID);
+        $course = StudentClass::query()->find((int) $session->StudentClassID);
         if (!$course || $teacherId === (int) $course->TeacherID) {
             return [];
         }
@@ -82,7 +82,7 @@ class OccurrenceAssignmentService
             'teacher_id' => $teacherId,
             'class_type' => (string) ($course->ClassType ?: 'one_on_one'),
             'room_id' => (int) ($course->room_id ?? 0) > 0 ? (int) $course->room_id : null,
-            'branch_id' => (int) Student::where('id', $course->StudentID)->value('CampusID'),
+            'branch_id' => (int) Student::query()->where('id', $course->StudentID)->value('CampusID'),
             'schedule_date' => $date,
             'start_time' => $start,
             'end_time' => $end,
