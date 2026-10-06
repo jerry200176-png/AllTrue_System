@@ -8,14 +8,14 @@ import { shouldRenderScheduledException } from './calendarExceptionMerge.js';
 import { mergeWeekCalendarOccurrences } from './calendarOccurrenceMerge.js';
 import { rowOccupiesPurchasedQuota } from './sessionOccurrenceFilter.js';
 
-const wuAitong = [
+const course2688 = [
   { id: 7583, status: 'rescheduled', schedule_date: '2026-08-08', student_course_id: 2688, start_time: '15:00' },
   { id: 7584, status: 'scheduled', schedule_date: '2026-08-08', student_course_id: 2688, start_time: '14:30', original_schedule_id: 7583 },
   { id: 7588, status: 'rescheduled', schedule_date: '2026-08-08', student_course_id: 2688, start_time: '14:30' },
   { id: 7589, status: 'scheduled', schedule_date: '2026-08-08', student_course_id: 2688, start_time: '14:30', original_schedule_id: 7588 },
 ];
-assert.equal(shouldRenderScheduledException(wuAitong[1], wuAitong, '2026-08-08'), false, 'R102 SC#2688 stale 7584');
-assert.equal(shouldRenderScheduledException(wuAitong[3], wuAitong, '2026-08-08'), true, 'R102 SC#2688 live 7589');
+assert.equal(shouldRenderScheduledException(course2688[1], course2688, '2026-08-08'), false, 'R102 SC#2688 stale 7584');
+assert.equal(shouldRenderScheduledException(course2688[3], course2688, '2026-08-08'), true, 'R102 SC#2688 live 7589');
 
 const chenYuhan = [
   { id: 7138, status: 'rescheduled', schedule_date: '2026-08-07', student_course_id: 1249, start_time: '18:00' },
