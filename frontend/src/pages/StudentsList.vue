@@ -465,7 +465,7 @@
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
                         <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLow(course) ? '再次續報加購' : '加購' }}</button>
-                        <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
+                        <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" title="在帳務中心打開學生帳務" @click="openTuitionLedger(course)">學生帳務</button>
                         <button v-if="isSessionPaymentLow(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
                         <button type="button" class="small danger" @click="deleteCourse(course)">刪除</button>
@@ -788,54 +788,6 @@
       @submit="submitRenewMonthly"
     />
 
-    <!-- 月結帳單記錄 Modal -->
-    <div v-if="showInvoiceModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="invoice-modal-title" @click.self="showInvoiceModal = false">
-      <div class="modal" style="max-width: 480px;">
-        <h3 id="invoice-modal-title" style="margin-bottom: 4px;">月結帳單記錄</h3>
-        <p class="invoice-modal-subtitle">
-          {{ invoiceModalCourse?.student_name || '' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
-        </p>
-
-        <div v-if="invoiceModalLoading" class="invoice-modal-loading">
-          <div class="invoice-skeleton"></div>
-          <div class="invoice-skeleton" style="width: 70%;"></div>
-        </div>
-
-        <div v-else-if="invoiceModalList.length === 0" class="invoice-modal-empty">
-          尚無帳單記錄（舊有課程）
-        </div>
-
-        <table v-else class="course-inner-table">
-          <thead>
-            <tr>
-              <th>期別</th>
-              <th style="text-align: right;">金額</th>
-              <th style="text-align: center;">狀態</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="inv in invoiceModalList" :key="inv.id">
-              <td style="font-size: 13px;">
-                {{ inv.billing_period ? formatBillingPeriod(inv.billing_period) : (inv.issue_date ? inv.issue_date.slice(0, 7) : '—') }}
-                <span v-if="inv.due_date" class="invoice-due-date-hint">繳費日 {{ inv.due_date }}</span>
-              </td>
-              <td style="text-align: right; font-weight: 600;">${{ inv.total_amount.toLocaleString() }}</td>
-              <td style="text-align: center;">
-                <span :class="['invoice-status-chip', inv.status]">
-                  {{ { paid: '已繳', unpaid: '未繳', partial: '部分繳' }[inv.status] || inv.status }}
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="actions" style="margin-top: 20px;">
-          <button type="button" class="ghost" @click="showInvoiceModal = false">關閉</button>
-          <button type="button" class="small primary" @click="goToTuitionBilling(invoiceModalCourse); showInvoiceModal = false">前往帳務中心</button>
-        </div>
-      </div>
-    </div>
-
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="!addSessionsSubmitting && (showSessionsModal = false)">
       <div class="modal">
@@ -1087,6 +1039,7 @@ import MonthlyBatchRenewModal from '../components/course-management/MonthlyBatch
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
   buildTuitionCollectNav,
+  buildTuitionLedgerNav,
   buildCourseMgmtOpsNav,
   buildBindingManagementNav,
   tuitionIntentForPaymentStatus,
@@ -1112,6 +1065,10 @@ const goToTuitionBilling = (course) => {
   emit('navigate', buildTuitionCollectNav(course, {
     intent: tuitionIntentForPaymentStatus(course?.payment_status),
   }));
+};
+
+const openTuitionLedger = (course) => {
+  emit('navigate', buildTuitionLedgerNav(course));
 };
 
 const goToCourseMgmtOps = (course, studentName = '') => {
@@ -1315,10 +1272,6 @@ function loadRenewMonthlyPreview(endDate = '') {
 }
 
 // --- Monthly Invoice Modal ---
-const showInvoiceModal = ref(false);
-const invoiceModalCourse = ref(null);
-const invoiceModalList = ref([]);
-const invoiceModalLoading = ref(false);
 
 // Duplicate course intercept modal
 const showDuplicateInterceptModal = ref(false);
@@ -3524,38 +3477,6 @@ const submitAddSessions = async () => {
   }
 };
 
-const formatBillingPeriod = (period) => {
-  if (!period || period.length < 7) return period;
-  const [y, m] = period.split('-');
-  return `${y}年${parseInt(m)}月`;
-};
-
-const openInvoiceModal = async (course) => {
-  const studentName = students.value.find(s => s.id === course.student_id)?.name || '';
-  invoiceModalCourse.value = { ...course, student_name: studentName };
-  invoiceModalList.value = [];
-  invoiceModalLoading.value = true;
-  showInvoiceModal.value = true;
-
-  try {
-    const token = await getAccessToken();
-    if (!token) return;
-
-    const res = await authedFetch(`/api/v1/student-classes/${course.id}/invoices`, {
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-    }, token);
-    const json = await res.json().catch(() => ({}));
-    if (res.ok) {
-      invoiceModalList.value = json.invoices || [];
-    }
-  } catch (_) {
-    // silent — modal shows empty state
-  } finally {
-    invoiceModalLoading.value = false;
-  }
-};
-
 const submitRenewMonthly = async (endDate) => {
   const course = renewMonthlyTargetCourse.value;
   if (!course?.id) return;
@@ -3701,28 +3622,6 @@ table th { font-size: 12.5px; }
 .close-btn:hover { background: var(--ds-warning-wash); }
 .paid-date-hint { display: inline-block; font-size: 12px; color: var(--ds-success); margin-left: 4px; white-space: nowrap; }
 
-/* ── Monthly Invoice Modal ── */
-.invoice-modal-subtitle {
-  font-size: 13px;
-  color: var(--ds-ink-mute);
-  margin-bottom: 16px;
-}
-.invoice-modal-loading {
-  padding: 24px 0;
-  text-align: center;
-  color: var(--ds-ink-mute);
-}
-.invoice-modal-empty {
-  padding: 16px 0;
-  text-align: center;
-  color: var(--ds-ink-mute);
-  font-size: 14px;
-}
-.invoice-due-date-hint {
-  font-size: 11px;
-  color: var(--ds-ink-mute);
-  display: block;
-}
 .sessions-near-empty-hint {
   font-size: 13px;
   color: var(--ds-warning);
@@ -3742,26 +3641,6 @@ table th { font-size: 12.5px; }
 .duplicate-course-heading {
   color: var(--ds-warning);
 }
-.invoice-status-chip {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.invoice-status-chip.paid    { background: var(--ds-success-wash); color: var(--ds-success); }
-.invoice-status-chip.unpaid  { background: var(--ds-warning-wash); color: var(--ds-warning); }
-.invoice-status-chip.partial { background: var(--ds-primary-wash); color: var(--ds-primary-text); }
-.invoice-skeleton {
-  height: 20px;
-  width: 100%;
-  background: linear-gradient(90deg, var(--ds-canvas-soft) 25%, var(--ds-hairline) 50%, var(--ds-canvas-soft) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.2s infinite;
-  border-radius: 4px;
-  margin-bottom: 10px;
-}
-@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
 /* ═══ Ops page shell ═══ */
 .students-page.at-ops-page {

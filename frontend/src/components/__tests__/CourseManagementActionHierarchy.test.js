@@ -51,7 +51,7 @@ describe('CourseManagement action hierarchy', () => {
     expect(legacyActions).toContain('role="menuitem"');
     expect(legacyActions.match(/openManualSessionModal\(c\)/g)).toHaveLength(2);
     expect(activeMoreMenu).not.toContain('openManualSessionModal(c)');
-    expect(legacyActions).toContain('@click="openInvoiceModal(c); closeActionMenu()"');
+    expect(legacyActions).toContain('@click="openTuitionLedger(c); closeActionMenu()"');
     expect(legacyActions).toContain('@click="openContractAdjustmentModal(c); closeActionMenu()"');
     expect(legacyActions).toContain('@click="duplicateCourseForTeacher(c); closeActionMenu()"');
   });

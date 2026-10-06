@@ -446,7 +446,7 @@
                               @click="isMonthlyMode(c) ? (openMonthlySessionModal(c), closeActionMenu()) : (canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu()))"
                             ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> {{ isMonthlyMode(c) ? '新增月結堂次' : '補課 / 補登' }}</button>
                             <p class="action-section-label">帳務與合約</p>
-                            <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單（唯讀）</button>
+                            <button class="action-dropdown-item" role="menuitem" title="在帳務中心打開學生帳務" @click="openTuitionLedger(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 學生帳務</button>
                             <button
                               v-if="isSessionMode(c) && !isPackageMember(c)"
                               class="action-dropdown-item action-dropdown-package-preview"
@@ -667,7 +667,7 @@
                       <div v-if="activeActionMenu === hc.id" :ref="(el) => setActionMenu(hc.id, el)" class="action-dropdown" role="menu" aria-label="其他歷史課程操作" @click.stop @keydown="handleActionMenuKeydown(hc.id, $event)">
                         <p class="action-section-label">課程與帳務</p>
                         <button class="action-dropdown-item" role="menuitem" @click="navigateToStudentCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
-                        <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
+                        <button class="action-dropdown-item" role="menuitem" title="在帳務中心打開學生帳務" @click="openTuitionLedger(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 學生帳務</button>
                         <button
                           v-if="effectiveClosedReason(hc) === 'completed'"
                           class="action-dropdown-item action-dropdown-renew"
@@ -792,7 +792,7 @@
                         title="產生繳費通知單"
                         @click="openPaymentSlip(row.course)"
                       >繳費通知</button>
-                      <button class="small ghost btn-invoices" type="button" @click="openInvoiceModal(row.course)">帳單（唯讀）</button>
+                      <button class="small ghost btn-invoices" type="button" title="在帳務中心打開學生帳務" @click="openTuitionLedger(row.course)">學生帳務</button>
                       <button v-if="shouldShowPaymentAction(row.course)" class="small primary" type="button" @click="goToTuitionBilling(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
                       <span v-if="isTutoringBillingAnomaly(row.course)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                     </div>
@@ -1367,105 +1367,6 @@
       @changed="loadCourses(pagination.page)"
     />
 
-    <!-- 帳單記錄 Modal -->
-    <div v-if="invoiceModalOpen" class="modal-overlay" @click.self="closeInvoiceModal">
-      <div class="modal course-modal invoice-modal">
-        <div class="invoice-modal-header">
-          <div>
-            <h3 class="modal-title">帳單與對帳紀錄</h3>
-            <p class="modal-desc">
-              {{ invoiceModalCourse?.student_name || '學生' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
-            </p>
-          </div>
-          <div class="invoice-modal-tools">
-            <button class="small ghost btn-ledger" type="button" @click="openLedgerForCourse(invoiceModalCourse)">
-              對帳
-            </button>
-            <button class="icon-btn" type="button" aria-label="關閉帳單記錄" @click="closeInvoiceModal">×</button>
-          </div>
-        </div>
-
-        <div v-if="invoiceModalLoading" class="invoice-modal-state" role="status">
-          <div class="invoice-skeleton"></div>
-          <div class="invoice-skeleton invoice-skeleton-short"></div>
-        </div>
-        <div v-else-if="invoiceModalError" class="invoice-modal-state invoice-modal-error" role="alert">
-          {{ invoiceModalError }}
-        </div>
-        <div v-else-if="invoiceModalList.length === 0" class="invoice-modal-state">
-          尚無帳單流水（舊有或堂數制課程可能只保留課程主檔繳費狀態）。可按「對帳」查看同學生收據與例外資料。
-        </div>
-        <div v-else class="invoice-table-scroll">
-          <table class="invoice-table">
-            <thead>
-              <tr>
-                <th>帳單（期別）</th>
-                <th>應繳日</th>
-                <th>付款日</th>
-                <th>已收款紀錄</th>
-                <th class="invoice-amount-cell">金額</th>
-                <th class="invoice-amount-cell">已繳</th>
-                <th class="invoice-status-cell">狀態</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="inv in invoiceModalList" :key="inv.id">
-                <td>
-                  <strong>{{ formatLedgerInvoiceLabel(inv) }}</strong>
-                  <div class="hint">{{ formatLedgerCourseLabel({ course_ref: inv.course_ref, subject: invoiceModalCourse?.subject_name || invoiceModalCourse?.subject }) }} · {{ formatBillingPeriod(inv.billing_period) }}</div>
-                </td>
-                <td>{{ inv.due_date || '—' }}</td>
-                <td>{{ invoicePaidDateLabel(inv) }}</td>
-                <td>
-                  <div v-if="inv.payments?.length" class="invoice-payment-list">
-                    <div
-                      v-for="payment in inv.payments"
-                      :key="payment.id"
-                      :class="['invoice-payment-row', { 'invoice-payment-row--void': payment.is_void }]"
-                    >
-                      <span class="invoice-payment-date">{{ payment.paid_at || '未記錄日期' }}</span>
-                      <span class="invoice-payment-amount">{{ payment.is_void ? '已更正 ' : '已收 ' }}${{ formatMoney(Math.abs(payment.amount || 0)) }}</span>
-                      <span class="invoice-payment-method">{{ invoicePaymentMethodLabel(payment.method) }}</span>
-                      <span v-if="payment.receipt_no" class="invoice-payment-receipt">{{ humanizeDocumentRef(payment.receipt_no) }}</span>
-                      <span v-if="payment.is_void" class="invoice-payment-void">更正</span>
-                    </div>
-                  </div>
-                  <span v-else class="hint">—</span>
-                </td>
-                <td class="invoice-amount-cell">
-                  <strong>${{ formatMoney(inv.total_amount) }}</strong>
-                  <div v-if="inv.amount_discrepancy" class="invoice-amount-warning" role="status">
-                    依實際 {{ inv.period_sessions }} 堂計算；原帳單 ${{ formatMoney(inv.stored_total_amount) }}
-                  </div>
-                </td>
-                <td class="invoice-amount-cell">${{ formatMoney(inv.paid_amount) }}</td>
-                <td class="invoice-status-cell">
-                  <span :class="['invoice-status-chip', invoiceStatusClass(inv)]">
-                    {{ invoiceStatusLabel(inv) }}
-                  </span>
-                </td>
-                <td>
-                  <div class="invoice-row-actions">
-                    <button
-                      class="small primary invoice-pay-btn"
-                      type="button"
-                      @click="goToTuitionBilling(invoiceModalCourse)"
-                    >前往帳務中心</button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="actions invoice-modal-actions">
-          <button class="ghost" type="button" @click="closeInvoiceModal">關閉</button>
-          <button class="small primary" type="button" @click="goToTuitionBilling(invoiceModalCourse); closeInvoiceModal()">前往帳務中心</button>
-        </div>
-      </div>
-    </div>
-
     <div v-if="pauseConfirmTarget" class="modal-overlay" @click.self="!pauseConfirmSubmitting && (pauseConfirmTarget = null)">
       <div class="modal course-modal pause-confirm-modal">
         <div class="pause-confirm-header">
@@ -1556,9 +1457,6 @@ import { courseRowWarningSummary, usageBalanceWarningTitle } from '../lib/course
 import {
   formatRenewSuccessMessage,
   formatDuplicatePurchaseHint,
-  formatLedgerCourseLabel,
-  formatLedgerInvoiceLabel,
-  humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { convertSingleCourseToPackage, previewSingleCoursePackageConversion, updatePackage } from '../lib/coursePackagesApi';
@@ -1584,7 +1482,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, WAIVED_LABEL,
+  REPORT_STATUS_LABELS, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, WAIVED_LABEL,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -1619,6 +1517,7 @@ import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
   buildTuitionCollectNav,
+  buildTuitionLedgerNav,
   buildStudentsCommercialNav,
   tuitionIntentForPaymentStatus,
 } from '../lib/authoritativeMutationRoutes.js';
@@ -1700,6 +1599,10 @@ const goToTuitionBilling = (course) => {
   emit('navigate', buildTuitionCollectNav(course, {
     intent: tuitionIntentForPaymentStatus(course?.payment_status),
   }));
+};
+
+const openTuitionLedger = (course) => {
+  emit('navigate', buildTuitionLedgerNav(course));
 };
 
 const goToStudentsCommercial = (course, intent = 'edit') => {
@@ -2781,7 +2684,7 @@ function onCourseManagerAction({ name, payload } = {}) {
     'quick-add': () => { if (canQuickAddSession(c) || isMonthlyMode(c)) openQuickAddSessionModal(c); },
     'retry-sessions': () => retryLoadCourseSessions(c),
     'cancel-makeup': () => { if (payload) cancelMakeupSchedule(payload, c); },
-    invoice: () => openInvoiceModal(c), tuition: () => goToTuitionBilling(c), ledger: () => openLedgerForCourse(c),
+    invoice: () => openTuitionLedger(c), tuition: () => goToTuitionBilling(c), ledger: () => openLedgerForCourse(c),
     purchase: () => openCommercialPurchaseEntry(c), 'contract-adjust': () => openContractAdjustmentModal(c),
     'package-preview': () => openPackageConversionPreview(c), 'payment-slip': () => openPaymentSlip(c),
     duplicate: () => duplicateCourseForTeacher(c),
@@ -4329,33 +4232,6 @@ const formatMoney = (value) => {
   return Number.isFinite(n) ? n.toLocaleString() : '0';
 };
 
-const formatBillingPeriod = (period) => {
-  if (!period || String(period).length < 7) return period || '—';
-  const [year, month] = String(period).split('-');
-  const monthNum = Number.parseInt(month, 10);
-  return monthNum ? `${year}年${monthNum}月` : period;
-};
-
-const invoiceStatusLabel = (invoice) => {
-  if (invoice?.ledger_label) return invoice.ledger_label;
-  const status = typeof invoice === 'string' ? invoice : invoice?.status;
-  return INVOICE_STATUS_LABELS[status] || status || '未知';
-};
-const invoiceStatusClass = (invoice) => {
-  const ledgerStatus = invoice?.ledger_status || '';
-  if (ledgerStatus && ledgerStatus !== invoice?.status) return 'invoice-status-exception';
-  return `invoice-status-${invoice?.status || 'unknown'}`;
-};
-const invoicePaidDateLabel = (invoice) => {
-  if (invoice?.paid_at) return invoice.paid_at;
-  return invoice?.status === 'paid' ? '舊資料未記錄' : '—';
-};
-const invoicePaymentMethodLabel = (method) => ({
-  cash: '現金',
-  transfer: '匯款',
-  void: '更正收款',
-}[method] || method || '—');
-
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
   if (!props.branchId) {
@@ -5094,11 +4970,6 @@ const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
 const studentGroupTabs = ref({});
 const studentBillingState = ref({});
-const invoiceModalOpen = ref(false);
-const invoiceModalCourse = ref(null);
-const invoiceModalList = ref([]);
-const invoiceModalLoading = ref(false);
-const invoiceModalError = ref('');
 const paymentSlipOpen = ref(false);
 const paymentSlipStudentClassId = ref(null);
 
@@ -5115,10 +4986,6 @@ const openPaymentSlip = (course) => {
 const closePaymentSlip = () => {
   paymentSlipOpen.value = false;
   paymentSlipStudentClassId.value = null;
-};
-
-const closeInvoiceModal = () => {
-  invoiceModalOpen.value = false;
 };
 
 const studentGroupTab = (key) => studentGroupTabs.value[key] || 'courses';
@@ -5226,38 +5093,6 @@ const openLedgerForCourse = (course) => {
   if (!course?.id) return;
   ledgerStudentClassId.value = course.id;
   ledgerOpen.value = true;
-};
-
-const openInvoiceModal = async (course) => {
-  if (!course?.id) return;
-  invoiceModalCourse.value = course;
-  invoiceModalList.value = [];
-  invoiceModalError.value = '';
-  invoiceModalLoading.value = true;
-  invoiceModalOpen.value = true;
-
-  try {
-    const token = await getAccessToken();
-    if (!token) {
-      invoiceModalError.value = '請重新登入後再查看帳單。';
-      return;
-    }
-
-    const res = await authedFetch(`/api/v1/student-classes/${course.id}/invoices`, {
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-    }, token);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      invoiceModalError.value = json?.message || '帳單載入失敗，請稍後再試。';
-      return;
-    }
-    invoiceModalList.value = Array.isArray(json?.invoices) ? json.invoices : [];
-  } catch (e) {
-    invoiceModalError.value = e?.message || '帳單載入失敗，請稍後再試。';
-  } finally {
-    invoiceModalLoading.value = false;
-  }
 };
 
 const executeDeleteCourse = async () => {
@@ -8226,261 +8061,6 @@ button.danger:disabled {
 .btn-invoices:hover {
   background: var(--ds-canvas-soft) !important;
 }
-.btn-ledger {
-  border-color: var(--ds-hairline) !important;
-  color: var(--ds-ink-secondary) !important;
-  background: var(--ds-canvas) !important;
-}
-.btn-ledger:hover {
-  background: var(--ds-canvas-soft) !important;
-}
-.invoice-modal {
-  width: min(920px, calc(100vw - 32px));
-  max-width: min(920px, calc(100vw - 32px));
-  overflow-x: hidden;
-}
-.invoice-modal-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-.invoice-modal-header > div:first-child {
-  min-width: 0;
-}
-.invoice-modal-tools {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: 8px;
-}
-.invoice-modal-header .modal-desc {
-  margin: 4px 0 0;
-  color: var(--text-light);
-  font-size: 13px;
-}
-.icon-btn {
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: #fff;
-  color: var(--text-light);
-  cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
-}
-.icon-btn:hover {
-  background: #f8fafc;
-  color: var(--text);
-}
-.invoice-modal-state {
-  padding: 22px 16px;
-  text-align: center;
-  color: var(--text-light);
-  background: #f8fafc;
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  font-size: 14px;
-}
-.invoice-modal-error {
-  color: #b91c1c;
-  background: #fef2f2;
-  border-color: #fecaca;
-}
-.invoice-skeleton {
-  height: 14px;
-  margin: 8px auto;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 37%, #e5e7eb 63%);
-  background-size: 400% 100%;
-  animation: invoice-loading 1.4s ease infinite;
-  width: 88%;
-}
-.invoice-skeleton-short {
-  width: 58%;
-}
-@keyframes invoice-loading {
-  0% { background-position: 100% 50%; }
-  100% { background-position: 0 50%; }
-}
-.invoice-table-scroll {
-  max-width: 100%;
-  overflow-x: auto;
-  padding-bottom: 4px;
-}
-.invoice-table {
-  width: 100%;
-  min-width: 760px;
-  border-collapse: collapse;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  font-size: 13px;
-}
-.invoice-table th,
-.invoice-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-.invoice-table th {
-  background: #f8fafc;
-  color: var(--text-light);
-  font-weight: 700;
-}
-.invoice-table tbody tr:last-child td {
-  border-bottom: none;
-}
-.invoice-amount-cell,
-.invoice-status-cell {
-  text-align: right !important;
-  white-space: nowrap;
-}
-.invoice-amount-warning {
-  margin-top: 3px;
-  color: #b45309;
-  font-size: 11px;
-  line-height: 1.35;
-  white-space: normal;
-  min-width: 150px;
-}
-.invoice-status-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 52px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-.invoice-status-paid {
-  background: #dcfce7;
-  color: #166534;
-}
-.invoice-status-unpaid {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-.invoice-status-partial {
-  background: #fef3c7;
-  color: #92400e;
-}
-.invoice-status-exception {
-  background: #fff7ed;
-  color: #9a3412;
-}
-.invoice-status-unknown {
-  background: #e5e7eb;
-  color: #4b5563;
-}
-.invoice-pay-btn {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-}
-.invoice-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 92px;
-}
-.invoice-void-btn {
-  border-color: #fecaca !important;
-  color: #b91c1c !important;
-  background: #fff7f7 !important;
-  border-radius: 999px;
-  font-size: 12px;
-  padding: 4px 10px;
-}
-.invoice-void-btn:hover {
-  background: #fee2e2 !important;
-}
-.invoice-void-btn--exception {
-  border-color: #fed7aa !important;
-  color: #9a3412 !important;
-  background: #fff7ed !important;
-}
-.invoice-void-btn--exception:hover {
-  background: #ffedd5 !important;
-}
-.danger-btn {
-  border: none;
-  border-radius: 10px;
-  background: #b91c1c;
-  color: #fff;
-  cursor: pointer;
-  font-weight: 800;
-  padding: 10px 18px;
-}
-.danger-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-.danger-btn:not(:disabled):hover {
-  background: #991b1b;
-}
-.invoice-void-modal {
-  width: min(480px, calc(100vw - 32px));
-}
-.invoice-void-warning {
-  margin: 16px 0;
-  padding: 12px 14px;
-  border: 1px solid #fecaca;
-  border-radius: 14px;
-  background: #fff7f7;
-  color: #7f1d1d;
-  font-size: 13px;
-  line-height: 1.65;
-}
-.invoice-void-reason {
-  width: 100%;
-  margin-top: 8px;
-  resize: vertical;
-  min-height: 104px;
-  font-family: var(--font-sans);
-  line-height: 1.6;
-}
-.invoice-payment-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 220px;
-}
-.invoice-payment-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-  color: var(--text);
-  font-size: 12px;
-}
-.invoice-payment-row--void {
-  color: var(--text-light);
-  text-decoration: line-through;
-}
-.invoice-payment-date,
-.invoice-payment-amount {
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-}
-.invoice-payment-method,
-.invoice-payment-receipt,
-.invoice-payment-void {
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: #f1f5f9;
-  color: var(--text-light);
-}
-.invoice-payment-void {
-  background: #fef3c7;
-  color: #92400e;
-}
-.invoice-modal-actions {
-  margin-top: 18px;
-}
 .tag-armed {
   background: #ffebee;
   color: #c62828;
@@ -8751,35 +8331,6 @@ button.danger:disabled {
   background: #172554 !important;
   color: #93c5fd !important;
   border-color: #1d4ed8 !important;
-}
-[data-theme="dark"] .icon-btn {
-  background: #1e293b;
-  color: #cbd5e1;
-  border-color: #334155;
-}
-[data-theme="dark"] .invoice-void-warning {
-  background: #450a0a;
-  color: #fecaca;
-  border-color: #7f1d1d;
-}
-[data-theme="dark"] .invoice-void-btn {
-  background: #450a0a !important;
-  color: #fecaca !important;
-  border-color: #7f1d1d !important;
-}
-[data-theme="dark"] .invoice-modal-state,
-[data-theme="dark"] .invoice-table th {
-  background: #0f172a;
-}
-[data-theme="dark"] .invoice-table,
-[data-theme="dark"] .invoice-table th,
-[data-theme="dark"] .invoice-table td,
-[data-theme="dark"] .invoice-modal-state {
-  border-color: #334155;
-}
-[data-theme="dark"] .invoice-skeleton {
-  background: linear-gradient(90deg, #334155 25%, #475569 37%, #334155 63%);
-  background-size: 400% 100%;
 }
 .cm-settings-footer {
   position: sticky;

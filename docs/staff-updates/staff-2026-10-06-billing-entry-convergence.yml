@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-06-billing-entry-convergence
+    published_at: "2026-10-06"
+    audiences:
+      - director
+    importance: digest
+    title: 學生帳務統一從帳務中心看
+    summary: 課程查找、學生管理的「學生帳務」會直接打開帳務中心的學生帳務檔。
+    items:
+      - category: improved
+        text: 原本的「帳單（唯讀）」「帳單與對帳」小視窗已整合，帳單、收款與上課日都在同一處。
+    source_refs:
+      - "changelog:2026-10-06:director-billing-recon-m2-entry-convergence"
