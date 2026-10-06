@@ -1010,7 +1010,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("Release train: approving exactly", self.workflow)
         self.assertIn("state=queued-for-release-train", self.workflow)
         # Trains offer only the main tip, never an older commit, and never change flags.
-        self.assertIn('TIP="$(gh api "/repos/${REPO}/git/ref/heads/main"', self.workflow)
+        self.assertIn('TIP="$RUN_HEAD_SHA"', self.workflow)
+        self.assertIn("RUN_HEAD_SHA: ${{ github.sha }}", self.workflow)
         self.assertIn("A release train never changes feature flags", self.workflow)
         # A dispatched train is classified like a scheduled one (no manual shortcut).
         self.assertIn('classify_event = "schedule" if os.environ.get("PHASE") == "release-train"', self.workflow)
