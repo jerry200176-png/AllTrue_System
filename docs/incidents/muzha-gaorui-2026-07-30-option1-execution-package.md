@@ -1,5 +1,7 @@
 # Execution Package：木柵 高瑞樸 2026-07-30 Option 1（GHA）
 
+> Retired 2026-10-06, history only: the workflow and script below were removed by Founder decision (case treated as closed; no execute run id found). Links below are historical.
+
 > **權威執行**：GitHub Actions manual workflow（**勿再貼 tinker 到 Pi**）  
 > **調查證據**：[#1466](https://github.com/jerry200176-png/AllTrue_System/pull/1466)（B1／H1–H6／為何 refresh 無效）  
 > **Workflow**：[`.github/workflows/ops-muzha-gaorui-2026-07-30-containment.yml`](../../.github/workflows/ops-muzha-gaorui-2026-07-30-containment.yml)  
