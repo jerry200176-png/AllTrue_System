@@ -80,6 +80,12 @@ function load(n) {
   };
 }
 
+function note(n, sha, reason, text) {
+  const m = marker(reason, sha);
+  const seen = apiPages(`issues/${n}/comments?per_page=100`).some((c) => c.body?.includes(m));
+  if (!seen) gh('pr', 'comment', String(n), '--repo', REPO, '--body', `land-queue: ${text}\n\n${m}`);
+}
+
 function reject(n, sha, d) {
   const m = marker(d.reason, sha);
   const seen = apiPages(`issues/${n}/comments?per_page=100`).some((c) => c.body?.includes(m));
@@ -119,7 +125,17 @@ function processQueue() {
     const pr = load(n);
     const d = decide(pr, required);
     console.log(`#${n} ${pr.mergeStateStatus} -> ${d.action}${d.reason ? ' (' + d.reason + ')' : ''}`);
-    if (d.action === 'update') { gh('api', '-X', 'PUT', `/repos/${REPO}/pulls/${n}/update-branch`, '-f', `expected_head_sha=${pr.sha}`); break; }
+    if (d.action === 'update') {
+      try {
+        gh('api', '-X', 'PUT', `/repos/${REPO}/pulls/${n}/update-branch`, '-f', `expected_head_sha=${pr.sha}`);
+      } catch (e) {
+        // GITHUB_TOKEN cannot write .github/workflows; without LAND_QUEUE_TOKEN the merge from main is refused.
+        if (!/workflows` permission|workflows permission/.test(String(e.message))) throw e;
+        note(n, pr.sha, 'needs-manual-update', 'main changed workflow files, which the queue token may not merge. Merge main into this branch yourself (`gh pr update-branch`); the queue keeps the label and continues once it is up to date. (Set secret LAND_QUEUE_TOKEN to let the queue do this.)');
+        continue; // keep the label; try the next queued PR
+      }
+      break;
+    }
     if (d.action === 'reject') { reject(n, pr.sha, d); continue; }
     if (d.action === 'merge') { gh('pr', 'merge', String(n), '--repo', REPO, '--squash', '--delete-branch', '--match-head-commit', pr.sha); merged = true; continue; }
     kickChecksIfMissing(n, pr);
