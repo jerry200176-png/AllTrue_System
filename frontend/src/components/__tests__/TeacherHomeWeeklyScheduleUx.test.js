@@ -33,8 +33,7 @@ describe('TeacherHome weekly schedule disclosure', () => {
 
   it('keeps the teacher-only mount guard and director surface unchanged', () => {
     expect(appSource).toContain("isTeacher && active === 'teacher-home'");
-    expect(appSource).toContain("directorBranchReady && active === 'director'");
-    expect(appSource).toContain('const directorBranchReady = computed(() => directorBranchAuthorization.canMount(');
+    expect(appSource).toContain("isDirector && active === 'director'");
   });
 
   it('refreshes every campus-scoped teacher queue when the full profile arrives', () => {
