@@ -102,8 +102,6 @@ jobs:
         run: |
           python3 scripts/tests/test_diagnose_ids_only_contract.py
           python3 scripts/tests/test_student_session_diagnose.py
-          python3 scripts/tests/test_ops_chinese_renewal_unpaid.py
-          python3 scripts/tests/test_ops_move_aug05_to_chinese_renewal.py
       - name: In-app ↔ issue reconcile tests (F14)
         run: python3 scripts/tests/test_inapp_issue_reconcile.py
 

@@ -1,5 +1,7 @@
 # Repair Manifest — unpaid 國文續購 8 堂
 
+> Retired 2026-10-06, history only: the workflows and scripts for this case were removed by Founder decision (case treated as closed).
+
 **Risk-Class:** R3  
 **Date:** 2026-08-14  
 **Founder instruction:** 堂數仍 8、金額不變、尚未入帳；不要移 8/5。
