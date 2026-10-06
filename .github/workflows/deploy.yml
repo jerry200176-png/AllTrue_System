@@ -9,6 +9,12 @@ on:
   repository_dispatch:
     types: [autonomous-production-deploy]
 
+  # Release train: one Founder approval per train instead of one per R3 merge.
+  # 07:30 and 12:30 Asia/Taipei. Also `workflow_dispatch phase=release-train`.
+  schedule:
+    - cron: '30 23 * * *'
+    - cron: '30 4 * * *'
+
   workflow_dispatch:
     inputs:
       phase:
@@ -17,6 +23,7 @@ on:
         type: choice
         options:
           - application-deploy
+          - release-train
           - parent-portal-smoke
           - pop-bootstrap
           - phase1-create
@@ -32,7 +39,7 @@ on:
         default: "9"
         type: string
       confirm:
-        description: "Type the phase-specific confirmation phrase; application deploy uses ACTIVATE_PRODUCTION:<target_sha>, parent smoke uses VERIFY_PARENT_PORTAL:<target_sha>, POP bootstrap uses BOOTSTRAP_POP_MACHINE:<target_sha>:CAMPUS:<campus_id>"
+        description: "Type the phase-specific confirmation phrase; release train uses RELEASE_TRAIN (target is resolved automatically); application deploy uses ACTIVATE_PRODUCTION:<target_sha>, parent smoke uses VERIFY_PARENT_PORTAL:<target_sha>, POP bootstrap uses BOOTSTRAP_POP_MACHINE:<target_sha>:CAMPUS:<campus_id>"
         required: true
         type: string
       admissions_funnel_v1:
@@ -85,23 +92,42 @@ jobs:
   resolve-target:
     name: Resolve exact activation target
     needs: contract-test
-    if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'application-deploy' || inputs.phase == 'parent-portal-smoke' || inputs.phase == 'pop-bootstrap')) || (github.event_name == 'repository_dispatch' && github.event.action == 'autonomous-production-deploy')) }}
+    if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'application-deploy' || inputs.phase == 'release-train' || inputs.phase == 'parent-portal-smoke' || inputs.phase == 'pop-bootstrap')) || (github.event_name == 'repository_dispatch' && github.event.action == 'autonomous-production-deploy') || github.event_name == 'schedule') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     outputs:
       target_sha: ${{ steps.resolve.outputs.target_sha }}
       superseded: ${{ steps.resolve.outputs.superseded }}
+      release_train: ${{ steps.resolve.outputs.release_train }}
     steps:
       - name: Validate target SHA and CI evidence
         id: resolve
         env:
           EVENT_NAME: ${{ github.event_name }}
+          PHASE: ${{ inputs.phase }}
           WORKFLOW_REF: ${{ github.ref }}
           TARGET_SHA_INPUT: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || inputs.target_sha }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          RELEASE_TRAIN=false
+          if [[ "$EVENT_NAME" == "schedule" || ( "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "release-train" ) ]]; then
+            RELEASE_TRAIN=true
+            # The train takes the newest main commit whose own main CI succeeded.
+            TARGET_SHA_INPUT=""
+            for sha in $(gh api "/repos/${REPO}/commits?sha=main&per_page=30" --jq '.[].sha'); do
+              ok="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${sha}&status=completed&per_page=100" \
+                --jq '[.workflow_runs[] | select(.name == "CI — PHPUnit Tests" and .conclusion == "success")] | length')"
+              if [[ "$ok" -ge 1 ]]; then TARGET_SHA_INPUT="$sha"; break; fi
+            done
+            if [[ -z "$TARGET_SHA_INPUT" ]]; then
+              echo "::notice::Release train: no main commit with successful CI among the last 30; nothing to offer."
+              echo "superseded=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "release_train=${RELEASE_TRAIN}" >> "$GITHUB_OUTPUT"
           TARGET_SHA="${TARGET_SHA_INPUT,,}"
           if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Activation requires a full 40-character commit SHA."
@@ -126,7 +152,7 @@ jobs:
             fi
           fi
 
-          if [[ "$EVENT_NAME" == "workflow_dispatch" || "$EVENT_NAME" == "repository_dispatch" ]]; then
+          if [[ "$RELEASE_TRAIN" != "true" && ( "$EVENT_NAME" == "workflow_dispatch" || "$EVENT_NAME" == "repository_dispatch" ) ]]; then
             MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
             if [[ "$TARGET_SHA" != "$MAIN_SHA" ]]; then
               echo "::error::Manual activation must target the current main SHA; requested ${TARGET_SHA}, current ${MAIN_SHA}."
@@ -534,7 +560,7 @@ jobs:
           # deployment is pending. It still reaches the existing protected
           # activation gate, but it must not require a second Founder
           # authorization merely because production has not caught up yet.
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" || "$EVENT_NAME" == "schedule" ]]; then
             if [[ "$RUNTIME_STATE" != "normal-version-lag" && "$RUNTIME_STATE" != "current" ]]; then
               hold "unknown" "none" "read-only manifest evidence must be valid before manual activation: ${RUNTIME_STATE}"
               exit 0
@@ -957,7 +983,9 @@ jobs:
   production-activation:
     name: Founder production approval (same run)
     needs: [resolve-target, detect-deployable, classify-activation]
-    if: ${{ always() && needs.classify-activation.result == 'success' && (((github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch') && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true') || (github.event_name == 'workflow_dispatch' && needs.classify-activation.outputs.mode == 'manual')) }}
+    if: ${{ always() && needs.classify-activation.result == 'success' && ((github.event_name == 'repository_dispatch' && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && needs.classify-activation.outputs.mode == 'manual')) }}
+    # Release train: a merge's own CI (github.event_name == 'workflow_run') never opens
+    # an approval; R3 changes wait for the next scheduled or dispatched train.
     # A newer exact-main target supersedes an older approval request. The
     # protected environment still requires the Founder reviewer; this only
     # prevents stale waiting runs from accumulating behind the live target.
@@ -1044,6 +1072,7 @@ jobs:
           fi
           case "$PHASE" in
             application-deploy) EXPECTED="ACTIVATE_PRODUCTION:${TARGET_SHA}" ;;
+            release-train) EXPECTED="RELEASE_TRAIN" ;;
             parent-portal-smoke) EXPECTED="VERIFY_PARENT_PORTAL:${TARGET_SHA}" ;;
             pop-bootstrap) EXPECTED="BOOTSTRAP_POP_MACHINE:${TARGET_SHA}:CAMPUS:${CAMPUS_ID}" ;;
             *) echo "::error::Unsupported activation phase; no production action was executed."; exit 1 ;;
@@ -1058,11 +1087,15 @@ jobs:
         env:
           WORKFLOW_REF: ${{ github.ref }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          RELEASE_TRAIN: ${{ needs.resolve-target.outputs.release_train }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+          # Release train: main may move while the approval waits; the approved target
+          # stays valid while main still contains it (compare TARGET...main is ahead/identical).
+          IN_MAIN="$(gh api "/repos/${REPO}/compare/${TARGET_SHA}...${MAIN_SHA}" --jq '.status')"
           CI_RUNS="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TARGET_SHA}&status=completed&per_page=100")"
           CI_OK="$(CI_RUNS="$CI_RUNS" python3 - <<'PY'
           import json
@@ -1072,7 +1105,7 @@ jobs:
           print(any(run.get("name") == "CI — PHPUnit Tests" and run.get("conclusion") == "success" for run in runs))
           PY
           )"
-          POLICY_RESULT="$(PYTHONPATH=. WORKFLOW_REF="$WORKFLOW_REF" TARGET_SHA="$TARGET_SHA" MAIN_SHA="$MAIN_SHA" CI_OK="$CI_OK" python3 - <<'PY'
+          POLICY_RESULT="$(PYTHONPATH=. WORKFLOW_REF="$WORKFLOW_REF" TARGET_SHA="$TARGET_SHA" MAIN_SHA="$MAIN_SHA" CI_OK="$CI_OK" IN_MAIN="$IN_MAIN" RELEASE_TRAIN="$RELEASE_TRAIN" python3 - <<'PY'
           import os
           from scripts.governance.autonomy_gate import decide_manual_activation
 
@@ -1082,6 +1115,8 @@ jobs:
               current_main_sha=os.environ["MAIN_SHA"],
               ci_success=os.environ["CI_OK"] == "True",
               founder_gate_reached=True,
+              release_train=os.environ.get("RELEASE_TRAIN") == "true",
+              target_in_main=os.environ.get("IN_MAIN") in {"ahead", "identical"},
           )
           print(result["decision"])
           if result["decision"] != "activation-gate-reached":
@@ -1132,12 +1167,19 @@ jobs:
       - name: Final exact-main gate before production executor
         env:
           TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          RELEASE_TRAIN: ${{ needs.resolve-target.outputs.release_train }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
-          if [[ "$TARGET_SHA" != "$MAIN_SHA" ]]; then
+          if [[ "$RELEASE_TRAIN" == "true" ]]; then
+            IN_MAIN="$(gh api "/repos/${REPO}/compare/${TARGET_SHA}...${MAIN_SHA}" --jq '.status')"
+            if [[ "$IN_MAIN" != "ahead" && "$IN_MAIN" != "identical" ]]; then
+              echo "::error::Release train refused target ${TARGET_SHA}: main ${MAIN_SHA} no longer contains it (${IN_MAIN})."
+              exit 1
+            fi
+          elif [[ "$TARGET_SHA" != "$MAIN_SHA" ]]; then
             echo "::error::Production executor refused stale target ${TARGET_SHA}; current main is ${MAIN_SHA}."
             exit 1
           fi
@@ -1181,6 +1223,7 @@ jobs:
           MIGRATION_RAN=0
           MIGRATION_FAILED=0
           TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"
+          RELEASE_TRAIN="${{ needs.resolve-target.outputs.release_train }}"
           ADMISSIONS_FLAG_MODE="${{ inputs.admissions_funnel_v1 }}"
           ADMISSIONS_FLAG_CHANGED=0
           ADMISSIONS_FLAG_WAS_PRESENT=0
@@ -1321,7 +1364,12 @@ jobs:
             exit 1
           fi
           REMOTE_MAIN_SHA=$(git rev-parse refs/remotes/origin/main)
-          if [ "$REMOTE_MAIN_SHA" != "$TARGET_SHA" ]; then
+          if [ "$RELEASE_TRAIN" = "true" ]; then
+            if ! git merge-base --is-ancestor "$TARGET_SHA" "$REMOTE_MAIN_SHA"; then
+              echo "❌ release train target 不在 origin/main 歷史中：target=$TARGET_SHA origin/main=$REMOTE_MAIN_SHA — 中止部署"
+              exit 1
+            fi
+          elif [ "$REMOTE_MAIN_SHA" != "$TARGET_SHA" ]; then
             echo "❌ main 在 activation 後已前進：origin/main=$REMOTE_MAIN_SHA ≠ target=$TARGET_SHA — 中止部署"
             exit 1
           fi
