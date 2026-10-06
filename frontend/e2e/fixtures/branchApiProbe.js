@@ -2,7 +2,17 @@
 // authorization failure, and readiness must belong to the selected branch.
 export function createBranchApiProbe(pathname) {
   const responses = [];
+  const pending = new Set();
+  const matches = (request) => new URL(request.url()).pathname === pathname;
   return {
+    // Requests still in flight; assert unauthorizedStatuses() only once this is 0.
+    pendingCount: () => pending.size,
+    attach(page) {
+      page.on('request', (request) => { if (matches(request)) pending.add(request); });
+      page.on('requestfinished', (request) => pending.delete(request));
+      page.on('requestfailed', (request) => pending.delete(request));
+      page.on('response', this.observe);
+    },
     observe(response) {
       const url = new URL(response.url());
       if (url.pathname !== pathname) return;

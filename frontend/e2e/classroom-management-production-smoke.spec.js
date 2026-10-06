@@ -11,7 +11,7 @@ const DIRECTOR = {
 
 async function loginAsDirector(page) {
   const roomsProbe = createBranchApiProbe('/api/v1/rooms');
-  page.on('response', roomsProbe.observe);
+  roomsProbe.attach(page);
   // Let App.vue apply its own deep link after auth/profile bootstrap instead
   // of navigating a second time while the authorized campus is still loading.
   await page.goto('/?app_page=classroom');
@@ -49,7 +49,8 @@ test.describe('UI smoke — production classroom management', () => {
   );
 
   test('director can load classroom management without a JavaScript error', async ({ page }) => {
-    test.setTimeout(60_000);
+    // Sequential readiness waits (15s login + 3x25s) must fit inside the test cap.
+    test.setTimeout(120_000);
     const errors = [];
     page.on('pageerror', (error) => errors.push(String(error)));
     page.on('response', (response) => {
@@ -82,6 +83,7 @@ test.describe('UI smoke — production classroom management', () => {
       await expect(page.locator('.empty-text').getByRole('button', { name: '新增教室', exact: true })).toBeVisible();
     }
 
+    await expect.poll(() => roomsProbe.pendingCount(), { timeout: 15_000 }).toBe(0);
     expect(roomsProbe.unauthorizedStatuses(), 'rooms API must not return 401/403, even before a later 200').toEqual([]);
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });

@@ -24,4 +24,15 @@ describe('production branch API smoke probe', () => {
     probe.observe(response('/api/v1/rooms', 401, 9));
     expect(probe.unauthorizedStatuses()).toEqual([401]);
   });
+
+  it('tracks in-flight requests until they finish', () => {
+    const probe = createBranchApiProbe('/api/v1/rooms');
+    const handlers = {};
+    probe.attach({ on: (name, fn) => { handlers[name] = fn; } });
+    const request = { url: () => 'https://app.example.test/api/v1/rooms?branch_id=9' };
+    handlers.request(request);
+    expect(probe.pendingCount()).toBe(1);
+    handlers.requestfinished(request);
+    expect(probe.pendingCount()).toBe(0);
+  });
 });

@@ -51,7 +51,7 @@ async function seedOnboardingCompleted(page) {
 
 async function login(page) {
   const tuitionProbe = createBranchApiProbe('/api/v1/alerts/tuition');
-  page.on('response', tuitionProbe.observe);
+  tuitionProbe.attach(page);
   await page.goto('/');
   await page.evaluate(() => localStorage.removeItem('alltrue.director_dashboard_view_mode.v1'));
   await page.locator('#login-account').fill(DIRECTOR.account);
@@ -87,7 +87,8 @@ async function login(page) {
 
 for (const viewport of VIEWPORTS) {
   test(`director workbench ${viewport.name}px`, async ({ page }) => {
-    test.setTimeout(60_000);
+    // Sequential readiness waits (15s login + 3x25s) must fit inside the test cap.
+    test.setTimeout(120_000);
     test.skip(!BASE || !DIRECTOR.account, '未設定 director smoke secrets — 略過');
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     const errors = [];
@@ -134,6 +135,7 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByRole('heading', { name: '繳費與續課', exact: true })).toBeVisible();
     await expect.poll(() => tuitionAlertsResponse?.status()).toBe(200);
 
+    await expect.poll(() => tuitionProbe.pendingCount(), { timeout: 15_000 }).toBe(0);
     expect(tuitionProbe.unauthorizedStatuses(), 'tuition API must not return 401/403, even before a later 200').toEqual([]);
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
