@@ -10,3 +10,4 @@ docs-integrity.yml  # docs checks
 pi-health.yml  # health probe
 secret-rotation-reminder.yml  # reminder only
 security-1128-remove-agent-artifacts.yml  # file cleanup, paths only
+pii-log-purge.yml  # this purge job; matches the SSH pattern only in its own check
