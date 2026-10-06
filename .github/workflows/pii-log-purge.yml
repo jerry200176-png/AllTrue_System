@@ -24,7 +24,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Independent of the registry check below, so a registry gap can never stop the purge.
   purge:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -35,36 +37,50 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - name: Every production workflow is classified (registry cannot drift)
-        run: |
-          set -euo pipefail
-          listed() { grep -v '^#' "$1" | awk '{print $1}' | grep -v '^$'; }
-          missing=0
-          for f in $(grep -lE 'production-ssh-trust|PI_SSH_KEY|PI_SSH_HOST|PI_HOST' .github/workflows/*.yml); do
-            b=$(basename "$f")
-            if ! listed .github/pii-log-workflows.txt | grep -qx "$b" && ! listed .github/pii-log-workflows.exempt.txt | grep -qx "$b"; then
-              echo "::error file=$f::$b reaches production but is in neither .github/pii-log-workflows.txt nor .github/pii-log-workflows.exempt.txt"
-              missing=1
-            fi
-          done
-          exit "$missing"
-
       - name: Delete old runs of listed workflows (fail closed)
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           cutoff=$(date -u -d "${RETAIN_HOURS} hours ago" +%Y-%m-%dT%H:%M:%SZ)
           deleted=0; failed=0
           while read -r wf; do
             [ -z "$wf" ] && continue
-            if ! ids=$(gh api "repos/$REPO/actions/workflows/$wf/runs?per_page=100&created=<$cutoff" \
-              -q '.workflow_runs[]|select(.status=="completed")|.id'); then
-              echo "::error::could not list runs for $wf"; failed=$((failed+1)); continue
-            fi
-            for id in $ids; do
-              if gh api -X DELETE "repos/$REPO/actions/runs/$id" >/dev/null; then deleted=$((deleted+1)); else
-                echo "::error::could not delete run $id ($wf)"; failed=$((failed+1)); fi
+            # Page until nothing older than the cutoff remains (a backlog can exceed one page).
+            for _ in $(seq 1 50); do
+              if ! ids=$(gh api "repos/$REPO/actions/workflows/$wf/runs?per_page=100&created=<$cutoff" \
+                -q '.workflow_runs[]|select(.status=="completed")|.id'); then
+                echo "::error::could not list runs for $wf"; failed=$((failed+1)); break
+              fi
+              [ -z "$ids" ] && break
+              before=$failed
+              for id in $ids; do
+                if gh api -X DELETE "repos/$REPO/actions/runs/$id" >/dev/null; then deleted=$((deleted+1)); else
+                  echo "::error::could not delete run $id ($wf)"; failed=$((failed+1)); fi
+              done
+              [ "$failed" -gt "$before" ] && break
             done
           done < .github/pii-log-workflows.txt
           echo "deleted=$deleted failed=$failed"
           [ "$failed" -eq 0 ]
+
+  # Every production workflow (single source: docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json)
+  # must be either purged or reviewed as exempt.
+  registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Every production workflow is classified
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          inv = json.load(open("docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json"))["workflows"]
+          def listed(path):
+              return {l.split()[0] for l in open(path) if l.strip() and not l.startswith("#")}
+          purged, exempt = listed(".github/pii-log-workflows.txt"), listed(".github/pii-log-workflows.exempt.txt")
+          missing = sorted(w for w in inv if w not in purged and w not in exempt)
+          for w in missing:
+              print(f"::error::{w} is a production workflow but is in neither .github/pii-log-workflows.txt nor .github/pii-log-workflows.exempt.txt")
+          sys.exit(1 if missing else 0)
+          PY
