@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const getSession = vi.fn();
 vi.mock('../supabase', () => ({ supabase: { auth: { getSession: (...a) => getSession(...a) } } }));
 
-import { authedFetch, getAccessToken } from './authedFetch';
+import { authedFetch, authedFetchRetry401, getAccessToken } from './authedFetch';
 
 describe('authedFetch', () => {
   beforeEach(() => {
@@ -41,5 +41,25 @@ describe('authedFetch', () => {
     expect(await getAccessToken()).toBeUndefined();
     await authedFetch('/x');
     expect(fetch.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer undefined');
+  });
+});
+
+describe('authedFetchRetry401 (#3681)', () => {
+  it('overrides a stale caller token and retries once on 401 with the live session token', async () => {
+    getSession.mockResolvedValueOnce({ data: { session: { access_token: 'early' } } })
+      .mockResolvedValueOnce({ data: { session: { access_token: 'ready' } } });
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({ status: 401 }).mockResolvedValueOnce({ status: 200 });
+    const res = await authedFetchRetry401('/x', { headers: { Authorization: 'Bearer stale' } });
+    expect(res.status).toBe(200);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer early');
+    expect(fetch.mock.calls[1][1].headers.get('Authorization')).toBe('Bearer ready');
+  });
+
+  it('does not retry non-401 responses', async () => {
+    getSession.mockResolvedValue({ data: { session: { access_token: 't' } } });
+    globalThis.fetch = vi.fn().mockResolvedValue({ status: 403 });
+    await authedFetchRetry401('/x');
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

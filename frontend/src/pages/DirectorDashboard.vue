@@ -366,6 +366,7 @@ import { isPaymentNoticeStatus, paymentCenterIntentFor } from '../lib/paymentSta
 import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
+import { authedFetchRetry401 } from '../lib/authedFetch';
 import TodayProgressCard from '../components/TodayProgressCard.vue';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
 import TeacherAssessmentFillRateCard from '../components/TeacherAssessmentFillRateCard.vue';
@@ -1119,7 +1120,7 @@ const loadData = async () => {
     const alertsPromise = (async () => {
       try {
     const alertsParams = new URLSearchParams({ branch_id: String(props.branchId) });
-    const alertsResp = await fetch(`${baseUrl}/v1/alerts/tuition?${alertsParams}`, {
+    const alertsResp = await authedFetchRetry401(`${baseUrl}/v1/alerts/tuition?${alertsParams}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     });
     if (alertsResp.ok) {
@@ -1151,7 +1152,7 @@ const loadData = async () => {
     const trustPromise = (async () => {
       try {
         const trustParams = new URLSearchParams({ branch_id: String(props.branchId) });
-        const trustResp = await fetch(`${baseUrl}/v1/director/operations-trust?${trustParams}`, {
+        const trustResp = await authedFetchRetry401(`${baseUrl}/v1/director/operations-trust?${trustParams}`, {
           headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         });
         if (trustResp.ok) {
@@ -1193,7 +1194,7 @@ const loadData = async () => {
     const params = new URLSearchParams({
       branch_id: String(props.branchId), start: today, end: today, per_page: '500',
     });
-    const res = await fetch(`${baseUrl}/v1/class-sessions?${params}`, {
+    const res = await authedFetchRetry401(`${baseUrl}/v1/class-sessions?${params}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     });
     if (res.ok) {
@@ -1238,7 +1239,7 @@ const loadData = async () => {
   }
 
   try {
-    const pendingRes = await fetch(
+    const pendingRes = await authedFetchRetry401(
       `${baseUrl}/v1/learning-records?branch_id=${props.branchId}&status=pending,changes_requested&only_started=1&per_page=100&sort=session_date`,
       { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
     );
@@ -1253,7 +1254,7 @@ const loadData = async () => {
 
   try {
     const makeupParams = new URLSearchParams({ branch_id: String(props.branchId), per_page: '1' });
-    const makeupRes = await fetch(`${baseUrl}/v1/attendance/ended-sessions?${makeupParams}`, {
+    const makeupRes = await authedFetchRetry401(`${baseUrl}/v1/attendance/ended-sessions?${makeupParams}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     });
     if (makeupRes.ok) {
@@ -1291,7 +1292,7 @@ const loadSecondaryData = async () => {
 
 const fetchTeacherAssessmentFillRates = async ({ branch_id, days = 14 }) => {
   const params = new URLSearchParams({ branch_id: String(branch_id), days: String(days) });
-  const res = await fetch(`${getBaseUrl()}/v1/reports/teacher-learning-fill-rates?${params}`, {
+  const res = await authedFetchRetry401(`${getBaseUrl()}/v1/reports/teacher-learning-fill-rates?${params}`, {
     headers: { Authorization: `Bearer ${getToken()}`, Accept: 'application/json' },
   });
   const json = await res.json().catch(() => ({}));
@@ -1316,14 +1317,14 @@ const loadNotificationSummary = async (token, baseUrl) => {
     const params = new URLSearchParams({
       branch_id: String(props.branchId), read: 'unread', per_page: '3',
     });
-    const res = await fetch(`${baseUrl}/v1/notifications?${params}`, {
+    const res = await authedFetchRetry401(`${baseUrl}/v1/notifications?${params}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     });
     if (!res.ok) { unreadNotificationCount.value = 0; notificationSummary.value = []; return; }
     const json = await res.json();
     // 數字與側欄／通知中心同源（action-inbox/count）；列表端點只負責摘要清單。
     try {
-      const countRes = await fetch(`${baseUrl}/v1/action-inbox/count?branch_id=${props.branchId}`, {
+      const countRes = await authedFetchRetry401(`${baseUrl}/v1/action-inbox/count?branch_id=${props.branchId}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
       });
       unreadNotificationCount.value = countRes.ok
