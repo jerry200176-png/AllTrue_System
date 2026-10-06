@@ -1537,6 +1537,7 @@ import { isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
+import { useCoursePause } from '../composables/course-management/useCoursePause';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -2934,17 +2935,16 @@ const packageConversionSubjects = computed(() => {
 });
 const courseIdForAction = (course) => Number(course?.id ?? course?.ID ?? 0);
 const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
-const pauseConfirmTarget = ref(null);
-const pauseConfirmSubmitting = ref(false);
-const pauseCancelRemaining = ref(true);
-const pauseConfirmIsResume = computed(() => pauseConfirmTarget.value?.status === 'inactive');
-const pauseConfirmImpacts = computed(() => pauseConfirmIsResume.value
-  ? ['恢復後可繼續排課與補課', '後續仍依原課程設定計算堂數與提醒', '已取消的未來堂次不會自動重建，需依需要重新排課']
-  : [
-      pauseCancelRemaining.value ? '取消未來尚未上課堂次' : '不取消剩餘排課（堂次仍會留在行事曆）',
-      '暫停期間不排新課、不計入待辦',
-      '可從歷史課程或暫停清單恢復',
-    ]);
+const {
+  target: pauseConfirmTarget, submitting: pauseConfirmSubmitting, cancelRemaining: pauseCancelRemaining,
+  isResume: pauseConfirmIsResume, impacts: pauseConfirmImpacts,
+  request: requestCoursePause, confirm: confirmCoursePause,
+} = useCoursePause({
+  onChanged: async () => {
+    await loadCourses();
+    syncCourseManagerCourseFromList();
+  },
+});
 
 const courseSessionCalendarEnabled = isCourseSessionCalendarEnabled(perfFlags);
 const courseSessionCalendarOpen = ref(new Set());
@@ -3155,47 +3155,6 @@ const localTodayYmd = () => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 };
-
-function requestCoursePause(course) {
-  pauseCancelRemaining.value = true;
-  pauseConfirmTarget.value = course;
-}
-
-async function confirmCoursePause() {
-  if (pauseConfirmSubmitting.value) return;
-  const course = pauseConfirmTarget.value;
-  if (!course) return;
-  const isPaused = course.status === 'inactive';
-  const action = isPaused ? '恢復' : '暫停';
-  pauseConfirmSubmitting.value = true;
-  try {
-    const token = await getAccessToken();
-    if (!token) { alert('請重新登入'); return; }
-
-    const body = { action: isPaused ? 'resume' : 'pause' };
-    if (!isPaused) body.cancel_remaining = !!pauseCancelRemaining.value;
-
-    const res = await authedFetch(`/api/v1/student-classes/${course.id}/pause`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(body),
-    }, token);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      alert(`${action}失敗：` + (json.message || res.statusText));
-      return;
-    }
-    alert(json.message || `已${action}`);
-    pauseConfirmTarget.value = null;
-    await loadCourses();
-    syncCourseManagerCourseFromList();
-  } catch (e) {
-    alert('操作失敗：' + (e?.message || '請稍後再試'));
-  } finally {
-    pauseConfirmSubmitting.value = false;
-  }
-}
 
 function canCloseCourse(c) {
   return c.status !== 'inactive'
