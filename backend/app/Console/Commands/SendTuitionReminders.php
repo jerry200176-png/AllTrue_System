@@ -133,6 +133,8 @@ class SendTuitionReminders extends Command
             ]);
         }
 
+        app(\App\Services\Billing\PaidStatusShadow::class)->compare($unpaidCourses, 'tuition_reminders');
+
         $this->info($dryRun ? 'Dry-run complete.' : 'Reminders sent.');
         return self::SUCCESS;
     }
