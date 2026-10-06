@@ -13,6 +13,13 @@ whose `teacher_id` is the session's non-voided LearningRecord teacher. Losers mo
 `multiple_sessions`, `no_slot_match`, `teacher_conflict`, `mixed_status`, `identity_anchor_mismatch` (#3590 item 2: frozen identity differs from the anchor's slot).
 Inverse (rollback): superseded rows go back to their old status, plus another log row.
 
+## R-2 history pins
+
+Scope: taught past occurrences (the #207 set, dated before today) with no exception row (live non-makeup row with an anchor), not leave, not makeup,
+where the evidence teacher (non-voided LearningRecord, manual and RFID sign-ins) is not `StudentClass.TeacherID`. Action: `OccurrenceAssignmentService::pinTaughtTeacher`
+(identity stamped, `reason=pin`). If the sources name more than one teacher (D2: do not guess), the occurrence is quarantined as `evidence_conflict` and not pinned.
+Inverse: removes the created pin rows, their pin log rows and any anchor the pin created; a pin changed since (substitute/restore log) is skipped and reported.
+
 ## Dry-run, digest and execute gates
 
 1. Dry-run: draft with `expected_digest=''`. Writes nothing. Returns `counts`, an ids-only `manifest` (no names) and its `sha256` `digest`.
