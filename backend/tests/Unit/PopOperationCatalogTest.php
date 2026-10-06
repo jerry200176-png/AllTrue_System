@@ -75,6 +75,7 @@ final class PopOperationCatalogTest extends TestCase
         $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
         $service = new PopOperationService($catalog);
         $method = new ReflectionMethod($service, 'approvalRoles');
+        self::assertSame(['super_admin'], $method->invoke($service, $catalog->operation('td076-r2-history-pins-20261006')));
         $entry = $catalog->operation('td076-r1-collision-keepers-20261006');
         self::assertSame(['campus_id', 'decision_reference', 'expected_digest'], $entry['parameter_keys']);
         self::assertSame(['super_admin'], $method->invoke($service, $entry));

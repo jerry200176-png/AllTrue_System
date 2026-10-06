@@ -1,4 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const authedFetch = vi.fn();
+const getAccessToken = vi.fn();
+vi.mock('../../lib/authedFetch', () => ({
+  authedFetch: (...a) => authedFetch(...a),
+  getAccessToken: (...a) => getAccessToken(...a),
+}));
+
 import { closeCourseNoRenew } from '../../lib/closeCourseNoRenew.js';
 
 function setup({ remaining = 0, settled = true, accepted = true, response = { pending_reconciliation: true } } = {}) {
@@ -9,17 +17,21 @@ function setup({ remaining = 0, settled = true, accepted = true, response = { pe
     getRemainingSessions: (course) => course.remaining_sessions,
     getSubjectLabel: (subject) => subject,
     isCourseSettled: () => settled,
-    supabase: { auth: { getSession: async () => ({ data: { session: { access_token: 'test-token' } } }) } },
     reloadCourses: async () => { calls.reloads += 1; },
     confirmImpl: (message) => { calls.confirms.push(message); return accepted; },
     alertImpl: (message) => calls.alerts.push(message),
-    fetchImpl: async (url, options) => {
-      calls.requests.push({ url, options });
-      return { ok: true, json: async () => response };
-    },
   };
+  authedFetch.mockImplementation(async (url, options, token) => {
+    calls.requests.push({ url, options, token });
+    return { ok: true, json: async () => response };
+  });
   return { calls, deps };
 }
+
+beforeEach(() => {
+  authedFetch.mockReset();
+  getAccessToken.mockReset().mockResolvedValue('test-token');
+});
 
 describe('shared close-course action', () => {
   it('preserves remaining-session, unpaid reconciliation and existing endpoint semantics', async () => {
@@ -29,6 +41,8 @@ describe('shared close-course action', () => {
     expect(calls.confirms[0]).toContain('待對帳');
     expect(calls.requests[0].url).toBe('/api/v1/student-classes/42/pause');
     expect(calls.requests[0].options.method).toBe('POST');
+    expect(calls.requests[0].token).toBe('test-token');
+    expect(calls.requests[0].options.headers).toEqual({ 'Content-Type': 'application/json', Accept: 'application/json' });
     expect(JSON.parse(calls.requests[0].options.body)).toEqual({
       action: 'pause', reason: 'settled', forfeit_remaining: true,
     });
@@ -56,5 +70,14 @@ describe('shared close-course action', () => {
     await closeCourseNoRenew(deps);
     expect(JSON.parse(calls.requests[0].options.body)).toEqual({ action: 'pause', reason: 'settled' });
     expect(calls.reloads).toBe(1);
+  });
+
+  it('asks to log in again and sends nothing when there is no session token', async () => {
+    getAccessToken.mockResolvedValue(undefined);
+    const { calls, deps } = setup();
+    await closeCourseNoRenew(deps);
+    expect(calls.requests).toEqual([]);
+    expect(calls.alerts).toEqual(['請重新登入']);
+    expect(calls.reloads).toBe(0);
   });
 });

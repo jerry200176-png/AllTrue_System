@@ -194,6 +194,7 @@ class GlobalSearchController extends Controller
                                 ->where('schedules.status', 'scheduled')
                                 ->whereNotNull('schedules.original_schedule_id');
                         });
+                    \App\Services\SubstituteScheduleService::orWhereTeachesMakeup($scope, 'StudentClass.ID', $teacherId);
                 });
             })
             ->when($role !== 'teacher' && !empty($campusIds), fn ($builder) => $builder->whereIn('search_student.CampusID', $campusIds))
