@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-07-monthly-drafts
+    published_at: "2026-10-07"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心新增「本月待開帳單」
+    summary: 月結學生的新一期帳單，系統先算好，主任核對後一鍵開立。
+    items:
+      - category: added
+        text: 在帳務中心「本月待開帳單」核對月結學生新一期帳單，可切換本月／下個月。
+      - category: added
+        text: 金額和期間沒問題就按「確認開立」；已不上課的請到課程管理結案。
