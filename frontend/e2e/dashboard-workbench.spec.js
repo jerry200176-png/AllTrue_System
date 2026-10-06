@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { createBranchApiProbe } from './fixtures/branchApiProbe.js';
 
 const BASE = process.env.SMOKE_BASE_URL;
 const DIRECTOR = { account: process.env.SMOKE_DIRECTOR_USER, password: process.env.SMOKE_DIRECTOR_PASS };
@@ -49,21 +50,45 @@ async function seedOnboardingCompleted(page) {
 }
 
 async function login(page) {
+  const tuitionProbe = createBranchApiProbe('/api/v1/alerts/tuition');
+  tuitionProbe.attach(page);
   await page.goto('/');
   await page.evaluate(() => localStorage.removeItem('alltrue.director_dashboard_view_mode.v1'));
   await page.locator('#login-account').fill(DIRECTOR.account);
   await page.locator('#login-password').fill(DIRECTOR.password);
+  const campusesPromise = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/v1/campuses' && response.status() === 200,
+    { timeout: 25_000 },
+  );
   await page.locator('button.login-btn').click();
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
-  await page.waitForTimeout(500);
+  const campuses = await (await campusesPromise).json();
+  expect(Array.isArray(campuses) && campuses.length > 0, 'director must have authorized campuses').toBe(true);
+  const authorizedIds = new Set(campuses.map((campus) => Number(campus.id)));
+  const authorizedIdsSorted = [...authorizedIds].sort((a, b) => a - b);
+  // The select is bound to App.vue's branches/currentBranch state. Its option
+  // IDs must match the authenticated list, even when public names overlap.
+  await expect.poll(async () => (
+    await page.locator('#mobile-branch-select option:not([value=""])').evaluateAll(
+      (options) => options.map((option) => Number(option.value)).sort((a, b) => a - b),
+    )
+  ), { timeout: 25_000 }).toEqual(authorizedIdsSorted);
+  const selectedBranch = Number(await page.locator('#mobile-branch-select').inputValue());
+  expect(authorizedIds.has(selectedBranch),
+    'selected dashboard campus ID must be authorized').toBe(true);
+  // A public default branch can render the heading before auth bootstrap.
+  // Start a fresh read deadline only after the selected campus is known.
+  await expect.poll(() => tuitionProbe.hasSuccessFor(selectedBranch), { timeout: 25_000 }).toBe(true);
+  await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 25_000 });
   await seedOnboardingCompleted(page);
   await dismissOverlays(page);
-  await page.waitForTimeout(400);
-  await dismissOverlays(page);
+  return tuitionProbe;
 }
 
 for (const viewport of VIEWPORTS) {
   test(`director workbench ${viewport.name}px`, async ({ page }) => {
+    // Sequential readiness waits (15s login + 3x25s) must fit inside the test cap.
+    test.setTimeout(120_000);
     test.skip(!BASE || !DIRECTOR.account, '未設定 director smoke secrets — 略過');
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     const errors = [];
@@ -73,11 +98,16 @@ for (const viewport of VIEWPORTS) {
       if (/\/v1\/adoption\/(task-tracker|activity-log|weekly-metrics)/.test(request.url())) secondaryRequests.push(request.url());
     });
     page.on('response', (response) => {
+      const path = new URL(response.url()).pathname;
+      if (['/api/v1/auth/login', '/api/v1/me', '/api/v1/campuses', '/api/v1/alerts/tuition'].includes(path)) {
+        // Only endpoint names and status codes: no accounts, tokens or payloads.
+        console.log(`[director-workbench] ${path} HTTP ${response.status()}`);
+      }
       if (/\/v1\/alerts\/tuition(?:\?|$)/.test(response.url())) tuitionAlertsResponse = response;
     });
     page.on('pageerror', (error) => errors.push(String(error)));
 
-    await login(page);
+    const tuitionProbe = await login(page);
     await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('今日摘要', { exact: true })).toBeVisible();
 
@@ -105,6 +135,8 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByRole('heading', { name: '繳費與續課', exact: true })).toBeVisible();
     await expect.poll(() => tuitionAlertsResponse?.status()).toBe(200);
 
+    await expect.poll(() => tuitionProbe.pendingCount(), { timeout: 15_000 }).toBe(0);
+    expect(tuitionProbe.unauthorizedStatuses(), 'tuition API must not return 401/403, even before a later 200').toEqual([]);
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 }
