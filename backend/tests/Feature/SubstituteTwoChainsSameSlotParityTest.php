@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
@@ -82,6 +83,121 @@ class SubstituteTwoChainsSameSlotParityTest extends TestCase
         $this->assertNull($teachers->firstWhere('teacher_id', $aId), 'payroll must not credit contract teacher A');
         $this->assertSame(1, $teachers->firstWhere('teacher_id', $bId)['session_count'] ?? null,
             'payroll must credit substitute B');
+    }
+
+    // ---- TD-076 Track B PR-C: flag ON, every reader names the same teacher (the flag-off tests above stay as they are) ----
+
+    public function test_flag_on_two_chains_41612_shape_all_readers_name_b(): void
+    {
+        $ctx = $this->seed2026Shape(partTime: true);
+        $this->flagOn();
+        $this->assertReadersAgree($ctx, expected: $ctx[1], contract: $ctx[0]);
+
+        // Stamped (post-repair) shape: one live identity row for B, the stale contract row is ignored.
+        DB::table('schedules')->where('id', 12698)->update(['original_schedule_date' => self::DATE, 'original_start_time' => '10:00']);
+        $this->assertReadersAgree($ctx, expected: $ctx[1], contract: $ctx[0], payroll: false);
+    }
+
+    public function test_flag_on_contract_changed_to_the_substitute_all_readers_name_b(): void
+    {
+        $ctx = $this->seed2026Shape(partTime: true);
+        [$aId, $bId, , , $sc] = $ctx;
+        // Contract moved A -> B; the newer current-contract row (12696) now names B too.
+        DB::table('StudentClass')->where('ID', $sc->ID)->update(['TeacherID' => $bId]);
+        DB::table('schedules')->where('id', 12696)->update(['teacher_id' => $bId]);
+        $this->flagOn();
+
+        $this->assertReadersAgree($ctx, expected: $bId, contract: $bId, wrongTeacher: $aId);
+    }
+
+    public function test_flag_on_makeup_with_substitute_all_readers_name_the_learning_record_teacher(): void
+    {
+        $ctx = $this->seed2026Shape(partTime: true);
+        [$aId, $bId, , , $sc, $session] = $ctx;
+        DB::table('schedules')->whereIn('id', [12695, 12696, 12697, 12698])->delete();
+        // Makeup (extra) row keeps contract teacher A; the substitute B lives on the LearningRecord only (#3590 item 8).
+        DB::table('schedules')->insert([
+            'id' => 12700, 'student_id' => $sc->StudentID, 'teacher_id' => $aId, 'day_of_week' => 5, 'type' => 'extra',
+            'status' => 'scheduled', 'deduction' => 1, 'branch_id' => 1, 'student_course_id' => $sc->ID,
+            'schedule_date' => self::DATE, 'start_time' => '10:00', 'end_time' => '12:00',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        LearningRecord::create([
+            'StudentClassID' => $sc->ID, 'ClassSessionID' => $session->id, 'TeacherID' => $bId, 'Status' => 'pending',
+            'Content' => '', 'SessionDate' => self::DATE, 'StartTime' => '10:00', 'EndTime' => '12:00',
+        ]);
+        $this->flagOn();
+
+        $this->assertReadersAgree($ctx, expected: $bId, contract: $aId);
+    }
+
+    public function test_flag_on_leave_occurrence_all_readers_keep_the_contract_teacher(): void
+    {
+        $ctx = $this->seed2026Shape(partTime: true);
+        [$aId, , , , $sc] = $ctx;
+        DB::table('schedules')->whereIn('id', [12695, 12696, 12697, 12698])->delete();
+        DB::table('schedules')->insert([
+            'id' => 12701, 'student_id' => $sc->StudentID, 'teacher_id' => $aId, 'day_of_week' => 5, 'type' => 'normal',
+            'status' => 'leave', 'deduction' => 0, 'branch_id' => 1, 'student_course_id' => $sc->ID,
+            'schedule_date' => self::DATE, 'start_time' => '10:00', 'end_time' => '12:00',
+            'original_schedule_date' => self::DATE, 'original_start_time' => '10:00',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->flagOn();
+
+        $this->assertReadersAgree($ctx, expected: $aId, contract: $aId, attendanceAndPayroll: false);
+    }
+
+    private function flagOn(): void
+    {
+        config(['feature_flags.values' => ['FEATURE_SCHEDULE_OCCURRENCE_V2' => false, 'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1' => true]]);
+    }
+
+    /** Index, resolver, payroll and the attendance gate must all name $expected. */
+    private function assertReadersAgree(array $ctx, int $expected, int $contract, ?int $wrongTeacher = null, bool $attendanceAndPayroll = true, bool $payroll = true): void
+    {
+        [$aId, , $aToken, $bToken, $sc, $session, $stu] = $ctx;
+
+        $svc = app(\App\Services\ClassSessionIndexReadService::class);
+        $row = $svc->buildQuery(Request::create('/api/v1/class-sessions', 'GET', ['start' => self::DATE, 'end' => self::DATE]))->get()->firstWhere('id', $session->id);
+        $row = $row ? $svc->transformRow($row) : null;
+        $this->assertNotNull($row);
+        $this->assertSame($expected, (int) $row->teacher_id, 'index teacher_id');
+        $this->assertSame($expected === $contract ? null : $expected, $row->substitute_teacher_id, 'index substitute_teacher_id');
+        // the teacher filter and the teacher-role scope use the same answer
+        $this->assertTrue($svc->buildQuery(Request::create('/api/v1/class-sessions', 'GET', ['start' => self::DATE, 'end' => self::DATE, 'teacher_id' => $expected]))->get()->contains('id', $session->id), 'index teacher_id filter');
+        $other = $wrongTeacher ?? ($expected !== $contract ? $contract : null);
+        if ($other !== null) {
+            $this->assertFalse($svc->buildQuery(Request::create('/api/v1/class-sessions', 'GET', ['start' => self::DATE, 'end' => self::DATE, 'teacher_id' => $other]))->get()->contains('id', $session->id), 'index filter excludes the other teacher');
+        }
+
+        $this->assertSame($expected, SubstituteScheduleService::effectiveInstructorUserId((int) $sc->ID, self::DATE, $contract, '10:00:00'));
+        $this->assertSame($expected, SubstituteScheduleService::teacherForOccurrence((int) $sc->ID, self::DATE, $contract, '10:00'));
+        $this->assertSame($expected === $contract ? null : $expected, SubstituteScheduleService::resolveSubstituteUserId((int) $sc->ID, self::DATE, '10:00:00'));
+
+        if (!$attendanceAndPayroll) {
+            return;
+        }
+        $tokens = [$aId => $aToken, $ctx[1] => $bToken];
+        $loserToken = $tokens[$wrongTeacher ?? ($expected === $aId ? $ctx[1] : $aId)];
+        $this->postAttendance($loserToken, $session, $sc)->assertStatus(403);
+
+        if ($payroll) {
+            StudentSignIn::create([
+                'StudentClassID' => $sc->ID, 'StudentID' => $stu->id, 'TeacherID' => $aId,
+                'ClassSessionID' => $session->id, 'Status' => 'present', 'SignInDT' => self::DATE . ' 10:00:00',
+            ]);
+            $dir = User::create(['LoginName' => 'dir-c@example.com', 'Name' => '主任', 'PSW' => 'x', 'type' => 'A', 'phone' => '0910000019', 'MustChangePassword' => false]);
+            UserCampus::create(['CampusID' => 1, 'UserID' => $dir->id, 'Admin' => 1, 'Approved' => 1]);
+            $token = bin2hex(random_bytes(16));
+            AuthToken::create(['user_id' => $dir->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+            $teachers = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->getJson('/api/v1/finance/parttime-payroll?month=2026-10&branch_id=1')->assertOk()->json('teachers'));
+            $this->assertSame(1, $teachers->firstWhere('teacher_id', $expected)['session_count'] ?? null, 'payroll credits the resolved teacher');
+            $this->assertCount(1, $teachers->where('teacher_id', '!=', null)->filter(fn ($t) => (int) ($t['session_count'] ?? 0) > 0), 'payroll credits exactly one teacher');
+        }
+
+        $this->assertNotSame(403, $this->postAttendance($tokens[$expected], $session, $sc)->status(), 'resolved teacher may mark attendance');
     }
 
     private function postAttendance(string $token, ClassSession $session, StudentClass $sc): \Illuminate\Testing\TestResponse
