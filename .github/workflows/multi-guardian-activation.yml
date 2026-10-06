@@ -125,9 +125,10 @@ jobs:
         env:
           LIMIT: ${{ github.event.inputs.limit }}
         run: |
+          # Public repo (#3605): the command prints each student's parent phone and name; mask them here.
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
-            env LIMIT="$LIMIT" bash -s <<'ENDSSH' | tee /tmp/mg-dryrun.txt
+            env LIMIT="$LIMIT" bash -s <<'ENDSSH' | sed -E 's/(phone=)[^ ]+ (name=).*/\1[redacted] \2[redacted]/' | tee /tmp/mg-dryrun.txt
           set -euo pipefail
           cd /home/admin/backend
           echo "head=$(git -C /home/admin rev-parse HEAD)"
@@ -174,7 +175,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
-            env LIMIT="$LIMIT" EXPECTED_HEAD_SHA="$EXPECTED_HEAD_SHA" bash -s <<'ENDSSH' | tee /tmp/mg-apply.txt
+            env LIMIT="$LIMIT" EXPECTED_HEAD_SHA="$EXPECTED_HEAD_SHA" bash -s <<'ENDSSH' | sed -E 's/(phone=)[^ ]+ (name=).*/\1[redacted] \2[redacted]/' | tee /tmp/mg-apply.txt
           set -euo pipefail
           cd /home/admin
           ACTUAL="$(git rev-parse HEAD)"
