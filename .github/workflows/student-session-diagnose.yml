@@ -1,22 +1,16 @@
-# Read-only Pi diagnose: who scheduled a given student's ClassSession and who marked attendance.
+# Read-only Pi diagnose: who (user id) scheduled a given student's ClassSession and who marked attendance.
 # Manual dispatch only. No writes — SELECT-only queries via scripts/diagnose-student-session.sh.
+# Public repo (#3605): inputs take a student_id (never a name); the log, artifact and summary carry
+# ids, statuses, dates, amounts and counts only (free text is reported as a length).
 name: Student Session Diagnose (read-only)
 
 on:
-  push:
-    branches:
-      - 'cursor/diag-student-session-**'
   workflow_dispatch:
     inputs:
-      student_name:
-        description: "Student name (exact match)"
+      student_id:
+        description: "Student id (numeric; never a name)"
         required: true
         type: string
-      teacher_name:
-        description: "Teacher name (optional)"
-        required: false
-        type: string
-        default: ""
       date:
         description: "Target session date YYYY-MM-DD"
         required: true
@@ -62,21 +56,21 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          STUDENT_NAME: ${{ inputs.student_name || '黃奕暟' }}
-          TEACHER_NAME: ${{ inputs.teacher_name || '張翔' }}
-          DATE: ${{ inputs.date || '2026-07-28' }}
+          STUDENT_ID: ${{ inputs.student_id }}
+          DATE: ${{ inputs.date }}
           CAMPUS_ID: ${{ inputs.campus_id || '9' }}
         run: |
           set -euo pipefail
+          [[ "$STUDENT_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'student_id must be a numeric id'; exit 1; }
           SCRIPT_B64=$(base64 -w0 scripts/diagnose-student-session.sh)
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            SCRIPT_B64="$SCRIPT_B64" STUDENT_NAME="$STUDENT_NAME" TEACHER_NAME="$TEACHER_NAME" DATE="$DATE" CAMPUS_ID="$CAMPUS_ID" \
+            SCRIPT_B64="$SCRIPT_B64" STUDENT_ID="$STUDENT_ID" DATE="$DATE" CAMPUS_ID="$CAMPUS_ID" \
             'bash -s' <<'ENDSSH'
           set -euo pipefail
           echo "$SCRIPT_B64" | base64 -d > /tmp/diagnose-student-session.sh
           chmod +x /tmp/diagnose-student-session.sh
-          STUDENT_NAME="$STUDENT_NAME" TEACHER_NAME="$TEACHER_NAME" DATE="$DATE" CAMPUS_ID="$CAMPUS_ID" \
+          STUDENT_ID="$STUDENT_ID" DATE="$DATE" CAMPUS_ID="$CAMPUS_ID" \
             bash /tmp/diagnose-student-session.sh | tee /tmp/student-session-diagnose.txt
           rm -f /tmp/diagnose-student-session.sh
           ENDSSH

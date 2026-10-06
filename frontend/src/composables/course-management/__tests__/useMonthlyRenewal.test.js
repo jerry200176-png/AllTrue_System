@@ -138,7 +138,7 @@ describe('useMonthlyRenewal.submit', () => {
   });
 });
 
-// Page-level differences are intentional and pinned here (see PR description).
+// Remaining page-level differences are intentional and pinned here (see PR description).
 describe('page wiring', () => {
   const cm = readFileSync(`${process.cwd()}/src/pages/CourseManagement.vue`, 'utf8');
   const sl = readFileSync(`${process.cwd()}/src/pages/StudentsList.vue`, 'utf8');
@@ -152,9 +152,12 @@ describe('page wiring', () => {
     }
   });
 
-  it('CourseManagement still requires a ready preview before submit; StudentsList does not', () => {
+  it('both pages require a ready preview before submit (shared canSubmit gate)', () => {
     expect(fnBody(cm, 'async function submitRenewMonthly(endDate)')).toContain('canSubmitMonthlyRenewal(renewMonthlyForm.value, endDate)');
-    expect(fnBody(sl, 'const submitRenewMonthly = async (endDate)')).not.toContain('canSubmitMonthlyRenewal');
+    const slBody = fnBody(sl, 'const submitRenewMonthly = async (endDate)');
+    expect(slBody).toContain('monthlyRenewal.canSubmit(renewMonthlyForm.value, endDate)');
+    expect(slBody).toContain('RENEW_NEED_PREVIEW_ALERT');
+    expect(slBody.indexOf('canSubmit(')).toBeLessThan(slBody.indexOf('monthlyRenewal.submit('));
   });
 
   it('StudentsList stays silent for a missing target course; CourseManagement shows the login error', () => {

@@ -94,9 +94,12 @@ class SubstituteService
                 'cs.EndTime as end_time',
                 'st.CampusID as campus_id'
             )
-            ->get();
+            ->get()
+            ->reject(fn ($r) => $this->substitutedAway($r, $ymd));
 
         [$sessionRows, $scheduleRows] = $this->applyGuardLiveRowRules($teacherId, $ymd, $excludeScheduleIds, $sessionRows, $scheduleRows);
+        // #3590 item 9 (flag on): a substitute on a makeup occurrence is busy too.
+        $scheduleRows = $scheduleRows->concat(SubstituteScheduleService::makeupOccurrencesTaughtBy($teacherId, $ymd, $excludeScheduleIds, $excludeStudentId));
 
         $busy = [];
         foreach ($scheduleRows as $row) {
@@ -183,7 +186,8 @@ class SubstituteService
                 'sc.ClassType as class_type',
                 'st.CampusID as campus_id'
             )
-            ->get();
+            ->get()
+            ->reject(fn ($r) => $this->substitutedAway($r, $ymd));
 
         // 來源 2：schedules (status=scheduled)，透過 StudentClass 取得 ClassType
         // 使用 Query Builder（非 Eloquent），避免 join 後 student_id alias 被 Model 丟棄。
@@ -215,6 +219,8 @@ class SubstituteService
             ->rejectStale($scheduleQuery->get(), $ymd);
 
         [$sessionRows, $scheduleRows] = $this->applyGuardLiveRowRules($teacherId, $ymd, $excludeScheduleIds, $sessionRows, $scheduleRows);
+        // #3590 item 9 (flag on): a substitute on a makeup occurrence is busy too.
+        $scheduleRows = $scheduleRows->concat(SubstituteScheduleService::makeupOccurrencesTaughtBy($teacherId, $ymd, $excludeScheduleIds, $excludeStudentId));
 
         // 彙整原始 slots（每個 slot = 1 位學生的 1 堂課）
         $rawSlots = [];
@@ -307,6 +313,12 @@ class SubstituteService
         }
 
         return $result;
+    }
+
+    /** TD-076 flag on: the occurrence's live row (or makeup LearningRecord) names another teacher, so the contract teacher is free. */
+    private function substitutedAway(object $sessionRow, string $ymd): bool
+    {
+        return SubstituteScheduleService::isSubstitutedAway((int) $sessionRow->course_id, $ymd, (string) $sessionRow->start_time);
     }
 
     /**

@@ -2505,6 +2505,9 @@ class ClassSessionController extends Controller
         if (OccurrenceAssignmentService::enabledFor($campusId) && OccurrenceAssignmentService::onLeave($session)) {
             return response()->json(['message' => '此堂已請假，無法代課'], 422);
         }
+        if ($hasReschedule && OccurrenceAssignmentService::enabledFor($campusId) && OccurrenceAssignmentService::onMakeup($session)) {
+            return response()->json(['message' => '補課堂次無法同時代課與換時段'], 422);
+        }
 
         try {
             return $this->runSubstituteTransaction(
@@ -2599,6 +2602,8 @@ class ClassSessionController extends Controller
 
             $v2 = OccurrenceAssignmentService::enabledFor($campusId);
             $identityRow = null;
+            // Makeup (`extra`) sessions get no chain rows: a substitute row would be a second live row beside the makeup row.
+            $makeup = $v2 && OccurrenceAssignmentService::onMakeup($session);
 
             $this->logSubstituteDiag('transaction_begin', [
                 'class_session_id' => $session->id,
@@ -2625,7 +2630,7 @@ class ClassSessionController extends Controller
 
                 // TD-076 B1 (flag on): one live identity row takes teacher + new slot, one log row.
                 // Must run while the session still sits on its original slot.
-                if ($v2) {
+                if ($v2 && !$makeup) {
                     $identityRow = app(OccurrenceAssignmentService::class)->assignTeacher(
                         $session,
                         $newTeacherId,
@@ -2681,13 +2686,13 @@ class ClassSessionController extends Controller
             }
 
             if ($v2):
-                $identityRow ??= app(OccurrenceAssignmentService::class)->assignTeacher(
+                $identityRow ??= $makeup ? null : app(OccurrenceAssignmentService::class)->assignTeacher(
                     $session,
                     $newTeacherId,
                     (int) ($request->attributes->get('auth_user')->id ?? 0)
                 );
-                $rescheduledId = (int) $identityRow->original_schedule_id;
-                $scheduledId = (int) $identityRow->id;
+                $rescheduledId = $identityRow ? (int) $identityRow->original_schedule_id : null;
+                $scheduledId = $identityRow ? (int) $identityRow->id : null;
             else:
             // 1) Upsert rescheduled record (hides original teacher's slot)
             $existingRescheduledRow = $existingRescheduled ?: Schedule::where('student_course_id', $courseId)
@@ -3481,22 +3486,7 @@ class ClassSessionController extends Controller
         $effectiveSessionRows = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->leftJoin(DB::raw('(
-                SELECT ss.*, SUBSTRING(ss.start_time, 1, 5) AS start_time_hm
-                FROM `schedules` ss
-                INNER JOIN (
-                    SELECT sub2.student_course_id,
-                           sub2.schedule_date,
-                           SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
-                           MAX(sub2.id) AS max_id
-                    FROM `schedules` sub2
-                    INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
-                    WHERE sub2.status = "scheduled"
-                      AND sub2.original_schedule_id IS NOT NULL
-                      AND sub2.teacher_id <> sc2.TeacherID
-                    GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
-                ) sub_latest ON ss.id = sub_latest.max_id
-            ) as sub_sched'), function ($join) {
+            ->leftJoin(DB::raw(\App\Services\SubstituteScheduleService::substituteScheduleDerivedSql() . ' as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
                     ->whereColumn('sub_sched.schedule_date', 'cs.SessionDate')
                     ->whereColumn('sub_sched.start_time_hm', 'cs.StartTimeHM');

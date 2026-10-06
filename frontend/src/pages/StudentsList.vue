@@ -1045,7 +1045,7 @@ import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/cons
 import { getStudentCourseSubjectDisplayLabel } from '../lib/studentCourseSubjectDisplay.js';
 import { guardianRoleLabel, lineBindingDisplay } from '../lib/guardianDisplay.js';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
-import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
+import { useMonthlyRenewal, RENEW_NEED_PREVIEW_ALERT } from '../composables/course-management/useMonthlyRenewal';
 import {
   calculateTransactionDiscountPreview,
   estimateMonthlyRenewalCharge,
@@ -1643,7 +1643,7 @@ const canCloseCourse = (course) => {
 async function closeCourseNoRenew(course, studentName) {
   return runCloseCourseNoRenew({
     course, studentName, getRemainingSessions: ownRemainingSessions,
-    getSubjectLabel, isCourseSettled, supabase, reloadCourses: loadAllStudentCourses,
+    getSubjectLabel, isCourseSettled, reloadCourses: loadAllStudentCourses,
   });
 }
 
@@ -3559,8 +3559,9 @@ const openInvoiceModal = async (course) => {
 const submitRenewMonthly = async (endDate) => {
   const course = renewMonthlyTargetCourse.value;
   if (!course?.id) return;
-  if (!endDate) { alert('請選擇新到期日或延長月數'); return; }
   if (renewMonthlySubmitting.value) return;
+  if (!monthlyRenewal.canSubmit(renewMonthlyForm.value, endDate)) { alert(RENEW_NEED_PREVIEW_ALERT); return; }
+  if (!endDate) { alert('請選擇新到期日或延長月數'); return; }
   renewMonthlySubmitting.value = true;
   try {
     const result = await monthlyRenewal.submit(course, endDate);

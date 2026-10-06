@@ -3285,7 +3285,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 9
+			count: 8
 			path: app/Http/Controllers/StudentClassController.php
 
 		-

@@ -85,7 +85,7 @@ jobs:
           test -f app/Console/Commands/RepairTransferredSessionLedger.php
           php artisan list --format=txt | grep -q 'repair:transferred-session-ledger'
           ARGS=(--source-class=2688 --target-class=3401 --session-ids=24169,30440,30441,30442,31820
-            --reason='吳艾潼堂次轉移後同步扣堂台帳' --actor="github-actions:wuaitong-ledger:$RUN_ID" --actor-user-id=4)
+            --reason='student 178 transferred-session ledger reconcile' --actor="github-actions:wuaitong-ledger:$RUN_ID" --actor-user-id=4)
           php artisan repair:transferred-session-ledger "${ARGS[@]}"
           if [ "$MODE" = dry-run ]; then exit 0; fi
           TS=$(date -u '+%Y%m%dT%H%M%SZ')

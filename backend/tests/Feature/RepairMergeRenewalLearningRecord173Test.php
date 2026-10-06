@@ -45,7 +45,13 @@ class RepairMergeRenewalLearningRecord173Test extends TestCase
             'Comment' => 'keeper comment',
         ]);
         $this->assertSame(1, Artisan::call('repair:merge-renewal-learning-record', ['--case' => '173']));
-        $this->assertStringContainsString('FIELD_CONFLICT', Artisan::output());
+        $out = Artisan::output();
+        $this->assertStringContainsString('FIELD_CONFLICT', $out);
+        $this->assertStringNotContainsString('老師已填的另一套評量', $out);
+        $this->assertStringNotContainsString('keeper comment', $out);
+
+        Artisan::call('repair:merge-renewal-learning-record', ['--case' => '173', '--with-names' => true]);
+        $this->assertStringContainsString('老師已填的另一套評量', Artisan::output());
     }
 
     public function test_execute_merge_idempotent_and_rollback(): void
