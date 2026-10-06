@@ -817,7 +817,8 @@
 - **發現來源**：2026-08-16 夜間堂數對帳澄清研究
 - **影響**：同一中文「對帳」同時指堂數一致性、學費帳務流水、發票勾稽、銀行勾稽；工程師與主任容易以為功能重複或進錯頁。
 - **現況**：`GUIDE_NIGHTLY_SESSION_RECONCILE.md` 已列對照表；夜間 UI 已正名「夜間堂數對帳」。
-- **建議**：後續把繳費收款按鈕「對帳」改成「帳務流水」等更精確動詞（需 Founder 文案 GO）；不要合併 `reconcile:nightly` 與 `packages:reconcile`。
+- **建議**：後續把繳費收款按鈕「對帳」改成「學生帳務／繳費明細」等更精確動詞；不要合併 `reconcile:nightly` 與 `packages:reconcile`。
+- **清償計畫**：[`docs/plans/2026-10-06-director-student-billing-reconciliation-ia.md`](plans/2026-10-06-director-student-billing-reconciliation-ia.md) M4（文案清债）＋ M2（入口收斂）。
 - **優先級**：P2
 
 ### TD-083 — 全站功能重複清理追蹤（A/B/C）
