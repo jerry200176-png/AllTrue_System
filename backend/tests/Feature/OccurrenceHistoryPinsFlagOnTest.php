@@ -170,6 +170,47 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
         $this->assertSame(1, Schedule::where('student_course_id', $this->sc->ID)->where('status', 'scheduled')->count(), 'only the makeup row, no second live row');
     }
 
+    public function test_lr_update_teacher_on_a_future_occurrence_conflict_is_409_without_writes_flag_on(): void
+    {
+        $this->flag(true);
+        $lr = $this->futureLrWithBusyTeacher('2026-04-19');
+
+        $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId])->assertStatus(409);
+
+        $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
+        $this->assertSame(0, ScheduleChangeLog::count());
+        $this->assertSame(1, Schedule::count(), 'only the busy row');
+    }
+
+    public function test_lr_update_teacher_conflict_check_is_skipped_for_past_and_flag_off(): void
+    {
+        $this->flag(true);
+        $past = $this->futureLrWithBusyTeacher('2026-04-10');
+        $this->api()->patchJson("/api/v1/learning-records/{$past->id}/teacher", ['TeacherID' => $this->bId])->assertOk();
+
+        $this->flag(false);
+        $future = $this->futureLrWithBusyTeacher('2026-04-19');
+        $this->api()->patchJson("/api/v1/learning-records/{$future->id}/teacher", ['TeacherID' => $this->bId])->assertOk();
+    }
+
+    /** A session + pending LR (teacher A) on $date 16:00-18:00, with teacher B already busy for another student at that slot. */
+    private function futureLrWithBusyTeacher(string $date): LearningRecord
+    {
+        $session = $this->makeSession($date, 'scheduled');
+        $other = Student::create(['name' => 'busy student', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        DB::table('schedules')->insert([
+            'student_id' => $other->id, 'teacher_id' => $this->bId, 'subject' => 'Math', 'day_of_week' => 7, 'type' => 'normal',
+            'status' => 'scheduled', 'deduction' => 1, 'branch_id' => 1, 'schedule_date' => $date,
+            'start_time' => '16:00', 'end_time' => '18:00', 'class_type' => 'one_on_one',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return LearningRecord::create([
+            'StudentClassID' => $this->sc->ID, 'ClassSessionID' => $session->id, 'TeacherID' => $this->aId,
+            'Status' => 'pending', 'Content' => '', 'SessionDate' => $date, 'StartTime' => '16:00', 'EndTime' => '18:00',
+        ]);
+    }
+
     private function changeContractTeacher(int $teacherId)
     {
         return $this->api()->putJson("/api/v1/student-classes/{$this->sc->ID}", ['teacher_id' => $teacherId]);
