@@ -3486,22 +3486,7 @@ class ClassSessionController extends Controller
         $effectiveSessionRows = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->leftJoin(DB::raw('(
-                SELECT ss.*, SUBSTRING(ss.start_time, 1, 5) AS start_time_hm
-                FROM `schedules` ss
-                INNER JOIN (
-                    SELECT sub2.student_course_id,
-                           sub2.schedule_date,
-                           SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
-                           MAX(sub2.id) AS max_id
-                    FROM `schedules` sub2
-                    INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
-                    WHERE sub2.status = "scheduled"
-                      AND sub2.original_schedule_id IS NOT NULL
-                      AND sub2.teacher_id <> sc2.TeacherID
-                    GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
-                ) sub_latest ON ss.id = sub_latest.max_id
-            ) as sub_sched'), function ($join) {
+            ->leftJoin(DB::raw(\App\Services\SubstituteScheduleService::substituteScheduleDerivedSql() . ' as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
                     ->whereColumn('sub_sched.schedule_date', 'cs.SessionDate')
                     ->whereColumn('sub_sched.start_time_hm', 'cs.StartTimeHM');
