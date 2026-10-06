@@ -1,0 +1,48 @@
+name: PR overlap
+
+# Advisory only: one sticky comment listing other open PRs that touch the same
+# files. Not a required check. Runs the script from the BASE commit only, so no
+# PR code is ever executed.
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-overlap-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  overlap:
+    name: Overlap comment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Sticky overlap comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          [ -f scripts/pr-overlap.mjs ] || exit 0  # base predates the script (this PR itself)
+          body=$(node scripts/pr-overlap.mjs "$PR" --markdown)
+          id=$(gh api --paginate "repos/$GH_REPO/issues/$PR/comments" \
+            --jq '.[] | select(.body | startswith("<!-- pr-overlap -->")) | .id' | head -n1)
+          if [ -z "$body" ]; then
+            [ -n "$id" ] && gh api -X DELETE "repos/$GH_REPO/issues/comments/$id"
+            exit 0
+          fi
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GH_REPO/issues/comments/$id" -f body="$body" >/dev/null
+          else
+            gh api -X POST "repos/$GH_REPO/issues/$PR/comments" -f body="$body" >/dev/null
+          fi
