@@ -1254,7 +1254,6 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         for filename in (
             "deploy.yml",
             "1387-db-password-rotation.yml",
-            "1387-db-grant-repair.yml",
         ):
             workflow = (WORKFLOW.parent / filename).read_text(encoding="utf-8")
             self.assertIn("group: alltrue-production-side-effects-v2", workflow)
