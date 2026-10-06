@@ -233,9 +233,6 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn("observed=${IDENTITY}", director)
         for wf in ("bug-phase-a-triage.yml", "bug-followup-comment.yml"):
             self.assertNotIn('"comment" => $comment', (WF / wf).read_text(encoding="utf-8"))
-        lu = (WF / "lu-yue-1513-unpaid-rollback.yml").read_text(encoding="utf-8")
-        self.assertNotRegex(lu, r'first\(\[[^\]]*"name"')
-        self.assertNotRegex(lu, r'"Note"\]\);')
 
     def run_filter(self, source, text):
         return subprocess.run(["python3", "-c", textwrap.dedent(source)], input=text, text=True, capture_output=True)

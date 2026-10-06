@@ -43,7 +43,18 @@ From the stored snapshot: delete each created invoice/item/contract only while i
 same amount and period, contract has no sessions). Changed rows are skipped and reported (`ok=false, partial=true`). Production has no rollback
 adapter yet: a rollback is a new Founder-approved POP request. A retry after an execution record failed to persist does not rebuild the snapshot.
 
-## Dispatch adapter (follow-up, not in this PR)
+## Dispatch adapter
 
-Copy `.github/workflows/pop-muzha-chen-billing-catchup.yml` (plus its `PRODUCTION_WORKFLOW_INVENTORY.json` and `pii-log-workflows.txt`
-entries) via the coordinator, adding the `campus_ids` and `expected_digest` inputs.
+`.github/workflows/pop-unbilled-backlog-catchup.yml` (copy of the TD-076 adapter; `production-activation` environment, pinned Pi SSH,
+deployed-SHA check, short-lived Pi-local super_admin session, one campus per run). Dry-run prints state, digest, totals and ids-only rows
+(contract/student/campus ids, month, lessons, amount, status, reason; no names) and returns without polling. Approve needs the reviewed
+digest, requires `state=pinned`, issues the approval, then polls the Pi-local execute/verify (bounded about 11 minutes) and prints only
+`execute/verify/audit/rollback_snapshot` status.
+
+```
+gh workflow run pop-unbilled-backlog-catchup.yml --ref main -f mode=dry-run -f campus_id=9 \
+  -f confirm=DRY_RUN_UNBILLED_BACKLOG_9 -f deployed_backend_sha=<sha>
+# after the Founder reviews that run's digest and rows:
+gh workflow run pop-unbilled-backlog-catchup.yml --ref main -f mode=approve -f campus_id=9 \
+  -f expected_digest=<64-hex digest from the dry-run> -f confirm=APPROVE_UNBILLED_BACKLOG_9 -f deployed_backend_sha=<sha>
+```
