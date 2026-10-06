@@ -4171,12 +4171,6 @@ parameters:
 			path: app/Services/ExceptionWorkflowCandidateGenerator.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\ExceptionWorkflow\:\:\$class_session_id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/ExceptionWorkflowCandidateGenerator.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\ExceptionWorkflow\:\:\$status\.$#'
 			identifier: property.notFound
 			count: 1

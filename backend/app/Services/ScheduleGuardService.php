@@ -1176,7 +1176,7 @@ class ScheduleGuardService
      *
      * @return array<int, array<string, mixed>>
      */
-    private function buildTeacherDateOccupancyEntries(
+    public function buildTeacherDateOccupancyEntries(
         int $teacherId,
         int $branchId,
         string $date,

@@ -764,6 +764,51 @@ class ExceptionWorkflowApiTest extends TestCase
         ]);
     }
 
+    /** #3639: candidate occupancy follows ScheduleGuardService, not its own rules. */
+    private function candidateStartsWithOtherOccupant(string $status, int $stop = 0, int $otherCampus = 1): array
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '守衛候選學生', '0912003639');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1, 'student_id' => $student->id, 'student_class_id' => $course->ID,
+            'class_session_id' => $session->id, 'type' => 'student_leave', 'status' => 'open',
+        ]);
+        [$other, $otherCourse] = $this->makeStudentCourseSession($otherCampus, '守衛佔用學生', '0912003640');
+        $otherCourse->update(['Stop' => $stop]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $otherCourse->ID, 'SessionDate' => '2026-05-07',
+            'StartTime' => '09:00:00', 'EndTime' => '11:00:00', 'Status' => $status,
+            'Note' => '', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $token = $this->createDirectorToken([1], 'director-guard-occupancy@example.com');
+        $res = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07', 'end_date' => '2026-05-07', 'limit' => 4,
+        ], ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json']);
+        $res->assertOk();
+
+        return collect($res->json('data.candidates'))->pluck('start_time')->map(fn ($t) => substr($t, 0, 5))->all();
+    }
+
+    public function test_candidates_treat_voided_session_as_free_like_the_guard(): void
+    {
+        $this->assertContains('09:00', $this->candidateStartsWithOtherOccupant('voided'));
+    }
+
+    public function test_candidates_treat_leave_requested_session_as_busy_like_the_guard(): void
+    {
+        $this->assertNotContains('09:00', $this->candidateStartsWithOtherOccupant('leave_requested'));
+    }
+
+    public function test_candidates_ignore_stopped_course_sessions_like_the_guard(): void
+    {
+        $this->assertContains('09:00', $this->candidateStartsWithOtherOccupant('scheduled', 1));
+    }
+
+    public function test_candidates_ignore_other_branch_sessions_like_the_guard(): void
+    {
+        $this->assertContains('09:00', $this->candidateStartsWithOtherOccupant('scheduled', 0, 2));
+    }
+
     private function makeStudentCourseSession(
         int $campusId,
         string $name,
