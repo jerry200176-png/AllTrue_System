@@ -9,11 +9,9 @@ use Illuminate\Support\Facades\DB;
 /**
  * Single owner of contract-level money state (ADR-003 rule 3; F4/F7 recurrence families).
  *
- * Lifted verbatim from AlertController / ParentPortalController / StudentClassController /
- * PaymentReportController / BillingController. The classifiers below are deliberately NOT merged:
- * the callers disagreed before this module existed (see ContractMoneyStateTest, "divergence" cases)
- * and user-visible output must stay identical. Converge them in a separate, behavior-changing PR
- * (F7 paid-status decision packet).
+ * Founder-approved display rules (2026-10-06, option A): waived reads 確認不收 and partial reads
+ * 部分繳 on every classifier, and a Charge-0 parent billing record reads free, not paid. What counts
+ * as paid (G-009) and every amount are unchanged; only the displayed status differs.
  *
  * Course-level settlement amounts for new code belong to {@see \App\Services\BillingPayableResolver}.
  */
@@ -29,6 +27,9 @@ final class ContractMoneyState
     {
         if (!$sc) {
             return 'unpaid';
+        }
+        if (self::isWaived($sc)) {
+            return 'waived';
         }
         if ($hasPendingReport) {
             return 'pending_report';
@@ -60,13 +61,16 @@ final class ContractMoneyState
 
     /**
      * Course-management list status (was inline in StudentClassController::index).
-     * A fully-paid contract wins over an older pending report (#249).
+     * A fully-paid contract wins over an older pending report (#249); part-paid reads partial like the alert ladder.
+     * Waived stays `paid` here (isEffectivelyPaid drives notices/renewals); the client labels it 確認不收 from closed_reason.
      */
     public static function listStatus(bool $effectivePaid, int $invoicePaidAmount, int $charge, bool $hasPendingReport): string
     {
-        return StudentClass::isFullyPaid($effectivePaid, $invoicePaidAmount, $charge)
-            ? 'paid'
-            : ($hasPendingReport ? 'pending_report' : 'unpaid');
+        if (StudentClass::isFullyPaid($effectivePaid, $invoicePaidAmount, $charge)) {
+            return 'paid';
+        }
+
+        return $hasPendingReport ? 'pending_report' : ($invoicePaidAmount > 0 && $charge > 0 ? 'partial' : 'unpaid');
     }
 
     /** Parent-portal course card status + label (was inline in ParentPortalController). @return array{0:string,1:string} */
@@ -77,10 +81,10 @@ final class ContractMoneyState
             : ($isPaid ? ['paid', '已繳費'] : ['unpaid', '未繳費']));
     }
 
-    /** Parent-portal billing record status, from the stored Pay column (was inline in ParentPortalController). */
+    /** Parent-portal billing record status, from the stored Pay column. Nothing owed (Charge 0) is `free`, not `paid`. */
     public static function parentRecordStatus(bool $isWaived, int $pay, int $charge): string
     {
-        return $isWaived ? 'waived' : ($pay >= $charge ? 'paid' : ($pay > 0 ? 'partial' : 'unpaid'));
+        return $isWaived ? 'waived' : ($charge <= 0 ? 'free' : ($pay >= $charge ? 'paid' : ($pay > 0 ? 'partial' : 'unpaid')));
     }
 
     // ---- waived (確認不收) terminal state ----------------------------------------------------
