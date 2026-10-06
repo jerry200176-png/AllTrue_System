@@ -369,8 +369,8 @@ class PaymentReportController extends Controller
             if ($sc && $this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
                 return $this->duplicateCoursePaymentResponse();
             }
-            if ($package && (bool) $package->paid) {
-                return $this->duplicateCoursePaymentResponse();
+            if ($sc && ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $report->reported_amount))) {
+                return $over;
             }
 
             $invoice = null;
@@ -582,8 +582,11 @@ class PaymentReportController extends Controller
             }
             $package = $this->lockPackageForCourse($sc);
 
-            if ($this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0)) || ($package && (bool) $package->paid)) {
+            if ($this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
                 return $this->duplicateCoursePaymentResponse();
+            }
+            if ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $data['amount'])) {
+                return $over;
             }
 
             if (!empty($data['invoice_id'])) {
@@ -808,20 +811,49 @@ class PaymentReportController extends Controller
         ], $accepted === count($results) ? 200 : 207);
     }
 
+    /**
+     * F7 S6 (B9): duplicate-payment guard on the BillingPayableResolver, not "any paid invoice" / raw Charge / SUM(PaidAmount).
+     * Blocks `paid` and `free`; partial (the remainder may be recorded), unbilled, review_required and a plain unpaid
+     * course may take a payment. Package members follow the resolver (a paid package counts while no non-void invoice exists).
+     * Fail closed: no resolver answer (error, unknown course) blocks.
+     * R28 carve-out: Paid=1 with a wholly unpaid period is a residual/stale invoice that needs repair, not a payment
+     * (the writer sets Paid=1 on a partial receipt, so Paid=1 alone never blocks and `partial` stays recordable).
+     */
     private function courseAlreadyHasConfirmedPayment(int $studentClassId, int $coursePaid): bool
     {
-        if ($coursePaid === 1) {
+        try {
+            $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$studentClassId])[$studentClassId]['status'] ?? null;
+        } catch (\Throwable) {
             return true;
         }
 
-        $charge = (int) (StudentClass::query()->where('ID', $studentClassId)->value('Charge') ?? 0);
-        $paidAmount = (int) Invoice::where('StudentClassID', $studentClassId)
-            ->where(function ($q) {
-                $q->whereNull('Status')->orWhere('Status', '!=', 'void');
-            })
-            ->sum('PaidAmount');
+        return $status === null || in_array($status, ['paid', 'free'], true) || ($coursePaid === 1 && $status === 'unpaid');
+    }
 
-        return StudentClass::isFullyPaid(false, $paidAmount, $charge);
+    /**
+     * F7 S6: a partial course (or an unpaid one with an invoice) cannot take more than the resolver's outstanding,
+     * so a second report for the same balance cannot over-collect. Count and date mode alike.
+     */
+    private function amountExceedsOutstandingResponse(int $studentClassId, float $amount)
+    {
+        try {
+            $row = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$studentClassId])[$studentClassId] ?? null;
+        } catch (\Throwable) {
+            return $this->duplicateCoursePaymentResponse();
+        }
+        if (!$row || !(($row['status'] ?? '') === 'partial' || (($row['status'] ?? '') === 'unpaid' && ($row['source'] ?? '') === 'invoice'))) {
+            return null;
+        }
+        $outstanding = (int) $row['outstanding'];
+        if ($amount <= $outstanding) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => sprintf('金額超過此課程未繳餘額 NT$%d，請重新核對後再登記。', $outstanding),
+            'code' => 'amount_exceeds_outstanding',
+            'expected_amount' => $outstanding,
+        ], 422);
     }
 
     private function lockPackageForCourse(StudentClass $studentClass): ?CoursePackage

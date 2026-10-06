@@ -38,6 +38,41 @@ class MonthlyHistoryCourseTest extends TestCase
         $this->assertSame('settled_pending', (string) $course->fresh()->closed_reason);
     }
 
+    private function pauseClosedReason(array $course, array $invoice): string
+    {
+        $token = $this->createDirectorToken([1], 'director-s6-' . uniqid() . '@example.com');
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, array_merge([
+            'ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0,
+            'settlement_day' => 15, 'monthly_sessions' => 8, 'Charge' => 6000,
+        ], $course));
+        \App\Models\Invoice::create(array_merge([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-08-01',
+            'billing_period' => '2026-08',
+        ], $invoice));
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/student-classes/{$sc->ID}/pause", ['action' => 'pause'])->assertOk();
+
+        return (string) $sc->fresh()->closed_reason;
+    }
+
+    public function test_f7_s6_flagged_paid_course_with_open_review_required_invoice_closes_settled_pending(): void
+    {
+        // Paid=1 + July open + August uncovered (coverage gap => review_required): the flag must not settle it.
+        $reason = $this->pauseClosedReason(
+            ['Paid' => 1, 'StartDate' => '2026-07-01', 'EndDate' => '2026-08-31'],
+            ['TotalAmount' => 6000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-07', 'IssueDate' => '2026-07-01'],
+        );
+        $this->assertSame('settled_pending', $reason);
+    }
+
+    public function test_f7_s6_legacy_stored_paid_amount_without_payment_rows_counts_as_received(): void
+    {
+        $course = ['Paid' => 0, 'StartDate' => '2026-08-01', 'EndDate' => '2026-08-31'];
+        $this->assertSame('completed', $this->pauseClosedReason($course, ['TotalAmount' => 6000, 'PaidAmount' => 6000, 'Status' => 'paid']));
+        $this->assertSame('settled_pending', $this->pauseClosedReason($course, ['TotalAmount' => 6000, 'PaidAmount' => 2000, 'Status' => 'partial']));
+    }
+
     public function test_pause_monthly_course_auto_sets_closed_reason_completed(): void
     {
         $token = $this->createDirectorToken([1], 'director-monthly-pause@example.com');
