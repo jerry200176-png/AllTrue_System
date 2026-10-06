@@ -8,8 +8,8 @@ on:
         required: true
         type: choice
         options:
-          - zhang_zheng_ning
-          - zhang_zheng_le
+          - student_374
+          - student_373
       mode:
         description: "dry-run is read-only; apply mutates one allowlisted session; verify is read-only"
         required: true
@@ -65,16 +65,14 @@ jobs:
         run: |
           set -euo pipefail
           case "$STUDENT" in
-            zhang_zheng_ning)
+            student_374)
               echo 'student_id=374' >> "$GITHUB_OUTPUT"
-              echo 'student_name=張正甯' >> "$GITHUB_OUTPUT"
               echo 'source_class=1681' >> "$GITHUB_OUTPUT"
               echo 'target_class=2649' >> "$GITHUB_OUTPUT"
               echo 'session_id=23157' >> "$GITHUB_OUTPUT"
               ;;
-            zhang_zheng_le)
+            student_373)
               echo 'student_id=373' >> "$GITHUB_OUTPUT"
-              echo 'student_name=張正樂' >> "$GITHUB_OUTPUT"
               echo 'source_class=1682' >> "$GITHUB_OUTPUT"
               echo 'target_class=2606' >> "$GITHUB_OUTPUT"
               echo 'session_id=27156' >> "$GITHUB_OUTPUT"
@@ -108,7 +106,6 @@ jobs:
           TRANSFER_ID: ${{ inputs.transfer_id }}
           STUDENT_KEY: ${{ inputs.student }}
           STUDENT_ID: ${{ steps.scope.outputs.student_id }}
-          STUDENT_NAME: ${{ steps.scope.outputs.student_name }}
           SOURCE_CLASS: ${{ steps.scope.outputs.source_class }}
           TARGET_CLASS: ${{ steps.scope.outputs.target_class }}
           SESSION_ID: ${{ steps.scope.outputs.session_id }}
@@ -121,7 +118,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
             MODE="$MODE" DRY_RUN_ID="$DRY_RUN_ID" TRANSFER_ID="$TRANSFER_ID" STUDENT_KEY="$STUDENT_KEY" \
-            STUDENT_ID="$STUDENT_ID" STUDENT_NAME="$STUDENT_NAME" SOURCE_CLASS="$SOURCE_CLASS" \
+            STUDENT_ID="$STUDENT_ID" SOURCE_CLASS="$SOURCE_CLASS" \
             TARGET_CLASS="$TARGET_CLASS" SESSION_ID="$SESSION_ID" RUN_ID="$RUN_ID" ACTOR="$ACTOR" SCRIPT_B64="$SCRIPT_B64" \
             'bash -s' <<'ENDSSH' | tee out/operation.txt
           set -euo pipefail
@@ -134,7 +131,7 @@ jobs:
           }
 
           case "$STUDENT_KEY:$STUDENT_ID:$SOURCE_CLASS:$TARGET_CLASS:$SESSION_ID" in
-            zhang_zheng_ning:374:1681:2649:23157|zhang_zheng_le:373:1682:2606:27156) ;;
+            student_374:374:1681:2649:23157|student_373:373:1682:2606:27156) ;;
             *) echo 'SCOPE_MISMATCH: exact allowlist rejected'; exit 1 ;;
           esac
 
@@ -176,9 +173,9 @@ jobs:
           echo '=== Post-check 2026-08-01 leave/makeup boundary ==='
           echo "$SCRIPT_B64" | base64 -d > /tmp/diagnose-student-session.sh
           chmod +x /tmp/diagnose-student-session.sh
-          STUDENT_NAME="$STUDENT_NAME" TEACHER_NAME='' DATE=2026-08-01 CAMPUS_ID=16 bash /tmp/diagnose-student-session.sh
+          STUDENT_ID="$STUDENT_ID" DATE=2026-08-01 CAMPUS_ID=16 bash /tmp/diagnose-student-session.sh
           echo '=== Post-check 2026-08-05 transferred session and financial boundary ==='
-          STUDENT_NAME="$STUDENT_NAME" TEACHER_NAME='' DATE=2026-08-05 CAMPUS_ID=16 bash /tmp/diagnose-student-session.sh
+          STUDENT_ID="$STUDENT_ID" DATE=2026-08-05 CAMPUS_ID=16 bash /tmp/diagnose-student-session.sh
           rm -f /tmp/diagnose-student-session.sh /tmp/transfer-apply.txt
           ENDSSH
 

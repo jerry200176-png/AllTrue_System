@@ -20,10 +20,17 @@ on:
           - contract_yang_binghe
           - contract_yu_shengrui
           - monthly_slip_student
+          - unpaid_months_muzha
+          - unpaid_hidden_candidates
+          - unbilled_monthly_sessions
+          - f7_prod_discrepancy
           - swipe_line_path
           - class_sessions_explain_319
-      student_name:
-        description: 'Student name for bounded case probe (PII is not written to the artifact)'
+          - substitute_calendar_xinzhuang
+          - substitute_slot_conflicts
+          - occurrence_identity_health
+      student_id:
+        description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
         default: ''
         type: string
@@ -75,14 +82,14 @@ jobs:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           CASE_KEY: ${{ inputs.case_key }}
-          TARGET_STUDENT_NAME: ${{ inputs.student_name }}
+          TARGET_STUDENT_ID: ${{ inputs.student_id }}
           TARGET_STUDENT_CLASS_ID: ${{ inputs.student_class_id }}
           TARGET_SUBJECT_NAME: ${{ inputs.subject_name }}
         run: |
           set -euo pipefail
           mkdir -p out
           if [[ "$CASE_KEY" == "laravel_2833_preflight" ]]; then
-            [[ -z "$TARGET_STUDENT_NAME" && -z "$TARGET_STUDENT_CLASS_ID" && "$TARGET_SUBJECT_NAME" == "數學" ]]
+            [[ -z "$TARGET_STUDENT_ID" && -z "$TARGET_STUDENT_CLASS_ID" && "$TARGET_SUBJECT_NAME" == "數學" ]]
             PREFLIGHT_B64=$(base64 -w0 scripts/laravel-2833-preflight.php)
             REQUEST_B64=$(base64 -w0 operations/closeout/laravel-2833-preflight.request.json)
             ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
@@ -97,18 +104,22 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'class_sessions_explain_319'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health'}:
               raise SystemExit('unsupported case')
-          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
+          target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
+          if target_student_id and not target_student_id.isdigit():
+              raise SystemExit('student_id must be numeric')
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
-          if case == 'monthly_slip_student' and not os.environ.get('TARGET_STUDENT_NAME'):
-              raise SystemExit('monthly_slip_student requires student_name')
+          # Every student-scoped case needs an id (no hard-coded names); three cases may use a StudentClass ID instead.
+          id_cases = {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'contract_yang_binghe', 'contract_yu_shengrui', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang'}
+          if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'}):
+              raise SystemExit(f'{case} requires student_id')
           if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
           print(f'''<?php
           $case = {case!r};
-          $targetStudentName = {json.dumps(target_student_name, ensure_ascii=False)};
+          $targetStudentId = {int(target_student_id) if target_student_id else 'null'};
           $targetStudentClassId = {int(target_student_class_id) if target_student_class_id else 'null'};
           $targetSubjectName = {json.dumps(target_subject_name, ensure_ascii=False)};
           $db = \\Illuminate\\Support\\Facades\\DB::class;
@@ -118,7 +129,7 @@ jobs:
             $campusId = 9;
             $targetDate = '2026-08-29';
             $targetStudentIds = $db::table('Student')->where('CampusID', $campusId)
-              ->where('name', 'like', '%洪睿淵%')->pluck('id')->map(fn ($id) => (int)$id)->all();
+              ->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             $classes = $db::table('StudentClass as sc')
               ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
               ->whereIn('sc.StudentID', $targetStudentIds)
@@ -199,11 +210,11 @@ jobs:
               ? $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
                 ->where('sc.ID', $targetStudentClassId)->where('st.CampusID', $campusId)->pluck('sc.StudentID')
                 ->map(fn ($id) => (int)$id)->all()
-              : $studentQuery->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')
+              : $studentQuery->where('id', $targetStudentId)->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
             if ($studentIds === [] && $targetStudentClassId === null) {{
               $studentIds = $db::table('Student')->where('CampusID', $campusId)
-                ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
+                ->where('id', $targetStudentId)->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
             }}
             $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
@@ -238,7 +249,7 @@ jobs:
               ->orderBy('SessionDate')->orderBy('StartTime')->get(['id', 'StudentClassID as class_id', 'SessionDate as session_date',
                 'StartTime as start_time', 'EndTime as end_time', 'Status as status']);
             $out['campus_id'] = $campusId;
-            $out['lookup_mode'] = $targetStudentClassId !== null ? 'student_class_id' : 'student_name';
+            $out['lookup_mode'] = $targetStudentClassId !== null ? 'student_class_id' : 'student_id';
             $out['student_count'] = count($studentIds);
             $out['target_classes'] = $classes->map(fn ($r) => [
               'class_id'=>(int)$r->class_id, 'student_id'=>(int)$r->student_id,
@@ -379,9 +390,9 @@ jobs:
           }} elseif ($case === 'transfer_capacity_chen') {{
             $studentIds = $targetStudentClassId !== null
               ? $db::table('StudentClass as sc')->where('sc.ID', $targetStudentClassId)->pluck('sc.StudentID')->map(fn ($id) => (int)$id)->all()
-              : $db::table('Student')->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+              : $db::table('Student')->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             if ($studentIds === [] && $targetStudentClassId === null) {{
-              $studentIds = $db::table('Student')->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')->map(fn ($id) => (int)$id)->all();
+              $studentIds = $db::table('Student')->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             }}
             $classes = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('sc.StudentID', $studentIds)
               ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
@@ -417,15 +428,15 @@ jobs:
               'future_scheduled_session_ids'=>$sessions->filter(fn ($r) => strtolower((string)$r->status) === 'scheduled' && (string)$r->session_date > now()->toDateString())->pluck('id')->map(fn ($id) => (int)$id)->values()->all()];
           }} elseif ($case === 'monthly_slip_student') {{
             // Read-only, Founder GO 2026-10-02: why two 木柵 monthly slips show no lesson dates.
-            // Scope: CampusID 16 and the approved student-ID allowlist only; the dispatched name is
-            // compared in memory and never written out. August 2026 only. No names or free text in output.
+            // Scope: CampusID 16 and the approved student-ID allowlist only; the dispatched id is
+            // checked against the allowlist. August 2026 only. No names or free text in output.
             $approvedStudentIds = [162, 164];
             $studentIds = $db::table('Student')->where('CampusID', 16)->whereIn('id', $approvedStudentIds)
-              ->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+              ->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             $out['student_match_count'] = count($studentIds);
             if (count($studentIds) !== 1) {{
               $out['ok'] = false;
-              $out['error'] = 'student_name must match exactly one approved student';
+              $out['error'] = 'student_id must match exactly one approved student';
             }} else {{
               // Candidate contracts are read internally only; output is limited to contracts linked to August
               // sessions or August invoices/items (no unrelated contract history).
@@ -463,7 +474,7 @@ jobs:
               $classes = $linkedClassIds === [] ? collect() : $db::table('StudentClass')->whereIn('ID', $linkedClassIds)->orderBy('ID')
                 ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'SessionCount', 'RemainingSessions', 'closed_reason']);
               // Every closed_reason value StudentClass writers set (grep backend/app, 2026-10-02); anything else is free text → 'other'.
-              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled'];
+              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled', 'waived'];
               $classes = $classes->map(function ($r) use ($knownReasons) {{
                 $reason = (string)($r->closed_reason ?? '');
                 $r->closed_reason = $reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other');
@@ -477,12 +488,429 @@ jobs:
               $out['invoice_items'] = $items->map(fn ($r) => (array)$r)->values()->all();
               $out['august_sessions_by_class_status'] = $sessions->map(fn ($r) => (array)$r)->values()->all();
             }}
+          }} elseif ($case === 'unpaid_months_muzha') {{
+            // Read-only, 2026-10-05: director sees only September unpaid for a 木柵 student said to owe July-September.
+            // Scope: CampusID 16, dispatched student ID only, 2026-06..2026-10.
+            // Approved student IDs only (director report 2026-10-05); any other id returns nothing.
+            $approvedStudentIds = [162, 164];
+            $studentIds = !in_array($targetStudentId, $approvedStudentIds, true) ? [] : $db::table('Student')->where('CampusID', 16)
+              ->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $out['student_match_count'] = count($studentIds);
+            if (count($studentIds) !== 1) {{
+              $out['ok'] = false;
+              $out['error'] = 'student_id must match exactly one 木柵 student';
+            }} else {{
+              $from = '2026-06-01'; $to = '2026-10-31';
+              $classIds = $db::table('StudentClass')->whereIn('StudentID', $studentIds)
+                ->where(fn ($q) => $q->whereNull('EndDate')->orWhereDate('EndDate', '>=', $from))
+                ->where(fn ($q) => $q->whereNull('StartDate')->orWhereDate('StartDate', '<=', $to))
+                ->pluck('ID')->map(fn ($id) => (int)$id)->all();
+              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled', 'waived'];
+              $out['student_ids'] = $studentIds;
+              $out['window'] = [$from, $to];
+              $out['classes'] = $db::table('StudentClass')->whereIn('ID', $classIds ?: [0])->orderBy('ID')
+                ->get(['ID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'PackageID', 'Stop', 'StartDate', 'EndDate', 'SessionCount', 'Charge', 'Paid', 'PayDate', 'closed_reason'])
+                ->map(function ($r) use ($knownReasons) {{
+                  $reason = (string)($r->closed_reason ?? '');
+                  $r->closed_reason = $reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other');
+                  return (array)$r;
+                }})->values()->all();
+              // Window-bound invoices: billing_period in 2026-06..2026-10, or an item whose service range overlaps the window.
+              $windowItemInvoiceIds = $db::table('InvoiceItem')->select('InvoiceID')
+                ->where(fn ($q) => $q->whereNotNull('PeriodStart')->orWhereNotNull('PeriodEnd'))
+                ->where(fn ($q) => $q->whereNull('PeriodStart')->orWhereDate('PeriodStart', '<=', $to))
+                ->where(fn ($q) => $q->whereNull('PeriodEnd')->orWhereDate('PeriodEnd', '>=', $from));
+              $invoices = $db::table('Invoice')->where(fn ($q) => $q->whereIn('StudentID', $studentIds)->orWhereIn('StudentClassID', $classIds ?: [0]))
+                ->where(fn ($q) => $q->whereBetween('billing_period', ['2026-06', '2026-10'])->orWhereIn('id', $windowItemInvoiceIds))
+                ->orderBy('id')->get(['id', 'StudentClassID', 'Status', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'billing_period']);
+              $invoiceIds = $invoices->pluck('id')->all();
+              $out['invoices'] = $invoices->map(fn ($r) => (array)$r)->values()->all();
+              // Invoices whose contract is outside this student's window: show only ownership facts (IDs, no names).
+              $foreignClassIds = $invoices->pluck('StudentClassID')->filter()->map(fn ($id) => (int)$id)
+                ->reject(fn ($id) => in_array($id, $classIds, true))->unique()->values()->all();
+              $out['invoice_foreign_classes'] = $foreignClassIds === [] ? [] : $db::table('StudentClass')->whereIn('ID', $foreignClassIds)
+                ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'Charge', 'Paid'])
+                ->map(fn ($r) => array_merge((array)$r, ['same_student' => in_array((int)$r->StudentID, $studentIds, true)]))->values()->all();
+              $out['invoice_foreign_classes_missing'] = array_values(array_diff($foreignClassIds, array_map(fn ($r) => (int)$r['ID'], $out['invoice_foreign_classes'])));
+              // For a deleted contract: what the orphan invoice billed and whether any rows still point at it (IDs/dates only).
+              $missing = $out['invoice_foreign_classes_missing'];
+              $out['orphan_evidence'] = $missing === [] ? [] : [
+                'invoices' => $invoices->filter(fn ($r) => in_array((int)$r->StudentClassID, $missing, true))->map(fn ($r) => (array)$r)->values()->all(),
+                'invoice_notes_mention' => $db::table('Invoice')->whereIn('StudentClassID', $missing)->get(['id', 'Note'])
+                  ->map(fn ($r) => ['id' => (int)$r->id, 'mentions_english' => str_contains((string)$r->Note, '英'), 'mentions_math' => str_contains((string)$r->Note, '數')])->values()->all(),
+                'sessions' => $db::table('ClassSession')->whereIn('StudentClassID', $missing)
+                  ->selectRaw("StudentClassID as class_id, Status as status, MIN(SessionDate) as first_date, MAX(SessionDate) as last_date, COUNT(*) as n")
+                  ->groupBy('StudentClassID', 'Status')->get()->map(fn ($r) => (array)$r)->values()->all(),
+                'learning_records' => $db::table('LearningRecord')->whereIn('StudentClassID', $missing)->count(),
+                'payments' => $db::table('Payment')->whereIn('InvoiceID', $invoices->filter(fn ($r) => in_array((int)$r->StudentClassID, $missing, true))->pluck('id')->all() ?: [0])->count(),
+                'payment_reports' => $db::table('payment_reports')->whereIn('StudentClassID', $missing)->get(['id', 'status', 'reported_amount', 'payment_date'])->map(fn ($r) => (array)$r)->values()->all(),
+                'schedules' => \Illuminate\Support\Facades\Schema::hasTable('schedules') ? $db::table('schedules')->whereIn('student_course_id', $missing)->count() : null,
+              ];
+              $out['invoice_items'] = $invoiceIds === [] ? [] : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)
+                ->get(['id', 'InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd', 'Amount'])->map(fn ($r) => (array)$r)->values()->all();
+              $out['payments'] = $invoiceIds === [] ? [] : $db::table('Payment')->whereIn('InvoiceID', $invoiceIds)
+                ->get(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'payment_report_id'])->map(fn ($r) => (array)$r)->values()->all();
+              $out['payment_reports'] = $db::table('payment_reports')->whereIn('StudentID', $studentIds)
+                ->get(['id', 'StudentClassID', 'InvoiceID', 'status', 'reported_amount', 'payment_date', 'payment_id'])->map(fn ($r) => (array)$r)->values()->all();
+              $out['sessions_by_class_month_status'] = $db::table('ClassSession')->whereIn('StudentClassID', $classIds ?: [0])
+                ->whereBetween('SessionDate', [$from, $to])
+                ->selectRaw("StudentClassID as class_id, DATE_FORMAT(SessionDate, '%Y-%m') as month, Status as status, COUNT(*) as n")
+                ->groupBy('StudentClassID', 'month', 'Status')->orderBy('StudentClassID')->orderBy('month')->get()
+                ->map(fn ($r) => (array)$r)->values()->all();
+              // Same read-only projection the course list uses for the monthly 未繳 label.
+              try {{
+                $models = \\App\\Models\\StudentClass::query()->whereIn('ID', $classIds ?: [0])->get();
+                $out['monthly_payment_projection'] = app(\\App\\Services\\MonthlyPeriodPaymentService::class)->batch($models);
+              }} catch (\\Throwable $e) {{
+                $out['ok'] = false;
+                $out['error'] = 'monthly_payment_projection failed: ' . get_class($e);
+              }}
+            }}
+          }} elseif ($case === 'substitute_calendar_xinzhuang') {{
+            // Read-only, 2026-10-05: 新莊 director substituted the 2026-10-09 10:00-12:00 lesson to another teacher;
+            // 課程查找 shows the substitute, the calendar keeps showing the contract teacher.
+            // Scope: 新莊 campuses, one approved student ID (no name lookup), 2026-10-09 only.
+            // Approved student IDs only (director report 2026-10-05, probe run 37299482216); any other id returns nothing.
+            $approvedStudentIds = [2156];
+            $targetDate = '2026-10-09';
+            $campusIds = $db::table('Campus')->where('name', 'like', '%新莊%')->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $studentIds = !in_array($targetStudentId, $approvedStudentIds, true) ? [] : $db::table('Student')->whereIn('CampusID', $campusIds ?: [0])
+              ->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $out['campus_ids'] = $campusIds;
+            $out['student_match_count'] = count($studentIds);
+            if (count($studentIds) !== 1) {{
+              $out['ok'] = false;
+              $out['error'] = 'student_id must match exactly one 新莊 student';
+            }} else {{
+              $out['student_campus_id'] = (int)$db::table('Student')->where('id', $studentIds[0])->value('CampusID');
+              $classes = $db::table('StudentClass')->where('StudentID', $studentIds[0])
+                ->where(fn ($q) => $q->whereNull('EndDate')->orWhereDate('EndDate', '>=', '2026-09-01'))
+                ->orderBy('ID')->get(['ID', 'SubjectID', 'TeacherID', 'ClassType', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'closed_reason']);
+              $classIds = $classes->pluck('ID')->map(fn ($id) => (int)$id)->all();
+              $out['classes'] = $classes->map(fn ($r) => (array)$r)->values()->all();
+              $sessions = $db::table('ClassSession')->whereIn('StudentClassID', $classIds ?: [0])->whereDate('SessionDate', $targetDate)
+                ->orderBy('id')->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status']);
+              $sessionIds = $sessions->pluck('id')->map(fn ($id) => (int)$id)->all();
+              $out['sessions'] = $sessions->map(fn ($r) => (array)$r)->values()->all();
+              $schedules = $db::table('schedules')->whereIn('student_course_id', $classIds ?: [0])->whereDate('schedule_date', $targetDate)
+                ->orderBy('id')->get(['id', 'student_course_id', 'student_id', 'teacher_id', 'status', 'type', 'original_schedule_id',
+                  'schedule_date', 'start_time', 'end_time', 'branch_id', 'created_at', 'updated_at']);
+              $out['schedules'] = $schedules->map(fn ($r) => (array)$r)->values()->all();
+              $out['learning_records'] = $db::table('LearningRecord')->whereIn('ClassSessionID', $sessionIds ?: [0])
+                ->get(['id', 'ClassSessionID', 'TeacherID', 'VoidedAt'])->map(fn ($r) => (array)$r)->values()->all();
+              // Same read the calendar uses (ClassSessionIndexReadService), narrowed to this student's classes.
+              try {{
+                $req = new \\Illuminate\\Http\\Request(['start' => $targetDate, 'end' => $targetDate, 'branch_id' => $out['student_campus_id'], 'per_page' => 1000]);
+                $req->attributes->set('auth_role', 'super_admin');
+                $keep = array_flip(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'TeacherID', 'substitute_teacher_id', 'teacher_id']);
+                $out['calendar_rows'] = (new \\App\\Services\\ClassSessionIndexReadService())->buildQuery($req)->whereIn('sc.ID', $classIds ?: [0])->get()
+                  ->map(fn ($r) => array_intersect_key((array)$r, $keep))->values()->all();
+              }} catch (\\Throwable $e) {{
+                $out['calendar_rows_error'] = get_class($e);
+              }}
+              $teacherIds = collect($out['classes'])->pluck('TeacherID')->merge($schedules->pluck('teacher_id'))
+                ->merge(collect($out['learning_records'])->pluck('TeacherID'))->filter()->map(fn ($id) => (int)$id)->unique()->values()->all();
+              // Staff identity as flags only (no names): 許 = contract teacher per report, 芸 = intended substitute.
+              $out['teachers'] = $db::table('User')->whereIn('id', $teacherIds ?: [0])->get(['id', 'Name'])
+                ->map(fn ($u) => ['id' => (int)$u->id, 'name_has_xu' => str_contains((string)$u->Name, '許'), 'name_has_yun' => str_contains((string)$u->Name, '芸')])->values()->all();
+              $out['substitute_notifications'] = $db::table('Notifications')->where('SourceType', 'ClassSession')->whereIn('SourceID', $sessionIds ?: [0])
+                ->orderBy('id')->get(['id', 'Type', 'SourceID', 'SourceKey', 'OccurredAt', 'ResolvedAt', 'created_at', 'updated_at', 'Payload'])
+                ->map(function ($r) {{
+                  $d = json_decode((string)$r->Payload, true) ?: [];
+                  $r->Payload = array_intersect_key($d, array_flip(['class_session_id', 'student_class_id', 'old_teacher_id', 'new_teacher_id', 'session_date', 'start_time', 'end_time', 'operation_type', 'operator_id', 'voided', 'voided_at']));
+                  return (array)$r;
+                }})->values()->all();
+              // [substitute] diagnostic log lines for these sessions (IDs/times only).
+              $logLines = [];
+              foreach (glob(storage_path('logs/*.log')) ?: [] as $f) {{
+                if (@filemtime($f) < strtotime('2026-09-25')) {{ continue; }}
+                $h = @fopen($f, 'r');
+                while ($h && ($line = fgets($h)) !== false) {{
+                  if (!str_contains($line, '[substitute]') && !str_contains($line, 'substitute')) {{ continue; }}
+                  foreach ($sessionIds as $sid) {{
+                    if (str_contains($line, '"class_session_id":' . $sid . ',') || str_contains($line, '"class_session_id":' . $sid . '}}')) {{
+                      // Whitelisted IDs/times only: the context also carries free-text reason/exception text.
+                      $ctx = json_decode((string)substr($line, (int)strpos($line, '{{')), true) ?: [];
+                      $logLines[] = ['at' => substr($line, 1, 19)] + array_intersect_key($ctx, array_flip(['step', 'class_session_id', 'student_class_id',
+                        'session_date', 'start_time', 'end_time', 'old_teacher_id', 'new_teacher_id', 'has_existing_rescheduled', 'has_existing_scheduled',
+                        'rescheduled_id', 'reused_rescheduled_row', 'scheduled_id', 'original_schedule_id', 'learning_record_id', 'session_status', 'exception']));
+                      break;
+                    }}
+                  }}
+                }}
+                if ($h) {{ fclose($h); }}
+              }}
+              $out['substitute_log_lines'] = array_slice($logLines, -80);
+            }}
+          }} elseif ($case === 'substitute_slot_conflicts') {{
+            // Read-only invariant monitor (R44 / TD-076, 2026-10-05): slots holding more than one live
+            // schedules.status=scheduled row with different teachers. IDs only, no names.
+            // calendar_risk = a substitute row (other teacher + original_schedule_id) shares the slot with a
+            // contract-teacher row: the shape that showed the wrong teacher on 新莊 session 41612.
+            $from = now()->subDays(7)->toDateString(); $to = now()->addDays(60)->toDateString();
+            $slots = $db::table('schedules as s')->join('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+              ->where('s.status', 'scheduled')->whereBetween('s.schedule_date', [$from, $to])
+              ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+              ->groupByRaw('s.student_course_id, s.schedule_date, SUBSTRING(s.start_time, 1, 5)')
+              ->havingRaw('COUNT(*) > 1 AND COUNT(DISTINCT s.teacher_id) > 1')
+              ->selectRaw('s.student_course_id as course_id, s.schedule_date as date, SUBSTRING(s.start_time, 1, 5) as start_hm')
+              ->get();
+            $rows = [];
+            foreach ($slots as $slot) {{
+              $course = $db::table('StudentClass as sc')->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->where('sc.ID', $slot->course_id)->first(['sc.TeacherID', 'st.CampusID']);
+              $live = $db::table('schedules')->where('student_course_id', $slot->course_id)->whereDate('schedule_date', $slot->date)
+                ->where('status', 'scheduled')->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$slot->start_hm])->orderBy('id')
+                ->get(['id', 'teacher_id', 'original_schedule_id']);
+              $contract = (int)($course->TeacherID ?? 0);
+              $hasSub = $live->contains(fn ($r) => (int)$r->teacher_id !== $contract && $r->original_schedule_id !== null);
+              $hasContract = $live->contains(fn ($r) => (int)$r->teacher_id === $contract);
+              $rows[] = ['campus_id' => (int)($course->CampusID ?? 0), 'course_id' => (int)$slot->course_id, 'date' => (string)$slot->date,
+                'start' => $slot->start_hm, 'contract_teacher_id' => $contract,
+                'live_rows' => $live->map(fn ($r) => ['id' => (int)$r->id, 'teacher_id' => (int)$r->teacher_id, 'original_schedule_id' => $r->original_schedule_id === null ? null : (int)$r->original_schedule_id])->values()->all(),
+                'has_session' => $db::table('ClassSession')->where('StudentClassID', $slot->course_id)->whereDate('SessionDate', $slot->date)
+                  ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$slot->start_hm])->where('Status', '!=', 'cancelled')->exists(),
+                'calendar_risk' => $hasSub && $hasContract];
+            }}
+            $out['window'] = [$from, $to];
+            $out['conflict_slots'] = count($rows);
+            $out['calendar_risk_slots'] = count(array_filter($rows, fn ($r) => $r['calendar_risk']));
+            $out['by_campus'] = collect($rows)->groupBy('campus_id')->map(fn ($g) => ['slots' => $g->count(), 'calendar_risk' => $g->where('calendar_risk', true)->count()])->all();
+            $out['slots'] = array_slice($rows, 0, 200);
+          }} elseif ($case === 'occurrence_identity_health') {{
+            // Read-only TD-076 Track B health probe (design §7). Per CampusID; top-level counts are active contracts only, stopped_contract holds Stop = 1 counts.
+            // IDs and counts only, no names; id lists capped at 50 per campus. Takes no student_id.
+            $today = now()->toDateString();
+            $live = fn ($stopped = false) => $db::table('schedules as s')->join('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+              ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+              ->whereIn('s.status', ['scheduled', 'leave'])
+              ->where(fn ($q) => $q->whereNull('s.type')->orWhere('s.type', '<>', 'extra'))
+              ->where(fn ($q) => $stopped ? $q->where('sc.Stop', 1) : $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'));
+            $dupQ = fn ($stopped) => $live($stopped)->whereNotNull('s.original_schedule_date')->whereNotNull('s.original_start_time')
+              ->groupByRaw('st.CampusID, s.student_course_id, s.original_schedule_date, s.original_start_time')
+              ->havingRaw('COUNT(*) > 1')
+              ->selectRaw('st.CampusID as campus_id, s.student_course_id as course_id, s.original_schedule_date as orig_date, s.original_start_time as orig_start, COUNT(*) as n, MIN(s.id) as min_id')
+              ->get()->groupBy('campus_id');
+            $dups = $dupQ(false); $sdups = $dupQ(true);
+            $missQ = fn ($stopped) => $live($stopped)->where(fn ($q) => $q->whereNull('s.original_schedule_date')->orWhereNull('s.original_start_time'))
+              ->get(['s.id', 'st.CampusID as campus_id', 's.schedule_date'])->groupBy('campus_id');
+            $missing = $missQ(false); $smissing = $missQ(true);
+            $slots = $db::table('schedules as s')->join('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+              ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+              ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+              ->where('s.status', 'scheduled')->whereBetween('s.schedule_date', [now()->subDays(7)->toDateString(), now()->addDays(60)->toDateString()])
+              ->groupByRaw('st.CampusID, s.student_course_id, s.schedule_date, SUBSTRING(s.start_time, 1, 5)')
+              ->havingRaw('COUNT(*) > 1 AND COUNT(DISTINCT s.teacher_id) > 1')
+              ->selectRaw('st.CampusID as campus_id')->get()->groupBy('campus_id');
+            // seed from every campus with any contract so healthy campuses show explicit zeros
+            $campuses = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+              ->distinct()->orderBy('st.CampusID')->pluck('st.CampusID');
+            $out['today'] = $today;
+            $out['quarantine_note'] = 'quarantine table not built yet (PR-E)';
+            $out['by_campus'] = $campuses->map(function ($cid) use ($dups, $missing, $sdups, $smissing, $slots, $today) {{
+              $d = $dups->get($cid, collect()); $m = $missing->get($cid, collect());
+              $future = $m->filter(fn ($r) => (string)$r->schedule_date >= $today);
+              return ['campus_id' => (int)$cid,
+                'duplicate_identity_groups' => $d->count(),
+                'duplicate_identity_group_samples' => $d->take(50)->map(fn ($r) => ['course_id' => (int)$r->course_id, 'orig_date' => (string)$r->orig_date, 'orig_start' => (string)$r->orig_start, 'n' => (int)$r->n, 'min_schedule_id' => (int)$r->min_id])->values()->all(),
+                'missing_identity_rows' => $m->count(),
+                'missing_identity_future' => $future->count(),
+                'missing_identity_past' => $m->count() - $future->count(),
+                'missing_identity_ids' => $m->take(50)->pluck('id')->map(fn ($v) => (int)$v)->values()->all(),
+                // Stop = 1 contracts, kept separate: calendar history and payroll can still read these rows
+                'stopped_contract' => ['duplicate_identity_groups' => $sdups->get($cid, collect())->count(),
+                  'missing_identity_rows' => $smissing->get($cid, collect())->count(),
+                  'missing_identity_ids' => $smissing->get($cid, collect())->take(50)->pluck('id')->map(fn ($v) => (int)$v)->values()->all()],
+                'quarantine_open' => 0, 'quarantine_gate_ready' => false, // quarantine table not built yet (PR-E): NOT a pass
+                'conflict_slots' => $slots->get($cid, collect())->count()];
+            }})->all();
+          }} elseif ($case === 'unpaid_hidden_candidates') {{
+            // Read-only, Founder decision 2026-10-05: list contracts closed as settled/completed that still owe
+            // money per the invoice ledger (input for the POP repair manifest). IDs and amounts only, no names.
+            $amounts = app(\\App\\Services\\InvoiceAmountReconciliationService::class);
+            $courses = \\App\\Models\\StudentClass::query()->with('student:id,CampusID')
+              ->where('Stop', 1)->whereIn('closed_reason', ['settled', 'completed'])
+              ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> 'tutoring'")->orderBy('ID')->get();
+            $invoices = \\App\\Models\\Invoice::query()->with('payments')->whereIn('StudentClassID', $courses->pluck('ID')->all() ?: [0])
+              ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->get()->groupBy('StudentClassID');
+            $pending = $db::table('payment_reports')->where('status', 'pending')->pluck('StudentClassID')->map(fn ($id) => (int)$id)->all();
+            $rows = [];
+            foreach ($courses as $c) {{
+              $cid = (int)$c->getAttribute('ID');
+              $list = $invoices->get($cid, collect());
+              if ($list->isEmpty()) {{
+                $owed = (int)$c->getAttribute('Charge') > 0 && !$c->isEffectivelyPaid() ? (int)$c->getAttribute('Charge') : 0;
+              }} else {{
+                $owed = 0;
+                foreach ($list as $inv) {{
+                  $a = $amounts->resolve($inv, $c);
+                  $paid = $inv->getRelationValue('payments')->isEmpty() ? max(0, (int)$inv->getAttribute('PaidAmount')) : (int)$a['net_applied'];
+                  $owed += max(0, (int)$a['total_amount'] - $paid);
+                }}
+              }}
+              if ($owed <= 0) continue;
+              $rows[] = ['id' => $cid, 'student_id' => (int)$c->getAttribute('StudentID'), 'campus_id' => (int)($c->student?->CampusID ?? 0),
+                'mode' => (string)$c->getAttribute('ScheduleMode'), 'closed_reason' => (string)$c->getAttribute('closed_reason'),
+                'paid_flag' => (int)$c->getAttribute('Paid'), 'package_id' => (int)$c->getAttribute('PackageID'), 'invoice_count' => $list->count(),
+                'outstanding' => $owed, 'pending_report' => in_array($cid, $pending, true),
+                'end_date' => substr((string)$c->getAttribute('EndDate'), 0, 10)];
+            }}
+            $out['candidates'] = $rows;
+            $out['count'] = count($rows);
+            $out['outstanding_total'] = array_sum(array_column($rows, 'outstanding'));
+            $out['stale_paid_flag_count'] = count(array_filter($rows, fn ($r) => $r['paid_flag'] === 1));
+          }} elseif ($case === 'unbilled_monthly_sessions') {{
+            // Read-only, Founder question 2026-10-05: across all campuses, which monthly (date-mode) contracts have
+            // billable lessons (MonthlyBillingService: attended/completed/late, inside the contract interval) that no
+            // positive non-void invoice of the same contract covers? Coverage = an item owned by the contract (its
+            // StudentClassID, or null on an invoice anchored to it) with BOTH PeriodStart and PeriodEnd containing the date,
+            // or an invoice without such items whose billing_period equals the lesson month. Waived contracts are
+            // excluded. Invoice-less contracts are counted too, flagged by kind. IDs/counts only. Known limit: a contract
+            // converted count->date keeps pre-conversion lessons inside its interval only if StartDate was not moved.
+            $from = '2026-01-01'; $to = date('Y-m-d');
+            $courses = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+              ->where('sc.ScheduleMode', 'date')->where(fn ($q) => $q->whereNull('sc.PackageID')->orWhere('sc.PackageID', 0))
+              ->whereRaw("LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'")
+              ->where(fn ($q) => $q->whereNull('sc.closed_reason')->orWhere('sc.closed_reason', '!=', 'waived'))
+              // Zero-fee contracts are `free` in BillingPayableResolver: no invoice is expected.
+              ->where(fn ($q) => $q->where('sc.Charge', '>', 0)->orWhere('sc.Rate', '>', 0)
+                ->orWhereExists(fn ($e) => $e->selectRaw('1')->from('Invoice as pi')->whereColumn('pi.StudentClassID', 'sc.ID')
+                  ->where('pi.TotalAmount', '>', 0)->where(fn ($v) => $v->whereNull('pi.Status')->orWhere('pi.Status', '!=', 'void'))))
+              ->get(['sc.ID', 'sc.StudentID', 'st.CampusID', 'sc.Paid', 'sc.Stop', 'sc.closed_reason', 'sc.StartDate', 'sc.EndDate', 'sc.Charge'])->keyBy('ID');
+            $ids = $courses->keys()->map(fn ($id) => (int)$id)->all();
+            $sessions = $ids === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $ids)
+              ->whereBetween('SessionDate', [$from, $to])->whereRaw("LOWER(Status) IN ('attended', 'completed', 'late')")
+              ->get(['StudentClassID', 'SessionDate'])->groupBy('StudentClassID');
+            $invoices = $ids === [] ? collect() : $db::table('Invoice')->whereIn('StudentClassID', $ids)
+              ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->where('TotalAmount', '>', 0)
+              ->get(['id', 'StudentClassID', 'billing_period'])->groupBy('StudentClassID');
+            $invoiceIds = $invoices->flatten()->pluck('id')->all();
+            $items = $invoiceIds === [] ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)
+              ->whereNotNull('PeriodStart')->whereNotNull('PeriodEnd')
+              ->get(['InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd'])->groupBy('InvoiceID');
+            // Ranges billed to a contract through its own items on ANY positive non-void invoice (multi-course invoices).
+            $ownedRanges = $ids === [] ? collect() : $db::table('InvoiceItem as it')->join('Invoice as inv', 'inv.id', '=', 'it.InvoiceID')
+              ->whereIn('it.StudentClassID', $ids)->whereNotNull('it.PeriodStart')->whereNotNull('it.PeriodEnd')
+              ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '!=', 'void'))->where('inv.TotalAmount', '>', 0)
+              ->get(['it.StudentClassID', 'it.PeriodStart', 'it.PeriodEnd'])->groupBy('StudentClassID');
+            // Unbounded items owned by the contract: the invoice's billing_period month is the coverage (as MonthlyPeriodPayment does).
+            $ownedMonths = $ids === [] ? collect() : $db::table('InvoiceItem as it')->join('Invoice as inv', 'inv.id', '=', 'it.InvoiceID')
+              ->whereIn('it.StudentClassID', $ids)->whereNull('it.PeriodStart')->whereNull('it.PeriodEnd')->whereNotNull('inv.billing_period')
+              ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '!=', 'void'))->where('inv.TotalAmount', '>', 0)
+              ->get(['it.StudentClassID', 'inv.billing_period'])->groupBy('StudentClassID')->map(fn ($g) => $g->pluck('billing_period')->unique()->values()->all());
+            $rows = [];
+            foreach ($sessions as $cid => $list) {{
+              $c = $courses->get($cid);
+              $owned = $ownedRanges->get($cid, collect());
+              $start = substr((string)$c->StartDate, 0, 10); $end = substr((string)$c->EndDate, 0, 10);
+              $list = $list->filter(fn ($s) => (!$start || substr((string)$s->SessionDate, 0, 10) >= $start) && (!$end || substr((string)$s->SessionDate, 0, 10) <= $end));
+              if ($list->isEmpty()) continue;
+              $inv = $invoices->get($cid, collect());
+              $uncovered = [];
+              foreach ($list as $s) {{
+                $d = substr((string)$s->SessionDate, 0, 10); $m = substr($d, 0, 7);
+                $covered = $owned->contains(fn ($it) => substr((string)$it->PeriodStart, 0, 10) <= $d && substr((string)$it->PeriodEnd, 0, 10) >= $d)
+                  || in_array($m, $ownedMonths->get($cid, []), true);
+                foreach ($inv as $i) {{
+                  $bounded = $items->get($i->id, collect());
+                  $its = $bounded->filter(fn ($it) => $it->StudentClassID === null || (int)$it->StudentClassID === (int)$cid);
+                  // Any bounded item means the invoice declares service ranges: never fall back to billing_period then.
+                  if ($bounded->isNotEmpty()) {{
+                    foreach ($its as $it) {{ if (substr((string)$it->PeriodStart, 0, 10) <= $d && substr((string)$it->PeriodEnd, 0, 10) >= $d) {{ $covered = true; break 2; }} }}
+                  }} elseif ((string)$i->billing_period === $m) {{ $covered = true; break; }}
+                }}
+                if (!$covered) $uncovered[$m] = ($uncovered[$m] ?? 0) + 1;
+              }}
+              if ($uncovered !== []) {{
+                ksort($uncovered);
+                $rows[] = ['course_id' => (int)$cid, 'student_id' => (int)$c->StudentID, 'campus_id' => (int)$c->CampusID,
+                  'kind' => ($inv->isEmpty() && $owned->isEmpty()) ? 'no_positive_invoice' : 'partial_coverage', 'paid_flag' => (int)$c->Paid,
+                  'stop' => (int)$c->Stop, 'closed_reason' => $c->closed_reason, 'charge' => (int)$c->Charge, 'uncovered_billable_by_month' => $uncovered];
+              }}
+            }}
+            $summary = [];
+            foreach ($rows as $r) {{ foreach ($r['uncovered_billable_by_month'] as $m => $n) {{
+              $k = $r['campus_id'] . '|' . $m . '|' . $r['kind']; $summary[$k] = ['campus_id' => $r['campus_id'], 'month' => $m, 'kind' => $r['kind'],
+                'lessons' => ($summary[$k]['lessons'] ?? 0) + $n, 'courses' => ($summary[$k]['courses'] ?? 0) + 1]; }} }}
+            ksort($summary);
+            $out['window'] = [$from, $to];
+            $out['courses_with_unbilled_lessons'] = count($rows);
+            $out['unbilled_lessons_total'] = array_sum(array_map(fn ($r) => array_sum($r['uncovered_billable_by_month']), $rows));
+            $out['by_campus_month'] = array_values($summary);
+            $out['rows'] = $rows;
+          }} elseif ($case === 'f7_prod_discrepancy') {{
+            // Read-only F7 S0 prod-snapshot discrepancy report (packet section 7): run the S1 resolver
+            // (BillingPayableResolver::courseStatusesByStudentClassIds) next to the legacy signals over every contract
+            // that is active or ended in 2026, and aggregate. Aggregate counts, amounts and example IDs only; no names.
+            $resolver = app(\App\Services\BillingPayableResolver::class);
+            // One consistent read view (InnoDB REPEATABLE READ) for the whole scan; nothing is written.
+            \Illuminate\Support\Facades\DB::beginTransaction();
+            $ids = $db::table('StudentClass')->where(fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop')->orWhereNull('EndDate')->orWhereDate('EndDate', '>=', '2026-01-01'))
+              ->orderBy('ID')->pluck('ID')->map(fn ($id) => (int)$id)->all();
+            $buckets = []; $hidden = []; $flagOnlyPaid = 0; $total = 0; $divergent = [];
+            foreach (array_chunk($ids, 400) as $chunk) {{
+              $models = \App\Models\StudentClass::query()->whereIn('ID', $chunk)->get();
+              $statuses = $resolver->courseStatusesByStudentClassIds($chunk, $models);
+              foreach ($models as $c) {{
+                $cid = (int)$c->getAttribute('ID'); $r = $statuses[$cid] ?? null; $total++;
+                $status = (string)($r['status'] ?? 'missing'); $out_amt = (int)($r['outstanding'] ?? 0);
+                $legacyPaid = $c->isEffectivelyPaid();
+                // Second legacy surface: stored Invoice.PaidAmount (B2/B3/B4/B7/B18 read it instead of Payment rows).
+                $storedPaid = (int)$db::table('Invoice')->where('StudentClassID', $cid)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->sum('PaidAmount');
+                $storedTotal = (int)$db::table('Invoice')->where('StudentClassID', $cid)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->sum('TotalAmount');
+                // Legacy surfaces (AlertController / student-classes summary) compare stored PaidAmount with the course charge.
+                $charge = max((int)$c->getAttribute('Charge'), $storedTotal);
+                $storedState = $storedTotal === 0 ? 'no_invoice' : ($storedPaid >= $charge ? 'stored_paid' : ($storedPaid > 0 ? 'stored_partial' : 'stored_unpaid'));
+                $hasPaidInvoice = $db::table('Invoice')->where('StudentClassID', $cid)->where('Status', 'paid')->exists();
+                $stop = (int)$c->getAttribute('Stop') === 1;
+                $reason = (string)($c->getAttribute('closed_reason') ?? '');
+                $reasonClass = $reason === '' ? 'none' : (in_array($reason, ['settled', 'completed', 'settled_pending', 'contract_amended', 'waived', 'usage_settled', 'converted_trial'], true) ? $reason : 'other');
+                $key = implode('|', [$status, $legacyPaid ? 'legacy_paid' : 'legacy_unpaid', $storedState, $stop ? 'stopped' : 'active', $reasonClass, (string)($r['source'] ?? '-')]);
+                $b = $buckets[$key] ?? ['status' => $status, 'legacy' => $legacyPaid ? 'paid' : 'unpaid', 'state' => $stop ? 'stopped' : 'active',
+                  'stored' => $storedState, 'closed_reason' => $reasonClass, 'source' => (string)($r['source'] ?? '-'), 'count' => 0, 'outstanding' => 0, 'examples' => []];
+                $b['count']++; $b['outstanding'] += $out_amt;
+                if (count($b['examples']) < 5) $b['examples'][] = $cid;
+                $buckets[$key] = $b;
+                // Debt the accounting queue cannot see: resolver owes, contract stopped, reason outside the queue.
+                // Same inclusion as AccountingController::settledCourses: Paid=1 or a paid invoice lists it anyway.
+                if (in_array($status, ['unpaid', 'partial', 'unbilled'], true) && $out_amt > 0 && $stop && !$legacyPaid && !$hasPaidInvoice
+                  && !in_array($reasonClass, ['settled_pending', 'contract_amended', 'waived'], true)) {{
+                  $hidden[] = ['id' => $cid, 'campus_id' => (int)$db::table('Student')->where('id', $c->getAttribute('StudentID'))->value('CampusID'),
+                    'status' => $status, 'outstanding' => $out_amt, 'closed_reason' => $reasonClass];
+                }}
+                if ($legacyPaid && in_array($status, ['unpaid', 'partial'], true)) $flagOnlyPaid++;
+                // Every course whose legacy answer differs from the resolver (S0 asks for the full list, not samples).
+                // Exact-status comparison: map each legacy surface onto the resolver vocabulary.
+                $legacyStatus = $legacyPaid ? 'paid' : 'unpaid';
+                $storedStatus = ['stored_paid' => 'paid', 'stored_partial' => 'partial', 'stored_unpaid' => 'unpaid'][$storedState] ?? null;
+                $norm = fn ($s) => $s === 'free' ? 'paid' : ($s === 'unbilled' ? 'unpaid' : $s);
+                if ($norm($status) !== $legacyStatus || ($storedStatus !== null && $norm($status) !== $storedStatus) || $status === 'review_required') {{
+                  $divergent[] = ['id' => $cid, 'status' => $status, 'legacy' => $legacyPaid ? 'paid' : 'unpaid', 'stored' => $storedState, 'outstanding' => $out_amt];
+                }}
+              }}
+            }}
+            uasort($buckets, fn ($a, $b) => $b['count'] <=> $a['count']);
+            $out['courses_scanned'] = $total;
+            $out['buckets'] = array_values($buckets);
+            $out['hidden_debt_count'] = count($hidden);
+            $out['hidden_debt_outstanding'] = array_sum(array_column($hidden, 'outstanding'));
+            $out['hidden_debt'] = array_slice($hidden, 0, 200);
+            \Illuminate\Support\Facades\DB::rollBack();
+            $out['legacy_paid_but_resolver_owes'] = $flagOnlyPaid;
+            $out['divergent_count'] = count($divergent);
+            $out['divergent'] = $divergent;
+            // This report gates F7 S3: an empty or incomplete resolution must not look like a clean result.
+            $missing = array_sum(array_map(fn ($b) => $b['status'] === 'missing' ? $b['count'] : 0, $buckets));
+            if ($total === 0 || $missing > 0) {{
+              $out['ok'] = false;
+              $out['error'] = "f7 snapshot incomplete: scanned=" . $total . " missing=" . $missing;
+            }}
           }} elseif ($case === 'contract_yang_binghe') {{
-            $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
+            $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|name|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
             $rowsOf = fn ($q) => $q->get()->map($redact)->values()->all();
             $campuses = $db::table('Campus')->where('name', 'like', '%新店%')->pluck('id')->map(fn ($i) => (int)$i)->all();
-            $studentIds = $db::table('Student')->whereIn('CampusID', $campuses)->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($i) => (int)$i)->all();
+            $studentIds = $db::table('Student')->whereIn('CampusID', $campuses)->where('id', $targetStudentId)->pluck('id')->map(fn ($i) => (int)$i)->all();
             $out['campus_ids'] = $campuses;
             $out['student_ids'] = $studentIds;
             $classes = $db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID');
@@ -512,15 +940,15 @@ jobs:
             $out['schedule_audit_logs'] = $sids === [] ? [] : $rowsOf($db::table('schedule_audit_logs')->whereIn('session_id', $sids)->where('created_at', '>=', '2026-07-01')->orderBy('id'));
             $out['security_audit_events'] = $tbl('security_audit_events') ? $rowsOf($db::table('security_audit_events')->whereIn('campus_id', $campuses)->where('occurred_at', '>=', '2026-07-01')->where(fn ($q) => $q->where('event_type', 'like', '%contract%')->orWhere('event_type', 'like', '%settle%')->orWhere('event_type', 'like', '%session%'))->orderBy('id')->limit(300)) : null;
           }} elseif ($case === 'contract_yu_shengrui') {{
-            $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
+            $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|name|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
             $rowsOf = fn ($q) => $q->get()->map($redact)->values()->all();
             $campuses = $db::table('Campus')->where('name', 'like', '%木柵%')->pluck('id')->map(fn ($i) => (int)$i)->all();
-            $studentIds = $db::table('Student')->whereIn('CampusID', $campuses)->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($i) => (int)$i)->all();
+            $studentIds = $db::table('Student')->whereIn('CampusID', $campuses)->where('id', $targetStudentId)->pluck('id')->map(fn ($i) => (int)$i)->all();
             $out['campus_ids'] = $campuses;
             $out['student_ids'] = $studentIds;
             $out['subjects'] = $rowsOf($db::table('Subject')->where(fn ($q) => $q->where('Subject_Name', 'like', '%英%')->orWhere('Subject_Name', 'like', '%數學%')));
-            $out['teachers'] = $db::table('Teacher')->whereIn('CampusID', $campuses)->where(fn ($q) => $q->where('T_Name', 'like', '%Ruth%')->orWhere('T_Name', 'like', '%李維%'))->get(['id', 'T_Name'])->map(fn ($r) => (array)$r)->all();
+            $out['teachers'] = $db::table('Teacher')->whereIn('CampusID', $campuses)->where(fn ($q) => $q->where('T_Name', 'like', '%Ruth%')->orWhere('T_Name', 'like', '%李維%'))->pluck('id')->map(fn ($i) => (int)$i)->all();
             $classes = $rowsOf($db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID'));
             $classIds = array_map(fn ($r) => (int)$r['ID'], $classes);
             $out['student_classes'] = $classes;
@@ -550,20 +978,20 @@ jobs:
           }} elseif ($case === 'billing_huang') {{
             $campusId = 9;
             $studentQuery = $db::table('Student')->where('CampusID', $campusId);
-            $lookupMode = 'student_name_exact';
+            $lookupMode = 'student_id';
             if ($targetStudentClassId !== null) {{
               $studentIds = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
                 ->where('sc.ID', $targetStudentClassId)->where('st.CampusID', $campusId)->pluck('sc.StudentID')
                 ->map(fn ($id) => (int)$id)->all();
               $lookupMode = 'student_class_id';
             }} else {{
-              $studentIds = $studentQuery->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')
+              $studentIds = $studentQuery->where('id', $targetStudentId)->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
               if ($studentIds === []) {{
                 $studentIds = $db::table('Student')->where('CampusID', $campusId)
-                  ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
+                  ->where('id', $targetStudentId)->pluck('id')
                   ->map(fn ($id) => (int)$id)->all();
-                $lookupMode = 'student_name_contains';
+                $lookupMode = 'student_id';
               }}
             }}
             $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
@@ -594,7 +1022,7 @@ jobs:
               'paid'=>(int)$r->paid, 'stop'=>(int)$r->stop, 'schedule_mode'=>(string)$r->schedule_mode,
             ])->values()->all();
           }} elseif ($case === 'billing_linlai') {{
-            $students = $db::table('Student')->where('CampusID', 9)->where('name', 'like', '%' . $targetStudentName . '%')
+            $students = $db::table('Student')->where('CampusID', 9)->where('id', $targetStudentId)
               ->get(['id', 'CampusID as campus_id']);
             $studentIds = $students->pluck('id')->map(fn ($id) => (int)$id)->all();
             $subjectIds = $db::table('Subject')->where('Subject_Name', 'like', '%' . $targetSubjectName . '%')
@@ -661,7 +1089,7 @@ jobs:
             $parentCampus = $db::table('Campus')->where('name', 'like', '%木柵%')->first(['id', 'name']);
             $parentCampusId = $parentCampus ? (int) $parentCampus->id : null;
             $parentStudents = $parentCampusId === null ? collect() : $db::table('Student')
-              ->where('CampusID', $parentCampusId)->whereRaw('TRIM(name) = ?', [$targetStudentName])
+              ->where('CampusID', $parentCampusId)->where('id', $targetStudentId)
               ->get(['id', 'CampusID as campus_id', 'Phone as legacy_phone', 'parent_phone', 'enable']);
             $parentStudentIds = $parentStudents->pluck('id')->map(fn ($id) => (int) $id)->all();
             $studentModels = $parentStudentIds === [] ? collect() : \App\Models\Student::query()->whereIn('id', $parentStudentIds)->get();
@@ -1039,9 +1467,8 @@ jobs:
           }} else {{
             $parentCampus = $db::table('Campus')->where('name', 'like', '%興隆%')->first(['id', 'name']);
             $parentCampusId = $parentCampus ? (int)$parentCampus->id : null;
-            $parentStudentName = '樓兆尹';
             $parentStudents = $parentCampusId === null ? collect() : $db::table('Student')
-              ->where('CampusID', $parentCampusId)->whereRaw('TRIM(name) = ?', [$parentStudentName])
+              ->where('CampusID', $parentCampusId)->where('id', $targetStudentId)
               ->get(['id', 'CampusID as campus_id', 'Phone as legacy_phone', 'parent_phone', 'enable']);
             $parentStudentIds = $parentStudents->pluck('id')->map(fn ($id) => (int)$id)->all();
             $out['campus'] = ['found'=>$parentCampus !== null, 'campus_id'=>$parentCampusId];
@@ -1072,33 +1499,38 @@ jobs:
           echo json_encode($out, JSON_UNESCAPED_UNICODE), PHP_EOL;
           ?>''')
           PY
-          B64=$(base64 -w0 /tmp/production_case_probe.php)
+          # The generated probe outgrew ARG_MAX when passed as a base64 argument. Ship it inside the remote script on
+          # stdin instead: one connection, cleanup trap set before the file is written.
+          [[ "$CASE_KEY" =~ ^[a-z0-9_]{1,64}$ ]] || { echo '::error::invalid case key'; exit 1; }
+          remote_script="$RUNNER_TEMP/production-case-remote.sh"
+          {
+            echo 'set -euo pipefail'
+            echo 'umask 077'
+            echo "probe_file=/tmp/production_case_probe_${CASE_KEY}.php"
+            echo 'trap '"'"'shred -u "$probe_file" 2>/dev/null || true'"'"' EXIT'
+            echo 'base64 -d > "$probe_file" <<'"'"'PROBE_B64'"'"''
+            base64 -w76 /tmp/production_case_probe.php
+            echo 'PROBE_B64'
+            echo 'cd /home/admin/backend'
+            echo 'php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
+          } > "$remote_script"
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
-            "B64='$B64' CASE_KEY='$CASE_KEY' bash -s" <<'REMOTE' | tee out/production-case.log
-          set -euo pipefail
-          cd /home/admin/backend
-          probe_file="/tmp/production_case_probe_${CASE_KEY}.php"
-          export PROBE_FILE="$probe_file"
-          php -r 'file_put_contents(getenv("PROBE_FILE"), base64_decode(getenv("B64")));'
-          php artisan tinker --execute="require '${probe_file}';"
-          rm -f "${probe_file}"
-          REMOTE
+            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' < "$remote_script" | tee out/production-case.log
           fi
           python3 - <<'PY'
           import json
           from pathlib import Path
           text = Path('out/production-case.log').read_text(encoding='utf-8', errors='replace')
           obj = next((json.loads(line) for line in text.splitlines() if line.lstrip().startswith('{')), None)
-          Path('out/production-case.json').write_text(json.dumps(obj or {'ok': False, 'raw_tail': text[-2000:]}, ensure_ascii=False, indent=2), encoding='utf-8')
+          Path('out/production-case.json').write_text(json.dumps(obj or {'ok': False, 'log_chars': len(text)}, ensure_ascii=False, indent=2), encoding='utf-8')
           if not obj or not obj.get('ok'):
               raise SystemExit('probe did not return ok JSON')
           if obj.get('case') == 'fixed_slot_huang':
               verification = obj.get('verification') or {}
               if not verification.get('student_found'):
-                  raise SystemExit('黃品皓 production target was not found')
+                  raise SystemExit('fixed-slot target student was not found')
               if not verification.get('target_class_has_wednesday_and_thursday'):
-                  raise SystemExit('黃品皓 production target has no single fixed course with both Wednesday and Thursday')
+                  raise SystemExit('fixed-slot target has no single fixed course with both Wednesday and Thursday')
           if obj.get('case') == 'parent_binding':
               if not obj.get('campus', {}).get('found'):
                   raise SystemExit('木柵 campus was not found')

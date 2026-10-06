@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\StudentClassController;
+use App\Services\Scheduling\ContractSessionSchedule;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use Carbon\Carbon;
@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
- * #1163: the contract-realign reflow (StudentClassController::remapFutureScheduledSessionsToContract)
+ * #1163: the contract-realign reflow (ContractSessionSchedule::remapFutureScheduledSessionsToContract)
  * remaps future scheduled sessions onto a new fixed-weekday cadence. When the
  * change compresses sessions forward, an earlier row's target is a later row's
  * not-yet-vacated slot — which 1062s under uq_class_session_slot if moved in
@@ -219,8 +219,8 @@ class RealignReflowTwoPhaseTest extends TestCase
 
     private function invokeReflow($unlockedSorted, array $slots, int $durationMinutes, array $skipKeys = [], ?string $startDate = null): int
     {
-        $controller = app(StudentClassController::class);
-        $method = new \ReflectionMethod(StudentClassController::class, 'remapFutureScheduledSessionsToContract');
+        $controller = app(ContractSessionSchedule::class);
+        $method = new \ReflectionMethod(ContractSessionSchedule::class, 'remapFutureScheduledSessionsToContract');
         $method->setAccessible(true);
         return (int) $method->invoke($controller, $unlockedSorted, $slots, $durationMinutes, $skipKeys, $startDate);
     }

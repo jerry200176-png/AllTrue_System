@@ -567,6 +567,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { isDirectorRole } from '../lib/roleCapabilities.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -651,7 +652,7 @@ const props = defineProps({
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-intent', 'clear-initial-context', 'navigate']);
 
 const isTeacher = computed(() => props.userRole === 'teacher');
-const allowFinancialDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
+const allowFinancialDiscount = computed(() => isDirectorRole(props.userRole));
 const currentTeacherId = computed(() => {
   const raw = props.userId;
   if (raw == null || raw === '') return null;
@@ -2421,7 +2422,7 @@ const sessionEditSession = computed(() => {
     canCancelSession: canCancelSelectedSession.value,
     cancelState: cancelState.value,
     recovery: sessionRecovery.value,
-    canMoveContract: ['director', 'super_admin'].includes(props.userRole) && !!cancelTargetSession.value?.id,
+    canMoveContract: isDirectorRole(props.userRole) && !!cancelTargetSession.value?.id,
     moveContract: moveContract.value,
     editingException: !!editingException.value,
     editingExceptionIsExtra: editingExceptionIsExtra.value,

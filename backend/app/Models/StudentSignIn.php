@@ -7,6 +7,26 @@ use LogicException;
 
 /**
  * @property int|numeric-string|null $CampusID Nullable persisted campus ID added by attendance schema migrations.
+ * @property int $id
+ * @property int|null $StudentClassID
+ * @property int $StudentID
+ * @property int|null $TeacherID
+ * @property int|null $RecordedByUserID
+ * @property int|null $GradeID
+ * @property int|null $SubjectID
+ * @property int|null $Get1byID
+ * @property int|null $Hours
+ * @property string|null $Memo
+ * @property string $SignInDT
+ * @property string|null $SignOutDT
+ * @property string $MDT
+ * @property int|null $ClassSessionID
+ * @property string $Status
+ * @property bool $SessionDeducted
+ * @property \Carbon\CarbonInterface|null $VoidedAt
+ * @property int|null $VoidedByUserID
+ * @property string|null $VoidReason
+ * @property string $PersonType
  */
 class StudentSignIn extends Model
 {

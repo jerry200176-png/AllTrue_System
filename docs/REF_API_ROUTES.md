@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 492 api/* routes · generated 2026-10-04
+> Source: `php artisan route:list --json` · 494 api/* routes · generated 2026-10-06
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -21,11 +21,13 @@
 |--------|-----|--------|------|
 | POST | `api/internal/opcache-reset` | `Closure` | public |
 
-## /api/v1/accounting (4)
+## /api/v1/accounting (6)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
+| POST | `api/v1/accounting/courses/{id}/waive` | `AccountingController@waiveCourse` | role+campus |
 | GET | `api/v1/accounting/ledger` | `AccountingController@ledger` | role+campus |
+| GET | `api/v1/accounting/monthly-drafts` | `AccountingController@monthlyDrafts` | role+campus |
 | GET | `api/v1/accounting/payments` | `AccountingController@payments` | role+campus |
 | GET | `api/v1/accounting/payments/export` | `AccountingController@paymentsExport` | role+campus |
 | GET | `api/v1/accounting/settled-courses` | `AccountingController@settledCourses` | role+campus |

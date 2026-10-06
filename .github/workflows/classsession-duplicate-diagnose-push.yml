@@ -1,4 +1,5 @@
 # Read-only Pi diagnose for ClassSession cross-SC / Stop=1 orphans.
+# Public repo (#3605): ids, statuses, dates and counts only. No names, no free-text notes (length only).
 # Trigger: push to cursor/diag-classsession-* (same-repo → secrets available).
 name: ClassSession Duplicate Diagnose (push)
 
@@ -8,6 +9,11 @@ on:
       - 'cursor/diag-classsession-**'
   workflow_dispatch:
     inputs:
+      student_id:
+        description: "Optional numeric student id (never a name)"
+        required: false
+        type: string
+        default: ""
       date:
         description: "Anchor date YYYY-MM-DD"
         required: true
@@ -59,62 +65,50 @@ jobs:
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           DATE: ${{ inputs.date || '2026-05-30' }}
           CAMPUS_ID: ${{ inputs.campus_id || '9' }}
+          STUDENT_ID: ${{ inputs.student_id || '' }}
         run: |
           set -euo pipefail
+          [[ "$DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo 'date must be YYYY-MM-DD'; exit 1; }
+          [[ "$CAMPUS_ID" =~ ^[0-9]+$ ]] || { echo 'campus_id must be numeric'; exit 1; }
+          [[ -z "$STUDENT_ID" || "$STUDENT_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'student_id must be numeric'; exit 1; }
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            DATE="$DATE" CAMPUS_ID="$CAMPUS_ID" \
+            DATE="$DATE" CAMPUS_ID="$CAMPUS_ID" STUDENT_ID="$STUDENT_ID" \
             'bash -s' <<'ENDSSH'
           set -euo pipefail
           DATE="${DATE:-2026-05-30}"
           CAMPUS_ID="${CAMPUS_ID:-9}"
-          TEACHER_NAME="_none_"
-          STUDENT_NAME_LIKE="妍耣"
+          SID="${STUDENT_ID:-0}"
           ENV_FILE=/home/admin/backend/.env
           DB_USER=$(grep '^DB_USERNAME=' "$ENV_FILE" | cut -d= -f2-)
           DB_PASS=$(grep '^DB_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
           DB_NAME=$(grep '^DB_DATABASE=' "$ENV_FILE" | cut -d= -f2-)
           M=(mysql -h 127.0.0.1 -u "$DB_USER" -p"${DB_PASS}" "$DB_NAME" -N -B)
-          NAME_ESC=$(printf "%s" "$STUDENT_NAME_LIKE" | sed "s/'/\\\\'/g")
-          IN=$("${M[@]}" -e "SELECT GROUP_CONCAT(CONCAT(\"'\",id,\"'\") SEPARATOR ',') FROM Student WHERE name LIKE CONCAT('%','$NAME_ESC','%');")
-          IN="${IN:-'-1'}"
           {
-            echo "=== diagnose DATE=$DATE CAMPUS=$CAMPUS_ID generated=$(date -Iseconds) ==="
-            echo "--- teacher ---"
-            "${M[@]}" -e "SELECT id,Name,LoginName FROM User WHERE Name LIKE CONCAT('%','$TEACHER_NAME','%') LIMIT 5;"
-            echo "--- students (all campuses, LIKE match on name) ---"
-            "${M[@]}" -e "SELECT id,name,CampusID FROM Student WHERE name LIKE CONCAT('%','$NAME_ESC','%');"
-            echo "--- students matched ids: $IN ---"
-            echo "--- case sessions ±14d ALL statuses (any campus, matched student ids) ---"
-            "${M[@]}" -e "SELECT CONCAT_WS('|',s.name,s.CampusID,cs.id,cs.StudentClassID,sc.Stop,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),SUBSTRING(cs.EndTime,1,5),cs.Status,LEFT(IFNULL(cs.Note,''),80),IFNULL(cs.created_at,''),IFNULL(cs.updated_at,''))
+            echo "=== diagnose DATE=$DATE CAMPUS=$CAMPUS_ID STUDENT_ID=$SID generated=$(date -Iseconds) ==="
+            echo "--- case sessions +-14d ALL statuses (any campus, student id; note = length only) ---"
+            "${M[@]}" -e "SELECT CONCAT_WS('|',s.id,s.CampusID,cs.id,cs.StudentClassID,sc.Stop,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),SUBSTRING(cs.EndTime,1,5),cs.Status,CHAR_LENGTH(IFNULL(cs.Note,'')),IFNULL(cs.created_at,''))
           FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student s ON s.id=sc.StudentID
-          WHERE s.id IN ($IN)
+          WHERE s.id=$SID
            AND cs.SessionDate BETWEEN DATE_SUB('$DATE', INTERVAL 14 DAY) AND DATE_ADD('$DATE', INTERVAL 14 DAY)
-          ORDER BY s.name,cs.SessionDate,cs.StartTime,cs.StudentClassID,cs.id;"
-            echo "--- her StudentClass rows (any campus, matched student ids) ---"
-            "${M[@]}" -e "SELECT CONCAT_WS('|',sc.ID,s.name,s.CampusID,sc.TeacherID,sc.SubjectID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),sc.UsedSessions,sc.StartDate)
+          ORDER BY cs.SessionDate,cs.StartTime,cs.StudentClassID,cs.id;"
+            echo "--- StudentClass rows (any campus, student id) ---"
+            "${M[@]}" -e "SELECT CONCAT_WS('|',sc.ID,s.id,s.CampusID,sc.TeacherID,sc.SubjectID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),sc.UsedSessions,sc.StartDate)
           FROM StudentClass sc JOIN Student s ON s.id=sc.StudentID
-          WHERE s.id IN ($IN)
+          WHERE s.id=$SID
           ORDER BY sc.ID;"
-            echo "--- campus9 scheduled cross-SC from date ---"
-            "${M[@]}" -e "SELECT CONCAT_WS('|',st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),GROUP_CONCAT(DISTINCT cs.StudentClassID ORDER BY cs.StudentClassID),GROUP_CONCAT(cs.id ORDER BY cs.id),GROUP_CONCAT(CONCAT(sc.Stop,':',cs.Status) ORDER BY cs.id),COUNT(DISTINCT cs.StudentClassID))
+            echo "--- campus scheduled cross-SC from date ---"
+            "${M[@]}" -e "SELECT CONCAT_WS('|',st.id,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),GROUP_CONCAT(DISTINCT cs.StudentClassID ORDER BY cs.StudentClassID),GROUP_CONCAT(cs.id ORDER BY cs.id),GROUP_CONCAT(CONCAT(sc.Stop,':',cs.Status) ORDER BY cs.id),COUNT(DISTINCT cs.StudentClassID))
           FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student st ON st.id=sc.StudentID
           WHERE st.CampusID=$CAMPUS_ID AND cs.SessionDate>='$DATE' AND LOWER(cs.Status)='scheduled'
-          GROUP BY st.id,st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5)
+          GROUP BY st.id,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5)
           HAVING COUNT(DISTINCT cs.StudentClassID)>1
-          ORDER BY cs.SessionDate,st.name LIMIT 100;"
-            echo "--- campus9 orphan Stop=1 scheduled ---"
-            "${M[@]}" -e "SELECT CONCAT_WS('|',cs.id,cs.StudentClassID,st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),cs.Status)
+          ORDER BY cs.SessionDate,st.id LIMIT 100;"
+            echo "--- campus orphan Stop=1 scheduled ---"
+            "${M[@]}" -e "SELECT CONCAT_WS('|',cs.id,cs.StudentClassID,st.id,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),cs.Status)
           FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student st ON st.id=sc.StudentID
           WHERE sc.Stop=1 AND LOWER(cs.Status)='scheduled' AND cs.SessionDate>='$DATE' AND st.CampusID=$CAMPUS_ID
-          ORDER BY cs.SessionDate,st.name LIMIT 100;"
-            echo "--- system scheduled cross-SC top50 ---"
-            "${M[@]}" -e "SELECT CONCAT_WS('|',st.CampusID,st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),GROUP_CONCAT(DISTINCT cs.StudentClassID ORDER BY cs.StudentClassID),GROUP_CONCAT(cs.id ORDER BY cs.id),GROUP_CONCAT(sc.Stop ORDER BY cs.id),COUNT(DISTINCT cs.StudentClassID))
-          FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student st ON st.id=sc.StudentID
-          WHERE cs.SessionDate>='$DATE' AND LOWER(cs.Status)='scheduled'
-          GROUP BY st.CampusID,st.id,st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5)
-          HAVING COUNT(DISTINCT cs.StudentClassID)>1
-          ORDER BY cs.SessionDate,st.CampusID,st.name LIMIT 50;"
+          ORDER BY cs.SessionDate,st.id LIMIT 100;"
             echo "--- system orphan Stop=1 scheduled count ---"
             "${M[@]}" -e "SELECT COUNT(*) FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID
           WHERE sc.Stop=1 AND LOWER(cs.Status)='scheduled' AND cs.SessionDate>='$DATE';"
@@ -129,50 +123,45 @@ jobs:
           } | tee /tmp/classsession-dup-diagnose.txt
           ENDSSH
 
-      - name: PHP tinker lookup (charset-safe, bypasses mysql-CLI raw string pitfalls)
+      - name: PHP tinker lookup (charset-safe, ids only)
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           DATE: ${{ inputs.date || '2026-05-30' }}
+          STUDENT_ID: ${{ inputs.student_id || '' }}
         run: |
           set -euo pipefail
-          python3 - <<'PY' > /tmp/student_probe.php
-          import os
-          date = os.environ["DATE"]
-          print(f"""<?php
-          $db = \\Illuminate\\Support\\Facades\\DB::class;
-          // Found her: student_id=29, name '張姸耣' (姸, not the retyped 妍 -- one
-          // codepoint off, confirming the earlier zero-row lookups were a transcription
-          // slip, not a charset bug). SC2711's 7/25 session went to leave_adjusted at
-          // 14:09:51 today; bug #220/#221 says an OLDER contract's 5/30 attended
-          // session vanished right after. Pull every contract + session for her.
+          [[ -z "$STUDENT_ID" || "$STUDENT_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'student_id must be numeric'; exit 1; }
+          if [ -z "$STUDENT_ID" ]; then
+            echo '{"ok":true,"skipped":"no student_id"}' | tee /tmp/student-probe.log
+            exit 0
+          fi
+          cat > /tmp/student_probe.php <<'PHP'
+          <?php
+          $db = \Illuminate\Support\Facades\DB::class;
+          $studentId = (int) getenv('STUDENT_ID');
           $scAll = $db::table('StudentClass as sc')
-            ->where('sc.StudentID', 29)
+            ->where('sc.StudentID', $studentId)
             ->orderBy('sc.ID')
             ->get(['sc.ID','sc.TeacherID','sc.SubjectID','sc.Stop','sc.ScheduleMode','sc.SessionCount','sc.RemainingSessions','sc.UsedSessions','sc.StartDate']);
           $scIds = $scAll->pluck('ID')->map(fn ($v) => (int)$v)->all();
-          $csNear530 = $db::table('ClassSession as cs')
+          $sessions = $db::table('ClassSession as cs')
             ->whereIn('cs.StudentClassID', $scIds)
-            ->whereBetween('cs.SessionDate', ['2026-05-16', '2026-06-13'])
+            ->whereBetween('cs.SessionDate', [date('Y-m-d', strtotime(getenv('DATE') . ' -14 days')), date('Y-m-d', strtotime(getenv('DATE') . ' +14 days'))])
             ->orderBy('cs.StudentClassID')->orderBy('cs.SessionDate')
-            ->get(['cs.id','cs.StudentClassID','cs.SessionDate','cs.StartTime','cs.Status','cs.Note','cs.updated_at']);
-          $csAround725 = $db::table('ClassSession as cs')
-            ->whereIn('cs.StudentClassID', $scIds)
-            ->whereBetween('cs.SessionDate', ['2026-07-18', '2026-08-01'])
-            ->orderBy('cs.StudentClassID')->orderBy('cs.SessionDate')
-            ->get(['cs.id','cs.StudentClassID','cs.SessionDate','cs.StartTime','cs.Status','cs.Note','cs.updated_at']);
+            ->selectRaw("cs.id, cs.StudentClassID, cs.SessionDate, cs.StartTime, cs.Status, CHAR_LENGTH(COALESCE(cs.Note, '')) as note_length, cs.updated_at")
+            ->get();
           echo json_encode([
             'ok' => true,
-            'her_contracts' => $scAll,
-            'sessions_near_530_all_contracts' => $csNear530,
-            'sessions_around_725_all_contracts' => $csAround725,
+            'student_id' => $studentId,
+            'contracts' => $scAll,
+            'sessions_around_date' => $sessions,
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
-          """)
-          PY
+          PHP
           B64=$(base64 -w0 /tmp/student_probe.php)
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "B64='${B64}' bash -s" <<'REMOTE' | tee /tmp/student-probe.log
+            "B64='${B64}' STUDENT_ID='${STUDENT_ID}' DATE='${DATE}' bash -s" <<'REMOTE' | tee /tmp/student-probe.log
           set -euo pipefail
           cd /home/admin/backend
           php -r 'file_put_contents("/tmp/student_probe.php", base64_decode(getenv("B64")));'
@@ -192,9 +181,6 @@ jobs:
             'cat /tmp/classsession-dup-diagnose.txt' > /tmp/diag-out/diagnose.txt
           cp /tmp/student-probe.log /tmp/diag-out/student-probe.log
           wc -l /tmp/diag-out/diagnose.txt
-          head -80 /tmp/diag-out/diagnose.txt
-          echo '...'
-          tail -80 /tmp/diag-out/diagnose.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

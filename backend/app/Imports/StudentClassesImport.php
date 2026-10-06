@@ -97,7 +97,7 @@ class StudentClassesImport implements ToCollection, WithHeadingRow
                 continue;
             }
             $slots[] = [
-                'weekday' => \App\Http\Controllers\StudentClassController::isoWeekday($weekday),
+                'weekday' => \App\Services\Scheduling\ContractSessionSchedule::isoWeekday($weekday),
                 'time' => $time,
             ];
         }
@@ -132,7 +132,7 @@ class StudentClassesImport implements ToCollection, WithHeadingRow
         for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
             foreach ($slots as $slot) {
                 // ISO compare (7=Sunday); raw dayOfWeek (0=Sunday) dropped Sunday slots (GitHub #1096)
-                if ((int) $date->dayOfWeekIso === \App\Http\Controllers\StudentClassController::isoWeekday($slot['weekday'])) {
+                if ((int) $date->dayOfWeekIso === \App\Services\Scheduling\ContractSessionSchedule::isoWeekday($slot['weekday'])) {
                     $startTime = Carbon::parse($date->toDateString() . ' ' . $slot['time']);
                     $endTime = $startTime->copy()->addMinutes($durationMinutes);
                     $sessions[] = [
@@ -165,7 +165,7 @@ class StudentClassesImport implements ToCollection, WithHeadingRow
 
         while (count($sessions) < $sessionCount) {
             $slot = $slots[$slotIndex % count($slots)];
-            if ((int) $date->dayOfWeekIso === \App\Http\Controllers\StudentClassController::isoWeekday($slot['weekday'])) {
+            if ((int) $date->dayOfWeekIso === \App\Services\Scheduling\ContractSessionSchedule::isoWeekday($slot['weekday'])) {
                 $startTime = Carbon::parse($date->toDateString() . ' ' . $slot['time']);
                 $endTime = $startTime->copy()->addMinutes($durationMinutes);
                 $sessions[] = [

@@ -15,6 +15,7 @@ use App\Models\PayrollTeacherBranchRule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\SubjectUnitsTimelineService;
 use App\Services\SubstituteScheduleService;
 use App\Support\TeacherProfileDirectory;
@@ -67,6 +68,7 @@ class FinanceController extends Controller
         $paidClasses = (clone $classQuery)->where('Paid', 1)->count();
         $unpaidClasses = (clone $classQuery)
             ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring'])
+            ->where(fn ($q) => $q->whereNull('closed_reason')->orWhere('closed_reason', '!=', 'waived'))
             ->where(fn ($q) => $q->where('Paid', 0)->orWhereNull('Paid'))
             ->count();
 
@@ -799,7 +801,7 @@ class FinanceController extends Controller
         ])->slice(($page - 1) * $perPage, $perPage)->values();
 
         $pagedClassIds = $paged->pluck('ID')->map(fn ($id) => (int) $id)->all();
-        $paidAtMap = AlertController::lastPaidAtByStudentClassIds($pagedClassIds);
+        $paidAtMap = ContractMoneyState::lastPaidAtByStudentClassIds($pagedClassIds);
 
         $data = $paged->map(function ($c) use ($paidAtMap) {
             $rate = $this->resolveRate($c);
@@ -1403,6 +1405,12 @@ class FinanceController extends Controller
 
     private function resolveParttimePayrollTeacherId(object $record): int
     {
+        // TD-076 flag on: the occurrence's resolved teacher is the payee (live row / makeup LearningRecord, else contract).
+        $v2 = SubstituteScheduleService::occurrence((int) $record->StudentClassID, $record->SessionDate, $record->StartTime);
+        if ($v2 !== null) {
+            return $v2[0];
+        }
+
         $sub = SubstituteScheduleService::resolveSubstituteUserId(
             (int) $record->StudentClassID,
             $record->SessionDate,
@@ -2528,42 +2536,56 @@ class FinanceController extends Controller
             ? \Carbon\Carbon::parse($request->input('as_of'))
             : \Carbon\Carbon::today();
 
+        // Receivables live on invoices (G-009 / F7): every non-waived contract, stopped or not, whose
+        // invoices still have an outstanding balance per BillingPayableResolver. Aged by the oldest
+        // non-void, not-fully-paid invoice IssueDate. Unbilled lessons are not AR (see monthly drafts).
+        $openInvoices = DB::table('Invoice')
+            ->whereNotNull('StudentClassID')
+            ->where(fn ($q) => $q->whereNull('Status')->orWhereNotIn('Status', ['void', 'paid']))
+            ->groupBy('StudentClassID')
+            ->selectRaw('StudentClassID, MIN(IssueDate) AS oldest_issue')
+            ->pluck('oldest_issue', 'StudentClassID');
         $query = StudentClass::with('student')
-            ->where('Stop', 0)
+            ->whereIn('ID', $openInvoices->keys()->all())
             ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring'])
-            ->whereRaw('CAST(Charge AS SIGNED) > CAST(COALESCE(Pay, 0) AS SIGNED)');
+            ->where(fn ($q) => $q->whereNull('closed_reason')->orWhere('closed_reason', '<>', 'waived'));
 
         if (!empty($campusIds)) {
             $query->whereHas('student', fn ($q) => $q->whereIn('CampusID', $campusIds));
         }
 
         $courses = $query->get();
+        $statuses = app(\App\Services\BillingPayableResolver::class)
+            ->courseStatusesByStudentClassIds($courses->pluck('ID')->all(), $courses);
 
         $students = [];
         foreach ($courses as $course) {
-            $studentId = (int) $course->StudentID;
-            $charge = (int) ($course->Charge ?? 0);
-            $paid = (int) ($course->Pay ?? 0);
-            $outstanding = max(0, $charge - $paid);
-            if ($outstanding <= 0) {
+            $courseId = (int) $course->getKey();
+            $status = $statuses[$courseId] ?? null;
+            $outstanding = (int) ($status['outstanding'] ?? 0);
+            if ($status === null || !in_array($status['status'] ?? null, ['unpaid', 'partial'], true) || $outstanding <= 0) {
                 continue;
             }
-
-            $startDate = $course->StartDate
-                ? \Carbon\Carbon::parse($course->StartDate)
-                : $asOf;
-            $daysOverdue = max(0, (int) $startDate->diffInDays($asOf, true));
+            $studentId = (int) $course->getAttribute('StudentID');
+            $oldest = $openInvoices[$courseId] ?? null;
+            $startDate = $oldest ? \Carbon\Carbon::parse($oldest) : $asOf;
+            $daysOverdue = max(0, (int) $startDate->diffInDays($asOf, false));
 
             if (!isset($students[$studentId])) {
                 $students[$studentId] = [
                     'student_id' => $studentId,
-                    'name' => (string) ($course->student->name ?? ''),
+                    'name' => (string) ($course->student?->getAttribute('name') ?? ''),
                     'current' => 0,
                     'thirty' => 0,
                     'sixty' => 0,
                     'ninety_plus' => 0,
                     'total' => 0,
+                    'oldest_unpaid_date' => null,
                 ];
+            }
+            $date = $startDate->toDateString();
+            if ($oldest && ($students[$studentId]['oldest_unpaid_date'] === null || $date < $students[$studentId]['oldest_unpaid_date'])) {
+                $students[$studentId]['oldest_unpaid_date'] = $date;
             }
 
             if ($daysOverdue < 30) {

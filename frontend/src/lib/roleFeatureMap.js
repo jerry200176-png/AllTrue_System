@@ -1,4 +1,5 @@
 import { getNavigationGroups } from './navigationRegistry.js';
+import { isDirectorRole } from './roleCapabilities.js';
 
 const FEATURE_USAGES = {
   director: {
@@ -48,8 +49,8 @@ const FEATURE_USAGES = {
 
 export function getRoleFeatureMap(role, options = {}) {
   const isTeacher = role === 'teacher';
-  const isDirectorRole = role === 'director' || role === 'admin' || role === 'super_admin';
-  if (!isTeacher && !isDirectorRole) {
+  const isDirector = isDirectorRole(role);
+  if (!isTeacher && !isDirector) {
     return { role, roleLabel: '未授權', highFrequencyCount: 0, advancedCount: 0, totalCount: 0, groups: [], allItems: [], highFrequencyItems: [], advancedItems: [] };
   }
   const roleKey = isTeacher ? 'teacher' : 'director';

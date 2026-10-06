@@ -7,6 +7,39 @@ use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $StudentID
+ * @property int $StudentClassID
+ * @property int $ClassSessionID
+ * @property int $TeacherID
+ * @property int|null $CreatedByUserID
+ * @property string $Content
+ * @property string|null $AttachmentUrl
+ * @property string $Status
+ * @property int|null $ApprovedBy
+ * @property \Carbon\CarbonInterface|null $ApprovedAt
+ * @property bool $SessionDeducted
+ * @property \Carbon\CarbonInterface|null $created_at
+ * @property \Carbon\CarbonInterface|null $updated_at
+ * @property string|null $ReviewNote
+ * @property string|null $Subject
+ * @property string|null $SessionDate
+ * @property string|null $StartTime
+ * @property string|null $EndTime
+ * @property string|null $HomeworkStatus
+ * @property string|null $QuizScore
+ * @property string|null $Progress
+ * @property string|null $NextHomework
+ * @property string|null $NextWeekTestScope
+ * @property string|null $Performance
+ * @property string|null $Comment
+ * @property \Carbon\CarbonInterface|null $VoidedAt
+ * @property int|null $VoidedByUserID
+ * @property string|null $VoidReason
+ * @property bool $ExcludeFromSubjectCount
+ * @property \App\Models\StudentClass|null $studentClass
+ */
 class LearningRecord extends Model
 {
     protected $table = 'LearningRecord';

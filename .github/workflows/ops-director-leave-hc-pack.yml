@@ -22,6 +22,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Require DUMP_ARTIFACT_KEY (fail closed, no plaintext fallback)
+        env:
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
+        run: |
+          # Public repo (#3605): the director review CSV carries student names, so it only ever
+          # leaves this job inside an artifact encrypted with this key.
+          if [ "${#DUMP_ARTIFACT_KEY}" -lt 16 ]; then
+            echo "::error::secret DUMP_ARTIFACT_KEY is missing or shorter than 16 chars; refusing to export the named director pack"
+            exit 1
+          fi
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,7 +59,7 @@ jobs:
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
         run: |
           set -euo pipefail
-          mkdir -p out
+          mkdir -p out raw
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' | tee out/pi.log
@@ -268,7 +278,7 @@ jobs:
           # pull director pack then wipe Pi temp (named CSV must not linger)
           scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -r "${PI_SSH_USER}@${PI_SSH_HOST}:/tmp/director-leave-hc" out/ || true
+            -r "${PI_SSH_USER}@${PI_SSH_HOST}:/tmp/director-leave-hc" raw/ || true
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
@@ -307,9 +317,22 @@ jobs:
             "ancestor_line": [l for l in text.splitlines() if "ANCESTOR" in l or l.strip() in ("yes","no")],
           }, indent=2))
           # director summary from Pi pack if present
-          summ = Path("out/director-leave-hc/director-pack-summary.json")
+          summ = Path("raw/director-leave-hc/director-pack-summary.json")
           print("DIRECTOR_SUMMARY", summ.exists())
           PY
+
+      - name: Encrypt the named director pack (plaintext never uploaded)
+        env:
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -d raw/director-leave-hc ]; then
+            tar czf - -C raw director-leave-hc \
+              | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY \
+                  -out out/director-leave-hc.full.tar.gz.enc
+          fi
+          # Belt and braces: the plaintext upload dir must hold no named CSV.
+          ! find out -iname '*.csv' | grep -q .
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
@@ -347,7 +370,7 @@ jobs:
 
           Actions run: https://github.com/${REPO}/actions/runs/${RUN}
 
-          - 主任 CSV：artifact \`director-leave-hc-and-evidence\` → \`director-leave-hc/director-review-*.csv\`
+          - 主任 CSV（含學生姓名，公開 repo 不放明文）：artifact \`director-leave-hc-and-evidence\` → \`director-leave-hc.full.tar.gz.enc\`，由 Ops 以 DUMP_ARTIFACT_KEY 本機解密後再交給主任（解密步驟見 docs/sop/BUG_INTAKE_TO_PRODUCTION.md 第 5 步）
           - 審核結果填：核准修正／保留現況／需要查證（空白＝不動）
           - Ops 對照：\`ops-review-key-map.json\`（review_key → session）；主任不需理解內部 ID
           - 轉換腳本：\`scripts/leave-cascade-director-decisions-to-allowlist.py\`

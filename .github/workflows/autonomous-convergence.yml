@@ -22,6 +22,7 @@ on:
 permissions:
   actions: write
   contents: write
+  pull-requests: read
 
 concurrency:
   group: autonomous-main-convergence

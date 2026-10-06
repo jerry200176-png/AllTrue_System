@@ -1,6 +1,6 @@
 # RFC: Schedule occurrence identity（TD-076 根治計畫）
 
-> **Status:** Phase 0–2 merged (`5634e9e9`). Phase 3 = dry-run backfill command (execute gated; not run on production). No read cutover, no stop-chain.  
+> **Status:** Phase 0–2 merged (`5634e9e9`). Phase 3 = dry-run backfill command (execute gated; not run on production). No read cutover, no stop-chain. §10 (2026-10-05) adds substitute writes to scope.  
 > **Date:** 2026-08-15  
 > **Campaign card:** [`ALLTRUE_ENGINEERING_NORTH_STAR.md`](ALLTRUE_ENGINEERING_NORTH_STAR.md)  
 > **Debt / lessons:** `docs/TECH_DEBT.md` TD-076 · `docs/AI_REGRESSION_LESSONS.md` R102, R103  
@@ -233,6 +233,80 @@ Still open (not blocking Phase 2):
 
 ---
 
+## 10. Substitute scope (added 2026-10-05)
+
+**Trigger:** 新莊 session 41612 (2026-10-09 10:00). 課程查找 showed the substitute, but the calendar kept the contract teacher. Data evidence:
+- probe run 37300311383 (`substitute_calendar_xinzhuang`)
+- monitor run 37302577020 (`substitute_slot_conflicts`)
+
+One slot held two chains:
+- 12695→12696: an older reschedule *onto* this slot, contract teacher
+- 12697→12698: the substitute
+
+The substitute write did not find the live reschedule target. `ClassSessionController::substitute` looks for anchors only on the session's own date, and 12695 is on another date. So it created a second chain. The monitor found exactly this shape in every risky slot (2 slots, both 新莊, both reschedule-then-substitute).
+
+**Why the chain model cannot be patched on the read side:** the same data shape needs opposite answers.
+- **R44:** a newer stale contract-teacher row must lose to the substitute.
+- **Contract change to the substitute** (Codex on #3539): the newer current-contract row must win.
+
+Any reader-side tie-break (newest id, or prefer non-contract) gets one of them wrong. Only one live row per occurrence removes the tie.
+
+**Decision (target, same flag and phases as §5):**
+1. A substitute is an **UPDATE of `teacher_id`** on the occurrence's single live row, plus one `schedule_change_log` row (`reason='substitute'`). It no longer inserts a `rescheduled`+`scheduled` pair. "Restore contract teacher" is the same UPDATE back.
+2. Writers in scope (Appendix A): `ClassSessionController::substitute` and `restoreOriginalTeacherFromSubstitute`, the `StudentClassController` substitute pin (#207 history pins), `TeacherLeaveController::batchSubstitute`, `SubstituteController::undo`.
+3. One resolver: "who teaches this occurrence" = the live row's `teacher_id`, else `StudentClass.TeacherID`.
+   - Backend readers stop doing `MAX(id)` over substitute rows: `ClassSessionIndexReadService`, `SubstituteScheduleService::effectiveInstructorUserId`, attendance, payroll.
+   - The frontend never re-derives the teacher from `schedules` (R44, 2026-10-05 clause).
+4. Interim, before Phase 5, behind the same flag: when a substitute targets a slot that already has a live `scheduled` row with `original_schedule_id` (a reschedule target), update that row's teacher. Do not create a second chain. This alone removes the shape behind every slot the monitor flagged.
+
+**Evidence of scale (2026-10-05, read-only):**
+- Phase 3 dry-run run 37301540539: stampable 5302, collisions **279** (230 on 2026-09-02), superseded 358, drift 0.
+- Slot-conflict monitor: 2 calendar-risk slots in today−7..+60.
+
+**Must be designed before the GO (Codex reviews on #3542 / #3550; an open list, not exhaustive — the Track B design PR must answer every item and re-run the inventory):**
+
+a. **History pins (#207).** An attended occurrence with no schedules row has no live row to UPDATE.
+   - Before a contract-teacher change, upsert the stable occurrence row with the teacher who taught. Otherwise the resolver falls back to the new `StudentClass.TeacherID` and rewrites past attendance and payroll.
+   - Keep `ContractTeacherChangePreservesHistoryTest` green.
+   - **Already-changed contracts:** Phase 3 backfill only reads existing schedules rows, so it cannot create a missing pin. Before cutover on a campus, inventory attended/taught `ClassSession`s with no schedules row whose taught teacher (`StudentSingIn` / `LearningRecord` evidence) differs from the current `StudentClass.TeacherID`. Repair them by creating stable rows from that evidence (Repair Manifest, dry-run first). Add a regression for a contract that was changed before the new writer shipped.
+   - **Evidence precedence:** `StudentSingIn.TeacherID` from RFID swipes (`SwipeRfidController`) records the contract teacher even on substituted lessons, while `LearningRecordBackfillService` resolves the substitute. They are not interchangeable. Define one precedence (proposal: existing substitute schedules row > non-voided `LearningRecord.TeacherID` > manual-attendance `StudentSingIn` > RFID `StudentSingIn`). Quarantine rows where the sources disagree, for director review, and do not auto-pin them. Add a regression for RFID swipe + substitute.
+
+b. **Teacher history.** Add `from_teacher_id` / `to_teacher_id` to `schedule_change_log`, so an UPDATE never loses who was replaced or restored. Substitute and payroll history must stay auditable.
+
+c. **Substitute + reschedule stays atomic.** The `new_date`/`new_start_time`/`new_end_time` path moves `ClassSession` and `LearningRecord`, sets the teacher and writes the notification in one transaction, and undo restores the time.
+   - The new boundary covers the combined operation and its undo.
+   - `SubstituteWithRescheduleTest` currently asserts the chain pair (`rescheduled` + `scheduled`). Under the flag, replace those storage-shape assertions with: exactly one live identity row, updated teacher/date/time, one audit entry, atomic rollback, and undo restores. Keep the flag-off case as today. Do not weaken it to make it pass.
+
+d. **Repair existing collisions first.** Phase 3 backfill skips colliding rows, and the interim write rule only prevents new ones.
+   - Collisions need a per-slot repair manifest. The keeper is the row matching `ClassSession` plus the latest operator intent. Each loser gets an explicit **non-live state transition on the `schedules` row itself**: proposal `status='superseded'`, a status every live reader already excludes; this must be verified per reader. Each transition writes one audit entry (old status/teacher/slot → superseded), and the manifest's inverse restores the old status. The append-only log alone cannot retire a row.
+   - The pilot campus needs **zero unresolved collisions** before identity readers are switched on there. This includes the two known 新莊 slots.
+
+e. **Migrate every substitute reader.** These still treat `original_schedule_id IS NOT NULL` as "is a substitute" and must use the one resolver:
+   - `SubstituteService::collectTeacherBusySlots*` (capacity release)
+   - `TeacherClassCalendar`
+   - `StudentClassController`
+   - `GlobalSearchController`
+   - the learning-record queries
+   - attendance and payroll
+
+   Writers too, not just readers: `LearningRecordController::updateTeacher` (with `update_class=false` it changes `LearningRecord.TeacherID` and payroll counters only; with `true` it can reattribute unpinned history), and every `StudentClass.TeacherID` mutation. These must route through the resolver writer, with each one in the regression matrix.
+
+   Re-run the Appendix A/B inventory. Use `rg original_schedule_id` **and** `rg "TeacherID"` writes, because grep on the chain column misses teacher writers. List each reader and writer in the cutover PR.
+
+f. **Acceptance metric.** The gate is a **campus-scoped duplicate count over the frozen identity columns** (`student_course_id`, `original_schedule_date`, `original_start_time`) across **every live status** (scheduled, leave, …). It must be 0. That needs a new read-only monitor.
+
+   It must also show **complete coverage**: every non-extra live row on the campus has both identity columns set. Zero duplicates alone does not prove this, because unstamped collision keepers and new pins would be invisible to identity readers. Add a null/partial-identity regression.
+
+   `substitute_slot_conflicts` is diagnostic only and is not the gate. It groups by the current slot, counts only `scheduled` rows, and needs different teachers, so it misses same-teacher, moved-slot and `leave` duplicates. Its `calendar_risk_slots` is a symptom metric too.
+
+**Gate:** items 1–4 and a–f need the same Founder GO as Phase 4/5.
+
+**Design answering §10:** [`DESIGN_TD076_TRACK_B_SUBSTITUTE.md`](DESIGN_TD076_TRACK_B_SUBSTITUTE.md) (Founder decisions D1–D4, writer/reader migration, repairs R-1/R-2, `occurrence_identity_health` gate, PR sequence). The pilot campus is 新莊 (CampusID 11). Until then the R44 frontend guard (#3539) keeps the calendar equal to 課程查找, and the monitor case `substitute_slot_conflicts` is the regression signal.
+
+**Acceptance:** the identity duplicate count (item f) = 0 on the pilot campus for one week after cutover. A parity test passes: calendar, course management, attendance and payroll all name the same teacher, both for the 41612 shape and for the contract-change shape.
+
+---
+
 ## Appendix A — Write paths (Phase 0, 2026-08-15)
 
 Inventory: `rg -n "original_schedule_id|status=.rescheduled" backend/app`.
@@ -253,7 +327,7 @@ Inventory: `rg -n "original_schedule_id|status=.rescheduled" backend/app`.
 | Path | Walks chain? | Notes |
 |---|---|---|
 | `frontend/src/lib/calendarExceptionMerge.js` | yes | R102 same-slot supersede (not same-date-only). Leave on that course/date hides the scheduled exception card. |
-| `frontend/src/lib/calendarOccurrenceMerge.js` | yes | R103: skip `scheduled`+`original_schedule_id` with no materialized `ClassSession`. |
+| `frontend/src/lib/calendarOccurrenceMerge.js` | yes | R103: skip `scheduled`+`original_schedule_id` with no materialized `ClassSession`. R44 (2026-10-05, 新莊 session 41612): two chains on one slot overlaid in turn; the contract-teacher row overwrote the substitute. Now a backend-resolved `substitute_teacher_id` on the session row wins. |
 | `frontend/src/lib/sessionDates.js` | yes | Treats `scheduled`+`original_schedule_id` as a reschedule destination. |
 | `frontend/src/composables/course-management/useRescheduleAndMakeup.js` | yes | Splits leave vs destination lists. |
 | `frontend/src/pages/SmartCalendar.vue` | yes | Uses `original_schedule_id` when matching a cell. |

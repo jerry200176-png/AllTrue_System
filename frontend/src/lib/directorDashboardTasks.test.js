@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   buildDirectorDashboardTasks,
+  isLiveScheduleRow,
   sortDirectorDashboardTasks,
 } from './directorDashboardTasks.js';
 
@@ -27,3 +28,10 @@ const sorted = sortDirectorDashboardTasks([
 assert.deepEqual(sorted.map((item) => item.id), ['urgent', 'late']);
 
 assert.equal(buildDirectorDashboardTasks({}).length, 0);
+
+// TD-076: a superseded schedules row is not live; scheduled/rescheduled keep their behavior.
+assert.equal(isLiveScheduleRow({ status: 'scheduled' }), true);
+assert.equal(isLiveScheduleRow({ status: 'rescheduled' }), true);
+assert.equal(isLiveScheduleRow({ status: 'superseded' }), false);
+assert.equal(isLiveScheduleRow({ status: 'Leave' }), false);
+assert.equal(isLiveScheduleRow({ status: 'cancelled' }), false);

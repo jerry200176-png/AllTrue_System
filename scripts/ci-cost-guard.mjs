@@ -23,9 +23,10 @@ const contracts = {
 
 // These push entry jobs pass github.event.before to dorny/paths-filter.
 // Without local history, its fallback fetch fails after checkout removes credentials.
+// ci.yml keeps credentials (#3519); codeql.yml uses full history without credentials.
 const pushDiffJobs = new Map([
-  ['.github/workflows/ci.yml', 'changes'],
-  ['.github/workflows/codeql.yml', 'changes'],
+  ['.github/workflows/ci.yml', { job: 'changes', persist: 'true' }],
+  ['.github/workflows/codeql.yml', { job: 'changes', persist: 'false', depth0: true }],
 ]);
 
 const errors = [];
@@ -57,7 +58,7 @@ for (const [relativePath, entryJobs] of Object.entries(contracts)) {
       .replace('ready_for_review', 'self_test_removed_event')
       .replace('!github.event.pull_request.draft', 'self_test_removed_draft_gate');
     const changes = jobBlock(workflow, 'changes');
-    workflow = workflow.replace(changes, changes.replace('fetch-depth: 0', 'fetch-depth: 1'));
+    workflow = workflow.replace(changes, changes.replace('persist-credentials: true', 'persist-credentials: false'));
   }
   if (selfTest && relativePath === '.github/workflows/codeql.yml') {
     const changes = jobBlock(workflow, 'changes');
@@ -79,13 +80,13 @@ for (const [relativePath, entryJobs] of Object.entries(contracts)) {
     }
   }
 
-  const pushDiffJob = pushDiffJobs.get(relativePath);
-  if (pushDiffJob) {
-    const checkout = firstCheckoutBlock(jobBlock(workflow, pushDiffJob));
+  const pushDiff = pushDiffJobs.get(relativePath);
+  if (pushDiff) {
+    const checkout = firstCheckoutBlock(jobBlock(workflow, pushDiff.job));
     if (!/^\s{6}- (?:name: Checkout\n\s{8})?uses: actions\/checkout@/m.test(checkout)
-        || !/^\s{10}fetch-depth: 0$/m.test(checkout)
-        || !/^\s{10}persist-credentials: false$/m.test(checkout)) {
-      errors.push(`${relativePath}: ${pushDiffJob} checkout must include full history without persisted credentials`);
+        || (pushDiff.depth0 && !/^\s{10}fetch-depth: 0$/m.test(checkout))
+        || !new RegExp(`^\\s{10}persist-credentials: ${pushDiff.persist}$`, 'm').test(checkout)) {
+      errors.push(`${relativePath}: ${pushDiff.job} checkout must be able to fetch the push base (checkout must include full history or persisted credentials)`);
     }
   }
 }
@@ -94,7 +95,7 @@ if (selfTest) {
   const detectedEvent = errors.some((error) => error.includes('must include ready_for_review'));
   const detectedGate = errors.some((error) => error.includes('must skip draft PRs'));
   const detectedHistory = [...pushDiffJobs.keys()].every((file) =>
-    errors.some((error) => error.startsWith(`${file}:`) && error.includes('checkout must include full history')));
+    errors.some((error) => error.startsWith(`${file}:`) && error.includes('checkout must')));
   if (!detectedEvent || !detectedGate || !detectedHistory) {
     console.error('ERROR: ci-cost-guard self-test did not detect all injected violations');
     process.exit(1);
