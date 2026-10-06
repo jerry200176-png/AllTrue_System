@@ -71,10 +71,43 @@ jobs:
           DATE: ${{ inputs.date }}
           TEACHER_ID: ${{ inputs.teacher_id }}
           CAMPUS_ID: ${{ inputs.campus_id }}
+          PII_FILTER: |
+            import re, sys
+            KEEP = {"teacher_id", "user_campus_id", "approved", "admin", "user_status", "uc_rfid", "id", "campus_id",
+                    "sign_in_dt", "sign_out_dt", "source", "status", "student_id", "student_campus_id", "enable",
+                    "student_signin_id", "signin_campus_id", "voided_at", "created_at", "user_id", "user_type"}
+            LINE = re.compile(r"^(Read-only teacher sign-in diagnostic for \d{4}-\d\d-\d\d|RFID fingerprint: [0-9a-f]{0,12}|"
+                              r"(Teachers matched|TeacherSingIn rows|Students / StudentSingIn with same RFID|"
+                              r"TempRfid rows with same RFID|Login fallback User/UserCampus rows): \d+)$")
+            borders, cols, dropped = 0, None, 0
+            for raw in sys.stdin:
+                line = raw.rstrip("\n")
+                if line.startswith("+"):
+                    borders += 1
+                    continue
+                if line.startswith("|"):
+                    cells = [c.strip() for c in line.strip().strip("|").split("|")]
+                    if borders == 1:
+                        cols = [i for i, c in enumerate(cells) if c in KEEP]
+                        print(" | ".join(cells[i] for i in cols))
+                    elif cols is not None:
+                        print(" | ".join(cells[i] for i in cols if i < len(cells)))
+                    continue
+                borders, cols = 0, None
+                m = re.match(r"^Teacher (\d+)(?: / .*)?$", line)
+                if m:
+                    print(f"Teacher {m.group(1)}")
+                elif LINE.match(line):
+                    print(line)
+                elif line.strip():
+                    dropped += 1
+            print(f"filtered_lines_dropped={dropped}")
         run: |
           set -euo pipefail
+          # Public repo (#3605): the command prints teacher/student names and memos in its tables. Remote
+          # stderr is discarded and stdout is reduced to an allowlist of ids, statuses, dates and counts.
           ssh -i ~/.ssh/deploy_key "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            DATE="$DATE" TEACHER_ID="$TEACHER_ID" CAMPUS_ID="$CAMPUS_ID" 'bash -s' <<'ENDSSH'
+            DATE="$DATE" TEACHER_ID="$TEACHER_ID" CAMPUS_ID="$CAMPUS_ID" 'bash -s' 2>/dev/null <<'ENDSSH' | python3 -c "$PII_FILTER"
           set -euo pipefail
           cd /home/admin/backend
 

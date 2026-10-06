@@ -42,6 +42,49 @@ on:
         required: false
         default: ""
 
+# Public repo (#3605): every remote stdout line passes this allowlist before it can reach the log, the
+# step summary or an artifact. Unknown lines are dropped (counted), JSON keeps only ints, bools, id lists
+# and the "mode" string, student lines are rebuilt from the id and campus only. Remote stderr is discarded.
+env:
+  PII_FILTER: |
+    import json, re, sys
+    SAFE = re.compile(r"^(head=[0-9a-f]{7,40}|\[(DRY-RUN|APPLY)\] guardians:sync-from-legacy|=== (APPLY|VERIFY) ===|"
+                      r"(apply-result|enable-result|disable-result|staff-acceptance-result|effective-flag|effective-config-value|"
+                      r"health-status|auth-source|student_id|legacy_parent_phone_(before|after)_len|list_status|create_status|"
+                      r"update_status|revoke_status|created_link_id|backup-file|rollback-performed)=[A-Za-z0-9_.:-]*|"
+                      r"VERIFY_OK|VERIFY_FAILED|CUTOVER_AUDIT_OK|CUTOVER_AUDIT_FAILED)$")
+    STUDENT = re.compile(r"^\s*student_id=(\d+) campus=(\d*)\b")
+    def clean(v):
+        if isinstance(v, bool) or isinstance(v, int):
+            return v
+        if isinstance(v, list):
+            return [x for x in v if isinstance(x, int) and not isinstance(x, bool)]
+        if isinstance(v, dict):
+            return {k: clean(x) for k, x in v.items() if isinstance(k, str) and re.fullmatch(r"[a-z_]+", k)
+                    and isinstance(clean(x), (bool, int, list, dict))}
+        return None
+    dropped = 0
+    for line in sys.stdin:
+        line = line.rstrip("\n")
+        m = STUDENT.match(line)
+        if m:
+            print(f"  student_id={m.group(1)} campus={m.group(2)}")
+        elif SAFE.match(line):
+            print(line)
+        elif line.startswith("{"):
+            try:
+                d = json.loads(line)
+                out = {k: clean(v) for k, v in d.items() if isinstance(k, str)}
+                out = {k: v for k, v in out.items() if v is not None}
+                if d.get("mode") in ("dry-run", "apply", "verify"):
+                    out["mode"] = d["mode"]
+                print(json.dumps(out, separators=(",", ":")))
+            except ValueError:
+                dropped += 1
+        else:
+            dropped += 1
+    print(f"filtered_lines_dropped={dropped}")
+
 concurrency:
   group: multi-guardian-activation
   cancel-in-progress: false
@@ -125,10 +168,10 @@ jobs:
         env:
           LIMIT: ${{ github.event.inputs.limit }}
         run: |
-          # Public repo (#3605): the command prints each student's parent phone and name; mask them here.
+          # Public repo (#3605): remote stderr is dropped and stdout goes through the PII_FILTER allowlist.
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
-            env LIMIT="$LIMIT" bash -s <<'ENDSSH' | sed -E 's/(phone=)[^ ]+ (name=).*/\1[redacted] \2[redacted]/' | tee /tmp/mg-dryrun.txt
+            env LIMIT="$LIMIT" bash -s 2>/dev/null <<'ENDSSH' | python3 -c "$PII_FILTER" | tee /tmp/mg-dryrun.txt
           set -euo pipefail
           cd /home/admin/backend
           echo "head=$(git -C /home/admin rev-parse HEAD)"
@@ -175,7 +218,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
-            env LIMIT="$LIMIT" EXPECTED_HEAD_SHA="$EXPECTED_HEAD_SHA" bash -s <<'ENDSSH' | sed -E 's/(phone=)[^ ]+ (name=).*/\1[redacted] \2[redacted]/' | tee /tmp/mg-apply.txt
+            env LIMIT="$LIMIT" EXPECTED_HEAD_SHA="$EXPECTED_HEAD_SHA" bash -s 2>/dev/null <<'ENDSSH' | python3 -c "$PII_FILTER" | tee /tmp/mg-apply.txt
           set -euo pipefail
           cd /home/admin
           ACTUAL="$(git rev-parse HEAD)"
@@ -234,7 +277,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
-            env LIMIT="$LIMIT" bash -s <<'ENDSSH' | tee /tmp/mg-verify.txt
+            env LIMIT="$LIMIT" bash -s 2>/dev/null <<'ENDSSH' | python3 -c "$PII_FILTER" | tee /tmp/mg-verify.txt
           set -euo pipefail
           cd /home/admin/backend
           echo "head=$(git -C /home/admin rev-parse HEAD)"
@@ -290,7 +333,7 @@ jobs:
                 SMOKE_TEACHER_PASSWORD="$SMOKE_TEACHER_PASSWORD" \
                 SMOKE_BRANCH_ID="$SMOKE_BRANCH_ID" \
                 SMOKE_BASE_URL="https://daan.lifenet.com.tw" SMOKE_ON_PI=1 \
-            bash -s <<'ENDSSH' | tee /tmp/mg-enable.txt
+            bash -s 2>/dev/null <<'ENDSSH' | python3 -c "$PII_FILTER" | tee /tmp/mg-enable.txt
           set -uo pipefail
           cd /home/admin
           ACTUAL="$(git rev-parse HEAD)"
@@ -382,7 +425,7 @@ jobs:
       - name: Disable flag
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s <<'ENDSSH' | tee /tmp/mg-disable.txt
+          ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s 2>/dev/null <<'ENDSSH' | python3 -c "$PII_FILTER" | tee /tmp/mg-disable.txt
           set -euo pipefail
           cd /home/admin/backend
           STAMP="$(date -u '+%Y-%m-%d_%H%M%SZ')"
@@ -449,7 +492,7 @@ jobs:
                 ACCEPTANCE_TEACHER_PASSWORD="$ACCEPTANCE_TEACHER_PASSWORD" \
                 SMOKE_DIRECTOR_LOGIN="$SMOKE_DIRECTOR_LOGIN" \
                 SMOKE_DIRECTOR_PASSWORD="$SMOKE_DIRECTOR_PASSWORD" \
-            bash -s <<'ENDSSH' | tee /tmp/mg-staff.txt
+            bash -s 2>/dev/null <<'ENDSSH' | python3 -c "$PII_FILTER" | tee /tmp/mg-staff.txt
           set -euo pipefail
           cd /home/admin
           ACTUAL="$(git rev-parse HEAD)"

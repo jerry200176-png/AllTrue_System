@@ -244,17 +244,43 @@ class WorkflowContractTest(unittest.TestCase):
             self.assertNotRegex((WF / wf).read_text(encoding="utf-8"), r'first\(\[[^\]]*"name"')
         self.assertNotRegex((WF / "ops-inapp-308-shen-restore.yml").read_text(encoding="utf-8"), r'get\(\["id","SessionDate","Status","Note"\]\)')
 
-    def test_guardian_backfill_log_masks_parent_phone_and_name(self):
+    def run_filter(self, source, text):
+        return subprocess.run(["python3", "-c", textwrap.dedent(source)], input=text, text=True, capture_output=True)
+
+    def test_teacher_signin_diagnose_output_is_allowlisted(self):
+        doc = yaml.safe_load((WF / "teacher-signin-diagnose.yml").read_text(encoding="utf-8"))
+        src = next(s for s in doc["jobs"]["diagnose"]["steps"] if "PII_FILTER" in (s.get("env") or {}))["env"]["PII_FILTER"]
+        raw = (f"Read-only teacher sign-in diagnostic for 2026-04-28\nTeachers matched: 1\n+----+------+----+\n"
+               f"| teacher_id | teacher_name | approved |\n+----+------+----+\n| 5 | {NAME} | 1 |\n+----+------+----+\n"
+               f"Teacher 5 / {NAME}\nRFID fingerprint: abcdef012345\n+--+--+\n| student_id | student_name | memo | status |\n+--+--+\n"
+               f"| 9 | {NAME} | {NOTE} | present |\n+--+--+\nunexpected debug line {NAME}\n")
+        out = self.run_filter(src, raw)
+        self.assertEqual(0, out.returncode, out.stderr)
+        self.assertNotIn(NAME, out.stdout + out.stderr)
+        self.assertNotIn(NOTE, out.stdout)
+        self.assertIn("Teacher 5\n", out.stdout)
+        self.assertIn("5 | 1", out.stdout)
+        self.assertIn("9 | present", out.stdout)
+        text = (WF / "teacher-signin-diagnose.yml").read_text(encoding="utf-8")
+        self.assertIn("2>/dev/null <<'ENDSSH' | python3 -c \"$PII_FILTER\"", text)
+
+    def test_guardian_activation_output_is_allowlisted_and_stderr_dropped(self):
+        doc = yaml.safe_load((WF / "multi-guardian-activation.yml").read_text(encoding="utf-8"))
+        raw = (f"head={'a' * 40}\n[DRY-RUN] guardians:sync-from-legacy\n  student_id=12 campus=9 phone=0918000111 name={NAME}\n"
+               f"{{\"mode\":\"dry-run\",\"scanned\":3,\"would_write\":1,\"phone_mismatch_sample\":[12],\"note\":\"{NAME}\","
+               f"\"slb_orphan_sample\":[{{\"line_user_id_suffix\":\"{NAME}\",\"student_id\":4}}]}}\n"
+               f"Traceback: {NAME}\nVERIFY_OK\nenable-result=SUCCESS\nstaff-acceptance-result=SUCCESS {NAME}\n")
+        out = self.run_filter(doc["env"]["PII_FILTER"], raw)
+        self.assertEqual(0, out.returncode, out.stderr)
+        self.assertNotIn(NAME, out.stdout)
+        self.assertNotIn("0918000111", out.stdout)
+        self.assertIn("student_id=12 campus=9", out.stdout)
+        self.assertIn('"mode":"dry-run"', out.stdout)
+        self.assertIn("VERIFY_OK", out.stdout)
+        self.assertIn("enable-result=SUCCESS\n", out.stdout)
         text = (WF / "multi-guardian-activation.yml").read_text(encoding="utf-8")
-        masks = re.findall(r"\| (sed -E '[^']+') \| tee /tmp/mg-(?:dryrun|apply)\.txt", text)
-        self.assertEqual(2, len(masks))
-        line = f"  student_id=12 campus=9 phone=0918000111 name={NAME}\nVERIFY_OK\n"
-        for mask in masks:
-            out = subprocess.run(["bash", "-c", mask], input=line, text=True, capture_output=True).stdout
-            self.assertNotIn("0918000111", out)
-            self.assertNotIn(NAME, out)
-            self.assertIn("student_id=12", out)
-            self.assertIn("VERIFY_OK", out)
+        self.assertEqual(6, text.count("2>/dev/null <<'ENDSSH' | python3 -c \"$PII_FILTER\" | tee"))
+        self.assertNotIn("| tee /tmp/mg-verify.txt\n          grep", text.replace("python3 -c \"$PII_FILTER\" | tee", ""))
 
     def test_classsession_duplicate_diagnose_selects_no_person_columns(self):
         run = step_run("classsession-duplicate-diagnose-push.yml", "Run diagnose on Pi")
