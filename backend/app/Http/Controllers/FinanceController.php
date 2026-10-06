@@ -65,12 +65,21 @@ class FinanceController extends Controller
         }
 
         $totalClasses = $classQuery->count();
-        $paidClasses = (clone $classQuery)->where('Paid', 1)->count();
-        $unpaidClasses = (clone $classQuery)
-            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring'])
-            ->where(fn ($q) => $q->whereNull('closed_reason')->orWhere('closed_reason', '!=', 'waived'))
-            ->where(fn ($q) => $q->where('Paid', 0)->orWhereNull('Paid'))
-            ->count();
+        // F7 S3d (B23): paid/unpaid come from the resolver status, not the Paid flag. free (tutoring / zero-fee)
+        // is neither; partial/unbilled/review_required are not settled, so they count as unpaid.
+        $paidClasses = 0;
+        $unpaidClasses = 0;
+        (clone $classQuery)->select('ID', 'ClassType', 'closed_reason')->orderBy('ID')->chunk(500, function ($chunk) use (&$paidClasses, &$unpaidClasses) {
+            $statuses = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds($chunk->pluck('ID')->all());
+            foreach ($chunk as $c) {
+                $status = $statuses[(int) $c->ID]['status'] ?? null;
+                if ($status === 'paid') {
+                    $paidClasses++;
+                } elseif ($status !== null && $status !== 'free' && $c->closed_reason !== 'waived') {
+                    $unpaidClasses++;
+                }
+            }
+        });
 
         $classIds = (clone $classQuery)->pluck('ID')->all();
 
@@ -134,17 +143,28 @@ class FinanceController extends Controller
             return response()->json([]);
         }
 
-        $query = StudentClass::where(function ($q) {
-            $q->where('Paid', 0)
-              ->orWhere('RemainingSessions', '<=', 2);
-        })->where('Stop', 0)
+        // F7 S3d (B23): "unpaid" is the resolver status (open invoice / unbilled / review), not the Paid flag.
+        $query = StudentClass::where('Stop', 0)
             ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
 
         if (!empty($studentIds)) {
             $query->whereIn('StudentID', $studentIds);
         }
 
-        $rows = $query->with('student')->get();
+        $statusByClass = [];
+        $rows = collect();
+        $query->with('student')->orderBy('ID')->chunk(500, function ($chunk) use (&$rows, &$statusByClass) {
+            $statuses = app(\App\Services\BillingPayableResolver::class)
+                ->courseStatusesByStudentClassIds($chunk->pluck('ID')->all(), $chunk);
+            foreach ($chunk as $c) {
+                $status = $statuses[(int) $c->ID]['status'] ?? null;
+                $unpaid = $status !== null && !in_array($status, ['paid', 'free'], true) && $c->closed_reason !== 'waived';
+                if ($unpaid || ($c->RemainingSessions !== null && (int) $c->RemainingSessions <= 2)) {
+                    $statusByClass[(int) $c->ID] = $status;
+                    $rows->push($c);
+                }
+            }
+        });
         $subjectIds = $rows->filter(fn ($course) => $course->getAttribute('Subject') === null || $course->getAttribute('Subject') === '')
             ->pluck('SubjectID')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values()->all();
         $subjectNames = empty($subjectIds) ? [] : DB::table('Subject')->whereIn('id', $subjectIds)->pluck('Subject_Name', 'id')->all();
@@ -155,14 +175,14 @@ class FinanceController extends Controller
                 $subjectNames[$id] = $name;
             }
         }
-        $classes = $rows->map(function ($c) use ($subjectNames) {
+        $classes = $rows->map(function ($c) use ($subjectNames, $statusByClass) {
             return [
                 'student_id'         => $c->StudentID,
                 'student_name'       => $c->student->name ?? 'Unknown',
                 'class_id'           => $c->ID,
                 'subject'            => $c->displaySubjectName($subjectNames),
                 'remaining_sessions' => (int) ($c->RemainingSessions ?? 0),
-                'paid'               => (bool) $c->Paid,
+                'paid'               => in_array($statusByClass[(int) $c->ID] ?? null, ['paid', 'free'], true),
             ];
         });
 

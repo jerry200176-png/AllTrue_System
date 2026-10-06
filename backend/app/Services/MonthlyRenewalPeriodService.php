@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\StudentClass;
 use App\Services\Scheduling\ContractSessionSchedule;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /** Shared renewal dates and historical-session safety; does not move or price sessions. */
 final class MonthlyRenewalPeriodService
@@ -16,12 +17,21 @@ final class MonthlyRenewalPeriodService
         $start = $oldEnd ? Carbon::parse($oldEnd)->addDay() : Carbon::today();
         $month = $start->copy()->startOfMonth();
         $day = max(1, min(31, (int) ($course->getAttribute('settlement_day') ?? 15)));
-        $outside = ClassSession::query()->where('StudentClassID', $course->getKey())->whereIn('Status', ['attended', 'completed', 'late'])
+        $outsideDates = ClassSession::query()->where('StudentClassID', $course->getKey())->whereIn('Status', ['attended', 'completed', 'late'])
             ->where(function ($query) use ($course, $oldEnd) {
                 if ($oldEnd) $query->whereDate('SessionDate', '>', $oldEnd);
                 if ($course->getAttribute('StartDate')) $query->orWhereDate('SessionDate', '<', Carbon::parse($course->getAttribute('StartDate'))->toDateString());
                 if (!$oldEnd && !$course->getAttribute('StartDate')) $query->whereRaw('1 = 0');
-            })->count();
+            })->pluck('SessionDate')->map(fn ($d) => Carbon::parse($d)->format('Y-m'));
+        // A month already billed by a catch-up (same student + subject, non-void invoice for that billing_period)
+        // is not a blocker: the lessons stay on this contract but their money lives on the catch-up invoice.
+        $billedMonths = $outsideDates->isEmpty() ? collect() : DB::table('Invoice as inv')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')
+            ->where('sc.StudentID', $course->getAttribute('StudentID'))->where('sc.SubjectID', $course->getAttribute('SubjectID'))
+            ->whereIn('inv.billing_period', $outsideDates->unique()->values()->all())
+            ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'))
+            ->pluck('inv.billing_period')->unique();
+        $outside = $outsideDates->reject(fn ($m) => $billedMonths->contains($m))->count();
         return ['start_date' => $start->toDateString(), 'billing_period' => $end ? $start->format('Y-m') : null,
             'due_date' => $end ? $month->day(min($day, $month->daysInMonth))->toDateString() : null,
             'blockers' => $outside ? [['code' => 'monthly_completed_sessions_outside_contract',
