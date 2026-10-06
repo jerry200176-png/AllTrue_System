@@ -8,9 +8,10 @@ const source = readFileSync(resolve(__dirname, '../../pages/StudentsList.vue'), 
 
 describe('StudentsList monthly renewal discount payload', () => {
   it('omits discount when NONE so admin renewals are not rejected by the finance gate', () => {
-    const start = source.indexOf('const submitRenewMonthly = async');
-    const submit = source.slice(start, source.indexOf('// --- CSV Import ---', start));
-    expect(submit).not.toContain('discount: renewMonthlyForm.value.discount }),');
-    expect(submit).toContain("renewMonthlyForm.value.discount.type !== 'NONE'");
+    // The payload is now built by the shared composable (also used by CourseManagement).
+    const submit = readFileSync(resolve(__dirname, '../../composables/course-management/useMonthlyRenewal.js'), 'utf8');
+    expect(submit).not.toContain('discount: form.value.discount }),');
+    expect(submit).toContain("discount.type !== 'NONE'");
+    expect(source).toContain('monthlyRenewal.submit(course, endDate)');
   });
 });

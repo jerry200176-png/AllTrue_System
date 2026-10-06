@@ -1,0 +1,217 @@
+name: Founder POP unpaid hidden closures repair
+# Case adapter for POP operation unpaid-hidden-closures-20261005 (Founder decision 2026-10-05, PR #3534).
+# Execution stays on the Pi scheduler; the super_admin Bearer session is read on the Pi and never leaves it.
+# The operation spans campuses, so draft/dry-run use that super_admin session (the POP machine identity is
+# campus-scoped). dry-run is read-only; approve waits for Pi-local execute + verify.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run or approve (approve waits for Pi-local verify)
+        required: true
+        type: choice
+        options: [dry-run, approve]
+        default: dry-run
+      confirm:
+        description: "DRY_RUN_UNPAID_HIDDEN_CLOSURES_20261005 or APPROVE_UNPAID_HIDDEN_CLOSURES_20261005"
+        required: true
+        type: string
+      deployed_backend_sha:
+        description: Full backend SHA currently in production (deployment.json backend_sha)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: alltrue-production-side-effects-v2
+  cancel-in-progress: false
+jobs:
+  guard:
+    name: Validate exact unpaid-hidden-closures gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reject scope or confirmation drift
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+          INPUT_SHA: ${{ inputs.deployed_backend_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$MODE" == dry-run || "$MODE" == approve ]] || exit 1
+          [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::deployed_backend_sha must be a full commit SHA'; exit 1; }
+          if [[ "$MODE" == dry-run ]]; then
+            [[ "$CONFIRM" == DRY_RUN_UNPAID_HIDDEN_CLOSURES_20261005 ]] || exit 1
+          else
+            [[ "$CONFIRM" == APPROVE_UNPAID_HIDDEN_CLOSURES_20261005 ]] || exit 1
+          fi
+          echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA scope=exact_manifest_50_courses"
+  repair:
+    name: Pi-local short-lived POP repair (unpaid hidden closures)
+    needs: guard
+    if: ${{ needs.guard.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production-activation
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Use pinned Pi SSH host identity
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          TARGET_SHA: ${{ inputs.deployed_backend_sha }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY" && test -n "$PI_HOST_KEY"
+          # Both values were allowlisted by the guard job (mode choice, 40-hex SHA) before reaching the remote shell.
+          [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          SSH_DIR="$RUNNER_TEMP/pop-unpaid-hidden-ssh"
+          install -d -m 700 "$SSH_DIR"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
+          chmod 600 "$SSH_DIR/deploy_key"
+          trap 'shred -u "$SSH_DIR/deploy_key" 2>/dev/null || true' EXIT
+          ssh -i "$SSH_DIR/deploy_key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          cd /home/admin/backend
+          BASE_URL=https://daan.lifenet.com.tw
+          OPERATION=unpaid-hidden-closures-20261005
+          APPROVAL_REF=founder-go-unpaid-hidden-closures-20261005
+          WORK_DIR="$(mktemp -d /tmp/pop-unpaid-hidden.XXXXXX)"
+          TOKEN=''
+          cleanup() {
+            unset TOKEN
+            case "$WORK_DIR" in /tmp/pop-unpaid-hidden.*) find "$WORK_DIR" -mindepth 1 -delete; rmdir "$WORK_DIR" ;; esac
+          }
+          trap cleanup EXIT
+          manifest="$WORK_DIR/manifest.json"
+          curl -sS --fail --proto '=https' --tlsv1.2 "$BASE_URL/deployment.json" -o "$manifest"
+          manifest_sha="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["backend_sha"])' "$manifest")"
+          [[ "$manifest_sha" == "$TARGET_SHA" ]] || { echo "::error::production backend SHA drifted: manifest=$manifest_sha expected=$TARGET_SHA"; exit 1; }
+          echo "production deployment gate passed: backend_sha=$manifest_sha"
+          auth_file="$WORK_DIR/auth"
+          php artisan tinker --no-ansi --execute='
+          $row = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
+            ->join("User as u", "u.id", "=", "t.user_id")
+            ->where("u.type", "S")->where("t.expires_at", ">", now())
+            ->where(function ($q) { $q->where("u.MustChangePassword", 0)->orWhereNull("u.MustChangePassword"); })
+            ->orderByDesc("t.expires_at")->select("t.token")->first();
+          if (!$row) throw new \RuntimeException("no unexpired super_admin session available on Pi");
+          echo (string) $row->token;
+          ' > "$auth_file"
+          TOKEN="$(<"$auth_file")"
+          : > "$auth_file"
+          [[ "$TOKEN" =~ ^[A-Za-z0-9]+$ ]] || { echo '::error::Pi short-lived super_admin session format check failed'; exit 1; }
+          post_human() {
+            local path="$1" body="$2" output="$3"
+            curl -sS --proto '=https' --tlsv1.2 -H "Authorization: Bearer $TOKEN" \
+              -H 'Accept: application/json' -H 'Content-Type: application/json' --data "$body" -o "$output" -w '%{http_code}' "$BASE_URL$path"
+          }
+          # Exact catalog-bound parameters; the 50-row manifest lives in code (UnpaidHiddenClosuresManifest).
+          PARAMETERS_JSON='{"parameters":{"decision_reference":"repair-unpaid-hidden-closures-20261005"},"idempotency_key":"founder-unpaid-hidden-closures-20261005"}'
+          draft="$WORK_DIR/draft.json"
+          draft_status="$(post_human "/api/v1/pop/operations/$OPERATION/draft" "$PARAMETERS_JSON" "$draft")"
+          [[ "$draft_status" == 201 || "$draft_status" == 200 ]] || { echo "::error::POP draft rejected with HTTP $draft_status"; exit 1; }
+          REQUEST_ID="$(python3 - "$draft" <<'PY'
+          import json, re, sys
+          data = json.load(open(sys.argv[1])).get('data', {})
+          request_id = str(data.get('id') or data.get('request_id') or '')
+          if not re.fullmatch(r'[0-9a-fA-F-]{36}', request_id):
+              raise SystemExit('draft response did not contain a request id')
+          print(request_id)
+          PY
+          )"
+          echo "request created/reused: request_id=$REQUEST_ID operation=$OPERATION"
+          dry_run="$WORK_DIR/dry-run.json"
+          dry_status="$(post_human "/api/v1/pop/operations/requests/$REQUEST_ID/dry-run" '{}' "$dry_run")"
+          python3 - "$dry_run" <<'PY' || echo "dry_run response unparsable"
+          import json, re, sys
+          body = json.load(open(sys.argv[1]))
+          data = body.get('data', body)
+          plan = data.get('plan', data.get('result', data)) if isinstance(data, dict) else {}
+          errs = [str(e) for e in (plan.get('errors') or []) if re.fullmatch(r'[A-Za-z0-9_:-]{1,96}', str(e))][:64]
+          print('dry_run ok=%s state=%s errors=%s' % (plan.get('ok'), plan.get('state'), ','.join(errs) or '-'))
+          PY
+          [[ "$dry_status" == 200 ]] || { echo "::error::POP dry-run rejected with HTTP $dry_status"; exit 1; }
+          if [[ "$MODE" == dry-run ]]; then
+            echo "dry-run only: no approval issued"
+            exit 0
+          fi
+          approval="$WORK_DIR/approval.json"
+          approval_body="{\"approval_reference\":\"$APPROVAL_REF\",\"commit_sha\":\"$TARGET_SHA\",\"ttl_minutes\":15}"
+          approval_status="$(post_human "/api/v1/pop/operations/requests/$REQUEST_ID/approvals" "$approval_body" "$approval")"
+          [[ "$approval_status" == 200 ]] || { echo "::error::POP approval rejected with HTTP $approval_status"; exit 1; }
+          python3 - "$approval" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1])).get('data', {})
+          if not data.get('ready') or not data.get('token'):
+              raise SystemExit('approval did not become ready')
+          print('approval=ready status=%s ttl=15m' % data.get('status', 'unknown'))
+          PY
+          unset TOKEN
+          # Observe only. The Pi scheduler consumes the approved request and records execute+verify.
+          status_file="$WORK_DIR/status.json"
+          for attempt in $(seq 1 45); do
+            REQUEST_ID="$REQUEST_ID" php artisan tinker --no-ansi --execute='
+            $request = \Illuminate\Support\Facades\DB::table("pop_operation_requests")->where("id", getenv("REQUEST_ID"))->first();
+            $records = \Illuminate\Support\Facades\DB::table("pop_execution_records")->where("operation_id", getenv("REQUEST_ID"))->orderBy("created_at")->get(["phase", "result", "actor", "commit_sha", "approval_reference", "snapshot"]);
+            $repairAudits = \Illuminate\Support\Facades\DB::table("security_audit_events")
+              ->where("event_type", "pop.unpaid_hidden_closures")->where("outcome", "success")
+              ->where("occurred_at", ">=", $request->created_at)->count();
+            echo json_encode(["request_status" => (string) ($request->status ?? "missing"), "records" => $records->map(fn ($r) => ["phase" => (string) $r->phase, "result" => (string) $r->result, "actor" => (string) $r->actor, "commit_sha" => (string) $r->commit_sha, "approval_reference" => (string) $r->approval_reference, "snapshot_present" => (string) $r->snapshot !== ""])->values()->all(), "repair_audit_count" => $repairAudits], JSON_THROW_ON_ERROR);
+            ' > "$status_file"
+            if poll_summary="$(TARGET_SHA="$TARGET_SHA" APPROVAL_REF="$APPROVAL_REF" python3 - "$status_file" <<'PY'
+          import json, os, sys
+          body = json.load(open(sys.argv[1]))
+          records = {row['phase']: row for row in body.get('records', [])}
+          execute = records.get('execute', {})
+          verify = records.get('verify', {})
+          ready = (
+              body.get('request_status') == 'succeeded' and
+              execute.get('result') == 'succeeded' and verify.get('result') == 'succeeded' and
+              execute.get('actor') == 'pop-pi-local' and verify.get('actor') == 'pop-pi-local' and
+              execute.get('commit_sha') == os.environ['TARGET_SHA'] and verify.get('commit_sha') == os.environ['TARGET_SHA'] and
+              execute.get('approval_reference') == os.environ['APPROVAL_REF'] and
+              verify.get('approval_reference') == os.environ['APPROVAL_REF'] and
+              execute.get('snapshot_present') is True and body.get('repair_audit_count', 0) >= 1
+          )
+          if ready:
+              print('pi_execute=succeeded pi_verify=succeeded audit=verified rollback_snapshot=present')
+              raise SystemExit(0)
+          if body.get('request_status') in {'failed', 'verification_failed', 'rolled_back'} or verify.get('result') in {'failed', 'verification_failed'}:
+              print('pi_local=failed request_status=%s execute=%s verify=%s' % (body.get('request_status'), execute.get('result', 'missing'), verify.get('result', 'pending')))
+              raise SystemExit(1)
+          print('pi_local=pending request_status=%s execute=%s verify=%s' % (body.get('request_status'), execute.get('result', 'pending'), verify.get('result', 'pending')))
+          raise SystemExit(2)
+          PY
+            )"; then
+              echo "$poll_summary"
+              exit 0
+            else
+              poll_rc=$?
+              echo "$poll_summary"
+              [[ "$poll_rc" == 2 ]] || exit "$poll_rc"
+            fi
+            sleep 15
+          done
+          echo '::error::Pi-local execute/verify did not complete within the bounded observation window'
+          exit 1
+          REMOTE

@@ -101,6 +101,53 @@ _CONTROL_PLANE_EXACT = {
     "codex.md",
 }
 
+# These definitions are exercised against production by ui-smoke.yml via
+# frontend/playwright.config.js. Changing their skip/assertion behavior changes
+# release evidence even though none of these files is deployed to the app.
+# Keep local-only e2e fixtures and ordinary unit tests on their normal path.
+_PRODUCTION_SMOKE_CONTROL_EXACT = {
+    "frontend/playwright.config.js",
+}
+
+# Specs ignored by the default production ui-smoke Playwright config and run
+# only through dedicated local fixture configs. All other e2e specs are part
+# of the production smoke command and therefore define release evidence.
+_LOCAL_ONLY_E2E_SPECS = {
+    "frontend/e2e/assessment-clarity.spec.js",
+    "frontend/e2e/ui-foundation-pages.spec.js",
+    "frontend/e2e/ui-foundation-a11y-axe.spec.js",
+    "frontend/e2e/ui-foundation-role-matrix.spec.js",
+    "frontend/e2e/learning-records-polish.spec.js",
+    "frontend/e2e/learning-records-preview.spec.js",
+    "frontend/e2e/release-notes-clarity.spec.js",
+    "frontend/e2e/teacher-daily-workflow.spec.js",
+    "frontend/e2e/teacher-calendar-ux.spec.js",
+    "frontend/e2e/calendar-split-slot-317.spec.js",
+    "frontend/e2e/product-clarity-browser.spec.js",
+    "frontend/e2e/admissions-workflow-clarity.spec.js",
+    "frontend/e2e/admissions-clarity.spec.js",
+    "frontend/e2e/bug-reports-clarity.spec.js",
+    "frontend/e2e/profile-controls-clarity.spec.js",
+    "frontend/e2e/question-bank-clarity.spec.js",
+    "frontend/e2e/attendance-clarity.spec.js",
+    "frontend/e2e/students-list-clarity.spec.js",
+    "frontend/e2e/subject-settings-clarity.spec.js",
+    "frontend/e2e/director-dashboard-shell-clarity.spec.js",
+    "frontend/e2e/subject-units-clarity.spec.js",
+    "frontend/e2e/teacher-eligibility-clarity.spec.js",
+    "frontend/e2e/chat-shell-clarity.spec.js",
+    "frontend/e2e/chat-accessibility.spec.js",
+    "frontend/e2e/tuition-collection-clarity.spec.js",
+    "frontend/e2e/line-integration-clarity.spec.js",
+    "frontend/e2e/branch-management-clarity.spec.js",
+    "frontend/e2e/binding-health-clarity.spec.js",
+    "frontend/e2e/binding-management-clarity.spec.js",
+    "frontend/e2e/nightly-reconcile-clarity.spec.js",
+    "frontend/e2e/director-accounts-clarity.spec.js",
+    "frontend/e2e/parttime-payroll-clarity.spec.js",
+    "frontend/e2e/truefit-fixture-print.spec.js",
+}
+
 _T3_MARKERS = (
     "billing",
     "payment",
@@ -455,7 +502,7 @@ def has_rollback_evidence(body: str) -> bool:
 
 
 def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
-    """Derive the minimum safe tier from paths and diff text."""
+    """Derive the minimum safe tier from paths and diff text, including production UI smoke controls."""
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
     if is_readonly_probe_only(normalized, patch):
@@ -490,7 +537,15 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     reasons: list[str] = []
 
     for path in normalized:
-        if any(path.startswith(prefix) for prefix in _T3_PREFIXES):
+        if path in _PRODUCTION_SMOKE_CONTROL_EXACT or (
+            path.startswith("frontend/e2e/")
+            and path not in _LOCAL_ONLY_E2E_SPECS
+            and not path.startswith("frontend/e2e/fixtures/ui-foundation/")
+            and not path.endswith(("-playwright.config.js", ".md"))
+        ) or (path == "frontend/package.json" and "test:e2e" in patch):
+            minimum = max(minimum, 3)
+            reasons.append(f"production smoke control path: {path}")
+        elif any(path.startswith(prefix) for prefix in _T3_PREFIXES):
             minimum = max(minimum, 3)
             reasons.append(f"protected path: {path}")
         elif not non_runtime_only and path.startswith("frontend/src/"):
@@ -1111,14 +1166,23 @@ def is_founder_approval_eligible(
 def decide_manual_activation(
     *, workflow_ref: str, target_sha: str, current_main_sha: str,
     ci_success: bool, founder_gate_reached: bool,
+    release_train: bool = False, target_in_main: bool = False,
 ) -> dict[str, str]:
-    """Validate a protected manual activation without performing production work."""
+    """Validate a protected manual activation without performing production work.
+
+    A release train approves one exact target that main may have moved past while
+    the approval waited; it stays valid while main still contains it. Every other
+    activation must still target the current main SHA.
+    """
 
     if workflow_ref != "refs/heads/main":
         return {"decision": "rejected", "reason": "manual application activation must run from refs/heads/main"}
     if not _FULL_SHA_RE.fullmatch(target_sha or ""):
         return {"decision": "rejected", "reason": "activation requires a full target SHA"}
-    if target_sha != current_main_sha:
+    if release_train:
+        if target_sha != current_main_sha and not target_in_main:
+            return {"decision": "rejected", "reason": "release train target is no longer contained in main"}
+    elif target_sha != current_main_sha:
         return {"decision": "rejected", "reason": "target SHA is not the current main SHA"}
     if not ci_success:
         return {"decision": "rejected", "reason": "exact target SHA has no successful main CI"}
@@ -1218,12 +1282,13 @@ def environment_protection_is_valid(
     ``deploy.yml``. Evidence-complete reversible T2 does not call this gate.
     """
 
-    if event_name not in {"workflow_run", "repository_dispatch", "workflow_dispatch"}:
+    if event_name not in {"workflow_run", "repository_dispatch", "workflow_dispatch", "schedule"}:
         return False
-    if event_name in {"workflow_run", "repository_dispatch"} and phase != "application-deploy":
+    # A scheduled release train has no inputs; deploy.yml passes phase=application-deploy.
+    if event_name in {"workflow_run", "repository_dispatch", "schedule"} and phase != "application-deploy":
         return False
     if event_name == "workflow_dispatch" and phase not in {
-        "application-deploy", "parent-portal-smoke", "pop-bootstrap",
+        "application-deploy", "release-train", "parent-portal-smoke", "pop-bootstrap",
         "phase1-create", "phase2-cutover", "phase3-lock",
     }:
         return False

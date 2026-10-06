@@ -1,6 +1,6 @@
 <script>
 import { computed, ref, watch } from 'vue';
-import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/monthlyPaymentDisplay.js';
+import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/courseMoneyState.js';
 import CourseSessionCalendar from './CourseSessionCalendar.vue';
 
 const TABS = [

@@ -1,4 +1,4 @@
-name: 吳艾潼課程結算與補登（guarded one-off）
+name: Student 178 course settle and backfill (guarded one-off)
 
 # One-off production operation requested on 2026-08-27.
 # Allowlist is intentionally exact: Student 178 / campus 16 / teacher 17;
@@ -33,7 +33,7 @@ permissions:
 
 jobs:
   operate:
-    name: ${{ inputs.mode }} 吳艾潼課程操作
+    name: ${{ inputs.mode }} student 178 course operation
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -128,7 +128,7 @@ jobs:
         if: always()
         run: |
           {
-            echo '### 吳艾潼課程操作證據'
+            echo '### Student 178 course operation evidence'
             echo '```text'
             cat out/operation.txt 2>/dev/null || echo 'No operation output was captured.'
             echo '```'

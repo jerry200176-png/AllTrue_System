@@ -197,21 +197,8 @@ class ManualSessionBookingService
             $base = array_merge($base, app(SharedPackagePlanningService::class)->summarize($package, 1));
         }
 
-        $studentRows = DB::table('ClassSession as cs')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->where('sc.StudentID', (int) $course->StudentID)
-            ->whereDate('cs.SessionDate', $date)
-            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
-            ->where(function ($query) use ($course) {
-                $query->where('sc.Stop', 0)->orWhereNull('sc.Stop')
-                    ->orWhere('cs.StudentClassID', (int) $course->getKey());
-            })
-            ->select(['cs.id', 'cs.StudentClassID', 'cs.StartTime', 'cs.EndTime'])
-            ->get();
-        foreach ($studentRows as $row) {
-            if ($this->timesOverlap($startHm, $end->format('H:i'), (string) $row->StartTime, (string) $row->EndTime)) {
-                return $this->blocked($base, 'student_conflict', '學生在同一時間已有另一堂課，請改選其他時段');
-            }
+        if ($this->scheduleGuardService->studentHasOverlap($course, $date, $startHm, $end->format('H:i'))) {
+            return $this->blocked($base, 'student_conflict', '學生在同一時間已有另一堂課，請改選其他時段');
         }
 
         $studentBranch = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
@@ -227,17 +214,7 @@ class ManualSessionBookingService
             return $this->blocked($base, 'cross_branch', '老師未被指派至課程分校，無法建立手動堂次');
         }
 
-        $scheduleConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
-            'teacher_id' => (int) $course->TeacherID,
-            'class_type' => (string) ($course->ClassType ?: 'one_on_one'),
-            'room_id' => $course->room_id ? (int) $course->room_id : null,
-            'branch_id' => $branch,
-            'schedule_date' => $date,
-            'start_time' => $startHm,
-            'end_time' => $end->format('H:i'),
-            'exclude_course_id' => (int) ($course->ID ?? 0) ?: null,
-            'exclude_student_id' => (int) ($course->StudentID ?? 0) ?: null,
-        ]);
+        $scheduleConflicts = $this->scheduleGuardService->validateCourseOccurrence($course, $branch, $date, $startHm, $end->format('H:i'));
         if (!empty($scheduleConflicts)) {
             $first = $scheduleConflicts[0];
             return array_merge($this->blocked($base, 'schedule_conflict', '老師或教室在這個時段已有安排，請改選其他時段'), [
@@ -353,22 +330,6 @@ class ManualSessionBookingService
         $duration = (int) $course->resolveSessionDurationForWeekday($isoDow);
 
         return max(30, min(480, $duration ?: 120));
-    }
-
-    private function timesOverlap(string $startA, string $endA, string $startB, string $endB): bool
-    {
-        $aStart = $this->minutes($startA);
-        $aEnd = $this->minutes($endA);
-        $bStart = $this->minutes($startB);
-        $bEnd = $this->minutes($endB);
-
-        return $aStart < $bEnd && $bStart < $aEnd;
-    }
-
-    private function minutes(string $time): int
-    {
-        [$hour, $minute] = array_map('intval', explode(':', substr($time, 0, 5)));
-        return ($hour * 60) + $minute;
     }
 
     /** @param array<string, mixed> $base */

@@ -48,16 +48,17 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 | R2 | 要在 Pi 執行任何含 `test` / `phpunit` / `config:clear` 的指令 | ❌ 停。測試只走 GitHub Actions |
 | R3 | 要執行 `git push --force` / `-f` / 直接 push main | ❌ 停。一律推 feature branch，等 PR merge |
 | R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` **完整**還原，禁止部分還原 |
-| R5 | 要執行 `php artisan migrate` | ✅ PR merge 後才可 `migrate --force` |
-| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動走 WSL2 → feature branch → PR → CI → auto-deploy |
+| R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；正式 migration 須先有 Founder 對確切範圍的批准，再由既有授權的 `deploy.yml` 執行器處理 |
+| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動走隔離 task worktree → PR → CI → 依現行授權由 `deploy.yml` 控制部署 |
 
-## ⚠️ 3 條黃線（違反 = CI 反覆失敗）
+## ⚠️ 4 條黃線（違反 = CI 反覆失敗）
 
 | # | 觸發情境 | 強制行動 |
 |---|---------|---------|
 | Y1 | 要在測試插入任何 DB 資料 | 先查 NOT NULL 欄位。`Campus` 用 Factory。`schedules` 記 **S.D.B.**（student_id, day_of_week, branch_id）|
 | Y2 | 要在測試用「今日日期」作為 future session | `start_time` 設 `23:00`，避免 `isEndedAtCreateTime=true` |
-| Y3 | 前端有改動要上線 | CI 全綠 → PR merge → 等 `deploy.yml` → 驗 health / `version.json` |
+| Y3 | 前端有改動要上線 | CI 全綠後依合併與正式啟用授權推進；核對 `deploy.yml` 的實際部署結果，再驗 health / `version.json` |
+| Y4 | PHPStan 報 `undefined property Model::$X` | 到 Model 補 `@property` docblock（欄位來自 migration），**不要**加 `backend/phpstan-baseline.neon`；baseline 只能縮不能長（Presubmit CHECK 0c），罕見例外貼 PR label `phpstan-baseline-growth` 後重跑 |
 
 ---
 
@@ -79,9 +80,9 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 | 環境 | 說明 |
 |---|---|
 | **本地開發** | WSL2 task worktree — **never** `/home/jerry/alltrue` / `~/alltrue` if it resolves there. Canonical policy: [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md) |
-| **多 agent 並行** | ⛔ 禁止共用 forbidden dirty tree。用 `git worktree add /home/jerry/alltrue-<task> origin/main -b <type>/<slug>` + `make agent-preflight`。見 WORKTREE_POLICY + `AI_REGRESSION_LESSONS` §Y6 |
+| **多 agent 並行** | ⛔ 禁止共用 forbidden dirty tree。用 `agent-start alltrue <task-id>` 建立 `/home/jerry/workspace/tasks/alltrue/<task-id>/` 並通過 preflight。見 WORKTREE_POLICY + `AI_REGRESSION_LESSONS` §Y6 |
 | **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼 |
-| **部署方式** | WSL2 push → GitHub CI 通過 → `deploy.yml` 自動 SSH 部署到 Pi |
+| **部署方式** | `deploy.yml` 是正式應用部署控制面；CI 通過不等於已有正式啟用授權，依實際 environment gate 與完整 production→candidate 風險執行 |
 
 ---
 
@@ -99,7 +100,7 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 混班型容量（一對二與一對三同一格）見 [`docs/plans/2026-08-17-mixed-class-type-occupancy.md`](docs/plans/2026-08-17-mixed-class-type-occupancy.md)（#1889／**§R116**）；剩餘依即將加入的班型算。二次調課殘影見 §R114，不可回退。
 
 ### G-008：家長入口更新卡只吃 `docs/PARENT_UPDATES.yml`（禁止 CHANGELOG 關鍵字推導）
-教職員卡唯一來源 `docs/STAFF_UPDATES.yml`（§R85）；家長卡唯一來源 `docs/PARENT_UPDATES.yml`（§R45）。CHANGELOG 只產草稿、不得自動發布。改 YAML 後跑 `npm run sync-release-notes` 並提交 generated 檔。
+教職員卡唯一來源 `docs/STAFF_UPDATES.yml`（凍結）+ `docs/staff-updates/*.yml`（§R85）；家長卡 `docs/PARENT_UPDATES.yml`（凍結）+ `docs/parent-updates/*.yml`（§R45）。CHANGELOG 只產草稿、不得自動發布。**PR 只新增檔案、不改共用清單**：CHANGELOG 條目 = `docs/changes/<date>-<slug>.md`、卡片 = `docs/staff-updates/<id>.yml`（見 `docs/GUIDE_STAFF_UPDATES.md`）；`*.generated.js` 不進 git，build/dev/test 自動產生。
 
 ### G-009：課程「繳費狀態」是雙真相 OR 邏輯，`StudentClass.Paid` 壓不過帳單付款
 `payment_status = Paid=1 或 Invoice 有效付款`（`StudentClassController.php` summary 段）。只要帳單有未作廢的 Payment，課程管理切「未繳費」會被靜默蓋回「已繳費」；要先到帳務作廢誤登款項。另：`update()` 的 preservedDelta 會把 `Charge − Rate×數量` 的差額當手動微調永久保留——若差額來自錯誤舊資料，UI 怎麼改都改不回（GitHub #798/#799，in-app #158/#159）。
@@ -118,7 +119,7 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 ### G-012：雲端／遠端 session（無 SSH、無 DB 連線）撈／回寫 in-app bug 資料——讀走 push request file，寫要交給人類
 Claude Code on the web／其他雲端 session 的 container 是全新隔離環境，**不會**掛載本機 WSL2 的 Pi SSH key 或 DB 連線；`~/.ssh`、`PI_SSH_*` 環境變數皆為空，且 `gh workflow run` / `workflow_dispatch` 對雲端 agent 一律回 403（GitHub App 權限限制）。
 **撈資料（唯讀）**：編輯 `operations/closeout/bug-queue-dump.request.md`（撈開放佇列，無參數）與 `operations/closeout/bug-detail-dump.request.md`（**要改檔內 `bug_id: <n>` 那一行**，workflow 真的會解析這行，不是只看 diff 有沒有變動）— 走 **`chore/`（禁止 `ops/`，`branch-policy.mjs` 只認 `chore|ci|fix`）** branch → PR → CI 綠 → merge 進 `main`（`push: branches:[main]` 才會觸發）→ 抓 run。
-**artifact zip 抓不到**：`blob.core.windows.net` 下載連結會被這個 session 的 egress 政策擋 403（`curl $HTTPS_PROXY/__agentproxy/status` 可確認），這是真的政策拒絕、不要重試繞過。改用 `mcp__github__get_job_logs`（`return_content:true`，`tail_lines` 建議 2000+）——每個 dump 步驟都會把完整 JSON `echo` 到 log 裡，抓那行就等於拿到 artifact 內容。
+**log 只有 ID／數量（公開 repo，#3605）**：完整 JSON（標題／描述／留言）只在以 `DUMP_ARTIFACT_KEY` 加密的 artifact（`*.full.tar.gz.enc`）；缺 secret 時 workflow fail closed。雲端 session 沒有金鑰也抓不到 artifact（`blob.core.windows.net` 403 是真的 egress 政策、不要繞過），所以報告內容只能由本機 agent 用 `gh run download` + `openssl` 解密讀取，解密步驟見 SOP 第 5 步。
 **兩者有 15 分鐘新鮮度限制**（`scripts/validate-bug-intake-evidence.py --max-age-minutes 15`）：queue-dump 與 detail-dump 必須在同一輪 15 分鐘內連續觸發並互相對得上，否則視為 stale、禁止拿舊 dump 直接分診。
 **回寫（new→triaged + 公開留言）沒有雲端路徑**：`bug-phase-a-triage.yml`／`bug-followup-comment.yml` 只有 `workflow_dispatch`、**沒有** push fallback（這是刻意的——會寫production，不像唯讀 dump 給雲端 agent 開後門）。雲端 session 能做到開 GitHub issue 為止；`bug_id` + `github_issue_url` + 符合 §3.8 白話規則的 `public_reply`（必須含 issue URL）要交給有 `workflow_dispatch` 權限的人類手動跑。`bug-phase-c-allowlist.yml` 雖有 push trigger，但限定「修復已上線」的 Phase C，不可拿來做未驗證的 Phase A。
 完整程序見 [`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`](docs/sop/BUG_INTAKE_TO_PRODUCTION.md)。
@@ -126,6 +127,12 @@ Claude Code on the web／其他雲端 session 的 container 是全新隔離環�
 完整 Gotchas G-001 ~ G-012：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
 
 ---
+
+## Land queue (merge, don't race update-branch)
+
+Add the label `queue` to a green-ready PR instead of looping on `gh pr update-branch` or `gh pr merge --auto`.
+`.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict, failed check, or unresolved review thread. Re-add `queue` after fixing.
+GitHub's native merge queue is not used: it is unavailable for this user-owned repo (a `merge_queue` ruleset probe returned 422).
 
 ## 任務完成後的記錄原則
 
@@ -138,6 +145,23 @@ Claude Code on the web／其他雲端 session 的 container 是全新隔離環�
 | 複雜系統流程 / 架構決策 | `docs/SYSTEM_TECH_GUIDE.md` |
 
 ---
+
+## Parallel agents
+
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs (under ~400 lines) that merge fast.
+- Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
+- No stacked PRs: branch from main after the dependency merges.
+- Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
+- Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
+- Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add label `intentional-revert` + reason in the PR body, then re-run presubmit.
+- Deploys: release train only.
+- Helpers (subagents) start from fresh `origin/main` in their own `agent-start` worktree; never copy files from another worktree.
+- Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
+- Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.
+- A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
+- Codex review threads must be replied to and resolved, or they block merge.
+- New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
+- Anything that needs Jerry: collect it into one list and send it to the coordinating session, not one message per item.
 
 ## On-demand 快查（按需讀，不用全讀）
 
@@ -154,6 +178,20 @@ Claude Code on the web／其他雲端 session 的 container 是全新隔離環�
 | 繳費/續課提醒規則 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` |
 | 已回報 vs 確認入帳（#1827） | `docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md` |
 | 各角色測試帳號 | `.cursor/.local/test-credentials.md` |
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` (created lazily) + ADRs in `docs/ADR_*.md` and `docs/adr/`. See `docs/agents/domain.md`.
 
 <!-- exo:governance:begin -->
 <!-- Governance hash: f45f0f00b0698aa4 -->

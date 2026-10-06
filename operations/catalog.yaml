@@ -1,6 +1,6 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 4
+version: 9
 
 operations:
   muzha-fixed-schedule-20261001:
@@ -31,6 +31,93 @@ operations:
     parameter_keys: [campus_id, decision_reference]
     tags: [repair, session, scheduling, muzha]
     notes: Exact four-course case. The strategy embeds all 32 occurrence preconditions and aborts on drift. Pi-local POP only.
+
+  unpaid-hidden-closures-20261005:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-unpaid-hidden-closures
+    founder_approval_required: true
+    runbook: docs/incidents/RM-UNPAID-HIDDEN-CLOSURES-20261005.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: exact_manifest_student_classes_closed_reason_only
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\UnpaidHiddenClosuresStrategy
+    parameter_keys: [decision_reference]
+    tags: [repair, billing, reconciliation]
+    notes: Exact manifest of unpaid settled/completed contracts. Flips closed_reason to settled_pending only; money is never touched. Pi-local POP only.
+
+  muzha-chen-billing-catchup-20261005:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-muzha-chen-billing-catchup
+    founder_approval_required: true
+    runbook: docs/incidents/RM-MUZHA-CHEN-BILLING-CATCHUP-20261005.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: one_new_contract_three_invoices_and_one_void_invoice
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\MuzhaChenBillingCatchupStrategy
+    parameter_keys: [decision_reference]
+    tags: [repair, billing, catch-up]
+    notes: Exact case. Bills student 164's uninvoiced Jun-Aug 2026 lessons of contract 1249 on one new contract with three invoices, and voids orphan unpaid invoice 1053. No session, sign-in or learning record is touched. Pi-local POP only.
+
+  unbilled-backlog-catchup-20261006:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-unbilled-backlog-catchup
+    founder_approval_required: true
+    runbook: docs/incidents/RM-UNBILLED-BACKLOG-CATCHUP-20261006.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: new_contract_invoice_item_per_uncovered_contract_month
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\UnbilledBacklogCatchupStrategy
+    parameter_keys: [campus_ids, decision_reference, expected_digest]
+    tags: [repair, billing, catch-up]
+    notes: Bills attended lessons taught outside a monthly contract's dates that no invoice covers (one catch-up contract, invoice and item per contract and month). Run per campus; execute is pinned to the dry-run digest; months without a per-session rate are reported only. No session, sign-in or learning record is touched. Pi-local POP only.
 
   reviewed-monthly-accounting-correction:
     lifecycle: active
@@ -274,3 +361,61 @@ operations:
     legacy_command: null
     tags: [deploy]
     notes: Executed via deploy.yml today; converges to POP strategy in Phase 5.
+
+  td076-r1-collision-keepers-20261006:
+    lifecycle: active
+    domain: session
+    business_owner: director-scheduling
+    technical_owner: platform-scheduling
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-td076-occurrence-repair
+    founder_approval_required: true
+    runbook: docs/incidents/RM-TD076-OCCURRENCE-REPAIRS-20261006.md
+    alert_group: LINE:ops-scheduling
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: campus_scoped_duplicate_live_schedule_rows_status_superseded_only
+    estimated_duration: 5m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\Td076CollisionKeepersStrategy
+    parameter_keys: [campus_id, decision_reference, expected_digest]
+    tags: [repair, session, scheduling, td076]
+    notes: R-1. Dry-run first (expected_digest empty) returns an ids-only digest-pinned manifest; execute needs that exact digest. Ambiguous groups are quarantined untouched. Pi-local POP only.
+
+  td076-r2-history-pins-20261006:
+    lifecycle: active
+    domain: session
+    business_owner: director-scheduling
+    technical_owner: platform-scheduling
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-td076-occurrence-repair
+    founder_approval_required: true
+    runbook: docs/incidents/RM-TD076-OCCURRENCE-REPAIRS-20261006.md
+    alert_group: LINE:ops-scheduling
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: campus_scoped_history_pin_rows_created_only
+    estimated_duration: 5m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\Td076HistoryPinsStrategy
+    parameter_keys: [campus_id, decision_reference, expected_digest]
+    tags: [repair, session, scheduling, td076]
+    notes: R-2. Dry-run first (expected_digest empty) returns an ids-only digest-pinned manifest; execute needs that exact digest. Taught past occurrences whose evidence teachers disagree are quarantined, never pinned. Inverse removes exactly the created pins. Pi-local POP only.

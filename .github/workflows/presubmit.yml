@@ -9,13 +9,18 @@ on:
     branches: ["main"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "land-queue: PR number whose head this run checks (guarded: head must equal github.sha, base main)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -26,6 +31,16 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: PR dispatch guard (fail closed)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          read -r head base state < <(gh api "/repos/$REPO/pulls/$PR_NUMBER" --jq '[.head.sha,.base.ref,.state]|join(" ")')
+          [ "$head" = "$GITHUB_SHA" ] && [ "$base" = main ] && [ "$state" = open ] \
+            || { echo "::error::pr_number $PR_NUMBER is not an open PR to main with head $GITHUB_SHA"; exit 1; }
       - name: Checkout（含完整歷史，用於 diff）
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,11 +56,11 @@ jobs:
         run: AGENT_PREFLIGHT_MODE=ci bash scripts/agent-preflight.sh
 
       - name: "[CHECK 0b] Machine risk/tier declaration"
-        if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+        if: ${{ (github.event_name == 'pull_request' && !github.event.pull_request.draft) || (github.event_name == 'workflow_dispatch' && inputs.pr_number != '') }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: |
           set -euo pipefail
           tmpdir="$(mktemp -d)"
@@ -55,6 +70,45 @@ jobs:
           python3 scripts/governance/check_pr_declaration.py \
             --pr-json "$tmpdir/pr.json" \
             --files-json "$tmpdir/files.json"
+
+      # PHPStan baseline is shrink-only: parallel PRs appending to it conflict.
+      # Escape hatch: PR label `phpstan-baseline-growth` (labels are read live, so add it then re-run).
+      - name: "[CHECK 0c] PHPStan baseline may only shrink"
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          python3 scripts/check-phpstan-baseline-shrink.py --self-test
+          if gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name' | grep -qx 'phpstan-baseline-growth'; then
+            echo "::warning::label phpstan-baseline-growth set; baseline growth allowed"
+            exit 0
+          fi
+          base_file="$RUNNER_TEMP/phpstan-baseline.base.neon"
+          git show "$(git merge-base origin/main HEAD):backend/phpstan-baseline.neon" > "$base_file"
+          python3 scripts/check-phpstan-baseline-shrink.py "$base_file" backend/phpstan-baseline.neon
+
+      # Stale-copy guard: a PR may not delete lines another PR merged to main in the last 7 days.
+      # Escape hatch: PR label `intentional-revert` (+ reason in body). Labels are read live, but
+      # presubmit does not re-trigger on label events: add the label, then re-run this job.
+      - name: "[CHECK 0d] No silent revert of recently merged work"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_recent_work_revert.py
+          if [ -n "${PR_NUMBER:-}" ]; then
+            labels="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name')"
+            if printf '%s\n' "$labels" | grep -qx 'intentional-revert'; then
+              echo "::warning::label intentional-revert set; recent-work revert check skipped"
+              exit 0
+            fi
+          fi
+          python3 scripts/check-recent-work-revert.py --base origin/main --head HEAD
 
       - name: "[CHECK 1] Branch naming convention"
         env:
@@ -206,14 +260,14 @@ jobs:
           CHANGED_PROD=$(git diff --name-only origin/main...HEAD \
             | grep -cE '^(backend/app/|backend/routes/|frontend/src/)' || true)
           CHANGED_LOG=$(git diff --name-only origin/main...HEAD \
-            | grep -cE '^docs/CHANGELOG\.md$' || true)
+            | grep -cE '^(docs/CHANGELOG\.md|docs/changes/[0-9]{4}-[0-9]{2}-[0-9]{2}-.+\.md)$' || true)
 
           echo "Production files changed: $CHANGED_PROD"
-          echo "CHANGELOG.md updated: $CHANGED_LOG"
+          echo "CHANGELOG fragment/file updated: $CHANGED_LOG"
 
           if [ "$CHANGED_PROD" -gt 0 ] && [ "$CHANGED_LOG" -eq 0 ]; then
-            echo "::warning title=Missing CHANGELOG::Production code changed ($CHANGED_PROD files) but docs/CHANGELOG.md not updated."
-            echo "::warning::Please add an entry per SOP Phase 6 [DOCS]: ## YYYY-MM-DD — feat/fix: title"
+            echo "::warning title=Missing CHANGELOG::Production code changed ($CHANGED_PROD files) but no docs/changes/<date>-<slug>.md fragment added."
+            echo "::warning::Add a new file docs/changes/YYYY-MM-DD-slug.md (## YYYY-MM-DD — feat/fix: title + release-notes marker); do not edit docs/CHANGELOG.md"
           else
             echo "✅ CHANGELOG check OK"
           fi
@@ -232,7 +286,7 @@ jobs:
       - name: "[CHECK 4B] Production release impact classification"
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: |
           set -euo pipefail
           BODY_FILE="$RUNNER_TEMP/pull-request-body.md"

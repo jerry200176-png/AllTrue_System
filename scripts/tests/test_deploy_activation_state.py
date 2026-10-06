@@ -719,7 +719,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         workflow = WORKFLOW.read_text(encoding="utf-8")
         classify = workflow[workflow.index("  classify-activation:"):]
         pop_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "pop-bootstrap" ]]')
-        manual_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then')
+        manual_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" != "release-train" ]]; then')
         identity_guard = classify.index('if [[ ! "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]')
         runtime_state_guard = classify.index('if [[ "$RUNTIME_STATE" != "normal-version-lag"')
         manual_mode = classify.index('echo "mode=manual"', runtime_state_guard)
@@ -815,6 +815,55 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
             )["decision"],
             "rejected",
         )
+
+    def test_release_train_target_stays_valid_while_main_contains_it(self):
+        main, approved = "a" * 40, "b" * 40
+        ok = decide_manual_activation(
+            workflow_ref="refs/heads/main", target_sha=approved, current_main_sha=main,
+            ci_success=True, founder_gate_reached=True, release_train=True, target_in_main=True,
+        )
+        self.assertEqual(ok["decision"], "activation-gate-reached")
+        gone = decide_manual_activation(
+            workflow_ref="refs/heads/main", target_sha=approved, current_main_sha=main,
+            ci_success=True, founder_gate_reached=True, release_train=True, target_in_main=False,
+        )
+        self.assertEqual(gone["decision"], "rejected")
+        self.assertIn("no longer contained in main", gone["reason"])
+        # Without the train flag the exact-main rule is unchanged, even if main contains the target.
+        exact = decide_manual_activation(
+            workflow_ref="refs/heads/main", target_sha=approved, current_main_sha=main,
+            ci_success=True, founder_gate_reached=True, target_in_main=True,
+        )
+        self.assertEqual(exact["decision"], "rejected")
+
+    def test_release_train_still_requires_ci_and_founder_gate(self):
+        main = "a" * 40
+        no_ci = decide_manual_activation(
+            workflow_ref="refs/heads/main", target_sha=main, current_main_sha=main,
+            ci_success=False, founder_gate_reached=True, release_train=True, target_in_main=True,
+        )
+        self.assertEqual(no_ci["decision"], "rejected")
+        waiting = decide_manual_activation(
+            workflow_ref="refs/heads/main", target_sha=main, current_main_sha=main,
+            ci_success=True, founder_gate_reached=False, release_train=True, target_in_main=True,
+        )
+        self.assertEqual(waiting["decision"], "awaiting-founder-approval")
+
+    def test_release_train_events_use_the_same_founder_environment_gate(self):
+        for event_name, phase in (("schedule", "application-deploy"), ("workflow_dispatch", "release-train")):
+            with self.subTest(event_name=event_name):
+                self.assertTrue(environment_protection_is_valid(
+                    event_name=event_name, phase=phase,
+                    required_reviewers_configured=True, prevent_self_review=False,
+                ))
+                self.assertFalse(environment_protection_is_valid(
+                    event_name=event_name, phase=phase,
+                    required_reviewers_configured=False, prevent_self_review=False,
+                ))
+        self.assertFalse(environment_protection_is_valid(
+            event_name="schedule", phase="pop-bootstrap",
+            required_reviewers_configured=True, prevent_self_review=False,
+        ))
 
     def test_manual_non_main_workflow_ref_is_rejected(self):
         current = "a" * 40
@@ -947,6 +996,31 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
     def setUpClass(cls):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
 
+    def test_release_train_schedule_and_dispatch_are_wired(self):
+        self.assertIn("schedule:\n    - cron: '30 23 * * *'\n    - cron: '30 4 * * *'", self.workflow)
+        # Retries inside each window, and a retry never cancels a train already awaiting approval.
+        self.assertIn("    - cron: '45,59 23 * * *'", self.workflow)
+        self.assertIn("    - cron: '45,59 4 * * *'", self.workflow)
+        self.assertIn("another deploy run is already waiting for approval; standing down", self.workflow)
+        self.assertIn("- release-train", self.workflow)
+        self.assertIn('release-train) EXPECTED="RELEASE_TRAIN" ;;', self.workflow)
+        self.assertIn("release_train: ${{ steps.resolve.outputs.release_train }}", self.workflow)
+        # Every gate that used to demand exact main accepts a train target only while main contains it.
+        self.assertEqual(self.workflow.count('/compare/${TARGET_SHA}...${MAIN_SHA}'), 2)
+        self.assertIn('git merge-base --is-ancestor "$TARGET_SHA" "$REMOTE_MAIN_SHA"', self.workflow)
+        # Never downgrade: production must be in the approved train target's history.
+        self.assertIn('git merge-base --is-ancestor "$PREV_COMMIT" "$TARGET_SHA"', self.workflow)
+        # The approver sees the exact target and the merged changes before approving.
+        self.assertIn("Release train: approving exactly", self.workflow)
+        self.assertIn("state=queued-for-release-train", self.workflow)
+        # Trains offer only the main tip, never an older commit, and never change flags.
+        self.assertIn('TIP="$RUN_HEAD_SHA"', self.workflow)
+        self.assertIn("RUN_HEAD_SHA: ${{ github.sha }}", self.workflow)
+        self.assertIn("A release train never changes feature flags", self.workflow)
+        # A dispatched train is classified like a scheduled one (no manual shortcut).
+        self.assertIn('classify_event = "schedule" if os.environ.get("PHASE") == "release-train"', self.workflow)
+        self.assertIn("target_in_main=os.environ.get(\"IN_MAIN\") in {\"ahead\", \"identical\"}", self.workflow)
+
     def test_existing_ci_completion_trigger_is_preserved(self):
         self.assertIn('workflows: ["CI — PHPUnit Tests"]', self.workflow)
         self.assertIn("types: [completed]", self.workflow)
@@ -976,9 +1050,22 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         gate_start = self.workflow.index("  production-activation:\n")
         deploy_start = self.workflow.index("  deploy:\n")
         gate = self.workflow[gate_start:deploy_start]
-        for event_name in ("workflow_run", "repository_dispatch", "workflow_dispatch"):
+        for event_name in ("repository_dispatch", "workflow_dispatch", "schedule"):
             with self.subTest(event_name=event_name):
                 self.assertIn(f"github.event_name == '{event_name}'", gate)
+        # Release train: neither a merge's own CI nor the bot-merge follow-up opens a
+        # Founder approval; only a train (classifier-approved) or an explicit manual phase.
+        gate_if = gate.split("\n")[3]
+        self.assertTrue(gate_if.lstrip().startswith("if:"), gate_if)
+        self.assertNotIn("workflow_run", gate_if)
+        self.assertNotIn("repository_dispatch", gate_if)
+        self.assertIn("(needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')", gate_if)
+        self.assertIn("inputs.phase != 'release-train'", gate_if)
+        # A train always needs the Founder gate, even if every change is auto-eligible.
+        self.assertIn("needs.resolve-target.outputs.release_train == 'true' && (needs.classify-activation.outputs.mode == 'auto' ||", gate_if)
+        deploy_if = self.workflow[self.workflow.index("  deploy:\n"):].split("\n")[3]
+        self.assertIn("(needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train != 'true')", deploy_if)
+        self.assertIn("(needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true')", deploy_if)
         self.assertEqual(gate.count("environment:\n      name: production-activation"), 1)
         self.assertIn("required_reviewers_configured", gate)
         self.assertIn("prevent_self_review", gate)

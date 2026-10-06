@@ -39,6 +39,22 @@ class LeaveKeepDatesAppendTailTest extends TestCase
         $this->assertStringContainsString('future_safe=', Artisan::output());
     }
 
+    public function test_repair_leave_vacated_weeks_json_has_no_student_name_by_default(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-01 10:00:00', 'Asia/Taipei'));
+        $courseId = $this->seedLegacyShiftCourse();
+        DB::table('Student')->where('id', 88901)->update(['name' => '測試學生丙']);
+
+        Artisan::call('repair:leave-vacated-weeks', ['--dry-run' => true, '--course-id' => $courseId, '--limit' => 50]);
+        $out = Artisan::output();
+        $this->assertStringContainsString('"student_id":88901', $out);
+        $this->assertStringNotContainsString('測試學生丙', $out);
+
+        Artisan::call('repair:leave-vacated-weeks', ['--dry-run' => true, '--course-id' => $courseId, '--limit' => 50, '--with-names' => true]);
+        $this->assertStringContainsString('測試學生丙', Artisan::output());
+    }
+
+
     public function test_repair_leave_vacated_weeks_apply_is_idempotent(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-01 10:00:00', 'Asia/Taipei'));

@@ -76,7 +76,7 @@
               <table class="ledger-table">
                 <thead>
                   <tr>
-                    <th class="ledger-col-expand" scope="col"><span class="sr-only">展開收款</span></th>
+                    <th class="ledger-col-expand" scope="col"><span class="sr-only">展開上課日與收款</span></th>
                     <th>帳單（科目）</th>
                     <th>應繳日</th>
                     <th class="num">應收</th>
@@ -94,8 +94,9 @@
                           class="ledger-expand"
                           type="button"
                           :aria-expanded="isExpanded(inv.id)"
-                          :aria-label="isExpanded(inv.id) ? '收合收款紀錄' : '展開收款紀錄'"
-                          :disabled="!(inv.payments?.length)"
+                          :aria-label="isExpanded(inv.id) ? '收合上課日與收款' : '展開上課日與收款'"
+                          :title="isExpanded(inv.id) ? undefined : '展開上課日'"
+                          :data-testid="`ledger-invoice-toggle-${inv.id}`"
                           @click="toggleExpand(inv.id)"
                         >
                           <span aria-hidden="true">{{ isExpanded(inv.id) ? '▾' : '▸' }}</span>
@@ -136,6 +137,12 @@
                     </tr>
                     <tr v-if="isExpanded(inv.id)" class="ledger-detail-row">
                       <td colspan="8">
+                        <LedgerCoverageDates
+                          :coverage-key="`inv-${inv.id}`"
+                          :entry="coverage[`inv-${inv.id}`]"
+                          @retry="loadCoverage('inv', inv.id)"
+                          @toggle-all="toggleCoverageAll(`inv-${inv.id}`)"
+                        />
                         <div class="ledger-timeline" aria-label="收款時間線">
                           <p v-if="!inv.payments?.length" class="ledger-muted">尚無收款紀錄</p>
                           <ol v-else class="ledger-timeline__list">
@@ -182,11 +189,27 @@
                 <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
                 <small v-if="r.receipt_no" class="ledger-ref">{{ humanizeDocumentRef(r.receipt_no) }}</small>
                 <small>{{ formatLedgerReceiptBillLine(r) }}</small>
+                <button
+                  v-if="canShowReceiptCoverage(r)"
+                  class="ledger-more ledger-receipt-toggle"
+                  type="button"
+                  :aria-expanded="isReceiptExpanded(r.report_id)"
+                  :data-testid="`ledger-receipt-toggle-${r.report_id}`"
+                  @click="toggleReceipt(r.report_id)"
+                >{{ isReceiptExpanded(r.report_id) ? '收合上課日' : '展開上課日' }}</button>
                 <small v-if="r.account_last5 || r.note" class="ledger-receipt-extra" :title="r.note || undefined">
                   <template v-if="r.account_last5">後5碼 {{ r.account_last5 }}</template>
                   <template v-if="r.account_last5 && r.note"> · </template>
                   <template v-if="r.note">備註：{{ r.note }}</template>
                 </small>
+                <LedgerCoverageDates
+                  v-if="isReceiptExpanded(r.report_id)"
+                  class="ledger-receipt-coverage"
+                  :coverage-key="`rcpt-${r.report_id}`"
+                  :entry="coverage[`rcpt-${r.report_id}`]"
+                  @retry="loadCoverage('rcpt', r.report_id)"
+                  @toggle-all="toggleCoverageAll(`rcpt-${r.report_id}`)"
+                />
               </div>
             </div>
           </section>
@@ -198,6 +221,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { isDirectorRole } from '../lib/roleCapabilities.js';
 import {
   formatAccountingLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
@@ -205,6 +229,15 @@ import {
   humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
+import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
+import LedgerCoverageDates from './LedgerCoverageDates.vue';
+import {
+  canShowReceiptCoverage,
+  coverageFromReceipt,
+  coverageFromSlip,
+  invoiceCoverageUrl,
+  receiptCoverageUrl,
+} from '../lib/ledgerCoverageDates.js';
 
 const EXCEPTION_PREVIEW = 2;
 
@@ -219,6 +252,9 @@ const busyReportId = ref(null);
 const busyInvoiceId = ref(null);
 const expandedIds = ref(new Set());
 const showAllExceptions = ref(false);
+// 涵蓋上課日, loaded lazily per expanded row: { 'inv-41': { state, sessions, showAll } }.
+const coverage = ref({});
+const expandedReceiptIds = ref(new Set());
 
 function getToken() {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
@@ -242,6 +278,7 @@ function toggleExpand(id) {
   if (next.has(key)) next.delete(key);
   else next.add(key);
   expandedIds.value = next;
+  if (next.has(key)) ensureCoverage('inv', key);
 }
 
 function autoExpandAttention() {
@@ -250,6 +287,52 @@ function autoExpandAttention() {
     if (needsAttention(inv) && inv.payments?.length) next.add(Number(inv.id));
   }
   expandedIds.value = next;
+  next.forEach((id) => ensureCoverage('inv', id));
+}
+
+function isReceiptExpanded(id) {
+  return expandedReceiptIds.value.has(Number(id));
+}
+
+function toggleReceipt(id) {
+  const next = new Set(expandedReceiptIds.value);
+  const key = Number(id);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  expandedReceiptIds.value = next;
+  if (next.has(key)) ensureCoverage('rcpt', key);
+}
+
+function ensureCoverage(kind, id) {
+  const entry = coverage.value[`${kind}-${id}`];
+  if (!entry || entry.state === 'error') loadCoverage(kind, id);
+}
+
+function toggleCoverageAll(key) {
+  const entry = coverage.value[key];
+  if (entry) coverage.value = { ...coverage.value, [key]: { ...entry, showAll: !entry.showAll } };
+}
+
+// NFR-005: a failure here only marks this block; ledger amounts stay as loaded.
+async function loadCoverage(kind, id) {
+  const key = `${kind}-${id}`;
+  const ledgerAtStart = payload.value;
+  coverage.value = { ...coverage.value, [key]: { state: 'loading', sessions: [], showAll: false } };
+  let next;
+  try {
+    const token = getToken();
+    if (!token) throw new Error('no_token');
+    const url = kind === 'inv' ? invoiceCoverageUrl(id) : receiptCoverageUrl(id);
+    const resp = await fetch(url, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
+    if (!resp.ok) throw new Error(`coverage_${resp.status}`);
+    const json = await resp.json();
+    const sessions = kind === 'inv' ? coverageFromSlip(json) : coverageFromReceipt(json, id);
+    next = { state: 'ready', sessions, showAll: false };
+  } catch {
+    next = { state: 'error', sessions: [], showAll: false };
+  }
+  // Ignore a response that lands after the ledger was reloaded for another student.
+  if (payload.value === ledgerAtStart) coverage.value = { ...coverage.value, [key]: next };
 }
 
 async function loadLedger() {
@@ -265,6 +348,8 @@ async function loadLedger() {
   error.value = '';
   payload.value = null;
   showAllExceptions.value = false;
+  coverage.value = {};
+  expandedReceiptIds.value = new Set();
   try {
     const token = getToken();
     if (!token) throw new Error('請先登入');
@@ -338,7 +423,7 @@ function getAuthRole() {
 }
 
 async function voidReport(reportId) {
-  if (!reportId || !['director', 'admin', 'super_admin'].includes(getAuthRole())) return;
+  if (!reportId || !isDirectorRole(getAuthRole())) return;
   const reason = window.prompt('請輸入撤銷原因（會保留稽核紀錄）');
   if (!reason || !reason.trim()) return;
   busyReportId.value = reportId;
@@ -361,7 +446,7 @@ async function voidReport(reportId) {
   }
 }
 
-const canManageInvoices = () => ['director', 'admin', 'super_admin'].includes(getAuthRole());
+const canManageInvoices = () => isDirectorRole(getAuthRole());
 const canDirectVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_direct_void;
 const canExceptionVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_exception_void;
 const isBusyInvoice = (invoice) => busyInvoiceId.value === invoice?.id;
@@ -399,8 +484,8 @@ const formatCurrency = (value) => 'NT$ ' + Number(value || 0).toLocaleString('zh
 const signedCurrency = (value) => `${Number(value || 0) > 0 ? '+' : Number(value || 0) < 0 ? '-' : ''}${formatCurrency(Math.abs(Number(value || 0)))}`;
 const formatPeriod = (period) => !period ? '—' : (String(period).split('-').length === 2 ? String(period).replace('-', '/') : period);
 const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '更正收款' }, method);
-const invoiceStatusLabel = (status) => labelMap({ paid: '已繳', unpaid: '未繳', partial: '部分付款', void: '已作廢' }, status);
-const reportStatusLabel = (status) => labelMap({ confirmed: '已核帳', pending: '待對帳', voided: '已撤銷', rejected: '已退回' }, status);
+const invoiceStatusLabel = (status) => labelMap(INVOICE_STATUS_LABELS, status);
+const reportStatusLabel = (status) => labelMap(REPORT_STATUS_LABELS, status);
 const applicationStatusLabel = (status) => labelMap({ applied: '已記入', partially_applied: '部分記入', overpayment_pending_review: '多收待處理', voided: '已更正' }, status);
 const invoiceStatusClass = (status) => labelMap({
   paid: 'chip--success',
@@ -463,7 +548,6 @@ const anomalyLabel = (code) => labelMap({
 .ledger-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .ledger-col-expand{width:44px;padding-left:6px;padding-right:4px}
 .ledger-expand{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;cursor:pointer;color:var(--ds-ink-mute);padding:2px 4px;border-radius:6px}
-.ledger-expand:disabled{opacity:.35;cursor:default}
 .ledger-expand:not(:disabled):hover{background:var(--ds-canvas-soft);color:var(--ds-ink)}
 .ledger-pay-count{font-style:normal;font-size:11px;font-weight:700;color:var(--ds-ink-mute)}
 .ledger-row--open td{background:var(--ds-canvas-soft)}
@@ -490,6 +574,8 @@ const anomalyLabel = (code) => labelMap({
 
 .ledger-receipts{display:grid;gap:8px}
 .ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--ds-canvas-soft);border-radius:10px}
+.ledger-receipt-toggle{margin-top:0;font-size:12px}
+.ledger-receipt-coverage{flex-basis:100%;padding-top:0}
 .ledger-receipt-extra{flex-basis:100%;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ledger-receipts--compact .ledger-receipt{padding:8px 10px}
 .ledger-muted,.ledger-receipt small,.ledger-table small{color:var(--text-light,var(--ds-ink-mute))}

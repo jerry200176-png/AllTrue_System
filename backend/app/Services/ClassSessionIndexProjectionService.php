@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Http\Controllers\StudentClassController;
+use App\Services\Scheduling\ContractSessionSchedule;
 use App\Models\ClassSession;
 use App\Models\Schedule;
 use App\Models\StudentClass;
@@ -110,6 +110,9 @@ class ClassSessionIndexProjectionService
             if (!$d) {
                 continue;
             }
+            if ($row->status === Schedule::STATUS_SUPERSEDED) {
+                continue;
+            }
             if ($row->status === 'scheduled') {
                 $scheduledByClass[$id][$d] = true;
             } else {
@@ -119,10 +122,9 @@ class ClassSessionIndexProjectionService
 
         // Contract-wide cancelled ClassSession dates (any date, one batched query) are skipped by the
         // count-mode walk, matching /student-classes/session-dates.
-        $cancelledByClass = StudentClassController::cancelledDatesByClass(array_map('intval', $classIds));
+        $cancelledByClass = ContractSessionSchedule::cancelledDatesByClass(array_map('intval', $classIds));
 
         $reader = app(SessionProjectionReadService::class);
-        $studentClassController = app(StudentClassController::class);
         /** @var array<string, list<array<string, mixed>>> $projectedByClass */
         $projectedByClass = [];
 
@@ -164,7 +166,7 @@ class ClassSessionIndexProjectionService
 
             $effectiveDates = [];
             if ((string) ($class->ScheduleMode ?? '') === 'date') {
-                $effectiveDates = $studentClassController->computeMonthlyEffectiveSessionDates(
+                $effectiveDates = ContractSessionSchedule::computeMonthlyEffectiveSessionDates(
                     $class,
                     $rangeStart,
                     $rangeEnd,
@@ -188,7 +190,7 @@ class ClassSessionIndexProjectionService
                     }
                 }
                 if ($daysOfWeek !== []) {
-                    $contractDates = StudentClassController::computeEffectiveSessionDates(
+                    $contractDates = ContractSessionSchedule::computeEffectiveSessionDates(
                         Carbon::parse($class->StartDate)->toDateString(),
                         (int) $class->SessionCount,
                         $daysOfWeek,

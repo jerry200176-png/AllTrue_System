@@ -1306,6 +1306,13 @@ class AttendanceController extends Controller
             if (!empty($byCourseDateStart[$key])) {
                 $out[(int) $cs->id] = (int) $byCourseDateStart[$key];
             }
+            // TD-076 flag on: the resolver (one live row / makeup LearningRecord) overrides the MAX(id) pick.
+            if (SubstituteScheduleService::anyCampusOn() && ($o = SubstituteScheduleService::occurrence((int) $cs->StudentClassID, $d, $start)) !== null) {
+                unset($out[(int) $cs->id]);
+                if ($o[0] > 0 && $o[0] !== $o[1]) {
+                    $out[(int) $cs->id] = $o[0];
+                }
+            }
         }
 
         return $out;

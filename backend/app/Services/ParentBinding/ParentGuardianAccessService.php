@@ -207,7 +207,6 @@ final class ParentGuardianAccessService
                 $slbOrphans[] = [
                     'slb_id' => (int) $binding->id,
                     'student_id' => $studentId,
-                    'line_user_id_suffix' => substr($line, -6),
                     'reason' => 'no_guardian_for_line',
                 ];
                 continue;
@@ -221,7 +220,6 @@ final class ParentGuardianAccessService
                     'slb_id' => (int) $binding->id,
                     'student_id' => $studentId,
                     'guardian_id' => (int) $guardian->getKey(),
-                    'line_user_id_suffix' => substr($line, -6),
                     'reason' => 'missing_student_guardian_link',
                 ];
                 continue;
@@ -231,7 +229,6 @@ final class ParentGuardianAccessService
                     'slb_id' => (int) $binding->id,
                     'student_id' => $studentId,
                     'guardian_id' => (int) $guardian->getKey(),
-                    'line_user_id_suffix' => substr($line, -6),
                 ];
             }
         }
@@ -246,7 +243,6 @@ final class ParentGuardianAccessService
             ->get();
         foreach ($dupPhones as $row) {
             $phoneAmbiguity[] = [
-                'phone_normalized_suffix' => substr((string) $row->phone_normalized, -4),
                 'guardian_count' => (int) $row->getAttribute('c'),
                 'guardian_ids' => array_map('intval', explode(',', (string) $row->getAttribute('ids'))),
             ];
