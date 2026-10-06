@@ -3622,6 +3622,28 @@ table th { font-size: 12.5px; }
 .close-btn:hover { background: var(--ds-warning-wash); }
 .paid-date-hint { display: inline-block; font-size: 12px; color: var(--ds-success); margin-left: 4px; white-space: nowrap; }
 
+/* ── Monthly Invoice Modal ── */
+.invoice-modal-subtitle {
+  font-size: 13px;
+  color: var(--ds-ink-mute);
+  margin-bottom: 16px;
+}
+.invoice-modal-loading {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--ds-ink-mute);
+}
+.invoice-modal-empty {
+  padding: 16px 0;
+  text-align: center;
+  color: var(--ds-ink-mute);
+  font-size: 14px;
+}
+.invoice-due-date-hint {
+  font-size: 11px;
+  color: var(--ds-ink-mute);
+  display: block;
+}
 .sessions-near-empty-hint {
   font-size: 13px;
   color: var(--ds-warning);
@@ -3641,6 +3663,26 @@ table th { font-size: 12.5px; }
 .duplicate-course-heading {
   color: var(--ds-warning);
 }
+.invoice-status-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.invoice-status-chip.paid    { background: var(--ds-success-wash); color: var(--ds-success); }
+.invoice-status-chip.unpaid  { background: var(--ds-warning-wash); color: var(--ds-warning); }
+.invoice-status-chip.partial { background: var(--ds-primary-wash); color: var(--ds-primary-text); }
+.invoice-skeleton {
+  height: 20px;
+  width: 100%;
+  background: linear-gradient(90deg, var(--ds-canvas-soft) 25%, var(--ds-hairline) 50%, var(--ds-canvas-soft) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
 /* ═══ Ops page shell ═══ */
 .students-page.at-ops-page {
