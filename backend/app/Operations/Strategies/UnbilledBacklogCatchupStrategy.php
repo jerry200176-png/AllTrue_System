@@ -152,16 +152,6 @@ final class UnbilledBacklogCatchupStrategy
         }, 3);
     }
 
-    /** Catch-up contracts of these students: `[src:<id>]` in Memo, recognised by the REF in Memo or in the invoice Note. */
-    private function catchups(array $students)
-    {
-        $noted = Invoice::query()->whereIn('StudentID', $students)->where('Note', self::REF)->pluck('StudentClassID');
-
-        // Both markers are required (staff can edit either field alone): Memo tag + REF AND an invoice Note = REF.
-        return StudentClass::query()->whereIn('StudentID', $students)->where('Memo', 'like', '%[src:%')
-            ->where('Memo', 'like', '%' . self::REF . '%')->whereIn('ID', $noted)->get();
-    }
-
     /** @return list<int> */
     private function campusIds(mixed $raw): array
     {
@@ -223,7 +213,13 @@ final class UnbilledBacklogCatchupStrategy
         $ids = $sessions->pluck('cid')->unique()->values()->all();
         $contracts = StudentClass::query()->whereIn('ID', $ids)->get()->keyBy('ID');
         $owners = [];
-        foreach ($this->catchups($contracts->pluck('StudentID')->unique()->all()) as $c) {
+        // Coverage is generous (either marker is enough, so an edited Memo or Note can never cause a second bill);
+        // deletion in rollback() stays strict (both markers).
+        $studentIds = $contracts->pluck('StudentID')->unique()->all();
+        $noted = Invoice::query()->whereIn('StudentID', $studentIds)->where('Note', self::REF)->pluck('StudentClassID')->all();
+        $tagged = StudentClass::query()->whereIn('StudentID', $studentIds)
+            ->where(fn ($q) => $q->where('Memo', 'like', '%[src:%')->orWhereIn('ID', $noted))->get(['ID', 'Memo']);
+        foreach ($tagged as $c) {
             if (preg_match('/\[src:(\d+)\]/', (string) $c->getAttribute('Memo'), $m)) $owners[(int) $m[1]][] = (int) $c->getKey();
         }
         $allOwners = array_merge($ids, ...array_values($owners));
@@ -277,8 +273,7 @@ final class UnbilledBacklogCatchupStrategy
     /** Same student + subject but another contract: its invoice for that month/period, or its live date-mode contract range, holds the date. */
     private function otherCovers(string $date, StudentClass $c, array $own, $invoices, $subjects, $dated): bool
     {
-        $subject = $c->getAttribute('SubjectID');
-        if ($subject === null) return false;
+        $subject = $c->getAttribute('SubjectID'); // null compares as 0: over-skipping is the safe direction
         foreach ($invoices as $inv) {
             $anchor = (int) $inv->getAttribute('StudentClassID');
             if ((int) $inv->getAttribute('StudentID') !== (int) $c->getAttribute('StudentID') || in_array($anchor, $own, true)

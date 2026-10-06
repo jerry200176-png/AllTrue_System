@@ -206,6 +206,10 @@ final class UnbilledBacklogCatchupStrategyTest extends TestCase
         // Staff edits the catch-up Memo: the month is still covered by its billing_period invoice, so nothing is billed again.
         DB::table('StudentClass')->where('Memo', 'like', '%' . self::REF . '%')->update(['Memo' => 'edited']);
         self::assertSame(0, $s->plan($this->params([9]))['totals']['ready_rows']);
+        // ...or edits the invoice Note instead: still covered, never billed twice.
+        DB::table('StudentClass')->where('Memo', 'edited')->update(['Memo' => 'x [src:100]']);
+        DB::table('Invoice')->where('Note', self::REF)->update(['Note' => '']);
+        self::assertSame(0, $s->plan($this->params([9]))['totals']['ready_rows']);
 
         // A forged snapshot row pointing at a contract without this operation's Memo markers is never deleted.
         $row = $result['snapshot']['rows'][0];
