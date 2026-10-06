@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Read-only production diagnosis for the two allowlisted Muzha entitlement-transfer cases.
+# Public repo (#3605): ids, statuses, dates and counts only; no names, no free text (notes are reported as a length).
 set -euo pipefail
 
 ENV_FILE="${ENV_FILE:-/home/admin/backend/.env}"
@@ -13,7 +14,7 @@ echo "ALLOWLIST student_ids=374,373 batches=1681,1682,2649,2606 sessions=23157,2
 
 echo "--- exact batch identity and subject ---"
 "${M[@]}" -e "
-SELECT CONCAT_WS('|',sc.ID,sc.StudentID,s.name,s.CampusID,IFNULL(sc.SubjectID,'null'),IFNULL(sub.Subject_Name,'null'),
+SELECT CONCAT_WS('|',sc.ID,sc.StudentID,s.CampusID,IFNULL(sc.SubjectID,'null'),IFNULL(sub.Subject_Name,'null'),
  sc.TeacherID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.UsedSessions,'null'),
  IFNULL(sc.RemainingSessions,'null'),IFNULL(sc.Paid,'null'),IFNULL(sc.PackageID,'null'))
 FROM StudentClass sc
@@ -24,7 +25,7 @@ ORDER BY sc.StudentID,sc.ID;"
 
 echo "--- every capacity-committed session with linked-record evidence ---"
 "${M[@]}" -e "
-SELECT CONCAT_WS('|',cs.StudentClassID,cs.id,sc.StudentID,s.name,sc.SubjectID,
+SELECT CONCAT_WS('|',cs.StudentClassID,cs.id,sc.StudentID,sc.SubjectID,
  IFNULL(cs.SubjectID,'inherit'),IFNULL(COALESCE(css.Subject_Name,bsub.Subject_Name),'?'),
  DATE(cs.SessionDate),LEFT(cs.StartTime,5),LEFT(cs.EndTime,5),LOWER(cs.Status),
  CASE
@@ -40,7 +41,7 @@ SELECT CONCAT_WS('|',cs.StudentClassID,cs.id,sc.StudentID,s.name,sc.SubjectID,
  IFNULL((SELECT GROUP_CONCAT(CONCAT(si.id,':',si.Status,':deduct=',IFNULL(si.SessionDeducted,'null'),':class=',si.StudentClassID) ORDER BY si.id SEPARATOR ',') FROM StudentSingIn si WHERE si.ClassSessionID=cs.id),'none'),
  (SELECT COUNT(*) FROM session_deduction_ledger dl WHERE dl.class_session_id=cs.id),
  IFNULL((SELECT GROUP_CONCAT(CONCAT(dl.id,':',dl.event_type,':',dl.source,':class=',dl.student_class_id) ORDER BY dl.id SEPARATOR ',') FROM session_deduction_ledger dl WHERE dl.class_session_id=cs.id),'none'),
- LEFT(REPLACE(REPLACE(IFNULL(cs.Note,''),'\n',' '),'\r',' '),160))
+ CHAR_LENGTH(IFNULL(cs.Note,'')))
 FROM ClassSession cs
 JOIN StudentClass sc ON sc.ID=cs.StudentClassID
 JOIN Student s ON s.id=sc.StudentID
@@ -85,7 +86,7 @@ ORDER BY candidate.StudentID,candidate.SubjectID,candidate.ID;"
 
 echo "--- every contract with subject and financial evidence ---"
 "${M[@]}" -e "
-SELECT CONCAT_WS('|',sc.StudentID,s.name,sc.ID,IFNULL(sc.SubjectID,'null'),IFNULL(sub.Subject_Name,'null'),
+SELECT CONCAT_WS('|',sc.StudentID,sc.ID,IFNULL(sc.SubjectID,'null'),IFNULL(sub.Subject_Name,'null'),
  sc.TeacherID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.UsedSessions,'null'),
  IFNULL(sc.RemainingSessions,'null'),IFNULL(sc.Charge,'null'),IFNULL(sc.Paid,'null'),
  (SELECT COUNT(*) FROM ClassSession cs WHERE cs.StudentClassID=sc.ID AND LOWER(cs.Status) IN ('scheduled','attended','completed','late')),

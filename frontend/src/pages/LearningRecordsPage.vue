@@ -1528,6 +1528,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, nextTick } from 'vue';
+import { isDirectorRole as roleIsDirector } from '../lib/roleCapabilities.js';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
@@ -1600,7 +1601,7 @@ const toggleFeedbackPreview = (record) => {
 const perf = createPerfTracker('LearningRecordsPage');
 
 const isTeacher = computed(() => props.userRole === 'teacher');
-const isDirectorRole = computed(() => ['director', 'admin', 'super_admin'].includes(String(props.userRole || '')));
+const isDirectorRole = computed(() => roleIsDirector(String(props.userRole || '')));
 const initialViewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
 const initialViewDefaults = resolveLearningRecordViewDefaults({
   viewportWidth: initialViewportWidth,

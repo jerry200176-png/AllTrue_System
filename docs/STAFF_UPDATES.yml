@@ -3,6 +3,81 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-05-waive-unpaid-contract
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: digest
+    title: 結案欠款可確認不收
+    summary: 結案待對帳的欠款，主任可按「確認不收」移出待處理，並留下原因紀錄。
+    items:
+      - category: added
+        text: 要填原因；未繳帳單改為作廢並留紀錄。已有收款或待確認回報時不能按。
+    source_refs:
+      - "changelog:2026-10-05:waive-unpaid-contract"
+  - id: staff-2026-10-05-unpaid-close-pending
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: digest
+    title: 未繳月份續約後不會消失
+    summary: 月結課續下一期或停用時，舊月份沒繳清會留在帳務中心待對帳。
+    items:
+      - category: fixed
+        text: 以前續約後舊月份會變「已結算」而看不到欠款；現在會標「待對帳」。
+    source_refs:
+      - "changelog:2026-10-05:unpaid-close-pending"
+  - id: staff-2026-10-05-monthly-slip-dates
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: digest
+    title: 月結繳費單會列上課日期
+    summary: 月結繳費單不再只有一行費用，會列出這一期的上課日期。
+    items:
+      - category: fixed
+        text: 還沒點名時列排定的課；預繳下一期的單列服務期間內的課。金額不變。
+    source_refs:
+      - "changelog:2026-10-05:monthly-slip-dates"
+  - id: staff-2026-10-06-delete-contract-keeps-billing
+    published_at: "2026-10-06"
+    audiences:
+      - director
+    importance: digest
+    title: 刪除合約不會留下孤兒帳單
+    summary: 有上課或帳務紀錄的合約與學生不能刪除，請改用結案或停用。
+    items:
+      - category: improved
+        text: 合約或學生只要有收款、繳費回報、上課點名或扣堂紀錄，系統會擋下刪除並提示改用結案／停用，帳務紀錄不再消失。
+    source_refs:
+      - "changelog:2026-10-06:delete-contract-keeps-billing"
+  - id: staff-2026-10-06-pending-reconciliation-all-owed
+    published_at: "2026-10-06"
+    audiences:
+      - director
+    importance: digest
+    title: 待對帳會列出所有欠款的結案合約
+    summary: 待對帳現在依帳單列出每一份還有欠款的結案合約，暫停中的也會出現。
+    items:
+      - category: fixed
+        text: 暫停中但還有欠款的合約，以前不在待對帳；現在標「暫停中 · 待對帳」。
+      - category: added
+        text: 付款期間對不起來的合約獨立標「付款期間待確認」，不再被隱藏。
+    source_refs:
+      - "changelog:2026-10-06:pending-reconciliation-all-owed"
+  - id: staff-2026-10-05-calendar-substitute-sticks
+    published_at: "2026-10-05"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 行事曆代課老師不再跳回
+    summary: 有調過時間的課改代課後，行事曆會顯示代課老師，和課程查找一致。
+    items:
+      - category: fixed
+        text: 以前同一時段還留著原老師的調課紀錄時，行事曆會一直顯示原老師。
+    source_refs:
+      - "changelog:2026-10-05:calendar-substitute-sticks"
   - id: staff-2026-10-03-trial-convert-from-students
     published_at: "2026-10-03"
     audiences:
@@ -27,6 +102,42 @@ updates:
         text: 補卡原因至少要寫兩個字；送不出去時會顯示真正原因，不再只寫「網路錯誤」。
     source_refs:
       - "alltrue:bug_report:375"
+  - id: staff-2026-10-05-paid-slip-upcoming
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: digest
+    title: 已繳月結單也列之後的課
+    summary: 已繳清的月結繳費單，除了上過的課，也會列出這一期之後排定的課。
+    items:
+      - category: fixed
+        text: 已繳清的月結單會列上過的課和今天以後排定的課，堂數和繳的錢對得上。金額不變。
+    source_refs:
+      - "changelog:2026-10-05:paid-slip-upcoming"
+  - id: staff-2026-10-05-receipt-redesign
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: digest
+    title: 電子收據換新版面
+    summary: 電子收據和繳費單同一套樣子：有 logo，已收金額和收款日期更清楚。
+    items:
+      - category: improved
+        text: 收據上方 logo 和分校，已收金額最醒目；每堂課列日期、星期，已上和預計分開標示。
+    source_refs:
+      - "changelog:2026-10-05:receipt-redesign"
+  - id: staff-2026-10-05-payment-slip-redesign
+    published_at: "2026-10-05"
+    audiences:
+      - director
+    importance: digest
+    title: 繳費單換新版面
+    summary: 繳費單加上補習班 logo，金額和繳費期限更清楚，每堂課列出日期和星期。
+    items:
+      - category: improved
+        text: 新版面：上方 logo 和分校，金額和繳費期限最醒目，下方列每堂課的日期、星期、時間、狀態。
+    source_refs:
+      - "changelog:2026-10-05:payment-slip-redesign"
   - id: staff-2026-10-03-swipe-line-switch
     published_at: "2026-10-03"
     audiences:

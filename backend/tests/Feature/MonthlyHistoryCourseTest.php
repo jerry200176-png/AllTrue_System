@@ -22,6 +22,22 @@ class MonthlyHistoryCourseTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_pause_unpaid_monthly_course_stays_pending_reconciliation(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-monthly-pause-unpaid@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0,
+            'settlement_day' => 15, 'monthly_sessions' => 8, 'Paid' => 0, 'Charge' => 4800,
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/student-classes/{$course->ID}/pause", ['action' => 'pause'])
+            ->assertOk()->assertJsonPath('pending_reconciliation', true);
+
+        $this->assertSame('settled_pending', (string) $course->fresh()->closed_reason);
+    }
+
     public function test_pause_monthly_course_auto_sets_closed_reason_completed(): void
     {
         $token = $this->createDirectorToken([1], 'director-monthly-pause@example.com');

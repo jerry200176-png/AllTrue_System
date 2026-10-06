@@ -67,4 +67,18 @@ class AccountingCourseClarityTest extends TestCase
         $this->assertSame('zero', AccountingCourseClarity::zeroReason(0, 'one_on_one'));
         $this->assertNull(AccountingCourseClarity::zeroReason(8800, 'trial'));
     }
+
+    public function test_lifecycle_paid_input_comes_from_resolver_status_when_given(): void
+    {
+        $sc = new StudentClass();
+        $sc->Stop = 1;
+        $sc->Paid = 1; // stray legacy flag
+        $sc->RemainingSessions = 0;
+        $sc->ScheduleMode = 'count';
+
+        $this->assertSame('paused', AccountingCourseClarity::lifecycle($sc, 'partial')['code']);
+        $this->assertSame('history_completed', AccountingCourseClarity::lifecycle($sc, 'paid')['code']);
+        $this->assertSame('history_completed', AccountingCourseClarity::lifecycle($sc, 'free')['code']);
+        $this->assertSame('history_completed', AccountingCourseClarity::lifecycle($sc)['code']); // fallback: flag
+    }
 }

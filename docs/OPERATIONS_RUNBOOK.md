@@ -44,10 +44,19 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
    git push origin feat/功能名稱
    # → GitHub 開 PR → 等 CI 通過 → merge
    ```
-5. **PR merge 後**：`deploy.yml` 依風險分類自動部署，或在同一 run 的
-   `production-activation` Environment 等 Founder approval；無需第二次 dispatch。
-   同一個 protected activation queue 只保留最新 exact-main target，較舊的等待 run
-   會自動取消；這不會略過 Founder reviewer。唯一 production executor 另有
+5. **PR merge 後**：`deploy.yml` 依風險分類處理。R0–R2 自動部署；需要 Founder
+   approval 的改動**不再每次 merge 各要一次核准**，改搭「發車班表（release train）」：
+   每天 07:30、12:30（台北）`schedule` 只取「main 最新 commit」（它的 main CI 必須已綠燈；
+   還沒綠就這班不發，等下一班），用同一個 PR 分類器分級後，在
+   `production-activation` Environment 等 Founder 核准一次；急件可手動
+   `workflow_dispatch phase=release-train confirm=RELEASE_TRAIN`。核准的是那一個
+   exact SHA；核准期間 main 前進不會讓它作廢，只要 main 仍包含它（compare 為
+   ahead/identical，Pi 端 `git merge-base --is-ancestor`）。同一個 protected
+   activation queue 只保留最新的等待 run，較舊的自動取消；這不會略過 Founder reviewer。
+   其他手動 phase（application-deploy、POP、parent smoke）仍維持 exact-main。
+   有 Founder 級改動在等車時，之後合併的 R0–R2 也會一起等同一班車。release train 不改
+   feature flag（要改 flag 用 phase=application-deploy）。merge 自己的 CI 與 bot merge 的
+   `repository_dispatch` 都不再各自跳核准。唯一 production executor 另有
    30 分鐘 runner deadline 與 SSH keepalive，避免斷線造成無界等待。
 6. **驗證**：只以 deploy workflow 的 exact target SHA、`deployment.json`、health、
    critical smoke 與 rollback evidence 判定 `production-verified`；單獨 health
@@ -151,7 +160,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 12. **Actions minutes 用完仍不可在 Pi 跑測試**：若 production bug 必須先救且 deploy workflow 無法使用，只能走 `docs/DEPLOYMENT.md` 的緊急手動前端部署路徑；完成後仍要補 PR/CI，並在 `CHANGELOG` + `AI_REGRESSION_LESSONS` 記錄本次例外。
 13. **runner topology 是安全邊界**：所有直接執行的 jobs 必須使用 GitHub-hosted `ubuntu-latest`；delegated reusable job 必須鎖定 immutable commit 並列入 reviewed allow-list。不得把 production deploy secrets 下放到個人電腦或 production Pi。變更前須同步更新 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md) 並通過 security/operations review。
 14. **低價值排程工作降頻**：`branch-hygiene.yml` 改為 weekly；`pi-health.yml` 改為 daily，關鍵即時告警改由 Pi 本機 `monitor-alert.sh` cron + UptimeRobot 承接。
-15. **E2E 只在前端 PR 跑（#730）**：`ui-smoke.yml` 在 PR 一律啟動（穩定 check 名稱、可當 required），但內部 `Detect frontend diff` 判斷是否動到 `frontend/src/**` 或 `frontend/e2e/**`；沒動就秒過、不下載 Chromium、不跑 Playwright；有動才跑。**刻意不用 workflow 層 `paths:`**（path-filtered 的 required check 在不符路徑時會永遠 pending、卡 merge）。週排程 + 手動觸發仍完整跑。
+15. **UI smoke 在相關 PR 跑（#730、#3510）**：`ui-smoke.yml` 在 PR 一律啟動，但只在 `frontend/src/**`、`frontend/e2e/**`、`frontend/playwright.config.js`、前端依賴或本 workflow 變更時執行 Playwright；比較 diff 失敗與必要 smoke secrets 缺失都讓 job 失敗，不算略過或通過。其他 PR 可略過瀏覽器；週排程與手動觸發完整執行。刻意不用 workflow 層 `paths:`，避免 context pending。**目前 GitHub ruleset 尚未要求 UI Smoke；#3506 正式站 dashboard 仍會先回 tuition 403，不能因 job 可執行就把它加為 required。**
 
 **Token Conservation SOP**
 - 先讀 `docs/INDEX.md`，再按任務讀對應章節；不要全讀大型文件或完整 transcript。

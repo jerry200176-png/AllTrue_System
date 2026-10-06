@@ -13,7 +13,7 @@ class RepairFounderStudent9AttendanceTest extends TestCase
     {
         parent::setUp();
         DB::table('Student')->insert([
-            'id' => 9, 'name' => '翟君和', 'CampusID' => 15, 'ClassID' => 1, 'enable' => 1,
+            'id' => 9, 'name' => '測試學生甲', 'CampusID' => 15, 'ClassID' => 1, 'enable' => 1,
         ]);
         foreach ([2812 => [70, 49], 2819 => [71, 67]] as $id => [$subject, $teacher]) {
             DB::table('StudentClass')->insert([

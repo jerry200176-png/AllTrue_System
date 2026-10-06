@@ -30,6 +30,8 @@ use App\Models\AssessmentResult;
 use App\Models\AssessmentRemediationAction;
 use App\Models\User;
 use App\Http\Controllers\LearningRecordController;
+use App\Services\Billing\ContractMoneyState;
+use App\Services\BillingPayableResolver;
 use App\Services\ExceptionWorkflowService;
 use App\Services\SessionDeductionService;
 use App\Services\StudentIdentityService;
@@ -522,7 +524,7 @@ class ParentPortalController extends Controller
 
         $classIds = $classes->pluck('ID')->all();
         $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
-        $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
+        $courseStatuses = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds($classIds, $classes);
 
         // 共用方案（course_packages）：同一池的多科課程，每筆 StudentClass.SessionCount 都 = 池總堂數。
         // 若用 per-member 計算，家長端會看到「每科都顯示總堂數」且總數被重複加總（in-app #158/#162 家族）。
@@ -758,8 +760,8 @@ class ParentPortalController extends Controller
         //   - 堂數制：剩餘 > 0 才顯示（已用完或已停課+已繳不列）
         //   - 月結制：保留已繳結案課程，前端以「已繳費・課程已結束」降低家長誤解
         $perCourse = $classes
-            ->filter(function ($c) use ($sessionMetrics, $paidAtMap) {
-                $paid    = $this->isClassPaid($c, $paidAtMap);
+            ->filter(function ($c) use ($sessionMetrics, $courseStatuses) {
+                $paid    = $this->isClassPaid($c, $courseStatuses);
                 $stopped = (bool) $c->Stop;
                 $isCount = (string) ($c->ScheduleMode ?? 'count') === 'count';
 
@@ -774,15 +776,27 @@ class ParentPortalController extends Controller
                 // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $paidAtMap, $packageMap, $studentCampusMap) {
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $courseStatuses, $packageMap, $studentCampusMap) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
                 $isTutoring = strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring';
                 $monthlyTarget  = (int) ($c->monthly_sessions ?? 0);
                 $monthlyFee     = $isMonthly && !$isTutoring ? $this->resolveMonthlyFee($c) : 0;
                 $attended       = $isMonthly ? (int) ($attendedThisMonth[$c->ID] ?? 0) : 0;
-                $paid           = $this->isClassPaid($c, $paidAtMap);
+                $paid           = $this->isClassPaid($c, $courseStatuses);
                 $stopped        = (bool) $c->Stop;
+                $waived         = ContractMoneyState::isWaived($c);
+                $cardStatus     = ContractMoneyState::parentCardStatus($isTutoring, $waived, $paid);
+                $resolved       = $this->courseState($c, $courseStatuses);
+                if (!$isTutoring && !$waived) {
+                    // F7 S4: show the resolver's own state; free (zero-fee), partial and review_required are not "未繳費".
+                    $cardStatus = match ($resolved) {
+                        'free' => ['free', '免費（不適用）'],
+                        'partial' => ['partial', '部分繳'],
+                        'review_required' => ['review_required', '帳務確認中'],
+                        default => $cardStatus,
+                    };
+                }
 
                 // 共用方案成員：附帶池子資訊，讓前端把每張卡標記為「共用方案」並用同一池數字，
                 // 避免家長誤以為每科各有一份總堂數。
@@ -798,14 +812,16 @@ class ParentPortalController extends Controller
                     'campus_name'          => $campus['campus_name'] ?? null,
                     'subject'              => $this->resolveSubjectName($c),
                     'schedule_mode'        => $c->ScheduleMode,
+                    // Same rule as StudentClassController::index: only ScheduleMode=count is a session course.
+                    'payment_type'         => $isMonthly ? 'monthly' : 'session',
                     'sessions_purchased'   => $c->SessionCount,
                     'remaining_sessions'   => $metrics['remaining'],
                     'used_sessions'        => $metrics['used'],
                     'is_stopped'           => $stopped,
                     'paid'                 => $paid,
                     'is_tutoring'          => $isTutoring,
-                    'payment_status'       => $isTutoring ? 'free' : ($paid ? 'paid' : 'unpaid'),
-                    'payment_status_label' => $isTutoring ? '免費（不適用）' : ($paid ? '已繳費' : '未繳費'),
+                    'payment_status'       => $cardStatus[0],
+                    'payment_status_label' => $cardStatus[1],
                     'lifecycle_status'     => $stopped ? 'closed' : 'active',
                     'lifecycle_status_label' => $stopped ? '課程已結束' : '進行中',
                     // 共用方案池（堂數制）：null 代表非共用方案，前端維持原本 per-course 顯示。
@@ -874,7 +890,7 @@ class ParentPortalController extends Controller
 
         // Payment alerts — only show courses that still require parent action
         $paymentAlerts = $classes
-            ->filter(function ($c) use ($paidAtMap) {
+            ->filter(function ($c) use ($courseStatuses) {
                 // Tutoring is a free, non-receivable course. Keep the course
                 // visible in the portal, but never turn it into a parent
                 // payment action (including legacy casing/NULL rows).
@@ -886,7 +902,7 @@ class ParentPortalController extends Controller
                     return false;
                 }
 
-                $paid = $this->isClassPaid($c, $paidAtMap);
+                $paid = $this->isClassPaid($c, $courseStatuses);
                 $stopped = (bool) $c->Stop;
 
                 // Parent portal reminders are payment actions, not director renewal alerts.
@@ -900,7 +916,7 @@ class ParentPortalController extends Controller
 
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $paidAtMap, $studentCampusMap) {
+            ->map(function ($c) use ($sessionMetrics, $courseStatuses, $studentCampusMap) {
                 $campus = $studentCampusMap->get((int) $c->StudentID, []);
                 return [
                     'class_id'           => $c->ID,
@@ -908,17 +924,17 @@ class ParentPortalController extends Controller
                     'campus_name'        => $campus['campus_name'] ?? null,
                     'subject'            => $this->resolveSubjectName($c),
                     'remaining_sessions' => (int) $sessionMetrics($c)['remaining'],
-                    'paid'               => $this->isClassPaid($c, $paidAtMap),
+                    'paid'               => $this->isClassPaid($c, $courseStatuses),
                     'is_stopped'         => (bool) $c->Stop,
                 ];
             })
             ->values();
 
-        $upcomingClassIds = $classes->filter(function ($c) use ($sessionMetrics, $paidAtMap) {
+        $upcomingClassIds = $classes->filter(function ($c) use ($sessionMetrics, $courseStatuses) {
             if ((string) ($c->ScheduleMode ?? 'count') === 'count') {
                 return (int) $sessionMetrics($c)['remaining'] > 0;
             }
-            if ((bool) $c->Stop && $this->isClassPaid($c, $paidAtMap)) {
+            if ((bool) $c->Stop && $this->isClassPaid($c, $courseStatuses)) {
                 return false;
             }
 
@@ -1359,7 +1375,9 @@ class ParentPortalController extends Controller
         }
 
         $unpaidCount = is_countable($paymentAlerts) ? count($paymentAlerts) : 0;
-        $totalCourses = is_countable($perCourse) ? count($perCourse) : 0;
+        $waivedCount = $perCourse->filter(fn ($course) => ($course['payment_status'] ?? null) === 'waived')->count();
+        // A written-off (確認不收) contract is neither paid nor owed: keep it out of every payment count.
+        $totalCourses = (is_countable($perCourse) ? count($perCourse) : 0) - $waivedCount;
         $freeCount = $perCourse->filter(fn ($course) => (bool) ($course['is_tutoring'] ?? false))->count();
         $payableCourses = max(0, $totalCourses - $freeCount);
         $paidCount = max(0, $payableCourses - $unpaidCount);
@@ -1633,7 +1651,6 @@ class ParentPortalController extends Controller
             ->with('coursePackage')
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
-            ->where(fn ($q) => $q->effectivelyUnpaid())
             ->orderBy('StartDate')
             ->orderBy('ID')
             ->get();
@@ -1642,10 +1659,33 @@ class ParentPortalController extends Controller
             return response()->json(['message' => '此學生目前無待繳費課程']);
         }
 
+        // F7 S4: what is owed comes from the resolver (invoices net of real payments), not the legacy Paid flag.
+        $statuses = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds($classes->pluck('ID')->all(), $classes);
         $lineItems = [];
         $totalAmount = 0;
         foreach ($classes as $c) {
-            if ($c->isEffectivelyPaid()) {
+            if (ContractMoneyState::isWaived($c)) {
+                continue;
+            }
+            $resolved = $statuses[(int) $c->ID] ?? [];
+            $state = $this->courseState($c, $statuses);
+            if (!in_array($state, ['unpaid', 'partial', 'unbilled'], true)) {
+                continue;
+            }
+            if ($state !== 'unbilled') {
+                $outstanding = (int) ($resolved['outstanding'] ?? 0);
+                if ($outstanding <= 0) {
+                    continue;
+                }
+                $totalAmount += $outstanding;
+                $lineItems[] = [
+                    'subject' => $this->resolveSubjectName($c),
+                    'start_date' => $this->formatRocDate($c->getAttribute('StartDate')),
+                    'session_count' => (int) ($c->SessionCount ?? 0),
+                    'unit_price' => 0,
+                    'subtotal' => $outstanding,
+                    'billed' => true,
+                ];
                 continue;
             }
             $subject = $this->resolveSubjectName($c);
@@ -1682,7 +1722,9 @@ class ParentPortalController extends Controller
         foreach ($lineItems as $item) {
             $parts[] = (string) $item['subject'];
             $parts[] = "{$item['start_date']}~{$item['session_count']}堂";
-            $parts[] = "{$this->formatAmount($item['unit_price'], false)}*{$item['session_count']} = *{$this->formatAmount($item['subtotal'])}*";
+            $parts[] = !empty($item['billed'])
+                ? "待繳 *{$this->formatAmount($item['subtotal'])}*"
+                : "{$this->formatAmount($item['unit_price'], false)}*{$item['session_count']} = *{$this->formatAmount($item['subtotal'])}*";
             $parts[] = '';
         }
 
@@ -2000,7 +2042,6 @@ class ParentPortalController extends Controller
         $records = $classes->map(function ($course) use ($billingCampusMap) {
             $charge = (int) ($course->Charge ?? 0);
             $paid = (int) ($course->Pay ?? 0);
-            $isPaid = $paid >= $charge;
             $campusId = (int) ($course->student->CampusID ?? 0);
 
             return [
@@ -2011,7 +2052,7 @@ class ParentPortalController extends Controller
                 'period' => $course->StartDate ? substr($course->StartDate, 0, 7) : null,
                 'charge' => $charge,
                 'paid' => min($paid, $charge),
-                'status' => $isPaid ? 'paid' : ($paid > 0 ? 'partial' : 'unpaid'),
+                'status' => ContractMoneyState::parentRecordStatus(ContractMoneyState::isWaived($course), $paid, $charge),
             ];
         })->values();
 
@@ -2138,9 +2179,28 @@ class ParentPortalController extends Controller
         return 0;
     }
 
-    private function isClassPaid(StudentClass $class, array $paidAtMap): bool
+    /**
+     * Resolver status, except package members with no non-void invoice (resolver: review_required, source none),
+     * which keep the legacy rule: the package/Paid flag decides paid, otherwise unbilled (still owes).
+     *
+     * @param array<int, array<string, mixed>> $courseStatuses
+     */
+    private function courseState(StudentClass $class, array $courseStatuses): string
     {
-        return $class->isEffectivelyPaid() || array_key_exists((int) $class->ID, $paidAtMap);
+        $row = $courseStatuses[(int) $class->ID] ?? [];
+        $status = (string) ($row['status'] ?? '');
+        if ($status === 'review_required' && ($row['source'] ?? null) === 'none' && (int) $class->PackageID > 0) {
+            return $class->isEffectivelyPaid() ? 'paid' : 'unbilled';
+        }
+
+        return $status;
+    }
+
+    /** @param array<int, array<string, mixed>> $courseStatuses BillingPayableResolver::courseStatusesByStudentClassIds() */
+    private function isClassPaid(StudentClass $class, array $courseStatuses): bool
+    {
+        // F7 S4: paid = resolver paid or free; a void/partial Payment row no longer settles a course.
+        return in_array($this->courseState($class, $courseStatuses), ['paid', 'free'], true);
     }
 
     private function resolveMonthlyDisplayPeriod(StudentClass $class, $invoiceRows): string

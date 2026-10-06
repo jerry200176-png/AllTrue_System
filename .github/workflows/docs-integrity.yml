@@ -10,9 +10,14 @@ on:
   schedule:
     - cron: "20 1 * * 1"
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "land-queue: PR number whose head this run checks (guarded: head must equal github.sha, base main)"
+        required: false
+        default: ""
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -31,6 +36,16 @@ jobs:
     outputs:
       docs: ${{ steps.filter.outputs.docs }}
     steps:
+      - name: PR dispatch guard (fail closed)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          read -r head base state < <(gh api "/repos/$REPO/pulls/$PR_NUMBER" --jq '[.head.sha,.base.ref,.state]|join(" ")')
+          [ "$head" = "$GITHUB_SHA" ] && [ "$base" = main ] && [ "$state" = open ] \
+            || { echo "::error::pr_number $PR_NUMBER is not an open PR to main with head $GITHUB_SHA"; exit 1; }
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 (SHA pin pilot 2026-07-18)
         with:
@@ -66,6 +81,16 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: PR dispatch guard (fail closed)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          read -r head base state < <(gh api "/repos/$REPO/pulls/$PR_NUMBER" --jq '[.head.sha,.base.ref,.state]|join(" ")')
+          [ "$head" = "$GITHUB_SHA" ] && [ "$base" = main ] && [ "$state" = open ] \
+            || { echo "::error::pr_number $PR_NUMBER is not an open PR to main with head $GITHUB_SHA"; exit 1; }
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 (SHA pin pilot 2026-07-18)
         with:

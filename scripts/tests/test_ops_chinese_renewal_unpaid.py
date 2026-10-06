@@ -11,8 +11,8 @@ WORKFLOW = ROOT / ".github" / "workflows" / "ops-chinese-renewal-unpaid.yml"
 class ChineseRenewalUnpaidTest(unittest.TestCase):
     def test_script_is_exact_allowlist_and_unpaid(self):
         text = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn("zhang_zheng_ning:374:1681:張正甯", text)
-        self.assertIn("zhang_zheng_le:373:1682:張正樂", text)
+        self.assertIn("student_374:374:1681", text)
+        self.assertIn("student_373:373:1682", text)
         self.assertIn("2649|2606|1324", text)
         self.assertIn("2026-08-19", text)
         self.assertIn("SESSIONS:-8", text)
@@ -42,8 +42,8 @@ class ChineseRenewalUnpaidTest(unittest.TestCase):
         self.assertTrue(re.search(r"contents:\s*read", text))
         self.assertIn("apply-chinese-renewal-unpaid", text)
         self.assertIn("APPROVE_CHINESE_RENEWAL_UNPAID_8_SESSIONS_20260814", text)
-        self.assertIn("zhang_zheng_ning", text)
-        self.assertIn("zhang_zheng_le", text)
+        self.assertIn("student_374", text)
+        self.assertIn("student_373", text)
         self.assertNotIn("2649", text)
         self.assertNotIn("2606", text)
 

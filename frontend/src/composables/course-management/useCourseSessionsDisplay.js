@@ -25,6 +25,7 @@ import {
   planningStatusToLegacyWarning,
 } from '../../lib/sessionPlanningStatus';
 import { FINAL_LEAVE_STATUSES, LEAVE_STATUSES } from '../../lib/sessionStatus';
+import { isPackageMember, isSessionPayment, ownRemainingSessions, poolRemainingSessions, purchasedSessions } from '../../lib/courseMoneyState.js';
 const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
 const UPCOMING_NON_LESSON_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
@@ -271,7 +272,7 @@ export function useCourseSessionsDisplay({
     // 月結課程沒有「購買堂數上限」的概念——後端 StudentClassController 對每門課都會把
     // sessions_purchased 設成 SessionCount（即使是月結課），所以不能只看 purchased>0，
     // 一定要先確認這是堂數制（isSessionMode）才適用超排判斷，否則月結課會被錯誤標記超排。
-    if (course?.PackageID || !isSessionMode(course)) return () => false;
+    if (isPackageMember(course) || !isSessionMode(course)) return () => false;
     const purchased = getPurchasedSessions(course);
     if (purchased <= 0) return () => false;
 
@@ -410,7 +411,7 @@ export function useCourseSessionsDisplay({
     if (rows.some((row) => isContractException(row))) return { label: '例外堂', className: 'exception' };
     if (rows.some((row) => isOver(row))) return { label: '超排', className: 'over-quota' };
     if ((statuses.has('scheduled') || statuses.has('rescheduled')) && isSessionMode(course)
-      && !course?.PackageID && getRawRemainingSessions(course) === 0) {
+      && !isPackageMember(course) && getRawRemainingSessions(course) === 0) {
       return { label: '預排', className: 'scheduled-capacity-full' };
     }
     if (statuses.has('scheduled')) return null;
@@ -523,18 +524,11 @@ export function useCourseSessionsDisplay({
 
   const displaySessions = (course) => sessions(course);
 
-  const isSessionMode = (course) => {
-    const paymentType = String(course?.payment_type || '').trim();
-    if (paymentType) return paymentType === 'session';
-    return Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) > 0;
-  };
+  const isSessionMode = isSessionPayment;
 
-  const getPurchasedSessions = (course) => Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
+  const getPurchasedSessions = purchasedSessions;
 
-  const getRawRemainingSessions = (course) => {
-    const v = course?.remaining_sessions ?? course?.RemainingSessions;
-    return Number.isFinite(Number(v)) ? Number(v) : null;
-  };
+  const getRawRemainingSessions = ownRemainingSessions;
 
   const getUsedSessions = (course) => {
     const purchased = getPurchasedSessions(course);
@@ -547,8 +541,8 @@ export function useCourseSessionsDisplay({
 
   const displayRemainingSessions = (course) => {
     if (!isSessionMode(course)) return null;
-    if (course?.PackageID) {
-      return Math.max(0, Number(course?.package_remaining_sessions ?? 0) || 0);
+    if (isPackageMember(course)) {
+      return Math.max(0, poolRemainingSessions(course, { pascalAlias: false }) ?? 0);
     }
     const purchased = getPurchasedSessions(course);
     const rows = getCourseSessionRows(course);

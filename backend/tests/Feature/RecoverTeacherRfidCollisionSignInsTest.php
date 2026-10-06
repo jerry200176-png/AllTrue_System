@@ -34,6 +34,40 @@ class RecoverTeacherRfidCollisionSignInsTest extends TestCase
         $this->assertDatabaseCount('TeacherSingIn', 0);
     }
 
+    public function test_candidate_table_has_no_names_by_default(): void
+    {
+        [$teacherId] = $this->makeCollisionFixture();
+
+        Artisan::call('teacher-signin:recover-rfid-collisions', ['--date' => '2026-04-28', '--teacher-id' => $teacherId]);
+        $out = Artisan::output();
+        $this->assertStringContainsString('student_signin_id', $out);
+        $this->assertStringNotContainsString('測試老師甲', $out);
+        $this->assertStringNotContainsString('誤綁學生', $out);
+
+        Artisan::call('teacher-signin:recover-rfid-collisions', ['--date' => '2026-04-28', '--teacher-id' => $teacherId, '--with-names' => true]);
+        $this->assertStringContainsString('誤綁學生', Artisan::output());
+    }
+
+
+    public function test_json_mode_prints_one_ids_only_object_and_applies_once(): void
+    {
+        [$teacherId] = $this->makeCollisionFixture();
+        $args = ['--date' => '2026-04-28', '--teacher-id' => $teacherId, '--json' => true];
+
+        Artisan::call('teacher-signin:recover-rfid-collisions', $args);
+        $dry = json_decode(trim(Artisan::output()), true);
+        $this->assertSame('dry-run', $dry['mode']);
+        $this->assertSame(1, $dry['candidates']);
+        $this->assertSame($teacherId, $dry['rows'][0]['teacher_id']);
+        $this->assertStringNotContainsString('誤綁學生', json_encode($dry, JSON_UNESCAPED_UNICODE));
+        $this->assertDatabaseCount('TeacherSingIn', 0);
+
+        Artisan::call('teacher-signin:recover-rfid-collisions', $args + ['--apply' => true]);
+        $applied = json_decode(trim(Artisan::output()), true);
+        $this->assertSame(1, $applied['inserted']);
+        $this->assertDatabaseCount('TeacherSingIn', 1);
+    }
+
     public function test_apply_requires_teacher_id_to_prevent_broad_writes(): void
     {
         $this->makeCollisionFixture();
@@ -112,7 +146,7 @@ class RecoverTeacherRfidCollisionSignInsTest extends TestCase
 
         $teacherId = DB::table('User')->insertGetId([
             'LoginName' => "huang-zhi-lin-{$n}@example.com",
-            'Name' => '黃芝琳',
+            'Name' => '測試老師甲',
             'PSW' => 'secret',
             'type' => 'T',
             'phone' => '0900000000',

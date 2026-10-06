@@ -126,7 +126,10 @@ final class PopOperationService
         $this->assertRequestIntegrity($request, $entry, $parameters, null, false);
         if ($this->isReviewedMonthly($entry)) {
             $this->assertMonthlyApprover($request, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
-        } elseif (!$this->isExactMuzhaSchedule($entry)
+        } elseif (!$this->isExactMuzhaSchedule($entry) && !$this->isExactUnpaidHiddenClosures($entry)
+            && !$this->isExactMuzhaChenBillingCatchup($entry)
+            && !$this->isExactUnbilledBacklogCatchup($entry)
+            && !$this->isExactTd076Repair($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
         }
@@ -289,7 +292,10 @@ final class PopOperationService
             return $existing;
         }
         $plan = $this->safePlan($entry, $parameters);
-        if (!(bool) ($plan['ok'] ?? false)) {
+        // After a successful execute, later drift (new work arriving) must not make the repair unverifiable or un-rollbackable.
+        $executed = in_array($phase, ['verify', 'rollback'], true) && DB::table('pop_execution_records')
+            ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
+        if (!(bool) ($plan['ok'] ?? false) && !$executed) {
             return $this->record($request, $entry, $parameters, $phase, [
                 'ok' => false,
                 'errors' => $plan['errors'] ?? ['precondition_failed'],
@@ -609,6 +615,69 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($policy === 'founder-exact-unpaid-hidden-closures'
+            && ($entry['id'] ?? null) === 'unpaid-hidden-closures-20261005'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnpaidHiddenClosuresStrategy::class
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'exact_manifest_student_classes_closed_reason_only'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
+        if ($policy === 'founder-exact-muzha-chen-billing-catchup'
+            && ($entry['id'] ?? null) === 'muzha-chen-billing-catchup-20261005'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\MuzhaChenBillingCatchupStrategy::class
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'one_new_contract_three_invoices_and_one_void_invoice'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
+        if ($this->isExactUnbilledBacklogCatchup($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'new_contract_invoice_item_per_uncovered_contract_month'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
+        if ($this->isExactTd076Repair($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         throw new RuntimeException('POP approval policy is not supported by this execution slice; fail closed.');
     }
 
@@ -635,6 +704,45 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'muzha-fixed-schedule-20261001'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\MuzhaFixedScheduleStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-muzha-schedule';
+    }
+
+    /** Same single-super_admin Founder-exact shape as the Muzha case. */
+    private function isExactUnpaidHiddenClosures(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'unpaid-hidden-closures-20261005'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnpaidHiddenClosuresStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-unpaid-hidden-closures';
+    }
+
+    /** Same single-super_admin Founder-exact shape as the Muzha case. */
+    private function isExactMuzhaChenBillingCatchup(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'muzha-chen-billing-catchup-20261005'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\MuzhaChenBillingCatchupStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-muzha-chen-billing-catchup';
+    }
+
+    /** Same single-super_admin Founder-exact shape; campus_ids + expected_digest pin each run to its dry-run. */
+    private function isExactUnbilledBacklogCatchup(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'unbilled-backlog-catchup-20261006'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnbilledBacklogCatchupStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-unbilled-backlog-catchup'
+            && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
+    }
+
+    /** TD-076 Track B repairs: campus-scoped, digest-pinned, single super_admin Founder approver. */
+    private function isExactTd076Repair(array $entry): bool
+    {
+        $strategies = [
+            'td076-r1-collision-keepers-20261006' => \App\Operations\Strategies\Td076CollisionKeepersStrategy::class,
+            'td076-r2-history-pins-20261006' => \App\Operations\Strategies\Td076HistoryPinsStrategy::class,
+        ];
+
+        return isset($strategies[$entry['id'] ?? ''])
+            && ($entry['strategy_class'] ?? null) === $strategies[$entry['id']]
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-td076-occurrence-repair'
+            && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest'];
     }
 
     /** @return array<string,mixed> */

@@ -78,6 +78,10 @@ server-side squash auto-merge. GitHub still waits for every required status
 check and branch rule, and the workflow rechecks the PR head SHA immediately
 before requesting auto-merge.
 
+### Land queue
+
+Agents and humans add label `queue` instead of racing `gh pr update-branch` or `--auto`. `.github/workflows/land-queue.yml` (script `.github/scripts/land-queue.mjs`, base-branch code only, never PR code) processes the oldest queued PR: BEHIND -> update-branch; DIRTY, failed required check, or unresolved review thread -> remove label with one comment (hidden marker per head SHA and reason); CLEAN with all required checks green -> `gh pr merge --squash` without `--admin`. It adds no gate: the ruleset still decides. GitHub's native merge queue is not used because it is unavailable here (a `merge_queue` ruleset probe returned 422).
+
 After merge, `deploy.yml` remains the only application production executor. Its
 deploy and principal-rotation jobs, together with the guarded repair workflows,
 share the non-cancelling `alltrue-production-side-effects-v2` concurrency lock;
@@ -123,6 +127,15 @@ Generated historical release-note bundles are excluded from current-effect
 marker scanning. This removes false T3 classifications caused by old words in a
 generated asset while preserving the real business/security operation when the
 changed code expresses it. Unknown or missing evidence fails closed.
+
+### Parallel agents
+
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs (under ~400 lines) that merge fast.
+- Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
+- No stacked PRs: branch from main after the dependency merges.
+- Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
+- Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
+- Deploys: release train only.
 
 ## Review checklist (R2/T2)
 
