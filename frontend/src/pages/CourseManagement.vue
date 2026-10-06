@@ -1538,6 +1538,7 @@ import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { useTransferSessions } from '../composables/course-management/useTransferSessions';
+import { useContractAmendment } from '../composables/course-management/useContractAmendment';
 import { useCoursePause } from '../composables/course-management/useCoursePause';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
@@ -1712,7 +1713,6 @@ function closeCourseInPlace(course) {
     getRemainingSessions: ownRemainingSessions,
     getSubjectLabel,
     isCourseSettled,
-    supabase,
     reloadCourses: () => loadCourses(pagination.value.page),
   });
 }
@@ -2469,20 +2469,20 @@ const renewMonthlyPreviewRequestId = ref(0);
 
 
 const showBillingCorrectionModal = ref(false);
+const {
+  showModal: showContractAmendmentModal, course: contractAmendmentCourse, preview: contractAmendmentPreview,
+  previewLoading: contractAmendmentPreviewLoading, submitting: contractAmendmentSubmitting, error: contractAmendmentError,
+  open: openContractAmendmentModal, close: closeContractAmendmentModal,
+  loadPreview: previewContractAmendment, submit: submitContractAmendment,
+  showRevertModal: showContractRevertModal, revertCourse: contractRevertCourse, revertPreview: contractRevertPreview,
+  revertLoading: contractRevertLoading, revertSubmitting: contractRevertSubmitting, revertError: contractRevertError,
+  openRevert: openContractRevertModal, submitRevert: submitContractRevert,
+} = useContractAmendment({
+  reload: () => loadCourses(),
+  notify: (opts) => toastRef.value?.show?.(opts),
+});
 const showContractAdjustmentModal = ref(false);
 const contractAdjustmentCourse = ref(null);
-const showContractAmendmentModal = ref(false);
-const contractAmendmentCourse = ref(null);
-const contractAmendmentPreview = ref(null);
-const contractAmendmentPreviewLoading = ref(false);
-const contractAmendmentSubmitting = ref(false);
-const contractAmendmentError = ref('');
-const showContractRevertModal = ref(false);
-const contractRevertCourse = ref(null);
-const contractRevertPreview = ref(null);
-const contractRevertLoading = ref(false);
-const contractRevertSubmitting = ref(false);
-const contractRevertError = ref('');
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
@@ -2554,123 +2554,6 @@ function chooseContractAdjustment(action) {
   }
   if (action === 'transfer') openTransferSessionsModal(course);
   if (action === 'amendment') openContractAmendmentModal(course);
-}
-
-function openContractAmendmentModal(course) {
-  contractAmendmentCourse.value = course;
-  contractAmendmentPreview.value = null;
-  contractAmendmentError.value = '';
-  showContractAmendmentModal.value = true;
-}
-
-function closeContractAmendmentModal() {
-  if (contractAmendmentSubmitting.value || contractAmendmentPreviewLoading.value) return;
-  showContractAmendmentModal.value = false;
-  contractAmendmentPreview.value = null;
-  contractAmendmentError.value = '';
-}
-
-async function previewContractAmendment(newSessionCount) {
-  const course = contractAmendmentCourse.value;
-  if (!course?.id || contractAmendmentPreviewLoading.value) return;
-  contractAmendmentPreviewLoading.value = true;
-  contractAmendmentError.value = '';
-  contractAmendmentPreview.value = null;
-  try {
-    const token = await getAccessToken();
-    if (!token) throw new Error('登入狀態已失效，請重新登入。');
-    const res = await authedFetch(`/api/v1/student-classes/${course.id}/contract-amendment/preview`, {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ new_session_count: Number(newSessionCount) }),
-    }, token);
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.message || '無法預覽合約調整。');
-    contractAmendmentPreview.value = body;
-  } catch (error) {
-    contractAmendmentError.value = error?.message || '無法預覽合約調整。';
-  } finally {
-    contractAmendmentPreviewLoading.value = false;
-  }
-}
-
-async function submitContractAmendment({ newSessionCount, reason }) {
-  const course = contractAmendmentCourse.value;
-  if (!course?.id || !contractAmendmentPreview.value || contractAmendmentSubmitting.value) return;
-  if (Number(contractAmendmentPreview.value.new_session_count) !== Number(newSessionCount)) {
-    contractAmendmentError.value = '預覽已過期，請重新預覽後再送出。';
-    contractAmendmentPreview.value = null;
-    return;
-  }
-  contractAmendmentSubmitting.value = true;
-  contractAmendmentError.value = '';
-  try {
-    const token = await getAccessToken();
-    if (!token) throw new Error('登入狀態已失效，請重新登入。');
-    const res = await authedFetch(`/api/v1/student-classes/${course.id}/contract-amendment`, {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ new_session_count: Number(newSessionCount), reason }),
-    }, token);
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.message || '合約調整失敗。');
-    showContractAmendmentModal.value = false;
-    contractAmendmentPreview.value = null;
-    await loadCourses();
-    toastRef.value?.show?.({
-      title: '合約已提前結束',
-      description: body?.message || `已調整為 ${newSessionCount} 堂；已上課紀錄保留，帳務未變更。`,
-      variant: 'success', durationMs: 7000,
-    });
-  } catch (error) {
-    contractAmendmentError.value = error?.message || '合約調整失敗。';
-  } finally {
-    contractAmendmentSubmitting.value = false;
-  }
-}
-
-async function contractRevertRequest(path, body) {
-  const token = await getAccessToken();
-  if (!token) throw new Error('登入狀態已失效，請重新登入。');
-  const res = await authedFetch(`/api/v1/student-classes/${contractRevertCourse.value.id}/contract-amendment/revert${path}`, {
-    method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(body),
-  }, token);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '撤銷調整失敗。');
-  return data;
-}
-
-async function openContractRevertModal(course) {
-  contractRevertCourse.value = course;
-  contractRevertPreview.value = null;
-  contractRevertError.value = '';
-  showContractRevertModal.value = true;
-  contractRevertLoading.value = true;
-  try {
-    contractRevertPreview.value = await contractRevertRequest('/preview', {});
-  } catch (error) {
-    contractRevertError.value = error?.message || '無法預覽撤銷調整。';
-  } finally {
-    contractRevertLoading.value = false;
-  }
-}
-
-async function submitContractRevert(reason) {
-  if (contractRevertSubmitting.value) return;
-  contractRevertSubmitting.value = true;
-  contractRevertError.value = '';
-  try {
-    const body = await contractRevertRequest('', { reason });
-    showContractRevertModal.value = false;
-    await loadCourses();
-    toastRef.value?.show?.({ title: '已撤銷調整', description: body?.message, variant: 'success', durationMs: 7000 });
-  } catch (error) {
-    contractRevertError.value = error?.message || '撤銷調整失敗。';
-  } finally {
-    contractRevertSubmitting.value = false;
-  }
 }
 
 async function submitBillingCorrection() {

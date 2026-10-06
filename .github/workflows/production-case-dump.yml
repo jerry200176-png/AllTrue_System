@@ -29,8 +29,8 @@ on:
           - substitute_calendar_xinzhuang
           - substitute_slot_conflicts
           - occurrence_identity_health
-      student_name:
-        description: 'Student name for bounded case probe (PII is not written to the artifact)'
+      student_id:
+        description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
         default: ''
         type: string
@@ -82,14 +82,14 @@ jobs:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           CASE_KEY: ${{ inputs.case_key }}
-          TARGET_STUDENT_NAME: ${{ inputs.student_name }}
+          TARGET_STUDENT_ID: ${{ inputs.student_id }}
           TARGET_STUDENT_CLASS_ID: ${{ inputs.student_class_id }}
           TARGET_SUBJECT_NAME: ${{ inputs.subject_name }}
         run: |
           set -euo pipefail
           mkdir -p out
           if [[ "$CASE_KEY" == "laravel_2833_preflight" ]]; then
-            [[ -z "$TARGET_STUDENT_NAME" && -z "$TARGET_STUDENT_CLASS_ID" && "$TARGET_SUBJECT_NAME" == "數學" ]]
+            [[ -z "$TARGET_STUDENT_ID" && -z "$TARGET_STUDENT_CLASS_ID" && "$TARGET_SUBJECT_NAME" == "數學" ]]
             PREFLIGHT_B64=$(base64 -w0 scripts/laravel-2833-preflight.php)
             REQUEST_B64=$(base64 -w0 operations/closeout/laravel-2833-preflight.request.json)
             ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
@@ -106,20 +106,20 @@ jobs:
           case = os.environ['CASE_KEY']
           if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health'}:
               raise SystemExit('unsupported case')
-          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
+          target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
+          if target_student_id and not target_student_id.isdigit():
+              raise SystemExit('student_id must be numeric')
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
-          if case == 'monthly_slip_student' and not os.environ.get('TARGET_STUDENT_NAME'):
-              raise SystemExit('monthly_slip_student requires student_name')
-          if case == 'unpaid_months_muzha' and not os.environ.get('TARGET_STUDENT_NAME'):
-              raise SystemExit('unpaid_months_muzha requires student_name')
-          if case == 'substitute_calendar_xinzhuang' and not os.environ.get('TARGET_STUDENT_NAME'):
-              raise SystemExit('substitute_calendar_xinzhuang requires student_name')
+          # Every student-scoped case needs an id (no hard-coded names); three cases may use a StudentClass ID instead.
+          id_cases = {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'contract_yang_binghe', 'contract_yu_shengrui', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang'}
+          if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'}):
+              raise SystemExit(f'{case} requires student_id')
           if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
           print(f'''<?php
           $case = {case!r};
-          $targetStudentName = {json.dumps(target_student_name, ensure_ascii=False)};
+          $targetStudentId = {int(target_student_id) if target_student_id else 'null'};
           $targetStudentClassId = {int(target_student_class_id) if target_student_class_id else 'null'};
           $targetSubjectName = {json.dumps(target_subject_name, ensure_ascii=False)};
           $db = \\Illuminate\\Support\\Facades\\DB::class;
@@ -129,7 +129,7 @@ jobs:
             $campusId = 9;
             $targetDate = '2026-08-29';
             $targetStudentIds = $db::table('Student')->where('CampusID', $campusId)
-              ->where('name', 'like', '%洪睿淵%')->pluck('id')->map(fn ($id) => (int)$id)->all();
+              ->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             $classes = $db::table('StudentClass as sc')
               ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
               ->whereIn('sc.StudentID', $targetStudentIds)
@@ -210,11 +210,11 @@ jobs:
               ? $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
                 ->where('sc.ID', $targetStudentClassId)->where('st.CampusID', $campusId)->pluck('sc.StudentID')
                 ->map(fn ($id) => (int)$id)->all()
-              : $studentQuery->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')
+              : $studentQuery->where('id', $targetStudentId)->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
             if ($studentIds === [] && $targetStudentClassId === null) {{
               $studentIds = $db::table('Student')->where('CampusID', $campusId)
-                ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
+                ->where('id', $targetStudentId)->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
             }}
             $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
@@ -249,7 +249,7 @@ jobs:
               ->orderBy('SessionDate')->orderBy('StartTime')->get(['id', 'StudentClassID as class_id', 'SessionDate as session_date',
                 'StartTime as start_time', 'EndTime as end_time', 'Status as status']);
             $out['campus_id'] = $campusId;
-            $out['lookup_mode'] = $targetStudentClassId !== null ? 'student_class_id' : 'student_name';
+            $out['lookup_mode'] = $targetStudentClassId !== null ? 'student_class_id' : 'student_id';
             $out['student_count'] = count($studentIds);
             $out['target_classes'] = $classes->map(fn ($r) => [
               'class_id'=>(int)$r->class_id, 'student_id'=>(int)$r->student_id,
@@ -390,9 +390,9 @@ jobs:
           }} elseif ($case === 'transfer_capacity_chen') {{
             $studentIds = $targetStudentClassId !== null
               ? $db::table('StudentClass as sc')->where('sc.ID', $targetStudentClassId)->pluck('sc.StudentID')->map(fn ($id) => (int)$id)->all()
-              : $db::table('Student')->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+              : $db::table('Student')->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             if ($studentIds === [] && $targetStudentClassId === null) {{
-              $studentIds = $db::table('Student')->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')->map(fn ($id) => (int)$id)->all();
+              $studentIds = $db::table('Student')->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             }}
             $classes = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('sc.StudentID', $studentIds)
               ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
@@ -428,15 +428,15 @@ jobs:
               'future_scheduled_session_ids'=>$sessions->filter(fn ($r) => strtolower((string)$r->status) === 'scheduled' && (string)$r->session_date > now()->toDateString())->pluck('id')->map(fn ($id) => (int)$id)->values()->all()];
           }} elseif ($case === 'monthly_slip_student') {{
             // Read-only, Founder GO 2026-10-02: why two 木柵 monthly slips show no lesson dates.
-            // Scope: CampusID 16 and the approved student-ID allowlist only; the dispatched name is
-            // compared in memory and never written out. August 2026 only. No names or free text in output.
+            // Scope: CampusID 16 and the approved student-ID allowlist only; the dispatched id is
+            // checked against the allowlist. August 2026 only. No names or free text in output.
             $approvedStudentIds = [162, 164];
             $studentIds = $db::table('Student')->where('CampusID', 16)->whereIn('id', $approvedStudentIds)
-              ->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+              ->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             $out['student_match_count'] = count($studentIds);
             if (count($studentIds) !== 1) {{
               $out['ok'] = false;
-              $out['error'] = 'student_name must match exactly one approved student';
+              $out['error'] = 'student_id must match exactly one approved student';
             }} else {{
               // Candidate contracts are read internally only; output is limited to contracts linked to August
               // sessions or August invoices/items (no unrelated contract history).
@@ -490,15 +490,15 @@ jobs:
             }}
           }} elseif ($case === 'unpaid_months_muzha') {{
             // Read-only, 2026-10-05: director sees only September unpaid for a 木柵 student said to owe July-September.
-            // Scope: CampusID 16, exact dispatched name (compared in memory, never written out), 2026-06..2026-10.
-            // Approved names only (director report 2026-10-05); any other name returns nothing.
-            $approvedNames = ['陳宥翰', '陳宥霖'];
-            $studentIds = !in_array($targetStudentName, $approvedNames, true) ? [] : $db::table('Student')->where('CampusID', 16)
-              ->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+            // Scope: CampusID 16, dispatched student ID only, 2026-06..2026-10.
+            // Approved student IDs only (director report 2026-10-05); any other id returns nothing.
+            $approvedStudentIds = [162, 164];
+            $studentIds = !in_array($targetStudentId, $approvedStudentIds, true) ? [] : $db::table('Student')->where('CampusID', 16)
+              ->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             $out['student_match_count'] = count($studentIds);
             if (count($studentIds) !== 1) {{
               $out['ok'] = false;
-              $out['error'] = 'student_name must match exactly one 木柵 student';
+              $out['error'] = 'student_id must match exactly one 木柵 student';
             }} else {{
               $from = '2026-06-01'; $to = '2026-10-31';
               $classIds = $db::table('StudentClass')->whereIn('StudentID', $studentIds)
@@ -569,17 +569,18 @@ jobs:
           }} elseif ($case === 'substitute_calendar_xinzhuang') {{
             // Read-only, 2026-10-05: 新莊 director substituted the 2026-10-09 10:00-12:00 lesson to another teacher;
             // 課程查找 shows the substitute, the calendar keeps showing the contract teacher.
-            // Scope: 新莊 campuses, one approved name (compared in memory, never written out), 2026-10-09 only.
-            $approvedNames = ['吳羽晨'];
+            // Scope: 新莊 campuses, one approved student ID (no name lookup), 2026-10-09 only.
+            // Approved student IDs only (director report 2026-10-05, probe run 37299482216); any other id returns nothing.
+            $approvedStudentIds = [2156];
             $targetDate = '2026-10-09';
             $campusIds = $db::table('Campus')->where('name', 'like', '%新莊%')->pluck('id')->map(fn ($id) => (int)$id)->all();
-            $studentIds = !in_array($targetStudentName, $approvedNames, true) ? [] : $db::table('Student')->whereIn('CampusID', $campusIds ?: [0])
-              ->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $studentIds = !in_array($targetStudentId, $approvedStudentIds, true) ? [] : $db::table('Student')->whereIn('CampusID', $campusIds ?: [0])
+              ->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             $out['campus_ids'] = $campusIds;
             $out['student_match_count'] = count($studentIds);
             if (count($studentIds) !== 1) {{
               $out['ok'] = false;
-              $out['error'] = 'student_name must match exactly one 新莊 student';
+              $out['error'] = 'student_id must match exactly one 新莊 student';
             }} else {{
               $out['student_campus_id'] = (int)$db::table('Student')->where('id', $studentIds[0])->value('CampusID');
               $classes = $db::table('StudentClass')->where('StudentID', $studentIds[0])
@@ -678,7 +679,7 @@ jobs:
             $out['slots'] = array_slice($rows, 0, 200);
           }} elseif ($case === 'occurrence_identity_health') {{
             // Read-only TD-076 Track B health probe (design §7). Per CampusID; top-level counts are active contracts only, stopped_contract holds Stop = 1 counts.
-            // IDs and counts only, no names; id lists capped at 50 per campus. Takes no student_name.
+            // IDs and counts only, no names; id lists capped at 50 per campus. Takes no student_id.
             $today = now()->toDateString();
             $live = fn ($stopped = false) => $db::table('schedules as s')->join('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
               ->join('Student as st', 'st.id', '=', 'sc.StudentID')
@@ -905,11 +906,11 @@ jobs:
               $out['error'] = "f7 snapshot incomplete: scanned=" . $total . " missing=" . $missing;
             }}
           }} elseif ($case === 'contract_yang_binghe') {{
-            $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
+            $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|name|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
             $rowsOf = fn ($q) => $q->get()->map($redact)->values()->all();
             $campuses = $db::table('Campus')->where('name', 'like', '%新店%')->pluck('id')->map(fn ($i) => (int)$i)->all();
-            $studentIds = $db::table('Student')->whereIn('CampusID', $campuses)->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($i) => (int)$i)->all();
+            $studentIds = $db::table('Student')->whereIn('CampusID', $campuses)->where('id', $targetStudentId)->pluck('id')->map(fn ($i) => (int)$i)->all();
             $out['campus_ids'] = $campuses;
             $out['student_ids'] = $studentIds;
             $classes = $db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID');
@@ -939,15 +940,15 @@ jobs:
             $out['schedule_audit_logs'] = $sids === [] ? [] : $rowsOf($db::table('schedule_audit_logs')->whereIn('session_id', $sids)->where('created_at', '>=', '2026-07-01')->orderBy('id'));
             $out['security_audit_events'] = $tbl('security_audit_events') ? $rowsOf($db::table('security_audit_events')->whereIn('campus_id', $campuses)->where('occurred_at', '>=', '2026-07-01')->where(fn ($q) => $q->where('event_type', 'like', '%contract%')->orWhere('event_type', 'like', '%settle%')->orWhere('event_type', 'like', '%session%'))->orderBy('id')->limit(300)) : null;
           }} elseif ($case === 'contract_yu_shengrui') {{
-            $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
+            $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|name|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
             $rowsOf = fn ($q) => $q->get()->map($redact)->values()->all();
             $campuses = $db::table('Campus')->where('name', 'like', '%木柵%')->pluck('id')->map(fn ($i) => (int)$i)->all();
-            $studentIds = $db::table('Student')->whereIn('CampusID', $campuses)->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($i) => (int)$i)->all();
+            $studentIds = $db::table('Student')->whereIn('CampusID', $campuses)->where('id', $targetStudentId)->pluck('id')->map(fn ($i) => (int)$i)->all();
             $out['campus_ids'] = $campuses;
             $out['student_ids'] = $studentIds;
             $out['subjects'] = $rowsOf($db::table('Subject')->where(fn ($q) => $q->where('Subject_Name', 'like', '%英%')->orWhere('Subject_Name', 'like', '%數學%')));
-            $out['teachers'] = $db::table('Teacher')->whereIn('CampusID', $campuses)->where(fn ($q) => $q->where('T_Name', 'like', '%Ruth%')->orWhere('T_Name', 'like', '%李維%'))->get(['id', 'T_Name'])->map(fn ($r) => (array)$r)->all();
+            $out['teachers'] = $db::table('Teacher')->whereIn('CampusID', $campuses)->where(fn ($q) => $q->where('T_Name', 'like', '%Ruth%')->orWhere('T_Name', 'like', '%李維%'))->pluck('id')->map(fn ($i) => (int)$i)->all();
             $classes = $rowsOf($db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID'));
             $classIds = array_map(fn ($r) => (int)$r['ID'], $classes);
             $out['student_classes'] = $classes;
@@ -977,20 +978,20 @@ jobs:
           }} elseif ($case === 'billing_huang') {{
             $campusId = 9;
             $studentQuery = $db::table('Student')->where('CampusID', $campusId);
-            $lookupMode = 'student_name_exact';
+            $lookupMode = 'student_id';
             if ($targetStudentClassId !== null) {{
               $studentIds = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
                 ->where('sc.ID', $targetStudentClassId)->where('st.CampusID', $campusId)->pluck('sc.StudentID')
                 ->map(fn ($id) => (int)$id)->all();
               $lookupMode = 'student_class_id';
             }} else {{
-              $studentIds = $studentQuery->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')
+              $studentIds = $studentQuery->where('id', $targetStudentId)->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
               if ($studentIds === []) {{
                 $studentIds = $db::table('Student')->where('CampusID', $campusId)
-                  ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
+                  ->where('id', $targetStudentId)->pluck('id')
                   ->map(fn ($id) => (int)$id)->all();
-                $lookupMode = 'student_name_contains';
+                $lookupMode = 'student_id';
               }}
             }}
             $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
@@ -1021,7 +1022,7 @@ jobs:
               'paid'=>(int)$r->paid, 'stop'=>(int)$r->stop, 'schedule_mode'=>(string)$r->schedule_mode,
             ])->values()->all();
           }} elseif ($case === 'billing_linlai') {{
-            $students = $db::table('Student')->where('CampusID', 9)->where('name', 'like', '%' . $targetStudentName . '%')
+            $students = $db::table('Student')->where('CampusID', 9)->where('id', $targetStudentId)
               ->get(['id', 'CampusID as campus_id']);
             $studentIds = $students->pluck('id')->map(fn ($id) => (int)$id)->all();
             $subjectIds = $db::table('Subject')->where('Subject_Name', 'like', '%' . $targetSubjectName . '%')
@@ -1088,7 +1089,7 @@ jobs:
             $parentCampus = $db::table('Campus')->where('name', 'like', '%木柵%')->first(['id', 'name']);
             $parentCampusId = $parentCampus ? (int) $parentCampus->id : null;
             $parentStudents = $parentCampusId === null ? collect() : $db::table('Student')
-              ->where('CampusID', $parentCampusId)->whereRaw('TRIM(name) = ?', [$targetStudentName])
+              ->where('CampusID', $parentCampusId)->where('id', $targetStudentId)
               ->get(['id', 'CampusID as campus_id', 'Phone as legacy_phone', 'parent_phone', 'enable']);
             $parentStudentIds = $parentStudents->pluck('id')->map(fn ($id) => (int) $id)->all();
             $studentModels = $parentStudentIds === [] ? collect() : \App\Models\Student::query()->whereIn('id', $parentStudentIds)->get();
@@ -1466,9 +1467,8 @@ jobs:
           }} else {{
             $parentCampus = $db::table('Campus')->where('name', 'like', '%興隆%')->first(['id', 'name']);
             $parentCampusId = $parentCampus ? (int)$parentCampus->id : null;
-            $parentStudentName = '樓兆尹';
             $parentStudents = $parentCampusId === null ? collect() : $db::table('Student')
-              ->where('CampusID', $parentCampusId)->whereRaw('TRIM(name) = ?', [$parentStudentName])
+              ->where('CampusID', $parentCampusId)->where('id', $targetStudentId)
               ->get(['id', 'CampusID as campus_id', 'Phone as legacy_phone', 'parent_phone', 'enable']);
             $parentStudentIds = $parentStudents->pluck('id')->map(fn ($id) => (int)$id)->all();
             $out['campus'] = ['found'=>$parentCampus !== null, 'campus_id'=>$parentCampusId];
@@ -1522,15 +1522,15 @@ jobs:
           from pathlib import Path
           text = Path('out/production-case.log').read_text(encoding='utf-8', errors='replace')
           obj = next((json.loads(line) for line in text.splitlines() if line.lstrip().startswith('{')), None)
-          Path('out/production-case.json').write_text(json.dumps(obj or {'ok': False, 'raw_tail': text[-2000:]}, ensure_ascii=False, indent=2), encoding='utf-8')
+          Path('out/production-case.json').write_text(json.dumps(obj or {'ok': False, 'log_chars': len(text)}, ensure_ascii=False, indent=2), encoding='utf-8')
           if not obj or not obj.get('ok'):
               raise SystemExit('probe did not return ok JSON')
           if obj.get('case') == 'fixed_slot_huang':
               verification = obj.get('verification') or {}
               if not verification.get('student_found'):
-                  raise SystemExit('黃品皓 production target was not found')
+                  raise SystemExit('fixed-slot target student was not found')
               if not verification.get('target_class_has_wednesday_and_thursday'):
-                  raise SystemExit('黃品皓 production target has no single fixed course with both Wednesday and Thursday')
+                  raise SystemExit('fixed-slot target has no single fixed course with both Wednesday and Thursday')
           if obj.get('case') == 'parent_binding':
               if not obj.get('campus', {}).get('found'):
                   raise SystemExit('木柵 campus was not found')

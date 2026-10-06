@@ -2,18 +2,22 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\MasksPersonData;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class DiagnoseTeacherSignIn extends Command
 {
+    use MasksPersonData;
+
     protected $signature = 'teacher-signin:diagnose
         {--date= : Local date to inspect, format YYYY-MM-DD}
         {--teacher-id= : Optional teacher User.id}
         {--teacher-name= : Optional teacher name keyword}
         {--login-name= : Optional User.LoginName exact match}
-        {--campus-id= : Optional campus id filter}';
+        {--campus-id= : Optional campus id filter}
+        {--with-names : Print teacher/student names and sign-in memo (operator only; never in workflows)}';
 
     protected $description = 'Read-only diagnostic report for missing teacher sign-in records';
 
@@ -49,7 +53,7 @@ class DiagnoseTeacherSignIn extends Command
         $this->table(['teacher_id', 'teacher_name', 'user_campus_id', 'approved', 'admin', 'user_status', 'uc_rfid'], $teachers->map(function ($row) {
             return [
                 $row->teacher_id,
-                $row->teacher_name,
+                $this->personText($row->teacher_name),
                 $row->user_campus_id,
                 $row->approved,
                 $row->admin,
@@ -60,7 +64,7 @@ class DiagnoseTeacherSignIn extends Command
 
         foreach ($teachers as $teacher) {
             $this->line('');
-            $this->info("Teacher {$teacher->teacher_id} / {$teacher->teacher_name}");
+            $this->info("Teacher {$teacher->teacher_id} / " . $this->personText($teacher->teacher_name));
             $this->printTeacherSignIns((int) $teacher->teacher_id, $date);
             $this->printRelatedRfidRows($teacher, $date);
         }
@@ -152,7 +156,7 @@ class DiagnoseTeacherSignIn extends Command
 
         $this->table(['user_id', 'user_name', 'user_type', 'user_status', 'user_campus_id', 'campus_name', 'approved', 'admin', 'uc_rfid'], $users->map(fn ($row) => [
             $row->user_id,
-            $row->user_name,
+            $this->personText($row->user_name),
             $row->user_type,
             $row->user_status,
             $row->user_campus_id,
@@ -202,14 +206,14 @@ class DiagnoseTeacherSignIn extends Command
             if ($studentRows->isNotEmpty()) {
                 $this->table(['student_id', 'student_name', 'student_campus_id', 'enable', 'student_signin_id', 'signin_campus_id', 'sign_in_dt', 'sign_out_dt', 'memo', 'status', 'voided_at'], $studentRows->map(fn ($row) => [
                     $row->student_id,
-                    $row->student_name,
+                    $this->personText($row->student_name),
                     $row->student_campus_id,
                     $row->enable,
                     $row->student_signin_id,
                     $row->signin_campus_id,
                     $row->sign_in_dt,
                     $row->sign_out_dt,
-                    $row->memo,
+                    $this->personText($row->memo),
                     $row->status,
                     $row->voided_at,
                 ])->all());

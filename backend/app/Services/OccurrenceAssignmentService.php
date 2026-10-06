@@ -8,6 +8,7 @@ use App\Models\Schedule;
 use App\Models\ScheduleChangeLog;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -36,14 +37,90 @@ class OccurrenceAssignmentService
                     ->where('reason', 'substitute')
                     ->whereDate('to_date', Carbon::parse((string) $session->SessionDate)->toDateString())
                     ->where('to_time', substr((string) $session->StartTime, 0, 5))
-                    ->exists());
+                    ->exists())
+            || self::ownedByLineage($session);
+    }
+
+    /**
+     * Lineage key (#3590 item 1): the identity (course, original date, original time) of the live row at the session's
+     * slot, matched to the writer's `substitute` log rows by schedule id or identity. A legacy reschedule after a flag
+     * rollback moves the slot but keeps the stamped identity, so the slot-only match above would miss the row.
+     */
+    private static function ownedByLineage(ClassSession $session): bool
+    {
+        if (!Schema::hasColumn('schedule_change_log', 'to_teacher_id')) {
+            return false;
+        }
+        $course = (int) $session->StudentClassID;
+        $stamped = Schedule::query()->where('student_course_id', $course)
+            ->whereDate('schedule_date', Carbon::parse((string) $session->SessionDate)->toDateString())
+            ->whereIn('status', ['scheduled', 'leave'])
+            ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr((string) $session->StartTime, 0, 5)])
+            ->whereNotNull('original_schedule_date')->whereNotNull('original_start_time')
+            ->get(['id', 'original_schedule_date', 'original_start_time']);
+        foreach ($stamped as $row) {
+            $owned = ScheduleChangeLog::query()->where('student_course_id', $course)->where('reason', 'substitute')
+                ->where(fn ($q) => $q->where('schedule_id', (int) $row->id)->orWhere(fn ($i) => $i
+                    ->whereDate('original_schedule_date', Carbon::parse((string) $row->original_schedule_date)->toDateString())
+                    ->where('original_start_time', substr((string) $row->original_start_time, 0, 5))))
+                ->exists();
+            if ($owned) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** A leave occurrence already has its live row; a substitute must not add a second one. */
     public static function onLeave(ClassSession $session): bool
     {
         return SessionStatus::isLeaveLike((string) $session->Status)
-            || self::at((int) $session->StudentClassID, Carbon::parse((string) $session->SessionDate)->toDateString(), substr((string) $session->StartTime, 0, 5), 'leave')->exists();
+            || self::at((int) $session->StudentClassID, Carbon::parse((string) $session->SessionDate)->toDateString(), substr((string) $session->StartTime, 0, 5), 'leave')->exists()
+            // Sign-in-only leave: a live leave-family sign-in with no leave schedules row.
+            || StudentSignIn::query()->where('ClassSessionID', (int) $session->id)->whereNull('VoidedAt')
+                ->whereIn(DB::raw("LOWER(TRIM(COALESCE(Status, '')))"), SessionStatus::leaveFamily())->exists();
+    }
+
+    /** A makeup session (`schedules.type='extra'` at its slot) has no contract chain; a substitute row would be a second live row. */
+    public static function onMakeup(ClassSession $session): bool
+    {
+        return Schedule::query()->where('student_course_id', (int) $session->StudentClassID)->where('type', 'extra')->where('status', 'scheduled')
+            ->whereDate('schedule_date', Carbon::parse((string) $session->SessionDate)->toDateString())
+            ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr((string) $session->StartTime, 0, 5)])->exists();
+    }
+
+    /**
+     * Same ScheduleGuardService check as ClassSessionController::substitute, for a FUTURE occurrence only
+     * (a past one is bookkeeping). Empty when there is nothing to check.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function futureConflicts(ClassSession $session, int $teacherId): array
+    {
+        $course = StudentClass::query()->where('ID', (int) $session->StudentClassID)->first();
+        if (!$course || $teacherId === (int) $course->TeacherID) {
+            return [];
+        }
+        $date = Carbon::parse((string) $session->SessionDate)->toDateString();
+        $start = substr((string) $session->StartTime, 0, 5);
+        $end = substr((string) $session->EndTime, 0, 5);
+        if (Carbon::parse($date . ' ' . ($end ?: '23:59'))->lte(Carbon::now())) {
+            return [];
+        }
+        $live = self::at((int) $course->ID, $date, $start, 'scheduled')->orderByDesc('id')->first();
+
+        return app(ScheduleGuardService::class)->validateScheduleOccurrence([
+            'teacher_id' => $teacherId,
+            'class_type' => (string) ($course->ClassType ?: 'one_on_one'),
+            'room_id' => (int) ($course->room_id ?? 0) > 0 ? (int) $course->room_id : null,
+            'branch_id' => (int) Student::query()->where('id', $course->StudentID)->value('CampusID'),
+            'schedule_date' => $date,
+            'start_time' => $start,
+            'end_time' => $end,
+            'exclude_schedule_id' => $live ? (int) $live->id : null,
+            'exclude_student_id' => (int) $course->StudentID > 0 ? (int) $course->StudentID : null,
+        ]);
     }
 
     /**

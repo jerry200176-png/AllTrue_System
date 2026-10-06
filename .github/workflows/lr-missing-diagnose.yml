@@ -6,6 +6,7 @@ name: LR Missing Diagnose (read-only)
 # leave_session_with_live_learning_record #170 — fixed in this same PR).
 # Kept for reuse if either condition (or a sibling one) regresses again.
 # SELECT-only via artisan tinker. No writes.
+# Public repo (#3605): ids, statuses and timestamps only (VoidReason free text is not selected).
 on:
   workflow_dispatch: {}
 
@@ -86,7 +87,7 @@ jobs:
           //    these should have been restored by the last backfillBranch() run.
           $stillVoided = \Illuminate\Support\Facades\DB::select("
             SELECT cs.id AS session_id, cs.StudentClassID, cs.SessionDate, cs.StartTime, cs.Status AS session_status,
-                   sc.Stop AS course_stop, lr.id AS lr_id, lr.Status AS lr_status, lr.VoidedAt AS voided_at, lr.VoidReason AS void_reason
+                   sc.Stop AS course_stop, lr.id AS lr_id, lr.Status AS lr_status, lr.VoidedAt AS voided_at
             FROM ClassSession cs
             JOIN StudentClass sc ON sc.ID = cs.StudentClassID
             JOIN LearningRecord lr ON lr.ClassSessionID = cs.id
@@ -128,7 +129,7 @@ jobs:
           $leaveWithLiveLr = \Illuminate\Support\Facades\DB::select("
             SELECT cs.id AS session_id, cs.StudentClassID, cs.SessionDate, cs.StartTime, cs.Status AS session_status,
                    sc.StudentID, sc.TeacherID, sc.Stop AS course_stop,
-                   lr.id AS lr_id, lr.Status AS lr_status, lr.VoidedAt AS voided_at, lr.VoidReason AS void_reason
+                   lr.id AS lr_id, lr.Status AS lr_status, lr.VoidedAt AS voided_at
             FROM ClassSession cs
             JOIN StudentClass sc ON sc.ID = cs.StudentClassID
             JOIN LearningRecord lr ON lr.ClassSessionID = cs.id

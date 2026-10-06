@@ -211,6 +211,33 @@ class ScheduleGuardService
     }
 
     /**
+     * Does the course's student already have another live session overlapping the slot?
+     * Occupancy: that student's sessions on the date, excluding futureReservationExclusionStatuses;
+     * rows of OTHER stopped courses are ignored, the course's own rows always count.
+     */
+    public function studentHasOverlap(\App\Models\StudentClass $course, string $date, string $startTime, string $endTime): bool
+    {
+        $rows = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->where('sc.StudentID', (int) $course->getAttribute('StudentID'))
+            ->whereDate('cs.SessionDate', $date)
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
+            ->where(function ($query) use ($course) {
+                $query->where('sc.Stop', 0)->orWhereNull('sc.Stop')
+                    ->orWhere('cs.StudentClassID', (int) $course->getKey());
+            })
+            ->select(['cs.StartTime', 'cs.EndTime'])
+            ->get();
+        foreach ($rows as $row) {
+            if ($this->timesOverlap($startTime, $endTime, (string) $row->StartTime, (string) $row->EndTime)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Validate many concrete occurrences with one shared payload; every conflict is
      * tagged with the proposed date/time. Single conflict shape for write paths.
      *
@@ -605,6 +632,10 @@ class ScheduleGuardService
 
             $courseId = (int) ($row->StudentClassID ?? 0);
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId . '|' . $sessionDate])) {
+                continue;
+            }
+            // TD-076 flag on: another teacher teaches this occurrence, so the contract teacher is free.
+            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $sessionDate, (string) ($row->StartTime ?? ''))) {
                 continue;
             }
 
@@ -1225,6 +1256,9 @@ class ScheduleGuardService
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])) {
                 continue;
             }
+            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $date, (string) ($row->StartTime ?? ''))) {
+                continue;
+            }
             if ($excludeStudentId && (int) ($row->StudentID ?? 0) === $excludeStudentId) {
                 continue;
             }
@@ -1309,6 +1343,26 @@ class ScheduleGuardService
                 'student_id' => (int) ($row->student_id ?? 0),
                 'class_type' => $classType,
                 'room_id' => $roomId,
+                'start_time' => $start,
+                'end_time' => $end,
+            ];
+        }
+
+        // #3590 item 9 (flag on): a substitute on a makeup occurrence is busy too.
+        foreach (SubstituteScheduleService::makeupOccurrencesTaughtBy($teacherId, $date, $excludeScheduleId ? [$excludeScheduleId] : [], $excludeStudentId, $branchId) as $row) {
+            $start = $this->normalizeTime($row->start_time);
+            $end = $this->normalizeTime($row->end_time);
+            $courseId = (int) $row->student_course_id;
+            if (!$start || !$end || ($excludeCourseId && $courseId === $excludeCourseId && ($targetStartTime === null || $targetEndTime === null || ($start === $targetStartTime && $end === $targetEndTime)))) {
+                continue;
+            }
+            $entries[] = [
+                'source' => 'schedule',
+                'source_id' => (int) $row->id,
+                'course_id' => $courseId,
+                'student_id' => (int) $row->student_id,
+                'class_type' => (string) $row->class_type,
+                'room_id' => null,
                 'start_time' => $start,
                 'end_time' => $end,
             ];

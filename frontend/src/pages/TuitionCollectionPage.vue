@@ -34,7 +34,7 @@
 
     <div class="acct-tabs at-tabs" role="tablist" aria-label="帳務中心分頁">
       <button
-        v-for="tab in ACCOUNTING_TABS"
+        v-for="tab in visibleAccountingTabs"
         :key="tab.key"
         type="button"
         class="acct-tab at-tab"
@@ -726,6 +726,10 @@
       </template>
     </section>
 
+    <section v-if="activeAccountingTab === 'monthly-drafts' && canVoid" id="tuition-accounting-panel-monthly-drafts" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly-drafts" tabindex="0">
+      <MonthlyDraftsPanel ref="monthlyDrafts" :branch-id="branchId" />
+    </section>
+
     <section
       v-if="activeAccountingTab === 'settled'"
       id="tuition-accounting-panel-settled"
@@ -1066,6 +1070,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { useToast } from '../composables/useToast';
 import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
+import MonthlyDraftsPanel from '../components/tuition/MonthlyDraftsPanel.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
@@ -1111,11 +1116,13 @@ const actionLoading = ref(null);
 const ACCOUNTING_TABS = [
   { key: 'receivables', label: '待處理', icon: 'payments' },
   { key: 'monthly-review', label: '月結待核對', icon: 'fact_check' },
+  { key: 'monthly-drafts', label: '本月待開帳單', icon: 'edit_document', directorOnly: true },
   { key: 'settled', label: '已結清課程彙總', icon: 'task_alt' },
   { key: 'payments', label: '收據紀錄', icon: 'receipt_long' },
 ];
 const activeAccountingTab = ref('receivables');
 const monthlyReview = ref(null);
+const monthlyDrafts = ref(null);
 const accountingLoading = ref(false);
 const accountingExporting = ref(false);
 const accountingError = ref('');
@@ -1211,7 +1218,7 @@ function exportSelectedAccountingCSV() {
 }
 
 const activeTabLoading = computed(() => (
-  activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
+  activeAccountingTab.value === 'monthly-drafts' ? Boolean(monthlyDrafts.value?.loading) : activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
 ));
 
 function getToken() {
@@ -1228,6 +1235,7 @@ const canVoid = computed(() => {
   const role = getAuthRole();
   return isDirectorRole(role);
 });
+const visibleAccountingTabs = computed(() => ACCOUNTING_TABS.filter((t) => !t.directorOnly || canVoid.value));
 
 function formatTodayYmd() {
   const d = new Date();
@@ -1544,7 +1552,9 @@ function openReceiptByReport(reportId) {
 }
 
 function refreshActiveTab() {
-  if (activeAccountingTab.value === 'monthly-review') {
+  if (activeAccountingTab.value === 'monthly-drafts') {
+    monthlyDrafts.value?.reload();
+  } else if (activeAccountingTab.value === 'monthly-review') {
     monthlyReview.value?.reload();
   } else if (activeAccountingTab.value === 'receivables') {
     loadAlerts();
@@ -2427,7 +2437,7 @@ watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], 
 }, { immediate: true });
 
 watch(activeAccountingTab, (tab) => {
-  if (tab === 'monthly-review') return;
+  if (tab === 'monthly-review' || tab === 'monthly-drafts') return;
   if (tab === 'receivables') {
     if (!rows.value.length) loadAlerts();
   } else if (tab === 'settled') {
