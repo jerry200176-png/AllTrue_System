@@ -99,7 +99,7 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 混班型容量（一對二與一對三同一格）見 [`docs/plans/2026-08-17-mixed-class-type-occupancy.md`](docs/plans/2026-08-17-mixed-class-type-occupancy.md)（#1889／**§R116**）；剩餘依即將加入的班型算。二次調課殘影見 §R114，不可回退。
 
 ### G-008：家長入口更新卡只吃 `docs/PARENT_UPDATES.yml`（禁止 CHANGELOG 關鍵字推導）
-教職員卡唯一來源 `docs/STAFF_UPDATES.yml`（§R85）；家長卡唯一來源 `docs/PARENT_UPDATES.yml`（§R45）。CHANGELOG 只產草稿、不得自動發布。改 YAML 後跑 `npm run sync-release-notes` 並提交 generated 檔。
+教職員卡唯一來源 `docs/STAFF_UPDATES.yml`（凍結）+ `docs/staff-updates/*.yml`（§R85）；家長卡 `docs/PARENT_UPDATES.yml`（凍結）+ `docs/parent-updates/*.yml`（§R45）。CHANGELOG 只產草稿、不得自動發布。**PR 只新增檔案、不改共用清單**：CHANGELOG 條目 = `docs/changes/<date>-<slug>.md`、卡片 = `docs/staff-updates/<id>.yml`（見 `docs/GUIDE_STAFF_UPDATES.md`）；`*.generated.js` 不進 git，build/dev/test 自動產生。
 
 ### G-009：課程「繳費狀態」是雙真相 OR 邏輯，`StudentClass.Paid` 壓不過帳單付款
 `payment_status = Paid=1 或 Invoice 有效付款`（`StudentClassController.php` summary 段）。只要帳單有未作廢的 Payment，課程管理切「未繳費」會被靜默蓋回「已繳費」；要先到帳務作廢誤登款項。另：`update()` 的 preservedDelta 會把 `Charge − Rate×數量` 的差額當手動微調永久保留——若差額來自錯誤舊資料，UI 怎麼改都改不回（GitHub #798/#799，in-app #158/#159）。
