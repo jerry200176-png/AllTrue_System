@@ -100,7 +100,7 @@ jobs:
     needs: contract-test
     if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'application-deploy' || inputs.phase == 'release-train' || inputs.phase == 'parent-portal-smoke' || inputs.phase == 'pop-bootstrap')) || (github.event_name == 'repository_dispatch' && github.event.action == 'autonomous-production-deploy') || github.event_name == 'schedule') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 45 # #3643 bounded wait for the tip CI
     outputs:
       target_sha: ${{ steps.resolve.outputs.target_sha }}
       superseded: ${{ steps.resolve.outputs.superseded }}
@@ -144,8 +144,17 @@ jobs:
             # provenance is keyed on it. If its main CI is not green yet, wait for the next
             # train instead of offering any other commit.
             TIP="$RUN_HEAD_SHA"
-            OK="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TIP}&status=completed&per_page=100" \
-              --jq '[.workflow_runs[] | select(.name == "CI — PHPUnit Tests" and .conclusion == "success" and (.event == "push" or .event == "workflow_dispatch"))] | length')"
+            # #3643: the land queue merges often, so the tip's CI may still be running. Wait (bounded,
+            # ~40 min) while a main CI run for TIP is unfinished; never switch to another commit.
+            for _ in $(seq 1 40); do
+              OK="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TIP}&status=completed&per_page=100" \
+                --jq '[.workflow_runs[] | select(.name == "CI — PHPUnit Tests" and .conclusion == "success" and (.event == "push" or .event == "workflow_dispatch"))] | length')"
+              [[ "$OK" -ge 1 ]] && break
+              PENDING="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TIP}&per_page=100" \
+                --jq '[.workflow_runs[] | select(.status != "completed")] | length')"
+              [[ "$PENDING" -ge 1 ]] || break
+              sleep 60
+            done
             if [[ "$OK" -lt 1 ]]; then
               echo "::notice::Release train: main tip ${TIP} has no successful main CI yet; nothing to offer this time."
               echo "superseded=true" >> "$GITHUB_OUTPUT"
