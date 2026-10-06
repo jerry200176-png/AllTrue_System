@@ -86,7 +86,7 @@ class RescheduleClassSessionSyncTest extends TestCase
 
         $teacher = User::create([
             'LoginName' => 'teacher-127-' . uniqid() . '@test.com',
-            'Name'      => '黃芝琳',
+            'Name'      => '測試老師甲',
             'PSW'       => 'x',
             'type'      => 'T',
             'phone'     => '092' . random_int(1000000, 9999999),
