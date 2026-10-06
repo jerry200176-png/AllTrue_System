@@ -62,7 +62,7 @@ These files **together** are the decision system (I3):
 | **POP Executor** | Approved production operations per [`operations/catalog.yaml`](../operations/catalog.yaml) — repairs, backfills, reconciles, mitigations |
 | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | **`application-deploy`** — code deploy, migration, frontend build |
 
-No runbook, incident doc, or INDEX entry may override, bypass, or replace these paths. Legacy case-specific repair workflows (e.g. `173-supersede-repair.yml`) are **deprecated** — see K11.
+No runbook, incident doc, or INDEX entry may override, bypass, or replace these paths. Legacy case-specific repair workflows (e.g. the retired `173-supersede-repair.yml`; see `retired_workflows` in the production workflow inventory) are **deprecated** — see K11.
 
 **POP governance:** [`docs/pop/adr/README.md`](pop/adr/README.md). Approval SoT is database (ADR-POP-002), not Git history.
 

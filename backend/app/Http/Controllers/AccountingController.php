@@ -279,19 +279,10 @@ class AccountingController extends Controller
         $invoiceTotal = $appliedTotal = $overpaidTotal = $outstandingTotal = 0;
         foreach ($invoices as $invoice) {
             $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
-            $total = (int) $projection['total_amount'];
-            $positive = (int) $invoice->payments
-                ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
-                ->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
-            $voided = abs((int) $invoice->payments
-                ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
-                ->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
-            $net = max(0, $positive - $voided);
-            $applied = min($total, $net);
-            $invoiceTotal += $total;
-            $appliedTotal += $applied;
-            $overpaidTotal += max(0, $net - $total);
-            $outstandingTotal += max(0, $total - $applied);
+            $invoiceTotal += $projection['total_amount'];
+            $appliedTotal += $projection['applied_amount'];
+            $overpaidTotal += $projection['overpaid_amount'];
+            $outstandingTotal += $projection['outstanding_amount'];
         }
 
         return [$invoiceTotal, $appliedTotal, $overpaidTotal, $outstandingTotal];
@@ -479,22 +470,15 @@ class AccountingController extends Controller
             $invoiceStudentClassId = (int) $invoice->getAttribute('StudentClassID');
             $invoiceStudentClass = $invoice->getRelationValue('studentClass');
             $payments = $invoice->payments;
-            $positivePayments = $payments
-                ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
-                ->values();
-            $voidPayments = $payments
-                ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
-                ->values();
-            $positiveTotal = (int) $positivePayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
-            $voidedAmount = abs((int) $voidPayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
-            $netApplied = max(0, $positiveTotal - $voidedAmount);
-            $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
-            $totalAmount = (int) $projection['total_amount'];
-            $appliedAmount = min($totalAmount, $netApplied);
-            $overpaidAmount = max(0, $netApplied - $totalAmount);
+            $projection = $this->invoiceAmounts->resolve($invoice, $invoiceStudentClass);
+            $totalAmount = $projection['total_amount'];
+            $netApplied = $projection['net_applied'];
+            $voidedAmount = $projection['voided_amount'];
+            $appliedAmount = $projection['applied_amount'];
+            $overpaidAmount = $projection['overpaid_amount'];
             $status = (string) ($invoice->Status ?? '');
             // 作廢帳單保留總額供稽核，但不算欠款。
-            $outstanding = $status === 'void' ? 0 : max(0, $totalAmount - $appliedAmount);
+            $outstanding = $status === 'void' ? 0 : $projection['outstanding_amount'];
             $paidAmount = (int) ($invoice->PaidAmount ?? 0);
             $invoiceAnomalies = [];
 
