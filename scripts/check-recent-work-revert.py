@@ -4,6 +4,7 @@
 Catches the "stale-copy" failure (2026-10-06 PR #3631 deleted #3615/#3618): an agent
 edits old copies of files, so its diff against *current* origin/main removes new work.
 
+Base = merge-base(head, --base).
 Usage: check-recent-work-revert.py [--base origin/main] [--head HEAD] [--days 7]
 Bypass (in presubmit): PR label `intentional-revert` + reason in the PR body.
 Pure moves are skipped: a deleted line that reappears identically among the PR's added lines.
@@ -61,7 +62,10 @@ def blame(base, path):
 
 def find_hits(base, head, days, now=None):
     now = now or time.time()
-    own = set(git("rev-list", f"{base}..{head}").split())
+    # Diff from the merge-base: what merging this PR would actually remove. A branch merely
+    # behind main is not a revert (git keeps main's lines). Blamed commits are ancestors of
+    # the merge-base, so they can never be this PR's own commits.
+    base = git("merge-base", base, head).strip()
     deleted, added = parse_diff(git("diff", "-U0", "--no-renames", base, head, "--", *PATHS))
     hits = []
     for path, lines in sorted(deleted.items()):
@@ -72,7 +76,7 @@ def find_hits(base, head, days, now=None):
         bl = blame(base, path)
         for n, text in lines:
             sha, ts, summary = bl.get(n, ("", 0, ""))
-            if sha and sha not in own and now - ts <= days * 86400:
+            if sha and now - ts <= days * 86400:
                 pr = re.search(r"\(#(\d+)\)\s*$", summary)
                 hits.append((path, n, sha[:9], f"#{pr[1]}" if pr else "?", text.strip()[:60]))
     return hits

@@ -73,6 +73,14 @@ class T(unittest.TestCase):
         self.commit({F: OLD, "backend/app/Bar.php": NEW}, "move")
         self.assertEqual(self.hits(), [])
 
+    def test_branch_behind_main_passes(self):
+        self.commit({F: OLD}, "base")
+        self.pr()
+        self.commit({"scripts/x.sh": "unrelated_change_here\n"}, "pr work")
+        self.g("checkout", "-q", "main")
+        self.commit({F: OLD + NEW}, "feat (#9) lands after the branch point")
+        self.assertEqual(self.hits(), [])
+
     def test_out_of_scope_path_ignored(self):
         self.commit({"docs/a.md": NEW}, "docs (#9)")
         self.pr()
