@@ -15,6 +15,67 @@ use Illuminate\Support\Facades\DB;
  * @property array<string, mixed>|null $pricing_snapshot Immutable transaction pricing snapshot.
  * @property \App\Models\Student|null $student
  * @property \App\Models\CoursePackage|null $coursePackage
+ * @property int|null $ID
+ * @property int $StudentID
+ * @property int $GradeID
+ * @property int $SubjectID
+ * @property int $TeacherID
+ * @property int $by1
+ * @property int $Period
+ * @property string $StartDate
+ * @property string|null $EndDate
+ * @property int|null $week
+ * @property string|null $time
+ * @property int|null $week1
+ * @property string|null $time1
+ * @property int|null $week2
+ * @property string|null $time2
+ * @property int|null $week3
+ * @property string|null $time3
+ * @property int|null $week4
+ * @property string|null $time4
+ * @property int|null $week5
+ * @property string|null $time5
+ * @property int|null $week6
+ * @property string|null $time6
+ * @property int $TotalHours
+ * @property string|null $Memo
+ * @property int|null $Charge
+ * @property int|null $Pay
+ * @property string|null $PayDate
+ * @property int $Paid
+ * @property int|null $Disconunt
+ * @property float|null $Rate
+ * @property string $rate_unit
+ * @property int|null $PackageID
+ * @property int|null $PackageTotalSessions
+ * @property string|null $PackageName
+ * @property int|null $LearnTimeID
+ * @property int|null $room_id
+ * @property int|null $settlement_day
+ * @property int|null $monthly_sessions
+ * @property string $MDate
+ * @property int $Stop
+ * @property string|null $closed_reason
+ * @property string $ScheduleMode
+ * @property string $scheduling_policy
+ * @property int|null $SessionCount
+ * @property int|null $SessionDuration
+ * @property int|null $PurchasedMinutes
+ * @property int|null $RemainingMinutes
+ * @property int|null $duration1
+ * @property int|null $duration2
+ * @property int|null $duration3
+ * @property int|null $duration4
+ * @property int|null $duration5
+ * @property int|null $duration6
+ * @property int|null $RemainingSessions
+ * @property string $ClassType
+ * @property int $UsedSessions
+ * @property \Carbon\CarbonInterface|null $settlement_locked_at
+ * @property string|null $settlement_snapshot
+ * @property int|null $trial_converted_to_id
+ * @property \App\Models\Subject|null $subjectRecord
  */
 class StudentClass extends Model
 {

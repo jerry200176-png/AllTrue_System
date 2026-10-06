@@ -4,6 +4,27 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $StudentID
+ * @property int|null $StudentClassID
+ * @property string $IssueDate
+ * @property string|null $DueDate
+ * @property int $TotalAmount
+ * @property int $PaidAmount
+ * @property string $Status
+ * @property string|null $ScheduleModeAtIssue
+ * @property string $Note
+ * @property string|null $billing_period
+ * @property array<string, mixed>|null $billing_snapshot
+ * @property string|null $reconciled_at
+ * @property int|null $reconciled_by
+ * @property \Carbon\CarbonInterface|null $created_at
+ * @property \Carbon\CarbonInterface|null $updated_at
+ * @property \Illuminate\Database\Eloquent\Collection<int, \App\Models\InvoiceItem> $items
+ * @property \Illuminate\Database\Eloquent\Collection<int, \App\Models\Payment> $payments
+ * @property \App\Models\StudentClass|null $studentClass
+ */
 class Invoice extends Model
 {
     protected static function booted(): void

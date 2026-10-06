@@ -51,13 +51,14 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 | R5 | 要執行 `php artisan migrate` | ✅ PR merge 後才可 `migrate --force` |
 | R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動走 WSL2 → feature branch → PR → CI → auto-deploy |
 
-## ⚠️ 3 條黃線（違反 = CI 反覆失敗）
+## ⚠️ 4 條黃線（違反 = CI 反覆失敗）
 
 | # | 觸發情境 | 強制行動 |
 |---|---------|---------|
 | Y1 | 要在測試插入任何 DB 資料 | 先查 NOT NULL 欄位。`Campus` 用 Factory。`schedules` 記 **S.D.B.**（student_id, day_of_week, branch_id）|
 | Y2 | 要在測試用「今日日期」作為 future session | `start_time` 設 `23:00`，避免 `isEndedAtCreateTime=true` |
 | Y3 | 前端有改動要上線 | CI 全綠 → PR merge → 等 `deploy.yml` → 驗 health / `version.json` |
+| Y4 | PHPStan 報 `undefined property Model::$X` | 到 Model 補 `@property` docblock（欄位來自 migration），**不要**加 `backend/phpstan-baseline.neon`；baseline 只能縮不能長（Presubmit CHECK 0c），罕見例外貼 PR label `phpstan-baseline-growth` 後重跑 |
 
 ---
 
