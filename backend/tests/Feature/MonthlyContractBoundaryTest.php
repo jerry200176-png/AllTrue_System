@@ -55,4 +55,34 @@ class MonthlyContractBoundaryTest extends TestCase
             ->shouldReceive('courseStatusesByStudentClassIds')->andThrow(new \RuntimeException('boom'));
         $this->assertTrue(app(MonthlyContractBoundaryService::class)->extensionRequiresRenewal($make([]), ['EndDate' => '2026-10-31']));
     }
+
+    private function savedMonthlyCourse(array $overrides = []): StudentClass
+    {
+        $student = Student::create(['name' => 'S6b', 'CampusID' => 1, 'ClassID' => 1, 'SchoolName' => 'T', 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+
+        return StudentClass::create(array_merge([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1, 'by1' => 1, 'Period' => 4,
+            'TotalHours' => 20, 'Stop' => 0, 'StartDate' => '2026-08-01', 'EndDate' => '2026-09-30', 'Charge' => 6000,
+            'Paid' => 1, 'ScheduleMode' => 'date',
+        ], $overrides));
+    }
+
+    public function test_saved_legacy_paid_course_without_invoices_requires_renewal(): void
+    {
+        $course = $this->savedMonthlyCourse();
+        foreach (['2026-08-05', '2026-09-05'] as $date) {
+            \App\Models\ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00:00', 'EndTime' => '20:00:00', 'Status' => 'scheduled', 'Note' => '']);
+        }
+
+        $this->assertTrue(app(MonthlyContractBoundaryService::class)->extensionRequiresRenewal($course, ['EndDate' => '2026-10-31']));
+    }
+
+    public function test_invoice_with_stored_paid_amount_and_no_payment_rows_requires_renewal(): void
+    {
+        $course = $this->savedMonthlyCourse(['Paid' => 0, 'StartDate' => '2026-09-01']);
+        Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-01',
+            'TotalAmount' => 6000, 'PaidAmount' => 2000, 'Status' => 'partial', 'billing_period' => '2026-09']);
+
+        $this->assertTrue(app(MonthlyContractBoundaryService::class)->extensionRequiresRenewal($course, ['EndDate' => '2026-10-31']));
+    }
 }

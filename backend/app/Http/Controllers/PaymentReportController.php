@@ -369,6 +369,9 @@ class PaymentReportController extends Controller
             if ($sc && $this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
                 return $this->duplicateCoursePaymentResponse();
             }
+            if ($sc && ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $report->reported_amount))) {
+                return $over;
+            }
 
             $invoice = null;
             if (!empty($report->InvoiceID)) {
@@ -581,6 +584,9 @@ class PaymentReportController extends Controller
 
             if ($this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
                 return $this->duplicateCoursePaymentResponse();
+            }
+            if ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $data['amount'])) {
+                return $over;
             }
 
             if (!empty($data['invoice_id'])) {
@@ -822,6 +828,32 @@ class PaymentReportController extends Controller
         }
 
         return $status === null || in_array($status, ['paid', 'free'], true) || ($coursePaid === 1 && $status === 'unpaid');
+    }
+
+    /**
+     * F7 S6: a partial course (or an unpaid one with an invoice) cannot take more than the resolver's outstanding,
+     * so a second report for the same balance cannot over-collect. Count and date mode alike.
+     */
+    private function amountExceedsOutstandingResponse(int $studentClassId, float $amount)
+    {
+        try {
+            $row = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$studentClassId])[$studentClassId] ?? null;
+        } catch (\Throwable) {
+            return $this->duplicateCoursePaymentResponse();
+        }
+        if (!$row || !(($row['status'] ?? '') === 'partial' || (($row['status'] ?? '') === 'unpaid' && ($row['source'] ?? '') === 'invoice'))) {
+            return null;
+        }
+        $outstanding = (int) $row['outstanding'];
+        if ($amount <= $outstanding) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => sprintf('金額超過此課程未繳餘額 NT$%d，請重新核對後再登記。', $outstanding),
+            'code' => 'amount_exceeds_outstanding',
+            'expected_amount' => $outstanding,
+        ], 422);
     }
 
     private function lockPackageForCourse(StudentClass $studentClass): ?CoursePackage

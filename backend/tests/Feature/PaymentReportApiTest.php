@@ -942,6 +942,65 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(2, Payment::where('InvoiceID', $invoice->id)->count());
     }
 
+    private function pendingReport(StudentClass $sc, Invoice $invoice, int $amount, string $tag): PaymentReport
+    {
+        return PaymentReport::create([
+            'StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => 'x', 'payment_date' => '2026-04-28', 'payment_method' => 'cash',
+            'reported_amount' => $amount, 'status' => 'pending', 'report_token_hash' => hash('sha256', $tag),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+    }
+
+    public function test_f7_s6_confirm_rejects_amount_above_resolver_outstanding_in_count_and_date_mode(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        foreach (['count', 'date'] as $mode) {
+            $student = $this->createStudent(1);
+            $sc = $this->createCountModeClass($student->id, ['ScheduleMode' => $mode, 'Charge' => 6000, 'StartDate' => '2026-04-01', 'EndDate' => $mode === 'date' ? '2026-04-30' : null]);
+            $invoice = $this->invoiceWithCash($sc, 6000, 3000);
+
+            $over = $this->pendingReport($sc, $invoice, 6000, "over-$mode");
+            $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$over->id}/confirm")
+                ->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
+            $this->assertSame(1, Payment::where('InvoiceID', $invoice->id)->count());
+            $over->update(['status' => 'rejected']);
+
+            $ok = $this->pendingReport($sc, $invoice, 3000, "ok-$mode");
+            $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$ok->id}/confirm")->assertOk();
+            $this->recordDirect($token, $sc->ID, 100)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        }
+    }
+
+    public function test_f7_s6_director_record_rejects_amount_above_outstanding(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 6000]);
+        $invoice = $this->invoiceWithCash($sc, 6000, 3000);
+
+        $this->recordDirect($token, $sc->ID, 6000, $invoice->id)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
+        $this->recordDirect($token, $sc->ID, 3000, $invoice->id)->assertOk();
+    }
+
+    public function test_f7_s6_batch_confirm_second_report_for_the_same_balance_is_rejected(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 6000]);
+        $invoice = $this->invoiceWithCash($sc, 6000, 3000);
+        $a = $this->pendingReport($sc, $invoice, 3000, 'b1');
+        $b = $this->pendingReport($sc, $invoice, 3000, 'b2');
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/payment-reports/confirm-batch', ['ids' => [$a->id, $b->id]]);
+
+        $res->assertStatus(207)->assertJsonPath('accepted', 1)->assertJsonPath('results.1.http_status', 422);
+        $this->assertSame(2, Payment::where('InvoiceID', $invoice->id)->count());
+    }
+
     public function test_f7_s6_zero_charge_count_course_with_rate_uses_resolver_not_raw_charge(): void
     {
         Carbon::setTestNow('2026-04-28 10:00:00');
