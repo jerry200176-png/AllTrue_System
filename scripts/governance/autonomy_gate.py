@@ -1111,14 +1111,23 @@ def is_founder_approval_eligible(
 def decide_manual_activation(
     *, workflow_ref: str, target_sha: str, current_main_sha: str,
     ci_success: bool, founder_gate_reached: bool,
+    release_train: bool = False, target_in_main: bool = False,
 ) -> dict[str, str]:
-    """Validate a protected manual activation without performing production work."""
+    """Validate a protected manual activation without performing production work.
+
+    A release train approves one exact target that main may have moved past while
+    the approval waited; it stays valid while main still contains it. Every other
+    activation must still target the current main SHA.
+    """
 
     if workflow_ref != "refs/heads/main":
         return {"decision": "rejected", "reason": "manual application activation must run from refs/heads/main"}
     if not _FULL_SHA_RE.fullmatch(target_sha or ""):
         return {"decision": "rejected", "reason": "activation requires a full target SHA"}
-    if target_sha != current_main_sha:
+    if release_train:
+        if target_sha != current_main_sha and not target_in_main:
+            return {"decision": "rejected", "reason": "release train target is no longer contained in main"}
+    elif target_sha != current_main_sha:
         return {"decision": "rejected", "reason": "target SHA is not the current main SHA"}
     if not ci_success:
         return {"decision": "rejected", "reason": "exact target SHA has no successful main CI"}
@@ -1218,12 +1227,13 @@ def environment_protection_is_valid(
     ``deploy.yml``. Evidence-complete reversible T2 does not call this gate.
     """
 
-    if event_name not in {"workflow_run", "repository_dispatch", "workflow_dispatch"}:
+    if event_name not in {"workflow_run", "repository_dispatch", "workflow_dispatch", "schedule"}:
         return False
-    if event_name in {"workflow_run", "repository_dispatch"} and phase != "application-deploy":
+    # A scheduled release train has no inputs; deploy.yml passes phase=application-deploy.
+    if event_name in {"workflow_run", "repository_dispatch", "schedule"} and phase != "application-deploy":
         return False
     if event_name == "workflow_dispatch" and phase not in {
-        "application-deploy", "parent-portal-smoke", "pop-bootstrap",
+        "application-deploy", "release-train", "parent-portal-smoke", "pop-bootstrap",
         "phase1-create", "phase2-cutover", "phase3-lock",
     }:
         return False
