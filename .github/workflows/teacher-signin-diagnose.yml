@@ -79,6 +79,8 @@ jobs:
             LINE = re.compile(r"^(Read-only teacher sign-in diagnostic for \d{4}-\d\d-\d\d|RFID fingerprint: [0-9a-f]{0,12}|"
                               r"(Teachers matched|TeacherSingIn rows|Students / StudentSingIn with same RFID|"
                               r"TempRfid rows with same RFID|Login fallback User/UserCampus rows): \d+)$")
+            VALUE = re.compile(r"\d{1,12}|\d{4}-\d\d-\d\d( \d\d:\d\d:\d\d)?|[0-9a-f]{12}|rfid|present|leave|absent|"
+                               r"source_only|approved|pending|active|inactive|suspended|null|")
             borders, cols, dropped = 0, None, 0
             for raw in sys.stdin:
                 line = raw.rstrip("\n")
@@ -91,7 +93,11 @@ jobs:
                         cols = [i for i, c in enumerate(cells) if c in KEEP]
                         print(" | ".join(cells[i] for i in cols))
                     elif cols is not None:
-                        print(" | ".join(cells[i] for i in cols if i < len(cells)))
+                        vals = [cells[i] for i in cols if i < len(cells)]
+                        if all(VALUE.fullmatch(v) for v in vals):
+                            print(" | ".join(vals))
+                        else:
+                            dropped += 1
                     continue
                 borders, cols = 0, None
                 m = re.match(r"^Teacher (\d+)(?: / .*)?$", line)

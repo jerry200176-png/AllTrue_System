@@ -282,6 +282,24 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertEqual(6, text.count("2>/dev/null <<'ENDSSH' | python3 -c \"$PII_FILTER\" | tee"))
         self.assertNotIn("| tee /tmp/mg-verify.txt\n          grep", text.replace("python3 -c \"$PII_FILTER\" | tee", ""))
 
+    def test_filters_never_pass_mixed_noise_or_injected_rows(self):
+        tdoc = yaml.safe_load((WF / "teacher-signin-diagnose.yml").read_text(encoding="utf-8"))
+        tsrc = next(s for s in tdoc["jobs"]["diagnose"]["steps"] if "PII_FILTER" in (s.get("env") or {}))["env"]["PII_FILTER"]
+        noise = (f"PHP Warning: {NAME}\n+--+--+\n| teacher_id | status |\n+--+--+\n| 5 | present |\n"
+                 f"| 6 | {NAME} |\n| {NAME} | leave |\n|{NAME}\n+--+--+\n{{\"x\": \"{NAME}\"}}\n"
+                 f"{NAME}\n| {NAME} | {NAME} |\n")
+        out = self.run_filter(tsrc, noise)
+        self.assertNotIn(NAME, out.stdout + out.stderr)
+        self.assertIn("5 | present", out.stdout)
+        gdoc = yaml.safe_load((WF / "multi-guardian-activation.yml").read_text(encoding="utf-8"))
+        gnoise = (f"noise {NAME}\n{{\"ok\":true,\"{NAME}\":1,\"mode\":\"{NAME}\"}}\n{{\"mode\":\"verify\",\"scanned\":2}}\n"
+                  f"enable-result={NAME}\nbackup-file={NAME}\n{{broken {NAME}\n")
+        out = self.run_filter(gdoc["env"]["PII_FILTER"], gnoise)
+        self.assertNotEqual(0, out.returncode)  # unparseable JSON fails the step
+        self.assertNotIn(NAME, out.stdout + out.stderr)
+        self.assertIn('{"scanned":2,"mode":"verify"}', out.stdout)
+        self.assertIn("filter_error=unparseable_json_line", out.stdout)
+
     def test_classsession_duplicate_diagnose_selects_no_person_columns(self):
         run = step_run("classsession-duplicate-diagnose-push.yml", "Run diagnose on Pi")
         sql = "\n".join(re.findall(r'-e "(SELECT.*?;)"', run, re.S))
