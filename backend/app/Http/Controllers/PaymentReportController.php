@@ -494,7 +494,8 @@ class PaymentReportController extends Controller
                 'reconciled_by'  => $userId,
             ]);
 
-            if ($sc && !$sc->Paid) {
+            // F7 S7: only the resolver (all non-void invoices) may settle the course; a partial leaves Paid=0.
+            if ($sc && !$sc->Paid && $this->courseResolvedPaid($sc)) {
                 $sc->update([
                     'Paid' => 1,
                     'PayDate' => Carbon::today()->toDateString(),
@@ -811,13 +812,21 @@ class PaymentReportController extends Controller
         ], $accepted === count($results) ? 200 : 207);
     }
 
+    private function courseResolvedPaid(StudentClass $sc): bool
+    {
+        $id = (int) $sc->ID;
+        $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id])[$id]['status'] ?? null;
+
+        return $status === 'paid';
+    }
+
     /**
      * F7 S6 (B9): duplicate-payment guard on the BillingPayableResolver, not "any paid invoice" / raw Charge / SUM(PaidAmount).
      * Blocks `paid` and `free`; partial (the remainder may be recorded), unbilled, review_required and a plain unpaid
      * course may take a payment. Package members follow the resolver (a paid package counts while no non-void invoice exists).
      * Fail closed: no resolver answer (error, unknown course) blocks.
      * R28 carve-out: Paid=1 with a wholly unpaid period is a residual/stale invoice that needs repair, not a payment
-     * (the writer sets Paid=1 on a partial receipt, so Paid=1 alone never blocks and `partial` stays recordable).
+     * (legacy rows may carry Paid=1 from a partial receipt before F7 S7, so Paid=1 alone never blocks and `partial` stays recordable).
      */
     private function courseAlreadyHasConfirmedPayment(int $studentClassId, int $coursePaid): bool
     {
@@ -975,12 +984,12 @@ class PaymentReportController extends Controller
             $sc = StudentClass::find($report->StudentClassID);
             $scPaid = 0;
             if ($sc) {
-                $invoiceStatus = $invoice->Status ?? 'unpaid';
-                if ($invoiceStatus === 'unpaid') {
-                    $sc->update(['Paid' => 0, 'PayDate' => null]);
-                    $scPaid = 0;
-                } else {
+                // F7 S7: recompute from the resolver; no invoice or no longer paid (partial or unpaid) clears the flag.
+                if ($invoice && $this->courseResolvedPaid($sc)) {
                     $scPaid = (int) $sc->Paid;
+                } else {
+                    $reopen = $sc->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
+                    $sc->update(['Paid' => 0, 'PayDate' => null] + $reopen);
                 }
             }
 

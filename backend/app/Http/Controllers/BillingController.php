@@ -10,6 +10,7 @@ use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\ContractMoneyState;
+use App\Services\BillingPayableResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyBillingService;
 use Carbon\Carbon;
@@ -554,10 +555,11 @@ class BillingController extends Controller
      * | Scenario                            | Paid  | PayDate                  |
      * |-------------------------------------|-------|--------------------------|
      * | Invoice fully paid (PaidAmount>=Total)| 1    | MAX(Payment.PaidAt)      |
-     * | Invoice partially paid              | 1     | MAX(Payment.PaidAt)      |
+     * | Invoice partially paid              | (unchanged) | (unchanged)        |
      * | Director explicitly marks unpaid    | 0     | (preserved via PUT API)  |
      *
-     * Called inside the recordPayment transaction.
+     * F7 S7: Paid=1 only when BillingPayableResolver says the course is `paid` over all its non-void
+     * invoices; a partial payment leaves the flag as is. Called inside the recordPayment transaction.
      */
     public static function syncStudentClassPaidFromInvoice(Invoice $invoice): void
     {
@@ -574,6 +576,9 @@ class BillingController extends Controller
         foreach ($classIds as $classId) {
             $sc = StudentClass::where('ID', $classId)->first();
             if (!$sc) {
+                continue;
+            }
+            if ((app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $classId])[(int) $classId]['status'] ?? null) !== 'paid') {
                 continue;
             }
             $oldPaid = (int) ($sc->Paid ?? 0);

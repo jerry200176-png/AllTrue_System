@@ -125,7 +125,7 @@ async function openPilot(page, { mode = 'normal', viewport, pageName = 'director
       });
       return;
     }
-    if (p.endsWith('/branches')) {
+    if (p.endsWith('/branches') || p.endsWith('/campuses')) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
