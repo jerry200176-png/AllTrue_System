@@ -169,7 +169,7 @@ defineExpose({ reload: load, loading });
 .mdp__bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
 .mdp__months { display: flex; gap: 8px; }
 .mdp__sec { margin-bottom: 24px; overflow-x: auto; }
-.mdp__hint { color: var(--at-text-muted, #666); font-size: 13px; margin: 0; }
-.mdp__ok { color: #1a7f37; }
-.mdp__fail { color: #c62828; }
+.mdp__hint { color: var(--ds-text-secondary); font-size: 13px; margin: 0; }
+.mdp__ok { color: var(--ds-success); }
+.mdp__fail { color: var(--ds-danger); }
 </style>
