@@ -222,7 +222,9 @@ if [[ -n "$director_token" ]]; then
     fi
     # 500: post route:cache / opcache warmup (#1040). 403: transient campus/token
     # race after deploy (seen on #1465 merge — same SHA later OK on prior deploys).
-    if [[ "$code" == "500" || "$code" == "403" ]] && [[ "$attempt" -lt "$max_attempts" ]]; then
+    # 401: director token invalidated mid-smoke (deploy run 37385900523: GET /schedules 401 while
+    # no auth/route/controller code changed); refetch the token and retry like 403.
+    if [[ "$code" == "500" || "$code" == "403" || "$code" == "401" ]] && [[ "$attempt" -lt "$max_attempts" ]]; then
       warn "director GET /schedules attempt $attempt -> $code (retry; refetch director token)"
       refreshed="$(fetch_pi_token D || true)"
       [[ -n "$refreshed" ]] && director_token="$refreshed"
