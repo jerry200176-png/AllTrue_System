@@ -1643,7 +1643,7 @@ const canCloseCourse = (course) => {
 async function closeCourseNoRenew(course, studentName) {
   return runCloseCourseNoRenew({
     course, studentName, getRemainingSessions: ownRemainingSessions,
-    getSubjectLabel, isCourseSettled, supabase, reloadCourses: loadAllStudentCourses,
+    getSubjectLabel, isCourseSettled, reloadCourses: loadAllStudentCourses,
   });
 }
 

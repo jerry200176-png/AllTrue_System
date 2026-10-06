@@ -1712,7 +1712,6 @@ function closeCourseInPlace(course) {
     getRemainingSessions: ownRemainingSessions,
     getSubjectLabel,
     isCourseSettled,
-    supabase,
     reloadCourses: () => loadCourses(pagination.value.page),
   });
 }
