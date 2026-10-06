@@ -211,6 +211,33 @@ class ScheduleGuardService
     }
 
     /**
+     * Does the course's student already have another live session overlapping the slot?
+     * Occupancy: that student's sessions on the date, excluding futureReservationExclusionStatuses;
+     * rows of OTHER stopped courses are ignored, the course's own rows always count.
+     */
+    public function studentHasOverlap(\App\Models\StudentClass $course, string $date, string $startTime, string $endTime): bool
+    {
+        $rows = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->where('sc.StudentID', (int) $course->getAttribute('StudentID'))
+            ->whereDate('cs.SessionDate', $date)
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
+            ->where(function ($query) use ($course) {
+                $query->where('sc.Stop', 0)->orWhereNull('sc.Stop')
+                    ->orWhere('cs.StudentClassID', (int) $course->getKey());
+            })
+            ->select(['cs.StartTime', 'cs.EndTime'])
+            ->get();
+        foreach ($rows as $row) {
+            if ($this->timesOverlap($startTime, $endTime, (string) $row->StartTime, (string) $row->EndTime)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Validate many concrete occurrences with one shared payload; every conflict is
      * tagged with the proposed date/time. Single conflict shape for write paths.
      *
