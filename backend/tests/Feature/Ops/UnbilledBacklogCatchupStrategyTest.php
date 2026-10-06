@@ -189,6 +189,24 @@ final class UnbilledBacklogCatchupStrategyTest extends TestCase
         self::assertSame('ready', $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-07']['status']);
     }
 
+    public function test_lessons_left_on_a_renewed_contract_are_covered_by_the_renewal_invoice(): void
+    {
+        // A ended 06-15 (settled_pending after renewMonthly); attended 06-20 / 06-27 stayed on A; renewal B invoiced 06-16..07-15.
+        DB::table('Student')->insert(['id' => 8, 'name' => 's8', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1]);
+        $this->course(200, 8, ['Rate' => 1000, 'EndDate' => '2026-06-15']);
+        DB::table('StudentClass')->where('ID', 200)->update(['Stop' => 1, 'closed_reason' => 'settled_pending']);
+        $this->lesson(200, '2026-06-20');
+        $this->lesson(200, '2026-06-27');
+        $this->course(201, 8, ['Rate' => 1000, 'StartDate' => '2026-06-16', 'EndDate' => '2026-07-15']);
+        DB::table('Invoice')->insert(['id' => 4, 'StudentID' => 8, 'StudentClassID' => 201, 'IssueDate' => '2026-06-16', 'TotalAmount' => 4000,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '', 'billing_period' => '2026-06', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => 4, 'StudentClassID' => 201, 'Description' => 'B', 'Amount' => 4000,
+            'PeriodStart' => '2026-06-16', 'PeriodEnd' => '2026-07-15']);
+
+        $row = $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-06'] ?? null;
+        self::assertSame(['skipped', 'other_contract_covers_month'], [$row['status'] ?? null, $row['reason'] ?? null]);
+    }
+
     public function test_verify_fails_closed_without_a_plan(): void
     {
         [$s, , $result] = $this->applied();
