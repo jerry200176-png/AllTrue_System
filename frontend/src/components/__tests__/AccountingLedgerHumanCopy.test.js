@@ -35,7 +35,6 @@ describe('billing human copy — no engineering jargon on director surfaces', ()
     expect(course).not.toContain('帳單 / 對帳');
     expect(course).not.toContain('帳單 / 期別');
     expect(course).toContain('課程總覽');
-    expect(course).toContain('帳單與對帳');
-    expect(course).toContain('帳單（期別）');
+    expect(course).toContain('學生帳務');
   });
 });

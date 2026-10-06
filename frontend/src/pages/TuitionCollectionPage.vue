@@ -1097,7 +1097,7 @@ import {
   ACCOUNTING_CSV_HEADERS,
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
-import { resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
+import { normalizeNavigationId, resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
 import { TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
@@ -1568,6 +1568,7 @@ function refreshActiveTab() {
 // ═══ Alerts ═══
 const rows = ref([]);
 const searchQuery = ref('');
+const ledgerOpenedFromDeepLink = ref(false);
 const tuitionFocusRowId = ref(null);
 const tuitionFocusMessage = ref('');
 const consumedTuitionFocusKey = ref('');
@@ -1587,13 +1588,17 @@ async function applyTuitionFocus() {
   const key = tuitionFocusKey();
   if (!key || key === ':' || key === consumedTuitionFocusKey.value || !rows.value.length) return;
   consumedTuitionFocusKey.value = key;
+  const openedLedger = ledgerOpenedFromDeepLink.value;
+  ledgerOpenedFromDeepLink.value = false;
   const row = resolveTuitionFocusRow(rows.value, {
     studentId: props.initialStudentId,
     courseId: props.initialCourseId,
   });
   if (!row) {
     tuitionFocusRowId.value = null;
-    tuitionFocusMessage.value = '通知對象目前不在這份待處理清單，請切換分類或重新整理。';
+    tuitionFocusMessage.value = openedLedger
+      ? '這門課目前沒有待處理項目，已直接打開學生帳務。'
+      : '通知對象目前不在這份待處理清單，請切換分類或重新整理。';
     emit('clear-initial-context');
     return;
   }
@@ -2427,6 +2432,16 @@ watch(() => props.initialTab, (tab) => {
     activeAccountingTab.value = 'payments';
   } else if (tab === 'settled') {
     activeAccountingTab.value = 'settled';
+  } else if (tab === 'ledger') {
+    activeAccountingTab.value = 'receivables';
+    activeTab.value = 'all';
+    const courseId = normalizeNavigationId(props.initialCourseId);
+    if (courseId) {
+      ledgerOpenedFromDeepLink.value = true;
+      ledgerStudentClassId.value = courseId;
+      ledgerReportId.value = null;
+      ledgerOpen.value = true;
+    }
   }
   emit('clear-initial-tab');
 }, { immediate: true });

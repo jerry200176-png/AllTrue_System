@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 const source = readFileSync(`${process.cwd()}/src/pages/StudentsList.vue`, 'utf8');
 const open = source.slice(source.indexOf('const openAddSessionsForCourse ='), source.indexOf('const submitAddSessions ='));
-const submit = source.slice(source.indexOf('const submitAddSessions ='), source.indexOf('const formatBillingPeriod ='));
+const submit = source.slice(source.indexOf('const submitAddSessions ='), source.indexOf('const submitRenewMonthly ='));
 function setup() {
   let resolveAuth;
   const auth = new Promise(resolve => { resolveAuth = resolve; });
