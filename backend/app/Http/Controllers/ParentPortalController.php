@@ -787,7 +787,7 @@ class ParentPortalController extends Controller
                 $stopped        = (bool) $c->Stop;
                 $waived         = ContractMoneyState::isWaived($c);
                 $cardStatus     = ContractMoneyState::parentCardStatus($isTutoring, $waived, $paid);
-                $resolved       = (string) ($courseStatuses[(int) $c->ID]['status'] ?? '');
+                $resolved       = $this->courseState($c, $courseStatuses);
                 if (!$isTutoring && !$waived) {
                     // F7 S4: show the resolver's own state; free (zero-fee), partial and review_required are not "未繳費".
                     $cardStatus = match ($resolved) {
@@ -1668,7 +1668,7 @@ class ParentPortalController extends Controller
                 continue;
             }
             $resolved = $statuses[(int) $c->ID] ?? [];
-            $state = (string) ($resolved['status'] ?? '');
+            $state = $this->courseState($c, $statuses);
             if (!in_array($state, ['unpaid', 'partial', 'unbilled'], true)) {
                 continue;
             }
@@ -2179,11 +2179,28 @@ class ParentPortalController extends Controller
         return 0;
     }
 
+    /**
+     * Resolver status, except package members with no non-void invoice (resolver: review_required, source none),
+     * which keep the legacy rule: the package/Paid flag decides paid, otherwise unbilled (still owes).
+     *
+     * @param array<int, array<string, mixed>> $courseStatuses
+     */
+    private function courseState(StudentClass $class, array $courseStatuses): string
+    {
+        $row = $courseStatuses[(int) $class->ID] ?? [];
+        $status = (string) ($row['status'] ?? '');
+        if ($status === 'review_required' && ($row['source'] ?? null) === 'none' && (int) $class->PackageID > 0) {
+            return $class->isEffectivelyPaid() ? 'paid' : 'unbilled';
+        }
+
+        return $status;
+    }
+
     /** @param array<int, array<string, mixed>> $courseStatuses BillingPayableResolver::courseStatusesByStudentClassIds() */
     private function isClassPaid(StudentClass $class, array $courseStatuses): bool
     {
         // F7 S4: paid = resolver paid or free; a void/partial Payment row no longer settles a course.
-        return in_array($courseStatuses[(int) $class->ID]['status'] ?? null, ['paid', 'free'], true);
+        return in_array($this->courseState($class, $courseStatuses), ['paid', 'free'], true);
     }
 
     private function resolveMonthlyDisplayPeriod(StudentClass $class, $invoiceRows): string
