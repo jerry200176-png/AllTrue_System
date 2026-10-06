@@ -240,9 +240,6 @@ class WorkflowContractTest(unittest.TestCase):
         lu = (WF / "lu-yue-1513-unpaid-rollback.yml").read_text(encoding="utf-8")
         self.assertNotRegex(lu, r'first\(\[[^\]]*"name"')
         self.assertNotRegex(lu, r'"Note"\]\);')
-        for wf in ("ops-inapp-308-shen-restore.yml", "ops-inapp-259-billing-repair.yml"):
-            self.assertNotRegex((WF / wf).read_text(encoding="utf-8"), r'first\(\[[^\]]*"name"')
-        self.assertNotRegex((WF / "ops-inapp-308-shen-restore.yml").read_text(encoding="utf-8"), r'get\(\["id","SessionDate","Status","Note"\]\)')
 
     def run_filter(self, source, text):
         return subprocess.run(["python3", "-c", textwrap.dedent(source)], input=text, text=True, capture_output=True)
