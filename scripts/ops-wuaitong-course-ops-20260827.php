@@ -90,8 +90,9 @@ $existing = ClassSession::query()
     ->first();
 
 $before = [
-    'student' => ['id' => $student->id, 'name' => $student->name, 'campus_id' => (int) $student->CampusID],
-    'teacher' => ['id' => $teacher->id, 'name' => $teacher->Name],
+    // #3605: ids only -- names are checked above but never printed.
+    'student' => ['id' => $student->id, 'campus_id' => (int) $student->CampusID],
+    'teacher' => ['id' => $teacher->id],
     'settle_courses' => collect($settleIds)->mapWithKeys(function (int $id) use ($settleCourses): array {
         $c = $settleCourses->get($id);
         return [$id => [
