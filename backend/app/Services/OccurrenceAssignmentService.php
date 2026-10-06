@@ -27,16 +27,43 @@ class OccurrenceAssignmentService
             && Schema::hasColumn('schedule_change_log', 'to_teacher_id');
     }
 
-    /** Flag on, or this slot was written by this service earlier (a flag rollback must still undo through it). */
+    /**
+     * Flag on, or this occurrence was written by this service earlier (a flag rollback must still undo through it).
+     *
+     * Lineage key (#3590 item 1): the occurrence identity (course, original date, original time) of the live row at
+     * the session's slot, plus its `schedule_change_log` rows (by schedule id or identity). A legacy reschedule after a
+     * flag rollback moves the slot but keeps the stamped identity, so the writer's rows are still found.
+     */
     public static function handles(ClassSession $session, int $campusId): bool
     {
-        return self::enabledFor($campusId)
-            || (Schema::hasColumn('schedule_change_log', 'to_teacher_id')
-                && ScheduleChangeLog::where('student_course_id', (int) $session->StudentClassID)
-                    ->where('reason', 'substitute')
-                    ->whereDate('to_date', Carbon::parse((string) $session->SessionDate)->toDateString())
-                    ->where('to_time', substr((string) $session->StartTime, 0, 5))
-                    ->exists());
+        if (self::enabledFor($campusId)) {
+            return true;
+        }
+        if (!Schema::hasColumn('schedule_change_log', 'to_teacher_id')) {
+            return false;
+        }
+        $course = (int) $session->StudentClassID;
+        $date = Carbon::parse((string) $session->SessionDate)->toDateString();
+        $start = substr((string) $session->StartTime, 0, 5);
+        $logs = fn () => ScheduleChangeLog::where('student_course_id', $course)->where('reason', 'substitute');
+
+        if ($logs()->whereDate('to_date', $date)->where('to_time', $start)->exists()) {
+            return true;
+        }
+        $stamped = Schedule::where('student_course_id', $course)->whereDate('schedule_date', $date)
+            ->whereIn('status', ['scheduled', 'leave'])->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start])
+            ->whereNotNull('original_schedule_date')->whereNotNull('original_start_time')
+            ->get(['id', 'original_schedule_date', 'original_start_time']);
+        foreach ($stamped as $row) {
+            $key = fn ($q) => $q->where('schedule_id', (int) $row->id)->orWhere(fn ($i) => $i
+                ->whereDate('original_schedule_date', Carbon::parse((string) $row->original_schedule_date)->toDateString())
+                ->where('original_start_time', substr((string) $row->original_start_time, 0, 5)));
+            if ($logs()->where($key)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** A leave occurrence already has its live row; a substitute must not add a second one. */

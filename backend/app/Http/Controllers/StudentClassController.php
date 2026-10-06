@@ -27,6 +27,7 @@ use App\Services\ContractScheduleMatcher;
 use App\Services\Scheduling\BillingContractLockGuard;
 use App\Services\Scheduling\ContractSessionSchedule;
 use App\Services\OccurrenceAssignmentService;
+use App\Services\SubstituteScheduleService;
 use App\Services\Scheduling\ContractTeacherChangeCascade;
 use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
@@ -5836,12 +5837,18 @@ class StudentClassController extends Controller
             return true;
         }
 
-        return DB::table('schedules')
+        $substitutes = DB::table('schedules')
             ->where('student_course_id', $studentClassId)
             ->where('teacher_id', $teacherId)
             ->where('status', 'scheduled')
             ->whereNotNull('original_schedule_id')
             ->exists();
+
+        // TD-076 flag on: a makeup substitute is recorded on the LearningRecord only.
+        return $substitutes || (SubstituteScheduleService::anyCampusOn()
+            && StudentClass::where('ID', $studentClassId)
+                ->where(fn ($q) => SubstituteScheduleService::orWhereTeachesMakeup($q, 'StudentClass.ID', $teacherId))
+                ->exists());
     }
 
     /**
@@ -5859,6 +5866,7 @@ class StudentClassController extends Controller
                         ->where('schedules.status', 'scheduled')
                         ->whereNotNull('schedules.original_schedule_id');
                 });
+            SubstituteScheduleService::orWhereTeachesMakeup($q, 'StudentClass.ID', $teacherId);
         });
     }
 

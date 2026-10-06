@@ -1404,6 +1404,12 @@ class FinanceController extends Controller
 
     private function resolveParttimePayrollTeacherId(object $record): int
     {
+        // TD-076 flag on: the occurrence's resolved teacher is the payee (live row / makeup LearningRecord, else contract).
+        $v2 = SubstituteScheduleService::occurrence((int) $record->StudentClassID, $record->SessionDate, $record->StartTime);
+        if ($v2 !== null) {
+            return $v2[0];
+        }
+
         $sub = SubstituteScheduleService::resolveSubstituteUserId(
             (int) $record->StudentClassID,
             $record->SessionDate,
