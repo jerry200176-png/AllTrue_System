@@ -10,10 +10,16 @@ on:
     types: [autonomous-production-deploy]
 
   # Release train: one Founder approval per train instead of one per R3 merge.
-  # 07:30 and 12:30 Asia/Taipei. Also `workflow_dispatch phase=release-train`.
+  # 07:30 and 12:30 Asia/Taipei, retried every 15 min for 45 min (GitHub drops
+  # scheduled runs under load, and the main tip may still be in CI). A retry
+  # stands down if a train is already waiting. Also `workflow_dispatch phase=release-train`.
   schedule:
     - cron: '30 23 * * *'
     - cron: '30 4 * * *'
+    - cron: '45,59 23 * * *'
+    - cron: '14 0 * * *'
+    - cron: '45,59 4 * * *'
+    - cron: '14 5 * * *'
 
   workflow_dispatch:
     inputs:
@@ -109,6 +115,7 @@ jobs:
           FLAG_CALENDAR: ${{ inputs.course_session_calendar_v1 }}
           FLAG_MANAGER: ${{ inputs.course_manager_v1 }}
           RUN_HEAD_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
           WORKFLOW_REF: ${{ github.ref }}
           TARGET_SHA_INPUT: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || inputs.target_sha }}
           REPO: ${{ github.repository }}
@@ -124,6 +131,15 @@ jobs:
                 exit 1
               fi
             done
+            # A retry stands down while another deploy run already waits for approval,
+            # so the Founder never sees the waiting train cancelled under them.
+            WAITING="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?status=waiting&per_page=5" \
+              --jq "[.workflow_runs[] | select(.id != ${RUN_ID})] | length")"
+            if [[ "$WAITING" -ge 1 ]]; then
+              echo "::notice::Release train: another deploy run is already waiting for approval; standing down."
+              echo "superseded=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             # The train offers only the run's own head_sha (main at trigger time): deploy
             # provenance is keyed on it. If its main CI is not green yet, wait for the next
             # train instead of offering any other commit.
