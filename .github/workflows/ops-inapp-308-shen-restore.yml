@@ -1,4 +1,4 @@
-name: In-app #308 沈柏宇 contract restore (protected one-off)
+name: In-app #308 student 396 contract restore (protected one-off)
 # governance-capability: legacy-case-specific-mutation
 
 # One-case Data Repair Gate for Founder-requested reopen of SC#3495 after the
@@ -94,9 +94,10 @@ jobs:
           [[ "$manifest_sha" == "$DEPLOYED_SHA" ]] || { echo "::error::production SHA drift: $manifest_sha" >&2; exit 1; }
           DEPLOYED_SHA="$manifest_sha" php artisan tinker --no-ansi --execute='
           $db = \Illuminate\Support\Facades\DB::class;
-          $student = $db::table("Student")->where("id", 396)->first(["id","name","CampusID"]);
-          $sc = $db::table("StudentClass")->where("ID", 3495)->first();
-          $sessions = $db::table("ClassSession")->where("StudentClassID", 3495)->whereIn("id", [33542,33543,33544,33545,33546,33547,33548,33549])->orderBy("id")->get(["id","SessionDate","Status","Note"]);
+          $student = $db::table("Student")->where("id", 396)->first(["id","CampusID"]);
+          // #3605: public repo -- no free-text/person columns in the log (notes are reported as a length).
+          $sc = $db::table("StudentClass")->where("ID", 3495)->first(["ID","StudentID","TeacherID","SubjectID","Stop","closed_reason","ScheduleMode","SessionCount","UsedSessions","RemainingSessions","StartDate","EndDate","Paid"]);
+          $sessions = $db::table("ClassSession")->where("StudentClassID", 3495)->whereIn("id", [33542,33543,33544,33545,33546,33547,33548,33549])->orderBy("id")->selectRaw("id, SessionDate, Status, CHAR_LENGTH(Note) as note_length")->get();
           echo json_encode([
             "production_backend_sha" => getenv("DEPLOYED_SHA"),
             "student" => $student,
@@ -159,7 +160,7 @@ jobs:
           $db = \Illuminate\Support\Facades\DB::class;
           $out = $db::transaction(function () use ($db) {
             $student = $db::table("Student")->where("id", 396)->lockForUpdate()->first();
-            if (!$student || (string)$student->name !== "沈柏宇" || (int)$student->CampusID !== 9) {
+            if (!$student || (int)$student->CampusID !== 9) {
               throw new \RuntimeException("student 396 identity mismatch");
             }
             $sc = $db::table("StudentClass")->where("ID", 3495)->lockForUpdate()->first();
@@ -214,7 +215,7 @@ jobs:
               if ($n !== 1) throw new \RuntimeException("session restore row count mismatch id=" . $sid);
             }
             $after = $db::table("StudentClass")->where("ID", 3495)->first(["ID","Stop","closed_reason","EndDate","SessionCount","UsedSessions","RemainingSessions"]);
-            $restored = $db::table("ClassSession")->whereIn("id", [33544, 33545])->get(["id","Status","Note"]);
+            $restored = $db::table("ClassSession")->whereIn("id", [33544, 33545])->get(["id","Status"]);
             $stillCancel = $db::table("ClassSession")->whereIn("id", [33546,33547,33548,33549])->where("Status", "cancelled")->count();
             if ((int)$after->Stop !== 0 || $after->closed_reason !== null || $after->EndDate !== null) {
               throw new \RuntimeException("postcondition SC reopen failed");
