@@ -127,6 +127,12 @@ Claude Code on the web／其他雲端 session 的 container 是全新隔離環�
 
 ---
 
+## Land queue (merge, don't race update-branch)
+
+Add the label `queue` to a green-ready PR instead of looping on `gh pr update-branch` or `gh pr merge --auto`.
+`.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict, failed check, or unresolved review thread. Re-add `queue` after fixing.
+GitHub's native merge queue is not used: it is unavailable for this user-owned repo (a `merge_queue` ruleset probe returned 422).
+
 ## 任務完成後的記錄原則
 
 | 發現了什麼 | 記在哪裡 |
