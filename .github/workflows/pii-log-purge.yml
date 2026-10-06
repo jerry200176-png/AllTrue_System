@@ -44,19 +44,34 @@ jobs:
           set -euo pipefail
           cutoff=$(date -u -d "${RETAIN_HOURS} hours ago" +%Y-%m-%dT%H:%M:%SZ)
           deleted=0; failed=0
+          # Resolve workflow IDs once: files deleted from main are only reachable by ID.
+          gh api --paginate "repos/$REPO/actions/workflows?per_page=100" \
+            -q '.workflows[] | "\(.path | split("/") | last) \(.id)"' > "$RUNNER_TEMP/wf-ids.txt"
           while read -r wf; do
             [ -z "$wf" ] && continue
+            wid=$(awk -v f="$wf" '$1 == f {print $2; exit}' "$RUNNER_TEMP/wf-ids.txt")
+            if [ -z "$wid" ]; then
+              # Only a file that left main may lack an entry (GitHub drops it once its last
+              # run is deleted). A file still on main without an id is a real error.
+              if [ -f ".github/workflows/$wf" ]; then
+                echo "::error::$wf exists on main but has no workflow id"; failed=$((failed+1))
+              else
+                echo "::notice::$wf left main and has no runs left"
+              fi
+              continue
+            fi
             # Page until nothing older than the cutoff remains (a backlog can exceed one page).
             for _ in $(seq 1 50); do
-              if ! ids=$(gh api "repos/$REPO/actions/workflows/$wf/runs?per_page=100&created=<$cutoff" \
+              if ! ids=$(gh api "repos/$REPO/actions/workflows/$wid/runs?per_page=100&created=<$cutoff" \
                 -q '.workflow_runs[]|select(.status=="completed")|.id'); then
                 echo "::error::could not list runs for $wf"; failed=$((failed+1)); break
               fi
               [ -z "$ids" ] && break
               before=$failed
               for id in $ids; do
-                if gh api -X DELETE "repos/$REPO/actions/runs/$id" >/dev/null; then deleted=$((deleted+1)); else
-                  echo "::error::could not delete run $id ($wf)"; failed=$((failed+1)); fi
+                if out=$(gh api -X DELETE "repos/$REPO/actions/runs/$id" 2>&1); then deleted=$((deleted+1))
+                elif grep -q "HTTP 404" <<<"$out"; then deleted=$((deleted+1))  # already gone
+                else echo "::error::could not delete run $id ($wf): $out"; failed=$((failed+1)); fi
               done
               [ "$failed" -gt "$before" ] && break
             done
