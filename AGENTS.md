@@ -153,6 +153,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 - No stacked PRs: branch from main after the dependency merges.
 - Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
 - Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
+- Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add label `intentional-revert` + reason in the PR body, then re-run presubmit.
 - Deploys: release train only.
 
 ## Commit SOP
