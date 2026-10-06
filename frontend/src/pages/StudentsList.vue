@@ -2588,7 +2588,7 @@ const deleteSelectedStudents = async () => {
     return;
   }
 
-  if (!confirm(`確定要批量刪除 ${ids.length} 位學生嗎？\n\n系統會一併刪除相關課程、排課、評量與帳務資料。`)) return;
+  if (!confirm(`確定要批量刪除 ${ids.length} 位學生嗎？\n\n系統會一併刪除相關課程、排課、評量與帳務資料。已有帳務紀錄（帳單、收款、繳費回報）的學生不能刪除，請改用停用。`)) return;
 
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
@@ -2628,7 +2628,7 @@ const deleteSelectedStudents = async () => {
 
 const deleteStudent = async (student) => {
   const name = student?.name || '此學生';
-  if (!confirm(`確定要刪除「${name}」嗎？\n\n系統會一併刪除該學生相關課程、排課、評量與帳務資料。`)) return;
+  if (!confirm(`確定要刪除「${name}」嗎？\n\n系統會一併刪除該學生相關課程、排課、評量與帳務資料。已有帳務紀錄（帳單、收款、繳費回報）的學生不能刪除，請改用停用。`)) return;
 
   const laravelId = student?._laravelId ?? student?.id;
   if (!laravelId) {

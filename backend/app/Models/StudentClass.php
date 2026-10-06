@@ -79,6 +79,39 @@ class StudentClass extends Model
         });
     }
 
+    /**
+     * Contracts whose history other ledgers point at (attendance, deductions, entitlement transfers, pricing
+     * amendments) must never be hard-deleted; close them instead.
+     */
+    public static function hasOperationalHistory(array $ids): bool
+    {
+        if ($ids === []) {
+            return false;
+        }
+        $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $ids)->pluck('ID')->all();
+
+        // Every append-only table that keeps a contract id. Add new ones here.
+        $refs = [
+            'session_deduction_ledger' => ['student_class_id'],
+            'session_entitlement_transfers' => ['source_student_class_id', 'target_student_class_id'],
+            'class_session_reassignments' => ['old_student_class_id', 'new_student_class_id'],
+            'student_class_pricing_amendments' => ['student_class_id'],
+            'dunning_events' => ['student_class_id'],
+            'course_contract_group_members' => ['student_class_id'],
+        ];
+        foreach ($refs as $table => $columns) {
+            foreach ($columns as $column) {
+                if (DB::table($table)->whereIn($column, $ids)->exists()) {
+                    return true;
+                }
+            }
+        }
+
+        return ($sessionIds !== [] && DB::table('StudentSingIn')->whereIn('ClassSessionID', $sessionIds)->exists())
+            || DB::table('ClassSession')->whereIn('StudentClassID', $ids)
+                ->whereRaw("LOWER(COALESCE(Status, '')) IN ('attended', 'completed', 'late', 'absent', 'leave')")->exists();
+    }
+
     public static function isWaivedInDb(int $id): bool
     {
         return $id > 0 && DB::table('StudentClass')->where('ID', $id)->lockForUpdate()->value('closed_reason') === 'waived';
