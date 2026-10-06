@@ -33,6 +33,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
         run: |
+          [ -f scripts/pr-overlap.mjs ] || exit 0  # base predates the script (this PR itself)
           body=$(node scripts/pr-overlap.mjs "$PR" --markdown)
           id=$(gh api --paginate "repos/$GH_REPO/issues/$PR/comments" \
             --jq '.[] | select(.body | startswith("<!-- pr-overlap -->")) | .id' | head -n1)
