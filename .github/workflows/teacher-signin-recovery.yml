@@ -92,22 +92,68 @@ jobs:
           TEACHER_ID: ${{ inputs.teacher_id }}
           CAMPUS_ID: ${{ inputs.campus_id }}
           APPLY: ${{ inputs.apply }}
+          # Public repo (#3605): the command is run with --json (ids and dates only; names are never requested) and
+          # every tagged result line must be exactly one JSON object; only allowlisted keys are re-serialized.
+          # On a parse failure a fixed message is printed, never the input. Other lines are dropped and counted.
+          PII_FILTER: |
+            import json, re, sys
+            TAGS = ("DRYRUN_JSON ", "APPLY_JSON ")
+            ROW = {"student_signin_id", "teacher_id", "campus_id", "student_id", "sign_in_dt", "sign_out_dt"}
+            DT = re.compile(r"\d{4}-\d\d-\d\d( \d\d:\d\d:\d\d)?|")
+            def num(v):
+                return isinstance(v, int) and not isinstance(v, bool)
+            def row(r):
+                ok = isinstance(r, dict)
+                return {k: v for k, v in r.items() if k in ROW and (num(v) or (isinstance(v, str) and DT.fullmatch(v)))} if ok else None
+            def clean(d):
+                out = {}
+                if d.get("mode") in ("dry-run", "apply"):
+                    out["mode"] = d["mode"]
+                if isinstance(d.get("date"), str) and re.fullmatch(r"\d{4}-\d\d-\d\d", d["date"]):
+                    out["date"] = d["date"]
+                for k in ("candidates", "inserted"):
+                    if num(d.get(k)):
+                        out[k] = d[k]
+                if isinstance(d.get("rows"), list):
+                    out["rows"] = [x for x in map(row, d["rows"]) if x is not None]
+                return out
+            seen, dropped = set(), 0
+            for raw in sys.stdin:
+                line = raw.rstrip("\n")
+                tag = next((t for t in TAGS if line.startswith(t)), None)
+                if tag is None:
+                    if line in ("DRYRUN_COMPLETE", "BACKUP_OK"):
+                        print(line)
+                    elif line.strip():
+                        dropped += 1
+                    continue
+                try:
+                    if tag in seen:
+                        raise ValueError("duplicate")
+                    seen.add(tag)
+                    d = json.loads(line[len(tag):])
+                    if not isinstance(d, dict):
+                        raise ValueError("not an object")
+                    print(tag.strip() + " " + json.dumps(clean(d), separators=(",", ":")))
+                except ValueError:
+                    print("recovery output could not be parsed; withheld")
+                    sys.exit(1)
+            print(f"filtered_lines_dropped={dropped}")
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            DATE="$DATE" TEACHER_ID="$TEACHER_ID" CAMPUS_ID="$CAMPUS_ID" APPLY="$APPLY" 'bash -s' <<'ENDSSH'
+            DATE="$DATE" TEACHER_ID="$TEACHER_ID" CAMPUS_ID="$CAMPUS_ID" APPLY="$APPLY" 'bash -s' 2>/dev/null <<'ENDSSH' | python3 -c "$PII_FILTER"
           set -euo pipefail
           cd /home/admin/backend
 
-          CMD=(php artisan teacher-signin:recover-rfid-collisions "--date=${DATE}")
+          CMD=(php artisan teacher-signin:recover-rfid-collisions "--date=${DATE}" --json)
           if [ -n "${TEACHER_ID}" ]; then CMD+=("--teacher-id=${TEACHER_ID}"); fi
           if [ -n "${CAMPUS_ID}" ]; then CMD+=("--campus-id=${CAMPUS_ID}"); fi
 
-          echo "=== Dry-run first ==="
-          "${CMD[@]}"
+          echo "DRYRUN_JSON $("${CMD[@]}")"
 
           if [ "${APPLY}" != "true" ]; then
-            echo "Dry-run complete; no production data was changed."
+            echo "DRYRUN_COMPLETE"
             exit 0
           fi
 
@@ -117,8 +163,7 @@ jobs:
           DB_USER="$(grep '^DB_USERNAME=' /home/admin/backend/.env | cut -d= -f2-)"
           mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$(grep '^DB_PASSWORD=' /home/admin/backend/.env | cut -d= -f2-)" \
             --single-transaction AllTrue | gzip > "$BACKUP_FILE"
-          echo "Backup complete: $BACKUP_FILE"
+          echo "BACKUP_OK"
 
-          echo "=== Apply recovery ==="
-          "${CMD[@]}" --apply
+          echo "APPLY_JSON $("${CMD[@]}" --apply)"
           ENDSSH

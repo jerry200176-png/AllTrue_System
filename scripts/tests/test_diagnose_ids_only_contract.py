@@ -300,6 +300,54 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn('{"scanned":2,"mode":"verify"}', out.stdout)
         self.assertIn("filter_error=unparseable_json_line", out.stdout)
 
+    def test_teacher_signin_recovery_parses_one_json_object_and_never_echoes_input(self):
+        doc = yaml.safe_load((WF / "teacher-signin-recovery.yml").read_text(encoding="utf-8"))
+        step = next(x for x in doc["jobs"]["recover"]["steps"] if "PII_FILTER" in (x.get("env") or {}))
+        src = step["env"]["PII_FILTER"]
+        row = {"student_signin_id": 7, "teacher_id": 5, "campus_id": 2, "student_id": 9,
+               "sign_in_dt": "2026-04-28 19:30:00", "sign_out_dt": "", "student_name": NAME, "rfid": NAME}
+        good = (f"noise {NAME}\nDRYRUN_JSON " + json.dumps({"mode": "dry-run", "date": "2026-04-28", "candidates": 1,
+                "rows": [row], "teacher_name": NAME}, ensure_ascii=False) + "\nBACKUP_OK\n"
+                + "APPLY_JSON " + json.dumps({"mode": "apply", "inserted": 1, "note": NAME}, ensure_ascii=False) + "\n")
+        out = self.run_filter(src, good)
+        self.assertEqual(0, out.returncode, out.stderr)
+        self.assertNotIn(NAME, out.stdout + out.stderr)
+        self.assertIn('"student_signin_id":7', out.stdout)
+        self.assertIn('"inserted":1', out.stdout)
+        self.assertIn("BACKUP_OK", out.stdout)
+        for bad in (f"DRYRUN_JSON {{broken {NAME}\n", f"DRYRUN_JSON [\"{NAME}\"]\n",
+                    f"DRYRUN_JSON {{\"mode\":\"dry-run\"}}\nDRYRUN_JSON {{\"mode\":\"{NAME}\"}}\n"):
+            out = self.run_filter(src, bad)
+            self.assertNotEqual(0, out.returncode)
+            self.assertNotIn(NAME, out.stdout + out.stderr)
+            self.assertIn("recovery output could not be parsed; withheld", out.stdout)
+        text = (WF / "teacher-signin-recovery.yml").read_text(encoding="utf-8")
+        self.assertIn("2>/dev/null <<'ENDSSH' | python3 -c \"$PII_FILTER\"", text)
+        self.assertIn("--json", text)
+
+    def test_workflows_never_pass_with_names_to_artisan(self):
+        for path in WF.glob("*.yml"):
+            self.assertNotIn("--with-names", path.read_text(encoding="utf-8"), path.name)
+
+    def test_calendar_acceptance_report_is_encrypted_not_uploaded_plaintext(self):
+        text = (WF / "calendar-course-acceptance.yml").read_text(encoding="utf-8")
+        uploads = [x for x in steps("calendar-course-acceptance.yml") if "upload-artifact" in str(x.get("uses", ""))]
+        self.assertTrue(uploads)
+        for u in uploads:
+            self.assertNotIn("playwright-report", str(u["with"]["path"]))
+            self.assertNotIn("test-results", str(u["with"]["path"]))
+        self.assertIn("DUMP_ARTIFACT_KEY", text)
+        self.assertIn("openssl enc -aes-256-cbc", text)
+
+    def test_allowlist_replies_and_probes_carry_no_names(self):
+        text = (WF / "bug-phase-c-allowlist.yml").read_text(encoding="utf-8")
+        probes = (WF / "bug-legacy-production-probes.yml").read_text(encoding="utf-8")
+        for name in ("呂承澔", "楊璦瑄", "張進鴻", "陳姝彣", "張珉恩", "洪家溱", "周芮湘", "樓兆瑄", "陳品承",
+                     "何昀佳", "邱崴", "簡湧耆", "沈柏宇", "王俞方", "芝琳", "鄭老師"):
+            self.assertNotIn(name, text)
+        self.assertNotIn("urlencode({\"name\"", probes)
+        self.assertIn("student_id_114", dispatch_inputs("bug-legacy-production-probes.yml"))
+
     def test_classsession_duplicate_diagnose_selects_no_person_columns(self):
         run = step_run("classsession-duplicate-diagnose-push.yml", "Run diagnose on Pi")
         sql = "\n".join(re.findall(r'-e "(SELECT.*?;)"', run, re.S))
