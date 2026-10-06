@@ -569,10 +569,12 @@ jobs:
           }} elseif ($case === 'substitute_calendar_xinzhuang') {{
             // Read-only, 2026-10-05: 新莊 director substituted the 2026-10-09 10:00-12:00 lesson to another teacher;
             // 課程查找 shows the substitute, the calendar keeps showing the contract teacher.
-            // Scope: 新莊 campuses, one student ID (no name lookup), 2026-10-09 only.
+            // Scope: 新莊 campuses, one approved student ID (no name lookup), 2026-10-09 only.
+            // Approved student IDs only (director report 2026-10-05, probe run 37299482216); any other id returns nothing.
+            $approvedStudentIds = [2156];
             $targetDate = '2026-10-09';
             $campusIds = $db::table('Campus')->where('name', 'like', '%新莊%')->pluck('id')->map(fn ($id) => (int)$id)->all();
-            $studentIds = $db::table('Student')->whereIn('CampusID', $campusIds ?: [0])
+            $studentIds = !in_array($targetStudentId, $approvedStudentIds, true) ? [] : $db::table('Student')->whereIn('CampusID', $campusIds ?: [0])
               ->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             $out['campus_ids'] = $campusIds;
             $out['student_match_count'] = count($studentIds);
