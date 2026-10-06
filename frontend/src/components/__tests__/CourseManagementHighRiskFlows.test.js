@@ -86,18 +86,20 @@ describe('CourseManagement high-risk flow characterization', () => {
   });
 
   it('preserves monthly renewal preview and mutation contracts', () => {
-    const preview = section('async function loadRenewMonthlyPreview(course)', 'async function submitPurchaseSessions');
+    // Request/payload logic lives in the shared composable; the page keeps its guards and post-success UI.
+    const composable = readFileSync(`${process.cwd()}/src/composables/course-management/useMonthlyRenewal.js`, 'utf8');
     const submit = section('async function submitRenewMonthly', 'function openQuickAddSessionModal');
 
-    expect(preview).toContain('`/api/v1/student-classes/${course.id}/renewal-preview`');
-    expect(preview).toContain("mode: 'renew_monthly'");
-    expect(preview).toContain("if (res.ok || json.severity === 'blocked')");
-    expect(preview).toContain('renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];');
-    expect(preview).toContain('applyMonthlyRenewalPreview(renewMonthlyForm.value, json);');
+    expect(composable).toContain('`/api/v1/student-classes/${course.id}/renewal-preview`');
+    expect(composable).toContain("mode: 'renew_monthly'");
+    expect(composable).toContain("if (res.ok || json.severity === 'blocked')");
+    expect(composable).toContain('warnings.value = [...(json.warnings || []), ...(json.blockers || [])];');
+    expect(composable).toContain('applyMonthlyRenewalPreview(form.value, json);');
     expect(submit).toContain('if (renewMonthlySubmitting.value) return;');
     expect(submit).toContain("alert('請選擇新到期日或延長月數')");
-    expect(submit).toContain('`/api/v1/student-classes/${course.id}/renew-monthly`');
-    expect(submit).toContain('body: JSON.stringify({ end_date: endDate })');
+    expect(composable).toContain('`/api/v1/student-classes/${course.id}/renew-monthly`');
+    expect(composable).toContain('JSON.stringify({ end_date: endDate, ...(');
+    expect(submit).toContain('monthlyRenewal.submit(course, endDate)');
     expect(submit).toContain('showRenewMonthlyModal.value = false;');
     expect(submit).toContain('await loadCourses();');
     expect(submit).toContain('renewMonthlySubmitting.value = false;');

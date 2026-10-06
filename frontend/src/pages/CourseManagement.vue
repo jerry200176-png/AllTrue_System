@@ -1512,7 +1512,7 @@
             <strong>{{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}</strong>
             <span v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</span>
           </p>
-          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除。</p>
+          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
         </div>
         <div class="actions">
           <button class="ghost" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</button>
@@ -1546,10 +1546,10 @@ import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatc
 import { buildTransferableSessionOption } from '../lib/sessionTransferEligibility';
 import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '../lib/coursePricing';
 import {
-  canApplyRenewalPreview,
   estimateMonthlyRenewalCharge,
 } from '../lib/coursePricing';
-import { applyMonthlyRenewalPreview, nextPeriodEnd, renewalErrorMessage, invalidateMonthlyRenewalPreview, canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
+import { canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
+import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
 import { courseRowWarningSummary, usageBalanceWarningTitle } from '../lib/courseRowWarnings';
 import {
@@ -3272,49 +3272,14 @@ async function loadRenewMonthlyPreview(course) {
   return loadRenewMonthlyPreviewForEndDate(course);
 }
 
-async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') {
-  const requestId = ++renewMonthlyPreviewRequestId.value;
-  try {
-    const token = await getAccessToken();
-    if (!token || !course?.id) {
-      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '請重新登入後再預覽新一期。' });
-      return;
-    }
-    const currentEnd = course?.end_date || course?.EndDate || null;
-    let endDate = requestedEndDate;
-    if (!endDate) endDate = nextPeriodEnd(currentEnd, course?.settlement_day);
-    invalidateMonthlyRenewalPreview(renewMonthlyForm.value, endDate);
-    const res = await authedFetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({ mode: 'renew_monthly', end_date: endDate }),
-    }, token);
-    const json = await res.json().catch(() => ({}));
-    if (showRenewMonthlyModal.value && canApplyRenewalPreview({
-      requestId,
-      currentRequestId: renewMonthlyPreviewRequestId.value,
-      courseId: course.id,
-      currentCourseId: renewMonthlyCourse.value?.id,
-      requestedEndDate: endDate,
-      currentEndDate: renewMonthlyForm.value.preview_end_date,
-    })) {
-      if (res.ok || json.severity === 'blocked') {
-        renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];
-        applyMonthlyRenewalPreview(renewMonthlyForm.value, json);
-      } else {
-        Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: renewalErrorMessage(json, '無法取得期間預覽，請重試。') });
-      }
-    }
-  } catch {
-    if (requestId === renewMonthlyPreviewRequestId.value && course?.id === renewMonthlyCourse.value?.id) {
-      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '無法取得期間預覽，請檢查連線後重試。' });
-    }
-  }
-}
+const monthlyRenewal = useMonthlyRenewal({
+  form: renewMonthlyForm,
+  warnings: renewMonthlyWarnings,
+  previewRequestId: renewMonthlyPreviewRequestId,
+  isModalOpen: () => showRenewMonthlyModal.value,
+  currentCourseId: () => renewMonthlyCourse.value?.id,
+});
+const loadRenewMonthlyPreviewForEndDate = monthlyRenewal.loadPreview;
 
 function refreshRenewMonthlyPreview(endDate) {
   if (renewMonthlyCourse.value) loadRenewMonthlyPreviewForEndDate(renewMonthlyCourse.value, endDate);
@@ -3490,27 +3455,10 @@ async function submitRenewMonthly(endDate) {
   }
   renewMonthlySubmitting.value = true;
   try {
-    const token = await getAccessToken();
-    if (!token) { alert('請重新登入後再試'); return; }
-    const renewalRequest = {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({ end_date: endDate }),
-    };
-    if (renewMonthlyForm.value.discount?.type && renewMonthlyForm.value.discount.type !== 'NONE') {
-      renewalRequest.body = JSON.stringify({ end_date: endDate, discount: renewMonthlyForm.value.discount });
-    }
-    const res = await authedFetch(`/api/v1/student-classes/${course.id}/renew-monthly`, renewalRequest, token);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
-      alert(details || json?.message || '續約失敗');
-      return;
-    }
+    const result = await monthlyRenewal.submit(course, endDate);
+    if (result.status === 'no-token') { alert('請重新登入後再試'); return; }
+    if (result.status === 'error') { alert(result.message); return; }
+    const { json, token } = result;
     showRenewMonthlyModal.value = false;
     const newCourse = json?.new_course || {};
     toastRef.value?.show?.({
