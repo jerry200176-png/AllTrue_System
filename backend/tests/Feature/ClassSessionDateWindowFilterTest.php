@@ -21,6 +21,36 @@ class ClassSessionDateWindowFilterTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_invalid_start_or_end_returns_validation_error(): void
+    {
+        [$token, $scId] = $this->seedCourse();
+        StudentClass::where('ID', $scId)->update(['ScheduleMode' => 'date']);
+
+        foreach ([
+            ['start' => '2026-99-99', 'end' => '2026-03-31', 'invalid' => 'start'],
+            ['start' => '2026-03-01', 'end' => '2026-02-30', 'invalid' => 'end'],
+        ] as $window) {
+            $response = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->getJson("/api/v1/class-sessions?branch_id=1&student_class_id={$scId}"
+                . "&start={$window['start']}&end={$window['end']}");
+
+            $response->assertStatus(422)->assertJsonValidationErrors($window['invalid']);
+        }
+    }
+
+    public function test_inaccessible_branch_still_returns_forbidden_before_invalid_date(): void
+    {
+        [$token, $scId] = $this->seedCourse();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/class-sessions?branch_id=2&student_class_id={$scId}&start=2026-99-99&end=2026-03-31")
+            ->assertForbidden();
+    }
+
     public function test_start_end_window_is_inclusive_and_excludes_outside(): void
     {
         $base = Carbon::parse('2026-03-15'); // 固定中月日期，避免月初/今日耦合

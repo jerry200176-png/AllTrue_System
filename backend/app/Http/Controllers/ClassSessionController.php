@@ -117,7 +117,7 @@ class ClassSessionController extends Controller
 
     public function index(Request $request)
     {
-        if ($response = $this->authorizeAndMaterializeClassSessionIndex($request)) {
+        if ($response = $this->authorizeAndMaterializeClassSessionIndex($request, true)) {
             return $response;
         }
 
@@ -170,7 +170,7 @@ class ClassSessionController extends Controller
         ]);
     }
 
-    private function authorizeAndMaterializeClassSessionIndex(Request $request): ?\Illuminate\Http\JsonResponse
+    private function authorizeAndMaterializeClassSessionIndex(Request $request, bool $validateListDates = false): ?\Illuminate\Http\JsonResponse
     {
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
@@ -186,6 +186,14 @@ class ClassSessionController extends Controller
                 return response()->json(['message' => 'Forbidden: branch not accessible'], 403);
             }
             $campusIds = [$requestedCampus];
+        }
+
+        if ($validateListDates) {
+            // Keep authorization errors first, then reject bad dates before materialization.
+            $request->validate([
+                'start' => 'nullable|date_format:Y-m-d',
+                'end' => 'nullable|date_format:Y-m-d',
+            ]);
         }
 
         if ($role === 'teacher') {
