@@ -708,6 +708,7 @@ final class PopOperationService
     {
         $strategies = [
             'td076-r1-collision-keepers-20261006' => \App\Operations\Strategies\Td076CollisionKeepersStrategy::class,
+            'td076-r2-history-pins-20261006' => \App\Operations\Strategies\Td076HistoryPinsStrategy::class,
         ];
 
         return isset($strategies[$entry['id'] ?? ''])
