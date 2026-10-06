@@ -117,11 +117,11 @@ final class Td076CollisionKeepersStrategyTest extends TestCase
         $this->assertSame('teacher_conflict', $plan['manifest']['quarantine'][0]['reason']);
     }
 
-    public function test_learning_record_on_the_contract_teacher_overrides_the_substitute_fallback(): void
+    public function test_learning_record_that_disagrees_with_the_substitute_row_still_quarantines(): void
     {
         $this->twoChains();
         Schedule::whereKey(12696)->update(['teacher_id' => $this->contract]);
-        $this->lr($this->makeSession('2026-04-10'), $this->contract);
+        $this->lr($this->makeSession('2026-04-10'), $this->subB); // taught by someone neither row names
 
         $plan = $this->strategy()->plan($this->params());
 
