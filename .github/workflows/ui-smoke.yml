@@ -14,6 +14,7 @@ name: UI Smoke (Playwright)
 #
 # Secrets：完整 production smoke 需 SMOKE_BASE_URL、SMOKE_DIRECTOR_*、SMOKE_TEACHER_*；
 # 缺少任一項時在安裝依賴前明確失敗，不能以 spec skip 產生綠燈。
+# 家長入口 smoke（SMOKE_PARENT_*）尚無 repo secrets，不在本 gate 宣稱的驗證範圍；補上 secrets 後再納入必要項。
 # 見 OPERATIONS_RUNBOOK §B2 節流原則。
 
 on:

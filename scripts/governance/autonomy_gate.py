@@ -541,7 +541,8 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
             path.startswith("frontend/e2e/")
             and path not in _LOCAL_ONLY_E2E_SPECS
             and not path.startswith("frontend/e2e/fixtures/ui-foundation/")
-        ):
+            and not path.endswith(("-playwright.config.js", ".md"))
+        ) or (path == "frontend/package.json" and "test:e2e" in patch):
             minimum = max(minimum, 3)
             reasons.append(f"production smoke control path: {path}")
         elif any(path.startswith(prefix) for prefix in _T3_PREFIXES):

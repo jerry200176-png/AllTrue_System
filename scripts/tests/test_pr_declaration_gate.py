@@ -38,11 +38,18 @@ class PrDeclarationGateTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(classify_scope([path], "")["tier_name"], "T3")
         for path in (
+            "frontend/e2e/assessment-playwright.config.js",
+            "frontend/e2e/README.md",
             "frontend/e2e/fixtures/ui-foundation/pilot-mount.js",
             "frontend/src/components/__tests__/Widget.test.js",
         ):
             with self.subTest(path=path):
                 self.assertEqual(classify_scope([path], "")["tier_name"], "T0")
+
+    def test_npm_smoke_entrypoint_change_is_protected(self):
+        patch = '-    "test:e2e": "playwright test"\n+    "test:e2e": "echo skipped"'
+        self.assertEqual(classify_scope(["frontend/package.json"], patch)["tier_name"], "T3")
+        self.assertNotEqual(classify_scope(["frontend/package.json"], '+    "vue": "3.5.1"')["tier_name"], "T3")
 
     def test_every_default_ui_smoke_spec_is_a_protected_control(self):
         paths = (
