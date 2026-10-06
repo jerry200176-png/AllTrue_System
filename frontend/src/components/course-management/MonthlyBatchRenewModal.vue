@@ -43,7 +43,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { supabase } from '../../supabase';
+import { authedFetch, getAccessToken } from '../../lib/authedFetch';
 import { getSubjectLabel } from '../../lib/constants';
 import { getRenewalPreviewAmount } from '../../lib/coursePricing';
 import { batchRenewalEnd, nextRenewalMonth, renewalErrorMessage } from '../../lib/monthlyRenewalPreview';
@@ -70,18 +70,20 @@ const subjectOf = (c) => c.subject_name || getSubjectLabel(c.subject);
 const selectable = (row) => row.state === 'ready';
 const selectedRows = computed(() => rows.value.filter((r) => r.selected && selectable(r)));
 
-async function authHeaders() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new Error('請重新登入後再試');
-  return { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${session.access_token}` };
+const JSON_HEADERS = { 'Content-Type': 'application/json', Accept: 'application/json' };
+
+async function requireToken() {
+  const token = await getAccessToken();
+  if (!token) throw new Error('請重新登入後再試');
+  return token;
 }
 
-async function previewRow(row, headers, id) {
+async function previewRow(row, token, id) {
   try {
-    const res = await fetch(`/api/v1/student-classes/${row.course.id}/renewal-preview`, {
-      method: 'POST', credentials: 'include', headers,
+    const res = await authedFetch(`/api/v1/student-classes/${row.course.id}/renewal-preview`, {
+      method: 'POST', credentials: 'include', headers: JSON_HEADERS,
       body: JSON.stringify({ mode: 'renew_monthly', end_date: row.end }),
-    });
+    }, token);
     const json = await res.json().catch(() => ({}));
     if (id !== loadId) return;
     const blocked = json.severity === 'blocked';
@@ -109,24 +111,24 @@ async function loadPreviews() {
     const end = batchRenewalEnd(course.end_date, course.settlement_day, targetMonth.value);
     return { course, end, start: '', amount: null, messages: [], selected: false, state: end ? 'loading' : 'covered' };
   });
-  let headers;
-  try { headers = await authHeaders(); } catch (e) {
+  let token;
+  try { token = await requireToken(); } catch (e) {
     rows.value.forEach((r) => { if (r.state === 'loading') Object.assign(r, { state: 'error', messages: [e.message] }); });
     return;
   }
-  await Promise.all(rows.value.filter((r) => r.state === 'loading').map((r) => previewRow(r, headers, id)));
+  await Promise.all(rows.value.filter((r) => r.state === 'loading').map((r) => previewRow(r, token, id)));
 }
 
 async function submit() {
   if (submitting.value) return;
   submitting.value = true;
   try {
-    const headers = await authHeaders();
+    const token = await requireToken();
     // Sequential: each renewal settles its source course; keep failures per row.
     for (const row of selectedRows.value) {
-      const res = await fetch(`/api/v1/student-classes/${row.course.id}/renew-monthly`, {
-        method: 'POST', credentials: 'include', headers, body: JSON.stringify({ end_date: row.end }),
-      });
+      const res = await authedFetch(`/api/v1/student-classes/${row.course.id}/renew-monthly`, {
+        method: 'POST', credentials: 'include', headers: JSON_HEADERS, body: JSON.stringify({ end_date: row.end }),
+      }, token);
       const json = await res.json().catch(() => ({}));
       if (res.ok) Object.assign(row, { state: 'done', selected: false, messages: [] });
       else {
