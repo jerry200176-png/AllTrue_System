@@ -1,8 +1,3 @@
-## 2026-10-06 — docs(billing): 主任學生帳務對帳 IA 重規劃契約
-<!-- release-notes: silent_ship=silent-2026-10-06-director-billing-recon-ia -->
-- 新增 [`docs/plans/2026-10-06-director-student-billing-reconciliation-ia.md`](plans/2026-10-06-director-student-billing-reconciliation-ia.md)：帳務中心為唯一學費核帳入口、學生帳務檔必須能對上「哪筆錢＝哪幾天課」、次要頁只深連、月結／堂數制用說明條而非第二套系統；INDEX 已掛導航。本 PR 僅文件，不改程式與催繳規則。
-- Worker 接手包（M1 only）：[`IMPL_HANDOFF_M1`](plans/2026-10-06-director-billing-recon-IMPL_HANDOFF_M1.md)＋[`KICKOFF_M1`](plans/2026-10-06-director-billing-recon-KICKOFF_M1.md)（給 Claude Code／Codex；載 `alltrue-testing`，勿整包裝 agent-skills）。
-
 ## 2026-10-06 — chore(ci): PHPStan baseline is shrink-only; core models get `@property` docblocks
 <!-- release-notes: silent_ship=silent-2026-10-06-phpstan-baseline-shrink-only -->
 - Schedule／StudentClass／ClassSession／LearningRecord／Student／User／ScheduleChangeLog／StudentSignIn／Invoice 補上資料表欄位的 `@property` docblock，`phpstan-baseline.neon` 重新產生（1962 → 1448 筆）；Presubmit 新增 CHECK 0c，PR 不得新增或增加 baseline 項目（例外：PR label `phpstan-baseline-growth`）。只有型別註解與 CI 檢查，執行行為不變。
