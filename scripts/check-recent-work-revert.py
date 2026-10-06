@@ -10,6 +10,7 @@ Bypass (in presubmit): PR label `intentional-revert` + reason in the PR body.
 Pure moves are skipped: a deleted line that reappears identically among the PR's added lines.
 """
 import argparse
+import difflib
 import re
 import subprocess
 import sys
@@ -18,6 +19,7 @@ import time
 PATHS = ["backend/app", "frontend/src", "scripts", ".github"]
 MIN_LEN = 4  # ignore `}` / `end` / `);` style lines: no signal
 MAX_ROWS = 60
+EDIT_RATIO = 0.8  # similarity at which a -/+ pair in one hunk counts as an edit
 
 
 def git(*args):
@@ -26,20 +28,39 @@ def git(*args):
 
 
 def parse_diff(text):
-    """-> ({path: [(old_lineno, text)]}, set(stripped added lines))"""
+    """-> ({path: [(old_lineno, text)]}, set(stripped added lines))
+
+    A deleted line with a near-identical added line in the same hunk is an edit, not a
+    removal, so it is dropped (ponytail: edits that rewrite a line >20% are still flagged).
+    """
     deleted, added, path, old = {}, set(), None, 0
+    hunk_del, hunk_add = [], []
+
+    def flush():
+        for n, t in hunk_del:
+            if not any(difflib.SequenceMatcher(None, t, x).quick_ratio() >= EDIT_RATIO
+                       and difflib.SequenceMatcher(None, t, x).ratio() >= EDIT_RATIO
+                       for x in hunk_add):
+                deleted.setdefault(path, []).append((n, t))
+        hunk_del.clear()
+        hunk_add.clear()
+
     for line in text.splitlines():
-        if line.startswith("--- "):
-            path = line[6:] if line.startswith("--- a/") else None
-        elif line.startswith("+++ ") or line.startswith("diff "):
+        if line.startswith("--- ") or line.startswith("diff ") or line.startswith("@@"):
+            flush()
+            if line.startswith("--- "):
+                path = line[6:] if line.startswith("--- a/") else None
+            elif line.startswith("@@"):
+                old = int(re.match(r"@@ -(\d+)", line)[1])
+        elif line.startswith("+++ "):
             continue
-        elif line.startswith("@@"):
-            old = int(re.match(r"@@ -(\d+)", line)[1])
         elif line.startswith("-") and path:
-            deleted.setdefault(path, []).append((old, line[1:]))
+            hunk_del.append((old, line[1:]))
             old += 1
         elif line.startswith("+"):
             added.add(line[1:].strip())
+            hunk_add.append(line[1:])
+    flush()
     return deleted, added
 
 

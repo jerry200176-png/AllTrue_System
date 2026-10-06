@@ -81,6 +81,12 @@ class T(unittest.TestCase):
         self.commit({F: OLD + NEW}, "feat (#9) lands after the branch point")
         self.assertEqual(self.hits(), [])
 
+    def test_edited_line_passes(self):
+        self.commit({F: OLD + "assert.equal(split(x).length - 1, 3);\n"}, "feat (#9)")
+        self.pr()
+        self.commit({F: OLD + "assert.equal(split(x).length - 1, 4);\n"}, "tweak")
+        self.assertEqual(self.hits(), [])
+
     def test_out_of_scope_path_ignored(self):
         self.commit({"docs/a.md": NEW}, "docs (#9)")
         self.pr()
