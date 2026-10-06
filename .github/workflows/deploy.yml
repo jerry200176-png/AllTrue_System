@@ -923,6 +923,11 @@ jobs:
           MODE: ${{ needs.classify-activation.outputs.mode }}
           APPROVAL_ELIGIBLE: ${{ needs.classify-activation.outputs.approval_eligible }}
           REASON: ${{ needs.classify-activation.outputs.reason }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          RELEASE_TRAIN: ${{ needs.resolve-target.outputs.release_train }}
+          RUNTIME_BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # Strip CR so empty/corrupt classifier outputs cannot fall through to
@@ -966,6 +971,15 @@ jobs:
               {
                 echo "## state=awaiting-approval"
                 echo "This explicit exceptional operation remains Founder-controlled and is not deployed until its gate succeeds."
+                if [[ "$RELEASE_TRAIN" == "true" ]]; then
+                  echo ""
+                  echo "### Release train: approving exactly \`${TARGET_SHA}\`"
+                  echo "Production now: \`${RUNTIME_BASE_SHA:-unknown}\`. Merged changes in this train:"
+                  if [[ "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+                    gh api "/repos/${REPO}/compare/${RUNTIME_BASE_SHA}...${TARGET_SHA}" \
+                      --jq '.commits[] | "- " + (.commit.message | split("\n")[0])' | head -100 || echo "- (commit list unavailable)"
+                  fi
+                fi
               } >> "$GITHUB_STEP_SUMMARY"
               ;;
             ""|*)
@@ -1367,6 +1381,12 @@ jobs:
           if [ "$RELEASE_TRAIN" = "true" ]; then
             if ! git merge-base --is-ancestor "$TARGET_SHA" "$REMOTE_MAIN_SHA"; then
               echo "❌ release train target 不在 origin/main 歷史中：target=$TARGET_SHA origin/main=$REMOTE_MAIN_SHA — 中止部署"
+              exit 1
+            fi
+            # Never downgrade: what runs now must be in the approved target's history
+            # (a newer auto deploy may have landed while the train approval waited).
+            if ! git merge-base --is-ancestor "$PREV_COMMIT" "$TARGET_SHA"; then
+              echo "❌ release train 會降版：目前 production=$PREV_COMMIT 不在 target=$TARGET_SHA 的歷史中 — 中止部署"
               exit 1
             fi
           elif [ "$REMOTE_MAIN_SHA" != "$TARGET_SHA" ]; then

@@ -1004,6 +1004,10 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         # Every gate that used to demand exact main accepts a train target only while main contains it.
         self.assertEqual(self.workflow.count('/compare/${TARGET_SHA}...${MAIN_SHA}'), 2)
         self.assertIn('git merge-base --is-ancestor "$TARGET_SHA" "$REMOTE_MAIN_SHA"', self.workflow)
+        # Never downgrade: production must be in the approved train target's history.
+        self.assertIn('git merge-base --is-ancestor "$PREV_COMMIT" "$TARGET_SHA"', self.workflow)
+        # The approver sees the exact target and the merged changes before approving.
+        self.assertIn("Release train: approving exactly", self.workflow)
         self.assertIn("target_in_main=os.environ.get(\"IN_MAIN\") in {\"ahead\", \"identical\"}", self.workflow)
 
     def test_existing_ci_completion_trigger_is_preserved(self):
