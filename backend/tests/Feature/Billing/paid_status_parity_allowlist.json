@@ -4,7 +4,7 @@
   "model.scopeEffectivelyPaid": "pre-S5 known divergence (packet row B27)",
   "model.isFullyPaidWithInvoiceAmount": "pre-S3 known divergence (packet row B2)",
   "api.alerts.tuition.payment_status": "pre-S3 known divergence (packet row B3)",
-  "api.alerts.tuition.outstanding": "S3b: outstanding = resolver payable_outstanding (single open invoice, packet row B4); remaining row is a multi-period monthly course",
+  "api.alerts.tuition.outstanding": "S3b: outstanding = resolver course-level outstanding (packet row B4); remaining row is a multi-period monthly course whose row charge is one invoice",
   "api.student_classes.payment_status": "pre-S3 known divergence (packet row B7)",
   "api.parent.dashboard.payment_status": "pre-S4 known divergence (packet row B18)",
   "api.accounting.ledger": "pre-S3 known divergence (packet row B17)",
@@ -14,7 +14,7 @@
   "amount.resolver.live.outstanding": "pre-S3 known divergence (packet row B12 live payable_outstanding)",
   "resolver.live.byStudentClassIds": "pre-S3 known divergence (packet row B12 live byStudentClassIds, read by Alert/PaymentReport/modals)",
   "monthly_period_payment.batch": "pre-S1 known divergence (packet row B15)",
-  "amount.alerts.tuition.outstanding": "S3b: outstanding = resolver payable_outstanding (single open invoice, packet row B4); remaining rows are multi-period monthly courses",
+  "amount.alerts.tuition.outstanding": "S3b: outstanding = resolver course-level outstanding (packet row B4)",
   "amount.ledger.outstanding": "pre-S3 known divergence (packet row B17 summary.outstanding_total)",
   "amount.ledger.total": "pre-S3 known divergence (packet row B17 summary.invoice_total)",
   "amount.ledger.applied": "pre-S3 known divergence (packet row B17 summary.applied_total, B13 kernel)"
@@ -113,9 +113,7 @@
   {"site": "api.alerts.tuition.payment_status", "fixture": "monthly_stored_no_rows", "current": "paid", "target": "unpaid", "note": "stored PaidAmount/Status=paid with no Payment rows counts as paid"},
   {"site": "api.student_classes.payment_status", "fixture": "monthly_stored_no_rows", "current": "paid", "target": "unpaid", "note": "B7 shows B15 stored-PaidAmount fallback as paid"},
   {"site": "api.accounting.settled_courses", "fixture": "monthly_stored_no_rows", "current": "paid", "target": "notpaid", "note": "invoice Status=paid with no Payment rows lists the course as settled"},
-  {"site": "amount.alerts.tuition.outstanding", "fixture": "monthly_two_open_partial", "current": "6000", "target": "10000", "note": "S3b: outstanding = resolver single open invoice (payable_outstanding), not the sum of open periods"},
   {"site": "amount.ledger.outstanding", "fixture": "legacy_unpaid", "current": "0", "target": "10000", "note": "ledger outstanding counts invoices only: no-invoice courses owe 0 and a void invoice still counts"},
-  {"site": "amount.alerts.tuition.outstanding", "fixture": "monthly_stored_no_rows", "current": "6000", "target": "12000", "note": "S3b: outstanding = resolver single open invoice (payable_outstanding), not the sum of open periods"},
   {"site": "api.parent.dashboard.payment_status", "fixture": "void_negative_cash", "current": "paid", "target": "unpaid", "note": "a negative non-void reversal row still counts as a payment (\"any Payment row = paid\")"},
   {"site": "amount.ledger.outstanding", "fixture": "closed_settled_pending", "current": "0", "target": "10000", "note": "ledger outstanding counts invoices only: no-invoice courses owe 0 and a void invoice still counts"},
   {"site": "amount.ledger.outstanding", "fixture": "closed_contract_amended", "current": "0", "target": "10000", "note": "ledger outstanding counts invoices only: no-invoice courses owe 0 and a void invoice still counts"},
@@ -175,6 +173,6 @@
   {"site": "amount.resolver.live.outstanding", "fixture": "tutoring_flag1", "current": "null", "target": "0", "note": "no non-void invoice: resolver returns null (unbilled), no legacy/free/charge fallback [live byStudentClassIds, still read by AlertController/PaymentReport/modals until S3]"},
   {"site": "amount.resolver.live.outstanding", "fixture": "package_paid_member", "current": "null", "target": "0", "note": "no non-void invoice: resolver returns null (unbilled), no legacy/free/charge fallback [live byStudentClassIds, still read by AlertController/PaymentReport/modals until S3]"},
   {"site": "amount.resolver.live.outstanding", "fixture": "package_unpaid_member", "current": "null", "target": "10000", "note": "no non-void invoice: resolver returns null (unbilled), no legacy/free/charge fallback [live byStudentClassIds, still read by AlertController/PaymentReport/modals until S3]"},
-  {"site": "api.alerts.tuition.outstanding", "fixture": "monthly_two_open_partial", "current": "unpaid", "target": "partial", "note": "S3b: single-invoice outstanding equals the row charge although the course has another partly paid period"}
+  {"site": "api.alerts.tuition.outstanding", "fixture": "monthly_two_open_partial", "current": "unpaid", "target": "partial", "note": "S3b: course-level outstanding exceeds the row charge (the open invoice only) so the harness reads unpaid; the course has another partly paid period"}
  ]
 }

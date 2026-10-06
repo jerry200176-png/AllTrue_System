@@ -169,6 +169,8 @@ class AlertController extends Controller
         $invoiceAggMap = ContractMoneyState::invoiceAggregateByStudentClassIds($allClassIds);
         $allResults = $countResults->merge($dateResults)->merge($pendingSettlementResults)->keyBy('ID');
         $payableMap = $this->payableResolver->byStudentClassIds($allClassIds, $allResults);
+        // F7 S3b: `outstanding` is the course-level answer (all open periods); payable_outstanding stays per invoice.
+        $courseStatuses = $this->payableResolver->courseStatusesByStudentClassIds($allClassIds, $allResults);
         $openMonthlyInvoiceMap = $this->openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
         $pendingReportMap = self::latestPendingReportByStudentClassIds($allClassIds);
         $newerCourseMap = self::newerCourseByStudentClassIds($allClassIds);
@@ -265,7 +267,8 @@ class AlertController extends Controller
             $paidAtMap,
             $invoiceAggMap,
             $pendingReportMap,
-            $payableMap
+            $payableMap,
+            $courseStatuses
         ) {
             $anchor = $countPkgAnchorById->get($pkg->id);
             if (!$anchor) {
@@ -318,8 +321,8 @@ class AlertController extends Controller
                 'payable_invoice_id' => $payable['payable_invoice_id'],
                 'billing_period'    => $payable['payable_billing_period'],
                 'paid_amount'        => $paidAmount,
-                // F7 S3b: one outstanding answer = the resolver's (same value as payable_outstanding); no invoice => estimate.
-                'outstanding'        => $payable['payable_outstanding'] ?? ($isPaid ? 0 : max(0, $charge - $paidAmount)),
+                // F7 S3b: one outstanding answer = the resolver's course-level value; no invoice => estimate.
+                'outstanding'        => $this->courseOutstanding($courseStatuses[$anchorId] ?? null) ?? ($isPaid ? 0 : max(0, $charge - $paidAmount)),
                 'payment_status'     => $this->computePackageCountPaymentStatus($pkg, $paidAmount, $charge, $pendingReportId !== null),
                 'latest_payment_report_id' => $pendingReportId,
                 'has_newer_course'         => false,
@@ -343,7 +346,7 @@ class AlertController extends Controller
             ->merge(
                 $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
             )
-            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses) {
+            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses, $courseStatuses) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
@@ -363,8 +366,8 @@ class AlertController extends Controller
                 $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
                 $rawPaid = (int) ($sc->Paid ?? 0) === 1;
                 $scIsPaid = $this->isFullyPaid($rawPaid || ($sc ? $sc->isEffectivelyPaid() : false), $paidAmount, $charge);
-                // F7 S3b: one outstanding answer = the resolver's (same value as payable_outstanding); no invoice => estimate.
-                $outstanding = $payable['payable_outstanding'] ?? ($scIsPaid ? 0 : max(0, $charge - $paidAmount));
+                // F7 S3b: one outstanding answer = the resolver's course-level value; no invoice => estimate.
+                $outstanding = $this->courseOutstanding($courseStatuses[$classId] ?? null) ?? ($scIsPaid ? 0 : max(0, $charge - $paidAmount));
 
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
 
@@ -898,6 +901,12 @@ class AlertController extends Controller
             : DB::table('BaseData')->where('Name', '課程')->whereIn('id', $missing)->pluck('Val', 'id')->all();
 
         return $fromSubject + $fromBase;
+    }
+
+    /** Course-level outstanding from the resolver; null (caller keeps its estimate) unless it is derived from invoices. */
+    private function courseOutstanding(?array $status): ?int
+    {
+        return ($status['source'] ?? null) === 'invoice' ? (int) $status['outstanding'] : null;
     }
 
     /**
