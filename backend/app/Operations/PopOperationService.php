@@ -128,6 +128,7 @@ final class PopOperationService
             $this->assertMonthlyApprover($request, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
         } elseif (!$this->isExactMuzhaSchedule($entry) && !$this->isExactUnpaidHiddenClosures($entry)
             && !$this->isExactMuzhaChenBillingCatchup($entry)
+            && !$this->isExactTd076Repair($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
         }
@@ -644,6 +645,20 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactTd076Repair($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         throw new RuntimeException('POP approval policy is not supported by this execution slice; fail closed.');
     }
 
@@ -686,6 +701,19 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'muzha-chen-billing-catchup-20261005'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\MuzhaChenBillingCatchupStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-muzha-chen-billing-catchup';
+    }
+
+    /** TD-076 Track B repairs: campus-scoped, digest-pinned, single super_admin Founder approver. */
+    private function isExactTd076Repair(array $entry): bool
+    {
+        $strategies = [
+            'td076-r1-collision-keepers-20261006' => \App\Operations\Strategies\Td076CollisionKeepersStrategy::class,
+        ];
+
+        return isset($strategies[$entry['id'] ?? ''])
+            && ($entry['strategy_class'] ?? null) === $strategies[$entry['id']]
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-td076-occurrence-repair'
+            && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest'];
     }
 
     /** @return array<string,mixed> */
