@@ -1,6 +1,8 @@
 name: Bug detail dump (read-only)
 
 # Dump one in-app bug (description/comments/attachments meta + related course probe).
+# Public repo: log and plaintext artifact carry IDs/statuses/counts only; the full JSON (report text)
+# goes into an artifact encrypted with the DUMP_ARTIFACT_KEY secret (see docs/sop/BUG_INTAKE_TO_PRODUCTION.md).
 # Trigger via request file; no writes.
 on:
   workflow_dispatch:
@@ -27,6 +29,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
+      - name: Require DUMP_ARTIFACT_KEY (fail closed, no plaintext fallback)
+        env:
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
+        run: |
+          if [ "${#DUMP_ARTIFACT_KEY}" -lt 16 ]; then
+            echo "::error::secret DUMP_ARTIFACT_KEY is missing or shorter than 16 chars; refusing to dump (see docs/sop/BUG_INTAKE_TO_PRODUCTION.md)"
+            exit 1
+          fi
       - name: Checkout request
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -80,12 +90,13 @@ jobs:
 
       - name: Dump bug + related probe
         env:
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           BUG_ID: ${{ steps.cfg.outputs.bug_id }}
         run: |
           set -euo pipefail
-          mkdir -p out
+          mkdir -p out raw
           # Build remote PHP with bug id baked in (avoid getenv/heredoc expansion pitfalls)
           python3 - <<'PY' > /tmp/bug207_probe.php
           import os
@@ -1818,7 +1829,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            bash -s <<'REMOTE' | tee out/bug-detail.log
+            bash -s <<'REMOTE' > raw/bug-detail.log
           set -euo pipefail
           cd /home/admin/backend
           php -l /tmp/bug_detail_probe.php
@@ -1830,7 +1841,7 @@ jobs:
           from pathlib import Path
           import json
           import os
-          text = Path("out/bug-detail.log").read_text(encoding="utf-8", errors="replace")
+          text = Path("raw/bug-detail.log").read_text(encoding="utf-8", errors="replace")
           candidates = []
           for line in text.splitlines():
             line=line.strip()
@@ -1843,8 +1854,16 @@ jobs:
             obj = {"ok": False, "error": "expected exactly one JSON evidence envelope"}
           else:
             obj = candidates[0]
-          Path("out/bug-detail.json").write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
+          Path("raw/bug-detail.json").write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
           requested_id = int(os.environ["BUG_ID"])
+          bug = obj.get("bug") or {}
+          Path("out/summary.json").write_text(json.dumps({
+            "ok": obj.get("ok"), "requested_bug_id": obj.get("requested_bug_id"),
+            **{k: bug.get(k) for k in ("id", "status", "severity", "campus_id", "page_key", "reporter_user_id", "created_at", "updated_at")},
+            "counts": {k: len(obj.get(k) or []) for k in ("attachments", "comments", "status_logs", "reporter_history")},
+            "decision_grade": (obj.get("diagnostics") or {}).get("decision_grade"),
+            "dump_generated_at": obj.get("dump_generated_at"), "prod_head": obj.get("prod_head"),
+          }, indent=2), encoding="utf-8")
           if obj.get("requested_bug_id") != requested_id:
             raise SystemExit("requested_bug_id does not match dispatched bug_id")
           diagnostics = obj.get("diagnostics") or {}
@@ -1852,6 +1871,7 @@ jobs:
             raise SystemExit("target-correct probe is required; evidence is not decision-grade")
           print("parsed", bool(obj.get("ok")), "decision_grade", diagnostics.get("decision_grade"))
           PY
+          tar -C raw -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY -out out/bug-detail.full.tar.gz.enc
 
       - name: Upload
         if: always()
