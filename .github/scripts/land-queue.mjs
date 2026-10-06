@@ -88,17 +88,29 @@ function reject(n, sha, d) {
 }
 
 // GITHUB_TOKEN pushes (update-branch) do not fire pull_request workflows, so a fresh
-// head has no checks. Dispatch the required-check workflows on the PR branch once.
+// head has no checks. Dispatch the required-check workflows on the PR branch once;
+// each guards that pr_number's head equals the dispatched SHA and its base is main.
 const CHECK_WORKFLOWS = ['ci.yml', 'presubmit.yml', 'docs-integrity.yml', 'secret-scan.yml', 'agent-provenance.yml'];
 function kickChecksIfMissing(n, pr) {
   if (pr.rollup.length) return;
   const runs = api(`actions/runs?head_sha=${pr.sha}&per_page=1`).total_count;
   if (runs) return;
   console.log(`#${n}: no checks on ${pr.sha}; dispatching check workflows on ${pr.headRefName}`);
-  for (const wf of CHECK_WORKFLOWS) gh('workflow', 'run', wf, '--repo', REPO, '--ref', pr.headRefName);
+  for (const wf of CHECK_WORKFLOWS) gh('workflow', 'run', wf, '--repo', REPO, '--ref', pr.headRefName, '-f', `pr_number=${n}`);
 }
 
-function main() {
+// GITHUB_TOKEN merges do not fire push CI on main, and deploy.yml only runs after
+// a CI run on main. Dispatch it once per main tip; autonomous-convergence.yml
+// holds when a CI run for the tip already exists, so it will not double dispatch.
+function ciForMainTip() {
+  const sha = api('git/ref/heads/main').object.sha;
+  if (api(`actions/workflows/ci.yml/runs?branch=main&head_sha=${sha}&per_page=1`).total_count) return;
+  console.log(`dispatching CI on main ${sha}`);
+  gh('workflow', 'run', 'ci.yml', '--repo', REPO, '--ref', 'main');
+}
+
+let merged = false;
+function processQueue() {
   const required = requiredContexts();
   const listed = JSON.parse(gh('pr', 'list', '--repo', REPO, '--label', 'queue', '--state', 'open', '--base', 'main', '--json', 'number,isDraft,baseRefName'));
   const queue = orderQueue(listed.map((p) => ({ ...p, labeledAt: labeledAt(p.number) })));
@@ -107,12 +119,16 @@ function main() {
     const pr = load(n);
     const d = decide(pr, required);
     console.log(`#${n} ${pr.mergeStateStatus} -> ${d.action}${d.reason ? ' (' + d.reason + ')' : ''}`);
-    if (d.action === 'update') { gh('api', '-X', 'PUT', `/repos/${REPO}/pulls/${n}/update-branch`, '-f', `expected_head_sha=${pr.sha}`); return; }
+    if (d.action === 'update') { gh('api', '-X', 'PUT', `/repos/${REPO}/pulls/${n}/update-branch`, '-f', `expected_head_sha=${pr.sha}`); break; }
     if (d.action === 'reject') { reject(n, pr.sha, d); continue; }
-    if (d.action === 'merge') { gh('pr', 'merge', String(n), '--repo', REPO, '--squash', '--delete-branch', '--match-head-commit', pr.sha); continue; }
+    if (d.action === 'merge') { gh('pr', 'merge', String(n), '--repo', REPO, '--squash', '--delete-branch', '--match-head-commit', pr.sha); merged = true; continue; }
     kickChecksIfMissing(n, pr);
-    return; // wait: a later trigger continues
+    break; // wait: a later trigger continues
   }
+}
+
+function main() {
+  try { processQueue(); } finally { if (merged) ciForMainTip(); } // even if a later PR throws
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();
