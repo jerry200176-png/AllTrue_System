@@ -57,7 +57,7 @@ class PaymentReportController extends Controller
 
         $subjectName = $sc->subjectRecord->Subject_Name ?? '課程';
         $billingPeriod = $sc->getAttribute('ScheduleMode') === 'date'
-            ? Carbon::today()->format('Y-m')
+            ? $this->monthlyBilling->defaultPeriodFor($sc)
             : null;
         $billing = $billingPeriod
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
@@ -131,7 +131,7 @@ class PaymentReportController extends Controller
         $periodStart = null;
         $periodEnd = null;
         $billingPeriod = $sc->ScheduleMode === 'date'
-            ? Carbon::today()->format('Y-m')
+            ? $this->monthlyBilling->defaultPeriodFor($sc)
             : null;
         $billing = $billingPeriod
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
@@ -618,7 +618,7 @@ class PaymentReportController extends Controller
 
             // FR-006：月結制優先找當月 billing_period 的未繳帳單
             if (! $invoice) {
-                $currentPeriod = Carbon::now('Asia/Taipei')->format('Y-m');
+                $currentPeriod = $this->monthlyBilling->defaultPeriodFor($sc, Carbon::now('Asia/Taipei'));
                 $invoice = Invoice::where('StudentClassID', $sc->ID)
                     ->where('billing_period', $currentPeriod)
                     ->where(function ($query) {
@@ -652,7 +652,7 @@ class PaymentReportController extends Controller
             if ($sc->getAttribute('ScheduleMode') === 'date') {
                 $billingPeriod = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period
-                    : Carbon::parse($data['payment_date'])->format('Y-m');
+                    : $this->monthlyBilling->defaultPeriodFor($sc, $data['payment_date']);
                 $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
                 $expectedAmount = (int) $billing['charge'];
                 if ($invoice && (string) $invoice->Status === 'partial') {

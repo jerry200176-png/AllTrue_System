@@ -529,6 +529,35 @@ class MonthlyBillingSlipTest extends TestCase
     }
 
     /** @return array{0: Student, 1: StudentClass} */
+    /**
+     * In-app #377/#378: an ended monthly contract with no invoice is priced by its own
+     * month (3 attended September lessons), not by the month the director opens it in;
+     * and director-record accepts that amount instead of a month it never covered.
+     */
+    public function test_ended_monthly_contract_without_invoice_is_priced_by_its_own_month(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-07 09:00:00', 'Asia/Taipei'));
+        $token = $this->createDirectorToken('director-ended-monthly@example.com');
+        [, $course] = $this->makeMonthlyCourse('月結結束測試', '2026-09-01', '2026-09-30');
+        $course->update(['Rate' => 1300, 'Charge' => 5200, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
+        foreach (['2026-09-05' => 'leave', '2026-09-12' => 'attended', '2026-09-19' => 'attended', '2026-09-26' => 'attended', '2026-10-03' => 'attended'] as $date => $status) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $this->withHeaders($headers)->getJson("/api/v1/alerts/tuition-slip/{$course->ID}")
+            ->assertOk()
+            ->assertJsonPath('charge', 3900)
+            ->assertJsonPath('period_sessions', 3);
+
+        $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $course->ID,
+            'payment_date' => '2026-10-07',
+            'payment_method' => 'cash',
+            'amount' => 3900,
+        ])->assertSuccessful();
+    }
+
     private function makeMonthlyCourse(string $name, string $start, string $end): array
     {
         $student = Student::create(['name' => $name, 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
