@@ -885,7 +885,7 @@ function branchShortName(branchId) {
 }
 
 function formStatusLabel(status) {
-  // pending = submitted, awaiting director — keep visible so teachers are not told「沒資料」(#3760).
+  // pending = submitted, awaiting director — keep visible so teachers are not told「沒資料」(issue 3760).
   const map = { pending: '已送出待審', approved: '已核准', rejected: '退回', changes_requested: '需修改', missing: '', substituted: '代課', leave: '請假', leave_requested: '請假(待審)' };
   return map[status] || status;
 }

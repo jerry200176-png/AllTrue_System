@@ -46,7 +46,7 @@ assert.equal(source.includes('isProjected: !!s.isProjected'), true,
 assert.equal(source.includes('!ev.isProjected'), true,
   'projected weekly slots must not invoke ClassSession-only actions before materialization');
 
-// #3760: submitted pending must stay visible as「已送出待審」with a view CTA;
+// issue 3760: submitted pending must stay visible as「已送出待審」with a view CTA;
 // work queue (todayPendingEvents) still only lists missing / changes_requested.
 assert.match(source, /pending:\s*'已送出待審'/,
   'TeacherHome pending chip must read 已送出待審 after submit');

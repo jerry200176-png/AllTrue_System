@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../pages/LearningRecordsPage.vue', import.meta.url), 'utf8');
 
-// #3760: after teacher submit, land on pending tab, clear unfilled priority, confirm toast.
+// issue 3760: after teacher submit, land on pending tab, clear unfilled priority, confirm toast.
 assert.match(
   source,
   /teacherFilterTab\.value = 'pending'/,

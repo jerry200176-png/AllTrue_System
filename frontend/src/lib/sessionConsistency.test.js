@@ -24,7 +24,7 @@ assert.equal(absentState.fillLocked, true);
 assert.equal(absentState.recordIdAllowed, false);
 
 // Teacher schedule join may still say "missing" after submit while /learning-records
-// already has pending — literal "missing" must not block recordStatus fallback (#3760).
+// already has pending — literal "missing" must not block recordStatus fallback (issue 3760).
 assert.equal(normalizeLearningRecordStatus('missing'), '');
 assert.equal(normalizeLearningRecordStatus('pending'), 'pending');
 const submittedViaListFallback = resolveLearningSessionState({
