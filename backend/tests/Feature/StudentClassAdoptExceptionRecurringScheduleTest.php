@@ -330,6 +330,50 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     }
 
     /**
+     * #3502: adding a weekday with no rows makes the sync remap every unlocked row on the new cadence, so the
+     * excess-row overlap the same-day plan would predict never happens. The guard must not 409.
+     */
+    public function test_added_weekday_global_remap_is_not_a_false_self_overlap(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '加週二', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        // Attended history: the edit syncs future rows instead of rebuilding the whole schedule.
+        $past = $this->createSessionRecord($course->ID, '2026-04-06', '15:00:00', '16:00:00', 'attended');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-06 15:00:00', 'MDT' => now(), 'ClassSessionID' => $past->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+        $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+
+        $this->updateFixedSlots($token, $course, [1, 2], [
+            ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60],
+            ['day' => 2, 'start_time' => '15:00', 'duration_minutes' => 60],
+        ])->assertOk();
+
+        $this->assertSame(['16:30'], $this->startsOn($course, '2026-04-27'));
+        $this->assertSame(['15:00'], $this->startsOn($course, '2026-04-28'));
+    }
+
+    /** #3502: on a remapped edit a row the remap lands next to a locked row that stays still conflicts. */
+    public function test_added_weekday_remap_landing_on_a_locked_row_still_conflicts(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '加週二鎖定', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '16:00:00', '17:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 16:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+        $this->createSessionRecord($course->ID, '2026-04-27', '18:00:00', '19:00:00');
+
+        // The remap puts the unlocked 18:00 row on Mon 4/27 16:30, overlapping the locked 16:00-17:00.
+        $res = $this->updateFixedSlots($token, $course, [1, 2], [
+            ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60],
+            ['day' => 2, 'start_time' => '15:00', 'duration_minutes' => 60],
+        ])->assertStatus(409);
+        // Reported by the remap layout check itself, not only by the occupancy loop.
+        $this->assertContains(['self_overlap', '2026-04-27'], array_map(fn ($c) => [$c['type'] ?? null, $c['schedule_date'] ?? null], $res->json('conflicts')));
+        $this->assertSame(['16:00', '18:00'], $this->startsOn($course, '2026-04-27'));
+    }
+
+    /**
      * A session locked by a sign-in is not remapped by the edit, so it is never excused as "will move":
      * it stays at 15:00-16:00 and overlaps the new 15:30 slot.
      */

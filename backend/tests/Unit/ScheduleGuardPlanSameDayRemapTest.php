@@ -110,4 +110,22 @@ class ScheduleGuardPlanSameDayRemapTest extends TestCase
         // Same row on a day the edit doesn't touch: no report.
         self::assertSame([], ScheduleGuardService::planSelfOverlaps([self::row(1, '15:00', '16:30', true)], [], [self::slot('15:00', '16:00')]));
     }
+
+    public function test_needs_global_remap_matches_the_sync_rules(): void
+    {
+        $mon = [self::slot('16:30', '17:30')];
+        $twoRows = ['2026-04-27' => [self::row(1, '15:00', '16:00'), self::row(2, '17:00', '18:00')]]; // a Monday
+        // Excess rows on a covered weekday: same-day plan, no remap.
+        self::assertFalse(ContractSessionSchedule::needsGlobalRemap($twoRows, [1 => $mon], [], []));
+        // #3502: an added weekday with no rows remaps.
+        self::assertTrue(ContractSessionSchedule::needsGlobalRemap($twoRows, [1 => $mon, 2 => [self::slot('15:00', '16:00')]], [], []));
+        // A row on a dropped weekday remaps; more slots than rows on a date remaps.
+        self::assertTrue(ContractSessionSchedule::needsGlobalRemap($twoRows, [3 => $mon], [], []));
+        self::assertTrue(ContractSessionSchedule::needsGlobalRemap($twoRows, [1 => [...$mon, self::slot('18:00', '19:00'), self::slot('19:00', '20:00')]], [], []));
+        // Locked and exception rows are not unlocked: nothing to remap.
+        $fixed = ['2026-04-27' => [self::row(1, '15:00', '16:00'), self::row(2, '17:00', '18:00', true)]];
+        self::assertFalse(ContractSessionSchedule::needsGlobalRemap($fixed, [2 => $mon], [1 => true], []));
+        // An adopted exception counts as unlocked.
+        self::assertTrue(ContractSessionSchedule::needsGlobalRemap($fixed, [2 => $mon], [1 => true], [2 => true]));
+    }
 }
