@@ -1221,6 +1221,45 @@ class BugReportService
      *
      * @return array<string,mixed>|null
      */
+    /**
+     * Record a verified product disposition on a report that is already past `new`
+     * (e.g. auto-intake moved it to `triaged` before anyone classified it). Appends a
+     * same-status log carrying the disposition marker; the status itself is unchanged.
+     * Idempotent: an identical latest disposition is not written again.
+     *
+     * @param  array{disposition?: ?string, github_issue_url?: ?string, github_pr_url?: ?string, engineering_required?: bool|null}  $options
+     * @return array{ok: bool, code?: string, message?: string, skipped?: bool}
+     */
+    public static function restateDisposition(int $bugId, int $changedBy, array $options, ?string $note = null): array
+    {
+        $bug = BugReport::query()->find($bugId);
+        if (!$bug) {
+            return ['ok' => false, 'code' => 'not_found', 'message' => 'Bug not found'];
+        }
+        $normalized = self::normalizeDispositionOptions($options);
+        if (!$normalized['ok'] || ($normalized['payload'] ?? null) === null) {
+            return $normalized['ok'] ? ['ok' => false, 'code' => 'disposition_required', 'message' => 'disposition is required'] : $normalized;
+        }
+        $payload = $normalized['payload'];
+        $latest = self::latestDispositionWithKind($bugId);
+        if ($latest !== null && ($latest['kind'] ?? null) === ($payload['kind'] ?? null)
+            && ($latest['github_issue_url'] ?? null) === ($payload['github_issue_url'] ?? null)) {
+            return ['ok' => true, 'skipped' => true];
+        }
+        $status = (string) $bug->getRawOriginal('status');
+        $encoded = self::DISPOSITION_MARKER . json_encode($payload, JSON_UNESCAPED_UNICODE);
+        BugReportStatusLog::query()->create([
+            'bug_report_id' => $bugId,
+            'changed_by' => $changedBy,
+            'from_status' => $status,
+            'to_status' => $status,
+            'note' => $note ? ($encoded . "\n" . $note) : $encoded,
+            'created_at' => Carbon::now(),
+        ]);
+
+        return ['ok' => true];
+    }
+
     public static function latestDispositionWithKind(int $bugId): ?array
     {
         $logs = BugReportStatusLog::query()

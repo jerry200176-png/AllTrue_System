@@ -4,6 +4,23 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Columns from 2026_04_11_000002_create_bug_report_tables.
+ *
+ * @property int $id
+ * @property int $CampusID
+ * @property int $reporter_user_id
+ * @property string $title
+ * @property string $description
+ * @property string $severity
+ * @property string $status
+ * @property string|null $page_key
+ * @property string|null $url
+ * @property string|null $client_info
+ * @property int|null $assigned_to
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ */
 class BugReport extends Model
 {
     protected $table = 'bug_reports';
