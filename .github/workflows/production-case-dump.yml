@@ -33,7 +33,6 @@ on:
           - paid_status_shadow_log
           - paid_status_shadow_courses
           - inapp_333_multi_teacher_templates
-          - teacher_lr_visibility
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
@@ -109,14 +108,14 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'teacher_lr_visibility'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
               raise SystemExit('student_id must be numeric')
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
           # Every student-scoped case needs an id (no hard-coded names); three cases may use a StudentClass ID instead.
-          id_cases = {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'contract_yang_binghe', 'contract_yu_shengrui', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang', 'teacher_lr_visibility'}
+          id_cases = {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'contract_yang_binghe', 'contract_yu_shengrui', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang'}
           if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'}):
               raise SystemExit(f'{case} requires student_id')
           if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
@@ -1638,81 +1637,6 @@ jobs:
             $out['table_rows_estimate'] = $db::table('information_schema.TABLES')->where('TABLE_SCHEMA', $db::getDatabaseName())
               ->whereIn('TABLE_NAME', ['ClassSession', 'schedules', 'LearningRecord', 'StudentSingIn', 'StudentClass'])->pluck('TABLE_ROWS', 'TABLE_NAME');
             $out['shapes'] = $results;
-          }} elseif ($case === 'teacher_lr_visibility') {{
-            // #3760: compare LearningRecord rows vs ClassSession index join fields for one student (IDs only).
-            if ($targetStudentId === null) {{ throw new \\RuntimeException('teacher_lr_visibility requires student_id'); }}
-            $student = $db::table('Student')->where('id', $targetStudentId)->first(['id', 'CampusID']);
-            if (!$student) {{ throw new \\RuntimeException('student not found'); }}
-            $out['student_id'] = (int) $student->id;
-            $out['campus_id'] = (int) ($student->CampusID ?? 0);
-            $lrs = $db::table('LearningRecord as lr')
-              ->where('lr.StudentID', $targetStudentId)
-              ->orderByDesc('lr.id')->limit(20)
-              ->get(['lr.id', 'lr.Status', 'lr.ClassSessionID', 'lr.TeacherID', 'lr.StudentClassID',
-                'lr.VoidedAt', 'lr.SessionDate', 'lr.Progress']);
-            $out['learning_records'] = $lrs->map(function ($r) {{
-              return [
-                'id' => (int) $r->id,
-                'status' => (string) ($r->Status ?? ''),
-                'class_session_id' => $r->ClassSessionID === null ? null : (int) $r->ClassSessionID,
-                'teacher_id' => $r->TeacherID === null ? null : (int) $r->TeacherID,
-                'student_class_id' => $r->StudentClassID === null ? null : (int) $r->StudentClassID,
-                'voided' => $r->VoidedAt !== null,
-                'session_date' => $r->SessionDate ? substr((string) $r->SessionDate, 0, 10) : null,
-                'body_filled' => trim((string) ($r->Progress ?? '')) !== '',
-              ];
-            }})->values()->all();
-            $csIds = $lrs->pluck('ClassSessionID')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
-            $sessions = $csIds === [] ? collect() : $db::table('ClassSession as cs')
-              ->leftJoin('LearningRecord as lr', function ($j) {{
-                $j->on('lr.ClassSessionID', '=', 'cs.id')->whereNull('lr.VoidedAt');
-              }})
-              ->whereIn('cs.id', $csIds)
-              ->get(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.Status',
-                'lr.id as learning_record_id', 'lr.Status as learning_record_status', 'lr.TeacherID as learning_record_teacher_id']);
-            $out['class_sessions'] = $sessions->map(function ($r) {{
-              return [
-                'id' => (int) $r->id,
-                'student_class_id' => (int) ($r->StudentClassID ?? 0),
-                'session_date' => $r->SessionDate ? substr((string) $r->SessionDate, 0, 10) : null,
-                'start_time' => $r->StartTime ? substr((string) $r->StartTime, 0, 5) : null,
-                'status' => (string) ($r->Status ?? ''),
-                'learning_record_id' => $r->learning_record_id === null ? null : (int) $r->learning_record_id,
-                'learning_record_status' => $r->learning_record_status === null ? 'missing' : (string) $r->learning_record_status,
-                'learning_record_teacher_id' => $r->learning_record_teacher_id === null ? null : (int) $r->learning_record_teacher_id,
-              ];
-            }})->values()->all();
-            $slotKeys = $sessions->map(fn ($r) => [
-              'student_class_id' => (int) ($r->StudentClassID ?? 0),
-              'session_date' => $r->SessionDate ? substr((string) $r->SessionDate, 0, 10) : '',
-              'start_time' => $r->StartTime ? substr((string) $r->StartTime, 0, 5) : '',
-            ])->filter(fn ($k) => $k['student_class_id'] > 0 && $k['session_date'] !== '')->values();
-            $siblingCounts = [];
-            foreach ($slotKeys as $k) {{
-              $count = (int) $db::table('ClassSession')
-                ->where('StudentClassID', $k['student_class_id'])
-                ->whereDate('SessionDate', $k['session_date'])
-                ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$k['start_time']])
-                ->count();
-              $siblingCounts[] = array_merge($k, ['same_slot_class_session_count' => $count]);
-            }}
-            $out['same_slot_siblings'] = $siblingCounts;
-            $out['substitute_schedules'] = $csIds === [] ? [] : $db::table('schedules as s')
-              ->join('ClassSession as cs', function ($j) {{
-                $j->on('s.student_course_id', '=', 'cs.StudentClassID')
-                  ->on('s.schedule_date', '=', 'cs.SessionDate')
-                  ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
-              }})
-              ->whereIn('cs.id', $csIds)
-              ->where('s.status', 'scheduled')
-              ->whereNotNull('s.original_schedule_id')
-              ->get(['cs.id as class_session_id', 's.id as schedule_id', 's.teacher_id', 's.original_schedule_id'])
-              ->map(fn ($r) => [
-                'class_session_id' => (int) $r->class_session_id,
-                'schedule_id' => (int) $r->schedule_id,
-                'teacher_id' => (int) ($r->teacher_id ?? 0),
-                'original_schedule_id' => (int) ($r->original_schedule_id ?? 0),
-              ])->values()->all();
           }} else {{
             $parentCampus = $db::table('Campus')->where('name', 'like', '%興隆%')->first(['id', 'name']);
             $parentCampusId = $parentCampus ? (int)$parentCampus->id : null;
