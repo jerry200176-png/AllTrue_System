@@ -11,7 +11,7 @@ last_reviewed: 2026-09-05
 - **現象**：帳務中心、繳費提醒、付款回報、課程帳單列表的查詢數隨帳單數線性成長（8 列時提醒 34 次、帳本 16 次 InvoiceItem 查詢）。
 - **根因層級**：`InvoiceAmountReconciliationService::resolve()` 在 `items` 關聯未載入時逐張查詢；各呼叫端的 `Invoice::with([...])` 漏了 `items`。
 - **強制規則**：任何把多張帳單送進 `resolve()`（或經 `BillingPayableResolver`）的迴圈，查詢必須 `with('items')`。
-- **測試必補**：`InvoiceItemsEagerLoadQueryCountTest`——帳單數增加時 InvoiceItem 查詢數不得成長；移除任一 `items` eager-load 時須失敗。
+- **測試必補**：`InvoiceItemsEagerLoadQueryCountTest`——帳單數增加時 InvoiceItem 查詢數不得成長；守護端點：`alerts/tuition`、`accounting/settled-courses`、`accounting/ledger`、`payment-reports`、`student-classes/{id}/invoices`（逐一移除其 `items` eager-load 已驗證會失敗）。未覆蓋：`AccountingController::waiveCourse`（寫入路徑）與 `UnpaidHiddenClosuresStrategy`（維運清單），新增類似迴圈須自行補測。
 
 ### R141. 正式站唯讀驗收不可把可變資料量當成固定契約（2026-10-01）
 
