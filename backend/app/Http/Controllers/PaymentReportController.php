@@ -10,6 +10,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\Subject;
 use App\Support\AccountingCourseClarity;
+use App\Services\Billing\InvoiceIssuer;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\MonthlyBillingService;
 use App\Services\PaymentReportTokenService;
@@ -428,16 +429,12 @@ class PaymentReportController extends Controller
             }
 
             if (!$invoice) {
-                $invoice = Invoice::create([
+                $invoice = app(InvoiceIssuer::class)->issue([
                     'StudentID'      => $report->StudentID,
                     'StudentClassID' => $report->StudentClassID,
                     'IssueDate'      => Carbon::today()->toDateString(),
-                    'DueDate'        => null,
                     'TotalAmount'    => (int) $report->reported_amount,
-                    'PaidAmount'     => 0,
-                    'Status'         => 'unpaid',
                     'ScheduleModeAtIssue' => $sc->ScheduleMode ?? null,
-                    'Note'           => '',
                     'billing_period' => $sc?->ScheduleMode === 'date'
                         ? Carbon::make($report->payment_date)?->format('Y-m')
                         : null,
