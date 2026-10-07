@@ -55,6 +55,30 @@ class ChatApiTest extends TestCase
         $this->assertArrayHasKey('sender_avatar_url', $sendRes->json());
     }
 
+    public function test_attachment_stored_with_content_extension_not_client_extension(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        [$tokenA] = $this->createUserToken([1], 'upA@test.com', 'A');
+        [, $userB] = $this->createUserToken([1], 'upB@test.com', 'T');
+        $headers = ['Authorization' => "Bearer {$tokenA}", 'Accept' => 'application/json'];
+
+        $threadId = $this->withHeaders($headers)->postJson('/api/v1/chat/threads/dm', [
+            'other_user_id' => $userB->id,
+            'branch_id' => 1,
+        ])->json('id');
+
+        // Real JPEG bytes under an .html name (fake() sniffs by name, not content).
+        $tmp = tempnam(sys_get_temp_dir(), 'jpg');
+        imagejpeg(imagecreatetruecolor(4, 4), $tmp);
+        $res = $this->withHeaders($headers)->post("/api/v1/chat/threads/{$threadId}/attachments", [
+            'file' => new \Illuminate\Http\UploadedFile($tmp, 'evil.html', null, null, true),
+        ]);
+
+        $res->assertStatus(201);
+        $path = ChatMessage::where('thread_id', $threadId)->latest('id')->value('media_url');
+        $this->assertStringEndsWith('.jpg', $path);
+    }
+
     public function test_create_group_thread(): void
     {
         [$tokenA, $userA] = $this->createUserToken([1], 'groupA@test.com', 'A');
