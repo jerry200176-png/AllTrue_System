@@ -11,6 +11,7 @@ const manualSessionModalPath = resolve(__dirname, '../course-management/ManualSe
 const source = readFileSync(pagePath, 'utf8');
 const studentsSource = readFileSync(studentsPagePath, 'utf8');
 const closeCourseActionSource = readFileSync(closeCourseActionPath, 'utf8');
+const courseActionsSource = readFileSync(resolve(__dirname, '../../lib/courseActions.js'), 'utf8');
 const manualSessionModalSource = readFileSync(manualSessionModalPath, 'utf8');
 const activeActionsStart = source.indexOf('<td class="cell-actions">');
 const activeActionsEnd = source.indexOf('<tr v-if="!courseManagerEnabled && expandedDates.has(c.id)"', activeActionsStart) >= 0
@@ -19,41 +20,40 @@ const activeActionsEnd = source.indexOf('<tr v-if="!courseManagerEnabled && expa
 const activeActions = source.slice(activeActionsStart, activeActionsEnd);
 const legacyActionsStart = activeActions.indexOf('<template v-else>');
 const legacyActions = legacyActionsStart >= 0 ? activeActions.slice(legacyActionsStart) : activeActions;
-const activeMoreMenu = legacyActions.slice(legacyActions.indexOf('class="action-dropdown"'));
 
 describe('CourseManagement action hierarchy', () => {
-  it('keeps Course Manager primary entry when flag on, and legacy More hierarchy when off', () => {
+  it('keeps Course Manager primary entry when flag on, and the row uses the shared action model when off', () => {
     expect(activeActions).toContain('data-testid="course-manager-open"');
     expect(activeActions).toContain('管理課程');
     expect(activeActions).toContain('courseManagerEnabled');
+    // 課程查找 PR2: one state-driven primary + ⋯ (ActionMenu) from courseActions(), 詳情 stays a disclosure.
     expect(legacyActions).toContain('course-primary-action');
-    expect(legacyActions).toContain('@click="editCourse(c)"');
+    expect(legacyActions).toContain('@click="onRowAction(c, rowActions(c).primary.id)"');
+    expect(legacyActions).toContain('<ActionMenu');
+    expect(legacyActions).toContain('trigger-text="更多 ▾"');
+    expect(legacyActions).toContain('btn-toggle');
+    expect(legacyActions).not.toContain('course-settle-action');
+    expect(legacyActions).not.toContain('class="action-dropdown"');
     expect(source).toContain('navigateToStudentCourse(hc)');
-    expect(legacyActions).toContain('manual-occurrence-action');
     expect(source).toContain('@edit-course="editManualSessionCourse"');
     expect(manualSessionModalSource).toContain('先設定月結結束日');
-    expect(legacyActions).toContain('btn-toggle');
-    expect(legacyActions).toContain('更多 ▾');
-    expect(legacyActions).toContain('排課與課堂');
-    expect(legacyActions).toContain('帳務與合約');
-    expect(legacyActions).toContain('轉多科方案預檢');
     expect(source).toContain('繼續轉成多科共用方案');
-    expect(legacyActions).toContain('course-payment-slip-action');
-    expect(legacyActions).toContain('isPaymentNoticeAvailable(c)');
-    expect(legacyActions).toContain('合約／堂次調整');
     expect(legacyActions).not.toContain('btn-invoices');
     expect(legacyActions).not.toContain('>+ 補課</button>');
   });
 
-  it('keeps the More menu accessible and preserves existing advanced handlers', () => {
-    expect(legacyActions).toContain('aria-haspopup="menu"');
-    expect(legacyActions).toContain('role="menu"');
-    expect(legacyActions).toContain('role="menuitem"');
-    expect(legacyActions.match(/openManualSessionModal\(c\)/g)).toHaveLength(2);
-    expect(activeMoreMenu).not.toContain('openManualSessionModal(c)');
-    expect(legacyActions).toContain('@click="openTuitionLedger(c); closeActionMenu()"');
-    expect(legacyActions).toContain('@click="openContractAdjustmentModal(c); closeActionMenu()"');
-    expect(legacyActions).toContain('@click="duplicateCourseForTeacher(c); closeActionMenu()"');
+  it('feeds the row model the same capability rules the legacy More menu used', () => {
+    const rowModel = source.slice(source.indexOf('function rowActions(c)'), source.indexOf('function onRowAction('));
+    for (const rule of ['isManualOccurrenceCourse(c)', 'canQuickAddSession(c)', 'quickAddDisabledReason(c)', 'canCloseCourse(c)',
+      'isPaymentNoticeAvailable(c)', 'isSessionMode(c) && !isPackageMember(c)', "effectiveClosedReason(c) === 'contract_amended'",
+      'purchaseActionLabel(c)', 'purchaseActionIsRenew(c)']) expect(rowModel).toContain(rule);
+    const handlers = source.slice(source.indexOf('function courseActionHandlers('), source.indexOf('function onCourseManagerAction('));
+    for (const h of ['openTuitionLedger(c)', 'openContractAdjustmentModal(c)', 'duplicateCourseForTeacher(c)', 'openPaymentSlip(c)',
+      'openPackageConversionPreview(c)', 'openCommercialPurchaseEntry(c)', 'requestCoursePause(c)', 'confirmDeleteTarget.value = c',
+      'openContractRevertModal(c)', 'openCourseTransfer(c)', "openCourseSessionMode(c, 'reschedule')", "openCourseSessionMode(c, 'substitute')",
+      'openManualSessionModal(c)', 'openQuickAddSessionModal(c)', 'openMonthlySessionModal(c)', 'editCourse(c)']) expect(handlers).toContain(h);
+    expect(source).toContain("if (id === 'close') return closeCourseInPlace(c);");
+    expect(source).toContain(':course-id="transferCourseId ?? editingId"');
   });
 
   it('does not let an earlier manual-session check overwrite the latest selection', () => {
@@ -77,11 +77,10 @@ describe('CourseManagement action hierarchy', () => {
   it('offers explicit settlement for unpaid courses and preserves reconciliation messaging', () => {
     expect(source).toContain("&& (isSessionMode(c) || isMonthlyMode(c))");
     expect(source).toContain("c.closed_reason !== 'settled_pending';");
-    expect(source.match(/結束課程（不再續課）/g)).toHaveLength(2);
-    expect(source.match(/title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒"/g)).toHaveLength(2);
+    expect(courseActionsSource).toContain("label: '結束課程（不再續課）', confirm: true");
     expect(studentsSource).toContain("['session', 'monthly'].includes");
     expect(studentsSource).toContain("course?.closed_reason !== 'settled_pending'");
-    expect(source.match(/@click="closeCourseInPlace\(c\)/g)).toHaveLength(2);
+    expect(source).toContain("if (id === 'close') return closeCourseInPlace(c);");
     expect(source).toContain('function closeCourseInPlace(course)');
     expect(studentsSource).toContain('runCloseCourseNoRenew({');
     expect(closeCourseActionSource).toContain("reason: 'settled'");

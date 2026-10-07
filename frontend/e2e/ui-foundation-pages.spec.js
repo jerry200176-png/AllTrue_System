@@ -976,7 +976,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
   test('manual booking keeps the latest date after a stale 422 response', async ({ page }) => {
     await openPilot(page, { pageName: 'course', mode: 'booking-race', viewport: { width: 1440, height: 900 } });
 
-    const addNextButton = page.locator('button.manual-occurrence-action').filter({ hasText: '新增下一堂' }).first();
+    const addNextButton = page.locator('button.course-primary-action').filter({ hasText: '新增下一堂' }).first();
     await expect(addNextButton).toBeVisible({ timeout: 10_000 });
     await addNextButton.click();
 
@@ -1001,6 +1001,33 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(page.getByText('可以預約', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '建立這一堂', exact: true })).toBeEnabled();
   });
+
+  for (const vp of [{ name: '1440', width: 1440, height: 900 }, { name: '390', width: 390, height: 844 }]) {
+    test(`course row: one primary + grouped ⋯, delete last, 轉課 direct @${vp.name}`, async ({ page }) => {
+      await openPilot(page, { pageName: 'course', mode: 'normal', viewport: vp });
+      const row = page.locator('tr.course-row').first();
+      await expect(row).toBeVisible({ timeout: 10_000 });
+      await expect(row.locator('.action-btns-row > button')).toHaveCount(2); // primary + 詳情
+      await expect(row.getByTestId('course-row-primary')).toBeVisible();
+      const more = row.getByRole('button', { name: /的更多操作/ });
+      await more.press('Enter');
+      const menu = page.getByRole('menu');
+      await expect(menu).toBeVisible();
+      await expect(menu.locator('.am__group')).toHaveText(['調動', '帳務', '結束']);
+      await expect(menu.getByRole('menuitem').last()).toHaveText('刪除課程…');
+      for (const name of ['調課', '代課', '轉課']) await expect(menu.getByRole('menuitem', { name, exact: true })).toBeVisible();
+      if (vp.width <= 640) await expect(page.locator('.am__menu--sheet')).toBeVisible();
+      await expect(menu.getByRole('menuitem').first()).toBeFocused();
+      await page.screenshot({ path: path.join(outDir, `course-finder-menu-${vp.name}.png`), fullPage: false });
+      await page.keyboard.press('Escape');
+      await expect(menu).toHaveCount(0);
+      await expect(more).toBeFocused();
+      await page.screenshot({ path: path.join(outDir, `course-finder-row-${vp.name}.png`), fullPage: false });
+      await more.click();
+      await page.getByRole('menuitem', { name: '轉課', exact: true }).click();
+      await expect(page.getByText('轉課', { exact: false }).last()).toBeVisible();
+    });
+  }
 
   test('course management keeps disclosure and tab focus relationships explicit', async ({ page }) => {
     await openPilot(page, { pageName: 'course', mode: 'normal', viewport: { width: 1440, height: 900 } });
