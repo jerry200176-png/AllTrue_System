@@ -750,7 +750,6 @@ jobs:
               landed_effects = []
               seen_reconciled_prs = set()
               attributed_commits = set()
-              commit_effects = {}
               provenance_complete = True
               for commit in comparison.get("commits") or []:
                   commit_sha = commit.get("sha")
@@ -779,7 +778,6 @@ jobs:
                       "patch": "\n".join(actual_patch_parts),
                       "patch_complete": actual_patch_complete,
                   }
-                  commit_effects[commit_sha] = actual_effect
                   candidates = gh_api(
                       f"/repos/{repo}/commits/{commit_sha}/pulls",
                       "--header", "Accept: application/vnd.github+json",
@@ -952,23 +950,19 @@ jobs:
               if mode == "auto" or (mode == "awaiting-activation" and approval_eligible):
                   try:
                       import importlib.util
+                      import scripts.governance.autonomy_gate as target_gate
                       spec = importlib.util.spec_from_file_location(
                           "trusted_autonomy_gate", "trusted-policy/scripts/governance/autonomy_gate.py"
                       )
                       trusted = importlib.util.module_from_spec(spec)
                       spec.loader.exec_module(trusted)
-
-                      def commit_tier(sha):
-                          effect = commit_effects.get(sha)
-                          return None if effect is None else trusted.commit_activation_tier(
-                              effect["paths"], effect["patch"], effect["patch_complete"]
-                          )
-
-                      go = trusted.founder_go_release_evidence(
-                          repo=repo, comparison=comparison,
-                          fetch_pr=lambda n: gh_api(f"/repos/{repo}/pulls/{n}"),
-                          machine_tier=commit_tier,
-                      )
+                      # Both the deployed policy (a range never judges itself) and the target's
+                      # (a merged policy fix takes effect at once) must accept the range.
+                      results = [
+                          gate.evaluate_founder_go_range(repo=repo, base_sha=base, target_sha=target, api=gh_api)
+                          for gate in (trusted, target_gate)
+                      ]
+                      go = next((result for result in results if not result["ok"]), results[0])
                   except Exception as exc:
                       go = {"ok": False, "missing": [], "reason": f"Founder GO evidence unavailable ({type(exc).__name__})"}
                   print(f"Founder GO evidence: ok={go['ok']} {go['reason']}")
@@ -1268,6 +1262,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Checkout target revision for gate policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve-target.outputs.target_sha }}
+          sparse-checkout: scripts/governance
+
       - name: Checkout deployed revision for trusted gate policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1283,23 +1283,37 @@ jobs:
           PHASE: ${{ inputs.phase || '' }}
           MODE: ${{ needs.classify-activation.outputs.mode }}
           GO_EVIDENCE: ${{ needs.classify-activation.outputs.go_evidence }}
+          BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          PYTHONPATH=. python3 - <<'PY'
           import importlib.util
           import json
           import os
           import subprocess
+
+          import scripts.governance.autonomy_gate as target_gate
 
           spec = importlib.util.spec_from_file_location("trusted_autonomy_gate", "trusted-policy/scripts/governance/autonomy_gate.py")
           trusted = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(trusted)
           auto_environment_is_valid = trusted.auto_environment_is_valid
 
-          base = f"/repos/{os.environ['REPO']}/environments/production-auto"
+          repo = os.environ["REPO"]
+          base = f"/repos/{repo}/environments/production-auto"
 
           def api(path):
               return json.loads(subprocess.check_output(["gh", "api", path], text=True))
+
+          # Re-fetch the range and PR bodies now: a GO removed or revoked since
+          # classification stops this activation (any API error raises and fails the job).
+          for gate in (trusted, target_gate):
+              go = gate.evaluate_founder_go_range(
+                  repo=repo, base_sha=os.environ["BASE_SHA"], target_sha=os.environ["TARGET_SHA"], api=api,
+              )
+              if not go["ok"]:
+                  raise SystemExit(f"production-auto refused: Founder GO evidence no longer holds: {go['reason']}")
 
           policy = api(base).get("deployment_branch_policy") or {}
           names = sorted(str(p.get("name")) for p in api(f"{base}/deployment-branch-policies").get("branch_policies") or [])

@@ -32,6 +32,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     environment_protection_is_valid,
     commit_activation_tier,
     effective_tier,
+    evaluate_founder_go_range,
     founder_go_release_evidence,
     has_rollback_evidence,
     is_founder_approval_eligible,
@@ -1548,15 +1549,51 @@ class FounderGoAutoActivationTest(unittest.TestCase):
                 fetch_pr=lambda n: self._pr(n), machine_tier=tier_error,
             )
 
-    def test_go_evidence_runs_the_deployed_revisions_policy_not_the_targets(self):
+    def test_go_evidence_needs_both_the_deployed_and_the_target_policy(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         classify = workflow[workflow.index("  classify-activation:\n"):workflow.index("  release-state:\n")]
         self.assertIn("ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}\n          path: trusted-policy", classify)
         self.assertIn('"trusted-policy/scripts/governance/autonomy_gate.py"', classify)
-        self.assertIn("go = trusted.founder_go_release_evidence(", classify)
-        self.assertIn("trusted.commit_activation_tier(", classify)
-        # The target's own import list must not provide the GO evidence.
+        # Both the deployed policy and the target's must accept; the stricter result wins.
+        self.assertIn("for gate in (trusted, target_gate)", classify)
+        self.assertIn('go = next((result for result in results if not result["ok"]), results[0])', classify)
         self.assertNotIn("                  founder_go_release_evidence,\n", classify)
+        # Codex P1: the reviewer-less gate re-fetches the range and PR bodies itself.
+        job = workflow[workflow.index("  production-auto:\n"):workflow.index("  deploy:\n")]
+        self.assertIn("for gate in (trusted, target_gate):", job)
+        self.assertIn("gate.evaluate_founder_go_range(", job)
+        self.assertIn("Founder GO evidence no longer holds", job)
+
+    def _api(self, comparison, details, pulls):
+        def api(path):
+            if "/compare/" in path:
+                return comparison
+            if "/commits/" in path:
+                return details[path.rsplit("/", 1)[1]]
+            return pulls[int(path.rsplit("/", 1)[1])]
+        return api
+
+    def test_range_evaluation_fetches_its_own_evidence_and_fails_closed(self):
+        base, target = "1" * 40, "2" * 40
+        comparison = dict(self._range(11), status="ahead")
+        sha = f"{11:040x}"
+        app = {"files": [{"filename": ".github/workflows/deploy.yml", "patch": "+x"}]}
+        r3 = "Risk-Class: R3\nAutonomy-Tier: T3\nFounder GO: Jerry 2026-10-07 \"GO 11\""
+        evaluate = lambda api: evaluate_founder_go_range(repo=self.REPO, base_sha=base, target_sha=target, api=api)
+        self.assertTrue(evaluate(self._api(comparison, {sha: app}, {11: self._pr(11, r3)}))["ok"])
+        self.assertEqual(
+            evaluate(self._api(comparison, {sha: app}, {11: self._pr(11, "Risk-Class: R1\nAutonomy-Tier: T1")}))["missing"], [11],
+        )
+        for name, comp, detail in (
+            ("behind (downgrade)", dict(comparison, status="behind"), app),
+            ("identical", dict(comparison, status="identical"), app),
+            ("no file list", comparison, {}),
+            ("missing patch", comparison, {"files": [{"filename": "backend/app/X.php"}]}),
+            ("300-file cap", comparison, {"files": [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(300)]}),
+        ):
+            with self.subTest(name=name):
+                self.assertFalse(evaluate(self._api(comp, {sha: detail}, {11: self._pr(11, r3)}))["ok"])
+        self.assertFalse(evaluate_founder_go_range(repo=self.REPO, base_sha="unknown", target_sha=target, api=None)["ok"])
 
     def test_unknown_or_untrusted_mapping_fails_closed(self):
         go = "Risk-Class: R3\nAutonomy-Tier: T3\nFounder GO: Jerry 2026-10-07"

@@ -145,7 +145,7 @@ changed code expresses it. Unknown or missing evidence fails closed.
 - No stacked PRs: branch from main after the dependency merges.
 - Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
 - Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
-- Deploys: release train only.
+- Deploys: only `deploy.yml`. A range whose every PR is R0-R2 or carries a Founder GO deploys on its own CI; otherwise it waits for the release train (Founder 1A/3A, 2026-10-07).
 
 ## Review checklist (R2/T2)
 

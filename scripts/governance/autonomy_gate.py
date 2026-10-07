@@ -1288,6 +1288,40 @@ def founder_go_release_evidence(
     return {"ok": True, "missing": [], "reason": "every merged PR is R0-R2 or carries a Founder GO line"}
 
 
+def evaluate_founder_go_range(
+    *, repo: str, base_sha: str, target_sha: str, api: Callable[[str], object],
+) -> dict[str, object]:
+    """Fetch production...target with ``api`` and evaluate Founder 1A evidence.
+
+    ``api(path)`` returns parsed GitHub JSON or raises (the caller keeps the
+    reviewer gate on any exception). The target must be strictly ahead of the
+    deployed SHA; each commit's class comes from its own files and patches.
+    """
+
+    if not (_FULL_SHA_RE.fullmatch(base_sha or "") and _FULL_SHA_RE.fullmatch(target_sha or "")):
+        return {"ok": False, "missing": [], "reason": "deployed or target SHA is invalid"}
+    comparison = api(f"/repos/{repo}/compare/{base_sha}...{target_sha}")
+    if not isinstance(comparison, Mapping) or comparison.get("status") != "ahead":
+        return {"ok": False, "missing": [], "reason": "target is not strictly ahead of production"}
+
+    def machine_tier(sha: str) -> int | None:
+        detail = api(f"/repos/{repo}/commits/{sha}")
+        files = detail.get("files") if isinstance(detail, Mapping) else None
+        if not isinstance(files, list):
+            return None
+        paths = [str(item.get("filename") or "") for item in files]
+        patch = "\n".join(
+            f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item.get('patch') or ''}"
+            for path, item in zip(paths, files)
+        )
+        return commit_activation_tier(paths, patch, all(item.get("patch") is not None for item in files))
+
+    return founder_go_release_evidence(
+        repo=repo, comparison=comparison,
+        fetch_pr=lambda number: api(f"/repos/{repo}/pulls/{number}"), machine_tier=machine_tier,
+    )
+
+
 def decide_manual_activation(
     *, workflow_ref: str, target_sha: str, current_main_sha: str,
     ci_success: bool, founder_gate_reached: bool,
