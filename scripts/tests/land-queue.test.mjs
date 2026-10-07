@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ACTIONS_APP_ID, BATCH_MAX, TRUSTED_AUTHORS, fromActions, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, orderQueue, parseMember, planBatch } from '../../.github/scripts/land-queue.mjs';
+import { BATCH_MAX, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, orderQueue, parseMember, planBatch } from '../../.github/scripts/land-queue.mjs';
 
 const req = ['A', 'B'];
 const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
@@ -92,11 +92,27 @@ test('staleReason: batch survives only if main, every member head and readiness 
   assert.match(staleReason([{ n: 1, sha: '' }], 'b', 'b', cur(m(1))), /head moved/); // head not pinned by a merge parent
 });
 
-test('fromActions: only GitHub Actions check runs count; same-name checks from other apps or statuses do not', () => {
+test('fromPinned: a pinned context counts only from its app; unpinned matches by name like the ruleset', () => {
   const run = (id, name = 'A') => ({ __typename: 'CheckRun', name, conclusion: 'SUCCESS', checkSuite: { app: { databaseId: id } } });
-  const kept = fromActions([run(ACTIONS_APP_ID), run(999), { __typename: 'StatusContext', context: 'A', state: 'SUCCESS' }, { __typename: 'CheckRun', name: 'A' }]);
+  const pins = new Map([['A', 15368], ['U', null]]);
+  const kept = fromPinned([run(15368), run(999), { __typename: 'StatusContext', context: 'A', state: 'SUCCESS' }, { __typename: 'CheckRun', name: 'A' }], pins);
   assert.equal(kept.length, 1);
-  assert.deepEqual(checkStates(fromActions([run(999)]), ['A']), { A: 'pending' });
+  assert.deepEqual(checkStates(fromPinned([run(999)], pins), ['A']), { A: 'pending' });
+  assert.equal(fromPinned([run(999, 'U'), { __typename: 'StatusContext', context: 'U', state: 'SUCCESS' }], pins).length, 2);
+  assert.deepEqual(checkStates(fromPinned([run(999)], new Map([['A', 999]])), ['A']), { A: 'pass' }); // repinned in the ruleset
+});
+
+test('memberOf: only a two-parent merge whose 2nd parent is the recorded head is batch metadata', () => {
+  const sha = 'a'.repeat(40);
+  const c = (o = {}) => ({ message: memberMessage(7, sha), parents: [{ sha: 'b'.repeat(40) }, { sha }], tree: { sha: 't1' }, ...o });
+  assert.deepEqual(memberOf(c()), { n: 7, sha, tree: 't1' });
+  assert.equal(memberOf(c({ parents: [{ sha: 'b'.repeat(40) }] })), null); // squash whose title mimics the message
+  assert.equal(memberOf(c({ parents: [{ sha: 'b'.repeat(40) }, { sha: 'c'.repeat(40) }] })), null);
+  assert.equal(memberOf(c({ message: `${memberMessage(7, sha)} (#12)\n\nbody` })), null);
+});
+
+test('decide: DIRTY wins over behindBy (update cannot fix a conflict; queue must reject)', () => {
+  assert.equal(decide(pr({ mergeStateStatus: 'DIRTY', behindBy: 4 }), req).reason, 'conflict');
 });
 
 test('forks and non-owner authors: forks never queue, only trusted associations may be batched', () => {

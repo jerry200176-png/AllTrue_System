@@ -74,5 +74,25 @@ test('script never checks out or runs PR code, and each squash is pinned to the 
   assert.doesNotMatch(queue, /\bcheckout\b|execFileSync\('(?:node|bash|sh|npm)'/);
   assert.match(queue, /'--match-head-commit', sha/);
   assert.match(queue, /squash\(m\.n, m\.sha\)/); // sha pinned at batch creation, never re-read from the PR
-  assert.match(queue, /TRUSTED_AUTHORS\.has\(p\.authorAssociation\)/);
+  assert.match(queue, /TRUSTED_AUTHORS\.has\(pr\.authorAssociation\)/);
+});
+
+test('author association is read via GraphQL (gh pr list has no such JSON field)', () => {
+  const list = queue.match(/'pr', 'list'[^\n]*/)[0];
+  assert.doesNotMatch(list, /authorAssociation/);
+  assert.match(queue, /headRefOid authorAssociation/);
+});
+
+test('required-check pins come from the live ruleset, not a hardcoded app id', () => {
+  assert.match(queue, /PINS = new Map\(checks\.map\(\(c\) => \[c\.context, c\.integration_id\]\)\)/);
+  assert.doesNotMatch(queue, /15368/);
+});
+
+test('missing check workflows are dispatched per workflow, not only when the rollup is empty', () => {
+  assert.match(queue, /actions\/workflows\/\$\{wf\}\/runs\?head_sha=/);
+  assert.doesNotMatch(queue, /if \(pr\.rollup\.length\) return/);
+});
+
+test('each batch squash is verified against the tested tree right after it lands', () => {
+  assert.match(queue, /tree\(expect\) !== m\.tree/);
 });

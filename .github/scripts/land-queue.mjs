@@ -6,10 +6,13 @@ import { execFileSync } from 'node:child_process';
 const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
 const PASSED = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 
-// Required contexts are pinned to GitHub Actions (integration_id 15368 in the ruleset); a check of the
-// same name from another app, or a plain commit status, must not count toward a merge.
-export const ACTIONS_APP_ID = 15368;
-export const fromActions = (nodes) => (nodes || []).filter((c) => c.__typename === 'CheckRun' && c.checkSuite?.app?.databaseId === ACTIONS_APP_ID);
+// A required context pinned to an integration_id in the ruleset only counts when a check run from that
+// app reports it: a same-name check from another app, or a plain commit status, must not count toward
+// a merge. An unpinned context is matched by name, exactly as the ruleset does. pins: Map context -> id.
+export const fromPinned = (nodes, pins) => (nodes || []).filter((c) => {
+  const pin = pins.get(c.name || c.context);
+  return pin == null || (c.__typename === 'CheckRun' && c.checkSuite?.app?.databaseId === pin);
+});
 
 // Authors whose branches may be executed by batch CI (dispatch runs PR code with repo secrets).
 export const TRUSTED_AUTHORS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -55,7 +58,7 @@ export function checkStates(rollup, required) {
 // behindBy keeps "head contains main" enforced here once the ruleset's strict policy is off
 // (GitHub then stops reporting BEHIND). Batch eligibility passes behindBy: 0 on purpose.
 export function decide(pr, required) {
-  if (pr.mergeStateStatus === 'BEHIND' || pr.behindBy > 0) return { action: 'update' };
+  if (pr.mergeStateStatus === 'BEHIND' || (pr.behindBy > 0 && pr.mergeStateStatus !== 'DIRTY')) return { action: 'update' };
   if (pr.mergeStateStatus === 'DIRTY') return { action: 'reject', reason: 'conflict', text: 'conflict with main, please merge main and re-add `queue`' };
   const states = checkStates(pr.rollup, required);
   const failed = Object.keys(states).filter((n) => states[n] === 'fail');
@@ -79,7 +82,13 @@ export function planBatch(cands) {
 
 // Members live in the batch's first-parent merge commits: "land-queue batch member #N <sha>".
 export const memberMessage = (n, sha) => `land-queue batch member #${n} ${sha}`;
-export const parseMember = (msg) => { const m = /^land-queue batch member #(\d+) ([0-9a-f]{40})/.exec(msg || ''); return m ? { n: +m[1], sha: m[2] } : null; };
+export const parseMember = (msg) => { const m = /^land-queue batch member #(\d+) ([0-9a-f]{40})$/.exec(msg || ''); return m ? { n: +m[1], sha: m[2] } : null; };
+// A batch member is a two-parent merge whose second parent is exactly the recorded head; an ordinary
+// main commit (e.g. a squash whose title mimics the message) is never metadata.
+export function memberOf(commit) {
+  const m = parseMember(commit.message);
+  return m && commit.parents?.length === 2 && commit.parents[1].sha === m.sha ? { ...m, tree: commit.tree.sha } : null;
+}
 
 // Any required context failed -> red; all pass -> land; otherwise wait (red once older than ttl).
 export function batchVerdict(states, ageMs, ttlMs = 2 * 3600e3) {
@@ -92,6 +101,7 @@ export function batchVerdict(states, ageMs, ttlMs = 2 * 3600e3) {
 export const marker = (reason, sha) => `<!-- land-queue:${reason}:${sha} -->`;
 
 const REPO = process.env.REPO || process.env.GITHUB_REPOSITORY;
+let PINS = new Map(); // set by requiredChecks() from the live ruleset
 const gh = (...args) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 64 << 20 });
 const api = (path, ...extra) => JSON.parse(gh('api', `/repos/${REPO}/${path}`, ...extra) || 'null');
 const apiPages = (path) => JSON.parse(gh('api', `/repos/${REPO}/${path}`, '--paginate', '--slurp')).flat();
@@ -100,7 +110,9 @@ const apiPages = (path) => JSON.parse(gh('api', `/repos/${REPO}/${path}`, '--pag
 // (a batch merges PR heads that are behind main, which strict would refuse).
 function requiredChecks() {
   const rules = api('rules/branches/main').filter((r) => r.type === 'required_status_checks');
-  const ctx = rules.flatMap((r) => r.parameters.required_status_checks.map((c) => c.context));
+  const checks = rules.flatMap((r) => r.parameters.required_status_checks);
+  const ctx = checks.map((c) => c.context);
+  PINS = new Map(checks.map((c) => [c.context, c.integration_id]));
   if (!ctx.length) throw new Error('no required status checks found; refusing to merge');
   return { required: [...new Set(ctx)], strict: rules.some((r) => r.parameters.strict_required_status_checks_policy) };
 }
@@ -111,7 +123,7 @@ function labeledAt(n) {
 }
 
 const Q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
-  mergeStateStatus headRefName headRefOid
+  mergeStateStatus headRefName headRefOid authorAssociation
   reviewThreads(first:100){nodes{isResolved}}
   commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{
     __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId}}} ... on StatusContext{context state createdAt}}}}}}}}}}`;
@@ -122,7 +134,7 @@ const QC = `query($o:String!,$r:String!,$s:GitObjectID!){repository(owner:$o,nam
 function rollupFor(sha) {
   const [o, r] = REPO.split('/');
   const c = JSON.parse(gh('api', 'graphql', '-f', `query=${QC}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `s=${sha}`)).data.repository.object;
-  return fromActions(c?.statusCheckRollup?.contexts.nodes);
+  return fromPinned(c?.statusCheckRollup?.contexts.nodes, PINS);
 }
 
 function load(n) {
@@ -134,7 +146,8 @@ function load(n) {
     headRefName: p.headRefName,
     sha: p.headRefOid,
     unresolvedThreads: p.reviewThreads.nodes.filter((t) => !t.isResolved).length,
-    rollup: fromActions(p.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes),
+    rollup: fromPinned(p.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes, PINS),
+    authorAssociation: p.authorAssociation,
   };
 }
 
@@ -160,11 +173,12 @@ const CHECK_WORKFLOWS = ['ci.yml', 'presubmit.yml', 'docs-integrity.yml', 'secre
 const BATCH_ONLY_WORKFLOWS = ['codeql.yml'];
 // n undefined = a batch branch: no PR, so no pr_number (the guard is skipped; Golden skips itself).
 function kickChecksIfMissing(n, pr) {
-  if (pr.rollup.length) return;
-  const runs = api(`actions/runs?head_sha=${pr.sha}&per_page=1`).total_count;
-  if (runs) return;
-  console.log(`${n ? '#' + n : 'batch'}: no checks on ${pr.sha}; dispatching check workflows on ${pr.headRefName}`);
-  for (const wf of n ? CHECK_WORKFLOWS : [...CHECK_WORKFLOWS, ...BATCH_ONLY_WORKFLOWS]) gh('workflow', 'run', wf, '--repo', REPO, '--ref', pr.headRefName, ...(n ? ['-f', `pr_number=${n}`] : []));
+  // Per workflow: any workflow with no run at all on this sha is dispatched (a partial earlier dispatch heals).
+  for (const wf of n ? CHECK_WORKFLOWS : [...CHECK_WORKFLOWS, ...BATCH_ONLY_WORKFLOWS]) {
+    if (api(`actions/workflows/${wf}/runs?head_sha=${pr.sha}&per_page=1`).total_count) continue;
+    console.log(`${n ? '#' + n : 'batch'}: no ${wf} run on ${pr.sha}; dispatching on ${pr.headRefName}`);
+    gh('workflow', 'run', wf, '--repo', REPO, '--ref', pr.headRefName, ...(n ? ['-f', `pr_number=${n}`] : []));
+  }
 }
 
 // GITHUB_TOKEN merges do not fire push CI on main, and deploy.yml only runs after
@@ -197,9 +211,9 @@ function readBatch(tip) {
   let sha = tip;
   for (;;) {
     const c = api(`git/commits/${sha}`);
-    const m = parseMember(c.message);
+    const m = memberOf(c);
     if (!m) return { members: members.reverse(), base: sha };
-    members.push({ ...m, sha: c.parents[1].sha === m.sha ? m.sha : '' });
+    members.push(m);
     sha = c.parents[0].sha;
   }
 }
@@ -211,21 +225,19 @@ function failBatch(name, members, why) {
 }
 
 // Tree equality is the proof that squashing the members in order produced exactly what the batch tested.
-function landBatch(name, tip, base, members) {
+function landBatch(name, base, members) {
+  const tree = (sha) => api(`git/commits/${sha}`).tree.sha;
   let expect = base;
-  let done = 0;
   for (const m of members) {
     if (mainTip() !== expect) { console.log('main moved while landing; remaining members re-batch next run'); break; }
     squash(m.n, m.sha);
     expect = api(`pulls/${m.n}`).merge_commit_sha;
     console.log(`batch landed #${m.n} -> ${expect}`);
-    done++;
+    // GitHub offers no compare-and-swap on the base, so verify right after each merge: the landed tree must be
+    // the tree the batch tested at this member. On a mismatch stop landing, fail loudly and leave the rest queued.
+    if (tree(expect) !== m.tree) { console.error(`::error::#${m.n} landed tree ${tree(expect)} differs from tested batch tree ${m.tree}; halting, check main`); process.exitCode = 1; break; }
   }
   dropBranch(name);
-  if (done === members.length && mainTip() === expect) {
-    const tree = (sha) => api(`git/commits/${sha}`).tree.sha;
-    if (tree(expect) !== tree(tip)) { console.error(`::error::landed tree ${tree(expect)} differs from tested batch tree ${tree(tip)}`); process.exitCode = 1; }
-  }
 }
 
 // Returns true when a batch is in flight (or just landed/failed) and the serial loop must not run.
@@ -240,7 +252,7 @@ function stepBatch(name, tipSha, queue, required) {
   const v = batchVerdict(checkStates(pr.rollup, required), age);
   console.log(`batch ${name} [${members.map((m) => '#' + m.n).join(' ')}] -> ${v}`);
   if (v === 'red') failBatch(name, members, 'a required check failed or timed out on the combined branch');
-  else if (v === 'land') landBatch(name, tipSha, base, members);
+  else if (v === 'land') landBatch(name, base, members);
   else kickChecksIfMissing(undefined, pr);
   return true;
 }
@@ -252,7 +264,7 @@ function startBatch(queue, required) {
     const d = decide(neutral(pr), required);
     // Untrusted authors are serial-only: their branch is never executed by batch CI.
     if (d.action === 'reject') reject(p.number, pr.sha, d);
-    else if (d.action === 'merge') cands.push({ n: p.number, pr, serial: !TRUSTED_AUTHORS.has(p.authorAssociation) || serialOnly(p.number, p.labeledAt) });
+    else if (d.action === 'merge') cands.push({ n: p.number, pr, serial: !TRUSTED_AUTHORS.has(pr.authorAssociation) || serialOnly(p.number, p.labeledAt) });
   }
   const batch = planBatch(cands);
   if (!batch.length) return false;
@@ -277,7 +289,7 @@ function startBatch(queue, required) {
 
 function processQueue() {
   const { required, strict } = requiredChecks();
-  const listed = JSON.parse(gh('pr', 'list', '--repo', REPO, '--label', 'queue', '--state', 'open', '--base', 'main', '--json', 'number,isDraft,baseRefName,isCrossRepository,authorAssociation'));
+  const listed = JSON.parse(gh('pr', 'list', '--repo', REPO, '--label', 'queue', '--state', 'open', '--base', 'main', '--json', 'number,isDraft,baseRefName,isCrossRepository'));
   const queue = orderQueue(listed.map((p) => ({ ...p, labeledAt: labeledAt(p.number) })));
   console.log(`queue: ${queue.map((p) => '#' + p.number).join(' ') || '(empty)'}; batching ${strict ? 'off (strict up-to-date still required)' : 'on'}`);
   const open = api(`git/matching-refs/heads/${BATCH_PREFIX}`);
