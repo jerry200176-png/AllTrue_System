@@ -1,0 +1,11 @@
+updates:
+  - id: staff-2026-10-07-promotion-cohort
+    published_at: "2026-10-07"
+    audiences:
+      - director
+    importance: digest
+    title: 年級升級可以只升其中幾個年級
+    summary: 年級升級視窗新增「只升級這些年級」，不用再一個一個取消勾選。
+    items:
+      - category: improved
+        text: 在學生列表按「年級升級」，上方點選要升級的年級（例如只點國一），其他年級會自動不勾；都不點就是全部。

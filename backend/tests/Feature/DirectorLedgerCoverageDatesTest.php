@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Student;
@@ -135,6 +136,19 @@ class DirectorLedgerCoverageDatesTest extends TestCase
         $this->withHeaders($this->headers($this->directorToken([2])))
             ->getJson("/api/v1/accounting/ledger?student_id={$student->id}")
             ->assertForbidden();
+    public function test_ledger_invoice_carries_its_service_range(): void
+    {
+        $token = $this->directorToken([1]);
+        [$student, $course] = $this->countCourse(1);
+        $invoice = $this->invoiceFor($student, $course);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => '月結費用 2026年9月', 'Amount' => 8000, 'PeriodStart' => '2026-09-28', 'PeriodEnd' => '2026-10-27']);
+
+        $row = $this->withHeaders($this->headers($token))
+            ->getJson("/api/v1/accounting/ledger?student_class_id={$course->ID}")
+            ->assertOk()
+            ->json('invoices.0');
+
+        $this->assertSame(['2026-09-28', '2026-10-27'], [$row['period_start'], $row['period_end']]);
     }
 
     /** @return array{0: Student, 1: StudentClass} */
