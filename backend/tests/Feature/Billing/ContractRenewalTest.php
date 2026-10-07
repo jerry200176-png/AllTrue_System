@@ -200,4 +200,48 @@ class ContractRenewalTest extends TestCase
         $this->assertSame(409, $again['status']);
         $this->assertSame($before, StudentClass::query()->count());
     }
+
+    public function test_convert_trial_creates_regular_course_and_closes_trial(): void
+    {
+        $trial = $this->course(['ClassType' => 'trial', 'SessionCount' => 1, 'RemainingSessions' => 1, 'Charge' => 0, 'Rate' => 500]);
+
+        $r = app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => []);
+
+        $this->assertSame(201, $r['status']);
+        $trial->refresh();
+        $this->assertSame(1, (int) $trial->Stop);
+        $this->assertSame('converted_trial', $trial->closed_reason);
+        $this->assertSame($r['body']['new_course']['id'], (int) $trial->trial_converted_to_id);
+        $this->assertSame(4, $r['body']['new_course']['created_sessions']);
+    }
+
+    public function test_convert_trial_conflict_throws_and_rolls_back_trial_mutation(): void
+    {
+        $trial = $this->course(['ClassType' => 'trial', 'SessionCount' => 1, 'RemainingSessions' => 1]);
+        $before = StudentClass::query()->count();
+
+        try {
+            app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => [['message' => 'clash']]);
+            $this->fail('expected HttpResponseException');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            $this->assertSame(409, $e->getResponse()->getStatusCode());
+        }
+
+        $this->assertSame(0, (int) $trial->fresh()->Stop);
+        $this->assertSame($before, StudentClass::query()->count());
+    }
+
+    public function test_convert_trial_rejects_monthly_trial_and_rolls_back(): void
+    {
+        $trial = $this->course(['ClassType' => 'trial', 'ScheduleMode' => 'date', 'EndDate' => '2032-04-30']);
+
+        try {
+            app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => []);
+            $this->fail('expected HttpResponseException');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            $this->assertSame(422, $e->getResponse()->getStatusCode());
+        }
+
+        $this->assertSame(0, (int) $trial->fresh()->Stop);
+    }
 }

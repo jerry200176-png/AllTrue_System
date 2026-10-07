@@ -3836,108 +3836,14 @@ class StudentClassController extends Controller
         $startDate = Carbon::parse($data['start_date'])->toDateString();
         $newClassType = (string) ($data['class_type'] ?? 'one_on_one');
 
-        return DB::transaction(function () use ($request, $studentClass, $sessions, $startDate, $newClassType) {
-            $source = StudentClass::where('ID', $studentClass->getAttribute('ID'))
-                ->lockForUpdate()
-                ->firstOrFail();
+        $actor = $request->attributes->get('auth_user');
+        $result = app(ContractRenewal::class)->convertTrial(
+            $studentClass, $sessions, $startDate, $newClassType,
+            (int) ($actor->id ?? 0), (string) $request->attributes->get('auth_role'),
+            fn (...$args) => $this->detectTeacherConflicts(...$args)
+        );
 
-            if (strtolower((string) ($source->getAttribute('ClassType') ?? '')) !== 'trial') {
-                return response()->json(['message' => '來源課程已不是試聽課程，請重新整理後再試。'], 409);
-            }
-            if (!empty($source->getAttribute('trial_converted_to_id'))) {
-                return response()->json([
-                    'message' => '這筆試聽已轉為正式課程，請直接開啟既有正式課程。',
-                    'code' => 'trial_already_converted',
-                    'new_course_id' => (int) $source->getAttribute('trial_converted_to_id'),
-                ], 409);
-            }
-
-            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($source);
-            if (empty($slots)) {
-                $isoDow = (int) Carbon::parse($startDate)->dayOfWeekIso;
-                $fallbackTime = ContractSessionSchedule::normalizeSessionTime($source->getAttribute('time') ?? null, '16:00');
-                $slots = [['weekday' => $isoDow, 'time' => substr($fallbackTime, 0, 5)]];
-            }
-            $duration = max(30, (int) ($source->getAttribute('SessionDuration') ?? 120));
-            $previewSessions = ContractSessionSchedule::buildSessionsForCount(0, $startDate, $sessions, $slots, $duration);
-            if (count($previewSessions) !== $sessions) {
-                return response()->json([
-                    'message' => '無法依目前固定時段排出完整正式課程，請先補齊試聽課程的星期與時段。',
-                    'code' => 'trial_schedule_incomplete',
-                ], 422);
-            }
-
-            // Remove the source trial from occupancy before checking the new
-            // contract. Every error exit below throws HttpResponseException (a plain
-            // return would COMMIT these mutations) so the transaction rolls back.
-            $cancelledTrialSessions = $this->cancelFutureScheduledSessions($source, 'trial_conversion');
-            $source->setAttribute('Stop', 1);
-            $source->setAttribute('closed_reason', 'converted_trial');
-            $source->save();
-
-            $studentCampusId = (int) (optional($source->student)->getAttribute('CampusID') ?: 0);
-            $conflicts = $this->detectTeacherConflicts(
-                (int) ($source->getAttribute('TeacherID') ?? 0),
-                $previewSessions,
-                $newClassType,
-                $source->getAttribute('room_id') ? (int) $source->getAttribute('room_id') : null,
-                $studentCampusId,
-                (int) ($source->getAttribute('ID') ?? 0) ?: null,
-                (int) ($source->getAttribute('StudentID') ?? 0) ?: null
-            );
-            if (!empty($conflicts)) {
-                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
-                    'message' => $conflicts[0]['message'] ?? '正式課程的固定時段與其他課程衝堂，試聽紀錄未變更。',
-                    'code' => 'trial_conversion_schedule_conflict',
-                    'conflicts' => $conflicts,
-                    'suggested_actions' => $conflicts[0]['suggested_actions'] ?? [],
-                ], 409));
-            }
-
-            $originalInput = $request->all();
-            $request->replace([
-                'sessions' => $sessions,
-                'start_date' => $startDate,
-                'mode' => 'new_purchase',
-                'class_type' => $newClassType,
-            ]);
-            $request->attributes->set('trial_conversion', true);
-            try {
-                $response = $this->purchaseBatch($request, $source);
-            } finally {
-                $request->replace($originalInput);
-                $request->attributes->remove('trial_conversion');
-            }
-
-            if ($response->getStatusCode() >= 400) {
-                throw new \Illuminate\Http\Exceptions\HttpResponseException($response);
-            }
-
-            $result = method_exists($response, 'getData') ? $response->getData(true) : [];
-            $newCourseId = (int) ($result['new_course']['id'] ?? 0);
-            if ($newCourseId <= 0) {
-                throw new \Illuminate\Http\Exceptions\HttpResponseException(
-                    response()->json(['message' => '正式課程建立失敗，試聽紀錄未完成轉換。'], 500)
-                );
-            }
-
-            $source->setAttribute('trial_converted_to_id', $newCourseId);
-            $source->save();
-
-            return response()->json([
-                'message' => '試聽已保留為歷史紀錄，正式課程已建立；未來試聽排課已取消，不需再轉移堂次。',
-                'source_course' => [
-                    'id' => (int) $source->getAttribute('ID'),
-                    'closed_reason' => $source->getAttribute('closed_reason'),
-                    'cancelled_future_sessions' => $cancelledTrialSessions,
-                    'preserved_attended_sessions' => (int) ClassSession::where('StudentClassID', $source->getAttribute('ID'))
-                        ->whereIn('Status', ['attended', 'completed', 'late', 'absent'])
-                        ->count(),
-                ],
-                'new_course' => $result['new_course'],
-                'next_actions' => ['record_payment', 'open_new_course'],
-            ], 201);
-        });
+        return response()->json($result['body'], $result['status']);
     }
 
     /**

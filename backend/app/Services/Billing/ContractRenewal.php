@@ -690,6 +690,110 @@ final class ContractRenewal
         });
     }
 
+    /**
+     * Trial -> regular conversion transaction. Every error exit after the source mutation throws
+     * HttpResponseException so the transaction rolls back. $detectTeacherConflicts is the controller's
+     * shared conflict probe (same arguments as StudentClassController::detectTeacherConflicts).
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function convertTrial(StudentClass $studentClass, int $sessions, string $startDate, string $newClassType, int $actorId, string $actorRole, \Closure $detectTeacherConflicts): array
+    {
+        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $newClassType, $actorId, $actorRole, $detectTeacherConflicts) {
+            $source = $this->lockCourse((int) $studentClass->getAttribute('ID'));
+
+            if (strtolower((string) ($source->getAttribute('ClassType') ?? '')) !== 'trial') {
+                return $this->reply(['message' => '來源課程已不是試聽課程，請重新整理後再試。'], 409);
+            }
+            if (!empty($source->getAttribute('trial_converted_to_id'))) {
+                return $this->reply([
+                    'message' => '這筆試聽已轉為正式課程，請直接開啟既有正式課程。',
+                    'code' => 'trial_already_converted',
+                    'new_course_id' => (int) $source->getAttribute('trial_converted_to_id'),
+                ], 409);
+            }
+
+            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($source);
+            if (empty($slots)) {
+                $isoDow = (int) Carbon::parse($startDate)->dayOfWeekIso;
+                $fallbackTime = ContractSessionSchedule::normalizeSessionTime($source->getAttribute('time') ?? null, '16:00');
+                $slots = [['weekday' => $isoDow, 'time' => substr($fallbackTime, 0, 5)]];
+            }
+            $duration = max(30, (int) ($source->getAttribute('SessionDuration') ?? 120));
+            $previewSessions = ContractSessionSchedule::buildSessionsForCount(0, $startDate, $sessions, $slots, $duration);
+            if (count($previewSessions) !== $sessions) {
+                return $this->reply([
+                    'message' => '無法依目前固定時段排出完整正式課程，請先補齊試聽課程的星期與時段。',
+                    'code' => 'trial_schedule_incomplete',
+                ], 422);
+            }
+
+            // Remove the source trial from occupancy before checking the new
+            // contract. Every error exit below throws HttpResponseException (a plain
+            // return would COMMIT these mutations) so the transaction rolls back.
+            $cancelledTrialSessions = $this->cancelFutureScheduledSessions($source, 'trial_conversion');
+            $source->setAttribute('Stop', 1);
+            $source->setAttribute('closed_reason', 'converted_trial');
+            $source->save();
+
+            $studentCampusId = (int) (optional($source->student)->getAttribute('CampusID') ?: 0);
+            $conflicts = $detectTeacherConflicts(
+                (int) ($source->getAttribute('TeacherID') ?? 0),
+                $previewSessions,
+                $newClassType,
+                $source->getAttribute('room_id') ? (int) $source->getAttribute('room_id') : null,
+                $studentCampusId,
+                (int) ($source->getAttribute('ID') ?? 0) ?: null,
+                (int) ($source->getAttribute('StudentID') ?? 0) ?: null
+            );
+            if (!empty($conflicts)) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                    'message' => $conflicts[0]['message'] ?? '正式課程的固定時段與其他課程衝堂，試聽紀錄未變更。',
+                    'code' => 'trial_conversion_schedule_conflict',
+                    'conflicts' => $conflicts,
+                    'suggested_actions' => $conflicts[0]['suggested_actions'] ?? [],
+                ], 409));
+            }
+
+            // Same guard the controller's purchaseBatch applied when convertTrial used to call it through the request.
+            if ((string) ($source->ScheduleMode ?? 'count') !== 'count') {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                    'message' => '月結制課程請使用「月結續約」功能延長課程，不支援加購堂數。',
+                    'errors'  => ['mode' => ['月結制課程不支援此操作，請使用 renew-monthly 端點。']],
+                ], 422));
+            }
+            $response = $this->purchaseBatch($source, $sessions, $startDate, 'new_purchase', $newClassType, null, $actorId, $actorRole);
+            if ($response['status'] >= 400) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json($response['body'], $response['status']));
+            }
+
+            $result = $response['body'];
+            $newCourseId = (int) ($result['new_course']['id'] ?? 0);
+            if ($newCourseId <= 0) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                    response()->json(['message' => '正式課程建立失敗，試聽紀錄未完成轉換。'], 500)
+                );
+            }
+
+            $source->setAttribute('trial_converted_to_id', $newCourseId);
+            $source->save();
+
+            return $this->reply([
+                'message' => '試聽已保留為歷史紀錄，正式課程已建立；未來試聽排課已取消，不需再轉移堂次。',
+                'source_course' => [
+                    'id' => (int) $source->getAttribute('ID'),
+                    'closed_reason' => $source->getAttribute('closed_reason'),
+                    'cancelled_future_sessions' => $cancelledTrialSessions,
+                    'preserved_attended_sessions' => (int) ClassSession::query()->where('StudentClassID', $source->getAttribute('ID'))
+                        ->whereIn('Status', ['attended', 'completed', 'late', 'absent'])
+                        ->count(),
+                ],
+                'new_course' => $result['new_course'],
+                'next_actions' => ['record_payment', 'open_new_course'],
+            ], 201);
+        });
+    }
+
     /** SELECT ... FOR UPDATE on one course; 404 (ModelNotFound) when missing. */
     private function lockCourse(int $id): StudentClass
     {
