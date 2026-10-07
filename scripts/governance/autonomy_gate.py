@@ -12,7 +12,7 @@ import fnmatch
 import json
 import re
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Callable, Iterable, Mapping
 
 
@@ -1180,6 +1180,7 @@ _ROLLBACK_MENTION_RE = re.compile(r"roll[ -]?back|revers|revert|undo|recover", r
 _RAW_HTML_RE = re.compile(r"<\s*/?\s*(?:pre|code|textarea|script|style|xmp|plaintext|listing|samp|kbd|tt)\b", re.IGNORECASE)
 _TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
 _COMMIT_API_FILE_CAP = 300
+_GATE_POLICY_PATHS = {"scripts/governance/autonomy_gate.py", ".github/workflows/deploy.yml"}
 
 
 def _prose_lines(body: str) -> list[str] | None:
@@ -1209,7 +1210,7 @@ def _prose_lines(body: str) -> list[str] | None:
     return lines
 
 
-def founder_go_approved_head(body: str, number: int) -> str | None:
+def founder_go_approved_head(body: str, number: int, merged_at: datetime | None = None) -> str | None:
     """The head SHA a GO token approves for PR ``number``; None if absent, ambiguous or no rollback line."""
 
     lines = _prose_lines(body)
@@ -1222,8 +1223,11 @@ def founder_go_approved_head(body: str, number: int) -> str | None:
     for match in map(_FOUNDER_GO_TOKEN_RE.match, lines):
         if match and int(match.group(2)) == number:
             try:
-                date.fromisoformat(match.group(1))
+                approved_on = date.fromisoformat(match.group(1))
             except ValueError:
+                return None
+            # Not after the merge day in Taipei (UTC+8): a GO cannot be dated in the future.
+            if merged_at is None or approved_on > (merged_at + timedelta(hours=8)).date():
                 return None
             heads.add(match.group(3))
     return heads.pop() if len(heads) == 1 else None
@@ -1303,9 +1307,11 @@ def founder_go_release_evidence(
         tier = effective_class(sha, body)
         if not isinstance(tier, int) or isinstance(tier, bool) or tier not in TIER_VALUES.values():
             return fail(f"PR #{number} class unavailable or declaration invalid; counts as R3 without a GO")
+        if tier == 2 and not has_rollback_evidence(body):
+            return fail(f"PR #{number} is R2 without rollback evidence")
         if tier < 3:
             continue
-        approved = founder_go_approved_head(body, number)
+        approved = founder_go_approved_head(body, number, merged_at)
         if not (approved and scope_matches(approved, sha) is True):
             missing.append(number)
     if missing:
@@ -1380,7 +1386,9 @@ def evaluate_founder_go_range(
 
     def scope_matches(approved: str, sha: str) -> bool:
         parents = detail(sha).get("parents") or []
-        if len(parents) != 1:
+        files = detail(sha).get("files") or []
+        # A GO never skips review for migrations (reverting code does not restore schema/data).
+        if len(parents) != 1 or any("/migrations/" in f"/{item.get('filename')}" for item in files):
             return False
         merged = _exact_diff(detail(sha).get("files"))
         approved_files = api(f"/repos/{repo}/compare/{parents[0]['sha']}...{approved}").get("files")
@@ -1392,6 +1400,14 @@ def evaluate_founder_go_range(
             _tree_modes(graphql, owner, name, approved, paths) == _tree_modes(graphql, owner, name, sha, paths)
         )
 
+    # A range that changes the gate policy or the deploy workflow is judged by a human:
+    # neither endpoint policy may vouch for an intervening policy change.
+    for commit in comparison.get("commits") or []:
+        files = detail(str(commit.get("sha"))).get("files")
+        if not isinstance(files, list) or any(
+            path in _GATE_POLICY_PATHS for item in files for path in (item.get("filename"), item.get("previous_filename"))
+        ):
+            return {"ok": False, "missing": [], "reason": "range changes the gate policy or deploy workflow; reviewer required"}
     return founder_go_release_evidence(
         repo=repo, comparison=comparison, fetch_pr=fetch_pr,
         effective_class=lambda sha, body: commit_effective_class(body, detail(sha).get("files")),

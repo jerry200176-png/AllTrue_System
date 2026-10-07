@@ -1454,10 +1454,14 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         result = self._evidence(
             self._range(10, 11, 12),
             {10: self._pr(10), 11: self._pr(11, self.R3 + self.go()),
-             12: self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2")},
+             12: self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2\nRollback: revert")},
             {10: 1, 11: 3, 12: 2},
         )
         self.assertTrue(result["ok"], result)
+        # Codex P1: an R2 PR in a mixed range still needs rollback evidence.
+        no_rollback = self._evidence(self._range(11, 12), {11: self._pr(11, self.R3 + self.go()),
+                                     12: self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2")}, {11: 3, 12: 2})
+        self.assertIn("R2 without rollback evidence", no_rollback["reason"])
 
     def test_go_is_only_the_exact_token_for_this_pr_and_head(self):
         bad = {
@@ -1468,6 +1472,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
             "two heads": self.go() + "\n" + self.go(head="d" * 40),
             "impossible date": self.go().replace("2026-10-07", "2026-19-39"),
             "zero date": self.go().replace("2026-10-07", "2026-00-00"),
+            "dated after the merge": self.go().replace("2026-10-07", "2026-10-08"),
             "fence": "```\n" + self.go() + "\n```", "unterminated fence": "```\n" + self.go(),
             "html comment": "<!--\n" + self.go() + "\n-->", "quote": "> " + self.go(),
             "indented code": "    " + self.go(), "mid-line": "see " + self.go(),
@@ -1557,30 +1562,34 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         def graphql(query):
             if "entries" in query:
                 mode = merged_mode if f'"{sha}:' in query else 33188
-                return {"data": {"repository": {"p0": {"entries": [{"name": "deploy.yml", "mode": mode}]}}}}
+                return {"data": {"repository": {"p0": {"entries": [{"name": "run.sh", "mode": mode}]}}}}
             return {"data": {"repository": {"pullRequest": {
                 "lastEditedAt": edited, "editor": {"login": "jerry200176-png"} if edited else None}}}}
         return dict(repo=self.REPO, base_sha="1" * 40, target_sha="2" * 40, api=api, graphql=graphql)
 
     def test_range_evaluation_fetches_its_own_evidence_and_fails_closed(self):
         comparison = dict(self._range(11), status="ahead")
-        protected = {"files": [{"filename": ".github/workflows/deploy.yml", "status": "modified", "patch": "@@ -1 +1 @@\n+x"}]}
-        renamed = {"files": [{"filename": "docs/moved.yml", "patch": "+x", "previous_filename": ".github/workflows/deploy.yml"}]}
+        protected = {"files": [{"filename": "scripts/run.sh", "status": "modified", "patch": "@@ -1 +1 @@\n+x"}]}
+        renamed = {"files": [{"filename": "docs/moved.yml", "patch": "+x", "previous_filename": ".github/workflows/production-case-dump.yml"}]}
+        migration = {"files": [{"filename": "backend/database/migrations/2026_x.php", "status": "added", "patch": "+x"}]}
+        policy = {"files": [{"filename": "scripts/governance/autonomy_gate.py", "status": "modified", "patch": "+x"}]}
         good = self._pr(11, self.R3 + self.go())
         self.assertTrue(evaluate_founder_go_range(**self._api(comparison, protected, good))["ok"])
         for name, kwargs in {
             "no GO": dict(comparison=comparison, detail=protected, pr=self._pr(11, "Risk-Class: R1\nAutonomy-Tier: T1")),
             "rename keeps protected source": dict(comparison=comparison, detail=renamed, pr=self._pr(11, "Risk-Class: R1\nAutonomy-Tier: T1")),
             "approved head had another effect": dict(comparison=comparison, detail=protected, pr=good,
-                                                     approved_files=[{"filename": ".github/workflows/deploy.yml", "status": "modified", "patch": "@@ -1 +1 @@\n+y"}]),
+                                                     approved_files=[{"filename": "scripts/run.sh", "status": "modified", "patch": "@@ -1 +1 @@\n+y"}]),
             "same line at another hunk": dict(comparison=comparison, detail=protected, pr=good,
-                                              approved_files=[{"filename": ".github/workflows/deploy.yml", "status": "modified", "patch": "@@ -9 +9 @@\n+x"}]),
+                                              approved_files=[{"filename": "scripts/run.sh", "status": "modified", "patch": "@@ -9 +9 @@\n+x"}]),
             "behind (downgrade)": dict(comparison=dict(comparison, status="behind"), detail=protected, pr=good),
             "identical": dict(comparison=dict(comparison, status="identical"), detail=protected, pr=good),
             "no file list": dict(comparison=comparison, detail={}, pr=good),
             "missing patch": dict(comparison=comparison, detail={"files": [{"filename": "backend/app/X.php"}]}, pr=good),
             "300-file cap": dict(comparison=comparison, pr=good,
                                  detail={"files": [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(300)]}),
+            "migration under a GO": dict(comparison=comparison, detail=migration, pr=good),
+            "range changes the gate policy": dict(comparison=comparison, detail=policy, pr=good),
             "file mode changed after approval": dict(comparison=comparison, detail=protected, pr=good, merged_mode=33261),
             "body edited after merge": dict(comparison=comparison, detail=protected, pr=good, edited="2026-10-07T03:00:00Z"),
         }.items():
