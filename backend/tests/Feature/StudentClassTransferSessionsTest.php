@@ -576,7 +576,7 @@ class StudentClassTransferSessionsTest extends TestCase
             ]);
             $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17']);
             $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
-            $this->createSchedule((int) $target->ID, $student->id, '2026-08-17', 'extra');
+            $this->createSchedule((int) $target->ID, $student->id, '2026-08-17', 'normal');
 
             $this->postJson(
                 "/api/v1/student-classes/{$source->ID}/transfer-sessions",
@@ -586,6 +586,37 @@ class StudentClassTransferSessionsTest extends TestCase
 
             $this->assertDatabaseHas('ClassSession', [
                 'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-24', 'StartTime' => '23:00:00',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /** In-app #380: a stale target projection (only a cancelled session behind it) does not push the refill later. */
+    public function test_refill_ignores_a_stale_target_schedule_projection(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17']);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $this->createClassSession((int) $target->ID, '2026-08-17', 'cancelled');
+            $this->createSchedule((int) $target->ID, $student->id, '2026-08-17', 'normal');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-17',
+                'StartTime' => '23:00:00', 'Status' => 'scheduled',
             ]);
         } finally {
             Carbon::setTestNow();

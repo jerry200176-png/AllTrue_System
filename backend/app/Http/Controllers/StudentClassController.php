@@ -5287,9 +5287,13 @@ class StudentClassController extends Controller
                 ->whereNull('original_schedule_id')
                 ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('StartDate')), fn ($q, $d) => $q->whereDate('schedule_date', '>=', $d))
                 ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('EndDate')), fn ($q, $d) => $q->whereDate('schedule_date', '<=', $d))
-                ->get(['schedule_date', 'start_time', 'end_time']);
-            foreach ($targetSchedules as $row) {
-                $targetRows[(string) ContractSessionSchedule::normalizeDateString($row->schedule_date)][] = [(string) $row->start_time, (string) $row->end_time];
+                ->get(['id', 'status', 'student_course_id', 'schedule_date', 'start_time', 'end_time']);
+            // Same stale-projection rule as the write guard: a schedule backed only by a cancelled/leave session
+            // or moved elsewhere that day does not hold the slot.
+            foreach ($targetSchedules->groupBy(fn ($r) => (string) ContractSessionSchedule::normalizeDateString($r->schedule_date)) as $date => $rows) {
+                foreach (app(\App\Services\StaleScheduleExceptionFilter::class)->rejectStale($rows->all(), (string) $date) as $row) {
+                    $targetRows[(string) $date][] = [(string) $row->start_time, (string) $row->end_time];
+                }
             }
         }
 
