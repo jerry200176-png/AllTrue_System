@@ -875,6 +875,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R140. 同類型回報的分類規則只能有一份設定，且只能提醒、不能自動關單（in-app 閉環 2A，2026-10-08）
+
+- **現象**：同一類問題（例如繳費顯示）被分開當成多張單各修一次，修完又在隔壁頁面再壞（F13 的跨頁版本）。
+- **強制規則**：類別判斷只讀 `backend/config/bug_families.php`，在正式站內算出，只輸出類別名稱；公開 repo 看不到回報文字。連結提醒只對 owner／機器人建立的 issue、用標記留言保持冪等，並且永遠不得自動關閉或合併「疑似重複」的單。
+- **測試必補**：`BugFamilyTest`（分數、平手、無類別、設定檔名稱可當標籤）、`BugAutoIntakeCommandTest`（候選只多 `family`）、`scripts/ci/bug-auto-intake-family.test.mjs`（標籤白名單、dry-run 不寫、失敗不擋收單、不得有關單指令）。
+
 ### R64. 星期欄位有兩套慣例並存，比對前必先正規化（ISO 7=週日 vs JS 0=週日）
 
 - **觸發情境**：新店月結課（週日 10-12／13-15）續約後繳費通知金額顯示 0 元（in-app #190／GitHub #1096）。`StudentClass` 鏈 1695/1696→2026/2027 連續兩期 `SessionCount=0、Charge=0`，Invoice `TotalAmount=0`；主任被迫手動核帳又登進 0 元。
