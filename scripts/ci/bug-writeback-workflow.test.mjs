@@ -561,9 +561,16 @@ for (const [id, revision, issue] of [
 // written before the rule (already sent; not re-sent by decision) and stay as-is.
 {
   const legacyWithoutConfirm = new Set([242,243,208,211,210,207,205,198,212,214,213,216,217,218,219,220,221,224,225,226,227,228,229,230,231,232,233,234,236,239,244,245,246,247,249,250,252,253,255,256,259,270,257,258,260,261,264,265,266,267,272,275,276,273,274,271,269,262,263,277,279,280,281,282,283,284,287,289,294,298,291,301,307,309,310,312,304,305,306,297,314,313,321,320,324,332,337,323,317,326,335,336,329,339,348,367,362,366,315,353,350,363,325,327,351,347,296,334,318,319,328,292,316,331,370,371,372,373,368,330,293,359,358,365,352,295,374,375,364,343]);
-  for (const m of phaseCSource.matchAll(/\n            (\d+) => \[\n              "reply" => "(.*?)",\n/g)) {
-    if (legacyWithoutConfirm.has(Number(m[1]))) continue;
-    assert.ok(m[2].includes('確認已修好') && m[2].includes('問題仍存在'), `Phase-C reply ${m[1]} must offer 「確認已修好」 and 「問題仍存在」`);
+  // Parse every numeric entry block regardless of indentation, field order or wrapping, and
+  // prove each discovered block has a reply before checking it.
+  const keys = [...phaseCSource.matchAll(/^\s*(\d+)\s*=>\s*\[/gm)].map((m) => Number(m[1]));
+  const blocks = [...phaseCSource.matchAll(/^\s*(\d+)\s*=>\s*\[([\s\S]*?)^\s*\],?\s*$/gm)];
+  assert.equal(blocks.length, keys.length, 'every allowlist entry must parse as one block');
+  for (const [, id, body] of blocks) {
+    const reply = body.match(/"reply"\s*=>\s*"([\s\S]*?)",\s*$/m);
+    assert.ok(reply, `Phase-C entry ${id} must have a reply`);
+    if (legacyWithoutConfirm.has(Number(id))) continue;
+    assert.ok(reply[1].includes('確認已修好') && reply[1].includes('問題仍存在'), `Phase-C reply ${id} must offer 「確認已修好」 and 「問題仍存在」`);
   }
 }
 console.log('bug-writeback-workflow.test.mjs: ok');
