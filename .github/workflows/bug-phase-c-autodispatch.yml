@@ -39,9 +39,15 @@ jobs:
         run: |
           set -euo pipefail
           # Base = head of the last SUCCESSFUL auto-dispatch run, so a push whose run was dropped by the
-          # concurrency group (only one pending run is kept) is still covered. First run: the push base.
+          # concurrency group (only one pending run is kept) is still covered. With no success yet, use the
+          # parent of the commit that added this workflow, so a failed first batch is carried forward
+          # instead of resetting to each push's own parent.
           BEFORE="$(gh run list -w bug-phase-c-autodispatch.yml -b main -e push -s success -L 1 --json headSha -q '.[0].headSha // empty')"
-          BEFORE="${BEFORE:-$PUSH_BEFORE}"
+          if [ -z "$BEFORE" ]; then
+            added="$(git log --diff-filter=A --format=%H -1 -- .github/workflows/bug-phase-c-autodispatch.yml)"
+            BEFORE="$(git rev-parse "${added:-HEAD}^" 2>/dev/null || true)"
+            BEFORE="${BEFORE:-$PUSH_BEFORE}"
+          fi
           [[ "$BEFORE" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::missing push base"; exit 1; }
           # Integrity: the base must be an ancestor of this main commit, never an unrelated SHA.
           git merge-base --is-ancestor "$BEFORE" HEAD || { echo "::error::diff base $BEFORE is not an ancestor of HEAD"; exit 1; }
@@ -70,14 +76,15 @@ jobs:
           remaining="$IDS"
           for id in $IDS; do
             [[ "$id" =~ ^[1-9][0-9]*$ ]] || { echo "::error::bad id $id"; exit 1; }
-            started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            known="$(gh run list -w bug-phase-c-allowlist.yml -e workflow_dispatch -L 50 --json databaseId -q '.[].databaseId' | tr '\n' ' ')"
             gh workflow run bug-phase-c-allowlist.yml --ref main -f bug_id="$id"
             run=""
             for _ in $(seq 1 30); do
               sleep 6
-              # Only a workflow_dispatch run created after our dispatch can be ours.
-              run="$(gh run list -w bug-phase-c-allowlist.yml -e workflow_dispatch -L 5 --json databaseId,createdAt \
-                -q "[.[] | select(.createdAt >= \"$started\")] | sort_by(.createdAt) | .[0].databaseId // empty")"
+              # Ours = the workflow_dispatch run whose ID was not in the snapshot taken before dispatching
+              # (the concurrency group serialises this job, so only manual dispatches could race it).
+              run="$(gh run list -w bug-phase-c-allowlist.yml -e workflow_dispatch -L 50 --json databaseId \
+                -q '.[].databaseId' | grep -vxFf <(printf '%s\n' $known) | sort -n | head -1 || true)"
               [ -n "$run" ] && break
             done
             fail() { echo "::error::$1. Not processed (re-dispatch after fixing): $remaining"; exit 1; }
@@ -85,10 +92,11 @@ jobs:
             gh run watch "$run" --exit-status >/dev/null || fail "Phase-C run $run failed for in-app #$id (rev not deployed yet?)"
             ok=""
             for _ in 1 2 3 4 5; do
-              if gh run view "$run" --log 2>/dev/null | grep -Eq "\"id\":${id},\"action\":\"(resolved|skip_already)\""; then ok=1; break; fi
+              log="$(gh run view "$run" --log 2>/dev/null || true)"
+              if grep -Eq "\"id\":${id},\"action\":\"(resolved|skip_already)\"" <<<"$log"; then ok=1; break; fi
               sleep 10
             done
             [ -n "$ok" ] || fail "in-app #$id not reported resolved by run $run"
             echo "in-app #$id resolved by run $run"
-            remaining="$(printf '%s\n' $remaining | grep -vx "$id" | tr '\n' ' ')"
+            remaining="$(printf '%s\n' $remaining | { grep -vx "$id" || true; } | tr '\n' ' ')"
           done
