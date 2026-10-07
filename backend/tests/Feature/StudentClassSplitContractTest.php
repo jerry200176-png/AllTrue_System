@@ -157,6 +157,41 @@ class StudentClassSplitContractTest extends TestCase
         $this->assertDatabaseHas('security_audit_events', ['event_type' => 'student_class.contract_transfer']);
     }
 
+    /**
+     * #3502 on 轉課: a new slot set that adds a weekday makes the moved rows' sync remap them on the new cadence,
+     * so the guard must not report the excess row as overlapping itself.
+     */
+    public function test_transfer_adding_a_weekday_is_not_a_false_self_overlap(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-30 10:00:00', 'Asia/Taipei'));
+        try {
+            $token = $this->createDirectorToken();
+            [, $source] = $this->createTenSessionSource(); // 8 attended in August, 2 left
+            foreach (['15:00', '17:00'] as $start) {
+                DB::table('ClassSession')->insert([
+                    'StudentClassID' => $source->ID, 'SessionDate' => '2026-10-05', 'StartTime' => $start . ':00',
+                    'EndTime' => Carbon::parse($start)->addHour()->format('H:i:s'), 'Status' => 'scheduled', 'IsContractException' => 0,
+                ]);
+            }
+
+            $res = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+                ->postJson("/api/v1/student-classes/{$source->ID}/split-contract", [
+                    'subject' => 'Math', 'start_date' => '2026-10-05', 'reason' => '改週一＋週二',
+                    'slots' => [
+                        ['weekday' => 1, 'time' => '16:30', 'duration_minutes' => 60],
+                        ['weekday' => 2, 'time' => '15:00', 'duration_minutes' => 60],
+                    ],
+                ]);
+            $res->assertCreated();
+            $starts = DB::table('ClassSession')->where('StudentClassID', (int) $res->json('new_course.id'))->where('Status', 'scheduled')
+                ->orderBy('SessionDate')->get(['SessionDate', 'StartTime'])
+                ->map(fn ($r) => substr((string) $r->SessionDate, 0, 10) . ' ' . substr((string) $r->StartTime, 0, 5))->all();
+            $this->assertSame(['2026-10-05 16:30', '2026-10-06 15:00'], $starts);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_transfer_refuses_unmarked_session_before_cutover_and_unclear_paid_contracts(): void
     {
         $token = $this->createDirectorToken();
