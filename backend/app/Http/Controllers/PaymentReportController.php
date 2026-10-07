@@ -1237,13 +1237,30 @@ class PaymentReportController extends Controller
             return null;
         }
 
-        if (strtolower(trim((string) ($course->ClassType ?? ''))) !== 'tutoring') {
+        if (strtolower(trim((string) ($course->ClassType ?? ''))) === 'tutoring') {
+            return response()->json([
+                'message' => '輔導課無須繳費，不能建立付款回報、收款或付款義務。請先檢查課程帳務資料。',
+                'code' => 'tutoring_no_payment_obligation',
+            ], 422);
+        }
+        // #3203: any course the resolver calls `free` (e.g. a 0-total trial) has no payment obligation either.
+        // Only 0-charge courses can be free; paid courses skip this and keep the later fail-closed guards.
+        if ((int) ($course->Charge ?? 0) > 0) {
             return null;
         }
+        $id = (int) $course->getKey();
+        try {
+            $free = (app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id])[$id]['status'] ?? null) === 'free';
+        } catch (\Throwable $e) {
+            $free = false; // the duplicate-payment guard below fails closed on its own
+        }
+        if ($free) {
+            return response()->json([
+                'message' => '這門課金額為 0，無須繳費，不能建立付款回報、收款或付款義務。',
+                'code' => 'zero_fee_no_payment_obligation',
+            ], 422);
+        }
 
-        return response()->json([
-            'message' => '輔導課無須繳費，不能建立付款回報、收款或付款義務。請先檢查課程帳務資料。',
-            'code' => 'tutoring_no_payment_obligation',
-        ], 422);
+        return null;
     }
 }
