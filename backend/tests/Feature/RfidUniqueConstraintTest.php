@@ -186,4 +186,16 @@ class RfidUniqueConstraintTest extends TestCase
         $this->assertSame('CARD-OTHER', $other->fresh()->RFID);
     }
 
+
+    /** @test #3740 review: no unbind while the student is signed in today (the card must close that sign-in). */
+    public function unbind_card_refuses_while_student_is_signed_in(): void
+    {
+        $token = $this->makeDirectorToken(1, 'unbindOpen@test.com');
+        $owner = $this->makeStudent(1, 'CARD-OPEN');
+        \App\Models\StudentSignIn::query()->insert(['StudentID' => $owner->id, 'SignInDT' => now()->toDateTimeString()]);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->deleteJson("/api/v1/students/{$owner->id}/bind-card")->assertStatus(409)->assertJsonPath('error', 'open_sign_in');
+        $this->assertSame('CARD-OPEN', $owner->fresh()->RFID);
+    }
+
 }
