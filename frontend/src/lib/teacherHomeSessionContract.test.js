@@ -46,6 +46,20 @@ assert.equal(source.includes('isProjected: !!s.isProjected'), true,
 assert.equal(source.includes('!ev.isProjected'), true,
   'projected weekly slots must not invoke ClassSession-only actions before materialization');
 
+// #3760: submitted pending must stay visible as「已送出待審」with a view CTA;
+// work queue (todayPendingEvents) still only lists missing / changes_requested.
+assert.match(source, /pending:\s*'已送出待審'/,
+  'TeacherHome pending chip must read 已送出待審 after submit');
+assert.match(source, /ev\.formStatus === 'pending'/,
+  'TeacherHome must expose a view path for submitted-pending assessments');
+assert.match(source, /查看已送出/,
+  'submitted-pending CTA must be labeled for viewing, not filling');
+assert.match(
+  source,
+  /formStatus === 'missing' \|\| ev\.formStatus === 'changes_requested'/,
+  'today work queue must still exclude plain pending (director review) rows',
+);
+
 // #236: a reactive week reload must retain the last good projection while the
 // next request is loading, and must not let an older response replace it.
 assert.equal(source.includes('weekSessions.value = [];'), false,

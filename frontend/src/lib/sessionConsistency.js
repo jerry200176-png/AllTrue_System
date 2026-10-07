@@ -27,6 +27,18 @@ export function learningSessionStatusLabel(status) {
   return '未填';
 }
 
+/**
+ * class-sessions coalesce null LR status to the literal string "missing".
+ * That string is truthy, so `learningRecordStatus || recordStatus` never
+ * falls back to a LearningRecords list row — teacher schedule stays 「未填」
+ * after a successful submit while the director queue shows pending.
+ */
+export function normalizeLearningRecordStatus(status) {
+  const s = String(status || '').toLowerCase().trim();
+  if (!s || s === 'missing') return '';
+  return s;
+}
+
 export function resolveLearningSessionState({
   sessionStatus,
   learningRecordStatus,
@@ -35,7 +47,9 @@ export function resolveLearningSessionState({
   sessionStarted = false,
 } = {}) {
   const normalizedSessionStatus = String(sessionStatus || '').toLowerCase();
-  const baseStatus = String(learningRecordStatus || recordStatus || 'missing');
+  const baseStatus = normalizeLearningRecordStatus(learningRecordStatus)
+    || normalizeLearningRecordStatus(recordStatus)
+    || 'missing';
   let formStatus = baseStatus;
 
   if (normalizedSessionStatus === 'absent') formStatus = 'absent';

@@ -3926,6 +3926,16 @@ const submitForm = async () => {
     if (shouldLiftDefaultWindowForDate({ savedDate, windowStart: resolvedDefaultWindowStart.value })) {
       defaultWindowDisabled.value = true;
     }
+    // #3760: after submit, land on 待審核 and drop「未填優先」so the filled pending
+    // row stays visible; confirm with a short toast (director still reviews pending).
+    if (isTeacher.value) {
+      teacherFilterTab.value = 'pending';
+      if (teacherPriorityFilter.value === 'unfilled') {
+        teacherPriorityFilter.value = 'all';
+      }
+      downloadToast.value = '已送出，等待主任核准';
+      setTimeout(() => { downloadToast.value = ''; }, 3000);
+    }
     await fetchRecords();
     if (!ownerIsCurrent()) return;
     if (localRecord?.id) {

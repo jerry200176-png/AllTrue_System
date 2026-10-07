@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   buildTeacherClassParams,
   classifyAttendanceSessionRows,
+  normalizeLearningRecordStatus,
   resolveLearningSessionState,
 } from './sessionConsistency.js';
 
@@ -21,6 +22,29 @@ assert.equal(absentState.formStatus, 'absent');
 assert.equal(absentState.label, '缺席');
 assert.equal(absentState.fillLocked, true);
 assert.equal(absentState.recordIdAllowed, false);
+
+// Teacher schedule join may still say "missing" after submit while /learning-records
+// already has pending — literal "missing" must not block recordStatus fallback (#3760).
+assert.equal(normalizeLearningRecordStatus('missing'), '');
+assert.equal(normalizeLearningRecordStatus('pending'), 'pending');
+const submittedViaListFallback = resolveLearningSessionState({
+  sessionStatus: 'attended',
+  learningRecordStatus: 'missing',
+  recordStatus: 'pending',
+  sessionStarted: true,
+});
+assert.equal(submittedViaListFallback.formStatus, 'pending');
+assert.equal(submittedViaListFallback.label, '待審');
+assert.equal(submittedViaListFallback.fillLocked, false);
+assert.equal(submittedViaListFallback.recordIdAllowed, true);
+const trueMissing = resolveLearningSessionState({
+  sessionStatus: 'attended',
+  learningRecordStatus: 'missing',
+  recordStatus: 'missing',
+  sessionStarted: true,
+});
+assert.equal(trueMissing.formStatus, 'missing');
+assert.equal(trueMissing.label, '未填');
 
 const attendance = classifyAttendanceSessionRows([
   {

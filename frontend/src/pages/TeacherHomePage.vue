@@ -312,6 +312,16 @@
               >
                 <span class="material-symbols-outlined">edit_note</span>
               </button>
+              <button
+                v-else-if="!ev.isProjected && ev.formStatus === 'pending'"
+                type="button"
+                class="th-fill-btn th-view-submitted-btn"
+                @click="goFillRecord(ev)"
+                title="查看已送出評量"
+                aria-label="查看已送出、等待主任核准的評量"
+              >
+                查看
+              </button>
               <span v-else-if="ev.formStatus === 'approved'" class="th-check-icon material-symbols-outlined">check_circle</span>
               <button
                 v-if="!ev.isProjected"
@@ -875,7 +885,8 @@ function branchShortName(branchId) {
 }
 
 function formStatusLabel(status) {
-  const map = { pending: '待審', approved: '已核准', rejected: '退回', changes_requested: '需修改', missing: '', substituted: '代課', leave: '請假', leave_requested: '請假(待審)' };
+  // pending = submitted, awaiting director — keep visible so teachers are not told「沒資料」(#3760).
+  const map = { pending: '已送出待審', approved: '已核准', rejected: '退回', changes_requested: '需修改', missing: '', substituted: '代課', leave: '請假', leave_requested: '請假(待審)' };
   return map[status] || status;
 }
 
@@ -1433,6 +1444,10 @@ onBeforeUnmount(() => {
   cursor: pointer; color: var(--ds-primary-text); transition: var(--transition); flex-shrink: 0;
 }
 .th-fill-btn:hover { background: var(--ds-primary); color: var(--ds-on-primary); }
+.th-view-submitted-btn {
+  width: auto; min-width: 44px; padding: 0 10px;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
 
 .th-report-btn {
   background: transparent; border: none; border-radius: 8px;
