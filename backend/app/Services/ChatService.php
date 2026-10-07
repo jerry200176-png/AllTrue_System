@@ -405,7 +405,9 @@ class ChatService
         $sender     = User::find($senderUserId);
         $senderName = $sender->Name ?? 'Unknown';
 
-        $ext      = $file->getClientOriginalExtension();
+        // Content-sniffed, not client-supplied: a JPEG named x.html must not
+        // be served from /storage as text/html (stored XSS).
+        $ext      = $file->extension();
         $filename = time() . '_' . Str::random(8) . ($ext ? '.' . $ext : '');
         $path     = $file->storeAs("chat-attachments/{$threadId}", $filename, 'public');
 
