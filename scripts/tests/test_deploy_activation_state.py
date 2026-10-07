@@ -1466,6 +1466,8 @@ class FounderGoAutoActivationTest(unittest.TestCase):
             "rejects": "Founder GO: Jerry 2026-10-07 rejects #11 at " + self.HEAD,
             "other PR": self.go(12),
             "two heads": self.go() + "\n" + self.go(head="d" * 40),
+            "impossible date": self.go().replace("2026-10-07", "2026-19-39"),
+            "zero date": self.go().replace("2026-10-07", "2026-00-00"),
             "fence": "```\n" + self.go() + "\n```", "unterminated fence": "```\n" + self.go(),
             "html comment": "<!--\n" + self.go() + "\n-->", "quote": "> " + self.go(),
             "indented code": "    " + self.go(), "mid-line": "see " + self.go(),
@@ -1483,6 +1485,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
 
     def test_go_needs_rollback_evidence_and_the_approved_scope(self):
         for rollback in ("", "Rollback: impossible\n", "Rollback: no rollback exists\n", "Rollback: revert this PR (impossible)\n",
+                         "Rollback: revert this PR\nRollback: impossible\n", "Rollback: revert this PR\nThe migration is irreversible.\n",
                          "```\nRollback: revert this PR\n```\n"):
             with self.subTest(rollback=rollback):
                 body = "Risk-Class: R3\nAutonomy-Tier: T3\n" + rollback + self.go()
@@ -1539,7 +1542,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
             with self.subTest(comparison=comparison):
                 self.assertFalse(self._evidence(comparison, {11: self._pr(11)}, {11: 1})["ok"])
 
-    def _api(self, comparison, detail, pr, approved_files=None, edited=None):
+    def _api(self, comparison, detail, pr, approved_files=None, edited=None, merged_mode=33188):
         sha = f"{11:040x}"
 
         def api(path):
@@ -1551,8 +1554,12 @@ class FounderGoAutoActivationTest(unittest.TestCase):
                 return dict(detail, parents=[{"sha": "9" * 40}])
             return pr
 
-        graphql = lambda query: {"data": {"repository": {"pullRequest": {
-            "lastEditedAt": edited, "editor": {"login": "jerry200176-png"} if edited else None}}}}
+        def graphql(query):
+            if "entries" in query:
+                mode = merged_mode if f'"{sha}:' in query else 33188
+                return {"data": {"repository": {"p0": {"entries": [{"name": "deploy.yml", "mode": mode}]}}}}
+            return {"data": {"repository": {"pullRequest": {
+                "lastEditedAt": edited, "editor": {"login": "jerry200176-png"} if edited else None}}}}
         return dict(repo=self.REPO, base_sha="1" * 40, target_sha="2" * 40, api=api, graphql=graphql)
 
     def test_range_evaluation_fetches_its_own_evidence_and_fails_closed(self):
@@ -1574,6 +1581,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
             "missing patch": dict(comparison=comparison, detail={"files": [{"filename": "backend/app/X.php"}]}, pr=good),
             "300-file cap": dict(comparison=comparison, pr=good,
                                  detail={"files": [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(300)]}),
+            "file mode changed after approval": dict(comparison=comparison, detail=protected, pr=good, merged_mode=33261),
             "body edited after merge": dict(comparison=comparison, detail=protected, pr=good, edited="2026-10-07T03:00:00Z"),
         }.items():
             with self.subTest(name=name):

@@ -9,9 +9,10 @@ evidence as a hold.
 from __future__ import annotations
 
 import fnmatch
+import json
 import re
 from collections import Counter
-from datetime import datetime
+from datetime import date, datetime
 from typing import Callable, Iterable, Mapping
 
 
@@ -1170,9 +1171,11 @@ def is_founder_approval_eligible(
 #   Founder GO: Jerry 2026-10-07 approves #3737 at <40-hex head SHA>
 # Free text never counts. Rollback must be the exact line "Rollback: revert this PR".
 _FOUNDER_GO_TOKEN_RE = re.compile(
-    r"^Founder GO: Jerry 20[0-9]{2}-[01][0-9]-[0-3][0-9] approves #([1-9][0-9]*) at ([0-9a-f]{40})$"
+    r"^Founder GO: Jerry (20[0-9]{2}-[01][0-9]-[0-3][0-9]) approves #([1-9][0-9]*) at ([0-9a-f]{40})$"
 )
 _ROLLBACK_TOKEN_RE = re.compile(r"^(?:\*\*)?Rollback:(?:\*\*)? revert this PR\.?$")
+# Any other prose that talks about rollback/reversibility contradicts or qualifies the token.
+_ROLLBACK_MENTION_RE = re.compile(r"roll[ -]?back|revers|revert|undo|recover", re.IGNORECASE)
 # Raw-text HTML renders its content literally; a body using it never carries a GO.
 _RAW_HTML_RE = re.compile(r"<\s*/?\s*(?:pre|code|textarea|script|style|xmp|plaintext|listing|samp|kbd|tt)\b", re.IGNORECASE)
 _TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
@@ -1210,9 +1213,19 @@ def founder_go_approved_head(body: str, number: int) -> str | None:
     """The head SHA a GO token approves for PR ``number``; None if absent, ambiguous or no rollback line."""
 
     lines = _prose_lines(body)
-    if lines is None or not any(_ROLLBACK_TOKEN_RE.match(line) for line in lines):
+    if lines is None:
         return None
-    heads = {m.group(2) for m in map(_FOUNDER_GO_TOKEN_RE.match, lines) if m and int(m.group(1)) == number}
+    rollback = [line for line in lines if _ROLLBACK_MENTION_RE.search(line) and not _FOUNDER_GO_TOKEN_RE.match(line)]
+    if not rollback or any(not _ROLLBACK_TOKEN_RE.match(line) for line in rollback):
+        return None
+    heads = set()
+    for match in map(_FOUNDER_GO_TOKEN_RE.match, lines):
+        if match and int(match.group(2)) == number:
+            try:
+                date.fromisoformat(match.group(1))
+            except ValueError:
+                return None
+            heads.add(match.group(3))
     return heads.pop() if len(heads) == 1 else None
 
 
@@ -1312,6 +1325,26 @@ def _exact_diff(files: object) -> list[tuple[str, str, str, str]] | None:
     )
 
 
+def _tree_modes(graphql: Callable[[str], object], owner: str, name: str, rev: str, paths: list[str]) -> dict | None:
+    """Git modes of ``paths`` at ``rev`` (None when any entry is missing)."""
+
+    if not paths:
+        return {}
+    aliases = "".join(
+        f'p{i}: object(expression:{json.dumps(rev + ":" + path.rpartition("/")[0])}) {{ ... on Tree {{ entries {{ name mode }} }} }} '
+        for i, path in enumerate(paths)
+    )
+    repository = graphql(f"{{repository(owner:{json.dumps(owner)},name:{json.dumps(name)}){{ {aliases}}}}}")["data"]["repository"]
+    modes = {}
+    for i, path in enumerate(paths):
+        entries = (repository.get(f"p{i}") or {}).get("entries") or []
+        found = [entry.get("mode") for entry in entries if entry.get("name") == path.rpartition("/")[2]]
+        if len(found) != 1:
+            return None
+        modes[path] = found[0]
+    return modes
+
+
 def evaluate_founder_go_range(
     *, repo: str, base_sha: str, target_sha: str,
     api: Callable[[str], object], graphql: Callable[[str], object],
@@ -1351,7 +1384,13 @@ def evaluate_founder_go_range(
             return False
         merged = _exact_diff(detail(sha).get("files"))
         approved_files = api(f"/repos/{repo}/compare/{parents[0]['sha']}...{approved}").get("files")
-        return merged is not None and _exact_diff(approved_files) == merged
+        if merged is None or _exact_diff(approved_files) != merged:
+            return False
+        # The API patch omits file modes; compare the tree entry modes of every changed path.
+        paths = [str(item.get("filename")) for item in approved_files if item.get("status") != "removed"]
+        return all(_tree_modes(graphql, owner, name, rev, paths) is not None for rev in (approved, sha)) and (
+            _tree_modes(graphql, owner, name, approved, paths) == _tree_modes(graphql, owner, name, sha, paths)
+        )
 
     return founder_go_release_evidence(
         repo=repo, comparison=comparison, fetch_pr=fetch_pr,
