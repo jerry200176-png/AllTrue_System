@@ -778,80 +778,98 @@ jobs:
             $out['courses'] = $rows;
           }} elseif ($case === 'inapp_333_multi_teacher_templates') {{
             // Read-only (#3138 / in-app 333, 2026-10-07). Before #3500, a multi-teacher enrollment wrote every
-            // sibling teacher's weekday/time into each per-teacher contract's week1-6/time1-6 template.
-            // Own slots = (ISO weekday, HH:MM) of the contract's live sessions in its first 14 days (created by
-            // the enrollment itself, which was per-teacher correct). Foreign slot = template slot that is a
-            // sibling's own slot and not this contract's. IDs, dates, times, statuses and flags only (no names).
+            // sibling teacher's weekday/time/duration into each per-teacher contract's week1-6/time1-6/duration1-6.
+            // Siblings: same StudentID + SubjectID, different TeacherID, overlapping StartDate..EndDate.
+            // Own slots: (ISO weekday, HH:MM) of the contract's live sessions in its first 14 days, excluding
+            // reschedule exceptions (IsContractException=1 or a schedule_change_log to_date/to_time match).
+            // Foreign slot: a template slot that is an overlapping sibling's own slot and not this contract's.
+            // Optional student_id input scopes the run (pagination). IDs, dates, slots, statuses, flags only.
             $today = now()->toDateString();
             $dead = ['cancelled', 'voided'];
             $hm = fn ($t) => ($t === null || $t === '') ? null : substr((string) $t, 0, 5);
-            $groups = $db::table('StudentClass')->whereNotNull('StartDate')
-              ->groupBy('StudentID', 'SubjectID', 'StartDate')->havingRaw('COUNT(DISTINCT TeacherID) > 1')
-              ->selectRaw('StudentID as sid, SubjectID as subj, StartDate as start')->get();
-            $contracts = [];
-            $groupRows = [];
+            $hasLog = \\Illuminate\\Support\\Facades\\Schema::hasTable('schedule_change_log');
+            $gq = $db::table('StudentClass')->groupBy('StudentID', 'SubjectID')->havingRaw('COUNT(DISTINCT TeacherID) > 1')
+              ->selectRaw('StudentID as sid, SubjectID as subj');
+            if ($targetStudentId) {{ $gq->where('StudentID', $targetStudentId); }}
+            $groups = $gq->get();
+            $cols = ['ID', 'TeacherID', 'Stop', 'ScheduleMode', 'scheduling_policy', 'StartDate', 'EndDate', 'week', 'time'];
+            for ($i = 1; $i <= 6; $i++) {{ $cols[] = 'week' . $i; $cols[] = 'time' . $i; $cols[] = 'duration' . $i; }}
+            $contracts = []; $groupRows = [];
             foreach ($groups as $g) {{
-              $sibs = $db::table('StudentClass as sc')->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
-                ->where('sc.StudentID', $g->sid)->where('sc.SubjectID', $g->subj)->where('sc.StartDate', $g->start)
-                ->get(['sc.ID', 'sc.TeacherID', 'sc.Stop', 'sc.ScheduleMode', 'st.CampusID',
-                  'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
-                  'sc.time1', 'sc.time2', 'sc.time3', 'sc.time4', 'sc.time5', 'sc.time6']);
-              $tpl = []; $own = []; $teacher = [];
-              foreach ($sibs as $c) {{
-                $id = (int) $c->ID; $teacher[$id] = (int) $c->TeacherID; $tpl[$id] = [];
+              $sibs = $db::table('StudentClass')->where('StudentID', $g->sid)->where('SubjectID', $g->subj)->get($cols);
+              $campus = (int) ($db::table('Student')->where('id', $g->sid)->value('CampusID') ?? 0);
+              $tpl = []; $own = []; $c = [];
+              foreach ($sibs as $row) {{
+                $id = (int) $row->ID; $c[$id] = $row; $tpl[$id] = []; $own[$id] = [];
                 for ($i = 1; $i <= 6; $i++) {{
-                  $w = $c->{{'week' . $i}}; $t = $hm($c->{{'time' . $i}});
-                  if ($w !== null && $w !== '' && $t !== null) {{ $tpl[$id][(int) $w . '@' . $t] = true; }}
+                  $w = $row->{{'week' . $i}}; $t = $hm($row->{{'time' . $i}});
+                  if ($w !== null && $w !== '' && $t !== null) {{ $tpl[$id][(int) $w . '@' . $t] = ['n' => $i, 'duration' => $row->{{'duration' . $i}} === null ? null : (int) $row->{{'duration' . $i}}]; }}
                 }}
-                $own[$id] = [];
+                if (!$row->StartDate) {{ continue; }}
+                $moved = $hasLog ? $db::table('schedule_change_log')->where('student_course_id', $id)->get(['to_date', 'to_time'])
+                  ->map(fn ($l) => substr((string) $l->to_date, 0, 10) . '@' . $hm($l->to_time))->flip()->all() : [];
                 $early = $db::table('ClassSession')->where('StudentClassID', $id)
-                  ->whereBetween('SessionDate', [$g->start, \\Carbon\\Carbon::parse($g->start)->addDays(13)->toDateString()])
-                  ->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)->get(['SessionDate', 'StartTime']);
-                foreach ($early as $e) {{ $own[$id][\\Carbon\\Carbon::parse($e->SessionDate)->dayOfWeekIso . '@' . $hm($e->StartTime)] = true; }}
+                  ->whereBetween('SessionDate', [$row->StartDate, \\Carbon\\Carbon::parse($row->StartDate)->addDays(13)->toDateString()])
+                  ->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)->where(fn ($q) => $q->whereNull('IsContractException')->orWhere('IsContractException', 0))
+                  ->get(['SessionDate', 'StartTime']);
+                foreach ($early as $e) {{
+                  if (isset($moved[substr((string) $e->SessionDate, 0, 10) . '@' . $hm($e->StartTime)])) {{ continue; }}
+                  $own[$id][\\Carbon\\Carbon::parse($e->SessionDate)->dayOfWeekIso . '@' . $hm($e->StartTime)] = true;
+                }}
               }}
+              $overlaps = fn ($x, $y) => $c[$x]->StartDate && $c[$y]->StartDate && (int) $c[$x]->TeacherID !== (int) $c[$y]->TeacherID
+                && (string) $c[$x]->StartDate <= (string) ($c[$y]->EndDate ?? '9999-12-31') && (string) $c[$y]->StartDate <= (string) ($c[$x]->EndDate ?? '9999-12-31');
               $groupContracts = [];
-              foreach ($sibs as $c) {{
-                $id = (int) $c->ID; $foreign = [];
+              foreach ($c as $id => $row) {{
+                $peers = array_values(array_filter(array_keys($c), fn ($o) => $o !== $id && $overlaps($id, $o)));
+                if (!$peers || !$tpl[$id]) {{ continue; }}
+                $foreign = [];
                 foreach (array_keys($tpl[$id]) as $slot) {{
                   if (isset($own[$id][$slot])) {{ continue; }}
-                  foreach ($own as $sid => $set) {{ if ($sid !== $id && isset($set[$slot])) {{ $foreign[] = $slot; break; }} }}
+                  foreach ($peers as $o) {{ if (isset($own[$o][$slot])) {{ $foreign[] = $slot; break; }} }}
                 }}
-                if (!$foreign) {{ continue; }}
+                $noEvidence = !$own[$id] && collect($peers)->contains(fn ($o) => array_intersect_key($tpl[$id], $tpl[$o]) !== []);
+                if (!$foreign && !$noEvidence) {{ continue; }}
+                $modeReview = (string) $row->ScheduleMode === 'date' || (string) $row->scheduling_policy === 'manual_occurrence';
                 $sessions = [];
-                $rowsAt = $db::table('ClassSession')->where('StudentClassID', $id)->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)
-                  ->orderBy('SessionDate')->get(['id', 'SessionDate', 'StartTime', 'Status']);
-                foreach ($rowsAt as $r) {{
+                foreach ($db::table('ClassSession')->where('StudentClassID', $id)->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)
+                  ->orderBy('SessionDate')->get(['id', 'SessionDate', 'StartTime', 'Status']) as $r) {{
                   $slot = \\Carbon\\Carbon::parse($r->SessionDate)->dayOfWeekIso . '@' . $hm($r->StartTime);
                   if (!in_array($slot, $foreign, true)) {{ continue; }}
                   $date = substr((string) $r->SessionDate, 0, 10);
                   $deducted = $db::table('StudentSingIn')->where('ClassSessionID', $r->id)->whereNull('VoidedAt')->where('SessionDeducted', true)->exists();
                   $record = $db::table('LearningRecord')->where('ClassSessionID', $r->id)->whereNull('VoidedAt')->exists();
-                  $siblingSame = $db::table('ClassSession')->whereIn('StudentClassID', array_diff(array_keys($tpl), [$id]))
-                    ->whereDate('SessionDate', $date)->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$hm($r->StartTime)])
-                    ->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)->exists();
-                  $future = $date > $today && strtolower((string) $r->Status) === 'scheduled' && !$deducted && !$record;
+                  $ledgerNet = (int) $db::table('session_deduction_ledger')->where('student_class_id', $id)->where('class_session_id', $r->id)
+                    ->selectRaw("COALESCE(SUM(CASE WHEN event_type = 'deduct' THEN 1 ELSE -1 END), 0) as n")->value('n');
+                  $siblingSame = $db::table('ClassSession')->whereIn('StudentClassID', $peers)->whereDate('SessionDate', $date)
+                    ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$hm($r->StartTime)])->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)->exists();
+                  $clean = $date > $today && strtolower((string) $r->Status) === 'scheduled' && !$deducted && !$record && $ledgerNet === 0;
+                  $bucket = !$clean ? 'C_past_or_artifact' : ($siblingSame ? 'A_future_duplicate' : ($modeReview ? 'C_review_mode' : 'B_future_misplaced'));
                   $sessions[] = ['session_id' => (int) $r->id, 'date' => $date, 'start' => $hm($r->StartTime), 'status' => (string) $r->Status,
-                    'deducted' => $deducted, 'learning_record' => $record, 'sibling_same_slot' => $siblingSame,
-                    'bucket' => $future ? ($siblingSame ? 'A_future_duplicate' : 'B_future_misplaced') : 'C_past_or_artifact'];
+                    'deducted' => $deducted, 'learning_record' => $record, 'ledger_net' => $ledgerNet, 'sibling_same_slot' => $siblingSame, 'bucket' => $bucket];
                 }}
-                $groupContracts[] = ['course_id' => $id, 'teacher_id' => $teacher[$id], 'campus_id' => (int) ($c->CampusID ?? 0),
-                  'stopped' => (int) ($c->Stop ?? 0) === 1, 'schedule_mode' => (string) $c->ScheduleMode,
-                  'template_slots' => array_keys($tpl[$id]), 'own_slots' => array_keys($own[$id]), 'foreign_slots' => $foreign,
-                  'foreign_sessions' => $sessions];
+                $groupContracts[] = ['course_id' => $id, 'teacher_id' => (int) $row->TeacherID, 'campus_id' => $campus,
+                  'stopped' => (int) ($row->Stop ?? 0) === 1, 'schedule_mode' => (string) $row->ScheduleMode, 'scheduling_policy' => (string) $row->scheduling_policy,
+                  'start_date' => (string) $row->StartDate, 'end_date' => (string) $row->EndDate, 'legacy_week' => $row->week, 'legacy_time' => $hm($row->time),
+                  'template' => $tpl[$id], 'own_slots' => array_keys($own[$id]), 'foreign_slots' => $foreign, 'peer_course_ids' => $peers,
+                  'review_only' => $noEvidence ? 'no_own_evidence' : null, 'foreign_sessions' => $sessions];
               }}
               if ($groupContracts) {{
-                $groupRows[] = ['student_id' => (int) $g->sid, 'subject_id' => (int) $g->subj, 'start_date' => (string) $g->start,
-                  'sibling_course_ids' => array_keys($tpl), 'contaminated' => $groupContracts];
+                $groupRows[] = ['student_id' => (int) $g->sid, 'subject_id' => (int) $g->subj, 'contaminated' => $groupContracts];
                 foreach ($groupContracts as $gc) {{ $contracts[] = $gc; }}
               }}
             }}
-            $all = collect($contracts)->flatMap(fn ($c) => $c['foreign_sessions']);
+            $all = collect($contracts)->flatMap(fn ($x) => $x['foreign_sessions']);
+            $out['scope_student_id'] = $targetStudentId;
             $out['multi_teacher_groups'] = count($groups);
             $out['contaminated_groups'] = count($groupRows);
             $out['contaminated_contracts'] = count($contracts);
             $out['contaminated_active_contracts'] = collect($contracts)->where('stopped', false)->count();
+            $out['review_only_contracts'] = collect($contracts)->whereNotNull('review_only')->count();
             $out['foreign_sessions_by_bucket'] = $all->groupBy('bucket')->map->count()->all();
             $out['by_campus'] = collect($contracts)->groupBy('campus_id')->map->count()->all();
+            $out['contaminated_index'] = collect($groupRows)->map(fn ($r) => ['student_id' => $r['student_id'], 'course_ids' => array_column($r['contaminated'], 'course_id')])->values()->all();
+            $out['groups_truncated'] = count($groupRows) > 200;
             $out['groups'] = array_slice($groupRows, 0, 200);
           }} elseif ($case === 'td076_r2_plan_probe') {{
             // Read-only: calls only the R-2 strategy plan() (dry-run path, SELECT only, no POP request row) for campus 11.

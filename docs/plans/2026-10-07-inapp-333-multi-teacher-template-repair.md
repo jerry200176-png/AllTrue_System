@@ -26,10 +26,15 @@ they are repaired.
 Production-case-dump case `inapp_333_multi_teacher_templates`. It records IDs,
 weekday/time slots, statuses and flags only, with no names. It takes no inputs.
 
-- Siblings: `StudentClass` rows with the same `StudentID`, `SubjectID` and
-  `StartDate`, and more than one distinct `TeacherID`.
-- Own slots: the `(ISO weekday, HH:MM)` of the contract's live sessions in
-  `[StartDate, StartDate+13d]`. The enrollment itself created these.
+- Siblings: `StudentClass` rows with the same `StudentID` and `SubjectID`, a
+  different `TeacherID`, and overlapping `StartDate..EndDate`. Each teacher's
+  contract starts on its own first lesson, so `StartDate` differs between
+  siblings and is not used as a key.
+- Own slots: the `(ISO weekday, HH:MM)` of the contract's live sessions in its
+  `[StartDate, StartDate+13d]`. Reschedule exceptions are excluded:
+  `IsContractException=1`, or a `schedule_change_log` `to_date/to_time` match.
+- A contract with no own evidence whose template shares slots with a sibling is
+  emitted as `review_only: no_own_evidence`.
 - Foreign slot: a template slot that is a sibling's own slot and not this
   contract's.
 - Every live session of a contaminated contract on a foreign slot is
@@ -37,13 +42,19 @@ weekday/time slots, statuses and flags only, with no names. It takes no inputs.
 
 | Bucket | Rule | Proposed handling |
 |---|---|---|
-| `A_future_duplicate` | future, `scheduled`, no deducted sign-in, no live learning record, sibling has a live session at the same date+time | cancel this row (the sibling's row is the real lesson) |
-| `B_future_misplaced` | future, `scheduled`, no artifacts, no sibling row | cancel and re-append the lesson on the contract's own slot via the existing tail-append path (entitlement unchanged) |
-| `C_past_or_artifact` | past, or has a deducted sign-in / learning record | **no automatic change**; director review list (ledger/billing impact) |
+| `A_future_duplicate` | future, `scheduled`, no deducted sign-in, no live learning record, `session_deduction_ledger` net = 0, sibling has a live session at the same date+time | cancel this row (the sibling's row is the real lesson) |
+| `B_future_misplaced` | same clean conditions, no sibling row, count-mode `auto_recurrence` contract | cancel and re-append the lesson on the contract's own slot via the existing tail-append path (entitlement unchanged) |
+| `C_review_mode` | clean B row on a date-mode or `manual_occurrence` contract (tail-append is a no-op there) | **no automatic change**; director review |
+| `C_past_or_artifact` | past, or a deducted sign-in / learning record / nonzero ledger net | **no automatic change**; director review list (ledger/billing impact) |
 
-Summary fields: `multi_teacher_groups`, `contaminated_groups`,
-`contaminated_contracts`, `contaminated_active_contracts`,
-`foreign_sessions_by_bucket`, `by_campus`, plus the first 200 groups.
+Output per contract: the full template tuples `(slot → n, duration)`, the
+legacy `week`/`time`, `StartDate`/`EndDate`, `ScheduleMode`/`scheduling_policy`,
+own/foreign slots and peers. Summary: `multi_teacher_groups`,
+`contaminated_groups`, `contaminated_contracts`, `contaminated_active_contracts`,
+`review_only_contracts`, `foreign_sessions_by_bucket`, `by_campus`, and
+`contaminated_index` (every student → course IDs, uncapped). Details are capped at
+200 groups (`groups_truncated`). For the rest, re-run with the optional
+`student_id` input, one student per run, using `contaminated_index`.
 
 Verified locally: the generated probe PHP lints. A throwaway isolated-MariaDB
 test seeded one two-teacher group with the bug's union template. It returned 2
@@ -69,16 +80,21 @@ Use a guarded repair command in the existing Operations strategy pattern
 (dry-run default, `--apply` + `ALLOW_PROD_REPAIR=1`, per-ID allowlist from the
 manifest, snapshot before write, idempotent):
 
-1. Rewrite `week1-6/time1-6/week/time` to own slots, keyed by manifest `before`
-   (compare-and-set; skip if changed since the probe).
+1. Rewrite the template as whole `(weekN, timeN, durationN)` tuples plus the
+   legacy `week`/`time`, keeping only the own slots with their own durations.
+   Clear vacated tuples. Compare-and-set against the manifest `before` snapshot;
+   skip if anything changed since the probe.
 2. Cancel the A/B rows: `Status=cancelled` plus a `#333-template-repair` Note
    marker. No deletes.
 3. For B, call the existing tail-append so the purchased count is preserved.
 4. Re-run the probe. Done means `contaminated_active_contracts = 0`, A/B = 0,
    and C unchanged (handed to directors).
 
-Rollback: restore template fields and session statuses from the snapshot
-(per-ID). No billing, ledger or sign-in rows are touched by steps 1–3.
+Rollback (per-ID, from the snapshot): restore the template tuples and the
+legacy `week`/`time`, restore the cancelled rows' statuses, **cancel the
+replacement rows that tail-append created** (their IDs are recorded at apply
+time), and restore `StudentClass.EndDate`. Steps 1–3 touch no billing, ledger or
+sign-in rows.
 
 ## Stop points
 
