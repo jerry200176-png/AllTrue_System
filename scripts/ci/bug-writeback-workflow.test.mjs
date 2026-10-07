@@ -142,7 +142,7 @@ assert.ok(
 );
 assert.match(
   phaseCSource,
-  /if \(in_array\(\$status, \["resolved", "closed"\], true\)\) \{\s+if \(\$reuseNotice\) \\Illuminate\\Support\\Facades\\DB::rollBack\(\);\s+\$results\[\] = \["id" => \$bugId, "action" => "skip_already", "status" => \$status\];\s+continue;/,
+  /if \(in_array\(\$status, \["resolved", "closed"\], true\)\) \{\s+\\Illuminate\\Support\\Facades\\DB::rollBack\(\);\s+\$results\[\] = \["id" => \$bugId, "action" => "skip_already", "status" => \$status\];\s+continue;/,
   'Phase-C must skip every already-resolved or closed report',
 );
 
@@ -186,7 +186,21 @@ const cases326 = [
 const encoded326 = Buffer.from(JSON.stringify(cases326)).toString('base64');
 execFileSync('php', ['-r', `${guard}\n$cases = json_decode(base64_decode("${encoded326}"), true);\nforeach ($cases as $case) { $expected = array_pop($case); if ($canReuseNotice(...$case) !== $expected) { exit(1); } }`]);
 assert.match(phaseCSource, /lockForUpdate\(\)->first\(\)/, 'notice reconciliation must lock the report across writes');
-assert.match(phaseCSource, /if \(!\$reuseNotice\) \$svc::addComment/, 'existing notice must not be duplicated');
+assert.match(phaseCSource, /if \(!\$reuseNotice && !\$alreadyPosted\) \$svc::addComment/, 'existing notice or an identical prior reply must not be duplicated');
+// #3742: every closeout (not only reuse-notice ones) runs in one locked transaction, and a reply
+// already on the report (e.g. from a run whose job failed after commit) is never posted twice.
+{
+  const loop = phaseCSource.slice(phaseCSource.indexOf('foreach ($items as $bugId => $cfg) {'), phaseCSource.indexOf('// F14: every allowlisted target carries its issue'));
+  assert.ok(/\$reuseNotice = isset\(\$cfg\["existing_notice_id"\]\);[\s\S]*?\n\s+\\Illuminate\\Support\\Facades\\DB::beginTransaction\(\);/.test(loop), 'every closeout opens a transaction');
+  assert.ok(!loop.includes('if ($reuseNotice) \\Illuminate\\Support\\Facades\\DB::beginTransaction()'), 'transaction must not be limited to reuse-notice entries');
+  assert.ok(loop.includes('$bug = \\App\\Models\\BugReport::where("id", $bugId)->lockForUpdate()->first();'), 'every closeout locks the report');
+  assert.ok(loop.includes('->where("is_internal_note", false)->where("body", $cfg["reply"])'), 'identical public reply is detected');
+  assert.ok(loop.includes('->whereIn("from_status", ["resolved", "closed"])->max("created_at")'), 'a reopened report gets the reply again');
+  const begins = (loop.match(/DB::beginTransaction\(\)/g) || []).length;
+  const exits = (loop.match(/DB::rollBack\(\)|DB::commit\(\)/g) || []).length;
+  assert.equal(begins, 1);
+  assert.ok(exits >= 5, 'every early exit and the final branch close the transaction');
+}
 assert.match(phaseCSource, /if \(\$ok\).*DB::commit\(\);\s+else .*DB::rollBack\(\);/, 'failed reconciliation must rollback');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-bug-reply-'));
@@ -513,6 +527,17 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '352 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '352 must give a no-names reopen path');
   }
+// Scoped Phase-C for in-app 333 (#3138), 2026-10-07 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            333 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 333 must exist');
+    assert.ok(entry[1].includes('"rev" => "f3aa9efca6b235d0ddf049a29a0fd396eea1bd97"'), '333 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37563232975"'), '333 deploy binding');
+    assert.ok(entry[1].includes('issues/3138'), '333 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '333 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '333 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '333 must give a no-names reopen path');
+  }
 // Shipped 2026-10-03 closeout (engineering tests + production version check only).
   {
     const entry = phaseCSource.match(/\n            295 => \[([\s\S]*?)\n            \],/);
@@ -568,6 +593,22 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '343 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '343 must give a no-names reopen path');
   }
+// F17 auto-intake (#Founder GO 6A, 2026-10-07): hourly, IDs-only, deduped, dry-run on manual dispatch.
+{
+  const src = fs.readFileSync('.github/workflows/bug-auto-intake.yml', 'utf8');
+  assert.ok(src.includes("cron: '23 * * * *'"), 'auto-intake runs hourly');
+  assert.match(src, /^permissions:\n  contents: read$/m, 'top-level permissions stay read-only');
+  assert.equal((src.match(/issues: write/g) || []).length, 1, 'issues: write only on the issue job');
+  assert.ok(src.includes('SourceRef: alltrue:bug_report:${id}') && src.includes('.login == $owner or .login == "app/github-actions"')
+    && src.includes('[.comments[] | select('), 'issue dedupe by SourceRef in body or comments, trusted authors only');
+  assert.equal((src.match(/if: github\.ref == 'refs\/heads\/main'/g) || []).length, 3, 'every job is main-only');
+  assert.ok(!src.includes('page_key'), 'client-controlled page_key is never published');
+  assert.ok(src.includes("!(github.event_name == 'workflow_dispatch' && inputs.dry_run)"), 'manual dry run never writes production');
+  assert.ok(src.includes('bugs:auto-intake --candidates') && src.includes('bugs:auto-intake --ack'), 'uses the tested command');
+  assert.ok(!/\.title|\.description|client_info/.test(src), 'no report free text in the workflow');
+  assert.ok(fs.readFileSync('.github/pii-log-workflows.txt', 'utf8').split('\n').includes('bug-auto-intake.yml'), 'runs are purged hourly');
+}
+
 // Reply template rule (2026-10-07): every new Phase-C reply offers BOTH outcomes, so a
 // successful retest is confirmed instead of waiting for the reporter timeout. IDs below were
 // written before the rule (already sent; not re-sent by decision) and stay as-is.

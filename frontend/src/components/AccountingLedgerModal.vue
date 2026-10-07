@@ -70,7 +70,15 @@
           <section v-if="contractCourses.length" class="ledger-section">
             <h4>合約（每一堂課與付款）</h4>
             <div class="ledger-contracts">
-              <ContractCard v-for="c in contractCourses" :key="c.id" :course="c" @changed="$emit('changed')" />
+              <ContractCard
+                v-for="c in contractCourses"
+                :key="c.id"
+                :course="c"
+                :outstanding="owedFor(c.id)"
+                :pending-report="pendingReportFor(c.id)"
+                @record="openEntry"
+                @changed="onPanelChanged"
+              />
             </div>
           </section>
 
@@ -112,7 +120,7 @@
                       </td>
                       <td>
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
-                        <small>{{ formatPeriod(inv.billing_period) }}</small>
+                        <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
                       <td>{{ inv.due_date || '—' }}</td>
@@ -222,6 +230,7 @@
           </section>
         </template>
       </div>
+      <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" />
     </div>
   </Transition>
 </template>
@@ -239,6 +248,7 @@ import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import ContractCard from './tuition/ContractCard.vue';
+import PaymentEntryModal from './PaymentEntryModal.vue';
 import {
   canShowReceiptCoverage,
   coverageFromReceipt,
@@ -249,7 +259,7 @@ import {
 
 const EXCEPTION_PREVIEW = 2;
 
-const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], branchId: [Number, String] });
+const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String] });
 
 const emit = defineEmits(['close', 'changed']);
 
@@ -347,7 +357,8 @@ async function loadLedger() {
   if (!props.show) return;
   const studentClassId = Number(props.studentClassId || 0);
   const reportId = Number(props.reportId || 0);
-  if (!studentClassId && !reportId) {
+  const studentId = Number(props.studentId || 0);
+  if (!studentClassId && !reportId && !studentId) {
     error.value = '缺少課程或收據資訊，無法開啟對帳。';
     return;
   }
@@ -364,6 +375,7 @@ async function loadLedger() {
     const params = new URLSearchParams();
     if (studentClassId) params.set('student_class_id', String(studentClassId));
     if (reportId) params.set('report_id', String(reportId));
+    if (studentId && !studentClassId && !reportId) params.set('student_id', String(studentId));
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
 
     const resp = await fetch(`/api/v1/accounting/ledger?${params}`, {
@@ -380,7 +392,7 @@ async function loadLedger() {
   }
 }
 
-watch(() => [props.show, props.studentClassId, props.reportId, props.branchId], loadLedger, { immediate: true });
+watch(() => [props.show, props.studentClassId, props.reportId, props.studentId, props.branchId], loadLedger, { immediate: true });
 
 // Empty-state is judged for the opened course when the API reports one, else student-wide.
 const ledgerBothEmpty = computed(() => {
@@ -419,13 +431,44 @@ const ledgerExceptions = computed(() => {
   return rows.sort((a, b) => a.severity - b.severity);
 });
 
+const owedFor = (id) => (payload.value?.invoices || [])
+  .filter((inv) => Number(inv.student_class_id) === Number(id))
+  .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
+const pendingReportFor = (id) => {
+  const r = (payload.value?.receipts || []).find((x) => Number(x.student_class_id) === Number(id) && x.status === 'pending');
+  return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0) } : null;
+};
 // Contracts with money still due come first (PRD v2 §0.3).
-const contractCourses = computed(() => {
-  const owed = (id) => (payload.value?.invoices || [])
-    .filter((inv) => Number(inv.student_class_id) === Number(id))
-    .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
-  return [...(payload.value?.courses || [])].sort((a, b) => owed(b.id) - owed(a.id));
-});
+const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
+
+// PRD v2 D2/D9: 登記收款 (step 1) opens the existing entry form inside the panel.
+const entryOpen = ref(false);
+const entryRow = ref(null);
+function openEntry(course) {
+  // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
+  const oldest = (payload.value?.invoices || [])
+    // directorRecord rejects invoices already marked paid or void.
+    .filter((inv) => Number(inv.student_class_id) === Number(course.id) && Number(inv.outstanding_amount || 0) > 0 && !['paid', 'void'].includes(inv.status))
+    .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
+      || Number(a.id) - Number(b.id))[0];
+  entryRow.value = {
+    id: course.id,
+    charge: course.charge,
+    student_name: payload.value?.student?.name,
+    subject: course.subject,
+    invoice_id: oldest?.id,
+    billing_period: oldest?.billing_period,
+    payable_status: oldest ? 'invoiced' : 'unbilled',
+    payable_amount: oldest ? Number(oldest.outstanding_amount) : null,
+    payable_outstanding: oldest ? Number(oldest.outstanding_amount) : null,
+  };
+  entryOpen.value = true;
+}
+async function onPanelChanged() {
+  entryOpen.value = false;
+  await loadLedger();
+  emit('changed');
+}
 
 const visibleExceptions = computed(() => (
   showAllExceptions.value

@@ -6,6 +6,14 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R146. 老師送出評量後不可只從待辦消失；`missing` 字串不可擋住 LR 列表狀態（#3760，2026-10-07）
+
+- **現象**：老師送出評量後覺得「沒有任何資料」，主任待審佇列卻看得到同一張已填評量表（中平等分校反覆出現）。
+- **根因層級**：雙讀模型＋UX——主任用 `GET /learning-records` 看 `pending`；老師首頁「今天要完成」只列 `missing`／`changes_requested`，送出後從待辦消失且無「已送出待審」確認態。輔因：`class-sessions` 把無 LR 合成字串 `'missing'`（truthy），`resolveLearningSessionState` 的 `learningRecordStatus || recordStatus` 永遠不回退到已載入的 LR `Status`，課表 chip 仍顯示「未填」。
+- **強制規則**：`normalizeLearningRecordStatus` 須把 `'missing'` 當空；課表／評量合併以真實 LR 狀態為準。TeacherHome 對 `pending` 顯示「已送出待審」＋查看 CTA；「今天要完成」仍只列未填／需修改。送出成功後切到評量待辦「待審核」、清「未填優先」、toast「已送出，等待主任核准」。
+- **測試必補**：`sessionConsistency.test.js`（missing + recordStatus pending → 待審）；`teacherHomeSessionContract.test.js`；`learningRecordsSubmitVisibility.test.js`。
+- **唯讀定罪**：需要時另開 PR 加 `production-case-dump` case `teacher_lr_visibility`（需 `student_id`，IDs only）；本修以前端雙讀模型＋UX 為準。
+
 ### R144. 月結合約沒有帳單時，計費月份不可用「今天」（in-app #377/#378，2026-10-07）
 
 - **現象**：9 月月結合約（9/1–9/30，3 堂已上）已結束、沒有帳單；10 月主任打開繳費單或登記收款，系統用 10 月計價，繳費單金額不符、登記 9 月實收 $3,900／$5,400 被擋（「月結本期應收為 NT$…」）。
@@ -373,6 +381,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F15 用提問代替調查**（2026-10-04） | 分診回覆列一串問題（按了哪個鈕、畫面寫什麼、哪一堂），回報者不會回 → 單子卡 14 天後被時鐘關掉，問題沒修。根因：回報沒帶「按過什麼、看到什麼」，而且 detail dump 根本沒匯出 `client_info` | in-app #340–#345、#354–#357 等 25 筆等回報者 | 回報自動附最近 15 個按鈕標籤與 5 則錯誤／警告 toast（Sentry breadcrumbs 做法；不記 alert／confirm，登出／切分校清除）；只在後台分診卡顯示（repo 公開，不把 `client_info` 放進 Actions log／artifact）；SOP A5b「先查、不問」 |
 | **F16 角色判斷各頁各寫一份**（2026-10-06） | 每個頁面各自重拼「誰是主任」的角色字串清單（`role === 'director' \|\| …`）；題庫／評量／`canWaive` 漏列 `admin` → admin 帳號在這幾頁被當成非主任，功能缺失，其他頁卻正常 | #3554、`frontend/src/lib/roleCapabilities.js` | 唯一權威 `isDirectorRole`（`roleCapabilities.js`）；新頁面／新判斷一律 import，**禁止在頁面內 inline 比對角色字串**；`roleCapabilities.test.js` 角色×能力矩陣（含 `admin`）revert 即 fail |
 | **F18 每個端點各自手抄分校檢查**（2026-10-07） | `StudentController` 7 個學生端點各自複製「學生是否在我的分校」的 if；`bindCard` 漏抄 → 主任可把卡號寫到別分校學生（跨校寫入）。手抄版還用 `!empty($campusIds) &&`，空清單＝全放行 | in-app #381 調查時發現（bindCard） | 單一 `denyOutsideCampus()`（super_admin 放行，其他人空清單＝無分校，fail closed），7 個端點全改用；`RfidUniqueConstraintTest` 守跨校 bind 403、show／line-bindings 共用同一閘 |
+| **F21 對外訊息先送、狀態後寫，失敗重試就重複發**（2026-10-07） | Phase-C writer 先 `addComment` 公開回覆、再逐步改狀態／寫證據，只有 reuse-notice 項目包交易；中途失敗時回覆已發出、狀態沒變，重跑再發一次同樣訊息 | #3742（審查發現） | 每筆結案一個鎖列交易（回覆＋轉態＋證據一起 commit／rollback），且同內容公開回覆已存在就不再發；`bug-writeback-workflow.test.mjs` 守單一交易、每個出口關交易、重複回覆偵測。對外通知一律「冪等鍵＋與狀態同交易」 |
+| **F19 批次操作只有「全選後逐一取消」**（2026-10-07） | 年級升級預覽預設全選、只能一筆一筆取消；新學年只想升其中一批時，容易把已準備好新學年資料的學生一起升級 | in-app #360 | 「只升級這些年級」年級篩選（`excludeOutsideGrades`，不選＝全部、只動可執行列）；`gradePromotionUi.test.js` 守篩選語意與 modal 接線。之後新增批次動作先給「依條件選取」再確認 |
+| **F17 新回報沒人收件就堆積**（2026-10-07） | 分診（開 issue + Phase-A 回覆 + `triaged`）只能人工 `workflow_dispatch`，沒人跑就一直是 `new`；回報者看不到任何回應，issue 也不存在，後續修好也無處掛 | in-app #376–#382 等多筆 `new` 未收件 | `bug-auto-intake.yml` 每小時把 `new` 開成 IDs-only issue（SourceRef 去重）+ 自動確認回覆；**狀態維持 `new`**（一般確認不是分診，否則 SLA 違約被藏起來）；`BugAutoIntakeCommandTest` 守 candidates 只列未確認的 `new`、不含自由文字、ack 冪等、不寫 status log |
+| **F23 免費只認輔導課**（2026-10-07） | 付款回報閘門與學費提醒只用 `ClassType=tutoring` 判斷「不用繳」；金額 0 的試聽課在 resolver 已是 `free`，但仍可建立付款回報、可能出現在學費提醒 | in-app #361（#3203） | 付款閘門與 `/alerts/tuition` 改看 resolver 的 `free`（輔導課＋0 元課一起）；`StudentClassTutoringPaymentPolicyTest::test_zero_fee_trial_has_no_payment_obligation`。「是否要收錢」一律問 resolver，不另寫班型判斷 |
 | **F6 輸入邊界 collation／長度** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`）；另 **VARCHAR(512) 溢位** → SQLSTATE 22001 Data too long（貼繳費說明） | #657、**#1378**、**#1732** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾；超長備註須 422 `memo_too_long`，禁止 500 |
 
 **通用防再犯規則（跨家族）：**
@@ -1269,7 +1281,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、**§R114（同日二次調課中間 scheduled 殘影不得佔用）**、**§R116（混班型剩餘依被代課班型）**、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81、**§R109（結案不可吃掉請假順延尾堂）** |
-| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）**、**§R110（課程管理已上堂數須與日期晶片同源）**、**§R112（預排不可佔第 N 堂）** |
+| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）**、**§R110（課程管理已上堂數須與日期晶片同源）**、**§R112（預排不可佔第 N 堂）**、**§R146（送出後須「已送出待審」；`missing` 字串不可擋 LR 列表狀態）** |
 | 效能 / Eloquent 事件 | **§R113（ClassSession creating/updating 禁逐筆 StudentClass exists；請求內一次載入已結清課程 ID）** |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`）、**§R85（教職員卡僅 `STAFF_UPDATES.yml`；CHANGELOG 不得自動發布）** |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |

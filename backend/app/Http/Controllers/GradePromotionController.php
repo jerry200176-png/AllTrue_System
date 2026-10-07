@@ -51,6 +51,8 @@ class GradePromotionController extends Controller
             'exclude_student_ids' => 'nullable|array',
             'exclude_student_ids.*' => 'integer|min:1',
             'corrections' => 'nullable|array',
+            'only_grades' => 'nullable|array|max:20',
+            'only_grades.*' => 'string|max:8',
         ]);
 
         $campusId = (int) $data['branch_id'];
@@ -76,7 +78,8 @@ class GradePromotionController extends Controller
             (string) $data['idempotency_key'],
             (int) $user->getKey(),
             array_map('intval', (array) ($data['exclude_student_ids'] ?? [])),
-            $corrections
+            $corrections,
+            array_map('strval', (array) ($data['only_grades'] ?? []))
         );
 
         $batch = $result['batch'];
