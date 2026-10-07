@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
@@ -280,6 +281,52 @@ class MonthlyBillingService
         }
 
         return $this->sessionDetails($course, $sessions);
+    }
+
+    /**
+     * The lessons an invoice covers: what its payment slip lists. Monthly
+     * course: the billing period's lessons (plus upcoming ones once the amount
+     * is fixed); otherwise every non-cancelled lesson of its courses in the
+     * projected period.
+     *
+     * @param  array<string,mixed>  $projection  InvoiceAmountReconciliationService::resolve()
+     * @return list<array<string,mixed>>
+     */
+    public function invoiceCoveredSessions(Invoice $invoice, array $projection): array
+    {
+        $studentClassIds = $invoice->loadMissing('items')->getRelationValue('items')
+            ->pluck('StudentClassID')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+        if ((int) ($invoice->StudentClassID ?? 0) > 0) {
+            $studentClassIds[] = (int) $invoice->StudentClassID;
+            $studentClassIds = array_values(array_unique($studentClassIds));
+        }
+        $monthlyCourse = $invoice->getRelationValue('studentClass');
+        if ($monthlyCourse instanceof StudentClass && $monthlyCourse->getAttribute('ScheduleMode') === 'date' && $projection['billing_period']) {
+            [$serviceStart, $serviceEnd] = $this->serviceRangeForCourse($invoice, (int) $monthlyCourse->getKey());
+
+            return $this->slipSessionDetailsForPeriod(
+                $monthlyCourse,
+                $projection['billing_period'],
+                $serviceStart,
+                $serviceEnd,
+                // A fixed amount (never repriced from held lessons: paid, partly
+                // paid, or a cross-month cycle) covers upcoming lessons too.
+                // Void/cancelled invoices keep the billed-only list.
+                includeUpcoming: !$projection['repriceable']
+                    && !in_array((string) ($invoice->Status ?? ''), ['void', 'cancelled'], true),
+            );
+        }
+
+        return ClassSession::sessionsForPaymentSlip(
+            $studentClassIds,
+            $projection['period_start'],
+            $projection['period_end']
+        );
     }
 
     /**
