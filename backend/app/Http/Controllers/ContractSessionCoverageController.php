@@ -71,6 +71,8 @@ class ContractSessionCoverageController extends Controller
             'student_class_id' => $courseId,
             'subject' => $studentClass->displaySubjectName(),
             'schedule_mode' => (string) ($studentClass->ScheduleMode ?? ''),
+            // Tutoring has no payment obligation; the card hides 登記收款 (directorRecord rejects it).
+            'class_type' => (string) ($studentClass->ClassType ?? ''),
             'start_date' => $studentClass->StartDate ? substr((string) $studentClass->StartDate, 0, 10) : null,
             'end_date' => $studentClass->EndDate ? substr((string) $studentClass->EndDate, 0, 10) : null,
             'memo' => (string) ($studentClass->Memo ?? ''),
