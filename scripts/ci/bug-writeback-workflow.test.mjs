@@ -495,7 +495,7 @@ for (const [id, revision, issue] of [
   assert.ok(src.includes("cron: '23 * * * *'"), 'auto-intake runs hourly');
   assert.match(src, /^permissions:\n  contents: read$/m, 'top-level permissions stay read-only');
   assert.equal((src.match(/issues: write/g) || []).length, 1, 'issues: write only on the issue job');
-  assert.ok(src.includes('SourceRef: alltrue:bug_report:${id}') && src.includes('select(.body | contains($ref))'), 'issue dedupe by SourceRef');
+  assert.ok(src.includes('SourceRef: alltrue:bug_report:${id}') && src.includes('(.body | contains($ref)) and (.author.login == $owner'), 'issue dedupe by SourceRef, trusted authors only');
   assert.ok(src.includes("!(github.event_name == 'workflow_dispatch' && inputs.dry_run)"), 'manual dry run never writes production');
   assert.ok(src.includes('bugs:auto-intake --candidates') && src.includes('bugs:auto-intake --ack'), 'uses the tested command');
   assert.ok(!/\.title|\.description|client_info/.test(src), 'no report free text in the workflow');

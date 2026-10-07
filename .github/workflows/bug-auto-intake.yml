@@ -93,8 +93,11 @@ jobs:
           while read -r row; do
             id="$(jq -r '.bug_id' <<<"$row")"; [[ "$id" =~ ^[0-9]+$ ]] || exit 1
             ref="SourceRef: alltrue:bug_report:${id}"
-            url="$(gh issue list --state all --limit 5 --search "\"alltrue:bug_report:${id}\" in:body" --json url,body \
-              | jq -r --arg ref "$ref" '[.[] | select(.body | contains($ref))][0].url // empty')"
+            # Reuse only issues opened by the repository owner or this workflow's bot: anyone can open a
+            # public issue quoting the SourceRef, and its URL would otherwise be linked and sent to the reporter.
+            url="$(gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\" in:body" --json url,body,author \
+              | jq -r --arg ref "$ref" --arg owner "${GITHUB_REPOSITORY_OWNER}" \
+                '[.[] | select((.body | contains($ref)) and (.author.login == $owner or .author.login == "app/github-actions" or .author.login == "github-actions"))][0].url // empty')"
             if [ -z "$url" ]; then
               if [ "$DRY_RUN" = "true" ]; then echo "would create issue for in-app #$id"; continue; fi
               page="$(jq -r '.page_key' <<<"$row")"
