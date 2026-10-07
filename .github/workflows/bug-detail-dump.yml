@@ -1530,6 +1530,111 @@ jobs:
             }}
           }}
 
+          // #376 read-only: "move student X to teacher Y on 10/9" keeps failing (campus 3).
+          // Student and teacher are resolved server-side from the report's own title (names never
+          // enter the repo or the output); exactly one match each, scoped to the reporter's campus.
+          // Output: hashed refs, statuses, times, capacity and source types only.
+          $probe376 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 376",
+          ];
+          if ($bugId === 376) {{
+            $probe376["applicable"] = true;
+            $probe376["case"] = "teacher_reassign_376";
+            $probe376["target_window"] = ["date" => "2026-10-09", "viewing_campus_id" => (int)$bug->CampusID];
+            try {{
+              if ((int)$bug->CampusID !== 3) {{ throw new \RuntimeException("target scope mismatch"); }}
+              $text376 = (string)$bug->title . " " . (string)$bug->description;
+              $hit376 = fn ($name) => mb_strlen(trim((string)$name)) >= 2 && mb_strpos($text376, trim((string)$name)) !== false;
+              // Mirror the picker's two linkage sources (UserCampus + legacy teacher_branches); fail closed on caps.
+              $ucIds376 = $db::table("UserCampus")->where("CampusID", 3)->pluck("UserID")->map(fn ($v) => (int)$v);
+              $tbIds376 = \Illuminate\Support\Facades\Schema::hasTable("teacher_branches")
+                ? $db::table("teacher_branches")->where("branch_id", 3)->pluck("teacher_id")->map(fn ($v) => (int)$v) : collect();
+              $teacherPool376 = $db::table("User")->where("type", "T")->whereIn("id", $ucIds376->merge($tbIds376)->unique()->values()->all())
+                ->limit(2001)->get(["id", "Name"]);
+              $studentPool376 = $db::table("Student")->where("CampusID", 3)->limit(5001)->get(["id", "name"]);
+              if ($teacherPool376->count() > 2000 || $studentPool376->count() > 5000) {{ throw new \RuntimeException("identity candidate cap reached"); }}
+              $teachers376 = $teacherPool376->filter(fn ($r) => $hit376($r->Name))->pluck("id")->unique()->values();
+              $students376 = $studentPool376->filter(fn ($r) => $hit376($r->name))->pluck("id")->unique()->values();
+              $probe376["resolved"] = ["teachers" => $teachers376->count(), "students" => $students376->count()];
+              if ($teachers376->count() !== 1 || $students376->count() !== 1) {{
+                throw new \RuntimeException("target not uniquely resolved");
+              }}
+              $teacherId376 = (int)$teachers376[0]; $studentId376 = (int)$students376[0];
+              $refKey376 = random_bytes(32);
+              $ref376 = fn ($kind, $id) => substr(hash_hmac("sha256", $kind . "|" . (int)$id, $refKey376), 0, 12);
+              $rows376 = $db::table("ClassSession as cs")->join("StudentClass as sc", "cs.StudentClassID", "=", "sc.ID")
+                ->where("sc.StudentID", $studentId376)->whereDate("cs.SessionDate", "2026-10-09")->orderBy("cs.StartTime")->limit(22)
+                ->get(["cs.id", "cs.Status", "cs.StartTime", "cs.EndTime", "cs.IsContractException", "sc.ID as course_id", "sc.TeacherID",
+                  "sc.ClassType", "sc.ScheduleMode", "sc.Stop", "sc.SubjectID", "sc.room_id"]);
+              if ($rows376->count() > 21) {{ throw new \RuntimeException("session row limit exceeded"); }}
+              $guard376 = app(\App\Services\ScheduleGuardService::class);
+              $sub376 = app(\App\Services\SubstituteService::class);
+              // Mirror ClassSessionController substitute path (read-only): campus binding, effective teacher,
+              // cross-campus busy, then the ScheduleGuardService occurrence guard that returns the 409.
+              $probe376["target_teacher_bound_to_campus"] = $sub376->teacherBoundToAny($teacherId376, [3]);
+              $bound376 = $sub376->teacherBoundToAny($teacherId376, [3]);
+              $v2On376 = \App\Services\OccurrenceAssignmentService::enabledFor(3);
+              $probe376["occurrence_v2_enabled"] = $v2On376;
+              $probe376["target_teacher_link_sources"] = ["user_campus" => $ucIds376->contains($teacherId376), "teacher_branches" => $tbIds376->contains($teacherId376)];
+              $probe376["student_sessions"] = $rows376->map(function ($r) use ($ref376, $teacherId376, $studentId376, $guard376, $sub376, $db, $bound376, $v2On376) {{
+                $start = substr((string)$r->StartTime, 0, 5); $end = substr((string)$r->EndTime, 0, 5);
+                $effective = \App\Services\SubstituteScheduleService::teacherForOccurrence((int)$r->course_id, "2026-10-09", (int)$r->TeacherID, $start);
+                $existing = $db::table("schedules")->where("student_course_id", (int)$r->course_id)->whereDate("schedule_date", "2026-10-09")
+                  ->where("status", "scheduled")->whereNotNull("original_schedule_id")->whereRaw("SUBSTRING(start_time, 1, 5) = ?", [$start])->value("id");
+                $ghost = $db::table("schedules")->where("student_course_id", (int)$r->course_id)->whereDate("schedule_date", "2026-10-09")
+                  ->where("status", "scheduled")->whereNull("original_schedule_id")->where("teacher_id", "!=", (int)$r->TeacherID)
+                  ->whereRaw("SUBSTRING(start_time, 1, 5) = ?", [$start])->exists();
+                $sessionModel = \App\Models\ClassSession::query()->find((int)$r->id);
+                // Endpoint order: incomplete times 422 → campus-binding 422 → leave 422 (only when occurrence-v2
+                // is on) → restore/past bypass → cross-campus → guard 409. Stop at the first rejection.
+                $incomplete = $start === "" || $end === "";
+                $onLeave = ($v2On376 && $sessionModel) ? \App\Services\OccurrenceAssignmentService::onLeave($sessionModel) : false;
+                // Endpoint returns via restoreOriginalTeacherFromSubstitute() before any conflict check.
+                $restore = (int)$r->TeacherID === $teacherId376;
+                // Endpoint skips cross-campus and guard checks for past sessions (bookkeeping correction).
+                $past = in_array(strtolower(trim((string)$r->Status)), ["attended", "completed", "late", "absent"], true)
+                  || \Carbon\Carbon::parse("2026-10-09 " . ($end ?: "23:59"))->lte(\Carbon\Carbon::now());
+                $rejected = $incomplete ? "incomplete_times" : (!$bound376 ? "campus_binding_rejected" : ($onLeave ? "on_leave_rejected" : null));
+                $skipChecks = $rejected !== null || $restore || $past;
+                $cross = $skipChecks ? collect() : collect($sub376->detectCrossCampusConflict($teacherId376, "2026-10-09", $start, $end, $existing ? [(int)$existing] : [], $studentId376))
+                  ->filter(fn ($c) => (int)($c["campus_id"] ?? 0) > 0 && (int)$c["campus_id"] !== 3);
+                $conflicts = $skipChecks ? [] : $guard376->validateScheduleOccurrence(["teacher_id" => $teacherId376, "class_type" => (string)$r->ClassType,
+                  "room_id" => ((int)($r->room_id ?? 0)) ?: null, "branch_id" => 3, "schedule_date" => "2026-10-09", "start_time" => $start,
+                  "end_time" => $end, "exclude_schedule_id" => $existing ? (int)$existing : null, "exclude_student_id" => $studentId376]);
+                return ["session_ref" => $ref376("cs", $r->id), "course_ref" => $ref376("sc", $r->course_id),
+                  "status" => strtolower((string)$r->Status), "start" => $start, "end" => $end,
+                  "is_exception" => (int)($r->IsContractException ?? 0), "contract_teacher_is_target" => (int)$r->TeacherID === $teacherId376,
+                  "effective_teacher_is_target" => (int)$effective === $teacherId376, "existing_substitute_row" => $existing !== null, "legacy_ghost_substitute_row" => $ghost,
+                  "on_leave" => $onLeave, "endpoint_path" => $rejected ?? ($restore ? "restore_original" : ($past ? "past_bookkeeping" : "substitute")),
+                  "class_type" => (string)$r->ClassType, "schedule_mode" => (string)$r->ScheduleMode, "course_stop" => (int)($r->Stop ?? 0),
+                  "subject_id" => (int)$r->SubjectID, "has_room" => (int)($r->room_id ?? 0) > 0,
+                  "cross_campus_conflicts" => $cross->map(fn ($c) => ["campus_id" => (int)$c["campus_id"], "start" => substr((string)($c["start_time"] ?? ""), 0, 5),
+                    "end" => substr((string)($c["end_time"] ?? ""), 0, 5)])->values()->all(),
+                  "guard_conflict_types" => collect($conflicts)->map(fn ($c) => (string)($c["type"] ?? "unknown"))->values()->all()];
+              }})->values()->all();
+              $busy376 = app(\App\Services\SubstituteService::class)->collectTeacherBusySlotsWithCapacity($teacherId376, "2026-10-09", [], $studentId376);
+              if (count($busy376) > 100) {{ throw new \RuntimeException("busy slot limit exceeded"); }}
+              $probe376["target_teacher_busy_slots"] = collect($busy376)->map(fn ($slot) => [
+                "start" => substr((string)($slot["start_time"] ?? ""), 0, 5), "end" => substr((string)($slot["end_time"] ?? ""), 0, 5),
+                "campus_id" => (int)($slot["campus_id"] ?? 0), "class_type" => (string)($slot["class_type"] ?? ""),
+                "student_count" => (int)($slot["student_count"] ?? 0), "remaining_capacity" => (int)($slot["remaining_capacity"] ?? 0),
+                "source_types" => $slot["source_types"] ?? []])->values()->all();
+              $probe376["target_teacher_campus_ids"] = $db::table("UserCampus")->where("UserID", $teacherId376)->pluck("CampusID")->map(fn ($c) => (int)$c)->values()->all();
+              $probe376["target_teacher_subject_courses"] = $db::table("StudentClass")->where("TeacherID", $teacherId376)
+                ->where(fn ($q) => $q->where("Stop", 0)->orWhereNull("Stop"))->selectRaw("SubjectID, COUNT(*) as n")->groupBy("SubjectID")
+                ->get()->map(fn ($r) => ["subject_id" => (int)$r->SubjectID, "active_courses" => (int)$r->n])->values()->all();
+              $probe376["decision_grade"] = true;
+              $probe376["reason"] = "Target resolved uniquely; bounded read-only source evidence";
+            }} catch (\Throwable $e) {{
+              $probe376["decision_grade"] = false;
+              // Never export raw exception text (SQL bindings can carry IDs); keep only our own fixed codes.
+              $known376 = ["target scope mismatch", "target not uniquely resolved", "identity candidate cap reached",
+                "session row limit exceeded", "busy slot limit exceeded"];
+              $probe376["reason"] = "Probe failed closed: " . (in_array($e->getMessage(), $known376, true) ? $e->getMessage() : "read_error:" . class_basename($e));
+            }}
+          }}
+
           // #359 read-only source check for the reported 2026-09-26 transfer.
           // Teacher ID 29 was uniquely resolved by the existing identity
           // diagnostic. Keep this probe confined to this bug, date and teacher;
@@ -1758,6 +1863,7 @@ jobs:
             315 => $probe315,
             338 => $probe338,
             359 => $probe359,
+            376 => $probe376,
             default => null,
           }};
           $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338, 359], true);
@@ -1808,6 +1914,7 @@ jobs:
                 "probe_315_cross_campus_busy" => $probe315,
                 "probe_338_target_capacity" => $probe338,
                 "probe_359_cross_campus_source" => $probe359,
+                "probe_376_teacher_reassign" => $probe376,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,
