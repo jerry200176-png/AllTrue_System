@@ -2113,9 +2113,12 @@ async function forceCreateCourse() {
     showModal.value = false;
     const created = Number(result?.created_confirmed_sessions ?? 0) + Number(result?.created_future_sessions ?? 0);
     alert(`已強制建立 ${created} 堂課`);
-    await loadCourses();
+    // in-app #382: a forced manual course has no lesson either — same handoff as a normal manual create.
+    const handoff = payload.scheduling_policy === 'manual_occurrence' && result?.student_class_id && !isTeacher.value;
+    if (!handoff) await loadCourses();
     finishCalendarWorkflow('create', 'completed', { result: 'forced' });
-    void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: 'create', target: 'calendar' });
+    void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: 'create', target: handoff ? 'course-mgmt' : 'calendar' });
+    if (handoff) openManualSessionInCourseMgmt(result.student_id ?? payload.student_id, result.student_class_id);
   } catch (err) {
     alert(err?.message || '強制建立失敗，請稍後再試');
     calendarWorkflowError('create', err);
