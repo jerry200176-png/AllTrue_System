@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\ContractRenewal;
@@ -66,5 +67,70 @@ class ContractRenewalTest extends TestCase
         $p = ['billing' => ['discount' => ['x' => 1], 'k' => 2], 'payload' => ['discount' => 1]];
         $this->assertSame(['billing' => ['k' => 2], 'payload' => []], $svc->redactRenewalDiscount($p, false));
         $this->assertSame($p, $svc->redactRenewalDiscount($p, true));
+    }
+
+    public function test_preview_hash_is_stable_and_changes_with_payload(): void
+    {
+        $svc = app(ContractRenewal::class);
+        $c = $this->course();
+        $data = ['mode' => 'purchase_batch', 'sessions' => 4, 'start_date' => '2032-04-06'];
+
+        $a = $svc->preview($c, $data, 1, 'director');
+        $b = $svc->preview($c, $data, 1, 'director');
+        $other = $svc->preview($c, ['sessions' => 5] + $data, 1, 'director');
+
+        $this->assertSame($a['state_hash'], $b['state_hash']);
+        $this->assertNotSame($a['state_hash'], $other['state_hash']);
+        $this->assertSame('ok', $a['severity']);
+        $this->assertSame($c->ID, $a['source_course']['id']);
+        $this->assertSame('mode_required', $svc->preview($c, [], 1, 'director')['blockers'][0]['code']);
+    }
+
+    public function test_renew_monthly_preview_blocks_bad_dates_and_wrong_mode(): void
+    {
+        $svc = app(ContractRenewal::class);
+        $monthly = $this->course(['ScheduleMode' => 'date', 'StartDate' => '2032-01-01', 'EndDate' => '2032-02-29']);
+
+        $codes = fn (array $p) => array_column($p['blockers'], 'code');
+        $this->assertContains('end_date_required', $codes($svc->preview($monthly, ['mode' => 'renew_monthly'], 1, 'director')));
+        $this->assertContains('end_date_not_extended', $codes($svc->preview($monthly, ['mode' => 'renew_monthly', 'end_date' => '2032-02-01'], 1, 'director')));
+        $this->assertContains('non_monthly_course', $codes($svc->preview($this->course(), ['mode' => 'renew_monthly', 'end_date' => '2032-09-30'], 1, 'director')));
+
+        $ok = $svc->preview($monthly, ['mode' => 'renew_monthly', 'end_date' => '2032-03-31'], 1, 'director');
+        $this->assertSame('date', $ok['proposed_course']['schedule_mode']);
+        $this->assertSame('2032-03-31', $ok['schedule']['last_session_date']);
+        $this->assertSame('unpaid', $ok['billing']['payment_status_after_confirm']);
+    }
+
+    public function test_cancel_future_sessions_tags_only_future_scheduled_rows(): void
+    {
+        $c = $this->course();
+        $mk = fn (string $date, string $status) => ClassSession::create([
+            'StudentClassID' => $c->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status,
+        ]);
+        $past = $mk('2000-01-03', 'scheduled');
+        $future = $mk('2099-01-05', 'scheduled');
+        $attended = $mk('2099-01-12', 'attended');
+
+        $n = app(ContractRenewal::class)->cancelFutureScheduledSessions($c, 'settled');
+
+        $this->assertSame(1, $n);
+        $this->assertSame('scheduled', $past->fresh()->Status);
+        $this->assertSame('attended', $attended->fresh()->Status);
+        $this->assertSame('cancelled', $future->fresh()->Status);
+        $this->assertStringContainsString('[結案取消]', (string) $future->fresh()->Note);
+    }
+
+    public function test_create_course_record_persists_and_reconciliation_flags_unpaid(): void
+    {
+        $svc = app(ContractRenewal::class);
+        $c = $this->course(['Charge' => 4000, 'Paid' => 0]);
+        $copy = $svc->createCourseRecord(['StudentID' => $c->StudentID, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
+            'StartDate' => '2032-05-01', 'TotalHours' => 2, 'Charge' => 100, 'Paid' => 0, 'Rate' => 50, 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count',
+            'SessionCount' => 2, 'SessionDuration' => 60, 'RemainingSessions' => 2, 'ClassType' => 'one_on_one', 'UsedSessions' => 0]);
+
+        $this->assertTrue($copy->exists);
+        $this->assertSame(100, (int) StudentClass::query()->where('ID', $copy->ID)->value('Charge'));
+        $this->assertTrue($svc->courseNeedsPaymentReconciliation($c));
     }
 }

@@ -250,7 +250,7 @@ class PaymentReportController extends Controller
         $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
 
         $query = PaymentReport::with([
-            'student', 'studentClass.subjectRecord', 'confirmedByUser', 'invoice.payments',
+            'student', 'studentClass.subjectRecord', 'confirmedByUser', 'invoice.payments', 'invoice.items',
         ]);
 
         if ($request->filled('branch_id')) {
@@ -675,7 +675,7 @@ class PaymentReportController extends Controller
                 ->first();
             if ($existingPending) {
                 return response()->json([
-                    'message' => '此課程已有待對帳回報，請先到帳務中心確認入帳或退回後再登錄。',
+                    'message' => '此課程已有「等你確認」的繳費回報，請先到帳務中心確認收款或退回後再登錄。',
                     'code' => 'pending_report_exists',
                     'report_id' => $existingPending->id,
                 ], 422);
@@ -703,7 +703,7 @@ class PaymentReportController extends Controller
             ]);
 
             return response()->json([
-                'message'    => '已送出待對帳',
+                'message'    => '已送出，等你確認',
                 'report_id'  => $report->id,
                 'payment_id' => null,
                 'invoice_id' => $invoice?->id,
@@ -770,7 +770,7 @@ class PaymentReportController extends Controller
         }
 
         return response()->json([
-            'message' => "已送出 {$accepted} / " . count($data['entries']) . ' 筆待對帳',
+            'message' => "已送出 {$accepted} / " . count($data['entries']) . ' 筆，等你確認',
             'accepted' => $accepted,
             'results' => $results,
         ], $accepted === count($data['entries']) ? 200 : 207);
@@ -812,7 +812,7 @@ class PaymentReportController extends Controller
         }
 
         return response()->json([
-            'message' => "已確認 {$accepted} / " . count($results) . ' 筆入帳',
+            'message' => "已確認收款 {$accepted} / " . count($results) . ' 筆',
             'accepted' => $accepted,
             'results' => $results,
         ], $accepted === count($results) ? 200 : 207);
