@@ -638,7 +638,7 @@ class AlertController extends Controller
             return [];
         }
 
-        $rows = Invoice::with(['payments' => function ($query) {
+        $rows = Invoice::with(['items', 'payments' => function ($query) {
                 $query->select(['id', 'InvoiceID', 'Amount', 'Method']);
             }])
             ->whereIn('StudentClassID', $ids)
@@ -725,7 +725,7 @@ class AlertController extends Controller
         $billingPeriod = $mode === 'date'
             ? (preg_match('/^\d{4}-\d{2}$/', (string) ($openBillingPeriod ?? ''))
                 ? (string) $openBillingPeriod
-                : $today->format('Y-m'))
+                : $this->monthlyBilling->defaultPeriodFor($sc, $today))
             : null;
         $billing = $mode === 'date'
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)

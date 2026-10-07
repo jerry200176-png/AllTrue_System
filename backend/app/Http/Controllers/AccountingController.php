@@ -156,6 +156,7 @@ class AccountingController extends Controller
         $courseIds = $courses->pluck('ID')->map(fn ($id) => (int) $id)->values()->all();
         $invoiceMap = Invoice::with([
                 'studentClass',
+                'items',
                 'payments' => fn ($q) => $q->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method']),
             ])
             ->whereIn('StudentClassID', $courseIds)
@@ -320,7 +321,7 @@ class AccountingController extends Controller
                 return response()->json(['message' => '只有「結案待對帳」且尚未繳清的合約才能確認不收'], 422);
             }
 
-            $invoices = Invoice::with(['studentClass', 'payments'])
+            $invoices = Invoice::with(['studentClass', 'items', 'payments'])
                 ->where('StudentClassID', $id)
                 ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->lockForUpdate()->get();
             // 已有收款的帳單不在此處理，避免作廢帳單蓋住已收的錢。
@@ -444,7 +445,7 @@ class AccountingController extends Controller
             ->groupBy('StudentClassID')
             ->pluck('first_session_date', 'StudentClassID');
 
-        $invoices = Invoice::with(['studentClass', 'payments' => function ($query) {
+        $invoices = Invoice::with(['studentClass', 'items', 'payments' => function ($query) {
                 $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id'])
                     ->orderBy('PaidAt')
                     ->orderBy('id');

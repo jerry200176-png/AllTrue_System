@@ -904,7 +904,7 @@ class PaymentReportApiTest extends TestCase
     public function test_confirm_date_mode_reports_never_leave_two_live_invoices_for_one_course_period(): void
     {
         $token = $this->createDirectorToken([1]);
-        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'Charge' => 3000]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'Charge' => 3000, 'StartDate' => '2026-04-01']);
         $confirm = fn (PaymentReport $r) => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->putJson("/api/v1/payment-reports/{$r->id}/confirm");
         $mk = fn (string $tag, int $amt) => PaymentReport::create([
