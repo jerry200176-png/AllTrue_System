@@ -12,15 +12,20 @@
       @keydown.down.prevent="openAt(0)"
       @keydown.up.prevent="openAt(-1)"
     >{{ triggerText }}</button>
+    <!-- Teleported so table/card overflow never clips it; position is fixed to the trigger. -->
+    <Teleport to="body">
     <div v-if="open && sheet" class="am__scrim" aria-hidden="true" @click="close(true)" />
     <div
       v-if="open"
       :id="menuId"
       ref="menu"
       class="am__menu"
+      :class="{ 'am__menu--sheet': sheet }"
+      :style="sheet ? null : pos"
       role="menu"
       :aria-label="label"
       @keydown="onKey"
+      @click.stop
     >
       <template v-for="(g, gi) in groups" :key="g.id">
         <hr v-if="gi > 0" class="am__sep" role="separator" />
@@ -40,6 +45,7 @@
         >{{ item.label }}{{ item.confirm ? '…' : '' }}</button>
       </template>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -49,7 +55,7 @@
 // ≤640px renders as a bottom sheet with 48px targets.
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
-const props = defineProps({
+defineProps({
   groups: { type: Array, required: true },
   label: { type: String, default: '更多操作' },
   triggerText: { type: String, default: '⋯' },
@@ -61,6 +67,17 @@ const root = ref(null);
 const trigger = ref(null);
 const menu = ref(null);
 const open = ref(false);
+const pos = ref({});
+// Below the trigger, right-aligned; flips above when the viewport bottom is too close.
+function place() {
+  const r = trigger.value?.getBoundingClientRect();
+  if (!r) return;
+  const below = window.innerHeight - r.bottom;
+  pos.value = {
+    right: `${Math.max(8, window.innerWidth - r.right)}px`,
+    ...(below < 280 && r.top > below ? { bottom: `${window.innerHeight - r.top + 4}px` } : { top: `${r.bottom + 4}px` }),
+  };
+}
 const sheet = ref(false);
 let mq = null;
 const syncSheet = () => { sheet.value = Boolean(mq?.matches); };
@@ -69,6 +86,7 @@ const syncSheet = () => { sheet.value = Boolean(mq?.matches); };
 const items = () => [...(menu.value?.querySelectorAll('[role="menuitem"]') || [])];
 
 async function openAt(index) {
+  place();
   open.value = true;
   await nextTick();
   items().at(index < 0 ? -1 : index)?.focus();
@@ -103,7 +121,10 @@ function onKey(e) {
     next?.focus();
   }
 }
-function onOutside(e) { if (open.value && !root.value?.contains(e.target)) close(false); }
+function onOutside(e) {
+  if (open.value && !root.value?.contains(e.target) && !menu.value?.contains(e.target)) close(false);
+}
+const onViewportChange = () => { if (open.value && !sheet.value) close(false); };
 
 onMounted(() => {
   mq = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 640px)') : null;
@@ -111,11 +132,15 @@ onMounted(() => {
   mq?.addEventListener?.('change', syncSheet);
   document.addEventListener('mousedown', onOutside);
   document.addEventListener('focusin', onOutside);
+  window.addEventListener('resize', onViewportChange);
+  window.addEventListener('scroll', onViewportChange, true);
 });
 onBeforeUnmount(() => {
   mq?.removeEventListener?.('change', syncSheet);
   document.removeEventListener('mousedown', onOutside);
   document.removeEventListener('focusin', onOutside);
+  window.removeEventListener('resize', onViewportChange);
+  window.removeEventListener('scroll', onViewportChange, true);
 });
 defineExpose({ openAt, close });
 </script>
@@ -125,7 +150,7 @@ defineExpose({ openAt, close });
 .am__trigger { min-width: 40px; min-height: 40px; }
 .am__trigger:focus-visible, .am__item:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .am__menu {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; min-width: 220px; max-height: 70vh; overflow-y: auto;
+  position: fixed; z-index: 1000; min-width: 220px; max-height: 70vh; overflow-y: auto;
   padding: 6px; background: var(--ds-surface); color: var(--ds-text-primary);
   border: var(--ds-border-width) solid var(--ds-border); border-radius: var(--ds-radius-lg);
   box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
@@ -139,12 +164,12 @@ defineExpose({ openAt, close });
 .am__item:hover, .am__item:focus-visible { background: var(--ds-surface-subtle); }
 .am__item[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
 .am__item--danger { color: var(--danger); }
-.am--sheet .am__scrim { position: fixed; inset: 0; z-index: 39; background: rgb(0 0 0 / 35%); }
-.am--sheet .am__menu {
+.am__scrim { position: fixed; inset: 0; z-index: 999; background: rgb(0 0 0 / 35%); }
+.am__menu--sheet {
   position: fixed; left: 0; right: 0; top: auto; bottom: 0; min-width: 0; max-height: 80vh;
   border-radius: var(--ds-radius-lg) var(--ds-radius-lg) 0 0; padding-bottom: calc(8px + env(safe-area-inset-bottom));
 }
-.am--sheet .am__item { min-height: 48px; }
-@media (prefers-reduced-motion: no-preference) { .am--sheet .am__menu { animation: am-up 160ms ease-out; } }
+.am__menu--sheet .am__item { min-height: 48px; }
+@media (prefers-reduced-motion: no-preference) { .am__menu--sheet { animation: am-up 160ms ease-out; } }
 @keyframes am-up { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 </style>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { DOMWrapper, mount } from '@vue/test-utils';
 import ActionMenu from '../ActionMenu.vue';
 
 const groups = [
@@ -8,6 +8,9 @@ const groups = [
 ];
 let wrapper;
 const mountMenu = () => { wrapper = mount(ActionMenu, { props: { groups, label: '數學 的更多操作' }, attachTo: document.body }); return wrapper; };
+// The menu is teleported to <body>, so query the document, not the wrapper.
+const $ = (sel) => new DOMWrapper(document.body.querySelector(sel));
+const has = (sel) => document.body.querySelector(sel) !== null;
 const focusedAction = () => document.activeElement?.getAttribute('data-action');
 afterEach(() => { wrapper?.unmount(); vi.unstubAllGlobals(); });
 
@@ -20,8 +23,8 @@ describe('ActionMenu', () => {
     await t.trigger('click');
     await w.vm.$nextTick();
     expect(t.attributes('aria-expanded')).toBe('true');
-    expect(w.get('[role="menu"]').attributes('aria-label')).toBe('數學 的更多操作');
-    expect(w.findAll('[role="menuitem"]')).toHaveLength(4);
+    expect($('[role="menu"]').attributes('aria-label')).toBe('數學 的更多操作');
+    expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(4);
     expect(focusedAction()).toBe('reschedule');
   });
 
@@ -29,7 +32,7 @@ describe('ActionMenu', () => {
     const w = mountMenu();
     await w.get('.am__trigger').trigger('keydown', { key: 'ArrowDown' });
     await w.vm.$nextTick();
-    const menu = w.get('[role="menu"]');
+    const menu = $('[role="menu"]');
     await menu.trigger('keydown', { key: 'ArrowDown' });
     expect(focusedAction()).toBe('quick-add');
     await menu.trigger('keydown', { key: 'Home' });
@@ -39,7 +42,7 @@ describe('ActionMenu', () => {
     await menu.trigger('keydown', { key: 'ArrowDown' });
     expect(focusedAction()).toBe('reschedule');
     await menu.trigger('keydown', { key: 'Escape' });
-    expect(w.find('[role="menu"]').exists()).toBe(false);
+    expect(has('[role="menu"]')).toBe(false);
     expect(document.activeElement).toBe(w.get('.am__trigger').element);
   });
 
@@ -48,7 +51,7 @@ describe('ActionMenu', () => {
     await w.get('.am__trigger').trigger('keydown', { key: 'ArrowUp' });
     await w.vm.$nextTick();
     expect(focusedAction()).toBe('delete');
-    await w.get('[role="menu"]').trigger('keydown', { key: '轉' });
+    await $('[role="menu"]').trigger('keydown', { key: '轉' });
     expect(focusedAction()).toBe('transfer');
   });
 
@@ -56,11 +59,11 @@ describe('ActionMenu', () => {
     const w = mountMenu();
     await w.get('.am__trigger').trigger('click');
     await w.vm.$nextTick();
-    await w.get('[data-action="quick-add"]').trigger('click');
+    await $('[data-action="quick-add"]').trigger('click');
     expect(w.emitted('select')).toBeUndefined();
-    expect(w.find('[role="menu"]').exists()).toBe(true);
-    expect(w.get('[data-action="quick-add"]').attributes('title')).toBe('已無剩餘堂數');
-    const del = w.get('[data-action="delete"]');
+    expect(has('[role="menu"]')).toBe(true);
+    expect($('[data-action="quick-add"]').attributes('title')).toBe('已無剩餘堂數');
+    const del = $('[data-action="delete"]');
     expect(del.classes()).toContain('am__item--danger');
     expect(del.text()).toBe('刪除課程…');
     await del.trigger('click');
@@ -75,22 +78,22 @@ describe('ActionMenu', () => {
     await t.trigger('click');
     expect(rowClick).not.toHaveBeenCalled();
     await t.trigger('click');
-    expect(w.find('[role="menu"]').exists()).toBe(false);
+    expect(has('[role="menu"]')).toBe(false);
     expect(t.attributes('aria-expanded')).toBe('false');
     await t.trigger('click');
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     await w.vm.$nextTick();
-    expect(w.find('[role="menu"]').exists()).toBe(false);
+    expect(has('[role="menu"]')).toBe(false);
     const outside = document.createElement('button');
     document.body.appendChild(outside);
     await t.trigger('click');
     outside.focus();
     await w.vm.$nextTick();
-    expect(w.find('[role="menu"]').exists()).toBe(false);
+    expect(has('[role="menu"]')).toBe(false);
     await t.trigger('click');
     await w.vm.$nextTick();
-    await w.get('[role="menu"]').trigger('keydown', { key: 'Tab' });
-    expect(w.find('[role="menu"]').exists()).toBe(false);
+    await $('[role="menu"]').trigger('keydown', { key: 'Tab' });
+    expect(has('[role="menu"]')).toBe(false);
     outside.remove();
     document.body.removeEventListener('click', rowClick);
   });
@@ -102,6 +105,6 @@ describe('ActionMenu', () => {
     expect(w.classes()).toContain('am--sheet');
     await w.get('.am__trigger').trigger('click');
     await w.vm.$nextTick();
-    expect(w.find('.am__scrim').exists()).toBe(true);
+    expect(has('.am__scrim')).toBe(true);
   });
 });
