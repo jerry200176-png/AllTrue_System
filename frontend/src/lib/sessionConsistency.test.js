@@ -31,12 +31,22 @@ const submittedViaListFallback = resolveLearningSessionState({
   sessionStatus: 'attended',
   learningRecordStatus: 'missing',
   recordStatus: 'pending',
+  recordHasBody: true,
   sessionStarted: true,
 });
 assert.equal(submittedViaListFallback.formStatus, 'pending');
 assert.equal(submittedViaListFallback.label, '待審');
 assert.equal(submittedViaListFallback.fillLocked, false);
 assert.equal(submittedViaListFallback.recordIdAllowed, true);
+const emptyBackfillPending = resolveLearningSessionState({
+  sessionStatus: 'attended',
+  learningRecordStatus: 'missing',
+  recordStatus: 'pending',
+  recordHasBody: false,
+  sessionStarted: true,
+});
+assert.equal(emptyBackfillPending.formStatus, 'missing', 'empty pending draft must stay 未填');
+assert.equal(emptyBackfillPending.label, '未填');
 const trueMissing = resolveLearningSessionState({
   sessionStatus: 'attended',
   learningRecordStatus: 'missing',

@@ -11,13 +11,23 @@ assert.match(
 );
 assert.match(
   source,
-  /teacherFilterTab\.value = 'pending'[\s\S]*teacherPriorityFilter\.value = 'all'/,
-  'teacher submit success must clear secondary priority chips so filled pending is not filtered out',
+  /teacherFilterTab\.value = 'pending'[\s\S]*teacherPriorityFilter\.value = 'all'[\s\S]*feedbackFilter\.value = 'all'/,
+  'teacher submit success must clear priority and feedback filters so filled pending is not filtered out',
 );
 assert.match(
   source,
   /已送出，等待主任核准/,
   'teacher submit success must announce awaiting-director confirmation',
+);
+assert.match(
+  source,
+  /lr-download-toast--page/,
+  'submit toast must render at page level outside the closed modal',
+);
+assert.match(
+  source,
+  /recordHasBody:\s*!!\(statusSource && hasLearningRecordBody\(statusSource\)\)/,
+  'schedule status fallback must require a ClassSession-bound row with body',
 );
 
 console.log('learning records submit visibility contract tests passed');
