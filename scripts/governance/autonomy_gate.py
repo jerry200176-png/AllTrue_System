@@ -1175,15 +1175,22 @@ _FOUNDER_GO_NEGATIVE_RE = re.compile(
     r"rejected|revoked|withdrawn|refused|cancell?ed|retracted|without)\b",
     re.IGNORECASE,
 )
+# Negations that void a GO anywhere on the line, parentheses included.
+_FOUNDER_GO_VOID_RE = re.compile(
+    r"\b(?:false|declined|denied|rejected|revoked|withdrawn|refused|cancell?ed|retracted|rescinded|"
+    r"vetoed|disapproved|unapproved)\b|(?<![-\w])pending\b|"
+    r"\b(?:not|never|no)\b[ \t]+(?:yet[ \t]+)?(?:approved|approval|given|granted|go|ok|authori[sz]ed)\b",
+    re.IGNORECASE,
+)
 
 
 def has_founder_go(body: str) -> bool:
     """Return whether the PR body carries an affirmative Founder GO prose line."""
 
     def affirmative(value: str) -> bool:
-        if "~~" in value or "<" in value or not _FOUNDER_GO_POSITIVE_RE.match(value):
+        if "~~" in value or "<" in value or _FOUNDER_GO_VOID_RE.search(value) or not _FOUNDER_GO_POSITIVE_RE.match(value):
             return False
-        # Negations count outside parenthesised context ("(no open findings)" is scope).
+        # Weaker negation words count outside parentheses ("(no open findings)" is scope).
         outside = value
         while True:
             reduced = re.sub(r"\([^()]*\)", " ", outside)

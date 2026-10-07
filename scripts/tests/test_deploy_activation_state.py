@@ -1483,7 +1483,11 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         # Codex P1: only an affirmative GO naming the Founder and a date counts.
         for text in ("Founder GO: false", "Founder GO: declined", "Founder GO: ~~revoked~~",
                      "Founder GO: Jerry 2026-10-07 declined", "Founder GO: not by Jerry 2026-10-07",
-                     "Founder GO: Jerry", "Founder GO: 2026-10-02 packet", "Founder GO: yes"):
+                     "Founder GO: Jerry", "Founder GO: 2026-10-02 packet", "Founder GO: yes",
+                     # Codex P1: negations inside parentheses void the GO too.
+                     "Founder GO: Jerry 2026-10-07 (not approved)", "Founder GO: Jerry 2026-10-07 (declined)",
+                     "Founder GO: Jerry 2026-10-07 (revoked)", "Founder GO: Jerry 2026-10-07 (pending)",
+                     "Founder GO: Jerry 2026-10-07 (no GO yet)", "Founder GO: Jerry 2026-10-07 (not yet granted)"):
             with self.subTest(text=text):
                 result = self._evidence(self._range(11), {11: self._pr(11, r3 + text)}, {11: 3})
                 self.assertEqual(result["missing"], [11], result)
