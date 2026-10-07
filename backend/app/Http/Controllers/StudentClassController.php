@@ -5291,6 +5291,7 @@ class StudentClassController extends Controller
         // A target booking may still be a schedules row only (not yet materialized); the write guard counts it too.
         if ($target && !$targetHoldsNothing) {
             $targetSchedules = DB::table('schedules')->where('student_course_id', $targetId)->where('status', 'scheduled')
+                ->where('student_id', (int) $source->getAttribute('StudentID'))
                 ->whereNull('original_schedule_id')
                 ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('StartDate')), fn ($q, $d) => $q->whereDate('schedule_date', '>=', $d))
                 ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('EndDate')), fn ($q, $d) => $q->whereDate('schedule_date', '<=', $d))
