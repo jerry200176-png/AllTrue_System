@@ -30,7 +30,7 @@ const ACTION_LABELS = {
   billing_correction: '更正未付款堂數',
   transfer_sessions: '轉移已上課紀錄',
   void_payment: '查看帳單與作廢流程',
-  payment_report: '查看帳單與對帳',
+  payment_report: '查看帳單與繳費回報',
   package_adjustment: '改走方案調整',
   reconcile_usage: '先完成堂數對帳',
   new_contract: '結案後建立新課程',

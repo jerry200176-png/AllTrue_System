@@ -1256,7 +1256,8 @@ const TAB_DEFS = [
   // The tab also lists partly paid courses (filter below), so it names both.
   { key: 'unpaid', label: `${TUITION_STATUS_CONFIG.unpaid.label}／${TUITION_STATUS_CONFIG.partial.label}` },
   { key: 'overdue', label: '逾期應收' },
-  { key: 'pending_report', label: TUITION_STATUS_CONFIG.pending_report.label },
+  // Short tab name; every pointer to this tab uses the same REPORT_STATUS_LABELS.pending.
+  { key: 'pending_report', label: REPORT_STATUS_LABELS.pending },
   { key: 'pending_reconciliation', label: TUITION_STATUS_CONFIG.pending_reconciliation.label },
   { key: 'renewal', label: '續課/將到期' },
 ];

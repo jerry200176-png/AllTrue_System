@@ -26,7 +26,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
 
   it('uses explicit accounting-stage labels on collection tabs and sticky batch bar when rows are selected', () => {
     // The tab label must follow the shared status config, not a second literal.
-    expect(source).toContain("{ key: 'pending_report', label: TUITION_STATUS_CONFIG.pending_report.label }");
+    expect(source).toContain("{ key: 'pending_report', label: REPORT_STATUS_LABELS.pending }");
     expect(source).toContain('const STATUS_CONFIG = TUITION_STATUS_CONFIG;');
     expect(source).toContain('tc-batch-bar--sticky');
     expect(source).toContain('v-if="selectedRows.length"');
