@@ -259,7 +259,7 @@ import {
 
 const EXCEPTION_PREVIEW = 2;
 
-const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], branchId: [Number, String] });
+const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String] });
 
 const emit = defineEmits(['close', 'changed']);
 
@@ -357,7 +357,8 @@ async function loadLedger() {
   if (!props.show) return;
   const studentClassId = Number(props.studentClassId || 0);
   const reportId = Number(props.reportId || 0);
-  if (!studentClassId && !reportId) {
+  const studentId = Number(props.studentId || 0);
+  if (!studentClassId && !reportId && !studentId) {
     error.value = '缺少課程或收據資訊，無法開啟對帳。';
     return;
   }
@@ -374,6 +375,7 @@ async function loadLedger() {
     const params = new URLSearchParams();
     if (studentClassId) params.set('student_class_id', String(studentClassId));
     if (reportId) params.set('report_id', String(reportId));
+    if (studentId && !studentClassId && !reportId) params.set('student_id', String(studentId));
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
 
     const resp = await fetch(`/api/v1/accounting/ledger?${params}`, {
@@ -390,7 +392,7 @@ async function loadLedger() {
   }
 }
 
-watch(() => [props.show, props.studentClassId, props.reportId, props.branchId], loadLedger, { immediate: true });
+watch(() => [props.show, props.studentClassId, props.reportId, props.studentId, props.branchId], loadLedger, { immediate: true });
 
 // Empty-state is judged for the opened course when the API reports one, else student-wide.
 const ledgerBothEmpty = computed(() => {
