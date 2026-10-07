@@ -15,7 +15,7 @@ cancelled 08/14 ClassSession at 13:00 next to a 10:00 template, which is the
 
 Evidence level: engineering tests (merged PR CI, `PausedCourseProjectionTest`)
 and production version check only. Merge `afce6ff6f6b0f38396a2e872fe855eb53610375c`
-(#3495) first shipped in deploy run 37505389591 and is an ancestor of the
+(#3495) shipped in deploy run 37505389591 (a successful run whose head contains the rev) and is an ancestor of the
 current production head `1d8b893e` (`git merge-base --is-ancestor`). No
 production UI check was performed; the reply says so, and reporter acceptance
 is pending.
