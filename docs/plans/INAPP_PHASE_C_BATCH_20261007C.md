@@ -8,7 +8,7 @@ The reply offers both 「確認已修好」 and 「問題仍存在」. Standing 
 
 Probe refinement (`inapp_333_multi_teacher_templates`): a template that holds none of the contract's
 own early slots means it was edited after start, so it is labelled `review_only:
-template_changed_after_start` and every foreign-slot session goes to `C_review_template_changed`.
+template_changed_after_start` and its clean future foreign-slot sessions go to `C_review_template_changed`. Past or charged rows keep `C_past_or_artifact`, because ledger risk wins.
 The probe never treats this shape as an A/B repair. Verified with a throwaway isolated-MariaDB
 test that seeds the course-448 shape.
 

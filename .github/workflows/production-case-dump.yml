@@ -848,8 +848,10 @@ jobs:
                   $siblingSame = $db::table('ClassSession')->whereIn('StudentClassID', $peers)->whereDate('SessionDate', $date)
                     ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$hm($r->StartTime)])->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)->exists();
                   $clean = $date > $today && strtolower((string) $r->Status) === 'scheduled' && !$deducted && !$record && $ledgerNet === 0;
-                  $bucket = $templateChanged ? 'C_review_template_changed'
-                    : (!$clean ? 'C_past_or_artifact' : ($siblingSame ? 'A_future_duplicate' : ($modeReview ? 'C_review_mode' : 'B_future_misplaced')));
+                  // Ledger/attendance risk wins; a changed template only demotes clean future rows to review.
+                  $bucket = !$clean ? 'C_past_or_artifact'
+                    : ($templateChanged ? 'C_review_template_changed'
+                    : ($siblingSame ? 'A_future_duplicate' : ($modeReview ? 'C_review_mode' : 'B_future_misplaced')));
                   $sessions[] = ['session_id' => (int) $r->id, 'date' => $date, 'start' => $hm($r->StartTime), 'status' => (string) $r->Status,
                     'deducted' => $deducted, 'learning_record' => $record, 'ledger_net' => $ledgerNet, 'sibling_same_slot' => $siblingSame, 'bucket' => $bucket];
                 }}
