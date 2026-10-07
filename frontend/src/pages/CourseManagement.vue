@@ -1625,6 +1625,8 @@ const courses = ref([]);
 const pendingConvertTrialId = ref(0);
 // in-app #382: calendar sends a just-created manual course here to schedule its first lesson.
 const pendingManualSessionId = ref(0);
+// in-app #342: calendar 「看全部堂次」 opens this course's 排課與堂次 tab.
+const pendingLessonsCourseId = ref(0);
 const handoffNarrowedList = ref(false);
 const convertTrialStudentId = ref(null);
 const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
@@ -4271,14 +4273,14 @@ const loadCourses = async (page = 1) => {
         page: String(page),
       });
       // A manual-session handoff fetches that student's courses only, so list filters can't hide the target (#382).
-      const pinnedHandoff = Boolean(pendingManualSessionId.value);
+      const pinnedHandoff = Boolean(pendingManualSessionId.value || pendingLessonsCourseId.value);
       if (!pinnedHandoff && filters.value.class_type) params.set('class_type', filters.value.class_type);
       if (!pinnedHandoff && filters.value.teacher_id) params.set('teacher_id', String(filters.value.teacher_id));
       if (!pinnedHandoff && filters.value.teacher_name?.trim()) params.set('teacher_name', filters.value.teacher_name.trim());
       if (!pinnedHandoff && filters.value.course_status) params.set('status', filters.value.course_status);
       if (!pinnedHandoff && filters.value.name) params.set('name', filters.value.name);
       // convert-trial deep link: pin the target student so same-name/pagination can't hide the course.
-      if ((pendingConvertTrialId.value || pendingManualSessionId.value) && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
+      if ((pendingConvertTrialId.value || pendingManualSessionId.value || pendingLessonsCourseId.value) && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
       const res = await authedFetch(`/api/v1/student-classes?${params}`, {
         credentials: 'include',
         headers: { 'Accept': 'application/json' }
@@ -5350,6 +5352,13 @@ watch(
   { immediate: true },
 );
 watch(coursesLoading, (loading) => {
+  if (loading || !pendingLessonsCourseId.value) return;
+  const course = courses.value.find((c) => c.id === pendingLessonsCourseId.value);
+  pendingLessonsCourseId.value = 0;
+  convertTrialStudentId.value = null;
+  if (course) openCourseManager(course, 'sessions');
+});
+watch(coursesLoading, (loading) => {
   if (loading || !pendingManualSessionId.value) return;
   const course = courses.value.find((c) => c.id === pendingManualSessionId.value);
   pendingManualSessionId.value = 0;
@@ -5380,6 +5389,9 @@ watch(
     // below, so it survives the mount-time reload (stale requests never set coursesLoading=false).
     if (props.initialCourseIntent === 'convert-trial') {
       pendingConvertTrialId.value = Number(props.initialCourseId) || 0;
+      convertTrialStudentId.value = sid ?? null;
+    } else if (props.initialCourseIntent === 'lessons') {
+      pendingLessonsCourseId.value = Number(props.initialCourseId) || 0;
       convertTrialStudentId.value = sid ?? null;
     } else if (props.initialCourseIntent === 'manual-session') {
       pendingManualSessionId.value = Number(props.initialCourseId) || 0;
