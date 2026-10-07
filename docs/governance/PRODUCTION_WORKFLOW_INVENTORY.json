@@ -125,6 +125,18 @@
       "future_state": "Retain as explicit in-app lifecycle writeback; do not broaden into arbitrary production mutation"
     },
     "bug-legacy-production-probes.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Tinker probe is SELECT/report-only; no apply branch found."},
+    "bug-auto-intake.yml": {
+      "classification": "in-app-lifecycle-writeback",
+      "production_mutation": "confirmed",
+      "trigger": "schedule (hourly) + workflow_dispatch (dry_run default)",
+      "production_command_or_path": "php artisan bugs:auto-intake --candidates (read) / --ack -> BugReportService::changeStatus(new→triaged, disposition bug + issue link) and addComment(ack)",
+      "authorization": "Founder GO 6A (Jerry 2026-10-07) for automated ack writes; pinned production SSH trust; IDs-only issue creation with issues: write scoped to one job",
+      "concurrency": "Workflow concurrency group bug-auto-intake; command skips reports not in status new; ack deduped by issue URL; issue deduped by SourceRef",
+      "rollback": "Disable the workflow; manual status/comment correction per report",
+      "canonical": true,
+      "required": "Auto-intake so new in-app reports never pile up untriaged",
+      "future_state": "Retain; Phase-A dispatch remains for human re-disposition"
+    },
     "bug-phase-a-triage.yml": {
       "classification": "in-app-lifecycle-writeback",
       "production_mutation": "confirmed",
