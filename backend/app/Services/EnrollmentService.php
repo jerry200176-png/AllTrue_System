@@ -609,6 +609,11 @@ class EnrollmentService
                                 'subject' => $subjectOnly,
                                 'class_type' => $sc->ClassType ?? '',
                                 'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
+                                // in-app #382: a manual course with no upcoming lesson needs 「新增下一堂」, not a second course.
+                                'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
+                                'future_session_count' => $sc->scheduling_policy === 'manual_occurrence'
+                                    ? app(ManualSessionBookingService::class)->reservedSessionCount($sc, Carbon::today()->toDateString())
+                                    : null,
                             ];
                         }
 
@@ -632,6 +637,12 @@ class EnrollmentService
                                 'existing_range' => [$exStart, $exEnd],
                                 'new_range' => [$newStartD, $newEndD],
                                 'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
+                                // Same facts as duplicate conflicts, so the shared modal can still offer 新增下一堂 (#382).
+                                'class_type' => $sc->ClassType ?? '',
+                                'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
+                                'future_session_count' => $sc->scheduling_policy === 'manual_occurrence'
+                                    ? app(ManualSessionBookingService::class)->reservedSessionCount($sc, Carbon::today()->toDateString())
+                                    : null,
                             ];
                         }
                     }

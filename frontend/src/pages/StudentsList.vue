@@ -859,6 +859,7 @@
       :subject-label-fn="getSubjectLabel"
       @cancel="showDuplicateInterceptModal = false"
       @purchase="interceptGoToPurchase"
+      @manual-session="(c) => { showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptPendingStudent?._laravelId ?? interceptPendingStudent?.id, c.existing_course_id); }"
       @decision="onEnrollmentConflictDecision"
     />
     <!-- Grade Promotion Modal — server preview/confirm (#297 Phase A); no course Stop. -->
@@ -989,7 +990,7 @@ import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled } from '../lib/paymentStatus.js';
 import {
-  courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
+  closedReason as effectiveClosedReason, courseProgress, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
   modalRemainingSessions, ownRemainingSessions, poolTotalSessions, WAIVED_LABEL,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
@@ -1033,6 +1034,7 @@ import {
   collectStudentCourses,
   findCourseForPurchase,
   normalizeActiveCourseConflicts,
+  normalizeDuplicateConflicts,
 } from '../lib/enrollmentConflictDecision';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import MonthlyBatchRenewModal from '../components/course-management/MonthlyBatchRenewModal.vue';
@@ -1041,6 +1043,7 @@ import {
   buildTuitionCollectNav,
   buildTuitionLedgerNav,
   buildCourseMgmtOpsNav,
+  buildManualSessionNav,
   buildBindingManagementNav,
   tuitionIntentForPaymentStatus,
 } from '../lib/authoritativeMutationRoutes.js';
@@ -1387,22 +1390,6 @@ const parseCourseNumber = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 };
-function effectiveClosedReason(course) {
-  if (course?.closed_reason) return course.closed_reason;
-  if (String(course?.status || '').toLowerCase() === 'inactive'
-    && course?.payment_type === 'session'
-    && isCourseSettled(course)
-    && ownRemainingSessions(course) != null
-    && ownRemainingSessions(course) <= 0) {
-    return 'completed';
-  }
-  // 月結制課程停用即視為完課（DB 無 closed_reason 的歷史髒資料也走此分支）
-  if (String(course?.status || '').toLowerCase() === 'inactive'
-    && course?.payment_type !== 'session') {
-    return 'completed';
-  }
-  return null;
-}
 const isHistoricalCourse = (course) => {
   if (course?.closed_reason === 'settled_pending' || course?.closed_reason === 'waived') return true;
   // 月結制課程 RemainingSessions 通常為 0（月結不扣堂），不可用 remaining ≤ 0 判斷歷史。
@@ -1420,10 +1407,7 @@ const isHistoricalCourse = (course) => {
   if (remaining == null) return false;
   return remaining <= 0 && isCourseSettled(course);
 };
-const isHistoryCourseByReason = (course) => {
-  const reason = effectiveClosedReason(course);
-  return reason === 'settled' || reason === 'settled_pending' || reason === 'completed' || reason === 'waived';
-};
+const isHistoryCourseByReason = (course) => isHistoryCourse(course, { includePending: true });
 const getActiveStudentCourses = (id) => {
   return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
 };
@@ -2856,6 +2840,10 @@ async function onEnrollmentConflictDecision(decision) {
         ? '已建立下一期續報'
         : '已建立獨立課程';
     alert(`${label}（${created} 堂）`);
+    if (payload.scheduling_policy === 'manual_occurrence' && result?.student_class_id) {
+      openManualSessionInCourseMgmt(result.student_id ?? payload.student_id, result.student_class_id);
+      return;
+    }
     await loadStudents();
   } catch (err) {
     alert(err?.message || '建立失敗，請稍後再試');
@@ -2978,7 +2966,15 @@ const handleOpenBillingFromEdit = () => {
   goToTuitionBilling(course);
 };
 
-const handleUniversalSchedulerSuccess = async () => {
+// in-app #382: a manual course has no lesson yet; schedule the first one in course management.
+const openManualSessionInCourseMgmt = (studentId, courseId) => emit('navigate', buildManualSessionNav(studentId, courseId));
+
+const handleUniversalSchedulerSuccess = async (result) => {
+  if (result?.scheduling_policy === 'manual_occurrence' && result.student_class_id) {
+    closeCourseModal();
+    openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
+    return;
+  }
   const sid = selectedStudent.value?.id;
   closeCourseModal();
   if (sid != null) {
@@ -2989,12 +2985,7 @@ const handleUniversalSchedulerSuccess = async () => {
 
 const handleSchedulerDuplicate = (evt) => {
   closeCourseModal();
-  duplicateConflicts.value = (evt?.conflicts || []).map(c => ({
-    existing_course_id: c.existing_course_id,
-    subject_name: c.subject || '',
-    remaining_sessions: c.remaining_sessions ?? 0,
-    class_type: c.class_type || '',
-  }));
+  duplicateConflicts.value = normalizeDuplicateConflicts(evt?.conflicts);
   interceptPendingStudent.value = selectedStudent.value;
   interceptOriginalPayload.value = evt?.originalPayload || null;
   interceptPendingClassType.value = String(evt?.originalPayload?.class_type || '');

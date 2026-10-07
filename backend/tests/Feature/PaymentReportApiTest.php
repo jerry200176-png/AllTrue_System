@@ -901,6 +901,32 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(0, PaymentReport::where('InvoiceID', $staleInvoice->id)->count());
     }
 
+    public function test_confirm_date_mode_reports_never_leave_two_live_invoices_for_one_course_period(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'Charge' => 3000, 'StartDate' => '2026-04-01']);
+        $confirm = fn (PaymentReport $r) => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/payment-reports/{$r->id}/confirm");
+        $mk = fn (string $tag, int $amt) => PaymentReport::create([
+            'StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'reported_by_name' => 'x', 'payment_date' => '2026-04-28',
+            'payment_method' => 'cash', 'reported_amount' => $amt, 'status' => 'pending',
+            'report_token_hash' => hash('sha256', $tag), 'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        // A voided same-period invoice never blocks a fresh one.
+        $void = Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01',
+            'TotalAmount' => 3000, 'PaidAmount' => 0, 'Status' => 'void', 'billing_period' => '2026-04']);
+        $confirm($mk('a', 1000))->assertOk();
+        $live = Invoice::where('StudentClassID', $sc->ID)->where('billing_period', '2026-04')->where('Status', '!=', 'void')->get();
+        $this->assertCount(1, $live);
+        $this->assertNotSame($void->id, $live->first()->id);
+
+        // A second invoice-less report is stopped upstream (course already paid); no second live invoice appears.
+        $confirm($mk('b', 1000))->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        $this->assertSame(1, Invoice::where('StudentClassID', $sc->ID)->where('billing_period', '2026-04')->where('Status', '!=', 'void')->count());
+        $this->assertSame(1, Payment::where('InvoiceID', $live->first()->id)->count());
+    }
+
     private function recordDirect(string $token, int $classId, int $amount, ?int $invoiceId = null)
     {
         return $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
