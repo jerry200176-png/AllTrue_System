@@ -338,6 +338,9 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $token = $this->createDirectorToken([1]);
         $student = Student::create(['name' => '加週二', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
         $course = $this->createCourseRecord($student->id, 159);
+        // Attended history: the edit syncs future rows instead of rebuilding the whole schedule.
+        $past = $this->createSessionRecord($course->ID, '2026-04-06', '15:00:00', '16:00:00', 'attended');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-06 15:00:00', 'MDT' => now(), 'ClassSessionID' => $past->id, 'Status' => 'present', 'SessionDeducted' => 1]);
         $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
         $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
 
