@@ -188,6 +188,8 @@ class DuplicateCourseGuardTest extends TestCase
             'teacher_id' => $teacherId,
             'subject' => 'Math',
             'class_type' => 'tutoring',
+            'confirmed_dates' => [],
+            'future_dates' => [],
             'days_of_week' => [],
             'day_time_slots' => [],
             'start_time' => '16:00',
