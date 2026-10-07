@@ -864,23 +864,8 @@ parameters:
 			count: 2
 			path: app/Http/Controllers/BillingController.php
 
-		-
-			message: '#^Access to an undefined property App\\Models\\BugReport\:\:\$created_at\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/BugReportController.php
 
-		-
-			message: '#^Access to an undefined property App\\Models\\BugReport\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/BugReportController.php
 
-		-
-			message: '#^Access to an undefined property App\\Models\\BugReport\:\:\$status\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/BugReportController.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\BugReportComment\:\:\$created_at\.$#'
@@ -3732,11 +3717,6 @@ parameters:
 			count: 3
 			path: app/Services/ApprovalSessionSyncService.php
 
-		-
-			message: '#^Access to an undefined property App\\Models\\BugReport\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 3
-			path: app/Services/BugReportService.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\BugReport\:\:create\(\)\.$#'

@@ -67,12 +67,12 @@ class BugAutoIntakeCommand extends Command
             $this->error('ack needs --bug-id and a GitHub issue URL');
             return self::FAILURE;
         }
-        $bug = BugReport::find($bugId);
+        $bug = BugReport::query()->find($bugId);
         if (!$bug) {
             $this->error('bug not found: ' . $bugId);
             return self::FAILURE;
         }
-        $from = (string) $bug->status;
+        $from = (string) $bug->getAttribute('status');
         if ($from !== 'new') {
             $this->line(json_encode(['bug_id' => $bugId, 'skipped' => 'status_' . $from]));
             return self::SUCCESS;
@@ -87,7 +87,7 @@ class BugAutoIntakeCommand extends Command
             'disposition' => 'bug',
             'github_issue_url' => $issueUrl,
         ]);
-        if (!($transition['ok'] ?? false)) {
+        if (!$transition['ok']) {
             $this->error(json_encode($transition));
             return self::FAILURE;
         }
@@ -96,7 +96,7 @@ class BugAutoIntakeCommand extends Command
         if (!$already) {
             BugReportService::addComment($bugId, $actor, self::ACK_TEXT . '追蹤：' . $issueUrl, false);
         }
-        $this->line(json_encode(['bug_id' => $bugId, 'from' => $from, 'final' => (string) BugReport::find($bugId)->status,
+        $this->line(json_encode(['bug_id' => $bugId, 'from' => $from, 'final' => (string) BugReport::query()->whereKey($bugId)->value('status'),
             'ack' => $already ? 'skipped' : 'posted', 'issue' => $issueUrl]));
         return self::SUCCESS;
     }
