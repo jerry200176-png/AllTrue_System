@@ -58,7 +58,7 @@ def main() -> int:
             else:
                 print(f"WARN: {msg}")
                 warnings += 1
-        elif str(cap.get("risk", "")).lower() in HIGH_RISK and (review_after - today).days <= EXPIRY_WARN_DAYS:
+        elif str(cap.get("risk", "")).lower() in HIGH_RISK and (review_after - today).days < EXPIRY_WARN_DAYS:
             msg = (f"high-risk capability {cid} review_after={review_after} "
                    f"hard-fails in {(review_after - today).days + 1} day(s); re-verify it now")
             prefix = "::warning::" if os.environ.get("GITHUB_ACTIONS") else "WARN: "

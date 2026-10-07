@@ -24,9 +24,9 @@ def run(review_after, risk="high", today="2026-10-01"):
 
 class CapabilityExpiryWarningTest(unittest.TestCase):
     def test_high_risk_within_window_warns_but_passes(self):
-        r = run("2026-10-08")
+        r = run("2026-10-07")
         self.assertEqual(r.returncode, 0, r.stdout)
-        self.assertIn("WARN: high-risk capability cap_x review_after=2026-10-08 hard-fails in 8 day(s)", r.stdout)
+        self.assertIn("WARN: high-risk capability cap_x review_after=2026-10-07 hard-fails in 7 day(s)", r.stdout)
 
     def test_due_today_warns_one_day(self):
         r = run("2026-10-01")
@@ -34,7 +34,7 @@ class CapabilityExpiryWarningTest(unittest.TestCase):
         self.assertIn("hard-fails in 1 day(s)", r.stdout)
 
     def test_high_risk_outside_window_is_silent(self):
-        r = run("2026-10-09")
+        r = run("2026-10-08")
         self.assertEqual(r.returncode, 0)
         self.assertNotIn("hard-fails", r.stdout)
 
