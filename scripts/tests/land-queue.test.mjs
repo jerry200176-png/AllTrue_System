@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BATCH_BASE_MESSAGE, BATCH_MAX, isBatchBase, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, orderQueue, parseMember, planBatch } from '../../.github/scripts/land-queue.mjs';
+import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, isBatchBase, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, orderQueue, parseMember, planBatch } from '../../.github/scripts/land-queue.mjs';
 
 const req = ['A', 'B'];
 const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
@@ -132,4 +132,13 @@ test('isBatchBase: only the queue-made empty base commit proves batch ownership 
   assert.equal(isBatchBase(base(), 'other-tree'), false); // not an empty commit
   assert.equal(isBatchBase(base({ parents: [{ sha: 'a' }, { sha: 'b' }] }), 't'), false);
   assert.equal(isBatchBase(undefined, 't'), false);
+});
+
+test('batchSerial: intentional-revert, untrusted author or an earlier red batch keep a PR out of batches', () => {
+  const trusted = [...TRUSTED_AUTHORS][0];
+  assert.equal(batchSerial({ authorAssociation: trusted, labels: ['queue'] }, false), false);
+  assert.equal(batchSerial({ authorAssociation: trusted, labels: ['queue', 'intentional-revert'] }, false), true);
+  assert.equal(batchSerial({ authorAssociation: trusted, labels: ['queue'] }, true), true); // red batch is not rebuilt with it
+  assert.equal(batchSerial({ authorAssociation: 'NONE', labels: [] }, false), true);
+  assert.equal(batchSerial({ authorAssociation: trusted }, false), false);
 });
