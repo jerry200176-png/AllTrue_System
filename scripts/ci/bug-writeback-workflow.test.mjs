@@ -527,6 +527,17 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '352 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '352 must give a no-names reopen path');
   }
+// Scoped Phase-C for in-app 333 (#3138), 2026-10-07 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            333 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 333 must exist');
+    assert.ok(entry[1].includes('"rev" => "f3aa9efca6b235d0ddf049a29a0fd396eea1bd97"'), '333 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37563232975"'), '333 deploy binding');
+    assert.ok(entry[1].includes('issues/3138'), '333 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '333 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '333 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '333 must give a no-names reopen path');
+  }
 // Shipped 2026-10-03 closeout (engineering tests + production version check only).
   {
     const entry = phaseCSource.match(/\n            295 => \[([\s\S]*?)\n            \],/);
@@ -582,6 +593,22 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '343 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '343 must give a no-names reopen path');
   }
+// F17 auto-intake (#Founder GO 6A, 2026-10-07): hourly, IDs-only, deduped, dry-run on manual dispatch.
+{
+  const src = fs.readFileSync('.github/workflows/bug-auto-intake.yml', 'utf8');
+  assert.ok(src.includes("cron: '23 * * * *'"), 'auto-intake runs hourly');
+  assert.match(src, /^permissions:\n  contents: read$/m, 'top-level permissions stay read-only');
+  assert.equal((src.match(/issues: write/g) || []).length, 1, 'issues: write only on the issue job');
+  assert.ok(src.includes('SourceRef: alltrue:bug_report:${id}') && src.includes('.login == $owner or .login == "app/github-actions"')
+    && src.includes('[.comments[] | select('), 'issue dedupe by SourceRef in body or comments, trusted authors only');
+  assert.equal((src.match(/if: github\.ref == 'refs\/heads\/main'/g) || []).length, 3, 'every job is main-only');
+  assert.ok(!src.includes('page_key'), 'client-controlled page_key is never published');
+  assert.ok(src.includes("!(github.event_name == 'workflow_dispatch' && inputs.dry_run)"), 'manual dry run never writes production');
+  assert.ok(src.includes('bugs:auto-intake --candidates') && src.includes('bugs:auto-intake --ack'), 'uses the tested command');
+  assert.ok(!/\.title|\.description|client_info/.test(src), 'no report free text in the workflow');
+  assert.ok(fs.readFileSync('.github/pii-log-workflows.txt', 'utf8').split('\n').includes('bug-auto-intake.yml'), 'runs are purged hourly');
+}
+
 // Reply template rule (2026-10-07): every new Phase-C reply offers BOTH outcomes, so a
 // successful retest is confirmed instead of waiting for the reporter timeout. IDs below were
 // written before the rule (already sent; not re-sent by decision) and stay as-is.

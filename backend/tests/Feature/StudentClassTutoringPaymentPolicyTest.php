@@ -109,6 +109,25 @@ class StudentClassTutoringPaymentPolicyTest extends TestCase
         $this->assertDatabaseCount('Invoice', 0);
     }
 
+    /** #3203 / in-app 361: a 0-total trial owes nothing — no unpaid state, no payment entry, no tuition alert. */
+    public function test_zero_fee_trial_has_no_payment_obligation(): void
+    {
+        $token = $this->createDirectorToken();
+        $course = $this->createCourse(['ClassType' => 'trial', 'Charge' => 0, 'Rate' => 0]);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $row = $this->courseRow($token, $course);
+        $this->assertSame('free', $row['payment_status'] ?? null);
+
+        $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $course->ID, 'payment_date' => '2026-09-09', 'payment_method' => 'cash', 'amount' => 1,
+        ])->assertStatus(422)->assertJsonPath('code', 'zero_fee_no_payment_obligation');
+        $this->assertDatabaseCount('payment_reports', 0);
+
+        $ids = collect($this->withHeaders($headers)->getJson('/api/v1/alerts/tuition?branch_id=1')->json('data') ?? [])->pluck('student_class_id')->all();
+        $this->assertNotContains($course->ID, $ids);
+    }
+
     private function courseRow(string $token, StudentClass $course): array
     {
         $response = $this->withHeaders([

@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-10-07-inapp-auto-ack
+    published_at: "2026-10-07"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 回報問題後一小時內會先收到「收到」
+    summary: 用「意見與建議」回報的問題，系統每小時自動收件並回覆，不會再沒人理。
+    items:
+      - category: improved
+        text: 送出回報後約一小時內，會收到「收到，我們正在查，查到原因會再回覆你」。
+      - category: improved
+        text: 查到原因或修好後，我們會再用白話回覆你發生什麼、改了什麼、現在會看到什麼。

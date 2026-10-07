@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-07-teacher-lr-submitted-visible
+    published_at: "2026-10-07"
+    audiences:
+      - teacher
+      - director
+    importance: digest
+    title: 送出評量後可再查看
+    summary: 老師送出後會看到「已送出待審」，不用以為沒存到。
+    items:
+      - category: fixed
+        text: 送出評量後，課表會標「已送出待審」，可再點開查看內容。
+      - category: improved
+        text: 評量待辦會留在「待審核」，並提示已送出、等待主任核准。
+    source_refs:
+      - "changelog:2026-10-07:teacher-lr-submitted-visible"
+      - "github:#3760"

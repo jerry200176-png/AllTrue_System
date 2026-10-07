@@ -7,7 +7,7 @@
     { "context": "billing",        "match": "TransactionDiscountCalculator" },
     { "context": "enrollment",     "match": "AdmissionInquiry|Enrollment|StudentClass|CoursePackage|PackageDeduction|FrontendSubjectIdResolver|CourseContract|CourseContinuity|CourseEditability" },
     { "context": "enrollment",     "match": "ContractAmendment" },
-    { "context": "billing",        "match": "Finance|Payment|Invoice|Tuition|Accounting|Bank|Dunning|SessionDeduction|SessionCharge|SessionEntitlement|SessionContractRecovery|PaymentReport|Billing|DeductionBasis|ContractMoneyState|PaidStatus" },
+    { "context": "billing",        "match": "Finance|Payment|Invoice|Tuition|Accounting|Bank|Dunning|SessionDeduction|SessionCharge|SessionEntitlement|SessionContractRecovery|PaymentReport|Billing|DeductionBasis|ContractMoneyState|ContractMoneyVerdict|ContractVerdict|PaidStatus" },
     { "context": "attendance",     "match": "Attendance|Swipe|SignIn|PendingSwipe|Rfid|AttendanceEffects" },
     { "context": "delivery",       "match": "LearningRecord|ApprovalSessionSync|Evaluation|TeachingLog" },
     { "context": "assessment",     "match": "Assessment" },

@@ -398,6 +398,11 @@ class AccountingController extends Controller
     {
         $studentClassId = (int) $request->input('student_class_id', 0);
         $reportId = (int) $request->input('report_id', 0);
+        // Billing redesign V4: the student list opens a student who has no alert row.
+        $studentId = (int) $request->input('student_id', 0);
+        if ($studentClassId <= 0 && $reportId <= 0 && $studentId > 0) {
+            $studentClassId = (int) StudentClass::query()->where('StudentID', $studentId)->orderByDesc('StartDate')->orderByDesc('ID')->value('ID');
+        }
 
         if ($studentClassId <= 0 && $reportId <= 0) {
             return response()->json(['message' => '請指定課程或收據'], 422);
