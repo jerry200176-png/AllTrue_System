@@ -6,6 +6,14 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R146. 老師送出評量後不可只從待辦消失；`missing` 字串不可擋住 LR 列表狀態（#3760，2026-10-07）
+
+- **現象**：老師送出評量後覺得「沒有任何資料」，主任待審佇列卻看得到同一張已填評量表（中平等分校反覆出現）。
+- **根因層級**：雙讀模型＋UX——主任用 `GET /learning-records` 看 `pending`；老師首頁「今天要完成」只列 `missing`／`changes_requested`，送出後從待辦消失且無「已送出待審」確認態。輔因：`class-sessions` 把無 LR 合成字串 `'missing'`（truthy），`resolveLearningSessionState` 的 `learningRecordStatus || recordStatus` 永遠不回退到已載入的 LR `Status`，課表 chip 仍顯示「未填」。
+- **強制規則**：`normalizeLearningRecordStatus` 須把 `'missing'` 當空；課表／評量合併以真實 LR 狀態為準。TeacherHome 對 `pending` 顯示「已送出待審」＋查看 CTA；「今天要完成」仍只列未填／需修改。送出成功後切到評量待辦「待審核」、清「未填優先」、toast「已送出，等待主任核准」。
+- **測試必補**：`sessionConsistency.test.js`（missing + recordStatus pending → 待審）；`teacherHomeSessionContract.test.js`；`learningRecordsSubmitVisibility.test.js`。
+- **唯讀定罪**：需要時另開 PR 加 `production-case-dump` case `teacher_lr_visibility`（需 `student_id`，IDs only）；本修以前端雙讀模型＋UX 為準。
+
 ### R144. 月結合約沒有帳單時，計費月份不可用「今天」（in-app #377/#378，2026-10-07）
 
 - **現象**：9 月月結合約（9/1–9/30，3 堂已上）已結束、沒有帳單；10 月主任打開繳費單或登記收款，系統用 10 月計價，繳費單金額不符、登記 9 月實收 $3,900／$5,400 被擋（「月結本期應收為 NT$…」）。
@@ -1271,7 +1279,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、**§R114（同日二次調課中間 scheduled 殘影不得佔用）**、**§R116（混班型剩餘依被代課班型）**、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81、**§R109（結案不可吃掉請假順延尾堂）** |
-| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）**、**§R110（課程管理已上堂數須與日期晶片同源）**、**§R112（預排不可佔第 N 堂）** |
+| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）**、**§R110（課程管理已上堂數須與日期晶片同源）**、**§R112（預排不可佔第 N 堂）**、**§R146（送出後須「已送出待審」；`missing` 字串不可擋 LR 列表狀態）** |
 | 效能 / Eloquent 事件 | **§R113（ClassSession creating/updating 禁逐筆 StudentClass exists；請求內一次載入已結清課程 ID）** |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`）、**§R85（教職員卡僅 `STAFF_UPDATES.yml`；CHANGELOG 不得自動發布）** |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
