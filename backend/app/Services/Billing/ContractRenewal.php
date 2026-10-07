@@ -799,6 +799,63 @@ final class ContractRenewal
         });
     }
 
+    /**
+     * Re-compute the preview under a row lock, refuse when it drifted or is blocked, then run $execute
+     * (the controller's purchase/renew endpoint, which keeps its own request guards) and build the receipt.
+     * $execute(mode, payload, preview, lockedCourse) returns the endpoint's JsonResponse, passed through on error.
+     */
+    public function confirm(StudentClass $studentClass, array $data, int $actorId, string $role, bool $financial, \Closure $execute): \Illuminate\Http\JsonResponse
+    {
+        return DB::transaction(function () use ($studentClass, $data, $actorId, $role, $financial, $execute) {
+            $lockedStudentClass = $this->lockCourse((int) $studentClass->ID);
+
+            $payload = array_merge($data['payload'], ['mode' => $data['mode']]);
+            $preview = $this->preview($lockedStudentClass, $payload, $actorId, $role);
+
+            if ($preview['state_hash'] !== $data['state_hash'] || $preview['preview_id'] !== $data['preview_id']) {
+                return response()->json([
+                    'message' => '課程狀態已變更，請重新預覽後再確認。',
+                    'preview' => $this->redactRenewalDiscount($preview, $financial),
+                ], 409);
+            }
+
+            if ($preview['severity'] === 'blocked') {
+                return response()->json([
+                    'message' => '此續報目前不可執行。',
+                    'preview' => $this->redactRenewalDiscount($preview, $financial),
+                ], 422);
+            }
+
+            $response = $execute($data['mode'], $payload, $preview, $lockedStudentClass);
+
+            $status = $response->getStatusCode();
+            $result = method_exists($response, 'getData') ? $response->getData(true) : [];
+            if ($status >= 400) {
+                return $response;
+            }
+
+            return response()->json([
+                'receipt_id' => substr(hash('sha256', ($preview['preview_id'] ?? '') . '|' . now()->timestamp), 0, 16),
+                'message' => $result['message'] ?? '續報已完成',
+                'mode' => $data['mode'],
+                'preview_id' => $preview['preview_id'],
+                'source_course' => $result['source_course'] ?? $preview['source_course'],
+                'new_course' => $result['new_course'] ?? null,
+                'invoice' => $data['mode'] === 'renew_monthly'
+                    ? ($result['invoice'] ?? ($preview['billing']['invoice'] ?? null))
+                    : null,
+                'schedule' => [
+                    'created_sessions' => $result['created_sessions'] ?? ($preview['schedule']['created_sessions'] ?? 0),
+                    'first_session_date' => $result['new_course']['first_session_date'] ?? ($preview['schedule']['first_session_date'] ?? null),
+                    'last_session_date' => $result['new_course']['last_session_date'] ?? ($preview['schedule']['last_session_date'] ?? null),
+                ],
+                'next_actions' => $data['mode'] === 'purchase_batch'
+                    ? ['view_new_course', 'record_payment']
+                    : ['view_invoices', 'record_payment'],
+            ], $status);
+        });
+    }
+
     /** SELECT ... FOR UPDATE on one course; 404 (ModelNotFound) when missing. */
     private function lockCourse(int $id): StudentClass
     {
