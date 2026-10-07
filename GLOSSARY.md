@@ -8,5 +8,5 @@ status (free / unbilled / unpaid / partial / paid / review_required), the curren
 **Truth rule (Founder 1A, 2026-10-07):** invoices and their Payment rows decide. The legacy `StudentClass.Paid` flag counts
 only as a fallback when the course has no non-void invoice at all. Stored `Invoice.PaidAmount` is never the source of an applied amount.
 
-Implemented by `BillingPayableResolver` + `InvoiceAmountReconciliationService`; `ContractMoneyState` keeps labels only.
+Implemented by `BillingPayableResolver` + `InvoiceAmountReconciliationService`; `ContractMoneyState` keeps status labels (plus the waived guard and `hasActivePayment`, which are not money-amount logic).
 Pinned today by `tests/Feature/Billing/ContractMoneyVerdictCharacterizationTest.php`.
