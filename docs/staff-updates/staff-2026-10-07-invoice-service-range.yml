@@ -1,0 +1,11 @@
+updates:
+  - id: staff-2026-10-07-invoice-service-range
+    published_at: "2026-10-07"
+    audiences:
+      - director
+    importance: digest
+    title: 帳單改顯示實際起迄日
+    summary: 學生帳務裡的帳單，現在寫出這張帳單實際涵蓋的日期，不再只寫月份。
+    items:
+      - category: improved
+        text: 跨月的月結帳單（例如 9/28 到 10/27）會寫出完整起迄日，不會再看錯月份。
