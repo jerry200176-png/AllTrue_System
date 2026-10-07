@@ -3,11 +3,13 @@
 namespace App\Services\Billing;
 
 use App\Models\ClassSession;
+use App\Models\Invoice;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Scheduling\ContractSessionSchedule;
 use App\Services\TransactionDiscountCalculator;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -403,5 +405,99 @@ final class ContractRenewal
             'billing' => $billing,
             'schedule' => $schedule,
         ];
+    }
+
+    // Course lifecycle helpers shared with StudentClassController (togglePause, store, split, trial conversion).
+
+    public function createCourseRecord(array $payload): StudentClass
+    {
+        $attempts = 0;
+        while ($attempts < 8) {
+            try {
+                return $this->saveNewCourse($payload);
+            } catch (\Illuminate\Database\QueryException $e) {
+                if (!str_contains($e->getMessage(), 'Unknown column')) {
+                    throw $e;
+                }
+                if (!preg_match("/Unknown column '([^']+)'/", $e->getMessage(), $m)) {
+                    throw $e;
+                }
+                $badColumn = $m[1];
+                if (!$badColumn || !array_key_exists($badColumn, $payload)) {
+                    throw $e;
+                }
+                unset($payload[$badColumn]);
+                $attempts++;
+            }
+        }
+
+        return $this->saveNewCourse($payload);
+    }
+
+    public function courseNeedsPaymentReconciliation(StudentClass $studentClass): bool
+    {
+        // F7 S6 (B8): the resolver decides. Fail closed (resolver failure = needs reconciliation).
+        try {
+            $id = (int) $studentClass->getAttribute('ID');
+            $row = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id], [$studentClass])[$id] ?? null;
+        } catch (\Throwable) {
+            return true;
+        }
+        $status = $row['status'] ?? null;
+        if ($status === null) {
+            return true;
+        }
+        if ($status === 'free') {
+            return false;
+        }
+        if (($row['source'] ?? '') !== 'invoice') {
+            // No non-void invoice: the legacy Paid flag / paid package decides (also for an unattributed month).
+            return $status === 'review_required'
+                ? (int) ($studentClass->getAttribute('Charge') ?? 0) > 0 && !$studentClass->isEffectivelyPaid()
+                : $status !== 'paid';
+        }
+        // Invoiced: any unattributed period, or any open invoice not covered by legacy stored PaidAmount
+        // (an invoice with PaidAmount but no Payment rows counts as received, as before S6), is open debt.
+        $periods = collect($row['periods'] ?? []);
+        if ($periods->contains(fn ($period) => ($period['status'] ?? '') === 'review_required')) {
+            return true;
+        }
+        $openIds = $periods->flatMap(fn ($period) => $period['open_invoice_ids'] ?? [])->all();
+        if ($openIds === []) {
+            return false;
+        }
+        $legacyCovered = Invoice::query()->with('payments')->whereIn('id', $openIds)->get()
+            ->filter(fn (Invoice $invoice) => $invoice->getRelationValue('payments')->isEmpty()
+                && (int) $invoice->getAttribute('PaidAmount') >= (int) $invoice->getAttribute('TotalAmount'))
+            ->count();
+
+        return count($openIds) > $legacyCovered;
+    }
+
+    public function cancelFutureScheduledSessions(StudentClass $studentClass, ?string $reason): int
+    {
+        $today = Carbon::today()->toDateString();
+        $noteTag = match ($reason) {
+            'settled' => '[結案取消]',
+            'trial_conversion' => '[試聽轉正式]',
+            default => '[暫停取消]',
+        };
+
+        return ClassSession::query()->where('StudentClassID', $studentClass->getAttribute('ID'))
+            ->where('SessionDate', '>=', $today)
+            ->where('Status', 'scheduled')
+            ->update([
+                'Status' => 'cancelled',
+                'Note' => DB::raw("CONCAT(COALESCE(Note,''), ' {$noteTag}')"),
+                'updated_at' => now(),
+            ]);
+    }
+
+    private function saveNewCourse(array $payload): StudentClass
+    {
+        $course = new StudentClass($payload);
+        $course->save();
+
+        return $course;
     }
 }
