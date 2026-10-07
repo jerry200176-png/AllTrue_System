@@ -245,6 +245,46 @@ class ChatApiTest extends TestCase
 
     // ── Helpers ───────────────────────────────────────────────────
 
+    public function test_total_unread_is_one_query_and_respects_campus_read_marker_and_left(): void
+    {
+        $me = User::create(['LoginName' => 'unreadN1@test.com', 'Name' => 'Me', 'PSW' => 'x', 'type' => 'A', 'phone' => '0900000001']);
+        $other = User::create(['LoginName' => 'unreadN1b@test.com', 'Name' => 'Other', 'PSW' => 'x', 'type' => 'T', 'phone' => '0900000002']);
+
+        $thread = function (int $campusId, ?int $lastRead = null, bool $left = false) use ($me, $other): ChatThread {
+            $t = ChatThread::create(['CampusID' => $campusId, 'type' => 'group', 'name' => 'g', 'created_by' => $other->id]);
+            ChatThreadMember::create([
+                'thread_id' => $t->id, 'user_id' => $me->id, 'role' => 'member', 'joined_at' => now(),
+                'left_at' => $left ? now() : null, 'last_read_message_id' => $lastRead,
+            ]);
+            return $t;
+        };
+        $post = fn (ChatThread $t) => ChatMessage::create([
+            'thread_id' => $t->id, 'sender_user_id' => $other->id, 'sender_name_snapshot' => 'Other',
+            'body' => 'hi', 'message_type' => 'text', 'created_at' => now(),
+        ]);
+
+        $unreadA = $thread(1);
+        $post($unreadA);
+        $post($unreadA);                         // 2 unread
+        $partly = $thread(1);
+        $read = $post($partly);
+        $post($partly);                          // 1 unread after marker
+        ChatThreadMember::where('thread_id', $partly->id)->update(['last_read_message_id' => $read->id]);
+        $post($thread(2));                       // other campus: 1 unread
+        $post($thread(1, null, true));           // left thread: never counted
+        for ($i = 0; $i < 5; $i++) {
+            $post($thread(1));                   // more threads must not add queries
+        }
+
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        $this->assertSame(8, \App\Services\ChatService::totalUnread($me->id, [1]));
+        $this->assertCount(1, \Illuminate\Support\Facades\DB::getQueryLog(), 'unread count must be a single query (#3587)');
+        \Illuminate\Support\Facades\DB::disableQueryLog();
+
+        $this->assertSame(9, \App\Services\ChatService::totalUnread($me->id, []), 'super_admin sees every campus');
+        $this->assertSame(1, \App\Services\ChatService::totalUnread($me->id, [2]));
+    }
+
     private function createUserToken(array $campusIds, string $loginName, string $type = 'A'): array
     {
         $user = User::create([
