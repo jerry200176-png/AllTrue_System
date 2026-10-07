@@ -12,7 +12,7 @@ last_reviewed: 2026-09-05
 - **根因層級**：雙讀模型＋UX——主任用 `GET /learning-records` 看 `pending`；老師首頁「今天要完成」只列 `missing`／`changes_requested`，送出後從待辦消失且無「已送出待審」確認態。輔因：`class-sessions` 把無 LR 合成字串 `'missing'`（truthy），`resolveLearningSessionState` 的 `learningRecordStatus || recordStatus` 永遠不回退到已載入的 LR `Status`，課表 chip 仍顯示「未填」。
 - **強制規則**：`normalizeLearningRecordStatus` 須把 `'missing'` 當空；課表／評量合併以真實 LR 狀態為準。TeacherHome 對 `pending` 顯示「已送出待審」＋查看 CTA；「今天要完成」仍只列未填／需修改。送出成功後切到評量待辦「待審核」、清「未填優先」、toast「已送出，等待主任核准」。
 - **測試必補**：`sessionConsistency.test.js`（missing + recordStatus pending → 待審）；`teacherHomeSessionContract.test.js`；`learningRecordsSubmitVisibility.test.js`。
-- **唯讀定罪**：`production-case-dump` case `teacher_lr_visibility`（需 `student_id`）。
+- **唯讀定罪**：需要時另開 PR 加 `production-case-dump` case `teacher_lr_visibility`（需 `student_id`，IDs only）；本修以前端雙讀模型＋UX 為準。
 
 ### R144. 月結合約沒有帳單時，計費月份不可用「今天」（in-app #377/#378，2026-10-07）
 
