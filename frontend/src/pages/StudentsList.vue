@@ -859,6 +859,7 @@
       :subject-label-fn="getSubjectLabel"
       @cancel="showDuplicateInterceptModal = false"
       @purchase="interceptGoToPurchase"
+      @manual-session="(c) => { showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptPendingStudent?.id, c.existing_course_id); }"
       @decision="onEnrollmentConflictDecision"
     />
     <!-- Grade Promotion Modal — server preview/confirm (#297 Phase A); no course Stop. -->
@@ -2959,7 +2960,17 @@ const handleOpenBillingFromEdit = () => {
   goToTuitionBilling(course);
 };
 
-const handleUniversalSchedulerSuccess = async () => {
+// in-app #382: a manual course has no lesson yet; schedule the first one in course management.
+const openManualSessionInCourseMgmt = (studentId, courseId) => {
+  emit('navigate', { target: 'course-mgmt', studentId, courseId, intent: 'manual-session' });
+};
+
+const handleUniversalSchedulerSuccess = async (result) => {
+  if (result?.scheduling_policy === 'manual_occurrence' && result.student_class_id) {
+    closeCourseModal();
+    openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
+    return;
+  }
   const sid = selectedStudent.value?.id;
   closeCourseModal();
   if (sid != null) {

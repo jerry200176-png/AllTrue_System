@@ -424,7 +424,7 @@
                 <td>
                   {{ c.remaining_sessions ?? 0 }} 堂
                   <button
-                    v-if="c.scheduling_policy === 'manual_occurrence' && !c.future_session_count"
+                    v-if="c.scheduling_policy === 'manual_occurrence' && !c.future_session_count && (c.remaining_sessions ?? 0) > 0"
                     type="button"
                     class="btn-secondary btn-sm"
                     @click="showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptOriginalPayload?.student_id, c.existing_course_id)"
@@ -2082,11 +2082,9 @@ const handleUniversalSchedulerSuccess = async (result) => {
   showModal.value = false;
   await loadCourses();
   finishCalendarWorkflow(workflowStep);
-  if (result?.scheduling_policy === 'manual_occurrence' && result.student_class_id) {
-    openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
-    return;
-  }
-  void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: 'calendar' });
+  const manual = result?.scheduling_policy === 'manual_occurrence' && result.student_class_id;
+  void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: manual ? 'course-mgmt' : 'calendar' });
+  if (manual) openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
 };
 
 const showDuplicateInterceptModal = ref(false);

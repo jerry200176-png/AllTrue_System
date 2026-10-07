@@ -47,6 +47,14 @@
               </td>
               <td v-if="!isTrial">
                 <button
+                  v-if="needsFirstManualLesson(c)"
+                  class="small btn-renew-warn"
+                  type="button"
+                  :disabled="submitting"
+                  @click="emit('manual-session', c)"
+                >新增下一堂</button>
+                <button
+                  v-else
                   class="small btn-renew-warn"
                   type="button"
                   :disabled="submitting"
@@ -134,7 +142,9 @@ const props = defineProps({
   subjectLabelFn: { type: Function, default: null },
 });
 
-const emit = defineEmits(['cancel', 'purchase', 'decision']);
+const emit = defineEmits(['cancel', 'purchase', 'decision', 'manual-session']);
+// in-app #382: a manual course with lessons left but nothing scheduled needs its next lesson, not 加購 or a second course.
+const needsFirstManualLesson = (c) => c.scheduling_policy === 'manual_occurrence' && !c.future_session_count && (c.remaining_sessions ?? 0) > 0;
 
 const headingId = 'enrollment-conflict-heading';
 const independentReason = ref('');

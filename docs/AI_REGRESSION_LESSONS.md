@@ -10,7 +10,7 @@ last_reviewed: 2026-09-05
 
 - **現象**：主任在行事曆用「逐堂手動排課」新增 1 堂輔導，課程建立了但行事曆上看不到；再排一次跳出「此學生已有進行中的課程」，只提供加購或仍要新增。
 - **根因**：`manual_occurrence` 課程刻意建立 0 筆 `ClassSession`（由「新增下一堂」逐堂排），但行事曆沒有課程卡、沒有「新增下一堂」；重複課程 409 也沒說「這是還沒排堂的手動課」，把人導去加購／建第二筆空課。
-- **強制規則**：任何建立入口建立了「0 堂可見」的課（手動排課等），成功後必須直接帶到排第一堂的流程（行事曆 → 課程查找 `intent: 'manual-session'`）；重複課程回應要帶 `scheduling_policy` 與 `future_session_count`，UI 對「手動且無未來堂次」提供「新增下一堂」而非建第二筆。
+- **強制規則**：任何建立入口建立了「0 堂可見」的課（手動排課等），成功後必須直接帶到排第一堂的流程（行事曆、學生管理 → 課程查找 `intent: 'manual-session'`）；重複課程回應要帶 `scheduling_policy` 與 `future_session_count`（與手動排課服務同一組存活狀態），共用的 `EnrollmentConflictDecisionModal` 對「手動、無未來堂次、仍有剩餘」提供「新增下一堂」而非加購或建第二筆。
 - **測試必補**：手動輔導建立後 0 堂、第二次送出 409 且 conflict 帶 `scheduling_policy=manual_occurrence`、`future_session_count=0`；行事曆成功後導向 manual-session、重複視窗顯示「新增下一堂」、課程查找載入後開啟該課的新增下一堂。
 
 ### R141. 正式站唯讀驗收不可把可變資料量當成固定契約（2026-10-01）

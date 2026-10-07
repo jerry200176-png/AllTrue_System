@@ -1180,6 +1180,7 @@
       :subject-label-fn="getSubjectLabel"
       @cancel="showDuplicateInterceptModal = false"
       @purchase="interceptGoToPurchaseCM"
+      @manual-session="interceptOpenManualSessionCM"
       @decision="onEnrollmentConflictDecision"
     />
 
@@ -2140,6 +2141,12 @@ async function onEnrollmentConflictDecision(decision) {
   }
 }
 
+function interceptOpenManualSessionCM(conflict) {
+  showDuplicateInterceptModal.value = false;
+  pendingManualSessionId.value = Number(conflict.existing_course_id) || 0;
+  convertTrialStudentId.value = interceptOriginalPayload.value?.student_id ?? null;
+  loadCourses(1);
+}
 function interceptGoToPurchaseCM(conflict) {
   showDuplicateInterceptModal.value = false;
   const target = findCourseForPurchase(courses.value, conflict);
@@ -5330,6 +5337,7 @@ watch(coursesLoading, (loading) => {
   pendingManualSessionId.value = 0;
   convertTrialStudentId.value = null;
   if (course) openManualSessionModal(course);
+  else alert('找不到這門課，請清除篩選後在課程卡按「新增下一堂」。');
 });
 watch(coursesLoading, (loading) => {
   if (loading || !pendingConvertTrialId.value) return;
