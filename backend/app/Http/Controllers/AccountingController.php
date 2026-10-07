@@ -594,6 +594,10 @@ class AccountingController extends Controller
                 'subject' => $invoiceStudentClass?->displaySubjectName(),
                 'first_session_date' => $firstSessionDates->get($invoiceStudentClassId),
                 'billing_period' => $invoice->billing_period,
+                // Service range from the items: a 9/28–10/27 cycle is billing_period 2026-09,
+                // so the panel shows the dates instead of "9月" (in-app #378).
+                'period_start' => ($itemStart = $invoice->items->pluck('PeriodStart')->filter()->min()) ? substr((string) $itemStart, 0, 10) : null,
+                'period_end' => ($itemEnd = $invoice->items->pluck('PeriodEnd')->filter()->max()) ? substr((string) $itemEnd, 0, 10) : null,
                 'issue_date' => $invoice->IssueDate ? substr((string) $invoice->IssueDate, 0, 10) : null,
                 'due_date' => $invoice->DueDate ? substr((string) $invoice->DueDate, 0, 10) : null,
                 'total_amount' => $totalAmount,
