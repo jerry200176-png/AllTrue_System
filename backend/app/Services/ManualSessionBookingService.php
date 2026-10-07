@@ -304,7 +304,12 @@ class ManualSessionBookingService
         });
     }
 
-    private function reservedSessionCount(StudentClass $course, string $today): int
+    /**
+     * Live lessons from today this course books against (package-wide for a package member). Also the
+     * duplicate prompt's future_session_count (in-app #382): the same number check() uses, so 新增下一堂 is only
+     * offered when booking can succeed.
+     */
+    public function reservedSessionCount(StudentClass $course, string $today): int
     {
         $query = ClassSession::query()
             ->whereDate('SessionDate', '>=', $today)
