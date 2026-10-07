@@ -126,6 +126,13 @@ jobs:
                   "github_issue_url" => $issueUrl,
               ]);
               if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
+          } else {
+              // Already triaged (e.g. hourly auto-intake): record the verified disposition without a transition.
+              $transition = $svc::restateDisposition($bugId, $actor, [
+                  "disposition" => $disposition,
+                  "github_issue_url" => $issueUrl,
+              ], "phase-a verified intake; GitHub issue=".$issueUrl);
+              if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
           }
           $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
               ->where("body", "like", "%".$issueUrl."%")->exists();

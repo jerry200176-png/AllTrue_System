@@ -4,9 +4,11 @@ namespace App\Console\Commands;
 
 use App\Models\BugReport;
 use App\Models\BugReportComment;
+use App\Models\BugReportStatusLog;
 use App\Models\User;
 use App\Services\BugReportService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Hourly auto-intake (bug-auto-intake.yml, Founder GO "6A" 2026-10-07).
@@ -17,6 +19,8 @@ use Illuminate\Console\Command;
 class BugAutoIntakeCommand extends Command
 {
     public const ACK_TEXT = '收到，我們正在查，查到原因會再回覆你。';
+
+    public const INTAKE_NOTE = 'auto-intake; GitHub issue=';
 
     protected $signature = 'bugs:auto-intake
                             {--candidates : Print new reports as JSON (IDs, campus, severity, page, created_at only)}
@@ -72,32 +76,40 @@ class BugAutoIntakeCommand extends Command
             $this->error('bug not found: ' . $bugId);
             return self::FAILURE;
         }
-        $from = (string) $bug->getAttribute('status');
-        if ($from !== 'new') {
-            $this->line(json_encode(['bug_id' => $bugId, 'skipped' => 'status_' . $from]));
-            return self::SUCCESS;
-        }
         $actor = (int) (User::query()->where('type', 'S')->orderBy('id')->value('id') ?? 0);
         if ($actor <= 0) {
             $this->error('No type=S actor user');
             return self::FAILURE;
         }
-        // Provisional "bug" disposition: intake only links the issue; human/agent triage re-states it.
-        $transition = BugReportService::changeStatus($bugId, $actor, 'triaged', 'auto-intake; GitHub issue=' . $issueUrl, [
-            'disposition' => 'bug',
-            'github_issue_url' => $issueUrl,
-        ]);
-        if (!$transition['ok']) {
-            $this->error(json_encode($transition));
-            return self::FAILURE;
-        }
-        $already = BugReportComment::query()->where('bug_report_id', $bugId)
-            ->where('body', 'like', '%' . $issueUrl . '%')->exists();
-        if (!$already) {
-            BugReportService::addComment($bugId, $actor, self::ACK_TEXT . '追蹤：' . $issueUrl, false);
-        }
-        $this->line(json_encode(['bug_id' => $bugId, 'from' => $from, 'final' => (string) BugReport::query()->whereKey($bugId)->value('status'),
-            'ack' => $already ? 'skipped' : 'posted', 'issue' => $issueUrl]));
+        // Row lock + one transaction: the status change and the ack commit together, and an
+        // overlapping run (or a manual Phase-A) waits instead of double-posting.
+        $result = DB::transaction(function () use ($bugId, $issueUrl, $actor) {
+            $locked = BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
+            $from = (string) $locked->getAttribute('status');
+            $ackPosted = BugReportComment::query()->where('bug_report_id', $bugId)->where('body', self::ACK_TEXT)->exists();
+            if ($from === 'new') {
+                // No product disposition here: intake has not classified the report yet, and
+                // Phase-A restates a real one later. The issue link lives in the status note.
+                $t = BugReportService::changeStatus($bugId, $actor, 'triaged', self::INTAKE_NOTE . $issueUrl);
+                if (!$t['ok']) {
+                    throw new \RuntimeException(json_encode($t));
+                }
+            } elseif (!$this->intakeLogged($bugId)) {
+                return ['bug_id' => $bugId, 'skipped' => 'status_' . $from];
+            }
+            // Retry completes a half-done intake; the exact ack text is the idempotency key.
+            if (!$ackPosted) {
+                BugReportService::addComment($bugId, $actor, self::ACK_TEXT, false);
+            }
+            return ['bug_id' => $bugId, 'from' => $from, 'ack' => $ackPosted ? 'skipped' : 'posted', 'issue' => $issueUrl];
+        });
+        $this->line(json_encode($result));
         return self::SUCCESS;
+    }
+
+    private function intakeLogged(int $bugId): bool
+    {
+        return BugReportStatusLog::query()->where('bug_report_id', $bugId)
+            ->where('note', 'like', self::INTAKE_NOTE . '%')->exists();
     }
 }
