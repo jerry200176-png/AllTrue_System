@@ -68,4 +68,39 @@ class BillingCorrectionTest extends TestCase
 
         $this->assertSame(8, (int) $c->fresh()->SessionCount);
     }
+
+    public function test_correct_count_mode_guards_report_audit_code_and_status(): void
+    {
+        $svc = app(BillingCorrection::class);
+        $seen = [];
+        $audit = function (string $code, int $status) use (&$seen) { $seen[] = [$code, $status]; };
+        $base = ['new_session_count' => 6, 'new_charge' => 3000, 'reason' => 'x'];
+
+        $paid = $this->course();
+        $paid->update(['Paid' => 1]);
+        $this->assertSame(409, $svc->correctCountMode($paid, $base, false, 1, $audit)['status']);
+
+        $this->assertSame(422, $svc->correctCountMode($this->course(), ['new_charge' => 3500] + $base, false, 1, $audit)['status']);
+        $this->assertSame(422, $svc->correctCountMode($this->course(), ['new_session_count' => 9, 'new_charge' => 4500] + $base, false, 1, $audit)['status']);
+
+        $this->assertSame([['billing_correction_paid_locked', 409], ['billing_correction_charge_mismatch', 422], ['billing_correction_reduction_only', 422]], $seen);
+    }
+
+    public function test_correct_count_mode_preview_then_confirm_applies(): void
+    {
+        $svc = app(BillingCorrection::class);
+        $c = $this->course();
+        $p = ['new_session_count' => 6, 'new_charge' => 3000, 'reason' => '少報'];
+
+        $preview = $svc->correctCountMode($c, $p, true, 7, fn () => null);
+        $this->assertSame(200, $preview['status']);
+        $this->assertTrue($preview['body']['requires_confirmation']);
+
+        $bad = $svc->correctCountMode($c, $p + ['confirmation_token' => str_repeat('a', 64)], false, 7, fn () => null);
+        $this->assertSame(409, $bad['status']);
+
+        $done = $svc->correctCountMode($c, $p + ['confirmation_token' => $preview['body']['confirmation_token']], false, 7, fn () => null);
+        $this->assertSame(200, $done['status']);
+        $this->assertSame(6, (int) $c->fresh()->SessionCount);
+    }
 }
