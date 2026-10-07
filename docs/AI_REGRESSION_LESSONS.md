@@ -6,6 +6,13 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R147. 代課選擇器要同時拿到「合約老師」與「這一堂的老師」，否則「回正班老師」永遠不出現（in-app #376，2026-10-07）
+
+- **現象**：行事曆上 10/09 已代課的那堂，主任想改回正班老師卻找不到按鈕，後端改回其實可用。
+- **根因**：`SubstituteTeacherPickerModal` 只在 `original_teacher_id !== current_teacher_id` 時顯示「回正班老師」；行事曆拖曳路徑兩者都填這一堂的老師，點選路徑完全沒傳 `current_teacher_id`。
+- **強制規則**：開代課選擇器一律用 `substituteTeacherIds(這一堂老師, 合約老師)`；合約老師取 base course（`student_course_id`），這一堂老師取 occurrence 自己的 `teacher_id`。
+- **測試必補**：已代課的那堂從點選與拖曳兩條路徑開啟時，context 的 original=合約老師、current=代課老師。
+
 ### R146. 老師送出評量後不可只從待辦消失；`missing` 字串不可擋住 LR 列表狀態（#3760，2026-10-07）
 
 - **現象**：老師送出評量後覺得「沒有任何資料」，主任待審佇列卻看得到同一張已填評量表（中平等分校反覆出現）。
