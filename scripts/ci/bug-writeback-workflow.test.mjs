@@ -593,6 +593,24 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '343 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '343 must give a no-names reopen path');
   }
+// Merged != written (2026-10-07): newly allowlisted IDs are dispatched automatically, serially, verified.
+{
+  const src = fs.readFileSync('.github/workflows/bug-phase-c-autodispatch.yml', 'utf8');
+  assert.ok(src.includes("- '.github/workflows/bug-phase-c-allowlist.yml'") && src.includes('branches: [main]'), 'fires when the allowlist lands on main');
+  assert.ok(src.includes('actions: write') && /^permissions:\n  contents: read$/m.test(src), 'only the dispatch job can dispatch');
+  assert.ok(src.includes('gh run watch "$run" --exit-status'), 'waits for each run before the next (concurrency group cancels rapid dispatches)');
+  assert.ok(/"\\"id\\":\$\{id\},\\"action\\":\\"\(resolved\|skip_already\)\\""/.test(src), 'verifies the writer reported the report resolved');
+  // Execute the real before/after diff against fixtures.
+  const py = src.split("python3 - /tmp/before.yml \"$f\" <<'PY'\n")[1].split('\n          PY')[0].replace(/^ {10}/gm, '');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'phasec-diff-'));
+  fs.writeFileSync(path.join(dir, 'b'), '          $items = [\n            364 => [\n            ],\n            343 => [\n            ],\n');
+  fs.writeFileSync(path.join(dir, 'a'), '          $items = [\n            364 => [\n            ],\n            343 => [\n            ],\n            "380" => [\n            ],\n            333 => [\n            ],\n');
+  const out = execFileSync('python3', ['-c', py, path.join(dir, 'b'), path.join(dir, 'a')], { encoding: 'utf8' }).trim();
+  assert.equal(out, '333 380', 'dispatches exactly the newly added IDs, sorted, including quoted keys');
+  assert.ok(src.includes('cannot read the previous allowlist') && !src.includes('|| : > /tmp/before.yml'), 'a missing base fails closed instead of dispatching everything');
+  assert.ok(src.includes("git log --diff-filter=A") && src.includes('known="$(gh run list'), 'durable first-run baseline and a pre-dispatch run snapshot (#3754 review)');
+  assert.ok(src.includes('{ grep -vx "$id" || true; }') && src.includes('<<<"$log"') && !/gh run view "\$run" --log[^\n]*\| grep/.test(src), 'no pipefail/grep exit traps (#3754 review)');
+}
 // F17 auto-intake (#Founder GO 6A, 2026-10-07): hourly, IDs-only, deduped, dry-run on manual dispatch.
 {
   const src = fs.readFileSync('.github/workflows/bug-auto-intake.yml', 'utf8');
