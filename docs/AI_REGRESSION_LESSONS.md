@@ -6,6 +6,13 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R145. 帳單迴圈必須 eager-load items；`resolve()` 會逐張帳單 lazy-load（GitHub #3454，2026-10-07）
+
+- **現象**：帳務中心、繳費提醒、付款回報、課程帳單列表的查詢數隨帳單數線性成長（8 列時提醒 34 次、帳本 16 次 InvoiceItem 查詢）。
+- **根因層級**：`InvoiceAmountReconciliationService::resolve()` 在 `items` 關聯未載入時逐張查詢；各呼叫端的 `Invoice::with([...])` 漏了 `items`。
+- **強制規則**：任何把多張帳單送進 `resolve()`（或經 `BillingPayableResolver`）的迴圈，查詢必須 `with('items')`。
+- **測試必補**：`InvoiceItemsEagerLoadQueryCountTest`——帳單數增加時 InvoiceItem 查詢數不得成長；移除任一 `items` eager-load 時須失敗。
+
 ### R141. 正式站唯讀驗收不可把可變資料量當成固定契約（2026-10-01）
 
 - **現象**：列印驗收拒絕主任首頁新增的合法營運信任事件；輔導課驗收因分校沒有進行中輔導課而在產品斷言前失敗，兩項在前一版已重複出現。
