@@ -2134,6 +2134,11 @@ async function onEnrollmentConflictDecision(decision) {
         ? '已建立下一期續報'
         : '已建立獨立課程';
     alert(`${label}（${created} 堂）`);
+    // in-app #382: a forced manual course also starts with no lesson — open 新增下一堂 for it.
+    if (payload.scheduling_policy === 'manual_occurrence' && result?.student_class_id) {
+      pendingManualSessionId.value = Number(result.student_class_id);
+      convertTrialStudentId.value = result.student_id ?? payload.student_id ?? null;
+    }
     await loadCourses();
   } catch (err) {
     alert(err?.message || '建立失敗，請稍後再試');

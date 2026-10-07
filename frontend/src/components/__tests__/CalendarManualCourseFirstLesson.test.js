@@ -56,6 +56,10 @@ describe('manual course → first lesson (in-app #382)', () => {
       expect(page).toMatch(/result\?\.scheduling_policy === 'manual_occurrence' && result\.student_class_id/);
     }
     expect(students).toContain('@manual-session=');
+    // a forced ("create anyway") manual course takes the same path in both pages
+    for (const page of [students, courseMgmt]) {
+      expect(page).toMatch(/payload\.scheduling_policy === 'manual_occurrence' && result\?\.student_class_id/);
+    }
     expect(students).toContain('interceptPendingStudent?._laravelId ?? interceptPendingStudent?.id');
   });
 

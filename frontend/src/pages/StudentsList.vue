@@ -2840,6 +2840,10 @@ async function onEnrollmentConflictDecision(decision) {
         ? '已建立下一期續報'
         : '已建立獨立課程';
     alert(`${label}（${created} 堂）`);
+    if (payload.scheduling_policy === 'manual_occurrence' && result?.student_class_id) {
+      openManualSessionInCourseMgmt(result.student_id ?? payload.student_id, result.student_class_id);
+      return;
+    }
     await loadStudents();
   } catch (err) {
     alert(err?.message || '建立失敗，請稍後再試');
