@@ -119,7 +119,7 @@ class BillingController extends Controller
         return DB::transaction(function () use ($data, $issuer) {
             // Lock order everywhere: student, then courses, then invoices. Purge locks the student
             // first too, so an invoice can never be written for a student deleted concurrently (#3593).
-            if (!$issuer->lockStudent((int) $data['StudentID'])) {
+            if (!Student::query()->whereKey($data['StudentID'])->lockForUpdate()->first(['id'])) {
                 return response()->json(['message' => '找不到此學生，可能已被刪除'], 404);
             }
             // Lock every referenced course once, in ID order, so concurrent multi-course invoices cannot deadlock.

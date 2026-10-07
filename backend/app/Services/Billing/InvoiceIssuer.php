@@ -4,27 +4,18 @@ namespace App\Services\Billing;
 
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
-use App\Models\Student;
 
 /**
  * Single owner of "a new unpaid Invoice (+ items) comes into existence".
  *
+ * The caller locks the student first (BillingController, #3649/#3593) and runs this inside its own DB transaction.
  * Callers pass the business fields; the issuer owns the unpaid defaults (PaidAmount 0, Status
  * 'unpaid', Note '') and the optional same-period duplicate guard. The guard is opt-in because only
  * BillingController::store enforces it today; turning it on elsewhere would change behavior.
- * Run inside the caller's DB transaction. Paid-at-birth backfill invoices are out of scope.
+ * Paid-at-birth backfill invoices are out of scope.
  */
 final class InvoiceIssuer
 {
-    /**
-     * Lock the student row first (lock order: student, courses, invoices; purge locks the student too, #3593).
-     * Returns false when the student no longer exists.
-     */
-    public function lockStudent(int $studentId): bool
-    {
-        return (bool) Student::query()->whereKey($studentId)->lockForUpdate()->first(['id']);
-    }
-
     /**
      * @param array<string, mixed> $attrs StudentID, StudentClassID, IssueDate, TotalAmount required-ish; DueDate, Note, billing_period, ScheduleModeAtIssue optional
      * @param list<array<string, mixed>> $items Description, Amount; StudentClassID (falls back to the invoice's), PeriodStart, PeriodEnd optional
