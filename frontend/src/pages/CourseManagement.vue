@@ -294,7 +294,7 @@
                   </tr>
                   <tr :class="['course-row', courseRowClass(c)]">
                     <td class="td-subject">
-                      <div v-if="['settled', 'settled_pending', 'waived', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="settled-course-callout" role="status">
+                      <div v-if="isClosedReason(effectiveClosedReason(c))" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
                         <span class="settled-course-callout__main">{{ effectiveClosedReason(c) === 'contract_amended' ? '合約已提前結束' : '已結案' }}</span>
                         <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : ((effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? '尚未完成繳費，請至帳務中心對帳' : (effectiveClosedReason(c) === 'waived' ? '欠款已確認不收' : effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : (effectiveClosedReason(c) === 'contract_amended' ? '堂數已調整結束' : '堂數已用完'))) }}</span>
@@ -303,7 +303,7 @@
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="isPackageMember(c)" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
-                        <span v-else-if="['settled', 'settled_pending', 'waived', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">{{ effectiveClosedReason(c) === 'waived' ? '確認不收' : (effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? '待對帳結案' : '已結案' }}</span>
+                        <span v-else-if="isClosedReason(effectiveClosedReason(c))" class="tag tag-settled">{{ effectiveClosedReason(c) === 'waived' ? '確認不收' : (effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? '待對帳結案' : '已結案' }}</span>
                         <button
                           v-if="c.usage_balance_status === 'review_required'"
                           type="button"
@@ -1482,7 +1482,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, WAIVED_LABEL,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, WAIVED_LABEL,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -2595,7 +2595,7 @@ function courseManagerStatusLabel(c) {
   if (!c) return '';
   if (c.status === 'inactive' && !effectiveClosedReason(c)) return '暫停';
   const closed = effectiveClosedReason(c);
-  if (['settled', 'settled_pending', 'waived', 'contract_amended', 'completed', 'converted_trial'].includes(closed)) {
+  if (isClosedReason(closed)) {
     return closed === 'contract_amended' ? '合約已提前結束' : '已結案';
   }
   return '進行中';
@@ -3833,18 +3833,6 @@ watch(() => showLeaveModal.value, (open) => {
     leaveCascadePlanLoading.value = false;
   }
 });
-function effectiveClosedReason(c) {
-  if (c.closed_reason) return c.closed_reason;
-  if (c.status === 'inactive' && isSessionMode(c) && c.payment_status === 'paid' && Number(c.remaining_sessions ?? 0) <= 0) {
-    return 'completed';
-  }
-  // 月結制課程停用即視為完課（DB 無 closed_reason 的歷史髒資料也走此分支）
-  if (c.status === 'inactive' && !isSessionMode(c)) {
-    return 'completed';
-  }
-  return null;
-}
-
 
 function canQuickAddSession(c) {
   if (!isSessionMode(c)) return false;
@@ -4057,10 +4045,6 @@ const toggleStudentGroup = (groupKey) => {
 const groupHasPausedCourse = (group) =>
   (group?.courses || []).some((c) => c.status === 'inactive' && !effectiveClosedReason(c));
 
-const isHistoryCourse = (c) => {
-  const reason = effectiveClosedReason(c);
-  return reason === 'settled' || reason === 'completed' || reason === 'waived';
-};
 const activeCourses = (group) => (group?.courses || []).filter(c => !isHistoryCourse(c));
 const historyCourses = (group) => (group?.courses || []).filter(c => isHistoryCourse(c));
 

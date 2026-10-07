@@ -55,6 +55,30 @@ class ChatApiTest extends TestCase
         $this->assertArrayHasKey('sender_avatar_url', $sendRes->json());
     }
 
+    public function test_attachment_stored_with_content_extension_not_client_extension(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        [$tokenA] = $this->createUserToken([1], 'upA@test.com', 'A');
+        [, $userB] = $this->createUserToken([1], 'upB@test.com', 'T');
+        $headers = ['Authorization' => "Bearer {$tokenA}", 'Accept' => 'application/json'];
+
+        $threadId = $this->withHeaders($headers)->postJson('/api/v1/chat/threads/dm', [
+            'other_user_id' => $userB->id,
+            'branch_id' => 1,
+        ])->json('id');
+
+        // Real JPEG bytes under an .html name (fake() sniffs by name, not content).
+        $tmp = tempnam(sys_get_temp_dir(), 'jpg');
+        imagejpeg(imagecreatetruecolor(4, 4), $tmp);
+        $res = $this->withHeaders($headers)->post("/api/v1/chat/threads/{$threadId}/attachments", [
+            'file' => new \Illuminate\Http\UploadedFile($tmp, 'evil.html', null, null, true),
+        ]);
+
+        $res->assertStatus(201);
+        $path = ChatMessage::where('thread_id', $threadId)->latest('id')->value('media_url');
+        $this->assertStringEndsWith('.jpg', $path);
+    }
+
     public function test_create_group_thread(): void
     {
         [$tokenA, $userA] = $this->createUserToken([1], 'groupA@test.com', 'A');
@@ -220,6 +244,46 @@ class ChatApiTest extends TestCase
     }
 
     // ── Helpers ───────────────────────────────────────────────────
+
+    public function test_total_unread_is_one_query_and_respects_campus_read_marker_and_left(): void
+    {
+        $me = User::create(['LoginName' => 'unreadN1@test.com', 'Name' => 'Me', 'PSW' => 'x', 'type' => 'A', 'phone' => '0900000001']);
+        $other = User::create(['LoginName' => 'unreadN1b@test.com', 'Name' => 'Other', 'PSW' => 'x', 'type' => 'T', 'phone' => '0900000002']);
+
+        $thread = function (int $campusId, ?int $lastRead = null, bool $left = false) use ($me, $other): ChatThread {
+            $t = ChatThread::create(['CampusID' => $campusId, 'type' => 'group', 'name' => 'g', 'created_by' => $other->id]);
+            ChatThreadMember::create([
+                'thread_id' => $t->id, 'user_id' => $me->id, 'role' => 'member', 'joined_at' => now(),
+                'left_at' => $left ? now() : null, 'last_read_message_id' => $lastRead,
+            ]);
+            return $t;
+        };
+        $post = fn (ChatThread $t) => ChatMessage::create([
+            'thread_id' => $t->id, 'sender_user_id' => $other->id, 'sender_name_snapshot' => 'Other',
+            'body' => 'hi', 'message_type' => 'text', 'created_at' => now(),
+        ]);
+
+        $unreadA = $thread(1);
+        $post($unreadA);
+        $post($unreadA);                         // 2 unread
+        $partly = $thread(1);
+        $read = $post($partly);
+        $post($partly);                          // 1 unread after marker
+        ChatThreadMember::where('thread_id', $partly->id)->update(['last_read_message_id' => $read->id]);
+        $post($thread(2));                       // other campus: 1 unread
+        $post($thread(1, null, true));           // left thread: never counted
+        for ($i = 0; $i < 5; $i++) {
+            $post($thread(1));                   // more threads must not add queries
+        }
+
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        $this->assertSame(8, \App\Services\ChatService::totalUnread($me->id, [1]));
+        $this->assertCount(1, \Illuminate\Support\Facades\DB::getQueryLog(), 'unread count must be a single query (#3587)');
+        \Illuminate\Support\Facades\DB::disableQueryLog();
+
+        $this->assertSame(9, \App\Services\ChatService::totalUnread($me->id, []), 'super_admin sees every campus');
+        $this->assertSame(1, \App\Services\ChatService::totalUnread($me->id, [2]));
+    }
 
     private function createUserToken(array $campusIds, string $loginName, string $type = 'A'): array
     {

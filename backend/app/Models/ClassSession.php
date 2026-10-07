@@ -197,7 +197,7 @@ class ClassSession extends Model
      * Cancelled sessions are excluded.
      *
      * @param  array<int>  $studentClassIds
-     * @return list<array{student_class_id:int,date:string,start_time:?string,end_time:?string,status:string,subject:?string}>
+     * @return list<array{class_session_id:int,student_class_id:int,date:string,start_time:?string,end_time:?string,status:string,subject:?string}>
      */
     public static function sessionsForPaymentSlip(
         array $studentClassIds,
@@ -226,6 +226,7 @@ class ClassSession extends Model
                 $st = $s->StartTime ? substr((string) $s->StartTime, 0, 5) : null;
                 $et = $s->EndTime ? substr((string) $s->EndTime, 0, 5) : null;
                 $row = [
+                    'class_session_id' => (int) $s->getKey(),
                     'student_class_id' => (int) $s->StudentClassID,
                     'date'             => $date,
                     'start_time'       => $st,

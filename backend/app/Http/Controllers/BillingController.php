@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Campus;
-use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
@@ -466,41 +465,7 @@ class BillingController extends Controller
             ];
         });
 
-        $studentClassIds = $invoice->getRelationValue('items')
-            ->pluck('StudentClassID')
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
-            ->unique()
-            ->values()
-            ->all();
-        if ((int) ($invoice->StudentClassID ?? 0) > 0) {
-            $studentClassIds[] = (int) $invoice->StudentClassID;
-            $studentClassIds = array_values(array_unique($studentClassIds));
-        }
-        $monthlyCourse = $invoice->getRelationValue('studentClass');
-        if (! $monthlyCourse instanceof StudentClass) {
-            $monthlyCourse = null;
-        }
-        if ($monthlyCourse && $monthlyCourse->getAttribute('ScheduleMode') === 'date' && $projection['billing_period']) {
-            [$serviceStart, $serviceEnd] = $this->monthlyBilling->serviceRangeForCourse($invoice, (int) $monthlyCourse->getKey());
-            $sessions = $this->monthlyBilling->slipSessionDetailsForPeriod(
-                $monthlyCourse,
-                $projection['billing_period'],
-                $serviceStart,
-                $serviceEnd,
-                // A fixed amount (never repriced from held lessons: paid, partly
-                // paid, or a cross-month cycle) covers upcoming lessons too.
-                // Void/cancelled invoices keep the billed-only list.
-                includeUpcoming: !$projection['repriceable']
-                    && !in_array((string) ($invoice->Status ?? ''), ['void', 'cancelled'], true),
-            );
-        } else {
-            $sessions = ClassSession::sessionsForPaymentSlip(
-                $studentClassIds,
-                $projection['period_start'],
-                $projection['period_end']
-            );
-        }
+        $sessions = $this->monthlyBilling->invoiceCoveredSessions($invoice, $projection);
 
         $authUser = $request->attributes->get('auth_user');
         Log::info('[InvoiceSlip] generated', [

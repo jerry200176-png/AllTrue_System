@@ -405,7 +405,9 @@ class ChatService
         $sender     = User::find($senderUserId);
         $senderName = $sender->Name ?? 'Unknown';
 
-        $ext      = $file->getClientOriginalExtension();
+        // Content-sniffed, not client-supplied: a JPEG named x.html must not
+        // be served from /storage as text/html (stored XSS).
+        $ext      = $file->extension();
         $filename = time() . '_' . Str::random(8) . ($ext ? '.' . $ext : '');
         $path     = $file->storeAs("chat-attachments/{$threadId}", $filename, 'public');
 
@@ -635,29 +637,19 @@ class ChatService
 
     public static function totalUnread(int $userId, array $campusIds): int
     {
-        $memberships = ChatThreadMember::where('user_id', $userId)
-            ->whereNull('left_at')
-            ->get();
+        // One aggregate query instead of a thread lookup + count per membership (#3587).
+        $query = ChatMessage::query()
+            ->join('chat_thread_members as ctm', 'ctm.thread_id', '=', 'chat_messages.thread_id')
+            ->where('ctm.user_id', $userId)
+            ->whereNull('ctm.left_at')
+            ->whereRaw('chat_messages.id > COALESCE(ctm.last_read_message_id, 0)');
 
-        if ($memberships->isEmpty()) {
-            return 0;
+        if (!empty($campusIds)) {
+            $query->join('chat_threads as ct', 'ct.id', '=', 'chat_messages.thread_id')
+                ->whereIn('ct.CampusID', $campusIds);
         }
 
-        $total = 0;
-        foreach ($memberships as $m) {
-            if (!empty($campusIds)) {
-                $thread = ChatThread::find($m->thread_id);
-                if (!$thread || !in_array($thread->CampusID, $campusIds, true)) {
-                    continue;
-                }
-            }
-            $lastRead = $m->last_read_message_id ?? 0;
-            $total   += ChatMessage::where('thread_id', $m->thread_id)
-                ->where('id', '>', $lastRead)
-                ->count();
-        }
-
-        return $total;
+        return $query->count();
     }
 
     // ── Membership checks ──────────────────────────────────────────

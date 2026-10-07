@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -83,6 +84,41 @@ class DirectorLedgerCoverageDatesTest extends TestCase
             ->assertForbidden();
         $this->withHeaders($this->headers($outsider))
             ->getJson("/api/v1/payment-reports/{$report->id}/receipt")
+            ->assertForbidden();
+    }
+
+    public function test_contract_sessions_tag_each_lesson_with_payment_state(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-10 09:00:00', 'Asia/Taipei'));
+        $token = $this->directorToken([1]);
+        [$student, $course] = $this->countCourse(1);
+        $course->update(['Memo' => '家長要求週二上課', 'SessionCount' => 8]);
+        $url = "/api/v1/accounting/contracts/{$course->ID}/sessions";
+
+        $noBill = $this->withHeaders($this->headers($token))->getJson($url)->assertOk();
+        $this->assertSame(['2026-09-01', '2026-09-08', '2026-09-22', '2026-09-29', '2026-10-06'], $noBill->json('sessions.*.date'));
+        $this->assertSame(['no_invoice'], array_values(array_unique($noBill->json('sessions.*.payment'))));
+        $this->assertSame('家長要求週二上課', $noBill->json('memo'));
+        $this->assertSame(3, $noBill->json('unscheduled_count'));
+
+        $invoice = $this->invoiceFor($student, $course);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 3000, 'PaidAt' => '2026-09-05', 'Method' => 'cash']);
+        $this->assertSame(['partial'], array_values(array_unique(
+            $this->withHeaders($this->headers($token))->getJson($url)->json('sessions.*.payment')
+        )));
+
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-09-06', 'Method' => 'cash']);
+        $this->assertSame(['paid'], array_values(array_unique(
+            $this->withHeaders($this->headers($token))->getJson($url)->json('sessions.*.payment')
+        )));
+    }
+
+    public function test_other_campus_director_cannot_read_contract_sessions(): void
+    {
+        [, $course] = $this->countCourse(1);
+
+        $this->withHeaders($this->headers($this->directorToken([2])))
+            ->getJson("/api/v1/accounting/contracts/{$course->ID}/sessions")
             ->assertForbidden();
     }
 

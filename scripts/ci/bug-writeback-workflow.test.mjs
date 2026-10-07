@@ -434,6 +434,17 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '375 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '375 must give a no-names reopen path');
   }
+// Scoped Phase-C for in-app 364 (#3228), 2026-10-07 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            364 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 364 must exist');
+    assert.ok(entry[1].includes('"rev" => "44ab1b3698cccfa1d12f367c65e12d3e53f1d3fe"'), '364 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "36961012794"'), '364 deploy binding');
+    assert.ok(entry[1].includes('issues/3228'), '364 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '364 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境'), '364 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '364 must give a no-names reopen path');
+  }
 console.log('bug-writeback-workflow.test.mjs: ok');
 
 assert.match(phaseCSource,
