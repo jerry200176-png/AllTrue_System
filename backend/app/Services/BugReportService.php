@@ -1132,6 +1132,12 @@ class BugReportService
             ->all();
     }
 
+    /** The plain public reply posted with every timeout close (resolved and awaiting-reporter queues). */
+    private static function timeoutReply(int $days): string
+    {
+        return '超過 ' . $days . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。';
+    }
+
     /**
      * Close one eligible bug with closed_by_timeout note. Idempotent if already closed.
      *
@@ -1190,7 +1196,7 @@ class BugReportService
                 if (!$stillEligible) {
                     return ['ok' => false, 'code' => 'not_eligible', 'message' => 'No longer eligible'];
                 }
-                self::addComment($bugId, $actorUserId, '超過 ' . self::AWAITING_REPORTER_TIMEOUT_DAYS . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。');
+                self::addComment($bugId, $actorUserId, self::timeoutReply(self::AWAITING_REPORTER_TIMEOUT_DAYS));
                 $res = self::changeStatus($bugId, $actorUserId, 'closed', $note);
                 if (!$res['ok']) {
                     throw new \RuntimeException($res['message'] ?? 'close failed');
@@ -1199,8 +1205,23 @@ class BugReportService
                 return $res;
             });
         } else {
-            $note = 'closed_by_timeout — Evidence Contract 7-day reporter-verify timeout; no reporter reply';
-            $result = self::changeStatus($bugId, $actorUserId, 'closed', $note);
+            $note = 'closed_by_timeout — Evidence Contract ' . $days . '-day reporter-verify timeout; no reporter reply';
+            // Same lock + recheck as above: reply and status commit together, a duplicate or racing run is a no-op.
+            $result = DB::transaction(function () use ($bugId, $actorUserId, $note, $days) {
+                $locked = BugReport::query()->where('id', $bugId)->lockForUpdate()->first();
+                $stillEligible = $locked && $locked->status === 'resolved'
+                    && in_array($bugId, array_column(self::listEligibleForReporterTimeout($days), 'bug_id'), true);
+                if (!$stillEligible) {
+                    return ['ok' => false, 'code' => 'not_eligible', 'message' => 'No longer eligible'];
+                }
+                self::addComment($bugId, $actorUserId, self::timeoutReply($days));
+                $res = self::changeStatus($bugId, $actorUserId, 'closed', $note);
+                if (!$res['ok']) {
+                    throw new \RuntimeException($res['message'] ?? 'close failed');
+                }
+
+                return $res;
+            });
         }
         if (!$result['ok']) {
             return [

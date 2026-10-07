@@ -49,4 +49,17 @@ assert.match(shell, /\[\[ "\$command_help" == \*--reviewed-ids\* \]\]/, 'apply c
 assert.match(shell, /php artisan bugs:close-stale-resolved --days="\$DAYS" \$ACTOR_ARG --reviewed-ids="\$REVIEWED_IDS"/, 'apply passes exact reviewed IDs');
 assert.match(step, /REVIEWED_IDS: \$\{\{ inputs\.reviewed_ids \}\}/, 'workflow dispatch input is wired');
 
+// Founder 2A: daily unattended auto mode.
+assert.match(workflow, /schedule:\n    - cron: "40 2 \* \* \*"/, 'daily schedule');
+assert.match(step, /MODE: \$\{\{ github\.event_name == 'schedule' && 'auto' \|\| inputs\.mode \}\}/, 'schedule runs auto, never apply');
+assert.equal(request({ MODE: 'auto', DAYS: '7' }), 0, 'scheduled auto run validates (inputs default to empty/7)');
+assert.equal(request({ MODE: 'auto-dry-run' }), 0, 'auto dry-run is allowed');
+assert.notEqual(request({ MODE: 'auto', REVIEWED_IDS: '335' }), 0, 'auto takes no reviewed IDs');
+assert.notEqual(request({ MODE: 'auto', CONFIRMATION: 'CLOSE_STALE_RESOLVED' }), 0, 'auto takes no confirmation');
+assert.notEqual(request({ MODE: 'auto', GITHUB_REF: 'refs/heads/feature' }), 0, 'auto is main only');
+assert.notEqual(request({ MODE: 'autopilot' }), 0, 'unknown mode fails closed');
+assert.match(shell, /\[\[ "\$command_help" == \*--auto\* \]\] \|\| \{ echo "deployed command lacks --auto"/, 'auto fails closed on an old deploy');
+assert.match(shell, /php artisan bugs:close-stale-resolved --auto \$ACTOR_ARG\n/, 'auto apply uses only --auto');
+assert.doesNotMatch(shell.slice(shell.indexOf('=== AUTO APPLY ==='), shell.indexOf('exit 0', shell.indexOf('=== AUTO APPLY ==='))), /reviewed-ids|--days/, 'auto apply carries no reviewed IDs or days');
+
 console.log('bug-reporter-timeout workflow contract: PASS');

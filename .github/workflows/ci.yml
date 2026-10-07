@@ -69,6 +69,7 @@ jobs:
           node scripts/ci-cost-guard.mjs
           node scripts/ci-cost-guard.mjs --self-test
           node scripts/ci/bug-writeback-workflow.test.mjs
+          node scripts/ci/bug-reporter-timeout-workflow.test.mjs
           node scripts/ci/staff-identity-merge-workflow.test.mjs
           node scripts/ci/inapp-product-loop-entry.test.mjs
           node scripts/ci/staff-multirole-activation-workflow.test.mjs

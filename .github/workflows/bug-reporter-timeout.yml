@@ -1,9 +1,15 @@
-name: Bug reporter verification timeout (manual)
+name: Bug reporter verification timeout
 
-# Evidence Contract: a manual, fail-closed operational path for resolved bugs
-# past the reporter-verify timeout and triaged bugs whose public staff question
-# has waited 14 days (F11). Every apply is individually reviewed. Never scheduled.
+# Evidence Contract: fail-closed path for resolved bugs past the reporter-verify timeout and
+# triaged bugs whose public staff question has waited 14 days (F11).
+# - dry-run / apply (manual): every apply is individually reviewed (reviewed_ids).
+# - auto (daily schedule, Founder 2A 2026-10-08): `bugs:close-stale-resolved --auto` closes resolved
+#   reports with no reporter reply for 14 days, with the standard plain public reply. Resolved queue
+#   only, capped per run, re-checked under a row lock, idempotent. A reporter reply (or 問題仍存在)
+#   reopens the report. A deployed command without --auto fails the run instead of guessing.
 on:
+  schedule:
+    - cron: "40 2 * * *" # 10:40 Asia/Taipei
   workflow_dispatch:
     inputs:
       mode:
@@ -14,6 +20,8 @@ on:
         options:
           - dry-run
           - apply
+          - auto-dry-run
+          - auto
       days:
         description: "Calendar days after resolved before timeout (resolved queue only; awaiting-reporter queue is fixed at 14 days)"
         required: true
@@ -77,8 +85,8 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          MODE: ${{ inputs.mode }}
-          DAYS: ${{ inputs.days }}
+          MODE: ${{ github.event_name == 'schedule' && 'auto' || inputs.mode }}
+          DAYS: ${{ inputs.days || '7' }}
           ACTOR: ${{ inputs.actor }}
           CONFIRMATION: ${{ inputs.confirmation }}
           REVIEWED_IDS: ${{ inputs.reviewed_ids }}
@@ -87,9 +95,11 @@ jobs:
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "main only" >&2; exit 1; }
           [[ "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid workflow SHA" >&2; exit 1; }
-          [[ "$MODE" == "dry-run" || "$MODE" == "apply" ]] || { echo "invalid mode" >&2; exit 1; }
+          [[ "$MODE" == "dry-run" || "$MODE" == "apply" || "$MODE" == "auto-dry-run" || "$MODE" == "auto" ]] || { echo "invalid mode" >&2; exit 1; }
           [[ "$DAYS" =~ ^[1-9][0-9]*$ ]] || { echo "days must be a positive integer" >&2; exit 1; }
-          if [[ "$MODE" == "apply" ]]; then
+          if [[ "$MODE" == auto* ]]; then
+            [[ -z "$REVIEWED_IDS" && -z "$CONFIRMATION" ]] || { echo "auto modes take no reviewed_ids or confirmation" >&2; exit 1; }
+          elif [[ "$MODE" == "apply" ]]; then
             [[ "$CONFIRMATION" == "CLOSE_STALE_RESOLVED" ]] || { echo "apply requires confirmation=CLOSE_STALE_RESOLVED" >&2; exit 1; }
             [[ "$REVIEWED_IDS" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]] || { echo "apply requires reviewed_ids=ID[,ID]" >&2; exit 1; }
             IFS=, read -r -a reviewed_id_list <<< "$REVIEWED_IDS"
@@ -126,6 +136,24 @@ jobs:
             [[ "$command_help" == *--reviewed-ids* ]] || { echo "deployed command lacks reviewed-ID gate" >&2; exit 1; }
           fi
           php artisan list --format=txt | grep -q 'bugs:close-stale-resolved'
+          if [[ "$MODE" == auto* ]]; then
+            # The command enforces the 14-day window, the resolved-only queue and the per-run cap itself,
+            # so only its presence matters here (main may be ahead of production by docs-only commits).
+            command_help="$(php artisan bugs:close-stale-resolved --help)"
+            [[ "$command_help" == *--auto* ]] || { echo "deployed command lacks --auto" >&2; exit 1; }
+            echo "=== AUTO DRY-RUN ==="
+            php artisan bugs:close-stale-resolved --auto --dry-run $ACTOR_ARG
+            if [[ "$MODE" == "auto-dry-run" ]]; then
+              echo "result=DRY_RUN_ONLY"
+              exit 0
+            fi
+            echo "=== AUTO APPLY ==="
+            php artisan bugs:close-stale-resolved --auto $ACTOR_ARG
+            echo "=== POST-APPLY AUTO DRY-RUN ==="
+            php artisan bugs:close-stale-resolved --auto --dry-run $ACTOR_ARG
+            echo "result=AUTO_APPLIED_AND_RECHECKED"
+            exit 0
+          fi
           echo "=== DRY-RUN ==="
           php artisan bugs:close-stale-resolved --dry-run --days="$DAYS" $ACTOR_ARG
           if [[ "$MODE" == "dry-run" ]]; then
