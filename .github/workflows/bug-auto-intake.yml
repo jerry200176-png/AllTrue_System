@@ -63,7 +63,7 @@ jobs:
           set -euo pipefail
           raw="$(ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            'cd /home/admin/backend && php artisan bugs:auto-intake --candidates --limit=10')"
+            'cd /home/admin/backend && php artisan bugs:auto-intake --candidates --limit=50')"
           json="$(printf '%s\n' "$raw" | grep -m1 '^{"candidates"' || true)"
           [ -n "$json" ] || { echo "::error::bugs:auto-intake --candidates returned no JSON (command not deployed yet?)"; exit 1; }
           # Keep only the whitelisted ID fields before anything is printed or passed on.
@@ -99,24 +99,41 @@ jobs:
             # in the body or in a comment (shared issues carry one SourceRef comment per report). Anyone can
             # open a public issue quoting the SourceRef; its URL must never be linked or sent to the reporter.
             trusted='(.login == $owner or .login == "app/github-actions" or .login == "github-actions")'
+            # Search only issues a trusted account authored or commented on, so public spam quoting the
+            # SourceRef cannot push the canonical issue out of the result window.
+            find_trusted() {
+              local n hit
+              for n in $( { for who in "${GITHUB_REPOSITORY_OWNER}" app/github-actions; do
+                    gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\" author:${who}" --json number -q '.[].number'
+                    gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\" commenter:${who}" --json number -q '.[].number'
+                  done; } | sort -n | uniq ); do
+                hit="$(gh issue view "$n" --json url,state,body,author,comments | jq -r --arg ref "$ref" --arg owner "${GITHUB_REPOSITORY_OWNER}" \
+                  "if ((.body | contains(\$ref)) and (.author | $trusted)) or ([.comments[] | select((.body | contains(\$ref)) and (.author | $trusted))] | length > 0) then (.state + \" \" + .url) else empty end")"
+                if [ -n "$hit" ]; then echo "$hit"; return 0; fi
+              done
+            }
             url=""
-            for n in $(gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\"" --json number -q '.[].number'); do
-              hit="$(gh issue view "$n" --json url,state,body,author,comments | jq -r --arg ref "$ref" --arg owner "${GITHUB_REPOSITORY_OWNER}" \
-                "if ((.body | contains(\$ref)) and (.author | $trusted)) or ([.comments[] | select((.body | contains(\$ref)) and (.author | $trusted))] | length > 0) then (.state + \" \" + .url) else empty end")"
-              if [ -n "$hit" ]; then
-                url="${hit#* }"
-                # A still-new report belongs on the open backlog: reopen a closed canonical issue before linking it.
-                if [ "${hit%% *}" = "CLOSED" ] && [ "$DRY_RUN" != "true" ]; then gh issue reopen "$url" --comment "Reopened by bug-auto-intake: in-app #${id} is still new."; fi
-                break
-              fi
-            done
+            hit="$(find_trusted || true)"
+            if [ -n "$hit" ]; then
+              url="${hit#* }"
+              # A still-new report belongs on the open backlog: reopen a closed canonical issue before linking it.
+              if [ "${hit%% *}" = "CLOSED" ] && [ "$DRY_RUN" != "true" ]; then gh issue reopen "$url" --comment "Reopened by bug-auto-intake: in-app #${id} is still new."; fi
+            fi
             if [ -z "$url" ]; then
               if [ "$DRY_RUN" = "true" ]; then echo "would create issue for in-app #$id"; continue; fi
               body="$(printf '%s\n\n%s\n%s\n%s\n\n%s' "$ref" \
                 "- In-app ID: ${id}" "- Campus ID: $(jq -r '.campus_id' <<<"$row") (opaque) · severity $(jq -r '.severity' <<<"$row")" \
-                "- Opened by bug-auto-intake.yml. The reporter acknowledgement is posted by the ack job after this issue exists; check the report status (triaged) to confirm it landed." \
+                "- Opened by bug-auto-intake.yml. The ack job then posts the reporter acknowledgement (status stays new until Phase-A triages it)." \
                 "Auto-intake only: no root cause yet. Report text stays in production (read it via bug-detail-dump). Next: investigate, fix the cause, reply in plain language (see docs/CHAT_BUG_SYSTEM.md §3.6–3.7).")"
               url="$(gh issue create --title "[in-app #${id}][auto-intake] report" --body "$body")"
+              # Race with a concurrent Phase-A: if an older trusted issue now exists, keep the oldest and
+              # close ours as a duplicate so only one canonical issue is linked.
+              sleep 5
+              oldest="$(find_trusted || true)"; oldest="${oldest#* }"
+              if [ -n "$oldest" ] && [ "${oldest##*/}" -lt "${url##*/}" ]; then
+                gh issue close "$url" --reason "not planned" --comment "Duplicate of ${oldest} (created concurrently for in-app #${id})."
+                url="$oldest"
+              fi
             fi
             [[ "$url" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "bad issue url"; exit 1; }
             echo "in-app #$id -> $url"

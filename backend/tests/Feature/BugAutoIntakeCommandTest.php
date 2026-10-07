@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Console\Commands\BugAutoIntakeCommand;
 use App\Models\BugReport;
 use App\Models\BugReportComment;
+use App\Models\BugReportStatusLog;
 use App\Models\User;
 use App\Services\BugReportService;
 use Carbon\Carbon;
@@ -41,24 +42,40 @@ class BugAutoIntakeCommandTest extends TestCase
         $this->assertStringNotContainsString('王小明', $out);
     }
 
-    public function test_ack_triages_links_issue_and_posts_ack_once(): void
+    public function test_ack_posts_once_keeps_status_new_and_writes_no_status_log(): void
     {
         [, $reporter] = $this->users();
         $bug = $this->bug($reporter, 'new', '2026-10-07 09:00:00');
 
         $this->assertSame(0, Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $bug->id, '--issue-url' => self::ISSUE]));
-        $this->assertSame('triaged', $bug->fresh()->status);
+        // A generic ack is not triage: SLA metrics count breaches only while `new`.
+        $this->assertSame('new', $bug->fresh()->status);
+        $this->assertSame(0, BugReportStatusLog::where('bug_report_id', $bug->id)->count(), 'no status log, so adoption metrics never count the automation actor');
         $comments = BugReportComment::where('bug_report_id', $bug->id)->get();
         $this->assertCount(1, $comments);
-        // Exact ack text, no issue URL: Phase-A dedupes its own reply by the URL and must not be fooled.
         $this->assertSame(BugAutoIntakeCommand::ACK_TEXT, $comments[0]->body);
-        $this->assertNull(BugReportService::latestDispositionWithKind($bug->id), 'intake must not invent a disposition');
         $this->assertFalse((bool) $comments[0]->is_internal_note);
+        $this->assertNull(BugReportService::latestDispositionWithKind($bug->id));
 
-        // Re-run (next hour or a retried job): skipped, no second ack.
         $this->assertSame(0, Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $bug->id, '--issue-url' => self::ISSUE]));
-        $this->assertStringContainsString('"ack":"skipped"', Artisan::output());
-        $this->assertSame(1, BugReportComment::where('bug_report_id', $bug->id)->count());
+        $this->assertSame(1, BugReportComment::where('bug_report_id', $bug->id)->count(), 'retry never posts twice');
+    }
+
+    public function test_acknowledged_reports_leave_the_candidate_list_and_triaged_ones_are_skipped(): void
+    {
+        [$admin, $reporter] = $this->users();
+        $acked = $this->bug($reporter, 'new', now()->subHour()->toDateTimeString());
+        $waiting = $this->bug($reporter, 'new', now()->subHour()->toDateTimeString());
+        Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $acked->id, '--issue-url' => self::ISSUE]);
+
+        Artisan::call('bugs:auto-intake', ['--candidates' => true]);
+        $ids = array_column(json_decode(trim(Artisan::output()), true)['candidates'], 'bug_id');
+        $this->assertSame([$waiting->id], $ids, 'backlog drains: acked reports are not listed again');
+
+        $human = $this->bug($reporter, 'new', '2026-10-07 09:00:00');
+        BugReportService::changeStatus($human->id, $admin->id, 'triaged', 'manual');
+        $this->assertSame(0, Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $human->id, '--issue-url' => self::ISSUE]));
+        $this->assertSame(0, BugReportComment::where('bug_report_id', $human->id)->count());
     }
 
     public function test_ack_refuses_bad_input(): void
@@ -72,25 +89,11 @@ class BugAutoIntakeCommandTest extends TestCase
         $this->assertSame(0, BugReportComment::where('bug_report_id', $bug->id)->count());
     }
 
-    public function test_retry_completes_missing_ack_and_skips_reports_triaged_by_people(): void
-    {
-        [$admin, $reporter] = $this->users();
-        $half = $this->bug($reporter, 'new', '2026-10-07 09:00:00');
-        BugReportService::changeStatus($half->id, $admin->id, 'triaged', BugAutoIntakeCommand::INTAKE_NOTE . self::ISSUE);
-        $this->assertSame(0, Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $half->id, '--issue-url' => self::ISSUE]));
-        $this->assertSame(1, BugReportComment::where('bug_report_id', $half->id)->where('body', BugAutoIntakeCommand::ACK_TEXT)->count());
-
-        $human = $this->bug($reporter, 'new', '2026-10-07 09:00:00');
-        BugReportService::changeStatus($human->id, $admin->id, 'triaged', 'manual');
-        $this->assertSame(0, Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $human->id, '--issue-url' => self::ISSUE]));
-        $this->assertSame(0, BugReportComment::where('bug_report_id', $human->id)->count());
-    }
-
-    public function test_phase_a_can_restate_disposition_after_auto_intake(): void
+    public function test_phase_a_can_restate_disposition_on_a_triaged_report(): void
     {
         [$admin, $reporter] = $this->users();
         $bug = $this->bug($reporter, 'new', '2026-10-07 09:00:00');
-        Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $bug->id, '--issue-url' => self::ISSUE]);
+        BugReportService::changeStatus($bug->id, $admin->id, 'triaged', 'phase-a', ['disposition' => 'bug', 'github_issue_url' => self::ISSUE]);
 
         $opts = ['disposition' => 'needs_info', 'github_issue_url' => self::ISSUE];
         $this->assertTrue(BugReportService::restateDisposition($bug->id, $admin->id, $opts)['ok']);

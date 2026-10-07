@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Models\BugReport;
 use App\Models\BugReportComment;
-use App\Models\BugReportStatusLog;
 use App\Models\User;
 use App\Services\BugReportService;
 use Illuminate\Console\Command;
@@ -20,11 +19,9 @@ class BugAutoIntakeCommand extends Command
 {
     public const ACK_TEXT = '收到，我們正在查，查到原因會再回覆你。';
 
-    public const INTAKE_NOTE = 'auto-intake; GitHub issue=';
-
     protected $signature = 'bugs:auto-intake
                             {--candidates : Print new reports as JSON (IDs, campus, severity, created_at only)}
-                            {--limit=10 : Max reports per --candidates}
+                            {--limit=50 : Max reports per --candidates (unacknowledged only, so the backlog drains)}
                             {--min-age=5 : Minutes a report must exist before intake (lets attachments finish)}
                             {--ack : Triage one report and post the acknowledgement}
                             {--bug-id= : Report ID for --ack}
@@ -49,6 +46,8 @@ class BugAutoIntakeCommand extends Command
         $limit = max(1, min(50, (int) $this->option('limit')));
         $cutoff = now()->subMinutes(max(0, (int) $this->option('min-age')));
         $rows = BugReport::query()->where('status', 'new')->where('created_at', '<=', $cutoff)
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('bug_report_comments as c')
+                ->whereColumn('c.bug_report_id', 'bug_reports.id')->where('c.body', self::ACK_TEXT))
             ->orderBy('id')->limit($limit)
             ->get(['id', 'CampusID', 'severity', 'created_at'])
             ->map(fn (BugReport $b) => [
@@ -80,35 +79,22 @@ class BugAutoIntakeCommand extends Command
             $this->error('No type=S actor user');
             return self::FAILURE;
         }
-        // Row lock + one transaction: the status change and the ack commit together, and an
-        // overlapping run (or a manual Phase-A) waits instead of double-posting.
+        // Row lock: an overlapping run or a manual Phase-A waits, then re-reads; the exact ack text is
+        // the idempotency key.
         $result = DB::transaction(function () use ($bugId, $issueUrl, $actor) {
             $locked = BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
-            $from = (string) $locked->getAttribute('status');
-            $ackPosted = BugReportComment::query()->where('bug_report_id', $bugId)->where('body', self::ACK_TEXT)->exists();
-            if ($from === 'new') {
-                // No product disposition here: intake has not classified the report yet, and
-                // Phase-A restates a real one later. The issue link lives in the status note.
-                $t = BugReportService::changeStatus($bugId, $actor, 'triaged', self::INTAKE_NOTE . $issueUrl);
-                if (!$t['ok']) {
-                    throw new \RuntimeException(json_encode($t));
-                }
-            } elseif (!$this->intakeLogged($bugId)) {
-                return ['bug_id' => $bugId, 'skipped' => 'status_' . $from];
+            $status = (string) $locked->getAttribute('status');
+            if ($status !== 'new') {
+                return ['bug_id' => $bugId, 'skipped' => 'status_' . $status];
             }
-            // Retry completes a half-done intake; the exact ack text is the idempotency key.
-            if (!$ackPosted) {
-                BugReportService::addComment($bugId, $actor, self::ACK_TEXT, false);
+            if (BugReportComment::query()->where('bug_report_id', $bugId)->where('body', self::ACK_TEXT)->exists()) {
+                return ['bug_id' => $bugId, 'ack' => 'skipped', 'issue' => $issueUrl];
             }
-            return ['bug_id' => $bugId, 'from' => $from, 'ack' => $ackPosted ? 'skipped' : 'posted', 'issue' => $issueUrl];
+            BugReportService::addComment($bugId, $actor, self::ACK_TEXT, false);
+            return ['bug_id' => $bugId, 'status' => $status, 'ack' => 'posted', 'issue' => $issueUrl];
         });
         $this->line(json_encode($result));
         return self::SUCCESS;
     }
 
-    private function intakeLogged(int $bugId): bool
-    {
-        return BugReportStatusLog::query()->where('bug_report_id', $bugId)
-            ->where('note', 'like', self::INTAKE_NOTE . '%')->exists();
-    }
 }
