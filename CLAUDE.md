@@ -132,6 +132,7 @@ Claude Code on the web／其他雲端 session 的 container 是全新隔離環�
 
 Add the label `queue` to a green-ready PR instead of looping on `gh pr update-branch` or `gh pr merge --auto`.
 `.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict or failed check (review threads are advisory). Re-add `queue` after fixing.
+**Batching (only while the main ruleset's strict up-to-date policy is off):** the queue cuts `chore/land-queue-batch-<run>` from the main tip, merges up to 4 oldest eligible heads into it (a conflicting PR is left out with a comment), dispatches the required-check workflows on it, and squash-merges the members in order only when every required context is green and main has not moved. Red or timed out: members get a `batch-failed` comment and land one at a time. One serial merge per run; a head behind main is always updated first (`behindBy`), so strict off never merges an untested combination. Fork PRs never queue.
 GitHub's native merge queue is not used: it is unavailable for this user-owned repo (a `merge_queue` ruleset probe returned 422).
 
 ## 任務完成後的記錄原則
