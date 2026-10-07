@@ -5273,9 +5273,12 @@ class StudentClassController extends Controller
         // unrelated course is still planned, so upsertSlot() rolls the transfer back and names the conflict.
         $targetRows = [];
         $target = StudentClass::query()->find($targetId);
-        // Same live-row rules as the write guard: a stopped or trial target holds nothing.
+        // Same live-row rules as the write guard: a stopped or trial target, or one in the source's own package
+        // (parallel subject tracks), holds nothing.
+        $sourcePackage = (int) $source->getAttribute('PackageID');
         $targetHoldsNothing = (int) ($target?->getAttribute('Stop') ?? 0) === 1
-            || strtolower(trim((string) $target?->getAttribute('ClassType'))) === 'trial';
+            || strtolower(trim((string) $target?->getAttribute('ClassType'))) === 'trial'
+            || ($sourcePackage > 0 && (int) $target?->getAttribute('PackageID') === $sourcePackage);
         $targetLive = $targetHoldsNothing ? collect() : ClassSession::query()->where('StudentClassID', $targetId)
             ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
             ->when(ContractSessionSchedule::normalizeDateString($target?->getAttribute('StartDate')), fn ($q, $d) => $q->whereDate('SessionDate', '>=', $d))
@@ -5303,7 +5306,8 @@ class StudentClassController extends Controller
         $planned = [];
         $cursor = $anchorDate->copy()->addDay();
         $guard = 0;
-        while (count($planned) < $replacementCount && $guard < 731) {
+        $horizonDays = 731; // grows a week per slot the target holds, so those skips never shorten the refill
+        while (count($planned) < $replacementCount && $guard < $horizonDays) {
             $guard++;
             $daySlots = $slotsByWeekday[(int) $cursor->dayOfWeekIso] ?? [];
             foreach ($daySlots as $slot) {
@@ -5319,6 +5323,7 @@ class StudentClassController extends Controller
 
                 $end = $start->copy()->addMinutes((int) $slot['dur']);
                 if ($this->overlapsAny($targetRows[$cursor->toDateString()] ?? [], $start->format('H:i:s'), $end->format('H:i:s'))) {
+                    $horizonDays += 7;
                     continue;
                 }
                 $planned[] = [

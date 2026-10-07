@@ -652,6 +652,35 @@ class StudentClassTransferSessionsTest extends TestCase
         }
     }
 
+    /** In-app #380 review: a target in the source's own package is a parallel track; the guard ignores it, so do we. */
+    public function test_refill_is_not_shifted_by_a_same_package_target(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30, 'PackageID' => 77,
+            ]);
+            $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17', 'PackageID' => 77]);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $this->createClassSession((int) $target->ID, '2026-08-17', 'scheduled');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk();
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-17', 'StartTime' => '23:00:00',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_schedule_only_makeup_still_blocks_source_replenishment(): void
     {
         Carbon::setTestNow('2026-08-12 12:00:00');
