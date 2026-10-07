@@ -67,6 +67,13 @@
             </button>
           </section>
 
+          <section v-if="contractCourses.length" class="ledger-section">
+            <h4>合約（每一堂課與付款）</h4>
+            <div class="ledger-contracts">
+              <ContractCard v-for="c in contractCourses" :key="c.id" :course="c" @changed="$emit('changed')" />
+            </div>
+          </section>
+
           <section class="ledger-section">
             <h4>帳單</h4>
             <div v-if="ledgerBothEmpty && payload.scope?.no_payment_obligation" class="ledger-empty">輔導課不需繳費，所以這裡不會有帳單或收據。</div>
@@ -231,6 +238,7 @@ import {
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
+import ContractCard from './tuition/ContractCard.vue';
 import {
   canShowReceiptCoverage,
   coverageFromReceipt,
@@ -411,6 +419,14 @@ const ledgerExceptions = computed(() => {
   return rows.sort((a, b) => a.severity - b.severity);
 });
 
+// Contracts with money still due come first (PRD v2 §0.3).
+const contractCourses = computed(() => {
+  const owed = (id) => (payload.value?.invoices || [])
+    .filter((inv) => Number(inv.student_class_id) === Number(id))
+    .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
+  return [...(payload.value?.courses || [])].sort((a, b) => owed(b.id) - owed(a.id));
+});
+
 const visibleExceptions = computed(() => (
   showAllExceptions.value
     ? ledgerExceptions.value
@@ -539,6 +555,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-strip__item.is-danger .ledger-strip__value{color:var(--ds-danger)}
 
 .ledger-section{margin-top:18px}
+.ledger-contracts{display:grid;gap:10px}
 .ledger-section h4{margin:0 0 8px;font-size:14px}
 .ledger-more{margin-top:8px;border:0;background:transparent;color:var(--ds-primary-text);font-size:13px;font-weight:600;cursor:pointer;padding:0}
 .ledger-table-wrap{overflow-x:auto}
