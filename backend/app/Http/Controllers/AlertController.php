@@ -165,8 +165,8 @@ class AlertController extends Controller
             ->unique()
             ->values()
             ->all();
-        $paidAtMap = ContractMoneyState::lastPaidAtByStudentClassIds($allClassIds);
-        $invoiceAggMap = ContractMoneyState::invoiceAggregateByStudentClassIds($allClassIds);
+        $paidAtMap = $this->payableResolver->lastPaidAtByStudentClassIds($allClassIds);
+        $invoiceAggMap = $this->payableResolver->invoiceAggregateByStudentClassIds($allClassIds);
         $allResults = $countResults->merge($dateResults)->merge($pendingSettlementResults)->keyBy('ID');
         $payableMap = $this->payableResolver->byStudentClassIds($allClassIds, $allResults);
         // F7 S3b: `outstanding` is the course-level answer (all open periods); payable_outstanding stays per invoice.
