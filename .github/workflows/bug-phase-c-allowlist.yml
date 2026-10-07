@@ -877,8 +877,12 @@ jobs:
               if ($st === "resolved") {
                 // Public reply before resolve (Evidence Contract)
                 // Idempotent: an identical public reply already on the report is never posted again.
+                // Only a reply posted after the latest reopen counts; a reopened report gets the reply again.
+                $reopenedAt = \App\Models\BugReportStatusLog::query()->where("bug_report_id", $bugId)
+                  ->whereIn("from_status", ["resolved", "closed"])->max("created_at");
                 $alreadyPosted = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
-                  ->where("is_internal_note", false)->where("body", $cfg["reply"])->exists();
+                  ->where("is_internal_note", false)->where("body", $cfg["reply"])
+                  ->when($reopenedAt, fn ($q) => $q->where("created_at", ">", $reopenedAt))->exists();
                 if (!$reuseNotice && !$alreadyPosted) $svc::addComment($bugId, $actor, $cfg["reply"], false);
                 $opts = ["production_revision" => $cfg["rev"]];
                 if ($cfg["deploy"] !== "") $opts["deploy_run_id"] = $cfg["deploy"];

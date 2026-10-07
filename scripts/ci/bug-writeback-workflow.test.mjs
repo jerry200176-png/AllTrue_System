@@ -193,7 +193,8 @@ assert.match(phaseCSource, /if \(!\$reuseNotice && !\$alreadyPosted\) \$svc::add
   assert.ok(/\$reuseNotice = isset\(\$cfg\["existing_notice_id"\]\);[\s\S]*?\n\s+\\Illuminate\\Support\\Facades\\DB::beginTransaction\(\);/.test(loop), 'every closeout opens a transaction');
   assert.ok(!loop.includes('if ($reuseNotice) \\Illuminate\\Support\\Facades\\DB::beginTransaction()'), 'transaction must not be limited to reuse-notice entries');
   assert.ok(loop.includes('$bug = \\App\\Models\\BugReport::where("id", $bugId)->lockForUpdate()->first();'), 'every closeout locks the report');
-  assert.ok(loop.includes('->where("is_internal_note", false)->where("body", $cfg["reply"])->exists()'), 'identical public reply is detected');
+  assert.ok(loop.includes('->where("is_internal_note", false)->where("body", $cfg["reply"])'), 'identical public reply is detected');
+  assert.ok(loop.includes('->whereIn("from_status", ["resolved", "closed"])->max("created_at")'), 'a reopened report gets the reply again');
   const begins = (loop.match(/DB::beginTransaction\(\)/g) || []).length;
   const exits = (loop.match(/DB::rollBack\(\)|DB::commit\(\)/g) || []).length;
   assert.equal(begins, 1);
