@@ -2632,8 +2632,9 @@ const bindRfidFromTemp = async () => {
 // in-app #381: release the card immediately (server-side; the campus gate applies).
 const unbindStudentRfid = async () => {
   const st = students.value.find(s => s.id === editingStudentId.value);
-  const laravelId = st?._laravelId ?? st?.id;
-  if (!laravelId) return;
+  // Destructive: only with a resolved server ID (a Supabase fallback id could hit another student).
+  const laravelId = st?._laravelId;
+  if (!laravelId) { alert('目前無法確認學生的系統編號，請重新整理後再試。'); return; }
   if (!confirm('確定要解除這張卡片的綁定嗎？解除後學生刷這張卡不會再記錄到課，卡片可以再綁給別人。')) return;
   try {
     const token = await getAccessToken();
@@ -2645,6 +2646,9 @@ const unbindStudentRfid = async () => {
       return;
     }
     studentForm.value.rfid = '';
+    // Keep the fallback mirror in sync so a later fallback load cannot resurrect the old card.
+    supabase.from('students').update({ rfid: null }).eq('id', editingStudentId.value)
+      .then(({ error }) => { if (error) console.warn('Supabase mirror rfid clear failed (non-blocking):', error?.message); });
     loadStudents();
   } catch (e) {
     alert('解除綁定失敗');

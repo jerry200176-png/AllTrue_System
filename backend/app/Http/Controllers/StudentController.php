@@ -584,8 +584,19 @@ class StudentController extends Controller
             return $deny;
         }
 
+        $hadCard = (string) ($student->RFID ?? '') !== '';
         $student->RFID = null;
         $student->save();
+        if ($hadCard) {
+            // Who released which student's card, for later attendance/deduction disputes (card value not logged).
+            SecurityAuditEvent::append('rfid.binding.revoked', 'success', [
+                'campus_id' => (int) $student->getAttribute('CampusID'),
+                'subject_type' => 'student',
+                'subject_id' => $student->getKey(),
+                'actor_type' => 'user',
+                'actor_id' => request()->attributes->get('auth_user_id'),
+            ], ['method' => 'director_api', 'reason_code' => 'manual_unbind']);
+        }
 
         return response()->json(['message' => '已解除卡片綁定', 'student_id' => $student->id]);
     }

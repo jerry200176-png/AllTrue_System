@@ -178,6 +178,7 @@ class RfidUniqueConstraintTest extends TestCase
         $this->bindCard($token, $next->id, 'CARD-381')->assertStatus(422);
         $this->withHeaders($headers)->deleteJson("/api/v1/students/{$owner->id}/bind-card")->assertOk();
         $this->assertNull($owner->fresh()->RFID);
+        $this->assertSame(1, \Illuminate\Support\Facades\DB::table('security_audit_events')->where('event_type', 'rfid.binding.revoked')->count(), 'unbind is audited');
         $this->bindCard($token, $next->id, 'CARD-381')->assertOk();
 
         $other = $this->makeStudent(2, 'CARD-OTHER');
