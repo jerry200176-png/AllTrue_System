@@ -10,16 +10,15 @@ on:
     types: [autonomous-production-deploy]
 
   # Release train: one Founder approval per train instead of one per R3 merge.
-  # 07:30 and 12:30 Asia/Taipei, retried every 15 min for 45 min (GitHub drops
-  # scheduled runs under load, and the main tip may still be in CI). A retry
-  # stands down if a train is already waiting. Also `workflow_dispatch phase=release-train`.
+  # Hourly at :17 past, 08:17-22:17 Asia/Taipei (00:17-14:17 UTC; Founder 3A 2026-10-07),
+  # off minute zero where GitHub drops scheduled runs under load. The next hour is the
+  # retry for a dropped run or a main tip still in CI; the last train gets its own
+  # 22:47 retry so a miss does not wait until morning. A run stands down if a deploy
+  # run is already waiting for approval, so it never cancels a train under the
+  # Founder. Also `workflow_dispatch phase=release-train`.
   schedule:
-    - cron: '30 23 * * *'
-    - cron: '30 4 * * *'
-    - cron: '45,59 23 * * *'
-    - cron: '14 0 * * *'
-    - cron: '45,59 4 * * *'
-    - cron: '14 5 * * *'
+    - cron: '17 0-14 * * *'
+    - cron: '47 14 * * *'
 
   workflow_dispatch:
     inputs:
@@ -1005,7 +1004,7 @@ jobs:
               if [[ "$RELEASE_TRAIN" != "true" ]]; then
                 {
                   echo "## state=queued-for-release-train"
-                  echo "Not deployed. Founder-gated changes ride the next release train (07:30/12:30 Asia/Taipei, or dispatch phase=release-train). While one is pending, later R0-R2 merges wait for that train too."
+                  echo "Not deployed. Founder-gated changes ride the next release train (hourly at :17 past, 08:17-22:17 Asia/Taipei, with a 22:47 retry; or dispatch phase=release-train). While one is pending, later R0-R2 merges wait for that train too."
                   echo "Reason: ${REASON}"
                 } >> "$GITHUB_STEP_SUMMARY"
                 exit 0
