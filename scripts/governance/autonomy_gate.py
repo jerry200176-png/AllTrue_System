@@ -12,7 +12,7 @@ import fnmatch
 import re
 from collections import Counter
 from datetime import datetime
-from typing import Iterable, Mapping
+from typing import Callable, Iterable, Mapping
 
 
 TIER_VALUES = {"T0": 0, "T1": 1, "T2": 2, "T3": 3}
@@ -1163,6 +1163,67 @@ def is_founder_approval_eligible(
     )
 
 
+# "Founder GO: <who/when/what>" at line start; placeholders and negatives ("none", "N/A", "pending") do not count.
+_FOUNDER_GO_RE = re.compile(
+    r"(?m)^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Founder GO(?:\*\*)?[ \t]*:[ \t]*(?:\*\*)?[ \t]*"
+    r"(?!(?i:none|n/?a|no|not|pending|tbd|todo|requested|needed|required)\b)[^\s<*\[(]"
+)
+_TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
+
+
+def founder_go_release_evidence(
+    *, repo: str, comparison: Mapping[str, object],
+    fetch_pr: Callable[[int], object], machine_tier: Callable[[str], object],
+) -> dict[str, object]:
+    """Founder 1A (2026-10-07): may this undeployed range activate with no human approval?
+
+    Every commit in ``comparison`` (production...target) must be the squash
+    commit of a same-repo, owner-authored PR merged into ``main`` and named by
+    the trailing ``(#N)`` of its title. ``machine_tier(sha)`` is that commit's
+    own activation tier; a PR whose machine tier or declared risk is 3 needs a
+    ``Founder GO:`` line in its body. Anything missing,
+    truncated or unknown fails closed (``ok`` False, caller keeps the reviewer
+    gate); ``missing`` lists the PRs that only lack a GO.
+    """
+
+    def fail(reason: str) -> dict[str, object]:
+        return {"ok": False, "missing": [], "reason": reason}
+
+    commits = comparison.get("commits")
+    if not isinstance(commits, list) or not commits or comparison.get("total_commits") != len(commits):
+        return fail("commit list is empty, truncated or unavailable")
+    missing: list[int] = []
+    for commit in commits:
+        sha = str((commit or {}).get("sha") or "")
+        title = str(((commit or {}).get("commit") or {}).get("message") or "").split("\n", 1)[0]
+        match = _TITLE_PR_RE.search(title)
+        if not _FULL_SHA_RE.fullmatch(sha) or not match:
+            return fail(f"commit {sha[:10] or '?'} has no merged PR number")
+        number = int(match.group(1))
+        pr = fetch_pr(number)
+        if (
+            not isinstance(pr, Mapping)
+            or pr.get("number") != number
+            or pr.get("merge_commit_sha") != sha
+            or not pr.get("merged_at")
+            or (pr.get("base") or {}).get("ref") != "main"
+            or ((pr.get("head") or {}).get("repo") or {}).get("full_name") != repo
+            or pr.get("author_association") != "OWNER"
+        ):
+            return fail(f"PR #{number} is not an owner PR merged into main as {sha[:10]}")
+        tier = machine_tier(sha)
+        if not isinstance(tier, int) or isinstance(tier, bool) or tier not in TIER_VALUES.values():
+            return fail(f"PR #{number} has no machine risk class")
+        body = str(pr.get("body") or "")
+        declared_risk, _ = parse_declaration(body)
+        if max(tier, declared_risk or 0) >= 3 and not _FOUNDER_GO_RE.search(body):
+            missing.append(number)
+    if missing:
+        listed = ", ".join(f"#{n}" for n in missing)
+        return {"ok": False, "missing": missing, "reason": f"R3 PRs without a Founder GO line: {listed}"}
+    return {"ok": True, "missing": [], "reason": "every merged PR is R0-R2 or carries a Founder GO line"}
+
+
 def decide_manual_activation(
     *, workflow_ref: str, target_sha: str, current_main_sha: str,
     ci_success: bool, founder_gate_reached: bool,
@@ -1293,6 +1354,24 @@ def environment_protection_is_valid(
     }:
         return False
     return required_reviewers_configured and prevent_self_review is False
+
+
+def auto_environment_is_valid(
+    *, event_name: str, phase: str, mode: str, go_evidence: str, branch_names: Iterable[str],
+) -> bool:
+    """Accept the reviewer-less ``production-auto`` Environment only with verified 1A evidence.
+
+    Manual exceptional phases never use it; they keep ``production-activation``.
+    """
+
+    if go_evidence != "verified" or mode not in {"auto", "auto-founder-go"}:
+        return False
+    if event_name == "workflow_dispatch":
+        if phase != "release-train":
+            return False
+    elif event_name not in {"workflow_run", "repository_dispatch", "schedule"}:
+        return False
+    return list(branch_names) == ["main"]
 
 
 def effective_tier(

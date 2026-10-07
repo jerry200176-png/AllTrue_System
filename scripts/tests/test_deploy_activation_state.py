@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.governance.autonomy_gate import (  # noqa: E402
     aggregate_landed_pr_effects,
+    auto_environment_is_valid,
     classify_activation_scope,
     classify_activation_provenance,
     classify_production_runtime,
@@ -30,6 +31,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     decide_manual_activation,
     environment_protection_is_valid,
     effective_tier,
+    founder_go_release_evidence,
     has_rollback_evidence,
     is_founder_approval_eligible,
     is_application_runtime_path,
@@ -1071,8 +1073,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("repository_dispatch", gate_if)
         self.assertIn("(needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')", gate_if)
         self.assertIn("inputs.phase != 'release-train'", gate_if)
-        # A train always needs the Founder gate, even if every change is auto-eligible.
-        self.assertIn("needs.resolve-target.outputs.release_train == 'true' && (needs.classify-activation.outputs.mode == 'auto' ||", gate_if)
+        # Founder 1A: a train reaches the Founder gate only without verified GO evidence.
+        self.assertIn("needs.resolve-target.outputs.release_train == 'true' && ((needs.classify-activation.outputs.mode == 'auto' && needs.classify-activation.outputs.go_evidence != 'verified') ||", gate_if)
         deploy_if = self.workflow[self.workflow.index("  deploy:\n"):].split("\n")[3]
         self.assertIn("(needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train != 'true')", deploy_if)
         self.assertIn("(needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true')", deploy_if)
@@ -1192,7 +1194,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("No production SSH, migration, frontend build, or data mutation was executed", self.workflow)
 
     def test_deploy_job_requires_auto_or_successful_manual_gate(self):
-        self.assertIn("needs: [resolve-target, detect-deployable, classify-activation, production-activation]", self.workflow)
+        self.assertIn("needs: [resolve-target, detect-deployable, classify-activation, production-activation, production-auto]", self.workflow)
         self.assertIn("needs.classify-activation.outputs.mode == 'auto'", self.workflow)
         self.assertIn("needs.production-activation.result == 'success'", self.workflow)
         self.assertIn('TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"', self.workflow)
@@ -1410,6 +1412,115 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(["git", "composer", "manifest", "php"], calls)
         self.assertIn("Rollback 成功", result.stdout)
+
+
+class FounderGoAutoActivationTest(unittest.TestCase):
+    """Founder 1A (2026-10-07): no manual approve when every merged PR is R0-R2 or GO'd."""
+
+    REPO = "jerry200176-png/AllTrue_System"
+
+    def _range(self, *numbers):
+        commits = [
+            {"sha": f"{n:040x}", "commit": {"message": f"feat: change (#{n})\n\nbody (#1)"}}
+            for n in numbers
+        ]
+        return {"total_commits": len(commits), "commits": commits}
+
+    def _pr(self, n, body="Risk-Class: R1\nAutonomy-Tier: T1", **overrides):
+        pr = {
+            "number": n, "merge_commit_sha": f"{n:040x}", "merged_at": "2026-10-07T00:00:00Z",
+            "base": {"ref": "main"}, "head": {"repo": {"full_name": self.REPO}},
+            "author_association": "OWNER", "body": body,
+        }
+        pr.update(overrides)
+        return pr
+
+    def _evidence(self, comparison, pulls, tiers):
+        return founder_go_release_evidence(
+            repo=self.REPO, comparison=comparison,
+            fetch_pr=lambda n: pulls[n], machine_tier=lambda sha: tiers.get(int(sha, 16)),
+        )
+
+    def test_all_r0_r2_or_founder_go_activates_automatically(self):
+        r3 = "Risk-Class: R3\nAutonomy-Tier: T3\n**Founder GO:** Jerry 2026-10-07 \"GO 11\""
+        result = self._evidence(
+            self._range(10, 11, 12),
+            {10: self._pr(10), 11: self._pr(11, r3), 12: self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2")},
+            {10: 1, 11: 3, 12: 2},
+        )
+        self.assertTrue(result["ok"], result)
+
+    def test_r3_pr_without_go_falls_back_and_is_named(self):
+        for body in ("Risk-Class: R3\nAutonomy-Tier: T3", "Founder GO: none", "Founder GO: <who/when>",
+                     "> Founder GO: quoted", "Needs Founder GO; not queued"):
+            with self.subTest(body=body):
+                result = self._evidence(self._range(10, 11), {10: self._pr(10), 11: self._pr(11, body)}, {10: 1, 11: 3})
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["missing"], [11])
+        # A declared R3 needs a GO even when the machine minimum is lower.
+        declared = self._evidence(self._range(11), {11: self._pr(11, "Risk-Class: R3\nAutonomy-Tier: T3")}, {11: 0})
+        self.assertEqual(declared["missing"], [11])
+
+    def test_unknown_or_untrusted_mapping_fails_closed(self):
+        go = "Risk-Class: R3\nAutonomy-Tier: T3\nFounder GO: Jerry"
+        cases = {
+            "fork": {"head": {"repo": {"full_name": "someone/AllTrue_System"}}},
+            "non-owner": {"author_association": "CONTRIBUTOR"},
+            "not merged": {"merged_at": None},
+            "other base": {"base": {"ref": "release"}},
+            "other merge commit": {"merge_commit_sha": "f" * 40},
+            "other number": {"number": 99},
+        }
+        for name, overrides in cases.items():
+            with self.subTest(name=name):
+                result = self._evidence(self._range(11), {11: self._pr(11, go, **overrides)}, {11: 3})
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["missing"], [])
+        no_number = {"total_commits": 1, "commits": [{"sha": "a" * 40, "commit": {"message": "direct push"}}]}
+        truncated = dict(self._range(11), total_commits=300)
+        for name, comparison, tiers in (
+            ("commit without PR number", no_number, {}),
+            ("empty range", {"total_commits": 0, "commits": []}, {}),
+            ("truncated compare", truncated, {11: 1}),
+            ("unknown machine class", self._range(11), {}),
+        ):
+            with self.subTest(name=name):
+                self.assertFalse(self._evidence(comparison, {11: self._pr(11)}, tiers)["ok"])
+
+    def test_api_error_propagates_so_the_workflow_keeps_the_reviewer_gate(self):
+        def boom(_):
+            raise RuntimeError("gh api failed")
+        with self.assertRaises(RuntimeError):
+            founder_go_release_evidence(repo=self.REPO, comparison=self._range(11), fetch_pr=boom, machine_tier=lambda sha: 3)
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn('go = {"ok": False, "missing": [], "reason": f"Founder GO evidence unavailable ({type(exc).__name__})"}', workflow)
+
+    def test_auto_environment_requires_verified_evidence_and_main_only(self):
+        ok = dict(event_name="workflow_run", phase="", mode="auto-founder-go", go_evidence="verified", branch_names=["main"])
+        self.assertTrue(auto_environment_is_valid(**ok))
+        self.assertTrue(auto_environment_is_valid(**dict(ok, event_name="workflow_dispatch", phase="release-train", mode="auto")))
+        for bad in (
+            {"go_evidence": "missing"}, {"go_evidence": ""}, {"mode": "awaiting-activation"}, {"mode": "manual"},
+            {"branch_names": []}, {"branch_names": ["main", "release"]},
+            {"event_name": "workflow_dispatch", "phase": "application-deploy"}, {"event_name": "push"},
+        ):
+            with self.subTest(bad=bad):
+                self.assertFalse(auto_environment_is_valid(**dict(ok, **bad)))
+
+    def test_workflow_routes_only_verified_evidence_to_production_auto(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        start = workflow.index("  production-auto:\n")
+        job = workflow[start:workflow.index("  deploy:\n")]
+        job_if = job.split("\n")[6]
+        self.assertTrue(job_if.lstrip().startswith("if:"), job_if)
+        self.assertIn("needs.classify-activation.outputs.go_evidence == 'verified'", job_if)
+        self.assertIn("environment:\n      name: production-auto", job)
+        self.assertIn("auto_environment_is_valid(", job)
+        deploy_if = workflow[workflow.index("  deploy:\n"):].split("\n")[3]
+        self.assertIn("needs.classify-activation.outputs.go_evidence == 'verified' && needs.production-auto.result == 'success'", deploy_if)
+        # The reviewer gate is unchanged and still the fallback for a train without evidence.
+        self.assertEqual(workflow.count("environment:\n      name: production-activation"), 2)
+        self.assertIn('if go["ok"] and mode == "awaiting-activation":', workflow)
 
 
 class AutonomousMergeWorkflowContractTest(unittest.TestCase):
