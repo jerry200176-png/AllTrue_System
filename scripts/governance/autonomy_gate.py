@@ -1170,16 +1170,12 @@ _FOUNDER_GO_LINE_RE = re.compile(
     r"(?m)^ {0,3}(?:[-*][ \t]+)?(?:\*\*)?Founder GO(?:\*\*)?[ \t]*:[ \t]*(?:\*\*)?[ \t]*(\S[^\n]*)$"
 )
 _FOUNDER_GO_POSITIVE_RE = re.compile(r"(?=.*\bJerry\b)(?=.*\b20[0-9]{2}-[01][0-9]-[0-3][0-9]\b)")
+# Any negation word anywhere on the GO line voids it (no exemptions: a scope note
+# like "(no open findings)" also falls back to the reviewer gate; phrase GOs positively).
 _FOUNDER_GO_NEGATIVE_RE = re.compile(
-    r"\b(?:none|n/?a|no|not|false|pending|tbd|todo|requested|needed|required|declined|denied|"
-    r"rejected|revoked|withdrawn|refused|cancell?ed|retracted|without)\b",
-    re.IGNORECASE,
-)
-# Negations that void a GO anywhere on the line, parentheses included.
-_FOUNDER_GO_VOID_RE = re.compile(
-    r"\b(?:false|declined|denied|rejected|revoked|withdrawn|refused|cancell?ed|retracted|rescinded|"
-    r"vetoed|disapproved|unapproved)\b|(?<![-\w])pending\b|"
-    r"\b(?:not|never|no)\b[ \t]+(?:yet[ \t]+)?(?:approved|approval|given|granted|go|ok|authori[sz]ed)\b",
+    r"\b(?:none|n/?a|no|not|never|nor|neither|false|pending|tbd|todo|requested|needed|required|"
+    r"declined|denied|rejected|revoked|withdrawn|refused|cancell?ed|retracted|rescinded|vetoed|"
+    r"disapproved|unapproved|without|longer|isn't|wasn't|hasn't|didn't|doesn't|won't|can't)\b",
     re.IGNORECASE,
 )
 
@@ -1187,19 +1183,11 @@ _FOUNDER_GO_VOID_RE = re.compile(
 def has_founder_go(body: str) -> bool:
     """Return whether the PR body carries an affirmative Founder GO prose line."""
 
-    def affirmative(value: str) -> bool:
-        if "~~" in value or "<" in value or _FOUNDER_GO_VOID_RE.search(value) or not _FOUNDER_GO_POSITIVE_RE.match(value):
-            return False
-        # Weaker negation words count outside parentheses ("(no open findings)" is scope).
-        outside = value
-        while True:
-            reduced = re.sub(r"\([^()]*\)", " ", outside)
-            if reduced == outside:
-                break
-            outside = reduced
-        return not _FOUNDER_GO_NEGATIVE_RE.search(outside)
-
-    return any(affirmative(value) for value in _FOUNDER_GO_LINE_RE.findall(_founder_go_prose(body)))
+    return any(
+        "~~" not in value and "<" not in value
+        and _FOUNDER_GO_POSITIVE_RE.match(value) and not _FOUNDER_GO_NEGATIVE_RE.search(value)
+        for value in _FOUNDER_GO_LINE_RE.findall(_founder_go_prose(body))
+    )
 
 
 _TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
