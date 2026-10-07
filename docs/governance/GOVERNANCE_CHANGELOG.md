@@ -1,5 +1,11 @@
 # Governance changelog
 
+## 2026-10-07 — Evidence-gated production activation (Founder 1A)
+
+- Founder decision (Jerry, "1A 2A 3A"): remove the manual production approve when every merged PR in the undeployed range is machine R0-R2 or has a Founder GO. The GO is PR body line 1 exactly `Founder GO: Jerry YYYY-MM-DD approves #N at <head SHA>` and line 2 `Rollback: revert this PR` (the only rollback mention; free text never counts), bound to that head's exact diff (patches, blob OIDs, modes), in a body last edited by the owner before merge. R1/R2 PRs in such a range need `Rollback: revert this PR` as line 1; migrations and gate-policy changes always keep the reviewer.
+- `deploy.yml` checks this per commit (`founder_go_release_evidence`: owner-authored same-repo PR merged into `main`, bound by `(#N)` and `merge_commit_sha`) and then uses the new reviewer-less, main-only `production-auto` Environment (`auto_environment_is_valid`). Merges' own CI runs deploy continuously; the release train is the backup.
+- Missing, truncated or unavailable evidence falls back to the unchanged `production-activation` reviewer gate; the run summary lists PRs without a GO. Red CI, non-main targets and downgrades stay refused by the existing exact-main and ancestor gates.
+
 ## 2026-09-30 — Read-only production probe cases are T2
 
 - Founder decision: read-only production probe changes do not need Founder GO; money, production data mutation, deploy and auth still do.
