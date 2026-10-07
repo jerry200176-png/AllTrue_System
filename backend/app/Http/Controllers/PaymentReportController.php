@@ -10,6 +10,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\Subject;
 use App\Support\AccountingCourseClarity;
+use App\Services\Billing\BillingPeriodInvoiceExists;
 use App\Services\Billing\InvoiceIssuer;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\MonthlyBillingService;
@@ -429,6 +430,7 @@ class PaymentReportController extends Controller
             }
 
             if (!$invoice) {
+                try {
                 $invoice = app(InvoiceIssuer::class)->issue([
                     'StudentID'      => $report->StudentID,
                     'StudentClassID' => $report->StudentClassID,
@@ -438,7 +440,14 @@ class PaymentReportController extends Controller
                     'billing_period' => $sc?->ScheduleMode === 'date'
                         ? Carbon::make($report->payment_date)?->format('Y-m')
                         : null,
-                ]);
+                ], [], true);
+                } catch (BillingPeriodInvoiceExists) {
+                    // Defense in depth: the lookup above attaches to any live invoice, so this is a race backstop.
+                    return response()->json([
+                        'message' => '此課程該月份已有有效帳單，請勿重複建立。',
+                        'code' => 'billing_period_invoice_exists',
+                    ], 409);
+                }
             }
 
             if ($sc && $sc->ScheduleMode === 'date') {
