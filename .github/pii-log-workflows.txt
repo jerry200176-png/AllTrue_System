@@ -4,6 +4,7 @@
 173-supersede-repair.yml
 actual-duration-acceptance.yml
 attendance-case-diagnose.yml
+bug-auto-intake.yml
 bug-detail-dump.yml
 bug-followup-comment.yml
 bug-legacy-production-probes.yml

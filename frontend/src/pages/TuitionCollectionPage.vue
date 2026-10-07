@@ -57,6 +57,22 @@
       <button type="button" class="tc-focus-context__clear" @click="clearTuitionFocus">清除定位</button>
     </div>
 
+    <nav class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
+      <button v-if="activeAccountingTab !== 'students' && activeAccountingTab !== 'payments'" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
+      <button
+        v-for="v in REMINDER_VIEWS.filter((x) => !x.directorOnly || canVoid)"
+        :key="v.key"
+        type="button"
+        :class="['tc-reminder', { 'is-on': activeAccountingTab === v.key }]"
+        :data-testid="`tc-reminder-${v.key}`"
+        @click="activeAccountingTab = v.key"
+      >{{ v.label }} →</button>
+    </nav>
+
+    <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
+      <StudentBillingList :alert-rows="rows" :students="campusStudents" @open="openLedgerForStudent" />
+    </section>
+
     <section v-if="activeAccountingTab === 'monthly-review'" id="tuition-accounting-panel-monthly-review" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly-review" tabindex="0">
       <MonthlyBillingReview ref="monthlyReview" :branch-id="branchId" @ledger="openLedgerForClass" @navigate="emit('navigate', $event)" />
     </section>
@@ -899,6 +915,7 @@
       :show="ledgerOpen"
       :student-class-id="ledgerStudentClassId"
       :report-id="ledgerReportId"
+      :student-id="ledgerStudentId"
       :branch-id="branchId"
       @close="ledgerOpen = false"
       @changed="onLedgerChanged"
@@ -1076,6 +1093,7 @@ import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
+import StudentBillingList from '../components/tuition/StudentBillingList.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
@@ -1114,14 +1132,37 @@ const loading = ref(false);
 const error = ref('');
 const actionLoading = ref(null);
 
+// PRD v2 D10: two tabs. The former tabs stay reachable from the reminder bar.
 const ACCOUNTING_TABS = [
-  { key: 'receivables', label: '待處理', icon: 'payments' },
-  { key: 'monthly-review', label: '月結待核對', icon: 'fact_check' },
-  { key: 'monthly-drafts', label: '本月待開帳單', icon: 'edit_document', directorOnly: true },
-  { key: 'settled', label: '已結清課程彙總', icon: 'task_alt' },
-  { key: 'payments', label: '收據紀錄', icon: 'receipt_long' },
+  { key: 'students', label: '學生', icon: 'groups' },
+  { key: 'payments', label: '收款紀錄', icon: 'receipt_long' },
 ];
-const activeAccountingTab = ref('receivables');
+const REMINDER_VIEWS = [
+  { key: 'receivables', label: '待處理清單' },
+  { key: 'monthly-review', label: '月結待核對' },
+  { key: 'monthly-drafts', label: '本月待開帳單', directorOnly: true },
+  { key: 'settled', label: '已結清' },
+];
+const activeAccountingTab = ref('students');
+const campusStudents = ref([]);
+async function loadCampusStudents() {
+  try {
+    const params = new URLSearchParams({ per_page: '1000' });
+    if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
+    const resp = await authedFetch(`/api/v1/students?${params}`, { headers: { Accept: 'application/json' } });
+    const json = await resp.json().catch(() => ({}));
+    const list = Array.isArray(json) ? json : (json.data || []);
+    campusStudents.value = list.filter((st) => st && st.id && st.enable !== 0).map((st) => ({ id: st.id, name: st.name || st.Name || '' }));
+  } catch {
+    campusStudents.value = [];
+  }
+}
+function openLedgerForStudent(r) {
+  ledgerStudentClassId.value = r.first_class_id || null;
+  ledgerStudentId.value = r.first_class_id ? null : r.student_id;
+  ledgerReportId.value = null;
+  ledgerOpen.value = true;
+}
 const monthlyReview = ref(null);
 const monthlyDrafts = ref(null);
 const accountingLoading = ref(false);
@@ -1557,7 +1598,7 @@ function refreshActiveTab() {
     monthlyDrafts.value?.reload();
   } else if (activeAccountingTab.value === 'monthly-review') {
     monthlyReview.value?.reload();
-  } else if (activeAccountingTab.value === 'receivables') {
+  } else if (activeAccountingTab.value === 'receivables' || activeAccountingTab.value === 'students') {
     loadAlerts();
   } else if (activeAccountingTab.value === 'settled') {
     loadSettledCourses();
@@ -1619,14 +1660,17 @@ const slipStudentClassId = ref(null);
 const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
 const ledgerReportId = ref(null);
+const ledgerStudentId = ref(null);
 
 function openLedgerForClass(row) {
+  ledgerStudentId.value = null;
   ledgerStudentClassId.value = row?.id || row?.student_class_id || null;
   ledgerReportId.value = null;
   ledgerOpen.value = true;
 }
 
 function openLedgerForReport(row) {
+  ledgerStudentId.value = null;
   ledgerStudentClassId.value = row?.student_class_id || null;
   ledgerReportId.value = row?.report_id || null;
   ledgerOpen.value = true;
@@ -2454,7 +2498,7 @@ watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], 
 
 watch(activeAccountingTab, (tab) => {
   if (tab === 'monthly-review' || tab === 'monthly-drafts') return;
-  if (tab === 'receivables') {
+  if (tab === 'receivables' || tab === 'students') {
     if (!rows.value.length) loadAlerts();
   } else if (tab === 'settled') {
     loadSettledCourses();
@@ -2464,9 +2508,14 @@ watch(activeAccountingTab, (tab) => {
 }, { flush: 'post' });
 
 loadAlerts();
+loadCampusStudents();
 </script>
 
 <style scoped>
+.tc-reminders{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
+.tc-reminder{border:1px solid var(--ds-canvas-soft);background:var(--ds-canvas);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer;min-height:32px}
+.tc-reminder.is-on{font-weight:700;border-color:var(--ds-ink-mute)}
+.tc-reminder--back{font-weight:700}
 .tc-focus-context {
   display: flex;
   align-items: center;
