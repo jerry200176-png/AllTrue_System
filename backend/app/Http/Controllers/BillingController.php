@@ -9,7 +9,9 @@ use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\Billing\BillingPeriodInvoiceExists;
 use App\Services\Billing\ContractMoneyState;
+use App\Services\Billing\InvoiceIssuer;
 use App\Services\BillingPayableResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyBillingService;
@@ -85,7 +87,7 @@ class BillingController extends Controller
         return response()->json($invoices);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, InvoiceIssuer $issuer)
     {
         $data = $request->validate([
             'StudentID' => 'required|integer',
@@ -114,10 +116,10 @@ class BillingController extends Controller
             $this->assertInvoiceStudentCampusAllowed($request, (int) $itemCourse->student?->CampusID);
         }
 
-        return DB::transaction(function () use ($data) {
+        return DB::transaction(function () use ($data, $issuer) {
             // Lock order everywhere: student, then courses, then invoices. Purge locks the student
             // first too, so an invoice can never be written for a student deleted concurrently (#3593).
-            if (!Student::query()->whereKey($data['StudentID'])->lockForUpdate()->first(['id'])) {
+            if (!$issuer->lockStudent((int) $data['StudentID'])) {
                 return response()->json(['message' => '找不到此學生，可能已被刪除'], 404);
             }
             // Lock every referenced course once, in ID order, so concurrent multi-course invoices cannot deadlock.
@@ -152,33 +154,6 @@ class BillingController extends Controller
             $scheduleModeAtIssue = !empty($data['StudentClassID'])
                 ? StudentClass::where('ID', $data['StudentClassID'])->first()?->ScheduleMode
                 : null;
-            if (!empty($data['StudentClassID']) && !empty($data['billing_period'])) {
-                $duplicate = Invoice::query()
-                    ->where('StudentClassID', $data['StudentClassID'])
-                    ->where('billing_period', $data['billing_period'])
-                    ->notVoided()
-                    ->lockForUpdate()
-                    ->exists();
-                if ($duplicate) {
-                    return response()->json([
-                        'message' => '此課程該月份已有有效帳單，請勿重複建立。',
-                        'code' => 'billing_period_invoice_exists',
-                    ], 409);
-                }
-            }
-            $invoice = Invoice::create([
-                'StudentID' => $data['StudentID'],
-                'StudentClassID' => $data['StudentClassID'] ?? null,
-                'IssueDate' => $data['IssueDate'],
-                'DueDate' => $data['DueDate'] ?? null,
-                'TotalAmount' => $data['TotalAmount'],
-                'PaidAmount' => 0,
-                'Status' => 'unpaid',
-                'ScheduleModeAtIssue' => $scheduleModeAtIssue,
-                'Note' => $data['Note'] ?? '',
-                'billing_period' => $data['billing_period'] ?? null,
-            ]);
-
             $items = $data['Items'] ?? [];
 
             if (empty($items) && !empty($data['MonthlySplit']) && !empty($data['SplitStart']) && !empty($data['SplitEnd'])) {
@@ -189,15 +164,22 @@ class BillingController extends Controller
                 );
             }
 
-            foreach ($items as $item) {
-                InvoiceItem::create([
-                    'InvoiceID' => $invoice->id,
-                    'StudentClassID' => $item['StudentClassID'] ?? $data['StudentClassID'] ?? null,
-                    'Description' => $item['Description'],
-                    'Amount' => $item['Amount'],
-                    'PeriodStart' => $item['PeriodStart'] ?? null,
-                    'PeriodEnd' => $item['PeriodEnd'] ?? null,
-                ]);
+            try {
+                $invoice = $issuer->issue([
+                    'StudentID' => $data['StudentID'],
+                    'StudentClassID' => $data['StudentClassID'] ?? null,
+                    'IssueDate' => $data['IssueDate'],
+                    'DueDate' => $data['DueDate'] ?? null,
+                    'TotalAmount' => $data['TotalAmount'],
+                    'ScheduleModeAtIssue' => $scheduleModeAtIssue,
+                    'Note' => $data['Note'] ?? '',
+                    'billing_period' => $data['billing_period'] ?? null,
+                ], $items, true);
+            } catch (BillingPeriodInvoiceExists) {
+                return response()->json([
+                    'message' => '此課程該月份已有有效帳單，請勿重複建立。',
+                    'code' => 'billing_period_invoice_exists',
+                ], 409);
             }
 
             return response()->json($invoice, 201);

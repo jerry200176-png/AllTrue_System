@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Billing\InvoiceIssuer;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
@@ -177,10 +178,9 @@ final class MonthlyAccountingCorrectionService
             $result = $this->split->execute($source, $split, $splitPlan['confirmation_token'], $reference);
             $target = $this->course($result['target_course_id']);
             if (!$targetInvoice) {
-                $targetInvoice = new Invoice(['StudentID' => $source->getAttribute('StudentID'), 'StudentClassID' => $target->getKey(),
+                $targetInvoice = app(InvoiceIssuer::class)->issue(['StudentID' => $source->getAttribute('StudentID'), 'StudentClassID' => $target->getKey(),
                     'IssueDate' => today()->toDateString(), 'DueDate' => $split['target_end'], 'billing_period' => substr($split['target_start'], 0, 7),
-                    'ScheduleModeAtIssue' => 'date', 'TotalAmount' => $split['target_charge'], 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => $reference]);
-                $targetInvoice->save();
+                    'ScheduleModeAtIssue' => 'date', 'TotalAmount' => $split['target_charge'], 'Note' => $reference]);
                 $this->targetItem($targetInvoice, $target, $split);
             }
             foreach ([$invoice->fresh(), $targetInvoice] as $bill) {

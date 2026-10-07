@@ -20,6 +20,7 @@ use App\Models\CoursePackage;
 use App\Support\LearningRecordMutableOwnership;
 use App\Support\SessionStatus;
 use App\Support\Utf8mb3SearchSanitizer;
+use App\Services\Billing\InvoiceIssuer;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\BillingModeConversionArchiveService;
 use App\Services\ClassSessionMaterializationService;
@@ -3682,28 +3683,22 @@ class StudentClassController extends Controller
             $totalAmount = max(0, (int) ($newCourse->Charge ?? 0));
             $dueDate = $periodReview['due_date'];
 
-            $invoice = Invoice::create([
+            $periodLabel = Carbon::parse($newStartDate)->locale('zh_TW')->isoFormat('YYYY年M月');
+            $invoice = app(InvoiceIssuer::class)->issue([
                 'StudentID'      => (int) $newCourse->StudentID,
                 'StudentClassID' => (int) $newCourse->ID,
                 'IssueDate'      => Carbon::today()->toDateString(),
                 'DueDate'        => $dueDate,
                 'TotalAmount'    => $totalAmount,
-                'PaidAmount'     => 0,
                 'ScheduleModeAtIssue' => $newCourse->ScheduleMode,
-                'Status'         => 'unpaid',
-                'Note'           => '',
                 'billing_period' => $billingPeriod,
-            ]);
-
-            $periodLabel = Carbon::parse($newStartDate)->locale('zh_TW')->isoFormat('YYYY年M月');
-            InvoiceItem::create([
-                'InvoiceID'   => $invoice->id,
+            ], [[
                 'StudentClassID' => (int) $newCourse->ID,
                 'Description' => '月結費用 ' . $periodLabel,
                 'Amount'      => $totalAmount,
                 'PeriodStart' => $newStartDate,
                 'PeriodEnd'   => $newEndDate,
-            ]);
+            ]]);
 
             return response()->json([
                 'message' => '已建立月結新一期課程，舊期已結算',
