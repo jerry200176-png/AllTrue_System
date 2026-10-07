@@ -189,7 +189,7 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__mode{font-size:12px;color:var(--ds-ink-mute)}
 .contract__money{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:14px}
 .contract__money .due{color:var(--ds-danger)}
-.contract__btn{border:1px solid var(--ds-primary,var(--ds-canvas-soft));background:var(--ds-primary,var(--ds-canvas));color:var(--ds-on-primary,#fff);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;min-height:36px}
+.contract__btn{border:1px solid var(--ds-primary,var(--ds-canvas-soft));background:var(--ds-primary,var(--ds-canvas));color:var(--ds-on-primary,var(--ds-canvas));border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;min-height:36px}
 .contract__btn--ghost{background:transparent;color:var(--ds-ink)}
 .contract__memo{background:var(--ds-canvas-soft);border-radius:8px;padding:8px 10px;display:grid;gap:6px}
 .contract__memo-text{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
