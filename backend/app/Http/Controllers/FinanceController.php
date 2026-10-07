@@ -15,7 +15,6 @@ use App\Models\PayrollTeacherBranchRule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
-use App\Services\Billing\ContractMoneyState;
 use App\Services\SubjectUnitsTimelineService;
 use App\Services\SubstituteScheduleService;
 use App\Support\TeacherProfileDirectory;
@@ -821,7 +820,7 @@ class FinanceController extends Controller
         ])->slice(($page - 1) * $perPage, $perPage)->values();
 
         $pagedClassIds = $paged->pluck('ID')->map(fn ($id) => (int) $id)->all();
-        $paidAtMap = ContractMoneyState::lastPaidAtByStudentClassIds($pagedClassIds);
+        $paidAtMap = app(\App\Services\BillingPayableResolver::class)->lastPaidAtByStudentClassIds($pagedClassIds);
 
         $data = $paged->map(function ($c) use ($paidAtMap) {
             $rate = $this->resolveRate($c);
