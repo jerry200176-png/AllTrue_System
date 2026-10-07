@@ -47,6 +47,13 @@
               </td>
               <td v-if="!isTrial">
                 <button
+                  v-if="needsFirstManualLesson(c)"
+                  class="small btn-renew-warn"
+                  type="button"
+                  :disabled="submitting"
+                  @click="emit('manual-session', c)"
+                >新增下一堂</button>
+                <button
                   class="small btn-renew-warn"
                   type="button"
                   :disabled="submitting"
@@ -123,6 +130,7 @@
 </template>
 
 <script setup>
+import { needsFirstManualLesson } from '../lib/enrollmentConflictDecision.js';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -134,7 +142,8 @@ const props = defineProps({
   subjectLabelFn: { type: Function, default: null },
 });
 
-const emit = defineEmits(['cancel', 'purchase', 'decision']);
+const emit = defineEmits(['cancel', 'purchase', 'decision', 'manual-session']);
+
 
 const headingId = 'enrollment-conflict-heading';
 const independentReason = ref('');
