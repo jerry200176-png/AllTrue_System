@@ -494,6 +494,193 @@ class StudentClassTransferSessionsTest extends TestCase
         }
     }
 
+    /**
+     * In-app #380: moving a taught lesson into the renewal that continues the same weekly slot must not refill the
+     * source onto the renewal's next lesson (false student_slot_conflict); the refill skips to a free slot.
+     */
+    public function test_refill_skips_the_target_renewals_own_slot(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17']);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $renewalFirst = $this->createClassSession((int) $target->ID, '2026-08-17', 'scheduled');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertSame((int) $target->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
+            $this->assertSame((int) $target->ID, (int) DB::table('ClassSession')->where('id', $renewalFirst)->value('StudentClassID'));
+            $this->assertDatabaseMissing('ClassSession', ['StudentClassID' => $source->ID, 'SessionDate' => '2026-08-17']);
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-24',
+                'StartTime' => '23:00:00', 'Status' => 'scheduled',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /** In-app #380: the renewal overlapping (not equal to) the refill slot is skipped too — the write guard decides. */
+    public function test_refill_skips_a_partially_overlapping_target_lesson(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17']);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            DB::table('ClassSession')->insert([
+                'StudentClassID' => $target->ID, 'SessionDate' => '2026-08-17', 'StartTime' => '23:15:00',
+                'EndTime' => '23:45:00', 'Status' => 'scheduled',
+            ]);
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-24',
+                'StartTime' => '23:00:00', 'Status' => 'scheduled',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /** In-app #380: a target booking that is still only a schedules row counts as occupied too. */
+    public function test_refill_skips_a_target_schedule_only_booking(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17']);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $this->createSchedule((int) $target->ID, $student->id, '2026-08-17', 'extra');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-24', 'StartTime' => '23:00:00',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /** In-app #380: a stale target projection (only a cancelled session behind it) does not push the refill later. */
+    public function test_refill_ignores_a_stale_target_schedule_projection(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17']);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $this->createClassSession((int) $target->ID, '2026-08-17', 'cancelled');
+            $this->createSchedule((int) $target->ID, $student->id, '2026-08-17', 'normal');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-17',
+                'StartTime' => '23:00:00', 'Status' => 'scheduled',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /** In-app #380 review: a trial target never blocks (the write guard ignores trial courses), so no shift. */
+    public function test_refill_is_not_shifted_by_a_trial_target(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17', 'ClassType' => 'trial']);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $this->createClassSession((int) $target->ID, '2026-08-17', 'scheduled');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-17', 'StartTime' => '23:00:00',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /** In-app #380 review: a target in the source's own package is a parallel track; the guard ignores it, so do we. */
+    public function test_refill_is_not_shifted_by_a_same_package_target(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30, 'PackageID' => 77,
+            ]);
+            $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17', 'PackageID' => 77]);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $this->createClassSession((int) $target->ID, '2026-08-17', 'scheduled');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk();
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-17', 'StartTime' => '23:00:00',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_schedule_only_makeup_still_blocks_source_replenishment(): void
     {
         Carbon::setTestNow('2026-08-12 12:00:00');
