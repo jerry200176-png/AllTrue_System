@@ -40,9 +40,11 @@ jobs:
           set -euo pipefail
           # Base = head of the last SUCCESSFUL auto-dispatch run, so a push whose run was dropped by the
           # concurrency group (only one pending run is kept) is still covered. First run: the push base.
-          BEFORE="$(gh run list -w bug-phase-c-autodispatch.yml -s success -L 1 --json headSha -q '.[0].headSha // empty')"
+          BEFORE="$(gh run list -w bug-phase-c-autodispatch.yml -b main -e push -s success -L 1 --json headSha -q '.[0].headSha // empty')"
           BEFORE="${BEFORE:-$PUSH_BEFORE}"
           [[ "$BEFORE" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::missing push base"; exit 1; }
+          # Integrity: the base must be an ancestor of this main commit, never an unrelated SHA.
+          git merge-base --is-ancestor "$BEFORE" HEAD || { echo "::error::diff base $BEFORE is not an ancestor of HEAD"; exit 1; }
           echo "diff base: $BEFORE"
           f=.github/workflows/bug-phase-c-allowlist.yml
           # Fail closed: without the previous allowlist we cannot tell what is new (never dispatch everything).
