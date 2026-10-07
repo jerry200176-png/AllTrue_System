@@ -145,8 +145,8 @@ class StudentController extends Controller
         $role = request()->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : request()->attributes->get('auth_campus_ids', []);
 
-        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
+        if ($deny = $this->denyOutsideCampus($student)) {
+            return $deny;
         }
 
         $student->setAttribute('latest_payment_note', PaymentReport::query()
@@ -171,8 +171,8 @@ class StudentController extends Controller
         $role = request()->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : request()->attributes->get('auth_campus_ids', []);
 
-        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
+        if ($deny = $this->denyOutsideCampus($student)) {
+            return $deny;
         }
 
         $subjectNameCol = Schema::hasColumn('Subject', 'Subject_Name') ? 'Subject_Name' : 'name';
@@ -246,8 +246,8 @@ class StudentController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
 
-        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
+        if ($deny = $this->denyOutsideCampus($student)) {
+            return $deny;
         }
 
         $input = $request->all();
@@ -462,8 +462,8 @@ class StudentController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
 
-        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
+        if ($deny = $this->denyOutsideCampus($student)) {
+            return $deny;
         }
 
         $deleted = $this->purgeStudentRecords((int) $student->id);
@@ -560,6 +560,10 @@ class StudentController extends Controller
 
     public function bindCard(Request $request, Student $student)
     {
+        if ($deny = $this->denyOutsideCampus($student)) {
+            return $deny;
+        }
+
         $data = $request->validate([
             'rfid' => 'required|string|max:64',
         ]);
@@ -590,8 +594,8 @@ class StudentController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
 
-        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
+        if ($deny = $this->denyOutsideCampus($student)) {
+            return $deny;
         }
 
         $bindings = StudentLineBinding::where('student_id', $student->id)
@@ -613,8 +617,8 @@ class StudentController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
 
-        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
+        if ($deny = $this->denyOutsideCampus($student)) {
+            return $deny;
         }
 
         $binding = StudentLineBinding::where('id', $bindingId)
@@ -654,4 +658,23 @@ class StudentController extends Controller
         }
         return substr($uid, 0, 8) . '…' . substr($uid, -4);
     }
+
+    /**
+     * Single campus gate for every student-scoped endpoint. Super admins pass; anyone else needs
+     * the student's campus in their authenticated campus list. An empty list grants no campus
+     * (fail closed). bindCard used to skip this check entirely, so a director could write a card
+     * onto another campus's student.
+     */
+    private function denyOutsideCampus(Student $student): ?\Illuminate\Http\JsonResponse
+    {
+        if (request()->attributes->get('auth_role') === 'super_admin') {
+            return null;
+        }
+        $campusIds = array_map('intval', (array) request()->attributes->get('auth_campus_ids', []));
+        if (!in_array((int) $student->CampusID, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        return null;
+    }
+
 }
