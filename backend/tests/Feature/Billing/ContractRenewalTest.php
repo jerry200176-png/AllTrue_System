@@ -3,6 +3,7 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\ClassSession;
+use App\Models\Invoice;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\ContractRenewal;
@@ -132,5 +133,43 @@ class ContractRenewalTest extends TestCase
         $this->assertTrue($copy->exists);
         $this->assertSame(100, (int) StudentClass::query()->where('ID', $copy->ID)->value('Charge'));
         $this->assertTrue($svc->courseNeedsPaymentReconciliation($c));
+    }
+
+    private function monthlyCourse(): StudentClass
+    {
+        return $this->course([
+            'ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'settlement_day' => 15, 'monthly_sessions' => 8,
+            'StartDate' => '2032-04-01', 'EndDate' => '2032-04-30', 'Charge' => 0, 'Rate' => 500, 'SessionDuration' => 120,
+        ]);
+    }
+
+    public function test_renew_monthly_creates_next_period_unpaid_invoice_and_settles_source(): void
+    {
+        $source = $this->monthlyCourse();
+
+        $r = app(ContractRenewal::class)->renewMonthly($source, '2032-05-31', null, 1, 'director');
+
+        $this->assertSame(201, $r['status']);
+        $this->assertSame('renew_monthly', $r['body']['mode']);
+        $this->assertTrue($r['body']['source_closed']);
+        $this->assertSame('2032-05-01', $r['body']['new_course']['start_date']);
+        $this->assertSame('unpaid', $r['body']['invoice']['status']);
+        $source->refresh();
+        $this->assertSame(1, (int) $source->Stop);
+        $this->assertStringStartsWith('settled', (string) $source->closed_reason);
+        $this->assertSame($r['body']['new_course']['id'], (int) Invoice::query()->whereKey($r['body']['invoice']['id'])->value('StudentClassID'));
+    }
+
+    public function test_renew_monthly_rejects_a_duplicate_period_without_writing(): void
+    {
+        $source = $this->monthlyCourse();
+        $svc = app(ContractRenewal::class);
+        $this->assertSame(201, $svc->renewMonthly($source, '2032-05-31', null, 1, 'director')['status']);
+        $before = StudentClass::query()->count();
+
+        $again = $svc->renewMonthly($source->fresh(), '2032-05-31', null, 1, 'director');
+
+        $this->assertGreaterThanOrEqual(409, $again['status']);
+        $this->assertSame($before, StudentClass::query()->count());
     }
 }
