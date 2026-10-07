@@ -172,4 +172,32 @@ class ContractRenewalTest extends TestCase
         $this->assertGreaterThanOrEqual(409, $again['status']);
         $this->assertSame($before, StudentClass::query()->count());
     }
+
+    public function test_purchase_batch_creates_separate_unpaid_course_with_sessions(): void
+    {
+        $source = $this->course(['Paid' => 1, 'RemainingSessions' => 1, 'UsedSessions' => 7]);
+
+        $r = app(ContractRenewal::class)->purchaseBatch($source, 6, '2032-04-06', 'new_purchase', 'one_on_one', null, 1, 'director');
+
+        $this->assertSame(201, $r['status']);
+        $this->assertSame('new_purchase', $r['body']['mode']);
+        $this->assertSame(6, $r['body']['new_course']['created_sessions']);
+        $new = StudentClass::query()->where('ID', $r['body']['new_course']['id'])->first();
+        $this->assertSame(0, (int) $new->Paid);
+        $this->assertSame(3000, (int) $new->Charge);
+        $this->assertSame(1, (int) $source->fresh()->Paid);
+    }
+
+    public function test_purchase_batch_rejects_duplicate_batch_without_writing(): void
+    {
+        $source = $this->course();
+        $svc = app(ContractRenewal::class);
+        $this->assertSame(201, $svc->purchaseBatch($source, 4, '2032-04-06', 'new_purchase', 'one_on_one', null, 1, 'director')['status']);
+        $before = StudentClass::query()->count();
+
+        $again = $svc->purchaseBatch($source->fresh(), 4, '2032-04-06', 'new_purchase', 'one_on_one', null, 1, 'director');
+
+        $this->assertSame(409, $again['status']);
+        $this->assertSame($before, StudentClass::query()->count());
+    }
 }
