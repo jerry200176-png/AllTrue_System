@@ -137,6 +137,10 @@ class BugDetailDumpContractTest(unittest.TestCase):
         for field in ('"teacher_name" =>', '"student_name" =>', '"teacher_id" =>', '"student_id" =>', '"name" =>', '"Name" =>'):
             self.assertNotIn(field, output)
         self.assertIn('session row limit exceeded', block)
+        self.assertIn('identity candidate cap reached', block)
+        self.assertIn('OccurrenceAssignmentService::onLeave', block)
+        self.assertIn('"restore_original"', block)
+        self.assertIn('teacher_branches', block)
         self.assertIn('validateScheduleOccurrence', block)
         self.assertIn('teacherForOccurrence', block)
         for write in ('->insert(', '->update(', '->delete(', '->save(', '->create('):
