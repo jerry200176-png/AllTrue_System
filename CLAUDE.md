@@ -131,7 +131,7 @@ Claude Code on the web／其他雲端 session 的 container 是全新隔離環�
 ## Land queue (merge, don't race update-branch)
 
 Add the label `queue` to a green-ready PR instead of looping on `gh pr update-branch` or `gh pr merge --auto`.
-`.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict, failed check, or unresolved review thread. Re-add `queue` after fixing.
+`.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict or failed check (review threads are advisory). Re-add `queue` after fixing.
 GitHub's native merge queue is not used: it is unavailable for this user-owned repo (a `merge_queue` ruleset probe returned 422).
 
 ## 任務完成後的記錄原則
@@ -159,7 +159,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 - Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
 - Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.
 - A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
-- Codex review threads must be replied to and resolved, or they block merge.
+- Codex review is advisory (Founder 2026-10-07): fix P1s and regressions; pre-existing P2s become follow-up issues. Threads do not block merge.
 - New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
 - Anything that needs Jerry: collect it into one list and send it to the coordinating session, not one message per item.
 
