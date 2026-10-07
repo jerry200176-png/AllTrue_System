@@ -1270,7 +1270,7 @@ const billingFlowCurrentId = computed(() => {
 const billingFlowSteps = [
   { id: 'queue', icon: 'playlist_add_check', title: '查看待處理', description: '先依學生與狀態找到課程。', action: '查看待處理' },
   { id: 'report', icon: 'mark_email_read', title: '登記繳費回報', description: '家長已付款時先登記回報。', action: '查看未繳' },
-  { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: '查看已回報／待查帳' },
+  { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: `查看「${REPORT_STATUS_LABELS.pending}」` },
 ];
 
 const billingWorkflowStarts = new Map();

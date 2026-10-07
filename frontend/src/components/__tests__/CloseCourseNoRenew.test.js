@@ -38,7 +38,7 @@ describe('shared close-course action', () => {
     const { calls, deps } = setup({ remaining: 2, settled: false });
     await closeCourseNoRenew(deps);
     expect(calls.confirms[0]).toContain('放棄這 2 堂剩餘額度');
-    expect(calls.confirms[0]).toContain('待對帳');
+    expect(calls.confirms[0]).toContain('課已結束，等你確認收款');
     expect(calls.requests[0].url).toBe('/api/v1/student-classes/42/pause');
     expect(calls.requests[0].options.method).toBe('POST');
     expect(calls.requests[0].token).toBe('test-token');
@@ -47,7 +47,7 @@ describe('shared close-course action', () => {
       action: 'pause', reason: 'settled', forfeit_remaining: true,
     });
     expect(calls.reloads).toBe(1);
-    expect(calls.alerts[0]).toContain('結案待對帳');
+    expect(calls.alerts[0]).toContain('課已結束，等你確認收款');
   });
 
   it('refuses to close when payment status is unknown (degraded load)', async () => {
