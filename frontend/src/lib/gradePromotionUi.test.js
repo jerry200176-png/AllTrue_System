@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  actionableGradeOptions,
   buildGradePromotionConfirmPayload,
+  excludeOutsideGrades,
   countActionableSelected,
   createGradePromotionIdempotencyKey,
   gradePromotionSuccessMessage,
@@ -97,3 +99,22 @@ assert.match(studentsListSource, /gradePromotionLoading/);
 assert.match(studentsListSource, /確認升級（\{\{ gradePromotionActionableSelectedCount \}\}/);
 
 console.log('gradePromotionUi.test.js: ok');
+
+// in-app #360: promote a chosen cohort only.
+{
+  const rows = [
+    { student_id: 1, from_grade: 'J1', actionable: true },
+    { student_id: 2, from_grade: 'J2', actionable: true },
+    { student_id: 3, from_grade: 'J1', actionable: true },
+    { student_id: 4, from_grade: 'J3', actionable: false, already_promoted: true },
+    { student_id: 5, from_grade: 'H1', actionable: true },
+  ];
+  assert.deepEqual(actionableGradeOptions(rows), ['J1', 'J2', 'H1'], 'only actionable grades, preview order');
+  const onlyJ1 = excludeOutsideGrades(rows, ['J1']);
+  assert.deepEqual([...onlyJ1].sort(), [2, 5], 'other actionable grades are excluded');
+  assert.equal(onlyJ1.has(4), false, 'non-actionable rows are never added to the payload');
+  assert.equal(countActionableSelected(rows, onlyJ1), 2);
+  assert.equal(excludeOutsideGrades(rows, []).size, 0, 'no choice = all grades');
+  assert.equal(countActionableSelected(rows, excludeOutsideGrades(rows, ['J1', 'H1'])), 3);
+  assert.ok(studentsListSource.includes('excludeOutsideGrades(promotionPreview.value'), 'modal wires the cohort filter');
+}

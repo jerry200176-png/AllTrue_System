@@ -869,6 +869,18 @@
           行政預設日 {{ gradePromotionAdminDate || '8/1' }}；確認後寫入伺服器批次紀錄。
           H3 僅標記畢業（不自動停課）。已於此學年升級者不可再執行。
         </p>
+        <div v-if="!gradePromotionLoading && gradePromotionGradeOptions.length > 1" class="promotion-cohort" role="group" aria-label="只升級這些年級">
+          <span class="hint">只升級這些年級（不選＝全部）：</span>
+          <button
+            v-for="g in gradePromotionGradeOptions"
+            :key="'gp-grade-' + g"
+            type="button"
+            class="small"
+            :class="gradePromotionGrades.includes(g) ? 'primary' : 'ghost'"
+            :aria-pressed="gradePromotionGrades.includes(g)"
+            @click="toggleGradePromotionGrade(g)"
+          >{{ getGradeLabel(g) || g }}</button>
+        </div>
         <div v-if="gradePromotionLoading" class="empty-text">載入預覽中…</div>
         <div v-else-if="gradePromotionError" class="empty-text text-red">{{ gradePromotionError }}</div>
         <div v-else-if="promotionPreview.length > 0" style="max-height: 300px; overflow-y: auto; margin: 16px 0;">
@@ -1006,8 +1018,10 @@ import {
 } from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
 import {
+  actionableGradeOptions,
   buildGradePromotionConfirmPayload,
   countActionableSelected,
+  excludeOutsideGrades,
   createGradePromotionIdempotencyKey,
   gradePromotionSuccessMessage,
   toggleGradePromotionExclude,
@@ -1700,6 +1714,17 @@ const gradePromotionIdempotencyKey = ref('');
 
 const promotionPreview = computed(() => gradePromotionRows.value);
 
+// in-app #360: optional cohort — promote only the chosen current grades.
+const gradePromotionGrades = ref([]);
+const gradePromotionGradeOptions = computed(() => actionableGradeOptions(promotionPreview.value));
+function toggleGradePromotionGrade(grade) {
+  const next = gradePromotionGrades.value.includes(grade)
+    ? gradePromotionGrades.value.filter((g) => g !== grade)
+    : [...gradePromotionGrades.value, grade];
+  gradePromotionGrades.value = next;
+  gradePromotionExcluded.value = excludeOutsideGrades(promotionPreview.value, next);
+}
+
 const gradePromotionActionableSelectedCount = computed(() => countActionableSelected(
   promotionPreview.value,
   gradePromotionExcluded.value
@@ -1724,6 +1749,7 @@ async function openGradePromotion() {
   gradePromotionError.value = '';
   gradePromotionRows.value = [];
   gradePromotionExcluded.value = new Set();
+  gradePromotionGrades.value = [];
   gradePromotionIdempotencyKey.value = createGradePromotionIdempotencyKey();
   try {
     const token = await getAccessToken();
@@ -4722,6 +4748,14 @@ table th { font-size: 12.5px; }
 .form-section-title:first-of-type {
   margin-top: 0;
 }
+.promotion-cohort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
 .rfid-bind-row {
   display: flex;
   gap: 8px;
