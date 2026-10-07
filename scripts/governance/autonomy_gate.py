@@ -1167,77 +1167,47 @@ def is_founder_approval_eligible(
 # A GO is an affirmative prose line naming the Founder and a date, e.g.
 # "Founder GO: Jerry 2026-10-07 \"GO 3702\"". Lines in fences/comments (_founder_go_prose),
 # quotes, indented code, placeholders, strikethrough and negations do not count.
-# Founder 1A GO token: one exact line at column 0, in prose, naming the approved head:
-#   Founder GO: Jerry 2026-10-07 approves #3737 at <40-hex head SHA>
-# Free text never counts. Rollback must be the exact line "Rollback: revert this PR".
+# Founder 1A evidence lives at the very top of the PR body, where no Markdown construct
+# (fence, comment, quote, HTML block, lazy continuation) can precede and hide it:
+#   line 1  Founder GO: Jerry 2026-10-07 approves #3737 at <40-hex head SHA>   (class 3 only)
+#   next    Rollback: revert this PR
+# Free text never counts, and any other line of the raw body that mentions rollback,
+# reversibility, undo or recovery voids the evidence.
 _FOUNDER_GO_TOKEN_RE = re.compile(
-    r"^Founder GO: Jerry (20[0-9]{2}-[01][0-9]-[0-3][0-9]) approves #([1-9][0-9]*) at ([0-9a-f]{40})$"
+    r"Founder GO: Jerry (20[0-9]{2}-[01][0-9]-[0-3][0-9]) approves #([1-9][0-9]*) at ([0-9a-f]{40})"
 )
-_ROLLBACK_TOKEN_RE = re.compile(r"^(?:\*\*)?Rollback:(?:\*\*)? revert this PR\.?$")
-# Any other prose that talks about rollback/reversibility contradicts or qualifies the token.
+_ROLLBACK_TOKEN = "Rollback: revert this PR"
 _ROLLBACK_MENTION_RE = re.compile(r"roll[ -]?back|revers|revert|undo|recover", re.IGNORECASE)
-# Raw-text HTML renders its content literally; a body using it never carries a GO.
-_RAW_HTML_RE = re.compile(r"<\s*/?\s*(?:pre|code|textarea|script|style|xmp|plaintext|listing|samp|kbd|tt)\b", re.IGNORECASE)
 _TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
 _COMMIT_API_FILE_CAP = 300
 _GATE_POLICY_PATHS = {"scripts/governance/autonomy_gate.py", ".github/workflows/deploy.yml"}
 
 
-def _prose_lines(body: str) -> list[str] | None:
-    """Body lines outside fenced code and HTML comments (CommonMark fences); None if raw HTML is used."""
+def has_strict_rollback(body: str, *, after_go: bool = False) -> bool:
+    """``Rollback: revert this PR`` is body line 1 (line 2 after a GO) and the only rollback mention."""
 
-    if _RAW_HTML_RE.search(body or ""):
-        return None
-    lines: list[str] = []
-    fence: str | None = None
-    in_comment = False
-    for line in (body or "").replace("\r\n", "\n").split("\n"):
-        opener = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
-        if fence is not None:
-            if opener and opener.group(1)[0] == fence[0] and len(opener.group(1)) >= len(fence) and not opener.group(2).strip():
-                fence = None
-            continue
-        if in_comment:
-            in_comment = "-->" not in line
-            continue
-        if opener and not (opener.group(1)[0] == "`" and "`" in opener.group(2)):
-            fence = opener.group(1)
-            continue
-        if "<!--" in line:
-            in_comment = "-->" not in line[line.index("<!--") + 4:]
-            continue
-        lines.append(line)
-    return lines
-
-
-def has_strict_rollback(body: str) -> bool:
-    """Exactly the prose line ``Rollback: revert this PR``; any other rollback/reversibility prose voids it."""
-
-    lines = _prose_lines(body)
-    if lines is None:
+    lines = (body or "").split("\n")
+    index = 1 if after_go else 0
+    if len(lines) <= index or lines[index].rstrip("\r") != _ROLLBACK_TOKEN:
         return False
-    rollback = [line for line in lines if _ROLLBACK_MENTION_RE.search(line) and not _FOUNDER_GO_TOKEN_RE.match(line)]
-    return bool(rollback) and all(_ROLLBACK_TOKEN_RE.match(line) for line in rollback)
+    return not any(_ROLLBACK_MENTION_RE.search(line) for i, line in enumerate(lines) if i != index)
 
 
 def founder_go_approved_head(body: str, number: int, merged_at: datetime | None = None) -> str | None:
-    """The head SHA a GO token approves for PR ``number``; None if absent, ambiguous or no rollback line."""
+    """The head SHA that body line 1 approves for PR ``number``; None unless the evidence is exact."""
 
-    lines = _prose_lines(body)
-    if lines is None or not has_strict_rollback(body):
+    first = (body or "").split("\n", 1)[0].rstrip("\r")
+    match = _FOUNDER_GO_TOKEN_RE.fullmatch(first)
+    if not match or int(match.group(2)) != number or not has_strict_rollback(body, after_go=True):
         return None
-    heads = set()
-    for match in map(_FOUNDER_GO_TOKEN_RE.match, lines):
-        if match and int(match.group(2)) == number:
-            try:
-                approved_on = date.fromisoformat(match.group(1))
-            except ValueError:
-                return None
-            # Not after the merge day in Taipei (UTC+8): a GO cannot be dated in the future.
-            if merged_at is None or approved_on > (merged_at + timedelta(hours=8)).date():
-                return None
-            heads.add(match.group(3))
-    return heads.pop() if len(heads) == 1 else None
+    try:
+        approved_on = date.fromisoformat(match.group(1))
+    except ValueError:
+        return None
+    # Not after the merge day in Taipei (UTC+8): a GO cannot be dated in the future.
+    if merged_at is None or approved_on > (merged_at + timedelta(hours=8)).date():
+        return None
+    return match.group(3)
 
 
 def commit_effective_class(body: str, files: object) -> int | None:
@@ -1299,8 +1269,8 @@ def founder_go_release_evidence(
         tier = effective_class(sha, body)
         if not isinstance(tier, int) or isinstance(tier, bool) or tier not in TIER_VALUES.values():
             return fail(f"PR #{number} class unavailable or declaration invalid; counts as R3 without a GO")
-        if tier == 2 and not has_strict_rollback(body):
-            return fail(f"PR #{number} is R2 without rollback evidence")
+        if tier in (1, 2) and not has_strict_rollback(body):
+            return fail(f"PR #{number} is R{tier} without rollback evidence")
         if tier < 3:
             continue
         approved = founder_go_approved_head(body, number, merged_at)
@@ -1312,13 +1282,15 @@ def founder_go_release_evidence(
     return {"ok": True, "missing": [], "reason": "every merged PR is R0-R2 or carries a valid Founder GO"}
 
 
-def _exact_diff(files: object) -> list[tuple[str, str, str, str]] | None:
+def _exact_diff(files: object) -> list[tuple[str, ...]] | None:
     if not isinstance(files, list) or not files or len(files) >= _COMMIT_API_FILE_CAP:
         return None
-    if any(not isinstance(item, Mapping) or item.get("patch") is None for item in files):
+    # Blob OIDs prove complete content even where the API truncates a patch.
+    if any(not isinstance(item, Mapping) or item.get("patch") is None or not item.get("sha") for item in files):
         return None
     return sorted(
-        (str(item.get("filename")), str(item.get("previous_filename") or ""), str(item.get("status")), str(item["patch"]))
+        (str(item.get("filename")), str(item.get("previous_filename") or ""), str(item.get("status")),
+         str(item.get("sha") or ""), str(item["patch"]))
         for item in files
     )
 

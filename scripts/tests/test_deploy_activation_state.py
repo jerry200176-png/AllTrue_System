@@ -1422,17 +1422,20 @@ class FounderGoAutoActivationTest(unittest.TestCase):
     """Founder 1A (2026-10-07): no manual approve when every merged PR is R0-R2 or GO'd."""
 
     REPO = "jerry200176-png/AllTrue_System"
-    R3 = "Risk-Class: R3\nAutonomy-Tier: T3\nRollback: revert this PR\n"
+    DECL3 = "\nRisk-Class: R3\nAutonomy-Tier: T3"
     HEAD = "e" * 40
 
     def go(self, n=11, head=HEAD):
         return f"Founder GO: Jerry 2026-10-07 approves #{n} at {head}"
 
+    def body3(self, go=None, rest=""):
+        return (self.go() if go is None else go) + "\nRollback: revert this PR" + self.DECL3 + rest
+
     def _range(self, *numbers):
         commits = [{"sha": f"{n:040x}", "commit": {"message": f"feat: change (#{n})\n\nbody (#1)"}} for n in numbers]
         return {"total_commits": len(commits), "commits": commits}
 
-    def _pr(self, n, body="Risk-Class: R1\nAutonomy-Tier: T1", **overrides):
+    def _pr(self, n, body="Rollback: revert this PR\nRisk-Class: R1\nAutonomy-Tier: T1", **overrides):
         pr = {
             "number": n, "merge_commit_sha": f"{n:040x}", "merged_at": "2026-10-07T01:00:00Z",
             "last_edited_at": "2026-10-07T00:00:00Z", "last_editor": "jerry200176-png", "base": {"ref": "main"},
@@ -1453,54 +1456,49 @@ class FounderGoAutoActivationTest(unittest.TestCase):
     def test_all_r0_r2_or_founder_go_activates_automatically(self):
         result = self._evidence(
             self._range(10, 11, 12),
-            {10: self._pr(10), 11: self._pr(11, self.R3 + self.go()),
-             12: self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2\nRollback: revert this PR")},
-            {10: 1, 11: 3, 12: 2},
+            {10: self._pr(10, "no declaration needed at class 0"), 11: self._pr(11, self.body3()),
+             12: self._pr(12, "Rollback: revert this PR\nRisk-Class: R2\nAutonomy-Tier: T2")},
+            {10: 0, 11: 3, 12: 2},
         )
         self.assertTrue(result["ok"], result)
-        # Codex P1: an R2 PR in a mixed range still needs rollback evidence.
-        no_rollback = self._evidence(self._range(11, 12), {11: self._pr(11, self.R3 + self.go()),
-                                     12: self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2")}, {11: 3, 12: 2})
-        self.assertIn("R2 without rollback evidence", no_rollback["reason"])
-        for rollback in ("Rollback: impossible", "Rollback: revert this PR\nRollback: impossible", "Rollback: revert"):
-            with self.subTest(rollback=rollback):
-                r2 = self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2\n" + rollback)
-                self.assertFalse(self._evidence(self._range(12), {12: r2}, {12: 2})["ok"])
+        # Codex P1/P2: R1 and R2 PRs in the range need the strict rollback line too.
+        for tier in (1, 2):
+            for body in ("Risk-Class: R2", "Rollback: impossible", "Rollback: revert this PR\nRollback: impossible",
+                         "Rollback: revert", "Risk-Class: R2\nRollback: revert this PR",
+                         "Rollback: revert this PR\nThe migration is irreversible."):
+                with self.subTest(tier=tier, body=body):
+                    result = self._evidence(self._range(11, 12), {11: self._pr(11, self.body3()), 12: self._pr(12, body)},
+                                            {11: 3, 12: tier})
+                    self.assertIn(f"R{tier} without rollback evidence", result["reason"])
 
-    def test_go_is_only_the_exact_token_for_this_pr_and_head(self):
+    def test_go_is_only_the_exact_first_line_for_this_pr_and_head(self):
         bad = {
-            "free text": "Founder GO: Jerry 2026-10-07 \"GO 11\"",
-            "negated": self.go() + " (not approved)",
-            "rejects": "Founder GO: Jerry 2026-10-07 rejects #11 at " + self.HEAD,
-            "other PR": self.go(12),
-            "two heads": self.go() + "\n" + self.go(head="d" * 40),
+            "free text": "Founder GO: Jerry 2026-10-07 \"GO 11\"", "negated": self.go() + " (not approved)",
+            "rejects": "Founder GO: Jerry 2026-10-07 rejects #11 at " + self.HEAD, "other PR": self.go(12),
             "impossible date": self.go().replace("2026-10-07", "2026-19-39"),
             "zero date": self.go().replace("2026-10-07", "2026-00-00"),
             "dated after the merge": self.go().replace("2026-10-07", "2026-10-08"),
-            "fence": "```\n" + self.go() + "\n```", "unterminated fence": "```\n" + self.go(),
-            "html comment": "<!--\n" + self.go() + "\n-->", "quote": "> " + self.go(),
-            "indented code": "    " + self.go(), "mid-line": "see " + self.go(),
-            "bold": "**Founder GO:**" + self.go()[11:], "list item": "- " + self.go(),
-            # Codex P1: a fence "closer" with trailing text does not close it.
-            "info-string closer": "```text\n```still-fenced\n" + self.go() + "\n```",
-            "comment inside fence": "```\n<!--\n```\n-->\n```\n" + self.go(),
-            "raw html pre": "<pre>\n" + self.go() + "\n</pre>",
+            "bold": "**Founder GO:**" + self.go()[11:], "list item": "- " + self.go(), "quote": "> " + self.go(),
+            "indented": "    " + self.go(), "leading blank line": "\n" + self.go(),
         }
-        for name, text in bad.items():
+        for name, first in bad.items():
             with self.subTest(name=name):
-                self.assertEqual(self._one(self.R3 + text)["missing"], [11])
-        self.assertTrue(self._one(self.R3 + "```\ncode\n```\n" + self.go())["ok"])
-        self.assertTrue(self._one(self.R3 + "<!-- a -->\n~~~~\n```\n~~~~\n" + self.go())["ok"])
+                self.assertEqual(self._one(self.body3(go=first))["missing"], [11])
+        # Anywhere but line 1 (fences, comments, lazy blockquote continuation, raw HTML) never counts.
+        for prefix in ("```\n", "<!--\n", "> quoted approval\n", "<pre>\n", "Risk-Class: R3\n"):
+            with self.subTest(prefix=prefix):
+                self.assertEqual(self._one(prefix + self.body3())["missing"], [11])
+        self.assertTrue(self._one(self.body3(rest="\n```\ncode\n```"))["ok"])
 
-    def test_go_needs_rollback_evidence_and_the_approved_scope(self):
-        for rollback in ("", "Rollback: impossible\n", "Rollback: no rollback exists\n", "Rollback: revert this PR (impossible)\n",
-                         "Rollback: revert this PR\nRollback: impossible\n", "Rollback: revert this PR\nThe migration is irreversible.\n",
-                         "```\nRollback: revert this PR\n```\n"):
-            with self.subTest(rollback=rollback):
-                body = "Risk-Class: R3\nAutonomy-Tier: T3\n" + rollback + self.go()
+    def test_go_needs_rollback_line_two_only_and_the_approved_scope(self):
+        for body in (self.go() + self.DECL3, self.go() + "\nRollback: impossible" + self.DECL3,
+                     self.go() + "\nRollback: revert this PR (impossible)" + self.DECL3,
+                     self.body3(rest="\nRollback: impossible"), self.body3(rest="\nThe migration is irreversible."),
+                     self.body3(rest="\n<!-- rollback: none -->")):
+            with self.subTest(body=body):
                 self.assertEqual(self._one(body)["missing"], [11])
         seen = []
-        result = self._evidence(self._range(11), {11: self._pr(11, self.R3 + self.go())}, {11: 3},
+        result = self._evidence(self._range(11), {11: self._pr(11, self.body3())}, {11: 3},
                                 scope=lambda approved, sha: seen.append((approved, sha)) or False)
         self.assertEqual(result["missing"], [11])
         self.assertEqual(seen, [(self.HEAD, f"{11:040x}")])
@@ -1509,8 +1507,8 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         protected = [{"filename": ".github/workflows/deploy.yml", "patch": "@@ -1 +1 @@\n+x"}]
         docs = [{"filename": "docs/a.md", "patch": "@@ -1 +1 @@\n+x"}]
         paths, patch = [".github/workflows/deploy.yml"], "diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml\n@@ -1 +1 @@\n+x"
-        self.assertEqual(commit_effective_class(self.R3, protected), int(validate_declaration(self.R3, paths, patch)["effective_tier"][1]))
-        self.assertEqual(commit_effective_class(self.R3, protected), 3)
+        self.assertEqual(commit_effective_class(self.DECL3, protected), int(validate_declaration(self.DECL3, paths, patch)["effective_tier"][1]))
+        self.assertEqual(commit_effective_class(self.DECL3, protected), 3)
         # A declaration below the machine class is presubmit-invalid: unknown, never lower.
         for body in ("Risk-Class: R0\nAutonomy-Tier: T0", "**Risk-Class:** R1\n**Autonomy-Tier:** T1", "", "Risk-Class: R1"):
             with self.subTest(body=body):
@@ -1523,11 +1521,11 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         self.assertIsNone(commit_effective_class("Risk-Class: R1\nAutonomy-Tier: T1", renamed))
         for files in (None, [], [{"filename": "backend/app/X.php"}], [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(300)]):
             with self.subTest(files=files):
-                self.assertIsNone(commit_effective_class(self.R3, files))
+                self.assertIsNone(commit_effective_class(self.DECL3, files))
         # Uncomputable class counts as R3 without a GO, even with a GO token.
         for tier in (None, "3", True, 7):
             with self.subTest(tier=tier):
-                self.assertIn("counts as R3 without a GO", self._one(self.R3 + self.go(), tier=tier)["reason"])
+                self.assertIn("counts as R3 without a GO", self._one(self.body3(), tier=tier)["reason"])
 
     def test_untrusted_mapping_or_post_merge_edit_fails_closed(self):
         cases = {
@@ -1540,12 +1538,12 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         }
         for name, overrides in cases.items():
             with self.subTest(name=name):
-                self.assertEqual(self._one(self.R3 + self.go(), **overrides)["missing"], [])
-                self.assertFalse(self._one(self.R3 + self.go(), **overrides)["ok"])
-        pr = self._pr(11, self.R3 + self.go())
+                self.assertEqual(self._one(self.body3(), **overrides)["missing"], [])
+                self.assertFalse(self._one(self.body3(), **overrides)["ok"])
+        pr = self._pr(11, self.body3())
         del pr["last_edited_at"]
         self.assertFalse(self._evidence(self._range(11), {11: pr}, {11: 3})["ok"])
-        self.assertTrue(self._one(self.R3 + self.go(), last_edited_at=None)["ok"])
+        self.assertTrue(self._one(self.body3(), last_edited_at=None)["ok"])
         no_number = {"total_commits": 1, "commits": [{"sha": "a" * 40, "commit": {"message": "direct push"}}]}
         for comparison in (no_number, {"total_commits": 0, "commits": []}, dict(self._range(11), total_commits=300)):
             with self.subTest(comparison=comparison):
@@ -1573,25 +1571,27 @@ class FounderGoAutoActivationTest(unittest.TestCase):
 
     def test_range_evaluation_fetches_its_own_evidence_and_fails_closed(self):
         comparison = dict(self._range(11), status="ahead")
-        protected = {"files": [{"filename": "scripts/run.sh", "status": "modified", "patch": "@@ -1 +1 @@\n+x"}]}
+        protected = {"files": [{"filename": "scripts/run.sh", "status": "modified", "sha": "b" * 40, "patch": "@@ -1 +1 @@\n+x"}]}
         renamed = {"files": [{"filename": "docs/moved.yml", "patch": "+x", "previous_filename": ".github/workflows/production-case-dump.yml"}]}
         migration = {"files": [{"filename": "backend/database/migrations/2026_x.php", "status": "added", "patch": "+x"}]}
         policy = {"files": [{"filename": "scripts/governance/autonomy_gate.py", "status": "modified", "patch": "+x"}]}
-        good = self._pr(11, self.R3 + self.go())
+        good = self._pr(11, self.body3())
         self.assertTrue(evaluate_founder_go_range(**self._api(comparison, protected, good))["ok"])
         for name, kwargs in {
             "no GO": dict(comparison=comparison, detail=protected, pr=self._pr(11, "Risk-Class: R1\nAutonomy-Tier: T1")),
             "rename keeps protected source": dict(comparison=comparison, detail=renamed, pr=self._pr(11, "Risk-Class: R1\nAutonomy-Tier: T1")),
             "approved head had another effect": dict(comparison=comparison, detail=protected, pr=good,
-                                                     approved_files=[{"filename": "scripts/run.sh", "status": "modified", "patch": "@@ -1 +1 @@\n+y"}]),
+                                                     approved_files=[{"filename": "scripts/run.sh", "status": "modified", "sha": "b" * 40, "patch": "@@ -1 +1 @@\n+y"}]),
             "same line at another hunk": dict(comparison=comparison, detail=protected, pr=good,
-                                              approved_files=[{"filename": "scripts/run.sh", "status": "modified", "patch": "@@ -9 +9 @@\n+x"}]),
+                                              approved_files=[{"filename": "scripts/run.sh", "status": "modified", "sha": "b" * 40, "patch": "@@ -9 +9 @@\n+x"}]),
             "behind (downgrade)": dict(comparison=dict(comparison, status="behind"), detail=protected, pr=good),
             "identical": dict(comparison=dict(comparison, status="identical"), detail=protected, pr=good),
             "no file list": dict(comparison=comparison, detail={}, pr=good),
             "missing patch": dict(comparison=comparison, detail={"files": [{"filename": "backend/app/X.php"}]}, pr=good),
             "300-file cap": dict(comparison=comparison, pr=good,
                                  detail={"files": [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(300)]}),
+            "same patch, different blob (API-truncated patch)": dict(comparison=comparison, detail=protected, pr=good,
+                approved_files=[dict(protected["files"][0], sha="c" * 40)]),
             "migration under a GO": dict(comparison=comparison, detail=migration, pr=good),
             "range changes the gate policy": dict(comparison=comparison, detail=policy, pr=good),
             "file mode changed after approval": dict(comparison=comparison, detail=protected, pr=good, merged_mode=33261),
