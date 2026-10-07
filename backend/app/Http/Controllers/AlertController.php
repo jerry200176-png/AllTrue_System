@@ -171,6 +171,15 @@ class AlertController extends Controller
         $payableMap = $this->payableResolver->byStudentClassIds($allClassIds, $allResults);
         // F7 S3b: `outstanding` is the course-level answer (all open periods); payable_outstanding stays per invoice.
         $courseStatuses = $this->payableResolver->courseStatusesByStudentClassIds($allClassIds, $allResults);
+        // #3203: courses the resolver calls `free` (tutoring or zero-fee, e.g. a 0-total trial) owe nothing,
+        // so they never appear as unpaid — the same rule the SQL above already applies to tutoring.
+        $freeIds = collect($courseStatuses)->filter(fn ($s) => ($s['status'] ?? null) === 'free')->keys()->map(fn ($k) => (int) $k)->all();
+        if ($freeIds !== []) {
+            $notFree = fn ($c) => !in_array((int) $c->ID, $freeIds, true);
+            $countResults = $countResults->filter($notFree)->values();
+            $dateResults = $dateResults->filter($notFree)->values();
+            $pendingSettlementResults = $pendingSettlementResults->filter($notFree)->values();
+        }
         $openMonthlyInvoiceMap = $this->openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
         $pendingReportMap = self::latestPendingReportByStudentClassIds($allClassIds);
         $newerCourseMap = self::newerCourseByStudentClassIds($allClassIds);
