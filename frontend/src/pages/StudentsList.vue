@@ -900,7 +900,8 @@
                   <input
                     v-if="p.actionable"
                     type="checkbox"
-                    :checked="!gradePromotionExcluded.has(p.student_id)"
+                    :checked="!gradePromotionEffectiveExcluded.has(p.student_id)"
+                    :disabled="lockedByCohort(p, gradePromotionGrades)"
                     @change="onGradePromotionExcludeChange(p.student_id, $event.target.checked)"
                   />
                 </td>
@@ -1021,7 +1022,8 @@ import {
   actionableGradeOptions,
   buildGradePromotionConfirmPayload,
   countActionableSelected,
-  excludeOutsideGrades,
+  effectivePromotionExcluded,
+  lockedByCohort,
   createGradePromotionIdempotencyKey,
   gradePromotionSuccessMessage,
   toggleGradePromotionExclude,
@@ -1722,12 +1724,14 @@ function toggleGradePromotionGrade(grade) {
     ? gradePromotionGrades.value.filter((g) => g !== grade)
     : [...gradePromotionGrades.value, grade];
   gradePromotionGrades.value = next;
-  gradePromotionExcluded.value = excludeOutsideGrades(promotionPreview.value, next);
 }
+const gradePromotionEffectiveExcluded = computed(() => effectivePromotionExcluded(
+  promotionPreview.value, gradePromotionExcluded.value, gradePromotionGrades.value
+));
 
 const gradePromotionActionableSelectedCount = computed(() => countActionableSelected(
   promotionPreview.value,
-  gradePromotionExcluded.value
+  gradePromotionEffectiveExcluded.value
 ));
 
 function closeGradePromotion() {
@@ -1798,7 +1802,8 @@ const executeGradePromotion = async () => {
         branchId: props.branchId,
         seasonYear: gradePromotionSeasonYear.value,
         idempotencyKey: gradePromotionIdempotencyKey.value,
-        excludeStudentIds: gradePromotionExcluded.value,
+        excludeStudentIds: gradePromotionEffectiveExcluded.value,
+        onlyGrades: gradePromotionGrades.value,
       })),
     }, token);
     const json = await res.json().catch(() => ({}));

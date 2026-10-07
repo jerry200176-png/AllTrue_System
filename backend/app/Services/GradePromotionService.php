@@ -109,6 +109,8 @@ class GradePromotionService
     /**
      * @param  list<int>  $excludeStudentIds
      * @param  array<int, array{to_grade?: string, graduate?: bool}>  $corrections  keyed by student_id
+     * @param  list<string>  $onlyGrades  in-app #360 cohort: when set, only students whose current grade is
+     *                                    listed are promoted, re-applied against the fresh preview here
      * @return array{batch: GradePromotionBatch, results: list<array<string, mixed>>, replayed: bool}
      */
     public function confirm(
@@ -117,7 +119,8 @@ class GradePromotionService
         string $idempotencyKey,
         int $actorUserId,
         array $excludeStudentIds = [],
-        array $corrections = []
+        array $corrections = [],
+        array $onlyGrades = []
     ): array {
         $idempotencyKey = trim($idempotencyKey);
         if ($idempotencyKey === '' || strlen($idempotencyKey) > 64) {
@@ -151,6 +154,9 @@ class GradePromotionService
                 continue;
             }
             if (!$row['actionable']) {
+                continue;
+            }
+            if ($onlyGrades !== [] && !in_array((string) $row['from_grade'], $onlyGrades, true)) {
                 continue;
             }
             $toGrade = $row['to_grade'];

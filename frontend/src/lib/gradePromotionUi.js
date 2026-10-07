@@ -64,11 +64,30 @@ export function excludeOutsideGrades(rows, grades) {
 }
 
 /**
+ * Effective exclusions = the director's manual unticks plus every actionable row outside the
+ * chosen grades. Changing grade chips never touches the manual set, so row choices survive.
+ * @param {Array<{ actionable?: boolean, student_id?: number, from_grade?: string }>} rows
+ * @param {Set<number>|Iterable<number>} manualExcluded
+ * @param {Iterable<string>} grades
+ * @returns {Set<number>}
+ */
+export function effectivePromotionExcluded(rows, manualExcluded, grades) {
+  return new Set([...manualExcluded, ...excludeOutsideGrades(rows, grades)]);
+}
+
+/** A row outside the chosen grades is locked (cannot be ticked back in while chips are active). */
+export function lockedByCohort(row, grades) {
+  const list = [...grades];
+  return list.length > 0 && !list.includes(row?.from_grade);
+}
+
+/**
  * @param {{
  *   branchId: number|string,
  *   seasonYear: number|null|undefined,
  *   idempotencyKey: string,
  *   excludeStudentIds: Iterable<number>,
+ *   onlyGrades?: Iterable<string>,
  * }} args
  */
 export function buildGradePromotionConfirmPayload({
@@ -76,6 +95,7 @@ export function buildGradePromotionConfirmPayload({
   seasonYear,
   idempotencyKey,
   excludeStudentIds,
+  onlyGrades = [],
 }) {
   const payload = {
     branch_id: Number(branchId),
@@ -85,6 +105,9 @@ export function buildGradePromotionConfirmPayload({
   if (seasonYear != null && seasonYear !== '') {
     payload.season_year = Number(seasonYear);
   }
+  // Server re-applies the cohort at confirm time (preview may have changed since it was shown).
+  const grades = [...onlyGrades].map(String);
+  if (grades.length > 0) payload.only_grades = grades;
   return payload;
 }
 

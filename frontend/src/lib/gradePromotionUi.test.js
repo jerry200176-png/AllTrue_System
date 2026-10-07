@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url';
 import {
   actionableGradeOptions,
   buildGradePromotionConfirmPayload,
+  effectivePromotionExcluded,
   excludeOutsideGrades,
+  lockedByCohort,
   countActionableSelected,
   createGradePromotionIdempotencyKey,
   gradePromotionSuccessMessage,
@@ -116,5 +118,14 @@ console.log('gradePromotionUi.test.js: ok');
   assert.equal(countActionableSelected(rows, onlyJ1), 2);
   assert.equal(excludeOutsideGrades(rows, []).size, 0, 'no choice = all grades');
   assert.equal(countActionableSelected(rows, excludeOutsideGrades(rows, ['J1', 'H1'])), 3);
-  assert.ok(studentsListSource.includes('excludeOutsideGrades(promotionPreview.value'), 'modal wires the cohort filter');
+  // Row-level choices survive chip changes; rows outside the cohort are locked.
+  const manual = new Set([3]);
+  assert.deepEqual([...effectivePromotionExcluded(rows, manual, ['J1'])].sort(), [2, 3, 5]);
+  assert.deepEqual([...effectivePromotionExcluded(rows, manual, ['J1', 'J2'])].sort(), [3, 5], 'manual untick of #3 kept');
+  assert.equal(lockedByCohort(rows[1], ['J1']), true);
+  assert.equal(lockedByCohort(rows[0], ['J1']), false);
+  assert.equal(lockedByCohort(rows[1], []), false);
+  const withCohort = buildGradePromotionConfirmPayload({ branchId: 1, seasonYear: 2026, idempotencyKey: 'gp-test-key-0003', excludeStudentIds: [2], onlyGrades: ['J1'] });
+  assert.deepEqual(withCohort.only_grades, ['J1'], 'server receives the cohort to re-apply');
+  assert.ok(studentsListSource.includes('effectivePromotionExcluded(') && studentsListSource.includes('onlyGrades: gradePromotionGrades.value'), 'modal wires the cohort filter');
 }
