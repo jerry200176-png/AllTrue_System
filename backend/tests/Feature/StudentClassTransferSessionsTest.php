@@ -576,7 +576,7 @@ class StudentClassTransferSessionsTest extends TestCase
             ]);
             $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17']);
             $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
-            $this->createSchedule((int) $target->ID, $student->id, '2026-08-17', 'normal');
+            $this->createSchedule((int) $target->ID, $student->id, '2026-08-17', 'extra');
 
             $this->postJson(
                 "/api/v1/student-classes/{$source->ID}/transfer-sessions",
