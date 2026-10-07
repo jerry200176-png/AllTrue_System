@@ -142,7 +142,7 @@ assert.ok(
 );
 assert.match(
   phaseCSource,
-  /if \(in_array\(\$status, \["resolved", "closed"\], true\)\) \{\s+if \(\$reuseNotice\) \\Illuminate\\Support\\Facades\\DB::rollBack\(\);\s+\$results\[\] = \["id" => \$bugId, "action" => "skip_already", "status" => \$status\];\s+continue;/,
+  /if \(in_array\(\$status, \["resolved", "closed"\], true\)\) \{\s+\\Illuminate\\Support\\Facades\\DB::rollBack\(\);\s+\$results\[\] = \["id" => \$bugId, "action" => "skip_already", "status" => \$status\];\s+continue;/,
   'Phase-C must skip every already-resolved or closed report',
 );
 
@@ -186,7 +186,21 @@ const cases326 = [
 const encoded326 = Buffer.from(JSON.stringify(cases326)).toString('base64');
 execFileSync('php', ['-r', `${guard}\n$cases = json_decode(base64_decode("${encoded326}"), true);\nforeach ($cases as $case) { $expected = array_pop($case); if ($canReuseNotice(...$case) !== $expected) { exit(1); } }`]);
 assert.match(phaseCSource, /lockForUpdate\(\)->first\(\)/, 'notice reconciliation must lock the report across writes');
-assert.match(phaseCSource, /if \(!\$reuseNotice\) \$svc::addComment/, 'existing notice must not be duplicated');
+assert.match(phaseCSource, /if \(!\$reuseNotice && !\$alreadyPosted\) \$svc::addComment/, 'existing notice or an identical prior reply must not be duplicated');
+// #3742: every closeout (not only reuse-notice ones) runs in one locked transaction, and a reply
+// already on the report (e.g. from a run whose job failed after commit) is never posted twice.
+{
+  const loop = phaseCSource.slice(phaseCSource.indexOf('foreach ($items as $bugId => $cfg) {'), phaseCSource.indexOf('// F14: every allowlisted target carries its issue'));
+  assert.ok(/\$reuseNotice = isset\(\$cfg\["existing_notice_id"\]\);[\s\S]*?\n\s+\\Illuminate\\Support\\Facades\\DB::beginTransaction\(\);/.test(loop), 'every closeout opens a transaction');
+  assert.ok(!loop.includes('if ($reuseNotice) \\Illuminate\\Support\\Facades\\DB::beginTransaction()'), 'transaction must not be limited to reuse-notice entries');
+  assert.ok(loop.includes('$bug = \\App\\Models\\BugReport::where("id", $bugId)->lockForUpdate()->first();'), 'every closeout locks the report');
+  assert.ok(loop.includes('->where("is_internal_note", false)->where("body", $cfg["reply"])'), 'identical public reply is detected');
+  assert.ok(loop.includes('->whereIn("from_status", ["resolved", "closed"])->max("created_at")'), 'a reopened report gets the reply again');
+  const begins = (loop.match(/DB::beginTransaction\(\)/g) || []).length;
+  const exits = (loop.match(/DB::rollBack\(\)|DB::commit\(\)/g) || []).length;
+  assert.equal(begins, 1);
+  assert.ok(exits >= 5, 'every early exit and the final branch close the transaction');
+}
 assert.match(phaseCSource, /if \(\$ok\).*DB::commit\(\);\s+else .*DB::rollBack\(\);/, 'failed reconciliation must rollback');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-bug-reply-'));
