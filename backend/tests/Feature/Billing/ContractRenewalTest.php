@@ -260,4 +260,30 @@ class ContractRenewalTest extends TestCase
         $this->assertSame(0, (int) $trial->fresh()->Stop);
         $this->assertSame($before, StudentClass::query()->count());
     }
+
+    public function test_confirm_rejects_stale_hash_blocked_preview_and_passes_receipt_through(): void
+    {
+        $svc = app(ContractRenewal::class);
+        $c = $this->course();
+        $payload = ['sessions' => 4, 'start_date' => '2032-04-06'];
+        $p = $svc->preview($c, $payload + ['mode' => 'purchase_batch'], 1, 'director');
+        $data = ['preview_id' => $p['preview_id'], 'state_hash' => $p['state_hash'], 'mode' => 'purchase_batch', 'payload' => $payload];
+        $never = function () { $this->fail('execute must not run'); };
+
+        $stale = $svc->confirm($c, ['state_hash' => 'x'] + $data, 1, 'director', true, $never);
+        $this->assertSame(409, $stale->getStatusCode());
+
+        $bad = ['sessions' => 0, 'start_date' => '2032-04-06'];
+        $pb = $svc->preview($c, $bad + ['mode' => 'purchase_batch'], 1, 'director');
+        $blocked = $svc->confirm($c, ['preview_id' => $pb['preview_id'], 'state_hash' => $pb['state_hash'], 'mode' => 'purchase_batch', 'payload' => $bad], 1, 'director', true, $never);
+        $this->assertSame(422, $blocked->getStatusCode());
+
+        $ok = $svc->confirm($c, $data, 1, 'director', true, fn ($mode, $pl, $pv, $locked) => response()->json(['new_course' => ['id' => 9]], 201));
+        $this->assertSame(201, $ok->getStatusCode());
+        $this->assertSame('purchase_batch', $ok->getData(true)['mode']);
+        $this->assertSame(['view_new_course', 'record_payment'], $ok->getData(true)['next_actions']);
+
+        $fail = $svc->confirm($c, $data, 1, 'director', true, fn () => response()->json(['message' => 'boom'], 409));
+        $this->assertSame('boom', $fail->getData(true)['message']);
+    }
 }
