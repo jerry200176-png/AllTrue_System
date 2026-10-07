@@ -105,6 +105,23 @@ class GradePromotionApiTest extends TestCase
     }
 
     /** @return array{id:int,tok:string} */
+    /** in-app #360: the server re-applies the chosen grades at confirm time. */
+    public function test_confirm_only_grades_promotes_just_that_cohort(): void
+    {
+        $director = $this->director([1], 'dir-cohort@example.com');
+        $j1 = $this->student(1, 'Cohort J1', 7);
+        $j2 = $this->student(1, 'Cohort J2', 8);
+
+        $res = $this->withHeaders($this->bearer($director['tok']))
+            ->postJson('/api/v1/grade-promotions/confirm', [
+                'branch_id' => 1, 'season_year' => 2026, 'idempotency_key' => 'promo-cohort-key-0001',
+                'only_grades' => ['J1'],
+            ])->assertCreated();
+        $this->assertSame(1, $res->json('summary.applied'));
+        $this->assertSame(8, (int) $j1->fresh()->ClassID, 'J1 promoted');
+        $this->assertSame(8, (int) $j2->fresh()->ClassID, 'J2 untouched even though nobody excluded it');
+    }
+
     private function director(array $campusIds, string $email = 'dir-promo@example.com'): array
     {
         $user = User::create([

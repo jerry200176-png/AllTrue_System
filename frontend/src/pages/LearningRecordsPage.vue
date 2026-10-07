@@ -1083,12 +1083,6 @@
             </button>
             <button type="button" class="lr-modal-close" @click="closeModal">&times;</button>
           </div>
-          <Transition name="lr-toast">
-            <div v-if="downloadToast" class="lr-download-toast" :class="{ 'lr-toast-error': downloadToast.includes('失敗') }">
-              <span class="material-symbols-outlined">{{ downloadToast.includes('失敗') ? 'error' : 'check_circle' }}</span>
-              {{ downloadToast }}
-            </div>
-          </Transition>
         </div>
 
         <!-- 固定在標題下方，避免捲動時與表頭重疊或被捲出視野（手機尤甚） -->
@@ -1523,6 +1517,20 @@
         >儲存</AtButton>
       </template>
     </AtDialog>
+
+    <!-- Page-level toast: must stay outside the modal (closeModal hides showModal). -->
+    <Transition name="lr-toast">
+      <div
+        v-if="downloadToast"
+        class="lr-download-toast lr-download-toast--page"
+        :class="{ 'lr-toast-error': downloadToast.includes('失敗') }"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="material-symbols-outlined">{{ downloadToast.includes('失敗') ? 'error' : 'check_circle' }}</span>
+        {{ downloadToast }}
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -3138,10 +3146,16 @@ const buildEvents = (targetDates) => {
         && Number(rawSession?.learningRecordTeacherId || 0) !== myId
         && myId > 0;
       const sessionStarted = isSessionStarted(dateStr, startTime);
+      // Only use a list row for status fallback when it is bound to this ClassSession
+      // (avoid one unbound legacy LR painting every same-slot occurrence as 待審).
+      const statusSource = byCs
+        || (record && csId > 0 && Number(record.ClassSessionID || 0) === csId ? record : null);
       const sessionState = resolveLearningSessionState({
         sessionStatus,
         learningRecordStatus: rowStatus,
-        recordStatus: record?.Status,
+        recordStatus: statusSource?.Status,
+        recordHasBody: !!(statusSource && hasLearningRecordBody(statusSource)),
+        learningRecordBodyFilled: !!rawSession?.learningRecordBodyFilled,
         isSubstituted,
         sessionStarted,
       });
@@ -3925,6 +3939,16 @@ const submitForm = async () => {
     const savedDate = String(localRecord?.SessionDate || submissionSnapshot.SessionDate || '').slice(0, 10);
     if (shouldLiftDefaultWindowForDate({ savedDate, windowStart: resolvedDefaultWindowStart.value })) {
       defaultWindowDisabled.value = true;
+    }
+    // issue 3760: after submit, land on 待審核 and clear secondary filters so the
+    // filled pending row stays visible; page-level toast (not inside closed modal).
+    if (isTeacher.value) {
+      teacherFilterTab.value = 'pending';
+      teacherPriorityFilter.value = 'all';
+      feedbackFilter.value = 'all';
+      filters.subject = '';
+      downloadToast.value = '已送出，等待主任核准';
+      setTimeout(() => { downloadToast.value = ''; }, 3000);
     }
     await fetchRecords();
     if (!ownerIsCurrent()) return;
@@ -7366,10 +7390,6 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
 }
 
 .lr-download-toast {
-  position: absolute;
-  top: 100%;
-  right: 28px;
-  margin-top: 4px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -7381,6 +7401,12 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   font-weight: 600;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   z-index: 2;
+}
+.lr-download-toast--page {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 14000;
 }
 .lr-download-toast .material-symbols-outlined { font-size: 16px; }
 .lr-download-toast.lr-toast-error { background: var(--danger); }
