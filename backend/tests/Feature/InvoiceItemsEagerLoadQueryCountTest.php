@@ -57,6 +57,24 @@ class InvoiceItemsEagerLoadQueryCountTest extends TestCase
         });
     }
 
+    public function test_resolver_loads_items_once_for_date_courses_and_never_for_count_courses(): void
+    {
+        $resolverItemQueries = function (array $extra): int {
+            $ids = $this->seedCourses(5, $extra);
+            $courses = \App\Models\StudentClass::whereIn('ID', $ids)->get();
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            app(\App\Services\BillingPayableResolver::class)->byStudentClassIds($ids, $courses);
+            $log = DB::getQueryLog();
+            DB::disableQueryLog();
+
+            return count(array_filter($log, fn ($q) => str_contains((string) $q['query'], '`InvoiceItem`')));
+        };
+
+        $this->assertSame(1, $resolverItemQueries([]));
+        $this->assertSame(0, $resolverItemQueries(['ScheduleMode' => 'count']));
+    }
+
     /** Not covered here: AccountingController::waiveCourse (write path with lock), UnpaidHiddenClosuresStrategy (ops manifest). */
     private function assertConstant(\Closure $seed, \Closure $url): void
     {
@@ -114,13 +132,13 @@ class InvoiceItemsEagerLoadQueryCountTest extends TestCase
         $ids = [];
         for ($i = 0; $i < $n; $i++) {
             $studentId = DB::table('Student')->insertGetId(['name' => "iie-{$n}-{$i}", 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1]);
-            $ids[] = $cid = DB::table('StudentClass')->insertGetId([
+            $ids[] = $cid = DB::table('StudentClass')->insertGetId(array_merge([
                 'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1, 'by1' => 1,
                 'Period' => 4, 'TotalHours' => 0, 'Charge' => 1000, 'Pay' => 0, 'Rate' => 1000,
                 'ClassType' => 'one_on_one', 'StartDate' => '2026-09-01 00:00:00', 'EndDate' => '2027-09-01 00:00:00',
                 'SessionCount' => 8, 'SessionDuration' => 60, 'RemainingSessions' => 8, 'UsedSessions' => 0,
                 'Stop' => 0, 'ScheduleMode' => 'date', 'settlement_day' => 5,
-            ] + $extra + ['Paid' => 0]);
+            ], ['Paid' => 0], $extra));
             $this->seedInvoice($cid, '2026-09');
         }
 

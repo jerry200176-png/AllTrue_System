@@ -222,16 +222,29 @@ class BillingPayableResolver
             ->where(function ($query) {
                 $query->whereNull('Status')->orWhere('Status', '!=', 'void');
             })
-            ->with(['items', 'payments' => function ($query) {
+            ->with(['payments' => function ($query) {
                 $query->select(['id', 'InvoiceID', 'Amount', 'Method']);
             }])
             ->whereIn('StudentClassID', $ids->all())
             ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period'])
             ->groupBy('StudentClassID');
 
+        $selected = [];
+        foreach ($ids as $classId) {
+            $selected[$classId] = $this->selectRelevantInvoice($invoicesByClass->get($classId, collect()));
+        }
+        // resolve() reads items only for date-mode courses (#3454): one batched query, none for count-only batches.
+        $needItems = collect($selected)
+            ->filter(fn ($invoice, $classId) => $invoice
+                && (string) ($courseMap[$classId]->ScheduleMode ?? '') === 'date')
+            ->values();
+        if ($needItems->isNotEmpty()) {
+            (new \Illuminate\Database\Eloquent\Collection($needItems->all()))->load('items');
+        }
+
         $resolved = [];
         foreach ($ids as $classId) {
-            $invoice = $this->selectRelevantInvoice($invoicesByClass->get($classId, collect()));
+            $invoice = $selected[$classId];
             if (!$invoice) {
                 $resolved[$classId] = $this->unbilled();
                 continue;
