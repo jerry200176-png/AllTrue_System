@@ -1,5 +1,5 @@
 <template>
-  <div ref="root" class="am" :class="{ 'am--sheet': sheet }">
+  <div ref="root" class="am" :class="{ 'am--sheet': sheet }" @click.stop>
     <button
       ref="trigger"
       type="button"
@@ -65,14 +65,13 @@ const sheet = ref(false);
 let mq = null;
 const syncSheet = () => { sheet.value = Boolean(mq?.matches); };
 
+// aria-disabled items stay focusable (WAI-ARIA) so their title explains why; pick() ignores them.
 const items = () => [...(menu.value?.querySelectorAll('[role="menuitem"]') || [])];
-const enabled = () => items().filter((el) => el.getAttribute('aria-disabled') !== 'true');
 
 async function openAt(index) {
   open.value = true;
   await nextTick();
-  const list = enabled();
-  list.at(index < 0 ? -1 : index)?.focus();
+  items().at(index < 0 ? -1 : index)?.focus();
 }
 function close(returnFocus = false) {
   if (!open.value) return;
@@ -86,12 +85,12 @@ function pick(item) {
   emit('select', item.id);
 }
 function move(step) {
-  const list = enabled();
+  const list = items();
   const i = list.indexOf(document.activeElement);
   list[(i + step + list.length) % list.length]?.focus();
 }
 function onKey(e) {
-  const list = enabled();
+  const list = items();
   if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
   else if (e.key === 'Home') { e.preventDefault(); list[0]?.focus(); }
@@ -111,10 +110,12 @@ onMounted(() => {
   syncSheet();
   mq?.addEventListener?.('change', syncSheet);
   document.addEventListener('mousedown', onOutside);
+  document.addEventListener('focusin', onOutside);
 });
 onBeforeUnmount(() => {
   mq?.removeEventListener?.('change', syncSheet);
   document.removeEventListener('mousedown', onOutside);
+  document.removeEventListener('focusin', onOutside);
 });
 defineExpose({ openAt, close });
 </script>

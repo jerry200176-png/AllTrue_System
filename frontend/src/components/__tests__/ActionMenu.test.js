@@ -25,13 +25,15 @@ describe('ActionMenu', () => {
     expect(focusedAction()).toBe('reschedule');
   });
 
-  it('arrow keys skip disabled items and wrap; End lands on delete; Esc returns focus', async () => {
+  it('arrow keys reach disabled items (reason readable) and wrap; End lands on delete; Esc returns focus', async () => {
     const w = mountMenu();
     await w.get('.am__trigger').trigger('keydown', { key: 'ArrowDown' });
     await w.vm.$nextTick();
     const menu = w.get('[role="menu"]');
     await menu.trigger('keydown', { key: 'ArrowDown' });
-    expect(focusedAction()).toBe('transfer');
+    expect(focusedAction()).toBe('quick-add');
+    await menu.trigger('keydown', { key: 'Home' });
+    expect(focusedAction()).toBe('reschedule');
     await menu.trigger('keydown', { key: 'End' });
     expect(focusedAction()).toBe('delete');
     await menu.trigger('keydown', { key: 'ArrowDown' });
@@ -56,12 +58,41 @@ describe('ActionMenu', () => {
     await w.vm.$nextTick();
     await w.get('[data-action="quick-add"]').trigger('click');
     expect(w.emitted('select')).toBeUndefined();
+    expect(w.find('[role="menu"]').exists()).toBe(true);
     expect(w.get('[data-action="quick-add"]').attributes('title')).toBe('已無剩餘堂數');
     const del = w.get('[data-action="delete"]');
     expect(del.classes()).toContain('am__item--danger');
     expect(del.text()).toBe('刪除課程…');
     await del.trigger('click');
     expect(w.emitted('select')).toEqual([['delete']]);
+  });
+
+  it('closes on a second trigger click, outside press, outside focus and Tab; clicks never bubble to the row', async () => {
+    const rowClick = vi.fn();
+    document.body.addEventListener('click', rowClick);
+    const w = mountMenu();
+    const t = w.get('.am__trigger');
+    await t.trigger('click');
+    expect(rowClick).not.toHaveBeenCalled();
+    await t.trigger('click');
+    expect(w.find('[role="menu"]').exists()).toBe(false);
+    expect(t.attributes('aria-expanded')).toBe('false');
+    await t.trigger('click');
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    await w.vm.$nextTick();
+    expect(w.find('[role="menu"]').exists()).toBe(false);
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    await t.trigger('click');
+    outside.focus();
+    await w.vm.$nextTick();
+    expect(w.find('[role="menu"]').exists()).toBe(false);
+    await t.trigger('click');
+    await w.vm.$nextTick();
+    await w.get('[role="menu"]').trigger('keydown', { key: 'Tab' });
+    expect(w.find('[role="menu"]').exists()).toBe(false);
+    outside.remove();
+    document.body.removeEventListener('click', rowClick);
   });
 
   it('renders as a bottom sheet at phone width', async () => {

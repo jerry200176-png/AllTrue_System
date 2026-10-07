@@ -72,6 +72,14 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
     expect(ids(courseActions(session, { ...base, canClose: false }))).not.toContain('close');
   });
 
+  it('every id is an existing CourseManagement action or one PR2 adds', () => {
+    const known = ['pause', 'resume', 'close', 'delete', 'manual-session', 'monthly-session', 'quick-add', 'invoice', 'tuition',
+      'purchase', 'contract-adjust', 'package-preview', 'payment-slip', 'duplicate',
+      'reschedule', 'substitute', 'transfer', 'contract-revert', 'manage', 'edit'];
+    const m = courseActions(session, { ...base, isMonthly: true, paymentNotice: true, packagePreview: true, contractAmended: true });
+    for (const id of [m.primary.id, ...ids(m)]) expect(known).toContain(id);
+  });
+
   it('no empty groups and no duplicate ids', () => {
     const m = courseActions({ id: 2, status: 'active' }, {});
     expect(m.groups.every((g) => g.items.length > 0)).toBe(true);
