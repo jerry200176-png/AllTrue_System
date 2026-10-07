@@ -74,6 +74,56 @@ class SubstituteScheduleService
         return $out;
     }
 
+    /**
+     * Pay/stats readers over `ClassSession as cs` + `StudentClass as sc`: keep sessions any of $teacherIds may have
+     * taught — the contract teacher's, plus those where the teacher is on a same-day schedules row of the course or
+     * on the session's LearningRecord (substitute / rescheduled / makeup). A superset: attributeToEffectiveTeacher()
+     * decides exactly.
+     *
+     * @param  array<int, int>  $teacherIds
+     */
+    public static function scopeTaughtBy($query, array $teacherIds)
+    {
+        return $query->where(function ($q) use ($teacherIds) {
+            $q->whereIn('sc.TeacherID', $teacherIds)
+                ->orWhereExists(fn ($e) => $e->select(DB::raw(1))->from('schedules as eff_sch')
+                    ->whereColumn('eff_sch.student_course_id', 'sc.ID')->whereColumn('eff_sch.schedule_date', 'cs.SessionDate')
+                    ->whereIn('eff_sch.teacher_id', $teacherIds))
+                ->orWhereExists(fn ($e) => $e->select(DB::raw(1))->from('LearningRecord as eff_lr')
+                    ->whereColumn('eff_lr.ClassSessionID', 'cs.id')->whereIn('eff_lr.TeacherID', $teacherIds));
+        });
+    }
+
+    /**
+     * Rows carrying `course_id`, `session_date` (or `event_date`), `start_time` and the contract `teacher_id`: set
+     * `teacher_id` to the Effective Teacher and, when $teacherIds is given, keep only rows they taught.
+     *
+     * @param  iterable<object>  $rows
+     * @param  array<int, int>|null  $teacherIds
+     * @return array<int, object>
+     */
+    public static function attributeToEffectiveTeacher(iterable $rows, ?array $teacherIds = null): array
+    {
+        $rows = is_array($rows) ? $rows : iterator_to_array($rows, false);
+        $occ = array_map(fn ($r) => [
+            'course_id' => (int) $r->course_id,
+            'date' => (string) ($r->session_date ?? $r->event_date),
+            'start_time' => $r->start_time ?? null,
+            'contract_teacher_id' => (int) ($r->teacher_id ?? 0),
+        ], $rows);
+        $teachers = self::teachersForOccurrences($occ);
+        $keep = $teacherIds === null ? null : array_flip(array_map('intval', $teacherIds));
+        $out = [];
+        foreach ($rows as $i => $r) {
+            $r->teacher_id = $teachers[self::occurrenceKey($occ[$i]['course_id'], $occ[$i]['date'], $occ[$i]['start_time'])];
+            if ($keep === null || isset($keep[(int) $r->teacher_id])) {
+                $out[] = $r;
+            }
+        }
+
+        return $out;
+    }
+
     public static function occurrenceKey(int $courseId, string $date, ?string $startTime): string
     {
         return $courseId . '|' . substr($date, 0, 10) . '|' . substr((string) $startTime, 0, 5);
