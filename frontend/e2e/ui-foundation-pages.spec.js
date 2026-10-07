@@ -1184,19 +1184,17 @@ test.describe('UI foundation — real Vue page evidence', () => {
   test('billing top-level tabs show one selected panel', async ({ page }) => {
     await openPilot(page, { pageName: 'tuition', mode: 'normal', viewport: { width: 1440, height: 900 } });
 
-    const receivables = page.locator('#tuition-accounting-tab-receivables');
-    const settled = page.locator('#tuition-accounting-tab-settled');
+    // PRD v2 D10: two tabs (學生 / 收款紀錄); the former views live in the reminder bar.
+    const students = page.locator('#tuition-accounting-tab-students');
     const payments = page.locator('#tuition-accounting-tab-payments');
 
-    await expect(receivables).toHaveAttribute('aria-controls', 'tuition-accounting-panel-receivables');
-    await expect(page.locator('#tuition-accounting-panel-receivables')).toHaveCount(1);
+    await expect(students).toHaveAttribute('aria-controls', 'tuition-accounting-panel-students');
+    await expect(page.locator('#tuition-accounting-panel-students')).toHaveCount(1);
     await expect(page.locator('#tuition-accounting-panel-payments')).toHaveCount(0);
-    await expect(page.locator('#tuition-accounting-panel-settled')).toHaveCount(0);
 
-    await settled.click();
+    await page.locator('[data-testid="tc-reminder-settled"]').click();
     await expect(page.locator('#tuition-accounting-panel-settled')).toBeVisible();
-    await expect(page.locator('#tuition-accounting-panel-payments')).toHaveCount(0);
-    await expect(page.locator('#tuition-accounting-panel-receivables')).toHaveCount(0);
+    await expect(page.locator('#tuition-accounting-panel-students')).toHaveCount(0);
 
     await payments.click();
     await expect(page.locator('#tuition-accounting-panel-payments')).toBeVisible();
@@ -1207,7 +1205,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
     test(`billing missing monthly invoices are discoverable at ${width}px`, async ({ page }) => {
       await openPilot(page, { pageName: 'tuition', mode: 'normal', viewport: { width, height: 900 } });
       const request = page.waitForRequest(req => req.url().includes('/student-classes?'));
-      await page.getByRole('tab', { name: '月結待核對', exact: true }).click();
+      await page.locator('[data-testid="tc-reminder-monthly-review"]').click();
       const query = await request;
       expect(query.method()).toBe('GET');
       expect(new URL(query.url()).searchParams.get('branch_id')).toBe('1');

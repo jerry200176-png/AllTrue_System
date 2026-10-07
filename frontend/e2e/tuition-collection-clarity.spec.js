@@ -100,7 +100,7 @@ test('In-App348: settled labels explain existing meaning without adding payment 
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
-    await page.getByRole('tab', { name: '已結清課程彙總' }).click();
+    await page.locator('[data-testid="tc-reminder-settled"]').click();
     const help = page.getByRole('note', { name: '帳務標籤說明' });
     await expect(help).toBeVisible();
     await expect(help).toContainText('舊制無帳單：課程已標記繳費，但目前沒有有效帳單');
@@ -238,7 +238,7 @@ test.describe('Tuition Collection clarity browser verification', () => {
     expect(receivableBox.x + receivableBox.width).toBeLessThanOrEqual(900);
     await expect(receivableAction.locator('xpath=ancestor::td')).toHaveCSS('position', 'sticky');
 
-    await page.getByRole('tab', { name: '收據紀錄' }).click();
+    await page.getByRole('tab', { name: '收款紀錄' }).click();
     const receiptAction = page.locator('.acct-table:visible tbody tr').first().locator('td:last-child button').first();
     await expect(receiptAction).toBeVisible();
     const receiptBox = await receiptAction.boundingBox();
@@ -259,7 +259,7 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await page.getByLabel('行動版全選待處理').check();
     await expect(page.getByText('已選 2 筆', { exact: true })).toBeVisible();
 
-    await page.getByRole('tab', { name: '收據紀錄' }).click();
+    await page.getByRole('tab', { name: '收款紀錄' }).click();
     await page.getByLabel('收據排序').selectOption('total_amount');
     await expect(page.locator('.acct-table tbody tr').first().locator('.tc-cell-name')).toHaveText(/陳品妤/);
     await page.getByLabel('行動版全選收據').check();
@@ -316,7 +316,8 @@ test.describe('Tuition Collection clarity browser verification', () => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
         await expect(page.getByText('帳務中心', { exact: true })).toBeVisible();
-        await page.getByRole('tab', { name: tab === 'payments' ? '收據紀錄' : '已結清課程彙總' }).click();
+        if (tab === 'payments') await page.getByRole('tab', { name: '收款紀錄' }).click();
+        else await page.locator('[data-testid="tc-reminder-settled"]').click();
         await expect(page.locator('.acct-table:visible')).toBeVisible();
         await expectNoOverflowAndReachableControls(page);
         await page.screenshot({ path: path.join(outDir, `${tab}-${viewport.name}.png`), fullPage: true });
@@ -328,13 +329,13 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/tuition-collection-pilot-mount.html?mode=error');
-    await page.getByRole('tab', { name: '收據紀錄' }).click();
+    await page.getByRole('tab', { name: '收款紀錄' }).click();
     await expect(page.getByText('收據紀錄載入失敗', { exact: true })).toBeVisible();
     await page.evaluate(() => { window.__tuitionCollectionRetryAllowed = true; });
     await page.getByRole('button', { name: '重新載入' }).click();
     await expect(page.locator('.acct-table:visible')).toBeVisible();
     await page.goto('/tuition-collection-pilot-mount.html?mode=empty');
-    await page.getByRole('tab', { name: '已結清課程彙總' }).click();
+    await page.locator('[data-testid="tc-reminder-settled"]').click();
     await expect(page.getByText('目前查無已結清課程', { exact: true })).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
   });
@@ -343,14 +344,14 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/tuition-collection-pilot-mount.html?mode=loading');
-    await page.getByRole('tab', { name: '收據紀錄' }).click();
+    await page.getByRole('tab', { name: '收款紀錄' }).click();
     await expect(page.getByTestId('at-skeleton')).toBeVisible();
     await page.goto('/tuition-collection-pilot-mount.html?mode=long');
-    await page.getByRole('tab', { name: '收據紀錄' }).click();
+    await page.getByRole('tab', { name: '收款紀錄' }).click();
     await expect(page.getByText(/很長的學生姓名/).first()).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
     await page.goto('/tuition-collection-pilot-mount.html?mode=long');
-    await page.getByRole('tab', { name: '已結清課程彙總' }).click();
+    await page.locator('[data-testid="tc-reminder-settled"]').click();
     await expect(page.getByText(/很長的學生姓名/).first()).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
   });
