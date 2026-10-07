@@ -2633,7 +2633,9 @@ const bindRfidFromTemp = async () => {
 const unbindStudentRfid = async () => {
   const st = students.value.find(s => s.id === editingStudentId.value);
   // Destructive: only with a resolved server ID (a Supabase fallback id could hit another student).
-  const laravelId = st?._laravelId;
+  // Only rows loaded from the Laravel API carry a trustworthy id (id === _laravelId); fallback rows are
+  // matched by name and can point at a same-name student, so unbind is refused for them.
+  const laravelId = st && st._laravelId && Number(st._laravelId) === Number(st.id) ? st._laravelId : null;
   if (!laravelId) { alert('目前無法確認學生的系統編號，請重新整理後再試。'); return; }
   if (!confirm('確定要解除這張卡片的綁定嗎？解除後學生刷這張卡不會再記錄到課，卡片可以再綁給別人。')) return;
   try {

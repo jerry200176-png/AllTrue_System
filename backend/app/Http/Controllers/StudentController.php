@@ -594,7 +594,7 @@ class StudentController extends Controller
                 'subject_type' => 'student',
                 'subject_id' => $student->getKey(),
                 'actor_type' => 'user',
-                'actor_id' => request()->attributes->get('auth_user_id'),
+                'actor_id' => request()->attributes->get('auth_user')?->getKey(),
             ], ['method' => 'director_api', 'reason_code' => 'manual_unbind']);
         }
 
