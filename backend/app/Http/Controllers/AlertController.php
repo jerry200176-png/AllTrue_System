@@ -638,7 +638,7 @@ class AlertController extends Controller
             return [];
         }
 
-        $rows = Invoice::with(['payments' => function ($query) {
+        $rows = Invoice::with(['items', 'payments' => function ($query) {
                 $query->select(['id', 'InvoiceID', 'Amount', 'Method']);
             }])
             ->whereIn('StudentClassID', $ids)

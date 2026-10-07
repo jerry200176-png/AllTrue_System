@@ -13,6 +13,13 @@ last_reviewed: 2026-09-05
 - **強制規則**：月結預設計費月份一律走 `MonthlyBillingService::defaultPeriodFor()`（錨定日夾在合約期間內）；新增任何「沒有帳單時用哪個月」的路徑都要呼叫它，不可再寫 `today()->format('Y-m')`。
 - **測試必補**：已結束月結合約、無帳單、今天在下個月：繳費單依該合約當月已上堂數計價，主任登記該金額成功。
 
+### R145. 帳單迴圈必須 eager-load items；`resolve()` 會逐張帳單 lazy-load（GitHub #3454，2026-10-07）
+
+- **現象**：帳務中心、繳費提醒、付款回報、課程帳單列表的查詢數隨帳單數線性成長（8 列時提醒 34 次、帳本 16 次 InvoiceItem 查詢）。
+- **根因層級**：`InvoiceAmountReconciliationService::resolve()` 在 `items` 關聯未載入時逐張查詢；各呼叫端的 `Invoice::with([...])` 漏了 `items`。
+- **強制規則**：任何把多張帳單送進 `resolve()`（或經 `BillingPayableResolver`）的迴圈，查詢必須 `with('items')`。
+- **測試必補**：`InvoiceItemsEagerLoadQueryCountTest`——帳單數增加時 InvoiceItem 查詢數不得成長；守護端點：`alerts/tuition`、`accounting/settled-courses`、`accounting/ledger`、`payment-reports`、`student-classes/{id}/invoices`（逐一移除其 `items` eager-load 已驗證會失敗）。未覆蓋：`AccountingController::waiveCourse`（寫入路徑）與 `UnpaidHiddenClosuresStrategy`（維運清單），新增類似迴圈須自行補測。
+
 ### R142. 系統自選的補尾／向前堂次必須用寫入守門的同一規則避開學生占用（in-app #380，2026-10-07）
 
 - **現象**：把已上的 10/1 轉到續約合約時，來源合約自動補回的尾端堂次落在續約合約第一堂（同一週固定時段），寫入守門判定學生時段重疊，整筆轉移 422，主任看到「課程重疊」但畫面上看不出重疊。
