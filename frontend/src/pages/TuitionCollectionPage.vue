@@ -1069,6 +1069,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { useToast } from '../composables/useToast';
+import { authedFetch } from '../lib/authedFetch.js';
 import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import MonthlyDraftsPanel from '../components/tuition/MonthlyDraftsPanel.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
@@ -1425,9 +1426,9 @@ async function submitBatchReport() {
   let responseStatus = null;
   try {
     const token = getToken();
-    const resp = await fetch('/api/v1/payment-reports/director-record-batch', {
+    const resp = await authedFetch('/api/v1/payment-reports/director-record-batch', {
       method: 'POST',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({
         payment_date: batchForm.value.payment_date,
         payment_method: batchForm.value.payment_method,
@@ -1438,7 +1439,7 @@ async function submitBatchReport() {
           account_last5: batchForm.value.payment_method === 'transfer' ? (batchLast5ById.value[r.id] || undefined) : undefined,
         })),
       }),
-    });
+    }, token);
     responseStatus = resp.status;
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok && resp.status !== 207) {
@@ -1477,11 +1478,11 @@ async function submitBatchConfirm() {
   let responseStatus = null;
   try {
     const token = getToken();
-    const resp = await fetch('/api/v1/payment-reports/confirm-batch', {
+    const resp = await authedFetch('/api/v1/payment-reports/confirm-batch', {
       method: 'POST',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: rows.map((r) => r.latest_payment_report_id) }),
-    });
+    }, token);
     responseStatus = resp.status;
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok && resp.status !== 207) {
@@ -1816,9 +1817,9 @@ async function loadAlerts() {
       params.set('branch_id', String(Number(props.branchId)));
     }
 
-    const resp = await fetch(`/api/v1/alerts/tuition?${params}`, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
+    const resp = await authedFetch(`/api/v1/alerts/tuition?${params}`, {
+      headers: { Accept: 'application/json' },
+    }, token);
     if (!resp.ok) throw new Error(`載入失敗（${resp.status}）`);
     const json = await resp.json();
     const list = Array.isArray(json) ? json : [];
@@ -1859,9 +1860,9 @@ async function loadAccountingPayments() {
     if (accountingFilters.value.subject.trim()) params.set('subject', accountingFilters.value.subject.trim());
     if (accountingFilters.value.payment_method) params.set('payment_method', accountingFilters.value.payment_method);
 
-    const resp = await fetch(`/api/v1/accounting/payments?${params}`, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
+    const resp = await authedFetch(`/api/v1/accounting/payments?${params}`, {
+      headers: { Accept: 'application/json' },
+    }, token);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       throw new Error(err.message || `載入失敗（${resp.status}）`);
@@ -1886,9 +1887,9 @@ async function loadSettledCourses() {
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
     if (accountingFilters.value.student.trim()) params.set('student', accountingFilters.value.student.trim());
     if (accountingFilters.value.subject.trim()) params.set('subject', accountingFilters.value.subject.trim());
-    const resp = await fetch(`/api/v1/accounting/settled-courses?${params}`, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
+    const resp = await authedFetch(`/api/v1/accounting/settled-courses?${params}`, {
+      headers: { Accept: 'application/json' },
+    }, token);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       throw new Error(err.message || `載入失敗（${resp.status}）`);
@@ -1920,9 +1921,9 @@ async function fetchAccountingExportRows() {
   if (accountingFilters.value.subject.trim()) params.set('subject', accountingFilters.value.subject.trim());
   if (accountingFilters.value.payment_method) params.set('payment_method', accountingFilters.value.payment_method);
 
-  const resp = await fetch(`/api/v1/accounting/payments/export?${params}`, {
-    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-  });
+  const resp = await authedFetch(`/api/v1/accounting/payments/export?${params}`, {
+    headers: { Accept: 'application/json' },
+  }, token);
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
     throw new Error(err.message || `匯出失敗（${resp.status}）`);
@@ -2100,11 +2101,11 @@ async function confirmReport(row) {
   actionLoading.value = row.id;
   try {
     const token = getToken();
-    const resp = await fetch(`/api/v1/payment-reports/${row.latest_payment_report_id}/confirm`, {
+    const resp = await authedFetch(`/api/v1/payment-reports/${row.latest_payment_report_id}/confirm`, {
       method: 'PUT',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
-    });
+    }, token);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       throw new Error(err.message || `操作失敗（${resp.status}）`);
@@ -2136,11 +2137,11 @@ async function rejectReport(row) {
   actionLoading.value = row.id;
   try {
     const token = getToken();
-    const resp = await fetch(`/api/v1/payment-reports/${row.latest_payment_report_id}/reject`, {
+    const resp = await authedFetch(`/api/v1/payment-reports/${row.latest_payment_report_id}/reject`, {
       method: 'PUT',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ rejection_note: reason.trim() }),
-    });
+    }, token);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       throw new Error(err.message || `操作失敗（${resp.status}）`);
@@ -2168,9 +2169,9 @@ async function openWaiveDialog(row) {
   waivableAmount.value = null;
   waiveDialogOpen.value = true;
   try {
-    const resp = await fetch(`/api/v1/accounting/settled-courses?course_id=${encodeURIComponent(row.id)}`, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}` },
-    });
+    const resp = await authedFetch(`/api/v1/accounting/settled-courses?course_id=${encodeURIComponent(row.id)}`, {
+      headers: { Accept: 'application/json' },
+    }, getToken());
     const match = resp.ok ? ((await resp.json()).data || [])[0] : null;
     if (match) waivableAmount.value = Number(match.waivable_amount ?? 0);
     else showToast('無法取得不收金額', 'error');
@@ -2184,11 +2185,11 @@ async function confirmWaive() {
   if (!waiveTarget.value || reason.length < 2 || waivableAmount.value === null) return;
   waiveLoading.value = true;
   try {
-    const resp = await fetch(`/api/v1/accounting/courses/${waiveTarget.value.id}/waive`, {
+    const resp = await authedFetch(`/api/v1/accounting/courses/${waiveTarget.value.id}/waive`, {
       method: 'POST',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason, expected_amount: waivableAmount.value }),
-    });
+    }, getToken());
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       throw new Error(err.message || `操作失敗（${resp.status}）`);
@@ -2227,11 +2228,11 @@ async function confirmVoid() {
       return;
     }
 
-    const resp = await fetch(`/api/v1/payment-reports/${reportId}/void`, {
+    const resp = await authedFetch(`/api/v1/payment-reports/${reportId}/void`, {
       method: 'PUT',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ void_reason: voidReason.value.trim() }),
-    });
+    }, token);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       throw new Error(err.message || `撤銷失敗（${resp.status}）`);
@@ -2252,9 +2253,9 @@ async function findConfirmedReportForClass(row) {
     const params = new URLSearchParams({ student_class_id: String(row.id), status: 'confirmed' });
     if (props.branchId != null && props.branchId !== '')
       params.set('branch_id', String(Number(props.branchId)));
-    const resp = await fetch(`/api/v1/payment-reports?${params}`, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
+    const resp = await authedFetch(`/api/v1/payment-reports?${params}`, {
+      headers: { Accept: 'application/json' },
+    }, token);
     if (!resp.ok) return null;
     const match = ((await resp.json()).data || [])[0];
     return match?.id || null;
@@ -2273,9 +2274,9 @@ async function viewReceiptForClass(row) {
     const params = new URLSearchParams({ student_class_id: String(row.id), status: 'confirmed' });
     if (props.branchId != null && props.branchId !== '')
       params.set('branch_id', String(Number(props.branchId)));
-    const resp = await fetch(`/api/v1/payment-reports?${params}`, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
+    const resp = await authedFetch(`/api/v1/payment-reports?${params}`, {
+      headers: { Accept: 'application/json' },
+    }, token);
     if (!resp.ok) return;
     const match = ((await resp.json()).data || [])[0];
     if (match) {
@@ -2326,15 +2327,15 @@ async function confirmSettle() {
   settleLoading.value = row.id;
   try {
     const token = getToken();
-    const resp = await fetch(`/api/v1/student-classes/${row.id}/pause`, {
+    const resp = await authedFetch(`/api/v1/student-classes/${row.id}/pause`, {
       method: 'POST',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'pause',
         reason: 'settled',
         ...(remaining > 0 ? { forfeit_remaining: true } : {}),
       }),
-    });
+    }, token);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       throw new Error(err.message || `結案失敗（${resp.status}）`);
@@ -2388,9 +2389,9 @@ async function openSessionDetail(row) {
   try {
     const token = getToken();
     const params = new URLSearchParams({ student_class_id: String(row.id), per_page: '200' });
-    const resp = await fetch(`/api/v1/class-sessions?${params}`, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
+    const resp = await authedFetch(`/api/v1/class-sessions?${params}`, {
+      headers: { Accept: 'application/json' },
+    }, token);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     const rows = (data.data ?? data) || [];

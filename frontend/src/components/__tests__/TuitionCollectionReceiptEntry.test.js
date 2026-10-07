@@ -35,7 +35,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
   });
 
   it('receipt records fetch accounting/payments without a page-local PIN modal', () => {
-    expect(source).toContain('fetch(`/api/v1/accounting/payments?${params}`');
+    expect(source).toContain('authedFetch(`/api/v1/accounting/payments?${params}`');
     expect(source).not.toContain('PinLockModal');
   });
 
