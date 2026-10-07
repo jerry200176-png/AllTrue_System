@@ -4254,11 +4254,13 @@ const loadCourses = async (page = 1) => {
         per_page: String(pagination.value.perPage),
         page: String(page),
       });
-      if (filters.value.class_type) params.set('class_type', filters.value.class_type);
-      if (filters.value.teacher_id) params.set('teacher_id', String(filters.value.teacher_id));
-      if (filters.value.teacher_name?.trim()) params.set('teacher_name', filters.value.teacher_name.trim());
-      if (filters.value.course_status) params.set('status', filters.value.course_status);
-      if (filters.value.name) params.set('name', filters.value.name);
+      // A manual-session handoff fetches that student's courses only, so list filters can't hide the target (#382).
+      const pinnedHandoff = Boolean(pendingManualSessionId.value);
+      if (!pinnedHandoff && filters.value.class_type) params.set('class_type', filters.value.class_type);
+      if (!pinnedHandoff && filters.value.teacher_id) params.set('teacher_id', String(filters.value.teacher_id));
+      if (!pinnedHandoff && filters.value.teacher_name?.trim()) params.set('teacher_name', filters.value.teacher_name.trim());
+      if (!pinnedHandoff && filters.value.course_status) params.set('status', filters.value.course_status);
+      if (!pinnedHandoff && filters.value.name) params.set('name', filters.value.name);
       // convert-trial deep link: pin the target student so same-name/pagination can't hide the course.
       if ((pendingConvertTrialId.value || pendingManualSessionId.value) && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
       const res = await authedFetch(`/api/v1/student-classes?${params}`, {

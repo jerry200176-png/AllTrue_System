@@ -21,4 +21,10 @@ assert.equal(
   'an unconfigured manual-occurrence course should avoid an elapsed time'
 );
 
+assert.equal(
+  nextManualSessionDate({ start_time: '16:00', StartDate: '2026-09-07 00:00:00' }, { todayYmd: '2026-08-27', currentTime: '10:00' }),
+  '2026-09-07',
+  'in-app #382: a manual course starting later defaults to its start date, not today'
+);
+
 console.log('ok: manualSessionDate');

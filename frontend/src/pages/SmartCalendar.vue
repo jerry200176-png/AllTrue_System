@@ -2080,10 +2080,11 @@ const handleUniversalSchedulerSuccess = async (result) => {
   if (!calendarWorkflowStarts.has(workflowStep)) startCalendarWorkflow(workflowStep);
   showModal.value = false;
   const manual = result?.scheduling_policy === 'manual_occurrence' && result.student_class_id;
-  if (!manual) await loadCourses(); // the page is left right away for a manual course
+  if (!manual || isTeacher.value) await loadCourses(); // a director leaves the page right away for a manual course
   finishCalendarWorkflow(workflowStep);
   void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: manual ? 'course-mgmt' : 'calendar' });
-  if (manual) openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
+  if (manual && isTeacher.value) alert('手動排課的第一堂需由主任在「課程查找」按「新增下一堂」排入，排好後就會出現在行事曆。');
+  else if (manual) openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
 };
 
 const showDuplicateInterceptModal = ref(false);

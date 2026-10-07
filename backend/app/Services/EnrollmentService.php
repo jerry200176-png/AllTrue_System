@@ -612,7 +612,7 @@ class EnrollmentService
                                 // in-app #382: a manual course with no upcoming lesson needs 「新增下一堂」, not a second course.
                                 'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
                                 'future_session_count' => $sc->scheduling_policy === 'manual_occurrence'
-                                    ? app(ManualSessionBookingService::class)->reservedSessionCount($sc, Carbon::today()->toDateString())
+                                    ? app(ManualSessionBookingService::class)->reservedSessionCount($sc, Carbon::today()->toDateString(), true)
                                     : null,
                             ];
                         }
