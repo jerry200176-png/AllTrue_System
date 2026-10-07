@@ -838,7 +838,8 @@ const paymentActionLaneLabel = computed(() => {
   const hasUnpaid = rows.some(s => s.alert_type === 'unpaid');
   const allLow = rows.every(s => s.alert_type === 'low_sessions');
   const allMonthly = rows.every(s => s.alert_type === 'monthly_due_soon');
-  if (hasUnpaid) return `共 ${rows.length} 筆，含應收／尚未回報`;
+  // alert_type 'unpaid' also covers partly paid and parent-reported rows: neutral wording.
+  if (hasUnpaid) return `共 ${rows.length} 筆，含待收款`;
   if (allLow) return `共 ${rows.length} 筆低堂數／續課提醒`;
   if (allMonthly) return `共 ${rows.length} 筆月結提醒`;
   return `共 ${rows.length} 筆待留意`;
