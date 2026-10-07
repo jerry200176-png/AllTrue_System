@@ -830,6 +830,10 @@ jobs:
                 }}
                 $noEvidence = !$own[$id] && collect($peers)->contains(fn ($o) => array_intersect_key($tpl[$id], $tpl[$o]) !== []);
                 if (!$foreign && !$noEvidence) {{ continue; }}
+                // The #333 bug writes a UNION (own + sibling slots). A template holding none of the
+                // contract's own early slots was edited after start (e.g. a legitimate Tue→Thu move,
+                // course 448): review, never repair.
+                $templateChanged = $foreign && $own[$id] && array_intersect_key($tpl[$id], $own[$id]) === [];
                 $modeReview = (string) $row->ScheduleMode === 'date' || (string) $row->scheduling_policy === 'manual_occurrence';
                 $sessions = [];
                 foreach ($db::table('ClassSession')->where('StudentClassID', $id)->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)
@@ -844,7 +848,8 @@ jobs:
                   $siblingSame = $db::table('ClassSession')->whereIn('StudentClassID', $peers)->whereDate('SessionDate', $date)
                     ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$hm($r->StartTime)])->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)->exists();
                   $clean = $date > $today && strtolower((string) $r->Status) === 'scheduled' && !$deducted && !$record && $ledgerNet === 0;
-                  $bucket = !$clean ? 'C_past_or_artifact' : ($siblingSame ? 'A_future_duplicate' : ($modeReview ? 'C_review_mode' : 'B_future_misplaced'));
+                  $bucket = $templateChanged ? 'C_review_template_changed'
+                    : (!$clean ? 'C_past_or_artifact' : ($siblingSame ? 'A_future_duplicate' : ($modeReview ? 'C_review_mode' : 'B_future_misplaced')));
                   $sessions[] = ['session_id' => (int) $r->id, 'date' => $date, 'start' => $hm($r->StartTime), 'status' => (string) $r->Status,
                     'deducted' => $deducted, 'learning_record' => $record, 'ledger_net' => $ledgerNet, 'sibling_same_slot' => $siblingSame, 'bucket' => $bucket];
                 }}
@@ -852,7 +857,7 @@ jobs:
                   'stopped' => (int) ($row->Stop ?? 0) === 1, 'schedule_mode' => (string) $row->ScheduleMode, 'scheduling_policy' => (string) $row->scheduling_policy,
                   'start_date' => (string) $row->StartDate, 'end_date' => (string) $row->EndDate, 'legacy_week' => $row->week, 'legacy_time' => $hm($row->time),
                   'template' => $tpl[$id], 'own_slots' => array_keys($own[$id]), 'foreign_slots' => $foreign, 'peer_course_ids' => $peers,
-                  'review_only' => $noEvidence ? 'no_own_evidence' : null, 'foreign_sessions' => $sessions];
+                  'review_only' => $noEvidence ? 'no_own_evidence' : ($templateChanged ? 'template_changed_after_start' : null), 'foreign_sessions' => $sessions];
               }}
               if ($groupContracts) {{
                 $groupRows[] = ['student_id' => (int) $g->sid, 'subject_id' => (int) $g->subj, 'contaminated' => $groupContracts];
