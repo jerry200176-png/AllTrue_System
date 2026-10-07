@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -240,6 +241,18 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('issues/3212'), '350 must notify its canonical issue');
     assert.ok(entry[1].includes('仍等待您實際確認'), '350 must not claim reporter acceptance');
   }
+// Scoped Phase-C for in-app 338 (#3148), 2026-10-07 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            338 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 338 must exist');
+    assert.ok(entry[1].includes('確認已修好'), '338 must tell the reporter how to confirm a successful retest');
+    assert.ok(entry[1].includes('"rev" => "59daf9a39f1b66d6b6063f185f203955ec882a8f"'), '338 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37563232975"'), '338 deploy binding');
+    assert.ok(entry[1].includes('issues/3148'), '338 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '338 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '338 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '338 must give a no-names reopen path');
+  }
 // Scoped Phase-C for in-app 363 (#3227), 2026-10-07 (engineering tests + production version check only).
   {
     const entry = phaseCSource.match(/\n            363 => \[([\s\S]*?)\n            \],/);
@@ -374,6 +387,17 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '370 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '370 must give a no-names reopen path');
   }
+// Scoped Phase-C for in-app 380 (#3720), 2026-10-07 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            380 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 380 must exist');
+    assert.ok(entry[1].includes('"rev" => "f662fb7fcc17abb71ede2ffa8d4450da6ccf1a2d"'), '380 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37581142543"'), '380 deploy binding');
+    assert.ok(entry[1].includes('issues/3720'), '380 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '380 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '380 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '380 must give a no-names reopen path');
+  }
   {
     const entry = phaseCSource.match(/\n            371 => \[([\s\S]*?)\n            \],/);
     assert.ok(entry, 'scoped Phase-C entry 371 must exist');
@@ -383,6 +407,17 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('仍等待您實際確認'), '371 must not claim reporter acceptance');
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '371 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '371 must give a no-names reopen path');
+  }
+// Scoped Phase-C for in-app 382 (#3721), 2026-10-07 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            382 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 382 must exist');
+    assert.ok(entry[1].includes('"rev" => "6b0c3dd2671062859dfe397cdb261541ccf499a7"'), '382 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37581142543"'), '382 deploy binding');
+    assert.ok(entry[1].includes('issues/3721'), '382 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '382 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '382 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '382 must give a no-names reopen path');
   }
   {
     const entry = phaseCSource.match(/\n            372 => \[([\s\S]*?)\n            \],/);
@@ -533,6 +568,29 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '343 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '343 must give a no-names reopen path');
   }
+// Reply template rule (2026-10-07): every new Phase-C reply offers BOTH outcomes, so a
+// successful retest is confirmed instead of waiting for the reporter timeout. IDs below were
+// written before the rule (already sent; not re-sent by decision) and stay as-is.
+{
+  // Frozen pre-rule replies: exempt only while the reply text is byte-identical (hash-bound).
+  const legacyWithoutConfirm = new Map(Object.entries({"242":"3de8fe10b10dfece","243":"c84c4cdb8d6b8b25","208":"dcaeb29a08af17ea","211":"5e27c429f1620119","210":"2c635c5995524d4b","207":"c1d6049255f23f5b","205":"f2c1b9a08b9afb39","198":"50044c13374ee796","212":"c4351113e140c08e","214":"24c201b8dc1875bd","213":"a2b191c3d3be561b","216":"6b8f4c9180d7d3e2","217":"396a3816b0042a1b","218":"b08b97188e9501c6","219":"e774741000d3cb7a","220":"45d71a40a8824ace","221":"e076e2e58013d0cb","224":"d2f357f0b9d290db","225":"472d4ff162524ff9","226":"472d4ff162524ff9","227":"472d4ff162524ff9","228":"897e6dfd0581c5fe","229":"897e6dfd0581c5fe","230":"faeebf5be96e6924","231":"6049d0b63f5e3c1e","232":"02a0ca26c5ec6c7d","233":"b7359f6eac8b868a","234":"6c3f287f5a3ebc52","236":"4a572a28b37a7078","239":"b23054172cd2bb7e","244":"8cd0ed573f35c4f6","245":"a0158aac819797d5","246":"6bd9945da0691e67","247":"ada832d541f84b57","249":"7cf1e45eb5272825","250":"042cb612b03c5e4d","252":"ece88acdaaf1c44f","253":"43ed04d204d72361","255":"c6a9e9fcdfbbf866","256":"13a5d72622af03f5","259":"48688bbfb583059f","270":"2fcadf168f7310ea","257":"da14bea52447261b","258":"97fb22934bab3b20","260":"39b2141a6f812782","261":"ab6728189913f4fe","264":"7fe19c51ba59e6da","265":"c3491f6920b42375","266":"198879c4989c9ac8","267":"6d36f32794384d74","272":"4a65e2aebd66f5fa","275":"f7cec5965fdabf17","276":"c5cca863dee4d743","273":"9aa14ad095260290","274":"98bccd2627c417de","271":"a398e11f7b0a3e62","269":"df1a0036b2b3e6a7","262":"91985b4fa46ca181","263":"91011f72fc5757e4","277":"29cbf466091db4a4","279":"f04c6e5528ed377b","280":"a901fb216b848cf3","281":"2fc667f13748d998","282":"2ad5bcb1542e9a22","283":"dabbe698d9df793e","284":"e7ab35783f0f8f3c","287":"e8b4606f9d62e103","289":"0dc8c90648827677","294":"0dc8c90648827677","298":"903954fa3fcac2eb","291":"2741f9fb4a383419","301":"8805c582ffb128ea","307":"acca79bb45d7dca6","309":"97f82848d99413f3","310":"bb7e5fbb0983e57a","312":"7bf2b8920b469310","304":"66dd70766a8b2ce5","305":"e53b398c7ab2eb57","306":"3fcb9a88c10c2f45","297":"33f456c7a2ce875d","314":"9dda72fdf91ff83c","313":"bda8b2c0dedb8da2","321":"7d850bc1b9ee57be","320":"5268af9219b08414","324":"88f4b78ba408a1dd","332":"3c380acac44b7a18","337":"0bdb9ce7e5f9c6e5","323":"ab4835b03d9412bf","317":"4f98553a6341afaf","326":"3946296a1971aebf","335":"c6983aabc15ba3ac","336":"1aaf5588567f3969","329":"04aa556b48e71a9f","339":"59a6f4c6f8a971bb","348":"7edb1dfe87a25f7d","367":"971d63fdd8bb5186","362":"9880120ffd82ea86","366":"252c62b0801d74e7","315":"657f0bbf016a0d45","353":"ecd919947d59c7c1","350":"6044f7f75d9a64cc","363":"6e57382c34329f5b","325":"4a7f64d57d9efc11","327":"e001db6e088ce8b2","351":"8d50faa91fa6be23","347":"570555aa85cb0a45","296":"8d455244c32253f4","334":"c25e50936226955e","318":"241fea1591ef8e6d","319":"a5048442095fb2b0","328":"43ef94789c7fd38f","292":"7d0443c5732d5245","316":"37a4f01f52426c99","331":"dd8df84411f62548","370":"631f156cf7799ef6","371":"07e496d1e329d664","372":"2c9915fe33b94b76","373":"ae75485dd6603186","368":"5288ab0d7c9b4839","330":"a5aceb22e979e2bd","293":"4d540a20b180522c","359":"df9843d91d38f88e","358":"7e5c787a4feb2392","365":"0225cdc087af4367","352":"4a1a662d6f8b2510","295":"ac1fbefb838b9022","374":"1bd5e5ef55e5770d","375":"f5e113860a7bbabb","364":"fb03a00605c3f4c4","343":"79db508b9876f7a6"}));
+  // Parse every numeric entry block regardless of indentation, field order or wrapping, and
+  // prove each discovered block has a reply before checking it.
+  // PHP also accepts quoted decimal keys ("376" => [...]) and normalizes them to int.
+  const keys = [...phaseCSource.matchAll(/^\s*"?(\d+)"?\s*=>\s*\[/gm)].map((m) => Number(m[1]));
+  const blocks = [...phaseCSource.matchAll(/^\s*"?(\d+)"?\s*=>\s*\[([\s\S]*?)^\s*\],?\s*$/gm)];
+  assert.equal(new Set(keys).size, keys.length, 'allowlist IDs must be unique (PHP keeps only the last duplicate)');
+  assert.equal(blocks.length, keys.length, 'every allowlist entry must parse as one block');
+  for (const [, id, body] of blocks) {
+    // PHP keeps the LAST duplicate key, so exactly one reply field is allowed.
+    assert.equal((body.match(/"reply"\s*=>/g) || []).length, 1, `Phase-C entry ${id} must have exactly one reply field`);
+    const reply = body.match(/"reply"\s*=>\s*"([\s\S]*?)",\s*$/m);
+    assert.ok(reply, `Phase-C entry ${id} must have a reply`);
+    const frozenHash = legacyWithoutConfirm.get(String(id));
+    if (frozenHash && createHash('sha256').update(reply[1], 'utf8').digest('hex').slice(0, 16) === frozenHash) continue;
+    assert.ok(reply[1].includes('確認已修好') && reply[1].includes('問題仍存在'), `Phase-C reply ${id} must offer 「確認已修好」 and 「問題仍存在」`);
+  }
+}
 console.log('bug-writeback-workflow.test.mjs: ok');
 
 assert.match(phaseCSource,

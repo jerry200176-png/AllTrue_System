@@ -381,7 +381,7 @@ class PaymentReportApiTest extends TestCase
         $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', $payload)
             ->assertStatus(422)
             ->assertJsonPath('code', 'pending_report_exists')
-            ->assertJsonPath('message', '此課程已有待對帳回報，請先到帳務中心確認入帳或退回後再登錄。');
+            ->assertJsonPath('message', '此課程已有「等你確認」的繳費回報，請先到帳務中心確認收款或退回後再登錄。');
     }
 
     public function test_director_record_pending_receipt_forbidden_until_confirm(): void
@@ -904,7 +904,7 @@ class PaymentReportApiTest extends TestCase
     public function test_confirm_date_mode_reports_never_leave_two_live_invoices_for_one_course_period(): void
     {
         $token = $this->createDirectorToken([1]);
-        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'Charge' => 3000]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'Charge' => 3000, 'StartDate' => '2026-04-01']);
         $confirm = fn (PaymentReport $r) => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->putJson("/api/v1/payment-reports/{$r->id}/confirm");
         $mk = fn (string $tag, int $amt) => PaymentReport::create([

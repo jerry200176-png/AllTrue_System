@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-07-calendar-manual-first-lesson
+    published_at: "2026-10-07"
+    audiences:
+      - director
+    importance: digest
+    title: 行事曆手動排課直接排第一堂
+    summary: 行事曆建立逐堂手動排課的課程後，會直接打開「新增下一堂」。
+    items:
+      - category: fixed
+        text: 手動排課的課建好後會直接帶你排第一堂，排好就出現在行事曆，不會再「看不到課」。
+      - category: improved
+        text: 同一門手動課還沒排堂時再新增，提示會給「新增下一堂」，不用另開一筆。
+    source_refs:
+      - "changelog:2026-10-07:inapp-382-calendar-manual-first-lesson"
