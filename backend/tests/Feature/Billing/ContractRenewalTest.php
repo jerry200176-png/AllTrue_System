@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\ContractRenewal;
@@ -99,5 +100,37 @@ class ContractRenewalTest extends TestCase
         $this->assertSame('date', $ok['proposed_course']['schedule_mode']);
         $this->assertSame('2032-03-31', $ok['schedule']['last_session_date']);
         $this->assertSame('unpaid', $ok['billing']['payment_status_after_confirm']);
+    }
+
+    public function test_cancel_future_sessions_tags_only_future_scheduled_rows(): void
+    {
+        $c = $this->course();
+        $mk = fn (string $date, string $status) => ClassSession::create([
+            'StudentClassID' => $c->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status,
+        ]);
+        $past = $mk('2000-01-03', 'scheduled');
+        $future = $mk('2099-01-05', 'scheduled');
+        $attended = $mk('2099-01-12', 'attended');
+
+        $n = app(ContractRenewal::class)->cancelFutureScheduledSessions($c, 'settled');
+
+        $this->assertSame(1, $n);
+        $this->assertSame('scheduled', $past->fresh()->Status);
+        $this->assertSame('attended', $attended->fresh()->Status);
+        $this->assertSame('cancelled', $future->fresh()->Status);
+        $this->assertStringContainsString('[結案取消]', (string) $future->fresh()->Note);
+    }
+
+    public function test_create_course_record_persists_and_reconciliation_flags_unpaid(): void
+    {
+        $svc = app(ContractRenewal::class);
+        $c = $this->course(['Charge' => 4000, 'Paid' => 0]);
+        $copy = $svc->createCourseRecord(['StudentID' => $c->StudentID, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
+            'StartDate' => '2032-05-01', 'TotalHours' => 2, 'Charge' => 100, 'Paid' => 0, 'Rate' => 50, 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count',
+            'SessionCount' => 2, 'SessionDuration' => 60, 'RemainingSessions' => 2, 'ClassType' => 'one_on_one', 'UsedSessions' => 0]);
+
+        $this->assertTrue($copy->exists);
+        $this->assertSame(100, (int) StudentClass::query()->where('ID', $copy->ID)->value('Charge'));
+        $this->assertTrue($svc->courseNeedsPaymentReconciliation($c));
     }
 }
