@@ -3,8 +3,8 @@
 ## Exact scope and authority
 
 One per-ID record (359) in the existing single-target writer, bound to merge
-`59daf9a39f1b66d6b6063f185f203955ec882a8f` (#3499), first deployed by run
-37465434964 and an ancestor of production `1d8b893e`. No allowlist gate,
+`59daf9a39f1b66d6b6063f185f203955ec882a8f` (#3499), shipped in deploy run 37465434964 (a successful
+run whose head contains the rev) and an ancestor of production `1d8b893e`. No allowlist gate,
 actor, permission, evidence requirement, writer or environment change.
 Mechanically R3/T3 (protected workflow path); needs Founder GO before merge.
 
