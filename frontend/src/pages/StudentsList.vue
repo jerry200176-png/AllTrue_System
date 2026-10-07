@@ -859,7 +859,7 @@
       :subject-label-fn="getSubjectLabel"
       @cancel="showDuplicateInterceptModal = false"
       @purchase="interceptGoToPurchase"
-      @manual-session="(c) => { showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptPendingStudent?.id, c.existing_course_id); }"
+      @manual-session="(c) => { showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptPendingStudent?._laravelId ?? interceptPendingStudent?.id, c.existing_course_id); }"
       @decision="onEnrollmentConflictDecision"
     />
     <!-- Grade Promotion Modal — server preview/confirm (#297 Phase A); no course Stop. -->
@@ -1043,6 +1043,7 @@ import {
   buildTuitionCollectNav,
   buildTuitionLedgerNav,
   buildCourseMgmtOpsNav,
+  buildManualSessionNav,
   buildBindingManagementNav,
   tuitionIntentForPaymentStatus,
 } from '../lib/authoritativeMutationRoutes.js';
@@ -2962,9 +2963,7 @@ const handleOpenBillingFromEdit = () => {
 };
 
 // in-app #382: a manual course has no lesson yet; schedule the first one in course management.
-const openManualSessionInCourseMgmt = (studentId, courseId) => {
-  emit('navigate', buildCourseMgmtOpsNav({ id: courseId, student_id: studentId }, { intent: 'manual-session' }));
-};
+const openManualSessionInCourseMgmt = (studentId, courseId) => emit('navigate', buildManualSessionNav(studentId, courseId));
 
 const handleUniversalSchedulerSuccess = async (result) => {
   if (result?.scheduling_policy === 'manual_occurrence' && result.student_class_id) {

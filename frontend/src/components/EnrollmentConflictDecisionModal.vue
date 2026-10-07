@@ -54,7 +54,6 @@
                   @click="emit('manual-session', c)"
                 >新增下一堂</button>
                 <button
-                  v-else
                   class="small btn-renew-warn"
                   type="button"
                   :disabled="submitting"

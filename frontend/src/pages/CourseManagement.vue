@@ -2143,6 +2143,11 @@ async function onEnrollmentConflictDecision(decision) {
 
 function interceptOpenManualSessionCM(conflict) {
   showDuplicateInterceptModal.value = false;
+  const loaded = courses.value.find((c) => c.id === Number(conflict.existing_course_id));
+  if (loaded) {
+    openManualSessionModal(loaded);
+    return;
+  }
   pendingManualSessionId.value = Number(conflict.existing_course_id) || 0;
   convertTrialStudentId.value = interceptOriginalPayload.value?.student_id ?? null;
   loadCourses(1);

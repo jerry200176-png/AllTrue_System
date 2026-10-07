@@ -27,6 +27,8 @@ describe('manual course → first lesson (in-app #382)', () => {
     expect(btn).toBeTruthy();
     await btn.trigger('click');
     expect(w.emitted('manual-session')[0][0].existing_course_id).toBe(4296);
+    // 加購／延續 stays available next to it.
+    expect(w.findAll('button').some((b) => b.text() === '延續輔導課（不收費）')).toBe(true);
   });
 
   it('pages keep the server fields through the shared mapper, so the modal can still decide', () => {
@@ -50,10 +52,11 @@ describe('manual course → first lesson (in-app #382)', () => {
   it('the scheduler marks a manual create; calendar and students list hand off to course management', () => {
     expect(scheduler).toContain("emit('success', { ...result, scheduling_policy: 'manual_occurrence' });");
     for (const page of [calendar, students]) {
-      expect(page).toContain("emit('navigate', buildCourseMgmtOpsNav({ id: courseId, student_id: studentId }, { intent: 'manual-session' }));");
+      expect(page).toContain("emit('navigate', buildManualSessionNav(studentId, courseId))");
       expect(page).toMatch(/result\?\.scheduling_policy === 'manual_occurrence' && result\.student_class_id/);
     }
     expect(students).toContain('@manual-session=');
+    expect(students).toContain('interceptPendingStudent?._laravelId ?? interceptPendingStudent?.id');
   });
 
   it('course management opens the modal for that course, or says it cannot find it', () => {

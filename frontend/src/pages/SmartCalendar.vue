@@ -585,7 +585,7 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { dedupeCalendarRowsByStudentSlot, mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
 import { hasCrossCampusBusySlot, normalizeCrossCampusBusySlots } from '../lib/crossCampusBusySlots.js';
 import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
-import { buildAttendanceNav, buildCourseMgmtOpsNav } from '../lib/authoritativeMutationRoutes.js';
+import { buildAttendanceNav, buildManualSessionNav } from '../lib/authoritativeMutationRoutes.js';
 import { needsFirstManualLesson, normalizeDuplicateConflicts } from '../lib/enrollmentConflictDecision.js';
 import {
   resolveCalendarDataFetchBoundsYmd,
@@ -2073,9 +2073,7 @@ const currentSessionChargeDisplay = computed(() => {
 });
 
 // in-app #382: a manual course starts with no lesson, so the calendar can't show it; schedule the first one there.
-const openManualSessionInCourseMgmt = (studentId, courseId) => {
-  emit('navigate', buildCourseMgmtOpsNav({ id: courseId, student_id: studentId }, { intent: 'manual-session' }));
-};
+const openManualSessionInCourseMgmt = (studentId, courseId) => emit('navigate', buildManualSessionNav(studentId, courseId));
 
 const handleUniversalSchedulerSuccess = async (result) => {
   const workflowStep = 'create';
