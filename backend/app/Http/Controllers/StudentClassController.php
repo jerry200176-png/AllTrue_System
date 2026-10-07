@@ -4994,7 +4994,8 @@ class StudentClassController extends Controller
             $replacementPlan = $this->planSourceScheduleTail(
                 $source,
                 $replacementCount,
-                $sourceTail?->SessionDate
+                $sourceTail?->SessionDate,
+                (int) $target->ID
             );
 
             foreach ($sessions as $session) {
@@ -5062,7 +5063,8 @@ class StudentClassController extends Controller
     private function planSourceScheduleTail(
         StudentClass $source,
         int $replacementCount,
-        mixed $tailDate
+        mixed $tailDate,
+        int $targetId
     ): array {
         if ($replacementCount <= 0
             || (int) ($source->Stop ?? 0) === 1
@@ -5105,10 +5107,48 @@ class StudentClassController extends Controller
             }
         }
 
+        // The target usually continues the same weekly slot (a renewal): a refill overlapping its live lesson would
+        // make the write guard 422 the whole transfer (in-app #380), so those slots are skipped. A clash with an
+        // unrelated course is still planned, so upsertSlot() rolls the transfer back and names the conflict.
+        $targetRows = [];
+        $target = StudentClass::query()->find($targetId);
+        // Same live-row rules as the write guard: a stopped or trial target, a trial source, or a target in the
+        // source's own package (parallel subject tracks) holds nothing.
+        $sourcePackage = (int) $source->getAttribute('PackageID');
+        $targetHoldsNothing = (int) ($target?->getAttribute('Stop') ?? 0) === 1
+            || strtolower(trim((string) $target?->getAttribute('ClassType'))) === 'trial'
+            || strtolower(trim((string) $source->getAttribute('ClassType'))) === 'trial'
+            || ($sourcePackage > 0 && (int) $target?->getAttribute('PackageID') === $sourcePackage);
+        $targetLive = $targetHoldsNothing ? collect() : ClassSession::query()->where('StudentClassID', $targetId)
+            ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
+            ->when(ContractSessionSchedule::normalizeDateString($target?->getAttribute('StartDate')), fn ($q, $d) => $q->whereDate('SessionDate', '>=', $d))
+            ->when(ContractSessionSchedule::normalizeDateString($target?->getAttribute('EndDate')), fn ($q, $d) => $q->whereDate('SessionDate', '<=', $d))
+            ->get(['SessionDate', 'StartTime', 'EndTime']);
+        foreach ($targetLive as $row) {
+            $targetRows[(string) ContractSessionSchedule::normalizeDateString($row->SessionDate)][] = [(string) $row->StartTime, (string) $row->EndTime];
+        }
+        // A target booking may still be a schedules row only (not yet materialized); the write guard counts it too.
+        if ($target && !$targetHoldsNothing) {
+            $targetSchedules = DB::table('schedules')->where('student_course_id', $targetId)->where('status', 'scheduled')
+                ->where('student_id', (int) $source->getAttribute('StudentID'))
+                ->whereNull('original_schedule_id')
+                ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('StartDate')), fn ($q, $d) => $q->whereDate('schedule_date', '>=', $d))
+                ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('EndDate')), fn ($q, $d) => $q->whereDate('schedule_date', '<=', $d))
+                ->get(['id', 'status', 'student_course_id', 'schedule_date', 'start_time', 'end_time']);
+            // Same stale-projection rule as the write guard: a schedule backed only by a cancelled/leave session
+            // or moved elsewhere that day does not hold the slot.
+            foreach ($targetSchedules->groupBy(fn ($r) => (string) ContractSessionSchedule::normalizeDateString($r->schedule_date)) as $date => $rows) {
+                foreach (app(\App\Services\StaleScheduleExceptionFilter::class)->rejectStale($rows->all(), (string) $date) as $row) {
+                    $targetRows[(string) $date][] = [(string) $row->start_time, (string) $row->end_time];
+                }
+            }
+        }
+
         $planned = [];
         $cursor = $anchorDate->copy()->addDay();
         $guard = 0;
-        while (count($planned) < $replacementCount && $guard < 731) {
+        $horizonDays = 731; // grows a week per slot the target holds, so those skips never shorten the refill
+        while (count($planned) < $replacementCount && $guard < $horizonDays) {
             $guard++;
             $daySlots = $slotsByWeekday[(int) $cursor->dayOfWeekIso] ?? [];
             foreach ($daySlots as $slot) {
@@ -5123,6 +5163,10 @@ class StudentClassController extends Controller
                 }
 
                 $end = $start->copy()->addMinutes((int) $slot['dur']);
+                if ($this->overlapsAny($targetRows[$cursor->toDateString()] ?? [], $start->format('H:i:s'), $end->format('H:i:s'))) {
+                    $horizonDays += 7;
+                    continue;
+                }
                 $planned[] = [
                     'StudentClassID' => (int) $source->getAttribute('ID'),
                     'SessionDate' => $cursor->toDateString(),
@@ -5137,6 +5181,18 @@ class StudentClassController extends Controller
         }
 
         return $planned;
+    }
+
+    /** @param  array<int, array{0: string, 1: string}>  $rows  [start, end] H:i(:s) */
+    private function overlapsAny(array $rows, string $start, string $end): bool
+    {
+        foreach ($rows as [$s, $e]) {
+            if (substr($s, 0, 5) < substr($end, 0, 5) && substr($e, 0, 5) > substr($start, 0, 5)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
