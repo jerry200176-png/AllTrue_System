@@ -92,14 +92,18 @@ test('staleReason: batch survives only if main, every member head and readiness 
   assert.match(staleReason([{ n: 1, sha: '' }], 'b', 'b', cur(m(1))), /head moved/); // head not pinned by a merge parent
 });
 
-test('fromPinned: a pinned context counts only from its app; unpinned matches by name like the ruleset', () => {
-  const run = (id, name = 'A') => ({ __typename: 'CheckRun', name, conclusion: 'SUCCESS', checkSuite: { app: { databaseId: id } } });
+test('fromPinned: only check runs of the pinned app from this repo count, pinned or not', () => {
+  const run = (id, name = 'A', repo = 'o/r') => ({ __typename: 'CheckRun', name, conclusion: 'SUCCESS', checkSuite: { app: { databaseId: id }, repository: { nameWithOwner: repo } } });
   const pins = new Map([['A', 15368], ['U', null]]);
-  const kept = fromPinned([run(15368), run(999), { __typename: 'StatusContext', context: 'A', state: 'SUCCESS' }, { __typename: 'CheckRun', name: 'A' }], pins);
+  const kept = fromPinned([run(15368), run(999), { __typename: 'StatusContext', context: 'A', state: 'SUCCESS' }, { __typename: 'CheckRun', name: 'A' }], pins, 'o/r');
   assert.equal(kept.length, 1);
-  assert.deepEqual(checkStates(fromPinned([run(999)], pins), ['A']), { A: 'pending' });
-  assert.equal(fromPinned([run(999, 'U'), { __typename: 'StatusContext', context: 'U', state: 'SUCCESS' }], pins).length, 2);
-  assert.deepEqual(checkStates(fromPinned([run(999)], new Map([['A', 999]])), ['A']), { A: 'pass' }); // repinned in the ruleset
+  assert.deepEqual(checkStates(fromPinned([run(999)], pins, 'o/r'), ['A']), { A: 'pending' });
+  // unpinned in the ruleset: still bound to GitHub Actions, never name-only
+  assert.equal(fromPinned([run(999, 'U'), { __typename: 'StatusContext', context: 'U', state: 'SUCCESS' }], pins, 'o/r').length, 0);
+  assert.equal(fromPinned([run(15368, 'U')], pins, 'o/r').length, 1);
+  // run from another repository (fork) on the same name/app does not count
+  assert.equal(fromPinned([run(15368, 'A', 'evil/fork')], pins, 'o/r').length, 0);
+  assert.deepEqual(checkStates(fromPinned([run(999)], new Map([['A', 999]]), 'o/r'), ['A']), { A: 'pass' }); // repinned in the ruleset
 });
 
 test('memberOf: only a two-parent merge whose 2nd parent is the recorded head is batch metadata', () => {

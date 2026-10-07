@@ -6,12 +6,15 @@ import { execFileSync } from 'node:child_process';
 const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
 const PASSED = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 
-// A required context pinned to an integration_id in the ruleset only counts when a check run from that
-// app reports it: a same-name check from another app, or a plain commit status, must not count toward
-// a merge. An unpinned context is matched by name, exactly as the ruleset does. pins: Map context -> id.
-export const fromPinned = (nodes, pins) => (nodes || []).filter((c) => {
-  const pin = pins.get(c.name || c.context);
-  return pin == null || (c.__typename === 'CheckRun' && c.checkSuite?.app?.databaseId === pin);
+// Every required context must be reported by a check run of the pinned app (the ruleset's integration_id,
+// else GitHub Actions) whose workflow run belongs to THIS repository. A same-name check from another app,
+// a plain commit status, or a run from a fork is never counted, pinned or not. pins: Map context -> id.
+export const ACTIONS_APP_ID = 15368; // fallback only for a context the ruleset leaves unpinned
+export const fromPinned = (nodes, pins, repo) => (nodes || []).filter((c) => {
+  if (c.__typename !== 'CheckRun') return false;
+  const app = c.checkSuite?.app?.databaseId;
+  if (app !== (pins.get(c.name) ?? ACTIONS_APP_ID)) return false;
+  return c.checkSuite?.repository?.nameWithOwner === repo;
 });
 
 // Authors whose branches may be executed by batch CI (dispatch runs PR code with repo secrets).
@@ -124,15 +127,15 @@ function labeledAt(n) {
 const Q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
   mergeStateStatus headRefName headRefOid authorAssociation
   commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{
-    __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId}}} ... on StatusContext{context state createdAt}}}}}}}}}}`;
+    __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId} repository{nameWithOwner}}} ... on StatusContext{context state createdAt}}}}}}}}}}`;
 
 const QC = `query($o:String!,$r:String!,$s:GitObjectID!){repository(owner:$o,name:$r){object(oid:$s){... on Commit{statusCheckRollup{contexts(first:100){nodes{
-    __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId}}} ... on StatusContext{context state createdAt}}}}}}}}`;
+    __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId} repository{nameWithOwner}}} ... on StatusContext{context state createdAt}}}}}}}}`;
 
 function rollupFor(sha) {
   const [o, r] = REPO.split('/');
   const c = JSON.parse(gh('api', 'graphql', '-f', `query=${QC}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `s=${sha}`)).data.repository.object;
-  return fromPinned(c?.statusCheckRollup?.contexts.nodes, PINS);
+  return fromPinned(c?.statusCheckRollup?.contexts.nodes, PINS, REPO);
 }
 
 function load(n) {
@@ -143,7 +146,7 @@ function load(n) {
     mergeStateStatus: p.mergeStateStatus,
     headRefName: p.headRefName,
     sha: p.headRefOid,
-    rollup: fromPinned(p.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes, PINS),
+    rollup: fromPinned(p.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes, PINS, REPO),
     authorAssociation: p.authorAssociation,
   };
 }

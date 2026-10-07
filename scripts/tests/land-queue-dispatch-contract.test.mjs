@@ -85,7 +85,7 @@ test('author association is read via GraphQL (gh pr list has no such JSON field)
 
 test('required-check pins come from the live ruleset, not a hardcoded app id', () => {
   assert.match(queue, /PINS = new Map\(checks\.map\(\(c\) => \[c\.context, c\.integration_id\]\)\)/);
-  assert.doesNotMatch(queue, /15368/);
+  assert.doesNotMatch(queue.replace(/ACTIONS_APP_ID = 15368/, ''), /15368/);
 });
 
 test('missing check workflows are dispatched per workflow, not only when the rollup is empty', () => {
