@@ -514,6 +514,16 @@ jobs:
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
 
+      # Founder 1A evidence runs the policy code production already runs, never the
+      # target's own (a range must not judge itself). Missing checkout fails closed.
+      - name: Checkout deployed revision for trusted Founder GO policy
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          path: trusted-policy
+          sparse-checkout: scripts/governance
+
       - name: Classify activation policy
         id: classify
         env:
@@ -711,11 +721,8 @@ jobs:
           try:
               from scripts.governance.autonomy_gate import (
                   classify_activation_provenance,
-                  classify_activation_scope,
-                  is_application_runtime_path,
                   aggregate_landed_pr_effects,
                   decide_activation,
-                  founder_go_release_evidence,
                   has_rollback_evidence,
                   is_founder_approval_eligible,
                   is_deployable_path,
@@ -743,7 +750,7 @@ jobs:
               landed_effects = []
               seen_reconciled_prs = set()
               attributed_commits = set()
-              commit_tiers = {}
+              commit_effects = {}
               provenance_complete = True
               for commit in comparison.get("commits") or []:
                   commit_sha = commit.get("sha")
@@ -772,11 +779,7 @@ jobs:
                       "patch": "\n".join(actual_patch_parts),
                       "patch_complete": actual_patch_complete,
                   }
-                  # Founder 1A evidence: this commit's own machine tier (unknown if its patch is incomplete).
-                  if not any(is_application_runtime_path(path) for path in actual_paths):
-                      commit_tiers[commit_sha] = 0
-                  elif actual_patch_complete:
-                      commit_tiers[commit_sha] = classify_activation_scope(actual_paths, actual_effect["patch"])["machine_minimum_tier"]
+                  commit_effects[commit_sha] = actual_effect
                   candidates = gh_api(
                       f"/repos/{repo}/commits/{commit_sha}/pulls",
                       "--header", "Accept: application/vnd.github+json",
@@ -948,10 +951,23 @@ jobs:
               go = {"ok": False, "missing": [], "reason": "not evaluated"}
               if mode == "auto" or (mode == "awaiting-activation" and approval_eligible):
                   try:
-                      go = founder_go_release_evidence(
+                      import importlib.util
+                      spec = importlib.util.spec_from_file_location(
+                          "trusted_autonomy_gate", "trusted-policy/scripts/governance/autonomy_gate.py"
+                      )
+                      trusted = importlib.util.module_from_spec(spec)
+                      spec.loader.exec_module(trusted)
+
+                      def commit_tier(sha):
+                          effect = commit_effects.get(sha)
+                          return None if effect is None else trusted.commit_activation_tier(
+                              effect["paths"], effect["patch"], effect["patch_complete"]
+                          )
+
+                      go = trusted.founder_go_release_evidence(
                           repo=repo, comparison=comparison,
                           fetch_pr=lambda n: gh_api(f"/repos/{repo}/pulls/{n}"),
-                          machine_tier=commit_tiers.get,
+                          machine_tier=commit_tier,
                       )
                   except Exception as exc:
                       go = {"ok": False, "missing": [], "reason": f"Founder GO evidence unavailable ({type(exc).__name__})"}
@@ -1252,10 +1268,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Checkout target revision for gate policy
+      - name: Checkout deployed revision for trusted gate policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.resolve-target.outputs.target_sha }}
+          ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          path: trusted-policy
+          sparse-checkout: scripts/governance
 
       - name: Verify production-auto environment and Founder GO evidence
         env:
@@ -1267,12 +1285,16 @@ jobs:
           GO_EVIDENCE: ${{ needs.classify-activation.outputs.go_evidence }}
         run: |
           set -euo pipefail
-          PYTHONPATH=. python3 - <<'PY'
+          python3 - <<'PY'
+          import importlib.util
           import json
           import os
           import subprocess
 
-          from scripts.governance.autonomy_gate import auto_environment_is_valid
+          spec = importlib.util.spec_from_file_location("trusted_autonomy_gate", "trusted-policy/scripts/governance/autonomy_gate.py")
+          trusted = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(trusted)
+          auto_environment_is_valid = trusted.auto_environment_is_valid
 
           base = f"/repos/{os.environ['REPO']}/environments/production-auto"
 

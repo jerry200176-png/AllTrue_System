@@ -1163,12 +1163,33 @@ def is_founder_approval_eligible(
     )
 
 
-# "Founder GO: <who/when/what>" at line start; placeholders and negatives ("none", "N/A", "pending") do not count.
+# "Founder GO: <who/when/what>" at line start in prose (see _founder_go_prose); quotes,
+# indented code, placeholders and negatives ("none", "N/A", "pending") do not count.
 _FOUNDER_GO_RE = re.compile(
-    r"(?m)^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Founder GO(?:\*\*)?[ \t]*:[ \t]*(?:\*\*)?[ \t]*"
+    r"(?m)^ {0,3}(?:[-*][ \t]+)?(?:\*\*)?Founder GO(?:\*\*)?[ \t]*:[ \t]*(?:\*\*)?[ \t]*"
     r"(?!(?i:none|n/?a|no|not|pending|tbd|todo|requested|needed|required)\b)[^\s<*\[(]"
 )
 _TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
+
+
+def commit_activation_tier(paths: Iterable[str], patch: str, patch_complete: bool) -> int | None:
+    """One landed commit's machine risk class for Founder 1A evidence.
+
+    Uses the presubmit classifier (``machine_declaration``) on the commit's own
+    diff, never the PR body. An empty or uninspectable commit is unknown (None).
+    """
+
+    normalized = [str(path).replace("\\", "/") for path in paths if path]
+    if not normalized or patch_complete is not True:
+        return None
+    return int(machine_declaration(normalized, patch)["machine_minimum_tier"])
+
+
+def _founder_go_prose(body: str) -> str:
+    """Drop HTML comments and fenced code (unterminated ones run to the end)."""
+
+    text = re.sub(r"<!--.*?(?:-->|\Z)", "", body or "", flags=re.DOTALL)
+    return re.sub(r"(?ms)^ {0,3}(`{3,}|~{3,}).*?(?:^ {0,3}\1[^\n]*$|\Z)", "", text)
 
 
 def founder_go_release_evidence(
@@ -1180,9 +1201,10 @@ def founder_go_release_evidence(
     Every commit in ``comparison`` (production...target) must be the squash
     commit of a same-repo, owner-authored PR merged into ``main`` and named by
     the trailing ``(#N)`` of its title. ``machine_tier(sha)`` is that commit's
-    own activation tier; a PR whose machine tier or declared risk is 3 needs a
-    ``Founder GO:`` line in its body. Anything missing,
-    truncated or unknown fails closed (``ok`` False, caller keeps the reviewer
+    presubmit machine class (:func:`commit_activation_tier`); a PR whose machine
+    class or declared risk/tier (presubmit's own :func:`parse_declaration`) is 3
+    needs a ``Founder GO:`` prose line in its body. Anything missing,
+    undeclared, truncated or unknown fails closed (``ok`` False, caller keeps the reviewer
     gate); ``missing`` lists the PRs that only lack a GO.
     """
 
@@ -1215,8 +1237,11 @@ def founder_go_release_evidence(
         if not isinstance(tier, int) or isinstance(tier, bool) or tier not in TIER_VALUES.values():
             return fail(f"PR #{number} has no machine risk class")
         body = str(pr.get("body") or "")
-        declared_risk, _ = parse_declaration(body)
-        if max(tier, declared_risk or 0) >= 3 and not _FOUNDER_GO_RE.search(body):
+        declared_risk, declared_tier = parse_declaration(body)
+        if declared_risk is None or declared_tier is None:
+            # An undeclared PR is unknown risk, never R0.
+            return fail(f"PR #{number} has no Risk-Class/Autonomy-Tier declaration")
+        if max(tier, declared_risk, declared_tier) >= 3 and not _FOUNDER_GO_RE.search(_founder_go_prose(body)):
             missing.append(number)
     if missing:
         listed = ", ".join(f"#{n}" for n in missing)

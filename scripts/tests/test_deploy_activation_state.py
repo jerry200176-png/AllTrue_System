@@ -30,6 +30,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     decide_activation,
     decide_manual_activation,
     environment_protection_is_valid,
+    commit_activation_tier,
     effective_tier,
     founder_go_release_evidence,
     has_rollback_evidence,
@@ -39,6 +40,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     is_control_plane_path,
     is_deployable_path,
     is_production_activation_sensitive_path,
+    machine_declaration,
     parse_declaration,
     reconcile_preexisting_pr_provenance,
 )
@@ -1454,12 +1456,65 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         for body in ("Risk-Class: R3\nAutonomy-Tier: T3", "Founder GO: none", "Founder GO: <who/when>",
                      "> Founder GO: quoted", "Needs Founder GO; not queued"):
             with self.subTest(body=body):
+                body = "Risk-Class: R3\nAutonomy-Tier: T3\n" + body
                 result = self._evidence(self._range(10, 11), {10: self._pr(10), 11: self._pr(11, body)}, {10: 1, 11: 3})
                 self.assertFalse(result["ok"])
                 self.assertEqual(result["missing"], [11])
         # A declared R3 needs a GO even when the machine minimum is lower.
         declared = self._evidence(self._range(11), {11: self._pr(11, "Risk-Class: R3\nAutonomy-Tier: T3")}, {11: 0})
         self.assertEqual(declared["missing"], [11])
+
+    def test_go_only_counts_as_a_prose_line(self):
+        r3 = "Risk-Class: R3\nAutonomy-Tier: T3\n"
+        hidden = {
+            "fence": "```\nFounder GO: Jerry\n```",
+            "tilde fence": "~~~md\nFounder GO: Jerry\n~~~",
+            "unterminated fence": "```\nFounder GO: Jerry",
+            "html comment": "<!--\nFounder GO: Jerry\n-->",
+            "unterminated comment": "<!-- Founder GO: Jerry\nFounder GO: Jerry",
+            "quote": "> Founder GO: Jerry",
+            "indented code": "    Founder GO: Jerry",
+            "mid-line": "see Founder GO: Jerry",
+        }
+        for name, text in hidden.items():
+            with self.subTest(name=name):
+                result = self._evidence(self._range(11), {11: self._pr(11, r3 + text)}, {11: 3})
+                self.assertEqual(result["missing"], [11], result)
+        after_fence = "```\ncode\n```\n**Founder GO:** Jerry 2026-10-07"
+        self.assertTrue(self._evidence(self._range(11), {11: self._pr(11, r3 + after_fence)}, {11: 3})["ok"])
+
+    def test_declared_r3_uses_presubmit_parser_and_missing_declaration_fails_closed(self):
+        for body in ("**Risk-Class:** R3  \n**Autonomy-Tier:** T3", "- Risk-Class :   R3\n- Autonomy-Tier:T3",
+                     "Risk-Class: R1\nAutonomy-Tier: T3"):
+            with self.subTest(body=body):
+                self.assertEqual(parse_declaration(body)[1], 3)
+                result = self._evidence(self._range(11), {11: self._pr(11, body)}, {11: 0})
+                self.assertEqual(result["missing"], [11], result)
+        for body in ("", "Founder GO: Jerry", "Risk-Class: R1"):
+            with self.subTest(body=body):
+                result = self._evidence(self._range(11), {11: self._pr(11, body)}, {11: 0})
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["missing"], [])
+
+    def test_commit_class_is_the_presubmit_machine_class_from_the_diff(self):
+        patch = "diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml\n+++ b/.github/workflows/deploy.yml\n+x"
+        self.assertEqual(commit_activation_tier([".github/workflows/deploy.yml"], patch, True), 3)
+        self.assertEqual(
+            commit_activation_tier(["README.md"], "diff --git a/README.md b/README.md\n+++ b/README.md\n+x", True),
+            int(machine_declaration(["README.md"], "+x")["machine_minimum_tier"]),
+        )
+        self.assertIsNone(commit_activation_tier(["backend/app/X.php"], "", False))
+        self.assertIsNone(commit_activation_tier([], "", True))
+
+    def test_go_evidence_runs_the_deployed_revisions_policy_not_the_targets(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        classify = workflow[workflow.index("  classify-activation:\n"):workflow.index("  release-state:\n")]
+        self.assertIn("ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}\n          path: trusted-policy", classify)
+        self.assertIn('"trusted-policy/scripts/governance/autonomy_gate.py"', classify)
+        self.assertIn("go = trusted.founder_go_release_evidence(", classify)
+        self.assertIn("trusted.commit_activation_tier(", classify)
+        # The target's own import list must not provide the GO evidence.
+        self.assertNotIn("                  founder_go_release_evidence,\n", classify)
 
     def test_unknown_or_untrusted_mapping_fails_closed(self):
         go = "Risk-Class: R3\nAutonomy-Tier: T3\nFounder GO: Jerry"
@@ -1516,6 +1571,8 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         self.assertIn("needs.classify-activation.outputs.go_evidence == 'verified'", job_if)
         self.assertIn("environment:\n      name: production-auto", job)
         self.assertIn("auto_environment_is_valid(", job)
+        self.assertIn("ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}\n          path: trusted-policy", job)
+        self.assertNotIn("from scripts.governance.autonomy_gate import", job)
         deploy_if = workflow[workflow.index("  deploy:\n"):].split("\n")[3]
         self.assertIn("needs.classify-activation.outputs.go_evidence == 'verified' && needs.production-auto.result == 'success'", deploy_if)
         # The reviewer gate is unchanged and still the fallback for a train without evidence.
