@@ -62,6 +62,9 @@ describe('manual course → first lesson (in-app #382)', () => {
   it('course management opens the modal for that course, or says it cannot find it', () => {
     expect(courseMgmt).toContain("} else if (props.initialCourseIntent === 'manual-session') {");
     expect(courseMgmt).toContain('@manual-session="interceptOpenManualSessionCM"');
-    expect(courseMgmt).toMatch(/if \(course\) openManualSessionModal\(course\);\s*else alert\(/);
+    expect(courseMgmt).toMatch(/if \(course\) \{\s*handoffNarrowedList\.value = true;\s*openManualSessionModal\(course\);/);
+    // its own scheduler hands a manual create to the same flow; the narrowed list comes back when the modal closes
+    expect(courseMgmt).toMatch(/async function handleUniversalBackfillSuccess[\s\S]{0,400}pendingManualSessionId\.value = Number\(result\.student_class_id\)/);
+    expect(courseMgmt).toMatch(/if \(handoffNarrowedList\.value\) \{\s*handoffNarrowedList\.value = false;\s*loadCourses\(1\);/);
   });
 });

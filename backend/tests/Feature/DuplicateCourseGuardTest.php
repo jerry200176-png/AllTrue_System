@@ -204,11 +204,6 @@ class DuplicateCourseGuardTest extends TestCase
         $first->assertCreated();
         $courseId = (int) $first->json('student_class_id');
         $this->assertSame(0, \App\Models\ClassSession::where('StudentClassID', $courseId)->count());
-        // A lesson already taught today is not "upcoming": the course still needs its next lesson.
-        \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
-            'StudentClassID' => $courseId, 'SessionDate' => now()->toDateString(), 'StartTime' => '08:00:00',
-            'EndTime' => '09:00:00', 'Status' => 'attended',
-        ]);
 
         $this->withHeaders($headers)->postJson('/api/v1/class-sessions/batch', $payload)
             ->assertStatus(409)

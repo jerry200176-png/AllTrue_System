@@ -424,7 +424,7 @@
                 <td>
                   {{ c.remaining_sessions ?? 0 }} 堂
                   <button
-                    v-if="needsFirstManualLesson(c)"
+                    v-if="needsFirstManualLesson(c) && !isTeacher"
                     type="button"
                     class="btn-secondary btn-sm"
                     @click="showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptOriginalPayload?.student_id, c.existing_course_id)"
@@ -2082,7 +2082,7 @@ const handleUniversalSchedulerSuccess = async (result) => {
   const manual = result?.scheduling_policy === 'manual_occurrence' && result.student_class_id;
   if (!manual || isTeacher.value) await loadCourses(); // a director leaves the page right away for a manual course
   finishCalendarWorkflow(workflowStep);
-  void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: manual ? 'course-mgmt' : 'calendar' });
+  void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: manual && !isTeacher.value ? 'course-mgmt' : 'calendar' });
   if (manual && isTeacher.value) alert('手動排課的第一堂需由主任在「課程查找」按「新增下一堂」排入，排好後就會出現在行事曆。');
   else if (manual) openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
 };

@@ -1625,6 +1625,7 @@ const courses = ref([]);
 const pendingConvertTrialId = ref(0);
 // in-app #382: calendar sends a just-created manual course here to schedule its first lesson.
 const pendingManualSessionId = ref(0);
+const handoffNarrowedList = ref(false);
 const convertTrialStudentId = ref(null);
 const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
 let courseLoadRequestId = 0;
@@ -2164,6 +2165,11 @@ function interceptGoToPurchaseCM(conflict) {
 
 async function handleUniversalBackfillSuccess(result) {
   showBackfillModal.value = false;
+  // in-app #382: a manual course starts with no lesson — open 新增下一堂 for it right away.
+  if (result?.scheduling_policy === 'manual_occurrence' && result.student_class_id) {
+    pendingManualSessionId.value = Number(result.student_class_id);
+    convertTrialStudentId.value = result.student_id ?? null;
+  }
   await loadCourses();
   if (result?.package_id) {
     const memberCount = result?.members?.length ?? 0;
@@ -3311,6 +3317,11 @@ function closeManualSessionModal() {
   manualSessionCheckController = null;
   manualSessionChecking.value = false;
   showManualSessionModal.value = false;
+  // A manual-session handoff loaded only that student's courses; bring the filtered list back (#382).
+  if (handoffNarrowedList.value) {
+    handoffNarrowedList.value = false;
+    loadCourses(1);
+  }
 }
 
 function openMonthlySessionModal(course) {
@@ -5338,8 +5349,13 @@ watch(coursesLoading, (loading) => {
   const course = courses.value.find((c) => c.id === pendingManualSessionId.value);
   pendingManualSessionId.value = 0;
   convertTrialStudentId.value = null;
-  if (course) openManualSessionModal(course);
-  else alert('找不到這門課，請清除篩選後在課程卡按「新增下一堂」。');
+  if (course) {
+    handoffNarrowedList.value = true;
+    openManualSessionModal(course);
+    return;
+  }
+  alert('找不到這門課，請清除篩選後在課程卡按「新增下一堂」。');
+  loadCourses(1);
 });
 watch(coursesLoading, (loading) => {
   if (loading || !pendingConvertTrialId.value) return;

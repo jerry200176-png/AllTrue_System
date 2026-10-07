@@ -305,16 +305,15 @@ class ManualSessionBookingService
     }
 
     /**
-     * Upcoming live lessons this course can still book against (package-wide for a package member).
-     * $upcomingOnly also drops lessons already taught today (attended/completed/late/absent) — in-app #382 asks
-     * "is anything still coming?", not "how much capacity is used".
+     * Live lessons from today this course books against (package-wide for a package member). Also the
+     * duplicate prompt's future_session_count (in-app #382): the same number check() uses, so 新增下一堂 is only
+     * offered when booking can succeed.
      */
-    public function reservedSessionCount(StudentClass $course, string $today, bool $upcomingOnly = false): int
+    public function reservedSessionCount(StudentClass $course, string $today): int
     {
         $query = ClassSession::query()
             ->whereDate('SessionDate', '>=', $today)
-            ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
-            ->when($upcomingOnly, fn ($q) => $q->whereNotIn('Status', ['attended', 'completed', 'late', 'absent']));
+            ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses());
 
         $packageId = (int) $course->getAttribute('PackageID');
         if ($packageId > 0) {
