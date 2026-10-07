@@ -69,8 +69,10 @@ def test_cross_reference_sourcerefs_are_not_ownership():
                      body="SourceRef: alltrue:bug_report:363 (In-App #363).\nRELATED: alltrue:bug_report:359 / #3204"),
                comments=[{"body": "Related earlier SourceRef: alltrue:bug_report:136. evidence"},
                          {"body": "Cross-SourceRef update for `alltrue:bug_report:365` (read-only)"},
-                         {"body": "**SourceRef:** `alltrue:bug_report:370`\nshared issue second report"}])
-    assert reconcile_mod.inapp_ids(iss) == [363, 370], reconcile_mod.inapp_ids(iss)
+                         {"body": "**SourceRef:** `alltrue:bug_report:370`\nshared issue second report"},
+                         {"body": "## SourceRef: alltrue:bug_report:11\n1. SourceRef: alltrue:bug_report:12"},
+                         {"body": "`SourceRef: alltrue:bug_report:8`\nSourceRef: alltrue:bug_report:17, alltrue:bug_report:18"}])
+    assert reconcile_mod.inapp_ids(iss) == [8, 11, 12, 17, 18, 363, 370], reconcile_mod.inapp_ids(iss)
 
 if __name__ == "__main__":
     test_reconcile_classes()

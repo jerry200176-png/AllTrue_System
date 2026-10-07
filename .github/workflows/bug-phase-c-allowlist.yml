@@ -994,9 +994,10 @@ jobs:
           d = json.load(sys.stdin)
           ids = {int(x) for m in re.finditer(r"in-app\s*#\d+(?:\s*/\s*#\d+)*", d["title"], re.I) for x in re.findall(r"#(\d+)", m.group(0))}
           for t in [d.get("body") or ""] + [c.get("body") or "" for c in d.get("comments") or []]:
-              # Ownership = a line that starts with a SourceRef declaration (same rule as scripts/inapp-issue-reconcile.py);
-              # cross-references such as "Related earlier SourceRef" or "Cross-SourceRef update" are not ownership.
-              ids |= {int(x) for x in re.findall(r"^[ \t>*_-]*SourceRef[*_ ]*:?[*_ ]*`?alltrue:bug_report:(\d+)", t, re.M)}
+              # Ownership = SourceRefs on a line that starts with a SourceRef declaration (same rule as
+              # scripts/inapp-issue-reconcile.py); "Related earlier SourceRef" / "Cross-SourceRef" lines are not ownership.
+              for line in re.findall(r"^[ \t>*_#.)0-9`-]*SourceRef\b.*$", t, re.M):
+                  ids |= {int(x) for x in re.findall(r"alltrue:bug_report:(\d+)", line)}
           print(" ".join(str(i) for i in sorted(ids - {int(x) for x in os.environ["CHECKED"].split(",")})))')"
             if [[ -n "$unchecked" ]]; then echo "skip #$n: also maps unchecked in-app $unchecked"; continue; fi
             # Close first, then comment: a rerun sees CLOSED and never re-posts the notice.
