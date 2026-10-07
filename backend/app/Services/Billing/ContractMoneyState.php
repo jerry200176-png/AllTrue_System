@@ -125,69 +125,22 @@ final class ContractMoneyState
     }
 
     /**
-     * Batch-fetch Invoice paid aggregates per StudentClass ID.
+     * Thin delegates kept for StudentClassController (frozen); the aggregates live in the resolver.
      *
      * @param  int[]  $studentClassIds
      * @return array<int, array{paid_amount: int, total_amount: int, active_invoice_count: int, outstanding_amount: int}>
      */
     public static function invoiceAggregateByStudentClassIds(array $studentClassIds): array
     {
-        if (empty($studentClassIds)) {
-            return [];
-        }
-
-        $rows = DB::table('Invoice')
-            ->whereIn('StudentClassID', $studentClassIds)
-            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
-            ->select(
-                'StudentClassID',
-                DB::raw('COALESCE(SUM(PaidAmount), 0) as paid_amount'),
-                DB::raw('COALESCE(SUM(TotalAmount), 0) as total_amount'),
-                DB::raw('COUNT(*) as active_invoice_count')
-            )
-            ->groupBy('StudentClassID')
-            ->get();
-
-        $map = [];
-        foreach ($rows as $row) {
-            $map[(int) $row->StudentClassID] = [
-                'paid_amount' => (int) $row->paid_amount,
-                'total_amount' => (int) $row->total_amount,
-                'active_invoice_count' => (int) $row->active_invoice_count,
-                'outstanding_amount' => max(0, (int) $row->total_amount - (int) $row->paid_amount),
-            ];
-        }
-
-        return $map;
+        return app(\App\Services\BillingPayableResolver::class)->invoiceAggregateByStudentClassIds($studentClassIds);
     }
 
     /**
-     * Batch-fetch the latest Payment.PaidAt (Y-m-d) per StudentClass ID via Invoice.StudentClassID -> Payment.InvoiceID.
-     *
      * @param  int[]  $studentClassIds
-     * @return array<int, string>  only classes that have a dated payment
+     * @return array<int, string>
      */
     public static function lastPaidAtByStudentClassIds(array $studentClassIds): array
     {
-        if (empty($studentClassIds)) {
-            return [];
-        }
-
-        $rows = DB::table('Invoice')
-            ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
-            ->whereIn('Invoice.StudentClassID', $studentClassIds)
-            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
-            ->select('Invoice.StudentClassID', DB::raw('MAX(Payment.PaidAt) as last_paid_at'))
-            ->groupBy('Invoice.StudentClassID')
-            ->get();
-
-        $map = [];
-        foreach ($rows as $row) {
-            if ($row->last_paid_at) {
-                $map[(int) $row->StudentClassID] = substr($row->last_paid_at, 0, 10);
-            }
-        }
-
-        return $map;
+        return app(\App\Services\BillingPayableResolver::class)->lastPaidAtByStudentClassIds($studentClassIds);
     }
 }
