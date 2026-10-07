@@ -3438,29 +3438,8 @@ class StudentClassController extends Controller
             return response()->json(['message' => 'Only financial-authorized staff may set transaction discounts.'], 403);
         }
 
-        return DB::transaction(function () use ($request, $studentClass, $data) {
-            $lockedStudentClass = StudentClass::where('ID', $studentClass->ID)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            $payload = array_merge($data['payload'], ['mode' => $data['mode']]);
-            $preview = app(ContractRenewal::class)->preview($lockedStudentClass, $payload, $this->currentActorId(), (string) $request->attributes->get('auth_role'));
-
-            if ($preview['state_hash'] !== $data['state_hash'] || $preview['preview_id'] !== $data['preview_id']) {
-                return response()->json([
-                    'message' => '課程狀態已變更，請重新預覽後再確認。',
-                    'preview' => app(ContractRenewal::class)->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request)),
-                ], 409);
-            }
-
-            if ($preview['severity'] === 'blocked') {
-                return response()->json([
-                    'message' => '此續報目前不可執行。',
-                    'preview' => app(ContractRenewal::class)->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request)),
-                ], 422);
-            }
-
-            if ($data['mode'] === 'purchase_batch') {
+        $execute = function (string $mode, array $payload, array $preview, StudentClass $lockedStudentClass) use ($request) {
+            if ($mode === 'purchase_batch') {
                 $originalInput = $request->all();
                 $request->replace([
                     'sessions'   => $payload['sessions'] ?? null,
@@ -3469,7 +3448,7 @@ class StudentClassController extends Controller
                     'discount'   => $payload['discount'] ?? null,
                 ]);
                 try {
-                    $response = $this->purchaseBatch($request, $lockedStudentClass);
+                    return $this->purchaseBatch($request, $lockedStudentClass);
                 } finally {
                     $request->replace($originalInput);
                 }
@@ -3481,38 +3460,17 @@ class StudentClassController extends Controller
                     'discount' => $payload['discount'] ?? null,
                 ]);
                 try {
-                    $response = $this->renewMonthly($request, $lockedStudentClass);
+                    return $this->renewMonthly($request, $lockedStudentClass);
                 } finally {
                     $request->replace($originalInput);
                 }
             }
+        };
 
-            $status = $response->getStatusCode();
-            $result = method_exists($response, 'getData') ? $response->getData(true) : [];
-            if ($status >= 400) {
-                return $response;
-            }
-
-            return response()->json([
-                'receipt_id' => substr(hash('sha256', ($preview['preview_id'] ?? '') . '|' . now()->timestamp), 0, 16),
-                'message' => $result['message'] ?? '續報已完成',
-                'mode' => $data['mode'],
-                'preview_id' => $preview['preview_id'],
-                'source_course' => $result['source_course'] ?? $preview['source_course'],
-                'new_course' => $result['new_course'] ?? null,
-                'invoice' => $data['mode'] === 'renew_monthly'
-                    ? ($result['invoice'] ?? ($preview['billing']['invoice'] ?? null))
-                    : null,
-                'schedule' => [
-                    'created_sessions' => $result['created_sessions'] ?? ($preview['schedule']['created_sessions'] ?? 0),
-                    'first_session_date' => $result['new_course']['first_session_date'] ?? ($preview['schedule']['first_session_date'] ?? null),
-                    'last_session_date' => $result['new_course']['last_session_date'] ?? ($preview['schedule']['last_session_date'] ?? null),
-                ],
-                'next_actions' => $data['mode'] === 'purchase_batch'
-                    ? ['view_new_course', 'record_payment']
-                    : ['view_invoices', 'record_payment'],
-            ], $status);
-        });
+        return app(ContractRenewal::class)->confirm(
+            $studentClass, $data, $this->currentActorId(), (string) $request->attributes->get('auth_role'),
+            $this->canApplyTransactionDiscount($request), $execute
+        );
     }
 
     /**
