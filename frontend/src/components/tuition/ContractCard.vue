@@ -6,13 +6,16 @@
     </header>
 
     <div class="contract__money" data-testid="contract-money">
-      <span>未繳 <strong :class="{ due: outstanding > 0 }">{{ money(outstanding) }}</strong></span>
-      <template v-if="pendingReportId">
-        <span class="contract__chip pay-partial">家長說繳了，等你確認</span>
+      <span v-if="noObligation" class="contract__muted">輔導課不用繳費</span>
+      <span v-else-if="outstanding > 0">未繳 <strong class="due">{{ money(outstanding) }}</strong></span>
+      <span v-else-if="!course.paid" class="contract__muted">還沒開帳單，金額待確認</span>
+      <span v-else>已收清</span>
+      <template v-if="pendingReport">
+        <span class="contract__chip pay-partial">家長說繳了 {{ money(pendingReport.amount) }}，等你確認</span>
         <button type="button" class="contract__btn" :disabled="busy" data-testid="contract-confirm" @click="decide('confirm')">確認入帳</button>
         <button type="button" class="contract__btn contract__btn--ghost" :disabled="busy" data-testid="contract-reject" @click="decide('reject')">退回</button>
       </template>
-      <button v-else-if="outstanding > 0 || !course.paid" type="button" class="contract__btn" data-testid="contract-record" @click="$emit('record', course)">登記收款</button>
+      <button v-else-if="!noObligation && (outstanding > 0 || !course.paid)" type="button" class="contract__btn" data-testid="contract-record" @click="$emit('record', course)">登記收款</button>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
@@ -66,7 +69,7 @@ import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocum
 const props = defineProps({
   course: { type: Object, required: true },
   outstanding: { type: Number, default: 0 },
-  pendingReportId: { type: Number, default: null },
+  pendingReport: { type: Object, default: null },
 });
 const emit = defineEmits(['changed', 'record']);
 
@@ -150,6 +153,7 @@ async function saveMemo() {
 }
 
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
+const noObligation = computed(() => data.value?.class_type === 'tutoring');
 const busy = ref(false);
 const actionError = ref('');
 
@@ -164,7 +168,7 @@ async function decide(action) {
   busy.value = true;
   actionError.value = '';
   try {
-    const resp = await authedFetch(`/api/v1/payment-reports/${Number(props.pendingReportId)}/${action}`, {
+    const resp = await authedFetch(`/api/v1/payment-reports/${Number(props.pendingReport.report_id)}/${action}`, {
       method: 'PUT',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

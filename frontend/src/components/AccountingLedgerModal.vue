@@ -75,7 +75,7 @@
                 :key="c.id"
                 :course="c"
                 :outstanding="owedFor(c.id)"
-                :pending-report-id="pendingReportFor(c.id)"
+                :pending-report="pendingReportFor(c.id)"
                 @record="openEntry"
                 @changed="onPanelChanged"
               />
@@ -434,7 +434,7 @@ const owedFor = (id) => (payload.value?.invoices || [])
   .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
 const pendingReportFor = (id) => {
   const r = (payload.value?.receipts || []).find((x) => Number(x.student_class_id) === Number(id) && x.status === 'pending');
-  return r ? Number(r.report_id) : null;
+  return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0) } : null;
 };
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
@@ -445,8 +445,10 @@ const entryRow = ref(null);
 function openEntry(course) {
   // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
   const oldest = (payload.value?.invoices || [])
-    .filter((inv) => Number(inv.student_class_id) === Number(course.id) && Number(inv.outstanding_amount || 0) > 0)
-    .sort((a, b) => String(a.due_date || a.billing_period || '').localeCompare(String(b.due_date || b.billing_period || '')))[0];
+    // directorRecord rejects invoices already marked paid or void.
+    .filter((inv) => Number(inv.student_class_id) === Number(course.id) && Number(inv.outstanding_amount || 0) > 0 && !['paid', 'void'].includes(inv.status))
+    .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
+      || Number(a.id) - Number(b.id))[0];
   entryRow.value = {
     id: course.id,
     charge: course.charge,

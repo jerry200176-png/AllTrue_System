@@ -95,9 +95,10 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
 
   it('confirms a pending report in place', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE)).mockResolvedValueOnce(respond({}));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, outstanding: 3000, pendingReportId: 77 } });
+    const w = mount(ContractCard, { props: { course: { id: 9 }, outstanding: 3000, pendingReport: { report_id: 77, amount: 1000 } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+    expect(w.text()).toContain('家長說繳了 NT$ 1,000，等你確認');
     await w.find('[data-testid="contract-confirm"]').trigger('click');
     await flushPromises();
     const [url, init] = authedFetch.mock.calls[1];
@@ -109,7 +110,7 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
   it('rejects with a reason and shows server errors', async () => {
     vi.stubGlobal('prompt', () => '金額不對');
     authedFetch.mockResolvedValueOnce(respond(COVERAGE)).mockResolvedValueOnce(respond({ message: '已處理過' }, 422));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, pendingReportId: 77 } });
+    const w = mount(ContractCard, { props: { course: { id: 9 }, pendingReport: { report_id: 77, amount: 1000 } } });
     await flushPromises();
     await w.find('[data-testid="contract-reject"]').trigger('click');
     await flushPromises();
@@ -146,6 +147,46 @@ describe('AccountingLedgerModal 登記收款', () => {
     const entry = w.findComponent({ name: 'PaymentEntryModal' });
     expect(entry.props('show')).toBe(true);
     expect(entry.props('row')).toMatchObject({ id: 2, invoice_id: 5, payable_amount: 3000, payable_status: 'invoiced' });
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('ContractCard money states (#3731 review)', () => {
+  it('tutoring shows no payment action', async () => {
+    authedFetch.mockResolvedValueOnce(respond({ ...COVERAGE, class_type: 'tutoring' }));
+    const w = mount(ContractCard, { props: { course: { id: 9, paid: false }, outstanding: 0 } });
+    await flushPromises();
+    expect(w.text()).toContain('輔導課不用繳費');
+    expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+  });
+
+  it('unbilled debt is not shown as NT$ 0', async () => {
+    authedFetch.mockResolvedValueOnce(respond(COVERAGE));
+    const w = mount(ContractCard, { props: { course: { id: 9, paid: false }, outstanding: 0 } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-money"]').text()).toContain('還沒開帳單，金額待確認');
+    expect(w.find('[data-testid="contract-money"]').text()).not.toContain('NT$ 0');
+  });
+});
+
+describe('AccountingLedgerModal invoice pick (#3731 review)', () => {
+  it('skips paid-status invoices and breaks ties oldest id first', async () => {
+    const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
+    authedFetch.mockResolvedValue(respond({ sessions: [], unscheduled_count: 0 }));
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't' }));
+    vi.stubGlobal('fetch', vi.fn(async () => respond({
+      summary: {}, scope: {}, receipts: [], anomalies: [], student: { name: '學生' },
+      courses: [{ id: 2, subject: '數學', paid: false }],
+      invoices: [
+        { id: 9, student_class_id: 2, outstanding_amount: 500, status: 'paid', payments: [] },
+        { id: 8, student_class_id: 2, outstanding_amount: 2000, status: 'unpaid', payments: [] },
+        { id: 7, student_class_id: 2, outstanding_amount: 3000, status: 'unpaid', payments: [] },
+      ],
+    })));
+    const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 2 }, global: { stubs: { Transition: false } } });
+    await flushPromises();
+    await w.find('[data-testid="contract-record"]').trigger('click');
+    expect(w.findComponent({ name: 'PaymentEntryModal' }).props('row')).toMatchObject({ invoice_id: 7 });
     vi.unstubAllGlobals();
   });
 });
