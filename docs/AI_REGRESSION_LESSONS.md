@@ -13,6 +13,13 @@ last_reviewed: 2026-09-05
 - **強制規則**：月結預設計費月份一律走 `MonthlyBillingService::defaultPeriodFor()`（錨定日夾在合約期間內）；新增任何「沒有帳單時用哪個月」的路徑都要呼叫它，不可再寫 `today()->format('Y-m')`。
 - **測試必補**：已結束月結合約、無帳單、今天在下個月：繳費單依該合約當月已上堂數計價，主任登記該金額成功。
 
+### R145. 帳單迴圈必須 eager-load items；`resolve()` 會逐張帳單 lazy-load（GitHub #3454，2026-10-07）
+
+- **現象**：帳務中心、繳費提醒、付款回報、課程帳單列表的查詢數隨帳單數線性成長（8 列時提醒 34 次、帳本 16 次 InvoiceItem 查詢）。
+- **根因層級**：`InvoiceAmountReconciliationService::resolve()` 在 `items` 關聯未載入時逐張查詢；各呼叫端的 `Invoice::with([...])` 漏了 `items`。
+- **強制規則**：任何把多張帳單送進 `resolve()`（或經 `BillingPayableResolver`）的迴圈，查詢必須 `with('items')`。
+- **測試必補**：`InvoiceItemsEagerLoadQueryCountTest`——帳單數增加時 InvoiceItem 查詢數不得成長；守護端點：`alerts/tuition`、`accounting/settled-courses`、`accounting/ledger`、`payment-reports`、`student-classes/{id}/invoices`（逐一移除其 `items` eager-load 已驗證會失敗）。未覆蓋：`AccountingController::waiveCourse`（寫入路徑）與 `UnpaidHiddenClosuresStrategy`（維運清單），新增類似迴圈須自行補測。
+
 ### R143. 建立後「沒有任何堂次」的課必須從建立的入口直接排第一堂（in-app #382，2026-10-07）
 
 - **現象**：主任在行事曆用「逐堂手動排課」新增 1 堂輔導，課程建立了但行事曆上看不到；再排一次跳出「此學生已有進行中的課程」，只提供加購或仍要新增。
