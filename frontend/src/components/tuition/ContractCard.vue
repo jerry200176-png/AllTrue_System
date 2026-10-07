@@ -64,6 +64,7 @@
 import { computed, ref, watch } from 'vue';
 import { authedFetch } from '../../lib/authedFetch.js';
 import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
+import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 
 const props = defineProps({
@@ -159,28 +160,18 @@ const actionError = ref('');
 
 // PRD v2 D9/D20: step 2 (確認入帳 / 退回) happens right here, no tab switch.
 async function decide(action) {
-  let body = {};
+  let note = '';
   if (action === 'reject') {
-    const reason = window.prompt('請輸入退回原因：');
-    if (!reason || !reason.trim()) return;
-    body = { rejection_note: reason.trim() };
+    note = (window.prompt('請輸入退回原因：') || '').trim();
+    if (!note) return;
   }
   busy.value = true;
   actionError.value = '';
-  try {
-    const resp = await authedFetch(`/api/v1/payment-reports/${Number(props.pendingReport.report_id)}/${action}`, {
-      method: 'PUT',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(json.message || `操作失敗（${resp.status}）`);
-    emit('changed');
-  } catch (e) {
-    actionError.value = humanizeApiErrorMessage(e.message || '操作失敗');
-  } finally {
-    busy.value = false;
-  }
+  const reportId = props.pendingReport.report_id;
+  const res = action === 'reject' ? await rejectReport(reportId, note) : await confirmReport(reportId);
+  busy.value = false;
+  if (res.ok) emit('changed');
+  else actionError.value = res.message;
 }
 
 watch(() => props.course.id, load, { immediate: true });
