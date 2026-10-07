@@ -100,6 +100,8 @@ class DirectorLedgerCoverageDatesTest extends TestCase
         $this->assertSame(['no_invoice'], array_values(array_unique($noBill->json('sessions.*.payment'))));
         $this->assertSame('家長要求週二上課', $noBill->json('memo'));
         $this->assertSame(3, $noBill->json('unscheduled_count'));
+        $this->assertSame('2026-09-01', $noBill->json('start_date'));
+        $this->assertSame('count', $noBill->json('schedule_mode'));
 
         $invoice = $this->invoiceFor($student, $course);
         Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 3000, 'PaidAt' => '2026-09-05', 'Method' => 'cash']);
