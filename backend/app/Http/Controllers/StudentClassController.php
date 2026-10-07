@@ -1811,6 +1811,8 @@ class StudentClassController extends Controller
                     'end_date' => $candidate->getAttribute('ScheduleMode') === 'date'
                         ? ContractSessionSchedule::normalizeDateString($candidate->getAttribute('EndDate'))
                         : null,
+                    // Same inputs syncFutureScheduledSessionTimes() gets, so the guard predicts its remap (#3502).
+                    'contract_sync' => ['slots' => $slots, 'duration' => max(30, (int) ($candidate->getAttribute('SessionDuration') ?? 120))],
                 ]);
                 if (!empty($recurringConflicts)) {
                     return response()->json([
