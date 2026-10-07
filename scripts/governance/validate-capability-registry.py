@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -14,6 +15,8 @@ REQUIRED = [
 ]
 HIGH_RISK = {"high"}
 PROVEN = "Proven"
+# Warn this many days before a high-risk review_after hard-fails every PR (#3491).
+EXPIRY_WARN_DAYS = 7
 
 
 def parse_day(s: str) -> date:
@@ -55,6 +58,12 @@ def main() -> int:
             else:
                 print(f"WARN: {msg}")
                 warnings += 1
+        elif str(cap.get("risk", "")).lower() in HIGH_RISK and (review_after - today).days < EXPIRY_WARN_DAYS:
+            msg = (f"high-risk capability {cid} review_after={review_after} "
+                   f"hard-fails in {(review_after - today).days + 1} day(s); re-verify it now")
+            prefix = "::warning::" if os.environ.get("GITHUB_ACTIONS") else "WARN: "
+            print(f"{prefix}{msg}")
+            warnings += 1
     if errors:
         print(f"capability-registry: FAIL errors={errors} warnings={warnings}")
         return 1

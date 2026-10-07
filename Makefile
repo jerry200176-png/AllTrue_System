@@ -14,6 +14,7 @@ test-gov:
 	npm run test:gov
 
 validate-capabilities:
+	python3 scripts/tests/test_validate_capability_registry.py
 	python3 scripts/governance/validate-capability-registry.py
 
 overlay-pin:
