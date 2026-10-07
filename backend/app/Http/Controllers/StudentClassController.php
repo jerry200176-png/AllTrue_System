@@ -5267,6 +5267,21 @@ class StudentClassController extends Controller
             }
         }
 
+        // The target usually continues the same weekly slot (a renewal): a refill overlapping its live lesson would
+        // make the write guard 422 the whole transfer (in-app #380), so those slots are skipped. A clash with an
+        // unrelated course is still planned, so upsertSlot() rolls the transfer back and names the conflict.
+        $targetRows = [];
+        $target = StudentClass::query()->find($targetId);
+        // Same live-row rules as the write guard: a stopped target holds nothing.
+        $targetLive = (int) ($target?->getAttribute('Stop') ?? 0) === 1 ? collect() : ClassSession::query()->where('StudentClassID', $targetId)
+            ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
+            ->when(ContractSessionSchedule::normalizeDateString($target?->getAttribute('StartDate')), fn ($q, $d) => $q->whereDate('SessionDate', '>=', $d))
+            ->when(ContractSessionSchedule::normalizeDateString($target?->getAttribute('EndDate')), fn ($q, $d) => $q->whereDate('SessionDate', '<=', $d))
+            ->get(['SessionDate', 'StartTime', 'EndTime']);
+        foreach ($targetLive as $row) {
+            $targetRows[(string) ContractSessionSchedule::normalizeDateString($row->SessionDate)][] = [(string) $row->StartTime, (string) $row->EndTime];
+        }
+
         $planned = [];
         $cursor = $anchorDate->copy()->addDay();
         $guard = 0;
@@ -5285,12 +5300,7 @@ class StudentClassController extends Controller
                 }
 
                 $end = $start->copy()->addMinutes((int) $slot['dur']);
-                // The target usually continues the same weekly slot (a renewal); a refill onto its lesson would make
-                // the write guard 422 the whole transfer (in-app #380). Skip only that: a clash with an unrelated
-                // course is still planned, so upsertSlot() rolls the transfer back and names the conflict.
-                $conflict = app(ClassSessionMaterializationService::class)
-                    ->findStudentSlotConflict($source, $cursor->toDateString(), $start->format('H:i:s'), $end->format('H:i:s'));
-                if ($conflict && $conflict->conflictCourseId === $targetId) {
+                if ($this->overlapsAny($targetRows[$cursor->toDateString()] ?? [], $start->format('H:i:s'), $end->format('H:i:s'))) {
                     continue;
                 }
                 $planned[] = [
@@ -5307,6 +5317,18 @@ class StudentClassController extends Controller
         }
 
         return $planned;
+    }
+
+    /** @param  array<int, array{0: string, 1: string}>  $rows  [start, end] H:i(:s) */
+    private function overlapsAny(array $rows, string $start, string $end): bool
+    {
+        foreach ($rows as [$s, $e]) {
+            if (substr($s, 0, 5) < substr($end, 0, 5) && substr($e, 0, 5) > substr($start, 0, 5)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
