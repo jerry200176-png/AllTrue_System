@@ -30,7 +30,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     decide_activation,
     decide_manual_activation,
     environment_protection_is_valid,
-    commit_activation_tier,
+    commit_effective_class,
     effective_tier,
     evaluate_founder_go_range,
     founder_go_release_evidence,
@@ -44,6 +44,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     machine_declaration,
     parse_declaration,
     reconcile_preexisting_pr_provenance,
+    validate_declaration,
 )
 
 
@@ -1421,7 +1422,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
     """Founder 1A (2026-10-07): no manual approve when every merged PR is R0-R2 or GO'd."""
 
     REPO = "jerry200176-png/AllTrue_System"
-    R3 = "Risk-Class: R3\nAutonomy-Tier: T3\nRollback: revert the PR\n"
+    R3 = "Risk-Class: R3\nAutonomy-Tier: T3\nRollback: revert this PR\n"
     HEAD = "e" * 40
 
     def go(self, n=11, head=HEAD):
@@ -1434,7 +1435,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
     def _pr(self, n, body="Risk-Class: R1\nAutonomy-Tier: T1", **overrides):
         pr = {
             "number": n, "merge_commit_sha": f"{n:040x}", "merged_at": "2026-10-07T01:00:00Z",
-            "last_edited_at": "2026-10-07T00:00:00Z", "base": {"ref": "main"},
+            "last_edited_at": "2026-10-07T00:00:00Z", "last_editor": "jerry200176-png", "base": {"ref": "main"},
             "head": {"repo": {"full_name": self.REPO}}, "author_association": "OWNER", "body": body,
         }
         pr.update(overrides)
@@ -1443,7 +1444,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
     def _evidence(self, comparison, pulls, tiers, scope=lambda approved, sha: True):
         return founder_go_release_evidence(
             repo=self.REPO, comparison=comparison, fetch_pr=lambda n: pulls[n],
-            machine_tier=lambda sha: tiers.get(int(sha, 16)), scope_matches=scope,
+            effective_class=lambda sha, body: tiers.get(int(sha, 16)), scope_matches=scope,
         )
 
     def _one(self, body, tier=3, **overrides):
@@ -1452,7 +1453,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
     def test_all_r0_r2_or_founder_go_activates_automatically(self):
         result = self._evidence(
             self._range(10, 11, 12),
-            {10: self._pr(10), 11: self._pr(11, self.R3 + "**" + self.go()[:11] + "**" + self.go()[11:]),
+            {10: self._pr(10), 11: self._pr(11, self.R3 + self.go()),
              12: self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2")},
             {10: 1, 11: 3, 12: 2},
         )
@@ -1468,32 +1469,50 @@ class FounderGoAutoActivationTest(unittest.TestCase):
             "fence": "```\n" + self.go() + "\n```", "unterminated fence": "```\n" + self.go(),
             "html comment": "<!--\n" + self.go() + "\n-->", "quote": "> " + self.go(),
             "indented code": "    " + self.go(), "mid-line": "see " + self.go(),
+            "bold": "**Founder GO:**" + self.go()[11:], "list item": "- " + self.go(),
+            # Codex P1: a fence "closer" with trailing text does not close it.
+            "info-string closer": "```text\n```still-fenced\n" + self.go() + "\n```",
+            "comment inside fence": "```\n<!--\n```\n-->\n```\n" + self.go(),
+            "raw html pre": "<pre>\n" + self.go() + "\n</pre>",
         }
         for name, text in bad.items():
             with self.subTest(name=name):
                 self.assertEqual(self._one(self.R3 + text)["missing"], [11])
         self.assertTrue(self._one(self.R3 + "```\ncode\n```\n" + self.go())["ok"])
+        self.assertTrue(self._one(self.R3 + "<!-- a -->\n~~~~\n```\n~~~~\n" + self.go())["ok"])
 
     def test_go_needs_rollback_evidence_and_the_approved_scope(self):
-        self.assertEqual(self._one("Risk-Class: R3\nAutonomy-Tier: T3\n" + self.go())["missing"], [11])
+        for rollback in ("", "Rollback: impossible\n", "Rollback: no rollback exists\n", "Rollback: revert this PR (impossible)\n",
+                         "```\nRollback: revert this PR\n```\n"):
+            with self.subTest(rollback=rollback):
+                body = "Risk-Class: R3\nAutonomy-Tier: T3\n" + rollback + self.go()
+                self.assertEqual(self._one(body)["missing"], [11])
         seen = []
         result = self._evidence(self._range(11), {11: self._pr(11, self.R3 + self.go())}, {11: 3},
                                 scope=lambda approved, sha: seen.append((approved, sha)) or False)
         self.assertEqual(result["missing"], [11])
         self.assertEqual(seen, [(self.HEAD, f"{11:040x}")])
 
-    def test_effective_class_is_max_of_machine_and_declaration(self):
-        for body in ("Risk-Class: R0\nAutonomy-Tier: T0", "**Risk-Class:** R1\n**Autonomy-Tier:** T1"):
+    def test_effective_class_is_presubmits_validate_declaration_on_the_merged_diff(self):
+        protected = [{"filename": ".github/workflows/deploy.yml", "patch": "@@ -1 +1 @@\n+x"}]
+        docs = [{"filename": "docs/a.md", "patch": "@@ -1 +1 @@\n+x"}]
+        paths, patch = [".github/workflows/deploy.yml"], "diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml\n@@ -1 +1 @@\n+x"
+        self.assertEqual(commit_effective_class(self.R3, protected), int(validate_declaration(self.R3, paths, patch)["effective_tier"][1]))
+        self.assertEqual(commit_effective_class(self.R3, protected), 3)
+        # A declaration below the machine class is presubmit-invalid: unknown, never lower.
+        for body in ("Risk-Class: R0\nAutonomy-Tier: T0", "**Risk-Class:** R1\n**Autonomy-Tier:** T1", "", "Risk-Class: R1"):
             with self.subTest(body=body):
-                self.assertEqual(self._one(body)["missing"], [11])
-        for body in ("**Risk-Class:** R3  \n**Autonomy-Tier:** T3", "- Risk-Class :   R3\n- Autonomy-Tier:T3",
-                     "Risk-Class: R1\nAutonomy-Tier: T3"):
+                self.assertIsNone(commit_effective_class(body, protected))
+        # A declared R3 raises a low machine class (bold / odd spacing parsed like presubmit).
+        for body in ("**Risk-Class:** R3  \n**Autonomy-Tier:** T3", "- Risk-Class :   R3\n- Autonomy-Tier:T3"):
             with self.subTest(body=body):
-                self.assertEqual(self._one(body, tier=0)["missing"], [11])
-        for body in ("", self.go(), "Risk-Class: R1"):
-            with self.subTest(body=body):
-                self.assertEqual(self._one(body, tier=0), {"ok": False, "missing": [], "reason": self._one(body, tier=0)["reason"]})
-        # Uncomputable machine class counts as R3 without a GO, even with a GO token.
+                self.assertEqual(commit_effective_class(body, docs), 3)
+        renamed = [{"filename": "docs/moved.yml", "previous_filename": ".github/workflows/deploy.yml", "patch": "+x"}]
+        self.assertIsNone(commit_effective_class("Risk-Class: R1\nAutonomy-Tier: T1", renamed))
+        for files in (None, [], [{"filename": "backend/app/X.php"}], [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(300)]):
+            with self.subTest(files=files):
+                self.assertIsNone(commit_effective_class(self.R3, files))
+        # Uncomputable class counts as R3 without a GO, even with a GO token.
         for tier in (None, "3", True, 7):
             with self.subTest(tier=tier):
                 self.assertIn("counts as R3 without a GO", self._one(self.R3 + self.go(), tier=tier)["reason"])
@@ -1505,6 +1524,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
             "other base": {"base": {"ref": "release"}}, "other merge commit": {"merge_commit_sha": "f" * 40},
             "other number": {"number": 99}, "edited after merge": {"last_edited_at": "2026-10-07T02:00:00Z"},
             "edit time unknown": {"last_edited_at": "garbage"},
+            "last edited by a bot": {"last_editor": "cursor"}, "last editor unknown": {"last_editor": None},
         }
         for name, overrides in cases.items():
             with self.subTest(name=name):
@@ -1519,16 +1539,6 @@ class FounderGoAutoActivationTest(unittest.TestCase):
             with self.subTest(comparison=comparison):
                 self.assertFalse(self._evidence(comparison, {11: self._pr(11)}, {11: 1})["ok"])
 
-    def test_commit_class_is_the_presubmit_machine_class_from_the_diff(self):
-        patch = "diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml\n+++ b/.github/workflows/deploy.yml\n+x"
-        self.assertEqual(commit_activation_tier([".github/workflows/deploy.yml"], patch, True), 3)
-        self.assertEqual(commit_activation_tier(["README.md"], "+++ b/README.md\n+x", True),
-                         int(machine_declaration(["README.md"], "+x")["machine_minimum_tier"]))
-        self.assertIsNone(commit_activation_tier(["backend/app/X.php"], "", False))
-        self.assertIsNone(commit_activation_tier([], "", True))
-        many = [f"docs/n{i}.md" for i in range(300)]
-        self.assertIsNone(commit_activation_tier(many, "+x", True))
-
     def _api(self, comparison, detail, pr, approved_files=None, edited=None):
         sha = f"{11:040x}"
 
@@ -1541,21 +1551,23 @@ class FounderGoAutoActivationTest(unittest.TestCase):
                 return dict(detail, parents=[{"sha": "9" * 40}])
             return pr
 
-        graphql = lambda query: {"data": {"repository": {"pullRequest": {"lastEditedAt": edited}}}}
+        graphql = lambda query: {"data": {"repository": {"pullRequest": {
+            "lastEditedAt": edited, "editor": {"login": "jerry200176-png"} if edited else None}}}}
         return dict(repo=self.REPO, base_sha="1" * 40, target_sha="2" * 40, api=api, graphql=graphql)
 
     def test_range_evaluation_fetches_its_own_evidence_and_fails_closed(self):
         comparison = dict(self._range(11), status="ahead")
-        protected = {"files": [{"filename": ".github/workflows/deploy.yml", "patch": "+x"}]}
-        renamed = {"files": [{"filename": "backend/app/Support/EnsureCampus.php", "patch": "+x",
-                              "previous_filename": ".github/workflows/deploy.yml"}]}
+        protected = {"files": [{"filename": ".github/workflows/deploy.yml", "status": "modified", "patch": "@@ -1 +1 @@\n+x"}]}
+        renamed = {"files": [{"filename": "docs/moved.yml", "patch": "+x", "previous_filename": ".github/workflows/deploy.yml"}]}
         good = self._pr(11, self.R3 + self.go())
         self.assertTrue(evaluate_founder_go_range(**self._api(comparison, protected, good))["ok"])
         for name, kwargs in {
             "no GO": dict(comparison=comparison, detail=protected, pr=self._pr(11, "Risk-Class: R1\nAutonomy-Tier: T1")),
             "rename keeps protected source": dict(comparison=comparison, detail=renamed, pr=self._pr(11, "Risk-Class: R1\nAutonomy-Tier: T1")),
             "approved head had another effect": dict(comparison=comparison, detail=protected, pr=good,
-                                                     approved_files=[{"filename": ".github/workflows/deploy.yml", "patch": "+y"}]),
+                                                     approved_files=[{"filename": ".github/workflows/deploy.yml", "status": "modified", "patch": "@@ -1 +1 @@\n+y"}]),
+            "same line at another hunk": dict(comparison=comparison, detail=protected, pr=good,
+                                              approved_files=[{"filename": ".github/workflows/deploy.yml", "status": "modified", "patch": "@@ -9 +9 @@\n+x"}]),
             "behind (downgrade)": dict(comparison=dict(comparison, status="behind"), detail=protected, pr=good),
             "identical": dict(comparison=dict(comparison, status="identical"), detail=protected, pr=good),
             "no file list": dict(comparison=comparison, detail={}, pr=good),

@@ -113,10 +113,11 @@ Founder 1A (2026-10-07): the manual approve is skipped when the deploy run itsel
 verifies (`autonomy_gate.founder_go_release_evidence`) that every commit between the
 production manifest SHA and the target is the squash commit of an owner-authored,
 same-repo PR merged into `main` (trailing `(#N)` + `merge_commit_sha`) whose body was
-not edited after merge, and that each PR whose class (max of the presubmit machine class
-of its diff and its declaration) is 3 has rollback evidence and the exact GO token
-`Founder GO: Jerry YYYY-MM-DD approves #N at <head SHA>`, where that head's effect equals
-the merged commit's. The check runs under both the deployed and the target policy and
+last edited by the owner before merge, and that each PR whose class (presubmit's
+`validate_declaration` on the merged diff) is 3 carries, at column 0 in prose (not in
+fences, comments or raw-text HTML), the exact lines `Rollback: revert this PR` and
+`Founder GO: Jerry YYYY-MM-DD approves #N at <head SHA>`, where that head's diff equals
+the merged commit's exactly. The check runs under both the deployed and the target policy and
 again right before the executor. Such a run
 activates through the reviewer-less, main-only `production-auto` Environment, on a
 merge's own CI (continuous deployment) or on a release train. Any missing, truncated

@@ -1166,72 +1166,99 @@ def is_founder_approval_eligible(
 # A GO is an affirmative prose line naming the Founder and a date, e.g.
 # "Founder GO: Jerry 2026-10-07 \"GO 3702\"". Lines in fences/comments (_founder_go_prose),
 # quotes, indented code, placeholders, strikethrough and negations do not count.
-# Founder 1A GO token, one exact prose line bound to the approved PR and head SHA:
+# Founder 1A GO token: one exact line at column 0, in prose, naming the approved head:
 #   Founder GO: Jerry 2026-10-07 approves #3737 at <40-hex head SHA>
-# Free text never counts (negations cannot be enumerated); fences, comments and
-# quotes are excluded by _founder_go_prose and the line anchor.
+# Free text never counts. Rollback must be the exact line "Rollback: revert this PR".
 _FOUNDER_GO_TOKEN_RE = re.compile(
-    r"(?m)^ {0,3}(?:[-*][ \t]+)?(?:\*\*)?Founder GO:(?:\*\*)?[ \t]+Jerry[ \t]+20[0-9]{2}-[01][0-9]-[0-3][0-9]"
-    r"[ \t]+approves[ \t]+#([1-9][0-9]*)[ \t]+at[ \t]+([0-9a-f]{40})[ \t]*$"
+    r"^Founder GO: Jerry 20[0-9]{2}-[01][0-9]-[0-3][0-9] approves #([1-9][0-9]*) at ([0-9a-f]{40})$"
 )
-
-
-def founder_go_approved_head(body: str, number: int) -> str | None:
-    """Return the head SHA a Founder GO token approves for PR ``number`` (None if absent or ambiguous)."""
-
-    heads = {sha for n, sha in _FOUNDER_GO_TOKEN_RE.findall(_founder_go_prose(body)) if int(n) == number}
-    return heads.pop() if len(heads) == 1 else None
-
-
+_ROLLBACK_TOKEN_RE = re.compile(r"^(?:\*\*)?Rollback:(?:\*\*)? revert this PR\.?$")
+# Raw-text HTML renders its content literally; a body using it never carries a GO.
+_RAW_HTML_RE = re.compile(r"<\s*/?\s*(?:pre|code|textarea|script|style|xmp|plaintext|listing|samp|kbd|tt)\b", re.IGNORECASE)
 _TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
-
-
 _COMMIT_API_FILE_CAP = 300
 
 
-def commit_activation_tier(paths: Iterable[str], patch: str, patch_complete: bool) -> int | None:
-    """One landed commit's machine risk class for Founder 1A evidence.
+def _prose_lines(body: str) -> list[str] | None:
+    """Body lines outside fenced code and HTML comments (CommonMark fences); None if raw HTML is used."""
 
-    Uses the presubmit classifier (``machine_declaration``) on the commit's own
-    diff, never the PR body. An empty, possibly truncated or uninspectable
-    commit is unknown (None): the caller treats it as R3 without a GO.
+    if _RAW_HTML_RE.search(body or ""):
+        return None
+    lines: list[str] = []
+    fence: str | None = None
+    in_comment = False
+    for line in (body or "").replace("\r\n", "\n").split("\n"):
+        opener = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if fence is not None:
+            if opener and opener.group(1)[0] == fence[0] and len(opener.group(1)) >= len(fence) and not opener.group(2).strip():
+                fence = None
+            continue
+        if in_comment:
+            in_comment = "-->" not in line
+            continue
+        if opener and not (opener.group(1)[0] == "`" and "`" in opener.group(2)):
+            fence = opener.group(1)
+            continue
+        if "<!--" in line:
+            in_comment = "-->" not in line[line.index("<!--") + 4:]
+            continue
+        lines.append(line)
+    return lines
+
+
+def founder_go_approved_head(body: str, number: int) -> str | None:
+    """The head SHA a GO token approves for PR ``number``; None if absent, ambiguous or no rollback line."""
+
+    lines = _prose_lines(body)
+    if lines is None or not any(_ROLLBACK_TOKEN_RE.match(line) for line in lines):
+        return None
+    heads = {m.group(2) for m in map(_FOUNDER_GO_TOKEN_RE.match, lines) if m and int(m.group(1)) == number}
+    return heads.pop() if len(heads) == 1 else None
+
+
+def commit_effective_class(body: str, files: object) -> int | None:
+    """Effective class of a merged PR via presubmit's own ``validate_declaration``.
+
+    Same function and patch format as ``check_pr_declaration.py``, applied to the
+    merged commit's files (renamed sources included). Effective = max(machine,
+    declared). Missing, truncated or uninspectable files, or an invalid
+    declaration, give None: the caller counts it as R3 without a GO.
     """
 
-    normalized = [str(path).replace("\\", "/") for path in paths if path]
-    # The commits API lists at most 300 files; a list that long may be truncated.
-    if not normalized or len(normalized) >= _COMMIT_API_FILE_CAP or patch_complete is not True:
+    if not isinstance(files, list) or not files or len(files) >= _COMMIT_API_FILE_CAP:
         return None
-    return int(machine_declaration(normalized, patch)["machine_minimum_tier"])
-
-
-def _founder_go_prose(body: str) -> str:
-    """Drop HTML comments and fenced code (unterminated ones run to the end)."""
-
-    text = re.sub(r"<!--.*?(?:-->|\Z)", "", body or "", flags=re.DOTALL)
-    return re.sub(r"(?ms)^ {0,3}(`{3,}|~{3,}).*?(?:^ {0,3}\1[^\n]*$|\Z)", "", text)
+    if any(not isinstance(item, Mapping) or item.get("patch") is None or not item.get("filename") for item in files):
+        return None
+    paths = [str(item["filename"]) for item in files]
+    patch = "\n".join(f"diff --git a/{path} b/{path}\n{item['patch']}" for path, item in zip(paths, files))
+    paths += [str(item["previous_filename"]) for item in files if item.get("previous_filename")]
+    result = validate_declaration(body, paths, patch)
+    if not result["valid"] or result["effective_tier"] not in TIER_VALUES:
+        return None
+    return TIER_VALUES[result["effective_tier"]]
 
 
 def founder_go_release_evidence(
     *, repo: str, comparison: Mapping[str, object],
-    fetch_pr: Callable[[int], object], machine_tier: Callable[[str], object],
+    fetch_pr: Callable[[int], object], effective_class: Callable[[str, str], object],
     scope_matches: Callable[[str, str], object],
 ) -> dict[str, object]:
     """Founder 1A (2026-10-07): may this undeployed range activate with no human approval?
 
     Every commit in ``comparison`` (production...target) must be the squash
     commit of a same-repo, owner-authored PR merged into ``main``, named by the
-    trailing ``(#N)`` of its title, whose body was not edited after merge
-    (``fetch_pr`` supplies ``last_edited_at``). Effective class = max(presubmit
-    machine class of the commit, :func:`parse_declaration`). A class-3 PR needs
-    rollback evidence and a GO token (:func:`founder_go_approved_head`) whose
-    approved head has the same effect as the merged commit (``scope_matches``).
-    Anything missing, undeclared, truncated or unknown fails closed; ``missing``
-    lists class-3 PRs without a valid GO.
+    trailing ``(#N)`` of its title, whose body was last edited by ``owner``
+    before merge (``fetch_pr`` supplies ``last_edited_at`` / ``last_editor``).
+    ``effective_class(sha, body)`` is :func:`commit_effective_class`. A class-3
+    PR needs a GO token and rollback line (:func:`founder_go_approved_head`)
+    whose approved head has exactly the merged commit's diff (``scope_matches``).
+    Anything else fails closed; ``missing`` lists class-3 PRs without a valid GO.
     """
 
     def fail(reason: str) -> dict[str, object]:
         return {"ok": False, "missing": [], "reason": reason}
 
+    owner = repo.split("/", 1)[0]
     commits = comparison.get("commits")
     if not isinstance(commits, list) or not commits or comparison.get("total_commits") != len(commits):
         return fail("commit list is empty, truncated or unavailable")
@@ -1249,25 +1276,24 @@ def founder_go_release_evidence(
         if (
             merged_at is None
             or "last_edited_at" not in pr
-            or (edited_at is not None and (_parse_timestamp(edited_at) or merged_at) >= merged_at)
+            or (edited_at is not None and (
+                (_parse_timestamp(edited_at) or merged_at) >= merged_at or pr.get("last_editor") != owner
+            ))
             or pr.get("number") != number
             or pr.get("merge_commit_sha") != sha
             or (pr.get("base") or {}).get("ref") != "main"
             or ((pr.get("head") or {}).get("repo") or {}).get("full_name") != repo
             or pr.get("author_association") != "OWNER"
         ):
-            return fail(f"PR #{number} is not an owner PR merged into main as {sha[:10]} with its merge-time body")
-        tier = machine_tier(sha)
-        if not isinstance(tier, int) or isinstance(tier, bool) or tier not in TIER_VALUES.values():
-            return fail(f"PR #{number} machine class unavailable; counts as R3 without a GO")
+            return fail(f"PR #{number} is not an owner PR merged into main as {sha[:10]} with an owner-edited merge-time body")
         body = str(pr.get("body") or "")
-        declared_risk, declared_tier = parse_declaration(body)
-        if declared_risk is None or declared_tier is None:
-            return fail(f"PR #{number} has no Risk-Class/Autonomy-Tier declaration")
-        if max(tier, declared_risk, declared_tier) < 3:
+        tier = effective_class(sha, body)
+        if not isinstance(tier, int) or isinstance(tier, bool) or tier not in TIER_VALUES.values():
+            return fail(f"PR #{number} class unavailable or declaration invalid; counts as R3 without a GO")
+        if tier < 3:
             continue
         approved = founder_go_approved_head(body, number)
-        if not (approved and has_rollback_evidence(body) and scope_matches(approved, sha) is True):
+        if not (approved and scope_matches(approved, sha) is True):
             missing.append(number)
     if missing:
         listed = ", ".join(f"#{n}" for n in missing)
@@ -1275,14 +1301,14 @@ def founder_go_release_evidence(
     return {"ok": True, "missing": [], "reason": "every merged PR is R0-R2 or carries a valid Founder GO"}
 
 
-def _changed_lines(files: object) -> list[tuple[str, str, str]] | None:
-    if not isinstance(files, list) or len(files) >= _COMMIT_API_FILE_CAP:
+def _exact_diff(files: object) -> list[tuple[str, str, str, str]] | None:
+    if not isinstance(files, list) or not files or len(files) >= _COMMIT_API_FILE_CAP:
         return None
-    if any(item.get("patch") is None for item in files):
+    if any(not isinstance(item, Mapping) or item.get("patch") is None for item in files):
         return None
     return sorted(
-        (str(item.get("filename")), str(item.get("previous_filename") or ""), line)
-        for item in files for line in str(item["patch"]).splitlines() if line[:1] in {"+", "-"}
+        (str(item.get("filename")), str(item.get("previous_filename") or ""), str(item.get("status")), str(item["patch"]))
+        for item in files
     )
 
 
@@ -1310,37 +1336,27 @@ def evaluate_founder_go_range(
             details[sha] = api(f"/repos/{repo}/commits/{sha}")
         return details[sha]
 
-    def machine_tier(sha: str) -> int | None:
-        files = detail(sha).get("files")
-        if not isinstance(files, list):
-            return None
-        # A rename keeps its protected source path in the classification.
-        paths = [str(item.get(key)) for item in files for key in ("filename", "previous_filename") if item.get(key)]
-        patch = "\n".join(
-            f"diff --git a/{item.get('filename')} b/{item.get('filename')}\n+++ b/{item.get('filename')}\n{item.get('patch') or ''}"
-            for item in files
-        )
-        return commit_activation_tier(paths, patch, all(item.get("patch") is not None for item in files))
-
     def fetch_pr(number: int) -> Mapping:
         pr = dict(api(f"/repos/{repo}/pulls/{number}"))
-        data = graphql(
-            f'{{repository(owner:"{owner}",name:"{name}"){{pullRequest(number:{number}){{lastEditedAt}}}}}}'
-        )
-        pr["last_edited_at"] = data["data"]["repository"]["pullRequest"]["lastEditedAt"]
+        edit = graphql(
+            f'{{repository(owner:"{owner}",name:"{name}"){{pullRequest(number:{number}){{lastEditedAt editor{{login}}}}}}}}'
+        )["data"]["repository"]["pullRequest"]
+        pr["last_edited_at"] = edit["lastEditedAt"]
+        pr["last_editor"] = (edit.get("editor") or {}).get("login")
         return pr
 
     def scope_matches(approved: str, sha: str) -> bool:
         parents = detail(sha).get("parents") or []
         if len(parents) != 1:
             return False
-        approved_effect = api(f"/repos/{repo}/compare/{parents[0]['sha']}...{approved}").get("files")
-        merged = _changed_lines(detail(sha).get("files"))
-        return merged is not None and _changed_lines(approved_effect) == merged
+        merged = _exact_diff(detail(sha).get("files"))
+        approved_files = api(f"/repos/{repo}/compare/{parents[0]['sha']}...{approved}").get("files")
+        return merged is not None and _exact_diff(approved_files) == merged
 
     return founder_go_release_evidence(
         repo=repo, comparison=comparison, fetch_pr=fetch_pr,
-        machine_tier=machine_tier, scope_matches=scope_matches,
+        effective_class=lambda sha, body: commit_effective_class(body, detail(sha).get("files")),
+        scope_matches=scope_matches,
     )
 
 
