@@ -863,6 +863,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R139. 給創辦人的週報只能由正式站唯讀編號組成，且同週重跑必須是更新（in-app 閉環 2A，2026-10-08）
+
+- **現象**：回報量大時，創辦人沒有一頁看得到「這週進來／修好／卡住／又壞」；若直接把回報內容貼進公開 repo 的 issue，會洩漏人名與個資。
+- **強制規則**：週報資料只來自 `bug-sla-weekly-report` 正式站唯讀查詢的整數編號；渲染器遇到非正整數一律失敗（fail closed）。issue 以標題 `in-app 週報 YYYY-Www`（台北時區）作鍵，只重用機器人自己建立的那張，重跑改用 `gh issue edit`。
+- **測試必補**：`scripts/tests/test_inapp_weekly_onepager.py`（週別、各段落、空週、壞資料）與 `scripts/ci/bug-sla-weekly-workflow.test.mjs`（查詢不含文字欄位、issue 權限只在 issue job）。
+
 ### R65. 新增 session 狀態值必須同步全部消費端（`leave_requested` 兩畫面認定分歧）
 
 - **觸發情境**：家長入口送出請假、主任未審核期間（`ClassSession.Status='leave_requested'`，**無** `StudentSingIn` 列）：出缺勤管理把整列過濾掉（看起來已請假），課表與評量／今日待填卻列為待填評量（in-app #194／GitHub #1099，陳品承 7/4 週六 15-17 案例）。
