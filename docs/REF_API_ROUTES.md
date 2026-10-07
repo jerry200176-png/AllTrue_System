@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 494 api/* routes · generated 2026-10-06
+> Source: `php artisan route:list --json` · 495 api/* routes · generated 2026-10-07
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -21,10 +21,11 @@
 |--------|-----|--------|------|
 | POST | `api/internal/opcache-reset` | `Closure` | public |
 
-## /api/v1/accounting (6)
+## /api/v1/accounting (7)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
+| GET | `api/v1/accounting/contracts/{studentClass}/sessions` | `ContractSessionCoverageController@show` | role+campus |
 | POST | `api/v1/accounting/courses/{id}/waive` | `AccountingController@waiveCourse` | role+campus |
 | GET | `api/v1/accounting/ledger` | `AccountingController@ledger` | role+campus |
 | GET | `api/v1/accounting/monthly-drafts` | `AccountingController@monthlyDrafts` | role+campus |
