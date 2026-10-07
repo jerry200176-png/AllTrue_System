@@ -29,14 +29,14 @@ export function checkStates(rollup, required) {
   }));
 }
 
-// pr: {mergeStateStatus, unresolvedThreads, rollup}. Spec order: BEHIND, DIRTY, failed, threads, merge, wait.
+// pr: {mergeStateStatus, unresolvedThreads, rollup}. Spec order: BEHIND, DIRTY, failed, merge, wait.
+// Review threads are advisory (Founder 2026-10-07): required CI decides; threads never drop a PR.
 export function decide(pr, required) {
   if (pr.mergeStateStatus === 'BEHIND') return { action: 'update' };
   if (pr.mergeStateStatus === 'DIRTY') return { action: 'reject', reason: 'conflict', text: 'conflict with main, please merge main and re-add `queue`' };
   const states = checkStates(pr.rollup, required);
   const failed = Object.keys(states).filter((n) => states[n] === 'fail');
   if (failed.length) return { action: 'reject', reason: 'checks', text: `required checks failed: ${failed.join(', ')}. Fix and re-add \`queue\`` };
-  if (pr.unresolvedThreads > 0) return { action: 'reject', reason: 'threads', text: `${pr.unresolvedThreads} unresolved review thread(s). Resolve them and re-add \`queue\`` };
   const allGreen = Object.values(states).every((s) => s === 'pass');
   if (pr.mergeStateStatus === 'CLEAN' && allGreen) return { action: 'merge' };
   return { action: 'wait' };
