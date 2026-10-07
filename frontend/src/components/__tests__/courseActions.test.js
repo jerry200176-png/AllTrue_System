@@ -10,7 +10,7 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
     const m = courseActions(session, { ...base, fallback: 'manage' });
     expect(m.primary).toEqual({ id: 'manage', label: '管理課程' });
     expect(m.groups.map((g) => g.label)).toEqual(['調動', '帳務', '結束']);
-    expect(ids(m).slice(0, 5)).toEqual(['reschedule', 'substitute', 'quick-add', 'transfer', 'duplicate']);
+    expect(ids(m).slice(0, 6)).toEqual(['reschedule', 'substitute', 'manual-session', 'quick-add', 'transfer', 'duplicate']);
   });
 
   it('flag-off rows fall back to 編輯', () => {
@@ -22,6 +22,7 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
     expect(m.primary.id).toBe('resume');
     expect(ids(m)).not.toContain('resume');
     expect(ids(m)).not.toContain('pause');
+    expect(ids(m)[0]).toBe('edit');
   });
 
   it('waived courses cannot resume', () => {
@@ -32,16 +33,20 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
 
   it('scheduling need beats renewal; renewal uses the caller label', () => {
     expect(courseActions(session, { ...base, needsScheduling: true, renewalDue: true }).primary)
-      .toEqual({ id: 'quick-add', label: '補課／補登' });
+      .toEqual({ id: 'manual-session', label: '排課' });
     const renew = courseActions(session, { ...base, renewalDue: true, purchaseLabel: '續報加購' });
     expect(renew.primary).toEqual({ id: 'purchase', label: '續報加購' });
     expect(ids(renew)).not.toContain('purchase');
   });
 
-  it('manual-occurrence and monthly courses get their own scheduling item', () => {
-    expect(ids(courseActions(session, { ...base, isManualOccurrence: true }))).toContain('manual-session');
+  it('scheduling items keep the legacy row/More split per course type', () => {
+    const manual = courseActions(session, { ...base, isManualOccurrence: true });
+    expect(manual.groups[0].items.find((i) => i.id === 'manual-session').label).toBe('＋新增下一堂');
+    expect(ids(manual)).not.toContain('quick-add');
     const monthly = courseActions(session, { isMonthly: true });
+    expect(monthly.groups[0].items.find((i) => i.id === 'manual-session').label).toBe('排月結');
     expect(monthly.groups[0].items.find((i) => i.id === 'monthly-session').label).toBe('新增月結堂次');
+    expect(ids(courseActions(session, {}))).not.toContain('manual-session');
   });
 
   it('a session course that cannot quick-add keeps the item disabled with the reason', () => {

@@ -7,25 +7,30 @@
 export function courseActions(course, caps = {}) {
   const paused = String(course?.status || '').toLowerCase() === 'inactive';
   const canResume = paused && course?.closed_reason !== 'waived';
-  const scheduling = caps.isManualOccurrence
-    ? { id: 'manual-session', label: '＋新增下一堂' }
-    : caps.isMonthly
-      ? { id: 'monthly-session', label: '新增月結堂次' }
+  // 排課 (openManualSessionModal) is the row's former first-class button; 補課／補登 / 新增月結堂次 the More item.
+  const schedule = (caps.isManualOccurrence || caps.isSession || caps.isMonthly)
+    ? { id: 'manual-session', label: caps.isManualOccurrence ? '＋新增下一堂' : caps.isMonthly ? '排月結' : '排課' }
+    : null;
+  const extra = caps.isManualOccurrence ? null
+    : caps.isMonthly ? { id: 'monthly-session', label: '新增月結堂次' }
       : caps.isSession
         ? { id: 'quick-add', label: '補課／補登', ...(caps.canQuickAdd ? {} : { disabled: true, title: caps.quickAddReason || '' }) }
         : null;
   const purchase = { id: 'purchase', label: caps.purchaseLabel || '續約／加購' };
 
-  let primary = { id: caps.fallback === 'manage' ? 'manage' : 'edit', label: caps.fallback === 'manage' ? '管理課程' : '編輯' };
+  const fallback = { id: caps.fallback === 'manage' ? 'manage' : 'edit', label: caps.fallback === 'manage' ? '管理課程' : '編輯' };
+  let primary = fallback;
   if (canResume) primary = { id: 'resume', label: '恢復課程' };
-  else if (caps.needsScheduling && scheduling && !scheduling.disabled) primary = { id: scheduling.id, label: scheduling.label };
+  else if (caps.needsScheduling && schedule) primary = schedule;
   else if (caps.renewalDue) primary = purchase;
 
   const groups = [
     { id: 'move', label: '調動', items: [
+      fallback, // only shown when a state primary displaced it (filtered below when it is the primary)
       { id: 'reschedule', label: '調課' },
       { id: 'substitute', label: '代課' },
-      scheduling,
+      schedule,
+      extra,
       { id: 'transfer', label: '轉課' },
       { id: 'duplicate', label: '換師複製' },
     ] },
