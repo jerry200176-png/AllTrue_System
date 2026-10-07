@@ -1,7 +1,7 @@
 # AllTrue — CLAUDE.md（Claude Code 自動載入）
 
 > 任何 AI 讀取此專案時，先遵守 **[`docs/governance/COMPANY_CONSTITUTION.md`](docs/governance/COMPANY_CONSTITUTION.md)** 與 **[`docs/governance/PRECEDENCE.md`](docs/governance/PRECEDENCE.md)**。  
-> **操作者：** 艦隊 [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md)。T0/T1 可在 required checks、review 與證據通過後由 Agent squash-merge；T2 另需 independent review 與 rollback boundary；T3 / protected 工作在任何 production activation、data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO。Pi SSH 仍禁。
+> **操作者：** 艦隊 [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md)。T0/T1 可在 required checks、review 與證據通過後由 Agent squash-merge；T2 另需 independent review 與 rollback boundary；T3 / protected 工作在任何 production activation、data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO。Pi SSH 只准唯讀（見 R6）。
 > 本檔是 **Claude Code adapter**，**不是**凌駕 Constitution / Control Plane 的最高法。  
 > **🗺️ 任何任務開始前：先讀 `docs/INDEX.md`（導航地圖）。禁止未讀 INDEX 就直接動手。**  
 > **現行工程主線：** [`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) — 不要重寫整個前端／後端；排課資料模型根治見 [`RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)。  
@@ -49,7 +49,7 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 | R3 | 要執行 `git push --force` / `-f` / 直接 push main | ❌ 停。一律推 feature branch，等 PR merge |
 | R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` **完整**還原，禁止部分還原 |
 | R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；正式 migration 須先有 Founder 對確切範圍的批准，再由既有授權的 `deploy.yml` 執行器處理 |
-| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動走隔離 task worktree → PR → CI → 依現行授權由 `deploy.yml` 控制部署 |
+| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動走隔離 task worktree → PR → CI → 依現行授權由 `deploy.yml` 控制部署。**唯讀例外（Founder 2026-10-07）**：只為查 bug 可 SSH/SCP 讀附件、`tinker --execute` 跑 SELECT；禁止任何寫入、`artisan` 寫入指令、R2 指令；每次在對應 issue 留言記錄讀了什麼（只寫 ID，不寫姓名）；讀回的檔案看完即刪 |
 
 ## ⚠️ 4 條黃線（違反 = CI 反覆失敗）
 
@@ -81,7 +81,7 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 |---|---|
 | **本地開發** | WSL2 task worktree — **never** `/home/jerry/alltrue` / `~/alltrue` if it resolves there. Canonical policy: [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md) |
 | **多 agent 並行** | ⛔ 禁止共用 forbidden dirty tree。用 `agent-start alltrue <task-id>` 建立 `/home/jerry/workspace/tasks/alltrue/<task-id>/` 並通過 preflight。見 WORKTREE_POLICY + `AI_REGRESSION_LESSONS` §Y6 |
-| **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼 |
+| **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼；唯讀查資料見 R6 例外 |
 | **部署方式** | `deploy.yml` 是正式應用部署控制面；CI 通過不等於已有正式啟用授權，依實際 environment gate 與完整 production→candidate 風險執行 |
 
 ---

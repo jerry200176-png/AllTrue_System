@@ -40,7 +40,28 @@ class MonthlyBillingService
     public function summarize(Model $course, ?Carbon $anchor = null): array
     {
         $anchor = ($anchor ?? Carbon::today())->copy();
-        return $this->summarizePeriod($course, $anchor->format('Y-m'));
+        return $this->summarizePeriod($course, $this->defaultPeriodFor($course, $anchor));
+    }
+
+    /**
+     * The billing month to price a monthly contract by when no open invoice names
+     * one: the anchor date (default today) clamped into the contract's own
+     * StartDate..EndDate. An ended September contract stays September instead of
+     * being priced as the current month (in-app #377/#378).
+     */
+    public function defaultPeriodFor(Model $course, \DateTimeInterface|string|null $anchor = null): string
+    {
+        $date = Carbon::parse($anchor ?? Carbon::today())->startOfDay();
+        $start = $course->getAttribute('StartDate');
+        $end = $course->getAttribute('EndDate');
+        if ($end && $date->gt(Carbon::parse($end))) {
+            $date = Carbon::parse($end);
+        }
+        if ($start && $date->lt(Carbon::parse($start))) {
+            $date = Carbon::parse($start);
+        }
+
+        return $date->format('Y-m');
     }
 
     /**
