@@ -478,6 +478,17 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '352 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '352 must give a no-names reopen path');
   }
+// Scoped Phase-C for in-app 333 (#3138), 2026-10-07 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            333 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 333 must exist');
+    assert.ok(entry[1].includes('"rev" => "f3aa9efca6b235d0ddf049a29a0fd396eea1bd97"'), '333 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37563232975"'), '333 deploy binding');
+    assert.ok(entry[1].includes('issues/3138'), '333 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '333 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '333 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '333 must give a no-names reopen path');
+  }
 // Shipped 2026-10-03 closeout (engineering tests + production version check only).
   {
     const entry = phaseCSource.match(/\n            295 => \[([\s\S]*?)\n            \],/);
@@ -533,6 +544,16 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '343 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '343 must give a no-names reopen path');
   }
+// Reply template rule (2026-10-07): every new Phase-C reply offers BOTH outcomes, so a
+// successful retest is confirmed instead of waiting for the reporter timeout. IDs below were
+// written before the rule (already sent; not re-sent by decision) and stay as-is.
+{
+  const legacyWithoutConfirm = new Set([242,243,208,211,210,207,205,198,212,214,213,216,217,218,219,220,221,224,225,226,227,228,229,230,231,232,233,234,236,239,244,245,246,247,249,250,252,253,255,256,259,270,257,258,260,261,264,265,266,267,272,275,276,273,274,271,269,262,263,277,279,280,281,282,283,284,287,289,294,298,291,301,307,309,310,312,304,305,306,297,314,313,321,320,324,332,337,323,317,326,335,336,329,339,348,367,362,366,315,353,350,363,325,327,351,347,296,334,318,319,328,292,316,331,370,371,372,373,368,330,293,359,358,365,352,295,374,375,364,343]);
+  for (const m of phaseCSource.matchAll(/\n            (\d+) => \[\n              "reply" => "(.*?)",\n/g)) {
+    if (legacyWithoutConfirm.has(Number(m[1]))) continue;
+    assert.ok(m[2].includes('確認已修好') && m[2].includes('問題仍存在'), `Phase-C reply ${m[1]} must offer 「確認已修好」 and 「問題仍存在」`);
+  }
+}
 console.log('bug-writeback-workflow.test.mjs: ok');
 
 assert.match(phaseCSource,
