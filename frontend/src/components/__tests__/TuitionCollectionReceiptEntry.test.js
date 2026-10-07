@@ -55,7 +55,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
   });
 
   it('admin reported-paid path does not auto-open a receipt', () => {
-    expect(source).toContain('已送出，畫面已切到「等你確認」；請按確認入帳後才會變成已收並開收據');
+    expect(source).toContain('已送出，畫面已切到「${REPORT_STATUS_LABELS.pending}」；請按確認入帳後才會變成${TUITION_STATUS_CONFIG.paid.label}並開收據');
     expect(source).not.toMatch(/if\s*\(result\?\.report_id\)\s*\{[\s\S]*receiptReportId\.value\s*=\s*result\.report_id/);
   });
 
@@ -63,7 +63,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toContain('@pending="onPendingReportConflict"');
     expect(source).toContain("activeTab.value = 'pending_report'");
     expect(source).toContain('畫面已切過去');
-    expect(source).toContain('請按確認入帳後才會變成已收並開收據');
+    expect(source).toContain('請按確認入帳後才會變成${TUITION_STATUS_CONFIG.paid.label}並開收據');
   });
 
   it('shows a stable course reference so duplicate subjects cannot be mistaken for one course', () => {

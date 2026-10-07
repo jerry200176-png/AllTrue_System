@@ -1253,7 +1253,8 @@ const activeTab = ref('action');
 const TAB_DEFS = [
   { key: 'action', label: '待處理' },
   { key: 'all', label: '全部' },
-  { key: 'unpaid', label: TUITION_STATUS_CONFIG.unpaid.label },
+  // The tab also lists partly paid courses (filter below), so it names both.
+  { key: 'unpaid', label: `${TUITION_STATUS_CONFIG.unpaid.label}／${TUITION_STATUS_CONFIG.partial.label}` },
   { key: 'overdue', label: '逾期應收' },
   { key: 'pending_report', label: TUITION_STATUS_CONFIG.pending_report.label },
   { key: 'pending_reconciliation', label: TUITION_STATUS_CONFIG.pending_reconciliation.label },
@@ -2079,14 +2080,14 @@ function formatCourseRef(id) {
 async function onEntryConfirmed(_result) {
   entryOpen.value = false;
   activeTab.value = 'pending_report';
-  showToast('已送出，畫面已切到「等你確認」；請按確認入帳後才會變成已收並開收據');
+  showToast(`已送出，畫面已切到「${REPORT_STATUS_LABELS.pending}」；請按確認入帳後才會變成${TUITION_STATUS_CONFIG.paid.label}並開收據`);
   await loadAlerts();
 }
 
 async function onPendingReportConflict(_result) {
   entryOpen.value = false;
   activeTab.value = 'pending_report';
-  showToast('這筆已經在「等你確認」，畫面已切過去；請按確認入帳，不要重複送出', 'warning');
+  showToast(`這筆已經在「${REPORT_STATUS_LABELS.pending}」，畫面已切過去；請按確認入帳，不要重複送出`, 'warning');
   await loadAlerts();
 }
 

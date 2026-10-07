@@ -4190,7 +4190,7 @@ const paymentStatusButtonLabel = (course) => {
 const paymentNextActionLabel = (course) => {
   if (isTutoringCourse(course)) return '';
   if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
-  if (course?.payment_status === 'pending_report') return '查看待對帳';
+  if (course?.payment_status === 'pending_report') return `查看「${REPORT_STATUS_LABELS.pending}」`;
   return '前往帳務中心';
 };
 const isTutoringCourse = (course) => course?.class_type === 'tutoring';

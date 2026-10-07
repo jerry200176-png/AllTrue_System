@@ -30,7 +30,7 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain("return TUITION_STATUS_CONFIG[status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid'].label;");
     expect(source).toContain('前往帳務中心');
     expect(source).toContain('登記繳費回報');
-    expect(source).toContain('查看待對帳');
+    expect(source).toContain('return `查看「${REPORT_STATUS_LABELS.pending}」`;');
     expect(source).toContain('goToTuitionBilling');
     expect(source).not.toContain('PaymentEntryModal');
     expect(source).not.toContain('>登記已回報</button>');
