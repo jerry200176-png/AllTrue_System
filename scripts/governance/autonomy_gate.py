@@ -1166,28 +1166,21 @@ def is_founder_approval_eligible(
 # A GO is an affirmative prose line naming the Founder and a date, e.g.
 # "Founder GO: Jerry 2026-10-07 \"GO 3702\"". Lines in fences/comments (_founder_go_prose),
 # quotes, indented code, placeholders, strikethrough and negations do not count.
-_FOUNDER_GO_LINE_RE = re.compile(
-    r"(?m)^ {0,3}(?:[-*][ \t]+)?(?:\*\*)?Founder GO(?:\*\*)?[ \t]*:[ \t]*(?:\*\*)?[ \t]*(\S[^\n]*)$"
-)
-_FOUNDER_GO_POSITIVE_RE = re.compile(r"(?=.*\bJerry\b)(?=.*\b20[0-9]{2}-[01][0-9]-[0-3][0-9]\b)")
-# Any negation word anywhere on the GO line voids it (no exemptions: a scope note
-# like "(no open findings)" also falls back to the reviewer gate; phrase GOs positively).
-_FOUNDER_GO_NEGATIVE_RE = re.compile(
-    r"\b(?:none|n/?a|no|not|never|nor|neither|false|pending|tbd|todo|requested|needed|required|"
-    r"declined|denied|rejected|revoked|withdrawn|refused|cancell?ed|retracted|rescinded|vetoed|"
-    r"disapproved|unapproved|without|longer|isn't|wasn't|hasn't|didn't|doesn't|won't|can't)\b",
-    re.IGNORECASE,
+# Founder 1A GO token, one exact prose line bound to the approved PR and head SHA:
+#   Founder GO: Jerry 2026-10-07 approves #3737 at <40-hex head SHA>
+# Free text never counts (negations cannot be enumerated); fences, comments and
+# quotes are excluded by _founder_go_prose and the line anchor.
+_FOUNDER_GO_TOKEN_RE = re.compile(
+    r"(?m)^ {0,3}(?:[-*][ \t]+)?(?:\*\*)?Founder GO:(?:\*\*)?[ \t]+Jerry[ \t]+20[0-9]{2}-[01][0-9]-[0-3][0-9]"
+    r"[ \t]+approves[ \t]+#([1-9][0-9]*)[ \t]+at[ \t]+([0-9a-f]{40})[ \t]*$"
 )
 
 
-def has_founder_go(body: str) -> bool:
-    """Return whether the PR body carries an affirmative Founder GO prose line."""
+def founder_go_approved_head(body: str, number: int) -> str | None:
+    """Return the head SHA a Founder GO token approves for PR ``number`` (None if absent or ambiguous)."""
 
-    return any(
-        "~~" not in value and "<" not in value
-        and _FOUNDER_GO_POSITIVE_RE.match(value) and not _FOUNDER_GO_NEGATIVE_RE.search(value)
-        for value in _FOUNDER_GO_LINE_RE.findall(_founder_go_prose(body))
-    )
+    heads = {sha for n, sha in _FOUNDER_GO_TOKEN_RE.findall(_founder_go_prose(body)) if int(n) == number}
+    return heads.pop() if len(heads) == 1 else None
 
 
 _TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
@@ -1221,17 +1214,19 @@ def _founder_go_prose(body: str) -> str:
 def founder_go_release_evidence(
     *, repo: str, comparison: Mapping[str, object],
     fetch_pr: Callable[[int], object], machine_tier: Callable[[str], object],
+    scope_matches: Callable[[str, str], object],
 ) -> dict[str, object]:
     """Founder 1A (2026-10-07): may this undeployed range activate with no human approval?
 
     Every commit in ``comparison`` (production...target) must be the squash
-    commit of a same-repo, owner-authored PR merged into ``main`` and named by
-    the trailing ``(#N)`` of its title. ``machine_tier(sha)`` is that commit's
-    presubmit machine class (:func:`commit_activation_tier`); a PR whose machine
-    class or declared risk/tier (presubmit's own :func:`parse_declaration`) is 3
-    needs a ``Founder GO:`` prose line in its body. Anything missing,
-    undeclared, truncated or unknown fails closed (``ok`` False, caller keeps the reviewer
-    gate); ``missing`` lists the PRs that only lack a GO.
+    commit of a same-repo, owner-authored PR merged into ``main``, named by the
+    trailing ``(#N)`` of its title, whose body was not edited after merge
+    (``fetch_pr`` supplies ``last_edited_at``). Effective class = max(presubmit
+    machine class of the commit, :func:`parse_declaration`). A class-3 PR needs
+    rollback evidence and a GO token (:func:`founder_go_approved_head`) whose
+    approved head has the same effect as the merged commit (``scope_matches``).
+    Anything missing, undeclared, truncated or unknown fails closed; ``missing``
+    lists class-3 PRs without a valid GO.
     """
 
     def fail(reason: str) -> dict[str, object]:
@@ -1249,41 +1244,57 @@ def founder_go_release_evidence(
             return fail(f"commit {sha[:10] or '?'} has no merged PR number")
         number = int(match.group(1))
         pr = fetch_pr(number)
+        merged_at = _parse_timestamp(pr.get("merged_at")) if isinstance(pr, Mapping) else None
+        edited_at = pr.get("last_edited_at") if isinstance(pr, Mapping) else None
         if (
-            not isinstance(pr, Mapping)
+            merged_at is None
+            or "last_edited_at" not in pr
+            or (edited_at is not None and (_parse_timestamp(edited_at) or merged_at) >= merged_at)
             or pr.get("number") != number
             or pr.get("merge_commit_sha") != sha
-            or not pr.get("merged_at")
             or (pr.get("base") or {}).get("ref") != "main"
             or ((pr.get("head") or {}).get("repo") or {}).get("full_name") != repo
             or pr.get("author_association") != "OWNER"
         ):
-            return fail(f"PR #{number} is not an owner PR merged into main as {sha[:10]}")
+            return fail(f"PR #{number} is not an owner PR merged into main as {sha[:10]} with its merge-time body")
         tier = machine_tier(sha)
         if not isinstance(tier, int) or isinstance(tier, bool) or tier not in TIER_VALUES.values():
             return fail(f"PR #{number} machine class unavailable; counts as R3 without a GO")
         body = str(pr.get("body") or "")
         declared_risk, declared_tier = parse_declaration(body)
         if declared_risk is None or declared_tier is None:
-            # An undeclared PR is unknown risk, never R0.
             return fail(f"PR #{number} has no Risk-Class/Autonomy-Tier declaration")
-        # Effective class = max(machine class of the merged diff, declaration); never lower.
-        if max(tier, declared_risk, declared_tier) >= 3 and not has_founder_go(body):
+        if max(tier, declared_risk, declared_tier) < 3:
+            continue
+        approved = founder_go_approved_head(body, number)
+        if not (approved and has_rollback_evidence(body) and scope_matches(approved, sha) is True):
             missing.append(number)
     if missing:
         listed = ", ".join(f"#{n}" for n in missing)
-        return {"ok": False, "missing": missing, "reason": f"R3 PRs without a Founder GO line: {listed}"}
-    return {"ok": True, "missing": [], "reason": "every merged PR is R0-R2 or carries a Founder GO line"}
+        return {"ok": False, "missing": missing, "reason": f"R3 PRs without a valid Founder GO: {listed}"}
+    return {"ok": True, "missing": [], "reason": "every merged PR is R0-R2 or carries a valid Founder GO"}
+
+
+def _changed_lines(files: object) -> list[tuple[str, str, str]] | None:
+    if not isinstance(files, list) or len(files) >= _COMMIT_API_FILE_CAP:
+        return None
+    if any(item.get("patch") is None for item in files):
+        return None
+    return sorted(
+        (str(item.get("filename")), str(item.get("previous_filename") or ""), line)
+        for item in files for line in str(item["patch"]).splitlines() if line[:1] in {"+", "-"}
+    )
 
 
 def evaluate_founder_go_range(
-    *, repo: str, base_sha: str, target_sha: str, api: Callable[[str], object],
+    *, repo: str, base_sha: str, target_sha: str,
+    api: Callable[[str], object], graphql: Callable[[str], object],
 ) -> dict[str, object]:
-    """Fetch production...target with ``api`` and evaluate Founder 1A evidence.
+    """Fetch production...target and evaluate Founder 1A evidence.
 
-    ``api(path)`` returns parsed GitHub JSON or raises (the caller keeps the
-    reviewer gate on any exception). The target must be strictly ahead of the
-    deployed SHA; each commit's class comes from its own files and patches.
+    ``api(path)`` / ``graphql(query)`` return parsed GitHub JSON or raise (the
+    caller keeps the reviewer gate on any exception). The target must be
+    strictly ahead of the deployed SHA.
     """
 
     if not (_FULL_SHA_RE.fullmatch(base_sha or "") and _FULL_SHA_RE.fullmatch(target_sha or "")):
@@ -1291,22 +1302,45 @@ def evaluate_founder_go_range(
     comparison = api(f"/repos/{repo}/compare/{base_sha}...{target_sha}")
     if not isinstance(comparison, Mapping) or comparison.get("status") != "ahead":
         return {"ok": False, "missing": [], "reason": "target is not strictly ahead of production"}
+    owner, name = repo.split("/", 1)
+    details: dict[str, Mapping] = {}
+
+    def detail(sha: str) -> Mapping:
+        if sha not in details:
+            details[sha] = api(f"/repos/{repo}/commits/{sha}")
+        return details[sha]
 
     def machine_tier(sha: str) -> int | None:
-        detail = api(f"/repos/{repo}/commits/{sha}")
-        files = detail.get("files") if isinstance(detail, Mapping) else None
+        files = detail(sha).get("files")
         if not isinstance(files, list):
             return None
-        paths = [str(item.get("filename") or "") for item in files]
+        # A rename keeps its protected source path in the classification.
+        paths = [str(item.get(key)) for item in files for key in ("filename", "previous_filename") if item.get(key)]
         patch = "\n".join(
-            f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item.get('patch') or ''}"
-            for path, item in zip(paths, files)
+            f"diff --git a/{item.get('filename')} b/{item.get('filename')}\n+++ b/{item.get('filename')}\n{item.get('patch') or ''}"
+            for item in files
         )
         return commit_activation_tier(paths, patch, all(item.get("patch") is not None for item in files))
 
+    def fetch_pr(number: int) -> Mapping:
+        pr = dict(api(f"/repos/{repo}/pulls/{number}"))
+        data = graphql(
+            f'{{repository(owner:"{owner}",name:"{name}"){{pullRequest(number:{number}){{lastEditedAt}}}}}}'
+        )
+        pr["last_edited_at"] = data["data"]["repository"]["pullRequest"]["lastEditedAt"]
+        return pr
+
+    def scope_matches(approved: str, sha: str) -> bool:
+        parents = detail(sha).get("parents") or []
+        if len(parents) != 1:
+            return False
+        approved_effect = api(f"/repos/{repo}/compare/{parents[0]['sha']}...{approved}").get("files")
+        merged = _changed_lines(detail(sha).get("files"))
+        return merged is not None and _changed_lines(approved_effect) == merged
+
     return founder_go_release_evidence(
-        repo=repo, comparison=comparison,
-        fetch_pr=lambda number: api(f"/repos/{repo}/pulls/{number}"), machine_tier=machine_tier,
+        repo=repo, comparison=comparison, fetch_pr=fetch_pr,
+        machine_tier=machine_tier, scope_matches=scope_matches,
     )
 
 

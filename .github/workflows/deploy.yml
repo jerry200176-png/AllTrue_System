@@ -959,7 +959,10 @@ jobs:
                       # Both the deployed policy (a range never judges itself) and the target's
                       # (a merged policy fix takes effect at once) must accept the range.
                       results = [
-                          gate.evaluate_founder_go_range(repo=repo, base_sha=base, target_sha=target, api=gh_api)
+                          gate.evaluate_founder_go_range(
+                              repo=repo, base_sha=base, target_sha=target, api=gh_api,
+                              graphql=lambda query: gh_api("graphql", "-f", f"query={query}"),
+                          )
                           for gate in (trusted, target_gate)
                       ]
                       go = next((result for result in results if not result["ok"]), results[0])
@@ -1262,12 +1265,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Checkout target revision for gate policy
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.resolve-target.outputs.target_sha }}
-          sparse-checkout: scripts/governance
-
       - name: Checkout deployed revision for trusted gate policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1283,37 +1280,23 @@ jobs:
           PHASE: ${{ inputs.phase || '' }}
           MODE: ${{ needs.classify-activation.outputs.mode }}
           GO_EVIDENCE: ${{ needs.classify-activation.outputs.go_evidence }}
-          BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
-          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
         run: |
           set -euo pipefail
-          PYTHONPATH=. python3 - <<'PY'
+          python3 - <<'PY'
           import importlib.util
           import json
           import os
           import subprocess
-
-          import scripts.governance.autonomy_gate as target_gate
 
           spec = importlib.util.spec_from_file_location("trusted_autonomy_gate", "trusted-policy/scripts/governance/autonomy_gate.py")
           trusted = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(trusted)
           auto_environment_is_valid = trusted.auto_environment_is_valid
 
-          repo = os.environ["REPO"]
-          base = f"/repos/{repo}/environments/production-auto"
+          base = f"/repos/{os.environ['REPO']}/environments/production-auto"
 
           def api(path):
               return json.loads(subprocess.check_output(["gh", "api", path], text=True))
-
-          # Re-fetch the range and PR bodies now: a GO removed or revoked since
-          # classification stops this activation (any API error raises and fails the job).
-          for gate in (trusted, target_gate):
-              go = gate.evaluate_founder_go_range(
-                  repo=repo, base_sha=os.environ["BASE_SHA"], target_sha=os.environ["TARGET_SHA"], api=api,
-              )
-              if not go["ok"]:
-                  raise SystemExit(f"production-auto refused: Founder GO evidence no longer holds: {go['reason']}")
 
           policy = api(base).get("deployment_branch_policy") or {}
           names = sorted(str(p.get("name")) for p in api(f"{base}/deployment-branch-policies").get("branch_policies") or [])
@@ -1346,6 +1329,52 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      # Founder 1A: without a reviewer, re-verify the GO evidence right before any
+      # production side effect, under both the deployed and the target policy.
+      - name: Checkout target gate policy for Founder GO recheck
+        if: ${{ needs.production-auto.result == 'success' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve-target.outputs.target_sha }}
+          path: gate-target
+          sparse-checkout: scripts/governance
+      - name: Checkout deployed gate policy for Founder GO recheck
+        if: ${{ needs.production-auto.result == 'success' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          path: gate-trusted
+          sparse-checkout: scripts/governance
+      - name: Recheck Founder GO evidence before production side effects
+        if: ${{ needs.production-auto.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import os
+          import subprocess
+
+          def api(path, *extra):
+              return json.loads(subprocess.check_output(["gh", "api", path, *extra], text=True))
+
+          for root in ("gate-trusted", "gate-target"):
+              spec = importlib.util.spec_from_file_location(f"{root}_gate", f"{root}/scripts/governance/autonomy_gate.py")
+              gate = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(gate)
+              go = gate.evaluate_founder_go_range(
+                  repo=os.environ["REPO"], base_sha=os.environ["BASE_SHA"], target_sha=os.environ["TARGET_SHA"],
+                  api=api, graphql=lambda query: api("graphql", "-f", f"query={query}"),
+              )
+              if not go["ok"]:
+                  raise SystemExit(f"Founder GO evidence no longer holds ({root}): {go['reason']}; nothing deployed")
+          print("Founder GO evidence re-verified under the deployed and target policy")
+          PY
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
