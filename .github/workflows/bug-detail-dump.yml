@@ -1558,15 +1558,36 @@ jobs:
               $teacherId376 = (int)$teachers376[0]; $studentId376 = (int)$students376[0];
               $refKey376 = random_bytes(32);
               $ref376 = fn ($kind, $id) => substr(hash_hmac("sha256", $kind . "|" . (int)$id, $refKey376), 0, 12);
-              $probe376["student_sessions"] = $db::table("ClassSession as cs")->join("StudentClass as sc", "cs.StudentClassID", "=", "sc.ID")
-                ->where("sc.StudentID", $studentId376)->whereDate("cs.SessionDate", "2026-10-09")->orderBy("cs.StartTime")->limit(21)
+              $rows376 = $db::table("ClassSession as cs")->join("StudentClass as sc", "cs.StudentClassID", "=", "sc.ID")
+                ->where("sc.StudentID", $studentId376)->whereDate("cs.SessionDate", "2026-10-09")->orderBy("cs.StartTime")->limit(22)
                 ->get(["cs.id", "cs.Status", "cs.StartTime", "cs.EndTime", "cs.IsContractException", "sc.ID as course_id", "sc.TeacherID",
-                  "sc.ClassType", "sc.ScheduleMode", "sc.Stop", "sc.SubjectID"])
-                ->map(fn ($r) => ["session_ref" => $ref376("cs", $r->id), "course_ref" => $ref376("sc", $r->course_id),
-                  "status" => strtolower((string)$r->Status), "start" => substr((string)$r->StartTime, 0, 5), "end" => substr((string)$r->EndTime, 0, 5),
-                  "is_exception" => (int)($r->IsContractException ?? 0), "course_teacher_is_target" => (int)$r->TeacherID === $teacherId376,
+                  "sc.ClassType", "sc.ScheduleMode", "sc.Stop", "sc.SubjectID", "sc.room_id"]);
+              if ($rows376->count() > 21) {{ throw new \RuntimeException("session row limit exceeded"); }}
+              $guard376 = app(\App\Services\ScheduleGuardService::class);
+              $sub376 = app(\App\Services\SubstituteService::class);
+              // Mirror ClassSessionController substitute path (read-only): campus binding, effective teacher,
+              // cross-campus busy, then the ScheduleGuardService occurrence guard that returns the 409.
+              $probe376["target_teacher_bound_to_campus"] = $sub376->teacherBoundToAny($teacherId376, [3]);
+              $probe376["student_sessions"] = $rows376->map(function ($r) use ($ref376, $teacherId376, $studentId376, $guard376, $sub376, $db) {{
+                $start = substr((string)$r->StartTime, 0, 5); $end = substr((string)$r->EndTime, 0, 5);
+                $effective = \App\Services\SubstituteScheduleService::teacherForOccurrence((int)$r->course_id, "2026-10-09", (int)$r->TeacherID, $start);
+                $existing = $db::table("schedules")->where("student_course_id", (int)$r->course_id)->whereDate("schedule_date", "2026-10-09")
+                  ->where("status", "scheduled")->whereNotNull("original_schedule_id")->whereRaw("SUBSTRING(start_time, 1, 5) = ?", [$start])->value("id");
+                $cross = collect($sub376->detectCrossCampusConflict($teacherId376, "2026-10-09", $start, $end, $existing ? [(int)$existing] : [], $studentId376))
+                  ->filter(fn ($c) => (int)($c["campus_id"] ?? 0) > 0 && (int)$c["campus_id"] !== 3);
+                $conflicts = $guard376->validateScheduleOccurrence(["teacher_id" => $teacherId376, "class_type" => (string)$r->ClassType,
+                  "room_id" => ((int)($r->room_id ?? 0)) ?: null, "branch_id" => 3, "schedule_date" => "2026-10-09", "start_time" => $start,
+                  "end_time" => $end, "exclude_schedule_id" => $existing ? (int)$existing : null, "exclude_student_id" => $studentId376]);
+                return ["session_ref" => $ref376("cs", $r->id), "course_ref" => $ref376("sc", $r->course_id),
+                  "status" => strtolower((string)$r->Status), "start" => $start, "end" => $end,
+                  "is_exception" => (int)($r->IsContractException ?? 0), "contract_teacher_is_target" => (int)$r->TeacherID === $teacherId376,
+                  "effective_teacher_is_target" => (int)$effective === $teacherId376, "existing_substitute_row" => $existing !== null,
                   "class_type" => (string)$r->ClassType, "schedule_mode" => (string)$r->ScheduleMode, "course_stop" => (int)($r->Stop ?? 0),
-                  "subject_id" => (int)$r->SubjectID])->values()->all();
+                  "subject_id" => (int)$r->SubjectID, "has_room" => (int)($r->room_id ?? 0) > 0,
+                  "cross_campus_conflicts" => $cross->map(fn ($c) => ["campus_id" => (int)$c["campus_id"], "start" => substr((string)($c["start_time"] ?? ""), 0, 5),
+                    "end" => substr((string)($c["end_time"] ?? ""), 0, 5)])->values()->all(),
+                  "guard_conflict_types" => collect($conflicts)->map(fn ($c) => (string)($c["type"] ?? "unknown"))->values()->all()];
+              }})->values()->all();
               $busy376 = app(\App\Services\SubstituteService::class)->collectTeacherBusySlotsWithCapacity($teacherId376, "2026-10-09", [], $studentId376);
               if (count($busy376) > 100) {{ throw new \RuntimeException("busy slot limit exceeded"); }}
               $probe376["target_teacher_busy_slots"] = collect($busy376)->map(fn ($slot) => [

@@ -121,9 +121,6 @@ class BugDetailDumpContractTest(unittest.TestCase):
         self.assertIn('if: always()', source)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
     def test_probe_376_is_bug_scoped_read_only_and_name_free(self):
         source = self.source
         gate = source.index('if ($bugId === 376) {{')
@@ -135,7 +132,15 @@ if __name__ == "__main__":
         self.assertIn('"probe_376_teacher_reassign" => $probe376', source)
         self.assertIn('376 => $probe376,', source)
         # Names are matched server-side against the report text and never emitted.
+        # Output statements only (guard *inputs* may carry IDs; they are never returned).
+        output = "\n".join(l for l in block.splitlines() if '$probe376[' in l or 'return [' in l or l.strip().startswith('"'))
         for field in ('"teacher_name" =>', '"student_name" =>', '"teacher_id" =>', '"student_id" =>', '"name" =>', '"Name" =>'):
-            self.assertNotIn(field, block)
+            self.assertNotIn(field, output)
+        self.assertIn('session row limit exceeded', block)
+        self.assertIn('validateScheduleOccurrence', block)
+        self.assertIn('teacherForOccurrence', block)
         for write in ('->insert(', '->update(', '->delete(', '->save(', '->create('):
             self.assertNotIn(write, block)
+
+if __name__ == "__main__":
+    unittest.main()
