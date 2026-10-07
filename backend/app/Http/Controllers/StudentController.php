@@ -577,6 +577,19 @@ class StudentController extends Controller
         return response()->json(['message' => '已綁定卡號', 'student_id' => $student->id]);
     }
 
+    /** in-app #381: directors can release a lost or reassigned card; the card can then be bound elsewhere. */
+    public function unbindCard(Student $student)
+    {
+        if ($deny = $this->denyOutsideCampus($student)) {
+            return $deny;
+        }
+
+        $student->RFID = null;
+        $student->save();
+
+        return response()->json(['message' => '已解除卡片綁定', 'student_id' => $student->id]);
+    }
+
     public function lineBindings(Request $request, Student $student)
     {
         if ($deny = $this->denyOutsideCampus($student)) {

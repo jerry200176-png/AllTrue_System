@@ -320,6 +320,24 @@ class SecurityHardeningTest extends TestCase
             ->assertJsonValidationErrors(['password']);
     }
 
+    /** @test in-app #381: clearing a teacher's per-campus card releases it (UserCampus.RFID becomes NULL). */
+    public function profile_update_clears_teacher_card_for_a_campus(): void
+    {
+        [$token] = $this->makeDirectorToken();
+        $teacher = User::create([
+            'LoginName' => 'teacher-card@x.com',
+            'Name'      => 'TeacherCard',
+            'PSW'       => password_hash('Password1!', PASSWORD_DEFAULT),
+            'type'      => 'T',
+        ]);
+        UserCampus::create(['CampusID' => $this->campus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1, 'RFID' => 'TCARD-381']);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->putJson("/api/v1/profiles/{$teacher->id}", ['rfid_by_branch' => [(string) $this->campus->id => '']])
+            ->assertOk();
+        $this->assertNull(\Illuminate\Support\Facades\DB::table('UserCampus')->where('UserID', $teacher->id)->where('CampusID', $this->campus->id)->value('RFID'));
+    }
+
     // ─── FR-011 Regression: existing short-password account can still login ───
 
     /** @test */

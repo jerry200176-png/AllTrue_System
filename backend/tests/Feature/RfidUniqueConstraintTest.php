@@ -166,4 +166,23 @@ class RfidUniqueConstraintTest extends TestCase
         $this->withHeaders($headers)->getJson("/api/v1/students/{$other->id}/line-bindings")->assertStatus(403);
     }
 
+
+    /** @test in-app #381: a director can release a card, and the freed card can be bound to another student. */
+    public function unbind_card_releases_it_for_reuse_and_respects_campus(): void
+    {
+        $token = $this->makeDirectorToken(1, 'unbindDir@test.com');
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $owner = $this->makeStudent(1, 'CARD-381');
+        $next = $this->makeStudent(1);
+
+        $this->bindCard($token, $next->id, 'CARD-381')->assertStatus(422);
+        $this->withHeaders($headers)->deleteJson("/api/v1/students/{$owner->id}/bind-card")->assertOk();
+        $this->assertNull($owner->fresh()->RFID);
+        $this->bindCard($token, $next->id, 'CARD-381')->assertOk();
+
+        $other = $this->makeStudent(2, 'CARD-OTHER');
+        $this->withHeaders($headers)->deleteJson("/api/v1/students/{$other->id}/bind-card")->assertStatus(403);
+        $this->assertSame('CARD-OTHER', $other->fresh()->RFID);
+    }
+
 }
