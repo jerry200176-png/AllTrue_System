@@ -29,8 +29,8 @@ test('decide: failed check names it; latest rerun wins', () => {
   assert.equal(decide(pr({ rollup: rerun }), req).action, 'merge');
 });
 
-test('decide: unresolved threads reject, pending or missing checks wait', () => {
-  assert.equal(decide(pr({ unresolvedThreads: 2 }), req).reason, 'threads');
+test('decide: unresolved threads never block (advisory), pending or missing checks wait', () => {
+  assert.notEqual(decide(pr({ unresolvedThreads: 2 }), req).reason, 'threads');
   assert.equal(decide(pr({ rollup: [ok[0], { name: 'B', status: 'IN_PROGRESS', conclusion: null }] }), req).action, 'wait');
   assert.equal(decide(pr({ rollup: [ok[0]] }), req).action, 'wait');
   assert.equal(decide(pr({ mergeStateStatus: 'BLOCKED' }), req).action, 'wait');
