@@ -1092,6 +1092,44 @@ class ContractSessionSchedule
     }
 
     /**
+     * Whether syncFutureScheduledSessionTimes() takes the global remap branch (every unlocked row re-laid on the
+     * contract cadence) instead of the per-date planSameDayRemap(). Shared with ScheduleGuardService (#3502).
+     * Unlocked = not locked and regular (an exception exactly on a slot is adopted first). Remap when an unlocked
+     * row sits on a weekday the contract dropped, a date has fewer unlocked rows than that weekday's slots, or a
+     * contract weekday has no unlocked row.
+     *
+     * @param  array<string, array<int, array{id:int, start:string, end:string, exception:bool}>>  $rowsByDate  future 'scheduled' rows by Y-m-d
+     * @param  array<int, array<int, array<string, mixed>>>  $daySlotsByDow  ISO weekday => slots with 'start' and 'end'
+     * @param  array<int, true>  $lockedIds
+     */
+    public static function needsGlobalRemap(array $rowsByDate, array $daySlotsByDow, array $lockedIds): bool
+    {
+        $countByDate = [];
+        foreach ($rowsByDate as $date => $rows) {
+            $dow = (int) Carbon::parse($date)->dayOfWeekIso;
+            $adopted = self::planSameDayRemap($rows, $daySlotsByDow[$dow] ?? [], $lockedIds)['adopted'];
+            foreach ($rows as $r) {
+                if (!isset($lockedIds[(int) $r['id']]) && (!$r['exception'] || isset($adopted[(int) $r['id']]))) {
+                    $countByDate[$date] = ($countByDate[$date] ?? 0) + 1;
+                }
+            }
+        }
+        if ($countByDate === []) {
+            return false;
+        }
+        $weekdays = [];
+        foreach ($countByDate as $date => $count) {
+            $dow = (int) Carbon::parse($date)->dayOfWeekIso;
+            if (empty($daySlotsByDow[$dow]) || count($daySlotsByDow[$dow]) > $count) {
+                return true;
+            }
+            $weekdays[$dow] = true;
+        }
+
+        return (bool) array_diff_key(array_filter($daySlotsByDow), $weekdays);
+    }
+
+    /**
      * Sync only future scheduled sessions' times by weekday mapping.
      * Keeps historical/locked sessions untouched.
      * Supports same-day multi-slot (e.g. Saturday 13:00 + 17:00): pairs
@@ -1149,14 +1187,15 @@ class ContractSessionSchedule
                 ];
             }
         }
+        $daySlotsByDow = array_map(fn ($daySlots) => array_map(function ($slot) {
+            $start = self::normalizeSessionTime($slot['time'], '16:00:00');
+            $end = Carbon::createFromFormat('H:i:s', $start)->addMinutes(max(30, $slot['dur']))->format('H:i:s');
+            return ['start' => $start, 'end' => $end];
+        }, $daySlots), $slotsByWeekday);
+        $needsRemap = self::needsGlobalRemap($rowsByDate, $daySlotsByDow, $lockedBySessionId);
         $plans = [];
         foreach ($rowsByDate as $date => $rows) {
-            $daySlots = array_map(function ($slot) {
-                $start = self::normalizeSessionTime($slot['time'], '16:00:00');
-                $end = Carbon::createFromFormat('H:i:s', $start)->addMinutes(max(30, $slot['dur']))->format('H:i:s');
-                return ['start' => $start, 'end' => $end];
-            }, $slotsByWeekday[(int) Carbon::parse($date)->dayOfWeekIso] ?? []);
-            $plans[$date] = self::planSameDayRemap($rows, $daySlots, $lockedBySessionId);
+            $plans[$date] = self::planSameDayRemap($rows, $daySlotsByDow[(int) Carbon::parse($date)->dayOfWeekIso] ?? [], $lockedBySessionId);
             // Safe adoption / regularization: an exception now exactly on a contract slot joins the regular contract.
             foreach (array_keys($plans[$date]['adopted']) as $id) {
                 $sessionsById[$id]->IsContractException = 0;
@@ -1173,43 +1212,6 @@ class ContractSessionSchedule
             }
             return true;
         })->values();
-
-        $needsRemap = false;
-        $sessionWeekdays = [];
-        $unlockedCountByDate = [];
-        foreach ($unlocked as $session) {
-            $date = self::normalizeDateString($session->SessionDate ?? null);
-            if (!$date) {
-                continue;
-            }
-            $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
-            $sessionWeekdays[$isoDow] = true;
-            $unlockedCountByDate[$date] = ($unlockedCountByDate[$date] ?? 0) + 1;
-            if (!isset($slotsByWeekday[$isoDow])) {
-                $needsRemap = true;
-                break;
-            }
-        }
-
-        if (!$needsRemap && $unlocked->isNotEmpty()) {
-            foreach ($unlockedCountByDate as $date => $countOnDate) {
-                $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
-                $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
-                if (!empty($contractSlotsForDay) && count($contractSlotsForDay) > $countOnDate) {
-                    $needsRemap = true;
-                    break;
-                }
-            }
-        }
-
-        if (!$needsRemap && $unlocked->isNotEmpty()) {
-            foreach (array_keys($slotsByWeekday) as $contractDay) {
-                if (!isset($sessionWeekdays[$contractDay])) {
-                    $needsRemap = true;
-                    break;
-                }
-            }
-        }
 
         if ($needsRemap && $unlocked->isNotEmpty()) {
             $unlockedIds = $unlocked->mapWithKeys(fn ($s) => [(int) $s->id => true])->all();

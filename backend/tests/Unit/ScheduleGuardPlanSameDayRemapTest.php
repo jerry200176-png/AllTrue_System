@@ -110,4 +110,31 @@ class ScheduleGuardPlanSameDayRemapTest extends TestCase
         // Same row on a day the edit doesn't touch: no report.
         self::assertSame([], ScheduleGuardService::planSelfOverlaps([self::row(1, '15:00', '16:30', true)], [], [self::slot('15:00', '16:00')]));
     }
+
+    public function test_needs_global_remap_matches_the_sync_rules(): void
+    {
+        $mon = [self::slot('16:30', '17:30')];
+        $twoRows = ['2026-04-27' => [self::row(1, '15:00', '16:00'), self::row(2, '17:00', '18:00')]]; // a Monday
+        // Excess rows on a covered weekday: same-day plan, no remap.
+        self::assertFalse(ContractSessionSchedule::needsGlobalRemap($twoRows, [1 => $mon], []));
+        // #3502: an added weekday with no rows remaps.
+        self::assertTrue(ContractSessionSchedule::needsGlobalRemap($twoRows, [1 => $mon, 2 => [self::slot('15:00', '16:00')]], []));
+        // A row on a dropped weekday remaps; more slots than rows on a date remaps.
+        self::assertTrue(ContractSessionSchedule::needsGlobalRemap($twoRows, [3 => $mon], []));
+        self::assertTrue(ContractSessionSchedule::needsGlobalRemap($twoRows, [1 => [...$mon, self::slot('18:00', '19:00'), self::slot('19:00', '20:00')]], []));
+        // Locked and off-slot exception rows are not unlocked: nothing to remap.
+        $fixed = ['2026-04-27' => [self::row(1, '15:00', '16:00'), self::row(2, '17:00', '18:00', true)]];
+        self::assertFalse(ContractSessionSchedule::needsGlobalRemap($fixed, [2 => $mon], [1 => true]));
+        // An exception exactly on a slot is adopted and counts as unlocked.
+        $onSlot = ['2026-04-27' => [self::row(2, '16:30', '17:30', true)]];
+        self::assertTrue(ContractSessionSchedule::needsGlobalRemap($onSlot, [1 => $mon, 2 => $mon], []));
+    }
+
+    public function test_remapped_day_keeps_staying_rows_and_fills_free_slots(): void
+    {
+        // Locked 17:00 stays; the 16:30 slot is filled by the remap and overlaps it.
+        self::assertSame([['17:00-18:00', '16:30-17:30']], ScheduleGuardService::planSelfOverlaps([self::row(9, '17:00', '18:00')], [], [self::slot('16:30', '17:30')], true));
+        // Staying row on the slot start with another duration blocks it on a remapped day.
+        self::assertSame([['16:30-18:00', '16:30-17:30']], ScheduleGuardService::planSelfOverlaps([self::row(9, '16:30', '18:00')], [], [self::slot('16:30', '17:30')], true));
+    }
 }
