@@ -4,12 +4,23 @@ import { undoSubstitute } from '../../lib/substituteApi.js';
 
 const FEATURE_SUBSTITUTE_V2 = ((import.meta?.env?.VITE_FEATURE_SUBSTITUTE_V2 ?? '1') + '') !== '0';
 
+/**
+ * in-app #376: the picker offers 「回正班老師」 only when it knows both teachers. original = the contract's
+ * teacher (base course); current = who teaches this occurrence (a substitute row carries its own teacher_id).
+ */
+export function substituteTeacherIds(occurrenceTeacherId, contractTeacherId) {
+  const toId = (v) => Number(v || 0) || null;
+  const current = toId(occurrenceTeacherId) ?? toId(contractTeacherId);
+  return { original_teacher_id: toId(contractTeacherId) ?? current, current_teacher_id: current };
+}
+
 /** #740 Step 7b2a：代課 modal 流程（legacy + V2 + batch） */
 export function useCalendarSubstitute({
   branchId,
   showModal,
   modalForm,
   editingCourseId,
+  courses,
   loadCourses,
   teachers,
   sessionDatesByCourseId,
@@ -74,9 +85,8 @@ export function useCalendarSubstitute({
         session_date: dateStr,
         start_time: (course.start_time || '').toString().slice(0, 5),
         end_time: (course.end_time || '').toString().slice(0, 5),
-        original_teacher_id: course.teacher_id || null,
-        original_teacher_name: teacherDisplayName(course.teacher_id),
-        current_teacher_id: course.teacher_id || null,
+        ...substituteTeacherIds(course.teacher_id, (courses?.value || []).find((c) => c.id === baseId)?.teacher_id),
+        original_teacher_name: teacherDisplayName((courses?.value || []).find((c) => c.id === baseId)?.teacher_id ?? course.teacher_id),
         session_campus_id: Number(branchId.value ?? branchId ?? 0) || null,
         prefill_substitute_teacher_id: dropTeacherId || null,
         prefill_new_date: targetDate,
@@ -209,7 +219,7 @@ export function useCalendarSubstitute({
       session_date: exactDate,
       start_time: (modalForm.value.start_time || '').toString().slice(0, 5),
       end_time: (modalForm.value.end_time || '').toString().slice(0, 5),
-      original_teacher_id: modalForm.value.teacher_id,
+      ...substituteTeacherIds(modalForm.value.occurrence_teacher_id, modalForm.value.teacher_id),
       original_teacher_name: teacherDisplayName(modalForm.value.teacher_id),
       session_campus_id: Number(branchId.value ?? branchId ?? 0) || null,
     };
