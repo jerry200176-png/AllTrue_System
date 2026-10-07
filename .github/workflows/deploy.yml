@@ -10,13 +10,15 @@ on:
     types: [autonomous-production-deploy]
 
   # Release train: one Founder approval per train instead of one per R3 merge.
-  # Hourly 08:00-22:00 Asia/Taipei (00:00-14:00 UTC; Founder 3A 2026-10-07). The next
-  # hour is the retry for a dropped run or a main tip still in CI, so there are no
-  # per-train retry crons. A run stands down if a deploy run is already waiting for
-  # approval, so it never cancels a train under the Founder. Also
-  # `workflow_dispatch phase=release-train`.
+  # Hourly at :17 past, 08:17-22:17 Asia/Taipei (00:17-14:17 UTC; Founder 3A 2026-10-07),
+  # off minute zero where GitHub drops scheduled runs under load. The next hour is the
+  # retry for a dropped run or a main tip still in CI; the last train gets its own
+  # 22:47 retry so a miss does not wait until morning. A run stands down if a deploy
+  # run is already waiting for approval, so it never cancels a train under the
+  # Founder. Also `workflow_dispatch phase=release-train`.
   schedule:
-    - cron: '0 0-14 * * *'
+    - cron: '17 0-14 * * *'
+    - cron: '47 14 * * *'
 
   workflow_dispatch:
     inputs:

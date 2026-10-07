@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import textwrap
 import sys
+import re
 import unittest
 
 
@@ -997,9 +998,18 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
 
     def test_release_train_schedule_and_dispatch_are_wired(self):
-        # Hourly 08:00-22:00 Taipei = 00:00-14:00 UTC; the next hour is the retry (no per-train retry crons).
-        self.assertIn("schedule:\n    - cron: '0 0-14 * * *'\n\n", self.workflow)
-        self.assertEqual(self.workflow.count("    - cron: "), 1)
+        # Founder 3A: a train every hour 08-22 Taipei (00-14 UTC), off minute zero, and a
+        # retry after the last train. Check the schedule's properties, not one literal.
+        crons = re.findall(r"^    - cron: '([^']+)'$", self.workflow, re.M)
+        fires = set()
+        for expr in crons:
+            minute, hour = expr.split()[:2]
+            self.assertNotEqual(minute, "0", f"{expr} runs at minute zero")
+            lo, _, hi = hour.partition("-")
+            fires.update((int(h), int(minute)) for h in range(int(lo), int(hi or lo) + 1))
+        self.assertEqual({h for h, _ in fires}, set(range(0, 15)))
+        last = max(fires)
+        self.assertTrue(any(h == last[0] and m > last[1] for h, m in fires) or len([f for f in fires if f[0] == 14]) > 1)
         # A run never cancels a train already awaiting approval.
         self.assertIn("another deploy run is already waiting for approval; standing down", self.workflow)
         self.assertIn("- release-train", self.workflow)

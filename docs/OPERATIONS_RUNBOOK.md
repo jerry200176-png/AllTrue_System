@@ -46,8 +46,8 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
    ```
 5. **PR merge 後**：`deploy.yml` 依風險分類處理。R0–R2 自動部署；需要 Founder
    approval 的改動**不再每次 merge 各要一次核准**，改搭「發車班表（release train）」：
-   每天 08:00–22:00 每整點（台北，UTC 00:00–14:00）`schedule` 只取「main 最新 commit」（它的 main CI 必須已綠燈；
-   還沒綠就這班不發，下個整點即是重試；已有一班在等核准就讓路），用同一個 PR 分類器分級後，在
+   每天 08:17–22:17 每小時一班（台北，UTC 00:17–14:17；避開整點壅塞，最後一班 22:47 再重試一次）`schedule` 只取「main 最新 commit」（它的 main CI 必須已綠燈；
+   還沒綠就這班不發，下一班即是重試；已有一班在等核准就讓路），用同一個 PR 分類器分級後，在
    `production-activation` Environment 等 Founder 核准一次；急件可手動
    `workflow_dispatch phase=release-train confirm=RELEASE_TRAIN`。核准的是那一個
    exact SHA；核准期間 main 前進不會讓它作廢，只要 main 仍包含它（compare 為
