@@ -1482,7 +1482,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, periodPaymentLabel, TUITION_STATUS_CONFIG, WAIVED_LABEL,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, TUITION_STATUS_CONFIG, WAIVED_LABEL,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -4183,8 +4183,9 @@ const paymentStatusButtonLabel = (course) => {
   if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
   if (monthlyPaymentLabel(course)) return monthlyPaymentLabel(course);
   if (course?.payment_status === 'review_required') return '付款期間待確認';
+  // Course-level badge: the tuition label map (periodPaymentLabel is for dated monthly rows).
   const status = course?.payment_status;
-  return periodPaymentLabel(status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid');
+  return TUITION_STATUS_CONFIG[status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid'].label;
 };
 const paymentNextActionLabel = (course) => {
   if (isTutoringCourse(course)) return '';

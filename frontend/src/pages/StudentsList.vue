@@ -990,7 +990,7 @@ import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled } from '../lib/paymentStatus.js';
 import {
   closedReason as effectiveClosedReason, courseProgress, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
-  modalRemainingSessions, ownRemainingSessions, periodPaymentLabel, poolTotalSessions, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG, WAIVED_LABEL,
+  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG, WAIVED_LABEL,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1294,8 +1294,9 @@ const paymentStatusButtonLabel = (course) => {
   if (isTutoringCourse(course)) return '無須繳費';
   if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
   if (isCourseSettled(course) === null) return '繳費狀態載入中';
+  // Course-level badge: the tuition label map (periodPaymentLabel is for dated monthly rows).
   const status = course?.payment_status;
-  return periodPaymentLabel(status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid');
+  return TUITION_STATUS_CONFIG[status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid'].label;
 };
 const paymentNextActionLabel = (course) => {
   if (isTutoringCourse(course) || isCourseSettled(course) === null) return '';
