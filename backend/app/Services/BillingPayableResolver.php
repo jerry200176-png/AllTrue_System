@@ -221,7 +221,7 @@ class BillingPayableResolver
             ->where(function ($query) {
                 $query->whereNull('Status')->orWhere('Status', '!=', 'void');
             })
-            ->with(['payments' => function ($query) {
+            ->with(['items', 'payments' => function ($query) {
                 $query->select(['id', 'InvoiceID', 'Amount', 'Method']);
             }])
             ->whereIn('StudentClassID', $ids->all())
