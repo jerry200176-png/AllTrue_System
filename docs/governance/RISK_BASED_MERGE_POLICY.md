@@ -109,20 +109,12 @@ bypass disabled, and main-only deployment branch policy. Workflow-dispatch typed
 confirmation remains only for exceptional manual phases; it is not a second
 normal approval path. No fake reviewer or admin bypass is introduced.
 
-Founder 1A (2026-10-07): the manual approve is skipped when the deploy run itself
-verifies (`autonomy_gate.founder_go_release_evidence`) that every commit between the
-production manifest SHA and the target is the squash commit of an owner-authored,
-same-repo PR merged into `main` (trailing `(#N)` + `merge_commit_sha`) whose body was
-last edited by the owner before merge, and that each PR whose class (presubmit's
-`validate_declaration` on the merged diff) is 3 carries, at column 0 in prose (not in
-fences, comments or raw-text HTML), the exact lines `Rollback: revert this PR` and
-`Founder GO: Jerry YYYY-MM-DD approves #N at <head SHA>`, where that head's diff equals
-the merged commit's exactly. The check runs under both the deployed and the target policy and
-again right before the executor. Such a run
-activates through the reviewer-less, main-only `production-auto` Environment, on a
-merge's own CI (continuous deployment) or on a release train. Any missing, truncated
-or unavailable evidence keeps the unchanged `production-activation` reviewer gate, and
-the run summary names the PRs that lack a GO.
+Founder 1A (2026-10-07): a deploy run skips the manual approve and uses the reviewer-less,
+main-only `production-auto` Environment only when `autonomy_gate.evaluate_founder_go_range`
+(see its docstrings for the exact evidence and GO token) accepts every PR between the
+production manifest SHA and the target, under both the deployed and the target policy,
+again right before the executor. Anything else keeps the unchanged `production-activation`
+reviewer gate, and the run summary names the PRs that lack a GO.
 
 This governance change itself is T3: it must pass the governance cool-off and
 protected review process before its new capability is used in production.

@@ -1234,13 +1234,7 @@ def founder_go_approved_head(body: str, number: int, merged_at: datetime | None 
 
 
 def commit_effective_class(body: str, files: object) -> int | None:
-    """Effective class of a merged PR via presubmit's own ``validate_declaration``.
-
-    Same function and patch format as ``check_pr_declaration.py``, applied to the
-    merged commit's files (renamed sources included). Effective = max(machine,
-    declared). Missing, truncated or uninspectable files, or an invalid
-    declaration, give None: the caller counts it as R3 without a GO.
-    """
+    """Effective class (max of machine, declared) via presubmit's own ``validate_declaration`` and patch format; None = unknown."""
 
     if not isinstance(files, list) or not files or len(files) >= _COMMIT_API_FILE_CAP:
         return None
@@ -1260,17 +1254,8 @@ def founder_go_release_evidence(
     fetch_pr: Callable[[int], object], effective_class: Callable[[str, str], object],
     scope_matches: Callable[[str, str], object],
 ) -> dict[str, object]:
-    """Founder 1A (2026-10-07): may this undeployed range activate with no human approval?
-
-    Every commit in ``comparison`` (production...target) must be the squash
-    commit of a same-repo, owner-authored PR merged into ``main``, named by the
-    trailing ``(#N)`` of its title, whose body was last edited by ``owner``
-    before merge (``fetch_pr`` supplies ``last_edited_at`` / ``last_editor``).
-    ``effective_class(sha, body)`` is :func:`commit_effective_class`. A class-3
-    PR needs a GO token and rollback line (:func:`founder_go_approved_head`)
-    whose approved head has exactly the merged commit's diff (``scope_matches``).
-    Anything else fails closed; ``missing`` lists class-3 PRs without a valid GO.
-    """
+    """Founder 1A: every commit is an owner PR squash-merged into main, body last edited by the owner
+    before merge; class-3 PRs need a GO token bound to their exact diff (``scope_matches``). Fails closed."""
 
     def fail(reason: str) -> dict[str, object]:
         return {"ok": False, "missing": [], "reason": reason}
@@ -1355,12 +1340,7 @@ def evaluate_founder_go_range(
     *, repo: str, base_sha: str, target_sha: str,
     api: Callable[[str], object], graphql: Callable[[str], object],
 ) -> dict[str, object]:
-    """Fetch production...target and evaluate Founder 1A evidence.
-
-    ``api(path)`` / ``graphql(query)`` return parsed GitHub JSON or raise (the
-    caller keeps the reviewer gate on any exception). The target must be
-    strictly ahead of the deployed SHA.
-    """
+    """Fetch production...target via ``api``/``graphql`` (which raise on error) and evaluate Founder 1A evidence."""
 
     if not (_FULL_SHA_RE.fullmatch(base_sha or "") and _FULL_SHA_RE.fullmatch(target_sha or "")):
         return {"ok": False, "missing": [], "reason": "deployed or target SHA is invalid"}
