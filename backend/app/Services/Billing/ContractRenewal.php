@@ -6,7 +6,10 @@ use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\ClassSessionMaterializationService;
+use App\Services\MonthlyRenewalPeriodService;
 use App\Services\Scheduling\ContractSessionSchedule;
+use App\Services\SessionDeductionService;
 use App\Services\TransactionDiscountCalculator;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -493,11 +496,563 @@ final class ContractRenewal
             ]);
     }
 
+    /**
+     * purchase_batch money transaction: lock the source, create the separate unpaid batch course and its sessions.
+     * Returns the HTTP status and JSON body for the controller to send.
+     *
+     * @param array<string, mixed>|null $discountInput
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function purchaseBatch(StudentClass $studentClass, int $sessions, string $startDate, string $mode, string $newClassType, ?array $discountInput, int $actorId, string $actorRole): array
+    {
+        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $mode, $newClassType, $discountInput, $actorId, $actorRole) {
+            $studentClass = $this->lockCourse((int) $studentClass->ID);
+
+            $duplicate = $this->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions);
+            if ($duplicate !== null) {
+                return $this->reply([
+                    'message' => '偵測到相同學生、科目、開課日與堂數的既有批次，請先確認是否已續報過。',
+                    'errors' => [
+                        'duplicate' => ['已存在相同條件的續報批次。'],
+                    ],
+                    'duplicate_course' => [
+                        'id' => (int) $duplicate->ID,
+                        'start_date' => ContractSessionSchedule::normalizeDateString($duplicate->StartDate),
+                        'end_date' => ContractSessionSchedule::normalizeDateString($duplicate->EndDate),
+                        'session_count' => (int) ($duplicate->SessionCount ?? 0),
+                        'remaining_sessions' => (int) ($duplicate->RemainingSessions ?? 0),
+                        'paid' => (int) ($duplicate->Paid ?? 0),
+                    ],
+                ], 409);
+            }
+
+            $rate = (float) ($studentClass->Rate ?? 0);
+            $rateUnit = (string) ($studentClass->rate_unit ?? 'session');
+            $globalDur = (int) ($studentClass->SessionDuration ?? 120);
+
+            $totalHours = 0;
+            $charge = 0;
+            if ($rateUnit === 'hour') {
+                $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
+                $durSum = 0;
+                $slotCount = max(1, count($slots));
+                foreach ($slots as $slot) {
+                    $durSum += !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $globalDur;
+                }
+                $avgDur = $durSum / $slotCount;
+                $totalHours = (int) round(($sessions * $avgDur) / 60);
+                $charge = (int) round($rate * $totalHours);
+            } else {
+                $totalHours = (int) ($studentClass->SessionDuration ? round(($sessions * $globalDur) / 60) : ($studentClass->TotalHours ?? 0));
+                $charge = (int) round($rate * $sessions);
+            }
+
+            $discountSnapshot = app(TransactionDiscountCalculator::class)->calculate(
+                max(0, $charge), $discountInput, $actorId, $actorRole
+            );
+            $newPayload = [
+                'StudentID' => (int) $studentClass->StudentID,
+                'GradeID' => (int) ($studentClass->GradeID ?? 1),
+                'SubjectID' => (int) ($studentClass->SubjectID ?? 1),
+                'TeacherID' => (int) ($studentClass->TeacherID ?? 0),
+                'by1' => (int) ($studentClass->by1 ?? 1),
+                'Period' => (int) ($studentClass->Period ?? 4),
+                'StartDate' => $startDate,
+                'EndDate' => null,
+                'week' => $studentClass->week,
+                'time' => $studentClass->time,
+                'week1' => $studentClass->week1,
+                'time1' => $studentClass->time1,
+                'week2' => $studentClass->week2,
+                'time2' => $studentClass->time2,
+                'week3' => $studentClass->week3,
+                'time3' => $studentClass->time3,
+                'week4' => $studentClass->week4,
+                'time4' => $studentClass->time4,
+                'week5' => $studentClass->week5,
+                'time5' => $studentClass->time5,
+                'week6' => $studentClass->week6,
+                'time6' => $studentClass->time6,
+                'duration1' => $studentClass->duration1,
+                'duration2' => $studentClass->duration2,
+                'duration3' => $studentClass->duration3,
+                'duration4' => $studentClass->duration4,
+                'duration5' => $studentClass->duration5,
+                'duration6' => $studentClass->duration6,
+                'TotalHours' => $totalHours,
+                'Memo' => $studentClass->Memo,
+                'Charge' => $discountSnapshot['final_amount'],
+                'Pay' => 0,
+                'PayDate' => null,
+                'Paid' => 0,
+                'Disconunt' => null,
+                'Rate' => $rate,
+                'rate_unit' => $rateUnit,
+                'LearnTimeID' => $studentClass->LearnTimeID,
+                'room_id' => $studentClass->room_id,
+                'settlement_day' => $studentClass->settlement_day,
+                'monthly_sessions' => $studentClass->monthly_sessions,
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'count',
+                'SessionCount' => $sessions,
+                'SessionDuration' => $globalDur,
+                'RemainingSessions' => $sessions,
+                'ClassType' => $newClassType,
+                'UsedSessions' => 0,
+                'pricing_snapshot' => $discountSnapshot,
+            ];
+
+            $newCourse = $this->createCourseRecord($newPayload);
+            $newCourse->initializePricingSnapshot($discountSnapshot);
+
+            // ── Build ClassSession rows for the new course ──
+            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($newCourse);
+            if (empty($slots)) {
+                $isoDow = (int) Carbon::parse($startDate)->dayOfWeekIso;
+                $fallbackTime = ContractSessionSchedule::normalizeSessionTime($newCourse->time ?? null, '16:00');
+                $slots = [['weekday' => $isoDow, 'time' => substr($fallbackTime, 0, 5)]];
+                if ($globalDur >= 30) {
+                    $slots[0]['duration_minutes'] = $globalDur;
+                }
+            }
+            $builtSessions = ContractSessionSchedule::buildSessionsForCount(
+                (int) $newCourse->ID, $startDate, $sessions, $slots, $globalDur
+            );
+
+            $createdSessions = 0;
+            $lastSessionDate = null;
+            foreach ($builtSessions as $sess) {
+                $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($sess);
+                if ($upsert['created']) {
+                    $createdSessions++;
+                }
+                $d = $sess['SessionDate'] ?? null;
+                if ($d !== null && ($lastSessionDate === null || $d > $lastSessionDate)) {
+                    $lastSessionDate = $d;
+                }
+            }
+
+            if ($lastSessionDate) {
+                $newCourse->EndDate = $lastSessionDate;
+                $newCourse->save();
+            }
+
+            $firstSessionDate = null;
+            if (!empty($builtSessions)) {
+                $firstSessionDate = $builtSessions[0]['SessionDate'] ?? null;
+            }
+
+            SessionDeductionService::syncCounters($newCourse);
+            $newCourse->refresh();
+
+            $sourceClosed = false;
+            if (
+                (string) ($studentClass->ScheduleMode ?? '') === 'count'
+                && (int) ($studentClass->Paid ?? 0) === 1
+                && (int) ($studentClass->RemainingSessions ?? 0) <= 0
+            ) {
+                $studentClass->setAttribute('Stop', 1);
+                $studentClass->closed_reason = 'settled';
+                $studentClass->EndDate = Carbon::today()->toDateString();
+                $studentClass->save();
+                $sourceClosed = true;
+            }
+
+            return $this->reply([
+                'message' => $sourceClosed
+                    ? '已新增購買批次，舊批次已自動結案'
+                    : '已新增購買批次',
+                'mode' => $mode,
+                'source_closed' => $sourceClosed,
+                'created_sessions' => $createdSessions,
+                'source_course' => [
+                    'id' => (int) $studentClass->ID,
+                    'session_count' => (int) ($studentClass->SessionCount ?? 0),
+                    'remaining_sessions' => (int) ($studentClass->RemainingSessions ?? 0),
+                    'paid' => (int) ($studentClass->Paid ?? 0),
+                    'stop' => (int) ($studentClass->Stop ?? 0),
+                    'closed_reason' => $studentClass->closed_reason,
+                    'end_date' => ContractSessionSchedule::normalizeDateString($studentClass->EndDate),
+                ],
+                'new_course' => [
+                    'id' => (int) $newCourse->ID,
+                    'session_count' => (int) ($newCourse->SessionCount ?? 0),
+                    'remaining_sessions' => (int) ($newCourse->RemainingSessions ?? 0),
+                    'created_sessions' => $createdSessions,
+                    'paid' => (int) ($newCourse->Paid ?? 0),
+                    'start_date' => ContractSessionSchedule::normalizeDateString($newCourse->StartDate),
+                    'end_date' => ContractSessionSchedule::normalizeDateString($newCourse->EndDate),
+                    'first_session_date' => ContractSessionSchedule::normalizeDateString($firstSessionDate),
+                    'last_session_date' => ContractSessionSchedule::normalizeDateString($lastSessionDate),
+                ],
+            ], 201);
+        });
+    }
+
+    /**
+     * Trial -> regular conversion transaction. Every error exit after the source mutation throws
+     * HttpResponseException so the transaction rolls back. $detectTeacherConflicts is the controller's
+     * shared conflict probe (same arguments as StudentClassController::detectTeacherConflicts);
+     * $authorizeAccess re-runs the controller's campus/teacher scope check on the freshly locked course
+     * (returns a deny response or null), right after the lock and before anything is read or mutated.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function convertTrial(StudentClass $studentClass, int $sessions, string $startDate, string $newClassType, int $actorId, string $actorRole, \Closure $detectTeacherConflicts, \Closure $authorizeAccess): array
+    {
+        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $newClassType, $actorId, $actorRole, $detectTeacherConflicts, $authorizeAccess) {
+            $source = $this->lockCourse((int) $studentClass->getAttribute('ID'));
+            if ($deny = $authorizeAccess($source)) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException($deny);
+            }
+
+            if (strtolower((string) ($source->getAttribute('ClassType') ?? '')) !== 'trial') {
+                return $this->reply(['message' => '來源課程已不是試聽課程，請重新整理後再試。'], 409);
+            }
+            if (!empty($source->getAttribute('trial_converted_to_id'))) {
+                return $this->reply([
+                    'message' => '這筆試聽已轉為正式課程，請直接開啟既有正式課程。',
+                    'code' => 'trial_already_converted',
+                    'new_course_id' => (int) $source->getAttribute('trial_converted_to_id'),
+                ], 409);
+            }
+
+            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($source);
+            if (empty($slots)) {
+                $isoDow = (int) Carbon::parse($startDate)->dayOfWeekIso;
+                $fallbackTime = ContractSessionSchedule::normalizeSessionTime($source->getAttribute('time') ?? null, '16:00');
+                $slots = [['weekday' => $isoDow, 'time' => substr($fallbackTime, 0, 5)]];
+            }
+            $duration = max(30, (int) ($source->getAttribute('SessionDuration') ?? 120));
+            $previewSessions = ContractSessionSchedule::buildSessionsForCount(0, $startDate, $sessions, $slots, $duration);
+            if (count($previewSessions) !== $sessions) {
+                return $this->reply([
+                    'message' => '無法依目前固定時段排出完整正式課程，請先補齊試聽課程的星期與時段。',
+                    'code' => 'trial_schedule_incomplete',
+                ], 422);
+            }
+
+            // Remove the source trial from occupancy before checking the new
+            // contract. Every error exit below throws HttpResponseException (a plain
+            // return would COMMIT these mutations) so the transaction rolls back.
+            $cancelledTrialSessions = $this->cancelFutureScheduledSessions($source, 'trial_conversion');
+            $source->setAttribute('Stop', 1);
+            $source->setAttribute('closed_reason', 'converted_trial');
+            $source->save();
+
+            $studentCampusId = (int) (optional($source->student)->getAttribute('CampusID') ?: 0);
+            $conflicts = $detectTeacherConflicts(
+                (int) ($source->getAttribute('TeacherID') ?? 0),
+                $previewSessions,
+                $newClassType,
+                $source->getAttribute('room_id') ? (int) $source->getAttribute('room_id') : null,
+                $studentCampusId,
+                (int) ($source->getAttribute('ID') ?? 0) ?: null,
+                (int) ($source->getAttribute('StudentID') ?? 0) ?: null
+            );
+            if (!empty($conflicts)) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                    'message' => $conflicts[0]['message'] ?? '正式課程的固定時段與其他課程衝堂，試聽紀錄未變更。',
+                    'code' => 'trial_conversion_schedule_conflict',
+                    'conflicts' => $conflicts,
+                    'suggested_actions' => $conflicts[0]['suggested_actions'] ?? [],
+                ], 409));
+            }
+
+            // Same guard the controller's purchaseBatch applied when convertTrial used to call it through the request.
+            if ((string) ($source->ScheduleMode ?? 'count') !== 'count') {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                    'message' => '月結制課程請使用「月結續約」功能延長課程，不支援加購堂數。',
+                    'errors'  => ['mode' => ['月結制課程不支援此操作，請使用 renew-monthly 端點。']],
+                ], 422));
+            }
+            $response = $this->purchaseBatch($source, $sessions, $startDate, 'new_purchase', $newClassType, null, $actorId, $actorRole);
+            if ($response['status'] >= 400) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json($response['body'], $response['status']));
+            }
+
+            $result = $response['body'];
+            $newCourseId = (int) ($result['new_course']['id'] ?? 0);
+            if ($newCourseId <= 0) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                    response()->json(['message' => '正式課程建立失敗，試聽紀錄未完成轉換。'], 500)
+                );
+            }
+
+            $source->setAttribute('trial_converted_to_id', $newCourseId);
+            $source->save();
+
+            return $this->reply([
+                'message' => '試聽已保留為歷史紀錄，正式課程已建立；未來試聽排課已取消，不需再轉移堂次。',
+                'source_course' => [
+                    'id' => (int) $source->getAttribute('ID'),
+                    'closed_reason' => $source->getAttribute('closed_reason'),
+                    'cancelled_future_sessions' => $cancelledTrialSessions,
+                    'preserved_attended_sessions' => (int) ClassSession::query()->where('StudentClassID', $source->getAttribute('ID'))
+                        ->whereIn('Status', ['attended', 'completed', 'late', 'absent'])
+                        ->count(),
+                ],
+                'new_course' => $result['new_course'],
+                'next_actions' => ['record_payment', 'open_new_course'],
+            ], 201);
+        });
+    }
+
+    /**
+     * Re-compute the preview under a row lock, refuse when it drifted or is blocked, then run $execute
+     * (the controller's purchase/renew endpoint, which keeps its own request guards) and build the receipt.
+     * $execute(mode, payload, preview, lockedCourse) returns the endpoint's JsonResponse, passed through on error.
+     */
+    public function confirm(StudentClass $studentClass, array $data, int $actorId, string $role, bool $financial, \Closure $execute): \Illuminate\Http\JsonResponse
+    {
+        return DB::transaction(function () use ($studentClass, $data, $actorId, $role, $financial, $execute) {
+            $lockedStudentClass = $this->lockCourse((int) $studentClass->ID);
+
+            $payload = array_merge($data['payload'], ['mode' => $data['mode']]);
+            $preview = $this->preview($lockedStudentClass, $payload, $actorId, $role);
+
+            if ($preview['state_hash'] !== $data['state_hash'] || $preview['preview_id'] !== $data['preview_id']) {
+                return response()->json([
+                    'message' => '課程狀態已變更，請重新預覽後再確認。',
+                    'preview' => $this->redactRenewalDiscount($preview, $financial),
+                ], 409);
+            }
+
+            if ($preview['severity'] === 'blocked') {
+                return response()->json([
+                    'message' => '此續報目前不可執行。',
+                    'preview' => $this->redactRenewalDiscount($preview, $financial),
+                ], 422);
+            }
+
+            $response = $execute($data['mode'], $payload, $preview, $lockedStudentClass);
+
+            $status = $response->getStatusCode();
+            $result = method_exists($response, 'getData') ? $response->getData(true) : [];
+            if ($status >= 400) {
+                return $response;
+            }
+
+            return response()->json([
+                'receipt_id' => substr(hash('sha256', ($preview['preview_id'] ?? '') . '|' . now()->timestamp), 0, 16),
+                'message' => $result['message'] ?? '續報已完成',
+                'mode' => $data['mode'],
+                'preview_id' => $preview['preview_id'],
+                'source_course' => $result['source_course'] ?? $preview['source_course'],
+                'new_course' => $result['new_course'] ?? null,
+                'invoice' => $data['mode'] === 'renew_monthly'
+                    ? ($result['invoice'] ?? ($preview['billing']['invoice'] ?? null))
+                    : null,
+                'schedule' => [
+                    'created_sessions' => $result['created_sessions'] ?? ($preview['schedule']['created_sessions'] ?? 0),
+                    'first_session_date' => $result['new_course']['first_session_date'] ?? ($preview['schedule']['first_session_date'] ?? null),
+                    'last_session_date' => $result['new_course']['last_session_date'] ?? ($preview['schedule']['last_session_date'] ?? null),
+                ],
+                'next_actions' => $data['mode'] === 'purchase_batch'
+                    ? ['view_new_course', 'record_payment']
+                    : ['view_invoices', 'record_payment'],
+            ], $status);
+        });
+    }
+
+    /** SELECT ... FOR UPDATE on one course; 404 (ModelNotFound) when missing. */
+    private function lockCourse(int $id): StudentClass
+    {
+        $query = StudentClass::query()->where('ID', $id);
+        $query->lockForUpdate();
+        $course = $query->firstOrFail();
+        if (!$course instanceof StudentClass) {
+            throw new \LogicException('StudentClass query returned a foreign model');
+        }
+
+        return $course;
+    }
+
     private function saveNewCourse(array $payload): StudentClass
     {
         $course = new StudentClass($payload);
         $course->save();
 
         return $course;
+    }
+
+    /**
+     * renew_monthly money transaction: lock the source, create the next period course, close the old one,
+     * issue the unpaid invoice. Returns the HTTP status and JSON body for the controller to send.
+     *
+     * @param array<string, mixed>|null $discountInput
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function renewMonthly(StudentClass $studentClass, string $newEndDate, ?array $discountInput, int $actorId, string $actorRole): array
+    {
+        return DB::transaction(function () use ($studentClass, $newEndDate, $discountInput, $actorId, $actorRole) {
+            $studentClass = $this->lockCourse((int) $studentClass->ID);
+
+            $periodReview = app(MonthlyRenewalPeriodService::class)->inspect($studentClass, $newEndDate);
+            if ($periodReview['blockers']) return $this->reply(array_merge(['message' => $periodReview['blockers'][0]['message']], $periodReview['blockers'][0]), 422);
+            $newStartDate = $periodReview['start_date'];
+
+            if ($newEndDate < $newStartDate) {
+                return $this->reply([
+                    'message' => '新到期日必須晚於新一期開始日。',
+                    'errors' => ['end_date' => ['新到期日不可早於舊課程結束後的下一天。']],
+                ], 422);
+            }
+
+            $duplicate = $this->findDuplicateMonthlyRenewal($studentClass, $newStartDate, $newEndDate);
+            if ($duplicate !== null) {
+                return $this->reply([
+                    'message' => '偵測到相同學生、科目與期間的月結續報課程，請先確認是否已續報過。',
+                    'errors' => ['duplicate' => ['已存在相同期間的月結續報課程。']],
+                    'duplicate_course' => [
+                        'id' => (int) $duplicate->ID,
+                        'start_date' => ContractSessionSchedule::normalizeDateString($duplicate->StartDate),
+                        'end_date' => ContractSessionSchedule::normalizeDateString($duplicate->EndDate),
+                        'paid' => (int) ($duplicate->Paid ?? 0),
+                    ],
+                ], 409);
+            }
+
+            $preview = app(MonthlyRenewalPeriodService::class)->previewPeriod($studentClass, $newStartDate, $newEndDate);
+            $rate = $preview['rate'];
+            $rateUnit = $preview['rate_unit'];
+            $globalDur = $preview['session_duration'];
+            $periodSessionCount = $preview['sessions'];
+            $periodTotalHours = $preview['hours'];
+            $periodCharge = $preview['charge'];
+
+            $discountSnapshot = app(TransactionDiscountCalculator::class)->calculate(
+                max(0, $periodCharge), $discountInput, $actorId, $actorRole
+            );
+            $newPayload = [
+                'StudentID' => (int) $studentClass->StudentID,
+                'GradeID' => (int) ($studentClass->GradeID ?? 1),
+                'SubjectID' => (int) ($studentClass->SubjectID ?? 1),
+                'TeacherID' => (int) ($studentClass->TeacherID ?? 0),
+                'by1' => (int) ($studentClass->by1 ?? 1),
+                'Period' => (int) ($studentClass->Period ?? 4),
+                'StartDate' => $newStartDate,
+                'EndDate' => $newEndDate,
+                'week' => $studentClass->week,
+                'time' => $studentClass->time,
+                'week1' => $studentClass->week1,
+                'time1' => $studentClass->time1,
+                'week2' => $studentClass->week2,
+                'time2' => $studentClass->time2,
+                'week3' => $studentClass->week3,
+                'time3' => $studentClass->time3,
+                'week4' => $studentClass->week4,
+                'time4' => $studentClass->time4,
+                'week5' => $studentClass->week5,
+                'time5' => $studentClass->time5,
+                'week6' => $studentClass->week6,
+                'time6' => $studentClass->time6,
+                'duration1' => $studentClass->duration1,
+                'duration2' => $studentClass->duration2,
+                'duration3' => $studentClass->duration3,
+                'duration4' => $studentClass->duration4,
+                'duration5' => $studentClass->duration5,
+                'duration6' => $studentClass->duration6,
+                'TotalHours' => $periodTotalHours,
+                'Memo' => $studentClass->Memo,
+                'Charge' => $discountSnapshot['final_amount'],
+                'Pay' => 0,
+                'PayDate' => null,
+                'Paid' => 0,
+                'Disconunt' => null,
+                'Rate' => $rate,
+                'rate_unit' => $rateUnit,
+                'LearnTimeID' => $studentClass->LearnTimeID,
+                'room_id' => $studentClass->room_id,
+                'settlement_day' => $studentClass->settlement_day,
+                'monthly_sessions' => $studentClass->monthly_sessions,
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'date',
+                'SessionCount' => $periodSessionCount,
+                'SessionDuration' => $globalDur,
+                'RemainingSessions' => $periodSessionCount,
+                'ClassType' => $studentClass->ClassType ?: 'one_on_one',
+                'UsedSessions' => 0,
+                'pricing_snapshot' => $discountSnapshot,
+            ];
+
+            $newCourse = $this->createCourseRecord($newPayload);
+            $newCourse->initializePricingSnapshot($discountSnapshot);
+            $newCourse->refresh();
+
+            // Close and cancel the old period before materializing the new
+            // period. A legacy source course may contain future rows beyond
+            // EndDate; leaving it active during generation makes the new
+            // renewal look like a real student overlap.
+            $studentClass->setAttribute('Stop', 1);
+            // An unpaid old period must stay in the accounting queue, not vanish as settled.
+            $studentClass->closed_reason = $this->courseNeedsPaymentReconciliation($studentClass) ? 'settled_pending' : 'settled';
+            $studentClass->save();
+            $cancelled = $this->cancelFutureScheduledSessions($studentClass, 'settled');
+            $studentClass->refresh();
+
+            $sessionSync = app(ContractSessionSchedule::class)->ensureMonthlyFutureScheduledSessions($newCourse);
+
+            $billingPeriod = $periodReview['billing_period'];
+            $totalAmount = max(0, (int) ($newCourse->Charge ?? 0));
+            $dueDate = $periodReview['due_date'];
+
+            $periodLabel = Carbon::parse($newStartDate)->locale('zh_TW')->isoFormat('YYYY年M月');
+            $invoice = app(InvoiceIssuer::class)->issue([
+                'StudentID'      => (int) $newCourse->StudentID,
+                'StudentClassID' => (int) $newCourse->ID,
+                'IssueDate'      => Carbon::today()->toDateString(),
+                'DueDate'        => $dueDate,
+                'TotalAmount'    => $totalAmount,
+                'ScheduleModeAtIssue' => $newCourse->ScheduleMode,
+                'billing_period' => $billingPeriod,
+            ], [[
+                'StudentClassID' => (int) $newCourse->ID,
+                'Description' => '月結費用 ' . $periodLabel,
+                'Amount'      => $totalAmount,
+                'PeriodStart' => $newStartDate,
+                'PeriodEnd'   => $newEndDate,
+            ]]);
+
+            return $this->reply([
+                'message' => '已建立月結新一期課程，舊期已結算',
+                'mode' => 'renew_monthly',
+                'source_closed' => true,
+                'cancelled_source_sessions' => $cancelled,
+                'session_sync' => $sessionSync,
+                'source_course' => [
+                    'id' => (int) $studentClass->ID,
+                    'start_date' => ContractSessionSchedule::normalizeDateString($studentClass->StartDate),
+                    'end_date' => ContractSessionSchedule::normalizeDateString($studentClass->EndDate),
+                    'paid' => (int) ($studentClass->Paid ?? 0),
+                    'stop' => (int) ($studentClass->Stop ?? 0),
+                    'closed_reason' => $studentClass->closed_reason,
+                ],
+                'new_course' => [
+                    'id' => (int) $newCourse->ID,
+                    'start_date' => ContractSessionSchedule::normalizeDateString($newCourse->StartDate),
+                    'end_date' => ContractSessionSchedule::normalizeDateString($newCourse->EndDate),
+                    'settlement_day' => $newCourse->settlement_day,
+                    'monthly_sessions' => $newCourse->monthly_sessions,
+                    'schedule_mode' => $newCourse->ScheduleMode,
+                    'paid' => (int) ($newCourse->Paid ?? 0),
+                ],
+                'invoice' => [
+                    'id' => (int) $invoice->id,
+                    'billing_period' => $invoice->billing_period,
+                    'status' => $invoice->Status,
+                    'total_amount' => (int) $invoice->TotalAmount,
+                    'due_date' => ContractSessionSchedule::normalizeDateString($invoice->DueDate),
+                ],
+            ], 201);
+        });
+    }
+
+    /** @param array<string, mixed> $body @return array{status: int, body: array<string, mixed>} */
+    private function reply(array $body, int $status = 200): array
+    {
+        return ['status' => $status, 'body' => $body];
     }
 }

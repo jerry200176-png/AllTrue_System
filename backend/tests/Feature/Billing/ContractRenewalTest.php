@@ -3,6 +3,7 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\ClassSession;
+use App\Models\Invoice;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\ContractRenewal;
@@ -132,5 +133,157 @@ class ContractRenewalTest extends TestCase
         $this->assertTrue($copy->exists);
         $this->assertSame(100, (int) StudentClass::query()->where('ID', $copy->ID)->value('Charge'));
         $this->assertTrue($svc->courseNeedsPaymentReconciliation($c));
+    }
+
+    private function monthlyCourse(): StudentClass
+    {
+        return $this->course([
+            'ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'settlement_day' => 15, 'monthly_sessions' => 8,
+            'StartDate' => '2032-04-01', 'EndDate' => '2032-04-30', 'Charge' => 0, 'Rate' => 500, 'SessionDuration' => 120,
+        ]);
+    }
+
+    public function test_renew_monthly_creates_next_period_unpaid_invoice_and_settles_source(): void
+    {
+        $source = $this->monthlyCourse();
+
+        $r = app(ContractRenewal::class)->renewMonthly($source, '2032-05-31', null, 1, 'director');
+
+        $this->assertSame(201, $r['status']);
+        $this->assertSame('renew_monthly', $r['body']['mode']);
+        $this->assertTrue($r['body']['source_closed']);
+        $this->assertSame('2032-05-01', $r['body']['new_course']['start_date']);
+        $this->assertSame('unpaid', $r['body']['invoice']['status']);
+        $source->refresh();
+        $this->assertSame(1, (int) $source->Stop);
+        $this->assertStringStartsWith('settled', (string) $source->closed_reason);
+        $this->assertSame($r['body']['new_course']['id'], (int) Invoice::query()->whereKey($r['body']['invoice']['id'])->value('StudentClassID'));
+    }
+
+    public function test_renew_monthly_rejects_a_duplicate_period_without_writing(): void
+    {
+        $source = $this->monthlyCourse();
+        $svc = app(ContractRenewal::class);
+        $this->assertSame(201, $svc->renewMonthly($source, '2032-05-31', null, 1, 'director')['status']);
+        $before = StudentClass::query()->count();
+
+        $again = $svc->renewMonthly($source->fresh(), '2032-05-31', null, 1, 'director');
+
+        $this->assertGreaterThanOrEqual(409, $again['status']);
+        $this->assertSame($before, StudentClass::query()->count());
+    }
+
+    public function test_purchase_batch_creates_separate_unpaid_course_with_sessions(): void
+    {
+        $source = $this->course(['Paid' => 1, 'RemainingSessions' => 1, 'UsedSessions' => 7]);
+
+        $r = app(ContractRenewal::class)->purchaseBatch($source, 6, '2032-04-06', 'new_purchase', 'one_on_one', null, 1, 'director');
+
+        $this->assertSame(201, $r['status']);
+        $this->assertSame('new_purchase', $r['body']['mode']);
+        $this->assertSame(6, $r['body']['new_course']['created_sessions']);
+        $new = StudentClass::query()->where('ID', $r['body']['new_course']['id'])->first();
+        $this->assertSame(0, (int) $new->Paid);
+        $this->assertSame(3000, (int) $new->Charge);
+        $this->assertSame(1, (int) $source->fresh()->Paid);
+    }
+
+    public function test_purchase_batch_rejects_duplicate_batch_without_writing(): void
+    {
+        $source = $this->course();
+        $svc = app(ContractRenewal::class);
+        $this->assertSame(201, $svc->purchaseBatch($source, 4, '2032-04-06', 'new_purchase', 'one_on_one', null, 1, 'director')['status']);
+        $before = StudentClass::query()->count();
+
+        $again = $svc->purchaseBatch($source->fresh(), 4, '2032-04-06', 'new_purchase', 'one_on_one', null, 1, 'director');
+
+        $this->assertSame(409, $again['status']);
+        $this->assertSame($before, StudentClass::query()->count());
+    }
+
+    public function test_convert_trial_creates_regular_course_and_closes_trial(): void
+    {
+        $trial = $this->course(['ClassType' => 'trial', 'SessionCount' => 1, 'RemainingSessions' => 1, 'Charge' => 0, 'Rate' => 500]);
+
+        $r = app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => [], fn () => null);
+
+        $this->assertSame(201, $r['status']);
+        $trial->refresh();
+        $this->assertSame(1, (int) $trial->Stop);
+        $this->assertSame('converted_trial', $trial->closed_reason);
+        $this->assertSame($r['body']['new_course']['id'], (int) $trial->trial_converted_to_id);
+        $this->assertSame(4, $r['body']['new_course']['created_sessions']);
+    }
+
+    public function test_convert_trial_conflict_throws_and_rolls_back_trial_mutation(): void
+    {
+        $trial = $this->course(['ClassType' => 'trial', 'SessionCount' => 1, 'RemainingSessions' => 1]);
+        $before = StudentClass::query()->count();
+
+        try {
+            app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => [['message' => 'clash']], fn () => null);
+            $this->fail('expected HttpResponseException');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            $this->assertSame(409, $e->getResponse()->getStatusCode());
+        }
+
+        $this->assertSame(0, (int) $trial->fresh()->Stop);
+        $this->assertSame($before, StudentClass::query()->count());
+    }
+
+    public function test_convert_trial_rejects_monthly_trial_and_rolls_back(): void
+    {
+        $trial = $this->course(['ClassType' => 'trial', 'ScheduleMode' => 'date', 'EndDate' => '2032-04-30']);
+
+        try {
+            app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => [], fn () => null);
+            $this->fail('expected HttpResponseException');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            $this->assertSame(422, $e->getResponse()->getStatusCode());
+        }
+
+        $this->assertSame(0, (int) $trial->fresh()->Stop);
+    }
+
+    public function test_convert_trial_rechecks_access_on_the_locked_course_and_rolls_back(): void
+    {
+        $trial = $this->course(['ClassType' => 'trial', 'SessionCount' => 1, 'RemainingSessions' => 1]);
+        $before = StudentClass::query()->count();
+
+        try {
+            app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => [], fn () => response()->json(['message' => 'no'], 403));
+            $this->fail('expected HttpResponseException');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            $this->assertSame(403, $e->getResponse()->getStatusCode());
+        }
+
+        $this->assertSame(0, (int) $trial->fresh()->Stop);
+        $this->assertSame($before, StudentClass::query()->count());
+    }
+
+    public function test_confirm_rejects_stale_hash_blocked_preview_and_passes_receipt_through(): void
+    {
+        $svc = app(ContractRenewal::class);
+        $c = $this->course();
+        $payload = ['sessions' => 4, 'start_date' => '2032-04-06'];
+        $p = $svc->preview($c, $payload + ['mode' => 'purchase_batch'], 1, 'director');
+        $data = ['preview_id' => $p['preview_id'], 'state_hash' => $p['state_hash'], 'mode' => 'purchase_batch', 'payload' => $payload];
+        $never = function () { $this->fail('execute must not run'); };
+
+        $stale = $svc->confirm($c, ['state_hash' => 'x'] + $data, 1, 'director', true, $never);
+        $this->assertSame(409, $stale->getStatusCode());
+
+        $bad = ['sessions' => 0, 'start_date' => '2032-04-06'];
+        $pb = $svc->preview($c, $bad + ['mode' => 'purchase_batch'], 1, 'director');
+        $blocked = $svc->confirm($c, ['preview_id' => $pb['preview_id'], 'state_hash' => $pb['state_hash'], 'mode' => 'purchase_batch', 'payload' => $bad], 1, 'director', true, $never);
+        $this->assertSame(422, $blocked->getStatusCode());
+
+        $ok = $svc->confirm($c, $data, 1, 'director', true, fn ($mode, $pl, $pv, $locked) => response()->json(['new_course' => ['id' => 9]], 201));
+        $this->assertSame(201, $ok->getStatusCode());
+        $this->assertSame('purchase_batch', $ok->getData(true)['mode']);
+        $this->assertSame(['view_new_course', 'record_payment'], $ok->getData(true)['next_actions']);
+
+        $fail = $svc->confirm($c, $data, 1, 'director', true, fn () => response()->json(['message' => 'boom'], 409));
+        $this->assertSame('boom', $fail->getData(true)['message']);
     }
 }
