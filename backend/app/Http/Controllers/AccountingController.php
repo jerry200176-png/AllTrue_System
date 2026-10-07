@@ -218,7 +218,7 @@ class AccountingController extends Controller
                 'pending_reconciliation' => $pendingReconciliation,
                 'payment_review_required' => $paymentReview,
                 'reconciliation_label' => $pendingReconciliation
-                    ? ($closedReason === '' ? '暫停中 · 待對帳' : '結案待對帳')
+                    ? ($closedReason === '' ? '暫停中 · 待對帳' : '課已結束，等你確認收款')
                     : ($paymentReview ? '付款期間待確認' : ($waived ? '歷史 · 確認不收' : null)),
                 'closed_reason' => $course->getAttribute('closed_reason'),
             ];
