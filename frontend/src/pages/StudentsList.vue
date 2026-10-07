@@ -990,7 +990,7 @@ import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled } from '../lib/paymentStatus.js';
 import {
   closedReason as effectiveClosedReason, courseProgress, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
-  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, WAIVED_LABEL,
+  modalRemainingSessions, ownRemainingSessions, periodPaymentLabel, poolTotalSessions, REPORT_STATUS_LABELS, WAIVED_LABEL,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1294,10 +1294,8 @@ const paymentStatusButtonLabel = (course) => {
   if (isTutoringCourse(course)) return '無須繳費';
   if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
   if (isCourseSettled(course) === null) return '繳費狀態載入中';
-  if (course?.payment_status === 'paid') return '已繳費';
-  if (course?.payment_status === 'pending_report') return '待對帳';
-  if (course?.payment_status === 'partial') return '部分繳';
-  return '未繳費';
+  const status = course?.payment_status;
+  return periodPaymentLabel(status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid');
 };
 const paymentNextActionLabel = (course) => {
   if (isTutoringCourse(course) || isCourseSettled(course) === null) return '';
@@ -1337,7 +1335,7 @@ const formatPaymentSummary = (summary) => {
   }
   if (summary.account_last5) parts.push(`後5碼 ${summary.account_last5}`);
   if (summary.note) parts.push(`備註 ${summary.note}`);
-  if (summary.status === 'pending') parts.push('待對帳');
+  if (summary.status === 'pending') parts.push(REPORT_STATUS_LABELS.pending);
   return parts.join(' · ') || '已有繳費回報';
 };
 const dayLabel = (d) => {

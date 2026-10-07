@@ -142,23 +142,23 @@ export const isHistoryCourse = (course, { includePending = false } = {}) => {
 
 // ── payment-status labels (display only; the server owns the status itself) ──
 export const TUITION_STATUS_CONFIG = {
-  unpaid: { label: '應收／尚未回報', cls: 'st-unpaid' },
-  partial: { label: '部分繳', cls: 'st-partial' },
-  waived: { label: '確認不收', cls: 'st-paid' },
-  pending_report: { label: '已回報／待查帳', cls: 'st-pending' },
-  pending_reconciliation: { label: '結案／待查帳', cls: 'st-pending' },
-  paid: { label: '已確認入帳', cls: 'st-paid' },
+  unpaid: { label: '未繳', cls: 'st-unpaid' },
+  partial: { label: '繳了一部分', cls: 'st-partial' },
+  waived: { label: '不收了', cls: 'st-paid' },
+  pending_report: { label: '家長說繳了，等你確認', cls: 'st-pending' },
+  pending_reconciliation: { label: '課已結束，等你確認收款', cls: 'st-pending' },
+  paid: { label: '已收', cls: 'st-paid' },
   renew_needed: { label: '續課待處理', cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期', cls: 'st-monthly' },
 };
-export const WAIVED_LABEL = '確認不收';
-export const INVOICE_STATUS_LABELS = { paid: '已繳', unpaid: '未繳', partial: '部分繳', void: '已作廢' };
+export const WAIVED_LABEL = '不收了';
+export const INVOICE_STATUS_LABELS = { paid: '已收', unpaid: '未繳', partial: '繳了一部分', void: '已作廢' };
 // `voided` only exists in the ledger, the one screen that lists voids.
-export const REPORT_STATUS_LABELS = { pending: '待對帳', confirmed: '已入帳', rejected: '已退回', voided: '已撤銷' };
+export const REPORT_STATUS_LABELS = { pending: '等你確認', confirmed: '已收', rejected: '已退回', voided: '已撤銷' };
 
 // ── monthly period payment labels (folded from monthlyPaymentDisplay.js) ──
 export const periodPaymentLabel = (status) => ({
-  paid: '已繳費', unpaid: '未繳費', partial: '部分繳', pending_report: '待對帳',
+  paid: '已收', unpaid: '未繳', partial: '繳了一部分', pending_report: '等你確認',
   review_required: '付款期間待確認', unknown: '付款期間待確認',
 })[status] || '付款期間待確認';
 
@@ -166,6 +166,6 @@ export function monthlyPaymentLabel(course) {
   const summary = course?.monthly_payment;
   if (!summary) return null;
   if (summary.review_required) return '付款期間待確認';
-  if (course.payment_status === 'pending_report' && summary.payment_status === 'unpaid') return `${summary.billing_period} 待對帳`;
+  if (course.payment_status === 'pending_report' && summary.payment_status === 'unpaid') return `${summary.billing_period} ${periodPaymentLabel('pending_report')}`;
   return `${summary.billing_period} ${periodPaymentLabel(summary.payment_status)}`;
 }

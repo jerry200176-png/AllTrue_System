@@ -26,8 +26,8 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('共用方案的繳費狀態按科目分開顯示');
   });
 
-  it('labels pending reports as 待對帳 and deep-links billing mutations to tuition-collect', () => {
-    expect(source).toContain("if (course?.payment_status === 'pending_report') return '待對帳'");
+  it('labels payment status via the shared plain labels and deep-links billing mutations to tuition-collect', () => {
+    expect(source).toContain("return periodPaymentLabel(status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid');");
     expect(source).toContain('前往帳務中心');
     expect(source).toContain('登記繳費回報');
     expect(source).toContain('查看待對帳');

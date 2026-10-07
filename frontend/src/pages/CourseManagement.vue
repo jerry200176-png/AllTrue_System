@@ -1482,7 +1482,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, WAIVED_LABEL,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, periodPaymentLabel, WAIVED_LABEL,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -3874,7 +3874,7 @@ const formatPaymentSummary = (summary) => {
   }
   if (summary.account_last5) parts.push(`後5碼 ${summary.account_last5}`);
   if (summary.note) parts.push(`備註 ${summary.note}`);
-  if (summary.status === 'pending') parts.push('待對帳');
+  if (summary.status === 'pending') parts.push(REPORT_STATUS_LABELS.pending);
   return parts.join(' · ') || '已有繳費回報';
 };
 
@@ -4183,10 +4183,8 @@ const paymentStatusButtonLabel = (course) => {
   if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
   if (monthlyPaymentLabel(course)) return monthlyPaymentLabel(course);
   if (course?.payment_status === 'review_required') return '付款期間待確認';
-  if (course?.payment_status === 'paid') return '已繳費';
-  if (course?.payment_status === 'pending_report') return '待對帳';
-  if (course?.payment_status === 'partial') return '部分繳';
-  return '未繳費';
+  const status = course?.payment_status;
+  return periodPaymentLabel(status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid');
 };
 const paymentNextActionLabel = (course) => {
   if (isTutoringCourse(course)) return '';

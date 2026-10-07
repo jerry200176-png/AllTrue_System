@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-10-07-plain-payment-labels
+    published_at: "2026-10-07"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 繳費狀態改用白話
+    summary: 繳費狀態改成一看就懂的說法，狀態本身與金額都沒變。
+    items:
+      - category: improved
+        text: 「已回報／待查帳」改為「家長說繳了，等你確認」，「已確認入帳」改為「已收」。
+      - category: improved
+        text: 「部分繳」改為「繳了一部分」，「確認不收」改為「不收了」，「結案／待查帳」改為「課已結束，等你確認收款」。
+    source_refs:
+      - "changelog:2026-10-07:plain-payment-labels"
