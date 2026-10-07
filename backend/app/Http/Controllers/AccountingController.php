@@ -218,7 +218,7 @@ class AccountingController extends Controller
                 'pending_reconciliation' => $pendingReconciliation,
                 'payment_review_required' => $paymentReview,
                 'reconciliation_label' => $pendingReconciliation
-                    ? ($closedReason === '' ? '暫停中 · 待對帳' : '課已結束，等你確認收款')
+                    ? ($closedReason === '' ? '暫停中・等你確認收款' : '課已結束，等你確認收款')
                     : ($paymentReview ? '付款期間待確認' : ($waived ? '歷史 · 確認不收' : null)),
                 'closed_reason' => $course->getAttribute('closed_reason'),
             ];
@@ -317,7 +317,7 @@ class AccountingController extends Controller
             $unpaid = (int) ($course->Paid ?? 0) !== 1;
             $pending = $closedReason === 'settled_pending' || ($closedReason === 'contract_amended' && $unpaid);
             if ((int) $course->Stop !== 1 || !$pending || !$unpaid) {
-                return response()->json(['message' => '只有「結案待對帳」且尚未繳清的合約才能確認不收'], 422);
+                return response()->json(['message' => '只有「課已結束，等你確認收款」且還沒繳清的合約，才能改成「不收了」'], 422);
             }
 
             $invoices = Invoice::with(['studentClass', 'payments'])

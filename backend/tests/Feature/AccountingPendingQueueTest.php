@@ -72,7 +72,7 @@ class AccountingPendingQueueTest extends TestCase
         $row = $this->row($c);
         $this->assertTrue($row['pending_reconciliation']);
         $this->assertSame(5800, $row['outstanding_amount']);
-        $this->assertSame('暫停中 · 待對帳', $row['reconciliation_label']);
+        $this->assertSame('暫停中・等你確認收款', $row['reconciliation_label']);
 
         $alert = $this->tuitionRow($c);
         $this->assertSame('pending_reconciliation', $alert['payment_status']);
