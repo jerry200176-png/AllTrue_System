@@ -250,7 +250,7 @@ class PaymentReportController extends Controller
         $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
 
         $query = PaymentReport::with([
-            'student', 'studentClass.subjectRecord', 'confirmedByUser', 'invoice.payments',
+            'student', 'studentClass.subjectRecord', 'confirmedByUser', 'invoice.payments', 'invoice.items',
         ]);
 
         if ($request->filled('branch_id')) {
