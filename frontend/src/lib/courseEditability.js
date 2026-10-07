@@ -1,3 +1,4 @@
+import { REPORT_STATUS_LABELS } from './courseMoneyState.js';
 const NEXT_STEP_LABELS = {
   billing_correction: '堂數若要減少，請改走「合約／堂次調整」。',
   edit_charge_only: '堂數維持不變，請在一般編輯畫面只調整總費用。',
@@ -39,7 +40,7 @@ const ACTION_DESCRIPTIONS = {
   billing_correction: '只調整尚未收款的堂數；已上課紀錄會保留。',
   transfer_sessions: '把已上課、點名與評量紀錄搬到正確合約，不改金額。',
   void_payment: '先在帳單與對帳查看收款，再依權限作廢或更正。',
-  payment_report: '先處理待對帳回報，完成後再回來編輯。',
+  payment_report: `先處理「${REPORT_STATUS_LABELS.pending}」的繳費回報，完成後再回來編輯。`,
   package_adjustment: '共用方案的堂數要由方案池管理，不能單獨改這門課。',
   reconcile_usage: '先釐清課堂狀態與扣堂紀錄的差異，再決定帳務變更。',
   new_contract: '已使用的合約不直接改寫；需要新條件時建立新課程。',
