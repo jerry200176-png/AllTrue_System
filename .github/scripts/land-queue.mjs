@@ -212,7 +212,8 @@ function readBatch(tip) {
   for (;;) {
     const c = api(`git/commits/${sha}`);
     const m = memberOf(c);
-    if (!m) return { members: members.reverse(), base: sha };
+    // c is the batch's empty base commit (one parent: the main tip it was cut from) or a foreign commit.
+    if (!m) return { members: members.reverse(), base: c.parents[0]?.sha ?? sha, root: sha };
     members.push(m);
     sha = c.parents[0].sha;
   }
@@ -270,8 +271,11 @@ function startBatch(queue, required) {
   if (!batch.length) return false;
   const base = mainTip();
   const name = `${BATCH_PREFIX}${process.env.GITHUB_RUN_ID || Date.now()}`;
-  gh('api', '-X', 'POST', `/repos/${REPO}/git/refs`, '-f', `ref=refs/heads/${name}`, '-f', `sha=${base}`);
-  let tip = base;
+  // Cut from an empty child of main, not main itself: the merges API fast-forwards when a head descends
+  // from the base, which would create no two-parent member commit (and so no recorded head/tree).
+  const root = JSON.parse(gh('api', '-X', 'POST', `/repos/${REPO}/git/commits`, '-f', 'message=land-queue batch base', '-f', `tree=${api(`git/commits/${base}`).tree.sha}`, '-f', `parents[]=${base}`)).sha;
+  gh('api', '-X', 'POST', `/repos/${REPO}/git/refs`, '-f', `ref=refs/heads/${name}`, '-f', `sha=${root}`);
+  let tip = root;
   for (const c of batch) {
     try {
       const r = JSON.parse(gh('api', '-X', 'POST', `/repos/${REPO}/merges`, '-f', `base=${name}`, '-f', `head=${c.pr.sha}`, '-f', `commit_message=${memberMessage(c.n, c.pr.sha)}`) || 'null');
@@ -281,7 +285,7 @@ function startBatch(queue, required) {
       if (/409|conflict/i.test(e.message)) note(c.n, c.pr.sha, 'batch-conflict', `conflicts with other queued PRs in batch ${name}; it stays queued and lands after them or on its own.`);
     }
   }
-  if (tip === base) { dropBranch(name); return false; }
+  if (tip === root) { dropBranch(name); return false; }
   console.log(`batch ${name} cut from ${base}: ${batch.map((c) => '#' + c.n).join(' ')}`);
   kickChecksIfMissing(undefined, { sha: tip, headRefName: name, rollup: [] });
   return true;

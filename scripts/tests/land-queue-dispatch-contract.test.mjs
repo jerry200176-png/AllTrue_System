@@ -96,3 +96,9 @@ test('missing check workflows are dispatched per workflow, not only when the rol
 test('each batch squash is verified against the tested tree right after it lands', () => {
   assert.match(queue, /tree\(expect\) !== m\.tree/);
 });
+
+test('batch branch is cut from an empty child of main so every member is a real two-parent merge (no fast-forward)', () => {
+  assert.match(queue, /git\/commits`, '-f', 'message=land-queue batch base'/);
+  assert.match(queue, /ref=refs\/heads\/\$\{name\}`, '-f', `sha=\$\{root\}`/);
+  assert.match(queue, /base: c\.parents\[0\]\?\.sha \?\? sha/);
+});
