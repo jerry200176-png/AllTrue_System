@@ -32,9 +32,12 @@ export function nextManualSessionDate(course, { todayYmd = localTodayYmd(), curr
   const now = currentTime || `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
   const startTime = String(course?.start_time || '').slice(0, 5);
 
+  // A course starting later (e.g. created ahead from the calendar, in-app #382) can't book before its start.
+  const courseStart = String(course?.start_date || course?.StartDate || '').slice(0, 10);
+  const baseYmd = courseStart > todayYmd ? courseStart : todayYmd;
   for (let offset = 0; offset <= 7; offset += 1) {
-    const date = addDays(todayYmd, offset);
-    const isToday = offset === 0;
+    const date = addDays(baseYmd, offset);
+    const isToday = date === todayYmd;
     const isValidWeekday = days.size === 0 || days.has(dayOfWeekFromDate(date));
     const isStillUpcoming = !isToday || !startTime || startTime > now;
     if (isValidWeekday && isStillUpcoming) return date;
