@@ -168,4 +168,50 @@ assert.equal(M.monthlyPaymentLabel({ payment_status: 'paid' }), null);
 assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'pending_report' }), '2026-09 待對帳');
 assert.equal(M.periodPaymentLabel('partial'), '部分繳');
 
+// ─── closed-reason verdict: legacy oracles (verbatim page copies) + pinned divergences ───
+const cmClosed = (c) => {
+  if (c.closed_reason) return c.closed_reason;
+  if (c.status === 'inactive' && M.isSessionPayment(c) && c.payment_status === 'paid' && Number(c.remaining_sessions ?? 0) <= 0) return 'completed';
+  if (c.status === 'inactive' && !M.isSessionPayment(c)) return 'completed';
+  return null;
+};
+const slClosed = (course) => {
+  const settled = (x) => { const st = String(x?.payment_status || '').toLowerCase(); return x?._noncanonical || !st ? null : st === 'paid'; };
+  if (course?.closed_reason) return course.closed_reason;
+  if (String(course?.status || '').toLowerCase() === 'inactive' && course?.payment_type === 'session' && settled(course)
+    && M.ownRemainingSessions(course) != null && M.ownRemainingSessions(course) <= 0) return 'completed';
+  if (String(course?.status || '').toLowerCase() === 'inactive' && course?.payment_type !== 'session') return 'completed';
+  return null;
+};
+const base = { status: 'inactive', payment_type: 'session', payment_status: 'paid', remaining_sessions: 0 };
+// [name, course, unified, cm legacy, sl legacy]
+const closedCases = [
+  ['server reason wins', { ...base, closed_reason: 'waived' }, 'waived', 'waived', 'waived'],
+  ['active course', { ...base, status: 'active' }, null, null, null],
+  ['paid + used up', base, 'completed', 'completed', 'completed'],
+  ['unpaid + used up', { ...base, payment_status: 'unpaid' }, null, null, null],
+  ['paid, sessions left', { ...base, remaining_sessions: 3 }, null, null, null],
+  ['monthly inactive', { ...base, payment_type: 'monthly' }, 'completed', 'completed', 'completed'],
+  // DIVERGENCES (unified rule = SL, the stricter one)
+  ['remaining missing', { ...base, remaining_sessions: undefined }, null, 'completed', null],
+  ['_noncanonical paid', { ...base, _noncanonical: true }, null, 'completed', null],
+  ['Pascal remaining', { ...base, remaining_sessions: undefined, RemainingSessions: 0 }, 'completed', 'completed', 'completed'],
+  ['status case', { ...base, status: 'Inactive' }, 'completed', null, 'completed'],
+  ['no payment_type, purchased>0, unpaid', { status: 'inactive', sessions_purchased: 8, payment_status: 'unpaid', remaining_sessions: 2 }, null, null, 'completed'],
+  ['no payment_type, purchased=0', { status: 'inactive', payment_status: 'paid', remaining_sessions: 0 }, 'completed', 'completed', 'completed'],
+];
+for (const [name, c, unified, cm, sl] of closedCases) {
+  assert.equal(M.closedReason(c), unified, `unified: ${name}`);
+  assert.equal(cmClosed(c), cm, `cm legacy: ${name}`);
+  assert.equal(slClosed(c), sl, `sl legacy: ${name}`);
+}
+assert.equal(M.closedReason(null), null);
+assert.deepEqual(['settled', 'settled_pending', 'waived', 'contract_amended', 'completed', 'converted_trial', 'x', null].map(M.isClosedReason),
+  [true, true, true, true, true, true, false, false]);
+const hist = (reason) => ({ closed_reason: reason });
+assert.deepEqual(['settled', 'completed', 'waived', 'settled_pending', 'contract_amended', 'converted_trial', null].map((r) => M.isHistoryCourse(hist(r))),
+  [true, true, true, false, false, false, false], 'CourseManagement set');
+assert.deepEqual(['settled', 'completed', 'waived', 'settled_pending', 'contract_amended', 'converted_trial', null].map((r) => M.isHistoryCourse(hist(r), { includePending: true })),
+  [true, true, true, true, false, false, false], 'StudentsList set adds settled_pending');
+
 console.log('courseMoneyState passed');

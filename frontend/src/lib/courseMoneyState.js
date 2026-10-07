@@ -7,6 +7,8 @@
 // one wording per payment status (see courseMoneyState.test.js). Remaining per-caller options
 // (pascalAlias, fallbackToPurchased) are session-count display aliases, not money status.
 
+import { isCourseSettled } from './paymentStatus.js';
+
 /** 低堂數門檻：剩餘 <= 2 視為即將用完 */
 export const LOW_SESSIONS_THRESHOLD = 2;
 
@@ -111,6 +113,31 @@ export const courseProgress = (course) => {
     used: boundedUsed,
     percent: Math.min(100, Math.max(0, Math.round((boundedUsed / total) * 100))),
   };
+};
+
+// ── closed-reason verdict ────────────────────────────────────
+/** Reasons that put a course in the "已結案" family (CourseManagement callout / status label). */
+const CLOSED_REASONS = ['settled', 'settled_pending', 'waived', 'contract_amended', 'completed', 'converted_trial'];
+export const isClosedReason = (reason) => CLOSED_REASONS.includes(reason);
+
+/**
+ * The one closed-reason verdict. Server `closed_reason` wins; for legacy rows without one an
+ * inactive course counts as 'completed' when it is monthly/non-session, or session-mode with the
+ * server saying paid (`isCourseSettled === true`, so `_noncanonical` rows never count) and a known
+ * own remaining <= 0 (missing remaining is not "used up").
+ */
+export const closedReason = (course) => {
+  if (course?.closed_reason) return course.closed_reason;
+  if (String(course?.status || '').toLowerCase() !== 'inactive') return null;
+  if (!isSessionPayment(course)) return 'completed';
+  const remaining = ownRemainingSessions(course);
+  return isCourseSettled(course) === true && remaining != null && remaining <= 0 ? 'completed' : null;
+};
+
+/** History list membership. includePending: StudentsList also files 待對帳結案 rows under history; CourseManagement keeps them in the active list. */
+export const isHistoryCourse = (course, { includePending = false } = {}) => {
+  const reason = closedReason(course);
+  return reason === 'settled' || reason === 'completed' || reason === 'waived' || (includePending && reason === 'settled_pending');
 };
 
 // ── payment-status labels (display only; the server owns the status itself) ──
