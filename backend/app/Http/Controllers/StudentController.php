@@ -142,9 +142,6 @@ class StudentController extends Controller
 
     public function show(Student $student)
     {
-        $role = request()->attributes->get('auth_role');
-        $campusIds = $role === 'super_admin' ? [] : request()->attributes->get('auth_campus_ids', []);
-
         if ($deny = $this->denyOutsideCampus($student)) {
             return $deny;
         }
@@ -168,9 +165,6 @@ class StudentController extends Controller
      */
     public function activeCourses(Student $student)
     {
-        $role = request()->attributes->get('auth_role');
-        $campusIds = $role === 'super_admin' ? [] : request()->attributes->get('auth_campus_ids', []);
-
         if ($deny = $this->denyOutsideCampus($student)) {
             return $deny;
         }
@@ -243,9 +237,6 @@ class StudentController extends Controller
 
     public function update(Request $request, Student $student)
     {
-        $role = $request->attributes->get('auth_role');
-        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
-
         if ($deny = $this->denyOutsideCampus($student)) {
             return $deny;
         }
@@ -459,9 +450,6 @@ class StudentController extends Controller
 
     public function destroy(Request $request, Student $student)
     {
-        $role = $request->attributes->get('auth_role');
-        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
-
         if ($deny = $this->denyOutsideCampus($student)) {
             return $deny;
         }
@@ -591,9 +579,6 @@ class StudentController extends Controller
 
     public function lineBindings(Request $request, Student $student)
     {
-        $role = $request->attributes->get('auth_role');
-        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
-
         if ($deny = $this->denyOutsideCampus($student)) {
             return $deny;
         }
@@ -614,9 +599,6 @@ class StudentController extends Controller
 
     public function removeLineBinding(Request $request, Student $student, int $bindingId)
     {
-        $role = $request->attributes->get('auth_role');
-        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
-
         if ($deny = $this->denyOutsideCampus($student)) {
             return $deny;
         }

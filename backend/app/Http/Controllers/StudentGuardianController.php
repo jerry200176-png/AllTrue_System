@@ -141,9 +141,12 @@ class StudentGuardianController extends Controller
 
     private function authorizeStudent(Request $request, Student $student)
     {
-        $role = $request->attributes->get('auth_role');
-        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
-        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
+        // Same fail-closed rule as StudentController::denyOutsideCampus (F18): an empty campus list grants none.
+        if ($request->attributes->get('auth_role') === 'super_admin') {
+            return null;
+        }
+        $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if (!in_array((int) $student->CampusID, $campusIds, true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
