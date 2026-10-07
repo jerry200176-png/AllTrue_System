@@ -70,6 +70,25 @@ export function collectStudentCourses(courseMap, student) {
   return out;
 }
 
+/**
+ * in-app #382: a manual (逐堂手動排課) course with lessons left and nothing booked needs 新增下一堂, not 加購 or a second
+ * course. Unknown counts never qualify.
+ */
+export function needsFirstManualLesson(c) {
+  return c?.scheduling_policy === 'manual_occurrence' && c?.future_session_count === 0 && (c?.remaining_sessions ?? 0) > 0;
+}
+
+/** One shape for the 409 duplicate conflicts every page shows; keeps all server fields (#382). */
+export function normalizeDuplicateConflicts(conflicts) {
+  return (Array.isArray(conflicts) ? conflicts : []).map((c) => ({
+    ...c,
+    existing_course_id: c?.existing_course_id ?? c?.id,
+    subject_name: c?.subject_name || c?.subject || '',
+    remaining_sessions: c?.remaining_sessions ?? 0,
+    class_type: c?.class_type || '',
+  }));
+}
+
 export function normalizeActiveCourseConflicts(courses) {
   return (Array.isArray(courses) ? courses : []).map((course) => ({
     ...course,
