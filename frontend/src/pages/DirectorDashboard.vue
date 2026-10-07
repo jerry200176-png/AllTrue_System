@@ -363,7 +363,6 @@
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { isPaymentNoticeStatus, paymentCenterIntentFor } from '../lib/paymentStatus.js';
-import { TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
 import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
@@ -839,7 +838,8 @@ const paymentActionLaneLabel = computed(() => {
   const hasUnpaid = rows.some(s => s.alert_type === 'unpaid');
   const allLow = rows.every(s => s.alert_type === 'low_sessions');
   const allMonthly = rows.every(s => s.alert_type === 'monthly_due_soon');
-  if (hasUnpaid) return `共 ${rows.length} 筆，含${TUITION_STATUS_CONFIG.unpaid.label}`;
+  // alert_type 'unpaid' also covers partly paid and parent-reported rows: neutral wording.
+  if (hasUnpaid) return `共 ${rows.length} 筆，含待收款`;
   if (allLow) return `共 ${rows.length} 筆低堂數／續課提醒`;
   if (allMonthly) return `共 ${rows.length} 筆月結提醒`;
   return `共 ${rows.length} 筆待留意`;
