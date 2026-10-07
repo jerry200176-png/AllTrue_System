@@ -25,6 +25,8 @@ concurrency:
 
 jobs:
   candidates:
+    # Secret-bearing: only the reviewed workflow on main may touch production.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -65,14 +67,14 @@ jobs:
           json="$(printf '%s\n' "$raw" | grep -m1 '^{"candidates"' || true)"
           [ -n "$json" ] || { echo "::error::bugs:auto-intake --candidates returned no JSON (command not deployed yet?)"; exit 1; }
           # Keep only the whitelisted ID fields before anything is printed or passed on.
-          json="$(printf '%s' "$json" | jq -c '[.candidates[] | {bug_id: (.bug_id|tonumber), campus_id: (.campus_id|tonumber), severity: (.severity|tostring|ascii_downcase|gsub("[^a-z]";"")), page_key: (.page_key|tostring|gsub("[^A-Za-z0-9_-]";""))}]')"
+          json="$(printf '%s' "$json" | jq -c '[.candidates[] | {bug_id: (.bug_id|tonumber), campus_id: (.campus_id|tonumber), severity: (.severity|tostring|ascii_downcase|gsub("[^a-z]";""))}]')"
           echo "json=$json" >> "$GITHUB_OUTPUT"
           echo "count=$(printf '%s' "$json" | jq 'length')" >> "$GITHUB_OUTPUT"
           echo "candidates: $(printf '%s' "$json" | jq -c '[.[].bug_id]')"
 
   issues:
     needs: candidates
-    if: needs.candidates.outputs.count != '0'
+    if: github.ref == 'refs/heads/main' && needs.candidates.outputs.count != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -93,19 +95,23 @@ jobs:
           while read -r row; do
             id="$(jq -r '.bug_id' <<<"$row")"; [[ "$id" =~ ^[0-9]+$ ]] || exit 1
             ref="SourceRef: alltrue:bug_report:${id}"
-            # Reuse only issues opened by the repository owner or this workflow's bot: anyone can open a
-            # public issue quoting the SourceRef, and its URL would otherwise be linked and sent to the reporter.
-            url="$(gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\" in:body" --json url,body,author \
-              | jq -r --arg ref "$ref" --arg owner "${GITHUB_REPOSITORY_OWNER}" \
-                '[.[] | select((.body | contains($ref)) and (.author.login == $owner or .author.login == "app/github-actions" or .author.login == "github-actions"))][0].url // empty')"
+            # Reuse only an issue whose SourceRef was written by the repository owner or this workflow's bot,
+            # in the body or in a comment (shared issues carry one SourceRef comment per report). Anyone can
+            # open a public issue quoting the SourceRef; its URL must never be linked or sent to the reporter.
+            trusted='(.login == $owner or .login == "app/github-actions" or .login == "github-actions")'
+            url=""
+            for n in $(gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\"" --json number -q '.[].number'); do
+              hit="$(gh issue view "$n" --json url,body,author,comments | jq -r --arg ref "$ref" --arg owner "${GITHUB_REPOSITORY_OWNER}" \
+                "if ((.body | contains(\$ref)) and (.author | $trusted)) or ([.comments[] | select((.body | contains(\$ref)) and (.author | $trusted))] | length > 0) then .url else empty end")"
+              if [ -n "$hit" ]; then url="$hit"; break; fi
+            done
             if [ -z "$url" ]; then
               if [ "$DRY_RUN" = "true" ]; then echo "would create issue for in-app #$id"; continue; fi
-              page="$(jq -r '.page_key' <<<"$row")"
               body="$(printf '%s\n\n%s\n%s\n%s\n\n%s' "$ref" \
-                "- In-app ID: ${id}" "- Campus ID: $(jq -r '.campus_id' <<<"$row") (opaque) · severity $(jq -r '.severity' <<<"$row") · page \`${page}\`" \
+                "- In-app ID: ${id}" "- Campus ID: $(jq -r '.campus_id' <<<"$row") (opaque) · severity $(jq -r '.severity' <<<"$row")" \
                 "- Opened by bug-auto-intake.yml; the reporter got an automatic acknowledgement." \
                 "Auto-intake only: no root cause yet. Report text stays in production (read it via bug-detail-dump). Next: investigate, fix the cause, reply in plain language (see docs/CHAT_BUG_SYSTEM.md §3.6–3.7).")"
-              url="$(gh issue create --title "[in-app #${id}][auto-intake] ${page} report" --body "$body")"
+              url="$(gh issue create --title "[in-app #${id}][auto-intake] report" --body "$body")"
             fi
             [[ "$url" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "bad issue url"; exit 1; }
             echo "in-app #$id -> $url"
@@ -115,7 +121,7 @@ jobs:
 
   ack:
     needs: issues
-    if: needs.issues.outputs.pairs != '[]' && needs.issues.outputs.pairs != '' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    if: github.ref == 'refs/heads/main' && needs.issues.outputs.pairs != '[]' && needs.issues.outputs.pairs != '' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

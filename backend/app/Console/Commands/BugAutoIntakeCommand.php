@@ -23,7 +23,7 @@ class BugAutoIntakeCommand extends Command
     public const INTAKE_NOTE = 'auto-intake; GitHub issue=';
 
     protected $signature = 'bugs:auto-intake
-                            {--candidates : Print new reports as JSON (IDs, campus, severity, page, created_at only)}
+                            {--candidates : Print new reports as JSON (IDs, campus, severity, created_at only)}
                             {--limit=10 : Max reports per --candidates}
                             {--min-age=5 : Minutes a report must exist before intake (lets attachments finish)}
                             {--ack : Triage one report and post the acknowledgement}
@@ -50,12 +50,11 @@ class BugAutoIntakeCommand extends Command
         $cutoff = now()->subMinutes(max(0, (int) $this->option('min-age')));
         $rows = BugReport::query()->where('status', 'new')->where('created_at', '<=', $cutoff)
             ->orderBy('id')->limit($limit)
-            ->get(['id', 'CampusID', 'severity', 'page_key', 'created_at'])
+            ->get(['id', 'CampusID', 'severity', 'created_at'])
             ->map(fn (BugReport $b) => [
                 'bug_id' => (int) $b->id,
                 'campus_id' => (int) $b->CampusID,
                 'severity' => (string) $b->severity,
-                'page_key' => preg_replace('/[^a-z0-9_-]/i', '', (string) $b->page_key),
                 'created_at' => optional($b->created_at)->toIso8601String(),
             ])->values()->all();
         $this->line(json_encode(['candidates' => $rows], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
