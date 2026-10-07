@@ -4,7 +4,7 @@ import { BATCH_MAX, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVer
 
 const req = ['A', 'B'];
 const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
-const pr = (o = {}) => ({ mergeStateStatus: 'CLEAN', unresolvedThreads: 0, rollup: ok, ...o });
+const pr = (o = {}) => ({ mergeStateStatus: 'CLEAN', rollup: ok, ...o });
 
 test('orderQueue: oldest label first, skips drafts and non-main', () => {
   const q = orderQueue([
@@ -29,8 +29,8 @@ test('decide: failed check names it; latest rerun wins', () => {
   assert.equal(decide(pr({ rollup: rerun }), req).action, 'merge');
 });
 
-test('decide: unresolved threads reject, pending or missing checks wait', () => {
-  assert.equal(decide(pr({ unresolvedThreads: 2 }), req).reason, 'threads');
+test('decide: unresolved review threads do not gate; pending or missing checks wait', () => {
+  assert.equal(decide(pr({ unresolvedThreads: 2 }), req).action, 'merge');
   assert.equal(decide(pr({ rollup: [ok[0], { name: 'B', status: 'IN_PROGRESS', conclusion: null }] }), req).action, 'wait');
   assert.equal(decide(pr({ rollup: [ok[0]] }), req).action, 'wait');
   assert.equal(decide(pr({ mergeStateStatus: 'BLOCKED' }), req).action, 'wait');

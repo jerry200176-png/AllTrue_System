@@ -54,7 +54,7 @@ export function checkStates(rollup, required) {
   }));
 }
 
-// pr: {mergeStateStatus, behindBy, unresolvedThreads, rollup}. Spec order: BEHIND, DIRTY, failed, threads, merge, wait.
+// pr: {mergeStateStatus, behindBy, rollup}. Spec order: BEHIND, DIRTY, failed, merge, wait. Review threads do not gate (Founder 2026-10-07).
 // behindBy keeps "head contains main" enforced here once the ruleset's strict policy is off
 // (GitHub then stops reporting BEHIND). Batch eligibility passes behindBy: 0 on purpose.
 export function decide(pr, required) {
@@ -63,7 +63,6 @@ export function decide(pr, required) {
   const states = checkStates(pr.rollup, required);
   const failed = Object.keys(states).filter((n) => states[n] === 'fail');
   if (failed.length) return { action: 'reject', reason: 'checks', text: `required checks failed: ${failed.join(', ')}. Fix and re-add \`queue\`` };
-  if (pr.unresolvedThreads > 0) return { action: 'reject', reason: 'threads', text: `${pr.unresolvedThreads} unresolved review thread(s). Resolve them and re-add \`queue\`` };
   const allGreen = Object.values(states).every((s) => s === 'pass');
   if (pr.mergeStateStatus === 'CLEAN' && allGreen) return { action: 'merge' };
   return { action: 'wait' };
@@ -124,7 +123,6 @@ function labeledAt(n) {
 
 const Q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
   mergeStateStatus headRefName headRefOid authorAssociation
-  reviewThreads(first:100){nodes{isResolved}}
   commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{
     __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId}}} ... on StatusContext{context state createdAt}}}}}}}}}}`;
 
@@ -145,7 +143,6 @@ function load(n) {
     mergeStateStatus: p.mergeStateStatus,
     headRefName: p.headRefName,
     sha: p.headRefOid,
-    unresolvedThreads: p.reviewThreads.nodes.filter((t) => !t.isResolved).length,
     rollup: fromPinned(p.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes, PINS),
     authorAssociation: p.authorAssociation,
   };
