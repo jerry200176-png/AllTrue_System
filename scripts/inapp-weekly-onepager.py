@@ -52,12 +52,25 @@ def parse_snapshot(snapshot):
     return out
 
 
-def families(issues, ids):
-    """in-app id -> area label of the (first) issue that tracks it; unlabeled -> None."""
+def trusted_issues(issues, owner):
+    """Public repo: anyone can open an issue quoting a SourceRef or title. Keep only issues the
+    owner or this workflow's bot authored, and drop comments from anyone else."""
+    ok = {owner, "app/github-actions", "github-actions"}
+    out = []
+    for issue in issues:
+        if (issue.get("author") or {}).get("login") not in ok:
+            continue
+        comments = [c for c in issue.get("comments") or [] if (c.get("author") or {}).get("login") in ok]
+        out.append({**issue, "comments": comments})
+    return out
+
+
+def families(issues, ids, owner):
+    """in-app id -> whitelisted area label of the (first) trusted issue tracking it."""
     recon = _load_reconcile()
     wanted, found = set(ids), {}
-    for issue in sorted(issues, key=lambda i: i["number"]):
-        area = sorted(l["name"] for l in issue.get("labels", []) if l["name"].startswith("area:"))
+    for issue in sorted(trusted_issues(issues, owner), key=lambda i: i["number"]):
+        area = sorted(l["name"] for l in issue.get("labels", []) if l["name"] in FAMILY_ZH)
         for bug_id in recon.inapp_ids(issue):
             if bug_id in wanted and bug_id not in found and area:
                 found[bug_id] = area[0]
@@ -73,11 +86,11 @@ def iso_week(now):
     return f"{year}-W{week:02d}"
 
 
-def render(snapshot, issues, now):
+def render(snapshot, issues, now, owner):
     data = parse_snapshot(snapshot)
     title = f"in-app 週報 {iso_week(now)}"
     week_ids = sorted(set(data["new"]) | set(data["resolved"]) | set(data["closed"]) | set(data["reopened"]))
-    fam = families(issues, week_ids)
+    fam = families(issues, week_ids, owner)
     counts = Counter(fam.get(i, "未分類") for i in week_ids)
     top = counts.most_common(3)
     age = data["open_by_age"]
@@ -107,11 +120,12 @@ def main():
     ap.add_argument("--issues", required=True)
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--now", default=None)
+    ap.add_argument("--owner", required=True, help="repository owner login (trusted issue author)")
     args = ap.parse_args()
     now = datetime.fromisoformat(args.now) if args.now else datetime.now(timezone.utc)
     snapshot = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
     issues = json.loads(Path(args.issues).read_text(encoding="utf-8"))
-    title, body = render(snapshot, issues, now)
+    title, body = render(snapshot, issues, now, args.owner)
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     (out / "title.txt").write_text(title, encoding="utf-8")

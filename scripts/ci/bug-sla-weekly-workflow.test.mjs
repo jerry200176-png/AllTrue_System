@@ -17,4 +17,5 @@ assert.doesNotMatch(wf.slice(0, wf.indexOf('\n  issue:')), /issues: write/, 'pro
 assert.match(job, /--author app\/github-actions/, 'only the bot-authored weekly issue is reused');
 assert.match(job, /gh issue edit "\$existing" --body-file/, 'rerun updates instead of duplicating');
 
+assert.match(job, /--owner "\$GITHUB_REPOSITORY_OWNER"/, 'only owner/bot issues are trusted');
 console.log('bug-sla-weekly workflow contract: PASS');

@@ -239,8 +239,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh issue list --state all --limit 1000 --json number,title,body,comments,state,labels > out/issues.json
-          python3 scripts/inapp-weekly-onepager.py --snapshot out/bug-sla-weekly.json --issues out/issues.json --out-dir out
+          gh issue list --state all --limit 1000 --json number,title,body,comments,state,labels,author > out/issues.json
+          python3 scripts/inapp-weekly-onepager.py --snapshot out/bug-sla-weekly.json --issues out/issues.json --out-dir out --owner "$GITHUB_REPOSITORY_OWNER"
           title="$(cat out/title.txt)"
           [[ "$title" =~ ^in-app\ 週報\ [0-9]{4}-W[0-9]{2}$ ]] || { echo "::error::unexpected title"; exit 1; }
           # Only an issue this workflow's bot created counts as the weekly issue (anyone can open a lookalike).
