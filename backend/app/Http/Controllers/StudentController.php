@@ -186,7 +186,8 @@ class StudentController extends Controller
             ? DB::table('Subject')->whereIn('id', $subjectIds)->pluck($subjectNameCol, 'id')
             : collect();
 
-        $courses = $activeCourses->map(function ($sc) use ($subjectMap) {
+        $today = \Carbon\Carbon::today()->toDateString();
+        $courses = $activeCourses->map(function ($sc) use ($subjectMap, $today) {
             return [
                 'id' => $sc->ID,
                 'subject_id' => (int) $sc->SubjectID,
@@ -197,6 +198,9 @@ class StudentController extends Controller
                 'session_count' => (int) ($sc->SessionCount ?? 0),
                 'class_type' => $sc->ClassType ?? 'one_on_one',
                 'payment_type' => $sc->settlement_day ? 'monthly' : 'session',
+                // in-app #382: lets the duplicate prompt offer 新增下一堂 for a manual course with nothing booked.
+                'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
+                'future_session_count' => app(\App\Services\ManualSessionBookingService::class)->reservedSessionCount($sc, $today),
             ];
         });
 

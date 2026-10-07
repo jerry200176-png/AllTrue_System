@@ -424,7 +424,7 @@
                 <td>
                   {{ c.remaining_sessions ?? 0 }} 堂
                   <button
-                    v-if="c.scheduling_policy === 'manual_occurrence' && !c.future_session_count && (c.remaining_sessions ?? 0) > 0"
+                    v-if="needsFirstManualLesson(c)"
                     type="button"
                     class="btn-secondary btn-sm"
                     @click="showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptOriginalPayload?.student_id, c.existing_course_id)"
@@ -585,7 +585,8 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { dedupeCalendarRowsByStudentSlot, mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
 import { hasCrossCampusBusySlot, normalizeCrossCampusBusySlots } from '../lib/crossCampusBusySlots.js';
 import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
-import { buildAttendanceNav } from '../lib/authoritativeMutationRoutes.js';
+import { buildAttendanceNav, buildCourseMgmtOpsNav } from '../lib/authoritativeMutationRoutes.js';
+import { needsFirstManualLesson, normalizeDuplicateConflicts } from '../lib/enrollmentConflictDecision.js';
 import {
   resolveCalendarDataFetchBoundsYmd,
   isRangeWithinFetchedBounds,
@@ -2073,16 +2074,16 @@ const currentSessionChargeDisplay = computed(() => {
 
 // in-app #382: a manual course starts with no lesson, so the calendar can't show it; schedule the first one there.
 const openManualSessionInCourseMgmt = (studentId, courseId) => {
-  emit('navigate', { target: 'course-mgmt', studentId, courseId, intent: 'manual-session' });
+  emit('navigate', buildCourseMgmtOpsNav({ id: courseId, student_id: studentId }, { intent: 'manual-session' }));
 };
 
 const handleUniversalSchedulerSuccess = async (result) => {
   const workflowStep = 'create';
   if (!calendarWorkflowStarts.has(workflowStep)) startCalendarWorkflow(workflowStep);
   showModal.value = false;
-  await loadCourses();
-  finishCalendarWorkflow(workflowStep);
   const manual = result?.scheduling_policy === 'manual_occurrence' && result.student_class_id;
+  if (!manual) await loadCourses(); // the page is left right away for a manual course
+  finishCalendarWorkflow(workflowStep);
   void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: manual ? 'course-mgmt' : 'calendar' });
   if (manual) openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
 };
@@ -2093,13 +2094,7 @@ const interceptOriginalPayload = ref(null);
 const forceSubmitting = ref(false);
 
 function handleSchedulerDuplicate(evt) {
-  duplicateConflicts.value = (evt?.conflicts || []).map((c) => ({
-    existing_course_id: c.existing_course_id ?? c.id,
-    subject: c.subject,
-    subject_name: c.subject_name || c.subject,
-    class_type: c.class_type,
-    remaining_sessions: c.remaining_sessions,
-  }));
+  duplicateConflicts.value = normalizeDuplicateConflicts(evt?.conflicts);
   interceptOriginalPayload.value = evt?.originalPayload || null;
   showDuplicateInterceptModal.value = true;
 }

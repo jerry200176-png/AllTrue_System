@@ -1477,7 +1477,7 @@ import CourseEditForm from '../components/CourseEditForm.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
-import { buildForceOverrideFields, findCourseForPurchase } from '../lib/enrollmentConflictDecision';
+import { buildForceOverrideFields, findCourseForPurchase, normalizeDuplicateConflicts } from '../lib/enrollmentConflictDecision';
 import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import MonthlyCorrectionPreviewModal from '../components/course-management/MonthlyCorrectionPreviewModal.vue';
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
@@ -2173,12 +2173,7 @@ async function handleUniversalBackfillSuccess(result) {
 
 function handleSchedulerDuplicateCM(evt) {
   showBackfillModal.value = false;
-  duplicateConflicts.value = (evt?.conflicts || []).map(c => ({
-    existing_course_id: c.existing_course_id,
-    subject_name: c.subject || '',
-    remaining_sessions: c.remaining_sessions ?? 0,
-    class_type: c.class_type || '',
-  }));
+  duplicateConflicts.value = normalizeDuplicateConflicts(evt?.conflicts);
   interceptOriginalPayload.value = evt?.originalPayload || null;
   interceptPendingClassType.value = String(evt?.originalPayload?.class_type || '');
   showDuplicateInterceptModal.value = true;

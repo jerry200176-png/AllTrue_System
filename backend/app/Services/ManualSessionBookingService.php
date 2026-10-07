@@ -304,7 +304,8 @@ class ManualSessionBookingService
         });
     }
 
-    private function reservedSessionCount(StudentClass $course, string $today): int
+    /** Upcoming live lessons this course can still book against (package-wide for a package member). */
+    public function reservedSessionCount(StudentClass $course, string $today): int
     {
         $query = ClassSession::query()
             ->whereDate('SessionDate', '>=', $today)

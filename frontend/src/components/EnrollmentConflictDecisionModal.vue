@@ -131,6 +131,7 @@
 </template>
 
 <script setup>
+import { needsFirstManualLesson } from '../lib/enrollmentConflictDecision.js';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -143,8 +144,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['cancel', 'purchase', 'decision', 'manual-session']);
-// in-app #382: a manual course with lessons left but nothing scheduled needs its next lesson, not 加購 or a second course.
-const needsFirstManualLesson = (c) => c.scheduling_policy === 'manual_occurrence' && !c.future_session_count && (c.remaining_sessions ?? 0) > 0;
+
 
 const headingId = 'enrollment-conflict-heading';
 const independentReason = ref('');

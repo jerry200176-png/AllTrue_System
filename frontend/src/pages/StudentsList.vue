@@ -1034,6 +1034,7 @@ import {
   collectStudentCourses,
   findCourseForPurchase,
   normalizeActiveCourseConflicts,
+  normalizeDuplicateConflicts,
 } from '../lib/enrollmentConflictDecision';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import MonthlyBatchRenewModal from '../components/course-management/MonthlyBatchRenewModal.vue';
@@ -2962,7 +2963,7 @@ const handleOpenBillingFromEdit = () => {
 
 // in-app #382: a manual course has no lesson yet; schedule the first one in course management.
 const openManualSessionInCourseMgmt = (studentId, courseId) => {
-  emit('navigate', { target: 'course-mgmt', studentId, courseId, intent: 'manual-session' });
+  emit('navigate', buildCourseMgmtOpsNav({ id: courseId, student_id: studentId }, { intent: 'manual-session' }));
 };
 
 const handleUniversalSchedulerSuccess = async (result) => {
@@ -2981,12 +2982,7 @@ const handleUniversalSchedulerSuccess = async (result) => {
 
 const handleSchedulerDuplicate = (evt) => {
   closeCourseModal();
-  duplicateConflicts.value = (evt?.conflicts || []).map(c => ({
-    existing_course_id: c.existing_course_id,
-    subject_name: c.subject || '',
-    remaining_sessions: c.remaining_sessions ?? 0,
-    class_type: c.class_type || '',
-  }));
+  duplicateConflicts.value = normalizeDuplicateConflicts(evt?.conflicts);
   interceptPendingStudent.value = selectedStudent.value;
   interceptOriginalPayload.value = evt?.originalPayload || null;
   interceptPendingClassType.value = String(evt?.originalPayload?.class_type || '');

@@ -210,6 +210,12 @@ class DuplicateCourseGuardTest extends TestCase
             ->assertJsonPath('conflicts.0.existing_course_id', $courseId)
             ->assertJsonPath('conflicts.0.scheduling_policy', 'manual_occurrence')
             ->assertJsonPath('conflicts.0.future_session_count', 0);
+
+        // 學生管理's pre-check reads active-courses: same facts, so it offers 新增下一堂 too.
+        $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
+            ->assertOk()
+            ->assertJsonPath('courses.0.scheduling_policy', 'manual_occurrence')
+            ->assertJsonPath('courses.0.future_session_count', 0);
     }
 
     private function createDirectorToken(): string
