@@ -91,12 +91,12 @@
       "name": "In-app bug POST comment/status",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-09-07",
-      "review_after": "2026-10-07",
+      "last_verified_at": "2026-10-03",
+      "review_after": "2026-11-02",
       "verification_method": "Approved Phase-C workflow dispatch: status+public comment write for verified in-app fixes",
       "environment": "prod",
-      "verifier": "codex-agent",
-      "evidence": "Phase-C run 34068294398 resolved #252/#253 with public replies; follow-up run 34068333317 posted #249 public comment; production head 6716ddb66b50912009ad7a352adfb46bc5b1c65f"
+      "verifier": "claude-agent",
+      "evidence": "Phase-C allowlist PR #3482 (merged 2026-10-03T11:02Z) wrote back in-app #374/#375; production write-back confirmed by closing comments https://github.com/jerry200176-png/AllTrue_System/issues/3464#issuecomment-5974732057 (in-app #374, rev aab8dbcb8) and https://github.com/jerry200176-png/AllTrue_System/issues/3467#issuecomment-5974731774 (in-app #375, rev 2c6839e31), 2026-10-03T23:48Z; run logs purged by pii-log-purge"
     },
     {
       "id": "phpunit_isolated",
