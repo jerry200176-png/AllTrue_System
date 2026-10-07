@@ -69,6 +69,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -93,8 +94,8 @@ const latest = computed(() => {
 });
 
 function statusLabel(status) {
-  const labels = { confirmed: '已收款', pending: '待對帳確認', rejected: '已退回', voided: '已作廢' };
-  return labels[status] || '已收款';
+  // A voided payment is 已作廢 here (the ledger's report 已撤銷 is a different action).
+  return { ...REPORT_STATUS_LABELS, voided: '已作廢' }[status] || REPORT_STATUS_LABELS.confirmed;
 }
 function methodLabel(method) {
   const labels = { cash: '現金', transfer: '匯款', void: '作廢' };
