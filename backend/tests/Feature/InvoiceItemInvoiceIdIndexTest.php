@@ -35,6 +35,24 @@ class InvoiceItemInvoiceIdIndexTest extends TestCase
         $this->assertTrue($this->hasIndex());
     }
 
+    public function test_up_fails_when_index_name_exists_with_wrong_columns(): void
+    {
+        $migration = require base_path(self::MIGRATION);
+        $migration->down();
+        DB::statement('ALTER TABLE `InvoiceItem` ADD INDEX `idx_invitem_invoice_id` (`Amount`)');
+
+        try {
+            $migration->up();
+            $this->fail('up() accepted a same-named index on the wrong column');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('unexpected columns', $e->getMessage());
+        } finally {
+            DB::statement('ALTER TABLE `InvoiceItem` DROP INDEX `idx_invitem_invoice_id`');
+            $migration->up();
+        }
+        $this->assertTrue($this->hasIndex());
+    }
+
     private function hasIndex(): bool
     {
         return collect(DB::select('SHOW INDEX FROM `InvoiceItem`'))
