@@ -401,7 +401,7 @@ class AccountingController extends Controller
         // Billing redesign V4: the student list opens a student who has no alert row.
         $studentId = (int) $request->input('student_id', 0);
         if ($studentClassId <= 0 && $reportId <= 0 && $studentId > 0) {
-            $studentClassId = (int) StudentClass::where('StudentID', $studentId)->orderByDesc('StartDate')->orderByDesc('ID')->value('ID');
+            $studentClassId = (int) StudentClass::query()->where('StudentID', $studentId)->orderByDesc('StartDate')->orderByDesc('ID')->value('ID');
         }
 
         if ($studentClassId <= 0 && $reportId <= 0) {
