@@ -6098,6 +6098,8 @@ class StudentClassController extends Controller
             'exclude_student_class_id' => (int) $source->getAttribute('ID'),
             'exclude_student_id' => (int) $source->getAttribute('StudentID') ?: null,
             'start_date' => $plan['start_date'],
+            // applyTransfer() syncs the moved rows with these slots/duration only when slots are given (#3502).
+            'contract_sync' => $plan['slots'] ? ['slots' => $plan['slots'], 'duration' => max(30, (int) ($plan['slots'][0]['duration_minutes'] ?? $source->getAttribute('SessionDuration') ?? 120))] : null,
         ]);
     }
 
