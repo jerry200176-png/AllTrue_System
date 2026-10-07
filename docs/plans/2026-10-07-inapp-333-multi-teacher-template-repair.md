@@ -44,6 +44,7 @@ weekday/time slots, statuses and flags only, with no names. It takes no inputs.
 |---|---|---|
 | `A_future_duplicate` | future, `scheduled`, no deducted sign-in, no live learning record, `session_deduction_ledger` net = 0, sibling has a live session at the same date+time | cancel this row (the sibling's row is the real lesson) |
 | `B_future_misplaced` | same clean conditions, no sibling row, count-mode `auto_recurrence` contract | cancel and re-append the lesson on the contract's own slot via the existing tail-append path (entitlement unchanged) |
+| `C_review_template_changed` | the contract's template holds none of its own early slots: edited after start (a legitimate move such as course 448 Tue→Thu), not the #333 union | **no change**; the move is valid |
 | `C_review_mode` | clean B row on a date-mode or `manual_occurrence` contract (tail-append is a no-op there) | **no automatic change**; director review |
 | `C_past_or_artifact` | past, or a deducted sign-in / learning record / nonzero ledger net | **no automatic change**; director review list (ledger/billing impact) |
 
@@ -102,3 +103,11 @@ sign-in rows.
   manifest.
 - If C is large, or A/B touches stopped contracts: no repair before a product
   decision.
+
+## Outcome (2026-10-07)
+
+Probe run 37571711459 flagged only course 448. A read-only SELECT by the
+coordinator showed it ran on Tuesdays (2/24, 3/3, 3/17), then on Thursdays from
+3/26 to 4/23. That is a legitimate move with the template updated, not
+contamination. No repair was run. The probe now labels this shape
+`template_changed_after_start` and buckets it `C_review_template_changed`.
