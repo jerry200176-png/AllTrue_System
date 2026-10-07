@@ -115,7 +115,11 @@ test('Golden scenarios report runs on dispatched batch branches (no pr_number) a
 
 test('presubmit skips only the per-PR gates on dispatched land-queue batch branches', () => {
   const y = read('.github/workflows/presubmit.yml');
-  assert.match(y, /LQ_BATCH: \$\{\{ github\.event_name == 'workflow_dispatch' && startsWith\(github\.ref, 'refs\/heads\/chore\/land-queue-batch-'\) \}\}/);
+  const detect = y.slice(y.indexOf('- name: Detect land-queue batch run'), y.indexOf('- name: PR dispatch guard'));
+  assert.match(detect, /inputs\.pr_number == ''/); // a dispatched real PR (land-queue re-check) keeps every gate
+  assert.match(detect, /startsWith\(github\.ref, 'refs\/heads\/chore\/land-queue-batch-'\)/);
+  assert.match(detect, /commits\/\$\{GITHUB_SHA\}\/pulls/); // an open PR head never skips
+  assert.match(detect, /LQ_BATCH=true/);
   const steps = y.split(/\n      - name: /).slice(1);
   const skipped = steps.filter((s) => s.includes("env.LQ_BATCH != 'true'")).map((s) => s.split('\n')[0]);
   assert.deepEqual(skipped.map((n) => /\[CHECK (\w+)\]/.exec(n)?.[1]).sort(), ['0d', '2', '4B']);

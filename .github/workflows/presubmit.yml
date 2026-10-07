@@ -29,12 +29,21 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # land-queue batch branch (dispatched, no PR): per-PR gates (declaration body, Release-Impact, 0d labels,
-    # size) already ran on each member PR's own head, which the ruleset still requires at merge.
-    env:
-      LQ_BATCH: ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/chore/land-queue-batch-') }}
 
     steps:
+      # land-queue batch branch (dispatched, no PR): per-PR gates (declaration body, Release-Impact, 0d labels,
+      # size) already ran on each member PR's own head, which the ruleset still requires at merge.
+      # Fail closed: only when dispatched WITHOUT pr_number on a chore/land-queue-batch-* ref AND no open PR
+      # has this commit as its head (a PR branch with that name keeps every gate).
+      - name: Detect land-queue batch run
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number == '' && startsWith(github.ref, 'refs/heads/chore/land-queue-batch-') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          prs="$(gh api "repos/${REPO}/commits/${GITHUB_SHA}/pulls" --jq '[.[]|select(.state=="open" and .head.sha==env.GITHUB_SHA)]|length')"
+          if [ "$prs" = "0" ]; then echo "LQ_BATCH=true" >> "$GITHUB_ENV"; else echo "::warning::commit is an open PR head; all gates run"; fi
       - name: PR dispatch guard (fail closed)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number != '' }}
         env:
