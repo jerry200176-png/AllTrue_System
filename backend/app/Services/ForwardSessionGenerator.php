@@ -98,6 +98,7 @@ class ForwardSessionGenerator
 
         // Generate forward weekly dates from the day after the anchor (last session or today, whichever later).
         $course = StudentClass::query()->find($studentClassId);
+        $course = $course instanceof StudentClass ? $course : null;
         $cursor = $lastDate->gt($today) ? $lastDate->copy() : $today->copy();
         $count = min($remaining, $horizonWeeks);
         $slots = [];

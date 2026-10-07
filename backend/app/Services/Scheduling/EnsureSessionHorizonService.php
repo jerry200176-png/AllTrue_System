@@ -154,6 +154,7 @@ final class EnsureSessionHorizonService
                 $candidates, $studentClassId, $studentId, $note, &$createdIds, &$skipped
             ) {
                 $course = StudentClass::query()->find($studentClassId);
+                $course = $course instanceof StudentClass ? $course : null;
                 foreach ($candidates as $o) {
                     $end = $o['end_hm'] ?? $this->defaultEnd($o['start_hm']);
                     // R20 same-start check stays (stricter on purpose); the write guard also rejects partial
