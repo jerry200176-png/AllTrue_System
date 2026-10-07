@@ -20,7 +20,7 @@ async function withPage(assertions, fixtureRows = rows) {
   vi.stubGlobal('fetch', fetchMock);
   const wrapper = shallowMount(TuitionCollectionPage, { props: { branchId: 1 } });
   try {
-    await wrapper.findAll('button').find((b) => b.text().includes('收據紀錄')).trigger('click');
+    await wrapper.findAll('button').find((b) => b.text().includes('收款紀錄')).trigger('click');
     await flushPromises();
     await assertions(wrapper, fetchMock);
     expect(fetchMock.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
