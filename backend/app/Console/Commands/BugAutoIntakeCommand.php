@@ -44,10 +44,12 @@ class BugAutoIntakeCommand extends Command
     private function list(): int
     {
         $limit = max(1, min(50, (int) $this->option('limit')));
+        $actor = self::actorId();
         $cutoff = now()->subMinutes(max(0, (int) $this->option('min-age')));
         $rows = BugReport::query()->where('status', 'new')->where('created_at', '<=', $cutoff)
             ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('bug_report_comments as c')
-                ->whereColumn('c.bug_report_id', 'bug_reports.id')->where('c.body', self::ACK_TEXT))
+                ->whereColumn('c.bug_report_id', 'bug_reports.id')->where('c.body', self::ACK_TEXT)
+                ->where('c.author_user_id', $actor))
             ->orderBy('id')->limit($limit)
             ->get(['id', 'CampusID', 'severity', 'created_at'])
             ->map(fn (BugReport $b) => [
@@ -74,7 +76,7 @@ class BugAutoIntakeCommand extends Command
             $this->error('bug not found: ' . $bugId);
             return self::FAILURE;
         }
-        $actor = (int) (User::query()->where('type', 'S')->orderBy('id')->value('id') ?? 0);
+        $actor = self::actorId();
         if ($actor <= 0) {
             $this->error('No type=S actor user');
             return self::FAILURE;
@@ -87,7 +89,9 @@ class BugAutoIntakeCommand extends Command
             if ($status !== 'new') {
                 return ['bug_id' => $bugId, 'skipped' => 'status_' . $status];
             }
-            if (BugReportComment::query()->where('bug_report_id', $bugId)->where('body', self::ACK_TEXT)->exists()) {
+            // Only the automation's own ack counts (a reporter quoting the text must not suppress intake).
+            if (BugReportComment::query()->where('bug_report_id', $bugId)->where('body', self::ACK_TEXT)
+                ->where('author_user_id', $actor)->exists()) {
                 return ['bug_id' => $bugId, 'ack' => 'skipped', 'issue' => $issueUrl];
             }
             BugReportService::addComment($bugId, $actor, self::ACK_TEXT, false);
@@ -97,4 +101,10 @@ class BugAutoIntakeCommand extends Command
         return self::SUCCESS;
     }
 
+
+    /** The automation sender: the first super admin (type S). Also the ack marker's author. */
+    private static function actorId(): int
+    {
+        return (int) (User::query()->where('type', 'S')->orderBy('id')->value('id') ?? 0);
+    }
 }

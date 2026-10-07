@@ -72,6 +72,12 @@ class BugAutoIntakeCommandTest extends TestCase
         $ids = array_column(json_decode(trim(Artisan::output()), true)['candidates'], 'bug_id');
         $this->assertSame([$waiting->id], $ids, 'backlog drains: acked reports are not listed again');
 
+        // A reporter quoting the ack text does not count as the automation's acknowledgement.
+        $quoted = $this->bug($reporter, 'new', now()->subHour()->toDateTimeString());
+        BugReportComment::create(['bug_report_id' => $quoted->id, 'author_user_id' => $reporter->id, 'body' => BugAutoIntakeCommand::ACK_TEXT, 'is_internal_note' => false]);
+        Artisan::call('bugs:auto-intake', ['--candidates' => true]);
+        $this->assertContains($quoted->id, array_column(json_decode(trim(Artisan::output()), true)['candidates'], 'bug_id'));
+
         $human = $this->bug($reporter, 'new', '2026-10-07 09:00:00');
         BugReportService::changeStatus($human->id, $admin->id, 'triaged', 'manual');
         $this->assertSame(0, Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $human->id, '--issue-url' => self::ISSUE]));

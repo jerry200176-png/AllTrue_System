@@ -103,17 +103,25 @@ jobs:
             # SourceRef cannot push the canonical issue out of the result window.
             find_trusted() {
               local n hit
-              for n in $( { for who in "${GITHUB_REPOSITORY_OWNER}" app/github-actions; do
-                    gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\" author:${who}" --json number -q '.[].number'
-                    gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\" commenter:${who}" --json number -q '.[].number'
-                  done; } | sort -n | uniq ); do
-                hit="$(gh issue view "$n" --json url,state,body,author,comments | jq -r --arg ref "$ref" --arg owner "${GITHUB_REPOSITORY_OWNER}" \
+              local nums="" part
+              # Fail closed: a search or view error must stop the run, never look like "no issue yet".
+              for who in "${GITHUB_REPOSITORY_OWNER}" app/github-actions; do
+                part="$(gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\" author:${who}" --json number -q '.[].number')" || return 2
+                nums="$nums $part"
+                part="$(gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\" commenter:${who}" --json number -q '.[].number')" || return 2
+                nums="$nums $part"
+              done
+              for n in $(printf '%s\n' $nums | sort -n | uniq); do
+                local raw
+                raw="$(gh issue view "$n" --json url,state,body,author,comments)" || return 2
+                hit="$(printf '%s' "$raw" | jq -r --arg ref "$ref" --arg owner "${GITHUB_REPOSITORY_OWNER}" \
                   "if ((.body | contains(\$ref)) and (.author | $trusted)) or ([.comments[] | select((.body | contains(\$ref)) and (.author | $trusted))] | length > 0) then (.state + \" \" + .url) else empty end")"
                 if [ -n "$hit" ]; then echo "$hit"; return 0; fi
               done
             }
             url=""
-            hit="$(find_trusted || true)"
+            rc=0; hit="$(find_trusted)" || rc=$?
+            [ "$rc" -le 1 ] || { echo "::error::canonical issue lookup failed for in-app #$id"; exit 1; }
             if [ -n "$hit" ]; then
               url="${hit#* }"
               # A still-new report belongs on the open backlog: reopen a closed canonical issue before linking it.
@@ -129,7 +137,9 @@ jobs:
               # Race with a concurrent Phase-A: if an older trusted issue now exists, keep the oldest and
               # close ours as a duplicate so only one canonical issue is linked.
               sleep 5
-              oldest="$(find_trusted || true)"; oldest="${oldest#* }"
+              rc=0; oldest="$(find_trusted)" || rc=$?
+              [ "$rc" -le 1 ] || { echo "::error::post-create lookup failed for in-app #$id"; exit 1; }
+              oldest="${oldest#* }"
               if [ -n "$oldest" ] && [ "${oldest##*/}" -lt "${url##*/}" ]; then
                 gh issue close "$url" --reason "not planned" --comment "Duplicate of ${oldest} (created concurrently for in-app #${id})."
                 url="$oldest"
