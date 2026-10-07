@@ -20,6 +20,20 @@ last_reviewed: 2026-09-05
 - **強制規則**：任何把多張帳單送進 `resolve()`（或經 `BillingPayableResolver`）的迴圈，查詢必須 `with('items')`。
 - **測試必補**：`InvoiceItemsEagerLoadQueryCountTest`——帳單數增加時 InvoiceItem 查詢數不得成長；守護端點：`alerts/tuition`、`accounting/settled-courses`、`accounting/ledger`、`payment-reports`、`student-classes/{id}/invoices`（逐一移除其 `items` eager-load 已驗證會失敗）。未覆蓋：`AccountingController::waiveCourse`（寫入路徑）與 `UnpaidHiddenClosuresStrategy`（維運清單），新增類似迴圈須自行補測。
 
+### R142. 系統自選的補尾／向前堂次必須用寫入守門的同一規則避開學生占用（in-app #380，2026-10-07）
+
+- **現象**：把已上的 10/1 轉到續約合約時，來源合約自動補回的尾端堂次落在續約合約第一堂（同一週固定時段），寫入守門判定學生時段重疊，整筆轉移 422，主任看到「課程重疊」但畫面上看不出重疊。
+- **根因**：自行挑時段的規劃器只比對自己合約的 `date|start`，沒看學生其他合約；向前生成與 ensure-horizon 雖有跨合約檢查，卻只比「同開始時間」，部分重疊仍會在 `upsertSlot()` 拋出 `student_slot_conflict`。
+- **強制規則**：系統自選時段時，不可只比自己合約的 `date|start`。轉移補尾：與目標合約（續約）存活堂次「時間重疊」就跳過（不看資料庫回傳哪一筆衝突，結果才穩定），與無關課程衝突仍整筆回滾。向前生成／horizon：保留 R20 同開始時間檢查（較嚴，含同方案包），再加問寫入守門 `ClassSessionMaterializationService::findStudentSlotConflict()`，部分重疊也跳過；兩者任一說忙就跳過。主任自己指定的時段衝突仍要回報。
+- **測試必補**：轉入續約後補尾跳過續約自己的堂次；向前生成與 ensure-horizon 遇到部分重疊時跳過該日、其餘照常建立。
+
+### R143. 建立後「沒有任何堂次」的課必須從建立的入口直接排第一堂（in-app #382，2026-10-07）
+
+- **現象**：主任在行事曆用「逐堂手動排課」新增 1 堂輔導，課程建立了但行事曆上看不到；再排一次跳出「此學生已有進行中的課程」，只提供加購或仍要新增。
+- **根因**：`manual_occurrence` 課程刻意建立 0 筆 `ClassSession`（由「新增下一堂」逐堂排），但行事曆沒有課程卡、沒有「新增下一堂」；重複課程 409 也沒說「這是還沒排堂的手動課」，把人導去加購／建第二筆空課。
+- **強制規則**：任何建立入口建立了「0 堂可見」的課（手動排課等），成功後必須直接帶到排第一堂的流程（行事曆、學生管理 → 課程查找 `intent: 'manual-session'`）；重複課程回應要帶 `scheduling_policy` 與 `future_session_count`（與手動排課服務同一組存活狀態），各頁一律用 `normalizeDuplicateConflicts()` 保留伺服器欄位（不可手寫只挑幾個欄位的 map），由共用 `needsFirstManualLesson()` 判斷「手動、未來堂次=0、仍有剩餘」提供「新增下一堂」；`future_session_count` 用 `ManualSessionBookingService::reservedSessionCount()`（方案包共用）。
+- **測試必補**：手動輔導建立後 0 堂、第二次送出 409 且 conflict 帶 `scheduling_policy=manual_occurrence`、`future_session_count=0`；行事曆成功後導向 manual-session、重複視窗顯示「新增下一堂」、課程查找載入後開啟該課的新增下一堂。
+
 ### R141. 正式站唯讀驗收不可把可變資料量當成固定契約（2026-10-01）
 
 - **現象**：列印驗收拒絕主任首頁新增的合法營運信任事件；輔導課驗收因分校沒有進行中輔導課而在產品斷言前失敗，兩項在前一版已重複出現。

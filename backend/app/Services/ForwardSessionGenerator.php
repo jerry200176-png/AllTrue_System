@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -96,6 +97,8 @@ class ForwardSessionGenerator
         $dow = (int) $dow;
 
         // Generate forward weekly dates from the day after the anchor (last session or today, whichever later).
+        $course = StudentClass::query()->find($studentClassId);
+        $course = $course instanceof StudentClass ? $course : null;
         $cursor = $lastDate->gt($today) ? $lastDate->copy() : $today->copy();
         $count = min($remaining, $horizonWeeks);
         $slots = [];
@@ -139,6 +142,15 @@ class ForwardSessionGenerator
                     'planned_student_class_id' => $studentClassId,
                     'existing_student_class_ids' => $crossConflictIds,
                     'source' => 'sessions:generate-forward',
+                ]);
+                continue;
+            }
+            // R20 above is stricter on purpose (same package, stopped contracts). The write guard also rejects any
+            // partial overlap; skip that here too instead of throwing at execute (in-app #380, R142).
+            if ($course && $end !== '' && $this->materializer->findStudentSlotConflict($course, $dateStr, $start . ':00', $end . ':00', $today->toDateString())) {
+                Log::warning('cross_sc_slot_conflict', [
+                    'student_id' => (int) $sc->StudentID, 'session_date' => $dateStr, 'start' => $start,
+                    'planned_student_class_id' => $studentClassId, 'source' => 'sessions:generate-forward',
                 ]);
                 continue;
             }
