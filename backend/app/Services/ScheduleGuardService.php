@@ -62,11 +62,11 @@ class ScheduleGuardService
         // Course edit (#3502): run the sync's own plan; when it takes the global remap, own rows land exactly there.
         $remapMoves = null;
         $sync = $payload['contract_sync'] ?? null;
-        if ($excludeStudentClassId && !empty($sync['slots'])) {
+        if ($excludeStudentClassId && is_array($sync['slots'] ?? null) && $sync['slots'] !== []) {
             $plan = \App\Services\Scheduling\ContractSessionSchedule::planFutureSync(
                 \App\Services\Scheduling\ContractSessionSchedule::futureScheduledSessions($excludeStudentClassId),
                 $sync['slots'],
-                (int) $sync['duration'],
+                max(30, (int) ($sync['duration'] ?? 120)),
                 $lockedOwn,
                 $startDate
             );

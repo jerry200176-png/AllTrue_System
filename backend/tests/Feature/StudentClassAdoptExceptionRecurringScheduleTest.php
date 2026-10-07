@@ -361,10 +361,12 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->createSessionRecord($course->ID, '2026-04-27', '18:00:00', '19:00:00');
 
         // The remap puts the unlocked 18:00 row on Mon 4/27 16:30, overlapping the locked 16:00-17:00.
-        $this->updateFixedSlots($token, $course, [1, 2], [
+        $res = $this->updateFixedSlots($token, $course, [1, 2], [
             ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60],
             ['day' => 2, 'start_time' => '15:00', 'duration_minutes' => 60],
         ])->assertStatus(409);
+        // Reported by the remap layout check itself, not only by the occupancy loop.
+        $this->assertContains(['self_overlap', '2026-04-27'], array_map(fn ($c) => [$c['type'] ?? null, $c['schedule_date'] ?? null], $res->json('conflicts')));
         $this->assertSame(['16:00', '18:00'], $this->startsOn($course, '2026-04-27'));
     }
 

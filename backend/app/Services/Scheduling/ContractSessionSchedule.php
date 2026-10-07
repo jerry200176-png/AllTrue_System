@@ -1170,7 +1170,7 @@ class ContractSessionSchedule
      * @param  iterable<ClassSession|object>  $sessions  futureScheduledSessions()
      * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
      * @param  array<int, true>  $lockedIds
-     * @return array{adopted: array<int, true>, remap: bool, unlocked: array<int, true>, moves: array<int, array{date:string, start:string, end:string}>}
+     * @return array{adopted: array<int, true>, remap: bool, unlocked: array<int, true>, skip_keys: array<string, true>, moves: array<int, array{date:string, start:string, end:string}>}
      */
     public static function planFutureSync(iterable $sessions, array $slots, int $durationMinutes, array $lockedIds, ?string $contractStartDate): array
     {
@@ -1212,7 +1212,7 @@ class ContractSessionSchedule
         }
         $remap = self::needsGlobalRemap($rowsByDate, $daySlotsByDow, $lockedIds, $adopted);
         if (!$remap) {
-            return ['adopted' => $adopted, 'remap' => false, 'unlocked' => $unlocked, 'moves' => $sameDayMoves];
+            return ['adopted' => $adopted, 'remap' => false, 'unlocked' => $unlocked, 'skip_keys' => [], 'moves' => $sameDayMoves];
         }
         $skipKeys = [];
         foreach ($ordered as $r) {
@@ -1225,6 +1225,7 @@ class ContractSessionSchedule
             'adopted' => $adopted,
             'remap' => true,
             'unlocked' => $unlocked,
+            'skip_keys' => $skipKeys,
             'moves' => self::planRemapTargets($unlockedRows, $slots, $durationMinutes, $skipKeys, $contractStartDate),
         ];
     }
@@ -1284,6 +1285,17 @@ class ContractSessionSchedule
             $sessionsById[$id]->save();
         }
 
+        if ($plan['remap']) {
+            // Same inputs planFutureSync() used, so the executor lands every row on the planned target.
+            return $this->remapFutureScheduledSessionsToContract(
+                $sessions->filter(fn ($s) => isset($plan['unlocked'][(int) $s->id]))->values(),
+                $slots,
+                $durationMinutes,
+                $plan['skip_keys'],
+                $contractStartDate
+            );
+        }
+
         // Permutation-safe move list: same-day time shifts would hit uq_class_session_slot 1062 if updated
         // in place onto a sibling's not-yet-vacated StartTime (Sentry PHP-LARAVEL-25 / #1384).
         $moves = [];
@@ -1297,12 +1309,6 @@ class ContractSessionSchedule
                 'newStart'      => $t['start'],
                 'newEnd'        => $t['end'],
             ];
-        }
-
-        if ($plan['remap']) {
-            // #1163: a remap permutation cannot move in place; the reflow guards external occupants up front and
-            // moves in two phases. A held target surfaces as a clean 422, not a silent skip.
-            return $moves === [] ? 0 : $this->contractSessionReflowService->move($studentClassId, $plan['unlocked'], $moves);
         }
         $reflowIds = array_fill_keys(array_keys($plan['moves']), true);
 
