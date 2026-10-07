@@ -133,7 +133,7 @@ final class UnpaidHiddenClosuresStrategy
         $ids = array_keys(UnpaidHiddenClosuresManifest::cases());
         $q = StudentClass::query()->with('student:id,CampusID')->whereIn('ID', $ids)->orderBy('ID');
         $courses = ($lock ? $q->lockForUpdate() : $q)->get()->keyBy(fn ($c) => (int) $c->getAttribute('ID'));
-        $iq = Invoice::query()->with('payments')->whereIn('StudentClassID', $ids)
+        $iq = Invoice::query()->with(['items', 'payments'])->whereIn('StudentClassID', $ids)
             ->where(fn ($w) => $w->whereNull('Status')->orWhere('Status', '!=', 'void'))->orderBy('id');
         $invoices = ($lock ? $iq->lockForUpdate() : $iq)->get()->groupBy('StudentClassID');
         $amounts = app(InvoiceAmountReconciliationService::class);
