@@ -136,6 +136,8 @@ class DirectorLedgerCoverageDatesTest extends TestCase
         $this->withHeaders($this->headers($this->directorToken([2])))
             ->getJson("/api/v1/accounting/ledger?student_id={$student->id}")
             ->assertForbidden();
+    }
+
     public function test_ledger_invoice_carries_its_service_range(): void
     {
         $token = $this->directorToken([1]);
