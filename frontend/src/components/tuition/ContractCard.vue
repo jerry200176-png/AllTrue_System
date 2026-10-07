@@ -5,6 +5,17 @@
       <span class="contract__mode">{{ modeLine }}</span>
     </header>
 
+    <div class="contract__money" data-testid="contract-money">
+      <span>未繳 <strong :class="{ due: outstanding > 0 }">{{ money(outstanding) }}</strong></span>
+      <template v-if="pendingReportId">
+        <span class="contract__chip pay-partial">家長說繳了，等你確認</span>
+        <button type="button" class="contract__btn" :disabled="busy" data-testid="contract-confirm" @click="decide('confirm')">確認入帳</button>
+        <button type="button" class="contract__btn contract__btn--ghost" :disabled="busy" data-testid="contract-reject" @click="decide('reject')">退回</button>
+      </template>
+      <button v-else-if="outstanding > 0 || !course.paid" type="button" class="contract__btn" data-testid="contract-record" @click="$emit('record', course)">登記收款</button>
+      <span v-if="actionError" class="contract__error">{{ actionError }}</span>
+    </div>
+
     <div class="contract__memo">
       <template v-if="!editing">
         <p v-if="memo" class="contract__memo-text" data-testid="contract-memo">{{ memo }}</p>
@@ -52,8 +63,12 @@ import { authedFetch } from '../../lib/authedFetch.js';
 import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 
-const props = defineProps({ course: { type: Object, required: true } });
-const emit = defineEmits(['changed']);
+const props = defineProps({
+  course: { type: Object, required: true },
+  outstanding: { type: Number, default: 0 },
+  pendingReportId: { type: Number, default: null },
+});
+const emit = defineEmits(['changed', 'record']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };
@@ -134,6 +149,36 @@ async function saveMemo() {
   }
 }
 
+const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
+const busy = ref(false);
+const actionError = ref('');
+
+// PRD v2 D9/D20: step 2 (確認入帳 / 退回) happens right here, no tab switch.
+async function decide(action) {
+  let body = {};
+  if (action === 'reject') {
+    const reason = window.prompt('請輸入退回原因：');
+    if (!reason || !reason.trim()) return;
+    body = { rejection_note: reason.trim() };
+  }
+  busy.value = true;
+  actionError.value = '';
+  try {
+    const resp = await authedFetch(`/api/v1/payment-reports/${Number(props.pendingReportId)}/${action}`, {
+      method: 'PUT',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json.message || `操作失敗（${resp.status}）`);
+    emit('changed');
+  } catch (e) {
+    actionError.value = humanizeApiErrorMessage(e.message || '操作失敗');
+  } finally {
+    busy.value = false;
+  }
+}
+
 watch(() => props.course.id, load, { immediate: true });
 </script>
 
@@ -142,6 +187,10 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
 .contract__head h5{margin:0;font-size:15px}
 .contract__mode{font-size:12px;color:var(--ds-ink-mute)}
+.contract__money{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:14px}
+.contract__money .due{color:var(--ds-danger)}
+.contract__btn{border:1px solid var(--ds-primary,var(--ds-canvas-soft));background:var(--ds-primary,var(--ds-canvas));color:var(--ds-on-primary,#fff);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;min-height:36px}
+.contract__btn--ghost{background:transparent;color:var(--ds-ink)}
 .contract__memo{background:var(--ds-canvas-soft);border-radius:8px;padding:8px 10px;display:grid;gap:6px}
 .contract__memo-text{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
 .contract__memo textarea{width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:6px 8px}

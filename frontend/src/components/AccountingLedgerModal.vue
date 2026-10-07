@@ -70,7 +70,15 @@
           <section v-if="contractCourses.length" class="ledger-section">
             <h4>合約（每一堂課與付款）</h4>
             <div class="ledger-contracts">
-              <ContractCard v-for="c in contractCourses" :key="c.id" :course="c" @changed="$emit('changed')" />
+              <ContractCard
+                v-for="c in contractCourses"
+                :key="c.id"
+                :course="c"
+                :outstanding="owedFor(c.id)"
+                :pending-report-id="pendingReportFor(c.id)"
+                @record="openEntry"
+                @changed="onPanelChanged"
+              />
             </div>
           </section>
 
@@ -222,6 +230,7 @@
           </section>
         </template>
       </div>
+      <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" />
     </div>
   </Transition>
 </template>
@@ -239,6 +248,7 @@ import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import ContractCard from './tuition/ContractCard.vue';
+import PaymentEntryModal from './PaymentEntryModal.vue';
 import {
   canShowReceiptCoverage,
   coverageFromReceipt,
@@ -419,13 +429,42 @@ const ledgerExceptions = computed(() => {
   return rows.sort((a, b) => a.severity - b.severity);
 });
 
+const owedFor = (id) => (payload.value?.invoices || [])
+  .filter((inv) => Number(inv.student_class_id) === Number(id))
+  .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
+const pendingReportFor = (id) => {
+  const r = (payload.value?.receipts || []).find((x) => Number(x.student_class_id) === Number(id) && x.status === 'pending');
+  return r ? Number(r.report_id) : null;
+};
 // Contracts with money still due come first (PRD v2 §0.3).
-const contractCourses = computed(() => {
-  const owed = (id) => (payload.value?.invoices || [])
-    .filter((inv) => Number(inv.student_class_id) === Number(id))
-    .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
-  return [...(payload.value?.courses || [])].sort((a, b) => owed(b.id) - owed(a.id));
-});
+const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
+
+// PRD v2 D2/D9: 登記收款 (step 1) opens the existing entry form inside the panel.
+const entryOpen = ref(false);
+const entryRow = ref(null);
+function openEntry(course) {
+  // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
+  const oldest = (payload.value?.invoices || [])
+    .filter((inv) => Number(inv.student_class_id) === Number(course.id) && Number(inv.outstanding_amount || 0) > 0)
+    .sort((a, b) => String(a.due_date || a.billing_period || '').localeCompare(String(b.due_date || b.billing_period || '')))[0];
+  entryRow.value = {
+    id: course.id,
+    charge: course.charge,
+    student_name: payload.value?.student?.name,
+    subject: course.subject,
+    invoice_id: oldest?.id,
+    billing_period: oldest?.billing_period,
+    payable_status: oldest ? 'invoiced' : 'unbilled',
+    payable_amount: oldest ? Number(oldest.outstanding_amount) : null,
+    payable_outstanding: oldest ? Number(oldest.outstanding_amount) : null,
+  };
+  entryOpen.value = true;
+}
+async function onPanelChanged() {
+  entryOpen.value = false;
+  await loadLedger();
+  emit('changed');
+}
 
 const visibleExceptions = computed(() => (
   showAllExceptions.value
