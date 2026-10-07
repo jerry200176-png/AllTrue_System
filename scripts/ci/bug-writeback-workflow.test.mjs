@@ -611,6 +611,21 @@ for (const [id, revision, issue] of [
   assert.ok(src.includes("git log --diff-filter=A") && src.includes('known="$(gh run list'), 'durable first-run baseline and a pre-dispatch run snapshot (#3754 review)');
   assert.ok(src.includes('{ grep -vx "$id" || true; }') && src.includes('<<<"$log"') && !/gh run view "\$run" --log[^\n]*\| grep/.test(src), 'no pipefail/grep exit traps (#3754 review)');
 }
+// F17 auto-intake (#Founder GO 6A, 2026-10-07): hourly, IDs-only, deduped, dry-run on manual dispatch.
+{
+  const src = fs.readFileSync('.github/workflows/bug-auto-intake.yml', 'utf8');
+  assert.ok(src.includes("cron: '23 * * * *'"), 'auto-intake runs hourly');
+  assert.match(src, /^permissions:\n  contents: read$/m, 'top-level permissions stay read-only');
+  assert.equal((src.match(/issues: write/g) || []).length, 1, 'issues: write only on the issue job');
+  assert.ok(src.includes('SourceRef: alltrue:bug_report:${id}') && src.includes('.login == $owner or .login == "app/github-actions"')
+    && src.includes('[.comments[] | select('), 'issue dedupe by SourceRef in body or comments, trusted authors only');
+  assert.equal((src.match(/if: github\.ref == 'refs\/heads\/main'/g) || []).length, 3, 'every job is main-only');
+  assert.ok(!src.includes('page_key'), 'client-controlled page_key is never published');
+  assert.ok(src.includes("!(github.event_name == 'workflow_dispatch' && inputs.dry_run)"), 'manual dry run never writes production');
+  assert.ok(src.includes('bugs:auto-intake --candidates') && src.includes('bugs:auto-intake --ack'), 'uses the tested command');
+  assert.ok(!/\.title|\.description|client_info/.test(src), 'no report free text in the workflow');
+  assert.ok(fs.readFileSync('.github/pii-log-workflows.txt', 'utf8').split('\n').includes('bug-auto-intake.yml'), 'runs are purged hourly');
+}
 
 // Reply template rule (2026-10-07): every new Phase-C reply offers BOTH outcomes, so a
 // successful retest is confirmed instead of waiting for the reporter timeout. IDs below were

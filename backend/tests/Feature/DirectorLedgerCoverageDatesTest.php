@@ -125,6 +125,19 @@ class DirectorLedgerCoverageDatesTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_ledger_opens_by_student_id_and_stays_campus_scoped(): void
+    {
+        [$student, $course] = $this->countCourse(1);
+
+        $this->withHeaders($this->headers($this->directorToken([1])))
+            ->getJson("/api/v1/accounting/ledger?student_id={$student->id}")
+            ->assertOk()
+            ->assertJsonPath('courses.0.id', (int) $course->ID);
+        $this->withHeaders($this->headers($this->directorToken([2])))
+            ->getJson("/api/v1/accounting/ledger?student_id={$student->id}")
+            ->assertForbidden();
+    }
+
     public function test_ledger_invoice_carries_its_service_range(): void
     {
         $token = $this->directorToken([1]);

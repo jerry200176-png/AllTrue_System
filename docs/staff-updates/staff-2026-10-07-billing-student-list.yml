@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-07-billing-student-list
+    published_at: "2026-10-07"
+    audiences:
+      - director
+    importance: major
+    title: 帳務中心改成學生清單
+    summary: 帳務中心打開就是學生清單，欠最多的排最上面，點學生就在同一頁看合約、上課日、收款。
+    items:
+      - category: improved
+        text: 上面只剩「學生」和「收款紀錄」兩個分頁；原本的待處理、月結待核對、本月待開帳單、已結清，改成清單上方的按鈕。
+      - category: added
+        text: 每個學生寫出到今天還沒繳的錢、逾期天數、之後還會到期的錢，可以搜尋和篩選。
+      - category: added
+        text: 點學生打開帳務面板，可以直接登記收款、確認入帳、改合約備註。
