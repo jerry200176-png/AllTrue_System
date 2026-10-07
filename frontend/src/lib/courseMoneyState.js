@@ -152,7 +152,7 @@ export const TUITION_STATUS_CONFIG = {
   renew_needed: { label: '續課待處理', cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期', cls: 'st-monthly' },
 };
-export const WAIVED_LABEL = '不收了';
+export const WAIVED_LABEL = TUITION_STATUS_CONFIG.waived.label;
 export const ENDED_PENDING_LABEL = '課已結束，等你確認收款';
 export const PAUSED_PENDING_LABEL = '暫停中・等你確認收款';
 export const INVOICE_STATUS_LABELS = { paid: '已收', unpaid: '未繳', partial: '繳了一部分', void: '已作廢' };

@@ -739,7 +739,7 @@
             <table class="course-table student-billing-table" aria-label="帳務資料">
               <caption v-if="hasMixedPackagePaymentStatuses(group.key)" class="student-billing-note">
                 <span class="material-symbols-outlined" aria-hidden="true">info</span>
-                <span>共用方案的繳費狀態按科目分開顯示；請以每一列狀態為準。待對帳項目請前往帳務中心確認。</span>
+                <span>共用方案的繳費狀態按科目分開顯示；請以每一列狀態為準。「{{ REPORT_STATUS_LABELS.pending }}」的項目請前往帳務中心確認。</span>
               </caption>
               <thead>
                 <tr>

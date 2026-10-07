@@ -2,7 +2,7 @@
   <div class="tc-page at-page">
     <AtPageHeader
       title="帳務中心"
-      description="處理應收、已回報待查帳、確認入帳與續課提醒。"
+      :description="`處理未繳、${REPORT_STATUS_LABELS.pending}、確認入帳與續課提醒。`"
       icon="payments"
       data-guide="tuition-header"
     >
