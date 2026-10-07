@@ -279,8 +279,9 @@ function startBatch(queue, required) {
     const d = decide(neutral(pr), required);
     // Untrusted authors are serial-only: their branch is never executed by batch CI.
     if (d.action === 'reject') reject(p.number, pr.sha, d);
-    else if (d.action === 'merge') cands.push({ n: p.number, pr, serial: batchSerial(pr, serialOnly(p.number, p.labeledAt)) });
+    else if (d.action === 'merge') cands.push({ n: p.number, pr, serial: !TRUSTED_AUTHORS.has(pr.authorAssociation) || serialOnly(p.number, p.labeledAt) });
   }
+  for (const c of cands) c.serial = batchSerial(c.pr, c.serial); // adds the intentional-revert rule
   const batch = planBatch(cands);
   if (!batch.length) return false;
   const base = mainTip();
