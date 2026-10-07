@@ -695,7 +695,7 @@ final class ContractRenewal
      * HttpResponseException so the transaction rolls back. $detectTeacherConflicts is the controller's
      * shared conflict probe (same arguments as StudentClassController::detectTeacherConflicts);
      * $authorizeAccess re-runs the controller's campus/teacher scope check on the freshly locked course
-     * (returns a deny response or null), as the old nested purchaseBatch call did.
+     * (returns a deny response or null), right after the lock and before anything is read or mutated.
      *
      * @return array{status: int, body: array<string, mixed>}
      */
@@ -703,6 +703,9 @@ final class ContractRenewal
     {
         return DB::transaction(function () use ($studentClass, $sessions, $startDate, $newClassType, $actorId, $actorRole, $detectTeacherConflicts, $authorizeAccess) {
             $source = $this->lockCourse((int) $studentClass->getAttribute('ID'));
+            if ($deny = $authorizeAccess($source)) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException($deny);
+            }
 
             if (strtolower((string) ($source->getAttribute('ClassType') ?? '')) !== 'trial') {
                 return $this->reply(['message' => '來源課程已不是試聽課程，請重新整理後再試。'], 409);
@@ -757,9 +760,6 @@ final class ContractRenewal
                 ], 409));
             }
 
-            if ($deny = $authorizeAccess($source)) {
-                throw new \Illuminate\Http\Exceptions\HttpResponseException($deny);
-            }
             // Same guard the controller's purchaseBatch applied when convertTrial used to call it through the request.
             if ((string) ($source->ScheduleMode ?? 'count') !== 'count') {
                 throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
