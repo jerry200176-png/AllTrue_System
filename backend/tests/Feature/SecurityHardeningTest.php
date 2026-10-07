@@ -320,6 +320,46 @@ class SecurityHardeningTest extends TestCase
             ->assertJsonValidationErrors(['password']);
     }
 
+    /** @test in-app #381: clearing a teacher's per-campus card releases it (UserCampus.RFID becomes NULL). */
+    public function profile_update_clears_teacher_card_for_a_campus(): void
+    {
+        [$token] = $this->makeDirectorToken();
+        $teacher = User::create([
+            'LoginName' => 'teacher-card@x.com',
+            'Name'      => 'TeacherCard',
+            'PSW'       => password_hash('Password1!', PASSWORD_DEFAULT),
+            'type'      => 'T',
+        ]);
+        UserCampus::create(['CampusID' => $this->campus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1, 'RFID' => 'TCARD-381']);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->putJson("/api/v1/profiles/{$teacher->id}", ['rfid_by_branch' => [(string) $this->campus->id => '']])
+            ->assertOk();
+        $this->assertNull(\Illuminate\Support\Facades\DB::table('UserCampus')->where('UserID', $teacher->id)->where('CampusID', $this->campus->id)->value('RFID'));
+    }
+
+    /** @test #3740 review: a campus-A director cannot clear (or set) a teacher's campus-B card. */
+    public function profile_update_cannot_touch_teacher_card_of_another_campus(): void
+    {
+        [$token] = $this->makeDirectorToken();
+        $teacher = User::create([
+            'LoginName' => 'teacher-2campus@x.com',
+            'Name'      => 'TeacherTwoCampus',
+            'PSW'       => password_hash('Password1!', PASSWORD_DEFAULT),
+            'type'      => 'T',
+        ]);
+        $otherCampusId = (int) $this->campus->id + 1000;
+        UserCampus::create(['CampusID' => $this->campus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1, 'RFID' => 'MINE-1']);
+        UserCampus::create(['CampusID' => $otherCampusId, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1, 'RFID' => 'OTHER-1']);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->putJson("/api/v1/profiles/{$teacher->id}", ['rfid_by_branch' => [(string) $this->campus->id => '', (string) $otherCampusId => '']])
+            ->assertOk();
+        $rfid = fn ($cid) => \Illuminate\Support\Facades\DB::table('UserCampus')->where('UserID', $teacher->id)->where('CampusID', $cid)->value('RFID');
+        $this->assertNull($rfid($this->campus->id), 'own campus card cleared');
+        $this->assertSame('OTHER-1', $rfid($otherCampusId), 'other campus card untouched');
+    }
+
     // ─── FR-011 Regression: existing short-password account can still login ───
 
     /** @test */

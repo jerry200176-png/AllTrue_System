@@ -286,6 +286,13 @@
               <button type="button" class="small" @click="bindRfidFromTempForCampus(bid)">
                 {{ form.rfid_by_branch[String(bid)] ? '重新讀取' : '讀取暫存' }}
               </button>
+              <!-- in-app #381: clear the card for this campus; saving the form releases it (backend writes NULL). -->
+              <button
+                v-if="form.rfid_by_branch[String(bid)]"
+                type="button"
+                class="small ghost"
+                @click="form.rfid_by_branch = { ...form.rfid_by_branch, [String(bid)]: '' }"
+              >解除綁定</button>
             </div>
           </div>
           <p v-if="formTeacherCampusIds.length === 0" class="hint">請先選擇主分校（必要時加選跨校支援）。</p>
