@@ -5273,8 +5273,10 @@ class StudentClassController extends Controller
         // unrelated course is still planned, so upsertSlot() rolls the transfer back and names the conflict.
         $targetRows = [];
         $target = StudentClass::query()->find($targetId);
-        // Same live-row rules as the write guard: a stopped target holds nothing.
-        $targetLive = (int) ($target?->getAttribute('Stop') ?? 0) === 1 ? collect() : ClassSession::query()->where('StudentClassID', $targetId)
+        // Same live-row rules as the write guard: a stopped or trial target holds nothing.
+        $targetHoldsNothing = (int) ($target?->getAttribute('Stop') ?? 0) === 1
+            || strtolower(trim((string) $target?->getAttribute('ClassType'))) === 'trial';
+        $targetLive = $targetHoldsNothing ? collect() : ClassSession::query()->where('StudentClassID', $targetId)
             ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
             ->when(ContractSessionSchedule::normalizeDateString($target?->getAttribute('StartDate')), fn ($q, $d) => $q->whereDate('SessionDate', '>=', $d))
             ->when(ContractSessionSchedule::normalizeDateString($target?->getAttribute('EndDate')), fn ($q, $d) => $q->whereDate('SessionDate', '<=', $d))
@@ -5283,7 +5285,7 @@ class StudentClassController extends Controller
             $targetRows[(string) ContractSessionSchedule::normalizeDateString($row->SessionDate)][] = [(string) $row->StartTime, (string) $row->EndTime];
         }
         // A target booking may still be a schedules row only (not yet materialized); the write guard counts it too.
-        if ($target && (int) ($target->getAttribute('Stop') ?? 0) !== 1) {
+        if ($target && !$targetHoldsNothing) {
             $targetSchedules = DB::table('schedules')->where('student_course_id', $targetId)->where('status', 'scheduled')
                 ->whereNull('original_schedule_id')
                 ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('StartDate')), fn ($q, $d) => $q->whereDate('schedule_date', '>=', $d))
