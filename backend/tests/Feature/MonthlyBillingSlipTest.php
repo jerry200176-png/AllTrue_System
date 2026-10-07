@@ -528,7 +528,6 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('sessions.*.date', ['2026-09-01', '2026-09-08']);
     }
 
-    /** @return array{0: Student, 1: StudentClass} */
     /**
      * In-app #377/#378: an ended monthly contract with no invoice is priced by its own
      * month (3 attended September lessons), not by the month the director opens it in;
@@ -556,8 +555,14 @@ class MonthlyBillingSlipTest extends TestCase
             'payment_method' => 'cash',
             'amount' => 3900,
         ])->assertSuccessful();
+
+        // Confirming that report bills the contract's own month, not October.
+        $reportId = \App\Models\PaymentReport::where('StudentClassID', $course->ID)->value('id');
+        $this->withHeaders($headers)->putJson("/api/v1/payment-reports/{$reportId}/confirm", [])->assertSuccessful();
+        $this->assertSame(['2026-09'], Invoice::where('StudentClassID', $course->ID)->pluck('billing_period')->all());
     }
 
+    /** @return array{0: Student, 1: StudentClass} */
     private function makeMonthlyCourse(string $name, string $start, string $end): array
     {
         $student = Student::create(['name' => $name, 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);

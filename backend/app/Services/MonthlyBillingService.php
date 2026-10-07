@@ -40,22 +40,9 @@ class MonthlyBillingService
     public function summarize(Model $course, ?Carbon $anchor = null): array
     {
         $anchor = ($anchor ?? Carbon::today())->copy();
-        return $this->summarizePeriod($course, $anchor->format('Y-m'));
+        return $this->summarizePeriod($course, $this->defaultPeriodFor($course, $anchor));
     }
 
-    /**
-     * Calculate one explicit billing period. Invoice readers must use the
-     * invoice period, not today's month, otherwise a historical invoice can
-     * display a different month's session count.
-     *
-     * @return array{
-     *   charge:int,
-     *   period_sessions:int,
-     *   period_start:string,
-     *   period_end:string,
-     *   source:string
-     * }
-     */
     /**
      * The billing month to price a monthly contract by when no open invoice names
      * one: the anchor date (default today) clamped into the contract's own
@@ -77,6 +64,19 @@ class MonthlyBillingService
         return $date->format('Y-m');
     }
 
+    /**
+     * Calculate one explicit billing period. Invoice readers must use the
+     * invoice period, not today's month, otherwise a historical invoice can
+     * display a different month's session count.
+     *
+     * @return array{
+     *   charge:int,
+     *   period_sessions:int,
+     *   period_start:string,
+     *   period_end:string,
+     *   source:string
+     * }
+     */
     public function summarizePeriod(Model $course, string $billingPeriod): array
     {
         try {

@@ -415,7 +415,7 @@ class PaymentReportController extends Controller
             $monthlyProjection = null;
             if ($sc && $sc->ScheduleMode === 'date') {
                 $period = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
-                    ? (string) $invoice->billing_period : Carbon::parse($report->payment_date)->format('Y-m');
+                    ? (string) $invoice->billing_period : $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date);
                 $actual = $this->monthlyBilling->summarizePeriod($sc, $period);
                 $monthlyProjection = $invoice ? app(InvoiceAmountReconciliationService::class)->resolve($invoice, $sc) : null;
                 // A pending forecast must be rechecked before any ledger write.
@@ -438,7 +438,7 @@ class PaymentReportController extends Controller
                     'TotalAmount'    => (int) $report->reported_amount,
                     'ScheduleModeAtIssue' => $sc->ScheduleMode ?? null,
                     'billing_period' => $sc?->ScheduleMode === 'date'
-                        ? Carbon::make($report->payment_date)?->format('Y-m')
+                        ? $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date)
                         : null,
                 ], [], true);
                 } catch (BillingPeriodInvoiceExists) {
@@ -453,7 +453,7 @@ class PaymentReportController extends Controller
             if ($sc && $sc->ScheduleMode === 'date') {
                 $billingPeriod = preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period
-                    : Carbon::parse($report->payment_date)->format('Y-m');
+                    : $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date);
                 $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
 
                 if (
