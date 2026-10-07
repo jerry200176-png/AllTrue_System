@@ -11,8 +11,13 @@ assert.match(
 );
 assert.match(
   source,
-  /teacherFilterTab\.value = 'pending'[\s\S]*teacherPriorityFilter\.value = 'all'[\s\S]*feedbackFilter\.value = 'all'/,
-  'teacher submit success must clear priority and feedback filters so filled pending is not filtered out',
+  /teacherFilterTab\.value = 'pending'[\s\S]*teacherPriorityFilter\.value = 'all'[\s\S]*feedbackFilter\.value = 'all'[\s\S]*filters\.subject = ''/,
+  'teacher submit success must clear priority, feedback, and subject filters so filled pending is not filtered out',
+);
+assert.match(
+  source,
+  /lr-download-toast--page[\s\S]*z-index:\s*14000/,
+  'page-level download/submit toast must stack above the learning-record modal overlay',
 );
 assert.match(
   source,

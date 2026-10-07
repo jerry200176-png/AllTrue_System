@@ -48,12 +48,15 @@ export function resolveLearningSessionState({
   sessionStarted = false,
 } = {}) {
   const normalizedSessionStatus = String(sessionStatus || '').toLowerCase();
-  const apiStatus = normalizeLearningRecordStatus(learningRecordStatus);
+  let apiStatus = normalizeLearningRecordStatus(learningRecordStatus);
   let listStatus = normalizeLearningRecordStatus(recordStatus);
   // Backfill creates empty Status=pending drafts. Those must not win over
   // class-sessions "missing" and look like a teacher already submitted.
   if (!apiStatus && listStatus === 'pending' && !recordHasBody) {
     listStatus = '';
+  }
+  if (apiStatus === 'pending' && !recordHasBody) {
+    apiStatus = '';
   }
   const baseStatus = apiStatus || listStatus || 'missing';
   let formStatus = baseStatus;

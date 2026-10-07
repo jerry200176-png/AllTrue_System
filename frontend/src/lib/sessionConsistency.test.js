@@ -47,6 +47,22 @@ const emptyBackfillPending = resolveLearningSessionState({
 });
 assert.equal(emptyBackfillPending.formStatus, 'missing', 'empty pending draft must stay 未填');
 assert.equal(emptyBackfillPending.label, '未填');
+const apiEmptyBackfillPending = resolveLearningSessionState({
+  sessionStatus: 'attended',
+  learningRecordStatus: 'pending',
+  recordHasBody: false,
+  sessionStarted: true,
+});
+assert.equal(apiEmptyBackfillPending.formStatus, 'missing', 'API pending without body must stay 未填');
+assert.equal(apiEmptyBackfillPending.label, '未填');
+const apiSubmittedPending = resolveLearningSessionState({
+  sessionStatus: 'attended',
+  learningRecordStatus: 'pending',
+  recordHasBody: true,
+  sessionStarted: true,
+});
+assert.equal(apiSubmittedPending.formStatus, 'pending');
+assert.equal(apiSubmittedPending.label, '待審');
 const trueMissing = resolveLearningSessionState({
   sessionStatus: 'attended',
   learningRecordStatus: 'missing',

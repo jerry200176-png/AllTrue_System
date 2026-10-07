@@ -38,7 +38,7 @@ assert.match(
 assert.equal(source.includes('branchId: s.branchId || 0'), false, 'missing branchId must not coerce to 0');
 assert.equal(source.includes('Branch #'), false, 'teacher home must not render Branch #N labels');
 
-for (const field of ['s.date', 's.startTime', 's.studentName', 's.branchId', 's.learningRecordStatus']) {
+for (const field of ['s.date', 's.startTime', 's.studentName', 's.branchId', 's.learningRecordStatus', 's.learningRecordBodyFilled']) {
   assert.equal(source.includes(field), true, `TeacherHomePage must read SessionViewModel field ${field}`);
 }
 assert.equal(source.includes('isProjected: !!s.isProjected'), true,

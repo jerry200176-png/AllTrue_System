@@ -3945,6 +3945,7 @@ const submitForm = async () => {
       teacherFilterTab.value = 'pending';
       teacherPriorityFilter.value = 'all';
       feedbackFilter.value = 'all';
+      filters.subject = '';
       downloadToast.value = '已送出，等待主任核准';
       setTimeout(() => { downloadToast.value = ''; }, 3000);
     }
@@ -7404,7 +7405,7 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   position: fixed;
   top: 16px;
   right: 16px;
-  z-index: 1200;
+  z-index: 14000;
 }
 .lr-download-toast .material-symbols-outlined { font-size: 16px; }
 .lr-download-toast.lr-toast-error { background: var(--danger); }

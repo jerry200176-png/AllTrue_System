@@ -365,6 +365,7 @@ import learningCompanionUrl from '../assets/alltrue-learning-companion.png';
 import { supabase } from '../supabase';
 import { branches, campusIdFrom, getBranchName } from '../lib/useBranches';
 import { fetchClassSessions, fetchClassSessionsProjection } from '../lib/classSessionsApi';
+import { resolveLearningSessionState } from '../lib/sessionConsistency.js';
 import { dedupeSessionsByStudentSlot } from '../lib/classSessionPick';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import TeacherMonthlyAttendance from '../components/TeacherMonthlyAttendance.vue';
@@ -760,7 +761,16 @@ const weekDays = computed(() => {
           endTime: s.endTime || '',
           branchId: campusIdFrom(s.branchId),
           status: s.status,
-          formStatus: isLeave ? 'leave' : (isLeaveRequested ? 'leave_requested' : (s.learningRecordStatus || 'missing')),
+          formStatus: isLeave
+            ? 'leave'
+            : (isLeaveRequested
+              ? 'leave_requested'
+              : resolveLearningSessionState({
+                sessionStatus: status,
+                learningRecordStatus: s.learningRecordStatus,
+                recordHasBody: !!s.learningRecordBodyFilled,
+                sessionStarted: true,
+              }).formStatus),
           recordId: s.learningRecordId || null,
           isProjected: !!s.isProjected,
         };
