@@ -120,7 +120,7 @@
                       </td>
                       <td>
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
-                        <small>{{ formatPeriod(inv.billing_period) }}</small>
+                        <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
                       <td>{{ inv.due_date || '—' }}</td>
