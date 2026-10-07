@@ -1505,6 +1505,35 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         )
         self.assertIsNone(commit_activation_tier(["backend/app/X.php"], "", False))
         self.assertIsNone(commit_activation_tier([], "", True))
+        # A 300-file list from the commits API may be truncated: unknown, never R0.
+        many = [f"docs/n{i}.md" for i in range(300)]
+        self.assertIsNone(commit_activation_tier(many, "".join(f"+++ b/{p}\n+x\n" for p in many), True))
+
+    def test_effective_class_is_never_below_the_machine_class(self):
+        go = "\nFounder GO: Jerry 2026-10-07"
+        # A body declaring R0/R1 cannot lower a machine-R3 diff.
+        for body in ("Risk-Class: R0\nAutonomy-Tier: T0", "**Risk-Class:** R1\n**Autonomy-Tier:** T1"):
+            with self.subTest(body=body):
+                result = self._evidence(self._range(11), {11: self._pr(11, body)}, {11: 3})
+                self.assertEqual(result["missing"], [11])
+                self.assertTrue(self._evidence(self._range(11), {11: self._pr(11, body + go)}, {11: 3})["ok"])
+        # Uncomputable machine class (API error, truncated diff) counts as R3 without a GO,
+        # even when the PR carries a GO line.
+        for tier in (None, "3", True, 7):
+            with self.subTest(tier=tier):
+                result = self._evidence(
+                    self._range(11), {11: self._pr(11, "Risk-Class: R3\nAutonomy-Tier: T3" + go)}, {11: tier},
+                )
+                self.assertFalse(result["ok"])
+                self.assertIn("counts as R3 without a GO", result["reason"])
+
+        def tier_error(_sha):
+            raise RuntimeError("commit API failed")
+        with self.assertRaises(RuntimeError):
+            founder_go_release_evidence(
+                repo=self.REPO, comparison=self._range(11),
+                fetch_pr=lambda n: self._pr(n), machine_tier=tier_error,
+            )
 
     def test_go_evidence_runs_the_deployed_revisions_policy_not_the_targets(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")

@@ -1172,15 +1172,20 @@ _FOUNDER_GO_RE = re.compile(
 _TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
 
 
+_COMMIT_API_FILE_CAP = 300
+
+
 def commit_activation_tier(paths: Iterable[str], patch: str, patch_complete: bool) -> int | None:
     """One landed commit's machine risk class for Founder 1A evidence.
 
     Uses the presubmit classifier (``machine_declaration``) on the commit's own
-    diff, never the PR body. An empty or uninspectable commit is unknown (None).
+    diff, never the PR body. An empty, possibly truncated or uninspectable
+    commit is unknown (None): the caller treats it as R3 without a GO.
     """
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
-    if not normalized or patch_complete is not True:
+    # The commits API lists at most 300 files; a list that long may be truncated.
+    if not normalized or len(normalized) >= _COMMIT_API_FILE_CAP or patch_complete is not True:
         return None
     return int(machine_declaration(normalized, patch)["machine_minimum_tier"])
 
@@ -1235,12 +1240,13 @@ def founder_go_release_evidence(
             return fail(f"PR #{number} is not an owner PR merged into main as {sha[:10]}")
         tier = machine_tier(sha)
         if not isinstance(tier, int) or isinstance(tier, bool) or tier not in TIER_VALUES.values():
-            return fail(f"PR #{number} has no machine risk class")
+            return fail(f"PR #{number} machine class unavailable; counts as R3 without a GO")
         body = str(pr.get("body") or "")
         declared_risk, declared_tier = parse_declaration(body)
         if declared_risk is None or declared_tier is None:
             # An undeclared PR is unknown risk, never R0.
             return fail(f"PR #{number} has no Risk-Class/Autonomy-Tier declaration")
+        # Effective class = max(machine class of the merged diff, declaration); never lower.
         if max(tier, declared_risk, declared_tier) >= 3 and not _FOUNDER_GO_RE.search(_founder_go_prose(body)):
             missing.append(number)
     if missing:
