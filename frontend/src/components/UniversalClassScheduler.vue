@@ -2420,7 +2420,8 @@ async function submit() {
       };
       const result = await createUniversalClassSchedule(payload);
       alert(`課程已建立，可從課程卡的「新增下一堂」開始排課（共 ${manualTotal} 堂）。`);
-      emit('success', result);
+      // in-app #382: the calendar has no course card, so it opens 新增下一堂 for this course itself.
+      emit('success', { ...result, scheduling_policy: 'manual_occurrence' });
     } catch (err) {
       if (err?.isDuplicateCourse) {
         emit('duplicate-course', {

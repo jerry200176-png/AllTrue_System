@@ -173,6 +173,45 @@ class DuplicateCourseGuardTest extends TestCase
         $forced->assertCreated();
     }
 
+    /**
+     * In-app #382: a calendar quick-add with 逐堂手動排課 creates the course with no lesson. A second try must tell
+     * the UI it is that manual course with nothing upcoming, so it offers 新增下一堂 instead of a second course.
+     */
+    public function test_duplicate_of_manual_course_without_upcoming_lessons_says_so(): void
+    {
+        $token = $this->createDirectorToken();
+        $teacherId = $this->createTeacher();
+        $student = $this->createStudent();
+        $payload = [
+            'branch_id' => 1,
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'class_type' => 'tutoring',
+            'days_of_week' => [],
+            'day_time_slots' => [],
+            'start_time' => '16:00',
+            'duration_minutes' => 60,
+            'rate_unit' => 'session',
+            'payment_type' => 'session',
+            'scheduling_policy' => 'manual_occurrence',
+            'total_classes' => 1,
+            'course_start_date' => now()->toDateString(),
+        ];
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $first = $this->withHeaders($headers)->postJson('/api/v1/class-sessions/batch', $payload);
+        $first->assertCreated();
+        $courseId = (int) $first->json('student_class_id');
+        $this->assertSame(0, \App\Models\ClassSession::where('StudentClassID', $courseId)->count());
+
+        $this->withHeaders($headers)->postJson('/api/v1/class-sessions/batch', $payload)
+            ->assertStatus(409)
+            ->assertJsonPath('conflicts.0.existing_course_id', $courseId)
+            ->assertJsonPath('conflicts.0.scheduling_policy', 'manual_occurrence')
+            ->assertJsonPath('conflicts.0.future_session_count', 0);
+    }
+
     private function createDirectorToken(): string
     {
         $user = User::create([

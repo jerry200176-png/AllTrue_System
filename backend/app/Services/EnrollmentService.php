@@ -609,6 +609,10 @@ class EnrollmentService
                                 'subject' => $subjectOnly,
                                 'class_type' => $sc->ClassType ?? '',
                                 'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
+                                // in-app #382: a manual course with no upcoming lesson needs 「新增下一堂」, not a second course.
+                                'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
+                                'future_session_count' => ClassSession::where('StudentClassID', $sc->ID)->where('Status', 'scheduled')
+                                    ->whereDate('SessionDate', '>=', Carbon::today()->toDateString())->count(),
                             ];
                         }
 

@@ -421,7 +421,15 @@
               <tr v-for="c in duplicateConflicts" :key="c.existing_course_id || c.id">
                 <td>{{ getSubjectLabel(c.subject_name || c.subject) || c.subject_name || c.subject }}</td>
                 <td>{{ { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' }[c.class_type] || c.class_type || '—' }}</td>
-                <td>{{ c.remaining_sessions ?? 0 }} 堂</td>
+                <td>
+                  {{ c.remaining_sessions ?? 0 }} 堂
+                  <button
+                    v-if="c.scheduling_policy === 'manual_occurrence' && !c.future_session_count"
+                    type="button"
+                    class="btn-secondary btn-sm"
+                    @click="showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptOriginalPayload?.student_id, c.existing_course_id)"
+                  >新增下一堂</button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -2063,12 +2071,21 @@ const currentSessionChargeDisplay = computed(() => {
   return null;
 });
 
-const handleUniversalSchedulerSuccess = async () => {
+// in-app #382: a manual course starts with no lesson, so the calendar can't show it; schedule the first one there.
+const openManualSessionInCourseMgmt = (studentId, courseId) => {
+  emit('navigate', { target: 'course-mgmt', studentId, courseId, intent: 'manual-session' });
+};
+
+const handleUniversalSchedulerSuccess = async (result) => {
   const workflowStep = 'create';
   if (!calendarWorkflowStarts.has(workflowStep)) startCalendarWorkflow(workflowStep);
   showModal.value = false;
   await loadCourses();
   finishCalendarWorkflow(workflowStep);
+  if (result?.scheduling_policy === 'manual_occurrence' && result.student_class_id) {
+    openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
+    return;
+  }
   void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: 'calendar' });
 };
 
