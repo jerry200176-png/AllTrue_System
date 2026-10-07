@@ -1180,6 +1180,7 @@
       :subject-label-fn="getSubjectLabel"
       @cancel="showDuplicateInterceptModal = false"
       @purchase="interceptGoToPurchaseCM"
+      @manual-session="interceptOpenManualSessionCM"
       @decision="onEnrollmentConflictDecision"
     />
 
@@ -1476,7 +1477,7 @@ import CourseEditForm from '../components/CourseEditForm.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
-import { buildForceOverrideFields, findCourseForPurchase } from '../lib/enrollmentConflictDecision';
+import { buildForceOverrideFields, findCourseForPurchase, normalizeDuplicateConflicts } from '../lib/enrollmentConflictDecision';
 import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import MonthlyCorrectionPreviewModal from '../components/course-management/MonthlyCorrectionPreviewModal.vue';
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
@@ -1622,6 +1623,9 @@ function closeCourseInPlace(course) {
 
 const courses = ref([]);
 const pendingConvertTrialId = ref(0);
+// in-app #382: calendar sends a just-created manual course here to schedule its first lesson.
+const pendingManualSessionId = ref(0);
+const handoffNarrowedList = ref(false);
 const convertTrialStudentId = ref(null);
 const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
 let courseLoadRequestId = 0;
@@ -2130,6 +2134,11 @@ async function onEnrollmentConflictDecision(decision) {
         ? '已建立下一期續報'
         : '已建立獨立課程';
     alert(`${label}（${created} 堂）`);
+    // in-app #382: a forced manual course also starts with no lesson — open 新增下一堂 for it.
+    if (payload.scheduling_policy === 'manual_occurrence' && result?.student_class_id) {
+      pendingManualSessionId.value = Number(result.student_class_id);
+      convertTrialStudentId.value = result.student_id ?? payload.student_id ?? null;
+    }
     await loadCourses();
   } catch (err) {
     alert(err?.message || '建立失敗，請稍後再試');
@@ -2138,6 +2147,17 @@ async function onEnrollmentConflictDecision(decision) {
   }
 }
 
+function interceptOpenManualSessionCM(conflict) {
+  showDuplicateInterceptModal.value = false;
+  const loaded = courses.value.find((c) => c.id === Number(conflict.existing_course_id));
+  if (loaded) {
+    openManualSessionModal(loaded);
+    return;
+  }
+  pendingManualSessionId.value = Number(conflict.existing_course_id) || 0;
+  convertTrialStudentId.value = interceptOriginalPayload.value?.student_id ?? null;
+  loadCourses(1);
+}
 function interceptGoToPurchaseCM(conflict) {
   showDuplicateInterceptModal.value = false;
   const target = findCourseForPurchase(courses.value, conflict);
@@ -2150,6 +2170,11 @@ function interceptGoToPurchaseCM(conflict) {
 
 async function handleUniversalBackfillSuccess(result) {
   showBackfillModal.value = false;
+  // in-app #382: a manual course starts with no lesson — open 新增下一堂 for it right away.
+  if (result?.scheduling_policy === 'manual_occurrence' && result.student_class_id) {
+    pendingManualSessionId.value = Number(result.student_class_id);
+    convertTrialStudentId.value = result.student_id ?? null;
+  }
   await loadCourses();
   if (result?.package_id) {
     const memberCount = result?.members?.length ?? 0;
@@ -2164,12 +2189,7 @@ async function handleUniversalBackfillSuccess(result) {
 
 function handleSchedulerDuplicateCM(evt) {
   showBackfillModal.value = false;
-  duplicateConflicts.value = (evt?.conflicts || []).map(c => ({
-    existing_course_id: c.existing_course_id,
-    subject_name: c.subject || '',
-    remaining_sessions: c.remaining_sessions ?? 0,
-    class_type: c.class_type || '',
-  }));
+  duplicateConflicts.value = normalizeDuplicateConflicts(evt?.conflicts);
   interceptOriginalPayload.value = evt?.originalPayload || null;
   interceptPendingClassType.value = String(evt?.originalPayload?.class_type || '');
   showDuplicateInterceptModal.value = true;
@@ -3302,6 +3322,11 @@ function closeManualSessionModal() {
   manualSessionCheckController = null;
   manualSessionChecking.value = false;
   showManualSessionModal.value = false;
+  // A manual-session handoff loaded only that student's courses; bring the filtered list back (#382).
+  if (handoffNarrowedList.value) {
+    handoffNarrowedList.value = false;
+    loadCourses(1);
+  }
 }
 
 function openMonthlySessionModal(course) {
@@ -4245,13 +4270,15 @@ const loadCourses = async (page = 1) => {
         per_page: String(pagination.value.perPage),
         page: String(page),
       });
-      if (filters.value.class_type) params.set('class_type', filters.value.class_type);
-      if (filters.value.teacher_id) params.set('teacher_id', String(filters.value.teacher_id));
-      if (filters.value.teacher_name?.trim()) params.set('teacher_name', filters.value.teacher_name.trim());
-      if (filters.value.course_status) params.set('status', filters.value.course_status);
-      if (filters.value.name) params.set('name', filters.value.name);
+      // A manual-session handoff fetches that student's courses only, so list filters can't hide the target (#382).
+      const pinnedHandoff = Boolean(pendingManualSessionId.value);
+      if (!pinnedHandoff && filters.value.class_type) params.set('class_type', filters.value.class_type);
+      if (!pinnedHandoff && filters.value.teacher_id) params.set('teacher_id', String(filters.value.teacher_id));
+      if (!pinnedHandoff && filters.value.teacher_name?.trim()) params.set('teacher_name', filters.value.teacher_name.trim());
+      if (!pinnedHandoff && filters.value.course_status) params.set('status', filters.value.course_status);
+      if (!pinnedHandoff && filters.value.name) params.set('name', filters.value.name);
       // convert-trial deep link: pin the target student so same-name/pagination can't hide the course.
-      if (pendingConvertTrialId.value && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
+      if ((pendingConvertTrialId.value || pendingManualSessionId.value) && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
       const res = await authedFetch(`/api/v1/student-classes?${params}`, {
         credentials: 'include',
         headers: { 'Accept': 'application/json' }
@@ -5323,6 +5350,19 @@ watch(
   { immediate: true },
 );
 watch(coursesLoading, (loading) => {
+  if (loading || !pendingManualSessionId.value) return;
+  const course = courses.value.find((c) => c.id === pendingManualSessionId.value);
+  pendingManualSessionId.value = 0;
+  convertTrialStudentId.value = null;
+  if (course) {
+    handoffNarrowedList.value = true;
+    openManualSessionModal(course);
+    return;
+  }
+  alert('找不到這門課，請清除篩選後在課程卡按「新增下一堂」。');
+  loadCourses(1);
+});
+watch(coursesLoading, (loading) => {
   if (loading || !pendingConvertTrialId.value) return;
   const trial = courses.value.find((c) => c.id === pendingConvertTrialId.value && c.class_type === 'trial');
   pendingConvertTrialId.value = 0;
@@ -5340,6 +5380,9 @@ watch(
     // below, so it survives the mount-time reload (stale requests never set coursesLoading=false).
     if (props.initialCourseIntent === 'convert-trial') {
       pendingConvertTrialId.value = Number(props.initialCourseId) || 0;
+      convertTrialStudentId.value = sid ?? null;
+    } else if (props.initialCourseIntent === 'manual-session') {
+      pendingManualSessionId.value = Number(props.initialCourseId) || 0;
       convertTrialStudentId.value = sid ?? null;
     }
     loadCourses(1);

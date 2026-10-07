@@ -362,7 +362,7 @@ class NotificationApiTest extends TestCase
             'note' => '通知中心核帳',
         ]);
 
-        $response->assertOk()->assertJsonPath('message', '已送出待對帳');
+        $response->assertOk()->assertJsonPath('message', '已送出，等你確認');
 
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $class->ID,
@@ -490,7 +490,7 @@ class NotificationApiTest extends TestCase
             'note' => '櫃台現金',
         ]);
 
-        $response->assertOk()->assertJsonPath('message', '已送出待對帳');
+        $response->assertOk()->assertJsonPath('message', '已送出，等你確認');
 
         $this->assertDatabaseHas('Invoice', [
             'id' => $invoice->id,

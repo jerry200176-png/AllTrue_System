@@ -381,7 +381,7 @@ class PaymentReportApiTest extends TestCase
         $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', $payload)
             ->assertStatus(422)
             ->assertJsonPath('code', 'pending_report_exists')
-            ->assertJsonPath('message', '此課程已有待對帳回報，請先到帳務中心確認入帳或退回後再登錄。');
+            ->assertJsonPath('message', '此課程已有「等你確認」的繳費回報，請先到帳務中心確認收款或退回後再登錄。');
     }
 
     public function test_director_record_pending_receipt_forbidden_until_confirm(): void
