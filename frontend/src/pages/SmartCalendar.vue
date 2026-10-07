@@ -421,7 +421,15 @@
               <tr v-for="c in duplicateConflicts" :key="c.existing_course_id || c.id">
                 <td>{{ getSubjectLabel(c.subject_name || c.subject) || c.subject_name || c.subject }}</td>
                 <td>{{ { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' }[c.class_type] || c.class_type || '—' }}</td>
-                <td>{{ c.remaining_sessions ?? 0 }} 堂</td>
+                <td>
+                  {{ c.remaining_sessions ?? 0 }} 堂
+                  <button
+                    v-if="needsFirstManualLesson(c) && !isTeacher"
+                    type="button"
+                    class="btn-secondary btn-sm"
+                    @click="showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptOriginalPayload?.student_id, c.existing_course_id)"
+                  >新增下一堂</button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -577,7 +585,8 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { dedupeCalendarRowsByStudentSlot, mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
 import { hasCrossCampusBusySlot, normalizeCrossCampusBusySlots } from '../lib/crossCampusBusySlots.js';
 import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
-import { buildAttendanceNav } from '../lib/authoritativeMutationRoutes.js';
+import { buildAttendanceNav, buildManualSessionNav } from '../lib/authoritativeMutationRoutes.js';
+import { needsFirstManualLesson, normalizeDuplicateConflicts } from '../lib/enrollmentConflictDecision.js';
 import {
   resolveCalendarDataFetchBoundsYmd,
   isRangeWithinFetchedBounds,
@@ -2063,13 +2072,20 @@ const currentSessionChargeDisplay = computed(() => {
   return null;
 });
 
-const handleUniversalSchedulerSuccess = async () => {
+// in-app #382: a manual course starts with no lesson, so the calendar can't show it; schedule the first one there.
+const TEACHER_MANUAL_HANDOFF_MESSAGE = '手動排課的第一堂需由主任在「課程查找」按「新增下一堂」排入，排好後就會出現在行事曆。';
+const openManualSessionInCourseMgmt = (studentId, courseId) => emit('navigate', buildManualSessionNav(studentId, courseId));
+
+const handleUniversalSchedulerSuccess = async (result) => {
   const workflowStep = 'create';
   if (!calendarWorkflowStarts.has(workflowStep)) startCalendarWorkflow(workflowStep);
   showModal.value = false;
-  await loadCourses();
+  const manual = result?.scheduling_policy === 'manual_occurrence' && result.student_class_id;
+  if (!manual || isTeacher.value) await loadCourses(); // a director leaves the page right away for a manual course
   finishCalendarWorkflow(workflowStep);
-  void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: 'calendar' });
+  void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: manual && !isTeacher.value ? 'course-mgmt' : 'calendar' });
+  if (manual && isTeacher.value) alert(TEACHER_MANUAL_HANDOFF_MESSAGE);
+  else if (manual) openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
 };
 
 const showDuplicateInterceptModal = ref(false);
@@ -2078,13 +2094,7 @@ const interceptOriginalPayload = ref(null);
 const forceSubmitting = ref(false);
 
 function handleSchedulerDuplicate(evt) {
-  duplicateConflicts.value = (evt?.conflicts || []).map((c) => ({
-    existing_course_id: c.existing_course_id ?? c.id,
-    subject: c.subject,
-    subject_name: c.subject_name || c.subject,
-    class_type: c.class_type,
-    remaining_sessions: c.remaining_sessions,
-  }));
+  duplicateConflicts.value = normalizeDuplicateConflicts(evt?.conflicts);
   interceptOriginalPayload.value = evt?.originalPayload || null;
   showDuplicateInterceptModal.value = true;
 }
@@ -2104,9 +2114,13 @@ async function forceCreateCourse() {
     showModal.value = false;
     const created = Number(result?.created_confirmed_sessions ?? 0) + Number(result?.created_future_sessions ?? 0);
     alert(`已強制建立 ${created} 堂課`);
-    await loadCourses();
+    // in-app #382: a forced manual course has no lesson either — same handoff as a normal manual create.
+    const handoff = payload.scheduling_policy === 'manual_occurrence' && result?.student_class_id && !isTeacher.value;
+    if (!handoff) await loadCourses();
     finishCalendarWorkflow('create', 'completed', { result: 'forced' });
-    void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: 'create', target: 'calendar' });
+    void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: 'create', target: handoff ? 'course-mgmt' : 'calendar' });
+    if (handoff) openManualSessionInCourseMgmt(result.student_id ?? payload.student_id, result.student_class_id);
+    else if (payload.scheduling_policy === 'manual_occurrence' && isTeacher.value) alert(TEACHER_MANUAL_HANDOFF_MESSAGE);
   } catch (err) {
     alert(err?.message || '強制建立失敗，請稍後再試');
     calendarWorkflowError('create', err);
