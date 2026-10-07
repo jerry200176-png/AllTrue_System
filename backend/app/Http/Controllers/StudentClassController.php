@@ -5273,11 +5273,12 @@ class StudentClassController extends Controller
         // unrelated course is still planned, so upsertSlot() rolls the transfer back and names the conflict.
         $targetRows = [];
         $target = StudentClass::query()->find($targetId);
-        // Same live-row rules as the write guard: a stopped or trial target, or one in the source's own package
-        // (parallel subject tracks), holds nothing.
+        // Same live-row rules as the write guard: a stopped or trial target, a trial source, or a target in the
+        // source's own package (parallel subject tracks) holds nothing.
         $sourcePackage = (int) $source->getAttribute('PackageID');
         $targetHoldsNothing = (int) ($target?->getAttribute('Stop') ?? 0) === 1
             || strtolower(trim((string) $target?->getAttribute('ClassType'))) === 'trial'
+            || strtolower(trim((string) $source->getAttribute('ClassType'))) === 'trial'
             || ($sourcePackage > 0 && (int) $target?->getAttribute('PackageID') === $sourcePackage);
         $targetLive = $targetHoldsNothing ? collect() : ClassSession::query()->where('StudentClassID', $targetId)
             ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
