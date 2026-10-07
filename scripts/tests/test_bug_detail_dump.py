@@ -141,6 +141,8 @@ class BugDetailDumpContractTest(unittest.TestCase):
         self.assertIn('OccurrenceAssignmentService::onLeave', block)
         self.assertIn('"restore_original"', block)
         self.assertIn('"past_bookkeeping"', block)
+        for marker in ('"incomplete_times"', '"campus_binding_rejected"', '"on_leave_rejected"', 'enabledFor(3)'):
+            self.assertIn(marker, block)
         self.assertIn('teacher_branches', block)
         self.assertIn('validateScheduleOccurrence', block)
         self.assertIn('teacherForOccurrence', block)
