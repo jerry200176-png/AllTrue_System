@@ -798,7 +798,7 @@
                 <td>
                   <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
                   <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
-                  <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || STATUS_CONFIG.pending_reconciliation.label }}</span>
+                  <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || (row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL) }}</span>
                   <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '付款期間待確認' }}</span>
                   <span v-if="row.closed_reason === 'waived'" class="acct-chip">{{ WAIVED_LABEL }}</span>
                   <span v-else-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation && !row.payment_review_required" class="text-light">正常</span>
@@ -1100,7 +1100,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { normalizeNavigationId, resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
-import { TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, WAIVED_LABEL } from '../lib/courseMoneyState.js';
+import { TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },

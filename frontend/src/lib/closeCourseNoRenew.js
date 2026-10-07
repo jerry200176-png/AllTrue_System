@@ -1,4 +1,4 @@
-import { TUITION_STATUS_CONFIG } from './courseMoneyState.js';
+import { ENDED_PENDING_LABEL, TUITION_STATUS_CONFIG } from './courseMoneyState.js';
 import { authedFetch, getAccessToken } from './authedFetch';
 
 /** Shared confirmation and request path for closing a course without renewal. */
@@ -20,7 +20,7 @@ export async function closeCourseNoRenew({
   if (settled === null) { alertImpl('繳費狀態載入中，請重新整理後再結案'); return; }
   const paymentWarning = settled
     ? ''
-    : `\n\n目前尚未完成繳費；結案後會標記「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」，不會視為已收。`;
+    : `\n\n目前尚未完成繳費；結案後會標記「${ENDED_PENDING_LABEL}」，不會視為已收。`;
   const balanceWarning = remaining > 0
     ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
     : '';

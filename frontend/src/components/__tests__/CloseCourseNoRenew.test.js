@@ -47,7 +47,7 @@ describe('shared close-course action', () => {
       action: 'pause', reason: 'settled', forfeit_remaining: true,
     });
     expect(calls.reloads).toBe(1);
-    expect(calls.alerts[0]).toContain('課已結束，等你確認收款');
+    expect(calls.alerts[0]).toContain('「等你確認收款」分頁');
   });
 
   it('refuses to close when payment status is unknown (degraded load)', async () => {
