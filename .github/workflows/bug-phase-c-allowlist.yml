@@ -838,18 +838,18 @@ jobs:
           $results = [];
           foreach ($items as $bugId => $cfg) {
             $reuseNotice = isset($cfg["existing_notice_id"]);
-            if ($reuseNotice) \Illuminate\Support\Facades\DB::beginTransaction();
-            $bug = $reuseNotice
-              ? \App\Models\BugReport::where("id", $bugId)->lockForUpdate()->first()
-              : \App\Models\BugReport::find($bugId);
+            // #3742: reply + transitions + evidence commit together under a row lock, so a failed
+            // status/evidence write never leaves a visible reply behind (no double-post on retry).
+            \Illuminate\Support\Facades\DB::beginTransaction();
+            $bug = \App\Models\BugReport::where("id", $bugId)->lockForUpdate()->first();
             if (!$bug) {
-              if ($reuseNotice) \Illuminate\Support\Facades\DB::rollBack();
+              \Illuminate\Support\Facades\DB::rollBack();
               $results[] = ["id" => $bugId, "action" => "missing"];
               continue;
             }
             $status = (string)$bug->status;
             if (in_array($status, ["resolved", "closed"], true)) {
-              if ($reuseNotice) \Illuminate\Support\Facades\DB::rollBack();
+              \Illuminate\Support\Facades\DB::rollBack();
               $results[] = ["id" => $bugId, "action" => "skip_already", "status" => $status];
               continue;
             }
@@ -867,6 +867,7 @@ jobs:
             elseif ($status === "triaged") $path = ["in_progress", "resolved"];
             elseif ($status === "in_progress") $path = ["resolved"];
             else {
+              \Illuminate\Support\Facades\DB::rollBack();
               $results[] = ["id" => $bugId, "action" => "unsupported_status", "status" => $status];
               continue;
             }
@@ -875,7 +876,10 @@ jobs:
             foreach ($path as $st) {
               if ($st === "resolved") {
                 // Public reply before resolve (Evidence Contract)
-                if (!$reuseNotice) $svc::addComment($bugId, $actor, $cfg["reply"], false);
+                // Idempotent: an identical public reply already on the report is never posted again.
+                $alreadyPosted = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
+                  ->where("is_internal_note", false)->where("body", $cfg["reply"])->exists();
+                if (!$reuseNotice && !$alreadyPosted) $svc::addComment($bugId, $actor, $cfg["reply"], false);
                 $opts = ["production_revision" => $cfg["rev"]];
                 if ($cfg["deploy"] !== "") $opts["deploy_run_id"] = $cfg["deploy"];
                 $last = $svc::changeStatus($bugId, $actor, "resolved", "phase-c allowlist; prod_head=".$prodHead, $opts);
@@ -884,10 +888,8 @@ jobs:
               }
               if (!($last["ok"] ?? false)) { $ok = false; break; }
             }
-            if ($reuseNotice) {
-              if ($ok) \Illuminate\Support\Facades\DB::commit();
-              else \Illuminate\Support\Facades\DB::rollBack();
-            }
+            if ($ok) \Illuminate\Support\Facades\DB::commit();
+            else \Illuminate\Support\Facades\DB::rollBack();
             $fresh = \App\Models\BugReport::find($bugId);
             $results[] = [
               "id" => $bugId,
