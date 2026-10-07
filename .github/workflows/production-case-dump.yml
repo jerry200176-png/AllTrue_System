@@ -32,6 +32,7 @@ on:
           - td076_r2_plan_probe
           - paid_status_shadow_log
           - paid_status_shadow_courses
+          - inapp_333_multi_teacher_templates
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
@@ -107,7 +108,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -775,6 +776,83 @@ jobs:
               ];
             }}
             $out['courses'] = $rows;
+          }} elseif ($case === 'inapp_333_multi_teacher_templates') {{
+            // Read-only (#3138 / in-app 333, 2026-10-07). Before #3500, a multi-teacher enrollment wrote every
+            // sibling teacher's weekday/time into each per-teacher contract's week1-6/time1-6 template.
+            // Own slots = (ISO weekday, HH:MM) of the contract's live sessions in its first 14 days (created by
+            // the enrollment itself, which was per-teacher correct). Foreign slot = template slot that is a
+            // sibling's own slot and not this contract's. IDs, dates, times, statuses and flags only (no names).
+            $today = now()->toDateString();
+            $dead = ['cancelled', 'voided'];
+            $hm = fn ($t) => ($t === null || $t === '') ? null : substr((string) $t, 0, 5);
+            $groups = $db::table('StudentClass')->whereNotNull('StartDate')
+              ->groupBy('StudentID', 'SubjectID', 'StartDate')->havingRaw('COUNT(DISTINCT TeacherID) > 1')
+              ->selectRaw('StudentID as sid, SubjectID as subj, StartDate as start')->get();
+            $contracts = [];
+            $groupRows = [];
+            foreach ($groups as $g) {{
+              $sibs = $db::table('StudentClass as sc')->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->where('sc.StudentID', $g->sid)->where('sc.SubjectID', $g->subj)->where('sc.StartDate', $g->start)
+                ->get(['sc.ID', 'sc.TeacherID', 'sc.Stop', 'sc.ScheduleMode', 'st.CampusID',
+                  'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
+                  'sc.time1', 'sc.time2', 'sc.time3', 'sc.time4', 'sc.time5', 'sc.time6']);
+              $tpl = []; $own = []; $teacher = [];
+              foreach ($sibs as $c) {{
+                $id = (int) $c->ID; $teacher[$id] = (int) $c->TeacherID; $tpl[$id] = [];
+                for ($i = 1; $i <= 6; $i++) {{
+                  $w = $c->{{'week' . $i}}; $t = $hm($c->{{'time' . $i}});
+                  if ($w !== null && $w !== '' && $t !== null) {{ $tpl[$id][(int) $w . '@' . $t] = true; }}
+                }}
+                $own[$id] = [];
+                $early = $db::table('ClassSession')->where('StudentClassID', $id)
+                  ->whereBetween('SessionDate', [$g->start, \\Carbon\\Carbon::parse($g->start)->addDays(13)->toDateString()])
+                  ->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)->get(['SessionDate', 'StartTime']);
+                foreach ($early as $e) {{ $own[$id][\\Carbon\\Carbon::parse($e->SessionDate)->dayOfWeekIso . '@' . $hm($e->StartTime)] = true; }}
+              }}
+              $groupContracts = [];
+              foreach ($sibs as $c) {{
+                $id = (int) $c->ID; $foreign = [];
+                foreach (array_keys($tpl[$id]) as $slot) {{
+                  if (isset($own[$id][$slot])) {{ continue; }}
+                  foreach ($own as $sid => $set) {{ if ($sid !== $id && isset($set[$slot])) {{ $foreign[] = $slot; break; }} }}
+                }}
+                if (!$foreign) {{ continue; }}
+                $sessions = [];
+                $rowsAt = $db::table('ClassSession')->where('StudentClassID', $id)->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)
+                  ->orderBy('SessionDate')->get(['id', 'SessionDate', 'StartTime', 'Status']);
+                foreach ($rowsAt as $r) {{
+                  $slot = \\Carbon\\Carbon::parse($r->SessionDate)->dayOfWeekIso . '@' . $hm($r->StartTime);
+                  if (!in_array($slot, $foreign, true)) {{ continue; }}
+                  $date = substr((string) $r->SessionDate, 0, 10);
+                  $deducted = $db::table('StudentSingIn')->where('ClassSessionID', $r->id)->whereNull('VoidedAt')->where('SessionDeducted', true)->exists();
+                  $record = $db::table('LearningRecord')->where('ClassSessionID', $r->id)->whereNull('VoidedAt')->exists();
+                  $siblingSame = $db::table('ClassSession')->whereIn('StudentClassID', array_diff(array_keys($tpl), [$id]))
+                    ->whereDate('SessionDate', $date)->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$hm($r->StartTime)])
+                    ->whereRaw('LOWER(Status) NOT IN (?, ?)', $dead)->exists();
+                  $future = $date > $today && strtolower((string) $r->Status) === 'scheduled' && !$deducted && !$record;
+                  $sessions[] = ['session_id' => (int) $r->id, 'date' => $date, 'start' => $hm($r->StartTime), 'status' => (string) $r->Status,
+                    'deducted' => $deducted, 'learning_record' => $record, 'sibling_same_slot' => $siblingSame,
+                    'bucket' => $future ? ($siblingSame ? 'A_future_duplicate' : 'B_future_misplaced') : 'C_past_or_artifact'];
+                }}
+                $groupContracts[] = ['course_id' => $id, 'teacher_id' => $teacher[$id], 'campus_id' => (int) ($c->CampusID ?? 0),
+                  'stopped' => (int) ($c->Stop ?? 0) === 1, 'schedule_mode' => (string) $c->ScheduleMode,
+                  'template_slots' => array_keys($tpl[$id]), 'own_slots' => array_keys($own[$id]), 'foreign_slots' => $foreign,
+                  'foreign_sessions' => $sessions];
+              }}
+              if ($groupContracts) {{
+                $groupRows[] = ['student_id' => (int) $g->sid, 'subject_id' => (int) $g->subj, 'start_date' => (string) $g->start,
+                  'sibling_course_ids' => array_keys($tpl), 'contaminated' => $groupContracts];
+                foreach ($groupContracts as $gc) {{ $contracts[] = $gc; }}
+              }}
+            }}
+            $all = collect($contracts)->flatMap(fn ($c) => $c['foreign_sessions']);
+            $out['multi_teacher_groups'] = count($groups);
+            $out['contaminated_groups'] = count($groupRows);
+            $out['contaminated_contracts'] = count($contracts);
+            $out['contaminated_active_contracts'] = collect($contracts)->where('stopped', false)->count();
+            $out['foreign_sessions_by_bucket'] = $all->groupBy('bucket')->map->count()->all();
+            $out['by_campus'] = collect($contracts)->groupBy('campus_id')->map->count()->all();
+            $out['groups'] = array_slice($groupRows, 0, 200);
           }} elseif ($case === 'td076_r2_plan_probe') {{
             // Read-only: calls only the R-2 strategy plan() (dry-run path, SELECT only, no POP request row) for campus 11.
             // Output: exception class, truncated message, file:line, top 5 frames (file:line), elapsed ms, peak memory. No row data.
