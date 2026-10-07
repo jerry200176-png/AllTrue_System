@@ -152,8 +152,12 @@ final class EnsureSessionHorizonService
             DB::transaction(function () use (
                 $candidates, $studentClassId, $studentId, $note, &$createdIds, &$skipped
             ) {
+                $course = \App\Models\StudentClass::query()->find($studentClassId);
                 foreach ($candidates as $o) {
-                    if ($this->hasCrossScConflict($studentId, $o['date'], $o['start_hm'], $studentClassId)) {
+                    $end = $o['end_hm'] ?? $this->defaultEnd($o['start_hm']);
+                    // Same rule upsertSlot() enforces, so a partial overlap is skipped instead of failing the batch (#380).
+                    if ($this->hasCrossScConflict($studentId, $o['date'], $o['start_hm'], $studentClassId)
+                        || ($course && !$this->materializer->isStudentSlotFree($course, $o['date'], $o['start_hm'], $end))) {
                         Log::warning('ensure_horizon_cross_sc_conflict', [
                             'student_class_id' => $studentClassId,
                             'date' => $o['date'],
@@ -162,7 +166,6 @@ final class EnsureSessionHorizonService
                         $skipped++;
                         continue;
                     }
-                    $end = $o['end_hm'] ?? $this->defaultEnd($o['start_hm']);
                     $res = $this->materializer->upsertSlot([
                         'StudentClassID' => $studentClassId,
                         'SessionDate' => $o['date'],

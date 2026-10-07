@@ -5154,7 +5154,8 @@ class StudentClassController extends Controller
             $replacementPlan = $this->planSourceScheduleTail(
                 $source,
                 $replacementCount,
-                $sourceTail?->SessionDate
+                $sourceTail?->SessionDate,
+                $target
             );
 
             foreach ($sessions as $session) {
@@ -5222,7 +5223,8 @@ class StudentClassController extends Controller
     private function planSourceScheduleTail(
         StudentClass $source,
         int $replacementCount,
-        mixed $tailDate
+        mixed $tailDate,
+        StudentClass $target
     ): array {
         if ($replacementCount <= 0
             || (int) ($source->Stop ?? 0) === 1
@@ -5255,7 +5257,15 @@ class StudentClassController extends Controller
         }
 
         $occupied = [];
+        // The target usually continues the same weekly slot (a renewal): its rows are as occupied as the source's
+        // own, or the refill lands on the renewal's next lesson and 422s the transfer (in-app #380). A clash with an
+        // unrelated course still rolls the transfer back.
         $existing = ClassSession::query()->where('StudentClassID', (int) $source->getAttribute('ID'))
+            ->orWhere(fn ($q) => $q->where('StudentClassID', (int) $target->getAttribute('ID'))
+                ->whereRaw("LOWER(COALESCE(Status, '')) <> 'cancelled'")
+                // Same contract-period boundary as the write guard: stale rows outside the target's period don't count.
+                ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('StartDate')), fn ($w, $d) => $w->whereDate('SessionDate', '>=', $d))
+                ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('EndDate')), fn ($w, $d) => $w->whereDate('SessionDate', '<=', $d)))
             ->get(['SessionDate', 'StartTime']);
         foreach ($existing as $session) {
             $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);

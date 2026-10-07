@@ -207,6 +207,33 @@ class EnsureSessionHorizonTest extends TestCase
         $this->assertSame(0, $dto2['ensure']['created_count']);
     }
 
+    public function test_execute_skips_candidate_partially_overlapping_another_contract(): void
+    {
+        // #380 family: a partial overlap used to throw inside the batch and fail the whole ensure run.
+        putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
+        $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
+
+        $sc = $this->explicitCourse(remaining: 8);
+        $first = app(EnsureSessionHorizonService::class)->ensure(
+            $sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN
+        )['ensure']['candidates'][0]['date'];
+        $other = $this->course(['StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID')]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $other, 'SessionDate' => $first, 'StartTime' => '17:00:00',
+            'EndTime' => '18:00:00', 'Status' => 'scheduled', 'Note' => '',
+        ]);
+
+        $dto = app(EnsureSessionHorizonService::class)->ensure(
+            $sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE
+        );
+
+        $this->assertTrue($dto['ensure']['ok']);
+        $this->assertGreaterThan(0, $dto['ensure']['created_count']);
+        $this->assertFalse(DB::table('ClassSession')->where('StudentClassID', $sc)->whereDate('SessionDate', $first)->exists());
+    }
+
     public function test_shared_pool_shortage_warns_but_does_not_block_planned_sessions(): void
     {
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');

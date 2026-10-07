@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -139,6 +140,15 @@ class ForwardSessionGenerator
                     'planned_student_class_id' => $studentClassId,
                     'existing_student_class_ids' => $crossConflictIds,
                     'source' => 'sessions:generate-forward',
+                ]);
+                continue;
+            }
+            // Same rule upsertSlot() enforces: a partial overlap with another contract would throw at execute (#380).
+            $course ??= StudentClass::query()->find($studentClassId);
+            if ($course && !$this->materializer->isStudentSlotFree($course, $dateStr, $start . ':00', $end . ':00')) {
+                Log::warning('cross_sc_slot_conflict', [
+                    'student_id' => (int) $sc->StudentID, 'session_date' => $dateStr, 'start' => $start,
+                    'planned_student_class_id' => $studentClassId, 'source' => 'sessions:generate-forward',
                 ]);
                 continue;
             }
