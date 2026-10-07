@@ -98,7 +98,7 @@ class BugDetailDumpContractTest(unittest.TestCase):
             self.assertNotIn(field, block)
         for write in ('->insert(', '->update(', '->delete(', '->save('):
             self.assertNotIn(write, block)
-        self.assertIn('359], true)', source)
+        self.assertIn('359, 376], true)', source)
 
     def test_bug_359_discards_partial_evidence_on_source_overflow(self):
         source = self.source
@@ -123,3 +123,19 @@ class BugDetailDumpContractTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_probe_376_is_bug_scoped_read_only_and_name_free(self):
+        source = self.source
+        gate = source.index('if ($bugId === 376) {{')
+        end = source.index('// #359 read-only source check', gate)
+        block = source[gate:end]
+        self.assertIn('if ((int)$bug->CampusID !== 3)', block)
+        self.assertIn('target not uniquely resolved', block)
+        self.assertIn('$refKey376 = random_bytes(32);', block)
+        self.assertIn('"probe_376_teacher_reassign" => $probe376', source)
+        self.assertIn('376 => $probe376,', source)
+        # Names are matched server-side against the report text and never emitted.
+        for field in ('"teacher_name" =>', '"student_name" =>', '"teacher_id" =>', '"student_id" =>', '"name" =>', '"Name" =>'):
+            self.assertNotIn(field, block)
+        for write in ('->insert(', '->update(', '->delete(', '->save(', '->create('):
+            self.assertNotIn(write, block)

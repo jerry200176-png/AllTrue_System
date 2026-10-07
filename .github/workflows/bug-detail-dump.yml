@@ -1530,6 +1530,62 @@ jobs:
             }}
           }}
 
+          // #376 read-only: "move student X to teacher Y on 10/9" keeps failing (campus 3).
+          // Student and teacher are resolved server-side from the report's own title (names never
+          // enter the repo or the output); exactly one match each, scoped to the reporter's campus.
+          // Output: hashed refs, statuses, times, capacity and source types only.
+          $probe376 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 376",
+          ];
+          if ($bugId === 376) {{
+            $probe376["applicable"] = true;
+            $probe376["case"] = "teacher_reassign_376";
+            $probe376["target_window"] = ["date" => "2026-10-09", "viewing_campus_id" => (int)$bug->CampusID];
+            try {{
+              if ((int)$bug->CampusID !== 3) {{ throw new \RuntimeException("target scope mismatch"); }}
+              $text376 = (string)$bug->title . " " . (string)$bug->description;
+              $hit376 = fn ($name) => mb_strlen(trim((string)$name)) >= 2 && mb_strpos($text376, trim((string)$name)) !== false;
+              $teachers376 = $db::table("User as u")->join("UserCampus as uc", "uc.UserID", "=", "u.id")
+                ->where("uc.CampusID", 3)->where("u.type", "T")->limit(2000)->get(["u.id", "u.Name"])
+                ->filter(fn ($r) => $hit376($r->Name))->pluck("id")->unique()->values();
+              $students376 = $db::table("Student")->where("CampusID", 3)->limit(5000)->get(["id", "name"])
+                ->filter(fn ($r) => $hit376($r->name))->pluck("id")->unique()->values();
+              $probe376["resolved"] = ["teachers" => $teachers376->count(), "students" => $students376->count()];
+              if ($teachers376->count() !== 1 || $students376->count() !== 1) {{
+                throw new \RuntimeException("target not uniquely resolved");
+              }}
+              $teacherId376 = (int)$teachers376[0]; $studentId376 = (int)$students376[0];
+              $refKey376 = random_bytes(32);
+              $ref376 = fn ($kind, $id) => substr(hash_hmac("sha256", $kind . "|" . (int)$id, $refKey376), 0, 12);
+              $probe376["student_sessions"] = $db::table("ClassSession as cs")->join("StudentClass as sc", "cs.StudentClassID", "=", "sc.ID")
+                ->where("sc.StudentID", $studentId376)->whereDate("cs.SessionDate", "2026-10-09")->orderBy("cs.StartTime")->limit(21)
+                ->get(["cs.id", "cs.Status", "cs.StartTime", "cs.EndTime", "cs.IsContractException", "sc.ID as course_id", "sc.TeacherID",
+                  "sc.ClassType", "sc.ScheduleMode", "sc.Stop", "sc.SubjectID"])
+                ->map(fn ($r) => ["session_ref" => $ref376("cs", $r->id), "course_ref" => $ref376("sc", $r->course_id),
+                  "status" => strtolower((string)$r->Status), "start" => substr((string)$r->StartTime, 0, 5), "end" => substr((string)$r->EndTime, 0, 5),
+                  "is_exception" => (int)($r->IsContractException ?? 0), "course_teacher_is_target" => (int)$r->TeacherID === $teacherId376,
+                  "class_type" => (string)$r->ClassType, "schedule_mode" => (string)$r->ScheduleMode, "course_stop" => (int)($r->Stop ?? 0),
+                  "subject_id" => (int)$r->SubjectID])->values()->all();
+              $busy376 = app(\App\Services\SubstituteService::class)->collectTeacherBusySlotsWithCapacity($teacherId376, "2026-10-09", [], $studentId376);
+              if (count($busy376) > 100) {{ throw new \RuntimeException("busy slot limit exceeded"); }}
+              $probe376["target_teacher_busy_slots"] = collect($busy376)->map(fn ($slot) => [
+                "start" => substr((string)($slot["start_time"] ?? ""), 0, 5), "end" => substr((string)($slot["end_time"] ?? ""), 0, 5),
+                "campus_id" => (int)($slot["campus_id"] ?? 0), "class_type" => (string)($slot["class_type"] ?? ""),
+                "student_count" => (int)($slot["student_count"] ?? 0), "remaining_capacity" => (int)($slot["remaining_capacity"] ?? 0),
+                "source_types" => $slot["source_types"] ?? []])->values()->all();
+              $probe376["target_teacher_campus_ids"] = $db::table("UserCampus")->where("UserID", $teacherId376)->pluck("CampusID")->map(fn ($c) => (int)$c)->values()->all();
+              $probe376["target_teacher_subject_courses"] = $db::table("StudentClass")->where("TeacherID", $teacherId376)
+                ->where(fn ($q) => $q->where("Stop", 0)->orWhereNull("Stop"))->selectRaw("SubjectID, COUNT(*) as n")->groupBy("SubjectID")
+                ->get()->map(fn ($r) => ["subject_id" => (int)$r->SubjectID, "active_courses" => (int)$r->n])->values()->all();
+              $probe376["decision_grade"] = true;
+              $probe376["reason"] = "Target resolved uniquely; bounded read-only source evidence";
+            }} catch (\Throwable $e) {{
+              $probe376["decision_grade"] = false;
+              $probe376["reason"] = "Probe failed closed: " . $e->getMessage();
+            }}
+          }}
+
           // #359 read-only source check for the reported 2026-09-26 transfer.
           // Teacher ID 29 was uniquely resolved by the existing identity
           // diagnostic. Keep this probe confined to this bug, date and teacher;
@@ -1758,9 +1814,10 @@ jobs:
             315 => $probe315,
             338 => $probe338,
             359 => $probe359,
+            376 => $probe376,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338, 359], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338, 359, 376], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -1808,6 +1865,7 @@ jobs:
                 "probe_315_cross_campus_busy" => $probe315,
                 "probe_338_target_capacity" => $probe338,
                 "probe_359_cross_campus_source" => $probe359,
+                "probe_376_teacher_reassign" => $probe376,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,
