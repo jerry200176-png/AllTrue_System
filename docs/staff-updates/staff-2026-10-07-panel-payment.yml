@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-07-panel-payment
+    published_at: "2026-10-07"
+    audiences:
+      - director
+    importance: digest
+    title: 學生帳務裡直接收款
+    summary: 在學生帳務的合約卡片上，就能登記收款、確認入帳或退回，不用再切分頁。
+    items:
+      - category: added
+        text: 合約卡片上寫出這筆合約還沒繳多少，按「登記收款」就能登記，金額會先帶最早到期的那張帳單。
+      - category: added
+        text: 家長說繳了的那筆，卡片上直接按「確認入帳」或「退回」。
