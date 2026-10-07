@@ -6,6 +6,27 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R144. 月結合約沒有帳單時，計費月份不可用「今天」（in-app #377/#378，2026-10-07）
+
+- **現象**：9 月月結合約（9/1–9/30，3 堂已上）已結束、沒有帳單；10 月主任打開繳費單或登記收款，系統用 10 月計價，繳費單金額不符、登記 9 月實收 $3,900／$5,400 被擋（「月結本期應收為 NT$…」）。
+- **根因**：繳費單、付款連結、主任登記在「沒有未繳帳單」時，計費月份退回 `today`／`payment_date` 的月份，沒有限制在合約自己的 `StartDate..EndDate`。月結是一期一張合約，舊期結束後一定會落到不屬於它的月份。
+- **強制規則**：月結預設計費月份一律走 `MonthlyBillingService::defaultPeriodFor()`（錨定日夾在合約期間內）；新增任何「沒有帳單時用哪個月」的路徑都要呼叫它，不可再寫 `today()->format('Y-m')`。
+- **測試必補**：已結束月結合約、無帳單、今天在下個月：繳費單依該合約當月已上堂數計價，主任登記該金額成功。
+
+### R145. 帳單迴圈必須 eager-load items；`resolve()` 會逐張帳單 lazy-load（GitHub #3454，2026-10-07）
+
+- **現象**：帳務中心、繳費提醒、付款回報、課程帳單列表的查詢數隨帳單數線性成長（8 列時提醒 34 次、帳本 16 次 InvoiceItem 查詢）。
+- **根因層級**：`InvoiceAmountReconciliationService::resolve()` 在 `items` 關聯未載入時逐張查詢；各呼叫端的 `Invoice::with([...])` 漏了 `items`。
+- **強制規則**：任何把多張帳單送進 `resolve()`（或經 `BillingPayableResolver`）的迴圈，查詢必須 `with('items')`。
+- **測試必補**：`InvoiceItemsEagerLoadQueryCountTest`——帳單數增加時 InvoiceItem 查詢數不得成長；守護端點：`alerts/tuition`、`accounting/settled-courses`、`accounting/ledger`、`payment-reports`、`student-classes/{id}/invoices`（逐一移除其 `items` eager-load 已驗證會失敗）。未覆蓋：`AccountingController::waiveCourse`（寫入路徑）與 `UnpaidHiddenClosuresStrategy`（維運清單），新增類似迴圈須自行補測。
+
+### R142. 系統自選的補尾／向前堂次必須用寫入守門的同一規則避開學生占用（in-app #380，2026-10-07）
+
+- **現象**：把已上的 10/1 轉到續約合約時，來源合約自動補回的尾端堂次落在續約合約第一堂（同一週固定時段），寫入守門判定學生時段重疊，整筆轉移 422，主任看到「課程重疊」但畫面上看不出重疊。
+- **根因**：自行挑時段的規劃器只比對自己合約的 `date|start`，沒看學生其他合約；向前生成與 ensure-horizon 雖有跨合約檢查，卻只比「同開始時間」，部分重疊仍會在 `upsertSlot()` 拋出 `student_slot_conflict`。
+- **強制規則**：系統自選時段時，不可只比自己合約的 `date|start`。轉移補尾：與目標合約（續約）存活堂次「時間重疊」就跳過（不看資料庫回傳哪一筆衝突，結果才穩定），與無關課程衝突仍整筆回滾。向前生成／horizon：保留 R20 同開始時間檢查（較嚴，含同方案包），再加問寫入守門 `ClassSessionMaterializationService::findStudentSlotConflict()`，部分重疊也跳過；兩者任一說忙就跳過。主任自己指定的時段衝突仍要回報。
+- **測試必補**：轉入續約後補尾跳過續約自己的堂次；向前生成與 ensure-horizon 遇到部分重疊時跳過該日、其餘照常建立。
+
 ### R141. 正式站唯讀驗收不可把可變資料量當成固定契約（2026-10-01）
 
 - **現象**：列印驗收拒絕主任首頁新增的合法營運信任事件；輔導課驗收因分校沒有進行中輔導課而在產品斷言前失敗，兩項在前一版已重複出現。
@@ -344,6 +365,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F14 issue 與 in-app 不會一起結束**（2026-10-04） | 上線（Phase-C）只回寫 in-app；PR 多寫 `Refs` 不寫 `Closes` → issue 永遠開著。10-04 盤點：54 張 issue 對應的 in-app 已 resolved／closed 但還開著，backlog 淹掉真的工作 | open 160 張中 54 張、`docs/plans/INAPP_ROOTCAUSE_V3_20261003.md` 後續 | Phase-C 成功後由獨立 `issues: write` job 關 issue（epic 除外）；`bug-queue-dump` 每次附 `scripts/inapp-issue-reconcile.py` 不一致報表 |
 | **F15 用提問代替調查**（2026-10-04） | 分診回覆列一串問題（按了哪個鈕、畫面寫什麼、哪一堂），回報者不會回 → 單子卡 14 天後被時鐘關掉，問題沒修。根因：回報沒帶「按過什麼、看到什麼」，而且 detail dump 根本沒匯出 `client_info` | in-app #340–#345、#354–#357 等 25 筆等回報者 | 回報自動附最近 15 個按鈕標籤與 5 則錯誤／警告 toast（Sentry breadcrumbs 做法；不記 alert／confirm，登出／切分校清除）；只在後台分診卡顯示（repo 公開，不把 `client_info` 放進 Actions log／artifact）；SOP A5b「先查、不問」 |
 | **F16 角色判斷各頁各寫一份**（2026-10-06） | 每個頁面各自重拼「誰是主任」的角色字串清單（`role === 'director' \|\| …`）；題庫／評量／`canWaive` 漏列 `admin` → admin 帳號在這幾頁被當成非主任，功能缺失，其他頁卻正常 | #3554、`frontend/src/lib/roleCapabilities.js` | 唯一權威 `isDirectorRole`（`roleCapabilities.js`）；新頁面／新判斷一律 import，**禁止在頁面內 inline 比對角色字串**；`roleCapabilities.test.js` 角色×能力矩陣（含 `admin`）revert 即 fail |
+| **F18 每個端點各自手抄分校檢查**（2026-10-07） | `StudentController` 7 個學生端點各自複製「學生是否在我的分校」的 if；`bindCard` 漏抄 → 主任可把卡號寫到別分校學生（跨校寫入）。手抄版還用 `!empty($campusIds) &&`，空清單＝全放行 | in-app #381 調查時發現（bindCard） | 單一 `denyOutsideCampus()`（super_admin 放行，其他人空清單＝無分校，fail closed），7 個端點全改用；`RfidUniqueConstraintTest` 守跨校 bind 403、show／line-bindings 共用同一閘 |
 | **F19 批次操作只有「全選後逐一取消」**（2026-10-07） | 年級升級預覽預設全選、只能一筆一筆取消；新學年只想升其中一批時，容易把已準備好新學年資料的學生一起升級 | in-app #360 | 「只升級這些年級」年級篩選（`excludeOutsideGrades`，不選＝全部、只動可執行列）；`gradePromotionUi.test.js` 守篩選語意與 modal 接線。之後新增批次動作先給「依條件選取」再確認 |
 | **F6 輸入邊界 collation／長度** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`）；另 **VARCHAR(512) 溢位** → SQLSTATE 22001 Data too long（貼繳費說明） | #657、**#1378**、**#1732** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾；超長備註須 422 `memo_too_long`，禁止 500 |
 
