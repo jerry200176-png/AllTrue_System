@@ -55,6 +55,30 @@ class SubstituteScheduleService
         return $contractTeacherUserId > 0 ? $contractTeacherUserId : 0;
     }
 
+    /**
+     * Effective Teacher for many occurrences (docs/adr/ADR-EFFECTIVE-TEACHER.md): teacherForOccurrence() per distinct
+     * course/date/start, so pay, stats and attribution read the same answer as the calendar and guard.
+     * ponytail: one resolve per distinct occurrence; batch the SQL if a month-wide report gets slow.
+     *
+     * @param  iterable<array{course_id:int, date:string, start_time:?string, contract_teacher_id:int}>  $occurrences
+     * @return array<string, int> occurrenceKey() => teacher user id
+     */
+    public static function teachersForOccurrences(iterable $occurrences): array
+    {
+        $out = [];
+        foreach ($occurrences as $o) {
+            $key = self::occurrenceKey((int) $o['course_id'], (string) $o['date'], $o['start_time'] ?? null);
+            $out[$key] ??= self::teacherForOccurrence((int) $o['course_id'], $o['date'], (int) $o['contract_teacher_id'], $o['start_time'] ?? null);
+        }
+
+        return $out;
+    }
+
+    public static function occurrenceKey(int $courseId, string $date, ?string $startTime): string
+    {
+        return $courseId . '|' . substr($date, 0, 10) . '|' . substr((string) $startTime, 0, 5);
+    }
+
     /** Flag on for this course's campus and someone other than the contract teacher teaches the occurrence. */
     public static function isSubstitutedAway(int $studentClassId, $sessionDate, ?string $startTime = null): bool
     {
