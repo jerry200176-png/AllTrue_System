@@ -22,6 +22,7 @@ use App\Support\SessionStatus;
 use App\Support\Utf8mb3SearchSanitizer;
 use App\Services\Billing\InvoiceIssuer;
 use App\Services\Billing\ContractMoneyState;
+use App\Services\Billing\ContractRenewal;
 use App\Services\BillingModeConversionArchiveService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
@@ -3038,7 +3039,7 @@ class StudentClassController extends Controller
                 ->first();
             if (!$source) { abort(404); }
             $plan = $this->prepareSplitContractPlan($source, $data, true);
-            $duplicate = $this->findDuplicatePurchaseBatch(
+            $duplicate = app(ContractRenewal::class)->findDuplicatePurchaseBatch(
                 $source,
                 $plan['start_date'],
                 $plan['new_session_count']
@@ -3406,7 +3407,7 @@ class StudentClassController extends Controller
         }
 
             $preview = $this->buildRenewalPreview($studentClass, $data);
-            $preview = $this->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request));
+            $preview = app(ContractRenewal::class)->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request));
 
             return response()->json($preview, $preview['severity'] === 'blocked' ? 422 : 200);
     }
@@ -3448,14 +3449,14 @@ class StudentClassController extends Controller
             if ($preview['state_hash'] !== $data['state_hash'] || $preview['preview_id'] !== $data['preview_id']) {
                 return response()->json([
                     'message' => '課程狀態已變更，請重新預覽後再確認。',
-                    'preview' => $this->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request)),
+                    'preview' => app(ContractRenewal::class)->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request)),
                 ], 409);
             }
 
             if ($preview['severity'] === 'blocked') {
                 return response()->json([
                     'message' => '此續報目前不可執行。',
-                    'preview' => $this->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request)),
+                    'preview' => app(ContractRenewal::class)->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request)),
                 ], 422);
             }
 
@@ -3586,7 +3587,7 @@ class StudentClassController extends Controller
                 ], 422);
             }
 
-            $duplicate = $this->findDuplicateMonthlyRenewal($studentClass, $newStartDate, $newEndDate);
+            $duplicate = app(ContractRenewal::class)->findDuplicateMonthlyRenewal($studentClass, $newStartDate, $newEndDate);
             if ($duplicate !== null) {
                 return response()->json([
                     'message' => '偵測到相同學生、科目與期間的月結續報課程，請先確認是否已續報過。',
@@ -3960,7 +3961,7 @@ class StudentClassController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $duplicate = $this->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions);
+            $duplicate = app(ContractRenewal::class)->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions);
             if ($duplicate !== null) {
                 return response()->json([
                     'message' => '偵測到相同學生、科目、開課日與堂數的既有批次，請先確認是否已續報過。',
@@ -5475,90 +5476,14 @@ class StudentClassController extends Controller
         }
 
         if ($mode === 'purchase_batch') {
-            if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
-                $blockers[] = [
-                    'code' => 'monthly_course_purchase_batch',
-                    'message' => '月結制課程不可加購堂數，請使用月結續報。',
-                ];
-            }
-
-            $sessions = (int) ($data['sessions'] ?? 0);
-            $startDate = ContractSessionSchedule::normalizeDateString($data['start_date'] ?? null);
-            if ($sessions < 1) {
-                $blockers[] = [
-                    'code' => 'sessions_required',
-                    'message' => '請輸入本次新增堂數。',
-                ];
-            }
-            if (!$startDate) {
-                $blockers[] = [
-                    'code' => 'start_date_required',
-                    'message' => '請選擇新批次開課日。',
-                ];
-            }
-
-            $rate = (float) ($studentClass->Rate ?? 0);
-            $rateUnit = (string) ($studentClass->rate_unit ?? 'session');
-            $globalDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
-            $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
-            $totalHours = 0;
-            $charge = 0;
-            if ($sessions > 0) {
-                if ($rateUnit === 'hour') {
-                    $durSum = 0;
-                    $slotCount = max(1, count($slots));
-                    foreach ($slots as $slot) {
-                        $durSum += !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $globalDur;
-                    }
-                    $avgDur = $durSum / $slotCount;
-                    $totalHours = (int) round(($sessions * $avgDur) / 60);
-                    $charge = (int) round($rate * $totalHours);
-                } else {
-                    $totalHours = (int) round(($sessions * $globalDur) / 60);
-                    $charge = (int) round($rate * $sessions);
-                }
-            }
-
-            if ($startDate && $sessions > 0 && !empty($slots)) {
-                $sessionsPreview = ContractSessionSchedule::buildSessionsForCount((int) $studentClass->ID, $startDate, $sessions, $slots, $globalDur);
-                $schedule['created_sessions'] = count($sessionsPreview);
-                $schedule['first_session_date'] = isset($sessionsPreview[0])
-                    ? ContractSessionSchedule::normalizeDateString($sessionsPreview[0]['SessionDate'])
-                    : null;
-                $lastSession = !empty($sessionsPreview) ? $sessionsPreview[count($sessionsPreview) - 1] : null;
-                $schedule['last_session_date'] = $lastSession
-                    ? ContractSessionSchedule::normalizeDateString($lastSession['SessionDate'])
-                    : null;
-            }
-
-            $duplicate = ($startDate && $sessions > 0)
-                ? $this->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions)
-                : null;
-            if ($duplicate !== null) {
-                $blockers[] = [
-                    'code' => 'possible_duplicate_batch',
-                    'message' => '系統偵測到相同學生、科目、開課日與堂數的既有批次，請先確認是否已續報過。',
-                    'duplicate_course_id' => (int) $duplicate->ID,
-                ];
-            }
-
-            $proposedCourse = [
-                'schedule_mode' => 'count',
-                'sessions' => $sessions,
-                'start_date' => $startDate,
-                'end_date' => $schedule['last_session_date'],
-                'charge' => ($discountSnapshot = app(TransactionDiscountCalculator::class)->calculate(
-                    max(0, $charge), $data['discount'] ?? null,
-                    (int) ($this->currentActorId()), (string) request()->attributes->get('auth_role')
-                ))['final_amount'],
-                'paid' => 0,
-                'total_hours' => $totalHours,
-            ];
-            $billing = [
-                'payment_status_after_confirm' => 'unpaid',
-                'amount_due' => $discountSnapshot['final_amount'],
-                'discount' => $discountSnapshot,
-            ];
+            $purchase = app(ContractRenewal::class)->previewPurchaseBatch(
+                $studentClass, $data, $this->currentActorId(), (string) request()->attributes->get('auth_role')
+            );
+            $blockers = array_merge($blockers, $purchase['blockers']);
+            $proposedCourse = $purchase['proposed_course'];
+            $billing = $purchase['billing'];
+            $schedule = $purchase['schedule'];
+            $discountSnapshot = $billing['discount'];
         } elseif ($mode === 'renew_monthly') {
             if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
                 $blockers[] = [
@@ -5768,26 +5693,6 @@ class StudentClassController extends Controller
         ];
     }
 
-    private function findDuplicatePurchaseBatch(StudentClass $studentClass, string $startDate, int $sessions): ?StudentClass
-    {
-        return StudentClass::where('ID', '<>', $studentClass->ID)
-            ->where('StudentID', $studentClass->StudentID)
-            ->where('SubjectID', $studentClass->SubjectID)
-            ->where('ScheduleMode', 'count')
-            ->where('StartDate', $startDate)
-            ->where('SessionCount', $sessions)
-            ->where(function ($q) {
-                $q->whereNull('Stop')->orWhere('Stop', 0);
-            })
-            ->orderBy('ID')
-            ->first();
-    }
-
-    private function findDuplicateMonthlyRenewal(StudentClass $studentClass, string $startDate, string $endDate): ?StudentClass
-    {
-        return app(\App\Services\MonthlyRenewalPeriodService::class)->findDuplicate($studentClass, $startDate, $endDate);
-    }
-
     /**
      * 正班 TeacherID 或單堂代課（schedules.status=scheduled + original_schedule_id）之代課老師。
      */
@@ -5892,14 +5797,6 @@ class StudentClassController extends Controller
     private function canApplyTransactionDiscount(Request $request): bool
     {
         return in_array((string) $request->attributes->get('auth_role'), ['director', 'super_admin'], true);
-    }
-
-    private function redactRenewalDiscount(array $preview, bool $financial): array
-    {
-        if (!$financial) {
-            unset($preview['billing']['discount'], $preview['payload']['discount']);
-        }
-        return $preview;
     }
 
     private function currentActorId(): int
