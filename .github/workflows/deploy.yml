@@ -1004,7 +1004,7 @@ jobs:
               if [[ "$RELEASE_TRAIN" != "true" ]]; then
                 {
                   echo "## state=queued-for-release-train"
-                  echo "Not deployed. Founder-gated changes ride the next release train (hourly 08:00-22:00 Asia/Taipei, or dispatch phase=release-train). While one is pending, later R0-R2 merges wait for that train too."
+                  echo "Not deployed. Founder-gated changes ride the next release train (hourly at :17 past, 08:17-22:17 Asia/Taipei, with a 22:47 retry; or dispatch phase=release-train). While one is pending, later R0-R2 merges wait for that train too."
                   echo "Reason: ${REASON}"
                 } >> "$GITHUB_STEP_SUMMARY"
                 exit 0

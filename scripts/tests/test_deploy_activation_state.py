@@ -1001,15 +1001,15 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         # Founder 3A: a train every hour 08-22 Taipei (00-14 UTC), off minute zero, and a
         # retry after the last train. Check the schedule's properties, not one literal.
         crons = re.findall(r"^    - cron: '([^']+)'$", self.workflow, re.M)
-        fires = set()
-        for expr in crons:
-            minute, hour = expr.split()[:2]
-            self.assertNotEqual(minute, "0", f"{expr} runs at minute zero")
-            lo, _, hi = hour.partition("-")
-            fires.update((int(h), int(minute)) for h in range(int(lo), int(hi or lo) + 1))
-        self.assertEqual({h for h, _ in fires}, set(range(0, 15)))
-        last = max(fires)
-        self.assertTrue(any(h == last[0] and m > last[1] for h, m in fires) or len([f for f in fires if f[0] == 14]) > 1)
+        trains = [c.split() for c in crons if "-" in c.split()[1]]
+        retries = [c.split() for c in crons if "-" not in c.split()[1]]
+        self.assertEqual(len(trains), 1, crons)
+        minute, hours = trains[0][:2]
+        self.assertNotEqual(minute, "0", "train runs at minute zero")
+        lo, hi = (int(h) for h in hours.split("-"))
+        self.assertEqual((lo, hi), (0, 14))
+        # The final train (hour 14) has a later retry in the same hour.
+        self.assertTrue(any(int(h) == hi and int(m) > int(minute) for m, h, *_ in retries), crons)
         # A run never cancels a train already awaiting approval.
         self.assertIn("another deploy run is already waiting for approval; standing down", self.workflow)
         self.assertIn("- release-train", self.workflow)
