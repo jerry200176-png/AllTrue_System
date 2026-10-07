@@ -4,7 +4,7 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 學生帳務：每筆合約一張卡片，看得到每一堂課付了沒
+    title: 學生帳務改成合約卡片
     summary: 打開學生帳務，每筆合約會列出完整備註和每一堂上課日，還標出這堂的錢付了沒。
     items:
       - category: added
@@ -12,4 +12,4 @@ updates:
       - category: added
         text: 合約備註完整顯示，按「改備註」就能直接修改，不用跳頁。
       - category: added
-        text: 上課日按月份列出，每一天標上課狀態和「已付／未付／還沒開帳單」；還沒排的堂數會寫「還有 N 堂還沒排日期」。
+        text: 上課日按月份列出，每一天標上課狀態和「已付／未付／還沒開帳單」；還沒排日期的課，也會寫出還剩幾堂。
