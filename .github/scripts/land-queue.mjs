@@ -137,7 +137,8 @@ function labeledAt(n) {
 }
 
 const Q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
-  mergeStateStatus headRefName headRefOid authorAssociation labels(first:50){nodes{name}}
+  mergeStateStatus headRefName headRefOid authorAssociation
+  labels(first:50){nodes{name}}
   commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{
     __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId} repository{nameWithOwner}}} ... on StatusContext{context state createdAt}}}}}}}}}}`;
 
