@@ -1279,7 +1279,6 @@ function isOverSessionLimit(courseId, targetDate) {
   return String(targetDate).slice(0, 10) > endDate;
 }
 
-const ATTENDED_STATUSES = new Set(['attended', 'completed', 'late', 'absent']);
 
 function rollCallSessionKey(course) {
   return String(course.is_exception ? (course.student_course_id ?? course.id) : course.id);
