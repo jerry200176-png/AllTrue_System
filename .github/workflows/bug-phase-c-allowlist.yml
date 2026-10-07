@@ -772,6 +772,11 @@ jobs:
               "rev" => "44ab1b3698cccfa1d12f367c65e12d3e53f1d3fe",
               "deploy" => "36961012794",
             ],
+            343 => [
+              "reply" => "已修正並上線：同一天如果有一堂已取消、但取消那堂的上課時間和原本固定時段不同，課程堂次清單以前仍會在同一天多顯示一筆「預排」，看起來像同一堂既是預排又是取消。現在已取消的那堂會佔住當天，不會再多出這筆預排。沒有更動任何課堂或扣堂資料。這次只做工程測試與正式版本檢查，沒有在正式環境實際操作畫面。仍等待您實際確認。請重新整理後打開該課程的排課與堂次清單；若同一天仍同時出現「預排」與已調走／取消，請按「問題仍存在」並回覆分校與日期（請勿貼學生姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3196",
+              "rev" => "afce6ff6f6b0f38396a2e872fe855eb53610375c",
+              "deploy" => "37505389591",
+            ],
           ];
           // One authorized target per run. A request for an unknown ID or an
           // unshipped revision fails before any comment/status mutation.
