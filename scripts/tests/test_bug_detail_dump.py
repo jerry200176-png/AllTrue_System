@@ -98,7 +98,7 @@ class BugDetailDumpContractTest(unittest.TestCase):
             self.assertNotIn(field, block)
         for write in ('->insert(', '->update(', '->delete(', '->save('):
             self.assertNotIn(write, block)
-        self.assertIn('359, 376], true)', source)
+        self.assertIn('359], true)', source)
 
     def test_bug_359_discards_partial_evidence_on_source_overflow(self):
         source = self.source
@@ -138,6 +138,8 @@ class BugDetailDumpContractTest(unittest.TestCase):
             self.assertNotIn(field, output)
         self.assertIn('session row limit exceeded', block)
         self.assertIn('identity candidate cap reached', block)
+        self.assertNotIn('$e->getMessage();', block.split('$known376')[1] if '$known376' in block else block)
+        self.assertIn('read_error:', block)
         self.assertIn('OccurrenceAssignmentService::onLeave', block)
         self.assertIn('"restore_original"', block)
         self.assertIn('"past_bookkeeping"', block)

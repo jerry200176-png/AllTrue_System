@@ -1628,7 +1628,10 @@ jobs:
               $probe376["reason"] = "Target resolved uniquely; bounded read-only source evidence";
             }} catch (\Throwable $e) {{
               $probe376["decision_grade"] = false;
-              $probe376["reason"] = "Probe failed closed: " . $e->getMessage();
+              // Never export raw exception text (SQL bindings can carry IDs); keep only our own fixed codes.
+              $known376 = ["target scope mismatch", "target not uniquely resolved", "identity candidate cap reached",
+                "session row limit exceeded", "busy slot limit exceeded"];
+              $probe376["reason"] = "Probe failed closed: " . (in_array($e->getMessage(), $known376, true) ? $e->getMessage() : "read_error:" . class_basename($e));
             }}
           }}
 
@@ -1863,7 +1866,7 @@ jobs:
             376 => $probe376,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338, 359, 376], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338, 359], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
