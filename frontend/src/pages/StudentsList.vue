@@ -183,7 +183,7 @@
                 >
                   {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong>{{ courseBadgeSessionLabel(course) }}</strong>
-                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ effectiveClosedReason(course) === 'waived' ? '確認不收' : effectiveClosedReason(course) === 'settled_pending' ? '已結算 · 待對帳' : (effectiveClosedReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
+                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ effectiveClosedReason(course) === 'waived' ? WAIVED_LABEL : effectiveClosedReason(course) === 'settled_pending' ? TUITION_STATUS_CONFIG.pending_reconciliation.label : (effectiveClosedReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
                 </span>
               </div>
               <span class="hint" v-else>尚未設定</span>
@@ -505,8 +505,8 @@
                         <span class="tag sl-history-card__subject">{{ getStudentCourseSubjectDisplayLabel(hc) }}</span>
                         <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                         <span v-if="isPackageMember(hc)" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
-                        <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">已結算 · 待對帳</span>
-                        <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag sl-tag-history sl-tag-history--settled">確認不收</span>
+                        <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">{{ TUITION_STATUS_CONFIG.pending_reconciliation.label }}</span>
+                        <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag sl-tag-history sl-tag-history--settled">{{ WAIVED_LABEL }}</span>
                         <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
                         <span v-else class="tag sl-tag-history sl-tag-history--completed">已完課</span>
                       </div>
@@ -990,7 +990,7 @@ import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled } from '../lib/paymentStatus.js';
 import {
   closedReason as effectiveClosedReason, courseProgress, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
-  modalRemainingSessions, ownRemainingSessions, periodPaymentLabel, poolTotalSessions, REPORT_STATUS_LABELS, WAIVED_LABEL,
+  modalRemainingSessions, ownRemainingSessions, periodPaymentLabel, poolTotalSessions, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG, WAIVED_LABEL,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';

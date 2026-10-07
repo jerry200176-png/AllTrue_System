@@ -61,8 +61,8 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     await wrapper.setProps({ show: true });
     await nextTick();
 
-    expect(wrapper.text()).toContain('現金也不會立刻變成已繳費');
-    expect(wrapper.text()).toContain('送出待對帳回報');
+    expect(wrapper.text()).toContain('現金也不會立刻變成已收');
+    expect(wrapper.text()).toContain('送出繳費回報');
     await wrapper.find('form').trigger('submit');
     await tick();
 

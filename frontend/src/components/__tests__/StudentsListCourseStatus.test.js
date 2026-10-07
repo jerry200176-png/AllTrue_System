@@ -40,7 +40,7 @@ describe('In-App #353: existing course history stays distinct from current balan
   it.each([
     ['completed', '歷史 · 已完課'],
     ['settled', '歷史 · 已結算'],
-    ['settled_pending', '歷史 · 已結算 · 待對帳'],
+    ['settled_pending', '歷史 · 課已結束，等你確認收款'],
   ])('labels an existing %s row without hiding its recorded balance or reconciliation task', async (closed_reason, label) => {
     await withCourses([{ ...ordinary, closed_reason }], async (wrapper) => {
       if (closed_reason === 'settled_pending') {

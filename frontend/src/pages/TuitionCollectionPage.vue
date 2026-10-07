@@ -103,7 +103,8 @@
           </div>
           <div class="tc-card tc-card--warn">
             <span class="tc-card-num">{{ statusCounts.pending_report + statusCounts.pending_reconciliation }}</span>
-            <span class="tc-card-label">{{ STATUS_CONFIG.pending_report.label }}</span>
+            <!-- counts parent reports and closed-course reconciliations: neutral wording for both -->
+            <span class="tc-card-label">{{ REPORT_STATUS_LABELS.pending }}</span>
           </div>
           <div class="tc-card tc-card--outstanding">
             <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
