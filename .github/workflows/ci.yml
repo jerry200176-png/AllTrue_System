@@ -172,7 +172,8 @@ jobs:
   golden_scenarios:
     name: Golden scenarios report
     needs: changes
-    if: github.event_name == 'pull_request' || inputs.pr_number != ''
+    # land-queue batch branches are dispatched without pr_number (no PR) but must still produce this required context.
+    if: github.event_name == 'pull_request' || inputs.pr_number != '' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/chore/land-queue-batch-'))
     # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
     runs-on: ubuntu-latest
     timeout-minutes: 2
