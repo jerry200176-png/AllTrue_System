@@ -2073,6 +2073,7 @@ const currentSessionChargeDisplay = computed(() => {
 });
 
 // in-app #382: a manual course starts with no lesson, so the calendar can't show it; schedule the first one there.
+const TEACHER_MANUAL_HANDOFF_MESSAGE = '手動排課的第一堂需由主任在「課程查找」按「新增下一堂」排入，排好後就會出現在行事曆。';
 const openManualSessionInCourseMgmt = (studentId, courseId) => emit('navigate', buildManualSessionNav(studentId, courseId));
 
 const handleUniversalSchedulerSuccess = async (result) => {
@@ -2083,7 +2084,7 @@ const handleUniversalSchedulerSuccess = async (result) => {
   if (!manual || isTeacher.value) await loadCourses(); // a director leaves the page right away for a manual course
   finishCalendarWorkflow(workflowStep);
   void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: manual && !isTeacher.value ? 'course-mgmt' : 'calendar' });
-  if (manual && isTeacher.value) alert('手動排課的第一堂需由主任在「課程查找」按「新增下一堂」排入，排好後就會出現在行事曆。');
+  if (manual && isTeacher.value) alert(TEACHER_MANUAL_HANDOFF_MESSAGE);
   else if (manual) openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
 };
 
@@ -2119,6 +2120,7 @@ async function forceCreateCourse() {
     finishCalendarWorkflow('create', 'completed', { result: 'forced' });
     void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: 'create', target: handoff ? 'course-mgmt' : 'calendar' });
     if (handoff) openManualSessionInCourseMgmt(result.student_id ?? payload.student_id, result.student_class_id);
+    else if (payload.scheduling_policy === 'manual_occurrence' && isTeacher.value) alert(TEACHER_MANUAL_HANDOFF_MESSAGE);
   } catch (err) {
     alert(err?.message || '強制建立失敗，請稍後再試');
     calendarWorkflowError('create', err);
