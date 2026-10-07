@@ -5281,6 +5281,17 @@ class StudentClassController extends Controller
         foreach ($targetLive as $row) {
             $targetRows[(string) ContractSessionSchedule::normalizeDateString($row->SessionDate)][] = [(string) $row->StartTime, (string) $row->EndTime];
         }
+        // A target booking may still be a schedules row only (not yet materialized); the write guard counts it too.
+        if ($target && (int) ($target->getAttribute('Stop') ?? 0) !== 1) {
+            $targetSchedules = DB::table('schedules')->where('student_course_id', $targetId)->where('status', 'scheduled')
+                ->whereNull('original_schedule_id')
+                ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('StartDate')), fn ($q, $d) => $q->whereDate('schedule_date', '>=', $d))
+                ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('EndDate')), fn ($q, $d) => $q->whereDate('schedule_date', '<=', $d))
+                ->get(['schedule_date', 'start_time', 'end_time']);
+            foreach ($targetSchedules as $row) {
+                $targetRows[(string) ContractSessionSchedule::normalizeDateString($row->schedule_date)][] = [(string) $row->start_time, (string) $row->end_time];
+            }
+        }
 
         $planned = [];
         $cursor = $anchorDate->copy()->addDay();

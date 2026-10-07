@@ -563,6 +563,35 @@ class StudentClassTransferSessionsTest extends TestCase
         }
     }
 
+    /** In-app #380: a target booking that is still only a schedules row counts as occupied too. */
+    public function test_refill_skips_a_target_schedule_only_booking(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17']);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $this->createSchedule((int) $target->ID, $student->id, '2026-08-17', 'extra');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-24', 'StartTime' => '23:00:00',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_schedule_only_makeup_still_blocks_source_replenishment(): void
     {
         Carbon::setTestNow('2026-08-12 12:00:00');

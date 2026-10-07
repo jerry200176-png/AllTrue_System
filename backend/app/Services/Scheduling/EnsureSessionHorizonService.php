@@ -148,10 +148,11 @@ final class EnsureSessionHorizonService
         $studentId = $this->loadStudentId($studentClassId);
         $createdIds = [];
         $skipped = 0;
+        $asOf = ($today ?? Carbon::today())->toDateString();
 
         try {
             DB::transaction(function () use (
-                $candidates, $studentClassId, $studentId, $note, &$createdIds, &$skipped
+                $candidates, $studentClassId, $studentId, $note, $asOf, &$createdIds, &$skipped
             ) {
                 $course = StudentClass::query()->find($studentClassId);
                 $course = $course instanceof StudentClass ? $course : null;
@@ -160,7 +161,7 @@ final class EnsureSessionHorizonService
                     // R20 same-start check stays (stricter on purpose); the write guard also rejects partial
                     // overlaps, so skip those too instead of failing the whole batch (in-app #380, R142).
                     if ($this->hasCrossScConflict($studentId, $o['date'], $o['start_hm'], $studentClassId)
-                        || ($course && $this->materializer->findStudentSlotConflict($course, $o['date'], $o['start_hm'], $end))) {
+                        || ($course && $this->materializer->findStudentSlotConflict($course, $o['date'], $o['start_hm'], $end, $asOf))) {
                         Log::warning('ensure_horizon_cross_sc_conflict', [
                             'student_class_id' => $studentClassId,
                             'date' => $o['date'],

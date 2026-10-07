@@ -177,10 +177,11 @@ class ClassSessionMaterializationService
      * is free (or in the past, where the save path does not guard), else the conflict upsertSlot() would throw.
      * Planners that pick slots themselves ask this instead of re-implementing the rule (in-app #380, R142).
      */
-    public function findStudentSlotConflict(StudentClass $studentClass, string $sessionDate, string $startTime, string $endTime): ?SlotOccupiedException
+    public function findStudentSlotConflict(StudentClass $studentClass, string $sessionDate, string $startTime, string $endTime, ?string $asOf = null): ?SlotOccupiedException
     {
         $date = $this->normalizeDate($sessionDate);
-        if ($date < now()->toDateString()) {
+        // $asOf: a planner's own reference day (e.g. a report run --as-of a past date); defaults to the write path's today.
+        if ($date < ($asOf ?? now()->toDateString())) {
             return null;
         }
         try {

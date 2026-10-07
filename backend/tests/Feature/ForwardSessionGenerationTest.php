@@ -26,14 +26,6 @@ class ForwardSessionGenerationTest extends TestCase
         $this->gen = app(ForwardSessionGenerator::class);
         // Fix "today" to a Monday for deterministic weekday math.
         $this->today = Carbon::parse('2026-07-13'); // Monday
-        // The student-slot write guard only applies to future rows, measured by the real clock.
-        Carbon::setTestNow($this->today);
-    }
-
-    protected function tearDown(): void
-    {
-        Carbon::setTestNow();
-        parent::tearDown();
     }
 
     public function test_confirmed_weekly_cadence_plans_and_executes_capped(): void
