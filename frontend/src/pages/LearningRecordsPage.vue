@@ -3926,13 +3926,11 @@ const submitForm = async () => {
     if (shouldLiftDefaultWindowForDate({ savedDate, windowStart: resolvedDefaultWindowStart.value })) {
       defaultWindowDisabled.value = true;
     }
-    // issue 3760: after submit, land on 待審核 and drop「未填優先」so the filled pending
-    // row stays visible; confirm with a short toast (director still reviews pending).
+    // issue 3760: after submit, land on 待審核 and clear secondary priority chips
+    // (未填／逾期／需修改) so the filled pending row stays visible; confirm toast.
     if (isTeacher.value) {
       teacherFilterTab.value = 'pending';
-      if (teacherPriorityFilter.value === 'unfilled') {
-        teacherPriorityFilter.value = 'all';
-      }
+      teacherPriorityFilter.value = 'all';
       downloadToast.value = '已送出，等待主任核准';
       setTimeout(() => { downloadToast.value = ''; }, 3000);
     }

@@ -11,8 +11,8 @@ assert.match(
 );
 assert.match(
   source,
-  /teacherPriorityFilter\.value === 'unfilled'[\s\S]*teacherPriorityFilter\.value = 'all'/,
-  'teacher submit success must clear 未填優先 so filled pending is not filtered out',
+  /teacherFilterTab\.value = 'pending'[\s\S]*teacherPriorityFilter\.value = 'all'/,
+  'teacher submit success must clear secondary priority chips so filled pending is not filtered out',
 );
 assert.match(
   source,
