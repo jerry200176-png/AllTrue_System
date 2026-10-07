@@ -3155,6 +3155,7 @@ const buildEvents = (targetDates) => {
         learningRecordStatus: rowStatus,
         recordStatus: statusSource?.Status,
         recordHasBody: !!(statusSource && hasLearningRecordBody(statusSource)),
+        learningRecordBodyFilled: !!rawSession?.learningRecordBodyFilled,
         isSubstituted,
         sessionStarted,
       });

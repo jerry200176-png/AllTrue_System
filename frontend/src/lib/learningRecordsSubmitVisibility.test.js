@@ -34,5 +34,10 @@ assert.match(
   /recordHasBody:\s*!!\(statusSource && hasLearningRecordBody\(statusSource\)\)/,
   'schedule status fallback must require a ClassSession-bound row with body',
 );
+assert.match(
+  source,
+  /learningRecordBodyFilled:\s*!!rawSession\?\.learningRecordBodyFilled/,
+  'schedule must honor class-sessions body-filled flag when list row is absent',
+);
 
 console.log('learning records submit visibility contract tests passed');

@@ -58,11 +58,20 @@ assert.equal(apiEmptyBackfillPending.label, '未填');
 const apiSubmittedPending = resolveLearningSessionState({
   sessionStatus: 'attended',
   learningRecordStatus: 'pending',
-  recordHasBody: true,
+  learningRecordBodyFilled: true,
   sessionStarted: true,
 });
 assert.equal(apiSubmittedPending.formStatus, 'pending');
 assert.equal(apiSubmittedPending.label, '待審');
+const apiPendingExcludedFromFilteredList = resolveLearningSessionState({
+  sessionStatus: 'attended',
+  learningRecordStatus: 'pending',
+  learningRecordBodyFilled: true,
+  recordHasBody: false,
+  sessionStarted: true,
+});
+assert.equal(apiPendingExcludedFromFilteredList.formStatus, 'pending',
+  'API body-filled pending must stay 待審 when list row is filtered out');
 const trueMissing = resolveLearningSessionState({
   sessionStatus: 'attended',
   learningRecordStatus: 'missing',

@@ -768,7 +768,7 @@ const weekDays = computed(() => {
               : resolveLearningSessionState({
                 sessionStatus: status,
                 learningRecordStatus: s.learningRecordStatus,
-                recordHasBody: !!s.learningRecordBodyFilled,
+                learningRecordBodyFilled: !!s.learningRecordBodyFilled,
                 sessionStarted: true,
               }).formStatus),
           recordId: s.learningRecordId || null,

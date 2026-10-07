@@ -44,6 +44,7 @@ export function resolveLearningSessionState({
   learningRecordStatus,
   recordStatus,
   recordHasBody = false,
+  learningRecordBodyFilled = false,
   isSubstituted = false,
   sessionStarted = false,
 } = {}) {
@@ -55,7 +56,8 @@ export function resolveLearningSessionState({
   if (!apiStatus && listStatus === 'pending' && !recordHasBody) {
     listStatus = '';
   }
-  if (apiStatus === 'pending' && !recordHasBody) {
+  const apiBodyFilled = !!learningRecordBodyFilled;
+  if (apiStatus === 'pending' && !apiBodyFilled && !recordHasBody) {
     apiStatus = '';
   }
   const baseStatus = apiStatus || listStatus || 'missing';
