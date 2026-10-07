@@ -9,10 +9,11 @@ evidence as a hold.
 from __future__ import annotations
 
 import fnmatch
+import json
 import re
 from collections import Counter
-from datetime import datetime
-from typing import Iterable, Mapping
+from datetime import date, datetime, timedelta
+from typing import Callable, Iterable, Mapping
 
 
 TIER_VALUES = {"T0": 0, "T1": 1, "T2": 2, "T3": 3}
@@ -1163,6 +1164,216 @@ def is_founder_approval_eligible(
     )
 
 
+# A GO is an affirmative prose line naming the Founder and a date, e.g.
+# "Founder GO: Jerry 2026-10-07 \"GO 3702\"". Lines in fences/comments (_founder_go_prose),
+# quotes, indented code, placeholders, strikethrough and negations do not count.
+# Founder 1A evidence lives at the very top of the PR body, where no Markdown construct
+# (fence, comment, quote, HTML block, lazy continuation) can precede and hide it:
+#   line 1  Founder GO: Jerry 2026-10-07 approves #3737 at <40-hex head SHA>   (class 3 only)
+#   next    Rollback: revert this PR
+# Free text never counts, and any other line of the raw body that mentions rollback,
+# reversibility, undo or recovery voids the evidence.
+_FOUNDER_GO_TOKEN_RE = re.compile(
+    r"Founder GO: Jerry (20[0-9]{2}-[01][0-9]-[0-3][0-9]) approves #([1-9][0-9]*) at ([0-9a-f]{40})"
+)
+_ROLLBACK_TOKEN = "Rollback: revert this PR"
+_ROLLBACK_MENTION_RE = re.compile(r"roll[ -]?back|revers|revert|undo|recover", re.IGNORECASE)
+_TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
+_COMMIT_API_FILE_CAP = 300
+_GATE_POLICY_PATHS = {"scripts/governance/autonomy_gate.py", ".github/workflows/deploy.yml"}
+
+
+def has_strict_rollback(body: str, *, after_go: bool = False) -> bool:
+    """``Rollback: revert this PR`` is body line 1 (line 2 after a GO) and the only rollback mention."""
+
+    lines = (body or "").split("\n")
+    index = 1 if after_go else 0
+    if len(lines) <= index or lines[index].rstrip("\r") != _ROLLBACK_TOKEN:
+        return False
+    return not any(_ROLLBACK_MENTION_RE.search(line) for i, line in enumerate(lines) if i != index)
+
+
+def founder_go_approved_head(body: str, number: int, merged_at: datetime | None = None) -> str | None:
+    """The head SHA that body line 1 approves for PR ``number``; None unless the evidence is exact."""
+
+    first = (body or "").split("\n", 1)[0].rstrip("\r")
+    match = _FOUNDER_GO_TOKEN_RE.fullmatch(first)
+    if not match or int(match.group(2)) != number or not has_strict_rollback(body, after_go=True):
+        return None
+    try:
+        approved_on = date.fromisoformat(match.group(1))
+    except ValueError:
+        return None
+    # Not after the merge day in Taipei (UTC+8): a GO cannot be dated in the future.
+    if merged_at is None or approved_on > (merged_at + timedelta(hours=8)).date():
+        return None
+    return match.group(3)
+
+
+def commit_effective_class(body: str, files: object) -> int | None:
+    """Effective class (max of machine, declared) via presubmit's own ``validate_declaration`` and patch format; None = unknown."""
+
+    if not isinstance(files, list) or not files or len(files) >= _COMMIT_API_FILE_CAP:
+        return None
+    if any(not isinstance(item, Mapping) or item.get("patch") is None or not item.get("filename") for item in files):
+        return None
+    paths = [str(item["filename"]) for item in files]
+    patch = "\n".join(f"diff --git a/{path} b/{path}\n{item['patch']}" for path, item in zip(paths, files))
+    paths += [str(item["previous_filename"]) for item in files if item.get("previous_filename")]
+    result = validate_declaration(body, paths, patch)
+    if not result["valid"] or result["effective_tier"] not in TIER_VALUES:
+        return None
+    return TIER_VALUES[result["effective_tier"]]
+
+
+def founder_go_release_evidence(
+    *, repo: str, comparison: Mapping[str, object],
+    fetch_pr: Callable[[int], object], effective_class: Callable[[str, str], object],
+    scope_matches: Callable[[str, str], object],
+) -> dict[str, object]:
+    """Founder 1A: every commit is an owner PR squash-merged into main, body last edited by the owner
+    before merge; class-3 PRs need a GO token bound to their exact diff (``scope_matches``). Fails closed."""
+
+    def fail(reason: str) -> dict[str, object]:
+        return {"ok": False, "missing": [], "reason": reason}
+
+    owner = repo.split("/", 1)[0]
+    commits = comparison.get("commits")
+    if not isinstance(commits, list) or not commits or comparison.get("total_commits") != len(commits):
+        return fail("commit list is empty, truncated or unavailable")
+    missing: list[int] = []
+    for commit in commits:
+        sha = str((commit or {}).get("sha") or "")
+        title = str(((commit or {}).get("commit") or {}).get("message") or "").split("\n", 1)[0]
+        match = _TITLE_PR_RE.search(title)
+        if not _FULL_SHA_RE.fullmatch(sha) or not match:
+            return fail(f"commit {sha[:10] or '?'} has no merged PR number")
+        number = int(match.group(1))
+        pr = fetch_pr(number)
+        merged_at = _parse_timestamp(pr.get("merged_at")) if isinstance(pr, Mapping) else None
+        edited_at = pr.get("last_edited_at") if isinstance(pr, Mapping) else None
+        if (
+            merged_at is None
+            or "last_edited_at" not in pr
+            or (edited_at is not None and (
+                (_parse_timestamp(edited_at) or merged_at) >= merged_at or pr.get("last_editor") != owner
+            ))
+            or pr.get("number") != number
+            or pr.get("merge_commit_sha") != sha
+            or (pr.get("base") or {}).get("ref") != "main"
+            or ((pr.get("head") or {}).get("repo") or {}).get("full_name") != repo
+            or pr.get("author_association") != "OWNER"
+        ):
+            return fail(f"PR #{number} is not an owner PR merged into main as {sha[:10]} with an owner-edited merge-time body")
+        body = str(pr.get("body") or "")
+        tier = effective_class(sha, body)
+        if not isinstance(tier, int) or isinstance(tier, bool) or tier not in TIER_VALUES.values():
+            return fail(f"PR #{number} class unavailable or declaration invalid; counts as R3 without a GO")
+        if tier in (1, 2) and not has_strict_rollback(body):
+            return fail(f"PR #{number} is R{tier} without rollback evidence")
+        if tier < 3:
+            continue
+        approved = founder_go_approved_head(body, number, merged_at)
+        if not (approved and scope_matches(approved, sha) is True):
+            missing.append(number)
+    if missing:
+        listed = ", ".join(f"#{n}" for n in missing)
+        return {"ok": False, "missing": missing, "reason": f"R3 PRs without a valid Founder GO: {listed}"}
+    return {"ok": True, "missing": [], "reason": "every merged PR is R0-R2 or carries a valid Founder GO"}
+
+
+def _exact_diff(files: object) -> list[tuple[str, ...]] | None:
+    if not isinstance(files, list) or not files or len(files) >= _COMMIT_API_FILE_CAP:
+        return None
+    # Blob OIDs prove complete content even where the API truncates a patch.
+    if any(not isinstance(item, Mapping) or item.get("patch") is None or not item.get("sha") for item in files):
+        return None
+    return sorted(
+        (str(item.get("filename")), str(item.get("previous_filename") or ""), str(item.get("status")),
+         str(item.get("sha") or ""), str(item["patch"]))
+        for item in files
+    )
+
+
+def _tree_modes(graphql: Callable[[str], object], owner: str, name: str, rev: str, paths: list[str]) -> dict | None:
+    """Git modes of ``paths`` at ``rev`` (None when any entry is missing)."""
+
+    if not paths:
+        return {}
+    aliases = "".join(
+        f'p{i}: object(expression:{json.dumps(rev + ":" + path.rpartition("/")[0])}) {{ ... on Tree {{ entries {{ name mode }} }} }} '
+        for i, path in enumerate(paths)
+    )
+    repository = graphql(f"{{repository(owner:{json.dumps(owner)},name:{json.dumps(name)}){{ {aliases}}}}}")["data"]["repository"]
+    modes = {}
+    for i, path in enumerate(paths):
+        entries = (repository.get(f"p{i}") or {}).get("entries") or []
+        found = [entry.get("mode") for entry in entries if entry.get("name") == path.rpartition("/")[2]]
+        if len(found) != 1:
+            return None
+        modes[path] = found[0]
+    return modes
+
+
+def evaluate_founder_go_range(
+    *, repo: str, base_sha: str, target_sha: str,
+    api: Callable[[str], object], graphql: Callable[[str], object],
+) -> dict[str, object]:
+    """Fetch production...target via ``api``/``graphql`` (which raise on error) and evaluate Founder 1A evidence."""
+
+    if not (_FULL_SHA_RE.fullmatch(base_sha or "") and _FULL_SHA_RE.fullmatch(target_sha or "")):
+        return {"ok": False, "missing": [], "reason": "deployed or target SHA is invalid"}
+    comparison = api(f"/repos/{repo}/compare/{base_sha}...{target_sha}")
+    if not isinstance(comparison, Mapping) or comparison.get("status") != "ahead":
+        return {"ok": False, "missing": [], "reason": "target is not strictly ahead of production"}
+    owner, name = repo.split("/", 1)
+    details: dict[str, Mapping] = {}
+
+    def detail(sha: str) -> Mapping:
+        if sha not in details:
+            details[sha] = api(f"/repos/{repo}/commits/{sha}")
+        return details[sha]
+
+    def fetch_pr(number: int) -> Mapping:
+        pr = dict(api(f"/repos/{repo}/pulls/{number}"))
+        edit = graphql(
+            f'{{repository(owner:"{owner}",name:"{name}"){{pullRequest(number:{number}){{lastEditedAt editor{{login}}}}}}}}'
+        )["data"]["repository"]["pullRequest"]
+        pr["last_edited_at"] = edit["lastEditedAt"]
+        pr["last_editor"] = (edit.get("editor") or {}).get("login")
+        return pr
+
+    def scope_matches(approved: str, sha: str) -> bool:
+        parents = detail(sha).get("parents") or []
+        files = detail(sha).get("files") or []
+        # A GO never skips review for migrations (reverting code does not restore schema/data).
+        if len(parents) != 1 or any("/migrations/" in f"/{item.get('filename')}" for item in files):
+            return False
+        merged = _exact_diff(detail(sha).get("files"))
+        approved_files = api(f"/repos/{repo}/compare/{parents[0]['sha']}...{approved}").get("files")
+        if merged is None or _exact_diff(approved_files) != merged:
+            return False
+        # The API patch omits file modes; compare the tree entry modes of every changed path.
+        paths = [str(item.get("filename")) for item in approved_files if item.get("status") != "removed"]
+        return all(_tree_modes(graphql, owner, name, rev, paths) is not None for rev in (approved, sha)) and (
+            _tree_modes(graphql, owner, name, approved, paths) == _tree_modes(graphql, owner, name, sha, paths)
+        )
+
+    # A range that changes the gate policy or the deploy workflow is judged by a human:
+    # neither endpoint policy may vouch for an intervening policy change.
+    for commit in comparison.get("commits") or []:
+        files = detail(str(commit.get("sha"))).get("files")
+        if not isinstance(files, list) or any(
+            path in _GATE_POLICY_PATHS for item in files for path in (item.get("filename"), item.get("previous_filename"))
+        ):
+            return {"ok": False, "missing": [], "reason": "range changes the gate policy or deploy workflow; reviewer required"}
+    return founder_go_release_evidence(
+        repo=repo, comparison=comparison, fetch_pr=fetch_pr,
+        effective_class=lambda sha, body: commit_effective_class(body, detail(sha).get("files")),
+        scope_matches=scope_matches,
+    )
+
+
 def decide_manual_activation(
     *, workflow_ref: str, target_sha: str, current_main_sha: str,
     ci_success: bool, founder_gate_reached: bool,
@@ -1293,6 +1504,24 @@ def environment_protection_is_valid(
     }:
         return False
     return required_reviewers_configured and prevent_self_review is False
+
+
+def auto_environment_is_valid(
+    *, event_name: str, phase: str, mode: str, go_evidence: str, branch_names: Iterable[str],
+) -> bool:
+    """Accept the reviewer-less ``production-auto`` Environment only with verified 1A evidence.
+
+    Manual exceptional phases never use it; they keep ``production-activation``.
+    """
+
+    if go_evidence != "verified" or mode not in {"auto", "auto-founder-go"}:
+        return False
+    if event_name == "workflow_dispatch":
+        if phase != "release-train":
+            return False
+    elif event_name not in {"workflow_run", "repository_dispatch", "schedule"}:
+        return False
+    return list(branch_names) == ["main"]
 
 
 def effective_tier(

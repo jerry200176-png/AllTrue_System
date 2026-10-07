@@ -109,6 +109,13 @@ bypass disabled, and main-only deployment branch policy. Workflow-dispatch typed
 confirmation remains only for exceptional manual phases; it is not a second
 normal approval path. No fake reviewer or admin bypass is introduced.
 
+Founder 1A (2026-10-07): a deploy run skips the manual approve and uses the reviewer-less,
+main-only `production-auto` Environment only when `autonomy_gate.evaluate_founder_go_range`
+(see its docstrings for the exact evidence and GO token) accepts every PR between the
+production manifest SHA and the target, under both the deployed and the target policy,
+again right before the executor. Anything else keeps the unchanged `production-activation`
+reviewer gate, and the run summary names the PRs that lack a GO.
+
 This governance change itself is T3: it must pass the governance cool-off and
 protected review process before its new capability is used in production.
 
@@ -135,7 +142,7 @@ changed code expresses it. Unknown or missing evidence fails closed.
 - No stacked PRs: branch from main after the dependency merges.
 - Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
 - Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
-- Deploys: release train only.
+- Deploys: only `deploy.yml`. A range whose every PR is R0-R2 or carries a Founder GO deploys on its own CI; otherwise it waits for the release train (Founder 1A/3A, 2026-10-07).
 
 ## Review checklist (R2/T2)
 
