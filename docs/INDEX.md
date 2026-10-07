@@ -121,7 +121,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ## 📋 任務導航（按任務類型跳）
 
 - 月結缺帳單與收款金額待核對：[`2026-09-29 月結核對與個案修復邊界`](plans/2026-09-29-monthly-billing-review.md)（核對介面／唯讀試算；不代表個案已拆約開單）。
-- 主任學生帳務對帳 IA（單一入口＋錢↔課完整上課日）：[`2026-10-06 主任學生帳務對帳 IA`](plans/2026-10-06-director-student-billing-reconciliation-ia.md)（契約已定；實作分期 M1–M4；不改催繳列入條件）。
+- 主任學生帳務對帳 IA（單一入口＋錢↔課完整上課日）：[`2026-10-06 主任學生帳務對帳 IA`](plans/2026-10-06-director-student-billing-reconciliation-ia.md)（v2 2026-10-07：帳務中心大改版——學生為主、不跳頁、去代號；實作 V1–V4；不改催繳列入條件與收款狀態機）。
   - **Worker 接手（M1 only）**：[`IMPL_HANDOFF_M1`](plans/2026-10-06-director-billing-recon-IMPL_HANDOFF_M1.md) · 貼上用 [`KICKOFF_M1`](plans/2026-10-06-director-billing-recon-KICKOFF_M1.md)（Claude Code／Codex）。
 
 ### 新功能 / Bug 修復
