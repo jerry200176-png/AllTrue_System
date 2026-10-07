@@ -69,6 +69,10 @@ class ContractSessionCoverageController extends Controller
 
         return response()->json([
             'student_class_id' => $courseId,
+            'subject' => $studentClass->displaySubjectName(),
+            'schedule_mode' => (string) ($studentClass->ScheduleMode ?? ''),
+            'start_date' => $studentClass->StartDate ? substr((string) $studentClass->StartDate, 0, 10) : null,
+            'end_date' => $studentClass->EndDate ? substr((string) $studentClass->EndDate, 0, 10) : null,
             'memo' => (string) ($studentClass->Memo ?? ''),
             'sessions' => $sessions,
             // Count mode: bought lessons that have no date yet (PRD v2 D17).

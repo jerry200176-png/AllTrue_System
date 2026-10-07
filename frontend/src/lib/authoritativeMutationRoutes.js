@@ -49,6 +49,11 @@ export function buildCourseMgmtOpsNav(courseOrRow, { teacherId = null, intent = 
   };
 }
 
+/** in-app #382: open 新增下一堂 for a manual course that has no lesson yet. */
+export function buildManualSessionNav(studentId, courseId) {
+  return buildCourseMgmtOpsNav({ id: courseId, student_id: studentId }, { intent: 'manual-session' });
+}
+
 /** LINE unbind lives on binding-management. */
 export function buildBindingManagementNav({ studentId = null, studentName = '' } = {}) {
   return {

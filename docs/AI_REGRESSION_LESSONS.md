@@ -6,6 +6,34 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R144. 月結合約沒有帳單時，計費月份不可用「今天」（in-app #377/#378，2026-10-07）
+
+- **現象**：9 月月結合約（9/1–9/30，3 堂已上）已結束、沒有帳單；10 月主任打開繳費單或登記收款，系統用 10 月計價，繳費單金額不符、登記 9 月實收 $3,900／$5,400 被擋（「月結本期應收為 NT$…」）。
+- **根因**：繳費單、付款連結、主任登記在「沒有未繳帳單」時，計費月份退回 `today`／`payment_date` 的月份，沒有限制在合約自己的 `StartDate..EndDate`。月結是一期一張合約，舊期結束後一定會落到不屬於它的月份。
+- **強制規則**：月結預設計費月份一律走 `MonthlyBillingService::defaultPeriodFor()`（錨定日夾在合約期間內）；新增任何「沒有帳單時用哪個月」的路徑都要呼叫它，不可再寫 `today()->format('Y-m')`。
+- **測試必補**：已結束月結合約、無帳單、今天在下個月：繳費單依該合約當月已上堂數計價，主任登記該金額成功。
+
+### R145. 帳單迴圈必須 eager-load items；`resolve()` 會逐張帳單 lazy-load（GitHub #3454，2026-10-07）
+
+- **現象**：帳務中心、繳費提醒、付款回報、課程帳單列表的查詢數隨帳單數線性成長（8 列時提醒 34 次、帳本 16 次 InvoiceItem 查詢）。
+- **根因層級**：`InvoiceAmountReconciliationService::resolve()` 在 `items` 關聯未載入時逐張查詢；各呼叫端的 `Invoice::with([...])` 漏了 `items`。
+- **強制規則**：任何把多張帳單送進 `resolve()`（或經 `BillingPayableResolver`）的迴圈，查詢必須 `with('items')`。
+- **測試必補**：`InvoiceItemsEagerLoadQueryCountTest`——帳單數增加時 InvoiceItem 查詢數不得成長；守護端點：`alerts/tuition`、`accounting/settled-courses`、`accounting/ledger`、`payment-reports`、`student-classes/{id}/invoices`（逐一移除其 `items` eager-load 已驗證會失敗）。未覆蓋：`AccountingController::waiveCourse`（寫入路徑）與 `UnpaidHiddenClosuresStrategy`（維運清單），新增類似迴圈須自行補測。
+
+### R142. 系統自選的補尾／向前堂次必須用寫入守門的同一規則避開學生占用（in-app #380，2026-10-07）
+
+- **現象**：把已上的 10/1 轉到續約合約時，來源合約自動補回的尾端堂次落在續約合約第一堂（同一週固定時段），寫入守門判定學生時段重疊，整筆轉移 422，主任看到「課程重疊」但畫面上看不出重疊。
+- **根因**：自行挑時段的規劃器只比對自己合約的 `date|start`，沒看學生其他合約；向前生成與 ensure-horizon 雖有跨合約檢查，卻只比「同開始時間」，部分重疊仍會在 `upsertSlot()` 拋出 `student_slot_conflict`。
+- **強制規則**：系統自選時段時，不可只比自己合約的 `date|start`。轉移補尾：與目標合約（續約）存活堂次「時間重疊」就跳過（不看資料庫回傳哪一筆衝突，結果才穩定），與無關課程衝突仍整筆回滾。向前生成／horizon：保留 R20 同開始時間檢查（較嚴，含同方案包），再加問寫入守門 `ClassSessionMaterializationService::findStudentSlotConflict()`，部分重疊也跳過；兩者任一說忙就跳過。主任自己指定的時段衝突仍要回報。
+- **測試必補**：轉入續約後補尾跳過續約自己的堂次；向前生成與 ensure-horizon 遇到部分重疊時跳過該日、其餘照常建立。
+
+### R143. 建立後「沒有任何堂次」的課必須從建立的入口直接排第一堂（in-app #382，2026-10-07）
+
+- **現象**：主任在行事曆用「逐堂手動排課」新增 1 堂輔導，課程建立了但行事曆上看不到；再排一次跳出「此學生已有進行中的課程」，只提供加購或仍要新增。
+- **根因**：`manual_occurrence` 課程刻意建立 0 筆 `ClassSession`（由「新增下一堂」逐堂排），但行事曆沒有課程卡、沒有「新增下一堂」；重複課程 409 也沒說「這是還沒排堂的手動課」，把人導去加購／建第二筆空課。
+- **強制規則**：任何建立入口建立了「0 堂可見」的課（手動排課等），成功後必須直接帶到排第一堂的流程（行事曆、學生管理 → 課程查找 `intent: 'manual-session'`）；重複課程回應要帶 `scheduling_policy` 與 `future_session_count`（與手動排課服務同一組存活狀態），各頁一律用 `normalizeDuplicateConflicts()` 保留伺服器欄位（不可手寫只挑幾個欄位的 map），由共用 `needsFirstManualLesson()` 判斷「手動、未來堂次=0、仍有剩餘」提供「新增下一堂」；`future_session_count` 用 `ManualSessionBookingService::reservedSessionCount()`（方案包共用）。
+- **測試必補**：手動輔導建立後 0 堂、第二次送出 409 且 conflict 帶 `scheduling_policy=manual_occurrence`、`future_session_count=0`；行事曆成功後導向 manual-session、重複視窗顯示「新增下一堂」、課程查找載入後開啟該課的新增下一堂。
+
 ### R141. 正式站唯讀驗收不可把可變資料量當成固定契約（2026-10-01）
 
 - **現象**：列印驗收拒絕主任首頁新增的合法營運信任事件；輔導課驗收因分校沒有進行中輔導課而在產品斷言前失敗，兩項在前一版已重複出現。
@@ -344,6 +372,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F14 issue 與 in-app 不會一起結束**（2026-10-04） | 上線（Phase-C）只回寫 in-app；PR 多寫 `Refs` 不寫 `Closes` → issue 永遠開著。10-04 盤點：54 張 issue 對應的 in-app 已 resolved／closed 但還開著，backlog 淹掉真的工作 | open 160 張中 54 張、`docs/plans/INAPP_ROOTCAUSE_V3_20261003.md` 後續 | Phase-C 成功後由獨立 `issues: write` job 關 issue（epic 除外）；`bug-queue-dump` 每次附 `scripts/inapp-issue-reconcile.py` 不一致報表 |
 | **F15 用提問代替調查**（2026-10-04） | 分診回覆列一串問題（按了哪個鈕、畫面寫什麼、哪一堂），回報者不會回 → 單子卡 14 天後被時鐘關掉，問題沒修。根因：回報沒帶「按過什麼、看到什麼」，而且 detail dump 根本沒匯出 `client_info` | in-app #340–#345、#354–#357 等 25 筆等回報者 | 回報自動附最近 15 個按鈕標籤與 5 則錯誤／警告 toast（Sentry breadcrumbs 做法；不記 alert／confirm，登出／切分校清除）；只在後台分診卡顯示（repo 公開，不把 `client_info` 放進 Actions log／artifact）；SOP A5b「先查、不問」 |
 | **F16 角色判斷各頁各寫一份**（2026-10-06） | 每個頁面各自重拼「誰是主任」的角色字串清單（`role === 'director' \|\| …`）；題庫／評量／`canWaive` 漏列 `admin` → admin 帳號在這幾頁被當成非主任，功能缺失，其他頁卻正常 | #3554、`frontend/src/lib/roleCapabilities.js` | 唯一權威 `isDirectorRole`（`roleCapabilities.js`）；新頁面／新判斷一律 import，**禁止在頁面內 inline 比對角色字串**；`roleCapabilities.test.js` 角色×能力矩陣（含 `admin`）revert 即 fail |
+| **F18 每個端點各自手抄分校檢查**（2026-10-07） | `StudentController` 7 個學生端點各自複製「學生是否在我的分校」的 if；`bindCard` 漏抄 → 主任可把卡號寫到別分校學生（跨校寫入）。手抄版還用 `!empty($campusIds) &&`，空清單＝全放行 | in-app #381 調查時發現（bindCard） | 單一 `denyOutsideCampus()`（super_admin 放行，其他人空清單＝無分校，fail closed），7 個端點全改用；`RfidUniqueConstraintTest` 守跨校 bind 403、show／line-bindings 共用同一閘 |
 | **F17 新回報沒人收件就堆積**（2026-10-07） | 分診（開 issue + Phase-A 回覆 + `triaged`）只能人工 `workflow_dispatch`，沒人跑就一直是 `new`；回報者看不到任何回應，issue 也不存在，後續修好也無處掛 | in-app #376–#382 等多筆 `new` 未收件 | `bug-auto-intake.yml` 每小時把 `new` 開成 IDs-only issue（SourceRef 去重）+ 自動確認回覆；**狀態維持 `new`**（一般確認不是分診，否則 SLA 違約被藏起來）；`BugAutoIntakeCommandTest` 守 candidates 只列未確認的 `new`、不含自由文字、ack 冪等、不寫 status log |
 | **F6 輸入邊界 collation／長度** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`）；另 **VARCHAR(512) 溢位** → SQLSTATE 22001 Data too long（貼繳費說明） | #657、**#1378**、**#1732** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾；超長備註須 422 `memo_too_long`，禁止 500 |
 
