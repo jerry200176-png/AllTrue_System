@@ -989,7 +989,7 @@ import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled } from '../lib/paymentStatus.js';
 import {
-  courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
+  closedReason as effectiveClosedReason, courseProgress, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
   modalRemainingSessions, ownRemainingSessions, poolTotalSessions, WAIVED_LABEL,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
@@ -1387,22 +1387,6 @@ const parseCourseNumber = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 };
-function effectiveClosedReason(course) {
-  if (course?.closed_reason) return course.closed_reason;
-  if (String(course?.status || '').toLowerCase() === 'inactive'
-    && course?.payment_type === 'session'
-    && isCourseSettled(course)
-    && ownRemainingSessions(course) != null
-    && ownRemainingSessions(course) <= 0) {
-    return 'completed';
-  }
-  // 月結制課程停用即視為完課（DB 無 closed_reason 的歷史髒資料也走此分支）
-  if (String(course?.status || '').toLowerCase() === 'inactive'
-    && course?.payment_type !== 'session') {
-    return 'completed';
-  }
-  return null;
-}
 const isHistoricalCourse = (course) => {
   if (course?.closed_reason === 'settled_pending' || course?.closed_reason === 'waived') return true;
   // 月結制課程 RemainingSessions 通常為 0（月結不扣堂），不可用 remaining ≤ 0 判斷歷史。
@@ -1420,10 +1404,7 @@ const isHistoricalCourse = (course) => {
   if (remaining == null) return false;
   return remaining <= 0 && isCourseSettled(course);
 };
-const isHistoryCourseByReason = (course) => {
-  const reason = effectiveClosedReason(course);
-  return reason === 'settled' || reason === 'settled_pending' || reason === 'completed' || reason === 'waived';
-};
+const isHistoryCourseByReason = (course) => isHistoryCourse(course, { includePending: true });
 const getActiveStudentCourses = (id) => {
   return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
 };
