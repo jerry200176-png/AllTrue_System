@@ -121,5 +121,35 @@ class BugDetailDumpContractTest(unittest.TestCase):
         self.assertIn('if: always()', source)
 
 
+    def test_probe_376_is_bug_scoped_read_only_and_name_free(self):
+        source = self.source
+        gate = source.index('if ($bugId === 376) {{')
+        end = source.index('// #359 read-only source check', gate)
+        block = source[gate:end]
+        self.assertIn('if ((int)$bug->CampusID !== 3)', block)
+        self.assertIn('target not uniquely resolved', block)
+        self.assertIn('$refKey376 = random_bytes(32);', block)
+        self.assertIn('"probe_376_teacher_reassign" => $probe376', source)
+        self.assertIn('376 => $probe376,', source)
+        # Names are matched server-side against the report text and never emitted.
+        # Output statements only (guard *inputs* may carry IDs; they are never returned).
+        output = "\n".join(l for l in block.splitlines() if '$probe376[' in l or 'return [' in l or l.strip().startswith('"'))
+        for field in ('"teacher_name" =>', '"student_name" =>', '"teacher_id" =>', '"student_id" =>', '"name" =>', '"Name" =>'):
+            self.assertNotIn(field, output)
+        self.assertIn('session row limit exceeded', block)
+        self.assertIn('identity candidate cap reached', block)
+        self.assertNotIn('$e->getMessage();', block.split('$known376')[1] if '$known376' in block else block)
+        self.assertIn('read_error:', block)
+        self.assertIn('OccurrenceAssignmentService::onLeave', block)
+        self.assertIn('"restore_original"', block)
+        self.assertIn('"past_bookkeeping"', block)
+        for marker in ('"incomplete_times"', '"campus_binding_rejected"', '"on_leave_rejected"', 'enabledFor(3)'):
+            self.assertIn(marker, block)
+        self.assertIn('teacher_branches', block)
+        self.assertIn('validateScheduleOccurrence', block)
+        self.assertIn('teacherForOccurrence', block)
+        for write in ('->insert(', '->update(', '->delete(', '->save(', '->create('):
+            self.assertNotIn(write, block)
+
 if __name__ == "__main__":
     unittest.main()
