@@ -1454,7 +1454,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         result = self._evidence(
             self._range(10, 11, 12),
             {10: self._pr(10), 11: self._pr(11, self.R3 + self.go()),
-             12: self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2\nRollback: revert")},
+             12: self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2\nRollback: revert this PR")},
             {10: 1, 11: 3, 12: 2},
         )
         self.assertTrue(result["ok"], result)
@@ -1462,6 +1462,10 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         no_rollback = self._evidence(self._range(11, 12), {11: self._pr(11, self.R3 + self.go()),
                                      12: self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2")}, {11: 3, 12: 2})
         self.assertIn("R2 without rollback evidence", no_rollback["reason"])
+        for rollback in ("Rollback: impossible", "Rollback: revert this PR\nRollback: impossible", "Rollback: revert"):
+            with self.subTest(rollback=rollback):
+                r2 = self._pr(12, "Risk-Class: R2\nAutonomy-Tier: T2\n" + rollback)
+                self.assertFalse(self._evidence(self._range(12), {12: r2}, {12: 2})["ok"])
 
     def test_go_is_only_the_exact_token_for_this_pr_and_head(self):
         bad = {

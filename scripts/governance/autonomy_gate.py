@@ -1210,14 +1210,21 @@ def _prose_lines(body: str) -> list[str] | None:
     return lines
 
 
+def has_strict_rollback(body: str) -> bool:
+    """Exactly the prose line ``Rollback: revert this PR``; any other rollback/reversibility prose voids it."""
+
+    lines = _prose_lines(body)
+    if lines is None:
+        return False
+    rollback = [line for line in lines if _ROLLBACK_MENTION_RE.search(line) and not _FOUNDER_GO_TOKEN_RE.match(line)]
+    return bool(rollback) and all(_ROLLBACK_TOKEN_RE.match(line) for line in rollback)
+
+
 def founder_go_approved_head(body: str, number: int, merged_at: datetime | None = None) -> str | None:
     """The head SHA a GO token approves for PR ``number``; None if absent, ambiguous or no rollback line."""
 
     lines = _prose_lines(body)
-    if lines is None:
-        return None
-    rollback = [line for line in lines if _ROLLBACK_MENTION_RE.search(line) and not _FOUNDER_GO_TOKEN_RE.match(line)]
-    if not rollback or any(not _ROLLBACK_TOKEN_RE.match(line) for line in rollback):
+    if lines is None or not has_strict_rollback(body):
         return None
     heads = set()
     for match in map(_FOUNDER_GO_TOKEN_RE.match, lines):
@@ -1292,7 +1299,7 @@ def founder_go_release_evidence(
         tier = effective_class(sha, body)
         if not isinstance(tier, int) or isinstance(tier, bool) or tier not in TIER_VALUES.values():
             return fail(f"PR #{number} class unavailable or declaration invalid; counts as R3 without a GO")
-        if tier == 2 and not has_rollback_evidence(body):
+        if tier == 2 and not has_strict_rollback(body):
             return fail(f"PR #{number} is R2 without rollback evidence")
         if tier < 3:
             continue
