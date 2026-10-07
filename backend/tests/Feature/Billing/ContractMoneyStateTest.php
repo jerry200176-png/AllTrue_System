@@ -168,5 +168,11 @@ class ContractMoneyStateTest extends TestCase
         $this->assertSame([$id => '2026-09-05'], ContractMoneyState::lastPaidAtByStudentClassIds([$id, $other]));
         $this->assertSame([], ContractMoneyState::invoiceAggregateByStudentClassIds([]));
         $this->assertSame([], ContractMoneyState::lastPaidAtByStudentClassIds([]));
+
+        // ARCH2-C2 S1: the aggregates moved to the resolver; the static is a thin delegate (same numbers).
+        $resolver = app(\App\Services\BillingPayableResolver::class);
+        $this->assertSame(ContractMoneyState::invoiceAggregateByStudentClassIds([$id, $other]), $resolver->invoiceAggregateByStudentClassIds([$id, $other]));
+        $this->assertSame([$id => '2026-09-05'], $resolver->lastPaidAtByStudentClassIds([$id, $other]));
+        $this->assertSame([], $resolver->invoiceAggregateByStudentClassIds([]));
     }
 }
