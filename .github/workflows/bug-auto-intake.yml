@@ -1,0 +1,195 @@
+name: Bug auto-intake (hourly)
+
+# Founder GO "6A" (Jerry, 2026-10-07): every `new` in-app report gets an IDs-only
+# GitHub issue, an acknowledgement reply and status `triaged`, without waiting
+# for a human dispatch. Idempotent: an existing issue (matched by SourceRef) is
+# reused, and `bugs:auto-intake --ack` skips any report that is no longer `new`.
+# Logs carry IDs only (public repo); report text never leaves production.
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List candidates and plan issues only; no issue creation, no production write
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bug-auto-intake
+  cancel-in-progress: false
+
+jobs:
+  candidates:
+    # Secret-bearing: only the reviewed workflow on main may touch production.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      json: ${{ steps.list.outputs.json }}
+      count: ${{ steps.list.outputs.count }}
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: List new reports (read-only, IDs only)
+        id: list
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          raw="$(ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            'cd /home/admin/backend && php artisan bugs:auto-intake --candidates --limit=50')"
+          json="$(printf '%s\n' "$raw" | grep -m1 '^{"candidates"' || true)"
+          [ -n "$json" ] || { echo "::error::bugs:auto-intake --candidates returned no JSON (command not deployed yet?)"; exit 1; }
+          # Keep only the whitelisted ID fields before anything is printed or passed on.
+          json="$(printf '%s' "$json" | jq -c '[.candidates[] | {bug_id: (.bug_id|tonumber), campus_id: (.campus_id|tonumber), severity: (.severity|tostring|ascii_downcase|gsub("[^a-z]";""))}]')"
+          echo "json=$json" >> "$GITHUB_OUTPUT"
+          echo "count=$(printf '%s' "$json" | jq 'length')" >> "$GITHUB_OUTPUT"
+          echo "candidates: $(printf '%s' "$json" | jq -c '[.[].bug_id]')"
+
+  issues:
+    needs: candidates
+    if: github.ref == 'refs/heads/main' && needs.candidates.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    outputs:
+      pairs: ${{ steps.issue.outputs.pairs }}
+    steps:
+      - name: Find or create one issue per report (SourceRef dedupe)
+        id: issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CANDIDATES: ${{ needs.candidates.outputs.json }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          pairs='[]'
+          while read -r row; do
+            id="$(jq -r '.bug_id' <<<"$row")"; [[ "$id" =~ ^[0-9]+$ ]] || exit 1
+            ref="SourceRef: alltrue:bug_report:${id}"
+            # Reuse only an issue whose SourceRef was written by the repository owner or this workflow's bot,
+            # in the body or in a comment (shared issues carry one SourceRef comment per report). Anyone can
+            # open a public issue quoting the SourceRef; its URL must never be linked or sent to the reporter.
+            trusted='(.login == $owner or .login == "app/github-actions" or .login == "github-actions")'
+            # Search only issues a trusted account authored or commented on, so public spam quoting the
+            # SourceRef cannot push the canonical issue out of the result window.
+            find_trusted() {
+              local n hit
+              local nums="" part
+              # Fail closed: a search or view error must stop the run, never look like "no issue yet".
+              for who in "${GITHUB_REPOSITORY_OWNER}" app/github-actions; do
+                part="$(gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\" author:${who}" --json number -q '.[].number')" || return 2
+                nums="$nums $part"
+                part="$(gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\" commenter:${who}" --json number -q '.[].number')" || return 2
+                nums="$nums $part"
+              done
+              for n in $(printf '%s\n' $nums | sort -n | uniq); do
+                local raw
+                raw="$(gh issue view "$n" --json url,state,body,author,comments)" || return 2
+                hit="$(printf '%s' "$raw" | jq -r --arg ref "$ref" --arg owner "${GITHUB_REPOSITORY_OWNER}" \
+                  "if ((.body | contains(\$ref)) and (.author | $trusted)) or ([.comments[] | select((.body | contains(\$ref)) and (.author | $trusted))] | length > 0) then (.state + \" \" + .url) else empty end")"
+                if [ -n "$hit" ]; then echo "$hit"; return 0; fi
+              done
+            }
+            url=""
+            rc=0; hit="$(find_trusted)" || rc=$?
+            [ "$rc" -le 1 ] || { echo "::error::canonical issue lookup failed for in-app #$id"; exit 1; }
+            if [ -n "$hit" ]; then
+              url="${hit#* }"
+              # A still-new report belongs on the open backlog: reopen a closed canonical issue before linking it.
+              if [ "${hit%% *}" = "CLOSED" ] && [ "$DRY_RUN" != "true" ]; then gh issue reopen "$url" --comment "Reopened by bug-auto-intake: in-app #${id} is still new."; fi
+            fi
+            if [ -z "$url" ]; then
+              if [ "$DRY_RUN" = "true" ]; then echo "would create issue for in-app #$id"; continue; fi
+              body="$(printf '%s\n\n%s\n%s\n%s\n\n%s' "$ref" \
+                "- In-app ID: ${id}" "- Campus ID: $(jq -r '.campus_id' <<<"$row") (opaque) · severity $(jq -r '.severity' <<<"$row")" \
+                "- Opened by bug-auto-intake.yml. The ack job then posts the reporter acknowledgement (status stays new until Phase-A triages it)." \
+                "Auto-intake only: no root cause yet. Report text stays in production (read it via bug-detail-dump). Next: investigate, fix the cause, reply in plain language (see docs/CHAT_BUG_SYSTEM.md §3.6–3.7).")"
+              url="$(gh issue create --title "[in-app #${id}][auto-intake] report" --body "$body")"
+              # Race with a concurrent Phase-A: if an older trusted issue now exists, keep the oldest and
+              # close ours as a duplicate so only one canonical issue is linked.
+              sleep 5
+              rc=0; oldest="$(find_trusted)" || rc=$?
+              [ "$rc" -le 1 ] || { echo "::error::post-create lookup failed for in-app #$id"; exit 1; }
+              oldest="${oldest#* }"
+              if [ -n "$oldest" ] && [ "${oldest##*/}" -lt "${url##*/}" ]; then
+                gh issue close "$url" --reason "not planned" --comment "Duplicate of ${oldest} (created concurrently for in-app #${id})."
+                url="$oldest"
+              fi
+            fi
+            [[ "$url" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "bad issue url"; exit 1; }
+            echo "in-app #$id -> $url"
+            pairs="$(jq -c --argjson id "$id" --arg url "$url" '. + [{bug_id: $id, url: $url}]' <<<"$pairs")"
+          done < <(jq -c '.[]' <<<"$CANDIDATES")
+          echo "pairs=$pairs" >> "$GITHUB_OUTPUT"
+
+  ack:
+    needs: issues
+    if: github.ref == 'refs/heads/main' && needs.issues.outputs.pairs != '[]' && needs.issues.outputs.pairs != '' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: Triage and acknowledge (idempotent)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PAIRS: ${{ needs.issues.outputs.pairs }}
+        run: |
+          set -euo pipefail
+          while read -r row; do
+            id="$(jq -r '.bug_id' <<<"$row")"; url="$(jq -r '.url' <<<"$row")"
+            [[ "$id" =~ ^[0-9]+$ ]] || exit 1
+            [[ "$url" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || exit 1
+            ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "${PI_SSH_USER}@${PI_SSH_HOST}" \
+              "cd /home/admin/backend && php artisan bugs:auto-intake --ack --bug-id=${id} --issue-url=${url}"
+          done < <(jq -c '.[]' <<<"$PAIRS")
