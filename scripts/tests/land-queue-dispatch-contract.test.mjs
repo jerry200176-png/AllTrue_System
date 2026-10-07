@@ -98,7 +98,17 @@ test('each batch squash is verified against the tested tree right after it lands
 });
 
 test('batch branch is cut from an empty child of main so every member is a real two-parent merge (no fast-forward)', () => {
-  assert.match(queue, /git\/commits`, '-f', 'message=land-queue batch base'/);
+  assert.match(queue, /BATCH_BASE_MESSAGE = 'land-queue batch base'/);
+  assert.match(queue, /git\/commits`, '-f', `message=\$\{BATCH_BASE_MESSAGE\}`/);
   assert.match(queue, /ref=refs\/heads\/\$\{name\}`, '-f', `sha=\$\{root\}`/);
   assert.match(queue, /base: c\.parents\[0\]\?\.sha \?\? sha/);
+});
+
+test('Golden scenarios report runs on dispatched batch branches (no pr_number) and the queue filters owned refs', () => {
+  const ci = read('.github/workflows/ci.yml');
+  const golden = ci.slice(ci.indexOf('  golden_scenarios:'), ci.indexOf('\n  phpunit:'));
+  assert.match(golden, /startsWith\(github\.ref, 'refs\/heads\/chore\/land-queue-batch-'\)/);
+  assert.match(queue, /BATCH_PREFIX = 'chore\/land-queue-batch-'/);
+  assert.match(queue, /matching-refs\/heads\/\$\{BATCH_PREFIX\}`\)\.filter\(/);
+  assert.match(queue, /isBatchBase\(/);
 });

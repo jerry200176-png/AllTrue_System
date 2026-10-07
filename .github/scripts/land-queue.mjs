@@ -76,6 +76,12 @@ export function decide(pr, required) {
 // (until re-queued); if the oldest candidate is serial-only it goes first, alone, no batch.
 export const BATCH_MAX = 4;
 export const BATCH_PREFIX = 'chore/land-queue-batch-'; // chore/ passes Presubmit CHECK 1
+export const BATCH_BASE_MESSAGE = 'land-queue batch base';
+// A ref is queue-owned only if walking its member merges ends at the queue's own base commit: exact message,
+// one parent, and the parent's tree unchanged (an empty commit). The name prefix alone proves nothing (#3746 review).
+export function isBatchBase(commit, parentTree) {
+  return commit?.message === BATCH_BASE_MESSAGE && commit.parents?.length === 1 && commit.tree?.sha === parentTree;
+}
 export function planBatch(cands) {
   const batch = [];
   for (const c of cands) { if (c.serial || batch.length === BATCH_MAX) break; batch.push(c); }
@@ -273,7 +279,7 @@ function startBatch(queue, required) {
   const name = `${BATCH_PREFIX}${process.env.GITHUB_RUN_ID || Date.now()}`;
   // Cut from an empty child of main, not main itself: the merges API fast-forwards when a head descends
   // from the base, which would create no two-parent member commit (and so no recorded head/tree).
-  const root = JSON.parse(gh('api', '-X', 'POST', `/repos/${REPO}/git/commits`, '-f', 'message=land-queue batch base', '-f', `tree=${api(`git/commits/${base}`).tree.sha}`, '-f', `parents[]=${base}`)).sha;
+  const root = JSON.parse(gh('api', '-X', 'POST', `/repos/${REPO}/git/commits`, '-f', `message=${BATCH_BASE_MESSAGE}`, '-f', `tree=${api(`git/commits/${base}`).tree.sha}`, '-f', `parents[]=${base}`)).sha;
   gh('api', '-X', 'POST', `/repos/${REPO}/git/refs`, '-f', `ref=refs/heads/${name}`, '-f', `sha=${root}`);
   let tip = root;
   for (const c of batch) {
@@ -296,7 +302,12 @@ function processQueue() {
   const listed = JSON.parse(gh('pr', 'list', '--repo', REPO, '--label', 'queue', '--state', 'open', '--base', 'main', '--json', 'number,isDraft,baseRefName,isCrossRepository'));
   const queue = orderQueue(listed.map((p) => ({ ...p, labeledAt: labeledAt(p.number) })));
   console.log(`queue: ${queue.map((p) => '#' + p.number).join(' ') || '(empty)'}; batching ${strict ? 'off (strict up-to-date still required)' : 'on'}`);
-  const open = api(`git/matching-refs/heads/${BATCH_PREFIX}`);
+  const open = api(`git/matching-refs/heads/${BATCH_PREFIX}`).filter((b) => {
+    const { root, base } = readBatch(b.object.sha);
+    const owned = isBatchBase(api(`git/commits/${root}`), api(`git/commits/${base}`).tree.sha);
+    if (!owned) console.log(`${b.ref}: not a land-queue batch (no queue base commit); left untouched`);
+    return owned;
+  });
   if (strict) open.forEach((b) => dropBranch(b.ref.replace('refs/heads/', ''))); // ruleset flipped back: abandon batches
   else {
     for (const b of open.slice(1)) dropBranch(b.ref.replace('refs/heads/', '')); // one batch at a time

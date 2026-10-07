@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BATCH_MAX, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, orderQueue, parseMember, planBatch } from '../../.github/scripts/land-queue.mjs';
+import { BATCH_BASE_MESSAGE, BATCH_MAX, isBatchBase, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, orderQueue, parseMember, planBatch } from '../../.github/scripts/land-queue.mjs';
 
 const req = ['A', 'B'];
 const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
@@ -123,4 +123,13 @@ test('forks and non-owner authors: forks never queue, only trusted associations 
   assert.deepEqual(orderQueue([{ number: 1, baseRefName: 'main', isCrossRepository: true }]), []);
   assert.deepEqual([...TRUSTED_AUTHORS].sort(), ['COLLABORATOR', 'MEMBER', 'OWNER']);
   assert.ok(!TRUSTED_AUTHORS.has('CONTRIBUTOR') && !TRUSTED_AUTHORS.has('NONE'));
+});
+
+test('isBatchBase: only the queue-made empty base commit proves batch ownership (prefix alone does not)', () => {
+  const base = (o = {}) => ({ message: BATCH_BASE_MESSAGE, parents: [{ sha: 'p' }], tree: { sha: 't' }, ...o });
+  assert.equal(isBatchBase(base(), 't'), true);
+  assert.equal(isBatchBase(base({ message: 'wip on my branch' }), 't'), false); // a developer's chore/land-queue-batch-* branch
+  assert.equal(isBatchBase(base(), 'other-tree'), false); // not an empty commit
+  assert.equal(isBatchBase(base({ parents: [{ sha: 'a' }, { sha: 'b' }] }), 't'), false);
+  assert.equal(isBatchBase(undefined, 't'), false);
 });
