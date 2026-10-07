@@ -140,6 +140,7 @@ class BugDetailDumpContractTest(unittest.TestCase):
         self.assertIn('identity candidate cap reached', block)
         self.assertIn('OccurrenceAssignmentService::onLeave', block)
         self.assertIn('"restore_original"', block)
+        self.assertIn('"past_bookkeeping"', block)
         self.assertIn('teacher_branches', block)
         self.assertIn('validateScheduleOccurrence', block)
         self.assertIn('teacherForOccurrence', block)

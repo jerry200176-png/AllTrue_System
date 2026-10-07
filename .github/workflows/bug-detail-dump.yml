@@ -1586,16 +1586,20 @@ jobs:
                 $onLeave = $sessionModel ? \App\Services\OccurrenceAssignmentService::onLeave($sessionModel) : null;
                 // Endpoint returns via restoreOriginalTeacherFromSubstitute() before any conflict check.
                 $restore = (int)$r->TeacherID === $teacherId376;
-                $cross = $restore ? collect() : collect($sub376->detectCrossCampusConflict($teacherId376, "2026-10-09", $start, $end, $existing ? [(int)$existing] : [], $studentId376))
+                // Endpoint skips cross-campus and guard checks for past sessions (bookkeeping correction).
+                $past = in_array(strtolower(trim((string)$r->Status)), ["attended", "completed", "late", "absent"], true)
+                  || \Carbon\Carbon::parse("2026-10-09 " . ($end ?: "23:59"))->lte(\Carbon\Carbon::now());
+                $skipChecks = $restore || $past;
+                $cross = $skipChecks ? collect() : collect($sub376->detectCrossCampusConflict($teacherId376, "2026-10-09", $start, $end, $existing ? [(int)$existing] : [], $studentId376))
                   ->filter(fn ($c) => (int)($c["campus_id"] ?? 0) > 0 && (int)$c["campus_id"] !== 3);
-                $conflicts = $restore ? [] : $guard376->validateScheduleOccurrence(["teacher_id" => $teacherId376, "class_type" => (string)$r->ClassType,
+                $conflicts = $skipChecks ? [] : $guard376->validateScheduleOccurrence(["teacher_id" => $teacherId376, "class_type" => (string)$r->ClassType,
                   "room_id" => ((int)($r->room_id ?? 0)) ?: null, "branch_id" => 3, "schedule_date" => "2026-10-09", "start_time" => $start,
                   "end_time" => $end, "exclude_schedule_id" => $existing ? (int)$existing : null, "exclude_student_id" => $studentId376]);
                 return ["session_ref" => $ref376("cs", $r->id), "course_ref" => $ref376("sc", $r->course_id),
                   "status" => strtolower((string)$r->Status), "start" => $start, "end" => $end,
                   "is_exception" => (int)($r->IsContractException ?? 0), "contract_teacher_is_target" => (int)$r->TeacherID === $teacherId376,
                   "effective_teacher_is_target" => (int)$effective === $teacherId376, "existing_substitute_row" => $existing !== null, "legacy_ghost_substitute_row" => $ghost,
-                  "on_leave" => $onLeave, "endpoint_path" => $restore ? "restore_original" : "substitute",
+                  "on_leave" => $onLeave, "endpoint_path" => $restore ? "restore_original" : ($past ? "past_bookkeeping" : "substitute"),
                   "class_type" => (string)$r->ClassType, "schedule_mode" => (string)$r->ScheduleMode, "course_stop" => (int)($r->Stop ?? 0),
                   "subject_id" => (int)$r->SubjectID, "has_room" => (int)($r->room_id ?? 0) > 0,
                   "cross_campus_conflicts" => $cross->map(fn ($c) => ["campus_id" => (int)$c["campus_id"], "start" => substr((string)($c["start_time"] ?? ""), 0, 5),
