@@ -59,7 +59,19 @@ class ScheduleGuardService
         $selfOverlaps = [];
         // Lock state of the edited course's sessions, loaded once for all slots.
         $lockedOwn = $excludeStudentClassId ? \App\Services\Scheduling\ContractSessionSchedule::lockedClassSessionIds($excludeStudentClassId) : [];
-        $remapOwn = $excludeStudentClassId && $this->editTakesGlobalRemap($excludeStudentClassId, $slots, $lockedOwn);
+        // Course edit (#3502): run the sync's own plan; when it takes the global remap, own rows land exactly there.
+        $remapMoves = null;
+        $sync = $payload['contract_sync'] ?? null;
+        if ($excludeStudentClassId && !empty($sync['slots'])) {
+            $plan = \App\Services\Scheduling\ContractSessionSchedule::planFutureSync(
+                \App\Services\Scheduling\ContractSessionSchedule::futureScheduledSessions($excludeStudentClassId),
+                $sync['slots'],
+                (int) $sync['duration'],
+                $lockedOwn,
+                $startDate
+            );
+            $remapMoves = $plan['remap'] ? $plan['moves'] : null;
+        }
 
         foreach ($slots as $slot) {
             $recurringOverlaps = $this->collectRecurringOverlaps($teacherCourses, $slot);
@@ -74,7 +86,7 @@ class ScheduleGuardService
                 array_values(array_filter($slots, fn ($s) => (int) ($s['day_of_week'] ?? 0) === (int) ($slot['day_of_week'] ?? 0))),
                 $lockedOwn,
                 $selfOverlaps,
-                $remapOwn
+                $remapMoves
             );
             // Occupancy is per concrete date, not pooled across dates (in-app #347).
             $byDate = [];
@@ -113,34 +125,6 @@ class ScheduleGuardService
         }
 
         return $conflicts;
-    }
-
-    /**
-     * Same input as ContractSessionSchedule::syncFutureScheduledSessionTimes(): the course's 'scheduled' rows from today.
-     *
-     * @param  array<int, array<string, mixed>>  $slots  normalized slots (day_of_week, start_time, end_time)
-     * @param  array<int, true>  $locked
-     */
-    private function editTakesGlobalRemap(int $studentClassId, array $slots, array $locked): bool
-    {
-        $rowsByDate = [];
-        $rows = DB::table('ClassSession')->where('StudentClassID', $studentClassId)->where('Status', 'scheduled')
-            ->whereDate('SessionDate', '>=', Carbon::today()->toDateString())
-            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'IsContractException']);
-        foreach ($rows as $row) {
-            $rowsByDate[substr((string) $row->SessionDate, 0, 10)][] = [
-                'id' => (int) $row->id,
-                'start' => (string) $this->normalizeTime($row->StartTime),
-                'end' => (string) $this->normalizeTime($row->EndTime),
-                'exception' => (bool) $row->IsContractException,
-            ];
-        }
-        $daySlotsByDow = [];
-        foreach ($slots as $s) {
-            $daySlotsByDow[(int) $s['day_of_week']][] = ['start' => (string) $s['start_time'], 'end' => (string) $s['end_time']];
-        }
-
-        return \App\Services\Scheduling\ContractSessionSchedule::needsGlobalRemap($rowsByDate, $daySlotsByDow, $locked);
     }
 
     /**
@@ -476,10 +460,9 @@ class ScheduleGuardService
      * @param  array<int, array{id:int, start:string, end:string}>  $rowsOnDate  live rows of one course on one date
      * @param  array<int, array<string, mixed>>  $moves  ContractSessionSchedule::planSameDayRemap()['moves']
      * @param  array<int, array<string, mixed>>  $daySlots  each with 'start' and 'end'
-     * @param  bool  $dayRemapped  the global remap re-lays this date even without same-day moves (#3502)
      * @return array<int, array{0: string, 1: string}> overlapping pairs as 'H:i-H:i'
      */
-    public static function planSelfOverlaps(array $rowsOnDate, array $moves, array $daySlots, bool $dayRemapped = false): array
+    public static function planSelfOverlaps(array $rowsOnDate, array $moves, array $daySlots): array
     {
         $hm = fn ($t) => substr((string) $t, 0, 5);
         // The sync skips a move whose target start a staying row still holds (uq_class_session_slot); that row then
@@ -509,7 +492,7 @@ class ScheduleGuardService
             }
             // A staying row holds this start with another duration: when the edit remaps this day, that slot can't be
             // realized (unique start key). Days without moves keep their existing layout untouched.
-            foreach ($moves === [] && !$dayRemapped ? [] : $sameStart as $f) {
+            foreach ($moves === [] ? [] : $sameStart as $f) {
                 if ($f[1] !== $hm($s['end'])) {
                     $pairs[] = [$f[0] . '-' . $f[1], $hm($s['start']) . '-' . $hm($s['end'])];
                 }
@@ -525,6 +508,49 @@ class ScheduleGuardService
         }
 
         return $pairs;
+    }
+
+    /**
+     * Global-remap edit (#3502): own rows ContractSessionSchedule::planFutureSync() moves never block at their old
+     * slot; on each date of this weekday the rows that stay plus the rows the remap lands there must not overlap.
+     *
+     * @param  array<int, array{date:string, start:string, end:string}>  $remapMoves
+     * @param  array<string, array<int, array{id:int, start:string, end:string}>>  $ownByDate  own 'scheduled' rows
+     * @param  array<string, array<int, array{id:int, start:string, end:string}>>  $ownLiveByDate  own live rows on this weekday
+     */
+    private function collectRemapSelfOverlaps(array $remapMoves, array $ownByDate, array $ownLiveByDate, int $dow, string $horizonStart, ?string $endDate, array &$remappedIds, array &$movedScheduleKeys, array &$selfOverlaps): void
+    {
+        foreach ($ownByDate as $d => $rows) {
+            foreach ($rows as $r) {
+                if (isset($remapMoves[$r['id']])) {
+                    $remappedIds[$r['id']] = true;
+                    $movedScheduleKeys[$d . '|' . $r['start']] = true;
+                }
+            }
+        }
+        $final = [];
+        foreach ($ownLiveByDate as $d => $rows) {
+            foreach ($rows as $r) {
+                if (!isset($remapMoves[$r['id']])) {
+                    $final[$d][] = [substr($r['start'], 0, 5), substr($r['end'], 0, 5)];
+                }
+            }
+        }
+        foreach ($remapMoves as $t) {
+            if ((int) Carbon::parse($t['date'])->dayOfWeekIso === $dow && $t['date'] >= $horizonStart && (!$endDate || $t['date'] <= $endDate)) {
+                $final[$t['date']][] = [substr($t['start'], 0, 5), substr($t['end'], 0, 5)];
+            }
+        }
+        foreach ($final as $d => $layout) {
+            foreach ($layout as $i => $a) {
+                foreach (array_slice($layout, $i + 1) as $b) {
+                    if ($a[0] < $b[1] && $b[0] < $a[1]) {
+                        $selfOverlaps[$d] = [$a[0] . '-' . $a[1], $b[0] . '-' . $b[1]];
+                        continue 3;
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -548,7 +574,7 @@ class ScheduleGuardService
         array $daySlots = [],
         array $locked = [],
         array &$selfOverlaps = [],
-        bool $remapOwn = false
+        ?array $remapMoves = null
     ): array {
         $dow = (int) ($slot['day_of_week'] ?? 0);
         $slotStart = (string) ($slot['start_time'] ?? '');
@@ -636,32 +662,20 @@ class ScheduleGuardService
                 }
             }
             $planSlots = array_map(fn ($s) => ['start' => (string) $s['start_time'], 'end' => (string) $s['end_time']], $daySlots ?: [$slot]);
+            if ($remapMoves !== null) {
+                $this->collectRemapSelfOverlaps($remapMoves, $ownByDate, $ownLiveByDate, $dow, $horizonStart, $endDate, $remappedIds, $movedScheduleKeys, $selfOverlaps);
+            }
             // Every date with an own live row, including dates whose only rows are non-'scheduled' (e.g. pending leave).
-            foreach (array_keys($ownByDate + $ownLiveByDate) as $d) {
+            foreach ($remapMoves !== null ? [] : array_keys($ownByDate + $ownLiveByDate) as $d) {
                 $rows = $ownByDate[$d] ?? [];
-                $plan = \App\Services\Scheduling\ContractSessionSchedule::planSameDayRemap($rows, $planSlots, $locked);
-                $moves = $plan['moves'];
-                $staying = $ownLiveByDate[$d] ?? [];
-                if ($remapOwn) {
-                    // Global remap (#3502): every unlocked regular row leaves its date and the reflow fills the
-                    // contract slots; only locked / exception / non-'scheduled' rows stay. ponytail: assumes every
-                    // slot date gets a row; exact cadence placement is not modelled.
-                    $moves = [];
-                    foreach ($rows as $r) {
-                        if (!isset($locked[$r['id']]) && (!$r['exception'] || isset($plan['adopted'][$r['id']]))) {
-                            $moves[$r['id']] = true;
-                        }
-                    }
-                    $staying = array_values(array_filter($staying, fn ($r) => !isset($moves[$r['id']])));
-                }
+                $moves = \App\Services\Scheduling\ContractSessionSchedule::planSameDayRemap($rows, $planSlots, $locked)['moves'];
                 foreach ($rows as $r) {
                     if (isset($moves[$r['id']])) {
                         $remappedIds[$r['id']] = true;
                         $movedScheduleKeys[$d . '|' . $r['start']] = true;
                     }
                 }
-                $pairs = $staying ? self::planSelfOverlaps($staying, $remapOwn ? [] : $moves, $planSlots, $remapOwn) : [];
-                if ($pairs) {
+                if (isset($ownLiveByDate[$d]) && ($pairs = self::planSelfOverlaps($ownLiveByDate[$d], $moves, $planSlots))) {
                     $selfOverlaps[$d] = $pairs[0];
                 }
             }

@@ -925,43 +925,16 @@ class ContractSessionSchedule
         ?string $contractStartDate = null
     ): int
     {
-        $k = $unlockedSorted->count();
-        if ($k <= 0) {
+        if ($unlockedSorted->count() <= 0) {
             return 0;
         }
-        $firstSessionDate = self::normalizeDateString($unlockedSorted->first()->SessionDate ?? null);
-        $anchor = $firstSessionDate;
-        $startDateIsAnchor = false;
-        if ($contractStartDate !== null && $contractStartDate !== '') {
-            $anchor = max($firstSessionDate ?: $contractStartDate, $contractStartDate);
-            $startDateIsAnchor = $firstSessionDate === null || $contractStartDate > $firstSessionDate;
-        }
-        if ($anchor === null || $anchor === '') {
-            return 0;
-        }
-        $slotsByWeekday = self::buildSlotsByWeekdayMap($slots, $durationMinutes);
-        if (empty($slotsByWeekday)) {
-            return 0;
-        }
-        $snapped = self::snapDateToContractWeekday($anchor, $slotsByWeekday, $startDateIsAnchor);
-        // A pure removal may compress an unlocked removed-day row onto a
-        // retained locked row (e.g. Wed+Thu -> Wed). That is not a new
-        // booking conflict. Generate enough cadence candidates to skip the
-        // retained occurrence and place the row on the next valid occurrence.
-        $candidateCount = $k + count($skipOccupiedTargetKeys);
-        $candidateSessions = self::buildSessionsForCount(0, $snapped, $candidateCount, $slots, $durationMinutes);
-        $proposed = [];
-        foreach ($candidateSessions as $candidate) {
-            $date = self::normalizeDateString($candidate['SessionDate'] ?? null);
-            $start = self::normalizeSessionTime($candidate['StartTime'] ?? null, '16:00:00');
-            if (!$date || isset($skipOccupiedTargetKeys["{$date}|" . substr($start, 0, 5)])) {
-                continue;
-            }
-            $proposed[] = $candidate;
-            if (count($proposed) >= $k) {
-                break;
-            }
-        }
+        $rows = $unlockedSorted->map(fn ($session) => [
+            'id' => (int) $session->id,
+            'date' => self::normalizeDateString($session->SessionDate ?? null),
+            'start' => (string) $session->StartTime,
+            'end' => (string) $session->EndTime,
+        ])->values()->all();
+        $targets = self::planRemapTargets($rows, $slots, $durationMinutes, $skipOccupiedTargetKeys, $contractStartDate);
 
         // Collect only the rows whose slot actually changes.
         $reflowIds = [];
@@ -970,32 +943,18 @@ class ContractSessionSchedule
         }
 
         $moves = [];
-        foreach ($unlockedSorted as $i => $session) {
-            if (!isset($proposed[$i])) {
-                break;
-            }
-            $p = $proposed[$i];
-            $newDate = self::normalizeDateString($p['SessionDate'] ?? null);
-            $newStart = self::normalizeSessionTime($p['StartTime'] ?? null, '16:00:00');
-            $newEnd = self::normalizeSessionTime($p['EndTime'] ?? null, '18:00:00');
-            if ($newDate === null || $newDate === '') {
+        foreach ($unlockedSorted as $session) {
+            if (!isset($targets[(int) $session->id])) {
                 continue;
             }
-            $oldDate = self::normalizeDateString($session->SessionDate ?? null);
-            if (
-                $oldDate === $newDate
-                && (string) $session->StartTime === $newStart
-                && (string) $session->EndTime === $newEnd
-            ) {
-                continue; // already on the contract slot
-            }
+            $t = $targets[(int) $session->id];
             $moves[] = [
                 'session'       => $session,
-                'oldDate'       => $oldDate,
+                'oldDate'       => self::normalizeDateString($session->SessionDate ?? null),
                 'oldStartShort' => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
-                'newDate'       => $newDate,
-                'newStart'      => $newStart,
-                'newEnd'        => $newEnd,
+                'newDate'       => $t['date'],
+                'newStart'      => $t['start'],
+                'newEnd'        => $t['end'],
             ];
         }
 
@@ -1093,23 +1052,21 @@ class ContractSessionSchedule
 
     /**
      * Whether syncFutureScheduledSessionTimes() takes the global remap branch (every unlocked row re-laid on the
-     * contract cadence) instead of the per-date planSameDayRemap(). Shared with ScheduleGuardService (#3502).
-     * Unlocked = not locked and regular (an exception exactly on a slot is adopted first). Remap when an unlocked
-     * row sits on a weekday the contract dropped, a date has fewer unlocked rows than that weekday's slots, or a
-     * contract weekday has no unlocked row.
+     * contract cadence) instead of the per-date planSameDayRemap(). Unlocked = not locked and regular, counting an
+     * adopted exception as regular. Remap when an unlocked row sits on a weekday the contract dropped, a date has
+     * fewer unlocked rows than that weekday's slots, or a contract weekday has no unlocked row.
      *
      * @param  array<string, array<int, array{id:int, start:string, end:string, exception:bool}>>  $rowsByDate  future 'scheduled' rows by Y-m-d
      * @param  array<int, array<int, array<string, mixed>>>  $daySlotsByDow  ISO weekday => slots with 'start' and 'end'
      * @param  array<int, true>  $lockedIds
+     * @param  array<int, true>  $adoptedIds  planSameDayRemap()['adopted'] across all dates
      */
-    public static function needsGlobalRemap(array $rowsByDate, array $daySlotsByDow, array $lockedIds): bool
+    public static function needsGlobalRemap(array $rowsByDate, array $daySlotsByDow, array $lockedIds, array $adoptedIds): bool
     {
         $countByDate = [];
         foreach ($rowsByDate as $date => $rows) {
-            $dow = (int) Carbon::parse($date)->dayOfWeekIso;
-            $adopted = self::planSameDayRemap($rows, $daySlotsByDow[$dow] ?? [], $lockedIds)['adopted'];
             foreach ($rows as $r) {
-                if (!isset($lockedIds[(int) $r['id']]) && (!$r['exception'] || isset($adopted[(int) $r['id']]))) {
+                if (self::isUnlockedRegular($r, $lockedIds, $adoptedIds)) {
                     $countByDate[$date] = ($countByDate[$date] ?? 0) + 1;
                 }
             }
@@ -1127,6 +1084,160 @@ class ContractSessionSchedule
         }
 
         return (bool) array_diff_key(array_filter($daySlotsByDow), $weekdays);
+    }
+
+    /** @param  array{id:int, exception:bool}  $row */
+    private static function isUnlockedRegular(array $row, array $lockedIds, array $adoptedIds): bool
+    {
+        return !isset($lockedIds[(int) $row['id']]) && (!$row['exception'] || isset($adoptedIds[(int) $row['id']]));
+    }
+
+    /**
+     * Where the global remap puts each unlocked row: the contract cadence from the first row (or a later contract
+     * start), skipping targets held by rows that stay. Pure; remapFutureScheduledSessionsToContract() applies it.
+     *
+     * @param  array<int, array{id:int, date:?string, start:string, end:string}>  $unlockedSorted  by date, then start
+     * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
+     * @param  array<string, true>  $skipOccupiedTargetKeys  'Y-m-d|H:i' held by staying rows
+     * @return array<int, array{date:string, start:string, end:string}> only rows whose slot changes
+     */
+    public static function planRemapTargets(array $unlockedSorted, array $slots, int $durationMinutes, array $skipOccupiedTargetKeys = [], ?string $contractStartDate = null): array
+    {
+        $k = count($unlockedSorted);
+        if ($k <= 0) {
+            return [];
+        }
+        $firstSessionDate = $unlockedSorted[0]['date'] ?? null;
+        $anchor = $firstSessionDate;
+        $startDateIsAnchor = false;
+        if ($contractStartDate !== null && $contractStartDate !== '') {
+            $anchor = max($firstSessionDate ?: $contractStartDate, $contractStartDate);
+            $startDateIsAnchor = $firstSessionDate === null || $contractStartDate > $firstSessionDate;
+        }
+        if ($anchor === null || $anchor === '') {
+            return [];
+        }
+        $slotsByWeekday = self::buildSlotsByWeekdayMap($slots, $durationMinutes);
+        if (empty($slotsByWeekday)) {
+            return [];
+        }
+        $snapped = self::snapDateToContractWeekday($anchor, $slotsByWeekday, $startDateIsAnchor);
+        // A pure removal may compress an unlocked removed-day row onto a
+        // retained locked row (e.g. Wed+Thu -> Wed). That is not a new
+        // booking conflict. Generate enough cadence candidates to skip the
+        // retained occurrence and place the row on the next valid occurrence.
+        $candidateCount = $k + count($skipOccupiedTargetKeys);
+        $candidateSessions = self::buildSessionsForCount(0, $snapped, $candidateCount, $slots, $durationMinutes);
+        $proposed = [];
+        foreach ($candidateSessions as $candidate) {
+            $date = self::normalizeDateString($candidate['SessionDate'] ?? null);
+            $start = self::normalizeSessionTime($candidate['StartTime'] ?? null, '16:00:00');
+            if (!$date || isset($skipOccupiedTargetKeys["{$date}|" . substr($start, 0, 5)])) {
+                continue;
+            }
+            $proposed[] = $candidate;
+            if (count($proposed) >= $k) {
+                break;
+            }
+        }
+
+        $targets = [];
+        foreach (array_values($unlockedSorted) as $i => $row) {
+            if (!isset($proposed[$i])) {
+                break;
+            }
+            $p = $proposed[$i];
+            $newDate = self::normalizeDateString($p['SessionDate'] ?? null);
+            $newStart = self::normalizeSessionTime($p['StartTime'] ?? null, '16:00:00');
+            $newEnd = self::normalizeSessionTime($p['EndTime'] ?? null, '18:00:00');
+            if ($newDate === null || $newDate === '') {
+                continue;
+            }
+            if ($row['date'] === $newDate && $row['start'] === $newStart && $row['end'] === $newEnd) {
+                continue; // already on the contract slot
+            }
+            $targets[(int) $row['id']] = ['date' => $newDate, 'start' => $newStart, 'end' => $newEnd];
+        }
+
+        return $targets;
+    }
+
+    /**
+     * The whole decision of syncFutureScheduledSessionTimes() without writing: which exceptions it adopts, whether
+     * it takes the global remap, and where every moved row lands. ScheduleGuardService predicts an edit with exactly
+     * this (#3502), so guard and sync cannot drift.
+     *
+     * @param  iterable<ClassSession|object>  $sessions  futureScheduledSessions()
+     * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
+     * @param  array<int, true>  $lockedIds
+     * @return array{adopted: array<int, true>, remap: bool, unlocked: array<int, true>, moves: array<int, array{date:string, start:string, end:string}>}
+     */
+    public static function planFutureSync(iterable $sessions, array $slots, int $durationMinutes, array $lockedIds, ?string $contractStartDate): array
+    {
+        $daySlotsByDow = array_map(fn ($daySlots) => array_map(function ($slot) {
+            $start = self::normalizeSessionTime($slot['time'], '16:00:00');
+            $end = Carbon::createFromFormat('H:i:s', $start)->addMinutes(max(30, $slot['dur']))->format('H:i:s');
+            return ['start' => $start, 'end' => $end];
+        }, $daySlots), self::buildSlotsByWeekdayMap($slots, $durationMinutes));
+
+        $rowsByDate = [];
+        $ordered = [];
+        foreach ($sessions as $session) {
+            $date = self::normalizeDateString($session->SessionDate ?? null);
+            if ($date) {
+                $row = [
+                    'id' => (int) $session->id,
+                    'start' => (string) $session->StartTime,
+                    'end' => (string) $session->EndTime,
+                    'exception' => !empty($session->IsContractException),
+                ];
+                $rowsByDate[$date][] = $row;
+                $ordered[] = $row + ['date' => $date];
+            }
+        }
+        $adopted = [];
+        $sameDayMoves = [];
+        foreach ($rowsByDate as $date => $rows) {
+            $plan = self::planSameDayRemap($rows, $daySlotsByDow[(int) Carbon::parse($date)->dayOfWeekIso] ?? [], $lockedIds);
+            $adopted += $plan['adopted'];
+            foreach ($plan['moves'] as $id => $slot) {
+                $sameDayMoves[$id] = ['date' => $date, 'start' => $slot['start'], 'end' => $slot['end']];
+            }
+        }
+
+        $unlockedRows = array_values(array_filter($ordered, fn ($r) => self::isUnlockedRegular($r, $lockedIds, $adopted)));
+        $unlocked = [];
+        foreach ($unlockedRows as $r) {
+            $unlocked[$r['id']] = true;
+        }
+        $remap = self::needsGlobalRemap($rowsByDate, $daySlotsByDow, $lockedIds, $adopted);
+        if (!$remap) {
+            return ['adopted' => $adopted, 'remap' => false, 'unlocked' => $unlocked, 'moves' => $sameDayMoves];
+        }
+        $skipKeys = [];
+        foreach ($ordered as $r) {
+            if (!isset($unlocked[$r['id']]) && $r['start'] !== '') {
+                $skipKeys[$r['date'] . '|' . substr($r['start'], 0, 5)] = true;
+            }
+        }
+
+        return [
+            'adopted' => $adopted,
+            'remap' => true,
+            'unlocked' => $unlocked,
+            'moves' => self::planRemapTargets($unlockedRows, $slots, $durationMinutes, $skipKeys, $contractStartDate),
+        ];
+    }
+
+    /** The rows syncFutureScheduledSessionTimes() works on: the course's 'scheduled' sessions from today, in order. */
+    public static function futureScheduledSessions(int $studentClassId)
+    {
+        return ClassSession::where('StudentClassID', $studentClassId)
+            ->where('Status', 'scheduled')
+            ->whereDate('SessionDate', '>=', Carbon::today()->toDateString())
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->get();
     }
 
     /**
@@ -1151,109 +1262,49 @@ class ContractSessionSchedule
             return 0;
         }
 
-        $slotsByWeekday = self::buildSlotsByWeekdayMap($slots, $durationMinutes);
-        if (empty($slotsByWeekday)) {
+        if (empty(self::buildSlotsByWeekdayMap($slots, $durationMinutes))) {
             return 0;
         }
 
         return DB::transaction(function () use (
             $studentClassId,
             $slots,
-            $durationMinutes,
-            $slotsByWeekday
+            $durationMinutes
         ) {
-        $lockedBySessionId = self::lockedClassSessionIds($studentClassId);
-
-        $today = Carbon::today()->toDateString();
-        $sessions = ClassSession::where('StudentClassID', $studentClassId)
-            ->where('Status', 'scheduled')
-            ->whereDate('SessionDate', '>=', $today)
-            ->orderBy('SessionDate')
-            ->orderBy('StartTime')
-            ->get();
-
-        // Same-day plan per date, shared with ScheduleGuardService so the course-edit guard predicts exactly this.
-        $rowsByDate = [];
-        $sessionsById = [];
-        foreach ($sessions as $session) {
-            $date = self::normalizeDateString($session->SessionDate ?? null);
-            if ($date) {
-                $sessionsById[(int) $session->id] = $session;
-                $rowsByDate[$date][] = [
-                    'id' => (int) $session->id,
-                    'start' => (string) $session->StartTime,
-                    'end' => (string) $session->EndTime,
-                    'exception' => !empty($session->IsContractException),
-                ];
-            }
-        }
-        $daySlotsByDow = array_map(fn ($daySlots) => array_map(function ($slot) {
-            $start = self::normalizeSessionTime($slot['time'], '16:00:00');
-            $end = Carbon::createFromFormat('H:i:s', $start)->addMinutes(max(30, $slot['dur']))->format('H:i:s');
-            return ['start' => $start, 'end' => $end];
-        }, $daySlots), $slotsByWeekday);
-        $needsRemap = self::needsGlobalRemap($rowsByDate, $daySlotsByDow, $lockedBySessionId);
-        $plans = [];
-        foreach ($rowsByDate as $date => $rows) {
-            $plans[$date] = self::planSameDayRemap($rows, $daySlotsByDow[(int) Carbon::parse($date)->dayOfWeekIso] ?? [], $lockedBySessionId);
-            // Safe adoption / regularization: an exception now exactly on a contract slot joins the regular contract.
-            foreach (array_keys($plans[$date]['adopted']) as $id) {
-                $sessionsById[$id]->IsContractException = 0;
-                $sessionsById[$id]->save();
-            }
-        }
-
-        $unlocked = $sessions->filter(function ($session) use ($lockedBySessionId) {
-            if (isset($lockedBySessionId[(int) $session->id])) {
-                return false;
-            }
-            if (!empty($session->IsContractException)) {
-                return false;
-            }
-            return true;
-        })->values();
-
-        if ($needsRemap && $unlocked->isNotEmpty()) {
-            $unlockedIds = $unlocked->mapWithKeys(fn ($s) => [(int) $s->id => true])->all();
-            $lockedTargetKeys = $sessions->filter(function ($session) use ($unlockedIds) {
-                return !isset($unlockedIds[(int) $session->id]);
-            })->mapWithKeys(function ($session) {
-                $date = self::normalizeDateString($session->SessionDate ?? null);
-                $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
-                return $date && $start ? ["{$date}|{$start}" => true] : [];
-            })->all();
-
-            $contractStartDate = self::normalizeDateString(
-                DB::table('StudentClass')->where('ID', $studentClassId)->value('StartDate')
-            );
-
-            return $this->remapFutureScheduledSessionsToContract(
-                $unlocked,
-                $slots,
-                $durationMinutes,
-                $lockedTargetKeys,
-                $contractStartDate
-            );
+        $sessions = self::futureScheduledSessions($studentClassId);
+        $contractStartDate = self::normalizeDateString(
+            DB::table('StudentClass')->where('ID', $studentClassId)->value('StartDate')
+        );
+        // One plan, shared with ScheduleGuardService so the course-edit guard predicts exactly this.
+        $plan = self::planFutureSync($sessions, $slots, $durationMinutes, self::lockedClassSessionIds($studentClassId), $contractStartDate);
+        $sessionsById = $sessions->keyBy(fn ($s) => (int) $s->id);
+        // Safe adoption / regularization: an exception now exactly on a contract slot joins the regular contract.
+        foreach (array_keys($plan['adopted']) as $id) {
+            $sessionsById[$id]->IsContractException = 0;
+            $sessionsById[$id]->save();
         }
 
         // Permutation-safe move list: same-day time shifts would hit uq_class_session_slot 1062 if updated
         // in place onto a sibling's not-yet-vacated StartTime (Sentry PHP-LARAVEL-25 / #1384).
         $moves = [];
-        $reflowIds = [];
-        foreach ($plans as $date => $plan) {
-            foreach ($plan['moves'] as $sessionId => $slot) {
-                $session = $sessionsById[$sessionId];
-                $moves[] = [
-                    'session'       => $session,
-                    'oldDate'       => self::normalizeDateString($session->SessionDate ?? null),
-                    'oldStartShort' => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
-                    'newDate'       => $date,
-                    'newStart'      => $slot['start'],
-                    'newEnd'        => $slot['end'],
-                ];
-                $reflowIds[$sessionId] = true;
-            }
+        foreach ($plan['moves'] as $sessionId => $t) {
+            $session = $sessionsById[$sessionId];
+            $moves[] = [
+                'session'       => $session,
+                'oldDate'       => self::normalizeDateString($session->SessionDate ?? null),
+                'oldStartShort' => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
+                'newDate'       => $t['date'],
+                'newStart'      => $t['start'],
+                'newEnd'        => $t['end'],
+            ];
         }
+
+        if ($plan['remap']) {
+            // #1163: a remap permutation cannot move in place; the reflow guards external occupants up front and
+            // moves in two phases. A held target surfaces as a clean 422, not a silent skip.
+            return $moves === [] ? 0 : $this->contractSessionReflowService->move($studentClassId, $plan['unlocked'], $moves);
+        }
+        $reflowIds = array_fill_keys(array_keys($plan['moves']), true);
 
         if (empty($moves)) {
             return 0;
