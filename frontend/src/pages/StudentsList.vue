@@ -859,6 +859,7 @@
       :subject-label-fn="getSubjectLabel"
       @cancel="showDuplicateInterceptModal = false"
       @purchase="interceptGoToPurchase"
+      @manual-session="(c) => { showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptPendingStudent?._laravelId ?? interceptPendingStudent?.id, c.existing_course_id); }"
       @decision="onEnrollmentConflictDecision"
     />
     <!-- Grade Promotion Modal — server preview/confirm (#297 Phase A); no course Stop. -->
@@ -1033,6 +1034,7 @@ import {
   collectStudentCourses,
   findCourseForPurchase,
   normalizeActiveCourseConflicts,
+  normalizeDuplicateConflicts,
 } from '../lib/enrollmentConflictDecision';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import MonthlyBatchRenewModal from '../components/course-management/MonthlyBatchRenewModal.vue';
@@ -1041,6 +1043,7 @@ import {
   buildTuitionCollectNav,
   buildTuitionLedgerNav,
   buildCourseMgmtOpsNav,
+  buildManualSessionNav,
   buildBindingManagementNav,
   tuitionIntentForPaymentStatus,
 } from '../lib/authoritativeMutationRoutes.js';
@@ -2837,6 +2840,10 @@ async function onEnrollmentConflictDecision(decision) {
         ? '已建立下一期續報'
         : '已建立獨立課程';
     alert(`${label}（${created} 堂）`);
+    if (payload.scheduling_policy === 'manual_occurrence' && result?.student_class_id) {
+      openManualSessionInCourseMgmt(result.student_id ?? payload.student_id, result.student_class_id);
+      return;
+    }
     await loadStudents();
   } catch (err) {
     alert(err?.message || '建立失敗，請稍後再試');
@@ -2959,7 +2966,15 @@ const handleOpenBillingFromEdit = () => {
   goToTuitionBilling(course);
 };
 
-const handleUniversalSchedulerSuccess = async () => {
+// in-app #382: a manual course has no lesson yet; schedule the first one in course management.
+const openManualSessionInCourseMgmt = (studentId, courseId) => emit('navigate', buildManualSessionNav(studentId, courseId));
+
+const handleUniversalSchedulerSuccess = async (result) => {
+  if (result?.scheduling_policy === 'manual_occurrence' && result.student_class_id) {
+    closeCourseModal();
+    openManualSessionInCourseMgmt(result.student_id, result.student_class_id);
+    return;
+  }
   const sid = selectedStudent.value?.id;
   closeCourseModal();
   if (sid != null) {
@@ -2970,12 +2985,7 @@ const handleUniversalSchedulerSuccess = async () => {
 
 const handleSchedulerDuplicate = (evt) => {
   closeCourseModal();
-  duplicateConflicts.value = (evt?.conflicts || []).map(c => ({
-    existing_course_id: c.existing_course_id,
-    subject_name: c.subject || '',
-    remaining_sessions: c.remaining_sessions ?? 0,
-    class_type: c.class_type || '',
-  }));
+  duplicateConflicts.value = normalizeDuplicateConflicts(evt?.conflicts);
   interceptPendingStudent.value = selectedStudent.value;
   interceptOriginalPayload.value = evt?.originalPayload || null;
   interceptPendingClassType.value = String(evt?.originalPayload?.class_type || '');
