@@ -114,6 +114,12 @@ jobs:
               if (!($closed["ok"] ?? false)) { throw new \RuntimeException(json_encode($closed)); }
               echo json_encode(["bug_id" => $bugId, "from" => $status, "close_as_logged" => $closed, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
           } else {
+          // Same row lock as bugs:auto-intake --ack: whoever runs second re-reads the status after the
+          // first commits, so a report is never moved new->triaged twice or answered twice concurrently.
+          \Illuminate\Support\Facades\DB::transaction(function () use ($bugId, $issueUrl, $disposition, $reply, $actor, $svc) {
+          $locked = \App\Models\BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
+          $status = (string)$locked->status;
+          if (!in_array($status, ["new", "triaged"], true)) { throw new \RuntimeException("refusing status: ".$status); }
           $validatedDisposition = $svc::normalizeDispositionOptions([
               "disposition" => $disposition,
               "github_issue_url" => $issueUrl,
@@ -150,6 +156,7 @@ jobs:
               "comment_id" => is_array($comment) ? ($comment["skipped"] ?? false) : $comment->id,
               "issue" => $issueUrl,
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          });
           }
           '
           REMOTE
