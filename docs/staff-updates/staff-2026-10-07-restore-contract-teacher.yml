@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-07-restore-contract-teacher
+    published_at: "2026-10-07"
+    audiences:
+      - director
+    importance: digest
+    title: 代課可改回正班老師
+    summary: 行事曆上已代課的堂，打開代課視窗就能一鍵改回正班老師。
+    items:
+      - category: fixed
+        text: 已代課的那堂打開代課視窗，會出現「回正班老師」，按下即改回合約老師。
+    source_refs:
+      - "changelog:2026-10-07:inapp-376-restore-contract-teacher"

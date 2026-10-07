@@ -1034,6 +1034,7 @@ const {
   showModal,
   modalForm,
   editingCourseId,
+  courses,
   loadCourses,
   teachers,
   sessionDatesByCourseId,
@@ -2189,6 +2190,8 @@ const onCourseClick = (course, fullDateStr) => {
     student_id: baseCourse.student_id || course.student_id,
     subject: baseCourse.subject || course.subject,
     teacher_id: baseCourse.teacher_id || course.teacher_id || '',
+    // in-app #376: who teaches this occurrence (a substitute differs from the contract teacher above).
+    occurrence_teacher_id: course.teacher_id || '',
     class_type: baseCourse.class_type || course.class_type,
     weeks: baseCourse.weeks || [1, 2, 3, 4, 5],
     day_of_week: course.day_of_week,
