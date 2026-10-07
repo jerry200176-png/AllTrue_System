@@ -387,6 +387,17 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '370 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '370 must give a no-names reopen path');
   }
+// Scoped Phase-C for in-app 380 (#3720), 2026-10-07 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            380 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 380 must exist');
+    assert.ok(entry[1].includes('"rev" => "f662fb7fcc17abb71ede2ffa8d4450da6ccf1a2d"'), '380 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37581142543"'), '380 deploy binding');
+    assert.ok(entry[1].includes('issues/3720'), '380 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '380 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '380 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '380 must give a no-names reopen path');
+  }
   {
     const entry = phaseCSource.match(/\n            371 => \[([\s\S]*?)\n            \],/);
     assert.ok(entry, 'scoped Phase-C entry 371 must exist');
@@ -396,6 +407,17 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('仍等待您實際確認'), '371 must not claim reporter acceptance');
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '371 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '371 must give a no-names reopen path');
+  }
+// Scoped Phase-C for in-app 382 (#3721), 2026-10-07 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            382 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 382 must exist');
+    assert.ok(entry[1].includes('"rev" => "6b0c3dd2671062859dfe397cdb261541ccf499a7"'), '382 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37581142543"'), '382 deploy binding');
+    assert.ok(entry[1].includes('issues/3721'), '382 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '382 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '382 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '382 must give a no-names reopen path');
   }
   {
     const entry = phaseCSource.match(/\n            372 => \[([\s\S]*?)\n            \],/);
