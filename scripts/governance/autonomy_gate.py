@@ -1163,12 +1163,38 @@ def is_founder_approval_eligible(
     )
 
 
-# "Founder GO: <who/when/what>" at line start in prose (see _founder_go_prose); quotes,
-# indented code, placeholders and negatives ("none", "N/A", "pending") do not count.
-_FOUNDER_GO_RE = re.compile(
-    r"(?m)^ {0,3}(?:[-*][ \t]+)?(?:\*\*)?Founder GO(?:\*\*)?[ \t]*:[ \t]*(?:\*\*)?[ \t]*"
-    r"(?!(?i:none|n/?a|no|not|pending|tbd|todo|requested|needed|required)\b)[^\s<*\[(]"
+# A GO is an affirmative prose line naming the Founder and a date, e.g.
+# "Founder GO: Jerry 2026-10-07 \"GO 3702\"". Lines in fences/comments (_founder_go_prose),
+# quotes, indented code, placeholders, strikethrough and negations do not count.
+_FOUNDER_GO_LINE_RE = re.compile(
+    r"(?m)^ {0,3}(?:[-*][ \t]+)?(?:\*\*)?Founder GO(?:\*\*)?[ \t]*:[ \t]*(?:\*\*)?[ \t]*(\S[^\n]*)$"
 )
+_FOUNDER_GO_POSITIVE_RE = re.compile(r"(?=.*\bJerry\b)(?=.*\b20[0-9]{2}-[01][0-9]-[0-3][0-9]\b)")
+_FOUNDER_GO_NEGATIVE_RE = re.compile(
+    r"\b(?:none|n/?a|no|not|false|pending|tbd|todo|requested|needed|required|declined|denied|"
+    r"rejected|revoked|withdrawn|refused|cancell?ed|retracted|without)\b",
+    re.IGNORECASE,
+)
+
+
+def has_founder_go(body: str) -> bool:
+    """Return whether the PR body carries an affirmative Founder GO prose line."""
+
+    def affirmative(value: str) -> bool:
+        if "~~" in value or "<" in value or not _FOUNDER_GO_POSITIVE_RE.match(value):
+            return False
+        # Negations count outside parenthesised context ("(no open findings)" is scope).
+        outside = value
+        while True:
+            reduced = re.sub(r"\([^()]*\)", " ", outside)
+            if reduced == outside:
+                break
+            outside = reduced
+        return not _FOUNDER_GO_NEGATIVE_RE.search(outside)
+
+    return any(affirmative(value) for value in _FOUNDER_GO_LINE_RE.findall(_founder_go_prose(body)))
+
+
 _TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
 
 
@@ -1247,7 +1273,7 @@ def founder_go_release_evidence(
             # An undeclared PR is unknown risk, never R0.
             return fail(f"PR #{number} has no Risk-Class/Autonomy-Tier declaration")
         # Effective class = max(machine class of the merged diff, declaration); never lower.
-        if max(tier, declared_risk, declared_tier) >= 3 and not _FOUNDER_GO_RE.search(_founder_go_prose(body)):
+        if max(tier, declared_risk, declared_tier) >= 3 and not has_founder_go(body):
             missing.append(number)
     if missing:
         listed = ", ".join(f"#{n}" for n in missing)

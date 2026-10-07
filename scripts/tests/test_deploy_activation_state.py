@@ -1467,19 +1467,28 @@ class FounderGoAutoActivationTest(unittest.TestCase):
     def test_go_only_counts_as_a_prose_line(self):
         r3 = "Risk-Class: R3\nAutonomy-Tier: T3\n"
         hidden = {
-            "fence": "```\nFounder GO: Jerry\n```",
-            "tilde fence": "~~~md\nFounder GO: Jerry\n~~~",
-            "unterminated fence": "```\nFounder GO: Jerry",
-            "html comment": "<!--\nFounder GO: Jerry\n-->",
-            "unterminated comment": "<!-- Founder GO: Jerry\nFounder GO: Jerry",
-            "quote": "> Founder GO: Jerry",
-            "indented code": "    Founder GO: Jerry",
-            "mid-line": "see Founder GO: Jerry",
+            "fence": "```\nFounder GO: Jerry 2026-10-07\n```",
+            "tilde fence": "~~~md\nFounder GO: Jerry 2026-10-07\n~~~",
+            "unterminated fence": "```\nFounder GO: Jerry 2026-10-07",
+            "html comment": "<!--\nFounder GO: Jerry 2026-10-07\n-->",
+            "unterminated comment": "<!-- Founder GO: Jerry 2026-10-07\nFounder GO: Jerry 2026-10-07",
+            "quote": "> Founder GO: Jerry 2026-10-07",
+            "indented code": "    Founder GO: Jerry 2026-10-07",
+            "mid-line": "see Founder GO: Jerry 2026-10-07",
         }
         for name, text in hidden.items():
             with self.subTest(name=name):
                 result = self._evidence(self._range(11), {11: self._pr(11, r3 + text)}, {11: 3})
                 self.assertEqual(result["missing"], [11], result)
+        # Codex P1: only an affirmative GO naming the Founder and a date counts.
+        for text in ("Founder GO: false", "Founder GO: declined", "Founder GO: ~~revoked~~",
+                     "Founder GO: Jerry 2026-10-07 declined", "Founder GO: not by Jerry 2026-10-07",
+                     "Founder GO: Jerry", "Founder GO: 2026-10-02 packet", "Founder GO: yes"):
+            with self.subTest(text=text):
+                result = self._evidence(self._range(11), {11: self._pr(11, r3 + text)}, {11: 3})
+                self.assertEqual(result["missing"], [11], result)
+        scoped = 'Founder GO: standing GO D (fix, no open findings), Jerry 2026-10-07 "2 yes"'
+        self.assertTrue(self._evidence(self._range(11), {11: self._pr(11, r3 + scoped)}, {11: 3})["ok"])
         after_fence = "```\ncode\n```\n**Founder GO:** Jerry 2026-10-07"
         self.assertTrue(self._evidence(self._range(11), {11: self._pr(11, r3 + after_fence)}, {11: 3})["ok"])
 
@@ -1546,7 +1555,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         self.assertNotIn("                  founder_go_release_evidence,\n", classify)
 
     def test_unknown_or_untrusted_mapping_fails_closed(self):
-        go = "Risk-Class: R3\nAutonomy-Tier: T3\nFounder GO: Jerry"
+        go = "Risk-Class: R3\nAutonomy-Tier: T3\nFounder GO: Jerry 2026-10-07"
         cases = {
             "fork": {"head": {"repo": {"full_name": "someone/AllTrue_System"}}},
             "non-owner": {"author_association": "CONTRIBUTOR"},
