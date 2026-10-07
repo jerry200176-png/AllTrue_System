@@ -634,6 +634,7 @@
           <div class="rfid-bind-row">
             <input v-model="studentForm.rfid" readonly placeholder="刷卡後點「綁定卡片」" />
             <button type="button" class="small" @click="bindRfidFromTemp">{{ studentForm.rfid ? '重新綁定卡片' : '綁定卡片' }}</button>
+            <button v-if="editingStudentId && studentForm.rfid" type="button" class="small ghost" @click="unbindStudentRfid">解除綁定</button>
           </div>
         </div>
 
@@ -2658,6 +2659,34 @@ const bindRfidFromTemp = async () => {
     }
   } catch (e) {
     alert('取得暫存 RFID 失敗');
+  }
+};
+
+// in-app #381: release the card immediately (server-side; the campus gate applies).
+const unbindStudentRfid = async () => {
+  const st = students.value.find(s => s.id === editingStudentId.value);
+  // Destructive: only with a resolved server ID (a Supabase fallback id could hit another student).
+  // Only rows loaded from the Laravel API carry a trustworthy id (id === _laravelId); fallback rows are
+  // matched by name and can point at a same-name student, so unbind is refused for them.
+  const laravelId = st && st._laravelId && Number(st._laravelId) === Number(st.id) ? st._laravelId : null;
+  if (!laravelId) { alert('目前無法確認學生的系統編號，請重新整理後再試。'); return; }
+  if (!confirm('確定要解除這張卡片的綁定嗎？解除後學生刷這張卡不會再記錄到課，卡片可以再綁給別人。')) return;
+  try {
+    const token = await getAccessToken();
+    if (!token) { alert('請重新登入'); return; }
+    const res = await authedFetch(`/api/v1/students/${laravelId}/bind-card`, { method: 'DELETE' }, token);
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(`解除綁定失敗（HTTP ${res.status}）${json?.message ? '：' + json.message : ''}`);
+      return;
+    }
+    studentForm.value.rfid = '';
+    // Keep the fallback mirror in sync so a later fallback load cannot resurrect the old card.
+    supabase.from('students').update({ rfid: null }).eq('id', editingStudentId.value)
+      .then(({ error }) => { if (error) console.warn('Supabase mirror rfid clear failed (non-blocking):', error?.message); });
+    loadStudents();
+  } catch (e) {
+    alert('解除綁定失敗');
   }
 };
 

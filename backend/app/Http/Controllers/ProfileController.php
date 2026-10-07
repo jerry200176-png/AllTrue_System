@@ -984,6 +984,12 @@ class ProfileController extends Controller
             ->pluck('CampusID')
             ->map(fn ($id) => (int) $id)
             ->all();
+        // F18 (#3740 review): a director may only write cards for campuses they manage, never the
+        // teacher's other campuses. Super admins keep full scope; an empty list grants none.
+        if (request()->attributes->get('auth_role') !== 'super_admin') {
+            $mine = array_map('intval', (array) request()->attributes->get('auth_campus_ids', []));
+            $allowed = array_values(array_intersect($allowed, $mine));
+        }
 
         if (array_key_exists('rfid_by_branch', $input)) {
             $map = $input['rfid_by_branch'];
