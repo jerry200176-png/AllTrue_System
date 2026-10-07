@@ -67,4 +67,37 @@ class ContractRenewalTest extends TestCase
         $this->assertSame(['billing' => ['k' => 2], 'payload' => []], $svc->redactRenewalDiscount($p, false));
         $this->assertSame($p, $svc->redactRenewalDiscount($p, true));
     }
+
+    public function test_preview_hash_is_stable_and_changes_with_payload(): void
+    {
+        $svc = app(ContractRenewal::class);
+        $c = $this->course();
+        $data = ['mode' => 'purchase_batch', 'sessions' => 4, 'start_date' => '2032-04-06'];
+
+        $a = $svc->preview($c, $data, 1, 'director');
+        $b = $svc->preview($c, $data, 1, 'director');
+        $other = $svc->preview($c, ['sessions' => 5] + $data, 1, 'director');
+
+        $this->assertSame($a['state_hash'], $b['state_hash']);
+        $this->assertNotSame($a['state_hash'], $other['state_hash']);
+        $this->assertSame('ok', $a['severity']);
+        $this->assertSame($c->ID, $a['source_course']['id']);
+        $this->assertSame('mode_required', $svc->preview($c, [], 1, 'director')['blockers'][0]['code']);
+    }
+
+    public function test_renew_monthly_preview_blocks_bad_dates_and_wrong_mode(): void
+    {
+        $svc = app(ContractRenewal::class);
+        $monthly = $this->course(['ScheduleMode' => 'date', 'StartDate' => '2032-01-01', 'EndDate' => '2032-02-29']);
+
+        $codes = fn (array $p) => array_column($p['blockers'], 'code');
+        $this->assertContains('end_date_required', $codes($svc->preview($monthly, ['mode' => 'renew_monthly'], 1, 'director')));
+        $this->assertContains('end_date_not_extended', $codes($svc->preview($monthly, ['mode' => 'renew_monthly', 'end_date' => '2032-02-01'], 1, 'director')));
+        $this->assertContains('non_monthly_course', $codes($svc->preview($this->course(), ['mode' => 'renew_monthly', 'end_date' => '2032-09-30'], 1, 'director')));
+
+        $ok = $svc->preview($monthly, ['mode' => 'renew_monthly', 'end_date' => '2032-03-31'], 1, 'director');
+        $this->assertSame('date', $ok['proposed_course']['schedule_mode']);
+        $this->assertSame('2032-03-31', $ok['schedule']['last_session_date']);
+        $this->assertSame('unpaid', $ok['billing']['payment_status_after_confirm']);
+    }
 }
