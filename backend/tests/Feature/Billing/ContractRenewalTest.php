@@ -205,7 +205,7 @@ class ContractRenewalTest extends TestCase
     {
         $trial = $this->course(['ClassType' => 'trial', 'SessionCount' => 1, 'RemainingSessions' => 1, 'Charge' => 0, 'Rate' => 500]);
 
-        $r = app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => []);
+        $r = app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => [], fn () => null);
 
         $this->assertSame(201, $r['status']);
         $trial->refresh();
@@ -221,7 +221,7 @@ class ContractRenewalTest extends TestCase
         $before = StudentClass::query()->count();
 
         try {
-            app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => [['message' => 'clash']]);
+            app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => [['message' => 'clash']], fn () => null);
             $this->fail('expected HttpResponseException');
         } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
             $this->assertSame(409, $e->getResponse()->getStatusCode());
@@ -236,12 +236,28 @@ class ContractRenewalTest extends TestCase
         $trial = $this->course(['ClassType' => 'trial', 'ScheduleMode' => 'date', 'EndDate' => '2032-04-30']);
 
         try {
-            app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => []);
+            app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => [], fn () => null);
             $this->fail('expected HttpResponseException');
         } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
             $this->assertSame(422, $e->getResponse()->getStatusCode());
         }
 
         $this->assertSame(0, (int) $trial->fresh()->Stop);
+    }
+
+    public function test_convert_trial_rechecks_access_on_the_locked_course_and_rolls_back(): void
+    {
+        $trial = $this->course(['ClassType' => 'trial', 'SessionCount' => 1, 'RemainingSessions' => 1]);
+        $before = StudentClass::query()->count();
+
+        try {
+            app(ContractRenewal::class)->convertTrial($trial, 4, '2032-04-06', 'one_on_one', 1, 'director', fn () => [], fn () => response()->json(['message' => 'no'], 403));
+            $this->fail('expected HttpResponseException');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            $this->assertSame(403, $e->getResponse()->getStatusCode());
+        }
+
+        $this->assertSame(0, (int) $trial->fresh()->Stop);
+        $this->assertSame($before, StudentClass::query()->count());
     }
 }

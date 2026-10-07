@@ -3840,7 +3840,8 @@ class StudentClassController extends Controller
         $result = app(ContractRenewal::class)->convertTrial(
             $studentClass, $sessions, $startDate, $newClassType,
             (int) ($actor->id ?? 0), (string) $request->attributes->get('auth_role'),
-            fn (...$args) => $this->detectTeacherConflicts(...$args)
+            fn (...$args) => $this->detectTeacherConflicts(...$args),
+            fn (StudentClass $locked) => $this->authorizeStudentClassAccess($locked)
         );
 
         return response()->json($result['body'], $result['status']);

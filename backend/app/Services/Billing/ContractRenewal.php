@@ -693,13 +693,15 @@ final class ContractRenewal
     /**
      * Trial -> regular conversion transaction. Every error exit after the source mutation throws
      * HttpResponseException so the transaction rolls back. $detectTeacherConflicts is the controller's
-     * shared conflict probe (same arguments as StudentClassController::detectTeacherConflicts).
+     * shared conflict probe (same arguments as StudentClassController::detectTeacherConflicts);
+     * $authorizeAccess re-runs the controller's campus/teacher scope check on the freshly locked course
+     * (returns a deny response or null), as the old nested purchaseBatch call did.
      *
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function convertTrial(StudentClass $studentClass, int $sessions, string $startDate, string $newClassType, int $actorId, string $actorRole, \Closure $detectTeacherConflicts): array
+    public function convertTrial(StudentClass $studentClass, int $sessions, string $startDate, string $newClassType, int $actorId, string $actorRole, \Closure $detectTeacherConflicts, \Closure $authorizeAccess): array
     {
-        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $newClassType, $actorId, $actorRole, $detectTeacherConflicts) {
+        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $newClassType, $actorId, $actorRole, $detectTeacherConflicts, $authorizeAccess) {
             $source = $this->lockCourse((int) $studentClass->getAttribute('ID'));
 
             if (strtolower((string) ($source->getAttribute('ClassType') ?? '')) !== 'trial') {
@@ -755,6 +757,9 @@ final class ContractRenewal
                 ], 409));
             }
 
+            if ($deny = $authorizeAccess($source)) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException($deny);
+            }
             // Same guard the controller's purchaseBatch applied when convertTrial used to call it through the request.
             if ((string) ($source->ScheduleMode ?? 'count') !== 'count') {
                 throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
