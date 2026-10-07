@@ -173,24 +173,28 @@ class ClassSessionMaterializationService
     }
 
     /**
-     * Whether a new 'scheduled' row of this course at date/start-end would pass the write-time student overlap
-     * guard. Planners that pick slots on their own (tail refill, forward generation) skip a slot this rejects
-     * instead of letting upsertSlot() throw a student_slot_conflict on a slot the director never chose (in-app #380).
+     * The write-time student overlap guard for a new 'scheduled' row of this course, as a value: null when the slot
+     * is free (or in the past, where the save path does not guard), else the conflict upsertSlot() would throw.
+     * Planners that pick slots themselves ask this instead of re-implementing the rule (in-app #380, R142).
      */
-    public function isStudentSlotFree(StudentClass $studentClass, string $sessionDate, string $startTime, string $endTime): bool
+    public function findStudentSlotConflict(StudentClass $studentClass, string $sessionDate, string $startTime, string $endTime): ?SlotOccupiedException
     {
+        $date = $this->normalizeDate($sessionDate);
+        if ($date < now()->toDateString()) {
+            return null;
+        }
         try {
             $this->assertStudentSlotAvailable(
                 $studentClass,
                 (int) $studentClass->getKey(),
-                $this->normalizeDate($sessionDate),
+                $date,
                 $this->normalizeTimeForStorage($startTime),
                 $this->normalizeTimeForStorage($endTime),
             );
 
-            return true;
-        } catch (SlotOccupiedException) {
-            return false;
+            return null;
+        } catch (SlotOccupiedException $e) {
+            return $e;
         }
     }
 

@@ -17,6 +17,12 @@ class EnsureSessionHorizonTest extends TestCase
 
     private Carbon $today;
 
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -215,6 +221,7 @@ class EnsureSessionHorizonTest extends TestCase
         $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
         config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
 
+        Carbon::setTestNow($this->today); // the write guard only applies to future rows (real clock)
         $sc = $this->explicitCourse(remaining: 8);
         $first = app(EnsureSessionHorizonService::class)->ensure(
             $sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN

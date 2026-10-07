@@ -5155,7 +5155,7 @@ class StudentClassController extends Controller
                 $source,
                 $replacementCount,
                 $sourceTail?->SessionDate,
-                $target
+                (int) $target->ID
             );
 
             foreach ($sessions as $session) {
@@ -5224,7 +5224,7 @@ class StudentClassController extends Controller
         StudentClass $source,
         int $replacementCount,
         mixed $tailDate,
-        StudentClass $target
+        int $targetId
     ): array {
         if ($replacementCount <= 0
             || (int) ($source->Stop ?? 0) === 1
@@ -5257,15 +5257,7 @@ class StudentClassController extends Controller
         }
 
         $occupied = [];
-        // The target usually continues the same weekly slot (a renewal): its rows are as occupied as the source's
-        // own, or the refill lands on the renewal's next lesson and 422s the transfer (in-app #380). A clash with an
-        // unrelated course still rolls the transfer back.
         $existing = ClassSession::query()->where('StudentClassID', (int) $source->getAttribute('ID'))
-            ->orWhere(fn ($q) => $q->where('StudentClassID', (int) $target->getAttribute('ID'))
-                ->whereRaw("LOWER(COALESCE(Status, '')) <> 'cancelled'")
-                // Same contract-period boundary as the write guard: stale rows outside the target's period don't count.
-                ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('StartDate')), fn ($w, $d) => $w->whereDate('SessionDate', '>=', $d))
-                ->when(ContractSessionSchedule::normalizeDateString($target->getAttribute('EndDate')), fn ($w, $d) => $w->whereDate('SessionDate', '<=', $d)))
             ->get(['SessionDate', 'StartTime']);
         foreach ($existing as $session) {
             $date = ContractSessionSchedule::normalizeDateString($session->SessionDate ?? null);
@@ -5293,6 +5285,14 @@ class StudentClassController extends Controller
                 }
 
                 $end = $start->copy()->addMinutes((int) $slot['dur']);
+                // The target usually continues the same weekly slot (a renewal); a refill onto its lesson would make
+                // the write guard 422 the whole transfer (in-app #380). Skip only that: a clash with an unrelated
+                // course is still planned, so upsertSlot() rolls the transfer back and names the conflict.
+                $conflict = app(ClassSessionMaterializationService::class)
+                    ->findStudentSlotConflict($source, $cursor->toDateString(), $start->format('H:i:s'), $end->format('H:i:s'));
+                if ($conflict && $conflict->conflictCourseId === $targetId) {
+                    continue;
+                }
                 $planned[] = [
                     'StudentClassID' => (int) $source->getAttribute('ID'),
                     'SessionDate' => $cursor->toDateString(),

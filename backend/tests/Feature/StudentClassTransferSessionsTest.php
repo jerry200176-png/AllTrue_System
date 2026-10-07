@@ -530,6 +530,39 @@ class StudentClassTransferSessionsTest extends TestCase
         }
     }
 
+    /** In-app #380: the renewal overlapping (not equal to) the refill slot is skipped too — the write guard decides. */
+    public function test_refill_skips_a_partially_overlapping_target_lesson(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1, ['StartDate' => '2026-08-17']);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            DB::table('ClassSession')->insert([
+                'StudentClassID' => $target->ID, 'SessionDate' => '2026-08-17', 'StartTime' => '23:15:00',
+                'EndTime' => '23:45:00', 'Status' => 'scheduled',
+            ]);
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-24',
+                'StartTime' => '23:00:00', 'Status' => 'scheduled',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_schedule_only_makeup_still_blocks_source_replenishment(): void
     {
         Carbon::setTestNow('2026-08-12 12:00:00');

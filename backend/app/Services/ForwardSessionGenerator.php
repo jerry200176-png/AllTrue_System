@@ -97,6 +97,7 @@ class ForwardSessionGenerator
         $dow = (int) $dow;
 
         // Generate forward weekly dates from the day after the anchor (last session or today, whichever later).
+        $course = StudentClass::query()->find($studentClassId);
         $cursor = $lastDate->gt($today) ? $lastDate->copy() : $today->copy();
         $count = min($remaining, $horizonWeeks);
         $slots = [];
@@ -118,37 +119,17 @@ class ForwardSessionGenerator
             if ($occupied) {
                 continue;
             }
-            // Cross-SC guard (2026-07-18 / R20): same student already has an active slot
-            // on another contract — do not amplify duplicate attendance rows.
-            $crossConflictIds = DB::table('ClassSession as cs')
-                ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-                ->where('sc.StudentID', (int) $sc->StudentID)
-                ->where('cs.StudentClassID', '<>', $studentClassId)
-                ->whereDate('cs.SessionDate', $dateStr)
-                ->whereRaw('SUBSTRING(cs.StartTime,1,5) = ?', [$start])
-                ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled','voided')")
-                ->pluck('cs.StudentClassID')
-                ->map(fn ($v) => (int) $v)
-                ->unique()
-                ->values()
-                ->all();
-            if ($crossConflictIds !== []) {
+            // Cross-SC guard (2026-07-18 / R20): the student is busy at any overlapping time on another contract.
+            // Ask the write guard itself so a partial overlap is skipped here, not thrown at execute (in-app #380).
+            $conflict = $course ? $this->materializer->findStudentSlotConflict($course, $dateStr, $start . ':00', $end . ':00') : null;
+            if ($conflict) {
                 Log::warning('cross_sc_slot_conflict', [
                     'student_id' => (int) $sc->StudentID,
                     'session_date' => $dateStr,
                     'start' => $start,
                     'planned_student_class_id' => $studentClassId,
-                    'existing_student_class_ids' => $crossConflictIds,
+                    'existing_student_class_ids' => array_values(array_filter([$conflict->conflictCourseId])),
                     'source' => 'sessions:generate-forward',
-                ]);
-                continue;
-            }
-            // Same rule upsertSlot() enforces: a partial overlap with another contract would throw at execute (#380).
-            $course ??= StudentClass::query()->find($studentClassId);
-            if ($course && !$this->materializer->isStudentSlotFree($course, $dateStr, $start . ':00', $end . ':00')) {
-                Log::warning('cross_sc_slot_conflict', [
-                    'student_id' => (int) $sc->StudentID, 'session_date' => $dateStr, 'start' => $start,
-                    'planned_student_class_id' => $studentClassId, 'source' => 'sessions:generate-forward',
                 ]);
                 continue;
             }

@@ -144,20 +144,19 @@ final class EnsureSessionHorizonService
 
         $fingerprint = (string) ($p['commitment_fingerprint'] ?? '');
         $note = 'adr006-ensure fp='.substr($fingerprint, 0, 32);
-        $studentId = $this->loadStudentId($studentClassId);
         $createdIds = [];
         $skipped = 0;
 
         try {
             DB::transaction(function () use (
-                $candidates, $studentClassId, $studentId, $note, &$createdIds, &$skipped
+                $candidates, $studentClassId, $note, &$createdIds, &$skipped
             ) {
                 $course = \App\Models\StudentClass::query()->find($studentClassId);
                 foreach ($candidates as $o) {
                     $end = $o['end_hm'] ?? $this->defaultEnd($o['start_hm']);
-                    // Same rule upsertSlot() enforces, so a partial overlap is skipped instead of failing the batch (#380).
-                    if ($this->hasCrossScConflict($studentId, $o['date'], $o['start_hm'], $studentClassId)
-                        || ($course && !$this->materializer->isStudentSlotFree($course, $o['date'], $o['start_hm'], $end))) {
+                    // The write guard decides (any overlap on another contract), so a partial overlap is skipped
+                    // instead of failing the whole batch (in-app #380, R142).
+                    if ($course && $this->materializer->findStudentSlotConflict($course, $o['date'], $o['start_hm'], $end)) {
                         Log::warning('ensure_horizon_cross_sc_conflict', [
                             'student_class_id' => $studentClassId,
                             'date' => $o['date'],
@@ -203,27 +202,6 @@ final class EnsureSessionHorizonService
         $result['ensure']['provenance_note'] = $note;
 
         return $result;
-    }
-
-    private function loadStudentId(int $studentClassId): int
-    {
-        return (int) (DB::table('StudentClass')->where('ID', $studentClassId)->value('StudentID') ?? 0);
-    }
-
-    private function hasCrossScConflict(int $studentId, string $date, string $startHm, int $selfScId): bool
-    {
-        if ($studentId <= 0) {
-            return false;
-        }
-
-        return DB::table('ClassSession as cs')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->where('sc.StudentID', $studentId)
-            ->where('cs.StudentClassID', '!=', $selfScId)
-            ->whereDate('cs.SessionDate', $date)
-            ->whereRaw('SUBSTRING(cs.StartTime, 1, 5) = ?', [substr($startHm, 0, 5)])
-            ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled','voided')")
-            ->exists();
     }
 
     private function defaultEnd(string $startHm): string
