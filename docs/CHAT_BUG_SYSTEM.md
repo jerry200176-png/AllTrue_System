@@ -80,7 +80,7 @@ last_reviewed: 2026-08-23
 1. 一定要先撈 attachments：
    SELECT id, stored_path, original_name FROM bug_report_attachments
     WHERE bug_report_id = ?;
-   有附件 → SCP 到 /tmp 看完再決定根因。
+   有附件 → SCP 到 /tmp 看完再決定根因（唯讀，CLAUDE.md R6 例外；看完即刪，在 issue 記錄附件 ID）。
    /home/admin/backend/storage/app/public/<stored_path>
 
 2. 一定要看 status_logs / comments 全部歷史：
