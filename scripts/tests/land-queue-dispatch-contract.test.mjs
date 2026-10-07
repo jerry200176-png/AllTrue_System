@@ -69,3 +69,10 @@ test('queue never uses --admin and lands a batch only from the green verdict', (
   assert.equal(queue.split('landBatch(').length - 1, 2); // definition + the single call
   assert.match(queue, /else if \(v === 'land'\) landBatch\(/);
 });
+
+test('script never checks out or runs PR code, and each squash is pinned to the tested head', () => {
+  assert.doesNotMatch(queue, /\bcheckout\b|execFileSync\('(?:node|bash|sh|npm)'/);
+  assert.match(queue, /'--match-head-commit', sha/);
+  assert.match(queue, /squash\(m\.n, m\.sha\)/); // sha pinned at batch creation, never re-read from the PR
+  assert.match(queue, /TRUSTED_AUTHORS\.has\(p\.authorAssociation\)/);
+});

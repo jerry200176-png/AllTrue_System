@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BATCH_MAX, batchVerdict, checkStates, decide, marker, memberMessage, orderQueue, parseMember, planBatch } from '../../.github/scripts/land-queue.mjs';
+import { ACTIONS_APP_ID, BATCH_MAX, TRUSTED_AUTHORS, fromActions, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, orderQueue, parseMember, planBatch } from '../../.github/scripts/land-queue.mjs';
 
 const req = ['A', 'B'];
 const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
@@ -75,4 +75,32 @@ test('batchVerdict: only all-pass lands; any fail is red; pending waits then tim
   assert.equal(batchVerdict({ A: 'pass', B: 'pending' }, 1000), 'wait');
   assert.equal(batchVerdict({ A: 'pass', B: 'pending' }, 3 * 3600e3), 'red');
   assert.equal(batchVerdict({}, 0), 'wait'); // no required contexts is never a vacuous pass
+});
+
+const m = (n, sha = String(n).repeat(40).slice(0, 40)) => ({ n, sha });
+const cur = (...ms) => new Map(ms.map((x) => [x.n, { sha: x.sha, ready: true }]));
+
+test('staleReason: batch survives only if main, every member head and readiness are unchanged', () => {
+  const ms = [m(1), m(2)];
+  assert.equal(staleReason(ms, 'b', 'b', cur(...ms)), '');
+  assert.equal(staleReason([], 'b', 'b', cur()), 'no members');
+  assert.equal(staleReason(ms, 'b', 'c', cur(...ms)), 'main moved');
+  assert.match(staleReason(ms, 'b', 'b', cur(m(1))), /#2 left the queue/);
+  assert.match(staleReason(ms, 'b', 'b', cur(m(1), m(2, 'f'.repeat(40)))), /#2 head moved/);
+  const notReady = cur(...ms); notReady.get(1).ready = false;
+  assert.match(staleReason(ms, 'b', 'b', notReady), /#1 no longer ready/);
+  assert.match(staleReason([{ n: 1, sha: '' }], 'b', 'b', cur(m(1))), /head moved/); // head not pinned by a merge parent
+});
+
+test('fromActions: only GitHub Actions check runs count; same-name checks from other apps or statuses do not', () => {
+  const run = (id, name = 'A') => ({ __typename: 'CheckRun', name, conclusion: 'SUCCESS', checkSuite: { app: { databaseId: id } } });
+  const kept = fromActions([run(ACTIONS_APP_ID), run(999), { __typename: 'StatusContext', context: 'A', state: 'SUCCESS' }, { __typename: 'CheckRun', name: 'A' }]);
+  assert.equal(kept.length, 1);
+  assert.deepEqual(checkStates(fromActions([run(999)]), ['A']), { A: 'pending' });
+});
+
+test('forks and non-owner authors: forks never queue, only trusted associations may be batched', () => {
+  assert.deepEqual(orderQueue([{ number: 1, baseRefName: 'main', isCrossRepository: true }]), []);
+  assert.deepEqual([...TRUSTED_AUTHORS].sort(), ['COLLABORATOR', 'MEMBER', 'OWNER']);
+  assert.ok(!TRUSTED_AUTHORS.has('CONTRIBUTOR') && !TRUSTED_AUTHORS.has('NONE'));
 });

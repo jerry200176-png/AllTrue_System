@@ -6,6 +6,28 @@ import { execFileSync } from 'node:child_process';
 const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
 const PASSED = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 
+// Required contexts are pinned to GitHub Actions (integration_id 15368 in the ruleset); a check of the
+// same name from another app, or a plain commit status, must not count toward a merge.
+export const ACTIONS_APP_ID = 15368;
+export const fromActions = (nodes) => (nodes || []).filter((c) => c.__typename === 'CheckRun' && c.checkSuite?.app?.databaseId === ACTIONS_APP_ID);
+
+// Authors whose branches may be executed by batch CI (dispatch runs PR code with repo secrets).
+export const TRUSTED_AUTHORS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+
+// Why a batch must be discarded, or ''. current: Map PR number -> {sha, ready} for PRs still queued.
+// Every member must still be queued at exactly the head the batch merged, and main must be the batch base.
+export function staleReason(members, base, main, current) {
+  if (!members.length) return 'no members';
+  if (base !== main) return 'main moved';
+  for (const m of members) {
+    const c = current.get(m.n);
+    if (!c) return `#${m.n} left the queue`;
+    if (!m.sha || c.sha !== m.sha) return `#${m.n} head moved`;
+    if (!c.ready) return `#${m.n} no longer ready`;
+  }
+  return '';
+}
+
 // Oldest label time first (PR number breaks ties). Only open, non-draft, base-main PRs.
 export function orderQueue(prs) {
   return prs
@@ -92,15 +114,15 @@ const Q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pul
   mergeStateStatus headRefName headRefOid
   reviewThreads(first:100){nodes{isResolved}}
   commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{
-    __typename ... on CheckRun{name conclusion status startedAt} ... on StatusContext{context state createdAt}}}}}}}}}}`;
+    __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId}}} ... on StatusContext{context state createdAt}}}}}}}}}}`;
 
 const QC = `query($o:String!,$r:String!,$s:GitObjectID!){repository(owner:$o,name:$r){object(oid:$s){... on Commit{statusCheckRollup{contexts(first:100){nodes{
-    __typename ... on CheckRun{name conclusion status startedAt} ... on StatusContext{context state createdAt}}}}}}}}`;
+    __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId}}} ... on StatusContext{context state createdAt}}}}}}}}`;
 
 function rollupFor(sha) {
   const [o, r] = REPO.split('/');
   const c = JSON.parse(gh('api', 'graphql', '-f', `query=${QC}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `s=${sha}`)).data.repository.object;
-  return c?.statusCheckRollup?.contexts.nodes ?? [];
+  return fromActions(c?.statusCheckRollup?.contexts.nodes);
 }
 
 function load(n) {
@@ -112,7 +134,7 @@ function load(n) {
     headRefName: p.headRefName,
     sha: p.headRefOid,
     unresolvedThreads: p.reviewThreads.nodes.filter((t) => !t.isResolved).length,
-    rollup: p.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [],
+    rollup: fromActions(p.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes),
   };
 }
 
@@ -210,8 +232,8 @@ function landBatch(name, tip, base, members) {
 function stepBatch(name, tipSha, queue, required) {
   const { members, base } = readBatch(tipSha);
   const heads = new Map(queue.map((p) => [p.number, load(p.number)]));
-  const stale = !members.length ? 'no members' : base !== mainTip() ? 'main moved'
-    : members.some((m) => !m.sha || heads.get(m.n)?.sha !== m.sha || decide(neutral(heads.get(m.n)), required).action !== 'merge') ? 'a member changed' : '';
+  const current = new Map([...heads].map(([n, h]) => [n, { sha: h.sha, ready: decide(neutral(h), required).action === 'merge' }]));
+  const stale = staleReason(members, base, mainTip(), current);
   if (stale) { console.log(`batch ${name} dropped: ${stale}`); dropBranch(name); return false; }
   const pr = { sha: tipSha, headRefName: name, rollup: rollupFor(tipSha) };
   const age = Date.now() - Date.parse(api(`git/commits/${tipSha}`).committer.date);
@@ -228,8 +250,9 @@ function startBatch(queue, required) {
   for (const p of queue) {
     const pr = load(p.number);
     const d = decide(neutral(pr), required);
+    // Untrusted authors are serial-only: their branch is never executed by batch CI.
     if (d.action === 'reject') reject(p.number, pr.sha, d);
-    else if (d.action === 'merge') cands.push({ n: p.number, pr, serial: serialOnly(p.number, p.labeledAt) });
+    else if (d.action === 'merge') cands.push({ n: p.number, pr, serial: !TRUSTED_AUTHORS.has(p.authorAssociation) || serialOnly(p.number, p.labeledAt) });
   }
   const batch = planBatch(cands);
   if (!batch.length) return false;
@@ -254,7 +277,7 @@ function startBatch(queue, required) {
 
 function processQueue() {
   const { required, strict } = requiredChecks();
-  const listed = JSON.parse(gh('pr', 'list', '--repo', REPO, '--label', 'queue', '--state', 'open', '--base', 'main', '--json', 'number,isDraft,baseRefName,isCrossRepository'));
+  const listed = JSON.parse(gh('pr', 'list', '--repo', REPO, '--label', 'queue', '--state', 'open', '--base', 'main', '--json', 'number,isDraft,baseRefName,isCrossRepository,authorAssociation'));
   const queue = orderQueue(listed.map((p) => ({ ...p, labeledAt: labeledAt(p.number) })));
   console.log(`queue: ${queue.map((p) => '#' + p.number).join(' ') || '(empty)'}; batching ${strict ? 'off (strict up-to-date still required)' : 'on'}`);
   const open = api(`git/matching-refs/heads/${BATCH_PREFIX}`);
