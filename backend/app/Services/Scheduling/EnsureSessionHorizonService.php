@@ -3,6 +3,7 @@
 namespace App\Services\Scheduling;
 
 use App\Helpers\FeatureFlag;
+use App\Models\StudentClass;
 use App\Services\ClassSessionMaterializationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -147,13 +148,20 @@ final class EnsureSessionHorizonService
         $studentId = $this->loadStudentId($studentClassId);
         $createdIds = [];
         $skipped = 0;
+        $asOf = ($today ?? Carbon::today())->toDateString();
 
         try {
             DB::transaction(function () use (
-                $candidates, $studentClassId, $studentId, $note, &$createdIds, &$skipped
+                $candidates, $studentClassId, $studentId, $note, $asOf, &$createdIds, &$skipped
             ) {
+                $course = StudentClass::query()->find($studentClassId);
+                $course = $course instanceof StudentClass ? $course : null;
                 foreach ($candidates as $o) {
-                    if ($this->hasCrossScConflict($studentId, $o['date'], $o['start_hm'], $studentClassId)) {
+                    $end = $o['end_hm'] ?? $this->defaultEnd($o['start_hm']);
+                    // R20 same-start check stays (stricter on purpose); the write guard also rejects partial
+                    // overlaps, so skip those too instead of failing the whole batch (in-app #380, R142).
+                    if ($this->hasCrossScConflict($studentId, $o['date'], $o['start_hm'], $studentClassId)
+                        || ($course && $this->materializer->findStudentSlotConflict($course, $o['date'], $o['start_hm'], $end, $asOf))) {
                         Log::warning('ensure_horizon_cross_sc_conflict', [
                             'student_class_id' => $studentClassId,
                             'date' => $o['date'],
@@ -162,7 +170,6 @@ final class EnsureSessionHorizonService
                         $skipped++;
                         continue;
                     }
-                    $end = $o['end_hm'] ?? $this->defaultEnd($o['start_hm']);
                     $res = $this->materializer->upsertSlot([
                         'StudentClassID' => $studentClassId,
                         'SessionDate' => $o['date'],

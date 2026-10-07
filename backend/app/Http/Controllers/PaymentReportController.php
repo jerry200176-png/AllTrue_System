@@ -57,7 +57,7 @@ class PaymentReportController extends Controller
 
         $subjectName = $sc->subjectRecord->Subject_Name ?? '課程';
         $billingPeriod = $sc->getAttribute('ScheduleMode') === 'date'
-            ? Carbon::today()->format('Y-m')
+            ? $this->monthlyBilling->defaultPeriodFor($sc)
             : null;
         $billing = $billingPeriod
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
@@ -131,7 +131,7 @@ class PaymentReportController extends Controller
         $periodStart = null;
         $periodEnd = null;
         $billingPeriod = $sc->ScheduleMode === 'date'
-            ? Carbon::today()->format('Y-m')
+            ? $this->monthlyBilling->defaultPeriodFor($sc)
             : null;
         $billing = $billingPeriod
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
@@ -250,7 +250,7 @@ class PaymentReportController extends Controller
         $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
 
         $query = PaymentReport::with([
-            'student', 'studentClass.subjectRecord', 'confirmedByUser', 'invoice.payments',
+            'student', 'studentClass.subjectRecord', 'confirmedByUser', 'invoice.payments', 'invoice.items',
         ]);
 
         if ($request->filled('branch_id')) {
@@ -415,7 +415,7 @@ class PaymentReportController extends Controller
             $monthlyProjection = null;
             if ($sc && $sc->ScheduleMode === 'date') {
                 $period = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
-                    ? (string) $invoice->billing_period : Carbon::parse($report->payment_date)->format('Y-m');
+                    ? (string) $invoice->billing_period : $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date);
                 $actual = $this->monthlyBilling->summarizePeriod($sc, $period);
                 $monthlyProjection = $invoice ? app(InvoiceAmountReconciliationService::class)->resolve($invoice, $sc) : null;
                 // A pending forecast must be rechecked before any ledger write.
@@ -438,7 +438,7 @@ class PaymentReportController extends Controller
                     'TotalAmount'    => (int) $report->reported_amount,
                     'ScheduleModeAtIssue' => $sc->ScheduleMode ?? null,
                     'billing_period' => $sc?->ScheduleMode === 'date'
-                        ? Carbon::make($report->payment_date)?->format('Y-m')
+                        ? $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date)
                         : null,
                 ], [], true);
                 } catch (BillingPeriodInvoiceExists) {
@@ -453,7 +453,7 @@ class PaymentReportController extends Controller
             if ($sc && $sc->ScheduleMode === 'date') {
                 $billingPeriod = preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period
-                    : Carbon::parse($report->payment_date)->format('Y-m');
+                    : $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date);
                 $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
 
                 if (
@@ -618,7 +618,7 @@ class PaymentReportController extends Controller
 
             // FR-006：月結制優先找當月 billing_period 的未繳帳單
             if (! $invoice) {
-                $currentPeriod = Carbon::now('Asia/Taipei')->format('Y-m');
+                $currentPeriod = $this->monthlyBilling->defaultPeriodFor($sc, Carbon::now('Asia/Taipei'));
                 $invoice = Invoice::where('StudentClassID', $sc->ID)
                     ->where('billing_period', $currentPeriod)
                     ->where(function ($query) {
@@ -652,7 +652,7 @@ class PaymentReportController extends Controller
             if ($sc->getAttribute('ScheduleMode') === 'date') {
                 $billingPeriod = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period
-                    : Carbon::parse($data['payment_date'])->format('Y-m');
+                    : $this->monthlyBilling->defaultPeriodFor($sc, $data['payment_date']);
                 $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
                 $expectedAmount = (int) $billing['charge'];
                 if ($invoice && (string) $invoice->Status === 'partial') {

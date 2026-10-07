@@ -140,4 +140,30 @@ class RfidUniqueConstraintTest extends TestCase
         $this->assertGreaterThanOrEqual(3, $count,
             'TD-010: RFID=null 的學生可以共存，不受 unique constraint 限制');
     }
+
+    /** @test Cross-campus write hole: a campus-1 director must not bind a card to a campus-2 student. */
+    public function bind_card_rejects_student_outside_director_campus(): void
+    {
+        $token = $this->makeDirectorToken(1, 'gateDir1@test.com');
+        $other = $this->makeStudent(2);
+
+        $this->bindCard($token, $other->id, 'CROSS-CAMPUS-1')->assertStatus(403);
+        $this->assertNull($other->fresh()->RFID);
+
+        $own = $this->makeStudent(1);
+        $this->bindCard($token, $own->id, 'OWN-CAMPUS-1')->assertOk();
+        $this->assertSame('OWN-CAMPUS-1', $own->fresh()->RFID);
+    }
+
+    /** @test The shared gate also covers read/update on another campus's student (same family). */
+    public function student_endpoints_share_the_campus_gate(): void
+    {
+        $token = $this->makeDirectorToken(1, 'gateDir2@test.com');
+        $other = $this->makeStudent(2);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $this->withHeaders($headers)->getJson("/api/v1/students/{$other->id}")->assertStatus(403);
+        $this->withHeaders($headers)->getJson("/api/v1/students/{$other->id}/line-bindings")->assertStatus(403);
+    }
+
 }

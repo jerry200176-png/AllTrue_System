@@ -123,6 +123,28 @@ class ForwardSessionGenerationTest extends TestCase
         $this->assertNotContains('2026-07-20', $dates, 'must not amplify cross-SC duplicate slot');
     }
 
+    public function test_plan_skips_slot_partially_overlapping_another_contract(): void
+    {
+        // #380 family: the write guard rejects any overlap, not only the same start; the plan must not offer it.
+        $scA = $this->course(remaining: 4);
+        $studentId = (int) DB::table('StudentClass')->where('ID', $scA)->value('StudentID');
+        $scB = (int) DB::table('StudentClass')->insertGetId([
+            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0,
+            'Paid' => 1, 'Rate' => 500, 'ClassType' => 'one_on_one',
+            'StartDate' => '2026-05-01', 'SessionCount' => 10, 'SessionDuration' => 120,
+            'RemainingSessions' => 2, 'UsedSessions' => 0, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ]);
+        foreach (['2026-06-22', '2026-06-29', '2026-07-06'] as $d) {
+            $this->sess($scA, $d, '16:00:00', '18:00:00', 'attended');
+        }
+        $this->sess($scB, '2026-07-20', '17:00:00', '18:00:00', 'scheduled');
+
+        $plan = $this->gen->planCourse($scA, 4, $this->today);
+        $this->assertNotContains('2026-07-20', array_column($plan['slots'], 'SessionDate'));
+        $this->assertNotSame([], $this->gen->executePlan($plan), 'the remaining slots still materialize without a conflict');
+    }
+
     public function test_scheduled_execute_generates_sessions(): void
     {
         // #1062 durable closure: the nightly `--execute --scheduled` path writes.
