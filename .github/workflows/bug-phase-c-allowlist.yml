@@ -882,6 +882,11 @@ jobs:
               "rev" => "3f21fbd597ee664d6a90485fb7f80ae8fecb08c0",
               "deploy" => "37630503805",
             ],
+            356 => [
+              "reply" => "已上線：帳務中心的繳費明細與收據紀錄現在會顯示備註，以及匯款後五碼（只有主任看得到）。沒有更動任何金額、狀態或權限。「備註能不能編輯」是另一項建議，已另外收進產品清單。這次只做工程測試與正式版本檢查，沒有在正式環境實際操作畫面。仍等待您實際確認。請重新整理後打開帳務中心的繳費明細看看；有看到備註的話請按「確認已修好」；若仍有問題請按「問題仍存在」並簡述分校與操作步驟（請勿貼姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3208",
+              "rev" => "f66b526fefd0ec5b4aaea17e165c6b08448214e7",
+              "deploy" => "37512531504",
+            ],
           ];
           // One authorized target per run. A request for an unknown ID or an
           // unshipped revision fails before any comment/status mutation.
