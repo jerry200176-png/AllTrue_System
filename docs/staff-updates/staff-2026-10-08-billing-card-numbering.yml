@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-08-billing-card-numbering
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務卡像 Excel 卡好讀
+    summary: 每堂課有編號，月結每月看得到堂數與收款，卡片頂部看得到最近繳費。
+    items:
+      - category: improved
+        text: 堂數制每堂標第幾堂、還剩幾堂；月結標本月第幾堂。
+      - category: improved
+        text: 月結每個月標題寫「4 堂・已收」或「未繳」。
+      - category: improved
+        text: 卡片頂部寫最近一次「10/5 繳 $6,600」。
+    source_refs:
+      - "changelog:2026-10-08:billing-card-excel-parity"

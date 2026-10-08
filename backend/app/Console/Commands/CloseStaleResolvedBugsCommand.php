@@ -8,23 +8,35 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Manual operational capability (not auto-scheduled by default).
+ * Manual by default; `--auto` is the unattended daily run (bug-reporter-timeout.yml schedule).
  * Owner: Founder / CTO Agent. Cadence: weekly dry-run, then apply.
  * See docs/sop/BUG_REPORTER_TIMEOUT.md
  */
 class CloseStaleResolvedBugsCommand extends Command
 {
+    /** --auto closes only reports resolved this long ago (Founder 2A, 2026-10-08). */
+    public const AUTO_DAYS = 14;
+
+    /** --auto refuses to act when more than this many are eligible: a sudden pile means look first. */
+    public const AUTO_MAX_PER_RUN = 20;
+
     protected $signature = 'bugs:close-stale-resolved
                             {--days=7 : Calendar days after resolved before timeout}
                             {--dry-run : List eligible bugs without changing status}
                             {--reviewed-ids= : Comma-separated eligible IDs individually reviewed for regression signals (required for apply)}
+                            {--auto : Unattended daily run: close resolved reports silent for AUTO_DAYS days, no --reviewed-ids; fail-closed (resolved queue only, capped)}
                             {--actor= : User id for status log (default: first super_admin type S)}';
 
     protected $description = 'Close resolved in-app bugs after reporter-verify timeout (Evidence Contract). Manual by default.';
 
     public function handle(): int
     {
-        $rawDays = (string) $this->option('days');
+        $auto = (bool) $this->option('auto');
+        if ($auto && ((string) $this->option('reviewed-ids') !== '' || $this->input->hasParameterOption('--days'))) {
+            $this->error('--auto fixes its own window and takes no --reviewed-ids or --days');
+            return self::FAILURE;
+        }
+        $rawDays = $auto ? (string) self::AUTO_DAYS : (string) $this->option('days');
         if (!preg_match('/^[1-9][0-9]*$/', $rawDays) || (int) $rawDays < BugReportService::REPORTER_TIMEOUT_MIN_DAYS) {
             $this->error('Reporter timeout requires --days=' . BugReportService::REPORTER_TIMEOUT_MIN_DAYS . ' or more calendar days');
             return self::FAILURE;
@@ -51,6 +63,9 @@ class CloseStaleResolvedBugsCommand extends Command
             'resolved' => BugReportService::listEligibleForReporterTimeout($days),
             'awaiting_reporter' => BugReportService::listEligibleForAwaitingReporterTimeout(),
         ];
+        if ($auto) {
+            unset($lists['awaiting_reporter']); // --auto is the resolved queue only
+        }
         foreach ($lists as $queue => $rows) {
             foreach ($rows as $row) {
                 $queues[(int) $row['bug_id']] = $queue;
@@ -59,7 +74,13 @@ class CloseStaleResolvedBugsCommand extends Command
         }
         $eligibleIds = array_map('intval', array_column($eligible, 'bug_id'));
         $reviewedIds = [];
-        if (!$dryRun) {
+        if ($auto && count($eligibleIds) > self::AUTO_MAX_PER_RUN) {
+            $this->error('--auto refuses ' . count($eligibleIds) . ' eligible reports (max ' . self::AUTO_MAX_PER_RUN . '); review with a dry-run first. No status was changed');
+            return self::FAILURE;
+        }
+        if ($auto) {
+            $reviewedIds = $eligibleIds; // eligibility already excludes any reporter reply; closeByReporterTimeout rechecks under lock
+        } elseif (!$dryRun) {
             $rawReviewed = trim((string) $this->option('reviewed-ids'));
             if (!preg_match('/^[0-9]+(?:,[0-9]+)*$/', $rawReviewed)) {
                 $this->error('Apply requires --reviewed-ids=ID[,ID] after individual regression-signal review');
