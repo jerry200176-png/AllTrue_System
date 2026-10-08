@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ref, computed } from 'vue';
-import { useCalendarSubstitute } from '../useCalendarSubstitute.js';
+import { useCalendarSubstitute, substituteTeacherIds } from '../useCalendarSubstitute.js';
 
 function makeDeps(overrides = {}) {
   return {
@@ -85,5 +85,38 @@ describe('useCalendarSubstitute', () => {
     expect(substituteV2Context.value.prefill_substitute_teacher_id).toBe(8);
     expect(substituteV2Context.value.prefill_new_start_time).toBe('18:00');
     expect(substituteV2Context.value.allow_past_same_date).toBe(true);
+  });
+
+  // in-app #376: course 2954, contract teacher 168, the 10/09 13:00 lesson taught by substitute 81.
+  // The picker shows 「回正班老師」 only when original !== current, so both must be passed.
+  it('substituteTeacherIds: contract teacher is original, the occurrence teacher is current', () => {
+    expect(substituteTeacherIds(81, 168)).toEqual({ original_teacher_id: 168, current_teacher_id: 81 });
+    expect(substituteTeacherIds(168, 168)).toEqual({ original_teacher_id: 168, current_teacher_id: 168 });
+    expect(substituteTeacherIds('', 168)).toEqual({ original_teacher_id: 168, current_teacher_id: 168 });
+  });
+
+  it('click path: a substituted lesson opens the picker with both teachers (restore possible)', () => {
+    const deps = makeDeps({
+      modalForm: ref({ student_id: 10, subject: 'Math', teacher_id: 168, occurrence_teacher_id: 81,
+        start_time: '13:00', end_time: '15:00', action_date: '2026-10-09' }),
+      editingCourseId: ref(2954),
+      sessionDatesByCourseId: ref({ 2954: [{ id: 43459, session_date: '2026-10-09', start_time: '13:00', status: 'scheduled' }] }),
+    });
+    const { openSubstituteV2Modal, substituteV2Context } = useCalendarSubstitute(deps);
+    openSubstituteV2Modal();
+    expect(substituteV2Context.value.original_teacher_id).toBe(168);
+    expect(substituteV2Context.value.current_teacher_id).toBe(81);
+  });
+
+  it('drag path: the dragged substitute occurrence keeps the contract teacher as original', () => {
+    const deps = makeDeps({
+      courses: ref([{ id: 2954, teacher_id: 168 }]),
+      sessionDatesByCourseId: ref({ 2954: [{ id: 43459, session_date: '2026-10-09', start_time: '13:00', status: 'scheduled' }] }),
+    });
+    const { openSubstituteFromDrag, substituteV2Context } = useCalendarSubstitute(deps);
+    openSubstituteFromDrag({ is_exception: true, student_course_id: 2954, teacher_id: 81, student_id: 10,
+      subject: 'Math', start_time: '13:00', end_time: '15:00' }, '2026-10-09', 168);
+    expect(substituteV2Context.value.original_teacher_id).toBe(168);
+    expect(substituteV2Context.value.current_teacher_id).toBe(81);
   });
 });

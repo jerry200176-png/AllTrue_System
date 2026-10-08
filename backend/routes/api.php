@@ -368,6 +368,7 @@ Route::prefix('v1')->group(function () {
         Route::put('students/{student}', [StudentController::class, 'update'])->whereNumber('student');
         Route::delete('students/{student}', [StudentController::class, 'destroy'])->whereNumber('student');
         Route::post('students/{student}/bind-card', [StudentController::class, 'bindCard'])->whereNumber('student');
+        Route::delete('students/{student}/bind-card', [StudentController::class, 'unbindCard'])->whereNumber('student');
         Route::get('students/{student}/line-bindings', [StudentController::class, 'lineBindings'])->whereNumber('student');
         Route::delete('students/{student}/line-bindings/{binding}', [StudentController::class, 'removeLineBinding'])->whereNumber('student');
         Route::get('students/{student}/guardians', [StudentGuardianController::class, 'index'])->whereNumber('student');

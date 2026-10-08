@@ -183,7 +183,7 @@
                 >
                   {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong>{{ courseBadgeSessionLabel(course) }}</strong>
-                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ effectiveClosedReason(course) === 'waived' ? '確認不收' : effectiveClosedReason(course) === 'settled_pending' ? '已結算 · 待對帳' : (effectiveClosedReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
+                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ effectiveClosedReason(course) === 'waived' ? WAIVED_LABEL : effectiveClosedReason(course) === 'settled_pending' ? ENDED_PENDING_LABEL : (effectiveClosedReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
                 </span>
               </div>
               <span class="hint" v-else>尚未設定</span>
@@ -505,8 +505,8 @@
                         <span class="tag sl-history-card__subject">{{ getStudentCourseSubjectDisplayLabel(hc) }}</span>
                         <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                         <span v-if="isPackageMember(hc)" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
-                        <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">已結算 · 待對帳</span>
-                        <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag sl-tag-history sl-tag-history--settled">確認不收</span>
+                        <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">{{ ENDED_PENDING_LABEL }}</span>
+                        <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag sl-tag-history sl-tag-history--settled">{{ WAIVED_LABEL }}</span>
                         <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
                         <span v-else class="tag sl-tag-history sl-tag-history--completed">已完課</span>
                       </div>
@@ -634,6 +634,7 @@
           <div class="rfid-bind-row">
             <input v-model="studentForm.rfid" readonly placeholder="刷卡後點「綁定卡片」" />
             <button type="button" class="small" @click="bindRfidFromTemp">{{ studentForm.rfid ? '重新綁定卡片' : '綁定卡片' }}</button>
+            <button v-if="editingStudentId && studentForm.rfid" type="button" class="small ghost" @click="unbindStudentRfid">解除綁定</button>
           </div>
         </div>
 
@@ -1004,7 +1005,7 @@ import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled } from '../lib/paymentStatus.js';
 import {
   closedReason as effectiveClosedReason, courseProgress, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
-  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, WAIVED_LABEL,
+  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1313,15 +1314,14 @@ const paymentStatusButtonLabel = (course) => {
   if (isTutoringCourse(course)) return '無須繳費';
   if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
   if (isCourseSettled(course) === null) return '繳費狀態載入中';
-  if (course?.payment_status === 'paid') return '已繳費';
-  if (course?.payment_status === 'pending_report') return '待對帳';
-  if (course?.payment_status === 'partial') return '部分繳';
-  return '未繳費';
+  // Course-level badge: the tuition label map (periodPaymentLabel is for dated monthly rows).
+  const status = course?.payment_status;
+  return TUITION_STATUS_CONFIG[status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid'].label;
 };
 const paymentNextActionLabel = (course) => {
   if (isTutoringCourse(course) || isCourseSettled(course) === null) return '';
   if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
-  if (course?.payment_status === 'pending_report') return '查看待對帳';
+  if (course?.payment_status === 'pending_report') return `查看「${REPORT_STATUS_LABELS.pending}」`;
   return '前往帳務中心';
 };
 const isTutoringCourse = (course) => course?.class_type === 'tutoring';
@@ -1356,7 +1356,7 @@ const formatPaymentSummary = (summary) => {
   }
   if (summary.account_last5) parts.push(`後5碼 ${summary.account_last5}`);
   if (summary.note) parts.push(`備註 ${summary.note}`);
-  if (summary.status === 'pending') parts.push('待對帳');
+  if (summary.status === 'pending') parts.push(REPORT_STATUS_LABELS.pending);
   return parts.join(' · ') || '已有繳費回報';
 };
 const dayLabel = (d) => {
@@ -2659,6 +2659,34 @@ const bindRfidFromTemp = async () => {
     }
   } catch (e) {
     alert('取得暫存 RFID 失敗');
+  }
+};
+
+// in-app #381: release the card immediately (server-side; the campus gate applies).
+const unbindStudentRfid = async () => {
+  const st = students.value.find(s => s.id === editingStudentId.value);
+  // Destructive: only with a resolved server ID (a Supabase fallback id could hit another student).
+  // Only rows loaded from the Laravel API carry a trustworthy id (id === _laravelId); fallback rows are
+  // matched by name and can point at a same-name student, so unbind is refused for them.
+  const laravelId = st && st._laravelId && Number(st._laravelId) === Number(st.id) ? st._laravelId : null;
+  if (!laravelId) { alert('目前無法確認學生的系統編號，請重新整理後再試。'); return; }
+  if (!confirm('確定要解除這張卡片的綁定嗎？解除後學生刷這張卡不會再記錄到課，卡片可以再綁給別人。')) return;
+  try {
+    const token = await getAccessToken();
+    if (!token) { alert('請重新登入'); return; }
+    const res = await authedFetch(`/api/v1/students/${laravelId}/bind-card`, { method: 'DELETE' }, token);
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(`解除綁定失敗（HTTP ${res.status}）${json?.message ? '：' + json.message : ''}`);
+      return;
+    }
+    studentForm.value.rfid = '';
+    // Keep the fallback mirror in sync so a later fallback load cannot resurrect the old card.
+    supabase.from('students').update({ rfid: null }).eq('id', editingStudentId.value)
+      .then(({ error }) => { if (error) console.warn('Supabase mirror rfid clear failed (non-blocking):', error?.message); });
+    loadStudents();
+  } catch (e) {
+    alert('解除綁定失敗');
   }
 };
 

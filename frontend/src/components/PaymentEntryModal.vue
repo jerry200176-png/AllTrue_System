@@ -71,7 +71,7 @@
 
         <div class="pe-workflow-hint" role="note">
           <span class="material-symbols-outlined" aria-hidden="true">info</span>
-          <span>送出後會進入「待對帳」；現金也不會立刻變成已繳費。請到「待對帳」分頁按「確認入帳」，確認後才會結清並開立收據。</span>
+          <span>送出後會進入「{{ REPORT_STATUS_LABELS.pending }}」；現金也不會立刻變成{{ TUITION_STATUS_CONFIG.paid.label }}。請到「{{ REPORT_STATUS_LABELS.pending }}」分頁按「確認入帳」，確認後才會結清並開立收據。</span>
         </div>
 
         <div class="pe-field">
@@ -85,7 +85,7 @@
           <button type="button" class="ghost" @click="$emit('close')">取消</button>
           <button type="submit" class="primary" :disabled="submitting">
             <span v-if="submitting" class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
-            {{ submitting ? '處理中…' : '送出待對帳回報' }}
+            {{ submitting ? '處理中…' : '送出繳費回報' }}
           </button>
         </div>
       </form>
@@ -95,6 +95,7 @@
 
 <script setup>
 import { ref, reactive, watch, computed } from 'vue';
+import { REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -178,7 +179,7 @@ async function submit() {
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}));
       if (data.code === 'pending_report_exists') {
-        submitError.value = '這筆已經送出過，目前在「待對帳」；請直接到待對帳分頁按「確認入帳」，不要重複送出。';
+        submitError.value = `這筆已經送出過，目前在「${REPORT_STATUS_LABELS.pending}」；請直接到「${REPORT_STATUS_LABELS.pending}」分頁按「確認入帳」，不要重複送出。`;
         emit('pending', data);
         return;
       }

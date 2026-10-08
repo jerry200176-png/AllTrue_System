@@ -54,6 +54,7 @@
 <script setup>
 import { computed } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
+import { REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../../lib/courseMoneyState.js';
 
 const props = defineProps({
   show: Boolean,
@@ -71,8 +72,8 @@ const billingEnabled = computed(() => props.billingAvailable && normalizedPaymen
 const billingDisabledReason = computed(() => {
   if (billingEnabled.value) return '';
   if (!props.billingAvailable) return '此課程不適用未付款堂數更正；請依既有帳務中心指引處理。';
-  if (normalizedPaymentStatus.value === 'paid') return '已繳費不可用此流程；請到帳務中心處理。';
-  if (normalizedPaymentStatus.value === 'pending_report') return '尚有待對帳繳費回報，請先到帳務中心處理。';
+  if (normalizedPaymentStatus.value === 'paid') return `${TUITION_STATUS_CONFIG.paid.label}的課不可用此流程；請到帳務中心處理。`;
+  if (normalizedPaymentStatus.value === 'pending_report') return `尚有「${REPORT_STATUS_LABELS.pending}」的繳費回報，請先到帳務中心處理。`;
   if (normalizedPaymentStatus.value === 'partial') return '已有部分收款，不可用此流程改堂數；請先到帳務中心處理。';
   return '僅未付款課程可用此流程；請依既有帳務中心指引處理。';
 });

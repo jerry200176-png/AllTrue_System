@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-07-rfid-unbind
+    published_at: "2026-10-07"
+    audiences:
+      - director
+    importance: digest
+    title: RFID 卡可以解除綁定了
+    summary: 學生或老師的卡片遺失、換人時，可以先解除綁定，卡片就能再綁給別人。
+    items:
+      - category: added
+        text: 學生資料編輯視窗的 RFID 旁多了「解除綁定」，按下確認後立刻生效。
+      - category: added
+        text: 老師資料的各分校卡號旁也有「解除綁定」，按下後記得存檔。
