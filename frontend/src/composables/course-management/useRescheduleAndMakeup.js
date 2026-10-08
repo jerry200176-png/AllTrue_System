@@ -1,6 +1,7 @@
 import { ref, computed, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 import { trackAdoptionEvent } from '../../lib/adoptionTelemetry';
+import { askConfirm } from '../useConfirmDialog';
 import { commitReschedule } from '../../lib/rescheduleApi';
 import {
   formatRescheduleSuccessMessage,
@@ -353,7 +354,7 @@ export function useRescheduleAndMakeup({
 
   async function cancelMakeupSchedule(schedule, course) {
     const dateLabel = `${schedule.schedule_date} ${(schedule.start_time || '').slice(0, 5)}`.trim();
-    if (!confirm(`確定取消 ${dateLabel} 的補課？\n取消後可在堂次記錄中查閱（不退還原請假堂次）。`)) return;
+    if (!await askConfirm({ title: `取消 ${dateLabel} 的補課？`, message: '取消後仍可在堂次記錄中查閱，不會退還原請假堂次。', confirmLabel: '取消這堂補課', danger: true })) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`/api/v1/schedules/${schedule.id}/cancel-makeup`, {

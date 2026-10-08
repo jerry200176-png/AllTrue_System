@@ -3,6 +3,7 @@
     <div class="modal course-modal session-edit-modal" style="max-width: 520px;">
       <h3 class="modal-title">單堂檢視</h3>
       <p class="modal-desc">{{ form.student_name }} — {{ subjectLabel }}</p>
+      <LessonPickerSelect :picker="lessonPicker" @pick="$emit('pick-lesson', $event)" />
 
       <div class="session-edit-info">
         <div class="se-row"><span class="se-label">本堂日期</span><span>{{ form.session_date }}</span></div>
@@ -167,6 +168,8 @@
 
 <script setup>
 import { computed } from 'vue';
+import LessonPickerSelect from './LessonPickerSelect.vue';
+import { askConfirm } from '../../composables/useConfirmDialog';
 import { getSubjectLabel } from '../../lib/constants';
 import { MAKEUP_SLOT_QUERY_LABEL } from '../../lib/scheduleDisplay';
 import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
@@ -194,12 +197,13 @@ const props = defineProps({
   teachers: { type: Array, default: () => [] },
   // PRD 9c058f19：啟用代課 V2 卡片式 Modal（由父層處理 open-substitute-v2 事件）
   featureSubstituteV2: { type: Boolean, default: false },
+  lessonPicker: { type: Object, default: null },
 });
 const emit = defineEmits([
   'close', 'set-mode', 'status-change', 'start-retro-leave', 'do-retro-leave',
   'start-reschedule', 'do-reschedule', 'fetch-makeup', 'add-session',
   'start-substitute', 'do-substitute', 'open-substitute-v2',
-  'start-edit-note-time', 'do-edit-note-time',
+  'start-edit-note-time', 'do-edit-note-time', 'pick-lesson',
 ]);
 
 const makeupQueryLabel = MAKEUP_SLOT_QUERY_LABEL;
@@ -296,14 +300,16 @@ const chargePreviewClass = computed(() => {
   return 'se-charge-standard';
 });
 
-function onSaveClick() {
+async function onSaveClick() {
   if (timeRangeError.value) return;
   const p = chargePreview.value;
   // 僅按時計費（hour mode）才檢查偏離標準提示；按堂計費費用固定，不需提醒。
   if (p?.kind === 'ok' && p.unit === 'hour' && (p.deviationRatio ?? 0) >= 0.5) {
-    const ok = window.confirm(
-      `此堂費用 NT$ ${p.value.toLocaleString()}，明顯偏離標準費用 NT$ ${p.standard.toLocaleString()}（差異 ${Math.round(p.deviationRatio * 100)}%）。確定儲存嗎？`
-    );
+    const ok = await askConfirm({
+      title: '這堂的費用和標準差很多',
+      message: `此堂費用 NT$ ${p.value.toLocaleString()}，標準費用 NT$ ${p.standard.toLocaleString()}（差異 ${Math.round(p.deviationRatio * 100)}%）。`,
+      confirmLabel: '仍要儲存',
+    });
     if (!ok) return;
   }
   emit('do-edit-note-time');

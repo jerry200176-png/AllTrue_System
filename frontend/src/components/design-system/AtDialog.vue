@@ -1,6 +1,7 @@
 <script setup>
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { lockScroll, unlockScroll } from '../../lib/useScrollLock';
+import { trapTab } from '../../lib/focusTrap';
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -11,6 +12,7 @@ const props = defineProps({
   size: { type: String, default: 'md', validator: (value) => ['sm', 'md', 'lg', 'xl'].includes(value) },
   closeOnBackdrop: { type: Boolean, default: true },
   closeLabel: { type: String, default: '關閉視窗' },
+  initialFocus: { type: String, default: '' },
 });
 
 const emit = defineEmits(['close']);
@@ -18,38 +20,16 @@ const panelRef = ref(null);
 let scrollLocked = false;
 let returnFocusEl = null;
 
-const focusableSelector = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',');
-
 function focusPanel() {
-  nextTick(() => panelRef.value?.focus());
+  nextTick(() => {
+    // initialFocus: a selector inside the panel (e.g. the safe 取消 button of a destructive confirm).
+    const target = props.initialFocus ? panelRef.value?.querySelector(props.initialFocus) : null;
+    (target || panelRef.value)?.focus();
+  });
 }
 
 function onTab(event) {
-  const panel = panelRef.value;
-  if (!panel) return;
-  const focusable = [...panel.querySelectorAll(focusableSelector)];
-  if (focusable.length === 0) {
-    event.preventDefault();
-    panel.focus();
-    return;
-  }
-
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
+  trapTab(event, panelRef.value);
 }
 
 function restoreFocus() {

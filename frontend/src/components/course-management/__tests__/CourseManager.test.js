@@ -151,7 +151,7 @@ describe('CourseManager polish', () => {
     expect(settingsSlot).toContain('複製為新課程並更換老師')
     expect(settingsSlot).not.toContain('補課')
     expect(settingsSlot).not.toContain('>取消<')
-    expect(pageSource).toContain('尚有未儲存變更，要放棄嗎？')
+    expect(pageSource).toContain("title: '放棄未儲存的變更？'")
     w.unmount()
   })
 
@@ -190,7 +190,7 @@ describe('CourseManager polish', () => {
 
   it('settings host copy is truthful and danger zone is demoted', () => {
     expect(pageSource).toContain('data-testid="course-manager-danger"')
-    expect(pageSource).toContain('尚有未儲存變更，要放棄嗎？')
+    expect(pageSource).toContain("title: '放棄未儲存的變更？'")
     expect(pageSource).not.toContain("courseManagerTab = 'overview'\">取消")
   })
 
@@ -230,3 +230,96 @@ it('explains missing invoices, recorded cash, and boundary lessons before offeri
   expect(w.find('[data-testid="monthly-payment-periods"]').exists()).toBe(false);
   w.unmount();
 });
+
+describe('CourseManager header actions + lesson moves (C-PR3)', () => {
+  afterEach(() => { document.body.innerHTML = '' })
+  const model = {
+    primary: { id: 'purchase', label: '續報加購' },
+    groups: [
+      { id: 'move', label: '調動', items: [{ id: 'reschedule', label: '調課' }, { id: 'substitute', label: '代課' }, { id: 'transfer', label: '轉課' }] },
+      { id: 'danger', label: '', items: [{ id: 'delete', label: '刪除課程', danger: true }] },
+    ],
+  }
+
+  it('header has the primary + ⋯; 調課／代課／轉課 are 2 clicks and emit the action name', async () => {
+    const w = mountCm({ actionModel: model })
+    await w.get('[data-testid="course-manager-primary"]').trigger('click')
+    expect(w.emitted('action')[0]).toEqual([{ name: 'purchase' }])
+    for (const [action, n] of [['reschedule', 1], ['substitute', 2], ['transfer', 3]]) {
+      await w.get('.am__trigger').trigger('click') // click 1
+      await flushPromises()
+      document.body.querySelector(`[data-action="${action}"]`).click() // click 2
+      await flushPromises()
+      expect(w.emitted('action')[n]).toEqual([{ name: action }])
+    }
+    w.unmount()
+  })
+
+  it('no primary button when the model has none (already managing); no ⋯ without a model', () => {
+    const w = mountCm({ actionModel: { primary: null, groups: model.groups } })
+    expect(w.find('[data-testid="course-manager-primary"]').exists()).toBe(false)
+    expect(w.find('.am__trigger').exists()).toBe(true)
+    expect(mountCm().find('.am__trigger').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('upcoming lessons get 1-click 調課／代課 that name the date; others do not', async () => {
+    const w = mountCm({ tab: 'sessions', canMoveLesson: (u) => u.id === 1 })
+    const unit = w.findAll('.cmw__session-item')
+    expect(unit).toHaveLength(2)
+    expect(unit[1].find('[data-testid="lesson-reschedule"]').exists()).toBe(false)
+    const btn = unit[0].get('[data-testid="lesson-reschedule"]')
+    expect(btn.attributes('aria-label')).toBe('調課 2026-09-23')
+    await btn.trigger('click')
+    await unit[0].get('[data-testid="lesson-substitute"]').trigger('click')
+    expect(w.emitted('move-lesson').map(([e]) => [e.mode, e.unit.id])).toEqual([['reschedule', 1], ['substitute', 1]])
+    expect(w.emitted('open-session')).toBeUndefined()
+    w.unmount()
+  })
+})
+
+describe('CourseManager drawer a11y (C-PR4)', () => {
+  afterEach(() => { document.body.innerHTML = '' })
+
+  it('is labelled by its title, focuses the title on open and returns focus to the opener on close', async () => {
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    opener.focus()
+    const w = mountCm()
+    await flushPromises()
+    expect(w.get('[role="dialog"]').attributes('aria-labelledby')).toBe('cm-title')
+    expect(document.activeElement).toBe(w.get('#cm-title').element)
+    w.unmount()
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('traps Tab inside the drawer (wraps last → first, first → last on Shift+Tab)', async () => {
+    const w = mountCm()
+    await flushPromises()
+    const focusable = [...w.get('.cmw__panel').element.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    focusable.at(-1).focus()
+    const ev = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    focusable.at(-1).dispatchEvent(ev)
+    expect(ev.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(focusable[0])
+    const back = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true })
+    focusable[0].dispatchEvent(back)
+    expect(document.activeElement).toBe(focusable.at(-1))
+    w.unmount()
+  })
+
+  it('tabs use roving tabindex and ←/→/Home/End', async () => {
+    const w = mountCm({ tab: 'sessions' })
+    await flushPromises()
+    const tabs = w.findAll('[role="tab"]')
+    expect(tabs.map((t) => t.attributes('tabindex'))).toEqual(['-1', '0', '-1', '-1'])
+    await tabs[1].trigger('keydown', { key: 'ArrowRight' })
+    await tabs[1].trigger('keydown', { key: 'ArrowLeft' })
+    await tabs[1].trigger('keydown', { key: 'Home' })
+    await tabs[1].trigger('keydown', { key: 'End' })
+    await tabs[1].trigger('keydown', { key: 'x' })
+    expect(w.emitted('update:tab').map(([t]) => t)).toEqual(['settings', 'overview', 'overview', 'billing'])
+    w.unmount()
+  })
+})
+

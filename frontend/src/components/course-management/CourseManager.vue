@@ -1,7 +1,9 @@
 <script>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { trapTab } from '../../lib/focusTrap.js';
 import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/courseMoneyState.js';
 import CourseSessionCalendar from './CourseSessionCalendar.vue';
+import ActionMenu from '../ActionMenu.vue';
 
 const TABS = [
   { id: 'overview', label: '總覽' },
@@ -12,9 +14,12 @@ const TABS = [
 
 export default {
   name: 'CourseManager',
-  components: { CourseSessionCalendar },
+  components: { CourseSessionCalendar, ActionMenu },
   props: {
     course: { type: Object, required: true },
+    // { primary, groups } from courseActions(): the same model the course row uses (調課／代課／轉課 live in ⋯).
+    actionModel: { type: Object, default: null },
+    canMoveLesson: { type: Function, default: () => false },
     tab: { type: String, default: 'overview' },
     studentName: { type: String, default: '' },
     subjectLabel: { type: String, default: '' },
@@ -51,8 +56,33 @@ export default {
     isUserNote: { type: Function, required: true },
     formatMakeupDate: { type: Function, required: true },
   },
-  emits: ['close', 'update:tab', 'action', 'open-session', 'create-day', 'toggle-cancelled', 'toggle-notes'],
+  emits: ['close', 'update:tab', 'action', 'open-session', 'create-day', 'toggle-cancelled', 'toggle-notes', 'move-lesson'],
   setup(props, { emit }) {
+    // Dialog focus: land on the title, keep Tab inside, give focus back to whatever opened the drawer (管理課程).
+    const panelRef = ref(null);
+    const titleRef = ref(null);
+    let opener = null;
+    onMounted(() => {
+      opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      nextTick(() => titleRef.value?.focus());
+    });
+    onBeforeUnmount(() => {
+      if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+    });
+    const onKeydown = (e) => { if (e.key === 'Tab') trapTab(e, panelRef.value); };
+    // Roving tabindex tabs: ←/→ move and select, Home/End jump.
+    const onTabKey = (e) => {
+      const keys = { ArrowRight: 1, ArrowLeft: -1 };
+      const ids = TABS.map((t) => t.id);
+      let i = ids.indexOf(props.tab);
+      if (e.key in keys) i = (i + keys[e.key] + ids.length) % ids.length;
+      else if (e.key === 'Home') i = 0;
+      else if (e.key === 'End') i = ids.length - 1;
+      else return;
+      e.preventDefault();
+      emit('update:tab', ids[i]);
+      nextTick(() => document.getElementById(`cm-tab-${ids[i]}`)?.focus());
+    };
     const sessionsView = ref('list');
     const dangerOpen = ref(false);
     const selectedPeriod = ref('');
@@ -107,7 +137,7 @@ export default {
       if (u) emit('open-session', { unit: u, date, id: u.id });
     }
     return {
-      tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
+      panelRef, titleRef, onKeydown, onTabKey, tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
       sessionsView, dangerOpen, listUnits, sessionNo, onSelectDay, monthlySummary, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
     };
   },
@@ -115,20 +145,30 @@ export default {
 </script>
 
 <template>
-  <div class="cmw" role="dialog" aria-modal="true" :aria-label="`管理課程：${subjectLabel || '課程'}`" data-testid="course-manager" @keydown.esc.prevent="$emit('close')">
+  <div class="cmw" role="dialog" aria-modal="true" aria-labelledby="cm-title" data-testid="course-manager" @keydown.esc.prevent="$emit('close')" @keydown="onKeydown">
     <div class="cmw__scrim" @click="$emit('close')" />
-    <div class="cmw__panel">
+    <div ref="panelRef" class="cmw__panel">
       <header class="cmw__head">
         <div class="cmw__head-bar">
           <button type="button" class="cmw__back" data-testid="course-manager-close" @click="$emit('close')">
             <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span> 課程管理
           </button>
-          <button type="button" class="cmw__x" aria-label="關閉" @click="$emit('close')">
-            <span class="material-symbols-outlined" aria-hidden="true">close</span>
-          </button>
+          <div class="cmw__actions">
+            <button v-if="actionModel?.primary" type="button" class="small primary" data-testid="course-manager-primary" @click="act(actionModel.primary.id)">{{ actionModel.primary.label }}</button>
+            <ActionMenu
+              v-if="actionModel?.groups?.length"
+              :groups="actionModel.groups"
+              :label="`${subjectLabel || '課程'} 的更多課程操作`"
+              trigger-class="cmw__more"
+              @select="act"
+            />
+            <button type="button" class="cmw__x" aria-label="關閉" @click="$emit('close')">
+              <span class="material-symbols-outlined" aria-hidden="true">close</span>
+            </button>
+          </div>
         </div>
         <div class="cmw__id">
-          <h2 class="cmw__title">
+          <h2 id="cm-title" ref="titleRef" class="cmw__title" tabindex="-1">
             <span><template v-if="studentName">{{ studentName }} · </template>{{ subjectLabel }}</span>
             <span class="cmw__badge" :class="`cmw__badge--${statusTone}`" data-testid="course-manager-status">{{ statusLabel }}</span>
           </h2>
@@ -152,6 +192,8 @@ export default {
           :aria-selected="activeTab === t.id"
           :id="`cm-tab-${t.id}`"
           :aria-controls="`cm-panel-${t.id}`"
+          :tabindex="activeTab === t.id ? 0 : -1"
+          @keydown="onTabKey"
           @click="activeTab = t.id"
         >{{ t.label }}</button>
       </nav>
@@ -280,19 +322,23 @@ export default {
           </template>
           <template v-else>
             <div v-if="listUnits.length" class="cmw__session-list" data-testid="course-manager-session-list">
-              <button
-                v-for="u in listUnits"
-                :key="sessionRowKey(u)"
-                type="button"
-                class="cmw__session-row"
-                :class="[u.isProjected ? 'is-projected' : 'is-materialized', getSessionStateClass(course, (u.date || '').slice(0,10), u.id)]"
-                @click="$emit('open-session', { unit: u, date: (u.date || '').slice(0,10), id: u.id })"
-              >
-                <span class="cmw__session-seq">{{ sessionNo(u) ? `第${sessionNo(u)}堂` : '—' }}</span>
-                <span class="cmw__session-date">{{ formatSessionChipDate(u) }}</span>
-                <span class="cmw__session-state">{{ u.isProjected ? '預排' : (getSessionStateLabel(course, (u.date || '').slice(0,10), u.id) || '已建立') }}</span>
-                <span v-if="showSessionNotes && isUserNote(u.note)" class="cmw__session-note">{{ u.note }}</span>
-              </button>
+              <div v-for="u in listUnits" :key="sessionRowKey(u)" class="cmw__session-item">
+                <button
+                  type="button"
+                  class="cmw__session-row"
+                  :class="[u.isProjected ? 'is-projected' : 'is-materialized', getSessionStateClass(course, (u.date || '').slice(0,10), u.id)]"
+                  @click="$emit('open-session', { unit: u, date: (u.date || '').slice(0,10), id: u.id })"
+                >
+                  <span class="cmw__session-seq">{{ sessionNo(u) ? `第${sessionNo(u)}堂` : '—' }}</span>
+                  <span class="cmw__session-date">{{ formatSessionChipDate(u) }}</span>
+                  <span class="cmw__session-state">{{ u.isProjected ? '預排' : (getSessionStateLabel(course, (u.date || '').slice(0,10), u.id) || '已建立') }}</span>
+                  <span v-if="showSessionNotes && isUserNote(u.note)" class="cmw__session-note">{{ u.note }}</span>
+                </button>
+                <span v-if="canMoveLesson(u)" class="cmw__session-moves">
+                  <button type="button" class="small ghost" data-testid="lesson-reschedule" :aria-label="`調課 ${formatSessionChipDate(u)}`" @click="$emit('move-lesson', { mode: 'reschedule', unit: u })">調課</button>
+                  <button type="button" class="small ghost" data-testid="lesson-substitute" :aria-label="`代課 ${formatSessionChipDate(u)}`" @click="$emit('move-lesson', { mode: 'substitute', unit: u })">代課</button>
+                </span>
+              </div>
             </div>
             <p v-else class="cmw__hint">尚無可顯示堂次（請確認排課設定）。</p>
           </template>
@@ -384,7 +430,7 @@ export default {
 .cmw__kpi{font-size:.78rem;color:var(--ds-ink-secondary);background:var(--ds-canvas-soft);border:1px solid var(--ds-hairline);border-radius:999px;padding:2px 8px}
 .cmw__tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--ds-hairline);background:var(--ds-canvas);overflow-x:auto}
 .cmw__tab{border:0;background:transparent;padding:11px 12px;color:var(--ds-ink-mute);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
-.cmw__tab.on{color:var(--ds-ink);border-bottom-color:var(--ds-primary);font-weight:600}
+.cmw__title:focus{outline:none}.cmw__tab:focus-visible,.cmw__back:focus-visible,.cmw__x:focus-visible{outline:2px solid var(--ds-primary);outline-offset:2px}.cmw__tab.on{color:var(--ds-ink);border-bottom-color:var(--ds-primary);font-weight:600}
 .cmw__body{flex:1;overflow:auto;padding:14px 18px 24px}
 .cmw__stack{display:grid;gap:12px;width:100%}
 .cmw__stack--overview,.cmw__stack--billing{max-width:960px;margin:0 auto}
@@ -407,7 +453,7 @@ export default {
 .cmw__need:first-of-type{border-top:0}
 .cmw__need p,.cmw__hint{margin:2px 0 0;color:var(--ds-ink-mute);font-size:.85rem}
 .cmw__session-list{display:grid;gap:6px}
-.cmw__session-row{display:grid;grid-template-columns:4.5rem minmax(7rem,1fr) auto;gap:8px 12px;align-items:center;text-align:left;width:100%;padding:10px 12px;border:1px solid var(--ds-hairline);border-radius:8px;background:var(--ds-canvas);cursor:pointer;color:inherit}
+.cmw__session-item{display:flex;gap:6px;align-items:stretch}.cmw__session-item .cmw__session-row{flex:1;min-width:0}.cmw__session-moves{display:flex;gap:6px;align-items:center}.cmw__actions{display:flex;align-items:center;gap:8px}.cmw__session-row{display:grid;grid-template-columns:4.5rem minmax(7rem,1fr) auto;gap:8px 12px;align-items:center;text-align:left;width:100%;padding:10px 12px;border:1px solid var(--ds-hairline);border-radius:8px;background:var(--ds-canvas);cursor:pointer;color:inherit}
 .cmw__session-row.is-projected{border-style:dashed}
 .cmw__session-row.is-cancelled{opacity:.75;cursor:default}
 .cmw__session-seq{font-size:.78rem;color:var(--ds-ink-mute)}
@@ -416,5 +462,5 @@ export default {
 .cmw__session-note{grid-column:1/-1;font-size:.8rem;color:var(--ds-ink-mute)}
 .cmw__period-table{overflow-x:auto;margin-top:8px}.cmw__period-table table{width:100%;border-collapse:collapse;font-size:.85rem;font-variant-numeric:tabular-nums}.cmw__period-table th,.cmw__period-table td{text-align:left;padding:8px;border-bottom:1px solid var(--ds-hairline)}.cmw__period-table small{display:block;font-weight:400;color:var(--ds-ink-mute)}
 .cmw__settings{max-width:none}
-@media (max-width:720px){.cmw__panel{width:100vw}.cmw__body{padding:12px}.cmw__session-row{grid-template-columns:1fr auto}}
+@media (max-width:720px){.cmw__panel{width:100vw}.cmw__body{padding:12px}.cmw__session-row{grid-template-columns:1fr auto}.cmw__session-item{flex-wrap:wrap}.cmw__session-item .cmw__session-row{flex:1 1 100%}.cmw__session-moves{margin-left:auto}.cmw__session-moves .small{min-height:44px;min-width:44px}}
 </style>
