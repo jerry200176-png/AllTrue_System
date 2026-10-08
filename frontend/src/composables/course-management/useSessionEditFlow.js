@@ -11,6 +11,7 @@ import { getSubjectLabel } from '../../lib/constants';
 import { commitReschedule } from '../../lib/rescheduleApi';
 import { canMaterializeProjectedSession, canCancelPausedProjectedSession } from '../../lib/sessionPlanningStatus';
 import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
+import { askConfirm } from '../useConfirmDialog';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -399,7 +400,7 @@ export function useSessionEditFlow({
           '本次操作會寫入堂次紀錄，可於單堂編輯改回。',
         ].join('\n');
     const confirmTitle = isUndoLeave ? '取消請假預覽' : '狀態變更預覽';
-    if (!confirm(`${confirmTitle}\n\n${preview}\n\n確認送出？`)) return;
+    if (!await askConfirm({ title: confirmTitle, message: preview, confirmLabel: '確認送出' })) return;
 
     sessionEditSubmitting.value = true;
     try {
@@ -450,7 +451,7 @@ export function useSessionEditFlow({
   async function doRetroLeave() {
     const form = sessionEditForm.value;
     if (!form.session_id) return;
-    if (!confirm('此堂已上課/已點名，確認要執行補請假嗎？\n（將沖回堂數、作廢出缺勤與評量記錄）')) return;
+    if (!await askConfirm({ title: '補請假？', message: '此堂已上課、已點名。補請假會沖回堂數，並作廢這堂的出缺勤與評量記錄。', confirmLabel: '確認補請假', danger: true })) return;
 
     sessionEditSubmitting.value = true;
     try {
@@ -516,7 +517,7 @@ export function useSessionEditFlow({
       `新堂次：${form.new_date} ${form.new_start}`,
       '系統會一次同步課表、點名與評量資料。',
     ].join('\n');
-    if (!confirm(`調課影響預覽\n\n${reschedulePreview}\n\n確認送出？`)) return;
+    if (!await askConfirm({ title: '確認調課', message: reschedulePreview, confirmLabel: '確認調課' })) return;
 
     sessionEditSubmitting.value = true;
     try {
@@ -615,7 +616,7 @@ export function useSessionEditFlow({
   async function doSubstitute() {
     const form = sessionEditForm.value;
     if (!form.session_id || !form.substitute_teacher_id) return;
-    if (!confirm('確定要將此堂換為代課老師嗎？（僅影響此堂，不影響後續排課）')) return;
+    if (!await askConfirm({ title: '換為代課老師？', message: '只影響這一堂，不影響後續排課。', confirmLabel: '確認代課' })) return;
 
     sessionEditSubmitting.value = true;
     try {

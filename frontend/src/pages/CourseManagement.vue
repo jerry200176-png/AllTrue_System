@@ -1311,17 +1311,17 @@
       @changed="loadCourses(pagination.page)"
     />
 
-    <div v-if="pauseConfirmTarget" class="modal-overlay" @click.self="!pauseConfirmSubmitting && (pauseConfirmTarget = null)">
-      <div class="modal course-modal pause-confirm-modal">
-        <div class="pause-confirm-header">
-          <span class="pause-confirm-icon" :class="{ resume: pauseConfirmIsResume }">{{ pauseConfirmIsResume ? '▶' : '⏸' }}</span>
-          <div>
-            <h3 class="modal-title">{{ pauseConfirmIsResume ? '恢復課程？' : '暫停課程？' }}</h3>
-            <p class="modal-desc">
-              {{ pauseConfirmTarget.student_name || '學生' }} — {{ getSubjectLabel(pauseConfirmTarget.subject) }}
-            </p>
-          </div>
-        </div>
+    <AtDialog
+      :open="!!pauseConfirmTarget"
+      :title="pauseConfirmIsResume ? '恢復課程？' : '暫停課程？'"
+      title-id="pause-confirm-title"
+      size="sm"
+      initial-focus="[data-initial-focus]"
+      :close-on-backdrop="!pauseConfirmSubmitting"
+      @close="!pauseConfirmSubmitting && (pauseConfirmTarget = null)"
+    >
+      <template v-if="pauseConfirmTarget">
+        <p class="modal-desc">{{ pauseConfirmTarget.student_name || '學生' }} — {{ getSubjectLabel(pauseConfirmTarget.subject) }}</p>
         <div class="pause-impact-card">
           <p class="pause-impact-title">{{ pauseConfirmIsResume ? '恢復後的影響' : '暫停後的影響' }}</p>
           <ul>
@@ -1332,41 +1332,39 @@
             <span>取消剩餘未上排課（建議勾選；不勾選則只暫停課程、堂次仍留在行事曆）</span>
           </label>
         </div>
-        <div class="actions">
-          <button class="ghost" :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</button>
-          <button class="primary" :disabled="pauseConfirmSubmitting" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
-            {{ pauseConfirmSubmitting ? '處理中…' : (pauseConfirmIsResume ? '確認恢復' : '確認暫停') }}
-          </button>
-        </div>
-      </div>
-    </div>
+      </template>
+      <template #actions>
+        <button class="ghost" data-initial-focus :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</button>
+        <button class="primary" :disabled="pauseConfirmSubmitting" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
+          {{ pauseConfirmSubmitting ? '處理中…' : (pauseConfirmIsResume ? '恢復課程' : '暫停課程') }}
+        </button>
+      </template>
+    </AtDialog>
 
     <!-- Delete Confirm Modal (FR-013) -->
-    <div v-if="confirmDeleteTarget" class="modal-overlay" @click.self="!deleteCourseSubmitting && (confirmDeleteTarget = null)">
-      <div class="modal premium-danger-modal">
-        <div class="premium-danger-header">
-          <span class="premium-danger-icon">!</span>
-          <div>
-            <p class="premium-danger-kicker">Irreversible Action</p>
-            <h3 class="modal-title">確認刪除課程</h3>
-          </div>
-        </div>
-        <div class="premium-danger-body">
-          <p>確定要刪除以下課程？</p>
-          <p style="margin: 8px 0;">
-            <strong>{{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}</strong>
-            <span v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</span>
-          </p>
-          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
-        </div>
-        <div class="actions">
-          <button class="ghost" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</button>
-          <button class="danger" :disabled="deleteCourseSubmitting" style="background: #dc2626; color: #fff; border: none; padding: 8px 20px; border-radius: 8px; cursor: pointer;" @click="executeDeleteCourse">
-            {{ deleteCourseSubmitting ? '刪除中…' : '確認刪除' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <AtDialog
+      :open="!!confirmDeleteTarget"
+      :title="`刪除${confirmDeleteTarget ? (confirmDeleteTarget.subject_name || getSubjectLabel(confirmDeleteTarget.subject)) : ''}？`"
+      title-id="delete-course-title"
+      size="sm"
+      initial-focus="[data-initial-focus]"
+      :close-on-backdrop="!deleteCourseSubmitting"
+      @close="!deleteCourseSubmitting && (confirmDeleteTarget = null)"
+    >
+      <template v-if="confirmDeleteTarget">
+        <p class="modal-desc">
+          {{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}<template v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</template>
+        </p>
+        <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
+      </template>
+      <template #actions>
+        <button class="ghost" data-initial-focus :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</button>
+        <button class="danger" :disabled="deleteCourseSubmitting" @click="executeDeleteCourse">
+          {{ deleteCourseSubmitting ? '刪除中…' : '刪除課程' }}
+        </button>
+      </template>
+    </AtDialog>
+    <ConfirmDialogHost />
   </div>
 </template>
 
@@ -1418,6 +1416,9 @@ import { useRescheduleAndMakeup } from '../composables/course-management/useResc
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
 import { useCourseRowActions } from '../composables/course-management/useCourseRowActions';
 import ActionMenu from '../components/ActionMenu.vue';
+import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
+import { askConfirm } from '../composables/useConfirmDialog';
 import LessonPickerSelect from '../components/course-management/LessonPickerSelect.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
@@ -1564,6 +1565,7 @@ function closeCourseInPlace(course) {
     getSubjectLabel,
     isCourseSettled,
     reloadCourses: () => loadCourses(pagination.value.page),
+    confirmImpl: (message, opts) => askConfirm({ message, ...opts }),
   });
 }
 
@@ -2221,13 +2223,11 @@ const navigateToStudentCourse = (course) => {
   });
 };
 
-function openEditabilityAction(action) {
+async function openEditabilityAction(action) {
   const course = editingCourseRaw.value;
   if (!course) return;
   if (editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value) {
-    if (typeof window !== 'undefined' && window.confirm && !window.confirm('編輯內容尚未儲存，前往帳務更正將捨棄目前的修改，確定要前往嗎？')) {
-      return;
-    }
+    if (!await askConfirm({ title: '捨棄尚未儲存的修改？', message: '前往帳務更正會捨棄你目前在編輯畫面改的內容。', confirmLabel: '捨棄並前往', danger: true })) return;
   }
   showEditModal.value = false;
   if (action === 'billing_correction') {
@@ -2612,11 +2612,9 @@ function closeCourseManager() {
   courseManagerTab.value = 'overview';
   showEditModal.value = false;
 }
-function leaveCourseManagerSettings() {
+async function leaveCourseManagerSettings() {
   const dirty = editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value;
-  if (dirty && typeof window !== 'undefined' && window.confirm && !window.confirm('尚有未儲存變更，要放棄嗎？')) {
-    return;
-  }
+  if (dirty && !await askConfirm({ title: '放棄未儲存的變更？', message: '課程設定有修改還沒儲存。', confirmLabel: '放棄變更', danger: true })) return;
   if (dirty && editFormSnapshot.value) {
     try {
       editForm.value = JSON.parse(editFormSnapshot.value);
@@ -2786,10 +2784,10 @@ function canCloseCourse(c) {
     && c.closed_reason !== 'settled_pending';
 }
 
-function duplicateCourseForTeacher(course) {
+async function duplicateCourseForTeacher(course) {
   const teacherName = course.teacher_name || '目前老師';
   const studentName = course.student_name || '學生';
-  if (!confirm(`將為「${studentName}」複製此課程設定並指定另一位老師。\n（原課程 ${teacherName} 不受影響）\n\n確定要開啟新增課程介面嗎？`)) return;
+  if (!await askConfirm({ title: `為${studentName}複製課程？`, message: `會複製這門課的設定並指定另一位老師。原課程（${teacherName}）不受影響。`, confirmLabel: '開啟新增課程' })) return;
   backfillForm.value = {
     ...backfillForm.value,
     student_id: course.student_id || '',
@@ -3354,7 +3352,7 @@ async function submitPackageConversion() {
     alert('請填寫方案名稱、第二科目與老師');
     return;
   }
-  if (!confirm('確認建立共用方案？原合約與已收款紀錄會保留，不會再次收費。')) return;
+  if (!await askConfirm({ title: '建立共用方案？', message: '原合約與已收款紀錄會保留，不會再次收費。', confirmLabel: '建立共用方案' })) return;
   packageConversionSubmitting.value = true;
   try {
     const result = await convertSingleCourseToPackage(courseId, {
