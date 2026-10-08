@@ -1132,12 +1132,6 @@ class BugReportService
             ->all();
     }
 
-    /** The plain public reply posted with every timeout close (resolved and awaiting-reporter queues). */
-    private static function timeoutReply(int $days): string
-    {
-        return '超過 ' . $days . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。';
-    }
-
     /**
      * Close one eligible bug with closed_by_timeout note. Idempotent if already closed.
      *
@@ -1196,7 +1190,7 @@ class BugReportService
                 if (!$stillEligible) {
                     return ['ok' => false, 'code' => 'not_eligible', 'message' => 'No longer eligible'];
                 }
-                self::addComment($bugId, $actorUserId, self::timeoutReply(self::AWAITING_REPORTER_TIMEOUT_DAYS));
+                self::addComment($bugId, $actorUserId, '超過 ' . self::AWAITING_REPORTER_TIMEOUT_DAYS . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。');
                 $res = self::changeStatus($bugId, $actorUserId, 'closed', $note);
                 if (!$res['ok']) {
                     throw new \RuntimeException($res['message'] ?? 'close failed');
@@ -1214,7 +1208,7 @@ class BugReportService
                 if (!$stillEligible) {
                     return ['ok' => false, 'code' => 'not_eligible', 'message' => 'No longer eligible'];
                 }
-                self::addComment($bugId, $actorUserId, self::timeoutReply($days));
+                self::addComment($bugId, $actorUserId, '超過 ' . $days . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。');
                 $res = self::changeStatus($bugId, $actorUserId, 'closed', $note);
                 if (!$res['ok']) {
                     throw new \RuntimeException($res['message'] ?? 'close failed');

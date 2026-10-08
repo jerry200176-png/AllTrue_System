@@ -1,7 +1,9 @@
 name: Bug reporter verification timeout
 
-# Evidence Contract: fail-closed path for resolved bugs past the reporter-verify timeout and
-# triaged bugs whose public staff question has waited 14 days (F11).
+# Evidence Contract: a manual, fail-closed operational path for resolved bugs
+# past the reporter-verify timeout and triaged bugs whose public staff question
+# has waited 14 days (F11). Every apply is individually reviewed. Never scheduled.
+# Update 2026-10-08 (Founder 2A): the manual modes below stay unscheduled; only `auto` runs daily.
 # - dry-run / apply (manual): every apply is individually reviewed (reviewed_ids).
 # - auto (daily schedule, Founder 2A 2026-10-08): `bugs:close-stale-resolved --auto` closes resolved
 #   reports with no reporter reply for 14 days, with the standard plain public reply. Resolved queue

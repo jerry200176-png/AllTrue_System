@@ -59,9 +59,12 @@ class CloseStaleResolvedBugsCommand extends Command
 
         $queues = [];
         $eligible = [];
-        $lists = ['resolved' => BugReportService::listEligibleForReporterTimeout($days)];
-        if (!$auto) {
-            $lists['awaiting_reporter'] = BugReportService::listEligibleForAwaitingReporterTimeout();
+        $lists = [
+            'resolved' => BugReportService::listEligibleForReporterTimeout($days),
+            'awaiting_reporter' => BugReportService::listEligibleForAwaitingReporterTimeout(),
+        ];
+        if ($auto) {
+            unset($lists['awaiting_reporter']); // --auto is the resolved queue only
         }
         foreach ($lists as $queue => $rows) {
             foreach ($rows as $row) {
