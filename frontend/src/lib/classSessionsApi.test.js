@@ -156,3 +156,15 @@ function materialized(over) {
 }
 
 console.log('classSessionsApi.test.js ✅ all assertions passed');
+
+// #3780 P1: index rows carry substitute provenance + the contract teacher (session-only calendar stubs need it).
+{
+  const { items } = normalizeClassSessionsPayload({ data: [
+    { id: 1, student_class_id: 9, session_date: '2026-10-09', start_time: '13:00', teacher_id: 81, contract_teacher_id: 168, substitute_notice: true },
+    { id: 2, student_class_id: 9, session_date: '2026-10-10', start_time: '13:00', teacher_id: 81, contract_teacher_id: 168, substitute_notice: false },
+  ] });
+  const byId = Object.fromEntries(items.map((r) => [r.id, r]));
+  assert.equal(byId[1].substituteNotice, true);
+  assert.equal(byId[2].substituteNotice, false, 'history pin: teacher differs but no substitute notice');
+  assert.equal(byId[1].contractTeacherId, 168);
+}

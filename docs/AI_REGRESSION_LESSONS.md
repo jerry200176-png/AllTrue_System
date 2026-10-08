@@ -6,6 +6,13 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R148. 「這一堂老師 ≠ 合約老師」不等於代課；歷史釘選的堂不可「回正班老師」（#3780 P1，2026-10-08）
+
+- **現象**：#3780 讓行事曆在「這一堂老師 ≠ 合約 `StudentClass.TeacherID`」時就顯示「回正班老師」。換合約老師後，已上過的堂被刻意釘在前任老師（history pin，#207／TD-076 `pin`），也符合這個條件；按下去會刪釘選、改 `LearningRecord.TeacherID`、調 `TeachingSessionCount`，改寫誰上過課與薪資。
+- **根因**：用 ID 不相等推論「代課來源」。代課與釘選在 `schedules` 長得一樣（`scheduled` + `original_schedule_id` + 非合約老師），只有代課會在同一交易寫未解決的 `Notifications`（`SourceKey = substitute:<ClassSession id>`，undo／restore 才設 `ResolvedAt`）。
+- **強制規則**：`restoreOriginalTeacherFromSubstitute()` 先查這筆未解決代課通知，沒有就回 409（不動排程、LR、堂數）；`class-sessions` 輸出 `substitute_notice`，前端「回正班老師」只看它，不看 ID 不相等。誰真的上課仍以 `SubstituteScheduleService::teacherForOccurrence` 為準（ADR-EFFECTIVE-TEACHER）。
+- **測試必補**：`OccurrenceResolverV2Test`：釘選堂（flag 關／開）回 409 且全部不變；真代課仍可回正班老師；`useCalendarSubstitute.test.js`／`SubstituteTeacherPickerModal.test.js`：無通知不顯示按鈕。
+
 ### R147. 代課選擇器要同時拿到「合約老師」與「這一堂的老師」，否則「回正班老師」永遠不出現（in-app #376，2026-10-07）
 
 - **現象**：行事曆上 10/09 已代課的那堂，主任想改回正班老師卻找不到按鈕，後端改回其實可用。
