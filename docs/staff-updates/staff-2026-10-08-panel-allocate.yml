@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-panel-allocate
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: major
+    title: 一次登記多份合約的收款
+    summary: 面板底部的「登記收款」可以一次把一筆錢分給多份合約。
+    items:
+      - category: added
+        text: 每份合約一格金額，預設先填最舊的未繳合約；也可以填實收總額讓系統從最舊的開始分。
+      - category: improved
+        text: 填超過這份合約未繳的金額會被擋下並告訴你要改成多少。
+      - category: improved
+        text: 送出後逐份合約顯示登記結果，沒登記成功的可以只重送那幾份。

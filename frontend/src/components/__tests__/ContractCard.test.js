@@ -350,7 +350,10 @@ describe('AccountingLedgerModal mobile (PRD v2 D5)', () => {
     expect(bar.text()).toContain('登記收款');
     expect(bar.text()).toContain('數學');
     await w.find('[data-testid="ledger-sticky-pay-btn"]').trigger('click');
-    expect(w.findComponent({ name: 'PaymentEntryModal' }).props('show')).toBe(true);
+    // the footer now opens the in-panel allocation step (PRD D18), the card keeps the single-contract dialog
+    expect(w.find('[data-testid="alloc"]').exists()).toBe(true);
+    expect(w.find('[data-testid="alloc-row-2"]').exists()).toBe(true);
+    expect(w.findComponent({ name: 'PaymentEntryModal' }).props('show')).toBe(false);
     vi.unstubAllGlobals();
   });
 
@@ -553,5 +556,44 @@ describe('AccountingLedgerModal drawer (spec B-PR6)', () => {
     expect(w.find('[data-testid="contract-record"]').text()).toBe('登記這筆');
     expect(w.find('[data-testid="contract-record"]').classes()).toContain('at-btn--secondary');
     w.unmount(); vi.unstubAllGlobals();
+  });
+});
+
+describe('AccountingLedgerModal allocation step (PRD D18/D19)', () => {
+  it('lists every open contract oldest invoice first, records through one batch and reloads the ledger', async () => {
+    const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
+    authedFetch.mockResolvedValue(respond({ results: [{ student_class_id: 3, http_status: 201 }, { student_class_id: 2, http_status: 201 }] }));
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role: 'director' } }));
+    let ledgerLoads = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (String(url).includes('monthly-drafts')) return respond({ data: [] });
+      ledgerLoads += 1;
+      return respond({
+        student: { id: 1, name: '王小明' }, summary: {}, scope: {}, receipts: [], anomalies: [],
+        courses: [{ id: 2, subject: '數學', paid: false }, { id: 3, subject: '英文', paid: false }],
+        invoices: [
+          { id: 20, student_class_id: 2, total_amount: 4800, outstanding_amount: 4800, status: 'unpaid', due_date: '2026-10-20', payments: [] },
+          { id: 30, student_class_id: 3, total_amount: 8000, outstanding_amount: 8000, status: 'unpaid', due_date: '2026-09-03', payments: [] },
+        ],
+      });
+    }));
+    const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 2 }, global: { stubs: { Transition: false } } });
+    await flushPromises();
+    expect(w.find('[data-testid="ledger-sticky-pay"]').text()).toContain('2 份合約');
+    await w.find('[data-testid="ledger-sticky-pay-btn"]').trigger('click');
+    const rows = w.findAll('[data-testid^="alloc-row-"]').map((r) => r.attributes('data-testid'));
+    expect(rows).toEqual(['alloc-row-3', 'alloc-row-2']); // 英文 is due first (9/3)
+    expect(w.find('[data-testid="alloc-amount-3"]').element.value).toBe('8000');
+    expect(w.find('[data-testid="alloc-amount-2"]').element.value).toBe('');
+    await w.find('[data-testid="alloc-amount-2"]').setValue('4800');
+    await w.find('form').trigger('submit');
+    await flushPromises();
+    const body = JSON.parse(authedFetch.mock.calls.find((c) => String(c[0]).includes('director-record-batch'))[1].body);
+    expect(body.entries).toEqual([{ student_class_id: 3, amount: 8000, invoice_id: 30 }, { student_class_id: 2, amount: 4800, invoice_id: 20 }]);
+    await w.find('[data-testid="alloc-done"]').trigger('click');
+    await flushPromises();
+    expect(ledgerLoads).toBe(2);
+    expect(w.find('[data-testid="alloc"]').exists()).toBe(false);
+    vi.unstubAllGlobals();
   });
 });
