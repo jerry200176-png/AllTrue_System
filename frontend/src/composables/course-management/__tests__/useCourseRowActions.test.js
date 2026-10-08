@@ -9,7 +9,7 @@ const bag = (over = {}) => {
     canQuickAddSession: () => true, quickAddDisabledReason: () => '', canCloseCourse: () => true,
     purchaseActionIsRenew: () => false, purchaseActionLabel: () => '加購堂數', isPackageMember: () => false,
     isPaymentNoticeAvailable: () => false, featureSubstituteV2: false, isDetailsOpen: () => false,
-    upcomingLessonOptions: () => [], openSessionEdit: vi.fn(async () => {}), setLessonPicker: vi.fn(), getLessonPicker: () => null,
+    upcomingLessonOptions: () => [], canOpenLesson: () => true, currentLesson: () => ({}), openSessionEdit: vi.fn(async () => {}), setLessonPicker: vi.fn(), getLessonPicker: () => null,
     isSessionEditOpen: () => true, requestDelete: fn(), openCourseTransfer: fn(),
     openSessionEditFromAction: vi.fn(async () => {}), startSessionReschedule: fn(), startSubstitute: fn(), openSubstituteV2FromEdit: fn(),
     editCourse: fn(), toggleDatesAndMakeups: fn(), requestCoursePause: fn(), closeCourseInPlace: fn(), openManualSessionModal: fn(),
@@ -91,33 +91,42 @@ describe('useCourseRowActions', () => {
   const opts = [1, 2, 3].map((n) => ({ key: `k${n}`, date: `2026-10-0${n}`, id: n, unit: { id: n }, label: `10/0${n}` }));
 
   it('⋯ → 調課 opens the next lesson with the next-lessons picker; one lesson means no picker', async () => {
-    const d = bag({ upcomingLessonOptions: () => opts });
+    let cur = {};
+    const open = vi.fn(async (_c, date, id) => { cur = { id, date }; });
+    const d = bag({ upcomingLessonOptions: () => opts, openSessionEdit: open, currentLesson: () => cur });
     await useCourseRowActions(d).runRowAction(course, 'reschedule');
-    expect(d.openSessionEdit).toHaveBeenCalledWith(course, '2026-10-01', 1, { id: 1 });
-    expect(d.setLessonPicker).toHaveBeenCalledWith({ course, mode: 'reschedule', options: opts, key: 'k1' });
+    expect(open).toHaveBeenCalledWith(course, '2026-10-01', 1, { id: 1 });
+    expect(d.setLessonPicker).toHaveBeenLastCalledWith({ course, mode: 'reschedule', options: opts, busy: false });
     expect(d.startSessionReschedule).toHaveBeenCalledTimes(1);
-    const one = bag({ upcomingLessonOptions: () => opts.slice(0, 1) });
+    const one = bag({ upcomingLessonOptions: () => opts.slice(0, 1), openSessionEdit: open, currentLesson: () => cur });
     await useCourseRowActions(one).runRowAction(course, 'substitute');
-    expect(one.setLessonPicker).toHaveBeenCalledWith(null);
+    expect(one.setLessonPicker).toHaveBeenLastCalledWith(null);
   });
 
   it('a lesson row opens exactly that lesson in the mode, without a picker', async () => {
-    const d = bag();
-    await useCourseRowActions(d).moveLesson(course, 'substitute', { id: 9, date: '2026-10-15T00:00:00' });
+    let cur = {};
+    const unit = { id: 9, date: '2026-10-15T00:00:00' };
+    const open = vi.fn(async (_c, date, id) => { cur = { id, date }; });
+    const d = bag({ openSessionEdit: open, currentLesson: () => cur });
+    await useCourseRowActions(d).moveLesson(course, 'substitute', unit);
     expect(d.setLessonPicker).toHaveBeenCalledWith(null);
-    expect(d.openSessionEdit).toHaveBeenCalledWith(course, '2026-10-15', 9, { id: 9, date: '2026-10-15T00:00:00' });
+    expect(open).toHaveBeenCalledWith(course, '2026-10-15', 9, unit);
     expect(d.startSubstitute).toHaveBeenCalledTimes(1);
   });
 
-  it('changing the picker reopens the chosen lesson in the same mode', async () => {
-    const picker = { course, mode: 'reschedule', options: opts, key: 'k1' };
-    const d = bag({ getLessonPicker: () => picker });
+  it('changing the picker reopens the chosen lesson in the same mode, only once it really landed', async () => {
+    let cur = { id: 1, date: '2026-10-01' };
+    const picker = { course, mode: 'reschedule', options: opts, busy: false };
+    const open = vi.fn(async (_c, date, id) => { cur = { id, date }; });
+    const d = bag({ getLessonPicker: () => picker, openSessionEdit: open, currentLesson: () => cur });
     await useCourseRowActions(d).pickLesson('k3');
-    expect(d.setLessonPicker).toHaveBeenCalledWith({ ...picker, key: 'k3' });
-    expect(d.openSessionEdit).toHaveBeenCalledWith(course, '2026-10-03', 3, { id: 3 });
+    expect(open).toHaveBeenCalledWith(course, '2026-10-03', 3, { id: 3 });
     expect(d.startSessionReschedule).toHaveBeenCalledTimes(1);
     await useCourseRowActions(d).pickLesson('nope');
-    expect(d.openSessionEdit).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledTimes(1);
+    const stuck = bag({ getLessonPicker: () => picker, openSessionEdit: vi.fn(async () => {}), currentLesson: () => ({ id: 1, date: '2026-10-01' }) });
+    await useCourseRowActions(stuck).pickLesson('k2'); // dialog did not move to lesson 2
+    expect(stuck.startSessionReschedule).not.toHaveBeenCalled();
   });
 
   it('the drawer model never offers 管理課程 or 詳情', () => {

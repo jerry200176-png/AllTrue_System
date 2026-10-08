@@ -1246,7 +1246,7 @@
       :compute-end-time="computeEndTime"
       :teachers="teachers"
       :feature-substitute-v2="featureSubstituteV2"
-      :lesson-picker="lessonPicker"
+      :lesson-picker="lessonPickerView"
       @pick-lesson="pickLesson"
       @close="closeSessionEdit"
       @set-mode="sessionEditMode = $event"
@@ -1293,7 +1293,7 @@
       :fetch-availability="fetchTeacherAvailability"
       @submit="onSubstituteV2Submit"
     >
-      <template #meta-extra><LessonPickerSelect :picker="lessonPicker" @pick="pickLesson" /></template>
+      <template #meta-extra><LessonPickerSelect :picker="lessonPickerView" @pick="pickLesson" /></template>
     </SubstituteTeacherPickerModal>
     <ToastWithUndo ref="toastRef" />
 
@@ -1414,7 +1414,7 @@ import {
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
-import { useCourseRowActions } from '../composables/course-management/useCourseRowActions';
+import { lessonPickerKey, useCourseRowActions } from '../composables/course-management/useCourseRowActions';
 import ActionMenu from '../components/ActionMenu.vue';
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
@@ -5380,10 +5380,18 @@ function upcomingLessonOptions(c, limit = 6) {
     .slice(0, limit)
     .map((u) => ({ key: sessionRowKey(u), date: String(u.date).slice(0, 10), id: u.id, unit: u, label: formatSessionChipDate(u) }));
 }
-const lessonPicker = ref(null);
+const lessonPicker = ref(null); // { course, mode, options, busy }: no selection stored, see lessonPickerView
+// The lesson being acted on is whatever the open dialog shows: the lesson form, or the 代課 picker's context.
+const currentLesson = () => (showSessionEditModal.value
+  ? { id: sessionEditForm.value.session_id, date: sessionEditForm.value.session_date, start: sessionEditForm.value.start_time }
+  : { id: substituteV2SessionId.value, date: substituteV2Context.value?.session_date, start: substituteV2Context.value?.start_time });
+const lessonPickerView = computed(() => (lessonPicker.value
+  ? { ...lessonPicker.value, key: lessonPickerKey(lessonPicker.value, currentLesson()) }
+  : null));
+const canOpenLesson = (c, u) => Boolean(u?.id) || canMaterializeProjectedSession(c);
 watch([showSessionEditModal, showSubstituteV2Modal], ([edit, sub]) => { if (!edit && !sub) lessonPicker.value = null; });
 const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCourseRowActions({
-  upcomingLessonOptions, openSessionEdit,
+  upcomingLessonOptions, openSessionEdit, canOpenLesson, currentLesson,
   setLessonPicker: (v) => { lessonPicker.value = v; },
   getLessonPicker: () => lessonPicker.value,
   effectiveClosedReason, planningStatusVisible, planningStatusFor, isSessionMode, isMonthlyMode, isManualOccurrenceCourse,

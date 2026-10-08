@@ -341,24 +341,35 @@ function validateReschedFields() {
   return true;
 }
 
+// Opening, or the host switching to another lesson while open (lesson picker), starts from a clean slate:
+// no teacher, reason or 換時 fields from the previous lesson, and availability for the new lesson's slot.
+const lessonKey = () => [props.context?.session_date, props.context?.start_time, props.context?.end_time].join('|');
+let openedLessonKey = null;
+async function resetForLesson() {
+  openedLessonKey = lessonKey();
+  search.value = '';
+  reason.value = '';
+  selectedTeacherId.value = props.context?.prefill_substitute_teacher_id ?? null;
+  inlineError.value = '';
+  const prefillDate = String(props.context?.prefill_new_date || '').slice(0, 10);
+  const prefillStart = String(props.context?.prefill_new_start_time || '').slice(0, 5);
+  showReschedule.value = !!(prefillDate && prefillStart);
+  newDate.value = prefillDate;
+  newStart.value = prefillStart;
+  reschedFieldError.value = '';
+  validateReschedFields();
+  await refreshAvailability();
+}
 watch(
   () => props.modelValue,
   async (v) => {
     if (!v) return;
-    search.value = '';
-    reason.value = '';
-    selectedTeacherId.value = props.context?.prefill_substitute_teacher_id ?? null;
-    inlineError.value = '';
-    const prefillDate = String(props.context?.prefill_new_date || '').slice(0, 10);
-    const prefillStart = String(props.context?.prefill_new_start_time || '').slice(0, 5);
-    showReschedule.value = !!(prefillDate && prefillStart);
-    newDate.value = prefillDate;
-    newStart.value = prefillStart;
-    reschedFieldError.value = '';
-    validateReschedFields();
-    await refreshAvailability();
+    await resetForLesson();
   }
 );
+watch(lessonKey, () => {
+  if (props.modelValue && lessonKey() !== openedLessonKey) resetForLesson();
+});
 
 // PRD f0cce4d5：生效的查詢時段（預設 context 原時段；換時啟用時用新時段）
 const effectiveDate = computed(() => {
