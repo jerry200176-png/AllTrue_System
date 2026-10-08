@@ -1105,6 +1105,7 @@
       :error-next-actions="transferSessionsNextActions"
       @close="!transferSessionsSubmitting && (showTransferSessionsModal = false)"
       @open-billing="openTransferBillingNextStep"
+      @open-target-purchase="openTransferTargetPurchase"
       @submit="submitTransferSessions"
     />
 
@@ -2481,10 +2482,12 @@ const {
   showModal: showTransferSessionsModal, course: transferSessionsCourse, submitting: transferSessionsSubmitting,
   error: transferSessionsError, nextActions: transferSessionsNextActions, targetCourses: transferTargetCourses,
   targetCoursesLoading: transferTargetCoursesLoading, sessionOptions: transferSessionsSessionOptions,
-  open: openTransferSessionsModal, openBillingNextStep: openTransferBillingNextStep, submit: submitTransferSessions,
+  open: openTransferSessionsModal, openBillingNextStep: openTransferBillingNextStep,
+  openTargetPurchase: openTransferTargetPurchase, submit: submitTransferSessions,
 } = useTransferSessions({
   allSessionUnits,
   goToBilling: (course) => goToTuitionBilling(course),
+  goToPurchase: (course) => openCommercialPurchaseEntry(course),
   reload: () => loadCourses(),
   notify: (opts) => toastRef.value?.show?.(opts),
 });

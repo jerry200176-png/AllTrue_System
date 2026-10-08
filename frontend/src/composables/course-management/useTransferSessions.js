@@ -29,7 +29,7 @@ function sameCourseStudent(source, target) {
   return !sourceName || !targetName || sourceName === targetName;
 }
 
-export function useTransferSessions({ allSessionUnits, goToBilling, reload, notify }) {
+export function useTransferSessions({ allSessionUnits, goToBilling, goToPurchase, reload, notify }) {
   const showModal = ref(false);
   const course = ref(null);
   const submitting = ref(false);
@@ -62,6 +62,17 @@ export function useTransferSessions({ allSessionUnits, goToBilling, reload, noti
     const c = course.value;
     showModal.value = false;
     if (c) goToBilling(c);
+  }
+
+  // in-app #379: the target is full; hand the user to the existing purchase entry for that course.
+  function openTargetPurchase(targetId) {
+    const target = targetCourses.value.find((c) => Number(c.id) === Number(targetId));
+    if (!target || typeof goToPurchase !== 'function') {
+      error.value = '找不到目標課程，請關閉後從課程列點「加購」。';
+      return;
+    }
+    showModal.value = false;
+    goToPurchase(target);
   }
 
   async function loadTargetCourses(sourceCourse) {
@@ -170,6 +181,6 @@ export function useTransferSessions({ allSessionUnits, goToBilling, reload, noti
 
   return {
     showModal, course, submitting, error, nextActions, targetCourses, targetCoursesLoading,
-    sessionOptions, open, openBillingNextStep, submit,
+    sessionOptions, open, openBillingNextStep, openTargetPurchase, submit,
   };
 }
