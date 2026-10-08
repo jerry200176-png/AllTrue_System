@@ -969,8 +969,9 @@ jobs:
                   except Exception as exc:
                       go = {"ok": False, "missing": [], "reason": f"Founder GO evidence unavailable ({type(exc).__name__})"}
                   print(f"Founder GO evidence: ok={go['ok']} {go['reason']}")
-                  if go["ok"] and mode == "awaiting-activation":
-                      mode, reason = "auto-founder-go", go["reason"]
+                  # Founder Q1 A (2026-10-08): a GO line is plain text any agent on the owner
+                  # token can write, so it never replaces the reviewer for an awaiting-activation
+                  # (R3) range; only R0-R2 ranges activate without a human (#3797).
               emit(mode, decision["effective_tier"], pr_number, reason, approval_eligible)
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                   output.write(f"go_evidence={'verified' if go['ok'] else 'missing'}\n")
