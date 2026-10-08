@@ -1625,7 +1625,8 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         self.assertIn("for gate in (trusted, target_gate)", classify)
         self.assertIn('go = next((result for result in results if not result["ok"]), results[0])', classify)
         self.assertIn('go = {"ok": False, "missing": [], "reason": f"Founder GO evidence unavailable ({type(exc).__name__})"}', classify)
-        self.assertIn('if go["ok"] and mode == "awaiting-activation":', classify)
+        # Founder Q1 A: a GO line never turns an R3 (awaiting-activation) range into auto.
+        self.assertNotIn('mode, reason = "auto-founder-go"', classify)
         job = workflow[workflow.index("  production-auto:\n"):workflow.index("  deploy:\n")]
         self.assertIn("needs.classify-activation.outputs.go_evidence == 'verified'", job.split("\n")[6])
         self.assertIn("environment:\n      name: production-auto", job)
