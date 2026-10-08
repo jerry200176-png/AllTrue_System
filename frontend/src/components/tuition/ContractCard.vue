@@ -9,7 +9,10 @@
     <div class="contract__money" data-testid="contract-money">
       <span v-if="noObligation" class="contract__muted">輔導課不用繳費</span>
       <span v-else-if="outstanding > 0">未繳 <strong class="due">{{ money(outstanding) }}</strong></span>
-      <span v-else-if="!course.paid" class="contract__muted">還沒開帳單，金額待確認</span>
+      <template v-else-if="!course.paid">
+        <span class="contract__muted">還沒開帳單，金額待確認</span>
+        <AtButton v-if="billDraft" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
+      </template>
       <span v-else>已收清</span>
       <template v-if="pendingReport">
         <span class="contract__chip pay-partial">家長說繳了 {{ money(pendingReport.amount) }}，等你確認</span>
@@ -95,8 +98,10 @@ const props = defineProps({
   pendingReport: { type: Object, default: null },
   // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }.
   lastPayment: { type: Object, default: null },
+  // Ready next-period draft from the existing monthly-drafts endpoint (offers 開帳單 in place).
+  billDraft: { type: Object, default: null },
 });
-const emit = defineEmits(['changed', 'record']);
+const emit = defineEmits(['changed', 'record', 'issue']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };

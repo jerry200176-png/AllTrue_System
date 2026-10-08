@@ -23,7 +23,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('AccountingLedgerModal empty state, 後5碼 and 備註', () => {
   it('explains estimated slips when there are no invoices or receipts', async () => {
     const w = await mountWith({ summary: {}, invoices: [], receipts: [], anomalies: [] });
-    expect(w.text()).toContain('繳費單是依課程估算，尚未建立帳單；登記並確認入帳後才會出現在這裡。');
+    expect(w.text()).toContain('目前只有繳費單（依課程估算），還沒有帳單和收款。登記收款並確認入帳後，才會出現在這裡。');
     expect(w.text()).not.toContain('此學生尚無帳單');
   });
 
@@ -36,9 +36,9 @@ describe('AccountingLedgerModal empty state, 後5碼 and 備註', () => {
   it('judges emptiness for the scoped course, not the whole student', async () => {
     const other = { id: 9, student_class_id: 2, total_amount: 100, status: 'unpaid', payments: [] };
     const w = await mountWith({ summary: {}, scope: { student_class_id: 1 }, invoices: [other], receipts: [], anomalies: [] });
-    expect(w.text()).toContain('繳費單是依課程估算');
+    expect(w.text()).toContain('目前只有繳費單');
     const w2 = await mountWith({ summary: {}, scope: { student_class_id: 2 }, invoices: [other], receipts: [], anomalies: [] });
-    expect(w2.text()).not.toContain('繳費單是依課程估算');
+    expect(w2.text()).not.toContain('目前只有繳費單');
   });
 
   it('shows 已退回 without a receipt number', async () => {

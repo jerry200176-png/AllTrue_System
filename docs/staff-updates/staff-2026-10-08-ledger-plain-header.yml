@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-ledger-plain-header
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: major
+    title: 學生帳務面板一眼看懂欠多少
+    summary: 面板最上面直接寫「到今天未繳」，多收和開帳單都能在面板內處理。
+    items:
+      - category: improved
+        text: 標題改為「某某的帳務」，最上面是「到今天未繳」，之後才到期的另外寫。
+      - category: improved
+        text: 多收會寫是哪一筆，並提供「撤銷這筆」；收款紀錄預設只看已收，其餘收在「其他紀錄」。
+      - category: added
+        text: 月結課「還沒開帳單」時，可直接在面板按「開帳單」。

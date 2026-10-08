@@ -15,7 +15,9 @@ describe('billing human copy — no engineering jargon on director surfaces', ()
     expect(ledger).not.toContain('Invoice 帳單');
     expect(ledger).not.toContain('帳單 / 課程');
     expect(ledger).toContain('帳單（科目）');
-    expect(ledger).toContain('對齊帳單、收款與收據');
+    expect(ledger).not.toContain('對帳');
+    expect(ledger).not.toContain('對齊帳單');
+    expect(ledger).toContain('到今天未繳');
     expect(ledger).toContain('多收待處理');
     expect(ledger).toContain('撤銷收款');
   });
