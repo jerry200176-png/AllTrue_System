@@ -190,3 +190,50 @@ describe('AccountingLedgerModal invoice pick (#3731 review)', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('AccountingLedgerModal mobile (PRD v2 D5)', () => {
+  const mountLedger = async (ledger) => {
+    const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
+    authedFetch.mockResolvedValue(respond({ sessions: [], unscheduled_count: 0 }));
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't' }));
+    vi.stubGlobal('fetch', vi.fn(async () => respond(ledger)));
+    const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 1 }, global: { stubs: { Transition: false } } });
+    await flushPromises();
+    return w;
+  };
+  const INVOICE = { id: 5, student_class_id: 2, outstanding_amount: 3000, total_amount: 3000, status: 'unpaid', due_date: '2026-10-01', payments: [] };
+
+  it('labels every invoice cell so the table can collapse into cards, and keeps a sticky 登記收款 for the first contract owing money', async () => {
+    const w = await mountLedger({
+      summary: {}, scope: {}, receipts: [], anomalies: [],
+      courses: [{ id: 1, subject: '英文', paid: true }, { id: 2, subject: '數學', paid: false }],
+      invoices: [INVOICE],
+    });
+    const labels = w.findAll('.ledger-table tbody tr:first-child td[data-label]').map((td) => td.attributes('data-label'));
+    expect(labels).toEqual(['應繳日', '應收', '已記入', '未結清', '狀態']);
+    const bar = w.find('[data-testid="ledger-sticky-pay"]');
+    expect(bar.exists()).toBe(true);
+    expect(bar.text()).toContain('登記收款');
+    expect(bar.text()).toContain('數學');
+    await w.find('[data-testid="ledger-sticky-pay-btn"]').trigger('click');
+    expect(w.findComponent({ name: 'PaymentEntryModal' }).props('show')).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('has no sticky bar when nothing is owed or a parent report is pending', async () => {
+    const w = await mountLedger({
+      summary: {}, scope: {}, anomalies: [], invoices: [],
+      courses: [{ id: 2, subject: '數學', paid: true }],
+      receipts: [],
+    });
+    expect(w.find('[data-testid="ledger-sticky-pay"]').exists()).toBe(false);
+    vi.unstubAllGlobals();
+    const w2 = await mountLedger({
+      summary: {}, scope: {}, anomalies: [], invoices: [INVOICE],
+      courses: [{ id: 2, subject: '數學', paid: false }],
+      receipts: [{ report_id: 9, student_class_id: 2, status: 'pending', amount: 1000 }],
+    });
+    expect(w2.find('[data-testid="ledger-sticky-pay"]').exists()).toBe(false);
+    vi.unstubAllGlobals();
+  });
+});

@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-08-ledger-mobile
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 手機看學生帳務不再被切掉
+    summary: 手機上的帳單改成一張張卡片，「登記收款」固定在畫面底部。
+    items:
+      - category: improved
+        text: 手機的帳單不用左右滑動，每筆帳單的金額與狀態都完整顯示。
+      - category: improved
+        text: 「登記收款」按鈕固定在面板底部，捲動時也按得到。
