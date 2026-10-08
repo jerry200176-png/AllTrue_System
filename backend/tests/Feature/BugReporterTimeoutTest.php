@@ -455,6 +455,80 @@ class BugReporterTimeoutTest extends TestCase
             ->assertJsonPath('data', []);
     }
 
+    public function test_auto_closes_only_14_day_silent_resolved_once_with_the_plain_reply(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-20 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $old = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(15), true);
+        $young = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(10), true);
+        $replied = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(16), true);
+        $this->comment($replied, $reporter->id, Carbon::now()->subDays(2), false, '還是不行');
+        $awaiting = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDays(20));
+
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--dry-run' => true, '--actor' => $admin->id])
+            ->expectsOutput("bug #{$old->id} [resolved]: would_close")->assertExitCode(0);
+        $this->assertSame('resolved', $old->fresh()->status, 'dry-run writes nothing');
+
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--actor' => $admin->id])->assertExitCode(0);
+        $this->assertSame('closed', $old->fresh()->status);
+        $this->assertSame('resolved', $young->fresh()->status);
+        $this->assertSame('resolved', $replied->fresh()->status);
+        $this->assertSame('triaged', $awaiting->fresh()->status, 'auto handles the resolved queue only');
+        $reply = '超過 14 天沒收到回覆，先結案。直接在這裡回覆就會重開。';
+        $this->assertSame(1, BugReportComment::where('bug_report_id', $old->id)->where('body', $reply)->count());
+
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--actor' => $admin->id])->assertExitCode(0);
+        $this->assertSame(1, BugReportComment::where('bug_report_id', $old->id)->where('body', $reply)->count(), 'rerun is a no-op');
+        $this->assertSame(1, BugReportStatusLog::where('bug_report_id', $old->id)->where('to_status', 'closed')->count());
+
+        // Reporter replies after the auto close: the existing path reopens it.
+        $this->withHeaders(['Authorization' => 'Bearer ' . $this->tokenFor($reporter), 'Accept' => 'application/json'])
+            ->postJson("/api/v1/bugs/{$old->id}/comments", ['body' => '還是壞的'])->assertStatus(201);
+        $this->assertSame('in_progress', $old->fresh()->status);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_auto_fails_closed_on_flag_misuse_and_on_a_sudden_pile(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-20 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--reviewed-ids' => '1', '--actor' => $admin->id])->assertExitCode(1);
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--days' => 7, '--actor' => $admin->id])->assertExitCode(1);
+
+        $ids = [];
+        for ($i = 0; $i <= \App\Console\Commands\CloseStaleResolvedBugsCommand::AUTO_MAX_PER_RUN; $i++) {
+            $ids[] = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(20), true)->id;
+        }
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--actor' => $admin->id])->assertExitCode(1);
+        $this->assertSame(0, BugReport::whereIn('id', $ids)->where('status', 'closed')->count(), 'nothing closed');
+
+        Carbon::setTestNow();
+    }
+
+    public function test_reporter_verify_reopened_sends_a_resolved_bug_back_to_in_progress(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-20 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(2), true);
+        $verify = fn (User $u, string $verdict = 'reopened') => $this->withHeaders(['Authorization' => 'Bearer ' . $this->tokenFor($u), 'Accept' => 'application/json'])
+            ->postJson("/api/v1/bugs/{$bug->id}/reporter-verify", ['verdict' => $verdict]);
+
+        $verify($admin)->assertStatus(403);
+        $this->assertSame('resolved', $bug->fresh()->status, 'only the reporter may verify');
+        $verify($reporter)->assertOk()->assertJsonPath('new_status', 'in_progress');
+        $this->assertSame('in_progress', $bug->fresh()->status);
+        $this->assertDatabaseHas('bug_report_status_logs', [
+            'bug_report_id' => $bug->id, 'from_status' => 'resolved', 'to_status' => 'in_progress', 'note' => '回報者反映問題仍存在',
+        ]);
+        $verify($reporter)->assertStatus(422); // no longer resolved: a repeat cannot double-write
+
+        // A reopened report is no longer a timeout candidate.
+        $this->assertNotContains($bug->id, array_column(BugReportService::listEligibleForReporterTimeout(14, Carbon::now()->addDays(30)), 'bug_id'));
+
+        Carbon::setTestNow();
+    }
+
     private function tokenFor(User $user): string
     {
         UserCampus::firstOrCreate(['CampusID' => 1, 'UserID' => $user->id], ['Admin' => $user->type === 'S' ? 1 : 0, 'Approved' => 1]);
