@@ -169,6 +169,7 @@
 <script setup>
 import { computed } from 'vue';
 import LessonPickerSelect from './LessonPickerSelect.vue';
+import { askConfirm } from '../../composables/useConfirmDialog';
 import { getSubjectLabel } from '../../lib/constants';
 import { MAKEUP_SLOT_QUERY_LABEL } from '../../lib/scheduleDisplay';
 import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
@@ -299,14 +300,16 @@ const chargePreviewClass = computed(() => {
   return 'se-charge-standard';
 });
 
-function onSaveClick() {
+async function onSaveClick() {
   if (timeRangeError.value) return;
   const p = chargePreview.value;
   // 僅按時計費（hour mode）才檢查偏離標準提示；按堂計費費用固定，不需提醒。
   if (p?.kind === 'ok' && p.unit === 'hour' && (p.deviationRatio ?? 0) >= 0.5) {
-    const ok = window.confirm(
-      `此堂費用 NT$ ${p.value.toLocaleString()}，明顯偏離標準費用 NT$ ${p.standard.toLocaleString()}（差異 ${Math.round(p.deviationRatio * 100)}%）。確定儲存嗎？`
-    );
+    const ok = await askConfirm({
+      title: '這堂的費用和標準差很多',
+      message: `此堂費用 NT$ ${p.value.toLocaleString()}，標準費用 NT$ ${p.standard.toLocaleString()}（差異 ${Math.round(p.deviationRatio * 100)}%）。`,
+      confirmLabel: '仍要儲存',
+    });
     if (!ok) return;
   }
   emit('do-edit-note-time');
