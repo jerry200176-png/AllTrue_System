@@ -70,6 +70,7 @@
             <button class="action-btn reschedule" @click="$emit('reschedule')">🔄 調課</button>
           </template>
           <button class="action-btn attendance" data-testid="calendar-goto-attendance" @click="$emit('goto-attendance')">✓ 出缺勤</button>
+          <button v-if="!session.isTeacher" class="action-btn" data-testid="calendar-all-lessons" @click="$emit('all-lessons')">📋 看全部堂次</button>
           <button v-if="session.isTeacher" class="action-btn learning" data-testid="calendar-goto-learning" @click="$emit('goto-learning')">✎ 學習評量</button>
           <button
             v-if="!session.isTeacher"
@@ -293,7 +294,7 @@ const props = defineProps({
   },
 });
 defineEmits([
-  'close', 'leave', 'reschedule', 'substitute', 'substitute-v2', 'goto-attendance', 'goto-learning',
+  'close', 'leave', 'reschedule', 'substitute', 'substitute-v2', 'goto-attendance', 'goto-learning', 'all-lessons',
   'show-cancel-confirm', 'dismiss-cancel-confirm', 'confirm-cancel',
   'restore-session', 'open-move-contract', 'submit-move-contract',
   'delete-exception', 'cancel-makeup', 'teacher-change',

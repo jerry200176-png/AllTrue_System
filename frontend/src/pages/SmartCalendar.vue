@@ -83,7 +83,7 @@
             <div class="toolbar-secondary-line toolbar-secondary-line--meta">
               <div class="toolbar-secondary-meta">
                 <span class="week-stat">本日 <b>{{ getDayCourseCount(selectedDow) }}</b> 堂 / 本週 <b>{{ weekCourseCount }}</b> 堂</span>
-                <span class="rc-legend"><span class="rc-tag rc-done">✓</span>已點 <span class="rc-tag rc-missed">!</span>漏點 <span class="rc-tag rc-leave">假</span>請假 <span class="rc-tag rc-eval-missing">評</span>未填評量</span>
+                <span class="rc-legend"><template v-for="b in LESSON_STATUS_LEGEND" :key="b.kind"><span class="rc-tag" :class="`rc-${b.kind}`" aria-hidden="true">{{ b.label }}</span>{{ b.text }} </template><span class="rc-tag rc-eval-missing" aria-hidden="true">評</span>未填評量</span>
                 <span v-if="viewMode === 'day'" class="rc-legend capacity-legend" title="每格右上角顯示：此時段學生人數 / 班型上限">
                   <span class="capacity-legend-label">班型容量</span>
                   <span class="capacity-legend-chip capacity-legend-chip--ok">1/3</span>可加
@@ -464,6 +464,7 @@
       @cancel-makeup="cancelMakeupClass"
       @teacher-change="checkConflict"
       @goto-attendance="goToAttendanceFromSession"
+      @all-lessons="openAllLessonsInCourseMgmt"
       @goto-learning="goToLearningFromSession"
     />
 
@@ -585,7 +586,8 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { dedupeCalendarRowsByStudentSlot, mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
 import { hasCrossCampusBusySlot, normalizeCrossCampusBusySlots } from '../lib/crossCampusBusySlots.js';
 import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
-import { buildAttendanceNav, buildManualSessionNav } from '../lib/authoritativeMutationRoutes.js';
+import { buildAttendanceNav, buildCourseMgmtOpsNav, buildManualSessionNav } from '../lib/authoritativeMutationRoutes.js';
+import { lessonStatusBadge, LESSON_STATUS_LEGEND } from '../lib/lessonStatusBadge.js';
 import { needsFirstManualLesson, normalizeDuplicateConflicts } from '../lib/enrollmentConflictDecision.js';
 import {
   resolveCalendarDataFetchBoundsYmd,
@@ -1278,7 +1280,6 @@ function isOverSessionLimit(courseId, targetDate) {
   return String(targetDate).slice(0, 10) > endDate;
 }
 
-const ATTENDED_STATUSES = new Set(['attended', 'completed', 'late', 'absent']);
 
 function rollCallSessionKey(course) {
   return String(course.is_exception ? (course.student_course_id ?? course.id) : course.id);
@@ -1296,19 +1297,9 @@ function findSessionRowForCell(course, ymd) {
   return resolveSessionRowForCell(rows, ymd, course.start_time);
 }
 
+// in-app #342: one wording for what happened to the lesson (lib/lessonStatusBadge.js).
 function rollCallBadge(course, ymd) {
-  const row = findSessionRowForCell(course, ymd);
-  if (!row) return null;
-  const st = String(row.status || '').toLowerCase();
-  if (st === 'leave' || st === 'leave_adjusted' || st === 'excused') return { kind: 'leave', label: '假' };
-  if (st === 'cancelled') return { kind: 'cancelled', label: '取消' };
-  if (ATTENDED_STATUSES.has(st) || row.attendance_sign_in_at) return { kind: 'done', label: '✓' };
-  if (st === 'scheduled') {
-    const endTime = row.end_time || '23:59';
-    const sessionEnd = new Date(`${row.session_date}T${endTime}`);
-    if (sessionEnd < new Date()) return { kind: 'missed', label: '!' };
-  }
-  return null;
+  return lessonStatusBadge(findSessionRowForCell(course, ymd));
 }
 
 const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused', 'cancelled']);
@@ -2076,6 +2067,13 @@ const currentSessionChargeDisplay = computed(() => {
 // in-app #382: a manual course starts with no lesson, so the calendar can't show it; schedule the first one there.
 const TEACHER_MANUAL_HANDOFF_MESSAGE = '手動排課的第一堂需由主任在「課程查找」按「新增下一堂」排入，排好後就會出現在行事曆。';
 const openManualSessionInCourseMgmt = (studentId, courseId) => emit('navigate', buildManualSessionNav(studentId, courseId));
+// in-app #342: the calendar shows a week; the contract's full lesson list lives in course management (排課與堂次).
+function openAllLessonsInCourseMgmt() {
+  const c = courses.value.find((item) => item.id === editingCourseId.value);
+  if (!c) return;
+  showModal.value = false;
+  emit('navigate', buildCourseMgmtOpsNav(c, { intent: 'lessons' }));
+}
 
 const handleUniversalSchedulerSuccess = async (result) => {
   const workflowStep = 'create';
@@ -2411,14 +2409,7 @@ const currentRollCall = computed(() => {
   const c = courses.value.find((item) => item.id === editingCourseId.value);
   if (!c) return null;
   const badge = rollCallBadge(c, editingActionDate.value);
-  if (!badge) return { kind: 'pending', label: '待', text: '待點名' };
-  const labelMap = {
-    done: '已點名',
-    missed: '待點名（已逾時）',
-    leave: '已請假',
-    cancelled: '已取消',
-  };
-  return { ...badge, text: labelMap[badge.kind] || badge.label };
+  return badge || { kind: 'pending', label: '待', text: '待點名' };
 });
 
 // #740 Modals：sessionEdit 分組 props（display 類見 getStudentName 之後）
@@ -3450,6 +3441,7 @@ onMounted(() => {
 .rc-missed { background: rgba(245,158,11,.9); color: var(--ds-canvas); }
 .rc-leave { background: rgba(148,163,184,.75); color: var(--ds-canvas); }
 .rc-cancelled { background: rgba(100,116,139,.6); color: var(--ds-canvas); font-size: 8px; }
+.rc-upcoming { background: var(--ds-canvas); color: var(--ds-ink-mute); box-shadow: inset 0 0 0 1px var(--ds-ink-mute); }
 .rc-eval-missing { background: rgba(239,68,68,.85); color: var(--ds-canvas); }
 .rc-tag-second { top: auto; bottom: 2px; }
 .rc-legend {
