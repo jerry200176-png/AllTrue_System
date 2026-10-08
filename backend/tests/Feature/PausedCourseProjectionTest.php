@@ -93,6 +93,68 @@ class PausedCourseProjectionTest extends TestCase
         )));
     }
 
+    /** in-app #340: a paused monthly course's 預排 date can be cancelled one at a time, with no money effect. */
+    public function test_paused_monthly_course_projected_date_can_be_cancelled_without_billing_effect(): void
+    {
+        [, $token, $courseId] = $this->seed1('date', 1);
+        $before = (array) DB::table('StudentClass')->where('ID', $courseId)->first();
+
+        $res = $this->ensureProjected($token, $courseId, ['cancel' => true]);
+
+        $res->assertOk()->assertJsonPath('created', true)->assertJsonPath('session.status', 'cancelled');
+        $row = DB::table('ClassSession')->where('StudentClassID', $courseId)->get();
+        $this->assertCount(1, $row);
+        $this->assertSame('cancelled', $row[0]->Status);
+        $this->assertSame(0, DB::table('session_deduction_ledger')->where('student_class_id', $courseId)->count());
+        $this->assertSame(0, DB::table('Invoice')->where('StudentClassID', $courseId)->count());
+        $after = (array) DB::table('StudentClass')->where('ID', $courseId)->first();
+        foreach (['Charge', 'Paid', 'SessionCount', 'RemainingSessions', 'Stop', 'closed_reason'] as $k) {
+            $this->assertSame($before[$k] ?? null, $after[$k] ?? null, $k);
+        }
+    }
+
+    public function test_paused_course_still_refuses_plain_materialization(): void
+    {
+        [, $token, $courseId] = $this->seed1('date', 1);
+        $this->ensureProjected($token, $courseId)->assertStatus(422);
+        $this->assertSame(0, DB::table('ClassSession')->where('StudentClassID', $courseId)->count());
+    }
+
+    public function test_closed_paused_course_refuses_cancel_even_with_flag(): void
+    {
+        [, $token, $courseId] = $this->seed1('date', 1);
+        DB::table('StudentClass')->where('ID', $courseId)->update(['closed_reason' => 'completed']);
+        $this->ensureProjected($token, $courseId, ['cancel' => true])->assertStatus(422);
+        $this->assertSame(0, DB::table('ClassSession')->where('StudentClassID', $courseId)->count());
+    }
+
+    public function test_cancel_flag_is_refused_on_an_active_course(): void
+    {
+        [, $token, $courseId] = $this->seed1('date', 0);
+        $this->ensureProjected($token, $courseId, ['cancel' => true])->assertStatus(422);
+        $this->assertSame(0, DB::table('ClassSession')->where('StudentClassID', $courseId)->count());
+    }
+
+    public function test_cancel_never_touches_an_existing_attended_row(): void
+    {
+        [, $token, $courseId] = $this->seed1('date', 1);
+        ClassSession::create(['StudentClassID' => $courseId, 'SessionDate' => '2026-06-06',
+            'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'attended', 'Note' => '']);
+
+        $this->ensureProjected($token, $courseId, ['cancel' => true])
+            ->assertStatus(409)->assertJsonPath('code', 'SESSION_ALREADY_EXISTS');
+        $this->assertSame('attended', DB::table('ClassSession')->where('StudentClassID', $courseId)->value('Status'));
+    }
+
+    private function ensureProjected(string $token, int $courseId, array $extra = [])
+    {
+        return $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/ensure-projected', array_merge([
+                'student_class_id' => $courseId, 'session_date' => '2026-06-06',
+                'start_time' => '10:00', 'branch_id' => $this->campusId,
+            ], $extra));
+    }
+
     private function sessionDates(string $token, int $courseId, string $rangeEnd = '2026-07-31'): array
     {
         $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])

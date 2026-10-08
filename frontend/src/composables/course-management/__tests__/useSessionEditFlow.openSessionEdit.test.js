@@ -171,6 +171,52 @@ describe('openSessionEdit projected capability (F4)', () => {
     expect(flow.chipActionDialog.value).toBeNull();
   });
 
+  describe('paused monthly course 預排 cancel (in-app #340)', () => {
+    const paused = { id: 42, payment_type: 'monthly', ScheduleMode: 'date', Stop: 1, closed_reason: null, duration_hours: 2 };
+    const chip = { isProjected: true, startTime: '18:00', endTime: '20:00' };
+    const open = (course, deps = {}) => {
+      const flow = buildFlow({
+        getSessionDisplayRow: vi.fn(() => null),
+        reloadCourseSessions: vi.fn(async () => true),
+        getSessionRowsForDate: () => [],
+        ...deps,
+      });
+      return flow.openSessionEdit(course, '2026-08-10', 0, chip).then(() => flow);
+    };
+
+    it('offers a cancel action and posts cancel:true to ensure-projected, then reloads', async () => {
+      const loadCourses = vi.fn();
+      globalThis.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ message: '已取消這一堂預排' }) });
+      const flow = await open(paused, { loadCourses });
+      expect(flow.chipActionDialog.value).toMatchObject({ kind: 'projected_paused_cancel', primaryLabel: '取消這一堂', secondaryLabel: '返回' });
+      await flow.confirmChipActionDialog();
+      const [url, init] = globalThis.fetch.mock.calls.at(-1);
+      expect(url).toBe('/api/v1/class-sessions/ensure-projected');
+      expect(JSON.parse(init.body)).toMatchObject({ student_class_id: 42, session_date: '2026-08-10', cancel: true });
+      expect(loadCourses).toHaveBeenCalled();
+      expect(flow.chipActionDialog.value).toBeNull();
+    });
+
+    it('keeps the dialog open and does not reload when the backend refuses', async () => {
+      const loadCourses = vi.fn();
+      globalThis.fetch.mockResolvedValueOnce({ ok: false, status: 422, json: async () => ({ message: '指定日期不符合此課程固定時段' }) });
+      const flow = await open(paused, { loadCourses });
+      await flow.confirmChipActionDialog();
+      expect(loadCourses).not.toHaveBeenCalled();
+      expect(flow.chipActionDialog.value?.kind).toBe('projected_paused_cancel');
+    });
+
+    it.each([
+      ['closed (has closed_reason)', { closed_reason: 'completed' }],
+      ['count mode', { ScheduleMode: 'count' }],
+      ['manual occurrence', { scheduling_policy: 'manual_occurrence' }],
+    ])('stays informational for %s', async (_n, extra) => {
+      const flow = await open({ ...paused, ...extra });
+      expect(flow.chipActionDialog.value?.kind).toBe('projected_paused_info');
+      expect(flow.chipActionDialog.value?.primaryLabel).toBe('知道了');
+    });
+  });
+
   it('monthly date-mode projected chip still materializes', async () => {
     const flow = buildFlow({
       getSessionDisplayRow: vi.fn(() => null),

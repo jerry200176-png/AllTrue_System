@@ -9,7 +9,7 @@ import {
 } from '../../lib/scheduleDisplay';
 import { getSubjectLabel } from '../../lib/constants';
 import { commitReschedule } from '../../lib/rescheduleApi';
-import { canMaterializeProjectedSession } from '../../lib/sessionPlanningStatus';
+import { canMaterializeProjectedSession, canCancelPausedProjectedSession } from '../../lib/sessionPlanningStatus';
 import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
 
 const SESSION_STATUS_TRANSITIONS = {
@@ -83,16 +83,20 @@ export function useSessionEditFlow({
     const endTime = unit?.endTime || '';
     const paused = Number(course?.Stop ?? course?.stop ?? 0) === 1
       || String(course?.status || '').toLowerCase() === 'inactive';
+    // in-app #340: a paused monthly course's 預排 date can be cancelled one at a time (no deduction, no billing).
+    const canCancel = paused && canCancelPausedProjectedSession(course);
     chipActionDialog.value = {
-      kind: paused ? 'projected_paused_info' : 'projected_quick_add',
+      kind: canCancel ? 'projected_paused_cancel' : (paused ? 'projected_paused_info' : 'projected_quick_add'),
       title: paused ? '課程暫停中' : '這是預排日期，尚未建立正式堂次',
-      message: paused
-        ? '課程暫停中，恢復後才會排課；這個日期不會上課。'
-        : '堂數制不會自動產生可編輯堂次。請確認後手動補排；直接推算建立僅適用月結固定時段。',
+      message: canCancel
+        ? '課程暫停中，這個預排日期不會上課。取消這一堂不會扣堂也不影響帳務；恢復課程後才會重新排課。'
+        : (paused
+          ? '課程暫停中，恢復後才會排課；這個日期不會上課。'
+          : '堂數制不會自動產生可編輯堂次。請確認後手動補排；直接推算建立僅適用月結固定時段。'),
       meta: [dateYmdNorm, startTime && (endTime ? `${startTime}–${endTime}` : startTime)].filter(Boolean).join(' '),
       // Paused: informational only (no 補排 action; quick add is gated on canQuickAddSession).
-      primaryLabel: paused ? '知道了' : '補排此堂',
-      secondaryLabel: paused ? '' : '返回',
+      primaryLabel: canCancel ? '取消這一堂' : (paused ? '知道了' : '補排此堂'),
+      secondaryLabel: paused && !canCancel ? '' : '返回',
       course,
       dateYmd: dateYmdNorm,
       startTime,
@@ -116,6 +120,42 @@ export function useSessionEditFlow({
     };
   }
 
+  async function cancelPausedProjectedSession(dlg) {
+    if (dlg.busy) return;
+    dlg.busy = true;
+    try {
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      const token = sess?.access_token;
+      if (!token) { alert('請重新登入'); return; }
+      const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
+      const res = await fetch('/api/v1/class-sessions/ensure-projected', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          student_class_id: Number(dlg.course?.id || dlg.course?.ID || 0),
+          session_date: dlg.dateYmd,
+          start_time: dlg.startTime || undefined,
+          branch_id: bid || undefined,
+          cancel: true,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert('取消失敗：' + (json.message || res.statusText) + '。尚未進行任何變更。');
+        if (res.status === 409) { closeChipActionDialog(); await loadCourses(); }
+        return;
+      }
+      closeChipActionDialog();
+      alert(json.message || '已取消這一堂預排');
+      await loadCourses();
+    } catch (e) {
+      alert('操作失敗：' + (e?.message || '請稍後再試'));
+    } finally {
+      if (chipActionDialog.value) chipActionDialog.value.busy = false;
+    }
+  }
+
   async function confirmChipActionDialog() {
     const dlg = chipActionDialog.value;
     if (!dlg) return;
@@ -128,6 +168,7 @@ export function useSessionEditFlow({
       return;
     }
     if (dlg.kind === 'projected_paused_info') { closeChipActionDialog(); return; }
+    if (dlg.kind === 'projected_paused_cancel') { await cancelPausedProjectedSession(dlg); return; }
     if (dlg.kind === 'resolve_retry') await retrySessionResolve();
   }
 
