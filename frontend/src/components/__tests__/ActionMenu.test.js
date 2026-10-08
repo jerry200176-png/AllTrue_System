@@ -3,8 +3,9 @@ import { DOMWrapper, mount } from '@vue/test-utils';
 import ActionMenu from '../ActionMenu.vue';
 
 const groups = [
-  { id: 'move', label: '調動', items: [{ id: 'reschedule', label: '調課' }, { id: 'quick-add', label: '補課', disabled: true, title: '已無剩餘堂數' }, { id: 'transfer', label: '轉課' }] },
-  { id: 'end', label: '結束', items: [{ id: 'delete', label: '刪除課程', danger: true, confirm: true }] },
+  { id: 'lead', label: '', items: [{ id: 'edit', label: '編輯' }] },
+  { id: 'move', label: '調動', items: [{ id: 'reschedule', label: '調課' }, { id: 'quick-add', label: '補課', disabled: true, reason: '已無剩餘堂數' }, { id: 'transfer', label: '轉課' }] },
+  { id: 'danger', label: '', items: [{ id: 'delete', label: '刪除課程', danger: true, confirm: true }] },
 ];
 let wrapper;
 const mountMenu = () => { wrapper = mount(ActionMenu, { props: { groups, label: '數學 的更多操作' }, attachTo: document.body }); return wrapper; };
@@ -24,8 +25,8 @@ describe('ActionMenu', () => {
     await w.vm.$nextTick();
     expect(t.attributes('aria-expanded')).toBe('true');
     expect($('[role="menu"]').attributes('aria-label')).toBe('數學 的更多操作');
-    expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(4);
-    expect(focusedAction()).toBe('reschedule');
+    expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(5);
+    expect(focusedAction()).toBe('edit');
   });
 
   it('arrow keys reach disabled items (reason readable) and wrap; End lands on delete; Esc returns focus', async () => {
@@ -33,14 +34,16 @@ describe('ActionMenu', () => {
     await w.get('.am__trigger').trigger('keydown', { key: 'ArrowDown' });
     await w.vm.$nextTick();
     const menu = $('[role="menu"]');
+    expect(focusedAction()).toBe('edit');
+    await menu.trigger('keydown', { key: 'ArrowDown' });
     await menu.trigger('keydown', { key: 'ArrowDown' });
     expect(focusedAction()).toBe('quick-add');
     await menu.trigger('keydown', { key: 'Home' });
-    expect(focusedAction()).toBe('reschedule');
+    expect(focusedAction()).toBe('edit');
     await menu.trigger('keydown', { key: 'End' });
     expect(focusedAction()).toBe('delete');
     await menu.trigger('keydown', { key: 'ArrowDown' });
-    expect(focusedAction()).toBe('reschedule');
+    expect(focusedAction()).toBe('edit');
     await menu.trigger('keydown', { key: 'Escape' });
     expect(has('[role="menu"]')).toBe(false);
     expect(document.activeElement).toBe(w.get('.am__trigger').element);
@@ -62,12 +65,24 @@ describe('ActionMenu', () => {
     await $('[data-action="quick-add"]').trigger('click');
     expect(w.emitted('select')).toBeUndefined();
     expect(has('[role="menu"]')).toBe(true);
-    expect($('[data-action="quick-add"]').attributes('title')).toBe('已無剩餘堂數');
+    const qa = $('[data-action="quick-add"]');
+    expect(qa.find('.am__reason').text()).toBe('已無剩餘堂數');
+    expect(qa.attributes('aria-describedby')).toBe(qa.find('.am__reason').attributes('id'));
     const del = $('[data-action="delete"]');
     expect(del.classes()).toContain('am__item--danger');
     expect(del.text()).toBe('刪除課程…');
     await del.trigger('click');
     expect(w.emitted('select')).toEqual([['delete']]);
+  });
+
+  it('draws no label for unlabelled groups; a divider only above the danger group and after labelled ones', async () => {
+    const w = mountMenu();
+    await w.get('.am__trigger').trigger('click');
+    await w.vm.$nextTick();
+    expect([...document.body.querySelectorAll('.am__group')].map((e) => e.textContent)).toEqual(['調動']);
+    const menu = document.body.querySelector('[role="menu"]');
+    const seq = [...menu.children].map((e) => (e.matches('hr') ? 'hr' : e.matches('p') ? 'p' : e.dataset.action));
+    expect(seq).toEqual(['edit', 'p', 'reschedule', 'quick-add', 'transfer', 'hr', 'delete']);
   });
 
   it('closes on a second trigger click, outside press, outside focus and Tab; clicks never bubble to the row', async () => {
