@@ -659,7 +659,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-fade-enter-active,.ledger-fade-leave-active{transition:opacity .16s ease}
 .ledger-fade-enter-from,.ledger-fade-leave-to{opacity:0}
 .ledger-sticky-pay{display:none;position:sticky;bottom:0;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface,var(--ds-canvas));border-top:1px solid var(--ds-canvas-soft);z-index:2}
-.ledger-sticky-pay__btn{width:100%;min-height:48px;border:0;border-radius:10px;background:var(--ds-primary,var(--ds-ink));color:var(--ds-on-primary,var(--ds-canvas));font:inherit;font-size:16px;font-weight:700;cursor:pointer}
+.ledger-sticky-pay__btn{width:100%;min-height:48px;border:0;border-radius:10px;background:var(--ds-cta);color:var(--ds-on-cta);font:inherit;font-size:16px;font-weight:700;cursor:pointer}
 .ledger-sticky-pay__btn small{margin-left:8px;font-weight:400;opacity:.85}
 @media (max-width:760px){
   .ledger-modal{width:100vw;padding:16px}
