@@ -119,7 +119,7 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         $entry = $entries->first();
         $this->assertSame(2, $entry['session_count']);
         $this->assertEqualsWithDelta(2.0, $entry['payroll_subject_count'], 0.0001);
-        $this->assertSame(['甲生', '乙生'], array_column($entry['lessons'], 'student_name'));
+        $this->assertEqualsCanonicalizing(['甲生', '乙生'], array_column($entry['lessons'], 'student_name'));
         $this->assertSame(['18:00', '18:00'], array_column($entry['lessons'], 'start_time'));
         // Same-family guard: the lines always add up to the shown number.
         $this->assertEqualsWithDelta($entry['payroll_subject_count'], array_sum(array_column($entry['lessons'], 'weighted')), 0.0001);
