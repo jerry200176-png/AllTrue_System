@@ -1,6 +1,8 @@
 /**
  * Course action model (課程查找 redesign, docs/plans/2026-10-08-course-finder-actions.md).
- * One state-driven primary + an overflow grouped by intent (調動 / 帳務 / 結束), delete last.
+ * One state-driven primary + an overflow: 編輯 first and ungrouped (when a state primary displaced it),
+ * then 調動 / 帳務 / 狀態, and 刪除 alone in its own danger group (the menu draws the divider).
+ * Items a course can't use stay visible and greyed with a `reason` only where the page already computes one.
  * Pure: the page passes capabilities it already computes, so this never re-derives billing or
  * scheduling rules. Item ids are the existing CourseManagement action names (onCourseManagerAction).
  */
@@ -14,7 +16,7 @@ export function courseActions(course, caps = {}) {
   const extra = caps.isManualOccurrence ? null
     : caps.isMonthly ? { id: 'monthly-session', label: '新增月結堂次' }
       : caps.isSession
-        ? { id: 'quick-add', label: '補課／補登', ...(caps.canQuickAdd ? {} : { disabled: true, title: caps.quickAddReason || '' }) }
+        ? { id: 'quick-add', label: '補課／補登', ...(caps.canQuickAdd ? {} : { disabled: true, reason: caps.quickAddReason || '' }) }
         : null;
   const purchase = { id: 'purchase', label: caps.purchaseLabel || '續約／加購' };
 
@@ -25,8 +27,9 @@ export function courseActions(course, caps = {}) {
   else if (caps.renewalDue) primary = purchase;
 
   const groups = [
+    // 編輯 is not a "move": first and ungrouped. Filtered out below when it is the primary.
+    { id: 'lead', label: '', items: [fallback] },
     { id: 'move', label: '調動', items: [
-      fallback, // only shown when a state primary displaced it (filtered below when it is the primary)
       { id: 'reschedule', label: '調課' },
       { id: 'substitute', label: '代課' },
       schedule,
@@ -43,11 +46,11 @@ export function courseActions(course, caps = {}) {
       { id: 'invoice', label: '學生帳務' },
       { id: 'tuition', label: '前往帳務中心' },
     ] },
-    { id: 'end', label: '結束', items: [
+    { id: 'end', label: '狀態', items: [
       paused ? (canResume && { id: 'resume', label: '恢復課程' }) : { id: 'pause', label: '暫停課程' },
       caps.canClose && { id: 'close', label: '結束課程（不再續課）', confirm: true },
-      { id: 'delete', label: '刪除課程', danger: true, confirm: true },
     ] },
+    { id: 'danger', label: '', items: [{ id: 'delete', label: '刪除課程', danger: true, confirm: true }] },
   ];
   for (const g of groups) g.items = g.items.filter((i) => i && i.id !== primary.id);
   return { primary, groups: groups.filter((g) => g.items.length) };

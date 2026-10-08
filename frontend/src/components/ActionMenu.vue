@@ -28,8 +28,8 @@
       @click.stop
     >
       <template v-for="(g, gi) in groups" :key="g.id">
-        <hr v-if="gi > 0" class="am__sep" role="separator" />
-        <p class="am__group" role="presentation">{{ g.label }}</p>
+        <hr v-if="gi > 0 && (g.label === '' || groups[gi - 1].label !== '')" class="am__sep" role="separator" />
+        <p v-if="g.label" class="am__group" role="presentation">{{ g.label }}</p>
         <button
           v-for="item in g.items"
           :key="item.id"
@@ -40,9 +40,10 @@
           :class="{ 'am__item--danger': item.danger }"
           :data-action="item.id"
           :aria-disabled="item.disabled ? 'true' : undefined"
+          :aria-describedby="item.disabled && item.reason ? `${menuId}-${item.id}` : undefined"
           :title="item.title || undefined"
           @click="pick(item)"
-        >{{ item.label }}{{ item.confirm ? '…' : '' }}</button>
+        >{{ item.label }}{{ item.confirm ? '…' : '' }}<span v-if="item.disabled && item.reason" :id="`${menuId}-${item.id}`" class="am__reason">{{ item.reason }}</span></button>
       </template>
     </div>
     </Teleport>
@@ -162,7 +163,9 @@ defineExpose({ openAt, close });
   background: none; border: 0; border-radius: var(--ds-radius-md); color: inherit; font: inherit; cursor: pointer;
 }
 .am__item:hover, .am__item:focus-visible { background: var(--ds-surface-subtle); }
-.am__item[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
+.am__item[aria-disabled='true'] { color: var(--ds-text-secondary); opacity: 0.7; cursor: not-allowed; }
+.am__item[aria-disabled='true']:hover { background: none; }
+.am__reason { display: block; margin-top: 2px; font-size: 12px; color: var(--ds-text-secondary); }
 .am__item--danger { color: var(--danger); }
 .am__scrim { position: fixed; inset: 0; z-index: 999; background: rgb(0 0 0 / 35%); }
 .am__menu--sheet {
