@@ -139,6 +139,7 @@ class AttendanceLearningRecordIntegrityService
         $voided = 0;
         $blocked = [];
         $backfill = app(LearningRecordBackfillService::class);
+        $subjectNames = DB::table('Subject')->pluck('Subject_Name', 'id')->all(); // once per run, not once per session (Sentry N+1)
 
         foreach ($before['missing_learning_records'] as $row) {
             $sessionId = (int) ($row['session_id'] ?? 0);
@@ -148,12 +149,12 @@ class AttendanceLearningRecordIntegrityService
                 $blocked[] = $sessionId;
                 continue;
             }
-            DB::transaction(function () use ($backfill, $sessionId, $sc, &$created, &$blocked): void {
+            DB::transaction(function () use ($backfill, $sessionId, $sc, $subjectNames, &$created, &$blocked): void {
                 $locked = ClassSession::query()->whereKey($sessionId)->lockForUpdate()->first();
                 if (!$locked || !in_array(strtolower((string) $locked->Status), self::fillableStatuses(), true)) {
                     return;
                 }
-                $backfill->createPendingForSession($sc, $locked, DB::table('Subject')->pluck('Subject_Name', 'id')->all());
+                $backfill->createPendingForSession($sc, $locked, $subjectNames);
                 if (LearningRecord::query()->where('ClassSessionID', $sessionId)->whereNull('VoidedAt')->exists()) {
                     $created++;
                 } else {

@@ -2423,11 +2423,15 @@ class FinanceController extends Controller
             return $group->count() > 1;
         });
 
+        // One lookup per table instead of two per duplicate group (Sentry N+1).
+        $students = Student::whereIn('id', $rows->map(fn ($g) => (int) $g->first()->StudentID)->unique()->values())->get()->keyBy('id');
+        $subjectNames = DB::table('Subject')->whereIn('id', $rows->map(fn ($g) => (int) $g->first()->SubjectID)->unique()->values())->pluck('Subject_Name', 'id');
+
         $results = [];
         foreach ($rows as $key => $group) {
             [$studentId, $subjectId] = explode('|', $key);
-            $student = Student::find($studentId);
-            $subjectName = DB::table('Subject')->where('id', $subjectId)->value('Subject_Name') ?? '';
+            $student = $students->get((int) $studentId);
+            $subjectName = $subjectNames->get((int) $subjectId) ?? '';
 
             $courses = $group->map(function ($sc) {
                 return [
