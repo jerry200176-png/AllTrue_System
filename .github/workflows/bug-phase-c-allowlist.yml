@@ -872,6 +872,16 @@ jobs:
               "rev" => "4826eecc63d6995d0f70e5727366720e2257a015",
               "deploy" => "37733225699",
             ],
+            360 => [
+              "reply" => "已上線：年級升級視窗多了「只升級這些年級」選項，可以只勾要升級的年級（例如只升國一），其他年級的學生不會被選到，也不會被升級；不勾就是全部。沒有更動任何學生資料。這次只做工程測試與正式版本檢查，沒有在正式環境實際操作畫面。仍等待您實際確認。請重新整理後打開年級升級再看一次；順利的話請按「確認已修好」；若仍有問題請按「問題仍存在」並簡述分校與操作步驟（請勿貼姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3207",
+              "rev" => "8812d63b18556627e40b1c57207fe3ef6b34fd2d",
+              "deploy" => "37605663527",
+            ],
+            361 => [
+              "reply" => "已修正並上線：總費用是 0 元的試聽課，現在不會再被當成「未繳費」，也不能登記繳費回報，學費提醒清單也不會再出現。沒有更動任何課程、帳單或付款資料。這次只做工程測試與正式版本檢查，沒有在正式環境實際操作畫面。仍等待您實際確認。請重新整理後再看一次；順利的話請按「確認已修好」；若仍有問題請按「問題仍存在」並簡述分校與操作步驟（請勿貼姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3203",
+              "rev" => "3f21fbd597ee664d6a90485fb7f80ae8fecb08c0",
+              "deploy" => "37630503805",
+            ],
           ];
           // One authorized target per run. A request for an unknown ID or an
           // unshipped revision fails before any comment/status mutation.
