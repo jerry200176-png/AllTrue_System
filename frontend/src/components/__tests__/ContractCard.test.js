@@ -377,7 +377,7 @@ describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
     const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
     authedFetch.mockResolvedValue(respond({ sessions: [], unscheduled_count: 0 }));
     localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role: 'director' } }));
-    const f = vi.fn(async (url, init) => (extraFetch?.(String(url), init) || respond(String(url).includes('monthly-drafts') ? { data: [] } : ledger)));
+    const f = vi.fn(async (url) => (extraFetch?.(String(url)) || respond(String(url).includes('monthly-drafts') ? { data: [] } : ledger)));
     vi.stubGlobal('fetch', f);
     const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 2 }, global: { stubs: { Transition: false } }, attachTo: document.body });
     await flushPromises();
@@ -439,7 +439,7 @@ describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
     const { w } = await mountLedger({
       student: { id: 1, name: '王小明' }, summary: {}, scope: {}, receipts: [], anomalies: [], invoices: [],
       courses: [{ id: 2, subject: '數學', paid: false }, { id: 3, subject: '英文', paid: false }],
-    }, (url, init) => {
+    }, (url) => {
       if (url.includes('monthly-drafts')) return respond({ data: [draft] });
       return null;
     });
