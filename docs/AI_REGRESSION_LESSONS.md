@@ -12,6 +12,7 @@ last_reviewed: 2026-09-05
 - **根因**：用 ID 不相等推論「代課來源」。代課與釘選在 `schedules` 長得一樣（`scheduled` + `original_schedule_id` + 非合約老師），只有代課會在同一交易寫未解決的 `Notifications`（`SourceKey = substitute:<ClassSession id>`，undo／restore 才設 `ResolvedAt`）。
 - **強制規則**：`restoreOriginalTeacherFromSubstitute()` 先查這筆未解決代課通知，沒有就回 409（不動排程、LR、堂數）；`class-sessions` 輸出 `substitute_notice`，前端「回正班老師」只看它，不看 ID 不相等。誰真的上課仍以 `SubstituteScheduleService::teacherForOccurrence` 為準（ADR-EFFECTIVE-TEACHER）。
 - **測試必補**：`OccurrenceResolverV2Test`：釘選堂（flag 關／開）回 409 且全部不變；真代課仍可回正班老師；`useCalendarSubstitute.test.js`／`SubstituteTeacherPickerModal.test.js`：無通知不顯示按鈕。
+
 ### R149. 提前結束的合約底下，過期仍「預排」的堂次要用精確名單的 POP 取消，不可手改或放寬守門（in-app #341，2026-10-08）
 
 - **現象**：合約提前結束後，只會取消「未來」的預排堂；已過期卻仍是 `scheduled` 的三堂留著，課程顯示超排。
