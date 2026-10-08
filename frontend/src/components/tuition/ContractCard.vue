@@ -27,7 +27,7 @@
         <AtButton size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</AtButton>
       </template>
-      <AtButton v-else-if="!noObligation && (outstanding > 0 || !course.paid)" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記收款</AtButton>
+      <AtButton v-else-if="!noObligation && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
