@@ -23,6 +23,8 @@
     v-if="badges.rollCall"
     class="rc-tag"
     :class="['rc-' + badges.rollCall.kind, { 'cbc-compact': layout.compact }]"
+    :title="badges.rollCall.text || badges.rollCall.label"
+    :aria-label="badges.rollCall.text || badges.rollCall.label"
   >{{ badges.rollCall.label }}</span>
   <span
     v-if="badges.evalMissing"
@@ -198,6 +200,7 @@ const metaRowClass = computed(() => ({
 .rc-missed { background: rgba(245,158,11,.9); color: var(--ds-canvas); }
 .rc-leave { background: rgba(148,163,184,.75); color: var(--ds-canvas); }
 .rc-cancelled { background: rgba(100,116,139,.6); color: var(--ds-canvas); font-size: 8px; }
+.rc-upcoming { background: var(--ds-canvas); color: var(--ds-ink-mute); box-shadow: inset 0 0 0 1px var(--ds-ink-mute); }
 .rc-eval-missing { background: rgba(239,68,68,.85); color: var(--ds-canvas); }
 .rc-tag-second { top: auto; bottom: 2px; }
 

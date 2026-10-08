@@ -3,6 +3,7 @@
     <header class="contract__head">
       <h5>{{ title }}</h5>
       <span class="contract__mode">{{ modeLine }}</span>
+      <span v-if="lastPaymentText" class="contract__mode" data-testid="contract-last-payment">{{ lastPaymentText }}</span>
     </header>
 
     <div class="contract__money" data-testid="contract-money">
@@ -45,11 +46,12 @@
         共 {{ sessions.length }} 堂・已上 {{ heldCount }}・還沒上 {{ upcomingCount }}
       </p>
       <section v-for="m in months" :key="m.key" class="contract__month">
-        <h6>{{ m.label }}</h6>
+        <h6>{{ m.label }}<span v-if="m.summary" data-testid="contract-month-summary">　{{ m.summary }}</span></h6>
         <ol>
           <li v-for="s in m.sessions" :key="s.class_session_id" data-testid="contract-session">
             <span class="contract__date">{{ formatSessionDate(s.date) }}</span>
             <span class="contract__time">{{ s.start_time || '' }}</span>
+            <span v-if="s.numberText" class="contract__num" data-testid="contract-session-no">{{ s.numberText }}</span>
             <span :class="['contract__chip', `tone-${statusTone(s.status)}`]">{{ STATUS_ZH[s.status] || '' }}</span>
             <span :class="['contract__chip', `pay-${s.payment}`]">{{ PAYMENT_LABELS[s.payment] }}</span>
           </li>
@@ -70,6 +72,8 @@ const props = defineProps({
   course: { type: Object, required: true },
   outstanding: { type: Number, default: 0 },
   pendingReport: { type: Object, default: null },
+  // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }.
+  lastPayment: { type: Object, default: null },
 });
 const emit = defineEmits(['changed', 'record']);
 
@@ -101,12 +105,42 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
   ? '月結：每個月依當月上課日收費'
   : '堂數制：先買堂數，上一堂扣一堂'));
 
+const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
+const lastPaymentText = computed(() => {
+  const p = props.lastPayment;
+  const d = p?.date ? String(p.date).slice(5, 10).split('-') : [];
+  return d.length === 2 ? `${Number(d[0])}/${Number(d[1])} 繳 $${Number(p.amount || 0).toLocaleString('zh-TW')}` : '';
+});
+
+// Month payment state from the per-lesson state the endpoint already returns (no money math here).
+function monthPayState(list) {
+  const pays = list.map((s) => s.payment);
+  if (pays.every((p) => p === 'paid')) return '已收';
+  if (pays.every((p) => p === 'no_invoice')) return '還沒開帳單';
+  if (pays.every((p) => p === 'unpaid' || p === 'no_invoice')) return '未繳';
+  return '部分已收';
+}
+
+// Excel-card numbering: only held/upcoming lessons count, same as the summary line.
 const months = computed(() => {
+  const total = heldCount.value + upcomingCount.value;
+  let n = 0;
   const groups = [];
-  for (const s of sessions.value) {
-    const key = String(s.date).slice(0, 7);
-    if (groups.at(-1)?.key !== key) groups.push({ key, label: `${key.slice(0, 4)} 年 ${Number(key.slice(5, 7))} 月`, sessions: [] });
-    groups.at(-1).sessions.push(s);
+  for (const s0 of sessions.value) {
+    const key = String(s0.date).slice(0, 7);
+    if (groups.at(-1)?.key !== key) groups.push({ key, label: `${key.slice(0, 4)} 年 ${Number(key.slice(5, 7))} 月`, sessions: [], counted: 0 });
+    const g = groups.at(-1);
+    const s = { ...s0, numberText: '' };
+    if ([...HELD, ...UPCOMING].includes(s.status)) {
+      n += 1;
+      g.counted += 1;
+      s.numberText = isMonthly.value ? `本月第 ${g.counted} 堂` : `第 ${n} 堂・剩 ${total - n} 堂`;
+    }
+    g.sessions.push(s);
+  }
+  for (const g of groups) {
+    const counted = g.sessions.filter((s) => s.numberText);
+    g.summary = isMonthly.value && counted.length ? `${counted.length} 堂・${monthPayState(counted)}` : '';
   }
   return groups;
 });
@@ -205,6 +239,7 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__month li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:13px;padding:4px 0;border-bottom:1px solid var(--ds-canvas-soft)}
 .contract__date{min-width:110px;font-variant-numeric:tabular-nums}
 .contract__time{min-width:44px;color:var(--ds-ink-mute);font-variant-numeric:tabular-nums}
+.contract__num{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
 .contract__chip{display:inline-flex;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;background:var(--ds-canvas-soft);color:var(--ds-ink-mute)}
 .contract__chip.tone-done,.contract__chip.pay-paid{background:var(--ds-success-wash);color:var(--ds-success)}
 .contract__chip.tone-warn,.contract__chip.pay-partial{background:var(--ds-warning-wash);color:var(--ds-warning)}
