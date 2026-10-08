@@ -255,7 +255,15 @@
                   <td class="number-cell">{{ formatCount(entry.regular_subject_count) }}</td>
                   <td class="number-cell">{{ formatCount(entry.tutoring_trial_subject_count) }}</td>
                   <td class="number-cell highlight-cell"><strong>{{ formatCount(entry.payroll_subject_count) }}</strong></td>
-                  <td class="number-cell">{{ entry.session_count }}</td>
+                  <td class="number-cell lesson-cell">
+                    <details v-if="entry.lessons?.length" class="lesson-detail">
+                      <summary>{{ entry.session_count }}（看是哪幾堂）</summary>
+                      <ul>
+                        <li v-for="(lesson, i) in entry.lessons" :key="i">{{ lessonLine(lesson) }}</li>
+                      </ul>
+                    </details>
+                    <template v-else>{{ entry.session_count }}</template>
+                  </td>
                 </tr>
               </template>
             </tbody>
@@ -280,6 +288,12 @@
                   <div class="mobile-entry-metrics__highlight"><dt>核薪</dt><dd>{{ formatCount(entry.payroll_subject_count) }}</dd></div>
                   <div><dt>堂數</dt><dd>{{ entry.session_count }}</dd></div>
                 </dl>
+                <details v-if="entry.lessons?.length" class="lesson-detail">
+                  <summary>看是哪幾堂</summary>
+                  <ul>
+                    <li v-for="(lesson, i) in entry.lessons" :key="i">{{ lessonLine(lesson) }}</li>
+                  </ul>
+                </details>
               </article>
             </section>
           </div>
@@ -465,6 +479,8 @@ function emptyDay(date) { return { date, regular_subject_count: 0, tutoring_tria
 function formatCount(value) { const number = Number(value ?? 0); return (Number.isFinite(number) ? number : 0).toFixed(2); }
 function formatPercent(value) { return `${formatCount(value)}%`; }
 function formatHours(value) { const number = Number(value ?? 0); return (Number.isFinite(number) ? number : 0).toFixed(1); }
+const LESSON_TYPE = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' };
+function lessonLine(l) { return `${l.start_time} ${l.student_name || '（未命名學生）'}・${LESSON_TYPE[l.class_type] || l.class_type}・${formatHours(l.hours)} 小時 → ${formatCount(l.weighted)}`; }
 function formatDate(value) { if (!value) return '—'; const [, month, day] = String(value).slice(0, 10).split('-'); return `${month}/${day}`; }
 function shortDate(value) { return formatDate(value); }
 function entryKey(entry) { return `${entry.teacher_id}-${entry.date}-${entry.campus_id}-${entry.subject_id}`; }
@@ -528,6 +544,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: none;
 .mobile-entry-card__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .mobile-entry-card__heading .subject-name { min-width: 0; overflow-wrap: anywhere; }
 .mobile-entry-card__teacher { margin: 6px 0 10px; color: var(--ds-ink-secondary); font-size: 13px; }
+.lesson-detail { text-align: left; font-size: 0.85em; }
+.lesson-detail summary { cursor: pointer; }
+.lesson-detail ul { margin: 4px 0 0; padding-left: 1.2em; }
 .mobile-entry-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
 .mobile-entry-metrics > div { padding: 8px; border-radius: var(--ds-radius-sm, 4px); background: var(--ds-canvas-soft); }
 .mobile-entry-metrics dt { color: var(--ds-ink-mute); font-size: 11px; }
