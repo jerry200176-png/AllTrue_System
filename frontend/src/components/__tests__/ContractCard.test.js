@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 
 const authedFetch = vi.fn();
-vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: (...a) => authedFetch(...a) }));
+vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: (...a) => authedFetch(...a), getAccessToken: async () => 'tok' }));
 
 import ContractCard from '../tuition/ContractCard.vue';
 
@@ -369,5 +369,92 @@ describe('billing panel visual tokens (spec B-PR2)', () => {
     const rows = w.findAll('[data-testid="contract-session"]');
     expect(rows.every((r) => /已付|未付/.test(r.text()))).toBe(true);
     expect(rows[0].find('.pay-paid').exists()).toBe(true);
+  });
+});
+
+describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
+  const mountLedger = async (ledger, extraFetch) => {
+    const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
+    authedFetch.mockResolvedValue(respond({ sessions: [], unscheduled_count: 0 }));
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role: 'director' } }));
+    const f = vi.fn(async (url) => (extraFetch?.(String(url)) || respond(String(url).includes('monthly-drafts') ? { data: [] } : ledger)));
+    vi.stubGlobal('fetch', f);
+    const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 2 }, global: { stubs: { Transition: false } }, attachTo: document.body });
+    await flushPromises();
+    return { w, f };
+  };
+  const inv = (o) => ({ id: 1, student_class_id: 2, total_amount: 3000, calculated_applied_amount: 0, status: 'unpaid', payments: [], ...o });
+
+  it('titles the panel 「{姓名}的帳務」 and leads with 到今天未繳, same rule as the student list', async () => {
+    const { buildStudentBillingRows } = await import('../../lib/studentBillingRows.js');
+    const today = new Date().toISOString().slice(0, 10);
+    const past = '2020-01-01'; const future = '2099-01-01';
+    const { w } = await mountLedger({
+      student: { id: 1, name: '王小明' }, summary: { overpaid_total: 0 }, scope: {}, receipts: [], anomalies: [], courses: [{ id: 2, subject: '數學', paid: false }],
+      invoices: [inv({ id: 1, outstanding_amount: 3000, due_date: past }), inv({ id: 2, outstanding_amount: 2000, due_date: future }), inv({ id: 3, outstanding_amount: 900, status: 'void', due_date: past })],
+    });
+    expect(w.find('#ledger-modal-title').text()).toBe('王小明的帳務');
+    expect(w.text()).not.toMatch(/對帳|對齊帳單/);
+    expect(w.find('[data-testid="ledger-owed-now"]').text()).toBe('NT$ 3,000');
+    expect(w.find('[data-testid="ledger-owed-later"]').text()).toContain('NT$ 2,000');
+    const row = buildStudentBillingRows([
+      { id: 2, student_id: 1, student_name: '王小明', payment_status: 'unpaid', payable_outstanding: 3000, due_date: past },
+      { id: 2, student_id: 1, student_name: '王小明', payment_status: 'unpaid', payable_outstanding: 2000, due_date: future },
+    ], [], today)[0];
+    expect([row.owed_now, row.owed_later]).toEqual([3000, 2000]);
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('names the overpaid payment, offers 撤銷這筆 and a one-line explanation; no 請聯絡總部', async () => {
+    const { w } = await mountLedger({
+      student: { id: 1, name: '王小明' }, summary: { overpaid_total: 500 }, scope: {}, receipts: [], anomalies: [], courses: [{ id: 2, subject: '數學', paid: true }],
+      invoices: [inv({ outstanding_amount: 0, status: 'paid', payments: [{ id: 7, report_id: 9, paid_at: '2026-10-05', amount: 3500, method: 'transfer', unapplied_amount: 500, application_status: 'overpayment_pending_review', receipt_no: 'RCPT-000123' }] })],
+    });
+    expect(w.find('[data-testid="ledger-overpaid"]').text()).toContain('多收 NT$ 500');
+    const text = w.text();
+    expect(text).toContain('2026/10/05 匯款 NT$ 3,500 這筆');
+    expect(text).toContain('撤銷這筆');
+    expect(w.find('[data-testid="ledger-exception-hint"]').text()).toContain('撤銷這筆就好');
+    expect(text).not.toMatch(/請聯絡總部|RCPT-|收據-/);
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('shows 已收 / 等你確認 receipts by default and folds rejected, voided and 0 元 under 其他紀錄', async () => {
+    const r = (id, status, amount) => ({ report_id: id, student_class_id: 2, status, amount, payment_date: '2026-10-01', payment_method: 'cash', receipt_no: `RCPT-${id}` });
+    const { w } = await mountLedger({
+      student: { id: 1, name: '王小明' }, summary: {}, scope: {}, anomalies: [], courses: [], invoices: [],
+      receipts: [r(1, 'confirmed', 3000), r(2, 'pending', 500), r(3, 'rejected', 800), r(4, 'voided', 700), r(5, 'confirmed', 0)],
+    });
+    expect(w.findAll('.ledger-receipt')).toHaveLength(2);
+    expect(w.text()).not.toMatch(/RCPT-/);
+    const toggle = w.find('[data-testid="ledger-other-receipts-toggle"]');
+    expect(toggle.text()).toContain('其他紀錄（3）');
+    await toggle.trigger('click');
+    expect(w.findAll('.ledger-receipt')).toHaveLength(5);
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('offers 開帳單 in place only where a ready monthly draft exists, via the existing renew-monthly request', async () => {
+    const draft = { student_class_id: 2, status: 'ready', subject: '數學', proposed_start_date: '2099-01-02', proposed_end_date: '2099-02-01', period_sessions: 4, amount: 4000, due_date: '2099-01-10' };
+    const { w } = await mountLedger({
+      student: { id: 1, name: '王小明' }, summary: {}, scope: {}, receipts: [], anomalies: [], invoices: [],
+      courses: [{ id: 2, subject: '數學', paid: false }, { id: 3, subject: '英文', paid: false }],
+    }, (url) => {
+      if (url.includes('monthly-drafts')) return respond({ data: [draft] });
+      return null;
+    });
+    await flushPromises();
+    await flushPromises();
+    expect(w.findAll('[data-testid="contract-issue"]')).toHaveLength(1);
+    await w.find('[data-testid="contract-issue"]').trigger('click');
+    await flushPromises();
+    expect(document.body.querySelector('[data-testid="ledger-issue-text"]').textContent).toContain('NT$ 4,000');
+    authedFetch.mockResolvedValueOnce(respond({}));
+    document.body.querySelector('[data-testid="ledger-issue-submit"]').click();
+    await flushPromises();
+    const renew = authedFetch.mock.calls.find((c) => String(c[0]).includes('/student-classes/2/renew-monthly'));
+    expect(renew).toBeTruthy();
+    expect(JSON.parse(renew[1].body)).toEqual({ end_date: '2099-02-01' });
+    w.unmount(); vi.unstubAllGlobals();
   });
 });
