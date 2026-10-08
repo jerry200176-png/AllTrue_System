@@ -3039,6 +3039,17 @@ class ClassSessionController extends Controller
         int $originalTeacherId,
         array $data
     ) {
+        // #3780 P1: only a real substitute (its unresolved `substitute:<session id>` notice, written in the same
+        // transaction as every substitute and resolved by undo/restore) may be restored. A teacher differing from
+        // StudentClass.TeacherID can also be a history pin after a contract teacher change; restoring that would
+        // rewrite LearningRecord.TeacherID / TeachingSessionCount for a session the former teacher really taught.
+        if (!Notification::query()->where('SourceKey', 'substitute:' . (int) $session->id)->whereNull('ResolvedAt')->exists()) {
+            return response()->json([
+                'message' => '這堂不是代課堂次，不能「回正班老師」。這堂記錄的是當時實際上課的老師；如記錄有誤，請聯絡系統管理員。',
+                'code' => 'not_a_substitute_session',
+            ], 409);
+        }
+
         return DB::transaction(function () use (
             $request,
             $session,

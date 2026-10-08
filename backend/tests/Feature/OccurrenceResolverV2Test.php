@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
+use App\Models\Notification;
 use App\Models\Schedule;
 use App\Models\ScheduleChangeLog;
 use App\Models\Student;
@@ -12,6 +13,7 @@ use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\ClassSessionIndexReadService;
+use App\Services\OccurrenceAssignmentService;
 use App\Services\SubstituteScheduleService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -160,6 +162,7 @@ class OccurrenceResolverV2Test extends TestCase
         $this->flag(true);
         $this->row(30, 'rescheduled', $this->aId);                       // stranded anchor, its live row is gone
         LearningRecord::where('ClassSessionID', $this->session->id)->update(['TeacherID' => $this->bId]);
+        $this->substituteNotice();                                        // it was a real substitute (#3780 P1 guard)
         $before = ScheduleChangeLog::count();
 
         $this->api()->postJson("/api/v1/class-sessions/{$this->session->id}/substitute", ['substitute_teacher_id' => $this->aId, 'reason' => 'restore'])
@@ -168,6 +171,67 @@ class OccurrenceResolverV2Test extends TestCase
         $this->assertNull(Schedule::find(30), 'legacy fallback removed the stranded anchor');
         $this->assertSame($this->aId, (int) LearningRecord::where('ClassSessionID', $this->session->id)->value('TeacherID'));
         $this->assertSame($before, ScheduleChangeLog::count(), 'the writer found nothing, so it logged nothing');
+    }
+
+    /** #3780 P1: a history pin (former contract teacher B kept on a taught session after the contract moved to A) is not a substitute. */
+    public function test_restore_refuses_a_history_pin_and_changes_nothing_flag_off(): void
+    {
+        $this->flag(false);
+        $this->row(40, 'rescheduled', $this->bId);                       // #207 legacy pin shape
+        $this->row(41, 'scheduled', $this->bId, ['original_schedule_id' => 40]);
+        $this->assertHistoryPinRestoreRefused();
+    }
+
+    public function test_restore_refuses_a_history_pin_and_changes_nothing_flag_on(): void
+    {
+        $this->flag(true);
+        app(OccurrenceAssignmentService::class)->pinTaughtTeacher($this->session, $this->bId, null);  // TD-076 pin row
+        $this->assertHistoryPinRestoreRefused();
+    }
+
+    public function test_restore_of_a_real_substitute_still_works_flag_on(): void
+    {
+        $this->flag(true);
+        $this->api()->postJson("/api/v1/class-sessions/{$this->session->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertOk();
+        $this->assertTrue($this->indexRow()->substitute_notice, 'calendar sees the substitute provenance');
+
+        $this->api()->postJson("/api/v1/class-sessions/{$this->session->id}/substitute", ['substitute_teacher_id' => $this->aId])
+            ->assertOk()->assertJsonFragment(['restored_teacher_id' => $this->aId]);
+
+        $this->assertSame($this->aId, SubstituteScheduleService::teacherForOccurrence((int) $this->sc->ID, self::DATE, $this->aId, '13:00'));
+        $this->assertSame($this->aId, (int) LearningRecord::where('ClassSessionID', $this->session->id)->value('TeacherID'));
+        $this->assertFalse($this->indexRow()->substitute_notice);
+    }
+
+    private function assertHistoryPinRestoreRefused(): void
+    {
+        $this->session->update(['Status' => 'attended']);
+        LearningRecord::where('ClassSessionID', $this->session->id)->update(['TeacherID' => $this->bId, 'Status' => 'approved']);
+        User::whereKey($this->aId)->update(['TeachingSessionCount' => 3]);
+        User::whereKey($this->bId)->update(['TeachingSessionCount' => 5]);
+        $schedules = DB::table('schedules')->orderBy('id')->get()->toJson();
+        $logs = ScheduleChangeLog::count();
+        $this->assertFalse($this->indexRow()->substitute_notice, 'a pin carries no substitute provenance');
+        $this->assertSame($this->aId, (int) $this->indexRow()->contract_teacher_id);
+
+        $this->api()->postJson("/api/v1/class-sessions/{$this->session->id}/substitute", ['substitute_teacher_id' => $this->aId])
+            ->assertStatus(409)->assertJsonFragment(['code' => 'not_a_substitute_session']);
+
+        $this->assertSame($schedules, DB::table('schedules')->orderBy('id')->get()->toJson(), 'the pin is untouched');
+        $this->assertSame($logs, ScheduleChangeLog::count());
+        $this->assertSame($this->bId, (int) LearningRecord::where('ClassSessionID', $this->session->id)->value('TeacherID'));
+        $this->assertSame(3, (int) User::whereKey($this->aId)->value('TeachingSessionCount'));
+        $this->assertSame(5, (int) User::whereKey($this->bId)->value('TeachingSessionCount'));
+        $this->assertSame(0, DB::table('learning_record_teacher_changes')->count());
+        $this->assertSame($this->bId, SubstituteScheduleService::teacherForOccurrence((int) $this->sc->ID, self::DATE, $this->aId, '13:00'));
+    }
+
+    private function substituteNotice(): void
+    {
+        Notification::create([
+            'CampusID' => 1, 'Type' => 'substitute', 'Title' => 'sub', 'SourceType' => 'ClassSession',
+            'SourceID' => (string) $this->session->id, 'SourceKey' => 'substitute:' . $this->session->id, 'OccurredAt' => now(),
+        ]);
     }
 
     private function indexRow(): object
