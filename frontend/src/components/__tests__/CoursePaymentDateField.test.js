@@ -10,7 +10,7 @@ describe('payment-date draft recovery (#252)', () => {
       modelValue: { paid_at: '2026-09-05', original_paid_at: '2026-09-05', rate_per_30min: 2750, memo: 'keep' },
     } });
     await nextTick();
-    const clear = wrapper.findAll('button').find((button) => button.text().includes('改為未繳費'));
+    const clear = wrapper.findAll('button').find((button) => button.text().includes('改為未繳（'));
     expect(clear).toBeDefined();
     await clear.trigger('click');
     expect(wrapper.emitted('update:modelValue').at(-1)[0]).toMatchObject({
@@ -23,7 +23,7 @@ describe('payment-date draft recovery (#252)', () => {
     const wrapper = mount(CoursePaymentDateField, { props: { modelValue: '2026-09-05' } });
     const button = wrapper.get('button');
     expect(button.attributes('type')).toBe('button');
-    expect(button.text()).toContain('改為未繳費');
+    expect(button.text()).toContain('改為未繳（');
     await button.trigger('click');
     expect(wrapper.emitted('update:modelValue')).toEqual([['']]);
     expect(wrapper.emitted('open-billing')).toBeUndefined();
@@ -40,7 +40,7 @@ describe('payment-date draft recovery (#252)', () => {
     });
     expect(wrapper.get('input').element.disabled).toBe(true);
     expect(wrapper.text()).toContain('已有收款紀錄');
-    expect(wrapper.text()).not.toContain('儲存後將標示為已繳費');
+    expect(wrapper.text()).not.toContain('儲存後將標示為已收');
     await wrapper.get('button').trigger('click');
     expect(wrapper.emitted('open-billing')).toHaveLength(1);
     expect(wrapper.emitted('update:modelValue')).toBeUndefined();

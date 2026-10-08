@@ -2,7 +2,7 @@
   <div class="tc-page at-page">
     <AtPageHeader
       title="帳務中心"
-      description="處理應收、已回報待查帳、確認入帳與續課提醒。"
+      :description="`處理未繳、${REPORT_STATUS_LABELS.pending}、確認入帳與續課提醒。`"
       icon="payments"
       data-guide="tuition-header"
     >
@@ -119,7 +119,8 @@
           </div>
           <div class="tc-card tc-card--warn">
             <span class="tc-card-num">{{ statusCounts.pending_report + statusCounts.pending_reconciliation }}</span>
-            <span class="tc-card-label">已回報／待查帳</span>
+            <!-- counts parent reports and closed-course reconciliations: neutral wording for both -->
+            <span class="tc-card-label">{{ REPORT_STATUS_LABELS.pending }}</span>
           </div>
           <div class="tc-card tc-card--outstanding">
             <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
@@ -137,7 +138,7 @@
       <div v-if="rows.length" class="tc-action-queue" role="region" aria-label="主任待處理佇列">
         <div>
           <strong>{{ tabCounts.action ? `今天先處理 ${tabCounts.action} 筆` : '今天待處理已清空' }}</strong>
-          <span>{{ tabCounts.action ? '未繳費與待對帳會集中在待處理，已結清／續課提醒留在其他分類。' : '如需查看續課或已結清提醒，請切換其他分類。' }}</span>
+          <span>{{ tabCounts.action ? '未繳與等你確認的課會集中在待處理，已收／續課提醒留在其他分類。' : '如需查看續課或已結清提醒，請切換其他分類。' }}</span>
         </div>
         <button v-if="activeTab !== 'action'" class="tc-queue-link" type="button" @click="activeTab = 'action'">
           回到待處理
@@ -240,7 +241,7 @@
               @click="openBatchPreview"
             >批次確認入帳</button>
           </template>
-          <span v-else class="tc-batch-help">請分開選取未繳費或待對帳，才能進行批次處理。</span>
+          <span v-else class="tc-batch-help">請分開選取未繳或等你確認的課，才能進行批次處理。</span>
           <button class="tc-btn tc-btn--ghost" type="button" :disabled="batchBusy" @click="clearSelection">取消選取</button>
         </div>
 
@@ -289,7 +290,7 @@
                     :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
                     :disabled="!selectableRows.length"
                     @change="toggleSelectAll($event.target.checked)"
-                    :aria-label="batchMode === 'confirm' ? '全選待對帳' : batchMode === 'mixed' ? '全選待處理' : '全選未繳'"
+                    :aria-label="batchMode === 'confirm' ? '全選等你確認' : batchMode === 'mixed' ? '全選待處理' : '全選未繳'"
                   />
                 </th>
                 <th class="tc-th-sort" role="button" tabindex="0" @click="toggleSort('student_name')" @keydown.enter.prevent="toggleSort('student_name')" @keydown.space.prevent="toggleSort('student_name')">
@@ -455,7 +456,7 @@
                       </button>
                       <button v-if="canWaive && r.closed_reason" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)" title="確認這筆不會收，從待處理移除並留稽核紀錄">
                         <span class="material-symbols-outlined">money_off</span>
-                        確認不收
+                        改成「{{ WAIVED_LABEL }}」
                       </button>
                     </template>
 
@@ -778,12 +779,12 @@
         <div class="tc-summary">
           <div class="tc-card tc-card--total"><span class="tc-card-num">{{ settledSummary.course_count || 0 }}</span><span class="tc-card-label">已結案課程</span></div>
           <div class="tc-card tc-card--success"><span class="tc-card-num">{{ formatCurrency(settledSummary.paid_total || 0) }}</span><span class="tc-card-label">已記入收款</span></div>
-          <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.pending_reconciliation_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.pending_reconciliation_count || 0 }}</span><span class="tc-card-label">結案待對帳</span></div>
+          <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.pending_reconciliation_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.pending_reconciliation_count || 0 }}</span><span class="tc-card-label">{{ STATUS_CONFIG.pending_reconciliation.label }}</span></div>
           <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.legacy_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.legacy_count || 0 }}</span><span class="tc-card-label">舊制無帳單</span></div>
           <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.exception_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.exception_count || 0 }}</span><span class="tc-card-label">例外待處理</span></div>
           <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">多收待處理</span></div>
         </div>
-        <p class="tc-summary-note">「已結案課程」包含已完成收款與仍待對帳的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
+        <p class="tc-summary-note">「已結案課程」包含已收與仍等你確認收款的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
         <p class="tc-summary-note" role="note" aria-label="帳務標籤說明">
           舊制無帳單：課程已標記繳費，但目前沒有有效帳單。例外待處理：至少一張有效帳單的淨收款超過帳單金額。
           請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對；標籤本身不會自動處理款項。
@@ -813,9 +814,9 @@
                 <td>
                   <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
                   <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
-                  <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '結案待對帳' }}</span>
+                  <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || (row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL) }}</span>
                   <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '付款期間待確認' }}</span>
-                  <span v-if="row.closed_reason === 'waived'" class="acct-chip">確認不收</span>
+                  <span v-if="row.closed_reason === 'waived'" class="acct-chip">{{ WAIVED_LABEL }}</span>
                   <span v-else-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation && !row.payment_review_required" class="text-light">正常</span>
                 </td>
                 <td>
@@ -847,7 +848,7 @@
                 送出前確認
               </h3>
               <p id="batch-preview-description" class="tc-dialog-desc">
-                {{ batchPreviewMode === 'confirm' ? '請先核對待對帳資料；確認後才會建立正式入帳與收據。' : '請先核對本批次資料；送出後會先列為待對帳，不會直接變成已繳費。' }}
+                {{ batchPreviewMode === 'confirm' ? '請先核對等你確認的資料；確認後才會變成已收並開收據。' : '請先核對本批次資料；送出後會先列為等你確認，不會直接變成已收。' }}
               </p>
             </div>
             <button class="tc-dialog-close" type="button" aria-label="關閉確認視窗" @click="closeBatchPreview" :disabled="batchBusy">
@@ -876,7 +877,7 @@
 
           <div class="tc-batch-preview-note" role="note">
             <span class="material-symbols-outlined" aria-hidden="true">info</span>
-            <span>{{ batchPreviewMode === 'confirm' ? '只會處理上方待對帳課程；若資料不符，請取消後逐筆檢查。' : '只會處理上方未繳／部分付款課程；取消後可重新選取。' }}</span>
+            <span>{{ batchPreviewMode === 'confirm' ? '只會處理上方等你確認的課程；若資料不符，請取消後逐筆檢查。' : '只會處理上方未繳／繳了一部分的課程；取消後可重新選取。' }}</span>
           </div>
 
           <div class="tc-dialog-btns">
@@ -956,9 +957,9 @@
         <div class="tc-dialog">
           <h3 class="tc-dialog-title">
             <span class="material-symbols-outlined" style="font-size:22px;color:var(--danger)">money_off</span>
-            確認不收
+            改成「{{ WAIVED_LABEL }}」
           </h3>
-          <p class="tc-dialog-desc">這筆欠款將轉為歷史（確認不收），不再出現在待處理；帳單與收款紀錄保留，並記錄操作人與原因。</p>
+          <p class="tc-dialog-desc">這筆欠款將轉為歷史（{{ WAIVED_LABEL }}），不再出現在待處理；帳單與收款紀錄保留，並記錄操作人與原因。</p>
           <div class="tc-dialog-info" v-if="waiveTarget">
             <span>{{ waiveTarget.student_name }} — {{ waiveTarget.subject }}</span>
             <small>{{ waivableAmount === null ? '金額載入中…' : `不收金額 ${formatCurrency(waivableAmount)}` }}</small>
@@ -970,7 +971,7 @@
             <button class="tc-btn tc-btn--ghost" @click="waiveDialogOpen = false" :disabled="waiveLoading">取消</button>
             <button class="tc-btn tc-btn--danger" @click="confirmWaive" :disabled="waiveReason.trim().length < 2 || waiveLoading || waivableAmount === null">
               <span v-if="waiveLoading" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
-              確認不收
+              改成「{{ WAIVED_LABEL }}」
             </button>
           </div>
         </div>
@@ -985,7 +986,7 @@
             <span class="material-symbols-outlined" style="font-size:22px;color:var(--ds-primary-text)">task_alt</span>
             確認結案此課程
           </h3>
-          <p class="tc-dialog-desc">結案後此課程將從催繳名單移除，不再追蹤；已繳費與已上課紀錄會保留。</p>
+          <p class="tc-dialog-desc">結案後此課程將從催繳名單移除，不再追蹤；已收款與已上課紀錄會保留。</p>
           <div class="tc-dialog-info" v-if="settleTarget">
             <div style="margin-bottom:4px"><strong>{{ settleTarget.student_name }}</strong> — {{ settleTarget.subject }}</div>
             <div style="font-size:12px;color:var(--text-light)">{{ settleSummary.primary }}</div>
@@ -1118,7 +1119,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { normalizeNavigationId, resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
-import { TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
+import { TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -1294,10 +1295,12 @@ const activeTab = ref('action');
 const TAB_DEFS = [
   { key: 'action', label: '待處理' },
   { key: 'all', label: '全部' },
-  { key: 'unpaid', label: '應收／尚未回報' },
+  // The tab also lists partly paid courses (filter below), so it names both.
+  { key: 'unpaid', label: `${TUITION_STATUS_CONFIG.unpaid.label}／${TUITION_STATUS_CONFIG.partial.label}` },
   { key: 'overdue', label: '逾期應收' },
-  { key: 'pending_report', label: '已回報／待查帳' },
-  { key: 'pending_reconciliation', label: '結案／待查帳' },
+  // Short tab name; every pointer to this tab uses the same REPORT_STATUS_LABELS.pending.
+  { key: 'pending_report', label: REPORT_STATUS_LABELS.pending },
+  { key: 'pending_reconciliation', label: TUITION_STATUS_CONFIG.pending_reconciliation.label },
   { key: 'renewal', label: '續課/將到期' },
 ];
 
@@ -1311,7 +1314,7 @@ const billingFlowCurrentId = computed(() => {
 const billingFlowSteps = [
   { id: 'queue', icon: 'playlist_add_check', title: '查看待處理', description: '先依學生與狀態找到課程。', action: '查看待處理' },
   { id: 'report', icon: 'mark_email_read', title: '登記繳費回報', description: '家長已付款時先登記回報。', action: '查看未繳' },
-  { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: '查看已回報／待查帳' },
+  { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: `查看「${REPORT_STATUS_LABELS.pending}」` },
 ];
 
 const billingWorkflowStarts = new Map();
@@ -1408,7 +1411,7 @@ function clearSelection() {
 function openBatchPreview() {
   const mode = batchMode.value;
   if (mode === 'mixed') {
-    showToast('請分開選取未繳費或待對帳，才能進行批次處理。', 'warning');
+    showToast('請分開選取未繳或等你確認的課，才能進行批次處理。', 'warning');
     billingWorkflowError('report', 'validation');
     return;
   }
@@ -1416,7 +1419,7 @@ function openBatchPreview() {
     ? selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id)
     : selectedRows.value.filter((r) => (r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation') && hasBatchAmount(r));
   if (!rows.length) {
-    showToast(mode === 'confirm' ? '請先勾選待對帳課程' : '請先勾選未繳課程', 'warning');
+    showToast(mode === 'confirm' ? `請先勾選${REPORT_STATUS_LABELS.pending}的課程` : '請先勾選未繳課程', 'warning');
     billingWorkflowError(mode === 'confirm' ? 'confirm' : 'report', 'validation');
     return;
   }
@@ -1487,7 +1490,7 @@ async function submitBatchReport() {
     if (!resp.ok && resp.status !== 207) {
       throw new Error(humanizeApiErrorMessage(json.message || `送出失敗（${resp.status}）`));
     }
-    showToast(json.message || '已送出待對帳');
+    showToast(json.message || `已送出，狀態改為「${REPORT_STATUS_LABELS.pending}」`);
     batchPreviewOpen.value = false;
     clearSelection();
     loadAlerts();
@@ -1506,7 +1509,7 @@ async function submitBatchConfirm() {
   if (!batchPreviewOpen.value) return;
   const rows = selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id);
   if (!rows.length) {
-    showToast('請先勾選待對帳課程', 'warning');
+    showToast(`請先勾選${REPORT_STATUS_LABELS.pending}的課程`, 'warning');
     billingWorkflowError(workflowStep, 'validation');
     return;
   }
@@ -1530,7 +1533,7 @@ async function submitBatchConfirm() {
     if (!resp.ok && resp.status !== 207) {
       throw new Error(humanizeApiErrorMessage(json.message || `確認失敗（${resp.status}）`));
     }
-    showToast(json.message || '已確認入帳');
+    showToast(json.message || `已確認，狀態改為「${TUITION_STATUS_CONFIG.paid.label}」`);
     batchPreviewOpen.value = false;
     clearSelection();
     loadAlerts();
@@ -1550,7 +1553,7 @@ const STATUS_CONFIG = TUITION_STATUS_CONFIG;
 function statusLabel(r) {
   const ps = r.payment_status;
   if (ps && STATUS_CONFIG[ps]) return STATUS_CONFIG[ps].label;
-  return r.paid ? '已確認入帳' : '應收／尚未回報';
+  return r.paid ? TUITION_STATUS_CONFIG.paid.label : TUITION_STATUS_CONFIG.unpaid.label;
 }
 
 function statusClass(r) {
@@ -2123,14 +2126,14 @@ function formatCourseRef(id) {
 async function onEntryConfirmed(_result) {
   entryOpen.value = false;
   activeTab.value = 'pending_report';
-  showToast('已送出待對帳，畫面已切到待對帳；請按確認入帳後才會變成已繳費並開收據');
+  showToast(`已送出，畫面已切到「${REPORT_STATUS_LABELS.pending}」；請按確認入帳後才會變成${TUITION_STATUS_CONFIG.paid.label}並開收據`);
   await loadAlerts();
 }
 
 async function onPendingReportConflict(_result) {
   entryOpen.value = false;
   activeTab.value = 'pending_report';
-  showToast('這筆已經在待對帳，畫面已切到待對帳；請按確認入帳，不要重複送出', 'warning');
+  showToast(`這筆已經在「${REPORT_STATUS_LABELS.pending}」，畫面已切過去；請按確認入帳，不要重複送出`, 'warning');
   await loadAlerts();
 }
 
@@ -2147,7 +2150,7 @@ async function confirmReport(row) {
   try {
     const res = await paymentActions.confirmReport(row.latest_payment_report_id);
     if (!res.ok) throw new Error(res.message);
-    showToast('已確認入帳');
+    showToast(`已確認，狀態改為「${TUITION_STATUS_CONFIG.paid.label}」`);
     if (row.latest_payment_report_id) {
       receiptReportId.value = row.latest_payment_report_id;
       receiptOpen.value = true;
@@ -2224,10 +2227,10 @@ async function confirmWaive() {
       throw new Error(err.message || `操作失敗（${resp.status}）`);
     }
     waiveDialogOpen.value = false;
-    showToast('已確認不收，移至歷史', 'warning');
+    showToast(`已改成「${WAIVED_LABEL}」，移至歷史`, 'warning');
     await Promise.all([loadAlerts(), loadSettledCourses()]);
   } catch (e) {
-    showToast(e.message || '確認不收失敗', 'error');
+    showToast(e.message || `改成「${WAIVED_LABEL}」失敗`, 'error');
   } finally {
     waiveLoading.value = false;
   }
@@ -2250,7 +2253,6 @@ async function confirmVoid() {
 
   voidLoading.value = true;
   try {
-    const token = getToken();
     const reportId = Number(voidTarget.value.report_id || 0) || await findConfirmedReportForClass(voidTarget.value);
     if (!reportId) {
       showToast('找不到此課程的已確認核帳紀錄', 'error');

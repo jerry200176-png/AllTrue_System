@@ -19,15 +19,15 @@ describe('tuition 確認不收 (waive) action', () => {
     expect(source).toContain('JSON.stringify({ reason, expected_amount: waivableAmount.value })');
     expect(source).toContain('waivable_amount');
     expect(source).not.toContain('waiveTarget.payable_outstanding');
-    expect(source).toMatch(/已確認不收[\s\S]{0,120}loadAlerts\(\), loadSettledCourses\(\)/);
+    expect(source).toMatch(/已改成「\$\{WAIVED_LABEL\}」[\s\S]{0,120}loadAlerts\(\), loadSettledCourses\(\)/);
   });
 
   it('labels waived rows in the settled table instead of 正常', () => {
-    expect(source).toContain(`v-if="row.closed_reason === 'waived'" class="acct-chip">確認不收`);
+    expect(source).toContain(`v-if="row.closed_reason === 'waived'" class="acct-chip">{{ WAIVED_LABEL }}`);
   });
 
   it('F7 S3a: shows the backend reconciliation label and the 付款期間待確認 state instead of 正常', () => {
-    expect(source).toContain(`row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '結案待對帳' }}`);
+    expect(source).toContain(`row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || (row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL) }}`);
     expect(source).toContain(`row.payment_review_required" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '付款期間待確認' }}`);
     expect(source).toContain('!row.pending_reconciliation && !row.payment_review_required" class="text-light">正常');
   });
