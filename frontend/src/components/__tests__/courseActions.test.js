@@ -9,7 +9,7 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
   it('defaults the primary to the fallback and groups 調動 / 帳務 / 結束 in that order', () => {
     const m = courseActions(session, { ...base, fallback: 'manage' });
     expect(m.primary).toEqual({ id: 'manage', label: '管理課程' });
-    expect(m.groups.map((g) => g.label)).toEqual(['調動', '帳務', '結束']);
+    expect(m.groups.map((g) => g.label)).toEqual(['調動', '帳務', '狀態', '']);
     expect(ids(m).slice(0, 6)).toEqual(['reschedule', 'substitute', 'manual-session', 'quick-add', 'transfer', 'duplicate']);
   });
 
@@ -52,7 +52,7 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
   it('a session course that cannot quick-add keeps the item disabled with the reason', () => {
     const item = courseActions(session, { ...base, canQuickAdd: false, quickAddReason: '已無剩餘堂數' })
       .groups[0].items.find((i) => i.id === 'quick-add');
-    expect(item).toMatchObject({ disabled: true, title: '已無剩餘堂數' });
+    expect(item).toMatchObject({ disabled: true, reason: '已無剩餘堂數' });
   });
 
   it('optional billing items follow the caller capabilities', () => {
@@ -64,10 +64,17 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
     expect(all).toEqual(expect.arrayContaining(['payment-slip', 'package-preview', 'contract-revert']));
   });
 
-  it('delete is always the last item, marked danger; close only when allowed', () => {
+  it('編輯 is the first, ungrouped item when a state primary displaced it', () => {
+    const m = courseActions(session, { ...base, renewalDue: true });
+    expect(m.groups[0]).toMatchObject({ label: '', items: [{ id: 'edit' }] });
+    expect(m.groups[1].label).toBe('調動');
+  });
+
+  it('delete sits alone, last, in its own unlabelled danger group; close stays above it', () => {
     const m = courseActions(session, base);
-    const end = m.groups.at(-1).items;
-    expect(end.at(-1)).toMatchObject({ id: 'delete', danger: true, confirm: true });
+    expect(m.groups.at(-1)).toMatchObject({ label: '', items: [{ id: 'delete', danger: true, confirm: true }] });
+    const end = m.groups.find((g) => g.label === '狀態').items;
+    expect(end.map((i) => i.id)).toEqual(['pause', 'close']);
     expect(end.find((i) => i.id === 'close').confirm).toBe(true);
     expect(ids(courseActions(session, { ...base, canClose: false }))).not.toContain('close');
   });
