@@ -57,8 +57,8 @@
       </section>
       <p v-if="unscheduled > 0" class="contract__muted" data-testid="contract-unscheduled">還有 {{ unscheduled }} 堂還沒排日期</p>
     </template>
-    <AtDialog :open="rejectOpen" title="退回這筆收款" size="sm" title-id="contract-reject-title" @close="rejectOpen = false">
-      <label class="contract__reject-label" :for="`contract-reject-reason-${course.id}`">退回原因</label>
+    <AtDialog :open="rejectOpen" title="退回這筆繳費回報" size="sm" title-id="contract-reject-title" @close="rejectOpen = false">
+      <label class="contract__reject-label" :for="`contract-reject-reason-${course.id}`">退回原因（家長會看到）</label>
       <AtTextarea :id="`contract-reject-reason-${course.id}`" v-model="rejectReason" :rows="3" data-testid="contract-reject-reason" />
       <template #actions>
         <AtButton variant="secondary" size="sm" shape="rect" data-testid="contract-reject-cancel" @click="rejectOpen = false">取消</AtButton>
