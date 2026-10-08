@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-transfer-full-target
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 轉課遇到堂數已滿
+    summary: 目標課程堂數已滿時，改用白話說明並可直接前往加購。
+    items:
+      - category: improved
+        text: 提示改成「目標課程堂數已滿（8/8）。請先加買堂數，再轉課。」
+      - category: added
+        text: 轉移視窗多一顆「前往目標課程加購」，不用自己找課程。
+    source_refs:
+      - "changelog:2026-10-08:transfer-full-target"
