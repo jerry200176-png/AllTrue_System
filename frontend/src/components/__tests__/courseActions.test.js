@@ -80,11 +80,18 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
   });
 
   it('every id is an existing CourseManagement action or one PR2 adds', () => {
-    const known = ['pause', 'resume', 'close', 'delete', 'manual-session', 'monthly-session', 'quick-add', 'invoice', 'tuition',
+    const known = ['pause', 'resume', 'close', 'delete', 'manual-session', 'monthly-session', 'quick-add', 'invoice', 'details',
       'purchase', 'contract-adjust', 'package-preview', 'payment-slip', 'duplicate',
       'reschedule', 'substitute', 'transfer', 'contract-revert', 'manage', 'edit'];
     const m = courseActions(session, { ...base, isMonthly: true, paymentNotice: true, packagePreview: true, contractAmended: true });
     for (const id of [m.primary.id, ...ids(m)]) expect(known).toContain(id);
+  });
+
+  it('詳情 joins the unlabelled lead group (after 編輯) only when the caller asks, and flips to 收起詳情', () => {
+    expect(ids(courseActions(session, base))).not.toContain('details');
+    const m = courseActions(session, { ...base, details: true, renewalDue: true });
+    expect(m.groups[0].items.map((i) => i.id)).toEqual(['edit', 'details']);
+    expect(courseActions(session, { ...base, details: true, detailsOpen: true }).groups[0].items[0].label).toBe('收起詳情');
   });
 
   it('no empty groups and no duplicate ids', () => {

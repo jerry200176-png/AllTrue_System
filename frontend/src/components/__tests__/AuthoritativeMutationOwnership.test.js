@@ -21,7 +21,8 @@ describe('authoritative mutation ownership (slice 3: course-mgmt + calendar + bi
   it('keeps course close in-place through the shared safeguarded action while keeping trial convert local', () => {
     const courseMgmt = read('pages/CourseManagement.vue');
     expect(courseMgmt).toContain('openCommercialPurchaseEntry');
-    expect(courseMgmt).toContain('@click="closeCourseInPlace(c)"');
+    expect(read('composables/course-management/useCourseRowActions.js')).toContain('close: () => d.closeCourseInPlace(c)');
+    expect(courseMgmt).toContain('closeCourseInPlace,');
     expect(courseMgmt).toContain('runCloseCourseNoRenew({');
     expect(courseMgmt).toContain('openManualSessionModal');
     expect(courseMgmt).toContain('/api/v1/student-classes/${course.id}/convert-trial');

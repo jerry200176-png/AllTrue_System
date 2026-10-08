@@ -28,7 +28,7 @@ export function courseActions(course, caps = {}) {
 
   const groups = [
     // 編輯 is not a "move": first and ungrouped. Filtered out below when it is the primary.
-    { id: 'lead', label: '', items: [fallback] },
+    { id: 'lead', label: '', items: [fallback, caps.details && { id: 'details', label: caps.detailsOpen ? '收起詳情' : '詳情' }] },
     { id: 'move', label: '調動', items: [
       { id: 'reschedule', label: '調課' },
       { id: 'substitute', label: '代課' },
@@ -44,7 +44,6 @@ export function courseActions(course, caps = {}) {
       caps.packagePreview && { id: 'package-preview', label: '轉多科方案預檢' },
       caps.paymentNotice && { id: 'payment-slip', label: '繳費通知' },
       { id: 'invoice', label: '學生帳務' },
-      { id: 'tuition', label: '前往帳務中心' },
     ] },
     { id: 'end', label: '狀態', items: [
       paused ? (canResume && { id: 'resume', label: '恢復課程' }) : { id: 'pause', label: '暫停課程' },
