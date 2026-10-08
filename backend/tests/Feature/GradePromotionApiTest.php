@@ -122,12 +122,35 @@ class GradePromotionApiTest extends TestCase
         $this->assertSame(8, (int) $j2->fresh()->ClassID, 'J2 untouched even though nobody excluded it');
     }
 
-    private function director(array $campusIds, string $email = 'dir-promo@example.com'): array
+    /** in-app #386: a super admin has no campus rows; preview/confirm used to answer 403 Forbidden. */
+    public function test_super_admin_without_campus_rows_can_preview_and_confirm(): void
+    {
+        $admin = $this->director([], 'super-promo@example.com', 'S');
+        $this->student(1, 'Super J1', 7);
+
+        $this->withHeaders($this->bearer($admin['tok']))
+            ->getJson('/api/v1/grade-promotions/preview?branch_id=1&season_year=2026')
+            ->assertOk();
+        $this->withHeaders($this->bearer($admin['tok']))
+            ->postJson('/api/v1/grade-promotions/confirm', [
+                'branch_id' => 1, 'season_year' => 2026, 'idempotency_key' => 'promo-super-key-0001',
+            ])->assertCreated();
+    }
+
+    public function test_director_still_blocked_from_other_campus(): void
+    {
+        $director = $this->director([2], 'dir-other@example.com');
+        $this->withHeaders($this->bearer($director['tok']))
+            ->getJson('/api/v1/grade-promotions/preview?branch_id=1&season_year=2026')
+            ->assertForbidden();
+    }
+
+    private function director(array $campusIds, string $email = 'dir-promo@example.com', string $type = 'A'): array
     {
         $user = User::create([
             'LoginName' => $email, 'Name' => 'Director',
             'PSW' => password_hash('secret-123', PASSWORD_DEFAULT),
-            'type' => 'A', 'phone' => '0911111111', 'MustChangePassword' => false,
+            'type' => $type, 'phone' => '0911111111', 'MustChangePassword' => false,
         ]);
         foreach ($campusIds as $cid) {
             UserCampus::create(['UserID' => $user->id, 'CampusID' => $cid, 'Admin' => 1, 'Approved' => 1]);
