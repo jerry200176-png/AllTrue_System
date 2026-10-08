@@ -37,7 +37,7 @@ describe('CourseManagement read-only lens (Phase B first slice)', () => {
   });
 
   it('keeps the existing teacher-copy scheduler path', () => {
-    expect(source).toContain('@click="duplicateCourseForTeacher(c); closeActionMenu()"');
+    expect(readFileSync(resolve(__dirname, '../../composables/course-management/useCourseRowActions.js'), 'utf8')).toContain('duplicate: () => d.duplicateCourseForTeacher(c)');
     expect(source).toContain('showBackfillModal.value = true');
   });
 

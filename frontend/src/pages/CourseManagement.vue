@@ -403,85 +403,21 @@
                       </div>
                       <template v-else>
 
-                      <div class="action-btns-row">
-                        <button class="small primary course-primary-action" @click="editCourse(c)">編輯</button>
+                      <div class="action-btns-row action-btns-row--model" data-testid="course-row-actions">
                         <button
-                          v-if="canCloseCourse(c)"
-                          class="small ghost course-settle-action"
-                          title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒"
-                          @click="closeCourseInPlace(c)"
-                        >結束課程（不再續課）</button>
-                        <button
-                          v-if="isManualOccurrenceCourse(c)"
-                          class="small btn-add-session manual-occurrence-action"
-                          @click="openManualSessionModal(c)"
-                        >＋新增下一堂</button>
-                        <button
-                          v-if="(isSessionMode(c) || isMonthlyMode(c)) && !isManualOccurrenceCourse(c)"
-                          class="small btn-add-session manual-occurrence-action"
-                          @click="openManualSessionModal(c)"
-                        >{{ isMonthlyMode(c) ? '排月結' : '排課' }}</button>
-                        <button class="small ghost btn-toggle" @click="toggleDatesAndMakeups(c)">
-                          {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
-                        </button>
-                        <div class="action-menu-wrapper">
-                          <button
-                            :ref="(el) => setActionMenuTrigger(c.id, el)"
-                            class="small ghost action-menu-trigger"
-                            @click.stop="toggleActionMenu(c.id)"
-                            @keydown="handleActionMenuKeydown(c.id, $event)"
-                            title="其他課程操作"
-                            aria-haspopup="menu"
-                            :aria-expanded="activeActionMenu === c.id"
-                          >更多 ▾</button>
-                          <div v-if="activeActionMenu === c.id" :ref="(el) => setActionMenu(c.id, el)" class="action-dropdown" role="menu" aria-label="其他課程操作" @click.stop @keydown="handleActionMenuKeydown(c.id, $event)">
-                            <p v-if="isSessionMode(c) || isMonthlyMode(c)" class="action-section-label">排課與課堂</p>
-                            <button
-                              v-if="(isSessionMode(c) || isMonthlyMode(c)) && !isManualOccurrenceCourse(c)"
-                              class="action-dropdown-item action-dropdown-add-session-mobile"
-                              role="menuitem"
-                              :class="{ 'action-dropdown-item--disabled': isSessionMode(c) && !canQuickAddSession(c) }"
-                              :disabled="isSessionMode(c) && !canQuickAddSession(c)"
-                              :title="isMonthlyMode(c) ? '在課程起訖日內新增月結堂次' : (canQuickAddSession(c) ? '' : quickAddDisabledReason(c))"
-                              @click="isMonthlyMode(c) ? (openMonthlySessionModal(c), closeActionMenu()) : (canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu()))"
-                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> {{ isMonthlyMode(c) ? '新增月結堂次' : '補課 / 補登' }}</button>
-                            <p class="action-section-label">帳務與合約</p>
-                            <button class="action-dropdown-item" role="menuitem" title="在帳務中心打開學生帳務" @click="openTuitionLedger(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 學生帳務</button>
-                            <button
-                              v-if="isSessionMode(c) && !isPackageMember(c)"
-                              class="action-dropdown-item action-dropdown-package-preview"
-                              role="menuitem"
-                              @click="openPackageConversionPreview(c); closeActionMenu()"
-                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">account_tree</span> 轉多科方案預檢</button>
-                            <button
-                              v-if="isPaymentNoticeAvailable(c)"
-                              class="action-dropdown-item"
-                              data-testid="course-payment-slip-action"
-                              role="menuitem"
-                              title="產生繳費通知單"
-                              @click="openPaymentSlip(c); closeActionMenu()"
-                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">description</span> 繳費通知</button>
-                            <button
-                              :class="['action-dropdown-item', { 'action-dropdown-renew': purchaseActionIsRenew(c) }]"
-                              role="menuitem"
-                              :title="purchaseActionTitle(c)"
-                              @click="openCommercialPurchaseEntry(c); closeActionMenu()"
-                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(c) }}</button>
-                            <button class="action-dropdown-item action-dropdown-adjustment" role="menuitem" title="依情境選擇更正未付款堂數或轉移已上課紀錄" @click="openContractAdjustmentModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit_note</span> 合約／堂次調整</button>
-                            <button v-if="effectiveClosedReason(c) === 'contract_amended'" class="action-dropdown-item" role="menuitem" title="還原提前結束／調整合約總堂數" @click="openContractRevertModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">undo</span> 撤銷調整</button>
-                            <p class="action-section-label">其他操作</p>
-                            <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
-                            <p class="action-section-label">狀態管理</p>
-                            <button v-if="c.status !== 'inactive'" class="action-dropdown-item" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">pause_circle</span> 暫停課程</button>
-                            <button v-if="c.status === 'inactive' && c.closed_reason !== 'waived'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
-                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒" @click="closeCourseInPlace(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結束課程（不再續課）</button>
-                            <hr class="action-dropdown-divider" />
-                            <p class="action-section-label action-section-label--danger">危險操作</p>
-                            <button class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
-                          </div>
-                        </div>
+                          type="button"
+                          class="small primary course-primary-action"
+                          data-testid="course-row-primary"
+                          :data-action="rowModelFor(c).primary.id"
+                          @click="runRowAction(c, rowModelFor(c).primary.id)"
+                        >{{ rowModelFor(c).primary.label }}</button>
+                        <ActionMenu
+                          :groups="rowModelFor(c).groups"
+                          :label="`${getSubjectLabel(c.subject)} 的更多課程操作`"
+                          trigger-class="action-menu-trigger"
+                          @select="(id) => runRowAction(c, id)"
+                        />
                       </div>
-                    
                       </template>
                     </td>
                   </tr>
@@ -1474,6 +1410,8 @@ import {
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
+import { useCourseRowActions } from '../composables/course-management/useCourseRowActions';
+import ActionMenu from '../components/ActionMenu.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
@@ -5411,6 +5349,20 @@ watch(
   },
   { immediate: true },
 );
+// 課程查找 C-PR2: the row renders one primary + ⋯ from the shared action model (docs/plans/2026-10-08-course-finder-actions.md).
+const { rowModel: rowModelFor, runRowAction } = useCourseRowActions({
+  effectiveClosedReason, planningStatusVisible, planningStatusFor, isSessionMode, isMonthlyMode, isManualOccurrenceCourse,
+  canQuickAddSession, quickAddDisabledReason, canCloseCourse, purchaseActionIsRenew, purchaseActionLabel, isPackageMember,
+  isPaymentNoticeAvailable, featureSubstituteV2,
+  isDetailsOpen: (c) => expandedDates.value.has(c.id),
+  isSessionEditOpen: () => showSessionEditModal.value,
+  requestDelete: (c) => { confirmDeleteTarget.value = c; },
+  openCourseTransfer: (c) => { editCourse(c, { openModal: false }); showCourseTransfer.value = true; },
+  openSessionEditFromAction, startSessionReschedule, startSubstitute, openSubstituteV2FromEdit,
+  editCourse, toggleDatesAndMakeups, requestCoursePause, closeCourseInPlace, openManualSessionModal, openMonthlySessionModal,
+  openQuickAddSessionModal, duplicateCourseForTeacher, openCommercialPurchaseEntry, openContractAdjustmentModal,
+  openContractRevertModal, openPackageConversionPreview, openPaymentSlip, openTuitionLedger,
+});
 onMounted(() => {
   try {
     const raw = sessionStorage.getItem('alltrue_ops_trust_focus');
@@ -6692,6 +6644,14 @@ onUnmounted(() => {
   display: flex;
   gap: 6px;
   align-items: center;
+}
+
+.action-btns-row--model { justify-content: flex-start; flex-wrap: nowrap; }
+.action-btns-row--model .course-primary-action { min-height: 40px; white-space: nowrap; }
+@media (max-width: 640px) {
+  .action-btns-row--model { width: 100%; }
+  .action-btns-row--model .course-primary-action { flex: 1 1 auto; min-height: 44px; }
+  .action-btns-row--model :deep(.am__trigger) { min-width: 44px; min-height: 44px; }
 }
 
 .action-menu-wrapper {

@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pagePath = resolve(__dirname, '../../pages/CourseManagement.vue');
 const studentsPagePath = resolve(__dirname, '../../pages/StudentsList.vue');
+const rowActionsPath = resolve(__dirname, '../../composables/course-management/useCourseRowActions.js');
+const courseActionsSource = readFileSync(resolve(__dirname, '../../lib/courseActions.js'), 'utf8');
 const closeCourseActionPath = resolve(__dirname, '../../lib/closeCourseNoRenew.js');
 const manualSessionModalPath = resolve(__dirname, '../course-management/ManualSessionModal.vue');
 const source = readFileSync(pagePath, 'utf8');
@@ -19,41 +21,41 @@ const activeActionsEnd = source.indexOf('<tr v-if="!courseManagerEnabled && expa
 const activeActions = source.slice(activeActionsStart, activeActionsEnd);
 const legacyActionsStart = activeActions.indexOf('<template v-else>');
 const legacyActions = legacyActionsStart >= 0 ? activeActions.slice(legacyActionsStart) : activeActions;
-const activeMoreMenu = legacyActions.slice(legacyActions.indexOf('class="action-dropdown"'));
 
 describe('CourseManagement action hierarchy', () => {
-  it('keeps Course Manager primary entry when flag on, and legacy More hierarchy when off', () => {
+  it('keeps Course Manager primary entry when flag on; flag-off rows render one primary + the shared ⋯ menu', () => {
     expect(activeActions).toContain('data-testid="course-manager-open"');
     expect(activeActions).toContain('管理課程');
     expect(activeActions).toContain('courseManagerEnabled');
     expect(legacyActions).toContain('course-primary-action');
-    expect(legacyActions).toContain('@click="editCourse(c)"');
+    expect(legacyActions).toContain('data-testid="course-row-primary"');
+    expect(legacyActions).toContain('@click="runRowAction(c, rowModelFor(c).primary.id)"');
+    expect(legacyActions).toContain('<ActionMenu');
+    expect(legacyActions).toContain('@select="(id) => runRowAction(c, id)"');
+    // one primary + ⋯: no stray row buttons (結束課程 / 排課 / 詳情 / 更多 ▾ live in ⋯ now)
+    expect(legacyActions.match(/<button/g)).toHaveLength(1);
+    expect(legacyActions).not.toContain('btn-toggle');
+    expect(legacyActions).not.toContain('更多 ▾');
+    expect(legacyActions).not.toContain('btn-invoices');
     expect(source).toContain('navigateToStudentCourse(hc)');
-    expect(legacyActions).toContain('manual-occurrence-action');
     expect(source).toContain('@edit-course="editManualSessionCourse"');
     expect(manualSessionModalSource).toContain('先設定月結結束日');
-    expect(legacyActions).toContain('btn-toggle');
-    expect(legacyActions).toContain('更多 ▾');
-    expect(legacyActions).toContain('排課與課堂');
-    expect(legacyActions).toContain('帳務與合約');
-    expect(legacyActions).toContain('轉多科方案預檢');
+    expect(courseActionsSource).toContain('轉多科方案預檢');
     expect(source).toContain('繼續轉成多科共用方案');
-    expect(legacyActions).toContain('course-payment-slip-action');
-    expect(legacyActions).toContain('isPaymentNoticeAvailable(c)');
-    expect(legacyActions).toContain('合約／堂次調整');
-    expect(legacyActions).not.toContain('btn-invoices');
-    expect(legacyActions).not.toContain('>+ 補課</button>');
   });
 
-  it('keeps the More menu accessible and preserves existing advanced handlers', () => {
-    expect(legacyActions).toContain('aria-haspopup="menu"');
-    expect(legacyActions).toContain('role="menu"');
-    expect(legacyActions).toContain('role="menuitem"');
-    expect(legacyActions.match(/openManualSessionModal\(c\)/g)).toHaveLength(2);
-    expect(activeMoreMenu).not.toContain('openManualSessionModal(c)');
-    expect(legacyActions).toContain('@click="openTuitionLedger(c); closeActionMenu()"');
-    expect(legacyActions).toContain('@click="openContractAdjustmentModal(c); closeActionMenu()"');
-    expect(legacyActions).toContain('@click="duplicateCourseForTeacher(c); closeActionMenu()"');
+  it('routes every ⋯ item to the handler the old row buttons used', () => {
+    const rowActions = readFileSync(rowActionsPath, 'utf8');
+    for (const h of ['editCourse', 'toggleDatesAndMakeups', 'requestCoursePause', 'closeCourseInPlace', 'openManualSessionModal',
+      'openMonthlySessionModal', 'openQuickAddSessionModal', 'duplicateCourseForTeacher', 'openCommercialPurchaseEntry',
+      'openContractAdjustmentModal', 'openContractRevertModal', 'openPackageConversionPreview', 'openPaymentSlip', 'openTuitionLedger']) {
+      expect(rowActions).toContain(`d.${h}(c)`);
+    }
+    expect(rowActions).toContain("'contract-adjust'");
+    expect(source).toContain('useCourseRowActions({');
+    expect(source).toContain('openCourseTransfer: (c) => { editCourse(c, { openModal: false }); showCourseTransfer.value = true; }');
+    expect(source).toContain('requestDelete: (c) => { confirmDeleteTarget.value = c; }');
+    expect(source).toContain('isPaymentNoticeAvailable,');
   });
 
   it('does not let an earlier manual-session check overwrite the latest selection', () => {
@@ -77,11 +79,10 @@ describe('CourseManagement action hierarchy', () => {
   it('offers explicit settlement for unpaid courses and preserves reconciliation messaging', () => {
     expect(source).toContain("&& (isSessionMode(c) || isMonthlyMode(c))");
     expect(source).toContain("c.closed_reason !== 'settled_pending';");
-    expect(source.match(/結束課程（不再續課）/g)).toHaveLength(2);
-    expect(source.match(/title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒"/g)).toHaveLength(2);
+    expect(courseActionsSource).toContain('結束課程（不再續課）');
     expect(studentsSource).toContain("['session', 'monthly'].includes");
     expect(studentsSource).toContain("course?.closed_reason !== 'settled_pending'");
-    expect(source.match(/@click="closeCourseInPlace\(c\)/g)).toHaveLength(2);
+    expect(source.match(/closeCourseInPlace,/g)).toHaveLength(1);
     expect(source).toContain('function closeCourseInPlace(course)');
     expect(studentsSource).toContain('runCloseCourseNoRenew({');
     expect(closeCourseActionSource).toContain("reason: 'settled'");
