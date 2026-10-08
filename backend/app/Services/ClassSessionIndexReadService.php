@@ -120,6 +120,8 @@ class ClassSessionIndexReadService
                 DB::raw('COALESCE(rbu.Name, siu.Name, "") as recorded_by_name'),
                 DB::raw('EXISTS (SELECT 1 FROM LearningRecord lr_history WHERE lr_history.ClassSessionID = cs.id) as learning_record_history'),
                 DB::raw('EXISTS (SELECT 1 FROM StudentSingIn si_history WHERE si_history.ClassSessionID = cs.id) as attendance_history'),
+                // #3780 P1: substitute provenance (unique SourceKey index), not "teacher differs from the contract".
+                DB::raw("EXISTS (SELECT 1 FROM Notifications sub_n WHERE sub_n.SourceKey = CONCAT('substitute:', cs.id) AND sub_n.ResolvedAt IS NULL) as substitute_notice"),
             ]);
 
         // Use the application's Taipei clock rather than the DB server clock.
@@ -252,6 +254,8 @@ class ClassSessionIndexReadService
             ? (int) $row->substitute_teacher_id : 0;
         $row->substitute_teacher_id = $subTid > 0 ? $subTid : null;
         $row->teacher_id = $subTid > 0 ? $subTid : (int) ($row->TeacherID ?? 0);
+        $row->contract_teacher_id = (int) ($row->TeacherID ?? 0) ?: null;
+        $row->substitute_notice = (bool) ($row->substitute_notice ?? false);
         $row->branch_id = (int) ($row->CampusID ?? 0);
         $row->session_date = $row->SessionDate ? substr((string) $row->SessionDate, 0, 10) : null;
         $row->start_time = $row->StartTime ? substr((string) $row->StartTime, 0, 5) : null;
