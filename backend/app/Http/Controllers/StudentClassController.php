@@ -4345,13 +4345,26 @@ class StudentClassController extends Controller
                 $targetCapacity = max(0, (int) ($target->SessionCount ?? 0));
                 $transferCount = count($foundIds);
                 if ($targetCapacity <= 0 || $targetCommitted + $transferCount > $targetCapacity) {
+                    // in-app #379: plain wording + the next step (buy sessions on the target first). Never auto-adds sessions.
+                    $available = max(0, $targetCapacity - $targetCommitted);
+                    $message = $targetCapacity <= 0
+                        ? '目標課程還沒有購買堂數。請先在目標課程加買堂數，再轉課。'
+                        : ($available === 0
+                            ? "目標課程堂數已滿（{$targetCommitted}/{$targetCapacity}）。請先在目標課程加買堂數，再轉課。"
+                            : "目標課程只剩 {$available} 堂可用（{$targetCommitted}/{$targetCapacity}），這次要轉 {$transferCount} 堂。請先在目標課程加買堂數，再轉課。");
                     return response()->json([
                         'code' => 'target_capacity_exceeded',
-                        'message' => "目標課程可用堂數不足：目前已有 {$targetCommitted} 堂，轉移 {$transferCount} 堂後將超過 {$targetCapacity} 堂上限；未執行任何轉移。",
+                        'message' => $message,
                         'target_session_count' => $targetCapacity,
                         'target_committed_sessions' => $targetCommitted,
                         'transfer_count' => $transferCount,
-                        'available_sessions' => max(0, $targetCapacity - $targetCommitted),
+                        'available_sessions' => $available,
+                        'next_actions' => [[
+                            'code' => 'open_target_purchase',
+                            'label' => '前往目標課程加購',
+                            'available' => true,
+                            'student_class_id' => (int) $target->ID,
+                        ]],
                     ], 422);
                 }
             }

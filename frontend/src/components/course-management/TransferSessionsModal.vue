@@ -98,6 +98,13 @@
           class="text-action"
           @click="$emit('open-billing')"
         >前往帳務中心</button>
+        <button
+          v-if="targetPurchaseAction"
+          type="button"
+          class="text-action"
+          data-testid="transfer-open-target-purchase"
+          @click="$emit('open-target-purchase', targetPurchaseAction.student_class_id)"
+        >{{ targetPurchaseAction.label || '前往目標課程加購' }}</button>
       </div>
 
       <div class="actions">
@@ -128,7 +135,10 @@ const props = defineProps({
   errorMessage: { type: String, default: '' },
   errorNextActions: { type: Array, default: () => [] },
 });
-const emit = defineEmits(['close', 'submit', 'open-billing']);
+const emit = defineEmits(['close', 'submit', 'open-billing', 'open-target-purchase']);
+const targetPurchaseAction = computed(() => props.errorNextActions.find(
+  (action) => action?.code === 'open_target_purchase' && action?.available !== false && action?.student_class_id,
+) || null);
 
 const subjectLabel = computed(() => getSubjectLabel(props.subject));
 const isMonthlyCourse = computed(() => String(

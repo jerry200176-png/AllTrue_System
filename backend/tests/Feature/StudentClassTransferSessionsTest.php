@@ -775,6 +775,30 @@ class StudentClassTransferSessionsTest extends TestCase
         }
     }
 
+    public function test_partly_full_target_names_the_remaining_sessions_in_plain_words(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1);
+            $target = $this->createCourse($student->id, 1, ['SessionCount' => 2, 'RemainingSessions' => 1]);
+            $ids = [$this->createClassSession((int) $source->ID, '2026-08-09'), $this->createClassSession((int) $source->ID, '2026-08-10')];
+            $this->createClassSession((int) $target->ID, '2026-08-03', 'attended');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => $ids, 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertStatus(422)
+                ->assertJsonPath('code', 'target_capacity_exceeded')
+                ->assertJsonPath('message', '目標課程只剩 1 堂可用（1/2），這次要轉 2 堂。請先在目標課程加買堂數，再轉課。');
+            $this->assertSame(2, DB::table('ClassSession')->whereIn('id', $ids)->where('StudentClassID', $source->ID)->count());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_transfer_rejects_target_that_would_exceed_count_capacity(): void
     {
         Carbon::setTestNow('2026-08-12 12:00:00');
@@ -798,7 +822,10 @@ class StudentClassTransferSessionsTest extends TestCase
                 ->assertJsonPath('target_session_count', 1)
                 ->assertJsonPath('target_committed_sessions', 1)
                 ->assertJsonPath('transfer_count', 1)
-                ->assertJsonPath('available_sessions', 0);
+                ->assertJsonPath('available_sessions', 0)
+                ->assertJsonPath('message', '目標課程堂數已滿（1/1）。請先在目標課程加買堂數，再轉課。')
+                ->assertJsonPath('next_actions.0.code', 'open_target_purchase')
+                ->assertJsonPath('next_actions.0.student_class_id', (int) $target->ID);
 
             $this->assertSame(
                 (int) $source->ID,

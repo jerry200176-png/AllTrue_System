@@ -17,8 +17,8 @@ const units = [
   { id: 2, date: '2026-09-08', status: 'scheduled' },
   { id: 3, date: '2026-09-15', status: 'cancelled', hasAttendanceHistory: true },
 ];
-let reload, notify, goToBilling, allSessionUnits;
-const make = () => useTransferSessions({ allSessionUnits, goToBilling, reload, notify });
+let reload, notify, goToBilling, goToPurchase, allSessionUnits;
+const make = () => useTransferSessions({ allSessionUnits, goToBilling, goToPurchase, reload, notify });
 const post = (body) => ({
   method: 'POST', credentials: 'include',
   headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -31,6 +31,7 @@ beforeEach(() => {
   reload = vi.fn(async () => {});
   notify = vi.fn();
   goToBilling = vi.fn();
+  goToPurchase = vi.fn();
   allSessionUnits = vi.fn(() => units);
 });
 
@@ -89,6 +90,37 @@ describe('useTransferSessions open / lookup', () => {
     t.openBillingNextStep();
     expect(t.showModal.value).toBe(false);
     expect(goToBilling).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }));
+  });
+});
+
+describe('useTransferSessions target full (in-app #379)', () => {
+  const full = {
+    code: 'target_capacity_exceeded',
+    message: '目標課程堂數已滿（8/8）。請先在目標課程加買堂數，再轉課。',
+    next_actions: [{ code: 'open_target_purchase', label: '前往目標課程加購', available: true, student_class_id: 8 }],
+  };
+
+  it('shows the plain message and goToPurchase receives the looked-up target course', async () => {
+    authedFetch.mockResolvedValueOnce(res(true, { data: [{ id: 8, student_id: 3, student_name: '小明', subject_name: '數學' }] }));
+    const t = make();
+    t.open(src);
+    await flush();
+    authedFetch.mockResolvedValueOnce(res(false, full));
+    await t.submit({ targetCourseId: 8, sessionIds: [1], reason: '' });
+    expect(t.error.value).toBe(full.message);
+    expect(t.nextActions.value).toEqual(full.next_actions);
+    t.openTargetPurchase(8);
+    expect(t.showModal.value).toBe(false);
+    expect(goToPurchase).toHaveBeenCalledWith(expect.objectContaining({ id: 8 }));
+  });
+
+  it('keeps the modal open with a hint when the target is not in the looked-up list', () => {
+    const t = make();
+    t.showModal.value = true;
+    t.openTargetPurchase(99);
+    expect(t.showModal.value).toBe(true);
+    expect(t.error.value).toContain('加購');
+    expect(goToPurchase).not.toHaveBeenCalled();
   });
 });
 
