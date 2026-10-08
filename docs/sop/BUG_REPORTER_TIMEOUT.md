@@ -1,5 +1,7 @@
 # Bug reporter-verify timeout (manual operational)
 
+> 2026-10-08 (Founder 2A): `bug-reporter-timeout.yml` also runs daily with `--auto` (resolved queue, 14 days, max 20 per run, plain public reply). The manual dry-run/apply path below is unchanged.
+
 **Status:** Manual operational capability — **not** fully automated.  
 **Owner:** Founder / CTO Agent  
 **Cadence:** Weekly dry-run; apply only after reviewing output  
