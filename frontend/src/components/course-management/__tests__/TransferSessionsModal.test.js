@@ -111,4 +111,20 @@ describe('TransferSessionsModal', () => {
       reason: '原合約誤標取消，依歷史紀錄恢復',
     });
   });
+
+  it('offers a button to the full target course and emits its id (in-app #379)', async () => {
+    const wrapper = mountModal({
+      errorMessage: '目標課程堂數已滿（8/8）。請先在目標課程加買堂數，再轉課。',
+      errorNextActions: [{ code: 'open_target_purchase', label: '前往目標課程加購', available: true, student_class_id: 1849 }],
+    });
+    const btn = wrapper.find('[data-testid="transfer-open-target-purchase"]');
+    expect(btn.text()).toBe('前往目標課程加購');
+    await btn.trigger('click');
+    expect(wrapper.emitted('open-target-purchase')?.[0]).toEqual([1849]);
+  });
+
+  it('shows no purchase button without that next action', () => {
+    const wrapper = mountModal({ errorMessage: '轉移失敗', errorNextActions: [] });
+    expect(wrapper.find('[data-testid="transfer-open-target-purchase"]').exists()).toBe(false);
+  });
 });
