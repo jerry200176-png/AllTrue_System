@@ -230,3 +230,51 @@ it('explains missing invoices, recorded cash, and boundary lessons before offeri
   expect(w.find('[data-testid="monthly-payment-periods"]').exists()).toBe(false);
   w.unmount();
 });
+
+describe('CourseManager header actions + lesson moves (C-PR3)', () => {
+  afterEach(() => { document.body.innerHTML = '' })
+  const model = {
+    primary: { id: 'purchase', label: '續報加購' },
+    groups: [
+      { id: 'move', label: '調動', items: [{ id: 'reschedule', label: '調課' }, { id: 'substitute', label: '代課' }, { id: 'transfer', label: '轉課' }] },
+      { id: 'danger', label: '', items: [{ id: 'delete', label: '刪除課程', danger: true }] },
+    ],
+  }
+
+  it('header has the primary + ⋯; 調課／代課／轉課 are 2 clicks and emit the action name', async () => {
+    const w = mountCm({ actionModel: model })
+    await w.get('[data-testid="course-manager-primary"]').trigger('click')
+    expect(w.emitted('action')[0]).toEqual([{ name: 'purchase' }])
+    for (const [action, n] of [['reschedule', 1], ['substitute', 2], ['transfer', 3]]) {
+      await w.get('.am__trigger').trigger('click') // click 1
+      await flushPromises()
+      document.body.querySelector(`[data-action="${action}"]`).click() // click 2
+      await flushPromises()
+      expect(w.emitted('action')[n]).toEqual([{ name: action }])
+    }
+    w.unmount()
+  })
+
+  it('no primary button when the model has none (already managing); no ⋯ without a model', () => {
+    const w = mountCm({ actionModel: { primary: null, groups: model.groups } })
+    expect(w.find('[data-testid="course-manager-primary"]').exists()).toBe(false)
+    expect(w.find('.am__trigger').exists()).toBe(true)
+    expect(mountCm().find('.am__trigger').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('upcoming lessons get 1-click 調課／代課 that name the date; others do not', async () => {
+    const w = mountCm({ tab: 'sessions', canMoveLesson: (u) => u.id === 1 })
+    const unit = w.findAll('.cmw__session-item')
+    expect(unit).toHaveLength(2)
+    expect(unit[1].find('[data-testid="lesson-reschedule"]').exists()).toBe(false)
+    const btn = unit[0].get('[data-testid="lesson-reschedule"]')
+    expect(btn.attributes('aria-label')).toBe('調課 2026-09-23')
+    await btn.trigger('click')
+    await unit[0].get('[data-testid="lesson-substitute"]').trigger('click')
+    expect(w.emitted('move-lesson').map(([e]) => [e.mode, e.unit.id])).toEqual([['reschedule', 1], ['substitute', 1]])
+    expect(w.emitted('open-session')).toBeUndefined()
+    w.unmount()
+  })
+})
+

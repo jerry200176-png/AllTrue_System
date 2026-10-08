@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-course-drawer-moves
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 課程管理頁可直接調課代課
+    summary: 管理課程頁右上角有「⋯」，調課、代課、轉課兩下就到；每堂課旁也有調課、代課。
+    items:
+      - category: added
+        text: 管理課程頁右上角「⋯」有調課、代課、轉課，一樣從下一堂課開始。
+      - category: added
+        text: 排課與堂次的每一堂即將上的課，旁邊直接有「調課」「代課」，一下就開。
+      - category: improved
+        text: 從「⋯」調課或代課時，視窗上方可從接下來的六堂課選要調哪一堂。
