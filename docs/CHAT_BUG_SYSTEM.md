@@ -186,6 +186,7 @@ last_reviewed: 2026-08-23
 **GitHub issue 自動關閉（F14）**：`bug-phase-c-allowlist.yml` 回寫成功後，會用回覆裡的 issue 連結自動關 issue（`type:epic` 除外）。`bug-queue-dump.yml` 每次都附「in-app ↔ issue 不一致」報表（`scripts/inapp-issue-reconcile.py`），分診前先看。
 
 **逾時自動結案（2A）**：`bug-reporter-timeout.yml` 每日排程跑 `bugs:close-stale-resolved --auto`，只關「已修好」且回報者 14 天沒回覆的單並留白話回覆；單次上限 20 筆，超過整批不動。回報者留言或按「問題仍存在」會重開。
+**每週一頁（2A）**：`bug-sla-weekly-report.yml` 每週一 09:00（台北）開／更新「in-app 週報 YYYY-Www」issue（只列編號；本週新進／修好／結案／仍開著依年齡／超時／三大類別／重開），創辦人只需看這一張。
 
 **Reporter-verify timeout**：見 [`docs/governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md)（預設 7 日無回覆且無回歸訊號，可 `closed` 並註明 `closed_by_timeout`）。
 

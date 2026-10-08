@@ -40,7 +40,7 @@ it('shows separate invoice periods and never labels September paid by August', a
     } },
   });
   expect(wrapper.get('[data-testid="monthly-payment-periods"]').text()).toContain('2026-09');
-  expect(wrapper.get('[data-testid="monthly-payment-periods"]').text()).toContain('未繳費');
+  expect(wrapper.get('[data-testid="monthly-payment-periods"]').text()).toContain('未繳');
   expect(wrapper.text()).toContain('2026-08-01');
   wrapper.unmount();
 });

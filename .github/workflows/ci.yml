@@ -70,6 +70,7 @@ jobs:
           node scripts/ci-cost-guard.mjs --self-test
           node scripts/ci/bug-writeback-workflow.test.mjs
           node scripts/ci/bug-reporter-timeout-workflow.test.mjs
+          node scripts/ci/bug-sla-weekly-workflow.test.mjs
           node scripts/ci/staff-identity-merge-workflow.test.mjs
           node scripts/ci/inapp-product-loop-entry.test.mjs
           node scripts/ci/staff-multirole-activation-workflow.test.mjs
@@ -99,6 +100,9 @@ jobs:
 
       - name: Test bug detail dump contract
         run: python3 scripts/tests/test_bug_detail_dump.py
+
+      - name: Test in-app weekly one-pager
+        run: python3 scripts/tests/test_inapp_weekly_onepager.py
       - name: Test diagnose scripts print ids only (#3605)
         run: |
           python3 scripts/tests/test_diagnose_ids_only_contract.py
