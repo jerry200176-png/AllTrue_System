@@ -582,6 +582,42 @@ class StudentController extends Controller
         return response()->json(['message' => '已綁定卡號', 'student_id' => $student->id]);
     }
 
+    /** in-app #381: directors can release a lost or reassigned card; the card can then be bound elsewhere. */
+    public function unbindCard(Student $student)
+    {
+        if ($deny = $this->denyOutsideCampus($student)) {
+            return $deny;
+        }
+
+        // #3740 review (P1): an open sign-in today is closed by the next swipe of THIS card; releasing the
+        // card first would leave it to the nightly orphan job. Ask for the swipe-out first.
+        $openToday = \App\Models\StudentSignIn::query()->where('StudentID', $student->id)
+            ->whereNull('SignOutDT')->whereNull('VoidedAt')
+            ->where('SignInDT', '>=', now()->startOfDay()->toDateTimeString())->exists();
+        if ($openToday) {
+            return response()->json([
+                'message' => '學生今天已刷卡進班、尚未刷退，請先刷退（或在出缺勤補登離班）再解除卡片綁定。',
+                'error' => 'open_sign_in',
+            ], 409);
+        }
+
+        $hadCard = (string) ($student->RFID ?? '') !== '';
+        $student->RFID = null;
+        $student->save();
+        if ($hadCard) {
+            // Who released which student's card, for later attendance/deduction disputes (card value not logged).
+            SecurityAuditEvent::append('rfid.binding.revoked', 'success', [
+                'campus_id' => (int) $student->getAttribute('CampusID'),
+                'subject_type' => 'student',
+                'subject_id' => $student->getKey(),
+                'actor_type' => 'user',
+                'actor_id' => request()->attributes->get('auth_user')?->getKey(),
+            ], ['method' => 'director_api', 'reason_code' => 'manual_unbind']);
+        }
+
+        return response()->json(['message' => '已解除卡片綁定', 'student_id' => $student->id]);
+    }
+
     public function lineBindings(Request $request, Student $student)
     {
         if ($deny = $this->denyOutsideCampus($student)) {

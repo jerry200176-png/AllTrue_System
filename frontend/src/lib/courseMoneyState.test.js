@@ -151,22 +151,24 @@ assert.equal(M.remainingTone(8, { watchAt: 8 }), 'watch');
 assert.equal(M.remainingTone(9, { watchAt: 8 }), 'ok');
 
 // ─── payment status labels: one wording per status (Rule 6) ───
-assert.equal(M.TUITION_STATUS_CONFIG.paid.label, '已確認入帳');
-assert.equal(M.TUITION_STATUS_CONFIG.partial.label, '部分繳');
-assert.equal(M.TUITION_STATUS_CONFIG.waived.label, '確認不收', 'Rule 1: the alert ladder shows waived too');
-assert.equal(M.WAIVED_LABEL, '確認不收');
+assert.equal(M.TUITION_STATUS_CONFIG.paid.label, '已收');
+assert.equal(M.TUITION_STATUS_CONFIG.partial.label, '繳了一部分');
+assert.equal(M.TUITION_STATUS_CONFIG.waived.label, '不收了', 'Rule 1: the alert ladder shows waived too');
+assert.equal(M.WAIVED_LABEL, '不收了');
 assert.equal(M.TUITION_STATUS_CONFIG.pending_report.cls, 'st-pending');
-assert.equal(M.TUITION_STATUS_CONFIG.pending_reconciliation.label, '結案／待查帳');
-assert.equal(M.INVOICE_STATUS_LABELS.partial, '部分繳');
-assert.equal(M.REPORT_STATUS_LABELS.confirmed, '已入帳');
+assert.equal(M.TUITION_STATUS_CONFIG.pending_reconciliation.label, '等你確認收款', 'tab/badge also holds paused courses');
+assert.equal(M.ENDED_PENDING_LABEL, '課已結束，等你確認收款');
+assert.equal(M.PAUSED_PENDING_LABEL, '暫停中・等你確認收款');
+assert.equal(M.INVOICE_STATUS_LABELS.partial, '繳了一部分');
+assert.equal(M.REPORT_STATUS_LABELS.confirmed, '已收');
 assert.equal(M.REPORT_STATUS_LABELS.voided, '已撤銷', 'ledger keeps its voided label');
 
 // ─── folded monthlyPaymentDisplay ───
-assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'paid' }), '2026-09 未繳費');
+assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'paid' }), '2026-09 未繳');
 assert.equal(M.monthlyPaymentLabel({ monthly_payment: { review_required: true }, payment_status: 'paid' }), '付款期間待確認');
 assert.equal(M.monthlyPaymentLabel({ payment_status: 'paid' }), null);
-assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'pending_report' }), '2026-09 待對帳');
-assert.equal(M.periodPaymentLabel('partial'), '部分繳');
+assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'pending_report' }), '2026-09 等你確認');
+assert.equal(M.periodPaymentLabel('partial'), '繳了一部分');
 
 // ─── closed-reason verdict: legacy oracles (verbatim page copies) + pinned divergences ───
 const cmClosed = (c) => {
