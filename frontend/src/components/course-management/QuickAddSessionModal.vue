@@ -74,6 +74,7 @@
 <script setup>
 import { computed } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
+import { askConfirm } from '../../composables/useConfirmDialog';
 
 const props = defineProps({
   show: Boolean,
@@ -89,11 +90,13 @@ const submitDisabled = computed(() =>
 );
 const showAutoApproveWarning = computed(() => !!(props.conflict?.is_ended && props.form?.auto_approve));
 
-function handleSubmit() {
+async function handleSubmit() {
   if (showAutoApproveWarning.value) {
-    const ok = window.confirm(
-      `${props.form.session_date} ${props.form.start_time} 已經過去，送出後會直接標記為已上課並自動核准評量。確定要補登嗎？`
-    );
+    const ok = await askConfirm({
+      title: '這堂課已經過去，要補登嗎？',
+      message: `${props.form.session_date} ${props.form.start_time} 已經過去。補登後會直接標記為已上課，並自動核准評量。`,
+      confirmLabel: '補登這一堂',
+    });
     if (!ok) return;
   }
   emit('submit');

@@ -24,7 +24,8 @@ export async function closeCourseNoRenew({
   const balanceWarning = remaining > 0
     ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
     : '';
-  if (!confirmImpl(`確定要結案「${studentName || '學生'}」的 ${subject} 課程嗎？${paymentWarning}${balanceWarning}\n\n結案後此課程不再排課；若尚未繳費，會保留在帳務中心的「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」分頁。已繳費與已上課紀錄仍會保留。`)) return;
+  // The 2nd arg is read by the in-app dialog (askConfirm); the native confirm ignores it.
+  if (!await confirmImpl(`確定要結案「${studentName || '學生'}」的 ${subject} 課程嗎？${paymentWarning}${balanceWarning}\n\n結案後此課程不再排課；若尚未繳費，會保留在帳務中心的「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」分頁。已繳費與已上課紀錄仍會保留。`, { title: `結束${subject}？`, confirmLabel: '結束課程', danger: true })) return;
 
   try {
     const token = await getAccessToken();
