@@ -169,6 +169,7 @@ export function useSessionEditFlow({
       student_id: Number(course.student_id ?? course.StudentID ?? row.studentId ?? 0) || null,
       student_name: course.student_name || row.studentName || '—',
       teacher_id: row.teacherId || course.teacher_id || null,
+      substitute_notice: row.substituteNotice === true,
       teacher_name: row.teacherName || course.teacher_name || '—',
       subject: course.subject || '',
       attendance_time: formatAttendanceTooltipTime(row.attendanceSignInAt) || '',

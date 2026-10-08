@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-restore-teacher-provenance
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 「回正班老師」只出現在真的代課的堂次
+    summary: 換過合約老師後，以前那位老師上過的課會保留原本的上課老師，不會被改掉。
+    items:
+      - category: fixed
+        text: 「回正班老師」只出現在真的代課的堂次；以前由前任老師上過的課不會再出現這個按鈕，也不會被改成新老師。
+      - category: improved
+        text: 按「回正班老師」後會顯示「已回復正班老師」，不再出現代課撤銷按鈕。
+    source_refs:
+      - "changelog:2026-10-08:p1-restore-teacher-provenance"

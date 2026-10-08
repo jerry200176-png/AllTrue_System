@@ -74,6 +74,8 @@ export function createSessionViewModel(input) {
     branchId: input.branchId != null ? Number(input.branchId) : undefined,
     isContractException: input.isContractException,
     substituteTeacherId: input.substituteTeacherId ?? undefined,
+    substituteNotice: input.substituteNotice === true,
+    contractTeacherId: input.contractTeacherId ?? undefined,
     learningRecordId: input.learningRecordId ?? undefined,
     learningRecordStatus: input.learningRecordStatus,
     learningRecordBodyFilled: input.learningRecordBodyFilled,
@@ -141,6 +143,9 @@ export function sessionViewModelFromClassSessionsRow(raw) {
     branchId: Number(raw?.branch_id || raw?.CampusID || 0) || undefined,
     isContractException: !!(raw?.is_contract_exception ?? raw?.IsContractException ?? false),
     substituteTeacherId: raw?.substitute_teacher_id != null ? Number(raw.substitute_teacher_id) : null,
+    // #3780 P1: a real substitute (active notice), not merely "teacher differs from the contract" (history pins do too).
+    substituteNotice: raw?.substitute_notice === true,
+    contractTeacherId: Number(raw?.contract_teacher_id || 0) || undefined,
     learningRecordId: raw?.learning_record_id != null ? Number(raw.learning_record_id) : null,
     learningRecordStatus: String(raw?.learning_record_status || 'missing'),
     learningRecordBodyFilled: !!raw?.learning_record_body_filled,

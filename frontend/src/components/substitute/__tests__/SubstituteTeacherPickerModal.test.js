@@ -225,4 +225,19 @@ describe('SubstituteTeacherPickerModal drag prefill', () => {
     const trace = wrapper.get('[data-availability-trace-id="trace-247-test"]');
     expect(trace.text()).toContain('trace-247-test');
   });
+
+  // #3780 P1: 「回正班老師」 needs substitute provenance, not just two different teacher ids (history pins differ too).
+  it.each([[true, true], [false, false], [undefined, false]])('substitute_notice=%s shows restore=%s', async (notice, shown) => {
+    const wrapper = mount(SubstituteTeacherPickerModal, {
+      props: {
+        modelValue: false,
+        context: { session_date: '2026-10-09', start_time: '13:00', end_time: '15:00', session_campus_id: 2,
+          original_teacher_id: 168, current_teacher_id: 81, original_teacher_name: '正班老師', substitute_notice: notice },
+        teachers: [], branchNameMap: {}, fetchAvailability: vi.fn(async () => ({ busy_slots: [] })),
+      },
+    });
+    await wrapper.setProps({ modelValue: true });
+    await flushPromises();
+    expect(wrapper.find('.stp-restore').exists()).toBe(shown);
+  });
 });

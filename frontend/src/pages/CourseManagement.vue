@@ -4503,6 +4503,7 @@ const openSubstituteV2FromEdit = () => {
     current_teacher_name: form.teacher_name || '',
     original_teacher_id: course.teacher_id ?? null,
     original_teacher_name: course.teacher_name || '',
+    substitute_notice: form.substitute_notice === true,
     session_campus_id: Number(props.branchId || 0) || null,
   };
   closeSessionEdit();
@@ -4574,6 +4575,12 @@ const onSubstituteV2Submit = async (submitPayload) => {
       if (patch) updateLocalSessionRow(courseKey, patch);
     }
 
+    if (json.restored_teacher_id != null) {
+      // #3780: a restore is not a new substitute -- confirm it, no substitute-undo (it would 409).
+      toastRef.value?.show?.({ title: json.message || '已回復正班老師', description: ctx.student_name || '', variant: 'success', durationMs: 5000 });
+      await loadCourses();
+      return;
+    }
     const description = isCombined
       ? `${ctx.student_name ? ctx.student_name + ' · ' : ''}已調整至 ${effDate} ${effStart}~${effEnd}`
       : (ctx.student_name ? `${ctx.student_name} · ${ctx.session_date} ${ctx.start_time}` : '');
