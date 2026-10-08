@@ -1,4 +1,5 @@
 import { classTypeLabel } from './calendarFormat.js';
+import { getStudentCourseSubjectDisplayLabel } from './studentCourseSubjectDisplay.js';
 
 const DAY_NAMES = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
 const STATUS_FILTERS = ['請假', '補課', '代課', '調課', '已取消'];
@@ -131,18 +132,10 @@ export function projectPrintRows({ courses = [], sessions = [], schedules = [], 
       startTime: time(first(session?.startTime, session?.start_time, session?.StartTime, course?.start_time)),
       endTime: time(first(session?.endTime, session?.end_time, session?.EndTime, course?.end_time)),
       studentName: first(session?.studentName, session?.student_name, course?.student_name, '—'),
-      subjectName: first(course?.subject_name, course?.subject, session?.subjectName, session?.subject, '—'),
+      // in-app #385: stored codes (e.g. math) print as the Chinese label.
+      subjectName: getStudentCourseSubjectDisplayLabel(course?.subject || course?.subject_name ? course : { subject: first(session?.subjectName, session?.subject, '') }) || '—',
       classTypeLabel: classTypeLabel(first(course?.class_type_label, course?.class_type, '—')),
       effectiveTeacherName: first(session?.teacherName, session?.teacher_name, teacherMap.get(String(teacherId)), '未指派'),
-      campusLabel: first(
-        course?.campus_name,
-        course?.branch_name,
-        session?.branchName,
-        session?.branch_name,
-        first(course?.branch_id, course?.CampusID, session?.branchId, session?.branch_id)
-          ? `分校 #${first(course?.branch_id, course?.CampusID, session?.branchId, session?.branch_id)}`
-          : '目前分校',
-      ),
       roomLabel: roomMap.get(String(roomId)) || first(course?.room_name, session?.room_name, '未設定教室'),
       statusCode: first(session?.status, session?.Status, 'scheduled'),
       statusLabel: labelStatus(first(session?.status, session?.Status)),
@@ -163,12 +156,13 @@ export function filterPrintRows(rows, filters = {}) {
   const teacher = String(filters.teacher || '').trim().toLowerCase();
   const room = String(filters.room || '').trim().toLowerCase();
   const student = String(filters.student || '').trim().toLowerCase();
-  const statuses = Array.isArray(filters.statuses) ? filters.statuses : [];
+  const statuses = Array.isArray(filters.statuses) ? filters.statuses : STATUS_FILTERS;
   return rows.filter((row) => (
     (!teacher || row.effectiveTeacherName.toLowerCase().includes(teacher))
     && (!room || row.roomLabel.toLowerCase().includes(room))
     && (!student || row.studentName.toLowerCase().includes(student))
-    && (!statuses.length || statuses.length === STATUS_FILTERS.length || statuses.some((status) => row.markers.includes(status) || row.statusLabel === status))
+    // in-app #385: ticks only gate exception rows; plain (e.g. 已點名) rows must never vanish.
+    && (!row.markers.some((m) => STATUS_FILTERS.includes(m)) || statuses.some((status) => row.markers.includes(status)))
   ));
 }
 
