@@ -13,6 +13,12 @@ describe('LessonPickerSelect', () => {
     expect(mount(LessonPickerSelect, { props: { picker: { mode: 'substitute', options, key: 'k1' } } }).text()).toContain('要代哪一堂？');
   });
 
+  it('shows the key it is given (derived by the page) and locks while a pick is opening', () => {
+    const w = mount(LessonPickerSelect, { props: { picker: { mode: 'reschedule', options, key: 'k3', busy: true } } });
+    expect(w.get('select').element.value).toBe('k3');
+    expect(w.get('select').attributes('disabled')).toBeDefined();
+  });
+
   it('emits the chosen key; renders nothing for one lesson or no picker', async () => {
     const w = mount(LessonPickerSelect, { props: { picker: { mode: 'reschedule', options, key: 'k1' } } });
     await w.get('select').setValue('k3');
