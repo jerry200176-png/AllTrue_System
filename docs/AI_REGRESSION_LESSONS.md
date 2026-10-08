@@ -895,6 +895,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R141. 無人值守的結案必須固定視窗、限量、鎖內重查，並保留回報者重開出口（in-app 閉環 2A，2026-10-08）
+
+- **現象**：逾時結案原本只能人工逐筆審核，沒人跑就永遠堆著（F11）；改成排程後，若沿用人工參數或沒有上限，一個資格判斷的錯誤會一次關掉一大批單。
+- **強制規則**：`--auto` 視窗固定 14 天、只處理「已修好」佇列、不接受 `--days`／`--reviewed-ids`；單次資格筆數超過上限就整批不動並失敗。寫入在列鎖內重查資格，與白話回覆同一交易，重跑不重複。正式站指令不支援 `--auto` 時 workflow 失敗而不是猜測。回報者留言或按「問題仍存在」必須仍能重開。
+- **測試必補**：`BugReporterTimeoutTest` 的 auto 三個案例（14 天視窗／回覆排除／冪等／重開、旗標誤用與超量不動、reporter-verify 重開端對端）與 `scripts/ci/bug-reporter-timeout-workflow.test.mjs` 的 auto 契約。
+
 ### R66. session-dates projected 不可因排除 leave materialized 而在同日合成幽靈時段
 
 - **觸發情境**：週日 10-12 堂次制課程登記請假後，課程詳情「上課日期」除正確的 10-12 請假 chip 外，又多出半透明 16-18 請假（in-app #196／GitHub #1101，劉芯岑 SC2653）；DB 查無 16-18 ClassSession。
