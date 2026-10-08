@@ -130,6 +130,7 @@ final class PopOperationService
             && !$this->isExactMuzhaChenBillingCatchup($entry)
             && !$this->isExactUnbilledBacklogCatchup($entry)
             && !$this->isExactTd076Repair($entry)
+            && !$this->isExactPastScheduledCancel($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
         }
@@ -664,6 +665,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactPastScheduledCancel($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'three_exact_class_sessions_status_only'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactTd076Repair($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -729,6 +745,15 @@ final class PopOperationService
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnbilledBacklogCatchupStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-unbilled-backlog-catchup'
             && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
+    }
+
+    /** Same single-super_admin Founder-exact shape as the unpaid-hidden-closures case (in-app #341). */
+    private function isExactPastScheduledCancel(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'cancel-past-scheduled-course2942-20261008'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\PastScheduledSessionsCancelStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-past-scheduled-cancel'
+            && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
     }
 
     /** TD-076 Track B repairs: campus-scoped, digest-pinned, single super_admin Founder approver. */
