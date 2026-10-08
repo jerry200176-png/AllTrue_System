@@ -3,8 +3,16 @@
     <header class="contract__head">
       <h5>{{ title }}</h5>
       <span class="contract__mode">{{ modeLine }}</span>
-      <span v-if="lastPaymentText" class="contract__mode" data-testid="contract-last-payment">{{ lastPaymentText }}</span>
     </header>
+
+    <!-- Excel card: pay date + amount on top, remaining lessons as the big number (spec 2.3). -->
+    <div class="contract__excel" data-testid="contract-excel">
+      <div class="contract__pay">
+        <p class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
+        <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">應繳 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未繳 {{ money(amounts.owed) }}</p>
+      </div>
+      <p v-if="!isMonthly && state === 'ready'" class="contract__left" data-testid="contract-left">剩 <strong>{{ upcomingCount }}</strong> 堂</p>
+    </div>
 
     <div class="contract__money" data-testid="contract-money">
       <span v-if="noObligation" class="contract__muted">輔導課不用繳費</span>
@@ -15,7 +23,7 @@
       </template>
       <span v-else>已收清</span>
       <template v-if="pendingReport">
-        <span class="contract__chip pay-partial">家長說繳了 {{ money(pendingReport.amount) }}，等你確認</span>
+        <span class="contract__chip pay-partial">家長說{{ pendingReport.date ? ` ${shortDate(pendingReport.date)} ` : '' }}繳了 {{ money(pendingReport.amount) }}，等你確認</span>
         <AtButton size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</AtButton>
       </template>
@@ -50,6 +58,7 @@
       </p>
       <section v-for="m in months" :key="m.key" class="contract__month">
         <h6>{{ m.label }}<span v-if="m.summary" data-testid="contract-month-summary">　{{ m.summary }}</span></h6>
+        <p v-if="isMonthly && monthLineText(m.key)" class="contract__monthpay" data-testid="contract-month-pay">{{ monthLineText(m.key) }}</p>
         <ol>
           <li v-for="s in m.sessions" :key="s.class_session_id" data-testid="contract-session">
             <span class="contract__date">{{ formatSessionDate(s.date) }}</span>
@@ -100,6 +109,10 @@ const props = defineProps({
   lastPayment: { type: Object, default: null },
   // Ready next-period draft from the existing monthly-drafts endpoint (offers 開帳單 in place).
   billDraft: { type: Object, default: null },
+  // Invoice totals for this contract { due, received, owed } (sums of API fields; null = no invoice yet).
+  amounts: { type: Object, default: null },
+  // Monthly mode: { 'YYYY-MM': { due, paidDate, paidAmount } } from this contract's invoices.
+  monthLines: { type: Object, default: () => ({}) },
 });
 const emit = defineEmits(['changed', 'record', 'issue']);
 
@@ -132,11 +145,17 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
   : '堂數制：先買堂數，上一堂扣一堂'));
 
 const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
-const lastPaymentText = computed(() => {
+const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p.length === 2 ? `${Number(p[0])}/${Number(p[1])}` : ''; };
+// Same source as the printed receipt (receipts first, PayDate only as the parent's fallback; never "fixed" here).
+const payLineText = computed(() => {
   const p = props.lastPayment;
-  const d = p?.date ? String(p.date).slice(5, 10).split('-') : [];
-  return d.length === 2 ? `${Number(d[0])}/${Number(d[1])} 繳 $${Number(p.amount || 0).toLocaleString('zh-TW')}` : '';
+  return p?.date ? `繳費日 ${dateOnly(p.date)}　${money(p.amount)}` : '還沒繳費';
 });
+const monthLineText = (key) => {
+  const m = props.monthLines?.[key];
+  if (!m) return '';
+  return `應繳 ${money(m.due)}${m.paidDate ? `　已收 ${shortDate(m.paidDate)} ${money(m.paidAmount)}` : ''}`;
+};
 
 // Month payment state from the per-lesson state the endpoint already returns (no money math here).
 function monthPayState(list) {
@@ -149,7 +168,6 @@ function monthPayState(list) {
 
 // Excel-card numbering: only held/upcoming lessons count, same as the summary line.
 const months = computed(() => {
-  const total = heldCount.value + upcomingCount.value;
   let n = 0;
   const groups = [];
   for (const s0 of sessions.value) {
@@ -160,7 +178,8 @@ const months = computed(() => {
     if ([...HELD, ...UPCOMING].includes(s.status)) {
       n += 1;
       g.counted += 1;
-      s.numberText = isMonthly.value ? `本月第 ${g.counted} 堂` : `第 ${n} 堂・剩 ${total - n} 堂`;
+      // G-011: a lesson can deduct more or less than 1 and the payload carries no deduction units, so rows show 第 n 堂 only.
+      s.numberText = isMonthly.value ? `本月第 ${g.counted} 堂` : `第 ${n} 堂`;
     }
     g.sessions.push(s);
   }
@@ -257,6 +276,14 @@ watch(() => props.course.id, load, { immediate: true });
 
 <style scoped>
 .contract{border:1px solid var(--ds-border);border-radius:12px;padding:12px 14px;display:grid;gap:10px;background:var(--surface,var(--ds-canvas))}
+.contract__excel{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--ds-border);border-radius:8px;background:var(--ds-canvas-soft)}
+.contract__pay{display:grid;gap:2px;min-width:0}
+.contract__pay p{margin:0}
+.contract__payline{font-size:14px;font-weight:600}
+.contract__amounts{font-size:12px;color:var(--ds-ink-mute)}
+.contract__left{margin:0;font-size:14px;white-space:nowrap}
+.contract__left strong{font-size:20px;font-variant-numeric:tabular-nums}
+.contract__monthpay{margin:0 0 4px;font-size:12px;color:var(--ds-ink-mute)}
 .contract__head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
 .contract__head h5{margin:0;font-size:15px}
 .contract__mode{font-size:12px;color:var(--ds-ink-mute)}
