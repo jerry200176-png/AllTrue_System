@@ -6,6 +6,13 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R148. 「這一堂老師 ≠ 合約老師」不等於代課；歷史釘選的堂不可「回正班老師」（#3780 P1，2026-10-08）
+
+- **現象**：#3780 讓行事曆在「這一堂老師 ≠ 合約 `StudentClass.TeacherID`」時就顯示「回正班老師」。換合約老師後，已上過的堂被刻意釘在前任老師（history pin，#207／TD-076 `pin`），也符合這個條件；按下去會刪釘選、改 `LearningRecord.TeacherID`、調 `TeachingSessionCount`，改寫誰上過課與薪資。
+- **根因**：用 ID 不相等推論「代課來源」。代課與釘選在 `schedules` 長得一樣（`scheduled` + `original_schedule_id` + 非合約老師），只有代課會在同一交易寫未解決的 `Notifications`（`SourceKey = substitute:<ClassSession id>`，undo／restore 才設 `ResolvedAt`）。
+- **強制規則**：`restoreOriginalTeacherFromSubstitute()` 先查這筆未解決代課通知，沒有就回 409（不動排程、LR、堂數）；`class-sessions` 輸出 `substitute_notice`，前端「回正班老師」只看它，不看 ID 不相等。誰真的上課仍以 `SubstituteScheduleService::teacherForOccurrence` 為準（ADR-EFFECTIVE-TEACHER）。
+- **測試必補**：`OccurrenceResolverV2Test`：釘選堂（flag 關／開）回 409 且全部不變；真代課仍可回正班老師；`useCalendarSubstitute.test.js`／`SubstituteTeacherPickerModal.test.js`：無通知不顯示按鈕。
+
 ### R147. 代課選擇器要同時拿到「合約老師」與「這一堂的老師」，否則「回正班老師」永遠不出現（in-app #376，2026-10-07）
 
 - **現象**：行事曆上 10/09 已代課的那堂，主任想改回正班老師卻找不到按鈕，後端改回其實可用。
@@ -375,6 +382,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示；**反面**：堂數制仍有 `RemainingSessions` 時不得把請假順延尾堂當幽靈取消 | #151、#427、#99、**#1839**、行290、§R32、§R59、**§R109** | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留；**count + RemainingSessions>0 禁止 settled/completed 除非 `forfeit_remaining`** |
 | **F2 月結續期語意** | 續期未依**當期實際堂數**重算金額/堂次；收據未綁 `billing_period` | #149、§R22、§R26、#554、#594 | 續期＝新一期+結算舊期；收據金額=當期堂數×費率、含結算月 |
 | **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23、§R64（週日 slot 全滅→0 元月結） | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end；weekday 比對先 `isoWeekday()` 正規化 |
+| **F24 提到就算擁有**（2026-10-07） | Phase-C 的 close-issue 與 reconcile 把 issue 內文／留言中**任何** `alltrue:bug_report:N` 都當成「這張 issue 也追蹤 N」；交叉引用（Related earlier SourceRef、Cross-SourceRef）讓已解決的回報 issue 永遠被「還有未解決的 in-app」擋住不關 | #3084 #3148 #3204 #3227 #3228 #3229（in-app 已 resolved、issue 仍開） | 擁有＝標題 `in-app #N` 或「行首」`SourceRef: alltrue:bug_report:N`；兩處共用同一規則，`test_inapp_issue_reconcile.py` 與 `bug-writeback-workflow.test.mjs` 守住 |
 | **F20 只有綁定、沒有解除**（2026-10-07） | 學生／老師 RFID 欄位唯讀、只有「綁定／重新綁定」，沒有解除；`bindCard` 的 422 還寫「請先解除原有綁定」但沒有入口 → 遺失或換人的卡無法釋出 | in-app #381 | 學生 `DELETE students/{id}/bind-card`（共用 `denyOutsideCampus`）＋老師分校卡「解除綁定」（存檔寫 NULL）；`RfidUniqueConstraintTest` 守解除後可再綁給別人、跨校 403，`SecurityHardeningTest` 守老師卡清除。新增任何「綁定」功能要同時給「解除」 |
 | **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆；把方案池總堂數當成員課程應物化列數 → 假「不一致」警告；堂數制 projected chip 誤呼叫 ensure-projected；把方案池剩餘數當成員可排能力 | #147、#553、#430、#448、#440、§R21、§R24、#1465；架構後續見 **ADR-006**（Commitment→materialize→pool coverage；非餘額猜堂） | 池／成員排課／已用分欄；package under→info 且**成員課程 UI 不顯示方案池剩餘**；無 allocation aggregate 前不推導尚可排／未排 N；count projected 不呼叫 ensure-projected；物化 affordance 僅 `ScheduleMode=date` |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
@@ -394,6 +402,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F17 新回報沒人收件就堆積**（2026-10-07） | 分診（開 issue + Phase-A 回覆 + `triaged`）只能人工 `workflow_dispatch`，沒人跑就一直是 `new`；回報者看不到任何回應，issue 也不存在，後續修好也無處掛 | in-app #376–#382 等多筆 `new` 未收件 | `bug-auto-intake.yml` 每小時把 `new` 開成 IDs-only issue（SourceRef 去重）+ 自動確認回覆；**狀態維持 `new`**（一般確認不是分診，否則 SLA 違約被藏起來）；`BugAutoIntakeCommandTest` 守 candidates 只列未確認的 `new`、不含自由文字、ack 冪等、不寫 status log |
 | **F23 免費只認輔導課**（2026-10-07） | 付款回報閘門與學費提醒只用 `ClassType=tutoring` 判斷「不用繳」；金額 0 的試聽課在 resolver 已是 `free`，但仍可建立付款回報、可能出現在學費提醒 | in-app #361（#3203） | 付款閘門與 `/alerts/tuition` 改看 resolver 的 `free`（輔導課＋0 元課一起）；`StudentClassTutoringPaymentPolicyTest::test_zero_fee_trial_has_no_payment_obligation`。「是否要收錢」一律問 resolver，不另寫班型判斷 |
 | **F22 合併 ≠ 寫入**（2026-10-07） | Phase-C 白名單 PR 合併只新增 ID；寫入 workflow 只看 `workflow_dispatch` 或 request 檔，不看白名單變更 → 當天 10 筆已合併的結案全部仍是 `triaged`，回報者沒收到回覆 | in-app 319/327/334/338/343/347/359/363/364/365 | `bug-phase-c-autodispatch.yml`：白名單在 main 變更 → 只對新增 ID 逐筆 dispatch、等完成、核對 writer 回報 resolved，失敗即停；`bug-writeback-workflow.test.mjs` 實跑 before/after 差異。**每次回報「完成」必附 in-app DB 狀態查核** |
+| **F26 超級管理員沒有分校列就被擋（403）**（2026-10-08） | 超級管理員帳號沒有 `UserCampus` 列；`GradePromotionController` 預覽／確認自己比對 `auth_campus_ids`、沒有 `super_admin` 例外，所以按「年級升級」只看到 Forbidden（校區頁其他功能都有例外） | in-app #386 | 兩個端點補 `super_admin` 放行（與 `RequireRole`、`StudentController` 一致）；`GradePromotionApiTest::test_super_admin_without_campus_rows_can_preview_and_confirm`＋`test_director_still_blocked_from_other_campus`。同類檢查：其他 `in_array(...auth_campus_ids)` 檢查（Admission／Attendance／LearningRecord／AccountingController 等）都已先放行 super_admin，只有這支漏。新增分校檢查時一律先看 `auth_role === 'super_admin'` |
 | **F6 輸入邊界 collation／長度** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`）；另 **VARCHAR(512) 溢位** → SQLSTATE 22001 Data too long（貼繳費說明） | #657、**#1378**、**#1732** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾；超長備註須 422 `memo_too_long`，禁止 500 |
 
 **通用防再犯規則（跨家族）：**
@@ -899,6 +908,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 
 ---
+
+### R141. 無人值守的結案必須固定視窗、限量、鎖內重查，並保留回報者重開出口（in-app 閉環 2A，2026-10-08）
+
+- **現象**：逾時結案原本只能人工逐筆審核，沒人跑就永遠堆著（F11）；改成排程後，若沿用人工參數或沒有上限，一個資格判斷的錯誤會一次關掉一大批單。
+- **強制規則**：`--auto` 視窗固定 14 天、只處理「已修好」佇列、不接受 `--days`／`--reviewed-ids`；單次資格筆數超過上限就整批不動並失敗。寫入在列鎖內重查資格，與白話回覆同一交易，重跑不重複。正式站指令不支援 `--auto` 時 workflow 失敗而不是猜測。回報者留言或按「問題仍存在」必須仍能重開。
+- **測試必補**：`BugReporterTimeoutTest` 的 auto 三個案例（14 天視窗／回覆排除／冪等／重開、旗標誤用與超量不動、reporter-verify 重開端對端）與 `scripts/ci/bug-reporter-timeout-workflow.test.mjs` 的 auto 契約。
 
 ### R66. session-dates projected 不可因排除 leave materialized 而在同日合成幽靈時段
 

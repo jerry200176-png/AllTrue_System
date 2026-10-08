@@ -14,6 +14,11 @@ export function substituteTeacherIds(occurrenceTeacherId, contractTeacherId) {
   return { original_teacher_id: toId(contractTeacherId) ?? current, current_teacher_id: current };
 }
 
+/** #3780 P1: the session row says whether this occurrence is a real substitute and who the contract teacher is. */
+function sessionRowById(sessions, sessionId) {
+  return (sessions || []).find((s) => Number(s?.id) === Number(sessionId)) || null;
+}
+
 /** #740 Step 7b2a：代課 modal 流程（legacy + V2 + batch） */
 export function useCalendarSubstitute({
   branchId,
@@ -72,6 +77,8 @@ export function useCalendarSubstitute({
       const sid = resolveSessionIdForSubstitute(sessions, dateStr, course.start_time);
       if (sid) substituteForm.value.session_id = sid;
     }
+    const dragSession = sessionRowById(sessionDatesByCourseId.value?.[String(baseId)], substituteForm.value.session_id);
+    const contractTeacherId = (courses?.value || []).find((c) => c.id === baseId)?.teacher_id ?? dragSession?.contractTeacherId;
 
     if (FEATURE_SUBSTITUTE_V2 && substituteForm.value.session_id) {
       substituteV2SessionId.value = substituteForm.value.session_id;
@@ -85,8 +92,9 @@ export function useCalendarSubstitute({
         session_date: dateStr,
         start_time: (course.start_time || '').toString().slice(0, 5),
         end_time: (course.end_time || '').toString().slice(0, 5),
-        ...substituteTeacherIds(course.teacher_id, (courses?.value || []).find((c) => c.id === baseId)?.teacher_id),
-        original_teacher_name: teacherDisplayName((courses?.value || []).find((c) => c.id === baseId)?.teacher_id ?? course.teacher_id),
+        ...substituteTeacherIds(course.teacher_id, contractTeacherId),
+        substitute_notice: dragSession?.substituteNotice === true,
+        original_teacher_name: teacherDisplayName(contractTeacherId ?? course.teacher_id),
         session_campus_id: Number(branchId.value ?? branchId ?? 0) || null,
         prefill_substitute_teacher_id: dropTeacherId || null,
         prefill_new_date: targetDate,
@@ -200,8 +208,9 @@ export function useCalendarSubstitute({
     const exactDate = modalForm.value.action_date || new Date().toISOString().split('T')[0];
     const courseId = editingCourseId.value;
     let sessionId = null;
+    let sessions = [];
     if (courseId && sessionDatesByCourseId.value) {
-      const sessions = sessionDatesByCourseId.value[String(courseId)] || [];
+      sessions = sessionDatesByCourseId.value[String(courseId)] || [];
       sessionId = resolveSessionIdForSubstitute(sessions, exactDate, modalForm.value.start_time);
     }
     if (!sessionId) {
@@ -220,6 +229,7 @@ export function useCalendarSubstitute({
       start_time: (modalForm.value.start_time || '').toString().slice(0, 5),
       end_time: (modalForm.value.end_time || '').toString().slice(0, 5),
       ...substituteTeacherIds(modalForm.value.occurrence_teacher_id, modalForm.value.teacher_id),
+      substitute_notice: sessionRowById(sessions, sessionId)?.substituteNotice === true,
       original_teacher_name: teacherDisplayName(modalForm.value.teacher_id),
       session_campus_id: Number(branchId.value ?? branchId ?? 0) || null,
     };
@@ -264,6 +274,17 @@ export function useCalendarSubstitute({
         throw new Error(json.message || res.statusText || '代課設定失敗');
       }
       showSubstituteV2Modal.value = false;
+      if (json.restored_teacher_id != null) {
+        // #3780: a restore is not a new substitute -- confirm it, and offer no substitute-undo (it would 409).
+        toastRef.value?.show?.({
+          title: json.message || '已回復正班老師',
+          description: substituteV2Context.value.student_name || '',
+          variant: 'success',
+          durationMs: 5000,
+        });
+        await loadCourses();
+        return;
+      }
       const teacherName = json.substitute_teacher_name || teacherDisplayName(substitute_teacher_id);
       const uiSeconds = Number(json.undo_window_seconds);
       const durationMs = Number.isFinite(uiSeconds) && uiSeconds > 0 ? uiSeconds * 1000 : 5000;

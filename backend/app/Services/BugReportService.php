@@ -1199,8 +1199,23 @@ class BugReportService
                 return $res;
             });
         } else {
-            $note = 'closed_by_timeout — Evidence Contract 7-day reporter-verify timeout; no reporter reply';
-            $result = self::changeStatus($bugId, $actorUserId, 'closed', $note);
+            $note = 'closed_by_timeout — Evidence Contract ' . $days . '-day reporter-verify timeout; no reporter reply';
+            // Same lock + recheck as above: reply and status commit together, a duplicate or racing run is a no-op.
+            $result = DB::transaction(function () use ($bugId, $actorUserId, $note, $days) {
+                $locked = BugReport::query()->where('id', $bugId)->lockForUpdate()->first();
+                $stillEligible = $locked && $locked->status === 'resolved'
+                    && in_array($bugId, array_column(self::listEligibleForReporterTimeout($days), 'bug_id'), true);
+                if (!$stillEligible) {
+                    return ['ok' => false, 'code' => 'not_eligible', 'message' => 'No longer eligible'];
+                }
+                self::addComment($bugId, $actorUserId, '超過 ' . $days . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。');
+                $res = self::changeStatus($bugId, $actorUserId, 'closed', $note);
+                if (!$res['ok']) {
+                    throw new \RuntimeException($res['message'] ?? 'close failed');
+                }
+
+                return $res;
+            });
         }
         if (!$result['ok']) {
             return [

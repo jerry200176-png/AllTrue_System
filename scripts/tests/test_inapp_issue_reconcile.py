@@ -62,9 +62,22 @@ def test_free_text_mentions_and_multi_title_refs():
     assert [r["issue"] for r in out["inapp_done_issue_open"]] == [2, 5]
 
 
+
+def test_cross_reference_sourcerefs_are_not_ownership():
+    # F14 gap 2026-10-07: "Related earlier SourceRef" / "Cross-SourceRef update" mentions blocked auto-close.
+    iss = dict(issue(1, "[in-app #363][critical intake] slot", labels=["x"],
+                     body="SourceRef: alltrue:bug_report:363 (In-App #363).\nRELATED: alltrue:bug_report:359 / #3204"),
+               comments=[{"body": "Related earlier SourceRef: alltrue:bug_report:136. evidence"},
+                         {"body": "Cross-SourceRef update for `alltrue:bug_report:365` (read-only)"},
+                         {"body": "**SourceRef:** `alltrue:bug_report:370`\nshared issue second report"},
+                         {"body": "## SourceRef: alltrue:bug_report:11\n1. SourceRef: alltrue:bug_report:12"},
+                         {"body": "`SourceRef: alltrue:bug_report:8`\nSourceRef: alltrue:bug_report:17, alltrue:bug_report:18"}])
+    assert reconcile_mod.inapp_ids(iss) == [8, 11, 12, 17, 18, 363, 370], reconcile_mod.inapp_ids(iss)
+
 if __name__ == "__main__":
     test_reconcile_classes()
     test_body_source_ref_counts()
     test_free_text_mentions_and_multi_title_refs()
     test_untracked_reports_and_unknown_refs()
+    test_cross_reference_sourcerefs_are_not_ownership()
     print("test_inapp_issue_reconcile.py: ok")

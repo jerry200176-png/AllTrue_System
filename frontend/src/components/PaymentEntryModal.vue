@@ -95,6 +95,7 @@
 
 <script setup>
 import { ref, reactive, watch, computed } from 'vue';
+import { recordPayment } from '../lib/paymentActions.js';
 import { REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
@@ -131,10 +132,6 @@ watch(() => props.show, (val) => {
   }
 });
 
-function getToken() {
-  const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
-  return session?.access_token;
-}
 
 async function submit() {
   submitError.value = '';
@@ -147,9 +144,6 @@ async function submit() {
 
   submitting.value = true;
   try {
-    const token = getToken();
-    if (!token) { submitError.value = '請先登入'; return; }
-
     const body = {
       student_class_id: props.row.id,
       payment_date: form.payment_date,
@@ -166,27 +160,17 @@ async function submit() {
       body.note = form.note.trim();
     }
 
-    const resp = await fetch('/api/v1/payment-reports/director-record', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      if (data.code === 'pending_report_exists') {
+    const res = await recordPayment(body);
+    if (!res.ok) {
+      if (res.code === 'pending_report_exists') {
         submitError.value = `這筆已經送出過，目前在「${REPORT_STATUS_LABELS.pending}」；請直接到「${REPORT_STATUS_LABELS.pending}」分頁按「確認入帳」，不要重複送出。`;
-        emit('pending', data);
+        emit('pending', res.data);
         return;
       }
-      throw new Error(data.message || `登錄失敗（${resp.status}）`);
+      throw new Error(res.message);
     }
 
-    const result = await resp.json();
+    const result = res.data;
     emit('confirmed', result);
   } catch (e) {
     submitError.value = e.message || '登錄失敗';
