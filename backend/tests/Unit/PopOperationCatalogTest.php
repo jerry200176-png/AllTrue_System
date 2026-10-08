@@ -111,6 +111,20 @@ final class PopOperationCatalogTest extends TestCase
         $method->invoke($service, $entry);
     }
 
+    public function test_past_scheduled_cancel_requires_exact_pop_policy_shape(): void
+    {
+        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
+        $service = new PopOperationService($catalog);
+        $method = new ReflectionMethod($service, 'approvalRoles');
+        $entry = $catalog->operation('cancel-past-scheduled-course2942-20261008');
+        self::assertSame('pop-pi-local', $entry['execution_authority']);
+        self::assertSame(['decision_reference'], $entry['parameter_keys']);
+        self::assertSame(['super_admin'], $method->invoke($service, $entry));
+        $entry['blast_radius'] = 'branch_wide';
+        $this->expectException(RuntimeException::class);
+        $method->invoke($service, $entry);
+    }
+
     public function test_founder_scoped_policy_is_supported_only_for_the_safe_course_repair_shape(): void
     {
         $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
