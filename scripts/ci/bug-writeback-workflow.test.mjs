@@ -650,6 +650,14 @@ for (const [id, revision, issue] of [
     assert.ok(reply[1].includes('確認已修好') && reply[1].includes('問題仍存在'), `Phase-C reply ${id} must offer 「確認已修好」 and 「問題仍存在」`);
   }
 }
+// F14 gap (2026-10-07): close-issue and reconcile share ONE ownership rule (line-start SourceRef), so a
+// cross-reference ("Related earlier SourceRef: …") never blocks auto-close.
+{
+  const rule = '^[ \\t>*_#.)0-9`-]*SourceRef\\b.*$';
+  assert.ok(phaseCSource.includes(rule), 'close-issue uses the line-start ownership rule');
+  assert.ok(fs.readFileSync('scripts/inapp-issue-reconcile.py', 'utf8').includes(rule), 'reconcile uses the same rule');
+  assert.ok(!phaseCSource.includes('re.findall(r"alltrue:bug_report:(\\d+)", t)'), 'no bare any-mention ownership left');
+}
 console.log('bug-writeback-workflow.test.mjs: ok');
 
 assert.match(phaseCSource,
