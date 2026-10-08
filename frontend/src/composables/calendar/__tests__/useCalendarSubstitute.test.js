@@ -100,12 +100,53 @@ describe('useCalendarSubstitute', () => {
       modalForm: ref({ student_id: 10, subject: 'Math', teacher_id: 168, occurrence_teacher_id: 81,
         start_time: '13:00', end_time: '15:00', action_date: '2026-10-09' }),
       editingCourseId: ref(2954),
-      sessionDatesByCourseId: ref({ 2954: [{ id: 43459, session_date: '2026-10-09', start_time: '13:00', status: 'scheduled' }] }),
+      sessionDatesByCourseId: ref({ 2954: [{ id: 43459, session_date: '2026-10-09', start_time: '13:00', status: 'scheduled', substituteNotice: true }] }),
     });
     const { openSubstituteV2Modal, substituteV2Context } = useCalendarSubstitute(deps);
     openSubstituteV2Modal();
     expect(substituteV2Context.value.original_teacher_id).toBe(168);
     expect(substituteV2Context.value.current_teacher_id).toBe(81);
+    expect(substituteV2Context.value.substitute_notice).toBe(true);
+  });
+
+  // #3780 P1: an attended lesson pinned to the former contract teacher also has occurrence !== contract.
+  it('click path: a history pin (no substitute notice) is not restorable', () => {
+    const deps = makeDeps({
+      modalForm: ref({ student_id: 10, subject: 'Math', teacher_id: 168, occurrence_teacher_id: 81,
+        start_time: '13:00', end_time: '15:00', action_date: '2026-10-09' }),
+      editingCourseId: ref(2954),
+      sessionDatesByCourseId: ref({ 2954: [{ id: 43459, session_date: '2026-10-09', start_time: '13:00', status: 'attended', substituteNotice: false }] }),
+    });
+    const { openSubstituteV2Modal, substituteV2Context } = useCalendarSubstitute(deps);
+    openSubstituteV2Modal();
+    expect(substituteV2Context.value.substitute_notice).toBe(false);
+  });
+
+  it('drag path: a session-only course takes the contract teacher from the session row', () => {
+    const deps = makeDeps({
+      courses: ref([]),
+      sessionDatesByCourseId: ref({ 2954: [{ id: 43459, session_date: '2026-10-09', start_time: '13:00', status: 'scheduled',
+        contractTeacherId: 168, substituteNotice: true }] }),
+    });
+    const { openSubstituteFromDrag, substituteV2Context } = useCalendarSubstitute(deps);
+    openSubstituteFromDrag({ is_exception: true, student_course_id: 2954, teacher_id: 81, student_id: 10,
+      subject: 'Math', start_time: '13:00', end_time: '15:00' }, '2026-10-09', 168);
+    expect(substituteV2Context.value.original_teacher_id).toBe(168);
+    expect(substituteV2Context.value.current_teacher_id).toBe(81);
+    expect(substituteV2Context.value.substitute_notice).toBe(true);
+  });
+
+  it('restore success shows a restore confirmation and no substitute undo', async () => {
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't' }));
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ message: '已回復正班老師', restored_teacher_id: 168 }) }));
+    const show = vi.fn();
+    const api = useCalendarSubstitute(makeDeps());
+    api.toastRef.value = { show };
+    api.substituteV2SessionId.value = 43459;
+    await api.onSubstituteV2Submit({ substitute_teacher_id: 168 });
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(show.mock.calls[0][0].title).toBe('已回復正班老師');
+    expect(show.mock.calls[0][0].onUndo).toBeUndefined();
   });
 
   it('drag path: the dragged substitute occurrence keeps the contract teacher as original', () => {
