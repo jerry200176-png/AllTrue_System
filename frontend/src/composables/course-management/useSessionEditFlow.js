@@ -9,7 +9,7 @@ import {
 } from '../../lib/scheduleDisplay';
 import { getSubjectLabel } from '../../lib/constants';
 import { commitReschedule } from '../../lib/rescheduleApi';
-import { canMaterializeProjectedSession } from '../../lib/sessionPlanningStatus';
+import { canMaterializeProjectedSession, canCancelPausedProjectedSession } from '../../lib/sessionPlanningStatus';
 import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
 
 const SESSION_STATUS_TRANSITIONS = {
@@ -99,6 +99,16 @@ export function useSessionEditFlow({
       endTime,
       busy: false,
     };
+    // in-app #340: a paused monthly course's 預排 date can be cancelled one at a time (no deduction, no billing).
+    if (paused && canCancelPausedProjectedSession(course)) {
+      chipActionDialog.value = {
+        ...chipActionDialog.value,
+        kind: 'projected_paused_cancel',
+        message: '課程暫停中，這個預排日期不會上課。取消這一堂不會扣堂也不影響帳務；恢復課程後才會重新排課。',
+        primaryLabel: '取消這一堂',
+        secondaryLabel: '返回',
+      };
+    }
   }
 
   function openSessionResolveDialog(course, dateYmd, sessionId, unit, title, message) {
@@ -116,6 +126,42 @@ export function useSessionEditFlow({
     };
   }
 
+  async function cancelPausedProjectedSession(dlg) {
+    if (dlg.busy) return;
+    dlg.busy = true;
+    try {
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      const token = sess?.access_token;
+      if (!token) { alert('請重新登入'); return; }
+      const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
+      const res = await fetch('/api/v1/class-sessions/ensure-projected', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          student_class_id: Number(dlg.course?.id || dlg.course?.ID || 0),
+          session_date: dlg.dateYmd,
+          start_time: dlg.startTime || undefined,
+          branch_id: bid || undefined,
+          cancel: true,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert('取消失敗：' + (json.message || res.statusText) + '。尚未進行任何變更。');
+        if (res.status === 409) { closeChipActionDialog(); await loadCourses(); }
+        return;
+      }
+      closeChipActionDialog();
+      alert(json.message || '已取消這一堂預排');
+      await loadCourses();
+    } catch (e) {
+      alert('操作失敗：' + (e?.message || '請稍後再試'));
+    } finally {
+      if (chipActionDialog.value) chipActionDialog.value.busy = false;
+    }
+  }
+
   async function confirmChipActionDialog() {
     const dlg = chipActionDialog.value;
     if (!dlg) return;
@@ -128,6 +174,7 @@ export function useSessionEditFlow({
       return;
     }
     if (dlg.kind === 'projected_paused_info') { closeChipActionDialog(); return; }
+    if (dlg.kind === 'projected_paused_cancel') { await cancelPausedProjectedSession(dlg); return; }
     if (dlg.kind === 'resolve_retry') await retrySessionResolve();
   }
 

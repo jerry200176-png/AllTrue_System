@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-paused-projected-cancel
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 暫停課程可單堂取消預排
+    summary: 暫停中的月結課，預排日期可以一堂一堂取消，不扣堂也不影響帳務。
+    items:
+      - category: added
+        text: 暫停中的月結課點預排日期，可選「取消這一堂」。
+      - category: improved
+        text: 已結案的課程、已有正式堂次的日期不會被這個按鈕更動。
+    source_refs:
+      - "changelog:2026-10-08:paused-projected-cancel"
