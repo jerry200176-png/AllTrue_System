@@ -91,6 +91,26 @@ class OccurrenceResolverV2Test extends TestCase
         $this->assertSame('x NOT IN (1)', SubstituteScheduleService::campusOnSql('x'), 'global on with a campus override off');
     }
 
+    /**
+     * Effective Teacher batch (docs/adr/ADR-EFFECTIVE-TEACHER.md): same answers as teacherForOccurrence, one per
+     * distinct occurrence — substitute, then restored to the contract teacher; a duplicate occurrence collapses.
+     */
+    public function test_batch_effective_teacher_matches_the_single_resolver(): void
+    {
+        $this->flag(true);
+        $this->row(2, 'scheduled', $this->bId, ['original_schedule_date' => self::DATE, 'original_start_time' => '13:00']);
+        $occ = ['course_id' => (int) $this->sc->ID, 'date' => self::DATE, 'start_time' => '13:00:00', 'contract_teacher_id' => $this->aId];
+        $key = SubstituteScheduleService::occurrenceKey((int) $this->sc->ID, self::DATE, '13:00');
+
+        $this->assertSame([$key => $this->bId], SubstituteScheduleService::teachersForOccurrences([$occ, $occ]), 'substitute teaches');
+
+        DB::table('schedules')->where('id', 2)->update(['teacher_id' => null]); // restored
+        $this->assertSame([$key => $this->aId], SubstituteScheduleService::teachersForOccurrences([$occ]), 'restored = contract teacher');
+
+        $other = ['course_id' => 999999, 'date' => self::DATE, 'start_time' => '09:00', 'contract_teacher_id' => $this->aId];
+        $this->assertSame($this->aId, SubstituteScheduleService::teachersForOccurrences([$other])[SubstituteScheduleService::occurrenceKey(999999, self::DATE, '09:00')], 'no substitute = contract teacher');
+    }
+
     public function test_flag_on_makeup_resolves_to_the_non_voided_learning_record_teacher(): void
     {
         $this->row(9, 'scheduled', $this->aId, ['type' => 'extra']);

@@ -155,7 +155,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 - Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
 - Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
 - Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add label `intentional-revert` + reason in the PR body, then re-run presubmit.
-- Deploys: release train only.
+- Deploys: only `deploy.yml`. A range whose every PR is R0-R2 or carries a Founder GO deploys on its own CI; otherwise it waits for the release train (Founder 1A/3A, 2026-10-07).
 - Helpers (subagents) start from fresh `origin/main` in their own `agent-start` worktree; never copy files from another worktree.
 - Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
 - Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.

@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.governance.autonomy_gate import (  # noqa: E402
     aggregate_landed_pr_effects,
+    auto_environment_is_valid,
     classify_activation_scope,
     classify_activation_provenance,
     classify_production_runtime,
@@ -29,7 +30,10 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     decide_activation,
     decide_manual_activation,
     environment_protection_is_valid,
+    commit_effective_class,
     effective_tier,
+    evaluate_founder_go_range,
+    founder_go_release_evidence,
     has_rollback_evidence,
     is_founder_approval_eligible,
     is_application_runtime_path,
@@ -37,8 +41,10 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     is_control_plane_path,
     is_deployable_path,
     is_production_activation_sensitive_path,
+    machine_declaration,
     parse_declaration,
     reconcile_preexisting_pr_provenance,
+    validate_declaration,
 )
 
 
@@ -1071,8 +1077,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("repository_dispatch", gate_if)
         self.assertIn("(needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')", gate_if)
         self.assertIn("inputs.phase != 'release-train'", gate_if)
-        # A train always needs the Founder gate, even if every change is auto-eligible.
-        self.assertIn("needs.resolve-target.outputs.release_train == 'true' && (needs.classify-activation.outputs.mode == 'auto' ||", gate_if)
+        # Founder 1A: a train reaches the Founder gate only without verified GO evidence.
+        self.assertIn("needs.resolve-target.outputs.release_train == 'true' && ((needs.classify-activation.outputs.mode == 'auto' && needs.classify-activation.outputs.go_evidence != 'verified') ||", gate_if)
         deploy_if = self.workflow[self.workflow.index("  deploy:\n"):].split("\n")[3]
         self.assertIn("(needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train != 'true')", deploy_if)
         self.assertIn("(needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true')", deploy_if)
@@ -1192,7 +1198,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("No production SSH, migration, frontend build, or data mutation was executed", self.workflow)
 
     def test_deploy_job_requires_auto_or_successful_manual_gate(self):
-        self.assertIn("needs: [resolve-target, detect-deployable, classify-activation, production-activation]", self.workflow)
+        self.assertIn("needs: [resolve-target, detect-deployable, classify-activation, production-activation, production-auto]", self.workflow)
         self.assertIn("needs.classify-activation.outputs.mode == 'auto'", self.workflow)
         self.assertIn("needs.production-activation.result == 'success'", self.workflow)
         self.assertIn('TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"', self.workflow)
@@ -1410,6 +1416,227 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(["git", "composer", "manifest", "php"], calls)
         self.assertIn("Rollback 成功", result.stdout)
+
+
+class FounderGoAutoActivationTest(unittest.TestCase):
+    """Founder 1A (2026-10-07): no manual approve when every merged PR is R0-R2 or GO'd."""
+
+    REPO = "jerry200176-png/AllTrue_System"
+    DECL3 = "\nRisk-Class: R3\nAutonomy-Tier: T3"
+    HEAD = "e" * 40
+
+    def go(self, n=11, head=HEAD):
+        return f"Founder GO: Jerry 2026-10-07 approves #{n} at {head}"
+
+    def body3(self, go=None, rest=""):
+        return (self.go() if go is None else go) + "\nRollback: revert this PR" + self.DECL3 + rest
+
+    def _range(self, *numbers):
+        commits = [{"sha": f"{n:040x}", "commit": {"message": f"feat: change (#{n})\n\nbody (#1)"}} for n in numbers]
+        return {"total_commits": len(commits), "commits": commits}
+
+    def _pr(self, n, body="Rollback: revert this PR\nRisk-Class: R1\nAutonomy-Tier: T1", **overrides):
+        pr = {
+            "number": n, "merge_commit_sha": f"{n:040x}", "merged_at": "2026-10-07T01:00:00Z",
+            "last_edited_at": "2026-10-07T00:00:00Z", "last_editor": "jerry200176-png", "base": {"ref": "main"},
+            "head": {"repo": {"full_name": self.REPO}}, "author_association": "OWNER", "body": body,
+        }
+        pr.update(overrides)
+        return pr
+
+    def _evidence(self, comparison, pulls, tiers, scope=lambda approved, sha: True):
+        return founder_go_release_evidence(
+            repo=self.REPO, comparison=comparison, fetch_pr=lambda n: pulls[n],
+            effective_class=lambda sha, body: tiers.get(int(sha, 16)), scope_matches=scope,
+        )
+
+    def _one(self, body, tier=3, **overrides):
+        return self._evidence(self._range(11), {11: self._pr(11, body, **overrides)}, {11: tier})
+
+    def test_all_r0_r2_or_founder_go_activates_automatically(self):
+        result = self._evidence(
+            self._range(10, 11, 12),
+            {10: self._pr(10, "no declaration needed at class 0"), 11: self._pr(11, self.body3()),
+             12: self._pr(12, "Rollback: revert this PR\nRisk-Class: R2\nAutonomy-Tier: T2")},
+            {10: 0, 11: 3, 12: 2},
+        )
+        self.assertTrue(result["ok"], result)
+        # Codex P1/P2: R1 and R2 PRs in the range need the strict rollback line too.
+        for tier in (1, 2):
+            for body in ("Risk-Class: R2", "Rollback: impossible", "Rollback: revert this PR\nRollback: impossible",
+                         "Rollback: revert", "Risk-Class: R2\nRollback: revert this PR",
+                         "Rollback: revert this PR\nThe migration is irreversible."):
+                with self.subTest(tier=tier, body=body):
+                    result = self._evidence(self._range(11, 12), {11: self._pr(11, self.body3()), 12: self._pr(12, body)},
+                                            {11: 3, 12: tier})
+                    self.assertIn(f"R{tier} without rollback evidence", result["reason"])
+
+    def test_go_is_only_the_exact_first_line_for_this_pr_and_head(self):
+        bad = {
+            "free text": "Founder GO: Jerry 2026-10-07 \"GO 11\"", "negated": self.go() + " (not approved)",
+            "rejects": "Founder GO: Jerry 2026-10-07 rejects #11 at " + self.HEAD, "other PR": self.go(12),
+            "impossible date": self.go().replace("2026-10-07", "2026-19-39"),
+            "zero date": self.go().replace("2026-10-07", "2026-00-00"),
+            "dated after the merge": self.go().replace("2026-10-07", "2026-10-08"),
+            "bold": "**Founder GO:**" + self.go()[11:], "list item": "- " + self.go(), "quote": "> " + self.go(),
+            "indented": "    " + self.go(), "leading blank line": "\n" + self.go(),
+        }
+        for name, first in bad.items():
+            with self.subTest(name=name):
+                self.assertEqual(self._one(self.body3(go=first))["missing"], [11])
+        # Anywhere but line 1 (fences, comments, lazy blockquote continuation, raw HTML) never counts.
+        for prefix in ("```\n", "<!--\n", "> quoted approval\n", "<pre>\n", "Risk-Class: R3\n"):
+            with self.subTest(prefix=prefix):
+                self.assertEqual(self._one(prefix + self.body3())["missing"], [11])
+        self.assertTrue(self._one(self.body3(rest="\n```\ncode\n```"))["ok"])
+
+    def test_go_needs_rollback_line_two_only_and_the_approved_scope(self):
+        for body in (self.go() + self.DECL3, self.go() + "\nRollback: impossible" + self.DECL3,
+                     self.go() + "\nRollback: revert this PR (impossible)" + self.DECL3,
+                     self.body3(rest="\nRollback: impossible"), self.body3(rest="\nThe migration is irreversible."),
+                     self.body3(rest="\n<!-- rollback: none -->")):
+            with self.subTest(body=body):
+                self.assertEqual(self._one(body)["missing"], [11])
+        seen = []
+        result = self._evidence(self._range(11), {11: self._pr(11, self.body3())}, {11: 3},
+                                scope=lambda approved, sha: seen.append((approved, sha)) or False)
+        self.assertEqual(result["missing"], [11])
+        self.assertEqual(seen, [(self.HEAD, f"{11:040x}")])
+
+    def test_effective_class_is_presubmits_validate_declaration_on_the_merged_diff(self):
+        protected = [{"filename": ".github/workflows/deploy.yml", "patch": "@@ -1 +1 @@\n+x"}]
+        docs = [{"filename": "docs/a.md", "patch": "@@ -1 +1 @@\n+x"}]
+        paths, patch = [".github/workflows/deploy.yml"], "diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml\n@@ -1 +1 @@\n+x"
+        self.assertEqual(commit_effective_class(self.DECL3, protected), int(validate_declaration(self.DECL3, paths, patch)["effective_tier"][1]))
+        self.assertEqual(commit_effective_class(self.DECL3, protected), 3)
+        # A declaration below the machine class is presubmit-invalid: unknown, never lower.
+        for body in ("Risk-Class: R0\nAutonomy-Tier: T0", "**Risk-Class:** R1\n**Autonomy-Tier:** T1", "", "Risk-Class: R1"):
+            with self.subTest(body=body):
+                self.assertIsNone(commit_effective_class(body, protected))
+        # A declared R3 raises a low machine class (bold / odd spacing parsed like presubmit).
+        for body in ("**Risk-Class:** R3  \n**Autonomy-Tier:** T3", "- Risk-Class :   R3\n- Autonomy-Tier:T3"):
+            with self.subTest(body=body):
+                self.assertEqual(commit_effective_class(body, docs), 3)
+        renamed = [{"filename": "docs/moved.yml", "previous_filename": ".github/workflows/deploy.yml", "patch": "+x"}]
+        self.assertIsNone(commit_effective_class("Risk-Class: R1\nAutonomy-Tier: T1", renamed))
+        for files in (None, [], [{"filename": "backend/app/X.php"}], [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(300)]):
+            with self.subTest(files=files):
+                self.assertIsNone(commit_effective_class(self.DECL3, files))
+        # Uncomputable class counts as R3 without a GO, even with a GO token.
+        for tier in (None, "3", True, 7):
+            with self.subTest(tier=tier):
+                self.assertIn("counts as R3 without a GO", self._one(self.body3(), tier=tier)["reason"])
+
+    def test_untrusted_mapping_or_post_merge_edit_fails_closed(self):
+        cases = {
+            "fork": {"head": {"repo": {"full_name": "someone/AllTrue_System"}}},
+            "non-owner": {"author_association": "CONTRIBUTOR"}, "not merged": {"merged_at": None},
+            "other base": {"base": {"ref": "release"}}, "other merge commit": {"merge_commit_sha": "f" * 40},
+            "other number": {"number": 99}, "edited after merge": {"last_edited_at": "2026-10-07T02:00:00Z"},
+            "edit time unknown": {"last_edited_at": "garbage"},
+            "last edited by a bot": {"last_editor": "cursor"}, "last editor unknown": {"last_editor": None},
+        }
+        for name, overrides in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(self._one(self.body3(), **overrides)["missing"], [])
+                self.assertFalse(self._one(self.body3(), **overrides)["ok"])
+        pr = self._pr(11, self.body3())
+        del pr["last_edited_at"]
+        self.assertFalse(self._evidence(self._range(11), {11: pr}, {11: 3})["ok"])
+        self.assertTrue(self._one(self.body3(), last_edited_at=None)["ok"])
+        no_number = {"total_commits": 1, "commits": [{"sha": "a" * 40, "commit": {"message": "direct push"}}]}
+        for comparison in (no_number, {"total_commits": 0, "commits": []}, dict(self._range(11), total_commits=300)):
+            with self.subTest(comparison=comparison):
+                self.assertFalse(self._evidence(comparison, {11: self._pr(11)}, {11: 1})["ok"])
+
+    def _api(self, comparison, detail, pr, approved_files=None, edited=None, merged_mode=33188):
+        sha = f"{11:040x}"
+
+        def api(path):
+            if path.endswith(f"/compare/{'1' * 40}...{'2' * 40}"):
+                return comparison
+            if "/compare/" in path:
+                return {"files": approved_files if approved_files is not None else detail.get("files")}
+            if path.endswith(f"/commits/{sha}"):
+                return dict(detail, parents=[{"sha": "9" * 40}])
+            return pr
+
+        def graphql(query):
+            if "entries" in query:
+                mode = merged_mode if f'"{sha}:' in query else 33188
+                return {"data": {"repository": {"p0": {"entries": [{"name": "run.sh", "mode": mode}]}}}}
+            return {"data": {"repository": {"pullRequest": {
+                "lastEditedAt": edited, "editor": {"login": "jerry200176-png"} if edited else None}}}}
+        return dict(repo=self.REPO, base_sha="1" * 40, target_sha="2" * 40, api=api, graphql=graphql)
+
+    def test_range_evaluation_fetches_its_own_evidence_and_fails_closed(self):
+        comparison = dict(self._range(11), status="ahead")
+        protected = {"files": [{"filename": "scripts/run.sh", "status": "modified", "sha": "b" * 40, "patch": "@@ -1 +1 @@\n+x"}]}
+        renamed = {"files": [{"filename": "docs/moved.yml", "patch": "+x", "previous_filename": ".github/workflows/production-case-dump.yml"}]}
+        migration = {"files": [{"filename": "backend/database/migrations/2026_x.php", "status": "added", "patch": "+x"}]}
+        policy = {"files": [{"filename": "scripts/governance/autonomy_gate.py", "status": "modified", "patch": "+x"}]}
+        good = self._pr(11, self.body3())
+        self.assertTrue(evaluate_founder_go_range(**self._api(comparison, protected, good))["ok"])
+        for name, kwargs in {
+            "no GO": dict(comparison=comparison, detail=protected, pr=self._pr(11, "Risk-Class: R1\nAutonomy-Tier: T1")),
+            "rename keeps protected source": dict(comparison=comparison, detail=renamed, pr=self._pr(11, "Risk-Class: R1\nAutonomy-Tier: T1")),
+            "approved head had another effect": dict(comparison=comparison, detail=protected, pr=good,
+                                                     approved_files=[{"filename": "scripts/run.sh", "status": "modified", "sha": "b" * 40, "patch": "@@ -1 +1 @@\n+y"}]),
+            "same line at another hunk": dict(comparison=comparison, detail=protected, pr=good,
+                                              approved_files=[{"filename": "scripts/run.sh", "status": "modified", "sha": "b" * 40, "patch": "@@ -9 +9 @@\n+x"}]),
+            "behind (downgrade)": dict(comparison=dict(comparison, status="behind"), detail=protected, pr=good),
+            "identical": dict(comparison=dict(comparison, status="identical"), detail=protected, pr=good),
+            "no file list": dict(comparison=comparison, detail={}, pr=good),
+            "missing patch": dict(comparison=comparison, detail={"files": [{"filename": "backend/app/X.php"}]}, pr=good),
+            "300-file cap": dict(comparison=comparison, pr=good,
+                                 detail={"files": [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(300)]}),
+            "same patch, different blob (API-truncated patch)": dict(comparison=comparison, detail=protected, pr=good,
+                approved_files=[dict(protected["files"][0], sha="c" * 40)]),
+            "migration under a GO": dict(comparison=comparison, detail=migration, pr=good),
+            "range changes the gate policy": dict(comparison=comparison, detail=policy, pr=good),
+            "file mode changed after approval": dict(comparison=comparison, detail=protected, pr=good, merged_mode=33261),
+            "body edited after merge": dict(comparison=comparison, detail=protected, pr=good, edited="2026-10-07T03:00:00Z"),
+        }.items():
+            with self.subTest(name=name):
+                self.assertFalse(evaluate_founder_go_range(**self._api(**kwargs))["ok"])
+        self.assertFalse(evaluate_founder_go_range(**dict(self._api(comparison, protected, good), base_sha="unknown"))["ok"])
+
+        def boom(_path):
+            raise RuntimeError("gh api failed")
+        with self.assertRaises(RuntimeError):
+            evaluate_founder_go_range(**dict(self._api(comparison, protected, good), api=boom))
+
+    def test_auto_environment_requires_verified_evidence_and_main_only(self):
+        ok = dict(event_name="workflow_run", phase="", mode="auto-founder-go", go_evidence="verified", branch_names=["main"])
+        self.assertTrue(auto_environment_is_valid(**ok))
+        self.assertTrue(auto_environment_is_valid(**dict(ok, event_name="workflow_dispatch", phase="release-train", mode="auto")))
+        for bad in (
+            {"go_evidence": "missing"}, {"go_evidence": ""}, {"mode": "awaiting-activation"}, {"mode": "manual"},
+            {"branch_names": []}, {"branch_names": ["main", "release"]},
+            {"event_name": "workflow_dispatch", "phase": "application-deploy"}, {"event_name": "push"},
+        ):
+            with self.subTest(bad=bad):
+                self.assertFalse(auto_environment_is_valid(**dict(ok, **bad)))
+
+    def test_workflow_wiring_fails_closed_and_rechecks_before_side_effects(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        classify = workflow[workflow.index("  classify-activation:\n"):workflow.index("  release-state:\n")]
+        self.assertIn("ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}\n          path: trusted-policy", classify)
+        self.assertIn("for gate in (trusted, target_gate)", classify)
+        self.assertIn('go = next((result for result in results if not result["ok"]), results[0])', classify)
+        self.assertIn('go = {"ok": False, "missing": [], "reason": f"Founder GO evidence unavailable ({type(exc).__name__})"}', classify)
+        self.assertIn('if go["ok"] and mode == "awaiting-activation":', classify)
+        job = workflow[workflow.index("  production-auto:\n"):workflow.index("  deploy:\n")]
+        self.assertIn("needs.classify-activation.outputs.go_evidence == 'verified'", job.split("\n")[6])
+        self.assertIn("environment:\n      name: production-auto", job)
+        self.assertNotIn("from scripts.governance.autonomy_gate import", job)
+        deploy = workflow[workflow.index("  deploy:\n"):]
+        self.assertIn("needs.classify-activation.outputs.go_evidence == 'verified' && needs.production-auto.result == 'success'",
+                      deploy.split("\n")[3])
+        # The GO is re-fetched under both policies before the first production side effect.
+        self.assertLess(deploy.index('for root in ("gate-trusted", "gate-target"):'), deploy.index("- name: Setup SSH"))
+        self.assertIn("Founder GO evidence no longer holds", deploy)
+        self.assertEqual(workflow.count("environment:\n      name: production-activation"), 2)
 
 
 class AutonomousMergeWorkflowContractTest(unittest.TestCase):
