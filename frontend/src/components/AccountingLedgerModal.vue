@@ -66,7 +66,9 @@
                 :course="c"
                 :outstanding="owedFor(c.id)"
                 :pending-report="pendingReportFor(c.id)"
-                :last-payment="lastPaymentFor(c.id)"
+                :last-payment="payLineFor(c)"
+                :amounts="amountsFor(c.id)"
+                :month-lines="monthLinesFor(c.id)"
                 :bill-draft="draftFor(c.id)"
                 @record="openEntry"
                 @issue="openIssue"
@@ -498,17 +500,38 @@ const overpaidTotal = computed(() => Number(payload.value?.summary?.overpaid_tot
 const owedFor = (id) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(id))
   .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
-const lastPaymentFor = (id) => {
-  const pays = (payload.value?.invoices || [])
-    .filter((inv) => Number(inv.student_class_id) === Number(id))
-    .flatMap((inv) => inv.payments || [])
+const courseInvoices = (id) => (payload.value?.invoices || [])
+  .filter((inv) => Number(inv.student_class_id) === Number(id) && inv.status !== 'void');
+const lastInvoicePayment = (id) => {
+  const pays = courseInvoices(id).flatMap((inv) => inv.payments || [])
     .filter((p) => !p.is_void && Number(p.amount) > 0 && p.paid_at);
   const last = pays.sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)) || Number(b.id) - Number(a.id))[0];
   return last ? { date: String(last.paid_at).slice(0, 10), amount: Number(last.amount) } : null;
 };
+// Pay line (spec 2.3): latest confirmed receipt = same source as the printed receipt; invoice payments next;
+// the contract's PayDate only as a last fallback (G-009 dual truth, never corrected from here).
+const payLineFor = (course) => {
+  const rc = (payload.value?.receipts || [])
+    .filter((r) => Number(r.student_class_id) === Number(course.id) && r.status === 'confirmed' && Number(r.amount) > 0 && r.payment_date)
+    .sort((a, b) => String(b.payment_date).localeCompare(String(a.payment_date)) || Number(b.report_id) - Number(a.report_id))[0];
+  if (rc) return { date: String(rc.payment_date).slice(0, 10), amount: Number(rc.amount) };
+  return lastInvoicePayment(course.id) || (course.paid_at && Number(course.charge) > 0 ? { date: String(course.paid_at).slice(0, 10), amount: Number(course.charge) } : null);
+};
+const amountsFor = (id) => {
+  const list = courseInvoices(id);
+  if (!list.length) return null;
+  const sum = (k) => list.reduce((t, inv) => t + Number(inv[k] || 0), 0);
+  return { due: sum('total_amount'), received: sum('calculated_applied_amount'), owed: sum('outstanding_amount') };
+};
+const monthLinesFor = (id) => Object.fromEntries(courseInvoices(id).map((inv) => {
+  const key = String(inv.billing_period || inv.period_start || '').slice(0, 7);
+  const paid = (inv.payments || []).filter((p) => !p.is_void && Number(p.amount) > 0 && p.paid_at)
+    .sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)))[0];
+  return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? String(paid.paid_at).slice(0, 10) : '', paidAmount: Number(inv.calculated_applied_amount || 0) }];
+}).filter(([k]) => k));
 const pendingReportFor = (id) => {
   const r = (payload.value?.receipts || []).find((x) => Number(x.student_class_id) === Number(id) && x.status === 'pending');
-  return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0) } : null;
+  return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
