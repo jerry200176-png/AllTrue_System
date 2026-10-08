@@ -56,7 +56,7 @@ const preview = computed(() => coveragePreview(props.entry?.sessions, !!props.en
 .coverage__muted{margin:6px 0 0;font-size:12px;color:var(--text-light,var(--ds-ink-mute))}
 .coverage__list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
 .coverage__date{display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:2px 8px;font-size:12px;font-variant-numeric:tabular-nums;background:var(--ds-canvas-soft);color:var(--ds-ink)}
-.coverage__date em{font-style:normal;font-size:11px;font-weight:700;color:var(--ds-ink-mute)}
+.coverage__date em{font-style:normal;font-size:12px;font-weight:700;color:var(--ds-ink-mute)}
 .coverage__date--done em{color:var(--ds-success)}
 .coverage__date--warn em{color:var(--ds-warning)}
 .coverage__date--leave em{color:var(--ds-ink-mute)}
