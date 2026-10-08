@@ -155,13 +155,15 @@ describe('CourseManager polish', () => {
     w.unmount()
   })
 
-  it('billing keeps one tuition-center action', async () => {
+  it('billing has one 在這裡看帳務 action that opens in place (no 前往帳務中心 page jump)', async () => {
     const w = mountCm({ tab: 'billing' })
-    const tuition = w.findAll('[data-testid="course-manager-tuition"]')
-    expect(tuition).toHaveLength(1)
-    expect(tuition[0].text()).toBe('前往帳務中心')
-    expect(w.text()).not.toContain('查看帳務')
-    expect(w.find('[data-testid="course-manager-invoice"]').text()).toBe('查看帳單')
+    expect(w.findAll('[data-testid="course-manager-tuition"]')).toHaveLength(0)
+    expect(w.text()).not.toContain('前往帳務中心')
+    const invoice = w.findAll('[data-testid="course-manager-invoice"]')
+    expect(invoice).toHaveLength(1)
+    expect(invoice[0].text()).toBe('在這裡看帳務')
+    await invoice[0].trigger('click')
+    expect(w.emitted('action').at(-1)).toEqual([{ name: 'invoice' }])
     expect(w.text()).toContain('產生繳費通知')
     w.unmount()
   })

@@ -263,7 +263,7 @@
                   <th>老師</th>
                   <th>時段</th>
                   <th>繳費</th>
-                  <th>剩餘堂數</th>
+                  <th>堂數</th>
                   <th class="col-actions">操作</th>
                 </tr>
               </thead>
@@ -379,7 +379,7 @@
                           role="status"
                           :title="paymentStatusHelpTitle(c)"
                         >{{ paymentStatusButtonLabel(c) }}</span>
-                        <button v-if="shouldShowPaymentAction(c)" type="button" class="small ghost payment-next-action" @click="goToTuitionBilling(c)">{{ paymentNextActionLabel(c) }}</button>
+                        <button v-if="shouldShowPaymentAction(c)" type="button" class="small ghost payment-next-action" @click="onPaymentNextAction(c)">{{ paymentNextActionLabel(c) }}</button>
                       </div>
                       <span v-if="isTutoringBillingAnomaly(c)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                       <div v-if="c.last_paid_at" class="paid-date-hint">{{ c.last_paid_at }}</div>
@@ -389,8 +389,7 @@
                       </div>
                     </td>
                     <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
-                      <template v-if="isSessionMode(c)">{{ displayRemainingSessions(c) ?? '—' }}<span v-if="isPackageMember(c)" class="tag-package-hint">（方案共用）</span></template>
-                      <template v-else>已上 {{ getCompletedSessionCount(c) }} 堂</template>
+                      {{ courseLessonCountLabel({ isSession: isSessionMode(c), remaining: displayRemainingSessions(c), completed: getCompletedSessionCount(c) }) }}<span v-if="isSessionMode(c) && isPackageMember(c)" class="tag-package-hint">（方案共用）</span>
                     </td>
                     <td class="cell-actions">
                       <div v-if="courseManagerEnabled" class="action-btns-row">
@@ -603,7 +602,7 @@
                       <div v-if="activeActionMenu === hc.id" :ref="(el) => setActionMenu(hc.id, el)" class="action-dropdown" role="menu" aria-label="其他歷史課程操作" @click.stop @keydown="handleActionMenuKeydown(hc.id, $event)">
                         <p class="action-section-label">課程與帳務</p>
                         <button class="action-dropdown-item" role="menuitem" @click="navigateToStudentCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
-                        <button class="action-dropdown-item" role="menuitem" title="在帳務中心打開學生帳務" @click="openTuitionLedger(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 學生帳務</button>
+                        <button class="action-dropdown-item" role="menuitem" title="在這裡打開學生帳務" @click="openTuitionLedger(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 在這裡看帳務</button>
                         <button
                           v-if="effectiveClosedReason(hc) === 'completed'"
                           class="action-dropdown-item action-dropdown-renew"
@@ -669,7 +668,7 @@
                   v-if="shouldShowPaymentAction(studentBillingAnchorCourse(group))"
                   type="button"
                   class="small primary"
-                  @click="goToTuitionBilling(studentBillingAnchorCourse(group))"
+                  @click="onPaymentNextAction(studentBillingAnchorCourse(group))"
                 >{{ paymentNextActionLabel(studentBillingAnchorCourse(group)) }}</button>
               </div>
             <table class="course-table student-billing-table" aria-label="帳務資料">
@@ -728,8 +727,8 @@
                         title="產生繳費通知單"
                         @click="openPaymentSlip(row.course)"
                       >繳費通知</button>
-                      <button class="small ghost btn-invoices" type="button" title="在帳務中心打開學生帳務" @click="openTuitionLedger(row.course)">學生帳務</button>
-                      <button v-if="shouldShowPaymentAction(row.course)" class="small primary" type="button" @click="goToTuitionBilling(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
+                      <button class="small ghost btn-invoices" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
+                      <button v-if="shouldShowPaymentAction(row.course)" class="small primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
                       <span v-if="isTutoringBillingAnomaly(row.course)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                     </div>
                   </td>
@@ -1416,6 +1415,7 @@ import { useRescheduleAndMakeup } from '../composables/course-management/useResc
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
 import { lessonPickerKey, useCourseRowActions } from '../composables/course-management/useCourseRowActions';
 import ActionMenu from '../components/ActionMenu.vue';
+import { courseLessonCountLabel } from '../lib/courseLessonCountLabel.js';
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import { askConfirm } from '../composables/useConfirmDialog';
@@ -1465,7 +1465,6 @@ import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
   buildTuitionCollectNav,
-  buildTuitionLedgerNav,
   buildStudentsCommercialNav,
   tuitionIntentForPaymentStatus,
 } from '../lib/authoritativeMutationRoutes.js';
@@ -1549,8 +1548,13 @@ const goToTuitionBilling = (course) => {
   }));
 };
 
-const openTuitionLedger = (course) => {
-  emit('navigate', buildTuitionLedgerNav(course));
+// 課程查找 C-PR5 (PRD D2): the student's billing opens in place (the ledger panel), not on another page.
+const openTuitionLedger = (course) => openLedgerForCourse(course);
+// 登記繳費回報 / 待核對回報 still go to 帳務中心 (that is where reports are filed and reviewed); a settled
+// course just shows its billing in place.
+const onPaymentNextAction = (course) => {
+  if (['unpaid', 'partial', 'pending_report'].includes(course?.payment_status)) goToTuitionBilling(course);
+  else openLedgerForCourse(course);
 };
 
 const goToStudentsCommercial = (course, intent = 'edit') => {
@@ -2664,7 +2668,7 @@ function onCourseManagerAction({ name, payload } = {}) {
     'quick-add': () => { if (canQuickAddSession(c) || isMonthlyMode(c)) openQuickAddSessionModal(c); },
     'retry-sessions': () => retryLoadCourseSessions(c),
     'cancel-makeup': () => { if (payload) cancelMakeupSchedule(payload, c); },
-    invoice: () => openTuitionLedger(c), tuition: () => goToTuitionBilling(c), ledger: () => openLedgerForCourse(c),
+    invoice: () => openTuitionLedger(c), tuition: () => openTuitionLedger(c), ledger: () => openLedgerForCourse(c),
     purchase: () => openCommercialPurchaseEntry(c), 'contract-adjust': () => openContractAdjustmentModal(c),
     'package-preview': () => openPackageConversionPreview(c), 'payment-slip': () => openPaymentSlip(c),
     duplicate: () => duplicateCourseForTeacher(c),
@@ -4178,7 +4182,7 @@ const paymentNextActionLabel = (course) => {
   if (isTutoringCourse(course)) return '';
   if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
   if (course?.payment_status === 'pending_report') return `查看「${REPORT_STATUS_LABELS.pending}」`;
-  return '前往帳務中心';
+  return '在這裡看帳務';
 };
 const isTutoringCourse = (course) => course?.class_type === 'tutoring';
 const isTutoringBillingAnomaly = (course) => isTutoringCourse(course) && course?.tutoring_billing_anomaly === true;
@@ -6667,6 +6671,7 @@ onUnmounted(() => {
 }
 
 .cell-remaining {
+  white-space: nowrap;
   font-weight: 950;
   font-size: 15px;
   color: #0f172a;
