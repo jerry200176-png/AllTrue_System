@@ -13,10 +13,10 @@
       <span v-else>已收清</span>
       <template v-if="pendingReport">
         <span class="contract__chip pay-partial">家長說繳了 {{ money(pendingReport.amount) }}，等你確認</span>
-        <button type="button" class="contract__btn" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</button>
-        <button type="button" class="contract__btn contract__btn--ghost" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</button>
+        <AtButton size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
+        <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</AtButton>
       </template>
-      <button v-else-if="!noObligation && (outstanding > 0 || !course.paid)" type="button" class="contract__btn" data-testid="contract-record" @click="$emit('record', course)">登記收款</button>
+      <AtButton v-else-if="!noObligation && (outstanding > 0 || !course.paid)" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記收款</AtButton>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
@@ -251,7 +251,7 @@ watch(() => props.course.id, load, { immediate: true });
 </script>
 
 <style scoped>
-.contract{border:1px solid var(--ds-canvas-soft);border-radius:12px;padding:12px 14px;display:grid;gap:10px;background:var(--surface,var(--ds-canvas))}
+.contract{border:1px solid var(--ds-border);border-radius:12px;padding:12px 14px;display:grid;gap:10px;background:var(--surface,var(--ds-canvas))}
 .contract__head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
 .contract__head h5{margin:0;font-size:15px}
 .contract__mode{font-size:12px;color:var(--ds-ink-mute)}
@@ -259,8 +259,6 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__money .due{color:var(--ds-danger)}
 .contract__confirm-text{margin:0;font-size:14px;line-height:1.6}
 .contract__reject-label{display:block;margin-bottom:6px;font-size:14px;font-weight:700}
-.contract__btn{border:1px solid var(--ds-primary,var(--ds-canvas-soft));background:var(--ds-primary,var(--ds-canvas));color:var(--ds-on-primary,var(--ds-canvas));border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;min-height:36px}
-.contract__btn--ghost{background:transparent;color:var(--ds-ink)}
 .contract__memo{background:var(--ds-canvas-soft);border-radius:8px;padding:8px 10px;display:grid;gap:6px}
 .contract__memo-text{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
 .contract__memo textarea{width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:6px 8px}
@@ -268,12 +266,13 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__summary{margin:0;font-size:13px;font-weight:700}
 .contract__month h6{margin:0 0 4px;font-size:12px;color:var(--ds-ink-mute)}
 .contract__month ol{list-style:none;margin:0;padding:0;display:grid;gap:4px}
-.contract__month li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:13px;padding:4px 0;border-bottom:1px solid var(--ds-canvas-soft)}
+.contract__month li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:13px;padding:4px 0;border-bottom:1px solid var(--ds-border)}
 .contract__date{min-width:110px;font-variant-numeric:tabular-nums}
 .contract__time{min-width:44px;color:var(--ds-ink-mute);font-variant-numeric:tabular-nums}
 .contract__num{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
-.contract__chip{display:inline-flex;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;background:var(--ds-canvas-soft);color:var(--ds-ink-mute)}
-.contract__chip.tone-done,.contract__chip.pay-paid{background:var(--ds-success-wash);color:var(--ds-success)}
+.contract__chip{display:inline-flex;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700;background:var(--ds-canvas-soft);color:var(--ds-ink-mute)}
+.contract__chip.pay-paid{background:none;color:var(--ds-success);padding:1px 0;font-weight:600}
+.contract__chip.tone-done{background:var(--ds-success-wash);color:var(--ds-success)}
 .contract__chip.tone-warn,.contract__chip.pay-partial{background:var(--ds-warning-wash);color:var(--ds-warning)}
 .contract__chip.pay-unpaid{background:var(--ds-danger-wash);color:var(--ds-danger)}
 .contract__muted{margin:0;font-size:13px;color:var(--ds-ink-mute)}

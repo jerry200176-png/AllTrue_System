@@ -83,10 +83,10 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .sbl__tools input{flex:1 1 180px;min-height:36px;padding:6px 10px;font:inherit}
 .sbl__chips{display:flex;flex-wrap:wrap;gap:6px}
-.sbl__chip{border:1px solid var(--ds-canvas-soft);background:var(--ds-canvas);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer;min-height:32px}
+.sbl__chip{border:1px solid var(--ds-border);background:var(--ds-canvas);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer;min-height:32px}
 .sbl__chip.is-on{background:var(--ds-primary-wash,var(--ds-canvas-soft));border-color:var(--ds-primary,var(--ds-ink-mute));font-weight:700}
 .sbl__list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.sbl__row{width:100%;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;text-align:left;border:1px solid var(--ds-canvas-soft);border-radius:10px;background:var(--surface,var(--ds-canvas));padding:10px 12px;cursor:pointer;font:inherit;color:inherit}
+.sbl__row{width:100%;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;text-align:left;border:1px solid var(--ds-border);border-radius:10px;background:var(--surface,var(--ds-canvas));padding:10px 12px;cursor:pointer;font:inherit;color:inherit}
 .sbl__row:hover{border-color:var(--ds-ink-mute)}
 .sbl__name{font-weight:700;min-width:6em}
 .sbl__now{font-variant-numeric:tabular-nums}

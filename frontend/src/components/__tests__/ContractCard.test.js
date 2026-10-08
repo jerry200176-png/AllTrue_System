@@ -349,3 +349,25 @@ describe('AccountingLedgerModal mobile (PRD v2 D5)', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('billing panel visual tokens (spec B-PR2)', () => {
+  const read = async (rel) => (await import('node:fs')).readFileSync(new URL(rel, import.meta.url), 'utf8');
+  it('uses hairline borders, 12px minimum text and AtButton (no white text on --ds-primary)', async () => {
+    for (const rel of ['../tuition/ContractCard.vue', '../tuition/StudentBillingList.vue', '../AccountingLedgerModal.vue']) {
+      const src = await read(rel);
+      expect(src, rel).not.toMatch(/border[a-z-]*:\s*[\d.]+px solid var\(--ds-canvas-soft\)/);
+      expect(src, rel).not.toContain('font-size:11px');
+      expect(src, rel).not.toMatch(/color:var\(--ds-on-primary/);
+    }
+    expect(await read('../tuition/ContractCard.vue')).not.toContain('contract__btn');
+  });
+
+  it('keeps 已付 / 未付 stated on every lesson day (D16) with 已付 as plain text', async () => {
+    authedFetch.mockResolvedValueOnce(respond(COVERAGE));
+    const w = mount(ContractCard, { props: { course: { id: 9 } } });
+    await flushPromises();
+    const rows = w.findAll('[data-testid="contract-session"]');
+    expect(rows.every((r) => /已付|未付/.test(r.text()))).toBe(true);
+    expect(rows[0].find('.pay-paid').exists()).toBe(true);
+  });
+});
