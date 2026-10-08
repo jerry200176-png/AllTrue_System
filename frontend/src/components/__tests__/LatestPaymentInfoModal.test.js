@@ -163,7 +163,7 @@ describe('LatestPaymentInfoModal — student page authoritative payment summary'
     ])));
     const wrapper = mount(LatestPaymentInfoModal, { props: { show: true, course } });
     await tick();
-    expect(wrapper.find('.lpi-status-chip').text()).toBe('已收款');
+    expect(wrapper.find('.lpi-status-chip').text()).toBe('已收');
     expect(wrapper.find('button.primary').exists()).toBe(false);
   });
 

@@ -75,6 +75,12 @@ export function decide(pr, required) {
 // cands: [{n, serial}] in queue order, already eligible. A PR whose batch went red is serial-only
 // (until re-queued); if the oldest candidate is serial-only it goes first, alone, no batch.
 export const BATCH_MAX = 4;
+// Serial-only (never batched): untrusted authors (their code must not run in batch CI), PRs whose batch already
+// went red since they were queued, and `intentional-revert` PRs: presubmit CHECK 0d on a batch branch has no PR
+// to read that label from, so such a batch would stay red and block every PR behind it (2026-10-07).
+export function batchSerial(pr, failedBatchSinceQueued) {
+  return !TRUSTED_AUTHORS.has(pr.authorAssociation) || failedBatchSinceQueued || (pr.labels || []).includes('intentional-revert');
+}
 export const BATCH_PREFIX = 'chore/land-queue-batch-'; // chore/ passes Presubmit CHECK 1
 export const BATCH_BASE_MESSAGE = 'land-queue batch base';
 // A ref is queue-owned only if walking its member merges ends at the queue's own base commit: exact message,
@@ -132,6 +138,7 @@ function labeledAt(n) {
 
 const Q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
   mergeStateStatus headRefName headRefOid authorAssociation
+  labels(first:50){nodes{name}}
   commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{
     __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId} repository{nameWithOwner}}} ... on StatusContext{context state createdAt}}}}}}}}}}`;
 
@@ -154,6 +161,7 @@ function load(n) {
     sha: p.headRefOid,
     rollup: fromPinned(p.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes, PINS, REPO),
     authorAssociation: p.authorAssociation,
+    labels: (p.labels?.nodes || []).map((l) => l.name),
   };
 }
 
@@ -273,6 +281,7 @@ function startBatch(queue, required) {
     if (d.action === 'reject') reject(p.number, pr.sha, d);
     else if (d.action === 'merge') cands.push({ n: p.number, pr, serial: !TRUSTED_AUTHORS.has(pr.authorAssociation) || serialOnly(p.number, p.labeledAt) });
   }
+  for (const c of cands) c.serial = batchSerial(c.pr, c.serial); // adds the intentional-revert rule
   const batch = planBatch(cands);
   if (!batch.length) return false;
   const base = mainTip();

@@ -376,6 +376,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F2 月結續期語意** | 續期未依**當期實際堂數**重算金額/堂次；收據未綁 `billing_period` | #149、§R22、§R26、#554、#594 | 續期＝新一期+結算舊期；收據金額=當期堂數×費率、含結算月 |
 | **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23、§R64（週日 slot 全滅→0 元月結） | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end；weekday 比對先 `isoWeekday()` 正規化 |
 | **F24 提到就算擁有**（2026-10-07） | Phase-C 的 close-issue 與 reconcile 把 issue 內文／留言中**任何** `alltrue:bug_report:N` 都當成「這張 issue 也追蹤 N」；交叉引用（Related earlier SourceRef、Cross-SourceRef）讓已解決的回報 issue 永遠被「還有未解決的 in-app」擋住不關 | #3084 #3148 #3204 #3227 #3228 #3229（in-app 已 resolved、issue 仍開） | 擁有＝標題 `in-app #N` 或「行首」`SourceRef: alltrue:bug_report:N`；兩處共用同一規則，`test_inapp_issue_reconcile.py` 與 `bug-writeback-workflow.test.mjs` 守住 |
+| **F20 只有綁定、沒有解除**（2026-10-07） | 學生／老師 RFID 欄位唯讀、只有「綁定／重新綁定」，沒有解除；`bindCard` 的 422 還寫「請先解除原有綁定」但沒有入口 → 遺失或換人的卡無法釋出 | in-app #381 | 學生 `DELETE students/{id}/bind-card`（共用 `denyOutsideCampus`）＋老師分校卡「解除綁定」（存檔寫 NULL）；`RfidUniqueConstraintTest` 守解除後可再綁給別人、跨校 403，`SecurityHardeningTest` 守老師卡清除。新增任何「綁定」功能要同時給「解除」 |
 | **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆；把方案池總堂數當成員課程應物化列數 → 假「不一致」警告；堂數制 projected chip 誤呼叫 ensure-projected；把方案池剩餘數當成員可排能力 | #147、#553、#430、#448、#440、§R21、§R24、#1465；架構後續見 **ADR-006**（Commitment→materialize→pool coverage；非餘額猜堂） | 池／成員排課／已用分欄；package under→info 且**成員課程 UI 不顯示方案池剩餘**；無 allocation aggregate 前不推導尚可排／未排 N；count projected 不呼叫 ensure-projected；物化 affordance 僅 `ScheduleMode=date` |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
 | **F7 繳費金額/狀態雙真相** | `Charge` 與 `Rate×數量` 的差額、`StudentClass.Paid` 與 Invoice/Payment 各有兩套真相；點修單邊會「改了又跳回」 | #112、#425、#509、#798、#799、§G-009 | Charge 差額必須可追溯到 `session_charge` 調整；有效收款紀錄存在時課程不得被改為未繳費（解鈴走帳單作廢），任何降級路徑都要明確回饋不得靜默 |
@@ -862,6 +863,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **測試必補**：`scripts/control-plane-lint.mjs` 或 deploy contract 檢查 migrate 呼叫必須在 `if` 分支內。
 
 ---
+
+### R139. 給創辦人的週報只能由正式站唯讀編號組成，且同週重跑必須是更新（in-app 閉環 2A，2026-10-08）
+
+- **現象**：回報量大時，創辦人沒有一頁看得到「這週進來／修好／卡住／又壞」；若直接把回報內容貼進公開 repo 的 issue，會洩漏人名與個資。
+- **強制規則**：週報資料只來自 `bug-sla-weekly-report` 正式站唯讀查詢的整數編號；渲染器遇到非正整數一律失敗（fail closed）。issue 以標題 `in-app 週報 YYYY-Www`（台北時區）作鍵，只重用機器人自己建立的那張，重跑改用 `gh issue edit`。
+- **測試必補**：`scripts/tests/test_inapp_weekly_onepager.py`（週別、各段落、空週、壞資料）與 `scripts/ci/bug-sla-weekly-workflow.test.mjs`（查詢不含文字欄位、issue 權限只在 issue job）。
 
 ### R65. 新增 session 狀態值必須同步全部消費端（`leave_requested` 兩畫面認定分歧）
 

@@ -13,6 +13,8 @@ concurrency:
 permissions:
   contents: read
 
+# Monday one-pager (Founder "2A", 2026-10-08): the `issue` job turns the IDs-only snapshot into
+# one plain-Chinese GitHub issue per ISO week, "in-app 週報 YYYY-Www" (Taipei time). Re-runs update it.
 jobs:
   report:
     name: Export redacted bug SLA snapshot
@@ -90,9 +92,13 @@ jobs:
               }
           }
           $now = \Carbon\Carbon::now();
+          $openByAge = ["lt7" => [], "d7_30" => [], "gt30" => []];
+          $slaOverdue = [];
           foreach ($bugs as $bug) {
               $status = (string) $bug->status;
               $openByStatus[$status]++;
+              $createdDays = $now->diffInDays(\Carbon\Carbon::parse((string) $bug->created_at), true);
+              $openByAge[$createdDays < 7 ? "lt7" : ($createdDays <= 30 ? "d7_30" : "gt30")][] = (int) $bug->id;
               $triagedTimestamp = $triagedAt[(int) $bug->id] ?? null;
               $ageAnchor = $status === "new" ? (string) $bug->created_at : $triagedTimestamp;
               $ageHours = $ageAnchor ? round($now->diffInSeconds(\Carbon\Carbon::parse($ageAnchor), true) / 3600, 2) : null;
@@ -109,8 +115,20 @@ jobs:
                   default => "p3",
               };
               $targetHours = ["critical" => 4, "high" => 24, "medium" => 168][(string) $bug->severity] ?? null;
-              if ($targetHours !== null && $ageHours > $targetHours) $openBreaches[$tier]++;
+              if ($targetHours !== null && $ageHours > $targetHours) { $openBreaches[$tier]++; $slaOverdue[] = (int) $bug->id; }
           }
+          $since = $now->copy()->subDays(7);
+          $logIds = fn (array $to, ?array $from = null) => \Illuminate\Support\Facades\DB::table("bug_report_status_logs")
+              ->whereIn("to_status", $to)->when($from, fn ($q) => $q->whereIn("from_status", $from))
+              ->where("created_at", ">=", $since)->pluck("bug_report_id")->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+          $weekly = [
+              "new" => \Illuminate\Support\Facades\DB::table("bug_reports")->where("created_at", ">=", $since)->orderBy("id")->pluck("id")->map(fn ($id) => (int) $id)->all(),
+              "resolved" => $logIds(["resolved"]),
+              "closed" => $logIds(["closed"]),
+              "reopened" => $logIds(["in_progress", "triaged"], ["resolved", "closed"]),
+              "sla_overdue" => $slaOverdue,
+              "open_by_age" => $openByAge,
+          ];
           echo json_encode([
               "schema_version" => "bug-sla-weekly-v1",
               "generated_at" => \Carbon\Carbon::now()->toIso8601String(),
@@ -119,6 +137,7 @@ jobs:
               "pii_redacted" => true,
               "source" => "production:bug_reports+bug_report_status_logs",
               "status_counts" => $statusCounts,
+              "weekly" => $weekly,
               "open_backlog" => [
                   "total" => array_sum($openByStatus),
                   "by_status" => $openByStatus,
@@ -177,6 +196,7 @@ jobs:
               "schema_version", "generated_at", "timezone", "read_only",
               "pii_redacted", "source", "status_counts", "open_backlog", "triage_sla",
           }
+          required.add("weekly")
           if not required.issubset(snapshot):
               raise SystemExit("weekly SLA artifact is missing required fields")
           if snapshot["read_only"] is not True or snapshot["pii_redacted"] is not True:
@@ -190,3 +210,44 @@ jobs:
           name: bug-sla-weekly
           path: out/bug-sla-weekly.json
           retention-days: 90
+
+  issue:
+    name: Open or update the weekly one-pager issue
+    needs: report
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout renderer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            scripts/inapp-weekly-onepager.py
+            scripts/inapp-issue-reconcile.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Download snapshot
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: bug-sla-weekly
+          path: out
+      - name: Render and publish (IDs only, idempotent)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh issue list --state all --limit 1000 --json number,title,body,comments,state,labels,author > out/issues.json
+          python3 scripts/inapp-weekly-onepager.py --snapshot out/bug-sla-weekly.json --issues out/issues.json --out-dir out --owner "$GITHUB_REPOSITORY_OWNER"
+          title="$(cat out/title.txt)"
+          [[ "$title" =~ ^in-app\ 週報\ [0-9]{4}-W[0-9]{2}$ ]] || { echo "::error::unexpected title"; exit 1; }
+          # Only an issue this workflow's bot created counts as the weekly issue (anyone can open a lookalike).
+          existing="$(gh issue list --state all --author app/github-actions --search "\"$title\" in:title" --json number,title -q "[.[] | select(.title == \"$title\")] | sort_by(.number) | .[0].number // empty")"
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file out/body.md
+            echo "updated #$existing"
+          else
+            gh issue create --title "$title" --body-file out/body.md
+          fi
