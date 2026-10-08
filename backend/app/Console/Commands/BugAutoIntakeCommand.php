@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\BugReport;
 use App\Models\BugReportComment;
 use App\Models\User;
+use App\Services\BugFamily;
 use App\Services\BugReportService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,7 @@ class BugAutoIntakeCommand extends Command
     public const ACK_TEXT = '收到，我們正在查，查到原因會再回覆你。';
 
     protected $signature = 'bugs:auto-intake
-                            {--candidates : Print new reports as JSON (IDs, campus, severity, created_at only)}
+                            {--candidates : Print new reports as JSON (IDs, campus, severity, created_at, family only)}
                             {--limit=50 : Max reports per --candidates (unacknowledged only, so the backlog drains)}
                             {--min-age=5 : Minutes a report must exist before intake (lets attachments finish)}
                             {--ack : Triage one report and post the acknowledgement}
@@ -51,12 +52,14 @@ class BugAutoIntakeCommand extends Command
                 ->whereColumn('c.bug_report_id', 'bug_reports.id')->where('c.body', self::ACK_TEXT)
                 ->where('c.author_user_id', $actor))
             ->orderBy('id')->limit($limit)
-            ->get(['id', 'CampusID', 'severity', 'created_at'])
+            ->get(['id', 'CampusID', 'severity', 'created_at', 'page_key', 'title', 'description'])
             ->map(fn (BugReport $b) => [
                 'bug_id' => (int) $b->id,
                 'campus_id' => (int) $b->CampusID,
                 'severity' => (string) $b->severity,
                 'created_at' => optional($b->created_at)->toIso8601String(),
+                // Family name only (config/bug_families.php); the text it was derived from never leaves production.
+                'family' => BugFamily::classify($b->page_key, $b->title . ' ' . $b->description),
             ])->values()->all();
         $this->line(json_encode(['candidates' => $rows], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
         return self::SUCCESS;

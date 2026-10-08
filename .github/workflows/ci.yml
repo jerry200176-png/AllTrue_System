@@ -69,6 +69,7 @@ jobs:
           node scripts/ci-cost-guard.mjs
           node scripts/ci-cost-guard.mjs --self-test
           node scripts/ci/bug-writeback-workflow.test.mjs
+          node scripts/ci/bug-auto-intake-family.test.mjs
           node scripts/ci/bug-reporter-timeout-workflow.test.mjs
           node scripts/ci/bug-sla-weekly-workflow.test.mjs
           node scripts/ci/staff-identity-merge-workflow.test.mjs
