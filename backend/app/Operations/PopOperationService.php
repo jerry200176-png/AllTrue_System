@@ -131,6 +131,7 @@ final class PopOperationService
             && !$this->isExactUnbilledBacklogCatchup($entry)
             && !$this->isExactTd076Repair($entry)
             && !$this->isExactPastScheduledCancel($entry)
+            && !$this->isExactInvoice1997StaleValues($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
         }
@@ -665,6 +666,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactInvoice1997StaleValues($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'one_invoice_item_one_snapshot_one_course_charge'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactPastScheduledCancel($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -745,6 +761,15 @@ final class PopOperationService
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnbilledBacklogCatchupStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-unbilled-backlog-catchup'
             && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
+    }
+
+    /** Same single-super_admin Founder-exact shape (in-app #369, invoice 1997 stale values). */
+    private function isExactInvoice1997StaleValues(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'invoice1997-stale-values-20261008'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\Invoice1997StaleValuesStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-invoice1997-stale-values'
+            && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
     }
 
     /** Same single-super_admin Founder-exact shape as the unpaid-hidden-closures case (in-app #341). */
