@@ -791,6 +791,8 @@
       :next-session-label="courseManagerNextSessionLabel(courseManagerCourse)"
       :payment-label="paymentStatusButtonLabel(courseManagerCourse)"
       :overview-needs="courseManagerOverviewNeeds(courseManagerCourse)"
+      :action-model="courseManagerActionModel(courseManagerCourse)"
+      :can-move-lesson="(u) => isLessonMovable(courseManagerCourse, u)"
       :session-units="primarySessionUnits(courseManagerCourse)"
       :cancelled-units="movedOrCancelledUnits(courseManagerCourse)"
       :pending-makeups="pendingMakeupsByCourse[courseManagerCourse.id] ?? []"
@@ -809,7 +811,7 @@
       :get-session-state-label="getSessionStateLabel" :get-session-number="getSessionNumber" :get-session-number-map="getSessionNumberMap"
       :session-row-key="sessionRowKey" :is-user-note="isUserNote" :format-makeup-date="formatMakeupDate"
       @close="closeCourseManager" @update:tab="onCourseManagerTab" @action="onCourseManagerAction"
-      @open-session="onCourseManagerOpenSession"
+      @open-session="onCourseManagerOpenSession" @move-lesson="onCourseManagerMoveLesson"
       @create-day="(payload) => openCourseSessionCalendarCreate(courseManagerCourse, payload)"
       @toggle-cancelled="toggleCancelledSessions(courseManagerCourse.id)" @toggle-notes="toggleSessionNotes"
     >
@@ -1244,6 +1246,8 @@
       :compute-end-time="computeEndTime"
       :teachers="teachers"
       :feature-substitute-v2="featureSubstituteV2"
+      :lesson-picker="lessonPicker"
+      @pick-lesson="pickLesson"
       @close="closeSessionEdit"
       @set-mode="sessionEditMode = $event"
       @status-change="doStatusChange"
@@ -1288,7 +1292,9 @@
       :branch-name-map="branchNameMap"
       :fetch-availability="fetchTeacherAvailability"
       @submit="onSubstituteV2Submit"
-    />
+    >
+      <template #meta-extra><LessonPickerSelect :picker="lessonPicker" @pick="pickLesson" /></template>
+    </SubstituteTeacherPickerModal>
     <ToastWithUndo ref="toastRef" />
 
     <PaymentSlipModal
@@ -1412,6 +1418,7 @@ import { useRescheduleAndMakeup } from '../composables/course-management/useResc
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
 import { useCourseRowActions } from '../composables/course-management/useCourseRowActions';
 import ActionMenu from '../components/ActionMenu.vue';
+import LessonPickerSelect from '../components/course-management/LessonPickerSelect.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
@@ -2632,6 +2639,18 @@ function onCourseManagerTab(tab) {
   const c = courseManagerCourse.value;
   if (tab === 'settings' && c && Number(editingId.value) !== Number(c.id)) editCourse(c, { openModal: false });
 }
+const courseManagerActionModel = (c) => {
+  const m = rowModelFor(c, { fallback: 'manage', details: false });
+  // The drawer is already "管理課程", so that entry (primary or displaced) never shows.
+  return {
+    primary: m.primary.id === 'manage' ? null : m.primary,
+    groups: m.groups.map((g) => ({ ...g, items: g.items.filter((i) => i.id !== 'manage') })).filter((g) => g.items.length),
+  };
+};
+function onCourseManagerMoveLesson({ mode, unit }) {
+  const c = courseManagerCourse.value;
+  if (c) moveLesson(c, mode, unit);
+}
 function onCourseManagerOpenSession({ unit, date, id }) {
   const c = courseManagerCourse.value;
   if (c) openSessionEdit(c, date, id, unit);
@@ -2651,6 +2670,8 @@ function onCourseManagerAction({ name, payload } = {}) {
     purchase: () => openCommercialPurchaseEntry(c), 'contract-adjust': () => openContractAdjustmentModal(c),
     'package-preview': () => openPackageConversionPreview(c), 'payment-slip': () => openPaymentSlip(c),
     duplicate: () => duplicateCourseForTeacher(c),
+    reschedule: () => runRowAction(c, 'reschedule'), substitute: () => runRowAction(c, 'substitute'),
+    transfer: () => runRowAction(c, 'transfer'), 'contract-revert': () => openContractRevertModal(c),
   };
   map[name]?.();
 }
@@ -5350,7 +5371,23 @@ watch(
   { immediate: true },
 );
 // 課程查找 C-PR2: the row renders one primary + ⋯ from the shared action model (docs/plans/2026-10-08-course-finder-actions.md).
-const { rowModel: rowModelFor, runRowAction } = useCourseRowActions({
+// A lesson can still be moved when it is today or later and not already attended / absent / on leave / cancelled.
+const MOVABLE_BLOCKED = new Set(['completed', 'absent', 'leave', 'leave-requested', 'cancelled']);
+const isLessonMovable = (c, u) => String(u?.date || '').slice(0, 10) >= todayYmd.value
+  && !MOVABLE_BLOCKED.has(getSessionStateClass(c, String(u.date || '').slice(0, 10), u.id));
+function upcomingLessonOptions(c, limit = 6) {
+  return [...(primarySessionUnits(c) || [])]
+    .filter((u) => isLessonMovable(c, u))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    .slice(0, limit)
+    .map((u) => ({ key: sessionRowKey(u), date: String(u.date).slice(0, 10), id: u.id, unit: u, label: formatSessionChipDate(u) }));
+}
+const lessonPicker = ref(null);
+watch([showSessionEditModal, showSubstituteV2Modal], ([edit, sub]) => { if (!edit && !sub) lessonPicker.value = null; });
+const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCourseRowActions({
+  upcomingLessonOptions, openSessionEdit,
+  setLessonPicker: (v) => { lessonPicker.value = v; },
+  getLessonPicker: () => lessonPicker.value,
   effectiveClosedReason, planningStatusVisible, planningStatusFor, isSessionMode, isMonthlyMode, isManualOccurrenceCourse,
   canQuickAddSession, quickAddDisabledReason, canCloseCourse, purchaseActionIsRenew, purchaseActionLabel, isPackageMember,
   isPaymentNoticeAvailable, featureSubstituteV2,

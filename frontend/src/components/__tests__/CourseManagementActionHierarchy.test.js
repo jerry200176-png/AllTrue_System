@@ -58,6 +58,15 @@ describe('CourseManagement action hierarchy', () => {
     expect(source).toContain('isPaymentNoticeAvailable,');
   });
 
+  it('drawer header shares the row model and lesson rows move in one click', () => {
+    expect(source).toContain(':action-model="courseManagerActionModel(courseManagerCourse)"');
+    expect(source).toContain("rowModelFor(c, { fallback: 'manage', details: false })");
+    expect(source).toContain('@move-lesson="onCourseManagerMoveLesson"');
+    expect(source).toContain("reschedule: () => runRowAction(c, 'reschedule')");
+    expect(source).toContain("transfer: () => runRowAction(c, 'transfer')");
+    expect(source).toContain('<template #meta-extra><LessonPickerSelect');
+  });
+
   it('does not let an earlier manual-session check overwrite the latest selection', () => {
     expect(source).toContain('let manualSessionCheckVersion = 0;');
     expect(source).toContain('const requestVersion = ++manualSessionCheckVersion;');
