@@ -26,6 +26,14 @@
         <div v-if="loading" class="ledger-state">載入中…</div>
         <div v-else-if="error" class="ledger-state ledger-error">{{ error }}</div>
         <template v-else-if="payload">
+          <PaymentAllocation
+            v-if="allocating"
+            :student-name="payload.student?.name || '學生'"
+            :contracts="allocContracts"
+            @close="allocating = false"
+            @done="onAllocDone"
+          />
+          <div v-show="!allocating">
           <!-- PRD v2 D8: owed-by-today first, same rule as the student list. -->
           <div class="ledger-owed" data-testid="ledger-owed">
             <p class="ledger-owed__label">到今天未繳</p>
@@ -235,11 +243,12 @@
             >{{ showOtherReceipts ? '收合其他紀錄' : `其他紀錄（${otherReceipts.length}）：已退回、已撤銷或 0 元` }}</button>
           </section>
 
-          <!-- PRD v2 D5: phone only, 登記收款 stays reachable at the bottom. Same handler as the card button. -->
-          <div v-if="stickyPayCourse" class="ledger-sticky-pay" data-testid="ledger-sticky-pay">
-            <button type="button" class="ledger-sticky-pay__btn" data-testid="ledger-sticky-pay-btn" @click="openEntry(stickyPayCourse)">
-              登記收款<small v-if="stickyPayCourse.subject">{{ stickyPayCourse.subject }}</small>
+          <!-- PRD v2 D5/D18: one 登記收款 for every open contract (allocation step); each card keeps 登記這筆. -->
+          <div v-if="allocContracts.length" class="ledger-sticky-pay" data-testid="ledger-sticky-pay">
+            <button type="button" class="ledger-sticky-pay__btn" data-testid="ledger-sticky-pay-btn" @click="allocating = true">
+              登記收款<small>{{ allocContracts.length > 1 ? `${allocContracts.length} 份合約` : allocContracts[0].subject }}</small>
             </button>
+          </div>
           </div>
         </template>
       </div>
@@ -277,6 +286,7 @@ import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
 import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
 import PaymentEntryModal from './PaymentEntryModal.vue';
+import PaymentAllocation from './tuition/PaymentAllocation.vue';
 import {
   canShowReceiptCoverage,
   coverageFromReceipt,
@@ -552,9 +562,25 @@ const pendingReportFor = (id) => {
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
 
-// First contract the card would offer 登記收款 for (no pending report, money due or not yet billed).
-const stickyPayCourse = computed(() => (payload.value?.scope?.no_payment_obligation ? null : contractCourses.value.find((c) => c.class_type !== 'tutoring'
-  && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid)) || null));
+// D18: every contract the card would offer 登記收款 for (no pending report, money due or not yet billed),
+// oldest open invoice first; the allocation step fills the oldest and never exceeds what is owed.
+const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
+  // directorRecord rejects invoices already marked paid or void.
+  .filter((inv) => Number(inv.student_class_id) === Number(courseId) && Number(inv.outstanding_amount || 0) > 0 && !['paid', 'void'].includes(inv.status))
+  .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
+    || Number(a.id) - Number(b.id))[0];
+const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
+  .filter((c) => c.class_type !== 'tutoring' && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid))
+  .map((c) => {
+    const inv = oldestOpenInvoice(c.id);
+    return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };
+  })
+  .sort((a, b) => a.key.localeCompare(b.key) || a.id - b.id)));
+const allocating = ref(false);
+async function onAllocDone() {
+  allocating.value = false;
+  await onPanelChanged();
+}
 
 // 開帳單 in place: only where the existing monthly-drafts endpoint has a ready draft for this contract;
 // confirming uses the same renew-monthly request as 本月待開帳單 (no new money logic).
@@ -607,11 +633,7 @@ const entryOpen = ref(false);
 const entryRow = ref(null);
 function openEntry(course) {
   // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
-  const oldest = (payload.value?.invoices || [])
-    // directorRecord rejects invoices already marked paid or void.
-    .filter((inv) => Number(inv.student_class_id) === Number(course.id) && Number(inv.outstanding_amount || 0) > 0 && !['paid', 'void'].includes(inv.status))
-    .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
-      || Number(a.id) - Number(b.id))[0];
+  const oldest = oldestOpenInvoice(course.id);
   entryRow.value = {
     id: course.id,
     charge: course.charge,
