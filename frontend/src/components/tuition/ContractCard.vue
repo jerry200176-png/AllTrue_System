@@ -86,6 +86,7 @@ import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import AtButton from '../design-system/AtButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
+import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 
 const props = defineProps({
@@ -236,24 +237,14 @@ function submitReject() {
   rejectOpen.value = false;
   decide('reject', reason);
 }
-async function decide(action, reason = '') {
-  const body = action === 'reject' ? { rejection_note: reason } : {};
+async function decide(action, note = '') {
   busy.value = true;
   actionError.value = '';
-  try {
-    const resp = await authedFetch(`/api/v1/payment-reports/${Number(props.pendingReport.report_id)}/${action}`, {
-      method: 'PUT',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(json.message || `操作失敗（${resp.status}）`);
-    emit('changed');
-  } catch (e) {
-    actionError.value = humanizeApiErrorMessage(e.message || '操作失敗');
-  } finally {
-    busy.value = false;
-  }
+  const reportId = props.pendingReport.report_id;
+  const res = action === 'reject' ? await rejectReport(reportId, note) : await confirmReport(reportId);
+  busy.value = false;
+  if (res.ok) emit('changed');
+  else actionError.value = res.message;
 }
 
 watch(() => props.course.id, load, { immediate: true });

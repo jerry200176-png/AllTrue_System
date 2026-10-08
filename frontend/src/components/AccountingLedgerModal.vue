@@ -255,6 +255,7 @@ import {
   humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
+import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
 import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import ContractCard from './tuition/ContractCard.vue';
@@ -534,15 +535,8 @@ async function voidReport(reportId) {
   if (!reason || !reason.trim()) return;
   busyReportId.value = reportId;
   try {
-    const token = getToken();
-    if (!token) throw new Error('請先登入');
-    const resp = await fetch(`/api/v1/payment-reports/${reportId}/void`, {
-      method: 'PUT',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ void_reason: reason.trim() }),
-    });
-    const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `撤銷失敗（${resp.status}）`));
+    const res = await voidReportAction(reportId, reason.trim());
+    if (!res.ok) throw new Error(res.message);
     await loadLedger();
     emit('changed');
   } catch (e) {
@@ -566,16 +560,8 @@ async function voidInvoice(invoice, mode) {
 
   busyInvoiceId.value = invoice.id;
   try {
-    const token = getToken();
-    if (!token) throw new Error('請先登入');
-    const path = isException ? 'exception-void' : 'void';
-    const resp = await fetch(`/api/v1/invoices/${invoice.id}/${path}`, {
-      method: 'POST',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: reason.trim() }),
-    });
-    const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `${actionLabel}失敗（${resp.status}）`));
+    const res = await voidInvoiceAction(invoice.id, reason.trim(), { exception: isException });
+    if (!res.ok) throw new Error(res.message);
     await loadLedger();
     emit('changed');
   } catch (e) {
