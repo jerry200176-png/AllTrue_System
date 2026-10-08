@@ -59,6 +59,7 @@ pop-founder-scoped-repair.yml
 pop-muzha-chen-billing-catchup.yml
 pop-td076-occurrence-repairs.yml
 pop-unbilled-backlog-catchup.yml
+pop-past-scheduled-cancel.yml
 pop-unpaid-hidden-closures.yml
 production-case-dump.yml
 security-1124-migrate-uploads.yml
