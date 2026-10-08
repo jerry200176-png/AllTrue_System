@@ -13,7 +13,7 @@
       <template v-if="pendingReport">
         <span class="contract__chip pay-partial">家長說繳了 {{ money(pendingReport.amount) }}，等你確認</span>
         <button type="button" class="contract__btn" :disabled="busy" data-testid="contract-confirm" @click="decide('confirm')">確認入帳</button>
-        <button type="button" class="contract__btn contract__btn--ghost" :disabled="busy" data-testid="contract-reject" @click="decide('reject')">退回</button>
+        <button type="button" class="contract__btn contract__btn--ghost" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</button>
       </template>
       <button v-else-if="!noObligation && (outstanding > 0 || !course.paid)" type="button" class="contract__btn" data-testid="contract-record" @click="$emit('record', course)">登記收款</button>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
@@ -57,6 +57,14 @@
       </section>
       <p v-if="unscheduled > 0" class="contract__muted" data-testid="contract-unscheduled">還有 {{ unscheduled }} 堂還沒排日期</p>
     </template>
+    <AtDialog :open="rejectOpen" title="退回這筆收款" size="sm" title-id="contract-reject-title" @close="rejectOpen = false">
+      <label class="contract__reject-label" :for="`contract-reject-reason-${course.id}`">退回原因</label>
+      <AtTextarea :id="`contract-reject-reason-${course.id}`" v-model="rejectReason" :rows="3" data-testid="contract-reject-reason" />
+      <template #actions>
+        <AtButton variant="secondary" size="sm" shape="rect" data-testid="contract-reject-cancel" @click="rejectOpen = false">取消</AtButton>
+        <AtButton size="sm" shape="rect" :disabled="!rejectReason.trim()" data-testid="contract-reject-submit" @click="submitReject">退回</AtButton>
+      </template>
+    </AtDialog>
   </article>
 </template>
 
@@ -64,6 +72,9 @@
 import { computed, ref, watch } from 'vue';
 import { authedFetch } from '../../lib/authedFetch.js';
 import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
+import AtButton from '../design-system/AtButton.vue';
+import AtDialog from '../design-system/AtDialog.vue';
+import AtTextarea from '../design-system/AtTextarea.vue';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 
 const props = defineProps({
@@ -158,13 +169,20 @@ const busy = ref(false);
 const actionError = ref('');
 
 // PRD v2 D9/D20: step 2 (確認入帳 / 退回) happens right here, no tab switch.
-async function decide(action) {
-  let body = {};
-  if (action === 'reject') {
-    const reason = window.prompt('請輸入退回原因：');
-    if (!reason || !reason.trim()) return;
-    body = { rejection_note: reason.trim() };
-  }
+const rejectOpen = ref(false);
+const rejectReason = ref('');
+function openReject() {
+  rejectReason.value = '';
+  rejectOpen.value = true;
+}
+function submitReject() {
+  const reason = rejectReason.value.trim();
+  if (!reason) return;
+  rejectOpen.value = false;
+  decide('reject', reason);
+}
+async function decide(action, reason = '') {
+  const body = action === 'reject' ? { rejection_note: reason } : {};
   busy.value = true;
   actionError.value = '';
   try {
@@ -193,6 +211,7 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__mode{font-size:12px;color:var(--ds-ink-mute)}
 .contract__money{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:14px}
 .contract__money .due{color:var(--ds-danger)}
+.contract__reject-label{display:block;margin-bottom:6px;font-size:14px;font-weight:700}
 .contract__btn{border:1px solid var(--ds-primary,var(--ds-canvas-soft));background:var(--ds-primary,var(--ds-canvas));color:var(--ds-on-primary,var(--ds-canvas));border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;min-height:36px}
 .contract__btn--ghost{background:transparent;color:var(--ds-ink)}
 .contract__memo{background:var(--ds-canvas-soft);border-radius:8px;padding:8px 10px;display:grid;gap:6px}

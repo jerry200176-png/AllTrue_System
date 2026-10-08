@@ -1,16 +1,25 @@
 <template>
   <Transition name="ledger-fade">
     <div v-if="show" class="ledger-overlay" @click.self="$emit('close')">
-      <div class="ledger-modal" role="dialog" aria-modal="true" aria-label="學生帳務對帳">
+      <div
+        ref="modalEl"
+        class="ledger-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ledger-modal-title"
+        tabindex="-1"
+        @keydown.esc.stop.prevent="onEsc"
+        @keydown.tab="trapTab"
+      >
         <div class="ledger-header">
           <div>
             <p class="ledger-eyebrow">學生帳務</p>
-            <h3>學生帳務對帳</h3>
+            <h3 id="ledger-modal-title">學生帳務對帳</h3>
             <p class="ledger-subtitle">
               {{ payload?.student?.name || '載入中' }} · 對齊帳單、收款與收據
             </p>
           </div>
-          <button class="ledger-close" type="button" @click="$emit('close')" aria-label="關閉">×</button>
+          <button class="ledger-close" type="button" @click="$emit('close')" aria-label="關閉學生帳務"><span aria-hidden="true">×</span></button>
         </div>
 
         <div v-if="loading" class="ledger-state">載入對帳資料中…</div>
@@ -236,7 +245,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import {
   formatAccountingLedgerInvoiceLabel,
@@ -262,6 +271,35 @@ const EXCEPTION_PREVIEW = 2;
 const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String] });
 
 const emit = defineEmits(['close', 'changed']);
+
+// a11y: Esc closes, Tab stays inside the panel, focus returns to the opener.
+const modalEl = ref(null);
+let returnFocusEl = null;
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+function onEsc() {
+  if (!entryOpen.value) emit('close');
+}
+function trapTab(event) {
+  const panel = modalEl.value;
+  if (!panel) return;
+  const items = [...panel.querySelectorAll(FOCUSABLE)];
+  if (!items.length) { event.preventDefault(); panel.focus(); return; }
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+}
+watch(() => props.show, async (open) => {
+  if (open) {
+    returnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    await nextTick();
+    modalEl.value?.focus();
+  } else if (returnFocusEl) {
+    const el = returnFocusEl;
+    returnFocusEl = null;
+    if (el.isConnected) el.focus();
+  }
+}, { immediate: true });
 
 const loading = ref(false);
 const error = ref('');
@@ -585,7 +623,8 @@ const anomalyLabel = (code) => labelMap({
 .ledger-eyebrow{margin:0 0 4px;color:var(--ds-primary-text);font-size:12px;font-weight:800;letter-spacing:.08em}
 .ledger-header h3{margin:0;font-size:22px}
 .ledger-subtitle{margin:6px 0 0;color:var(--text-light,var(--ds-ink-mute));font-size:13px}
-.ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;color:var(--text-light,var(--ds-ink-mute))}
+.ledger-modal:focus{outline:none}
+.ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;min-width:44px;min-height:44px;color:var(--text-light,var(--ds-ink-mute))}
 .ledger-state,.ledger-empty{padding:24px;border:1px dashed var(--ds-canvas-soft);border-radius:12px;color:var(--text-light,var(--ds-ink-mute));text-align:center}
 .ledger-error{color:var(--ds-danger);background:var(--ds-danger-wash);border-color:var(--ds-danger-wash)}
 

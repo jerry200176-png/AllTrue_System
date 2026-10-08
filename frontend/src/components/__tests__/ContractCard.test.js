@@ -107,18 +107,49 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
     expect(w.emitted('changed')).toHaveLength(1);
   });
 
-  it('rejects with a reason and shows server errors', async () => {
-    vi.stubGlobal('prompt', () => '金額不對');
+  it('rejects with a reason from an in-panel dialog (no window.prompt) and shows server errors', async () => {
+    const prompt = vi.fn();
+    vi.stubGlobal('prompt', prompt);
     authedFetch.mockResolvedValueOnce(respond(COVERAGE)).mockResolvedValueOnce(respond({ message: '已處理過' }, 422));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, pendingReport: { report_id: 77, amount: 1000 } } });
+    const w = mount(ContractCard, { props: { course: { id: 9 }, pendingReport: { report_id: 77, amount: 1000 } }, attachTo: document.body });
     await flushPromises();
     await w.find('[data-testid="contract-reject"]').trigger('click');
     await flushPromises();
+    const q = (id) => document.body.querySelector(`[data-testid="${id}"]`);
+    expect(prompt).not.toHaveBeenCalled();
+    expect(authedFetch).toHaveBeenCalledTimes(1);
+    // empty / whitespace reason cannot be submitted (same rule as before)
+    expect(q('contract-reject-submit').disabled).toBe(true);
+    q('contract-reject-reason').value = '   ';
+    q('contract-reject-reason').dispatchEvent(new Event('input'));
+    await flushPromises();
+    expect(q('contract-reject-submit').disabled).toBe(true);
+    q('contract-reject-reason').value = ' 金額不對 ';
+    q('contract-reject-reason').dispatchEvent(new Event('input'));
+    await flushPromises();
+    q('contract-reject-submit').click();
+    await flushPromises();
+    expect(authedFetch.mock.calls[1][0]).toBe('/api/v1/payment-reports/77/reject');
     expect(JSON.parse(authedFetch.mock.calls[1][1].body)).toEqual({ rejection_note: '金額不對' });
     expect(w.text()).toContain('已處理過');
     expect(w.emitted('changed')).toBeUndefined();
+    w.unmount();
     vi.unstubAllGlobals();
   });
+
+  it('cancelling the reject dialog sends nothing', async () => {
+    authedFetch.mockResolvedValueOnce(respond(COVERAGE));
+    const w = mount(ContractCard, { props: { course: { id: 9 }, pendingReport: { report_id: 77, amount: 1000 } }, attachTo: document.body });
+    await flushPromises();
+    await w.find('[data-testid="contract-reject"]').trigger('click');
+    await flushPromises();
+    document.body.querySelector('[data-testid="contract-reject-cancel"]').click();
+    await flushPromises();
+    expect(document.body.querySelector('[data-testid="contract-reject-reason"]')).toBeNull();
+    expect(authedFetch).toHaveBeenCalledTimes(1);
+    w.unmount();
+  });
+
 
   it('hides 登記收款 for a paid contract with nothing due', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
@@ -187,6 +218,40 @@ describe('AccountingLedgerModal invoice pick (#3731 review)', () => {
     await flushPromises();
     await w.find('[data-testid="contract-record"]').trigger('click');
     expect(w.findComponent({ name: 'PaymentEntryModal' }).props('row')).toMatchObject({ invoice_id: 7 });
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('AccountingLedgerModal keyboard / focus (a11y)', () => {
+  it('moves focus in, traps Tab, closes on Esc and returns focus', async () => {
+    const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
+    authedFetch.mockResolvedValue(respond({ sessions: [], unscheduled_count: 0 }));
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't' }));
+    vi.stubGlobal('fetch', vi.fn(async () => respond({ summary: {}, scope: {}, receipts: [], anomalies: [], courses: [], invoices: [] })));
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    const w = mount(AccountingLedgerModal, { props: { show: false, studentClassId: 1 }, global: { stubs: { Transition: false } }, attachTo: document.body });
+    await w.setProps({ show: true });
+    await flushPromises();
+    const dialog = w.find('[role="dialog"]');
+    expect(dialog.attributes('aria-labelledby')).toBe('ledger-modal-title');
+    expect(document.activeElement).toBe(dialog.element);
+    expect(w.find('.ledger-close').attributes('aria-label')).toBe('關閉學生帳務');
+
+    // Shift+Tab from the dialog wraps to the last control; Tab from the last wraps to the first.
+    const items = [...dialog.element.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')];
+    await dialog.trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(items[items.length - 1]);
+    await dialog.trigger('keydown', { key: 'Tab' });
+    expect(document.activeElement).toBe(items[0]);
+
+    await dialog.trigger('keydown', { key: 'Escape' });
+    expect(w.emitted('close')).toHaveLength(1);
+    await w.setProps({ show: false });
+    expect(document.activeElement).toBe(opener);
+    w.unmount();
+    opener.remove();
     vi.unstubAllGlobals();
   });
 });
