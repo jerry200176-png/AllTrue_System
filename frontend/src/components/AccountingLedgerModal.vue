@@ -634,10 +634,10 @@ const anomalyLabel = (code) => labelMap({
 .ledger-state,.ledger-empty{padding:24px;border:1px dashed var(--ds-canvas-soft);border-radius:12px;color:var(--text-light,var(--ds-ink-mute));text-align:center}
 .ledger-error{color:var(--ds-danger);background:var(--ds-danger-wash);border-color:var(--ds-danger-wash)}
 
-.ledger-strip{display:flex;flex-wrap:wrap;gap:0;margin-bottom:14px;border:1px solid var(--ds-canvas-soft);border-radius:10px;overflow:hidden;background:var(--ds-canvas)}
-.ledger-strip__item{flex:1 1 110px;display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-right:1px solid var(--ds-canvas-soft);min-width:0}
+.ledger-strip{display:flex;flex-wrap:wrap;gap:0;margin-bottom:14px;border:1px solid var(--ds-border);border-radius:10px;overflow:hidden;background:var(--ds-canvas)}
+.ledger-strip__item{flex:1 1 110px;display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-right:1px solid var(--ds-border);min-width:0}
 .ledger-strip__item:last-child{border-right:0}
-.ledger-strip__label{font-size:11px;font-weight:600;color:var(--text-light,var(--ds-ink-mute));letter-spacing:.02em}
+.ledger-strip__label{font-size:12px;font-weight:600;color:var(--text-light,var(--ds-ink-mute));letter-spacing:.02em}
 .ledger-strip__value{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
 .ledger-strip__item.is-warn .ledger-strip__value{color:var(--ds-warning)}
 .ledger-strip__item.is-danger .ledger-strip__value{color:var(--ds-danger)}
@@ -648,37 +648,37 @@ const anomalyLabel = (code) => labelMap({
 .ledger-more{margin-top:8px;border:0;background:transparent;color:var(--ds-primary-text);font-size:13px;font-weight:600;cursor:pointer;padding:0}
 .ledger-table-wrap{overflow-x:auto}
 .ledger-table{width:100%;border-collapse:collapse;font-size:13px}
-.ledger-table th,.ledger-table td{border-bottom:1px solid var(--ds-canvas-soft);padding:8px 10px;text-align:left;vertical-align:top}
+.ledger-table th,.ledger-table td{border-bottom:1px solid var(--ds-border);padding:8px 10px;text-align:left;vertical-align:top}
 .ledger-table th{color:var(--text-light,var(--ds-ink-mute));background:var(--ds-canvas-soft);font-weight:600;font-size:12px}
 .ledger-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .ledger-col-expand{width:44px;padding-left:6px;padding-right:4px}
 .ledger-expand{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;cursor:pointer;color:var(--ds-ink-mute);padding:2px 4px;border-radius:6px}
 .ledger-expand:not(:disabled):hover{background:var(--ds-canvas-soft);color:var(--ds-ink)}
-.ledger-pay-count{font-style:normal;font-size:11px;font-weight:700;color:var(--ds-ink-mute)}
+.ledger-pay-count{font-style:normal;font-size:12px;font-weight:700;color:var(--ds-ink-mute)}
 .ledger-row--open td{background:var(--ds-canvas-soft)}
 .ledger-row--attention td:nth-child(2) strong{color:var(--ds-ink)}
 .ledger-overpay-hint{display:block;color:var(--ds-danger);font-weight:600}
 .due{color:var(--ds-danger);font-weight:700}
 
-.ledger-chip{display:inline-flex;border-radius:6px;padding:2px 7px;background:var(--ds-canvas-soft);color:var(--ds-ink-mute);font-size:11px;font-weight:700}
+.ledger-chip{display:inline-flex;border-radius:6px;padding:2px 7px;background:var(--ds-canvas-soft);color:var(--ds-ink-mute);font-size:12px;font-weight:700}
 .ledger-chip.chip--success{background:var(--ds-success-wash);color:var(--ds-success)}
 .ledger-chip.chip--warning{background:var(--ds-warning-wash);color:var(--ds-warning)}
 .ledger-chip.chip--danger{background:var(--ds-danger-wash);color:var(--ds-danger)}
 .ledger-chip.chip--muted{background:var(--ds-canvas-soft);color:var(--ds-ink-mute)}
 
-.ledger-detail-row td{background:var(--ds-canvas);padding:0 10px 12px 44px;border-bottom:1px solid var(--ds-canvas-soft)}
+.ledger-detail-row td{background:var(--ds-canvas);padding:0 10px 12px 44px;border-bottom:1px solid var(--ds-border)}
 .ledger-timeline__list{list-style:none;margin:0;padding:8px 0 0;display:grid;gap:8px}
-.ledger-timeline__item{display:grid;grid-template-columns:96px 1fr;gap:10px;padding:8px 10px;border:1px solid var(--ds-canvas-soft);border-radius:10px;background:var(--surface,var(--ds-canvas))}
+.ledger-timeline__item{display:grid;grid-template-columns:96px 1fr;gap:10px;padding:8px 10px;border:1px solid var(--ds-border);border-radius:10px;background:var(--surface,var(--ds-canvas))}
 .ledger-timeline__item.is-void{opacity:.65}
 .ledger-timeline__item.is-void strong{text-decoration:line-through}
 .ledger-timeline__item.is-overpay{border-color:var(--ds-warning);background:var(--ds-warning-wash)}
 .ledger-timeline__when{font-size:12px;color:var(--text-light,var(--ds-ink-mute));font-variant-numeric:tabular-nums}
 .ledger-timeline__body{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
 .ledger-timeline__meta{width:100%;display:flex;flex-wrap:wrap;gap:8px;font-size:12px;color:var(--text-light,var(--ds-ink-mute))}
-.ledger-ref{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--ds-ink-mute)}
+.ledger-ref{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--ds-ink-mute)}
 
 .ledger-receipts{display:grid;gap:8px}
-.ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--ds-canvas-soft);border-radius:10px}
+.ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--ds-border);border-radius:10px}
 .ledger-receipt-toggle{margin-top:0;font-size:12px}
 .ledger-receipt-coverage{flex-basis:100%;padding-top:0}
 .ledger-receipt-extra{flex-basis:100%;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -686,13 +686,13 @@ const anomalyLabel = (code) => labelMap({
 .ledger-muted,.ledger-receipt small,.ledger-table small{color:var(--text-light,var(--ds-ink-mute))}
 .ledger-table small{display:block;margin-top:2px}
 .ledger-actions{display:flex;gap:6px;flex-wrap:wrap}
-.ledger-action{border:1px solid var(--ds-canvas-soft);background:var(--ds-canvas);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px}
+.ledger-action{border:1px solid var(--ds-border);background:var(--ds-canvas);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px}
 .ledger-action--danger{border-color:var(--ds-danger-wash);color:var(--ds-danger)}
 .ledger-action--warning{border-color:var(--ds-warning-wash);color:var(--ds-danger);background:var(--ds-warning-wash)}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .ledger-fade-enter-active,.ledger-fade-leave-active{transition:opacity .16s ease}
 .ledger-fade-enter-from,.ledger-fade-leave-to{opacity:0}
-.ledger-sticky-pay{display:none;position:sticky;bottom:0;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface,var(--ds-canvas));border-top:1px solid var(--ds-canvas-soft);z-index:2}
+.ledger-sticky-pay{display:none;position:sticky;bottom:0;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface,var(--ds-canvas));border-top:1px solid var(--ds-border);z-index:2}
 .ledger-sticky-pay__btn{width:100%;min-height:48px;border:0;border-radius:10px;background:var(--ds-cta);color:var(--ds-on-cta);font:inherit;font-size:16px;font-weight:700;cursor:pointer}
 .ledger-sticky-pay__btn small{margin-left:8px;font-weight:400;opacity:.85}
 @media (max-width:760px){
@@ -703,7 +703,7 @@ const anomalyLabel = (code) => labelMap({
   .ledger-table-wrap{overflow-x:visible}
   .ledger-table,.ledger-table tbody,.ledger-table tr,.ledger-table td{display:block;width:100%;box-sizing:border-box}
   .ledger-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-  .ledger-table tr{position:relative;margin-bottom:10px;border:1px solid var(--ds-canvas-soft);border-radius:10px;padding:8px 10px}
+  .ledger-table tr{position:relative;margin-bottom:10px;border:1px solid var(--ds-border);border-radius:10px;padding:8px 10px}
   .ledger-table td{border-bottom:0;padding:3px 0}
   .ledger-table td[data-label]{display:flex;justify-content:space-between;gap:12px;text-align:right}
   .ledger-table td[data-label]::before{content:attr(data-label);color:var(--ds-ink-mute);text-align:left}

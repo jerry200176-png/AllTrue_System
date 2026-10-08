@@ -1,5 +1,6 @@
 <script>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { trapTab } from '../../lib/focusTrap.js';
 import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/courseMoneyState.js';
 import CourseSessionCalendar from './CourseSessionCalendar.vue';
 import ActionMenu from '../ActionMenu.vue';
@@ -57,6 +58,31 @@ export default {
   },
   emits: ['close', 'update:tab', 'action', 'open-session', 'create-day', 'toggle-cancelled', 'toggle-notes', 'move-lesson'],
   setup(props, { emit }) {
+    // Dialog focus: land on the title, keep Tab inside, give focus back to whatever opened the drawer (管理課程).
+    const panelRef = ref(null);
+    const titleRef = ref(null);
+    let opener = null;
+    onMounted(() => {
+      opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      nextTick(() => titleRef.value?.focus());
+    });
+    onBeforeUnmount(() => {
+      if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+    });
+    const onKeydown = (e) => { if (e.key === 'Tab') trapTab(e, panelRef.value); };
+    // Roving tabindex tabs: ←/→ move and select, Home/End jump.
+    const onTabKey = (e) => {
+      const keys = { ArrowRight: 1, ArrowLeft: -1 };
+      const ids = TABS.map((t) => t.id);
+      let i = ids.indexOf(props.tab);
+      if (e.key in keys) i = (i + keys[e.key] + ids.length) % ids.length;
+      else if (e.key === 'Home') i = 0;
+      else if (e.key === 'End') i = ids.length - 1;
+      else return;
+      e.preventDefault();
+      emit('update:tab', ids[i]);
+      nextTick(() => document.getElementById(`cm-tab-${ids[i]}`)?.focus());
+    };
     const sessionsView = ref('list');
     const dangerOpen = ref(false);
     const selectedPeriod = ref('');
@@ -111,7 +137,7 @@ export default {
       if (u) emit('open-session', { unit: u, date, id: u.id });
     }
     return {
-      tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
+      panelRef, titleRef, onKeydown, onTabKey, tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
       sessionsView, dangerOpen, listUnits, sessionNo, onSelectDay, monthlySummary, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
     };
   },
@@ -119,9 +145,9 @@ export default {
 </script>
 
 <template>
-  <div class="cmw" role="dialog" aria-modal="true" :aria-label="`管理課程：${subjectLabel || '課程'}`" data-testid="course-manager" @keydown.esc.prevent="$emit('close')">
+  <div class="cmw" role="dialog" aria-modal="true" aria-labelledby="cm-title" data-testid="course-manager" @keydown.esc.prevent="$emit('close')" @keydown="onKeydown">
     <div class="cmw__scrim" @click="$emit('close')" />
-    <div class="cmw__panel">
+    <div ref="panelRef" class="cmw__panel">
       <header class="cmw__head">
         <div class="cmw__head-bar">
           <button type="button" class="cmw__back" data-testid="course-manager-close" @click="$emit('close')">
@@ -142,7 +168,7 @@ export default {
           </div>
         </div>
         <div class="cmw__id">
-          <h2 class="cmw__title">
+          <h2 id="cm-title" ref="titleRef" class="cmw__title" tabindex="-1">
             <span><template v-if="studentName">{{ studentName }} · </template>{{ subjectLabel }}</span>
             <span class="cmw__badge" :class="`cmw__badge--${statusTone}`" data-testid="course-manager-status">{{ statusLabel }}</span>
           </h2>
@@ -166,6 +192,8 @@ export default {
           :aria-selected="activeTab === t.id"
           :id="`cm-tab-${t.id}`"
           :aria-controls="`cm-panel-${t.id}`"
+          :tabindex="activeTab === t.id ? 0 : -1"
+          @keydown="onTabKey"
           @click="activeTab = t.id"
         >{{ t.label }}</button>
       </nav>
@@ -402,7 +430,7 @@ export default {
 .cmw__kpi{font-size:.78rem;color:var(--ds-ink-secondary);background:var(--ds-canvas-soft);border:1px solid var(--ds-hairline);border-radius:999px;padding:2px 8px}
 .cmw__tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--ds-hairline);background:var(--ds-canvas);overflow-x:auto}
 .cmw__tab{border:0;background:transparent;padding:11px 12px;color:var(--ds-ink-mute);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
-.cmw__tab.on{color:var(--ds-ink);border-bottom-color:var(--ds-primary);font-weight:600}
+.cmw__title:focus{outline:none}.cmw__tab:focus-visible,.cmw__back:focus-visible,.cmw__x:focus-visible{outline:2px solid var(--ds-primary);outline-offset:2px}.cmw__tab.on{color:var(--ds-ink);border-bottom-color:var(--ds-primary);font-weight:600}
 .cmw__body{flex:1;overflow:auto;padding:14px 18px 24px}
 .cmw__stack{display:grid;gap:12px;width:100%}
 .cmw__stack--overview,.cmw__stack--billing{max-width:960px;margin:0 auto}

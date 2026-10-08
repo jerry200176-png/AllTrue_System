@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-course-dialogs
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 課程查找的確認視窗改版
+    summary: 刪除、暫停、結案等確認改成頁內視窗，預設停在「取消」，用鍵盤也能操作。
+    items:
+      - category: improved
+        text: 刪除課程、結束課程、補請假等確認視窗，一開始停在「取消」，按 Esc 也能關閉。
+      - category: improved
+        text: 換師複製、建立共用方案、放棄未儲存變更，不再跳出瀏覽器的白色提示框。
+      - category: improved
+        text: 管理課程頁可用鍵盤操作：Tab 不會跑到頁面後面，左右鍵切換分頁，關閉後回到原來的按鈕。

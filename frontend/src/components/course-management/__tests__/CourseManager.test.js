@@ -151,7 +151,7 @@ describe('CourseManager polish', () => {
     expect(settingsSlot).toContain('複製為新課程並更換老師')
     expect(settingsSlot).not.toContain('補課')
     expect(settingsSlot).not.toContain('>取消<')
-    expect(pageSource).toContain('尚有未儲存變更，要放棄嗎？')
+    expect(pageSource).toContain("title: '放棄未儲存的變更？'")
     w.unmount()
   })
 
@@ -190,7 +190,7 @@ describe('CourseManager polish', () => {
 
   it('settings host copy is truthful and danger zone is demoted', () => {
     expect(pageSource).toContain('data-testid="course-manager-danger"')
-    expect(pageSource).toContain('尚有未儲存變更，要放棄嗎？')
+    expect(pageSource).toContain("title: '放棄未儲存的變更？'")
     expect(pageSource).not.toContain("courseManagerTab = 'overview'\">取消")
   })
 
@@ -274,6 +274,51 @@ describe('CourseManager header actions + lesson moves (C-PR3)', () => {
     await unit[0].get('[data-testid="lesson-substitute"]').trigger('click')
     expect(w.emitted('move-lesson').map(([e]) => [e.mode, e.unit.id])).toEqual([['reschedule', 1], ['substitute', 1]])
     expect(w.emitted('open-session')).toBeUndefined()
+    w.unmount()
+  })
+})
+
+describe('CourseManager drawer a11y (C-PR4)', () => {
+  afterEach(() => { document.body.innerHTML = '' })
+
+  it('is labelled by its title, focuses the title on open and returns focus to the opener on close', async () => {
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    opener.focus()
+    const w = mountCm()
+    await flushPromises()
+    expect(w.get('[role="dialog"]').attributes('aria-labelledby')).toBe('cm-title')
+    expect(document.activeElement).toBe(w.get('#cm-title').element)
+    w.unmount()
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('traps Tab inside the drawer (wraps last → first, first → last on Shift+Tab)', async () => {
+    const w = mountCm()
+    await flushPromises()
+    const focusable = [...w.get('.cmw__panel').element.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    focusable.at(-1).focus()
+    const ev = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    focusable.at(-1).dispatchEvent(ev)
+    expect(ev.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(focusable[0])
+    const back = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true })
+    focusable[0].dispatchEvent(back)
+    expect(document.activeElement).toBe(focusable.at(-1))
+    w.unmount()
+  })
+
+  it('tabs use roving tabindex and ←/→/Home/End', async () => {
+    const w = mountCm({ tab: 'sessions' })
+    await flushPromises()
+    const tabs = w.findAll('[role="tab"]')
+    expect(tabs.map((t) => t.attributes('tabindex'))).toEqual(['-1', '0', '-1', '-1'])
+    await tabs[1].trigger('keydown', { key: 'ArrowRight' })
+    await tabs[1].trigger('keydown', { key: 'ArrowLeft' })
+    await tabs[1].trigger('keydown', { key: 'Home' })
+    await tabs[1].trigger('keydown', { key: 'End' })
+    await tabs[1].trigger('keydown', { key: 'x' })
+    expect(w.emitted('update:tab').map(([t]) => t)).toEqual(['settings', 'overview', 'overview', 'billing'])
     w.unmount()
   })
 })
