@@ -1,6 +1,6 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 10
+version: 11
 
 operations:
   muzha-fixed-schedule-20261001:
@@ -147,6 +147,35 @@ operations:
     parameter_keys: [decision_reference]
     tags: [repair, session, in-app-341]
     notes: Exact three past still-scheduled sessions of one early-ended contract (in-app #341, GitHub #3199). Status scheduled to cancelled only; no billing field is written. Pi-local POP only.
+
+  invoice1997-stale-values-20261008:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-invoice1997-stale-values
+    founder_approval_required: true
+    runbook: docs/incidents/RM-INVOICE1997-STALE-VALUES-20261008.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: one_invoice_item_one_snapshot_one_course_charge
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\Invoice1997StaleValuesStrategy
+    parameter_keys: [decision_reference]
+    tags: [repair, billing, in-app-369]
+    notes: Exact guards on current values (abort on any drift). Updates InvoiceItem amount, billing snapshot and StudentClass.Charge only; payments, invoice total/paid/status and Paid flag are never written. Pi-local POP only.
 
   reviewed-monthly-accounting-correction:
     lifecycle: active

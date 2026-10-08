@@ -976,9 +976,11 @@ test.describe('UI foundation — real Vue page evidence', () => {
   test('manual booking keeps the latest date after a stale 422 response', async ({ page }) => {
     await openPilot(page, { pageName: 'course', mode: 'booking-race', viewport: { width: 1440, height: 900 } });
 
-    const addNextButton = page.locator('button.manual-occurrence-action').filter({ hasText: '新增下一堂' }).first();
-    await expect(addNextButton).toBeVisible({ timeout: 10_000 });
-    await addNextButton.click();
+    // 課程查找 C-PR2: the row is one primary + ⋯, so 新增下一堂 now lives in the ⋯ menu.
+    const moreMenu = page.locator('.am__trigger').first();
+    await expect(moreMenu).toBeVisible({ timeout: 10_000 });
+    await moreMenu.click();
+    await page.getByRole('menuitem', { name: '＋新增下一堂' }).click();
 
     const dateInput = page.locator('.manual-session-modal input[type="date"]');
     await expect(dateInput).toBeVisible();
