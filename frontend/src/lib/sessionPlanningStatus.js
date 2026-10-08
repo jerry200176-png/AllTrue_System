@@ -31,6 +31,18 @@ export function canMaterializeProjectedSession(course) {
   return mode === 'date';
 }
 
+/**
+ * Mirror of the paused branch of ClassSessionController::ensureProjected (in-app #340): a paused monthly
+ * course (Stop=1, no closed_reason) may have one 預排 date cancelled. Writes a cancelled row only.
+ */
+export function canCancelPausedProjectedSession(course) {
+  if (!course) return false;
+  if (String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence') return false;
+  if (Number(course?.Stop ?? course?.stop ?? 0) !== 1) return false;
+  if (String(course?.closed_reason ?? '').trim() !== '') return false;
+  return String(course?.ScheduleMode ?? course?.schedule_mode ?? '').trim().toLowerCase() === 'date';
+}
+
 export function buildSessionPlanningStatus({
   course,
   effectiveCount = 0,
