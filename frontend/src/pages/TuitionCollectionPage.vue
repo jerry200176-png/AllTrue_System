@@ -70,7 +70,7 @@
     </nav>
 
     <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
-      <StudentBillingList :alert-rows="rows" :students="campusStudents" :loading="loading" :error="error" @open="openLedgerForStudent" @retry="loadAlerts" />
+      <StudentBillingList ref="studentList" :alert-rows="rows" :students="campusStudents" :loading="loading" :error="error" @open="openLedgerForStudent" @retry="loadAlerts" />
     </section>
 
     <section v-if="activeAccountingTab === 'monthly-review'" id="tuition-accounting-panel-monthly-review" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly-review" tabindex="0">
@@ -918,7 +918,9 @@
       :report-id="ledgerReportId"
       :student-id="ledgerStudentId"
       :branch-id="branchId"
+      :can-step="ledgerNavStudentId != null"
       @close="ledgerOpen = false"
+      @step="stepLedger"
       @changed="onLedgerChanged"
     />
 
@@ -1165,7 +1167,15 @@ async function loadCampusStudents() {
     campusStudents.value = [];
   }
 }
+// ↑/↓ in the drawer: the student list decides who is adjacent (current filter and sort).
+const studentList = ref(null);
+const ledgerNavStudentId = ref(null);
+function stepLedger(dir) {
+  const next = studentList.value?.neighbor(ledgerNavStudentId.value, dir);
+  if (next) openLedgerForStudent(next);
+}
 function openLedgerForStudent(r) {
+  ledgerNavStudentId.value = r.student_id;
   ledgerStudentClassId.value = r.first_class_id || null;
   ledgerStudentId.value = r.first_class_id ? null : r.student_id;
   ledgerReportId.value = null;
@@ -1671,8 +1681,17 @@ const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
 const ledgerReportId = ref(null);
 const ledgerStudentId = ref(null);
+// Closing returns focus to the row of the student last viewed, not the one first opened.
+watch(ledgerOpen, async (open) => {
+  if (open || ledgerNavStudentId.value == null) return;
+  const id = ledgerNavStudentId.value;
+  ledgerNavStudentId.value = null;
+  await nextTick();
+  document.querySelector(`[data-testid="sbl-row-${id}"]`)?.focus();
+});
 
 function openLedgerForClass(row) {
+  ledgerNavStudentId.value = null;
   ledgerStudentId.value = null;
   ledgerStudentClassId.value = row?.id || row?.student_class_id || null;
   ledgerReportId.value = null;
@@ -1680,6 +1699,7 @@ function openLedgerForClass(row) {
 }
 
 function openLedgerForReport(row) {
+  ledgerNavStudentId.value = null;
   ledgerStudentId.value = null;
   ledgerStudentClassId.value = row?.student_class_id || null;
   ledgerReportId.value = row?.report_id || null;

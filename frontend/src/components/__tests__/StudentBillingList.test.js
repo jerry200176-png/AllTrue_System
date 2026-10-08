@@ -63,4 +63,13 @@ describe('StudentBillingList', () => {
     expect(w.find('[data-testid="sbl-error"]').exists()).toBe(true);
     expect(w.find('[data-testid="sbl-row-1"]').exists()).toBe(true);
   });
+
+  it('neighbor() follows the current filter and sort (drawer ↑/↓)', async () => {
+    const w = mount(StudentBillingList, { props: { alertRows: ROWS, students: [{ id: 4, name: '丁' }], today: '2026-10-07' } });
+    expect(w.vm.neighbor(3, 1).student_id).toBe(1);
+    expect(w.vm.neighbor(3, -1)).toBeNull();
+    await w.find('[data-testid="sbl-filter-owing"]').trigger('click');
+    expect(w.vm.neighbor(1, 1)).toBeNull();
+    expect(w.vm.neighbor(99, 1)).toBeNull();
+  });
 });

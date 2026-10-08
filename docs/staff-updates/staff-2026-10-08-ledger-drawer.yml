@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-ledger-drawer
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: major
+    title: 學生帳務改成右側抽屜
+    summary: 在清單旁邊直接看下一位學生，手機是整頁，登記收款固定在底部。
+    items:
+      - category: improved
+        text: 學生帳務從右邊滑出，清單還在後面；用上一位、下一位按鈕（或鍵盤上下鍵）切換學生。
+      - category: improved
+        text: 「登記收款」固定在最下面，各合約卡片上的按鈕改叫「登記這筆」。
+      - category: improved
+        text: 關閉後會回到你最後看的那位學生那一列。

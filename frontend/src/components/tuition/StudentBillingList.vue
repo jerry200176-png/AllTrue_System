@@ -73,6 +73,12 @@ const totalNow = computed(() => rows.value.reduce((s, r) => s + r.owed_now, 0));
 const owingCount = computed(() => rows.value.filter((r) => r.owed_now > 0).length);
 const visible = computed(() => rows.value.filter((r) => STUDENT_FILTERS[filter.value].test(r)
   && (!query.value.trim() || r.student_name.includes(query.value.trim()))));
+// Adjacent student in the list as currently filtered / sorted (drawer ↑/↓).
+function neighbor(studentId, dir) {
+  const i = visible.value.findIndex((r) => r.student_id === Number(studentId));
+  return i < 0 ? null : (visible.value[i + dir] || null);
+}
+defineExpose({ neighbor });
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 </script>
 
