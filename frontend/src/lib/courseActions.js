@@ -43,7 +43,7 @@ export function courseActions(course, caps = {}) {
       caps.contractAmended && { id: 'contract-revert', label: '撤銷調整' },
       caps.packagePreview && { id: 'package-preview', label: '轉多科方案預檢' },
       caps.paymentNotice && { id: 'payment-slip', label: '繳費通知' },
-      { id: 'invoice', label: '學生帳務' },
+      { id: 'invoice', label: '在這裡看帳務' },
     ] },
     { id: 'end', label: '狀態', items: [
       paused ? (canResume && { id: 'resume', label: '恢復課程' }) : { id: 'pause', label: '暫停課程' },

@@ -28,7 +28,7 @@ describe('CourseManagement student billing tab', () => {
 
   it('labels payment status via the shared plain labels and deep-links billing mutations to tuition-collect', () => {
     expect(source).toContain("return TUITION_STATUS_CONFIG[status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid'].label;");
-    expect(source).toContain('前往帳務中心');
+    expect(source).toContain('在這裡看帳務');
     expect(source).toContain('登記繳費回報');
     expect(source).toContain('return `查看「${REPORT_STATUS_LABELS.pending}」`;');
     expect(source).toContain('goToTuitionBilling');
@@ -63,7 +63,13 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('role="status"');
     expect(source).toContain('付款狀態不可直接操作');
     expect(source).toContain('class="small ghost payment-next-action"');
-    expect(source).toContain('@click="goToTuitionBilling(c)"');
+    expect(source).toContain('@click="onPaymentNextAction(c)"');
+    // reports are filed on 帳務中心 (navigate); a settled course opens the ledger panel in place
+    expect(source).toContain("if (['unpaid', 'partial', 'pending_report'].includes(course?.payment_status)) goToTuitionBilling(course);");
+    expect(source).toContain('else openLedgerForCourse(course);');
+    expect(source).toContain('const openTuitionLedger = (course) => openLedgerForCourse(course);');
+    expect(source).toContain('<th>堂數</th>');
+    expect(source).not.toContain('<th>剩餘堂數</th>');
     expect(source).not.toContain("'btn-status'");
     expect(source).not.toContain('>帳務</button>');
   });
