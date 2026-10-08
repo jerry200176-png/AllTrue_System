@@ -10,10 +10,15 @@
         tabindex="-1"
         @keydown.esc.stop.prevent="onEsc"
         @keydown.tab="trapTab"
+        @keydown="onStepKey"
       >
         <div class="ledger-header">
           <div>
             <h3 id="ledger-modal-title">{{ panelTitle }}</h3>
+          </div>
+          <div v-if="canStep" class="ledger-steps" role="group" aria-label="切換學生">
+            <button class="ledger-step" type="button" aria-label="上一位學生" data-testid="ledger-step-prev" @click="$emit('step', -1)"><span aria-hidden="true">↑</span></button>
+            <button class="ledger-step" type="button" aria-label="下一位學生" data-testid="ledger-step-next" @click="$emit('step', 1)"><span aria-hidden="true">↓</span></button>
           </div>
           <button class="ledger-close" type="button" @click="$emit('close')" aria-label="關閉學生帳務"><span aria-hidden="true">×</span></button>
         </div>
@@ -282,9 +287,9 @@ import {
 
 const EXCEPTION_PREVIEW = 2;
 
-const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String] });
+const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean });
 
-const emit = defineEmits(['close', 'changed']);
+const emit = defineEmits(['close', 'changed', 'step']);
 
 // a11y: Esc closes, Tab stays inside the panel, focus returns to the opener.
 const modalEl = ref(null);
@@ -292,6 +297,15 @@ let returnFocusEl = null;
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 function onEsc() {
   if (!entryOpen.value) emit('close');
+}
+// ↑/↓ moves to the adjacent student (Linear-style peek). Only when the drawer itself or a step button has focus,
+// so arrows still work inside fields and selects.
+function onStepKey(event) {
+  if (!props.canStep || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+  const t = event.target;
+  if (t !== modalEl.value && !t.classList?.contains('ledger-step')) return;
+  event.preventDefault();
+  emit('step', event.key === 'ArrowDown' ? 1 : -1);
 }
 function trapTab(event) {
   const panel = modalEl.value;
@@ -303,12 +317,14 @@ function trapTab(event) {
   if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) { event.preventDefault(); last.focus(); }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
+// A different student keeps the drawer open: start at the top.
+watch(() => [props.studentClassId, props.studentId], () => { if (modalEl.value) modalEl.value.scrollTop = 0; });
 watch(() => props.show, async (open) => {
   if (open) {
     returnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     await nextTick();
     modalEl.value?.focus();
-  } else if (returnFocusEl) {
+  } else if (returnFocusEl && !props.canStep) {
     const el = returnFocusEl;
     returnFocusEl = null;
     if (el.isConnected) el.focus();
@@ -709,11 +725,14 @@ const anomalyLabel = (code) => labelMap({
 </script>
 
 <style scoped>
-.ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:flex;justify-content:flex-end}
-.ledger-modal{width:min(920px,96vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:20px 22px 32px}
+.ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.28);display:flex;justify-content:flex-end}
+.ledger-modal{width:min(560px,100vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:20px 22px 32px}
 .ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px}
 .ledger-header h3{margin:0;font-size:22px}
 .ledger-modal:focus{outline:none}
+.ledger-steps{display:flex;gap:4px;margin-left:auto}
+.ledger-step{min-width:44px;min-height:44px;border:1px solid var(--ds-border);border-radius:8px;background:var(--ds-canvas);color:var(--ds-ink);font-size:18px;cursor:pointer}
+.ledger-step:focus-visible{outline:2px solid var(--ds-cta);outline-offset:2px}
 .ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;min-width:44px;min-height:44px;color:var(--text-light,var(--ds-ink-mute))}
 .ledger-state,.ledger-empty{padding:24px;border:1px dashed var(--ds-canvas-soft);border-radius:12px;color:var(--text-light,var(--ds-ink-mute));text-align:center}
 .ledger-error{color:var(--ds-danger);background:var(--ds-danger-wash);border-color:var(--ds-danger-wash)}
@@ -777,28 +796,26 @@ const anomalyLabel = (code) => labelMap({
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .ledger-fade-enter-active,.ledger-fade-leave-active{transition:opacity .16s ease}
 .ledger-fade-enter-from,.ledger-fade-leave-to{opacity:0}
-.ledger-sticky-pay{display:none;position:sticky;bottom:0;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface,var(--ds-canvas));border-top:1px solid var(--ds-border);z-index:2}
+.ledger-sticky-pay{position:sticky;bottom:-32px;margin:16px -22px -32px;padding:10px 22px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface,var(--ds-canvas));border-top:1px solid var(--ds-border);z-index:2}
 .ledger-sticky-pay__btn{width:100%;min-height:48px;border:0;border-radius:10px;background:var(--ds-cta);color:var(--ds-on-cta);font:inherit;font-size:16px;font-weight:700;cursor:pointer}
 .ledger-sticky-pay__btn small{margin-left:8px;font-weight:400;opacity:.85}
-@media (max-width:760px){
+.ledger-table-wrap{overflow-x:visible}
+.ledger-table,.ledger-table tbody,.ledger-table tr,.ledger-table td{display:block;width:100%;box-sizing:border-box}
+.ledger-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.ledger-table tr{position:relative;margin-bottom:10px;border:1px solid var(--ds-border);border-radius:10px;padding:8px 10px}
+.ledger-table td{border-bottom:0;padding:3px 0}
+.ledger-table td[data-label]{display:flex;justify-content:space-between;gap:12px;text-align:right}
+.ledger-table td[data-label]::before{content:attr(data-label);color:var(--ds-ink-mute);text-align:left}
+.ledger-table .ledger-col-expand{width:auto;position:absolute;top:2px;right:2px;padding:0}
+.ledger-expand{min-width:44px;min-height:44px}
+.ledger-cell-title{padding-right:48px !important;overflow-wrap:anywhere}
+.ledger-cell-actions{padding-top:6px !important}
+.ledger-action{min-height:44px;padding:6px 14px}
+.ledger-table tr.ledger-detail-row{border:0;padding:0;margin:-6px 0 10px}
+.ledger-detail-row td{padding:0}
+@media (max-width:768px){
   .ledger-modal{width:100vw;padding:16px}
   .ledger-timeline__item{grid-template-columns:1fr}
-  .ledger-detail-row td{padding-left:10px}
-  /* B7: invoice table -> cards, nothing clips */
-  .ledger-table-wrap{overflow-x:visible}
-  .ledger-table,.ledger-table tbody,.ledger-table tr,.ledger-table td{display:block;width:100%;box-sizing:border-box}
-  .ledger-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-  .ledger-table tr{position:relative;margin-bottom:10px;border:1px solid var(--ds-border);border-radius:10px;padding:8px 10px}
-  .ledger-table td{border-bottom:0;padding:3px 0}
-  .ledger-table td[data-label]{display:flex;justify-content:space-between;gap:12px;text-align:right}
-  .ledger-table td[data-label]::before{content:attr(data-label);color:var(--ds-ink-mute);text-align:left}
-  .ledger-table .ledger-col-expand{width:auto;position:absolute;top:2px;right:2px;padding:0}
-  .ledger-expand{min-width:44px;min-height:44px}
-  .ledger-cell-title{padding-right:48px !important;overflow-wrap:anywhere}
-  .ledger-cell-actions{padding-top:6px !important}
-  .ledger-action{min-height:44px;padding:6px 14px}
-  .ledger-table tr.ledger-detail-row{border:0;padding:0;margin:-6px 0 10px}
-  .ledger-detail-row td{padding:0}
-  .ledger-sticky-pay{display:block}
+  .ledger-sticky-pay{bottom:-16px;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
 }
 </style>

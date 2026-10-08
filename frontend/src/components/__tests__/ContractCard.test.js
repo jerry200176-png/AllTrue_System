@@ -510,3 +510,48 @@ describe('AccountingLedgerModal Excel-card sources (spec B-PR3)', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('AccountingLedgerModal drawer (spec B-PR6)', () => {
+  const mountDrawer = async (props) => {
+    const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
+    authedFetch.mockResolvedValue(respond({ sessions: [], unscheduled_count: 0 }));
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role: 'director' } }));
+    vi.stubGlobal('fetch', vi.fn(async (url) => respond(String(url).includes('monthly-drafts') ? { data: [] } : {
+      student: { id: 1, name: '王小明' }, summary: {}, scope: {}, anomalies: [], receipts: [], invoices: [],
+      courses: [{ id: 2, subject: '數學', paid: false }],
+    })));
+    const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 2, ...props }, global: { stubs: { Transition: false } }, attachTo: document.body });
+    await flushPromises();
+    return w;
+  };
+
+  it('↑/↓ and the 上一位／下一位 buttons ask for the adjacent student, only when stepping is on', async () => {
+    const w = await mountDrawer({ canStep: true });
+    const dialog = w.find('[role="dialog"]');
+    await dialog.trigger('keydown', { key: 'ArrowDown' });
+    await dialog.trigger('keydown', { key: 'ArrowUp' });
+    await w.find('[data-testid="ledger-step-next"]').trigger('click');
+    await w.find('[data-testid="ledger-step-prev"]').trigger('click');
+    expect(w.emitted('step')).toEqual([[1], [-1], [1], [-1]]);
+    // arrows inside a field keep their normal meaning
+    const input = document.createElement('input');
+    dialog.element.appendChild(input);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(w.emitted('step')).toHaveLength(4);
+    w.unmount(); vi.unstubAllGlobals();
+
+    const w2 = await mountDrawer({});
+    expect(w2.find('[data-testid="ledger-step-next"]').exists()).toBe(false);
+    await w2.find('[role="dialog"]').trigger('keydown', { key: 'ArrowDown' });
+    expect(w2.emitted('step')).toBeUndefined();
+    w2.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('keeps the sticky 登記收款 footer at every width and a secondary 登記這筆 on the card', async () => {
+    const w = await mountDrawer({});
+    expect(w.find('[data-testid="ledger-sticky-pay"]').exists()).toBe(true);
+    expect(w.find('[data-testid="contract-record"]').text()).toBe('登記這筆');
+    expect(w.find('[data-testid="contract-record"]').classes()).toContain('at-btn--secondary');
+    w.unmount(); vi.unstubAllGlobals();
+  });
+});

@@ -111,6 +111,12 @@ const badges = (r) => {
   return out;
 };
 const metaLine = (r) => [r.overdue_days > 0 ? `逾期 ${r.overdue_days} 天` : '', r.last_paid_at ? `最近繳費 ${formatDate(r.last_paid_at)}` : ''].filter(Boolean).join('・');
+// Adjacent student in the list as currently filtered / sorted (drawer ↑/↓).
+function neighbor(studentId, dir) {
+  const i = visible.value.findIndex((r) => r.student_id === Number(studentId));
+  return i < 0 ? null : (visible.value[i + dir] || null);
+}
+defineExpose({ neighbor });
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 </script>
 
