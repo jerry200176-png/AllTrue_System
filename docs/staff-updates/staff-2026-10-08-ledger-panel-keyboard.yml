@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-ledger-panel-keyboard
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 學生帳務面板更好操作
+    summary: 學生帳務面板可用 Esc 關閉，退回收款改在面板內填原因。
+    items:
+      - category: improved
+        text: 按 Esc 可關閉學生帳務面板，Tab 不會跑到面板外，關閉後回到原本的位置。
+      - category: improved
+        text: 「退回」改成在面板內的小視窗填原因，不再跳出瀏覽器的輸入框。
+      - category: improved
+        text: 「確認入帳」按下前會先問一次，預設是「取消」，避免誤按。
