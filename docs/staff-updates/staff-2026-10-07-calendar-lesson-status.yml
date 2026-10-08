@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-10-07-calendar-lesson-status
+    published_at: "2026-10-07"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 行事曆看得到每堂狀態
+    summary: 行事曆每一堂標出已上、請假、取消或還沒上，也能一鍵看整份合約的堂次。
+    items:
+      - category: improved
+        text: 每一堂的小角標標出已上、請假、取消、還沒上或漏點名，滑鼠移上去會顯示文字。
+      - category: added
+        text: 點開一堂按「看全部堂次」，直接看這份合約全部的堂次與狀態。
+    source_refs:
+      - "changelog:2026-10-07:calendar-lesson-status"
