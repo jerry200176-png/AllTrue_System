@@ -13,40 +13,20 @@
       >
         <div class="ledger-header">
           <div>
-            <p class="ledger-eyebrow">學生帳務</p>
-            <h3 id="ledger-modal-title">學生帳務對帳</h3>
-            <p class="ledger-subtitle">
-              {{ payload?.student?.name || '載入中' }} · 對齊帳單、收款與收據
-            </p>
+            <h3 id="ledger-modal-title">{{ panelTitle }}</h3>
           </div>
           <button class="ledger-close" type="button" @click="$emit('close')" aria-label="關閉學生帳務"><span aria-hidden="true">×</span></button>
         </div>
 
-        <div v-if="loading" class="ledger-state">載入對帳資料中…</div>
+        <div v-if="loading" class="ledger-state">載入中…</div>
         <div v-else-if="error" class="ledger-state ledger-error">{{ error }}</div>
         <template v-else-if="payload">
-          <!-- Carbon-style compact metric strip (ops density) -->
-          <div class="ledger-strip" aria-label="對帳摘要">
-            <div class="ledger-strip__item">
-              <span class="ledger-strip__label">應收</span>
-              <strong class="ledger-strip__value">{{ formatCurrency(payload.summary?.invoice_total) }}</strong>
-            </div>
-            <div class="ledger-strip__item">
-              <span class="ledger-strip__label">已記入</span>
-              <strong class="ledger-strip__value">{{ formatCurrency(payload.summary?.applied_total) }}</strong>
-            </div>
-            <div class="ledger-strip__item" :class="{ 'is-warn': (payload.summary?.outstanding_total || 0) > 0 }">
-              <span class="ledger-strip__label">未結清</span>
-              <strong class="ledger-strip__value">{{ formatCurrency(payload.summary?.outstanding_total) }}</strong>
-            </div>
-            <div class="ledger-strip__item" :class="{ 'is-warn': (payload.summary?.overpaid_total || 0) > 0 }">
-              <span class="ledger-strip__label">多收</span>
-              <strong class="ledger-strip__value">{{ formatCurrency(payload.summary?.overpaid_total) }}</strong>
-            </div>
-            <div class="ledger-strip__item" :class="{ 'is-danger': (payload.summary?.anomaly_count || 0) > 0 }">
-              <span class="ledger-strip__label">需注意</span>
-              <strong class="ledger-strip__value">{{ payload.summary?.anomaly_count || 0 }}</strong>
-            </div>
+          <!-- PRD v2 D8: owed-by-today first, same rule as the student list. -->
+          <div class="ledger-owed" data-testid="ledger-owed">
+            <p class="ledger-owed__label">到今天未繳</p>
+            <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
+            <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
+            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}。下面「需先處理」會寫是哪一筆，可以撤銷多出來的那一筆。</p>
           </div>
 
           <section v-if="ledgerExceptions.length" class="ledger-section">
@@ -62,8 +42,9 @@
                   type="button"
                   :disabled="busyReportId === x.report_id"
                   @click="voidReport(x.report_id)"
-                >撤銷收款</button>
-                <span v-if="!x.can_void && !x.report_id" class="ledger-muted">請聯絡總部協助</span>
+                >{{ x.action_label || '撤銷收款' }}</button>
+                <small v-if="x.hint" class="ledger-muted" data-testid="ledger-exception-hint">{{ x.hint }}</small>
+                <span v-if="!x.can_void && !x.report_id" class="ledger-muted">這筆沒有可撤銷的收款，請找老闆確認。</span>
               </div>
             </div>
             <button
@@ -86,7 +67,9 @@
                 :outstanding="owedFor(c.id)"
                 :pending-report="pendingReportFor(c.id)"
                 :last-payment="lastPaymentFor(c.id)"
+                :bill-draft="draftFor(c.id)"
                 @record="openEntry"
+                @issue="openIssue"
                 @changed="onPanelChanged"
               />
             </div>
@@ -95,7 +78,7 @@
           <section class="ledger-section">
             <h4>帳單</h4>
             <div v-if="ledgerBothEmpty && payload.scope?.no_payment_obligation" class="ledger-empty">輔導課不需繳費，所以這裡不會有帳單或收據。</div>
-            <div v-else-if="ledgerBothEmpty" class="ledger-empty">繳費單是依課程估算，尚未建立帳單；登記並確認入帳後才會出現在這裡。</div>
+            <div v-else-if="ledgerBothEmpty" class="ledger-empty">目前只有繳費單（依課程估算），還沒有帳單和收款。登記收款並確認入帳後，才會出現在這裡。</div>
             <div v-if="!payload.invoices?.length && !ledgerBothEmpty" class="ledger-empty">此學生尚無帳單。</div>
             <div v-else-if="payload.invoices?.length" class="ledger-table-wrap">
               <table class="ledger-table">
@@ -133,7 +116,7 @@
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
-                      <td data-label="應繳日">{{ inv.due_date || '—' }}</td>
+                      <td data-label="應繳日">{{ fmtDate(inv.due_date) }}</td>
                       <td class="num" data-label="應收">{{ formatCurrency(inv.total_amount) }}</td>
                       <td class="num" data-label="已記入">{{ formatCurrency(inv.calculated_applied_amount) }}</td>
                       <td class="num" data-label="未結清" :class="{ due: (inv.outstanding_amount || 0) > 0 }">{{ formatCurrency(inv.outstanding_amount) }}</td>
@@ -179,7 +162,7 @@
                                 { 'is-void': p.is_void, 'is-overpay': p.application_status === 'overpayment_pending_review' },
                               ]"
                             >
-                              <div class="ledger-timeline__when">{{ p.paid_at || '未記錄日期' }}</div>
+                              <div class="ledger-timeline__when">{{ p.paid_at ? fmtDate(p.paid_at) : '未記錄日期' }}</div>
                               <div class="ledger-timeline__body">
                                 <strong>{{ p.is_void ? '更正收款' : paymentMethodLabel(p.method) }} {{ signedCurrency(p.amount) }}</strong>
                                 <span :class="['ledger-chip', applicationStatusClass(p.application_status)]">
@@ -188,7 +171,6 @@
                                 <div class="ledger-timeline__meta">
                                   <span v-if="p.applied_amount">記入 {{ formatCurrency(p.applied_amount) }}</span>
                                   <span v-if="p.unapplied_amount">多收 {{ formatCurrency(p.unapplied_amount) }}</span>
-                                  <span v-if="p.receipt_no" class="ledger-ref">{{ humanizeDocumentRef(p.receipt_no) }}</span>
                                   <span v-if="p.note">備註：{{ p.note }}</span>
                                 </div>
                               </div>
@@ -204,15 +186,14 @@
           </section>
 
           <section v-if="payload.receipts?.length || !ledgerBothEmpty" class="ledger-section">
-            <h4>收據紀錄</h4>
-            <div v-if="!payload.receipts?.length" class="ledger-empty">此學生尚無收據紀錄。</div>
-            <div v-else class="ledger-receipts ledger-receipts--compact">
-              <div v-for="r in payload.receipts" :key="r.report_id" class="ledger-receipt">
+            <h4>收款紀錄</h4>
+            <div v-if="!payload.receipts?.length" class="ledger-empty">此學生尚無收款紀錄。</div>
+            <div v-else-if="shownReceipts.length" class="ledger-receipts ledger-receipts--compact">
+              <div v-for="r in shownReceipts" :key="r.report_id" class="ledger-receipt">
                 <strong>{{ formatCurrency(r.amount) }}</strong>
-                <span>{{ r.payment_date || '未記錄日期' }}</span>
+                <span>{{ r.payment_date ? fmtDate(r.payment_date) : '未記錄日期' }}</span>
                 <span>{{ paymentMethodLabel(r.payment_method) }}</span>
                 <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
-                <small v-if="r.receipt_no" class="ledger-ref">{{ humanizeDocumentRef(r.receipt_no) }}</small>
                 <small>{{ formatLedgerReceiptBillLine(r) }}</small>
                 <button
                   v-if="canShowReceiptCoverage(r)"
@@ -237,6 +218,14 @@
                 />
               </div>
             </div>
+            <button
+              v-if="otherReceipts.length"
+              class="ledger-more"
+              type="button"
+              :aria-expanded="showOtherReceipts"
+              data-testid="ledger-other-receipts-toggle"
+              @click="showOtherReceipts = !showOtherReceipts"
+            >{{ showOtherReceipts ? '收合其他紀錄' : `其他紀錄（${otherReceipts.length}）：已退回、已撤銷或 0 元` }}</button>
           </section>
 
           <!-- PRD v2 D5: phone only, 登記收款 stays reachable at the bottom. Same handler as the card button. -->
@@ -247,6 +236,16 @@
           </div>
         </template>
       </div>
+      <AtDialog :open="!!issueDraft" title="開立這期帳單？" size="sm" title-id="ledger-issue-title" @close="closeIssue">
+        <p v-if="issueDraft" class="ledger-issue" data-testid="ledger-issue-text">
+          {{ issueDraft.subject }}・{{ fmtDate(issueDraft.proposed_start_date) }}–{{ fmtDate(issueDraft.proposed_end_date) }}・{{ issueDraft.period_sessions }} 堂・{{ formatCurrency(issueDraft.amount) }}<template v-if="issueDraft.due_date">・繳費期限 {{ fmtDate(issueDraft.due_date) }}</template>
+        </p>
+        <p v-if="issueError" class="ledger-error-text" role="alert">{{ issueError }}</p>
+        <template #actions>
+          <AtButton variant="secondary" size="sm" shape="rect" @click="closeIssue">取消</AtButton>
+          <AtButton size="sm" shape="rect" :loading="issueBusy" data-testid="ledger-issue-submit" @click="submitIssue">開立帳單</AtButton>
+        </template>
+      </AtDialog>
       <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" />
     </div>
   </Transition>
@@ -254,18 +253,22 @@
 
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
+import { formatDate as fmtDate } from '../lib/billingDocumentView.js';
+import { splitOwed } from '../lib/studentBillingRows.js';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import {
   formatAccountingLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
-  humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
 import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import ContractCard from './tuition/ContractCard.vue';
+import AtButton from './design-system/AtButton.vue';
+import AtDialog from './design-system/AtDialog.vue';
+import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
 import PaymentEntryModal from './PaymentEntryModal.vue';
 import {
   canShowReceiptCoverage,
@@ -317,6 +320,7 @@ const busyReportId = ref(null);
 const busyInvoiceId = ref(null);
 const expandedIds = ref(new Set());
 const showAllExceptions = ref(false);
+const showOtherReceipts = ref(false);
 // 涵蓋上課日, loaded lazily per expanded row: { 'inv-41': { state, sessions, showAll } }.
 const coverage = ref({});
 const expandedReceiptIds = ref(new Set());
@@ -406,7 +410,7 @@ async function loadLedger() {
   const reportId = Number(props.reportId || 0);
   const studentId = Number(props.studentId || 0);
   if (!studentClassId && !reportId && !studentId) {
-    error.value = '缺少課程或收據資訊，無法開啟對帳。';
+    error.value = '缺少課程或收款資訊，無法開啟學生帳務。';
     return;
   }
 
@@ -432,8 +436,9 @@ async function loadLedger() {
     if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `載入失敗（${resp.status}）`));
     payload.value = json;
     autoExpandAttention();
+    loadDrafts();
   } catch (e) {
-    error.value = humanizeApiErrorMessage(e.message || '載入對帳資料失敗');
+    error.value = humanizeApiErrorMessage(e.message || '載入學生帳務失敗');
   } finally {
     loading.value = false;
   }
@@ -466,9 +471,11 @@ const ledgerExceptions = computed(() => {
       if (p.application_status !== 'overpayment_pending_review') return;
       rows.push({
         key: `p-${p.id}`,
-        title: '多收，疑似重複收款',
-        message: `${humanizeDocumentRef(p.receipt_no || p.payment_no) || '未編號收款'} 有 ${formatCurrency(p.unapplied_amount)} 尚未記入帳單`,
-        detail: `${formatAccountingLedgerInvoiceLabel(inv)} · ${p.paid_at || '未記錄日期'}`,
+        title: `多收 ${formatCurrency(p.unapplied_amount)}`,
+        message: `${fmtDate(p.paid_at)} ${paymentMethodLabel(p.method)} ${formatCurrency(p.amount)} 這筆，比帳單多收了 ${formatCurrency(p.unapplied_amount)}`,
+        detail: formatAccountingLedgerInvoiceLabel(inv),
+        action_label: '撤銷這筆',
+        hint: '多收的錢沒有記進任何帳單。如果是重複收款，撤銷這筆就好；要保留請找老闆處理。',
         report_id: p.report_id || null,
         can_void: !!p.report_id && !p.is_void,
         severity: 1,
@@ -477,6 +484,16 @@ const ledgerExceptions = computed(() => {
   });
   return rows.sort((a, b) => a.severity - b.severity);
 });
+
+// Default list = money that counts (已收 / 等你確認); rejected, voided and 0 元 rows sit under 其他紀錄.
+const isMainReceipt = (r) => ['confirmed', 'pending'].includes(r.status) && Number(r.amount || 0) > 0;
+const otherReceipts = computed(() => (payload.value?.receipts || []).filter((r) => !isMainReceipt(r)));
+const shownReceipts = computed(() => [...(payload.value?.receipts || []).filter(isMainReceipt), ...(showOtherReceipts.value ? otherReceipts.value : [])]);
+const panelTitle = computed(() => (payload.value?.student?.name ? `${payload.value.student.name}的帳務` : '學生帳務'));
+const owedSplit = computed(() => splitOwed((payload.value?.invoices || [])
+  .filter((inv) => inv.status !== 'void')
+  .map((inv) => ({ amount: inv.outstanding_amount, due_date: inv.due_date }))));
+const overpaidTotal = computed(() => Number(payload.value?.summary?.overpaid_total || 0));
 
 const owedFor = (id) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(id))
@@ -499,6 +516,52 @@ const contractCourses = computed(() => [...(payload.value?.courses || [])].sort(
 // First contract the card would offer 登記收款 for (no pending report, money due or not yet billed).
 const stickyPayCourse = computed(() => (payload.value?.scope?.no_payment_obligation ? null : contractCourses.value.find((c) => c.class_type !== 'tutoring'
   && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid)) || null));
+
+// 開帳單 in place: only where the existing monthly-drafts endpoint has a ready draft for this contract;
+// confirming uses the same renew-monthly request as 本月待開帳單 (no new money logic).
+const drafts = ref({});
+const issueDraft = ref(null);
+const issueError = ref('');
+const issueBusy = ref(false);
+const { submit: submitRenewal } = useMonthlyRenewal({
+  form: ref({}), warnings: ref([]), previewRequestId: ref(0),
+  isModalOpen: () => false, currentCourseId: () => null,
+});
+const todayStr = () => new Date().toISOString().slice(0, 10);
+async function loadDrafts() {
+  drafts.value = {};
+  try {
+    const token = getToken();
+    if (!token) return;
+    const params = new URLSearchParams({ month: todayStr().slice(0, 7) });
+    if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
+    const resp = await fetch(`/api/v1/accounting/monthly-drafts?${params}`, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok || !Array.isArray(json.data)) return;
+    drafts.value = Object.fromEntries(json.data
+      .filter((r) => r.status === 'ready' && r.proposed_end_date && r.proposed_end_date > todayStr())
+      .map((r) => [Number(r.student_class_id), r]));
+  } catch { drafts.value = {}; }
+}
+const draftFor = (id) => drafts.value[Number(id)] || null;
+const openIssue = (draft) => { issueError.value = ''; issueDraft.value = draft; };
+const closeIssue = () => { issueDraft.value = null; };
+async function submitIssue() {
+  const d = issueDraft.value;
+  if (!d || issueBusy.value) return;
+  issueBusy.value = true;
+  issueError.value = '';
+  try {
+    const out = await submitRenewal({ id: d.student_class_id }, d.proposed_end_date);
+    if (out.status !== 'ok') { issueError.value = out.message || '請重新登入後再試'; return; }
+    issueDraft.value = null;
+    await onPanelChanged();
+  } catch {
+    issueError.value = '連線失敗，請稍後再試';
+  } finally {
+    issueBusy.value = false;
+  }
+}
 
 // PRD v2 D2/D9: 登記收款 (step 1) opens the existing entry form inside the panel.
 const entryOpen = ref(false);
@@ -626,21 +689,20 @@ const anomalyLabel = (code) => labelMap({
 .ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:flex;justify-content:flex-end}
 .ledger-modal{width:min(920px,96vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:20px 22px 32px}
 .ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px}
-.ledger-eyebrow{margin:0 0 4px;color:var(--ds-primary-text);font-size:12px;font-weight:800;letter-spacing:.08em}
 .ledger-header h3{margin:0;font-size:22px}
-.ledger-subtitle{margin:6px 0 0;color:var(--text-light,var(--ds-ink-mute));font-size:13px}
 .ledger-modal:focus{outline:none}
 .ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;min-width:44px;min-height:44px;color:var(--text-light,var(--ds-ink-mute))}
 .ledger-state,.ledger-empty{padding:24px;border:1px dashed var(--ds-canvas-soft);border-radius:12px;color:var(--text-light,var(--ds-ink-mute));text-align:center}
 .ledger-error{color:var(--ds-danger);background:var(--ds-danger-wash);border-color:var(--ds-danger-wash)}
 
-.ledger-strip{display:flex;flex-wrap:wrap;gap:0;margin-bottom:14px;border:1px solid var(--ds-border);border-radius:10px;overflow:hidden;background:var(--ds-canvas)}
-.ledger-strip__item{flex:1 1 110px;display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-right:1px solid var(--ds-border);min-width:0}
-.ledger-strip__item:last-child{border-right:0}
-.ledger-strip__label{font-size:12px;font-weight:600;color:var(--text-light,var(--ds-ink-mute));letter-spacing:.02em}
-.ledger-strip__value{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
-.ledger-strip__item.is-warn .ledger-strip__value{color:var(--ds-warning)}
-.ledger-strip__item.is-danger .ledger-strip__value{color:var(--ds-danger)}
+.ledger-issue{margin:0;font-size:14px;line-height:1.6}
+.ledger-error-text{margin:8px 0 0;color:var(--ds-danger);font-size:13px}
+.ledger-owed{display:grid;gap:2px;margin-bottom:14px}
+.ledger-owed p{margin:0}
+.ledger-owed__label{font-size:12px;color:var(--ds-ink-mute)}
+.ledger-owed__now{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.ledger-owed__later{font-size:12px;color:var(--ds-ink-mute)}
+.ledger-owed__over{margin-top:8px !important;padding:8px 10px;border-radius:8px;background:var(--ds-warning-wash);color:var(--ds-ink);font-size:13px}
 
 .ledger-section{margin-top:18px}
 .ledger-contracts{display:grid;gap:10px}

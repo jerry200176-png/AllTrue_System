@@ -8,8 +8,8 @@ const ledger = readFileSync(resolve(__dirname, '../AccountingLedgerModal.vue'), 
 const tuition = readFileSync(resolve(__dirname, '../../pages/TuitionCollectionPage.vue'), 'utf8');
 
 describe('billing scan density — Filament/Carbon-style structure', () => {
-  it('ledger uses compact strip, slim columns, and expandable payment timeline', () => {
-    expect(ledger).toContain('ledger-strip');
+  it('ledger leads with owed-by-today, slim columns, and expandable payment timeline', () => {
+    expect(ledger).toContain('ledger-owed');
     expect(ledger).toContain('ledger-timeline');
     expect(ledger).toContain('aria-expanded');
     expect(ledger).toContain('收款時間線');
