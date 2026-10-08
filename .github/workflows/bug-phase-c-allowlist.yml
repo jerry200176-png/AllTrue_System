@@ -737,6 +737,21 @@ jobs:
               "rev" => "f662fb7fcc17abb71ede2ffa8d4450da6ccf1a2d",
               "deploy" => "37581142543",
             ],
+            381 => [
+              "reply" => "已上線：學生編輯畫面現在有「解除綁定」按鈕，老師編輯畫面每個分校的卡片旁也有「解除綁定」，按下並確認後會立即清除卡號，之後就能重新綁定新卡。不會改動點名、堂數或其他資料。這次只做工程測試與正式版本檢查，沒有在正式環境實際操作畫面。仍等待您實際確認。請重新整理後打開學生或老師的編輯畫面查看；有看到並能解除的話請按「確認已修好」，若找不到按鈕或解除失敗，請按「問題仍存在」並回覆分校與是學生還是老師（請勿貼姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3799",
+              "rev" => "f009fce12c6ff63cb1b79d0e3e9014c7d4d6efd8",
+              "deploy" => "37726665054",
+            ],
+            377 => [
+              "reply" => "已上線：已結束的月結合約，現在會依該月實際上課堂數計價，繳費單也會同步，不會再停在舊金額。沒有改動任何已收款或出席資料。這次只做工程測試與正式版本檢查，沒有在正式環境實際操作畫面。仍等待您實際確認。請重新整理後打開該合約的繳費單查看；對的話請按「確認已修好」，若金額仍不對，請按「問題仍存在」並回覆月份與正確堂數（請勿貼學生姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3771",
+              "rev" => "fa3d8eedc3c26881279add1a695a9e846bd4208d",
+              "deploy" => "37581142543",
+            ],
+            378 => [
+              "reply" => "已上線：已結束的月結合約現在可以直接在帳務中心找到並登記，帳單改寫實際起迄日（例如 9/28–10/27），不會再被當成別的月份而找不到。沒有改動任何已收款或出席資料。這次只做工程測試與正式版本檢查，沒有在正式環境實際操作畫面。仍等待您實際確認。請重新整理後在帳務中心找該月帳單；找得到請按「確認已修好」，若仍找不到，請按「問題仍存在」並回覆月份與分校（請勿貼學生姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3772",
+              "rev" => "96e97505aebf9abfc85c19ad45d681b7cf56fdc7",
+              "deploy" => "37607736238",
+            ],
             371 => [
               "reply" => "已調整並上線：學費頁的「前往課程核對」與「查看當月學收」兩個按鈕已恢復可用，點下去會正常開啟對應畫面。您另提的「直接在此頁切割合約」屬於產品設計決策，這次沒有處理，待決定後另行評估。計費與資料都沒有改變。這次只做工程測試與正式版本檢查，沒有在正式環境實際操作畫面。仍等待您實際確認。請重新整理後在學費頁按這兩個按鈕測試；若仍沒反應，請按「問題仍存在」並回覆您按的按鈕名稱與分校（請勿貼學生姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3421",
               "rev" => "f369738a53f8152b1c061b13f866e82b80de025f",
@@ -1004,7 +1019,10 @@ jobs:
           d = json.load(sys.stdin)
           ids = {int(x) for m in re.finditer(r"in-app\s*#\d+(?:\s*/\s*#\d+)*", d["title"], re.I) for x in re.findall(r"#(\d+)", m.group(0))}
           for t in [d.get("body") or ""] + [c.get("body") or "" for c in d.get("comments") or []]:
-              ids |= {int(x) for x in re.findall(r"alltrue:bug_report:(\d+)", t)}
+              # Ownership = SourceRefs on a line that starts with a SourceRef declaration (same rule as
+              # scripts/inapp-issue-reconcile.py); "Related earlier SourceRef" / "Cross-SourceRef" lines are not ownership.
+              for line in re.findall(r"^[ \t>*_#.)0-9`-]*SourceRef\b.*$", t, re.M):
+                  ids |= {int(x) for x in re.findall(r"alltrue:bug_report:(\d+)", line)}
           print(" ".join(str(i) for i in sorted(ids - {int(x) for x in os.environ["CHECKED"].split(",")})))')"
             if [[ -n "$unchecked" ]]; then echo "skip #$n: also maps unchecked in-app $unchecked"; continue; fi
             # Close first, then comment: a rerun sees CLOSED and never re-posts the notice.

@@ -401,6 +401,39 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '370 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '370 must give a no-names reopen path');
   }
+// Scoped Phase-C for in-app 381 (#3799), 2026-10-08 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            381 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 381 must exist');
+    assert.ok(entry[1].includes('"rev" => "f009fce12c6ff63cb1b79d0e3e9014c7d4d6efd8"'), '381 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37726665054"'), '381 deploy binding');
+    assert.ok(entry[1].includes('issues/3799'), '381 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '381 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '381 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '381 must give a no-names reopen path');
+  }
+// Scoped Phase-C for in-app 377 (#3771), 2026-10-08 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            377 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 377 must exist');
+    assert.ok(entry[1].includes('"rev" => "fa3d8eedc3c26881279add1a695a9e846bd4208d"'), '377 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37581142543"'), '377 deploy binding');
+    assert.ok(entry[1].includes('issues/3771'), '377 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '377 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '377 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '377 must give a no-names reopen path');
+  }
+// Scoped Phase-C for in-app 378 (#3772), 2026-10-08 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            378 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 378 must exist');
+    assert.ok(entry[1].includes('"rev" => "96e97505aebf9abfc85c19ad45d681b7cf56fdc7"'), '378 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37607736238"'), '378 deploy binding');
+    assert.ok(entry[1].includes('issues/3772'), '378 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '378 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '378 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '378 must give a no-names reopen path');
+  }
 // Scoped Phase-C for in-app 380 (#3720), 2026-10-07 (engineering tests + production version check only).
   {
     const entry = phaseCSource.match(/\n            380 => \[([\s\S]*?)\n            \],/);
@@ -671,6 +704,14 @@ for (const [id, revision, issue] of [
     if (frozenHash && createHash('sha256').update(reply[1], 'utf8').digest('hex').slice(0, 16) === frozenHash) continue;
     assert.ok(reply[1].includes('確認已修好') && reply[1].includes('問題仍存在'), `Phase-C reply ${id} must offer 「確認已修好」 and 「問題仍存在」`);
   }
+}
+// F14 gap (2026-10-07): close-issue and reconcile share ONE ownership rule (line-start SourceRef), so a
+// cross-reference ("Related earlier SourceRef: …") never blocks auto-close.
+{
+  const rule = '^[ \\t>*_#.)0-9`-]*SourceRef\\b.*$';
+  assert.ok(phaseCSource.includes(rule), 'close-issue uses the line-start ownership rule');
+  assert.ok(fs.readFileSync('scripts/inapp-issue-reconcile.py', 'utf8').includes(rule), 'reconcile uses the same rule');
+  assert.ok(!phaseCSource.includes('re.findall(r"alltrue:bug_report:(\\d+)", t)'), 'no bare any-mention ownership left');
 }
 console.log('bug-writeback-workflow.test.mjs: ok');
 

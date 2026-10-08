@@ -15,7 +15,8 @@ class GradePromotionController extends Controller
             'season_year' => 'nullable|integer|min:2000|max:2100',
         ]);
         $campusId = (int) $data['branch_id'];
-        if (!in_array($campusId, array_map('intval', (array) $campusIds), true)) {
+        if ($request->attributes->get('auth_role') !== 'super_admin'
+            && !in_array($campusId, array_map('intval', (array) $campusIds), true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -56,7 +57,8 @@ class GradePromotionController extends Controller
         ]);
 
         $campusId = (int) $data['branch_id'];
-        if (!in_array($campusId, array_map('intval', (array) $campusIds), true)) {
+        if ($request->attributes->get('auth_role') !== 'super_admin'
+            && !in_array($campusId, array_map('intval', (array) $campusIds), true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 

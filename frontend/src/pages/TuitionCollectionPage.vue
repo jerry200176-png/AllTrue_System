@@ -60,17 +60,17 @@
     <nav class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
       <button v-if="activeAccountingTab !== 'students' && activeAccountingTab !== 'payments'" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
       <button
-        v-for="v in REMINDER_VIEWS.filter((x) => !x.directorOnly || canVoid)"
+        v-for="v in visibleReminders"
         :key="v.key"
         type="button"
         :class="['tc-reminder', { 'is-on': activeAccountingTab === v.key }]"
         :data-testid="`tc-reminder-${v.key}`"
         @click="activeAccountingTab = v.key"
-      >{{ v.label }} →</button>
+      >{{ reminderLabel(v) }} →</button>
     </nav>
 
     <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
-      <StudentBillingList :alert-rows="rows" :students="campusStudents" @open="openLedgerForStudent" />
+      <StudentBillingList :alert-rows="rows" :students="campusStudents" :loading="loading" :error="error" @open="openLedgerForStudent" @retry="loadAlerts" />
     </section>
 
     <section v-if="activeAccountingTab === 'monthly-review'" id="tuition-accounting-panel-monthly-review" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly-review" tabindex="0">
@@ -1088,6 +1088,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { useToast } from '../composables/useToast';
 import { authedFetch } from '../lib/authedFetch.js';
+import * as paymentActions from '../lib/paymentActions.js';
 import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import MonthlyDraftsPanel from '../components/tuition/MonthlyDraftsPanel.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
@@ -1140,11 +1141,17 @@ const ACCOUNTING_TABS = [
 ];
 const REMINDER_VIEWS = [
   { key: 'receivables', label: '待處理清單' },
-  { key: 'monthly-review', label: '月結待核對' },
+  { key: 'monthly-review', label: '月結要核對' },
   { key: 'monthly-drafts', label: '本月待開帳單', directorOnly: true },
   { key: 'settled', label: '已結清' },
 ];
 const activeAccountingTab = ref('students');
+// PRD §0.3: counts only where the page already holds the data (the alert rows);
+// monthly review / drafts / settled load lazily, so they show no number.
+const reminderCount = (v) => (v.key === 'receivables' && !loading.value && !error.value ? tabCounts.value.action : null);
+const visibleReminders = computed(() => REMINDER_VIEWS.filter((x) => (!x.directorOnly || canVoid.value)
+  && !(reminderCount(x) === 0 && activeAccountingTab.value !== x.key)));
+const reminderLabel = (v) => { const n = reminderCount(v); return n ? `${v.label} ${n} 筆` : v.label; };
 const campusStudents = ref([]);
 async function loadCampusStudents() {
   try {
@@ -2147,16 +2154,8 @@ async function confirmReport(row) {
   }
   actionLoading.value = row.id;
   try {
-    const token = getToken();
-    const resp = await authedFetch(`/api/v1/payment-reports/${row.latest_payment_report_id}/confirm`, {
-      method: 'PUT',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    }, token);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.message || `操作失敗（${resp.status}）`);
-    }
+    const res = await paymentActions.confirmReport(row.latest_payment_report_id);
+    if (!res.ok) throw new Error(res.message);
     showToast(`已確認，狀態改為「${TUITION_STATUS_CONFIG.paid.label}」`);
     if (row.latest_payment_report_id) {
       receiptReportId.value = row.latest_payment_report_id;
@@ -2183,16 +2182,8 @@ async function rejectReport(row) {
 
   actionLoading.value = row.id;
   try {
-    const token = getToken();
-    const resp = await authedFetch(`/api/v1/payment-reports/${row.latest_payment_report_id}/reject`, {
-      method: 'PUT',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rejection_note: reason.trim() }),
-    }, token);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.message || `操作失敗（${resp.status}）`);
-    }
+    const res = await paymentActions.rejectReport(row.latest_payment_report_id, reason.trim());
+    if (!res.ok) throw new Error(res.message);
     showToast('已退回此回報', 'warning');
     loadAlerts();
   } catch (e) {
@@ -2268,22 +2259,14 @@ async function confirmVoid() {
 
   voidLoading.value = true;
   try {
-    const token = getToken();
     const reportId = Number(voidTarget.value.report_id || 0) || await findConfirmedReportForClass(voidTarget.value);
     if (!reportId) {
       showToast('找不到此課程的已確認核帳紀錄', 'error');
       return;
     }
 
-    const resp = await authedFetch(`/api/v1/payment-reports/${reportId}/void`, {
-      method: 'PUT',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ void_reason: voidReason.value.trim() }),
-    }, token);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.message || `撤銷失敗（${resp.status}）`);
-    }
+    const res = await paymentActions.voidReport(reportId, voidReason.value.trim());
+    if (!res.ok) throw new Error(res.message);
     voidDialogOpen.value = false;
     showToast('已撤銷收款，狀態已重置', 'warning');
     await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses()]);
