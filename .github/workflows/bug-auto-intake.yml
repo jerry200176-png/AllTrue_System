@@ -4,6 +4,7 @@ name: Bug auto-intake (hourly)
 # GitHub issue, an acknowledgement reply and status `triaged`, without waiting
 # for a human dispatch. Idempotent: an existing issue (matched by SourceRef) is
 # reused, and `bugs:auto-intake --ack` skips any report that is no longer `new`.
+# Each issue also gets an area:<family> label and an advisory cross-link (config/bug_families.php).
 # Logs carry IDs only (public repo); report text never leaves production.
 on:
   schedule:
@@ -67,7 +68,7 @@ jobs:
           json="$(printf '%s\n' "$raw" | grep -m1 '^{"candidates"' || true)"
           [ -n "$json" ] || { echo "::error::bugs:auto-intake --candidates returned no JSON (command not deployed yet?)"; exit 1; }
           # Keep only the whitelisted ID fields before anything is printed or passed on.
-          json="$(printf '%s' "$json" | jq -c '[.candidates[] | {bug_id: (.bug_id|tonumber), campus_id: (.campus_id|tonumber), severity: (.severity|tostring|ascii_downcase|gsub("[^a-z]";""))}]')"
+          json="$(printf '%s' "$json" | jq -c '[.candidates[] | {bug_id: (.bug_id|tonumber), campus_id: (.campus_id|tonumber), severity: (.severity|tostring|ascii_downcase|gsub("[^a-z]";"")), family: ((.family // "")|tostring|ascii_downcase|gsub("[^a-z-]";""))}]')"
           echo "json=$json" >> "$GITHUB_OUTPUT"
           echo "count=$(printf '%s' "$json" | jq 'length')" >> "$GITHUB_OUTPUT"
           echo "candidates: $(printf '%s' "$json" | jq -c '[.[].bug_id]')"
@@ -91,6 +92,23 @@ jobs:
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: |
           set -euo pipefail
+          # Same-kind clustering (Founder 2A): label the issue area:<family> and leave ONE advisory comment on the newest
+          # open issue of the same family, linking to this one so they can be fixed together. Never closes anything.
+          # Numbers and fixed text only; only owner/bot-authored issues are considered (public repo).
+          cluster() {
+            local id="$1" fam="$2" url="$3" label="area:$2" num="${3##*/}" other="" n labels comments
+            labels="$(gh label list --limit 200 --json name -q '.[].name')" || return 1
+            grep -qxF "$label" <<<"$labels" || gh label create "$label" --description "In-app report family (auto-intake)" || return 1
+            gh issue edit "$url" --add-label "$label" || return 1
+            for who in "${GITHUB_REPOSITORY_OWNER}" app/github-actions; do
+              n="$(gh issue list --state open --label "$label" --author "$who" --search "in-app in:title" --limit 30 --json number -q "[.[].number | select(. != ${num})] | max // empty")" || return 1
+              if [ -n "$n" ] && { [ -z "$other" ] || [ "$n" -gt "$other" ]; }; then other="$n"; fi
+            done
+            [ -n "$other" ] || return 0
+            comments="$(gh issue view "$other" --json comments -q '.comments[].body')" || return 1
+            grep -qF "<!-- family-link:${num} -->" <<<"$comments" && return 0
+            gh issue comment "$other" --body "<!-- family-link:${num} -->同類型提醒：新回報 #${num}（in-app #${id}）與這張同屬 ${label}，建議一起修。僅提醒，不會自動關單。"
+          }
           pairs='[]'
           while read -r row; do
             id="$(jq -r '.bug_id' <<<"$row")"; [[ "$id" =~ ^[0-9]+$ ]] || exit 1
@@ -146,6 +164,10 @@ jobs:
               fi
             fi
             [[ "$url" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "bad issue url"; exit 1; }
+            fam="$(jq -r '.family // ""' <<<"$row")"
+            if [ "$DRY_RUN" != "true" ] && [[ "$fam" =~ ^[a-z]+(-[a-z]+)*$ ]]; then
+              cluster "$id" "$fam" "$url" || echo "::warning::family clustering failed for in-app #$id (advisory, intake continues)"
+            fi
             echo "in-app #$id -> $url"
             pairs="$(jq -c --argjson id "$id" --arg url "$url" '. + [{bug_id: $id, url: $url}]' <<<"$pairs")"
           done < <(jq -c '.[]' <<<"$CANDIDATES")
