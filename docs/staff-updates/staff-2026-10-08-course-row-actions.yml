@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-course-row-actions
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 課程查找每列只剩一個主按鈕
+    summary: 每門課一個主要按鈕，其他操作收進「⋯」，調課、代課、轉課兩下就到。
+    items:
+      - category: improved
+        text: 「結束課程」不再緊貼「編輯」，改放在「⋯」的「狀態」裡，刪除單獨放最下面。
+      - category: added
+        text: 「⋯」裡直接有調課、代課、補課、轉課，會從下一堂課開始，不用先點開詳情。
+      - category: improved
+        text: 現在用不到的項目會變灰並寫明原因，不會直接消失。

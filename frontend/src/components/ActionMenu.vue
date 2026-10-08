@@ -4,6 +4,7 @@
       ref="trigger"
       type="button"
       class="small ghost am__trigger"
+      :class="triggerClass"
       aria-haspopup="menu"
       :aria-expanded="open ? 'true' : 'false'"
       :aria-controls="open ? menuId : undefined"
@@ -60,6 +61,7 @@ defineProps({
   groups: { type: Array, required: true },
   label: { type: String, default: '更多操作' },
   triggerText: { type: String, default: '⋯' },
+  triggerClass: { type: String, default: '' }, // lets a page keep its own e2e/test hook on the button
 });
 const emit = defineEmits(['select']);
 
@@ -151,7 +153,7 @@ defineExpose({ openAt, close });
 .am__trigger { min-width: 40px; min-height: 40px; }
 .am__trigger:focus-visible, .am__item:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .am__menu {
-  position: fixed; z-index: 1000; min-width: 220px; max-height: 70vh; overflow-y: auto;
+  position: fixed; z-index: calc(var(--ds-z-modal) + 1); min-width: 220px; max-height: 70vh; overflow-y: auto;
   padding: 6px; background: var(--ds-surface); color: var(--ds-text-primary);
   border: var(--ds-border-width) solid var(--ds-border); border-radius: var(--ds-radius-lg);
   box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
@@ -167,7 +169,7 @@ defineExpose({ openAt, close });
 .am__item[aria-disabled='true']:hover { background: none; }
 .am__reason { display: block; margin-top: 2px; font-size: 12px; color: var(--ds-text-secondary); }
 .am__item--danger { color: var(--danger); }
-.am__scrim { position: fixed; inset: 0; z-index: 999; background: rgb(0 0 0 / 35%); }
+.am__scrim { position: fixed; inset: 0; z-index: var(--ds-z-modal); background: rgb(0 0 0 / 35%); }
 .am__menu--sheet {
   position: fixed; left: 0; right: 0; top: auto; bottom: 0; min-width: 0; max-height: 80vh;
   border-radius: var(--ds-radius-lg) var(--ds-radius-lg) 0 0; padding-bottom: calc(8px + env(safe-area-inset-bottom));

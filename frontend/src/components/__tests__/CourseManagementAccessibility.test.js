@@ -33,7 +33,6 @@ describe('CourseManagement disclosure accessibility', () => {
   });
 
   it('supports keyboard navigation and focus restoration for More menus without changing menu actions', () => {
-    expect(source).toContain('@keydown="handleActionMenuKeydown(c.id, $event)"');
     expect(source).toContain('@keydown="handleActionMenuKeydown(hc.id, $event)"');
     expect(source).toContain("['ArrowDown', 'ArrowUp', 'Home', 'End', 'Escape']");
     expect(source).toContain("closeActionMenu({ restoreFocus: true })");

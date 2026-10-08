@@ -67,7 +67,7 @@ describe('director billing M2: one authoritative entry (帳務中心 → 學生�
   it('course management no longer keeps its own invoice list; billing CTAs deep-link to 帳務中心', () => {
     expect(courseManagement).not.toContain('帳單與對帳紀錄');
     expect(courseManagement).not.toMatch(/openInvoiceModal|invoiceModalOpen/);
-    expect(courseManagement).toContain('openTuitionLedger(c); closeActionMenu()');
+    expect(readFileSync(resolve(__dirname, '../../composables/course-management/useCourseRowActions.js'), 'utf8')).toContain('invoice: () => d.openTuitionLedger(c)');
     expect(courseManagement).toContain('openTuitionLedger(hc); closeActionMenu()');
     expect(courseManagement).toContain('@click="openTuitionLedger(row.course)"');
     expect(courseManagement).toContain('invoice: () => openTuitionLedger(c)');
