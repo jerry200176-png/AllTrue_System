@@ -119,19 +119,19 @@
                           <em v-if="inv.payments?.length" class="ledger-pay-count">{{ inv.payments.length }}</em>
                         </button>
                       </td>
-                      <td>
+                      <td class="ledger-cell-title">
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
-                      <td>{{ inv.due_date || '—' }}</td>
-                      <td class="num">{{ formatCurrency(inv.total_amount) }}</td>
-                      <td class="num">{{ formatCurrency(inv.calculated_applied_amount) }}</td>
-                      <td class="num" :class="{ due: (inv.outstanding_amount || 0) > 0 }">{{ formatCurrency(inv.outstanding_amount) }}</td>
-                      <td>
+                      <td data-label="應繳日">{{ inv.due_date || '—' }}</td>
+                      <td class="num" data-label="應收">{{ formatCurrency(inv.total_amount) }}</td>
+                      <td class="num" data-label="已記入">{{ formatCurrency(inv.calculated_applied_amount) }}</td>
+                      <td class="num" data-label="未結清" :class="{ due: (inv.outstanding_amount || 0) > 0 }">{{ formatCurrency(inv.outstanding_amount) }}</td>
+                      <td data-label="狀態">
                         <span :class="['ledger-chip', invoiceStatusClass(inv.status)]">{{ invoiceStatusLabel(inv.status) }}</span>
                       </td>
-                      <td>
+                      <td class="ledger-cell-actions">
                         <div class="ledger-actions">
                           <button
                             v-if="canDirectVoidInvoice(inv)"
@@ -229,6 +229,13 @@
               </div>
             </div>
           </section>
+
+          <!-- PRD v2 D5: phone only, 登記收款 stays reachable at the bottom. Same handler as the card button. -->
+          <div v-if="stickyPayCourse" class="ledger-sticky-pay" data-testid="ledger-sticky-pay">
+            <button type="button" class="ledger-sticky-pay__btn" data-testid="ledger-sticky-pay-btn" @click="openEntry(stickyPayCourse)">
+              登記收款<small v-if="stickyPayCourse.subject">{{ stickyPayCourse.subject }}</small>
+            </button>
+          </div>
         </template>
       </div>
       <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" />
@@ -451,6 +458,10 @@ const pendingReportFor = (id) => {
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
 
+// First contract the card would offer 登記收款 for (no pending report, money due or not yet billed).
+const stickyPayCourse = computed(() => (payload.value?.scope?.no_payment_obligation ? null : contractCourses.value.find((c) => c.class_type !== 'tutoring'
+  && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid)) || null));
+
 // PRD v2 D2/D9: 登記收款 (step 1) opens the existing entry form inside the panel.
 const entryOpen = ref(false);
 const entryRow = ref(null);
@@ -642,9 +653,28 @@ const anomalyLabel = (code) => labelMap({
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .ledger-fade-enter-active,.ledger-fade-leave-active{transition:opacity .16s ease}
 .ledger-fade-enter-from,.ledger-fade-leave-to{opacity:0}
+.ledger-sticky-pay{display:none;position:sticky;bottom:0;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface,var(--ds-canvas));border-top:1px solid var(--ds-canvas-soft);z-index:2}
+.ledger-sticky-pay__btn{width:100%;min-height:48px;border:0;border-radius:10px;background:var(--ds-cta);color:var(--ds-on-cta);font:inherit;font-size:16px;font-weight:700;cursor:pointer}
+.ledger-sticky-pay__btn small{margin-left:8px;font-weight:400;opacity:.85}
 @media (max-width:760px){
   .ledger-modal{width:100vw;padding:16px}
   .ledger-timeline__item{grid-template-columns:1fr}
   .ledger-detail-row td{padding-left:10px}
+  /* B7: invoice table -> cards, nothing clips */
+  .ledger-table-wrap{overflow-x:visible}
+  .ledger-table,.ledger-table tbody,.ledger-table tr,.ledger-table td{display:block;width:100%;box-sizing:border-box}
+  .ledger-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+  .ledger-table tr{position:relative;margin-bottom:10px;border:1px solid var(--ds-canvas-soft);border-radius:10px;padding:8px 10px}
+  .ledger-table td{border-bottom:0;padding:3px 0}
+  .ledger-table td[data-label]{display:flex;justify-content:space-between;gap:12px;text-align:right}
+  .ledger-table td[data-label]::before{content:attr(data-label);color:var(--ds-ink-mute);text-align:left}
+  .ledger-table .ledger-col-expand{width:auto;position:absolute;top:2px;right:2px;padding:0}
+  .ledger-expand{min-width:44px;min-height:44px}
+  .ledger-cell-title{padding-right:48px !important;overflow-wrap:anywhere}
+  .ledger-cell-actions{padding-top:6px !important}
+  .ledger-action{min-height:44px;padding:6px 14px}
+  .ledger-table tr.ledger-detail-row{border:0;padding:0;margin:-6px 0 10px}
+  .ledger-detail-row td{padding:0}
+  .ledger-sticky-pay{display:block}
 }
 </style>
