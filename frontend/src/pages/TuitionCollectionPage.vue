@@ -66,7 +66,7 @@
         :class="['tc-reminder', { 'is-on': activeAccountingTab === v.key }]"
         :data-testid="`tc-reminder-${v.key}`"
         @click="activeAccountingTab = v.key"
-      >{{ reminderLabel(v) }} →</button>
+      >{{ reminderLabel(v) }}</button>
     </nav>
 
     <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
@@ -2499,7 +2499,7 @@ loadCampusStudents();
 
 <style scoped>
 .tc-reminders{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
-.tc-reminder{border:1px solid var(--ds-canvas-soft);background:var(--ds-canvas);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer;min-height:32px}
+.tc-reminder{border:1px solid var(--ds-border);background:var(--ds-canvas);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer;min-height:32px}
 .tc-reminder.is-on{font-weight:700;border-color:var(--ds-ink-mute)}
 .tc-reminder--back{font-weight:700}
 .tc-focus-context {
