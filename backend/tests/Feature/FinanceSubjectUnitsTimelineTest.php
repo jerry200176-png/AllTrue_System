@@ -92,6 +92,39 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         $this->assertEqualsWithDelta(100.0, $contribution['campus_proportion_pct'], 0.0001);
     }
 
+    public function test_entry_lists_every_lesson_that_adds_up_to_its_count(): void
+    {
+        // in-app #387/#389: two 1:3 students at the same slot gave 2.0 with no way to see why.
+        $campus = Campus::factory()->create(['name' => '堂明細分校']);
+        $director = $this->createUser('director-timeline-lessons@example.com', 'A', [$campus->id]);
+        $teacher = $this->createUser('teacher-timeline-lessons@example.com', 'T', [$campus->id]);
+        foreach (['甲生', '乙生'] as $name) {
+            $course = $this->course($campus->id, $teacher['user_id'], 'one_on_three', 1);
+            $course->student->update(['name' => $name]);
+            $session = $this->makeSession($course, '2026-09-18', '18:00:00', '20:00:00', 'completed');
+            LearningRecord::create([
+                'StudentClassID' => $course->ID, 'ClassSessionID' => $session->id,
+                'TeacherID' => $teacher['user_id'], 'Content' => '堂明細', 'Subject' => 'Chinese',
+                'Status' => 'approved', 'ApprovedBy' => $director['user_id'], 'ApprovedAt' => now(),
+                'SessionDate' => '2026-09-18', 'StartTime' => '18:00:00', 'EndTime' => '20:00:00',
+                'SessionDeducted' => true,
+            ]);
+        }
+
+        $entries = collect($this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/finance/subject-units/timeline?start=2026-09-18&end=2026-09-18')
+            ->assertOk()->json('entries'));
+
+        $this->assertCount(1, $entries);
+        $entry = $entries->first();
+        $this->assertSame(2, $entry['session_count']);
+        $this->assertEqualsWithDelta(2.0, $entry['payroll_subject_count'], 0.0001);
+        $this->assertSame(['甲生', '乙生'], array_column($entry['lessons'], 'student_name'));
+        $this->assertSame(['18:00', '18:00'], array_column($entry['lessons'], 'start_time'));
+        // Same-family guard: the lines always add up to the shown number.
+        $this->assertEqualsWithDelta($entry['payroll_subject_count'], array_sum(array_column($entry['lessons'], 'weighted')), 0.0001);
+    }
+
     public function test_timeline_reports_each_teachers_raw_campus_contribution_once(): void
     {
         $campus = Campus::factory()->create(['name' => '老師貢獻分校']);

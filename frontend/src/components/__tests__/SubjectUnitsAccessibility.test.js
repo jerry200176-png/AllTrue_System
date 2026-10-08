@@ -74,4 +74,10 @@ describe('SubjectUnitsPage disclosure accessibility', () => {
     expect(source).toContain("contributionSortDirection.value === 'asc' ? 'desc' : 'asc'");
     expect(source).not.toContain('savedSort');
   });
+
+  it('lets every day row show which lessons add up to its count (in-app #387/#389)', () => {
+    expect(source).toContain('entry.lessons');
+    expect((source.match(/class="lesson-detail"/g) || []).length).toBe(2);
+    expect(source).toContain('lessonLine(lesson)');
+  });
 });
