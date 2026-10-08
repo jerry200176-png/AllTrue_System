@@ -83,26 +83,32 @@ export function useSessionEditFlow({
     const endTime = unit?.endTime || '';
     const paused = Number(course?.Stop ?? course?.stop ?? 0) === 1
       || String(course?.status || '').toLowerCase() === 'inactive';
-    // in-app #340: a paused monthly course's 預排 date can be cancelled one at a time (no deduction, no billing).
-    const canCancel = paused && canCancelPausedProjectedSession(course);
     chipActionDialog.value = {
-      kind: canCancel ? 'projected_paused_cancel' : (paused ? 'projected_paused_info' : 'projected_quick_add'),
+      kind: paused ? 'projected_paused_info' : 'projected_quick_add',
       title: paused ? '課程暫停中' : '這是預排日期，尚未建立正式堂次',
-      message: canCancel
-        ? '課程暫停中，這個預排日期不會上課。取消這一堂不會扣堂也不影響帳務；恢復課程後才會重新排課。'
-        : (paused
-          ? '課程暫停中，恢復後才會排課；這個日期不會上課。'
-          : '堂數制不會自動產生可編輯堂次。請確認後手動補排；直接推算建立僅適用月結固定時段。'),
+      message: paused
+        ? '課程暫停中，恢復後才會排課；這個日期不會上課。'
+        : '堂數制不會自動產生可編輯堂次。請確認後手動補排；直接推算建立僅適用月結固定時段。',
       meta: [dateYmdNorm, startTime && (endTime ? `${startTime}–${endTime}` : startTime)].filter(Boolean).join(' '),
       // Paused: informational only (no 補排 action; quick add is gated on canQuickAddSession).
-      primaryLabel: canCancel ? '取消這一堂' : (paused ? '知道了' : '補排此堂'),
-      secondaryLabel: paused && !canCancel ? '' : '返回',
+      primaryLabel: paused ? '知道了' : '補排此堂',
+      secondaryLabel: paused ? '' : '返回',
       course,
       dateYmd: dateYmdNorm,
       startTime,
       endTime,
       busy: false,
     };
+    // in-app #340: a paused monthly course's 預排 date can be cancelled one at a time (no deduction, no billing).
+    if (paused && canCancelPausedProjectedSession(course)) {
+      chipActionDialog.value = {
+        ...chipActionDialog.value,
+        kind: 'projected_paused_cancel',
+        message: '課程暫停中，這個預排日期不會上課。取消這一堂不會扣堂也不影響帳務；恢復課程後才會重新排課。',
+        primaryLabel: '取消這一堂',
+        secondaryLabel: '返回',
+      };
+    }
   }
 
   function openSessionResolveDialog(course, dateYmd, sessionId, unit, title, message) {
