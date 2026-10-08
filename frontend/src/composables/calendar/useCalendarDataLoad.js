@@ -221,7 +221,8 @@ export function useCalendarDataLoad({
             id: cid,
             student_id: row.student_id ?? row.studentId,
             student_name: row.student_name ?? row.studentName ?? '—',
-            teacher_id: row.teacher_id ?? row.teacherId,
+            // #3780: the stub is the contract; the occurrence teacher comes from the session row.
+            teacher_id: row.contractTeacherId ?? row.teacher_id ?? row.teacherId,
             teacher_name: row.teacher_name ?? row.teacherName ?? '未指派',
             duration_hours: 2,
             status: 'inactive',

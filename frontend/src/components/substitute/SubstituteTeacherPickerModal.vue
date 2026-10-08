@@ -565,8 +565,11 @@ const selectedTeacherName = computed(() => selectedTeacher.value?.name || '');
 const originalTeacherId = computed(() => Number(props.context?.original_teacher_id || 0));
 const currentTeacherId = computed(() => Number(props.context?.current_teacher_id || 0));
 const originalTeacherName = computed(() => props.context?.original_teacher_name || `老師#${originalTeacherId.value}`);
+// #3780 P1: only a real substitute (context.substitute_notice from the session API) can be restored; a differing
+// teacher alone may be a history pin after a contract teacher change, and restoring it rewrites who taught.
 const canRestoreOriginal = computed(() =>
-  originalTeacherId.value > 0
+  props.context?.substitute_notice === true
+  && originalTeacherId.value > 0
   && currentTeacherId.value > 0
   && originalTeacherId.value !== currentTeacherId.value
 );
