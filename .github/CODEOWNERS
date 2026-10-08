@@ -1,25 +1,9 @@
 # AllTrue CODEOWNERS
-# 格式：<pattern> <GitHub username>
-# PR 觸碰對應路徑時，自動 request review
+# Enforced by the `governance-paths-review` ruleset (Founder 2026-10-08, #3797):
+# a PR from a collaborator that touches these paths needs the owner's approval.
+# The repository admin (owner + agents on the owner token) bypasses that ruleset only;
+# main-protection (required checks) still applies to everyone.
+# Keep this list to deploy/governance control — every entry here is a hard gate.
 
-# 全域 fallback — 所有檔案
-*                                   @jerry200176-png
-
-# 高風險後端模組（堂數扣除、繳費、刷卡）
-backend/app/Http/Controllers/Alert* @jerry200176-png
-backend/app/Services/SessionDeduction* @jerry200176-png
-backend/app/Services/ApprovalSessionSync* @jerry200176-png
-backend/app/Http/Controllers/SwipeRfid* @jerry200176-png
-
-# API 路由全集（公開端點／權限邊界）
-backend/routes/api.php              @jerry200176-png
-
-# DB Migrations（任何 schema 變更）
-backend/database/migrations/        @jerry200176-png
-
-# 高風險操作 SOP（誤用可影響 production）
-docs/DANGEROUS_OPERATIONS.md        @jerry200176-png
-
-# CI/CD（部署相關）
-.github/workflows/                  @jerry200176-png
-.github/dependabot.yml              @jerry200176-png
+.github/                            @jerry200176-png
+scripts/governance/                 @jerry200176-png
