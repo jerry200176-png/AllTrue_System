@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/courseMoneyState.js';
 import CourseSessionCalendar from './CourseSessionCalendar.vue';
+import ActionMenu from '../ActionMenu.vue';
 
 const TABS = [
   { id: 'overview', label: '總覽' },
@@ -12,9 +13,12 @@ const TABS = [
 
 export default {
   name: 'CourseManager',
-  components: { CourseSessionCalendar },
+  components: { CourseSessionCalendar, ActionMenu },
   props: {
     course: { type: Object, required: true },
+    // { primary, groups } from courseActions(): the same model the course row uses (調課／代課／轉課 live in ⋯).
+    actionModel: { type: Object, default: null },
+    canMoveLesson: { type: Function, default: () => false },
     tab: { type: String, default: 'overview' },
     studentName: { type: String, default: '' },
     subjectLabel: { type: String, default: '' },
@@ -51,7 +55,7 @@ export default {
     isUserNote: { type: Function, required: true },
     formatMakeupDate: { type: Function, required: true },
   },
-  emits: ['close', 'update:tab', 'action', 'open-session', 'create-day', 'toggle-cancelled', 'toggle-notes'],
+  emits: ['close', 'update:tab', 'action', 'open-session', 'create-day', 'toggle-cancelled', 'toggle-notes', 'move-lesson'],
   setup(props, { emit }) {
     const sessionsView = ref('list');
     const dangerOpen = ref(false);
@@ -123,9 +127,19 @@ export default {
           <button type="button" class="cmw__back" data-testid="course-manager-close" @click="$emit('close')">
             <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span> 課程管理
           </button>
-          <button type="button" class="cmw__x" aria-label="關閉" @click="$emit('close')">
-            <span class="material-symbols-outlined" aria-hidden="true">close</span>
-          </button>
+          <div class="cmw__actions">
+            <button v-if="actionModel?.primary" type="button" class="small primary" data-testid="course-manager-primary" @click="act(actionModel.primary.id)">{{ actionModel.primary.label }}</button>
+            <ActionMenu
+              v-if="actionModel?.groups?.length"
+              :groups="actionModel.groups"
+              :label="`${subjectLabel || '課程'} 的更多課程操作`"
+              trigger-class="cmw__more"
+              @select="act"
+            />
+            <button type="button" class="cmw__x" aria-label="關閉" @click="$emit('close')">
+              <span class="material-symbols-outlined" aria-hidden="true">close</span>
+            </button>
+          </div>
         </div>
         <div class="cmw__id">
           <h2 class="cmw__title">
@@ -280,19 +294,23 @@ export default {
           </template>
           <template v-else>
             <div v-if="listUnits.length" class="cmw__session-list" data-testid="course-manager-session-list">
-              <button
-                v-for="u in listUnits"
-                :key="sessionRowKey(u)"
-                type="button"
-                class="cmw__session-row"
-                :class="[u.isProjected ? 'is-projected' : 'is-materialized', getSessionStateClass(course, (u.date || '').slice(0,10), u.id)]"
-                @click="$emit('open-session', { unit: u, date: (u.date || '').slice(0,10), id: u.id })"
-              >
-                <span class="cmw__session-seq">{{ sessionNo(u) ? `第${sessionNo(u)}堂` : '—' }}</span>
-                <span class="cmw__session-date">{{ formatSessionChipDate(u) }}</span>
-                <span class="cmw__session-state">{{ u.isProjected ? '預排' : (getSessionStateLabel(course, (u.date || '').slice(0,10), u.id) || '已建立') }}</span>
-                <span v-if="showSessionNotes && isUserNote(u.note)" class="cmw__session-note">{{ u.note }}</span>
-              </button>
+              <div v-for="u in listUnits" :key="sessionRowKey(u)" class="cmw__session-item">
+                <button
+                  type="button"
+                  class="cmw__session-row"
+                  :class="[u.isProjected ? 'is-projected' : 'is-materialized', getSessionStateClass(course, (u.date || '').slice(0,10), u.id)]"
+                  @click="$emit('open-session', { unit: u, date: (u.date || '').slice(0,10), id: u.id })"
+                >
+                  <span class="cmw__session-seq">{{ sessionNo(u) ? `第${sessionNo(u)}堂` : '—' }}</span>
+                  <span class="cmw__session-date">{{ formatSessionChipDate(u) }}</span>
+                  <span class="cmw__session-state">{{ u.isProjected ? '預排' : (getSessionStateLabel(course, (u.date || '').slice(0,10), u.id) || '已建立') }}</span>
+                  <span v-if="showSessionNotes && isUserNote(u.note)" class="cmw__session-note">{{ u.note }}</span>
+                </button>
+                <span v-if="canMoveLesson(u)" class="cmw__session-moves">
+                  <button type="button" class="small ghost" data-testid="lesson-reschedule" :aria-label="`調課 ${formatSessionChipDate(u)}`" @click="$emit('move-lesson', { mode: 'reschedule', unit: u })">調課</button>
+                  <button type="button" class="small ghost" data-testid="lesson-substitute" :aria-label="`代課 ${formatSessionChipDate(u)}`" @click="$emit('move-lesson', { mode: 'substitute', unit: u })">代課</button>
+                </span>
+              </div>
             </div>
             <p v-else class="cmw__hint">尚無可顯示堂次（請確認排課設定）。</p>
           </template>
@@ -407,7 +425,7 @@ export default {
 .cmw__need:first-of-type{border-top:0}
 .cmw__need p,.cmw__hint{margin:2px 0 0;color:var(--ds-ink-mute);font-size:.85rem}
 .cmw__session-list{display:grid;gap:6px}
-.cmw__session-row{display:grid;grid-template-columns:4.5rem minmax(7rem,1fr) auto;gap:8px 12px;align-items:center;text-align:left;width:100%;padding:10px 12px;border:1px solid var(--ds-hairline);border-radius:8px;background:var(--ds-canvas);cursor:pointer;color:inherit}
+.cmw__session-item{display:flex;gap:6px;align-items:stretch}.cmw__session-item .cmw__session-row{flex:1;min-width:0}.cmw__session-moves{display:flex;gap:6px;align-items:center}.cmw__actions{display:flex;align-items:center;gap:8px}.cmw__session-row{display:grid;grid-template-columns:4.5rem minmax(7rem,1fr) auto;gap:8px 12px;align-items:center;text-align:left;width:100%;padding:10px 12px;border:1px solid var(--ds-hairline);border-radius:8px;background:var(--ds-canvas);cursor:pointer;color:inherit}
 .cmw__session-row.is-projected{border-style:dashed}
 .cmw__session-row.is-cancelled{opacity:.75;cursor:default}
 .cmw__session-seq{font-size:.78rem;color:var(--ds-ink-mute)}
@@ -416,5 +434,5 @@ export default {
 .cmw__session-note{grid-column:1/-1;font-size:.8rem;color:var(--ds-ink-mute)}
 .cmw__period-table{overflow-x:auto;margin-top:8px}.cmw__period-table table{width:100%;border-collapse:collapse;font-size:.85rem;font-variant-numeric:tabular-nums}.cmw__period-table th,.cmw__period-table td{text-align:left;padding:8px;border-bottom:1px solid var(--ds-hairline)}.cmw__period-table small{display:block;font-weight:400;color:var(--ds-ink-mute)}
 .cmw__settings{max-width:none}
-@media (max-width:720px){.cmw__panel{width:100vw}.cmw__body{padding:12px}.cmw__session-row{grid-template-columns:1fr auto}}
+@media (max-width:720px){.cmw__panel{width:100vw}.cmw__body{padding:12px}.cmw__session-row{grid-template-columns:1fr auto}.cmw__session-item{flex-wrap:wrap}.cmw__session-item .cmw__session-row{flex:1 1 100%}.cmw__session-moves{margin-left:auto}.cmw__session-moves .small{min-height:44px;min-width:44px}}
 </style>

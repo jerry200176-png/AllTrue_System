@@ -3,6 +3,7 @@
     <div class="modal course-modal session-edit-modal" style="max-width: 520px;">
       <h3 class="modal-title">單堂檢視</h3>
       <p class="modal-desc">{{ form.student_name }} — {{ subjectLabel }}</p>
+      <LessonPickerSelect :picker="lessonPicker" @pick="$emit('pick-lesson', $event)" />
 
       <div class="session-edit-info">
         <div class="se-row"><span class="se-label">本堂日期</span><span>{{ form.session_date }}</span></div>
@@ -167,6 +168,7 @@
 
 <script setup>
 import { computed } from 'vue';
+import LessonPickerSelect from './LessonPickerSelect.vue';
 import { getSubjectLabel } from '../../lib/constants';
 import { MAKEUP_SLOT_QUERY_LABEL } from '../../lib/scheduleDisplay';
 import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
@@ -194,12 +196,13 @@ const props = defineProps({
   teachers: { type: Array, default: () => [] },
   // PRD 9c058f19：啟用代課 V2 卡片式 Modal（由父層處理 open-substitute-v2 事件）
   featureSubstituteV2: { type: Boolean, default: false },
+  lessonPicker: { type: Object, default: null },
 });
 const emit = defineEmits([
   'close', 'set-mode', 'status-change', 'start-retro-leave', 'do-retro-leave',
   'start-reschedule', 'do-reschedule', 'fetch-makeup', 'add-session',
   'start-substitute', 'do-substitute', 'open-substitute-v2',
-  'start-edit-note-time', 'do-edit-note-time',
+  'start-edit-note-time', 'do-edit-note-time', 'pick-lesson',
 ]);
 
 const makeupQueryLabel = MAKEUP_SLOT_QUERY_LABEL;

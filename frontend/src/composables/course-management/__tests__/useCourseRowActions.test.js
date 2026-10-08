@@ -9,6 +9,7 @@ const bag = (over = {}) => {
     canQuickAddSession: () => true, quickAddDisabledReason: () => '', canCloseCourse: () => true,
     purchaseActionIsRenew: () => false, purchaseActionLabel: () => '加購堂數', isPackageMember: () => false,
     isPaymentNoticeAvailable: () => false, featureSubstituteV2: false, isDetailsOpen: () => false,
+    upcomingLessonOptions: () => [], openSessionEdit: vi.fn(async () => {}), setLessonPicker: vi.fn(), getLessonPicker: () => null,
     isSessionEditOpen: () => true, requestDelete: fn(), openCourseTransfer: fn(),
     openSessionEditFromAction: vi.fn(async () => {}), startSessionReschedule: fn(), startSubstitute: fn(), openSubstituteV2FromEdit: fn(),
     editCourse: fn(), toggleDatesAndMakeups: fn(), requestCoursePause: fn(), closeCourseInPlace: fn(), openManualSessionModal: fn(),
@@ -85,5 +86,45 @@ describe('useCourseRowActions', () => {
     const closed = bag({ isSessionEditOpen: () => false });
     await useCourseRowActions(closed).runRowAction(course, 'reschedule');
     expect(closed.startSessionReschedule).not.toHaveBeenCalled();
+  });
+
+  const opts = [1, 2, 3].map((n) => ({ key: `k${n}`, date: `2026-10-0${n}`, id: n, unit: { id: n }, label: `10/0${n}` }));
+
+  it('⋯ → 調課 opens the next lesson with the next-lessons picker; one lesson means no picker', async () => {
+    const d = bag({ upcomingLessonOptions: () => opts });
+    await useCourseRowActions(d).runRowAction(course, 'reschedule');
+    expect(d.openSessionEdit).toHaveBeenCalledWith(course, '2026-10-01', 1, { id: 1 });
+    expect(d.setLessonPicker).toHaveBeenCalledWith({ course, mode: 'reschedule', options: opts, key: 'k1' });
+    expect(d.startSessionReschedule).toHaveBeenCalledTimes(1);
+    const one = bag({ upcomingLessonOptions: () => opts.slice(0, 1) });
+    await useCourseRowActions(one).runRowAction(course, 'substitute');
+    expect(one.setLessonPicker).toHaveBeenCalledWith(null);
+  });
+
+  it('a lesson row opens exactly that lesson in the mode, without a picker', async () => {
+    const d = bag();
+    await useCourseRowActions(d).moveLesson(course, 'substitute', { id: 9, date: '2026-10-15T00:00:00' });
+    expect(d.setLessonPicker).toHaveBeenCalledWith(null);
+    expect(d.openSessionEdit).toHaveBeenCalledWith(course, '2026-10-15', 9, { id: 9, date: '2026-10-15T00:00:00' });
+    expect(d.startSubstitute).toHaveBeenCalledTimes(1);
+  });
+
+  it('changing the picker reopens the chosen lesson in the same mode', async () => {
+    const picker = { course, mode: 'reschedule', options: opts, key: 'k1' };
+    const d = bag({ getLessonPicker: () => picker });
+    await useCourseRowActions(d).pickLesson('k3');
+    expect(d.setLessonPicker).toHaveBeenCalledWith({ ...picker, key: 'k3' });
+    expect(d.openSessionEdit).toHaveBeenCalledWith(course, '2026-10-03', 3, { id: 3 });
+    expect(d.startSessionReschedule).toHaveBeenCalledTimes(1);
+    await useCourseRowActions(d).pickLesson('nope');
+    expect(d.openSessionEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it('the drawer model never offers 管理課程 or 詳情', () => {
+    const m = useCourseRowActions(bag()).rowModel(course, { fallback: 'manage', details: false });
+    expect(m.primary.id).toBe('manage');
+    const renew = useCourseRowActions(bag({ purchaseActionIsRenew: () => true })).rowModel(course, { fallback: 'manage', details: false });
+    expect(renew.groups[0].items.map((i) => i.id)).toContain('manage');
+    expect(renew.groups.flatMap((g) => g.items).map((i) => i.id)).not.toContain('details');
   });
 });

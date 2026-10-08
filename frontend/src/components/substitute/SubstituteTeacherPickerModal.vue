@@ -7,6 +7,7 @@
       </header>
 
       <section class="stp-meta">
+        <slot name="meta-extra" />
         <div class="stp-meta__row">
           <span class="stp-meta__label">學生</span>
           <span class="stp-meta__value">{{ context.student_name || '—' }}</span>
