@@ -715,6 +715,7 @@ class ClassSessionController extends Controller
             'session_date'     => 'required|date',
             'start_time'       => 'nullable|date_format:H:i',
             'branch_id'        => 'nullable|integer|min:1',
+            'cancel'           => 'nullable|boolean',
         ]);
 
         $role = $request->attributes->get('auth_role');
@@ -734,8 +735,19 @@ class ClassSessionController extends Controller
             ], 422);
         }
 
+        // in-app #340: a paused course (Stop=1, no closed_reason, not settled early) may still have a 預排
+        // date cancelled one at a time. That writes a cancelled row only: no scheduled row, no deduction,
+        // no billing field. Everything else on a stopped course stays refused.
+        $cancelOnly = (bool) ($data['cancel'] ?? false);
+        if ($cancelOnly && (int) ($studentClass->Stop ?? 0) !== 1) {
+            // Active courses cancel through the normal edit flow (leave/tail side effects live there).
+            return response()->json(['message' => '只有暫停中的課程可以直接取消預排日期'], 422);
+        }
         if ((int) ($studentClass->Stop ?? 0) === 1) {
-            return response()->json(['message' => '課程已結案或停用，不能新增堂次'], 422);
+            $paused = trim((string) ($studentClass->closed_reason ?? '')) === '' && !$studentClass->isUsageSettlementLocked();
+            if (!($cancelOnly && $paused)) {
+                return response()->json(['message' => '課程已結案或停用，不能新增堂次'], 422);
+            }
         }
 
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
@@ -785,8 +797,8 @@ class ClassSessionController extends Controller
             'SessionDate'          => $sessionDate,
             'StartTime'            => $slot['start_time'],
             'EndTime'              => $slot['end_time'],
-            'Status'               => 'scheduled',
-            'Note'                 => 'projected-monthly-materialized',
+            'Status'               => $cancelOnly ? 'cancelled' : 'scheduled',
+            'Note'                 => $cancelOnly ? 'projected-paused-cancelled' : 'projected-monthly-materialized',
             // A persisted schedule exception is a one-off occurrence even
             // when its stored slot shares the contract's clock time.
             'IsContractException'  => $scheduledException !== null ? 1 : 0,
@@ -794,8 +806,13 @@ class ClassSessionController extends Controller
         $created = $result['created'];
         $session = $result['session'];
 
+        if ($cancelOnly && !$created) {
+            // A real row already holds this slot (maybe attended): never touch it from the projected-cancel path.
+            return response()->json(['message' => '這個日期已有正式堂次，請重新整理後在該堂次上操作', 'code' => 'SESSION_ALREADY_EXISTS'], 409);
+        }
+
         return response()->json([
-            'message' => $created ? '已建立可編輯堂次' : '已取得既有堂次',
+            'message' => $cancelOnly ? '已取消這一堂預排' : ($created ? '已建立可編輯堂次' : '已取得既有堂次'),
             'created' => $created,
             'session' => $this->sessionPayload($session),
         ]);

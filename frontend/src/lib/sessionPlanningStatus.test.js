@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   buildSessionPlanningStatus,
   canMaterializeProjectedSession,
+  canCancelPausedProjectedSession,
   isSessionModeCourse,
   planningStatusToLegacyWarning,
 } from './sessionPlanningStatus.js';
@@ -20,6 +21,12 @@ function assertNoPackagePoolCopy(status, forbiddenDigits = []) {
 
 // capability truth table — ScheduleMode=date only
 assert.equal(canMaterializeProjectedSession({ ScheduleMode: 'date', payment_type: 'monthly' }), true);
+// in-app #340: only a paused (Stop=1, no closed_reason) monthly course may cancel a 預排 date.
+assert.equal(canCancelPausedProjectedSession({ ScheduleMode: 'date', Stop: 1 }), true);
+assert.equal(canCancelPausedProjectedSession({ ScheduleMode: 'date', Stop: 1, closed_reason: 'completed' }), false);
+assert.equal(canCancelPausedProjectedSession({ ScheduleMode: 'date', Stop: 0 }), false);
+assert.equal(canCancelPausedProjectedSession({ ScheduleMode: 'count', Stop: 1 }), false);
+assert.equal(canCancelPausedProjectedSession({ ScheduleMode: 'date', Stop: 1, scheduling_policy: 'manual_occurrence' }), false);
 assert.equal(canMaterializeProjectedSession({ payment_type: 'monthly', ScheduleMode: 'date' }), true);
 assert.equal(canMaterializeProjectedSession({ payment_type: 'monthly', ScheduleMode: 'count' }), false);
 assert.equal(canMaterializeProjectedSession({ payment_type: 'monthly' }), false);
