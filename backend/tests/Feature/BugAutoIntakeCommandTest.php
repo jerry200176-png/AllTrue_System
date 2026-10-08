@@ -40,6 +40,9 @@ class BugAutoIntakeCommandTest extends TestCase
         $this->assertNotContains($fresh->id, $ids);
         $this->assertNotContains($triaged->id, $ids);
         $this->assertStringNotContainsString('王小明', $out);
+        $first = json_decode(trim($out), true)['candidates'][0];
+        $this->assertSame('calendar', $first['family'], 'page_key calendar -> family name only');
+        $this->assertSame(['bug_id', 'campus_id', 'severity', 'created_at', 'family'], array_keys($first));
     }
 
     public function test_ack_posts_once_keeps_status_new_and_writes_no_status_log(): void
