@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-contract-excel-header
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: major
+    title: 合約卡片像 Excel 卡一樣好讀
+    summary: 卡片最上面寫繳費日與金額，旁邊大大的剩餘堂數。
+    items:
+      - category: improved
+        text: 每張合約最上面是「繳費日 日期 金額」，沒繳過會寫「還沒繳費」。
+      - category: improved
+        text: 堂數制顯示大大的剩餘堂數；月結課在每個月標題寫該月應繳與已收。
+      - category: improved
+        text: 每一堂只標「第幾堂」，不再逐堂倒數，避免堂長不同時算錯。
