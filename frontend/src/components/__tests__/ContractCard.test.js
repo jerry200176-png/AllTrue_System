@@ -40,6 +40,41 @@ describe('ContractCard', () => {
     expect(w.text()).not.toMatch(/課程 0|帳單-|收據-/);
   });
 
+  it('U1 numbers count-mode lessons with a countdown and skips cancelled/leave', async () => {
+    authedFetch.mockResolvedValueOnce(respond(COVERAGE));
+    const w = mount(ContractCard, { props: { course: { id: 9 } } });
+    await flushPromises();
+    // 1 held + 1 upcoming + 2 unscheduled = 4 counted; leave gets no number.
+    expect(w.findAll('[data-testid="contract-session-no"]').map((n) => n.text())).toEqual(['第 1 堂・剩 3 堂', '第 2 堂・剩 2 堂']);
+    expect(w.findAll('[data-testid="contract-session"]')[1].text()).not.toContain('第');
+  });
+
+  it('U2 monthly: month heading shows count and paid state; U1 numbers within month', async () => {
+    authedFetch.mockResolvedValueOnce(respond({
+      ...COVERAGE, schedule_mode: 'date', unscheduled_count: 0,
+      sessions: [
+        { class_session_id: 1, date: '2026-09-01', status: 'attended', payment: 'paid' },
+        { class_session_id: 2, date: '2026-09-08', status: 'cancelled', payment: 'paid' },
+        { class_session_id: 3, date: '2026-09-15', status: 'attended', payment: 'paid' },
+        { class_session_id: 4, date: '2026-10-06', status: 'scheduled', payment: 'unpaid' },
+      ],
+    }));
+    const w = mount(ContractCard, { props: { course: { id: 9 } } });
+    await flushPromises();
+    expect(w.findAll('[data-testid="contract-month-summary"]').map((n) => n.text())).toEqual(['2 堂・已收', '1 堂・未繳']);
+    expect(w.findAll('[data-testid="contract-session-no"]').map((n) => n.text())).toEqual(['本月第 1 堂', '本月第 2 堂', '本月第 1 堂']);
+  });
+
+  it('U3 shows the most recent payment in the header, nothing when absent', async () => {
+    authedFetch.mockResolvedValue(respond(COVERAGE));
+    const w = mount(ContractCard, { props: { course: { id: 9 }, lastPayment: { date: '2026-10-05', amount: 6600 } } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-last-payment"]').text()).toBe('10/5 繳 $6,600');
+    const w2 = mount(ContractCard, { props: { course: { id: 9 } } });
+    await flushPromises();
+    expect(w2.find('[data-testid="contract-last-payment"]').exists()).toBe(false);
+  });
+
   it('saves a memo-only PUT and shows the new memo', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE)).mockResolvedValueOnce(respond({}));
     const w = mount(ContractCard, { props: { course: { id: 9 } } });

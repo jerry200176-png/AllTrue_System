@@ -17,6 +17,11 @@ from pathlib import Path
 # Title "in-app #N" or body SourceRef only; free-text body mentions ("related to in-app #173") are not ownership.
 TITLE_REF = re.compile(r"in-app\s*#(\d+)(?:\s*/\s*#(\d+))*", re.I)
 SOURCE_REF = re.compile(r"alltrue:bug_report:(\d+)")
+# Ownership = every SourceRef on a line that STARTS with a SourceRef declaration ("SourceRef: …", "## SourceRef",
+# "1. **SourceRef:** `…`"). Cross-references ("Related earlier SourceRef: …", "Cross-SourceRef update for …") are not
+# ownership (F14 gap 2026-10-07). A missed label-first declaration only closes the GitHub issue early; the in-app report
+# is untouched and reconcile flags it as issue_closed_inapp_open.
+OWNED_LINE = re.compile(r"^[ \t>*_#.)0-9`-]*SourceRef\b.*$", re.M)
 SENTRY_SPAN = re.compile(r"\*\*Offending Spans\*\*\s*\|\s*([^|\n]+)")
 # Logged suggestions (F12): the issue is the backlog, so it stays open after the in-app report closes.
 LOGGED_LABEL = "in-app:logged"
@@ -29,7 +34,7 @@ def inapp_ids(issue):
     ids = {int(x) for x in re.findall(r"#(\d+)", " ".join(m.group(0) for m in TITLE_REF.finditer(title)))}
     # SourceRef may live in the body or in a comment (shared issues get one comment per report).
     texts = [issue.get("body") or ""] + [c.get("body") or "" for c in issue.get("comments") or []]
-    ids |= {int(x) for t in texts for x in SOURCE_REF.findall(t)}
+    ids |= {int(x) for t in texts for line in OWNED_LINE.findall(t) for x in SOURCE_REF.findall(line)}
     return sorted(ids)
 
 

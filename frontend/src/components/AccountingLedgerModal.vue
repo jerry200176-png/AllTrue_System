@@ -85,6 +85,7 @@
                 :course="c"
                 :outstanding="owedFor(c.id)"
                 :pending-report="pendingReportFor(c.id)"
+                :last-payment="lastPaymentFor(c.id)"
                 @record="openEntry"
                 @changed="onPanelChanged"
               />
@@ -472,6 +473,14 @@ const ledgerExceptions = computed(() => {
 const owedFor = (id) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(id))
   .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
+const lastPaymentFor = (id) => {
+  const pays = (payload.value?.invoices || [])
+    .filter((inv) => Number(inv.student_class_id) === Number(id))
+    .flatMap((inv) => inv.payments || [])
+    .filter((p) => !p.is_void && Number(p.amount) > 0 && p.paid_at);
+  const last = pays.sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)) || Number(b.id) - Number(a.id))[0];
+  return last ? { date: String(last.paid_at).slice(0, 10), amount: Number(last.amount) } : null;
+};
 const pendingReportFor = (id) => {
   const r = (payload.value?.receipts || []).find((x) => Number(x.student_class_id) === Number(id) && x.status === 'pending');
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0) } : null;

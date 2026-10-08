@@ -375,6 +375,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示；**反面**：堂數制仍有 `RemainingSessions` 時不得把請假順延尾堂當幽靈取消 | #151、#427、#99、**#1839**、行290、§R32、§R59、**§R109** | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留；**count + RemainingSessions>0 禁止 settled/completed 除非 `forfeit_remaining`** |
 | **F2 月結續期語意** | 續期未依**當期實際堂數**重算金額/堂次；收據未綁 `billing_period` | #149、§R22、§R26、#554、#594 | 續期＝新一期+結算舊期；收據金額=當期堂數×費率、含結算月 |
 | **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23、§R64（週日 slot 全滅→0 元月結） | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end；weekday 比對先 `isoWeekday()` 正規化 |
+| **F24 提到就算擁有**（2026-10-07） | Phase-C 的 close-issue 與 reconcile 把 issue 內文／留言中**任何** `alltrue:bug_report:N` 都當成「這張 issue 也追蹤 N」；交叉引用（Related earlier SourceRef、Cross-SourceRef）讓已解決的回報 issue 永遠被「還有未解決的 in-app」擋住不關 | #3084 #3148 #3204 #3227 #3228 #3229（in-app 已 resolved、issue 仍開） | 擁有＝標題 `in-app #N` 或「行首」`SourceRef: alltrue:bug_report:N`；兩處共用同一規則，`test_inapp_issue_reconcile.py` 與 `bug-writeback-workflow.test.mjs` 守住 |
 | **F20 只有綁定、沒有解除**（2026-10-07） | 學生／老師 RFID 欄位唯讀、只有「綁定／重新綁定」，沒有解除；`bindCard` 的 422 還寫「請先解除原有綁定」但沒有入口 → 遺失或換人的卡無法釋出 | in-app #381 | 學生 `DELETE students/{id}/bind-card`（共用 `denyOutsideCampus`）＋老師分校卡「解除綁定」（存檔寫 NULL）；`RfidUniqueConstraintTest` 守解除後可再綁給別人、跨校 403，`SecurityHardeningTest` 守老師卡清除。新增任何「綁定」功能要同時給「解除」 |
 | **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆；把方案池總堂數當成員課程應物化列數 → 假「不一致」警告；堂數制 projected chip 誤呼叫 ensure-projected；把方案池剩餘數當成員可排能力 | #147、#553、#430、#448、#440、§R21、§R24、#1465；架構後續見 **ADR-006**（Commitment→materialize→pool coverage；非餘額猜堂） | 池／成員排課／已用分欄；package under→info 且**成員課程 UI 不顯示方案池剩餘**；無 allocation aggregate 前不推導尚可排／未排 N；count projected 不呼叫 ensure-projected；物化 affordance 僅 `ScheduleMode=date` |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
@@ -893,6 +894,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 
 ---
+
+### R141. 無人值守的結案必須固定視窗、限量、鎖內重查，並保留回報者重開出口（in-app 閉環 2A，2026-10-08）
+
+- **現象**：逾時結案原本只能人工逐筆審核，沒人跑就永遠堆著（F11）；改成排程後，若沿用人工參數或沒有上限，一個資格判斷的錯誤會一次關掉一大批單。
+- **強制規則**：`--auto` 視窗固定 14 天、只處理「已修好」佇列、不接受 `--days`／`--reviewed-ids`；單次資格筆數超過上限就整批不動並失敗。寫入在列鎖內重查資格，與白話回覆同一交易，重跑不重複。正式站指令不支援 `--auto` 時 workflow 失敗而不是猜測。回報者留言或按「問題仍存在」必須仍能重開。
+- **測試必補**：`BugReporterTimeoutTest` 的 auto 三個案例（14 天視窗／回覆排除／冪等／重開、旗標誤用與超量不動、reporter-verify 重開端對端）與 `scripts/ci/bug-reporter-timeout-workflow.test.mjs` 的 auto 契約。
 
 ### R66. session-dates projected 不可因排除 leave materialized 而在同日合成幽靈時段
 
