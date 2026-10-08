@@ -7,11 +7,9 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * Exact-case POP strategy (Founder 2026-10-08, in-app #369 / GitHub #3356): the paid monthly Invoice 1997 of
- * StudentClass 4099 already totals 7500 (5 attended lessons x 1500) but three side values still say 4 lessons / 6000.
- * This sets InvoiceItem.Amount, Invoice.billing_snapshot and StudentClass.Charge to the attended-lesson truth.
- * Invoice total / paid amount / status, Payment rows and StudentClass.Paid are never written. Charge = Rate x SessionCount
- * afterwards, so the G-009 preservedDelta (Charge - Rate x count) is 0 and no fake manual adjustment survives.
+ * Exact-case POP (in-app #369, GitHub #3356): align InvoiceItem 101, Invoice 1997 billing_snapshot and StudentClass 4099 Charge
+ * with the 5 attended lessons (7500). Invoice total/paid/status, Payments and StudentClass.Paid are never written; afterwards
+ * Charge = Rate x SessionCount, so the G-009 preservedDelta is 0.
  */
 final class Invoice1997StaleValuesStrategy
 {
@@ -20,7 +18,6 @@ final class Invoice1997StaleValuesStrategy
     /** @var array<string,mixed>|null test-only override */
     private static ?array $override = null;
 
-    /** @param array<string,mixed>|null $case */
     public static function useCaseForTesting(?array $case): void
     {
         self::$override = $case;
@@ -29,7 +26,6 @@ final class Invoice1997StaleValuesStrategy
     /** @return array<string,mixed> */
     public static function expected(): array
     {
-        // Read-only Pi SELECT 2026-10-08 (GitHub #3356).
         return self::$override ?? [
             'invoice_id' => 1997, 'item_id' => 101, 'course_id' => 4099, 'student_id' => 172,
             'rate' => 1500, 'session_count' => 5, 'old_amount' => 6000, 'new_amount' => 7500,
@@ -57,7 +53,6 @@ final class Invoice1997StaleValuesStrategy
 
         return ['ok' => $errors === [], 'errors' => $errors, 'state' => $state,
             'digest' => hash('sha256', json_encode([$state, $this->snapshot($live)], JSON_THROW_ON_ERROR)),
-            'counts' => ['invoice_items' => 1, 'invoices_snapshot' => 1, 'student_classes' => 1],
             'manifest' => ['invoice_id' => $e['invoice_id'], 'invoice_item_id' => $e['item_id'], 'student_class_id' => $e['course_id'],
                 'item_amount' => [$live['item_amount'], $e['new_amount']], 'course_charge' => [$live['charge'], $e['new_amount']],
                 'snapshot_charge_sessions' => [[$live['snapshot']['charge'] ?? null, $live['snapshot']['period_sessions'] ?? null],
@@ -69,7 +64,6 @@ final class Invoice1997StaleValuesStrategy
     public function execute(array $plan, array $context): array
     {
         if (($plan['ok'] ?? false) && ($plan['state'] ?? null) === 'after') {
-            // Retry after the execution record failed to persist: idempotent. Rebuild the original values for rollback.
             $snapshot = $plan['snapshot'] ?? [];
             $e = self::expected();
             $snapshot['item_amount'] = $e['old_amount'];
@@ -112,7 +106,6 @@ final class Invoice1997StaleValuesStrategy
         $live = $this->inspect(false);
         $e = self::expected();
         $errors = [...$errors, ...$this->afterErrors($live)];
-        // G-009: Charge must equal Rate x SessionCount, i.e. no preserved manual delta remains.
         if ($live['charge'] - $live['rate'] * $live['session_count'] !== 0) {
             $errors[] = 'preserved_delta_nonzero';
         }
@@ -212,7 +205,6 @@ final class Invoice1997StaleValuesStrategy
         ];
     }
 
-    /** @param array<string,mixed> $l @return list<string> */
     private function commonErrors(array $l): array
     {
         $e = self::expected();
@@ -228,7 +220,6 @@ final class Invoice1997StaleValuesStrategy
         return $errors;
     }
 
-    /** @param array<string,mixed> $l @return list<string> */
     private function beforeErrors(array $l): array
     {
         $e = self::expected();
@@ -241,7 +232,6 @@ final class Invoice1997StaleValuesStrategy
         return $errors;
     }
 
-    /** @param array<string,mixed> $l @return list<string> */
     private function afterErrors(array $l): array
     {
         $e = self::expected();
@@ -254,7 +244,6 @@ final class Invoice1997StaleValuesStrategy
         return $errors;
     }
 
-    /** @param array<string,mixed> $l */
     private function snapshot(array $l): array
     {
         return array_intersect_key($l, array_flip(['item_amount', 'charge', 'snapshot', 'total', 'paid', 'status', 'payment_ids', 'payments_sum']));

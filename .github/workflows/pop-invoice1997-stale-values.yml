@@ -1,7 +1,5 @@
 name: Founder POP invoice 1997 stale values (in-app #369)
 # Case adapter for POP operation invoice1997-stale-values-20261008 (Founder decision 2026-10-08, GitHub #3797 / #3356).
-# Execution stays on the Pi scheduler; the super_admin Bearer session is read on the Pi and never leaves it.
-# dry-run is read-only and prints ids, counts and the sha256 digest; approve waits for Pi-local execute + verify.
 on:
   workflow_dispatch:
     inputs:

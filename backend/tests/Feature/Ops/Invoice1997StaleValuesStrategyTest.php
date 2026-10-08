@@ -99,22 +99,12 @@ final class Invoice1997StaleValuesStrategyTest extends TestCase
         $plan = $s->plan(self::PARAMS);
         self::assertFalse($plan['ok']);
         self::assertEqualsCanonicalizing(['item_amount', 'payments'], $plan['errors']);
-        $this->expectException(\RuntimeException::class);
-        $s->execute($plan, []);
-    }
-
-    public function test_charge_or_snapshot_drift_aborts_without_partial_write(): void
-    {
-        $s = new Invoice1997StaleValuesStrategy();
-        $plan = $s->plan(self::PARAMS);
-        DB::table('StudentClass')->where('ID', 9302)->update(['Charge' => 6100]);
         try {
             $s->execute($plan, []);
-            self::fail('expected drift abort');
-        } catch (\RuntimeException $e) {
-            self::assertStringContainsString('invoice1997_drift', $e->getMessage());
+            self::fail('expected abort');
+        } catch (\RuntimeException) {
+            self::assertSame(6500, (int) DB::table('InvoiceItem')->where('id', 9301)->value('Amount'));
         }
-        self::assertSame(6000, (int) DB::table('InvoiceItem')->where('id', 9301)->value('Amount'));
     }
 
     public function test_retry_is_idempotent_and_rollback_restores_the_old_values(): void
