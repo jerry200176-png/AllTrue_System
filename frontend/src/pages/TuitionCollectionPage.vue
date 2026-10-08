@@ -1088,6 +1088,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { useToast } from '../composables/useToast';
 import { authedFetch } from '../lib/authedFetch.js';
+import * as paymentActions from '../lib/paymentActions.js';
 import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import MonthlyDraftsPanel from '../components/tuition/MonthlyDraftsPanel.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
@@ -2153,16 +2154,8 @@ async function confirmReport(row) {
   }
   actionLoading.value = row.id;
   try {
-    const token = getToken();
-    const resp = await authedFetch(`/api/v1/payment-reports/${row.latest_payment_report_id}/confirm`, {
-      method: 'PUT',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    }, token);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.message || `操作失敗（${resp.status}）`);
-    }
+    const res = await paymentActions.confirmReport(row.latest_payment_report_id);
+    if (!res.ok) throw new Error(res.message);
     showToast(`已確認，狀態改為「${TUITION_STATUS_CONFIG.paid.label}」`);
     if (row.latest_payment_report_id) {
       receiptReportId.value = row.latest_payment_report_id;
@@ -2189,16 +2182,8 @@ async function rejectReport(row) {
 
   actionLoading.value = row.id;
   try {
-    const token = getToken();
-    const resp = await authedFetch(`/api/v1/payment-reports/${row.latest_payment_report_id}/reject`, {
-      method: 'PUT',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rejection_note: reason.trim() }),
-    }, token);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.message || `操作失敗（${resp.status}）`);
-    }
+    const res = await paymentActions.rejectReport(row.latest_payment_report_id, reason.trim());
+    if (!res.ok) throw new Error(res.message);
     showToast('已退回此回報', 'warning');
     loadAlerts();
   } catch (e) {
@@ -2274,22 +2259,14 @@ async function confirmVoid() {
 
   voidLoading.value = true;
   try {
-    const token = getToken();
     const reportId = Number(voidTarget.value.report_id || 0) || await findConfirmedReportForClass(voidTarget.value);
     if (!reportId) {
       showToast('找不到此課程的已確認核帳紀錄', 'error');
       return;
     }
 
-    const resp = await authedFetch(`/api/v1/payment-reports/${reportId}/void`, {
-      method: 'PUT',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ void_reason: voidReason.value.trim() }),
-    }, token);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.message || `撤銷失敗（${resp.status}）`);
-    }
+    const res = await paymentActions.voidReport(reportId, voidReason.value.trim());
+    if (!res.ok) throw new Error(res.message);
     voidDialogOpen.value = false;
     showToast('已撤銷收款，狀態已重置', 'warning');
     await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses()]);
