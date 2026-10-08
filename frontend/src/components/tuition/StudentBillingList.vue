@@ -1,5 +1,15 @@
 <template>
   <section class="sbl" aria-label="學生帳務清單">
+    <AtInlineAlert v-if="error" tone="danger" title="帳務資料載入失敗" data-testid="sbl-error">
+      {{ error }}。未載入前不顯示金額，避免誤以為都已繳清。
+      <template #action>
+        <AtButton variant="secondary" size="sm" shape="rect" :loading="loading" data-testid="sbl-retry" @click="$emit('retry')">重試</AtButton>
+      </template>
+    </AtInlineAlert>
+    <div v-else-if="pending" class="sbl__loading" data-testid="sbl-loading" role="status" aria-label="載入帳務資料中">
+      <AtSkeleton :rows="6" height="28px" />
+    </div>
+    <template v-if="!pending && !(error && !alertRows.length)">
     <div class="sbl__summary" data-testid="sbl-summary">
       <span>到今天未收 <strong>{{ money(totalNow) }}</strong></span>
       <span>未繳學生 <strong>{{ owingCount }}</strong> 位</span>
@@ -34,19 +44,27 @@
         </button>
       </li>
     </ul>
+    </template>
   </section>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue';
+import AtButton from '../design-system/AtButton.vue';
+import AtInlineAlert from '../design-system/AtInlineAlert.vue';
+import AtSkeleton from '../design-system/AtSkeleton.vue';
 import { buildStudentBillingRows, STUDENT_FILTERS } from '../../lib/studentBillingRows.js';
 
 const props = defineProps({
   alertRows: { type: Array, default: () => [] },
   students: { type: Array, default: () => [] },
   today: { type: String, default: undefined },
+  loading: { type: Boolean, default: false },
+  error: { type: String, default: '' },
 });
-defineEmits(['open']);
+defineEmits(['open', 'retry']);
+// No alert data yet: zeros would read as "all paid".
+const pending = computed(() => props.loading && !props.alertRows.length && !props.error);
 
 const query = ref('');
 const filter = ref('all');
