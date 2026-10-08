@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-student-list-columns
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 學生清單改成欄位並可排序
+    summary: 清單分成欄位，手機改成一張張卡片，也可以換排序。
+    items:
+      - category: improved
+        text: 電腦版分成「學生、到今天未繳、逾期、狀態、最近繳費」欄位，沒有未繳就顯示「—」。
+      - category: added
+        text: 新增「排序」：未繳金額、逾期天數或姓名。
+      - category: improved
+        text: 手機版每位學生一張卡片，不用左右滑動，篩選鈕可橫向滑動。

@@ -72,4 +72,33 @@ describe('StudentBillingList', () => {
     expect(w.vm.neighbor(1, 1)).toBeNull();
     expect(w.vm.neighbor(99, 1)).toBeNull();
   });
+
+  it('sorts client-side by owed (default), overdue days or name', async () => {
+    const w = mount(StudentBillingList, { props: { alertRows: ROWS, students: [{ id: 4, name: '丁' }], today: '2026-10-07' } });
+    const ids = () => w.findAll('[data-testid^="sbl-row-"]').map((r) => r.attributes('data-testid').replace('sbl-row-', ''));
+    expect(ids()).toEqual(['3', '1', '2', '4']);
+    await w.find('[data-testid="sbl-sort"]').setValue('overdue');
+    expect(ids()[0]).toBe('1');
+    await w.find('[data-testid="sbl-sort"]').setValue('name');
+    expect(ids()).toEqual(['4', '3', '1', '2'].sort((a, b) => ({ 1: '甲', 2: '乙', 3: '丙', 4: '丁' }[a]).localeCompare(({ 1: '甲', 2: '乙', 3: '丙', 4: '丁' }[b]), 'zh-Hant')));
+  });
+
+  it('shows a dash instead of 目前沒有未繳, plain-word lozenges, and the all-clear line', async () => {
+    const w = mount(StudentBillingList, { props: { alertRows: [], students: [{ id: 4, name: '丁' }], today: '2026-10-07' } });
+    const row = w.find('[data-testid="sbl-row-4"]');
+    expect(row.text()).not.toContain('目前沒有未繳');
+    expect(row.find('.sbl__now strong').text()).toBe('—');
+    expect(row.find('[data-testid="at-badge"]').text()).toContain('已收');
+    expect(w.find('[data-testid="sbl-clear"]').text()).toBe('本校區目前沒有到期未繳。');
+    const w2 = mount(StudentBillingList, { props: { alertRows: ROWS, today: '2026-10-07' } });
+    expect(w2.find('[data-testid="sbl-row-2"]').text()).toContain('家長說繳了，等你確認');
+    expect(w2.find('[data-testid="sbl-row-1"]').text()).toContain('未繳');
+    expect(w2.find('[data-testid="sbl-clear"]').exists()).toBe(false);
+  });
+
+  it('explains an empty search result', async () => {
+    const w = mount(StudentBillingList, { props: { alertRows: ROWS, today: '2026-10-07' } });
+    await w.find('[data-testid="sbl-search"]').setValue('不存在');
+    expect(w.find('[data-testid="sbl-empty"]').text()).toContain('找不到符合「不存在」的學生。請調整搜尋或篩選。');
+  });
 });
