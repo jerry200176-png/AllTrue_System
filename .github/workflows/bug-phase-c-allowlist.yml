@@ -887,6 +887,11 @@ jobs:
               "rev" => "f66b526fefd0ec5b4aaea17e165c6b08448214e7",
               "deploy" => "37512531504",
             ],
+            342 => [
+              "reply" => "已上線：行事曆上的每一堂課現在會用圖示加文字標示狀態（已上、請假、取消、還沒上、漏點名），不再只看到「排課」；點開課堂視窗按「看全部堂次」，會直接跳到該合約完整的堂次清單。沒有更動任何課堂或帳務資料。這次只做工程測試與正式版本檢查，沒有在正式環境實際操作畫面。仍等待您實際確認。請重新整理後在行事曆點一堂課看看；順利的話請按「確認已修好」；若仍有問題請按「問題仍存在」並簡述分校與操作步驟（請勿貼姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3260",
+              "rev" => "6503f5048067b29d5403547afc79e693a52c2cee",
+              "deploy" => "37728161174",
+            ],
           ];
           // One authorized target per run. A request for an unknown ID or an
           // unshipped revision fails before any comment/status mutation.

@@ -489,6 +489,17 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '356 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '356 must give a no-names reopen path');
   }
+  // Scoped Phase-C for in-app 342 (#3260), 2026-10-08 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            342 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 342 must exist');
+    assert.ok(entry[1].includes('"rev" => "6503f5048067b29d5403547afc79e693a52c2cee"'), '342 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "37728161174"'), '342 deploy binding');
+    assert.ok(entry[1].includes('issues/3260'), '342 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '342 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '342 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '342 must give a no-names reopen path');
+  }
   // Scoped Phase-C for in-app 381 (#3799), 2026-10-08 (engineering tests + production version check only).
   {
     const entry = phaseCSource.match(/\n            381 => \[([\s\S]*?)\n            \],/);

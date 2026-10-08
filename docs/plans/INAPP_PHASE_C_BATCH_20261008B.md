@@ -1,4 +1,4 @@
-# Phase-C batch B 2026-10-08 (in-app 386, 385, 340, 379, 376, 360, 361, 356)
+# Phase-C batch B 2026-10-08 (in-app 386, 385, 340, 379, 376, 360, 361, 356, 342)
 
 | In-app | Issue | Fix PR | rev (merge) | Deploy run |
 |---|---|---|---|---|
@@ -10,6 +10,7 @@
 | 360 | #3207 | #3734 | `8812d63b18556627e40b1c57207fe3ef6b34fd2d` | 37605663527 |
 | 361 | #3203 | #3775 | `3f21fbd597ee664d6a90485fb7f80ae8fecb08c0` | 37630503805 |
 | 356 | #3208 | #3497 | `f66b526fefd0ec5b4aaea17e165c6b08448214e7` | 37512531504 |
+| 342 | #3260 | #3782 | `6503f5048067b29d5403547afc79e693a52c2cee` | 37728161174 |
 
 All merges are ancestors of production 66328ec93 (read-only checked). In-app status was `triaged` (376: `new`) when checked read-only on the server. Dispatch is by the #3754 auto-dispatch; verify each in-app status is `resolved` (F22).
 Recovery: the reopen path; if evidence is wrong, resolved -> in_progress plus a correction comment and an issue reopen.
