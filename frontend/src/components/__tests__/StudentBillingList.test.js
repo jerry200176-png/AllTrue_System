@@ -41,4 +41,26 @@ describe('StudentBillingList', () => {
     await w.find('[data-testid="sbl-row-3"]').trigger('click');
     expect(w.emitted('open')[0][0]).toMatchObject({ student_id: 3, first_class_id: 31 });
   });
+
+  it('shows a skeleton, not zeros, while alerts load', () => {
+    const w = mount(StudentBillingList, { props: { alertRows: [], students: [{ id: 4, name: '丁' }], loading: true } });
+    expect(w.find('[data-testid="sbl-loading"]').exists()).toBe(true);
+    expect(w.text()).not.toContain('沒有符合的學生');
+    expect(w.find('[data-testid="sbl-summary"]').exists()).toBe(false);
+  });
+
+  it('shows an error with retry instead of zeros when alerts failed', async () => {
+    const w = mount(StudentBillingList, { props: { alertRows: [], students: [{ id: 4, name: '丁' }], error: '載入失敗（500）' } });
+    expect(w.find('[data-testid="sbl-error"]').text()).toContain('載入失敗（500）');
+    expect(w.find('[data-testid="sbl-summary"]').exists()).toBe(false);
+    expect(w.text()).not.toContain('沒有符合的學生');
+    await w.find('[data-testid="sbl-retry"]').trigger('click');
+    expect(w.emitted('retry')).toHaveLength(1);
+  });
+
+  it('keeps the list when a refresh fails but rows are already loaded', () => {
+    const w = mount(StudentBillingList, { props: { alertRows: ROWS, error: '載入失敗（500）', today: '2026-10-07' } });
+    expect(w.find('[data-testid="sbl-error"]').exists()).toBe(true);
+    expect(w.find('[data-testid="sbl-row-1"]').exists()).toBe(true);
+  });
 });
