@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-10-08-subject-units-lesson-detail
+    published_at: "2026-10-08"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 科目數可以逐堂核對
+    summary: 科目數統計的每一列，現在能展開看是哪幾堂加起來的。
+    items:
+      - category: added
+        text: 日明細的「堂數」旁多了「看是哪幾堂」，列出時間、學生、班型和各堂的數字。
+      - category: improved
+        text: 算法和總數都沒有改，只是方便您核對有沒有算多。
+    source_refs:
+      - "changelog:2026-10-08:subject-units-lesson-detail"
