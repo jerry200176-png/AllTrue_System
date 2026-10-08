@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-08-billing-status-honest
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心載入時不再顯示 0
+    summary: 學生清單還在載入或載入失敗時，不會再顯示「0 元、沒有符合的學生」。
+    items:
+      - category: improved
+        text: 載入中顯示載入畫面；失敗時顯示「重試」，不會誤以為都已繳清。
+      - category: improved
+        text: 「待處理清單」提醒會顯示筆數，「月結待核對」改名為「月結要核對」。

@@ -60,17 +60,17 @@
     <nav class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
       <button v-if="activeAccountingTab !== 'students' && activeAccountingTab !== 'payments'" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
       <button
-        v-for="v in REMINDER_VIEWS.filter((x) => !x.directorOnly || canVoid)"
+        v-for="v in visibleReminders"
         :key="v.key"
         type="button"
         :class="['tc-reminder', { 'is-on': activeAccountingTab === v.key }]"
         :data-testid="`tc-reminder-${v.key}`"
         @click="activeAccountingTab = v.key"
-      >{{ v.label }} →</button>
+      >{{ reminderLabel(v) }} →</button>
     </nav>
 
     <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
-      <StudentBillingList :alert-rows="rows" :students="campusStudents" @open="openLedgerForStudent" />
+      <StudentBillingList :alert-rows="rows" :students="campusStudents" :loading="loading" :error="error" @open="openLedgerForStudent" @retry="loadAlerts" />
     </section>
 
     <section v-if="activeAccountingTab === 'monthly-review'" id="tuition-accounting-panel-monthly-review" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly-review" tabindex="0">
@@ -1140,11 +1140,17 @@ const ACCOUNTING_TABS = [
 ];
 const REMINDER_VIEWS = [
   { key: 'receivables', label: '待處理清單' },
-  { key: 'monthly-review', label: '月結待核對' },
+  { key: 'monthly-review', label: '月結要核對' },
   { key: 'monthly-drafts', label: '本月待開帳單', directorOnly: true },
   { key: 'settled', label: '已結清' },
 ];
 const activeAccountingTab = ref('students');
+// PRD §0.3: counts only where the page already holds the data (the alert rows);
+// monthly review / drafts / settled load lazily, so they show no number.
+const reminderCount = (v) => (v.key === 'receivables' && !loading.value && !error.value ? tabCounts.value.action : null);
+const visibleReminders = computed(() => REMINDER_VIEWS.filter((x) => (!x.directorOnly || canVoid.value)
+  && !(reminderCount(x) === 0 && activeAccountingTab.value !== x.key)));
+const reminderLabel = (v) => { const n = reminderCount(v); return n ? `${v.label} ${n} 筆` : v.label; };
 const campusStudents = ref([]);
 async function loadCampusStudents() {
   try {
