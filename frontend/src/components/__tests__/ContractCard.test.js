@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 
 const authedFetch = vi.fn();
-vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: (...a) => authedFetch(...a) }));
+vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: (...a) => authedFetch(...a), getAccessToken: async () => 'tok' }));
 
 import ContractCard from '../tuition/ContractCard.vue';
 
@@ -40,12 +40,14 @@ describe('ContractCard', () => {
     expect(w.text()).not.toMatch(/課程 0|帳單-|收據-/);
   });
 
-  it('U1 numbers count-mode lessons with a countdown and skips cancelled/leave', async () => {
+  it('U1 numbers count-mode lessons (第 n 堂, no per-row countdown: G-011) and skips cancelled/leave', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
     const w = mount(ContractCard, { props: { course: { id: 9 } } });
     await flushPromises();
-    // 1 held + 1 upcoming + 2 unscheduled = 4 counted; leave gets no number.
-    expect(w.findAll('[data-testid="contract-session-no"]').map((n) => n.text())).toEqual(['第 1 堂・剩 3 堂', '第 2 堂・剩 2 堂']);
+    // leave gets no number; rows never show a remaining count (the payload has no deduction units).
+    expect(w.findAll('[data-testid="contract-session-no"]').map((n) => n.text())).toEqual(['第 1 堂', '第 2 堂']);
+    // header counter = upcoming + unscheduled = 1 + 2
+    expect(w.find('[data-testid="contract-left"]').text()).toBe('剩 3 堂');
     expect(w.findAll('[data-testid="contract-session"]')[1].text()).not.toContain('第');
   });
 
@@ -65,14 +67,34 @@ describe('ContractCard', () => {
     expect(w.findAll('[data-testid="contract-session-no"]').map((n) => n.text())).toEqual(['本月第 1 堂', '本月第 2 堂', '本月第 1 堂']);
   });
 
-  it('U3 shows the most recent payment in the header, nothing when absent', async () => {
+  it('U3 shows 繳費日 + amount on top, or 還沒繳費 when nothing was paid', async () => {
     authedFetch.mockResolvedValue(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, lastPayment: { date: '2026-10-05', amount: 6600 } } });
+    const w = mount(ContractCard, { props: { course: { id: 9 }, lastPayment: { date: '2026-10-05', amount: 6600 }, amounts: { due: 6600, received: 6600, owed: 0 } } });
     await flushPromises();
-    expect(w.find('[data-testid="contract-last-payment"]').text()).toBe('10/5 繳 $6,600');
+    expect(w.find('[data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/10/05　NT$ 6,600');
+    expect(w.find('[data-testid="contract-amounts"]').text()).toBe('應繳 NT$ 6,600・已收 NT$ 6,600・未繳 NT$ 0');
     const w2 = mount(ContractCard, { props: { course: { id: 9 } } });
     await flushPromises();
-    expect(w2.find('[data-testid="contract-last-payment"]').exists()).toBe(false);
+    expect(w2.find('[data-testid="contract-last-payment"]').text()).toBe('還沒繳費');
+    expect(w2.find('[data-testid="contract-amounts"]').exists()).toBe(false);
+  });
+
+  it('monthly mode: no 剩 counter, pay line inside each month heading', async () => {
+    authedFetch.mockResolvedValue(respond({ ...COVERAGE, schedule_mode: 'date', unscheduled_count: 0, sessions: [
+      { class_session_id: 1, date: '2026-09-01', status: 'attended', payment: 'paid' },
+      { class_session_id: 4, date: '2026-10-06', status: 'scheduled', payment: 'unpaid' },
+    ] }));
+    const w = mount(ContractCard, { props: { course: { id: 9 }, monthLines: { '2026-09': { due: 4800, paidDate: '2026-09-05', paidAmount: 4800 }, '2026-10': { due: 4800, paidDate: '', paidAmount: 0 } } } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-left"]').exists()).toBe(false);
+    expect(w.findAll('[data-testid="contract-month-pay"]').map((n) => n.text())).toEqual(['應繳 NT$ 4,800　已收 9/5 NT$ 4,800', '應繳 NT$ 4,800']);
+  });
+
+  it('pending report line carries the reported date', async () => {
+    authedFetch.mockResolvedValue(respond(COVERAGE));
+    const w = mount(ContractCard, { props: { course: { id: 9 }, pendingReport: { report_id: 7, amount: 8000, date: '2026-10-05' } } });
+    await flushPromises();
+    expect(w.text()).toContain('家長說 10/5 繳了 NT$ 8,000，等你確認');
   });
 
   it('saves a memo-only PUT and shows the new memo', async () => {
@@ -369,5 +391,122 @@ describe('billing panel visual tokens (spec B-PR2)', () => {
     const rows = w.findAll('[data-testid="contract-session"]');
     expect(rows.every((r) => /已付|未付/.test(r.text()))).toBe(true);
     expect(rows[0].find('.pay-paid').exists()).toBe(true);
+  });
+});
+
+describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
+  const mountLedger = async (ledger, extraFetch) => {
+    const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
+    authedFetch.mockResolvedValue(respond({ sessions: [], unscheduled_count: 0 }));
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role: 'director' } }));
+    const f = vi.fn(async (url) => (extraFetch?.(String(url)) || respond(String(url).includes('monthly-drafts') ? { data: [] } : ledger)));
+    vi.stubGlobal('fetch', f);
+    const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 2 }, global: { stubs: { Transition: false } }, attachTo: document.body });
+    await flushPromises();
+    return { w, f };
+  };
+  const inv = (o) => ({ id: 1, student_class_id: 2, total_amount: 3000, calculated_applied_amount: 0, status: 'unpaid', payments: [], ...o });
+
+  it('titles the panel 「{姓名}的帳務」 and leads with 到今天未繳, same rule as the student list', async () => {
+    const { buildStudentBillingRows } = await import('../../lib/studentBillingRows.js');
+    const today = new Date().toISOString().slice(0, 10);
+    const past = '2020-01-01'; const future = '2099-01-01';
+    const { w } = await mountLedger({
+      student: { id: 1, name: '王小明' }, summary: { overpaid_total: 0 }, scope: {}, receipts: [], anomalies: [], courses: [{ id: 2, subject: '數學', paid: false }],
+      invoices: [inv({ id: 1, outstanding_amount: 3000, due_date: past }), inv({ id: 2, outstanding_amount: 2000, due_date: future }), inv({ id: 3, outstanding_amount: 900, status: 'void', due_date: past })],
+    });
+    expect(w.find('#ledger-modal-title').text()).toBe('王小明的帳務');
+    expect(w.text()).not.toMatch(/對帳|對齊帳單/);
+    expect(w.find('[data-testid="ledger-owed-now"]').text()).toBe('NT$ 3,000');
+    expect(w.find('[data-testid="ledger-owed-later"]').text()).toContain('NT$ 2,000');
+    const row = buildStudentBillingRows([
+      { id: 2, student_id: 1, student_name: '王小明', payment_status: 'unpaid', payable_outstanding: 3000, due_date: past },
+      { id: 2, student_id: 1, student_name: '王小明', payment_status: 'unpaid', payable_outstanding: 2000, due_date: future },
+    ], [], today)[0];
+    expect([row.owed_now, row.owed_later]).toEqual([3000, 2000]);
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('names the overpaid payment, offers 撤銷這筆 and a one-line explanation; no 請聯絡總部', async () => {
+    const { w } = await mountLedger({
+      student: { id: 1, name: '王小明' }, summary: { overpaid_total: 500 }, scope: {}, receipts: [], anomalies: [], courses: [{ id: 2, subject: '數學', paid: true }],
+      invoices: [inv({ outstanding_amount: 0, status: 'paid', payments: [{ id: 7, report_id: 9, paid_at: '2026-10-05', amount: 3500, method: 'transfer', unapplied_amount: 500, application_status: 'overpayment_pending_review', receipt_no: 'RCPT-000123' }] })],
+    });
+    expect(w.find('[data-testid="ledger-overpaid"]').text()).toContain('多收 NT$ 500');
+    const text = w.text();
+    expect(text).toContain('2026/10/05 匯款 NT$ 3,500 這筆');
+    expect(text).toContain('撤銷這筆');
+    expect(w.find('[data-testid="ledger-exception-hint"]').text()).toContain('撤銷這筆就好');
+    expect(text).not.toMatch(/請聯絡總部|RCPT-|收據-/);
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('shows 已收 / 等你確認 receipts by default and folds rejected, voided and 0 元 under 其他紀錄', async () => {
+    const r = (id, status, amount) => ({ report_id: id, student_class_id: 2, status, amount, payment_date: '2026-10-01', payment_method: 'cash', receipt_no: `RCPT-${id}` });
+    const { w } = await mountLedger({
+      student: { id: 1, name: '王小明' }, summary: {}, scope: {}, anomalies: [], courses: [], invoices: [],
+      receipts: [r(1, 'confirmed', 3000), r(2, 'pending', 500), r(3, 'rejected', 800), r(4, 'voided', 700), r(5, 'confirmed', 0)],
+    });
+    expect(w.findAll('.ledger-receipt')).toHaveLength(2);
+    expect(w.text()).not.toMatch(/RCPT-/);
+    const toggle = w.find('[data-testid="ledger-other-receipts-toggle"]');
+    expect(toggle.text()).toContain('其他紀錄（3）');
+    await toggle.trigger('click');
+    expect(w.findAll('.ledger-receipt')).toHaveLength(5);
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('offers 開帳單 in place only where a ready monthly draft exists, via the existing renew-monthly request', async () => {
+    const draft = { student_class_id: 2, status: 'ready', subject: '數學', proposed_start_date: '2099-01-02', proposed_end_date: '2099-02-01', period_sessions: 4, amount: 4000, due_date: '2099-01-10' };
+    const { w } = await mountLedger({
+      student: { id: 1, name: '王小明' }, summary: {}, scope: {}, receipts: [], anomalies: [], invoices: [],
+      courses: [{ id: 2, subject: '數學', paid: false }, { id: 3, subject: '英文', paid: false }],
+    }, (url) => {
+      if (url.includes('monthly-drafts')) return respond({ data: [draft] });
+      return null;
+    });
+    await flushPromises();
+    await flushPromises();
+    expect(w.findAll('[data-testid="contract-issue"]')).toHaveLength(1);
+    await w.find('[data-testid="contract-issue"]').trigger('click');
+    await flushPromises();
+    expect(document.body.querySelector('[data-testid="ledger-issue-text"]').textContent).toContain('NT$ 4,000');
+    authedFetch.mockResolvedValueOnce(respond({}));
+    document.body.querySelector('[data-testid="ledger-issue-submit"]').click();
+    await flushPromises();
+    const renew = authedFetch.mock.calls.find((c) => String(c[0]).includes('/student-classes/2/renew-monthly'));
+    expect(renew).toBeTruthy();
+    expect(JSON.parse(renew[1].body)).toEqual({ end_date: '2099-02-01' });
+    w.unmount(); vi.unstubAllGlobals();
+  });
+});
+
+describe('AccountingLedgerModal Excel-card sources (spec B-PR3)', () => {
+  it('pay line comes from the latest confirmed receipt, then invoice payments, then PayDate; amounts are API sums', async () => {
+    const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
+    authedFetch.mockResolvedValue(respond({ sessions: [], unscheduled_count: 0 }));
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role: 'director' } }));
+    const inv = (id, cls, o) => ({ id, student_class_id: cls, total_amount: 8000, calculated_applied_amount: 8000, outstanding_amount: 0, status: 'paid', payments: [], ...o });
+    vi.stubGlobal('fetch', vi.fn(async (url) => respond(String(url).includes('monthly-drafts') ? { data: [] } : {
+      student: { id: 1, name: '王小明' }, summary: {}, scope: {}, anomalies: [],
+      courses: [{ id: 2, subject: '數學', paid: true, paid_at: '2026-08-01', charge: 1 }, { id: 3, subject: '英文', paid: true, paid_at: '2026-07-01', charge: 5000 }, { id: 4, subject: '國文', paid: false }],
+      invoices: [
+        inv(1, 2, { payments: [{ id: 1, paid_at: '2026-09-02', amount: 7000, method: 'cash' }] }),
+        inv(2, 4, { total_amount: 3000, calculated_applied_amount: 0, outstanding_amount: 3000, status: 'unpaid' }),
+      ],
+      receipts: [
+        { report_id: 1, student_class_id: 2, status: 'confirmed', amount: 8000, payment_date: '2026-09-03' },
+        { report_id: 2, student_class_id: 2, status: 'rejected', amount: 9999, payment_date: '2026-10-01' },
+      ],
+    })));
+    const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 2 }, global: { stubs: { Transition: false } } });
+    await flushPromises();
+    const text = (id) => w.find(`[data-testid="contract-card-${id}"]`).text();
+    expect(text(2)).toContain('繳費日 2026/09/03　NT$ 8,000');
+    expect(text(2)).toContain('應繳 NT$ 8,000・已收 NT$ 8,000・未繳 NT$ 0');
+    expect(text(3)).toContain('繳費日 2026/07/01　NT$ 5,000');
+    expect(text(4)).toContain('還沒繳費');
+    expect(text(4)).toContain('未繳 NT$ 3,000');
+    vi.unstubAllGlobals();
   });
 });

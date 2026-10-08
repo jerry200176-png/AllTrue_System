@@ -2,7 +2,7 @@
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
     <div class="modal pe-modal">
       <div class="pe-header">
-        <h3>登記已回報</h3>
+        <h3>登記收款</h3>
         <button class="pe-close" @click="$emit('close')" title="關閉">
           <span class="material-symbols-outlined">close</span>
         </button>
@@ -71,7 +71,7 @@
 
         <div class="pe-workflow-hint" role="note">
           <span class="material-symbols-outlined" aria-hidden="true">info</span>
-          <span>送出後會進入「{{ REPORT_STATUS_LABELS.pending }}」；現金也不會立刻變成{{ TUITION_STATUS_CONFIG.paid.label }}。請到「{{ REPORT_STATUS_LABELS.pending }}」分頁按「確認入帳」，確認後才會結清並開立收據。</span>
+          <span>送出後會顯示「{{ TUITION_STATUS_CONFIG.pending_report.label }}」，你在這裡按「確認入帳」才算收到。</span>
         </div>
 
         <div class="pe-field">
@@ -85,7 +85,7 @@
           <button type="button" class="ghost" @click="$emit('close')">取消</button>
           <button type="submit" class="primary" :disabled="submitting">
             <span v-if="submitting" class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
-            {{ submitting ? '處理中…' : '送出繳費回報' }}
+            {{ submitting ? '處理中…' : '登記收款' }}
           </button>
         </div>
       </form>
@@ -163,7 +163,7 @@ async function submit() {
     const res = await recordPayment(body);
     if (!res.ok) {
       if (res.code === 'pending_report_exists') {
-        submitError.value = `這筆已經送出過，目前在「${REPORT_STATUS_LABELS.pending}」；請直接到「${REPORT_STATUS_LABELS.pending}」分頁按「確認入帳」，不要重複送出。`;
+        submitError.value = `這筆已經送出過，目前在「${REPORT_STATUS_LABELS.pending}」；請直接按「確認入帳」，不要重複送出。`;
         emit('pending', res.data);
         return;
       }

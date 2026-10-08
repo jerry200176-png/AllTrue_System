@@ -30,8 +30,8 @@ describe('ui human copy sweep — director surfaces', () => {
     expect(line).not.toContain('>Channel Secret');
   });
 
-  it('ledger uses humanizeDocumentRef and humanizeApiErrorMessage', () => {
-    expect(ledger).toContain('humanizeDocumentRef');
+  it('ledger shows no document refs and uses humanizeApiErrorMessage', () => {
+    expect(ledger).not.toContain('humanizeDocumentRef');
     expect(ledger).toContain('humanizeApiErrorMessage');
   });
 });
