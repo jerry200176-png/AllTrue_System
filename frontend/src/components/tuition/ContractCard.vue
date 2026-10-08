@@ -12,7 +12,7 @@
       <span v-else>已收清</span>
       <template v-if="pendingReport">
         <span class="contract__chip pay-partial">家長說繳了 {{ money(pendingReport.amount) }}，等你確認</span>
-        <button type="button" class="contract__btn" :disabled="busy" data-testid="contract-confirm" @click="decide('confirm')">確認入帳</button>
+        <button type="button" class="contract__btn" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</button>
         <button type="button" class="contract__btn contract__btn--ghost" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</button>
       </template>
       <button v-else-if="!noObligation && (outstanding > 0 || !course.paid)" type="button" class="contract__btn" data-testid="contract-record" @click="$emit('record', course)">登記收款</button>
@@ -57,6 +57,15 @@
       </section>
       <p v-if="unscheduled > 0" class="contract__muted" data-testid="contract-unscheduled">還有 {{ unscheduled }} 堂還沒排日期</p>
     </template>
+    <AtDialog :open="confirmOpen" title="確認入帳？" size="sm" title-id="contract-confirm-title" @close="confirmOpen = false">
+      <p class="contract__confirm-text" data-testid="contract-confirm-text">
+        確認收到 {{ money(pendingReport?.amount) }}，這筆會算已收。入錯時，請用「撤銷收款」更正。
+      </p>
+      <template #actions>
+        <AtButton variant="secondary" size="sm" shape="rect" data-testid="contract-confirm-cancel" @click="confirmOpen = false">取消</AtButton>
+        <AtButton size="sm" shape="rect" data-testid="contract-confirm-submit" @click="submitConfirm">確認入帳</AtButton>
+      </template>
+    </AtDialog>
     <AtDialog :open="rejectOpen" title="退回這筆繳費回報" size="sm" title-id="contract-reject-title" @close="rejectOpen = false">
       <label class="contract__reject-label" :for="`contract-reject-reason-${course.id}`">退回原因（家長會看到）</label>
       <AtTextarea :id="`contract-reject-reason-${course.id}`" v-model="rejectReason" :rows="3" data-testid="contract-reject-reason" />
@@ -69,7 +78,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { authedFetch } from '../../lib/authedFetch.js';
 import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import AtButton from '../design-system/AtButton.vue';
@@ -169,6 +178,18 @@ const busy = ref(false);
 const actionError = ref('');
 
 // PRD v2 D9/D20: step 2 (確認入帳 / 退回) happens right here, no tab switch.
+// 確認入帳 books money in one click, so ask first; 取消 has the initial focus (no undo: mistakes go through 撤銷收款).
+const confirmOpen = ref(false);
+async function openConfirm() {
+  confirmOpen.value = true;
+  await nextTick();
+  await nextTick();
+  document.querySelector('[data-testid="contract-confirm-cancel"]')?.focus();
+}
+function submitConfirm() {
+  confirmOpen.value = false;
+  decide('confirm');
+}
 const rejectOpen = ref(false);
 const rejectReason = ref('');
 function openReject() {
@@ -211,6 +232,7 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__mode{font-size:12px;color:var(--ds-ink-mute)}
 .contract__money{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:14px}
 .contract__money .due{color:var(--ds-danger)}
+.contract__confirm-text{margin:0;font-size:14px;line-height:1.6}
 .contract__reject-label{display:block;margin-bottom:6px;font-size:14px;font-weight:700}
 .contract__btn{border:1px solid var(--ds-primary,var(--ds-canvas-soft));background:var(--ds-primary,var(--ds-canvas));color:var(--ds-on-primary,var(--ds-canvas));border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;min-height:36px}
 .contract__btn--ghost{background:transparent;color:var(--ds-ink)}

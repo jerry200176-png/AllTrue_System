@@ -93,19 +93,32 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
     expect(w.emitted('record')[0][0]).toEqual({ id: 9 });
   });
 
-  it('confirms a pending report in place', async () => {
+  it('asks before confirming a pending report (取消 focused), then confirms in place', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE)).mockResolvedValueOnce(respond({}));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, outstanding: 3000, pendingReport: { report_id: 77, amount: 1000 } } });
+    const w = mount(ContractCard, { props: { course: { id: 9 }, outstanding: 3000, pendingReport: { report_id: 77, amount: 1000 } }, attachTo: document.body });
     await flushPromises();
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
     expect(w.text()).toContain('家長說繳了 NT$ 1,000，等你確認');
     await w.find('[data-testid="contract-confirm"]').trigger('click');
     await flushPromises();
+    // nothing is booked until the dialog is accepted; 取消 holds the focus
+    expect(authedFetch).toHaveBeenCalledTimes(1);
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('contract-confirm-cancel');
+    expect(document.body.querySelector('[data-testid="contract-confirm-text"]').textContent).toContain('NT$ 1,000');
+    document.body.querySelector('[data-testid="contract-confirm-cancel"]').click();
+    await flushPromises();
+    expect(authedFetch).toHaveBeenCalledTimes(1);
+    await w.find('[data-testid="contract-confirm"]').trigger('click');
+    await flushPromises();
+    document.body.querySelector('[data-testid="contract-confirm-submit"]').click();
+    await flushPromises();
     const [url, init] = authedFetch.mock.calls[1];
     expect(url).toBe('/api/v1/payment-reports/77/confirm');
     expect(init.method).toBe('PUT');
     expect(w.emitted('changed')).toHaveLength(1);
+    w.unmount();
   });
+
 
   it('rejects with a reason from an in-panel dialog (no window.prompt) and shows server errors', async () => {
     const prompt = vi.fn();
