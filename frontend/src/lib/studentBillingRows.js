@@ -5,6 +5,21 @@
 const OWING = new Set(['unpaid', 'partial', 'pending_reconciliation', 'monthly_due_soon', 'renew_needed']);
 
 const dayStart = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`);
+const todayYmd = () => new Date().toISOString().slice(0, 10);
+
+/** D8: a future due date is 'owed later'; no due date or due by today counts now. One rule for list and panel. */
+export const isDueLater = (dueDate, today = todayYmd()) => Boolean(dueDate) && dayStart(dueDate) > dayStart(today);
+
+/** Split open invoice balances [{ amount, due_date }] into owed-now / owed-later (same rule as the student list). */
+export function splitOwed(items, today = todayYmd()) {
+  let now = 0; let later = 0;
+  for (const it of items || []) {
+    const amount = Number(it.amount || 0);
+    if (amount <= 0) continue;
+    if (isDueLater(it.due_date, today)) later += amount; else now += amount;
+  }
+  return { now, later };
+}
 
 /**
  * @param {Array} alertRows rows from GET /alerts/tuition
@@ -36,7 +51,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (amount <= 0) continue;
     row.open_contracts += 1;
     // D8: due by today counts now; a future due date is "之後還會到期".
-    if (r.due_date && dayStart(r.due_date) > now) {
+    if (isDueLater(r.due_date, today)) {
       row.owed_later += amount;
     } else {
       row.owed_now += amount;
