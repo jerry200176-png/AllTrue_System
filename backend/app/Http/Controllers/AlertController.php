@@ -517,25 +517,14 @@ class AlertController extends Controller
      * (#230). Charge remains stored for audit; this is the director-facing
      * effective amount used for status and collection decisions.
      */
+    /**
+     * Founder Q3 (2026-10-11): a count-mode contract with no invoice owes StudentClass.Charge, everywhere (same as the
+     * Contract Money Verdict). It used to be Rate x sessions here (in-app #275); where the two differ the director confirms
+     * the contract (read-only list: production-case-dump `charge_vs_rate_count`).
+     */
     private function countModeCharge(StudentClass $course): int
     {
-        $rate = (float) ($course->Rate ?? 0);
-        $sessions = max(0, (int) ($course->SessionCount ?? 0));
-        if ($rate <= 0 || $sessions <= 0) {
-            return max(0, (int) ($course->Charge ?? 0));
-        }
-
-        $rateUnit = strtolower(trim((string) ($course->rate_unit ?? 'session')));
-        if ($rateUnit === 'hour') {
-            $hours = (int) ($course->TotalHours ?? 0);
-            if ($hours <= 0) {
-                $duration = max(30, (int) ($course->SessionDuration ?? 120));
-                $hours = (int) round(($sessions * $duration) / 60);
-            }
-            return max(0, (int) round($rate * $hours));
-        }
-
-        return max(0, (int) round($rate * $sessions));
+        return max(0, (int) ($course->Charge ?? 0));
     }
 
     private function computePackageCountPaymentStatus(CoursePackage $pkg, int $paidAmount, int $charge, bool $hasPendingReport): string

@@ -972,7 +972,7 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(5000, (int) $row['outstanding'], 'void invoice should not count as receivable');
     }
 
-    public function test_count_mode_amount_uses_rate_and_session_count_when_charge_snapshot_is_stale(): void
+    public function test_count_mode_amount_is_the_stored_charge_even_when_rate_times_count_differs(): void
     {
         $token = $this->createDirectorToken([1], 'director-stale-charge@example.com');
         $student = Student::create([
@@ -996,8 +996,9 @@ class TuitionAlertsApiTest extends TestCase
         $res->assertOk();
         $row = collect($res->json())->firstWhere('id', $course->ID);
         $this->assertNotNull($row);
-        $this->assertSame(13200, (int) $row['charge']);
-        $this->assertSame(13200, (int) $row['outstanding']);
+        // Founder Q3 (2026-10-11): StudentClass.Charge everywhere; the Rate x count mismatch goes to a director-confirm list.
+        $this->assertSame(24750, (int) $row['charge']);
+        $this->assertSame(24750, (int) $row['outstanding']);
     }
 
     private function createDirectorToken(array $campusIds, string $loginName = 'director-tuition@example.com'): string
