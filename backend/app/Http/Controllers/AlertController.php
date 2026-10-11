@@ -520,11 +520,30 @@ class AlertController extends Controller
     /**
      * Founder Q3 (2026-10-11): a count-mode contract with no invoice owes StudentClass.Charge, everywhere (same as the
      * Contract Money Verdict). It used to be Rate x sessions here (in-app #275); where the two differ the director confirms
-     * the contract (read-only list: production-case-dump `charge_vs_rate_count`).
+     * the contract (read-only list: production-case-dump `charge_vs_rate_count`). An EMPTY Charge (0) with a rate is "not
+     * filled in", not "free" (the Verdict reads it as review_required): only then the old Rate x sessions estimate is shown
+     * so the contract does not drop out of the queue.
      */
     private function countModeCharge(StudentClass $course): int
     {
-        return max(0, (int) ($course->Charge ?? 0));
+        $charge = max(0, (int) ($course->Charge ?? 0));
+        $rate = (float) ($course->Rate ?? 0);
+        $sessions = max(0, (int) ($course->SessionCount ?? 0));
+        if ($charge > 0 || $rate <= 0 || $sessions <= 0) {
+            return $charge;
+        }
+
+        $rateUnit = strtolower(trim((string) ($course->rate_unit ?? 'session')));
+        if ($rateUnit === 'hour') {
+            $hours = (int) ($course->TotalHours ?? 0);
+            if ($hours <= 0) {
+                $duration = max(30, (int) ($course->SessionDuration ?? 120));
+                $hours = (int) round(($sessions * $duration) / 60);
+            }
+            return max(0, (int) round($rate * $hours));
+        }
+
+        return max(0, (int) round($rate * $sessions));
     }
 
     private function computePackageCountPaymentStatus(CoursePackage $pkg, int $paidAmount, int $charge, bool $hasPendingReport): string

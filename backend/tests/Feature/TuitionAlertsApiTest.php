@@ -1001,6 +1001,18 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(24750, (int) $row['outstanding']);
     }
 
+    public function test_count_mode_empty_charge_with_a_rate_keeps_the_estimate_so_the_contract_stays_in_the_queue(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-empty-charge@example.com');
+        $student = Student::create(['name' => '空學費', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $course = $this->createCountModeClass($student->id, ['Rate' => 1000, 'SessionCount' => 8, 'Charge' => 0, 'Paid' => 0, 'RemainingSessions' => 8]);
+
+        $row = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row, 'Charge 0 + Rate is "not filled in", not free: it must not vanish from the queue');
+        $this->assertSame(8000, (int) $row['charge']);
+    }
+
     private function createDirectorToken(array $campusIds, string $loginName = 'director-tuition@example.com'): string
     {
         $user = User::create([
