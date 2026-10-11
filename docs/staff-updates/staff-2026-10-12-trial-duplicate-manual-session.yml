@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-12-trial-duplicate-manual-session
+    published_at: "2026-10-12"
+    audiences:
+      - director
+    importance: minor
+    title: 空的手動試聽可直接補排第一堂
+    summary: 重複建立試聽時，提示視窗會提供「新增下一堂」。
+    items:
+      - category: fixed
+        text: 逐堂手動排課的試聽還沒排任何一堂時，再建立同科目試聽，提示視窗現在可直接按「新增下一堂」。
+    source_refs:
+      - "changelog:2026-10-12:trial-duplicate-manual-session"
