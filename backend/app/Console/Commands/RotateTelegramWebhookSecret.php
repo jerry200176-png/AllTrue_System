@@ -41,14 +41,14 @@ class RotateTelegramWebhookSecret extends Command
         }
 
         // Hard scope (#1139 Founder approval): campus 15 only. Checked before any HTTP or DB side effect.
-        if ((int) $campus->id !== self::ALLOWED_CAMPUS_ID) {
-            $this->error('Rotation is restricted to campus ' . self::ALLOWED_CAMPUS_ID . '; refusing campus ' . $campus->id . '.');
+        if ((int) $campus->getKey() !== self::ALLOWED_CAMPUS_ID) {
+            $this->error('Rotation is restricted to campus ' . self::ALLOWED_CAMPUS_ID . '; refusing campus ' . $campus->getKey() . '.');
             return self::FAILURE;
         }
 
         $botToken = trim((string) ($campus->TelegramToken ?? ''));
         if ($botToken === '') {
-            $this->error("Campus {$campus->id} ({$campus->name}) has no TelegramToken configured — nothing to register a webhook for.");
+            $this->error("Campus {$campus->getKey()} ({$campus->name}) has no TelegramToken configured — nothing to register a webhook for.");
             return self::FAILURE;
         }
 
@@ -61,14 +61,14 @@ class RotateTelegramWebhookSecret extends Command
             return self::SUCCESS;
         }
 
-        $webhookUrl = rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/' . ($campus->code ?: $campus->id);
+        $webhookUrl = rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/' . ($campus->code ?: $campus->getKey());
 
         $previous = trim((string) ($campus->TelegramWebhookSecret ?? ''));
 
         // Outcome of a transport failure is unknown (timeout may still have applied), so it is compensated too.
         $registered = $this->setWebhook($botToken, $webhookUrl, $secret, $error);
         if (!$registered) {
-            Log::error('telegram.webhook.rotate_secret.failed', ['campus_id' => $campus->id, 'error' => $error]);
+            Log::error('telegram.webhook.rotate_secret.failed', ['campus_id' => $campus->getKey(), 'error' => $error]);
             $this->error('Telegram setWebhook rejected the request — DB NOT updated. ' . $error);
             return self::FAILURE;
         }
@@ -80,7 +80,7 @@ class RotateTelegramWebhookSecret extends Command
             return $this->compensate($campus, $botToken, $webhookUrl, $previous, [$botToken, $secret], $e);
         }
 
-        $this->info("Campus {$campus->id} ({$campus->name}): webhook secret rotated and registered with Telegram.");
+        $this->info("Campus {$campus->getKey()} ({$campus->name}): webhook secret rotated and registered with Telegram.");
         $this->verifyRegistration($botToken, $webhookUrl);
         return self::SUCCESS;
     }
@@ -106,7 +106,7 @@ class RotateTelegramWebhookSecret extends Command
     {
         $this->error('Database save failed after Telegram setWebhook: ' . $this->mask($e->getMessage(), $secrets));
         $restored = $this->setWebhook($botToken, $url, $previous, $err);
-        Log::critical('telegram.webhook.rotate_secret.db_failed', ['campus_id' => $campus->id, 'restored' => $restored]);
+        Log::critical('telegram.webhook.rotate_secret.db_failed', ['campus_id' => $campus->getKey(), 'restored' => $restored]);
         $this->error($restored
             ? 'Previous Telegram registration RESTORED; nothing changed. Re-run the rotation when the database is healthy.'
             : 'RESTORE FAILED (' . $err . '). Telegram may hold a secret the DB does not know, so webhooks can be rejected. '
