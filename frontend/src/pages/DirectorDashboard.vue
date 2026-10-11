@@ -366,6 +366,7 @@ import { isPaymentNoticeStatus, paymentCenterIntentFor } from '../lib/paymentSta
 import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
+import { fetchP2ReviewGroups } from '../lib/duplicateReviewApi';
 import { authedFetchRetry401 } from '../lib/authedFetch';
 import TodayProgressCard from '../components/TodayProgressCard.vue';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
@@ -493,6 +494,7 @@ const workflowDecisionDescription = computed(() => {
 });
 
 // Schedule-discrepancy summary card
+const duplicateReviewPending = ref(0);
 const sdSummary = ref({ pending: 0, acknowledged: 0, resolved: 0, withdrawn: 0 });
 const sdLoading = ref(true);
 
@@ -518,6 +520,20 @@ function setDashboardViewMode(mode) {
   dashboardViewMode.value = mode === 'full' ? 'full' : 'focus';
   if (dashboardViewMode.value === 'full' && !secondaryLoaded.value) loadSecondaryData();
 }
+
+// Pending-work counts that feed the to-do list (these pages have no sidebar row).
+async function loadDuplicateReviewSummary() {
+  if (props.branchId == null) return;
+  try {
+    const res = await fetchP2ReviewGroups({ campusId: props.branchId });
+    duplicateReviewPending.value = Array.isArray(res?.groups) ? res.groups.length : 0;
+  } catch (e) {
+    console.warn('loadDuplicateReviewSummary', e);
+    duplicateReviewPending.value = 0;
+  }
+}
+
+const loadPendingReviewSummaries = () => Promise.all([loadScheduleDiscrepancySummary(), loadDuplicateReviewSummary()]);
 
 async function loadScheduleDiscrepancySummary() {
   if (props.branchId == null) return;
@@ -673,6 +689,8 @@ const dashboardTasks = computed(() => buildDirectorDashboardTasks({
   pendingEvaluationsCount: pendingEvaluationsTotal.value,
   unreadFeedbackCount: props.unreadFeedbackCount,
   scheduleDiscrepancyCount: sdSummary.value.pending,
+  duplicateReviewCount: duplicateReviewPending.value,
+  inboxCount: unreadNotificationCount.value,
   adoptionTasks: directorTodoCards.value.map((item) => ({
     ...item,
     actionLabel: item.target?.page === 'learning' ? '前往回饋' : '查看詳情',
@@ -1304,7 +1322,7 @@ const fetchTeacherAssessmentFillRates = async ({ branch_id, days = 14 }) => {
 const refreshDashboard = async () => {
   secondaryLoaded.value = false;
   await loadData();
-  await loadScheduleDiscrepancySummary();
+  await loadPendingReviewSummaries();
   if (dashboardViewMode.value === 'full') await loadSecondaryData();
 };
 
@@ -1376,6 +1394,8 @@ const openDashboardTask = async (task) => {
   if (task.target?.page === 'attendance') return goToAttendance();
   if (task.target?.page === 'tuition-collect') return goToTuitionCollect();
   if (task.target?.page === 'schedule-discrepancy') return goToScheduleDiscrepancy();
+  if (task.target?.page === 'duplicate-review') return emit('navigate', { target: 'duplicate-review' });
+  if (task.target?.page === 'notifications') return goToNotifications();
   if (task.target?.section) {
     if (dashboardViewMode.value !== 'full') setDashboardViewMode('full');
     await nextTick();
@@ -1529,7 +1549,7 @@ watch(() => props.branchId, () => {
   adoptionActivityRows.value = [];
   adoptionWeeklyMetrics.value = null;
   loadData();
-  loadScheduleDiscrepancySummary();
+  loadPendingReviewSummaries();
   if (dashboardViewMode.value === 'full') loadSecondaryData();
 });
 onMounted(async () => {
@@ -1538,7 +1558,7 @@ onMounted(async () => {
     page: 'director-dashboard',
   }, 'open');
   await loadData();
-  await loadScheduleDiscrepancySummary();
+  await loadPendingReviewSummaries();
   if (dashboardViewMode.value === 'full') await loadSecondaryData();
   applyFocusFromInbox();
 });

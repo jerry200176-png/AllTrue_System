@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findNavItem, getMobileTabItems, getNavigationGroups, getToolbarItems, navigationPages, requiredContextForPage } from './navigationRegistry';
+import { findNavItem, getMobileTabItems, getNavigationGroups, getTodoPages, getToolbarItems, navigationPages, requiredContextForPage } from './navigationRegistry';
 
 const pages = role => navigationPages(getNavigationGroups(role));
 const sidebar = role => getNavigationGroups(role).flatMap(group => group.items.map(item => item.label));
@@ -52,10 +52,7 @@ describe('navigation registry', () => {
     expect(groups.filter(group => group.primary !== false).map(group => group.key)).toEqual([
       'overview', 'teaching', 'students-courses', 'finance',
     ]);
-    expect(groups.filter(group => group.primary === false).map(group => group.key)).toEqual([
-      'teaching-tools',
-    ]);
-    expect(groups.find(group => group.key === 'teaching-tools').defaultOpen).toBe(false);
+    expect(groups.filter(group => group.primary === false)).toEqual([]);
     expect(navigationPages(groups)).toEqual(expect.arrayContaining([
       'tuition-report', 'teacher-eligibility',
     ]));
@@ -83,7 +80,7 @@ describe('navigation registry', () => {
   });
 
   it('keeps the director sidebar short and the hub badge equal to its tabs', () => {
-    expect(sidebar('director').filter(l => !['課表回報管理', '重疊課程審核'].includes(l))).toEqual([
+    expect(sidebar('director')).toEqual([
       '今日工作台', '班級行事曆', '出缺勤', '學習評量', '學生管理', '課程查找', '新生問班', '帳務中心', '報表與薪資', '設定',
     ]);
     expect(sidebar('super_admin')).toContain('系統管理');
@@ -158,5 +155,19 @@ describe('navigation registry', () => {
     expect(requiredContextForPage('notifications')).toBe('director');
     expect(requiredContextForPage('chat')).toBeNull();
     expect(requiredContextForPage('bugs')).toBeNull();
+  });
+
+  it('keeps schedule reports and duplicate review routable but off the sidebar (workbench to-do items)', () => {
+    expect(getTodoPages('director').map(i => [i.page, i.label, i.badgeTypes || []])).toEqual([
+      ['schedule-discrepancy', '課表回報管理', ['schedule_discrepancy']],
+      ['duplicate-review', '重疊課程審核', []],
+    ]);
+    expect(getTodoPages('teacher')).toEqual([]);
+    for (const page of ['schedule-discrepancy', 'duplicate-review']) {
+      expect(pages('director')).not.toContain(page);
+      expect(requiredContextForPage(page)).toBe('director');
+    }
+    getTodoPages('director')[0].badgeTypes.push('changed');
+    expect(getTodoPages('director')[0].badgeTypes).toEqual(['schedule_discrepancy']);
   });
 });

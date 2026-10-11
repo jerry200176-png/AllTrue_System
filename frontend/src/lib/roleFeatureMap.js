@@ -1,4 +1,4 @@
-import { getNavigationGroups, getToolbarItems } from './navigationRegistry.js';
+import { getNavigationGroups, getToolbarItems, getTodoPages } from './navigationRegistry.js';
 import { isDirectorRole } from './roleCapabilities.js';
 
 const FEATURE_USAGES = {
@@ -57,7 +57,12 @@ export function getRoleFeatureMap(role, options = {}) {
   const roleLabel = isTeacher ? '老師' : (role === 'super_admin' ? '總部管理員' : '主任');
   const usages = FEATURE_USAGES[roleKey] || {};
   const toolbar = getToolbarItems(role);
-  const navGroups = [...getNavigationGroups(role, options), ...(toolbar.length ? [{ key: 'toolbar', title: '頂部工具列', primary: true, items: toolbar }] : [])];
+  const todo = getTodoPages(role);
+  const navGroups = [
+    ...getNavigationGroups(role, options),
+    ...(toolbar.length ? [{ key: 'toolbar', title: '頂部工具列', primary: true, items: toolbar }] : []),
+    ...(todo.length ? [{ key: 'workbench-todo', title: '工作台待辦（有事才出現）', primary: true, items: todo }] : []),
+  ];
   const groups = [];
   const allItems = [];
   const highFrequencyItems = [];

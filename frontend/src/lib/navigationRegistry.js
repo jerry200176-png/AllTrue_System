@@ -48,14 +48,7 @@ function directorGroups(role, { admissionsEnabled = true } = {}) {
       items: [
         { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
         { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
-        { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
         { page: 'learning', label: '學習評量', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
-      ],
-    },
-    {
-      key: 'teaching-tools', title: '進階教學工具', defaultOpen: false, primary: false,
-      items: [
-        { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
       ],
     },
     {
@@ -85,6 +78,18 @@ const DIRECTOR_TOOLBAR = [
   { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
   { page: 'bugs', label: '意見與建議', icon: 'rate_review', badgeTypes: ['bugs'] },
 ];
+
+// Pending-work pages: no sidebar row. The director workbench lists them as to-do items only while something is
+// pending (see directorDashboardTasks.js); the page keys stay routable for old URLs and LINE links.
+const DIRECTOR_TODO_PAGES = [
+  { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
+  { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
+];
+
+/** Routable director pages that live in the workbench to-do list instead of the sidebar. */
+export function getTodoPages(role) {
+  return isDirectorRole(role) ? DIRECTOR_TODO_PAGES.map(item => ({ ...item, ...(item.badgeTypes ? { badgeTypes: [...item.badgeTypes] } : {}) })) : [];
+}
 
 /** Top-bar icon items for a role (teachers keep chat/feedback in their own sidebar group). */
 export function getToolbarItems(role) {
@@ -178,7 +183,7 @@ export function getMobileTabItems(role) {
  */
 const pagesOf = (groups) => new Set(navigationPages(groups));
 // Director-capability pages only: super_admin-only pages (director-accounts, branch-*) must never trigger an auto-switch.
-const DIRECTOR_PAGES = new Set([...pagesOf(directorGroups('director')), ...DIRECTOR_TOOLBAR.map(item => item.page)]);
+const DIRECTOR_PAGES = new Set([...pagesOf(directorGroups('director')), ...DIRECTOR_TOOLBAR.map(item => item.page), ...DIRECTOR_TODO_PAGES.map(item => item.page)]);
 const TEACHER_PAGES = pagesOf(teacherGroups({ truefitEnabled: true }));
 export function requiredContextForPage(page) {
   if (DIRECTOR_PAGES.has(page) && !TEACHER_PAGES.has(page)) return 'director';

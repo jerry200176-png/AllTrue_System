@@ -540,7 +540,7 @@ import {
   getToken,
 } from '../lib/bugReportsApi';
 import { bugListDisplay, parseBugReportClientInfo, PRODUCT_DISPOSITION_OPTIONS, dispositionLabel, productLoopPhaseLabel, statusLogDisplayNote } from '../lib/bugReportContext';
-import { getNavigationGroups, getToolbarItems } from '../lib/navigationRegistry';
+import { getNavigationGroups, getTodoPages, getToolbarItems } from '../lib/navigationRegistry';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
 
 const props = defineProps({
@@ -551,7 +551,7 @@ const props = defineProps({
 
 const bugs = ref([]);
 const PAGE_LABELS = Object.fromEntries(
-  ['director', 'teacher'].flatMap((role) => [...getNavigationGroups(role).flatMap((g) => g.items.flatMap((i) => i.tabs || [i])), ...getToolbarItems(role)].map((t) => [t.page, t.label])),
+  ['director', 'teacher'].flatMap((role) => [...getNavigationGroups(role).flatMap((g) => g.items.flatMap((i) => i.tabs || [i])), ...getToolbarItems(role), ...getTodoPages(role)].map((t) => [t.page, t.label])),
 );
 const listDisplay = (bug) => bugListDisplay(bug, (key) => PAGE_LABELS[key]);
 const activeBug = ref(null);

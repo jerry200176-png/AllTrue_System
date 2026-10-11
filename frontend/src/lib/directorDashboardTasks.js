@@ -61,6 +61,8 @@ export function buildDirectorDashboardTasks({
   pendingEvaluationsCount = 0,
   unreadFeedbackCount = 0,
   scheduleDiscrepancyCount = 0,
+  duplicateReviewCount = 0,
+  inboxCount = 0,
   adoptionTasks = [],
 } = {}) {
   const tasks = [];
@@ -99,6 +101,13 @@ export function buildDirectorDashboardTasks({
       count: scheduleDiscrepancyCount, actionLabel: '查看回報', target: { page: 'schedule-discrepancy' },
     }));
   }
+  if (numericCount(duplicateReviewCount)) {
+    tasks.push(task({
+      id: 'duplicate-review', type: 'duplicate-review', severity: 'warning',
+      title: '重疊課程待審核', summary: '同一位學生同時段有兩堂課，請選擇要保留哪一堂。',
+      count: duplicateReviewCount, actionLabel: '前往審核', target: { page: 'duplicate-review' },
+    }));
+  }
   if (numericCount(pendingEvaluationsCount)) {
     tasks.push(task({
       id: 'evaluations', type: 'evaluations', severity: 'info',
@@ -111,6 +120,14 @@ export function buildDirectorDashboardTasks({
       id: 'parent-feedback', type: 'parent-feedback', severity: 'info',
       title: '家長回饋待查看', summary: '有新的家長訊息等待主任查看或回覆。',
       count: unreadFeedbackCount, actionLabel: '前往回覆', target: { page: 'learning', focus: 'feedback' },
+    }));
+  }
+
+  if (numericCount(inboxCount)) {
+    tasks.push(task({
+      id: 'inbox', type: 'inbox', severity: 'info',
+      title: '收件匣有未讀通知', summary: '繳費提醒、課表異動等通知集中在右上角收件匣。',
+      count: inboxCount, actionLabel: '開啟收件匣', target: { page: 'notifications' },
     }));
   }
 
