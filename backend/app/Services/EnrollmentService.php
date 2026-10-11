@@ -672,7 +672,7 @@ class EnrollmentService
             $forceGate = $this->validateForceOverride($request, $data, array_values(array_unique(array_map(
                 fn ($m) => (int) ($m['id'] ?? 0),
                 $subjectMeta
-            ))));
+            ))), $studentId);
             if ($forceGate !== null) {
                 return $forceGate;
             }
@@ -1147,11 +1147,16 @@ class EnrollmentService
         }
         foreach ($subjectGroups as $rows) {
             foreach ($rows as $row) {
-                if (($row['kind'] ?? '') !== 'confirmed' || empty($row['date']) || empty($row['start_time'])) {
+                if (empty($row['date']) || empty($row['start_time'])) {
                     continue;
                 }
                 $start = (string) $row['start_time'];
                 $end = $this->computeEndTime($start, max(30, (int) $row['duration_minutes']));
+                // Decide on the FINAL kind: a future row whose slot already ended is stored completed (and gets a
+                // learning record / deduction), exactly like a confirmed row.
+                if (($row['kind'] ?? '') !== 'confirmed' && !$this->sessionEndedByEndTime((string) $row['date'], $end)) {
+                    continue;
+                }
                 $clash = DB::table('ClassSession as cs')
                     ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
                     ->where('sc.StudentID', $studentId)
@@ -1173,7 +1178,7 @@ class EnrollmentService
         return null;
     }
 
-    private function validateForceOverride(Request $request, array $data, array $subjectIds = []): ?JsonResponse
+    private function validateForceOverride(Request $request, array $data, array $subjectIds = [], int $resolvedStudentId = 0): ?JsonResponse
     {
         $allowed = ['create_trial', 'renewal_next_term', 'independent_parallel'];
         $reason = trim((string) ($data['force_reason'] ?? ''));
@@ -1217,7 +1222,8 @@ class EnrollmentService
         if ($reason === 'renewal_next_term') {
             // Server-derived only: client existing_contract_ids are never read here, so a foreign contract id
             // cannot be used as an oracle for other students'/campuses' contract types.
-            $studentIdForGate = (int) ($data['student_id'] ?? 0);
+            // Cross-campus identity enrollment remaps to the target-campus member; use that member.
+            $studentIdForGate = $resolvedStudentId > 0 ? $resolvedStudentId : (int) ($data['student_id'] ?? 0);
             $monthlyExisting = $studentIdForGate > 0 && $subjectIds !== [] && DB::table('StudentClass')
                 ->where('StudentID', $studentIdForGate)->where('Stop', 0)
                 ->whereIn('SubjectID', $subjectIds)

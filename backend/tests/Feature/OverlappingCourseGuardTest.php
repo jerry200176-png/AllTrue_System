@@ -272,6 +272,74 @@ class OverlappingCourseGuardTest extends TestCase
         $this->assertNotSame('renewal_use_monthly_flow', $res->json('code'));
     }
 
+    /** #3738 review: a same-day future row whose slot already ended becomes completed, so the guard must apply. */
+    public function test_renewal_guard_applies_to_future_row_that_is_already_ended_today(): void
+    {
+        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-today@example.com');
+        Carbon::setTestNow(Carbon::now()->setTime(20, 0));
+        try {
+            $today = Carbon::now()->toDateString();
+            \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
+                'StudentClassID' => $first, 'SessionDate' => $today, 'StartTime' => '16:00:00',
+                'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '',
+            ]);
+            $sessions = \Illuminate\Support\Facades\DB::table('ClassSession')->count();
+            $records = \Illuminate\Support\Facades\DB::table('LearningRecord')->count();
+            $renew = $this->batchPayload($studentId, $teacherId, [$today], 'one_on_one'); // kind: future
+            $renew['days_of_week'] = [Carbon::now()->dayOfWeekIso];
+            $renew['force'] = true;
+            $renew['force_reason'] = 'renewal_next_term';
+            $renew['existing_contract_ids'] = [$first];
+
+            $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
+
+            $this->assertSame(422, $res->status(), $res->getContent());
+            $this->assertSame('renewal_confirmed_slot_overlap', $res->json('code'), $res->getContent());
+            $this->assertSame($sessions, \Illuminate\Support\Facades\DB::table('ClassSession')->count());
+            $this->assertSame($records, \Illuminate\Support\Facades\DB::table('LearningRecord')->count());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /** #3738 review: cross-campus identity enrollment must check the target-campus member's contracts. */
+    public function test_monthly_guard_uses_resolved_target_campus_member(): void
+    {
+        [$h, $sourceId, $teacherId, $sourceCourse] = $this->renewalFixture('renew-xcampus@example.com');
+        $svc = app(\App\Services\StudentIdentityService::class);
+        $group = \Illuminate\Support\Facades\DB::table('student_identity_groups')->insertGetId(['created_at' => now(), 'updated_at' => now()]);
+        $targetCampus = 2;
+        \Illuminate\Support\Facades\DB::table('Campus')->updateOrInsert(['id' => $targetCampus], ['id' => $targetCampus, 'Name' => 'Target']);
+        $target = $this->createStudent($targetCampus, '目標分校成員');
+        foreach ([[$sourceId, 1], [$target->id, $targetCampus]] as [$sid, $cid]) {
+            \Illuminate\Support\Facades\DB::table('student_identity_members')->insert([
+                'identity_group_id' => $group, 'student_id' => $sid, 'campus_id' => $cid, 'status' => 'active',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $foreign = (array) \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $sourceCourse)->first();
+        unset($foreign['ID']);
+        \Illuminate\Support\Facades\DB::table('StudentClass')->insert(array_merge($foreign, ['StudentID' => $target->id, 'ScheduleMode' => 'date']));
+
+        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
+        $renew = $this->batchPayload($sourceId, $teacherId, [$later], 'one_on_one');
+        $renew['future_dates'] = [$later];
+        \Illuminate\Support\Facades\DB::table('UserCampus')->insert(['UserID' => $teacherId, 'CampusID' => $targetCampus]);
+        $renew['identity_group_id'] = $group;
+        $renew['branch_id'] = $targetCampus;
+        $renew['force'] = true;
+        $renew['force_reason'] = 'renewal_next_term';
+        // Not reachable over HTTP today (batchStore has no identity_group_id, /enrollments has no force), so the
+        // service is called directly, as AdmissionInquiryController does.
+        $request = \Illuminate\Http\Request::create('/x', 'POST');
+        $request->attributes->set('auth_role', 'super_admin');
+        $request->attributes->set('auth_user', \App\Models\User::find($teacherId));
+        $res = app(\App\Services\EnrollmentService::class)->store($request, $renew);
+        $res = \Illuminate\Testing\TestResponse::fromBaseResponse($res);
+
+        $this->assertSame('renewal_use_monthly_flow', $res->json('code'), $res->getContent());
+    }
+
     /**
      * 試聽是旁聽正式課堂的加掛，不可被 overlapping_active_course 擋死。
      * 同型試聽重複則仍走 duplicate_active_course。
