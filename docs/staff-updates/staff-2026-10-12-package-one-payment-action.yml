@@ -3,7 +3,7 @@ updates:
     published_at: "2026-10-12"
     audiences:
       - director
-    importance: minor
+    importance: digest
     title: 共用方案只登記一次收款
     summary: 同一共用方案的幾門課，帳務面板只有一個收款入口，不會重複登記。
     items:
