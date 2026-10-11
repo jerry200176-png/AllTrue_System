@@ -67,6 +67,14 @@ describe('CourseManagement action hierarchy', () => {
     expect(source).toContain('<template #meta-extra><LessonPickerSelect');
   });
 
+  it('lesson picker selection is derived from the open lesson, never stored (P1 #3828)', () => {
+    expect(source).toContain('key: lessonPickerKey(lessonPicker.value, currentLesson())');
+    expect(source).toContain(':lesson-picker="lessonPickerView"');
+    expect(source).toContain('<LessonPickerSelect :picker="lessonPickerView"');
+    expect(source).not.toMatch(/lessonPicker\.value = \{[^}]*key:/);
+    expect(source).toContain('canOpenLesson');
+  });
+
   it('does not let an earlier manual-session check overwrite the latest selection', () => {
     expect(source).toContain('let manualSessionCheckVersion = 0;');
     expect(source).toContain('const requestVersion = ++manualSessionCheckVersion;');

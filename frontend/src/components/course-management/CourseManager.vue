@@ -385,8 +385,7 @@ export default {
               <div v-if="course.last_paid_at"><dt>最近付款</dt><dd>{{ course.last_paid_at }}</dd></div>
             </dl>
             <div class="cmw__row">
-              <button type="button" class="small ghost" data-testid="course-manager-invoice" @click="act('invoice')">查看帳單</button>
-              <button type="button" class="small ghost" data-testid="course-manager-tuition" @click="act('tuition')">前往帳務中心</button>
+              <button type="button" class="small ghost" data-testid="course-manager-invoice" @click="act('invoice')">在這裡看帳務</button>
               <button v-if="course.usage_balance_status === 'review_required'" type="button" class="small primary" @click="act('ledger')">堂數待對帳</button>
             </div>
           </section>

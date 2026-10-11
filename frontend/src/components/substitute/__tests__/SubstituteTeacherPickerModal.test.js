@@ -241,3 +241,37 @@ describe('SubstituteTeacherPickerModal drag prefill', () => {
     expect(wrapper.find('.stp-restore').exists()).toBe(shown);
   });
 });
+
+describe('SubstituteTeacherPickerModal lesson switch (P1 #3828)', () => {
+  it('switching the lesson while open clears the teacher chosen for the old lesson and re-checks availability for the new one', async () => {
+    const fetchAvailability = vi.fn(async () => ({ busy_slots: [] }));
+    const ctx = (date) => ({
+      student_name: '測試學生', subject_label: '數學', session_date: date, start_time: '18:30', end_time: '20:30',
+      original_teacher_id: 5, original_teacher_name: '正班老師', session_campus_id: 2,
+    });
+    const wrapper = mount(SubstituteTeacherPickerModal, {
+      props: {
+        modelValue: true,
+        context: ctx('2099-07-01'),
+        teachers: [{ id: 8, name: '代課老師', branch_ids: [2] }],
+        branchNameMap: { 2: '測試分校' },
+        fetchAvailability,
+      },
+    });
+    await wrapper.setProps({ modelValue: false });
+    await wrapper.setProps({ modelValue: true });
+    await flushPromises();
+    expect(wrapper.text()).toContain('2099-07-01');
+    expect(fetchAvailability.mock.calls.at(-1)[1]).toBe('2099-07-01');
+
+    await wrapper.get('.stp-card').trigger('click'); // the director picks a teacher for lesson A
+    expect(wrapper.find('.stp-card--selected').exists()).toBe(true);
+    await wrapper.setProps({ context: ctx('2099-07-15') }); // ...then switches to lesson B in the picker
+    await flushPromises();
+    expect(wrapper.text()).toContain('2099-07-15');
+    expect(wrapper.text()).not.toContain('2099-07-01');
+    expect(fetchAvailability.mock.calls.at(-1)[1]).toBe('2099-07-15');
+    expect(wrapper.find('.stp-card--selected').exists()).toBe(false);
+    expect(wrapper.get('.stp-btn--primary').attributes('disabled')).toBeDefined();
+  });
+});

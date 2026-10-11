@@ -1,14 +1,15 @@
 <template>
   <label v-if="picker && picker.options.length > 1" class="lps">
     <span class="lps__label">{{ picker.mode === 'substitute' ? '要代哪一堂？' : '要調哪一堂？' }}</span>
-    <select class="lps__select" :value="picker.key" data-testid="lesson-picker" @change="$emit('pick', $event.target.value)">
+    <select class="lps__select" :value="picker.key" :disabled="picker.busy" data-testid="lesson-picker" @change="$emit('pick', $event.target.value)">
       <option v-for="o in picker.options" :key="o.key" :value="o.key">{{ o.label }}</option>
     </select>
   </label>
 </template>
 
 <script setup>
-// "Which lesson?" picker (Google Calendar "which event?"): the next 6 upcoming lessons, the first already chosen.
+// "Which lesson?" picker (Google Calendar "which event?"): the next 6 upcoming lessons.
+// `picker.key` is derived by the page from the lesson the dialog really shows; this component stores nothing.
 defineProps({ picker: { type: Object, default: null } });
 defineEmits(['pick']);
 </script>

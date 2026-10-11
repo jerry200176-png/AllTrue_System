@@ -5,6 +5,21 @@ import { courseActions } from '../../lib/courseActions.js';
  * and routes a picked action id to the handler the old row buttons already called.
  * `d` is a bag of page functions; nothing here re-derives billing or scheduling rules.
  */
+/** Does picker option `opt` describe the lesson `cur` ({ id, date, start }) the dialog is showing? */
+export function lessonMatches(opt, cur) {
+  if (!opt || !cur) return false;
+  if (opt.id && cur.id) return Number(opt.id) === Number(cur.id);
+  const date = String(cur.date || '').slice(0, 10);
+  if (!date || date !== String(opt.date || '').slice(0, 10)) return false;
+  const start = String(opt.unit?.startTime || '').slice(0, 5);
+  return !start || !cur.start || start === String(cur.start).slice(0, 5);
+}
+
+/** The picker's selection is derived from the lesson in the dialog, never stored. '' when it matches no option. */
+export function lessonPickerKey(picker, cur) {
+  return picker?.options.find((o) => lessonMatches(o, cur))?.key ?? '';
+}
+
 export function useCourseRowActions(d) {
   // The drawer passes { fallback: 'manage', details: false }: it is already managing, so no 管理課程/詳情 item.
   function rowModel(c, { fallback = 'edit', details = true } = {}) {
@@ -31,6 +46,14 @@ export function useCourseRowActions(d) {
 
   // 調課／代課 open the next upcoming lesson already in that mode, with the next 6 lessons in a picker
   // (Google Calendar "which event?"). A single occurrence only: series edits stay in 合約／堂次調整.
+  //
+  // P1 (#3828): the lesson being acted on has ONE source of truth, the open lesson dialog's form
+  // (or the 代課 picker's context). The picker only *displays* it (see lessonPickerKey) and never stores
+  // a selection of its own, and an action starts only after the dialog has really landed on that lesson.
+  async function landOn(c, opt) {
+    await d.openSessionEdit(c, opt.date, opt.id, opt.unit);
+    return d.isSessionEditOpen() && lessonMatches(opt, d.currentLesson());
+  }
   async function enterMode(mode) {
     if (!d.isSessionEditOpen()) return;
     if (mode === 'reschedule') d.startSessionReschedule();
@@ -38,27 +61,39 @@ export function useCourseRowActions(d) {
     else d.startSubstitute();
   }
   async function moveNextLesson(c, mode) {
-    const options = d.upcomingLessonOptions(c, 6);
+    // Only lessons the dialog can open are offered (a count-mode 預排 date has no session to edit yet).
+    const options = d.upcomingLessonOptions(c, 6).filter((o) => d.canOpenLesson(c, o.unit));
     const first = options[0];
-    if (first) await d.openSessionEdit(c, first.date, first.id, first.unit);
-    else await d.openSessionEditFromAction(c);
-    if (!d.isSessionEditOpen()) return;
-    d.setLessonPicker(options.length > 1 ? { course: c, mode, options, key: first.key } : null);
+    d.setLessonPicker(null);
+    if (first) {
+      if (!await landOn(c, first)) return;
+    } else {
+      await d.openSessionEditFromAction(c);
+      if (!d.isSessionEditOpen()) return;
+    }
+    d.setLessonPicker(options.length > 1 ? { course: c, mode, options, busy: false } : null);
     await enterMode(mode);
   }
   // One click on a specific lesson row (no picker: the lesson is already chosen).
   async function moveLesson(c, mode, unit) {
     d.setLessonPicker(null);
-    await d.openSessionEdit(c, String(unit?.date || '').slice(0, 10), unit?.id, unit);
+    const opt = { date: String(unit?.date || '').slice(0, 10), id: unit?.id, unit };
+    if (!d.canOpenLesson(c, unit) || !await landOn(c, opt)) return;
     await enterMode(mode);
   }
   async function pickLesson(key) {
     const picker = d.getLessonPicker();
     const opt = picker?.options.find((o) => o.key === key);
-    if (!opt) return;
-    d.setLessonPicker({ ...picker, key });
-    await d.openSessionEdit(picker.course, opt.date, opt.id, opt.unit);
-    await enterMode(picker.mode);
+    if (!opt || picker.busy) return;
+    if (lessonMatches(opt, d.currentLesson())) return; // already on it
+    d.setLessonPicker({ ...picker, busy: true });
+    try {
+      if (!await landOn(picker.course, opt)) return; // the dialog explains why; the picker keeps showing the real lesson
+      await enterMode(picker.mode);
+    } finally {
+      const now = d.getLessonPicker();
+      if (now) d.setLessonPicker({ ...now, busy: false });
+    }
   }
 
   function runRowAction(c, id) {

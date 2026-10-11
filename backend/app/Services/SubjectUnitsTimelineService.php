@@ -51,7 +51,7 @@ final class SubjectUnitsTimelineService
                 'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
                 'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6',
                 'sc.SubjectID as course_subject_id', 'cs.SubjectID as session_subject_id',
-                's.CampusID as campus_id',
+                's.CampusID as campus_id', 's.name as student_name',
             ]);
 
         if (Schema::hasColumn('LearningRecord', 'ExcludeFromSubjectCount')) {
@@ -91,7 +91,7 @@ final class SubjectUnitsTimelineService
                 'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
                 'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6',
                 'sc.SubjectID as course_subject_id', 'cs.SubjectID as session_subject_id',
-                's.CampusID as campus_id', 'si.Status as attendance_status',
+                's.CampusID as campus_id', 's.name as student_name', 'si.Status as attendance_status',
             ]);
 
         $weeklyStatuses = array_values(array_unique(array_merge(
@@ -145,7 +145,7 @@ final class SubjectUnitsTimelineService
                 'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
                 'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6',
                 'sc.SubjectID as course_subject_id', 'cs.SubjectID as session_subject_id',
-                's.CampusID as campus_id',
+                's.CampusID as campus_id', 's.name as student_name',
             ])->get()->unique('class_session_id');
 
         foreach ($legacySpecial as $row) {
@@ -173,6 +173,11 @@ final class SubjectUnitsTimelineService
             $entry['payroll_subject_count'] = $entry['regular_weighted'] + $entry['tutoring_trial_weighted'];
             return $entry;
         }, $entries));
+
+        foreach ($normalised as &$entry) {
+            usort($entry['lessons'], fn ($a, $b) => strcmp($a['start_time'], $b['start_time']) ?: strcmp($a['student_name'], $b['student_name']));
+        }
+        unset($entry);
 
         usort($normalised, fn ($a, $b) => $a['date'] <=> $b['date'] ?: strcmp($a['teacher_name'], $b['teacher_name']) ?: strcmp($a['campus_name'], $b['campus_name']) ?: strcmp($a['subject_name'], $b['subject_name']));
 
@@ -236,12 +241,22 @@ final class SubjectUnitsTimelineService
                 'regular_hours' => 0.0, 'tutoring_trial_hours' => 0.0,
                 'regular_weighted' => 0.0, 'tutoring_trial_weighted' => 0.0,
                 'session_count' => 0, 'regular_session_count' => 0, 'tutoring_trial_session_count' => 0,
+                'lessons' => [],
             ];
         }
         $hours = $this->hours($row);
         $entries[$key][$category . '_hours'] += $hours;
         $entries[$key][$category . '_weighted'] += $hours * $weight;
         $entries[$key]['session_count']++;
+        // Display only (in-app #387/#389): which lesson adds how much, so a count can be checked line by line.
+        $entries[$key]['lessons'][] = [
+            'student_name' => (string) ($row->student_name ?? ''),
+            'class_type' => (string) $row->class_type,
+            'start_time' => substr((string) $row->start_time, 0, 5),
+            'category' => $category,
+            'hours' => round($hours, 2),
+            'weighted' => round($hours * $weight, 4),
+        ];
         $entries[$key][$category . '_session_count']++;
     }
 

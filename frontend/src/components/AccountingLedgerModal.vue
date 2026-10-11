@@ -10,10 +10,15 @@
         tabindex="-1"
         @keydown.esc.stop.prevent="onEsc"
         @keydown.tab="trapTab"
+        @keydown="onStepKey"
       >
         <div class="ledger-header">
           <div>
             <h3 id="ledger-modal-title">{{ panelTitle }}</h3>
+          </div>
+          <div v-if="canStep" class="ledger-steps" role="group" aria-label="切換學生">
+            <button class="ledger-step" type="button" aria-label="上一位學生" data-testid="ledger-step-prev" @click="$emit('step', -1)"><span aria-hidden="true">↑</span></button>
+            <button class="ledger-step" type="button" aria-label="下一位學生" data-testid="ledger-step-next" @click="$emit('step', 1)"><span aria-hidden="true">↓</span></button>
           </div>
           <button class="ledger-close" type="button" @click="$emit('close')" aria-label="關閉學生帳務"><span aria-hidden="true">×</span></button>
         </div>
@@ -21,6 +26,14 @@
         <div v-if="loading" class="ledger-state">載入中…</div>
         <div v-else-if="error" class="ledger-state ledger-error">{{ error }}</div>
         <template v-else-if="payload">
+          <PaymentAllocation
+            v-if="allocating"
+            :student-name="payload.student?.name || '學生'"
+            :contracts="allocContracts"
+            @close="allocating = false"
+            @done="onAllocDone"
+          />
+          <div v-show="!allocating">
           <!-- PRD v2 D8: owed-by-today first, same rule as the student list. -->
           <div class="ledger-owed" data-testid="ledger-owed">
             <p class="ledger-owed__label">到今天未繳</p>
@@ -66,7 +79,9 @@
                 :course="c"
                 :outstanding="owedFor(c.id)"
                 :pending-report="pendingReportFor(c.id)"
-                :last-payment="lastPaymentFor(c.id)"
+                :last-payment="payLineFor(c)"
+                :amounts="amountsFor(c.id)"
+                :month-lines="monthLinesFor(c.id)"
                 :bill-draft="draftFor(c.id)"
                 @record="openEntry"
                 @issue="openIssue"
@@ -228,11 +243,12 @@
             >{{ showOtherReceipts ? '收合其他紀錄' : `其他紀錄（${otherReceipts.length}）：已退回、已撤銷或 0 元` }}</button>
           </section>
 
-          <!-- PRD v2 D5: phone only, 登記收款 stays reachable at the bottom. Same handler as the card button. -->
-          <div v-if="stickyPayCourse" class="ledger-sticky-pay" data-testid="ledger-sticky-pay">
-            <button type="button" class="ledger-sticky-pay__btn" data-testid="ledger-sticky-pay-btn" @click="openEntry(stickyPayCourse)">
-              登記收款<small v-if="stickyPayCourse.subject">{{ stickyPayCourse.subject }}</small>
+          <!-- PRD v2 D5/D18: one 登記收款 for every open contract (allocation step); each card keeps 登記這筆. -->
+          <div v-if="allocContracts.length" class="ledger-sticky-pay" data-testid="ledger-sticky-pay">
+            <button type="button" class="ledger-sticky-pay__btn" data-testid="ledger-sticky-pay-btn" @click="allocating = true">
+              登記收款<small>{{ allocContracts.length > 1 ? `${allocContracts.length} 份合約` : allocContracts[0].subject }}</small>
             </button>
+          </div>
           </div>
         </template>
       </div>
@@ -270,6 +286,7 @@ import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
 import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
 import PaymentEntryModal from './PaymentEntryModal.vue';
+import PaymentAllocation from './tuition/PaymentAllocation.vue';
 import {
   canShowReceiptCoverage,
   coverageFromReceipt,
@@ -280,9 +297,9 @@ import {
 
 const EXCEPTION_PREVIEW = 2;
 
-const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String] });
+const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean });
 
-const emit = defineEmits(['close', 'changed']);
+const emit = defineEmits(['close', 'changed', 'step']);
 
 // a11y: Esc closes, Tab stays inside the panel, focus returns to the opener.
 const modalEl = ref(null);
@@ -290,6 +307,15 @@ let returnFocusEl = null;
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 function onEsc() {
   if (!entryOpen.value) emit('close');
+}
+// ↑/↓ moves to the adjacent student (Linear-style peek). Only when the drawer itself or a step button has focus,
+// so arrows still work inside fields and selects.
+function onStepKey(event) {
+  if (!props.canStep || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+  const t = event.target;
+  if (t !== modalEl.value && !t.classList?.contains('ledger-step')) return;
+  event.preventDefault();
+  emit('step', event.key === 'ArrowDown' ? 1 : -1);
 }
 function trapTab(event) {
   const panel = modalEl.value;
@@ -301,12 +327,14 @@ function trapTab(event) {
   if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) { event.preventDefault(); last.focus(); }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
+// A different student keeps the drawer open: start at the top.
+watch(() => [props.studentClassId, props.studentId], () => { if (modalEl.value) modalEl.value.scrollTop = 0; });
 watch(() => props.show, async (open) => {
   if (open) {
     returnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     await nextTick();
     modalEl.value?.focus();
-  } else if (returnFocusEl) {
+  } else if (returnFocusEl && !props.canStep) {
     const el = returnFocusEl;
     returnFocusEl = null;
     if (el.isConnected) el.focus();
@@ -498,24 +526,61 @@ const overpaidTotal = computed(() => Number(payload.value?.summary?.overpaid_tot
 const owedFor = (id) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(id))
   .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
-const lastPaymentFor = (id) => {
-  const pays = (payload.value?.invoices || [])
-    .filter((inv) => Number(inv.student_class_id) === Number(id))
-    .flatMap((inv) => inv.payments || [])
+const courseInvoices = (id) => (payload.value?.invoices || [])
+  .filter((inv) => Number(inv.student_class_id) === Number(id) && inv.status !== 'void');
+const lastInvoicePayment = (id) => {
+  const pays = courseInvoices(id).flatMap((inv) => inv.payments || [])
     .filter((p) => !p.is_void && Number(p.amount) > 0 && p.paid_at);
   const last = pays.sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)) || Number(b.id) - Number(a.id))[0];
   return last ? { date: String(last.paid_at).slice(0, 10), amount: Number(last.amount) } : null;
 };
+// Pay line (spec 2.3): latest confirmed receipt = same source as the printed receipt; invoice payments next;
+// the contract's PayDate only as a last fallback (G-009 dual truth, never corrected from here).
+const payLineFor = (course) => {
+  const rc = (payload.value?.receipts || [])
+    .filter((r) => Number(r.student_class_id) === Number(course.id) && r.status === 'confirmed' && Number(r.amount) > 0 && r.payment_date)
+    .sort((a, b) => String(b.payment_date).localeCompare(String(a.payment_date)) || Number(b.report_id) - Number(a.report_id))[0];
+  if (rc) return { date: String(rc.payment_date).slice(0, 10), amount: Number(rc.amount) };
+  return lastInvoicePayment(course.id) || (course.paid_at && Number(course.charge) > 0 ? { date: String(course.paid_at).slice(0, 10), amount: Number(course.charge) } : null);
+};
+const amountsFor = (id) => {
+  const list = courseInvoices(id);
+  if (!list.length) return null;
+  const sum = (k) => list.reduce((t, inv) => t + Number(inv[k] || 0), 0);
+  return { due: sum('total_amount'), received: sum('calculated_applied_amount'), owed: sum('outstanding_amount') };
+};
+const monthLinesFor = (id) => Object.fromEntries(courseInvoices(id).map((inv) => {
+  const key = String(inv.billing_period || inv.period_start || '').slice(0, 7);
+  const paid = (inv.payments || []).filter((p) => !p.is_void && Number(p.amount) > 0 && p.paid_at)
+    .sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)))[0];
+  return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? String(paid.paid_at).slice(0, 10) : '', paidAmount: Number(inv.calculated_applied_amount || 0) }];
+}).filter(([k]) => k));
 const pendingReportFor = (id) => {
   const r = (payload.value?.receipts || []).find((x) => Number(x.student_class_id) === Number(id) && x.status === 'pending');
-  return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0) } : null;
+  return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
 
-// First contract the card would offer 登記收款 for (no pending report, money due or not yet billed).
-const stickyPayCourse = computed(() => (payload.value?.scope?.no_payment_obligation ? null : contractCourses.value.find((c) => c.class_type !== 'tutoring'
-  && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid)) || null));
+// D18: every contract the card would offer 登記收款 for (no pending report, money due or not yet billed),
+// oldest open invoice first; the allocation step fills the oldest and never exceeds what is owed.
+const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
+  // directorRecord rejects invoices already marked paid or void.
+  .filter((inv) => Number(inv.student_class_id) === Number(courseId) && Number(inv.outstanding_amount || 0) > 0 && !['paid', 'void'].includes(inv.status))
+  .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
+    || Number(a.id) - Number(b.id))[0];
+const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
+  .filter((c) => c.class_type !== 'tutoring' && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid))
+  .map((c) => {
+    const inv = oldestOpenInvoice(c.id);
+    return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };
+  })
+  .sort((a, b) => a.key.localeCompare(b.key) || a.id - b.id)));
+const allocating = ref(false);
+async function onAllocDone() {
+  allocating.value = false;
+  await onPanelChanged();
+}
 
 // 開帳單 in place: only where the existing monthly-drafts endpoint has a ready draft for this contract;
 // confirming uses the same renew-monthly request as 本月待開帳單 (no new money logic).
@@ -568,11 +633,7 @@ const entryOpen = ref(false);
 const entryRow = ref(null);
 function openEntry(course) {
   // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
-  const oldest = (payload.value?.invoices || [])
-    // directorRecord rejects invoices already marked paid or void.
-    .filter((inv) => Number(inv.student_class_id) === Number(course.id) && Number(inv.outstanding_amount || 0) > 0 && !['paid', 'void'].includes(inv.status))
-    .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
-      || Number(a.id) - Number(b.id))[0];
+  const oldest = oldestOpenInvoice(course.id);
   entryRow.value = {
     id: course.id,
     charge: course.charge,
@@ -686,11 +747,14 @@ const anomalyLabel = (code) => labelMap({
 </script>
 
 <style scoped>
-.ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:flex;justify-content:flex-end}
-.ledger-modal{width:min(920px,96vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:20px 22px 32px}
+.ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.28);display:flex;justify-content:flex-end}
+.ledger-modal{width:min(560px,100vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:20px 22px 32px}
 .ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px}
 .ledger-header h3{margin:0;font-size:22px}
 .ledger-modal:focus{outline:none}
+.ledger-steps{display:flex;gap:4px;margin-left:auto}
+.ledger-step{min-width:44px;min-height:44px;border:1px solid var(--ds-border);border-radius:8px;background:var(--ds-canvas);color:var(--ds-ink);font-size:18px;cursor:pointer}
+.ledger-step:focus-visible{outline:2px solid var(--ds-cta);outline-offset:2px}
 .ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;min-width:44px;min-height:44px;color:var(--text-light,var(--ds-ink-mute))}
 .ledger-state,.ledger-empty{padding:24px;border:1px dashed var(--ds-canvas-soft);border-radius:12px;color:var(--text-light,var(--ds-ink-mute));text-align:center}
 .ledger-error{color:var(--ds-danger);background:var(--ds-danger-wash);border-color:var(--ds-danger-wash)}
@@ -754,28 +818,26 @@ const anomalyLabel = (code) => labelMap({
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .ledger-fade-enter-active,.ledger-fade-leave-active{transition:opacity .16s ease}
 .ledger-fade-enter-from,.ledger-fade-leave-to{opacity:0}
-.ledger-sticky-pay{display:none;position:sticky;bottom:0;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface,var(--ds-canvas));border-top:1px solid var(--ds-border);z-index:2}
+.ledger-sticky-pay{position:sticky;bottom:-32px;margin:16px -22px -32px;padding:10px 22px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface,var(--ds-canvas));border-top:1px solid var(--ds-border);z-index:2}
 .ledger-sticky-pay__btn{width:100%;min-height:48px;border:0;border-radius:10px;background:var(--ds-cta);color:var(--ds-on-cta);font:inherit;font-size:16px;font-weight:700;cursor:pointer}
 .ledger-sticky-pay__btn small{margin-left:8px;font-weight:400;opacity:.85}
-@media (max-width:760px){
+.ledger-table-wrap{overflow-x:visible}
+.ledger-table,.ledger-table tbody,.ledger-table tr,.ledger-table td{display:block;width:100%;box-sizing:border-box}
+.ledger-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.ledger-table tr{position:relative;margin-bottom:10px;border:1px solid var(--ds-border);border-radius:10px;padding:8px 10px}
+.ledger-table td{border-bottom:0;padding:3px 0}
+.ledger-table td[data-label]{display:flex;justify-content:space-between;gap:12px;text-align:right}
+.ledger-table td[data-label]::before{content:attr(data-label);color:var(--ds-ink-mute);text-align:left}
+.ledger-table .ledger-col-expand{width:auto;position:absolute;top:2px;right:2px;padding:0}
+.ledger-expand{min-width:44px;min-height:44px}
+.ledger-cell-title{padding-right:48px !important;overflow-wrap:anywhere}
+.ledger-cell-actions{padding-top:6px !important}
+.ledger-action{min-height:44px;padding:6px 14px}
+.ledger-table tr.ledger-detail-row{border:0;padding:0;margin:-6px 0 10px}
+.ledger-detail-row td{padding:0}
+@media (max-width:768px){
   .ledger-modal{width:100vw;padding:16px}
   .ledger-timeline__item{grid-template-columns:1fr}
-  .ledger-detail-row td{padding-left:10px}
-  /* B7: invoice table -> cards, nothing clips */
-  .ledger-table-wrap{overflow-x:visible}
-  .ledger-table,.ledger-table tbody,.ledger-table tr,.ledger-table td{display:block;width:100%;box-sizing:border-box}
-  .ledger-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-  .ledger-table tr{position:relative;margin-bottom:10px;border:1px solid var(--ds-border);border-radius:10px;padding:8px 10px}
-  .ledger-table td{border-bottom:0;padding:3px 0}
-  .ledger-table td[data-label]{display:flex;justify-content:space-between;gap:12px;text-align:right}
-  .ledger-table td[data-label]::before{content:attr(data-label);color:var(--ds-ink-mute);text-align:left}
-  .ledger-table .ledger-col-expand{width:auto;position:absolute;top:2px;right:2px;padding:0}
-  .ledger-expand{min-width:44px;min-height:44px}
-  .ledger-cell-title{padding-right:48px !important;overflow-wrap:anywhere}
-  .ledger-cell-actions{padding-top:6px !important}
-  .ledger-action{min-height:44px;padding:6px 14px}
-  .ledger-table tr.ledger-detail-row{border:0;padding:0;margin:-6px 0 10px}
-  .ledger-detail-row td{padding:0}
-  .ledger-sticky-pay{display:block}
+  .ledger-sticky-pay{bottom:-16px;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
 }
 </style>

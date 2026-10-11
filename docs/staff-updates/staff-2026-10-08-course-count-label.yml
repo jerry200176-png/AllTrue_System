@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-08-course-count-label
+    published_at: "2026-10-08"
+    audiences:
+      - director
+    importance: digest
+    title: 課程查找的堂數更好懂
+    summary: 欄位改叫「堂數」，堂數制寫剩幾堂，月結寫已上幾堂；帳務就地打開。
+    items:
+      - category: improved
+        text: 「剩餘堂數」欄改名「堂數」：堂數制顯示剩下幾堂，月結顯示已上幾堂。
+      - category: improved
+        text: 「前往帳務中心」改成「在這裡看帳務」，直接在課程查找裡打開學生帳務，不再跳頁。
+      - category: improved
+        text: 還沒繳費的課，「登記繳費回報」仍會帶你到帳務中心填寫。
