@@ -428,6 +428,13 @@ class AlertController extends Controller
                     'payable_amount_source'    => $payable['payable_amount_source'],
                     'paid_amount'              => $paidAmount,
                     'outstanding'              => $outstanding,
+                    // Every period that still owes (not just the one bill `payable_*` describes): the student list sums these.
+                    'open_periods'             => ($courseStatuses[$classId]['source'] ?? null) === 'invoice'
+                        ? collect($courseStatuses[$classId]['periods'])
+                            ->filter(fn ($p) => ($p['invoice_ids'] ?? []) !== [] && (int) ($p['outstanding'] ?? 0) > 0)
+                            ->map(fn ($p) => ['billing_period' => $p['billing_period'], 'outstanding' => (int) $p['outstanding'], 'due_date' => $p['due_date'] ?? null])
+                            ->values()->all()
+                        : [],
                     'payment_status'           => $paymentStatus,
                     'latest_payment_report_id' => $pendingReportId,
                     'has_newer_course'         => $newerInfo !== null,
