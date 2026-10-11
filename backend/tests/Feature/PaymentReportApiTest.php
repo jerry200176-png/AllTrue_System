@@ -1077,15 +1077,30 @@ class PaymentReportApiTest extends TestCase
         $this->recordDirect($token, $paid->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid')
             ->assertJsonPath('message', '這門課的款項已收齊，不需要再登記；若收錯了，請先作廢原收款再重新登記。');
 
-        // Paid=1 left on while the invoice is wholly unpaid: not "already paid", tell the director what to fix.
+        // Paid=1 left on while the invoice is wholly unpaid (R28): never suggest clearing the Paid flag.
         $conflict = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
         $this->invoiceWithCash($conflict, 8800, 0);
         $msg = $this->recordDirect($token, $conflict->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid')
             ->json('message');
-        $this->assertStringContainsString('改回「未繳費」', $msg);
+        $this->assertStringContainsString('作廢重複或錯誤的帳單', $msg);
+        $this->assertStringContainsString('不要清除已付款標記', $msg);
+        $this->assertStringNotContainsString('改回', $msg);
+        $this->assertDoesNotMatchRegularExpression('/(請|先|再)[^。]{0,6}(清除|取消|改回)[^。]{0,8}(已付|已繳|未繳)/u', $msg, 'must never tell staff to clear Paid (R28)');
         $this->assertStringNotContainsString('已收齊', $msg);
 
         $this->assertSame(1, Payment::count());
+    }
+
+    public function test_guard_resolves_the_course_once_per_request(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 8800]);
+        $this->mock(\App\Services\BillingPayableResolver::class)
+            ->shouldReceive('courseStatusesByStudentClassIds')->once()
+            ->andReturn([$sc->ID => ['status' => 'paid', 'outstanding' => 0, 'source' => 'invoice']]);
+
+        $this->recordDirect($token, $sc->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
     }
 
     public function test_guard_message_when_the_resolver_has_no_answer_says_nothing_was_recorded(): void

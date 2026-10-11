@@ -109,7 +109,7 @@ class ContractMoneyCallersAgreeTest extends TestCase
         // 4. Duplicate-payment guard: blocks exactly the settled contracts.
         if ($class) {
             $ctl = app(\App\Http\Controllers\PaymentReportController::class);
-            $blocked = (new \ReflectionMethod($ctl, 'courseAlreadyHasConfirmedPayment'))->invoke($ctl, $id, (int) $course->Paid);
+            $blocked = (new \ReflectionMethod($ctl, 'courseMoneyBlockReason'))->invoke($ctl, $id, (int) $course->Paid) !== null;
             if ($blocked !== ($class === 'settled')) {
                 $answers['intake_guard'] = ($blocked ? 'blocks' : 'allows') . " a payment but verdict {$v->status}";
             }
