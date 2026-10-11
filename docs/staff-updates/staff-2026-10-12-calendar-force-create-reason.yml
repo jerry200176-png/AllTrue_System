@@ -3,7 +3,7 @@ updates:
     published_at: "2026-10-12"
     audiences:
       - director
-    importance: minor
+    importance: digest
     title: 行事曆重複課程可以正常新增了
     summary: 行事曆提示學生已有課程時，現在可選擇建立試聽、續報或獨立課程。
     items:
