@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use App\Models\ClassSession;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -63,7 +64,7 @@ class SlotOccupiedException extends RuntimeException
             conflictStatus: $conflictStatus,
             conflictSource: 'class_session',
             conflictCourseId: $conflictCourseId,
-            message: '學生在此時段已有其他課程，無法建立重疊課程（請改選其他日期／時間）',
+            message: '學生在此時段已有其他' . self::blockerLabel($conflictCourseId) . '課程，無法建立重疊課程（請改選其他日期／時間）',
             responseCode: 'student_slot_conflict',
         );
     }
@@ -86,9 +87,23 @@ class SlotOccupiedException extends RuntimeException
             conflictSource: 'schedule',
             conflictCourseId: $conflictCourseId > 0 ? $conflictCourseId : null,
             conflictScheduleId: $scheduleId > 0 ? $scheduleId : null,
-            message: '學生在此時段已有其他預排課程，無法建立重疊課程（請改選其他日期／時間）',
+            message: '學生在此時段已有其他' . self::blockerLabel($conflictCourseId > 0 ? $conflictCourseId : null) . '預排課程，無法建立重疊課程（請改選其他日期／時間）',
             responseCode: 'student_slot_conflict',
         );
+    }
+
+    /** 「國文」 — names the blocking course's subject so the director knows which lesson to open; '' when unknown. */
+    private static function blockerLabel(?int $courseId): string
+    {
+        if (!$courseId) {
+            return '';
+        }
+        $name = DB::table('StudentClass as sc')
+            ->join('Subject as su', 'su.id', '=', 'sc.SubjectID')
+            ->where('sc.id', $courseId)
+            ->value('su.Subject_Name');
+
+        return $name ? '「' . $name . '」' : '';
     }
 
     /** @return array<string, mixed> */
