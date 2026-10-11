@@ -336,19 +336,9 @@ class NotificationApiTest extends TestCase
         ]);
         $class = $this->createStudentClass($student->id, 0, 1, 5);
 
-        $notification = Notification::create([
-            'CampusID' => 1,
-            'Type' => 'tuition',
-            'Severity' => 'high',
-            'Title' => '核帳學生 學費提醒',
-            'Body' => '尚未繳費',
-            'SourceType' => 'StudentClass',
-            'SourceID' => (string) $class->ID,
-            'SourceKey' => "tuition:1:{$class->ID}",
-            'Payload' => ['class_id' => (int) $class->ID, 'student_id' => $student->id],
-            'OccurredAt' => now(),
-            'ResolvedAt' => null,
-        ]);
+        // Seed with the real sync output so the paid-report's re-sync is a no-op for content (read state kept).
+        \App\Services\NotificationSyncService::sync([1]);
+        $notification = Notification::where('SourceKey', "tuition:1:{$class->ID}")->firstOrFail();
 
         $response = $this->withHeaders([
             'Authorization' => "Bearer {$token}",

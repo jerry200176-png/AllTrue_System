@@ -87,7 +87,34 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         $this->assertSame(0, Notification::where('Type', 'tuition')->whereNull('ResolvedAt')->count());
     }
 
-    public function test_changed_owed_amount_or_reopen_is_unread_again_but_unchanged_rerun_keeps_read(): void
+    /** @return array<string, array{0: callable(StudentClass, Student): void}> */
+    public static function visibleChanges(): array
+    {
+        return [
+            'title (student name)' => [fn ($c, $s) => $s->forceFill(['name' => 'Renamed'])->save()],
+            'body (remaining sessions)' => [fn ($c, $s) => $c->forceFill(['RemainingSessions' => 2])->save()],
+            'owed amount' => [fn ($c, $s) => $c->forceFill(['Charge' => 7000])->save()],
+            'deep-link payload (student id)' => [function ($c, $s) {
+                $other = Student::create(['name' => $s->name, 'CampusID' => $s->CampusID, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+                $c->forceFill(['StudentID' => $other->id])->save();
+            }],
+        ];
+    }
+
+    /** @dataProvider visibleChanges */
+    public function test_director_visible_change_is_unread_again(callable $change): void
+    {
+        [$campus, $director, $course, $s] = $this->fixture();
+        $this->artisan('tuition:send-reminders')->assertExitCode(0);
+        $n = Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->firstOrFail();
+        $this->markRead($n, $director);
+
+        $change($course, $s);
+        $this->artisan('tuition:send-reminders')->assertExitCode(0);
+        $this->assertSame(0, NotificationRead::count());
+    }
+
+    public function test_unchanged_rerun_keeps_read_and_reopen_is_unread(): void
     {
         [$campus, $director, $course] = $this->fixture();
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
@@ -97,11 +124,6 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
         $this->assertSame(1, NotificationRead::count(), 'unchanged rerun keeps read state');
 
-        $course->forceFill(['Charge' => 7000])->save();
-        $this->artisan('tuition:send-reminders')->assertExitCode(0);
-        $this->assertSame(0, NotificationRead::count(), 'changed amount shows unread again');
-
-        $this->markRead($n, $director);
         $course->forceFill(['Paid' => 1])->save();
         NotificationSyncService::sync([$campus->id]);
         $course->forceFill(['Paid' => 0])->save();

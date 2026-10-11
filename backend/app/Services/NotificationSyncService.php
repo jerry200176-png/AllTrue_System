@@ -207,17 +207,23 @@ class NotificationSyncService
     }
 
     /**
-     * A tuition alert that was resolved (re-opened now) or whose owed amount changed must show unread
-     * again; an unchanged re-sync keeps each director's read state.
+     * A tuition alert that was resolved (re-opened now) or whose director-visible content changed
+     * (title, body, severity, deep-link source, owed-amount composition) must show unread again;
+     * an unchanged re-sync keeps each director's read state.
      */
     private static function reopenIfOwedChanged(Notification $existing, array $payload): void
     {
         if (($payload['Type'] ?? null) !== 'tuition') {
             return;
         }
-        $oldOwed = $existing->Payload['outstanding'] ?? null;
-        $newOwed = $payload['Payload']['outstanding'] ?? null;
-        if ($existing->ResolvedAt !== null || ($oldOwed !== null && $newOwed !== null && (int) $oldOwed !== (int) $newOwed)) {
+        $changed = $existing->ResolvedAt !== null;
+        foreach (['Title', 'Body', 'Severity', 'SourceType', 'SourceID'] as $f) {
+            $changed = $changed || (array_key_exists($f, $payload) && (string) $existing->{$f} !== (string) $payload[$f]);
+        }
+        // Compare only keys the stored row already has: a legacy/partial payload gaining new keys is not a content change.
+        $old = (array) ($existing->Payload ?? []);
+        $changed = $changed || (array_intersect_key((array) ($payload['Payload'] ?? []), $old) != $old);
+        if ($changed) {
             NotificationRead::query()->where('NotificationID', $existing->id)->delete();
         }
     }
