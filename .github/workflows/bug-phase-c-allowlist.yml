@@ -1010,8 +1010,13 @@ jobs:
           }
           // F14: every allowlisted target carries its issue, so a retry after a failed close-issue job still closes it.
           // A shared issue closes only when every allowlisted report linking it is resolved or closed.
+          // An explicit "issue" key wins. Otherwise the reply must link exactly one issue: a reply that also
+          // mentions a follow-up issue (in-app #389 linked #3847 first) must never auto-close the wrong one.
           $issueOf = static function ($cfg) {
-            return preg_match("#/AllTrue_System/issues/([0-9]+)#", (string)($cfg["reply"] ?? ""), $m) ? (int)$m[1] : null;
+            if (isset($cfg["issue"])) return (int) $cfg["issue"];
+            preg_match_all("#/AllTrue_System/issues/([0-9]+)#", (string)($cfg["reply"] ?? ""), $m);
+            $ids = array_values(array_unique(array_map("intval", $m[1] ?? [])));
+            return count($ids) === 1 ? $ids[0] : null;
           };
           foreach ($results as $i => $row) {
             $issue = $issueOf($items[$row["id"]] ?? []);

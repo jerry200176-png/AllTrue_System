@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-11-billing-entries-open-in-place
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: digest
+    title: 繳費入口不再跳頁
+    summary: 在課程查找或學生管理按繳費，直接在原頁打開學生帳務。
+    items:
+      - category: improved
+        text: 登記收款、確認入帳、作廢都在原頁的學生帳務裡做，關掉就回到原本位置。
+    source_refs:
+      - "changelog:2026-10-11:billing-entries-open-in-place"

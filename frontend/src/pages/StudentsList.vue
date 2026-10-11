@@ -465,7 +465,7 @@
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
                         <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLow(course) ? '再次續報加購' : '加購' }}</button>
-                        <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" title="在帳務中心打開學生帳務" @click="openTuitionLedger(course)">學生帳務</button>
+                        <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" title="打開這位學生的帳務" @click="openTuitionLedger(course)">學生帳務</button>
                         <button v-if="isSessionPaymentLow(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
                         <button type="button" class="small danger" @click="deleteCourse(course)">刪除</button>
@@ -753,6 +753,15 @@
     </div>
 
     <ToastWithUndo ref="toastRef" />
+
+    <!-- PRD v2 D2: the student's billing opens here, on the page the director is already on. -->
+    <AccountingLedgerModal
+      :show="ledgerOpen"
+      :student-class-id="ledgerStudentClassId"
+      :branch-id="props.branchId"
+      @close="ledgerOpen = false"
+      @changed="loadStudents"
+    />
 
     <UniversalClassScheduler
       v-if="showCourseModal && !editingCourseId"
@@ -1045,6 +1054,7 @@ import { updatePackage } from '../lib/coursePackagesApi';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import { buildEditTeacherOptions, isAssignableTeacher } from '../lib/courseTeacherOptions.js';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
+import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import {
   buildForceOverrideFields,
@@ -1057,12 +1067,9 @@ import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal
 import MonthlyBatchRenewModal from '../components/course-management/MonthlyBatchRenewModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
-  buildTuitionCollectNav,
-  buildTuitionLedgerNav,
   buildCourseMgmtOpsNav,
   buildManualSessionNav,
   buildBindingManagementNav,
-  tuitionIntentForPaymentStatus,
 } from '../lib/authoritativeMutationRoutes.js';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
@@ -1081,15 +1088,15 @@ const props = defineProps({
 });
 const emit = defineEmits(['navigate', 'clear-initial-student']);
 
-const goToTuitionBilling = (course) => {
-  emit('navigate', buildTuitionCollectNav(course, {
-    intent: tuitionIntentForPaymentStatus(course?.payment_status),
-  }));
-};
-
+// PRD v2 D2: every billing entry (pay, confirm a report, void, see the bill) opens the student billing panel in place.
+const ledgerOpen = ref(false);
+const ledgerStudentClassId = ref(null);
 const openTuitionLedger = (course) => {
-  emit('navigate', buildTuitionLedgerNav(course));
+  if (!course?.id) return;
+  ledgerStudentClassId.value = course.id;
+  ledgerOpen.value = true;
 };
+const goToTuitionBilling = openTuitionLedger;
 
 const goToCourseMgmtOps = (course, studentName = '') => {
   emit('navigate', {
