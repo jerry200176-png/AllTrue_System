@@ -30,6 +30,13 @@ def workflow_run_script(step_name: str) -> str:
 
 
 class UiSmokeWorkflowGateTest(unittest.TestCase):
+    def test_playwright_user_agent_is_unique_per_run(self):
+        # #3767: login revokes same-UA tokens; a per-run UA isolates parallel runs.
+        config = (WORKFLOW.parents[2] / "frontend/playwright.config.js").read_text(encoding="utf-8")
+        self.assertIn("GITHUB_RUN_ID", config)
+        self.assertIn("GITHUB_RUN_ATTEMPT", config)
+        self.assertIn("userAgent: smokeUserAgent", config)
+
     def test_git_diff_error_fails_instead_of_skipping_playwright(self):
         script = workflow_run_script("Detect frontend diff (PR only)")
         with tempfile.TemporaryDirectory() as temp:
