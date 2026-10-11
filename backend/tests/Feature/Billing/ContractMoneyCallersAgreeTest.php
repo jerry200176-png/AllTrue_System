@@ -190,6 +190,38 @@ class ContractMoneyCallersAgreeTest extends TestCase
         $this->fail($msg);
     }
 
+    /**
+     * #3781: a bill whose stored Status/PaidAmount went stale as "paid" while its Payment rows still owe. Payment rows are
+     * the truth (Founder Q2, R28), so every receivable listing must still show it, not pre-filter on the stored columns.
+     */
+    public function test_stale_paid_invoice_still_owes_on_every_receivable_list(): void
+    {
+        $course = $this->course([['2026-08', 10000, 'paid', 10000, [[4000, 'cash']]]], ['Paid' => 1, 'Rate' => 1000]);
+        $id = (int) $course->ID;
+        $v = app(ContractMoneyVerdict::class)->forCourse($course);
+        $this->assertSame(['partial', 6000], [$v->status, $v->outstanding]);
+        $headers = $this->directorHeaders();
+        $answers = [];
+
+        $row = collect($this->withHeaders($headers)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $id);
+        if (!$row) {
+            $answers['alerts_listing'] = 'not listed';
+        } elseif ($row['payment_status'] !== 'partial' || (int) $row['outstanding'] !== $v->outstanding) {
+            $answers['alerts'] = "status {$row['payment_status']} outstanding {$row['outstanding']}";
+        }
+        $aging = $this->withHeaders($headers)->getJson('/api/v1/finance/ar-aging?branch_id=1')->assertOk()->json('totals.grand_total');
+        if ((int) $aging !== $v->outstanding) {
+            $answers['ar_aging'] = "grand_total $aging";
+        }
+        $txn = \App\Models\BankTransaction::create(['campus_id' => 1, 'transaction_date' => '2026-08-20', 'amount' => $v->outstanding, 'reference' => 'stale', 'status' => 'unmatched']);
+        $suggested = collect($this->withHeaders($headers)->getJson("/api/v1/bank-reconciliation/{$txn->id}/suggest")->assertOk()->json('suggestions'))->pluck('student_class_id')->all();
+        if ($suggested !== [$id]) {
+            $answers['bank_suggest'] = 'suggests ' . json_encode($suggested);
+        }
+
+        $this->assertSame([], $answers, "verdict {$v->status}/{$v->outstanding}");
+    }
+
     /** @return array<string, string> */
     private function directorHeaders(): array
     {

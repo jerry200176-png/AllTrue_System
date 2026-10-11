@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-12-stale-paid-bill-still-owes
+    published_at: "2026-10-12"
+    audiences:
+      - director
+    importance: minor
+    title: 收款不足的帳單不會再從待收清單消失
+    summary: 帳單照收款紀錄判斷，狀態寫錯成已繳也照樣列出欠多少。
+    items:
+      - category: fixed
+        text: 帳單狀態寫「已繳」但收款紀錄不足時，待收清單、應收帳齡和銀行對帳建議都會列出還欠的金額。
+    source_refs:
+      - "changelog:2026-10-12:stale-paid-bill-still-owes"

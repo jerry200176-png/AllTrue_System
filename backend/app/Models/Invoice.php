@@ -66,6 +66,26 @@ class Invoice extends Model
         });
     }
 
+    /**
+     * SQL: this invoice's net applied Payment rows (positive non-void minus every reversal), the same rule as
+     * InvoiceAmountReconciliationService. For SQL pre-filters only; the resolver still decides the real amount.
+     */
+    public static function netPaidSql(string $invoice = 'Invoice'): string
+    {
+        return "GREATEST(0, (SELECT COALESCE(SUM(CASE WHEN P.Amount > 0 AND COALESCE(P.Method, '') <> 'void' THEN P.Amount"
+            . " WHEN P.Amount < 0 OR P.Method = 'void' THEN -ABS(P.Amount) ELSE 0 END), 0) FROM Payment P WHERE P.InvoiceID = $invoice.id))";
+    }
+
+    /**
+     * SQL: a non-void invoice that may still owe. Payment rows are the truth (Founder Q2, R28): a stored Status of
+     * "paid" whose Payment rows fall short still owes (#3781).
+     */
+    public static function mayOweSql(string $invoice = 'Invoice'): string
+    {
+        return "($invoice.Status IS NULL OR $invoice.Status NOT IN ('paid', 'void')"
+            . " OR ($invoice.Status = 'paid' AND $invoice.TotalAmount > " . self::netPaidSql($invoice) . '))';
+    }
+
     public function student()
     {
         return $this->belongsTo(Student::class, 'StudentID', 'id');
