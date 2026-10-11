@@ -32,7 +32,10 @@ class RotateTelegramWebhookSecretTest extends TestCase
         $campus = $this->campus15(['code' => 'rotatebranch', 'TelegramToken' => 'bot-token']);
         DB::table('Campus')->where('id', $campus->id)->update(['TelegramWebhookSecret' => null]);
 
-        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true], 200)]);
+        Http::fake([
+            '*setWebhook' => Http::response(['ok' => true], 200),
+            '*getWebhookInfo' => fn ($r) => Http::response(['ok' => true, 'result' => ['url' => rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/rotatebranch']], 200),
+        ]);
 
         $this->artisan('telegram:rotate-webhook-secret', ['campus' => (string) $campus->id])
             ->assertExitCode(0);
@@ -103,7 +106,7 @@ class RotateTelegramWebhookSecretTest extends TestCase
         $this->assertStringNotContainsString('123456', $out);
         $this->assertStringNotContainsString('FAKE-token', $out);
 
-        Log::shouldHaveReceived('error')->withArgs(fn ($m, $ctx) => !str_contains(json_encode($ctx), '123456'));
+        Log::shouldHaveReceived('critical')->withArgs(fn ($m, $ctx) => !str_contains(json_encode($ctx), '123456'))->once();
     }
 
     public function test_db_failure_after_set_webhook_restores_previous_registration(): void
@@ -130,5 +133,55 @@ class RotateTelegramWebhookSecretTest extends TestCase
 
         $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15']));
         $this->assertStringContainsString('RESTORE FAILED', Artisan::output());
+    }
+
+    public function test_ambiguous_transport_failure_restores_previous_registration(): void
+    {
+        $this->campus15(['code' => 'rotateamb', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => 'old-secret']);
+        $n = 0;
+        Http::fake(function ($request) use (&$n) {
+            if (++$n === 1) {
+                throw new \Illuminate\Http\Client\ConnectionException('timeout');
+            }
+            return Http::response(['ok' => true], 200);
+        });
+
+        $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15']));
+        $sent = Http::recorded()->values();
+        $this->assertSame(2, $n);  // the thrown first call is not recorded; the second is the restore
+        $this->assertCount(1, $sent);
+        $this->assertSame('old-secret', $sent[0][0]['secret_token']);
+        $this->assertSame('old-secret', DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
+    }
+
+    public function test_verification_failure_exits_non_zero(): void
+    {
+        $this->campus15(['code' => 'rotateverify', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => null]);
+        Http::fake([
+            '*setWebhook' => Http::response(['ok' => true], 200),
+            '*getWebhookInfo' => Http::response(['ok' => true, 'result' => ['url' => 'https://elsewhere', 'last_error_message' => 'x']], 200),
+        ]);
+
+        $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15']));
+        $this->assertStringContainsString('verification FAILED', Artisan::output());
+    }
+
+    public function test_rollback_deletes_webhook_and_clears_secret(): void
+    {
+        $this->campus15(['code' => 'rotaterb', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => 'live-secret']);
+        Http::fake(['*deleteWebhook' => Http::response(['ok' => true], 200)]);
+
+        $this->assertSame(0, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15', '--rollback' => true]));
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'deleteWebhook'));
+        $this->assertEmpty(DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
+    }
+
+    public function test_rollback_keeps_db_when_telegram_unreachable(): void
+    {
+        $this->campus15(['code' => 'rotaterb2', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => 'live-secret']);
+        Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException('down'));
+
+        $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15', '--rollback' => true]));
+        $this->assertSame('live-secret', DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
     }
 }

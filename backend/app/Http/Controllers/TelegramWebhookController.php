@@ -61,11 +61,10 @@ class TelegramWebhookController extends Controller
                 if (!$response->successful()) {
                     Log::warning('Telegram sendMessage returned non-2xx', [
                         'status' => $response->status(),
-                        'body' => $response->body(),
                     ]);
                 }
             } catch (\Throwable $e) {
-                Log::warning('Telegram sendMessage failed: ' . $e->getMessage());
+                Log::warning('Telegram sendMessage failed: ' . preg_replace('#bot\\d+:[A-Za-z0-9_-]+#', 'bot[REDACTED]', str_replace($botToken, '[REDACTED]', $e->getMessage())));
             }
         };
 

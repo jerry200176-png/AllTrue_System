@@ -102,4 +102,16 @@ class TelegramWebhookSecurityTest extends TestCase
         $this->postTelegramWebhook($campus->code, $this->update('555', '/start'), 'webhook-secret-xyz')
             ->assertOk();
     }
+
+    public function test_sender_transport_failure_does_not_log_bot_token(): void
+    {
+        Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException('cURL error 6 for https://api.telegram.org/botbot-token-123/sendMessage'));
+        \Illuminate\Support\Facades\Log::spy();
+        $campus = $this->campus();
+
+        $this->postTelegramWebhook($campus->code, $this->update('555', '/start'), 'webhook-secret-xyz')->assertOk();
+
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+            ->withArgs(fn ($m, $ctx = []) => !str_contains($m . json_encode($ctx), 'bot-token-123'))->atLeast()->once();
+    }
 }
