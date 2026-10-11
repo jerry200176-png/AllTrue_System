@@ -172,8 +172,8 @@ const months = computed(() => {
   const groups = [];
   for (const s0 of sessions.value) {
     const key = String(s0.date).slice(0, 7);
-    if (groups.at(-1)?.key !== key) groups.push({ key, label: `${key.slice(0, 4)} 年 ${Number(key.slice(5, 7))} 月`, sessions: [], counted: 0 });
-    const g = groups.at(-1);
+    if (groups[groups.length - 1]?.key !== key) groups.push({ key, label: `${key.slice(0, 4)} 年 ${Number(key.slice(5, 7))} 月`, sessions: [], counted: 0 });
+    const g = groups[groups.length - 1];
     const s = { ...s0, numberText: '' };
     if ([...HELD, ...UPCOMING].includes(s.status)) {
       n += 1;
