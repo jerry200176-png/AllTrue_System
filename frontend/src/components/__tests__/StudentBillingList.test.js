@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import StudentBillingList from '../tuition/StudentBillingList.vue';
-import { buildStudentBillingRows } from '../../lib/studentBillingRows.js';
+import { buildStudentBillingRows, rowOwedTotal } from '../../lib/studentBillingRows.js';
 
 const ROWS = [
   { id: 11, student_id: 1, student_name: '甲', payment_status: 'unpaid', payable_outstanding: 3000, due_date: '2026-10-01' },
@@ -20,6 +20,19 @@ describe('buildStudentBillingRows', () => {
     const b = rows.find((r) => r.student_id === 2);
     expect([b.owed_now, b.waiting_confirm, b.last_paid_at]).toEqual([0, 1, '2026-09-03']);
     expect(rows.find((r) => r.student_id === 4).owed_now).toBe(0);
+  });
+});
+
+describe('buildStudentBillingRows with open_periods (same bills as the student panel)', () => {
+  it('sums every open bill of a contract and splits each by its own due date', () => {
+    const rows = buildStudentBillingRows([
+      { id: 11, student_id: 1, student_name: '甲', payment_status: 'unpaid', payable_outstanding: 3000, due_date: '2026-10-01',
+        open_periods: [{ billing_period: '2026-09', outstanding: 3000, due_date: '2026-10-01' }, { billing_period: '2026-10', outstanding: 5000, due_date: '2026-10-20' }, { billing_period: '2026-08', outstanding: 1000, due_date: null }] },
+    ], [], '2026-10-07');
+    const a = rows[0];
+    expect([a.owed_now, a.owed_later, a.overdue_days, a.open_contracts]).toEqual([4000, 5000, 6, 1]);
+    expect(rowOwedTotal({ open_periods: [{ outstanding: 3000 }, { outstanding: 5000 }], payable_outstanding: 3000 })).toBe(8000);
+    expect(rowOwedTotal({ payable_outstanding: 3000 })).toBe(3000);
   });
 });
 

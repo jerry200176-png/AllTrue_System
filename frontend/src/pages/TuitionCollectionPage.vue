@@ -1088,6 +1088,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
+import { rowOwedTotal } from '../lib/studentBillingRows.js';
 import { useToast } from '../composables/useToast';
 import { authedFetch } from '../lib/authedFetch.js';
 import * as paymentActions from '../lib/paymentActions.js';
@@ -1740,7 +1741,7 @@ const OUTSTANDING_STATUSES = ['unpaid', 'partial', 'pending_report', 'pending_re
 const totalOutstanding = computed(() => {
   return rows.value
     .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status))
-    .reduce((sum, r) => sum + (r.payable_outstanding || 0), 0);
+    .reduce((sum, r) => sum + rowOwedTotal(r), 0);
 });
 
 // 未開帳單（payable_status !== 'invoiced'）的提醒 payable_outstanding 為 null，金額只有估算值，
@@ -1750,7 +1751,7 @@ const unbilledOutstandingCount = computed(() => rows.value
 
 // ═══ Summary Computed ═══
 const overdueRows = computed(() => rows.value.filter(isOverdue));
-const overdueTotal = computed(() => overdueRows.value.reduce((s, r) => s + (r.payable_outstanding || 0), 0));
+const overdueTotal = computed(() => overdueRows.value.reduce((s, r) => s + rowOwedTotal(r), 0));
 const totalCharge = computed(() => rows.value.reduce((s, r) => s + (r.payable_amount || 0), 0));
 const totalPaid = computed(() => rows.value.reduce((s, r) => s + (r.paid_amount || 0), 0));
 const collectionRate = computed(() => {
