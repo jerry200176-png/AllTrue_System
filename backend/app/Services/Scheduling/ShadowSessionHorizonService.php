@@ -51,7 +51,7 @@ final class ShadowSessionHorizonService
             $uncovered = (int) ($p['occurrence_summary']['uncovered_new'] ?? 0);
             $previewUncovered += $uncovered;
             $candN = count($e['candidates'] ?? []);
-            $ensureCandidates += $candN;
+            $ensureCandidates += (int) ($e['would_create'] ?? $candN); // #3727: net of slots execute will skip
             if (!empty($p['auto_ensure_eligible'])) {
                 $ensureEligible++;
             }

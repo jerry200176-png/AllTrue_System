@@ -241,6 +241,26 @@ class EnsureSessionHorizonTest extends TestCase
         $this->assertFalse(DB::table('ClassSession')->where('StudentClassID', $sc)->whereDate('SessionDate', $first)->exists());
     }
 
+    public function test_dry_run_would_create_excludes_slots_execute_will_skip(): void
+    {
+        // #3727: dry-run used to count cross-contract overlaps that execute skips.
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $baseline = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+        $first = $baseline['candidates'][0]['date'];
+        $other = $this->course(['StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID')]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $other, 'SessionDate' => $first, 'StartTime' => '17:00:00',
+            'EndTime' => '18:00:00', 'Status' => 'scheduled', 'Note' => '',
+        ]);
+
+        $dry = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+
+        $this->assertSame(1, $dry['would_skip']);
+        $this->assertSame($baseline['would_create'] - 1, $dry['would_create']);
+    }
+
     public function test_shared_pool_shortage_warns_but_does_not_block_planned_sessions(): void
     {
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');

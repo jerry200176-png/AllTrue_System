@@ -121,10 +121,21 @@ final class EnsureSessionHorizonService
         }
 
         if ($mode !== self::MODE_EXECUTE) {
+            // #3727: mirror the execute-path skips (R20 same-start + write-guard overlap) so dry-run and
+            // ShadowSessionHorizonService evidence never count slots execute will skip.
+            $studentId = $this->loadStudentId($studentClassId);
+            $course = StudentClass::query()->find($studentClassId);
+            $course = $course instanceof StudentClass ? $course : null;
+            $asOf = ($today ?? Carbon::today())->toDateString();
+            $wouldSkip = count(array_filter(
+                $candidates,
+                fn ($o) => $this->slotConflicts($studentId, $course, $studentClassId, $o, $asOf)
+            ));
             $result['ensure']['ok'] = true;
             $result['ensure']['blocked'] = false;
             $result['ensure']['primary_reason'] = 'DRY_RUN_OK';
-            $result['ensure']['would_create'] = count($candidates);
+            $result['ensure']['would_create'] = count($candidates) - $wouldSkip;
+            $result['ensure']['would_skip'] = $wouldSkip;
             $result['meta']['read_only'] = true;
 
             return $result;
@@ -158,10 +169,7 @@ final class EnsureSessionHorizonService
                 $course = $course instanceof StudentClass ? $course : null;
                 foreach ($candidates as $o) {
                     $end = $o['end_hm'] ?? $this->defaultEnd($o['start_hm']);
-                    // R20 same-start check stays (stricter on purpose); the write guard also rejects partial
-                    // overlaps, so skip those too instead of failing the whole batch (in-app #380, R142).
-                    if ($this->hasCrossScConflict($studentId, $o['date'], $o['start_hm'], $studentClassId)
-                        || ($course && $this->materializer->findStudentSlotConflict($course, $o['date'], $o['start_hm'], $end, $asOf))) {
+                    if ($this->slotConflicts($studentId, $course, $studentClassId, $o, $asOf)) {
                         Log::warning('ensure_horizon_cross_sc_conflict', [
                             'student_class_id' => $studentClassId,
                             'date' => $o['date'],
@@ -207,6 +215,20 @@ final class EnsureSessionHorizonService
         $result['ensure']['provenance_note'] = $note;
 
         return $result;
+    }
+
+    /**
+     * R20 same-start check stays (stricter on purpose); the write guard also rejects partial overlaps
+     * (in-app #380, R142). Shared by dry-run and execute so their counts agree.
+     *
+     * @param array<string,mixed> $o
+     */
+    private function slotConflicts(int $studentId, ?StudentClass $course, int $studentClassId, array $o, string $asOf): bool
+    {
+        $end = $o['end_hm'] ?? $this->defaultEnd($o['start_hm']);
+
+        return $this->hasCrossScConflict($studentId, $o['date'], $o['start_hm'], $studentClassId)
+            || ($course && $this->materializer->findStudentSlotConflict($course, $o['date'], $o['start_hm'], $end, $asOf));
     }
 
     private function loadStudentId(int $studentClassId): int
