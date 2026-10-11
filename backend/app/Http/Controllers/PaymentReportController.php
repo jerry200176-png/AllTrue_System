@@ -604,7 +604,8 @@ class PaymentReportController extends Controller
             if ($refusal = ContractMoneyState::waivedRefusal($lockedCourse, '此合約已確認不收，不能登記收款')) {
                 return $refusal;
             }
-            $package = $this->lockPackageForCourse($sc);
+            // #3892: package membership from the locked row, so a concurrent convertToPackage is never missed.
+            $package = $this->lockPackageForCourse($lockedCourse);
 
             if ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0))) {
                 return $this->duplicateCoursePaymentResponse($blockReason);

@@ -37,6 +37,15 @@ describe('帳務面板 · 共用方案只有一個收款入口 (#3753)', () => {
     expect(w.find('[data-testid="ledger-sticky-pay-btn"]').text()).toContain('2 份合約');
   });
 
+  it('mixed states: a paid first member does not hide the package action from its unpaid sibling', async () => {
+    const w = await mountLedger(ledger({
+      courses: [{ ...course(1, '數學', 9), paid: true }, course(2, '英文', 9), course(3, '理化', null)],
+    }));
+    const recordCards = w.findAll('[data-testid="contract-record"]');
+    expect(recordCards).toHaveLength(2); // 英文 (package) + 理化
+    expect(w.find('[data-testid="ledger-sticky-pay-btn"]').text()).toContain('2 份合約');
+  });
+
   it('a pending report on one member shows once for the package and offers no second record', async () => {
     const w = await mountLedger(ledger({
       receipts: [{ report_id: 5, student_class_id: 2, amount: 24000, status: 'pending', payment_date: '2026-08-20' }],

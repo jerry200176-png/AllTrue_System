@@ -568,8 +568,16 @@ const pendingReportFor = (id) => {
 };
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
-// The first card of a shared package carries its single payment action; the other members point to it.
-const packageLead = (c) => !c.package_id || contractCourses.value.find((x) => x.package_id === c.package_id)?.id === c.id;
+// One card of a shared package carries its single payment action; the other members point to it. Lead = the member
+// holding a pending report, else the first one that still needs payment (mixed states), else the first member.
+const packageLead = (c) => {
+  if (!c.package_id) return true;
+  const members = contractCourses.value.filter((x) => x.package_id === c.package_id);
+  const pending = (payload.value?.receipts || []).find((r) => r.status === 'pending' && members.some((m) => Number(m.id) === Number(r.student_class_id)));
+  const lead = (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
+    || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];
+  return lead.id === c.id;
+};
 
 // D18: every contract the card would offer 登記收款 for (no pending report, money due or not yet billed),
 // oldest open invoice first; the allocation step fills the oldest and never exceeds what is owed.

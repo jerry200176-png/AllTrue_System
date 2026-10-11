@@ -52,6 +52,28 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $this->assertSame(1, PaymentReport::whereIn('StudentClassID', [$a->ID, $b->ID])->count());
     }
 
+    /** #3892 review: a course attached to a package while this request waits for the row lock still sees the sibling's pending report. */
+    public function test_package_membership_is_read_from_the_locked_course(): void
+    {
+        [$a, , $pkg] = $this->sharedPackage();
+        $h = $this->directorHeaders();
+        $this->record($h, (int) $a->ID)->assertOk();
+        $c = $this->course([], ['Charge' => 0, 'Rate' => 1500, 'SubjectID' => 3], [], Student::findOrFail($a->StudentID));
+
+        // Simulate convertToPackage committing between the first read and lockForUpdate: the DB row moves into the package
+        // right after the request hydrates its (now stale) copy of the course.
+        $moved = false;
+        \App\Models\StudentClass::retrieved(function ($m) use (&$moved, $c, $pkg) {
+            if (!$moved && (int) $m->ID === (int) $c->ID) {
+                $moved = true;
+                \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $c->ID)->update(['PackageID' => $pkg->id]);
+            }
+        });
+
+        $this->record($h, (int) $c->ID)->assertStatus(422)->assertJsonPath('code', 'pending_report_exists');
+        $this->assertTrue($moved);
+    }
+
     public function test_ledger_tells_the_panel_which_contracts_share_one_package(): void
     {
         [$a, $b, $pkg] = $this->sharedPackage();
