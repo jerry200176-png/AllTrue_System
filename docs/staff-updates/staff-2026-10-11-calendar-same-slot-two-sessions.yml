@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-11-calendar-same-slot-two-sessions
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: digest
+    title: 行事曆同時段兩堂都會顯示
+    summary: 同學生同時段有兩堂真實課程時，不再只顯示一張卡。
+    items:
+      - category: fixed
+        text: 續約課程與舊課程在同一天同時段都有課時，行事曆會兩張卡都顯示，科目數與卡片數一致。
+    source_refs:
+      - "changelog:2026-10-11:calendar-same-slot-two-sessions"
