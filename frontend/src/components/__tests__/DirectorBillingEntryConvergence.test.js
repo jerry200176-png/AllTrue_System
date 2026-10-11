@@ -78,4 +78,13 @@ describe('director billing M2: one authoritative entry (帳務中心 → 學生�
     expect(studentsList).not.toMatch(/openInvoiceModal|showInvoiceModal/);
     expect(studentsList).toContain('@click="openTuitionLedger(course)"');
   });
+
+  it('D2: course lookup and students list open the billing panel in place, never navigate to 帳務中心', () => {
+    for (const src of [courseManagement, studentsList]) {
+      expect(src).not.toContain('buildTuitionCollectNav');
+      expect(src).not.toContain('buildTuitionLedgerNav');
+      expect(src).toContain('<AccountingLedgerModal');
+    }
+    expect(studentsList).toContain('const goToTuitionBilling = openTuitionLedger;');
+  });
 });
