@@ -15,6 +15,9 @@ final class MuzhaFixedScheduleStrategyTest extends TestCase
 
     public function test_exact_preflight_accepts_observed_rows_and_rejects_both_changed_exception_and_extra_row(): void
     {
+        // The slot guard skips past dates (now()); the manifest's rows are October 2026, so pin the clock
+        // before them or the conflict assertions silently stop holding once those dates pass.
+        $this->travelTo(\Carbon\Carbon::parse('2026-10-01 09:00:00'));
         $cases = MuzhaFixedScheduleManifest::cases();
         foreach ($cases as $classId => $case) {
             DB::table('Student')->insert([
