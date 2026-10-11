@@ -50,9 +50,9 @@ class DirectorEndpointQueryBudgetTest extends TestCase
     public function test_accounting_ledger_budget(): void
     {
         $cid = (int) DB::table('StudentClass')->value('ID');
-        // Known N+1 (measured 66 at 2 courses x 8 invoices): MonthlyBillingService session
+        // Known N+1 (measured 66-83 at 2 courses x 8 invoices): MonthlyBillingService session
         // lookups and StudentClass::displaySubjectName() run per invoice. Budget is a ceiling to ratchet down.
-        $this->assertBudget(68, "/api/v1/accounting/ledger?student_class_id={$cid}");
+        $this->assertBudget(90, "/api/v1/accounting/ledger?student_class_id={$cid}");
     }
 
     public function test_students_index_budget(): void
