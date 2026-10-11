@@ -1066,6 +1066,40 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(0, Payment::count());
     }
 
+    public function test_guard_message_says_why_the_payment_cannot_be_recorded(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+
+        $paid = $this->createCountModeClass($student->id, ['Charge' => 8800]);
+        $this->invoiceWithCash($paid, 8800, 8800);
+        $this->recordDirect($token, $paid->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid')
+            ->assertJsonPath('message', '這門課的款項已收齊，不需要再登記；若收錯了，請先作廢原收款再重新登記。');
+
+        // Paid=1 left on while the invoice is wholly unpaid: not "already paid", tell the director what to fix.
+        $conflict = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $this->invoiceWithCash($conflict, 8800, 0);
+        $msg = $this->recordDirect($token, $conflict->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid')
+            ->json('message');
+        $this->assertStringContainsString('改回「未繳費」', $msg);
+        $this->assertStringNotContainsString('已收齊', $msg);
+
+        $this->assertSame(1, Payment::count());
+    }
+
+    public function test_guard_message_when_the_resolver_has_no_answer_says_nothing_was_recorded(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 8800]);
+        $this->mock(\App\Services\BillingPayableResolver::class)
+            ->shouldReceive('courseStatusesByStudentClassIds')->andThrow(new \RuntimeException('boom'));
+
+        $this->assertStringContainsString('沒有登記任何款項', $this->recordDirect($token, $sc->ID, 8800)->assertStatus(422)
+            ->assertJsonPath('code', 'course_already_paid')->json('message'));
+    }
+
     public function test_confirm_rejects_duplicate_payment_when_course_already_paid(): void
     {
         Carbon::setTestNow('2026-04-28 10:00:00');
