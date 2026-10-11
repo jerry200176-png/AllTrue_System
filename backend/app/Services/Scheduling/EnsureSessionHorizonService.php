@@ -262,7 +262,8 @@ final class EnsureSessionHorizonService
             $end = substr((string) ($o['end_hm'] ?? $this->defaultEnd($o['start_hm'])), 0, 5);
             $touches = false;
             foreach ($busy[$d] ?? [] as [$bs, $be]) {
-                if (substr($bs, 0, 5) < $end && substr($be, 0, 5) > $start) {
+                // Same start always touches (R20 same-start check ignores the other row's end, e.g. 00:00 when omitted).
+                if (substr($bs, 0, 5) === $start || (substr($bs, 0, 5) < $end && substr($be, 0, 5) > $start)) {
                     $touches = true;
                     break;
                 }

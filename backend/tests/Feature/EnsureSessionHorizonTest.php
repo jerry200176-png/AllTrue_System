@@ -377,6 +377,31 @@ class EnsureSessionHorizonTest extends TestCase
         $this->assertSame($sqlFew, $sqlMany, "SQL grew with candidates: {$few} cands={$sqlFew}, {$many} cands={$sqlMany}");
     }
 
+    public function test_dry_run_counts_same_start_conflict_even_when_other_row_end_is_not_after_start(): void
+    {
+        // #3727 latest-head review: R20 same-start skip ignores the other row's EndTime (00:00 when omitted).
+        putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
+        $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $first = $svc->ensure($sc, null, $this->today, null)['ensure']['candidates'][0];
+        $other = $this->course(['StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID')]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $other, 'SessionDate' => $first['date'], 'StartTime' => $first['start_hm'].':00',
+            'EndTime' => '00:00:00', 'Status' => 'scheduled', 'Note' => '',
+        ]);
+
+        $dry = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+        $exec = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE)['ensure'];
+
+        $this->assertSame(1, $exec['skipped_count']);
+        $this->assertSame($exec['skipped_count'], $dry['would_skip']);
+        $this->assertSame($exec['created_count'], $dry['would_create']);
+    }
+
     public function test_shared_pool_shortage_warns_but_does_not_block_planned_sessions(): void
     {
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
