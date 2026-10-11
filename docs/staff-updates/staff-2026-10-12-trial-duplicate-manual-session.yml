@@ -3,7 +3,7 @@ updates:
     published_at: "2026-10-12"
     audiences:
       - director
-    importance: minor
+    importance: digest
     title: 空的手動試聽可直接補排第一堂
     summary: 重複建立試聽時，提示視窗會提供「新增下一堂」。
     items:
