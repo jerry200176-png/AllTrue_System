@@ -633,3 +633,18 @@ assert.equal(
   assert.deepEqual(noSession.map((row) => row.start_time), ['15:00'], 'superseded exception at another time must not render');
   assert.ok(noSession.every((row) => Number(row.teacher_id) === 17));
 }
+
+// #3847 (in-app #389): a renewal course overlapping the settled one gives the SAME student two real
+// ClassSessions in one slot (distinct StudentClass). Both must render; a legacy row still collapses.
+{
+  const oldCourse = { ...baseCourse, id: 3103, student_id: 2275, class_type: 'one_on_three', days_of_week: [5], day_time_slots: [{ day: 5, start_time: '18:00', duration_hours: 2 }] };
+  const renewal = { ...oldCourse, id: 4164 };
+  const sess = (id, cid) => ({ id, student_class_id: cid, session_date: '2026-05-08', start_time: '18:00', end_time: '20:00', status: 'attended', teacher_id: 17, teacher_name: '原老師' });
+  const rows = merge({
+    courses: [oldCourse, renewal],
+    sessionDatesByCourseId: { 3103: [sess(33912, 3103)], 4164: [sess(42616, 4164)] },
+  });
+  assert.deepEqual(rows.map((row) => Number(row.class_session_id)).sort(), [33912, 42616], 'both real sessions must render');
+  const legacy = { id: 1, student_id: 9, student_name: 'x', day_of_week: 5, start_time: '18:00' };
+  assert.equal(dedupeCalendarRowsByStudentSlot([legacy, { ...legacy, id: 2 }]).length, 1);
+}
