@@ -177,6 +177,81 @@ class OverlappingCourseGuardTest extends TestCase
         $this->assertSame($classes, \Illuminate\Support\Facades\DB::table('StudentClass')->count());
     }
 
+    /** #3738 review: the monthly check must not rely on client-supplied existing_contract_ids. */
+    public function test_monthly_renewal_refusal_ignores_forged_or_omitted_contract_ids(): void
+    {
+        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-forged@example.com');
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->update(['ScheduleMode' => 'date']);
+        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
+        $renew = $this->batchPayload($studentId, $teacherId, [$later], 'one_on_one');
+        $renew['force'] = true;
+        $renew['force_reason'] = 'renewal_next_term';
+        $renew['existing_contract_ids'] = [];
+
+        $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew)
+            ->assertStatus(422)->assertJson(['code' => 'renewal_use_monthly_flow']);
+    }
+
+    /** #3738 review: an existing TRIAL session is add-on, not a clash (canonical guard excludes trial). */
+    public function test_confirmed_overlap_guard_ignores_trial_sessions(): void
+    {
+        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-trial@example.com');
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->update(['ClassType' => 'trial']);
+        $past = Carbon::now()->subWeeks(2)->toDateString();
+        \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
+            'StudentClassID' => $first, 'SessionDate' => $past, 'StartTime' => '16:00:00',
+            'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '',
+        ]);
+        $renew = $this->batchPayload($studentId, $teacherId, [$past], 'one_on_one');
+        $renew['session_plan'][0]['kind'] = 'confirmed';
+        $renew['force'] = true;
+        $renew['force_reason'] = 'renewal_next_term';
+        $renew['existing_contract_ids'] = [$first];
+
+        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
+
+        $this->assertNotSame('renewal_confirmed_slot_overlap', $res->json('code'));
+    }
+
+    /**
+     * Single-process simulation (NOT a true concurrency test): the confirmed-overlap check must run inside the
+     * enrollment transaction, after a row lock on the student, so a second request serializes behind the first.
+     */
+    public function test_confirmed_overlap_guard_runs_inside_transaction_after_student_lock(): void
+    {
+        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-lock@example.com');
+        $past = Carbon::now()->subWeeks(2)->toDateString();
+        \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
+            'StudentClassID' => $first, 'SessionDate' => $past, 'StartTime' => '16:00:00',
+            'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '',
+        ]);
+        $renew = $this->batchPayload($studentId, $teacherId, [$past], 'one_on_one');
+        $renew['session_plan'][0]['kind'] = 'confirmed';
+        $renew['force'] = true;
+        $renew['force_reason'] = 'renewal_next_term';
+        $renew['existing_contract_ids'] = [$first];
+
+        $baseline = \Illuminate\Support\Facades\DB::transactionLevel();
+        $lockedAt = null;
+        $guardAt = null;
+        $n = 0;
+        \Illuminate\Support\Facades\DB::listen(function ($q) use (&$lockedAt, &$guardAt, &$n, $baseline) {
+            $n++;
+            if (stripos($q->sql, 'from `Student`') !== false && stripos($q->sql, 'for update') !== false) {
+                $lockedAt = [$n, \Illuminate\Support\Facades\DB::transactionLevel() > $baseline];
+            }
+            if (stripos($q->sql, '`cs`.`EndTime` >') !== false && stripos($q->sql, 'exists') !== false) {
+                $guardAt = [$n, \Illuminate\Support\Facades\DB::transactionLevel() > $baseline];
+            }
+        });
+        $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew)->assertStatus(422);
+
+        $this->assertNotNull($lockedAt, 'student row lock not taken');
+        $this->assertNotNull($guardAt, 'overlap guard did not run');
+        $this->assertTrue($lockedAt[1] && $guardAt[1], 'lock and guard must run inside the transaction');
+        $this->assertLessThan($guardAt[0], $lockedAt[0]);
+    }
+
     /**
      * 試聽是旁聽正式課堂的加掛，不可被 overlapping_active_course 擋死。
      * 同型試聽重複則仍走 duplicate_active_course。

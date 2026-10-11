@@ -669,15 +669,12 @@ class EnrollmentService
         }
 
         if (!empty($data['force'])) {
-            $forceGate = $this->validateForceOverride($request, $data);
+            $forceGate = $this->validateForceOverride($request, $data, array_values(array_unique(array_map(
+                fn ($m) => (int) ($m['id'] ?? 0),
+                $subjectMeta
+            ))));
             if ($forceGate !== null) {
                 return $forceGate;
-            }
-            if (($data['force_reason'] ?? '') === 'renewal_next_term') {
-                $confirmedGate = $this->guardRenewalConfirmedOverlap((int) ($data['student_id'] ?? 0), $subjectGroups);
-                if ($confirmedGate !== null) {
-                    return $confirmedGate;
-                }
             }
         }
 
@@ -763,6 +760,15 @@ class EnrollmentService
 
             if (!$student) {
                 return response()->json(['message' => '無法建立學生'], 422);
+            }
+
+            // Serialize forced renewals per student so two concurrent requests cannot both pass the check.
+            if (!empty($data['force']) && ($data['force_reason'] ?? '') === 'renewal_next_term') {
+                DB::table('Student')->where('id', $student->id)->lockForUpdate()->value('id');
+                $confirmedGate = $this->guardRenewalConfirmedOverlap((int) $student->id, $subjectGroups);
+                if ($confirmedGate !== null) {
+                    return $confirmedGate;
+                }
             }
 
             $by1Map = ['one_on_one' => 1, 'one_on_two' => 2, 'one_on_three' => 3, 'tutoring' => 4, 'trial' => 1];
@@ -1150,6 +1156,8 @@ class EnrollmentService
                     ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
                     ->where('sc.StudentID', $studentId)
                     ->whereDate('cs.SessionDate', $row['date'])
+                    // Same exclusion as the canonical student-slot guard: trial sessions are add-on, not a clash.
+                    ->whereRaw("LOWER(COALESCE(sc.ClassType, '')) <> ?", ['trial'])
                     ->whereNotIn('cs.Status', \App\Support\SessionStatus::futureReservationExclusionStatuses())
                     ->where('cs.StartTime', '<', $end)->where('cs.EndTime', '>', $start)
                     ->exists();
@@ -1165,7 +1173,7 @@ class EnrollmentService
         return null;
     }
 
-    private function validateForceOverride(Request $request, array $data): ?JsonResponse
+    private function validateForceOverride(Request $request, array $data, array $subjectIds = []): ?JsonResponse
     {
         $allowed = ['create_trial', 'renewal_next_term', 'independent_parallel'];
         $reason = trim((string) ($data['force_reason'] ?? ''));
@@ -1207,7 +1215,17 @@ class EnrollmentService
         // Monthly (date-mode) renewal settles old contract, future sessions and invoice atomically in
         // ContractRenewal::renewMonthly; generic enrollment must not stand in for it.
         if ($reason === 'renewal_next_term') {
-            $monthlyExisting = $existingIds !== [] && DB::table('StudentClass')->whereIn('ID', $existingIds)
+            // Never trust the client's existing_contract_ids: also look up the student's active contracts
+            // for the same subjects server-side.
+            $studentIdForGate = (int) ($data['student_id'] ?? 0);
+            $monthlyExisting = DB::table('StudentClass')
+                ->where(function ($q) use ($existingIds, $studentIdForGate, $subjectIds) {
+                    $q->whereIn('ID', $existingIds ?: [0]);
+                    if ($studentIdForGate > 0 && $subjectIds !== []) {
+                        $q->orWhere(fn ($w) => $w->where('StudentID', $studentIdForGate)->where('Stop', 0)
+                            ->whereIn('SubjectID', $subjectIds));
+                    }
+                })
                 ->where(fn ($q) => $q->whereNull('ScheduleMode')->orWhereRaw('LOWER(ScheduleMode) <> ?', ['count']))
                 ->exists();
             if ($monthlyExisting || ($data['payment_type'] ?? 'session') !== 'session') {
