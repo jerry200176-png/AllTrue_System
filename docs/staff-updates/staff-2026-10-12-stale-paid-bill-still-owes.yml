@@ -3,7 +3,7 @@ updates:
     published_at: "2026-10-12"
     audiences:
       - director
-    importance: minor
+    importance: digest
     title: 收款不足的帳單不會再從待收清單消失
     summary: 帳單照收款紀錄判斷，狀態寫錯成已繳也照樣列出欠多少。
     items:
