@@ -334,6 +334,49 @@ class EnsureSessionHorizonTest extends TestCase
         $this->assertLessThanOrEqual(1, $schedulesQueries);
     }
 
+    /** @return array{0:int,1:int,2:int} [candidates, would_skip, total SQL statements] for a dry-run through $weeks. */
+    private function dryRunCostWithSameDayNonOverlappingRows(int $weeks): array
+    {
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 40);
+        $studentId = (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID');
+        $other = $this->course(['StudentID' => $studentId]);
+        $svc = app(EnsureSessionHorizonService::class);
+        $through = $this->today->copy()->addWeeks($weeks);
+        $cands = $svc->ensure($sc, $through, $this->today, null)['ensure']['candidates'];
+        foreach ($cands as $o) {
+            // Same day, 10:00-11:00 - does not overlap the 16:00 slot, but makes the date "busy".
+            DB::table('ClassSession')->insert([
+                'StudentClassID' => $other, 'SessionDate' => $o['date'], 'StartTime' => '10:00:00',
+                'EndTime' => '11:00:00', 'Status' => 'scheduled', 'Note' => '',
+            ]);
+            DB::table('schedules')->insert([
+                'student_id' => $studentId, 'teacher_id' => 0, 'subject' => 'Math',
+                'day_of_week' => Carbon::parse($o['date'])->dayOfWeekIso, 'start_time' => '10:00:00',
+                'end_time' => '11:00:00', 'class_type' => 'one_on_one', 'status' => 'scheduled',
+                'type' => 'extra', 'deduction' => 1, 'branch_id' => 1, 'schedule_date' => $o['date'],
+                'student_course_id' => null, 'original_schedule_id' => null,
+            ]);
+        }
+        $n = 0;
+        DB::listen(function () use (&$n) { $n++; });
+        $dry = $svc->ensure($sc, $through, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+
+        return [count($cands), $dry['would_skip'], $n];
+    }
+
+    public function test_dry_run_total_sql_does_not_grow_with_candidates_on_busy_non_overlapping_dates(): void
+    {
+        // #3727 latest-head review: busy-but-non-overlapping dates must not trigger per-candidate exact checks.
+        [$few, $skipFew, $sqlFew] = $this->dryRunCostWithSameDayNonOverlappingRows(5);
+        DB::flushQueryLog();
+        [$many, $skipMany, $sqlMany] = $this->dryRunCostWithSameDayNonOverlappingRows(20);
+
+        $this->assertGreaterThan($few, $many);
+        $this->assertSame(0, $skipFew + $skipMany);
+        $this->assertSame($sqlFew, $sqlMany, "SQL grew with candidates: {$few} cands={$sqlFew}, {$many} cands={$sqlMany}");
+    }
+
     public function test_shared_pool_shortage_warns_but_does_not_block_planned_sessions(): void
     {
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');

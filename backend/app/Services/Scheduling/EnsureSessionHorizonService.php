@@ -231,22 +231,43 @@ final class EnsureSessionHorizonService
             ->whereIn(DB::raw('DATE(SessionDate)'), $dates)
             ->get([DB::raw('DATE(SessionDate) as d'), DB::raw('SUBSTRING(StartTime, 1, 5) as t')])
             ->mapWithKeys(fn ($r) => [$r->d.'|'.$r->t => true])->all();
+        // Other-course sessions/schedules of the student on those dates, as [date => [[start, end], ...]] (HH:MM).
+        // A superset of what the exact check can match; the exact check (period, trial, stale-exception rules)
+        // still decides, but only for candidates whose time interval touches one of these rows.
         $busy = [];
         if ($studentId > 0) {
-            $busy = DB::table('ClassSession as cs')
+            $rows = DB::table('ClassSession as cs')
                 ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
                 ->where('sc.StudentID', $studentId)->where('cs.StudentClassID', '!=', $studentClassId)
                 ->whereIn(DB::raw('DATE(cs.SessionDate)'), $dates)
-                ->selectRaw('DATE(cs.SessionDate) as d')->pluck('d')->flip()->all();
-            $busy += DB::table('schedules')
+                ->selectRaw('DATE(cs.SessionDate) as d, cs.StartTime as s, cs.EndTime as e')->get();
+            foreach ($rows as $r) {
+                $busy[$r->d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e];
+            }
+            $rows = DB::table('schedules')
                 ->where('student_id', $studentId)->whereIn(DB::raw('DATE(schedule_date)'), $dates)
-                ->selectRaw('DATE(schedule_date) as d')->pluck('d')->flip()->all();
+                ->selectRaw('DATE(schedule_date) as d, start_time as s, end_time as e')->get();
+            foreach ($rows as $r) {
+                $busy[$r->d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e];
+            }
         }
         $skip = 0;
         foreach ($candidates as $o) {
             $d = substr((string) $o['date'], 0, 10);
-            if (isset($selfKeys[$d.'|'.substr((string) $o['start_hm'], 0, 5)])
-                || (isset($busy[$d]) && $this->slotConflicts($studentId, $course, $studentClassId, $o, $asOf))) {
+            $start = substr((string) $o['start_hm'], 0, 5);
+            if (isset($selfKeys[$d.'|'.$start])) {
+                $skip++;
+                continue;
+            }
+            $end = substr((string) ($o['end_hm'] ?? $this->defaultEnd($o['start_hm'])), 0, 5);
+            $touches = false;
+            foreach ($busy[$d] ?? [] as [$bs, $be]) {
+                if (substr($bs, 0, 5) < $end && substr($be, 0, 5) > $start) {
+                    $touches = true;
+                    break;
+                }
+            }
+            if ($touches && $this->slotConflicts($studentId, $course, $studentClassId, $o, $asOf)) {
                 $skip++;
             }
         }
