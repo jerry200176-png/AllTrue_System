@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\ScheduleAuditLog;
 use App\Services\ContractScheduleMatcher;
 use App\Services\CourseLeaveCascadeService;
+use Illuminate\Support\Facades\Log;
 
 class ClassSessionObserver
 {
@@ -93,12 +94,33 @@ class ClassSessionObserver
 
     public function updating(ClassSession $session): void
     {
+        $this->freezeOriginalSlot($session);
         $this->syncContractExceptionFlag($session);
 
         $key = (string) $session->getKey();
         self::$oldSnapshots[$key] = $this->sessionSnapshot(
             (new ClassSession())->fill($session->getOriginal())
         );
+    }
+
+    /**
+     * Occurrence identity P1: OriginalSessionDate/OriginalStartTimeHM are write-once.
+     * NULL -> value is allowed (P3 backfill); any change of a set value is reverted
+     * and logged, so the ~30 move/restore paths cannot rewrite identity.
+     */
+    private function freezeOriginalSlot(ClassSession $session): void
+    {
+        foreach (['OriginalSessionDate', 'OriginalStartTimeHM'] as $col) {
+            $old = $session->getOriginal($col);
+            if ($old === null || !$session->isDirty($col)) {
+                continue;
+            }
+            $kept = $session->getOriginal($col);
+            Log::warning('ClassSession original slot is immutable; update ignored', [
+                'session_id' => $session->getKey(), 'column' => $col, 'kept' => $kept, 'attempted' => $session->getAttributes()[$col] ?? null,
+            ]);
+            $session->setAttribute($col, $kept);
+        }
     }
 
     /**

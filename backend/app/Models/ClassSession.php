@@ -22,6 +22,8 @@ use App\Services\ClassSessionMaterializationService;
  * @property \Carbon\CarbonInterface|null $updated_at
  * @property int|null $ActiveSlotFlag
  * @property string|null $StartTimeHM
+ * @property string|null $OriginalSessionDate  Frozen series slot date (occurrence identity P1); null = extra/legacy.
+ * @property string|null $OriginalStartTimeHM  Frozen series slot HH:MM (occurrence identity P1); immutable once set.
  * @property \App\Models\StudentClass|null $studentClass
  */
 
@@ -61,6 +63,8 @@ class ClassSession extends Model
         'Note',
         'IsContractException',
         'session_charge',
+        'OriginalSessionDate',
+        'OriginalStartTimeHM',
     ];
 
     protected $casts = [
