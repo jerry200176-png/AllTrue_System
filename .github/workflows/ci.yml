@@ -43,7 +43,7 @@ jobs:
           [ "$head" = "$GITHUB_SHA" ] && [ "$base" = main ] && [ "$state" = open ] \
             || { echo "::error::pr_number $PR_NUMBER is not an open PR to main with head $GITHUB_SHA"; exit 1; }
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -132,7 +132,7 @@ jobs:
       ui_foundation: ${{ steps.filter.outputs.ui_foundation }}
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # paths-filter fetches the previous SHA for push events. Keep the
           # existing contents:read token available for that read-only fetch.
@@ -195,7 +195,7 @@ jobs:
           [ "$head" = "$GITHUB_SHA" ] && [ "$base" = main ] && [ "$state" = open ] \
             || { echo "::error::pr_number $PR_NUMBER is not an open PR to main with head $GITHUB_SHA"; exit 1; }
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -240,7 +240,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
@@ -551,7 +551,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
