@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-11-list-owed-all-open-invoices
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: digest
+    title: 學生清單的未繳金額跟學生帳務一樣
+    summary: 合約有好幾張沒繳清的帳單時，清單會全部加起來，不再只算一張。
+    items:
+      - category: improved
+        text: 學生清單和「未收總額」的數字，和打開學生帳務看到的一致。
+    source_refs:
+      - "changelog:2026-10-11:list-owed-all-open-invoices"
