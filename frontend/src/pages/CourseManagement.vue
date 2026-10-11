@@ -1112,6 +1112,7 @@
 
     <EnrollmentConflictDecisionModal
       :show="showDuplicateInterceptModal"
+      :attempted-payment-type="String(interceptOriginalPayload?.payment_type || '')"
       :conflicts="duplicateConflicts"
       :class-type="interceptPendingClassType"
       :submitting="forceSubmitting"

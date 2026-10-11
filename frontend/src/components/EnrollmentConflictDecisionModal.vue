@@ -143,6 +143,8 @@ const props = defineProps({
   subjectLabelFn: { type: Function, default: null },
   // #3738 review: a same-subject trial duplicate must route to the existing trial, never create a second one.
   blockCreate: { type: Boolean, default: false },
+  // Payment type of the course being attempted; a monthly attempt can never be a generic renewal.
+  attemptedPaymentType: { type: String, default: '' },
 });
 
 const emit = defineEmits(['cancel', 'purchase', 'decision', 'manual-session']);
@@ -154,6 +156,7 @@ const independentReason = ref('');
 const isTrial = computed(() => String(props.classType || '').toLowerCase() === 'trial');
 // Monthly (non-count) contracts renew through their own 續約 flow, never through generic enrollment.
 const canRenewHere = computed(() => !isTutoring.value
+  && (!props.attemptedPaymentType || props.attemptedPaymentType === 'session')
   && !(props.conflicts || []).some((c) => c?.schedule_mode && c.schedule_mode !== 'count'));
 const isTutoring = computed(() => String(props.classType || '').toLowerCase() === 'tutoring');
 

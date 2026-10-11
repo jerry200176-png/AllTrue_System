@@ -252,6 +252,26 @@ class OverlappingCourseGuardTest extends TestCase
         $this->assertLessThan($guardAt[0], $lockedAt[0]);
     }
 
+    /** #3738 review: a foreign student's monthly contract id must not change the response (no oracle). */
+    public function test_foreign_monthly_contract_id_does_not_trigger_monthly_refusal(): void
+    {
+        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-oracle@example.com');
+        $other = $this->createStudent(1, '他人合約測試生');
+        $foreign = \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->first();
+        $foreignId = \Illuminate\Support\Facades\DB::table('StudentClass')->insertGetId(
+            array_merge((array) $foreign, ['ID' => null, 'StudentID' => $other->id, 'ScheduleMode' => 'date'])
+        );
+        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
+        $renew = $this->batchPayload($studentId, $teacherId, [$later], 'one_on_one');
+        $renew['force'] = true;
+        $renew['force_reason'] = 'renewal_next_term';
+        $renew['existing_contract_ids'] = [$foreignId];
+
+        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
+
+        $this->assertNotSame('renewal_use_monthly_flow', $res->json('code'));
+    }
+
     /**
      * 試聽是旁聽正式課堂的加掛，不可被 overlapping_active_course 擋死。
      * 同型試聽重複則仍走 duplicate_active_course。

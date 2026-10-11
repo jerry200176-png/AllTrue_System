@@ -105,3 +105,17 @@ describe('monthly contracts do not offer generic renewal (#3738 review)', () => 
     expect(renewalBtn('count')).toBe(true);
   });
 });
+
+describe('monthly attempt never offers generic renewal (#3738 review)', () => {
+  it('hides 建立下一期續報 when the attempted payload is monthly, even if the existing course is count-mode', () => {
+    const btn = (attempted) => mount(EnrollmentConflictDecisionModal, {
+      props: { show: true, conflicts: [conflict({ class_type: 'one_on_one', schedule_mode: 'count' })], classType: 'one_on_one', attemptedPaymentType: attempted },
+    }).findAll('button').some((b) => b.text() === '建立下一期續報');
+    expect(btn('monthly')).toBe(false);
+    expect(btn('session')).toBe(true);
+  });
+  it('pages pass the attempted payment type to the modal', () => {
+    expect(calendar).toContain(':attempted-payment-type=');
+    expect(courseMgmt).toContain(':attempted-payment-type=');
+  });
+});

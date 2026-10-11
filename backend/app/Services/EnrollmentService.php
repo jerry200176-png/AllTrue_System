@@ -1215,17 +1215,12 @@ class EnrollmentService
         // Monthly (date-mode) renewal settles old contract, future sessions and invoice atomically in
         // ContractRenewal::renewMonthly; generic enrollment must not stand in for it.
         if ($reason === 'renewal_next_term') {
-            // Never trust the client's existing_contract_ids: also look up the student's active contracts
-            // for the same subjects server-side.
+            // Server-derived only: client existing_contract_ids are never read here, so a foreign contract id
+            // cannot be used as an oracle for other students'/campuses' contract types.
             $studentIdForGate = (int) ($data['student_id'] ?? 0);
-            $monthlyExisting = DB::table('StudentClass')
-                ->where(function ($q) use ($existingIds, $studentIdForGate, $subjectIds) {
-                    $q->whereIn('ID', $existingIds ?: [0]);
-                    if ($studentIdForGate > 0 && $subjectIds !== []) {
-                        $q->orWhere(fn ($w) => $w->where('StudentID', $studentIdForGate)->where('Stop', 0)
-                            ->whereIn('SubjectID', $subjectIds));
-                    }
-                })
+            $monthlyExisting = $studentIdForGate > 0 && $subjectIds !== [] && DB::table('StudentClass')
+                ->where('StudentID', $studentIdForGate)->where('Stop', 0)
+                ->whereIn('SubjectID', $subjectIds)
                 ->where(fn ($q) => $q->whereNull('ScheduleMode')->orWhereRaw('LOWER(ScheduleMode) <> ?', ['count']))
                 ->exists();
             if ($monthlyExisting || ($data['payment_type'] ?? 'session') !== 'session') {

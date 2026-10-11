@@ -404,6 +404,7 @@
     <!-- Duplicate / overlap intercept：與課程管理／學生管理共用決策視窗，強制建立必帶 force_reason（#3738） -->
     <EnrollmentConflictDecisionModal
       :show="showDuplicateInterceptModal"
+      :attempted-payment-type="String(interceptOriginalPayload?.payment_type || '')"
       :conflicts="duplicateConflicts"
       :class-type="String(interceptOriginalPayload?.class_type || '')"
       :block-create="interceptOriginalPayload?.class_type === 'trial'"

@@ -862,6 +862,7 @@
     </div>
     <EnrollmentConflictDecisionModal
       :show="showDuplicateInterceptModal"
+      :attempted-payment-type="String(interceptOriginalPayload?.payment_type || '')"
       :conflicts="duplicateConflicts"
       :student-name="interceptPendingStudent?.name || ''"
       :class-type="interceptPendingClassType"
