@@ -45,3 +45,15 @@ describe('paymentSlipView', () => {
     expect(w.find('.slip-more').text()).toBe('另有 460 堂未列出（共 500 堂）');
   });
 });
+
+describe('tuition slip amount (Founder Q2)', () => {
+  it('shows the balance, not the bill total, for a part-paid bill', async () => {
+    const buildBillingDocumentView = paymentSlipView;
+    const base = { subject: '數學', schedule_mode: 'count', student_name: '甲', payable_status: 'invoiced', payable_amount: 10000 };
+    const partly = buildBillingDocumentView({ ...base, payable_outstanding: 6000 });
+    expect([partly.amount, partly.amount_label]).toEqual([6000, '尚欠金額']);
+    expect(partly.sub_amounts).toContain('已繳');
+    const full = buildBillingDocumentView({ ...base, payable_outstanding: 10000 });
+    expect([full.amount, full.amount_label]).toEqual([10000, '應繳費用']);
+  });
+});

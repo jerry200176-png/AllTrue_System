@@ -840,7 +840,7 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(1, Invoice::where('StudentClassID', $sc->ID)->count());
     }
 
-    public function test_director_record_rejects_paid_course_even_when_unpaid_invoice_remains(): void
+    public function test_director_record_accepts_paid_flag_course_when_an_invoice_is_still_unpaid(): void
     {
         Carbon::setTestNow('2026-04-28 10:00:00');
 
@@ -890,15 +890,10 @@ class PaymentReportApiTest extends TestCase
             'amount' => 8800,
         ]);
 
-        $res->assertStatus(422)
-            ->assertJsonPath('code', 'course_already_paid');
-
-        $staleInvoice->refresh();
-        $this->assertSame('unpaid', (string) $staleInvoice->Status);
-        $this->assertSame(0, (int) $staleInvoice->PaidAmount);
+        // Founder Q2 (2026-10-11): invoices + payments are the truth; Paid=1 does not hide the unpaid May bill.
+        $res->assertOk();
         $this->assertSame(1, Payment::where('InvoiceID', $paidInvoice->id)->count());
-        $this->assertSame(0, Payment::where('InvoiceID', $staleInvoice->id)->count());
-        $this->assertSame(0, PaymentReport::where('InvoiceID', $staleInvoice->id)->count());
+        $this->assertSame(1, PaymentReport::where('InvoiceID', $staleInvoice->id)->count());
     }
 
     public function test_confirm_date_mode_reports_never_leave_two_live_invoices_for_one_course_period(): void
@@ -1077,13 +1072,10 @@ class PaymentReportApiTest extends TestCase
         $this->recordDirect($token, $paid->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid')
             ->assertJsonPath('message', '這門課的款項已收齊，不需要再登記；若收錯了，請先作廢原收款再重新登記。');
 
-        // Paid=1 left on while the invoice is wholly unpaid: not "already paid", tell the director what to fix.
-        $conflict = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
-        $this->invoiceWithCash($conflict, 8800, 0);
-        $msg = $this->recordDirect($token, $conflict->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid')
-            ->json('message');
-        $this->assertStringContainsString('改回「未繳費」', $msg);
-        $this->assertStringNotContainsString('已收齊', $msg);
+        // Founder Q2: Paid=1 left on while the invoice is wholly unpaid is NOT blocked any more; the owed amount is recorded.
+        $flagged = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $this->invoiceWithCash($flagged, 8800, 0);
+        $this->recordDirect($token, $flagged->ID, 8800)->assertOk();
 
         $this->assertSame(1, Payment::count());
     }

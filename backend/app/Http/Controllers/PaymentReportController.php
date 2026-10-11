@@ -831,8 +831,8 @@ class PaymentReportController extends Controller
      * Blocks `paid` and `free`; partial (the remainder may be recorded), unbilled, review_required and a plain unpaid
      * course may take a payment. Package members follow the resolver (a paid package counts while no non-void invoice exists).
      * Fail closed: no resolver answer (error, unknown course) blocks.
-     * R28 carve-out: Paid=1 with a wholly unpaid period is a residual/stale invoice that needs repair, not a payment
-     * (legacy rows may carry Paid=1 from a partial receipt before F7 S7, so Paid=1 alone never blocks and `partial` stays recordable).
+     * Founder Q2 (2026-10-11): the R28 carve-out is gone. Invoices + Payment rows are the truth; a Paid=1 flag beside an
+     * unpaid/partial invoice does not block, so the owed amount can be recorded.
      */
     private function courseAlreadyHasConfirmedPayment(int $studentClassId, int $coursePaid): bool
     {
@@ -840,7 +840,7 @@ class PaymentReportController extends Controller
     }
 
     /**
-     * Why the guard above blocks (null = it allows): paid | free | flag_conflict (Paid=1 but the invoices still owe) |
+     * Why the guard above blocks (null = it allows): paid | free |
      * unknown (no resolver answer). The decision is the guard's; the reason only picks the sentence the director reads.
      */
     private function courseMoneyBlockReason(int $studentClassId, int $coursePaid): ?string
@@ -855,7 +855,6 @@ class PaymentReportController extends Controller
             $status === null => 'unknown',
             $status === 'paid' => 'paid',
             $status === 'free' => 'free',
-            $coursePaid === 1 && $status === 'unpaid' => 'flag_conflict',
             default => null,
         };
     }
@@ -914,7 +913,6 @@ class PaymentReportController extends Controller
         return response()->json([
             'message' => match ($reason) {
                 'free' => '這門課是免費課程（輔導、試上或 0 元），不需要收款。',
-                'flag_conflict' => '課程管理把這門課標成「已繳費」，但帳單還沒收到款。為避免重複入帳，請先到課程管理把繳費狀態改回「未繳費」再登記；改不了請找老闆。',
                 'unknown' => '暫時無法確認這門課的繳費狀態，沒有登記任何款項。請稍後再試；一直失敗請回報。',
                 default => '這門課的款項已收齊，不需要再登記；若收錯了，請先作廢原收款再重新登記。',
             },

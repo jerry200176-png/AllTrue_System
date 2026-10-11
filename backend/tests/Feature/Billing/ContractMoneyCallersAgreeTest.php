@@ -27,8 +27,6 @@ class ContractMoneyCallersAgreeTest extends TestCase
 
     /** caller => what moves it (remove the entry in that PR). */
     private const PENDING = [
-        'alerts_listing' => 'Founder decision: a Paid=1 contract with an open invoice is not listed (DIRECTOR_PAYMENT_ALERT_RULES)',
-        'intake_guard' => 'Founder decision: R28 carve-out blocks recording a payment while Paid=1 and the period is wholly unpaid',
         'slip' => 'tuition slip still refuses on the Paid flag (own follow-up PR)',
     ];
 
