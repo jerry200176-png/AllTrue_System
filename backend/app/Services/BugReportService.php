@@ -159,7 +159,7 @@ class BugReportService
             return null;
         }
 
-        $commentsQuery = $bug->comments()->orderBy('id');
+        $commentsQuery = $bug->comments()->with('author')->orderBy('id');
         if (!$includeInternalNotes) {
             $commentsQuery->where('is_internal_note', false);
         }
@@ -172,7 +172,7 @@ class BugReportService
             'created_at' => $c->created_at->toIso8601String(),
         ])->all();
 
-        $statusLogModels = $bug->statusLogs()->orderBy('created_at')->get();
+        $statusLogModels = $bug->statusLogs()->with('changedByUser')->orderBy('created_at')->get();
         $statusLogs = $statusLogModels->map(fn ($l) => [
             'from_status' => $l->from_status,
             'to_status' => $l->to_status,
