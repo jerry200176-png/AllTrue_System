@@ -276,6 +276,7 @@ class ManualSessionBookingService
                 'Note' => '逐堂手動排課',
                 'IsContractException' => 0,
                 '_revive_cancelled' => true,
+                '_extra_occurrence' => true,
                 '_student_class' => $lockedCourse,
             ])['session'];
 
