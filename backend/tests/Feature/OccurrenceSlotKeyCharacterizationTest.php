@@ -138,9 +138,9 @@ class OccurrenceSlotKeyCharacterizationTest extends TestCase
         $this->assertSame($id, ClassSession::findOrFail($id)->id);
         $keys = [$key(self::TUE), $key(self::WED), $key(self::THU)];
         $this->assertCount(3, array_unique($keys), 'CURRENT: one occurrence has three different slot keys after two moves');
-        // DOCUMENTS CURRENT BUG (F7/F8), fixed in P1+P5: ClassSession has no Original* columns to carry a frozen identity.
-        $this->assertFalse(Schema::hasColumn('ClassSession', 'OriginalSessionDate'));
-        $this->assertFalse(Schema::hasColumn('ClassSession', 'OriginalStartTimeHM'));
+        // P1 (#3857): ClassSession now carries the frozen original slot columns; readers switch to them in P5.
+        $this->assertTrue(Schema::hasColumn('ClassSession', 'OriginalSessionDate'));
+        $this->assertTrue(Schema::hasColumn('ClassSession', 'OriginalStartTimeHM'));
     }
 
     // ---------------------------------------------------------------- CT-4
@@ -218,8 +218,8 @@ class OccurrenceSlotKeyCharacterizationTest extends TestCase
         $this->assertSame('18:00', $hm($plain->id), 'regular future session follows the new series time');
         $this->assertSame('15:00', $hm($exception->id), 'IsContractException session keeps its own time');
         $this->assertSame('16:30', $hm($taught->id), 'attended session is untouched');
-        // Pinned shape: there is no frozen original slot to restore from (P1 adds it).
-        $this->assertFalse(Schema::hasColumn('ClassSession', 'OriginalStartTimeHM'));
+        // P1 (#3857) adds the frozen original slot column.
+        $this->assertTrue(Schema::hasColumn('ClassSession', 'OriginalStartTimeHM'));
     }
 
     // ---------------------------------------------------------------- CT-7
