@@ -544,6 +544,26 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '346 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '346 must give a no-names reopen path');
   }
+  // Scoped Phase-C for in-app 369 (#3356), 2026-10-11 (data corrected via audited POP op; no production UI check).
+  {
+    const entry = phaseCSource.match(/\n            369 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 369 must exist');
+    assert.ok(entry[1].includes('"rev" => "781843b1273f3e1e52d6a7ec05f1d7bd804b3729"'), '369 requires the exact containing merge');
+    assert.ok(entry[1].includes('"issue" => 3356,'), '369 binds its canonical issue explicitly');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '369 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '369 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '369 must give a no-names reopen path');
+  }
+  // Scoped Phase-C for in-app 341 (#3199), 2026-10-11 (data corrected via audited POP op; no production UI check).
+  {
+    const entry = phaseCSource.match(/\n            341 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 341 must exist');
+    assert.ok(entry[1].includes('"rev" => "f65ebe5b139a0808ebc7c835c25c9d611e41f02b"'), '341 requires the exact containing merge');
+    assert.ok(entry[1].includes('"issue" => 3199,'), '341 binds its canonical issue explicitly');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '341 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '341 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '341 must give a no-names reopen path');
+  }
   // Scoped Phase-C for in-app 381 (#3799), 2026-10-08 (engineering tests + production version check only).
   {
     const entry = phaseCSource.match(/\n            381 => \[([\s\S]*?)\n            \],/);
