@@ -144,6 +144,41 @@ class FrameworkPayrollProjection2833Test extends TestCase
             ->assertOk()->assertJsonPath('count', 0)->assertJsonPath('duplicates', []);
     }
 
+    public function test_duplicate_courses_looks_up_students_and_subjects_once_for_all_groups(): void
+    {
+        // Sentry N+1: one Student::find and one Subject lookup per duplicate group.
+        $campus = CampusFactory::new()->create();
+        $token = $this->createDirectorToken([$campus->id], 'duplicate-nplus1@example.com');
+        $names = [];
+        foreach (range(1, 3) as $i) {
+            $student = StudentFactory::new()->create(['CampusID' => $campus->id]);
+            $names[$student->id] = $student->name;
+            foreach ([1, 2] as $n) {
+                DB::table('StudentClass')->insert([
+                    'StudentID' => $student->id, 'TeacherID' => 1, 'GradeID' => 1,
+                    'SubjectID' => 1, 'ClassType' => 'one_on_one', 'ScheduleMode' => 'count',
+                    'RemainingSessions' => 8, 'UsedSessions' => 0, 'SessionCount' => 8,
+                    'SessionDuration' => 60, 'TotalHours' => 8, 'Rate' => 400,
+                    'Charge' => 3200, 'Pay' => 3200, 'Paid' => 0, 'Stop' => 0,
+                    'StartDate' => '2026-06-01', 'Period' => 4, 'by1' => 1, 'MDate' => '2026-06-01 10:00:00',
+                ]);
+            }
+        }
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/finance/duplicate-courses?branch_id='.$campus->id)->assertOk();
+        $sql = collect(DB::getQueryLog())->pluck('query');
+        DB::disableQueryLog();
+
+        $response->assertJsonPath('count', 3);
+        foreach ($response->json('duplicates') as $row) {
+            $this->assertSame($names[$row['student_id']], $row['student_name']);
+        }
+        $this->assertLessThanOrEqual(1, $sql->filter(fn ($q) => str_contains($q, 'from `Subject`'))->count());
+        $this->assertLessThanOrEqual(3, $sql->filter(fn ($q) => str_contains($q, 'from `Student` where'))->count());
+    }
+
     public function test_outstanding_uses_canonical_subject_label_and_preserves_filters(): void
     {
         $campus = CampusFactory::new()->create();
