@@ -16,10 +16,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * #3875: the four collection gaps left after #3874, driven the way the director does it — the row comes from the real
- * queue API (GET alerts/tuition), the request is built exactly as the page builds it (see modalRequest/batchEntry),
- * then intake → confirm → Payment ledger. Frontend halves: PaymentEntryModal.test.js and
- * TuitionCollectionBatchInvoiceTarget.test.js. Synthetic data only.
+ * #3875: the four collection gaps left after #3874, run across the stack with synthetic data. The request bodies are the
+ * ones the REAL PaymentEntryModal / TuitionCollectionPage sent, captured by
+ * frontend/src/components/__tests__/TuitionCollectionBatchInvoiceTarget.test.js into
+ * tests/Fixtures/collection_requests_3875.json (that test fails if the frontend drifts from the file). Here each case's
+ * queue row is checked against the live GET alerts/tuition row, then its body goes through intake → confirm → Payment ledger.
  */
 class CollectionQueueRequestShapeTest extends TestCase
 {
@@ -44,18 +45,15 @@ class CollectionQueueRequestShapeTest extends TestCase
         parent::tearDown();
     }
 
-    // ── 1. zero-amount fallback ──────────────────────────────────────────────
+    // ── cross-stack: bodies the real frontend sent (frontend/.../TuitionCollectionBatchInvoiceTarget.test.js) ──
 
-    /** Newer bill: stale status unpaid but its Payment rows cover it. Older bill still owes 3,000. */
-    public function test_item1_queue_row_shows_the_bill_that_owes_and_the_modal_books_it(): void
+    /** Item 1: the queue row the modal received is the backend's real row; its captured body books the owing bill. */
+    public function test_fixture_item1_modal_body_books_the_bill_that_owes(): void
     {
         [$sc, $older, $newer] = $this->newerCoveredOlderOwing();
+        $case = $this->fixtureCase('item1_modal_owing_bill', ['course' => $sc->ID, 'invoice:older' => $older->id, 'invoice:newer' => $newer->id]);
 
-        $row = $this->queueRow($sc);
-        $this->assertSame($older->id, (int) $row['payable_invoice_id'], 'the queue shows the bill that still owes');
-        $this->assertSame(3000, (int) $row['payable_outstanding']);
-
-        $res = $this->report('director-record', $this->modalRequest($row))->assertOk()->assertJsonPath('invoice_id', $older->id);
+        $res = $this->report($case['endpoint'], $case['request'])->assertOk()->assertJsonPath('invoice_id', $older->id);
         $this->confirm($res->json('report_id'))->assertOk();
 
         $this->assertLedger($older, 3000, 'paid');
@@ -63,7 +61,75 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertSame(0, Payment::where('Amount', 0)->count(), 'no NT$0 Payment row');
     }
 
-    /** The pre-#3875 modal request (amount 0, no invoice id) — or any client sending it — is refused at intake and confirm. */
+    /** Item 2: positive amount typed against the NT$0 bill the queue shows → refused at intake and at confirm. */
+    public function test_fixture_item2_typed_amount_on_zero_bill_is_refused_at_intake_and_confirm(): void
+    {
+        [$sc, $zero] = $this->zeroTotalInvoice();
+        $case = $this->fixtureCase('item2_modal_typed_amount_on_zero_bill', ['course' => $sc->ID, 'invoice:zero' => $zero->id]);
+
+        $this->report($case['endpoint'], $case['request'])
+            ->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding')->assertJsonPath('invoice_id', $zero->id);
+        $this->assertSame(0, PaymentReport::count());
+
+        // The same captured body as a pending report recorded before this fix: confirm refuses too.
+        $report = $this->pendingReport($sc, Invoice::findOrFail($case['request']['invoice_id']), (int) $case['request']['amount']);
+        $this->confirm($report->id)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
+        $this->assertSame('pending', $report->fresh()->status);
+        $this->assertSame(0, Payment::count(), 'no Payment row on the NT$0 bill');
+    }
+
+    /** Item 1/2 zero amount: for the backend's real NT$0 row the modal sends nothing (blocked), so no report exists. */
+    public function test_fixture_zero_amount_row_is_blocked_by_the_modal(): void
+    {
+        [$sc, $zero] = $this->zeroTotalInvoice();
+        $case = $this->fixtureCase('item2_modal_zero_amount_blocked', ['course' => $sc->ID, 'invoice:zero' => $zero->id]);
+
+        $this->assertNull($case['request'], 'the modal sent no request for NT$0');
+        $this->assertNotEmpty($case['blocked_message']);
+        $this->assertSame(0, PaymentReport::count());
+    }
+
+    /** Item 3: stored paid/full but Payment rows 2,000/6,000 → the captured body collects the 4,000 still owed. */
+    public function test_fixture_item3_stored_paid_but_owing_bill_is_collectible(): void
+    {
+        [$sc, $inv] = $this->storedPaidLedgerPartial();
+        $case = $this->fixtureCase('item3_modal_stored_paid_owing', ['course' => $sc->ID, 'invoice:paid' => $inv->id]);
+
+        $res = $this->report($case['endpoint'], $case['request'])->assertOk()->assertJsonPath('invoice_id', $inv->id);
+        $this->confirm($res->json('report_id'))->assertOk();
+        $this->assertLedger($inv, 6000, 'paid');
+    }
+
+    /** Item 4: two historical open bills, queue shows the newer; the page's batch body pays it (no 207 on the older cap). */
+    public function test_fixture_item4_batch_body_pays_the_displayed_newer_bill_over_the_older_cap(): void
+    {
+        [$sc, $older, $newer] = $this->twoHistoricalOpen(olderOwes: 1000, newerOwes: 3000);
+        $case = $this->fixtureCase('item4_batch_newer_exceeds_older', ['course' => $sc->ID, 'invoice:older' => $older->id, 'invoice:newer' => $newer->id]);
+
+        $res = $this->report($case['endpoint'], $case['request'])->assertOk()->assertJsonPath('accepted', 1);
+        $this->confirm($res->json('results.0.report_id'))->assertOk();
+
+        $this->assertLedger($newer, 3000, 'paid');
+        $this->assertLedger($older, 0, 'unpaid');
+    }
+
+    /** Item 4: a smaller amount that would also fit the older bill still lands on the displayed newer one. */
+    public function test_fixture_item4_batch_body_does_not_book_a_smaller_amount_on_the_older_bill(): void
+    {
+        [$sc, $older, $newer] = $this->twoHistoricalOpen(olderOwes: 1000, newerOwes: 800);
+        $case = $this->fixtureCase('item4_batch_newer_smaller_amount', ['course' => $sc->ID, 'invoice:older' => $older->id, 'invoice:newer' => $newer->id]);
+
+        $res = $this->report($case['endpoint'], $case['request'])->assertOk()->assertJsonPath('accepted', 1);
+        $report = PaymentReport::findOrFail($res->json('results.0.report_id'));
+        $this->assertSame($newer->id, (int) $report->InvoiceID, 'the pending report targets the displayed bill');
+        $this->confirm($report->id)->assertOk();
+
+        $this->assertLedger($newer, 800, 'paid');
+        $this->assertLedger($older, 0, 'unpaid');
+    }
+
+    // ── backend-only guards (bodies any client could send) ──────────────────
+
     public function test_item1_zero_report_against_a_bill_that_owes_is_refused_at_intake_and_confirm(): void
     {
         [$sc, $older] = $this->newerCoveredOlderOwing();
@@ -77,56 +143,6 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertSame('pending', $report->fresh()->status);
         $this->assertSame(0, Payment::where('Amount', 0)->count());
         $this->assertLedger($older, 0, 'unpaid');
-    }
-
-    // ── 2. zero-total invoice cap ────────────────────────────────────────────
-
-    public function test_item2_positive_amount_on_a_zero_total_invoice_is_refused_at_intake(): void
-    {
-        [$sc, $zero] = $this->zeroTotalInvoice();
-        $row = $this->queueRow($sc);
-        $this->assertSame($zero->id, (int) $row['payable_invoice_id']);
-
-        // Director types NT$500 into the modal (prefill was 0); also the no-invoice-id fallback.
-        $this->report('director-record', $this->modalRequest($row, 500))
-            ->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding')->assertJsonPath('invoice_id', $zero->id);
-        $this->report('director-record', ['student_class_id' => $sc->ID, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 500])
-            ->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
-        $this->report('director-record-batch', ['payment_date' => '2026-04-28', 'payment_method' => 'cash', 'entries' => [$this->batchEntry($row, 500)]])
-            ->assertStatus(207)->assertJsonPath('results.0.code', 'amount_exceeds_outstanding');
-
-        $this->assertSame(0, PaymentReport::count());
-        $this->assertSame(0, Payment::count());
-    }
-
-    public function test_item2_positive_amount_on_a_zero_total_invoice_is_refused_at_confirm(): void
-    {
-        [$sc, $zero] = $this->zeroTotalInvoice();
-        $named = $this->pendingReport($sc, $zero, 500);   // recorded before this fix
-        $fallback = $this->pendingReport($sc, null, 500); // parent link report, no invoice
-
-        $this->confirm($named->id)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
-        $this->confirm($fallback->id)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
-
-        $this->assertSame(0, Payment::count(), 'no Payment row on the NT$0 bill');
-        $this->assertSame(['pending', 'pending'], [$named->fresh()->status, $fallback->fresh()->status]);
-        $this->assertSame(0, (int) $zero->fresh()->PaidAmount);
-    }
-
-    // ── 3. stored paid, Payment rows still owe ──────────────────────────────
-
-    public function test_item3_explicit_invoice_stored_paid_but_ledger_owing_is_collectible(): void
-    {
-        [$sc, $inv] = $this->storedPaidLedgerPartial();
-        $row = $this->queueRow($sc);
-        $this->assertSame($inv->id, (int) $row['payable_invoice_id']);
-        $this->assertSame(4000, (int) $row['payable_outstanding']);
-
-        $this->report('director-record', $this->modalRequest($row, 4001))->assertStatus(422)->assertJsonPath('expected_amount', 4000);
-        $res = $this->report('director-record', $this->modalRequest($row))->assertOk()->assertJsonPath('invoice_id', $inv->id);
-        $this->confirm($res->json('report_id'))->assertOk();
-
-        $this->assertLedger($inv, 6000, 'paid');
     }
 
     public function test_item3_fallback_finds_the_stored_paid_bill_that_still_owes(): void
@@ -157,66 +173,37 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertSame(0, PaymentReport::count());
     }
 
-    // ── 4. batch payload carries the row's invoice ──────────────────────────
+    // ── shared fixture ──────────────────────────────────────────────────────
 
-    /** Two historical open bills, no current-period match: the queue shows the newer; the fallback would take the older. */
-    public function test_item4_batch_entry_pays_the_displayed_newer_bill_when_it_exceeds_the_older_balance(): void
+    /**
+     * Loads one case of the fixture the frontend test generated, maps its id placeholders to the rows just created, and
+     * checks the queue row the frontend was given equals what GET alerts/tuition returns now (fields the modal/page read),
+     * so the captured request really is what the director's screen would send for this data.
+     */
+    private function fixtureCase(string $name, array $ids): array
     {
-        [$sc, $older, $newer] = $this->twoHistoricalOpen(olderOwes: 1000, newerOwes: 3000);
-        $row = $this->queueRow($sc);
-        $this->assertSame($newer->id, (int) $row['payable_invoice_id']);
+        $all = json_decode((string) file_get_contents(base_path('tests/Fixtures/collection_requests_3875.json')), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertArrayHasKey($name, $all, "fixture case $name (regenerate: npx vitest run -u src/components/__tests__/TuitionCollectionBatchInvoiceTarget.test.js)");
+        $map = function ($v) use (&$map, $ids) {
+            if (is_array($v)) {
+                return array_map($map, $v);
+            }
+            if (is_string($v) && preg_match('/^\{\{(.+)\}\}$/', $v, $m)) {
+                $this->assertArrayHasKey($m[1], $ids, "placeholder {$m[1]}");
 
-        // Without the invoice id (the pre-#3875 page payload) the fallback caps at the older bill → 207.
-        $this->report('director-record-batch', ['payment_date' => '2026-04-28', 'payment_method' => 'cash', 'entries' => [
-            ['student_class_id' => $row['id'], 'amount' => (int) $row['payable_outstanding']],
-        ]])->assertStatus(207)->assertJsonPath('results.0.code', 'amount_exceeds_outstanding');
+                return (int) $ids[$m[1]];
+            }
 
-        $res = $this->report('director-record-batch', ['payment_date' => '2026-04-28', 'payment_method' => 'cash', 'entries' => [$this->batchEntry($row)]])
-            ->assertOk();
-        $this->confirm($res->json('results.0.report_id'))->assertOk();
+            return $v;
+        };
+        $case = $map($all[$name]);
 
-        $this->assertLedger($newer, 3000, 'paid');
-        $this->assertLedger($older, 0, 'unpaid');
-    }
+        $live = $this->queueRow(StudentClass::findOrFail($ids['course']));
+        foreach (['id', 'payment_status', 'payable_status', 'charge', 'payable_amount', 'payable_outstanding', 'payable_invoice_id'] as $field) {
+            $this->assertEquals($case['row'][$field] ?? null, $live[$field] ?? null, "$name: frontend fixture row.$field differs from the live queue row");
+        }
 
-    public function test_item4_batch_entry_does_not_book_a_smaller_amount_on_the_older_bill(): void
-    {
-        [$sc, $older, $newer] = $this->twoHistoricalOpen(olderOwes: 1000, newerOwes: 800);
-        $row = $this->queueRow($sc);
-        $this->assertSame($newer->id, (int) $row['payable_invoice_id']);
-
-        $res = $this->report('director-record-batch', ['payment_date' => '2026-04-28', 'payment_method' => 'cash', 'entries' => [$this->batchEntry($row)]])
-            ->assertOk();
-        $report = PaymentReport::findOrFail($res->json('results.0.report_id'));
-        $this->assertSame($newer->id, (int) $report->InvoiceID, 'the pending report targets the displayed bill');
-        $this->confirm($report->id)->assertOk();
-
-        $this->assertLedger($newer, 800, 'paid');
-        $this->assertLedger($older, 0, 'unpaid');
-    }
-
-    // ── request shapes: mirror the frontend exactly ─────────────────────────
-
-    /** PaymentEntryModal.vue submit(): amount = payable_outstanding prefill, invoice_id = row.invoice_id ?? payable_invoice_id. */
-    private function modalRequest(array $row, ?int $typedAmount = null): array
-    {
-        return array_filter([
-            'student_class_id' => $row['id'],
-            'payment_date' => '2026-04-28',
-            'payment_method' => 'cash',
-            'amount' => $typedAmount ?? (int) ($row['payable_outstanding'] ?? $row['payable_amount']),
-            'invoice_id' => $row['invoice_id'] ?? $row['payable_invoice_id'] ?? null,
-        ], fn ($v) => $v !== null);
-    }
-
-    /** TuitionCollectionPage.vue submitBatchReport() entries[]: student_class_id, amount, invoice_id = payable_invoice_id. */
-    private function batchEntry(array $row, ?int $amount = null): array
-    {
-        return array_filter([
-            'student_class_id' => $row['id'],
-            'amount' => $amount ?? (int) ($row['payable_outstanding'] ?? $row['payable_amount'] ?? 0),
-            'invoice_id' => $row['payable_invoice_id'] ?: null,
-        ], fn ($v) => $v !== null);
+        return $case;
     }
 
     // ── fixtures ────────────────────────────────────────────────────────────
