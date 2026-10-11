@@ -45,13 +45,47 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     await tick();
     expect(JSON.parse(global.fetch.mock.calls[0][1].body).invoice_id).toBe(77);
 
-    // A covered payable bill (outstanding 0) is not sent; the backend picks the bill that still owes.
+  });
+
+  // #3875 item 1: a covered payable bill (outstanding 0) on a course that charges must not turn into a silent NT$0
+  // report that the backend books on another bill. Backend half: CollectionQueueRequestShapeTest test_item1_*.
+  it('blocks a NT$0 report on a course that charges instead of dropping the invoice id', async () => {
+    global.fetch.mockResolvedValue(ok({ report_id: 1 }));
     const covered = mount(PaymentEntryModal, { props: { show: false, row: { ...row, payable_invoice_id: 78, payable_outstanding: 0 } } });
     await covered.setProps({ show: true });
     await nextTick();
+    expect(covered.find('input[type="number"]').element.value).toBe('0');
     await covered.find('form').trigger('submit');
     await tick();
-    expect(JSON.parse(global.fetch.mock.calls[1][1].body).invoice_id).toBeUndefined();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(covered.text()).toContain('金額為 0 不能登記');
+
+    // Typing a real amount sends it against the displayed bill; the backend refuses a covered bill, it never re-targets.
+    await covered.find('input[type="number"]').setValue(500);
+    await covered.find('form').trigger('submit');
+    await tick();
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ student_class_id: 5, amount: 500, invoice_id: 78 });
+  });
+
+  it('sends the bill that owes with its outstanding when the queue row shows it (request shape mirrored by the backend test)', async () => {
+    global.fetch.mockResolvedValue(ok({ report_id: 1 }));
+    const owing = mount(PaymentEntryModal, { props: { show: false, row: { ...row, payable_invoice_id: 801, payable_amount: 3000, payable_outstanding: 3000 } } });
+    await owing.setProps({ show: true });
+    await nextTick();
+    await owing.find('form').trigger('submit');
+    await tick();
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body).toEqual({ student_class_id: 5, payment_date: body.payment_date, payment_method: 'transfer', amount: 3000, invoice_id: 801 });
+  });
+
+  it('still lets a free course settle at NT$0', async () => {
+    global.fetch.mockResolvedValue(ok({ report_id: 1 }));
+    const free = mount(PaymentEntryModal, { props: { show: false, row: { ...row, charge: 0, payable_amount: 0, payable_outstanding: 0 } } });
+    await free.setProps({ show: true });
+    await nextTick();
+    await free.find('form').trigger('submit');
+    await tick();
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).amount).toBe(0);
   });
 
   // ── Blocker 5 precondition: a failed payment API call must never emit

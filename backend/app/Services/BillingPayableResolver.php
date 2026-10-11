@@ -232,28 +232,23 @@ class BillingPayableResolver
             ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period'])
             ->groupBy('StudentClassID');
 
-        $selected = [];
-        foreach ($ids as $classId) {
-            $selected[$classId] = $this->selectRelevantInvoice($invoicesByClass->get($classId, collect()));
-        }
         // resolve() reads items only for date-mode courses (#3454): one batched query, none for count-only batches.
-        $needItems = collect($selected)
-            ->filter(fn ($invoice, $classId) => $invoice
-                && (string) ($courseMap[$classId]->ScheduleMode ?? '') === 'date')
-            ->values();
+        // Selection projects candidates too (#3875), so every date-mode candidate gets its items here.
+        $needItems = $invoicesByClass
+            ->filter(fn ($invoices, $classId) => (string) ($courseMap[$classId]->ScheduleMode ?? '') === 'date')
+            ->flatten(1);
         if ($needItems->isNotEmpty()) {
             (new \Illuminate\Database\Eloquent\Collection($needItems->all()))->load('items');
         }
 
         $resolved = [];
         foreach ($ids as $classId) {
-            $invoice = $selected[$classId];
+            [$invoice, $projection] = $this->selectRelevantInvoice($invoicesByClass->get($classId, collect()), $courseMap[$classId] ?? null);
             if (!$invoice) {
                 $resolved[$classId] = $this->unbilled();
                 continue;
             }
 
-            $projection = $this->invoiceAmounts->resolve($invoice, $courseMap[$classId] ?? null);
             $amount = max(0, (int) $projection['total_amount']);
             $applied = min($amount, max(0, (int) $projection['net_applied']));
             $resolved[$classId] = [
@@ -351,8 +346,47 @@ class BillingPayableResolver
         ];
     }
 
+    /**
+     * The bill the queue shows and the collect buttons pay: the first (open status, newest period, newest id) whose
+     * Payment-row projection still owes, whatever its stored Status (#3875); none owes → the first. Only bills whose
+     * payments do not already cover the stored total (or unpaid ones with none, which may be repriced) are projected.
+     *
+     * @param Collection<int, Invoice> $invoices
+     * @return array{0: ?Invoice, 1: ?array}
+     */
+    private function selectRelevantInvoice(Collection $invoices, ?StudentClass $course): array
+    {
+        $first = null;
+        foreach ($this->sortRelevant($invoices) as $invoice) {
+            if ($first !== null && !$this->mayOwe($invoice)) {
+                continue;
+            }
+            $projection = $this->invoiceAmounts->resolve($invoice, $course);
+            $first ??= [$invoice, $projection];
+            if ((int) $projection['outstanding_amount'] > 0) {
+                return [$invoice, $projection];
+            }
+        }
+
+        return $first ?? [null, null];
+    }
+
+    /** Cheap superset of "projection still owes" from the loaded payments (see InvoiceAmountReconciliationService). */
+    private function mayOwe(Invoice $invoice): bool
+    {
+        $net = 0;
+        foreach ($invoice->getRelationValue('payments') ?? [] as $payment) {
+            $amount = (int) ($payment->Amount ?? 0);
+            $net += ($amount < 0 || (string) ($payment->Method ?? '') === 'void') ? -abs($amount) : $amount;
+        }
+        $net = max(0, $net);
+
+        return (int) ($invoice->getAttribute('TotalAmount') ?? 0) > $net
+            || ((string) ($invoice->getAttribute('Status') ?? '') === 'unpaid' && $net === 0);
+    }
+
     /** @param Collection<int, Invoice> $invoices */
-    private function selectRelevantInvoice(Collection $invoices): ?Invoice
+    private function sortRelevant(Collection $invoices): Collection
     {
         return $invoices->sort(function (Invoice $left, Invoice $right): int {
             $leftOpen = in_array((string) ($left->getAttribute('Status') ?? ''), ['unpaid', 'partial'], true);
@@ -368,6 +402,6 @@ class BillingPayableResolver
             }
 
             return (int) $right->getAttribute('id') <=> (int) $left->getAttribute('id');
-        })->first();
+        });
     }
 }

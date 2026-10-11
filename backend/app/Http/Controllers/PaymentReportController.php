@@ -393,9 +393,7 @@ class PaymentReportController extends Controller
                     ->where('StudentClassID', $report->StudentClassID)
                     ->lockForUpdate()
                     ->first();
-                if ($invoice && (string) $invoice->Status === 'paid') {
-                    return $this->duplicateCoursePaymentResponse('paid');
-                }
+                // A stored Status=paid does not decide: the Payment-row projection below does (#3875).
                 if ($invoice && (string) $invoice->Status === 'void') {
                     return response()->json([
                         'message' => '作廢帳單不可重新入帳，請使用目前有效帳單或讓系統建立新的對應帳單。',
@@ -622,9 +620,7 @@ class PaymentReportController extends Controller
                 if (!$invoice) {
                     return response()->json(['message' => '指定帳單不存在或不屬於此課程'], 404);
                 }
-                if ((string) $invoice->Status === 'paid') {
-                    return response()->json(['message' => '指定帳單已繳清，請勿重複入帳'], 422);
-                }
+                // A stored Status=paid does not decide: the Payment-row projection below does (#3875).
                 if ((string) $invoice->Status === 'void') {
                     return response()->json([
                         'message' => '作廢帳單不可重新登記，請讓系統建立新的對應帳單。',
@@ -931,24 +927,26 @@ class PaymentReportController extends Controller
     }
 
     /**
-     * Open (not paid/void) invoice to collect against when the caller named none: the preferred period first, then
-     * oldest id; the first one whose Payment rows still leave it owing wins over a stale-status bill that is covered.
-     * All covered → the first one, so the caller refuses it as covered.
+     * Invoice to collect against when the caller named none: the preferred period first, then oldest id. Every non-void
+     * bill is a candidate and its Payment-row projection decides whether it still owes, whatever its stored Status
+     * (#3875: stored paid can still owe). None owes → the first not-stored-paid one, so the caller refuses it as covered.
      */
     private function pickOpenInvoice(int $studentClassId, ?StudentClass $sc, ?string $preferPeriod = null): ?Invoice
     {
-        $open = Invoice::where('StudentClassID', $studentClassId)
-            ->where(fn ($q) => $q->whereNull('Status')->orWhereNotIn('Status', ['paid', 'void']))
+        $live = Invoice::where('StudentClassID', $studentClassId)
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
             ->orderBy('id')->lockForUpdate()->get()
             ->sortBy(fn (Invoice $i) => $preferPeriod !== null && (string) $i->billing_period === $preferPeriod ? 0 : 1);
 
-        return $open->first(fn (Invoice $i) => (int) $this->invoiceProjection($i, $sc)['outstanding_amount'] > 0) ?? $open->first();
+        return $live->first(fn (Invoice $i) => (int) $this->invoiceProjection($i, $sc)['outstanding_amount'] > 0)
+            ?? $live->first(fn (Invoice $i) => (string) $i->Status !== 'paid');
     }
 
     /**
      * #3864 hotfix P1-a: the amount is capped by the TARGET invoice's own outstanding (Payment-row projection), not the
      * course-wide total — otherwise a payment owed to another bill lands on this one as an overpayment.
-     * A NT$0 bill is left to the existing guards (free courses settle at 0).
+     * #3875: a NT$0 bill takes no positive amount (that would overpay it at once), and NT$0 is not a report against a bill
+     * that still owes. NT$0 on a NT$0 bill stays allowed (free courses settle at 0).
      */
     private function amountExceedsInvoiceResponse(?Invoice $invoice, ?StudentClass $sc, float $amount)
     {
@@ -957,12 +955,22 @@ class PaymentReportController extends Controller
         }
         $projection = $this->invoiceProjection($invoice, $sc);
         $outstanding = (int) $projection['outstanding_amount'];
-        if ((int) $projection['total_amount'] <= 0 || $amount <= $outstanding) {
+        if ($amount <= 0 && $outstanding > 0) {
+            return response()->json([
+                'message' => sprintf('這張帳單還欠 NT$%d，金額不可為 0；請填實際收到的金額。沒有登記任何款項。', $outstanding),
+                'code' => 'zero_amount_with_balance',
+                'expected_amount' => $outstanding,
+                'invoice_id' => (int) $invoice->id,
+            ], 422);
+        }
+        if ($amount <= $outstanding) {
             return null;
         }
 
         return response()->json([
-            'message' => sprintf('這張帳單只欠 NT$%d，請改成 %d 以下，或分到其他帳單。', $outstanding, $outstanding),
+            'message' => (int) $projection['total_amount'] <= 0
+                ? '這張帳單金額是 NT$0，不能登記收款；請先在學生帳務更正帳單金額。沒有登記任何款項。'
+                : sprintf('這張帳單只欠 NT$%d，請改成 %d 以下，或分到其他帳單。', $outstanding, $outstanding),
             'code' => 'amount_exceeds_outstanding',
             'expected_amount' => $outstanding,
             'invoice_id' => (int) $invoice->id,
