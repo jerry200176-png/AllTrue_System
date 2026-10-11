@@ -76,6 +76,7 @@ function makeFallbackOccurrenceKey(row, dow, normalizeTime) {
 
 export function dedupeCalendarRowsByStudentSlot(items, normalizeTime = defaultNormalizeTime) {
   const bestByKey = new Map();
+  const kept = [];
   const scoreRow = (row) => {
     const sessionScore = row?.class_session_id ? 2 : 0;
     const exceptionScore = row?.is_exception ? 1 : 0;
@@ -120,12 +121,21 @@ export function dedupeCalendarRowsByStudentSlot(items, normalizeTime = defaultNo
     const key = studentKey && dayKey && start ? `${studentKey}|${dayKey}|${start}` : '';
     if (!key) continue;
     const prev = bestByKey.get(key);
+    // Two real ClassSessions (distinct ids) of different StudentClass rows in the same student slot are
+    // a data truth (e.g. renewal overlapping the old course, #3847): show both, never silently drop one.
+    if (prev && isMaterializedOccurrence(row) && isMaterializedOccurrence(prev)
+      && String(row.class_session_id) !== String(prev.class_session_id)
+      && String(row.student_course_id ?? '') !== String(prev.student_course_id ?? '')
+      && isLeaveOccurrence(row) === isLeaveOccurrence(prev)) {
+      kept.push(row);
+      continue;
+    }
     if (shouldReplace(row, prev)) {
       bestByKey.set(key, row);
     }
   }
 
-  return Array.from(bestByKey.values());
+  return [...bestByKey.values(), ...kept];
 }
 
 export function mergeWeekCalendarOccurrences({

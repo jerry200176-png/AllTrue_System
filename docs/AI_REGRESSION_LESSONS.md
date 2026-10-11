@@ -861,6 +861,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **根因**：`calendarOccurrenceMerge.dedupeByStudentSlot()` 舊 key 優先使用 `student_course_id`，不同 `StudentClass` 的同學生同日同開始時間不會互相去重。
 - **強制規則**：週檢視 occurrence 去重的學生時段 key 必須用學生識別 + 日期/星期 + 開始時間；`class_session_id` backed occurrence 優先於 exception/base/synthetic contract。
 - **測試必補**：`calendarOccurrenceMerge.test.js` 覆蓋 legacy active contract + current `ClassSession` 同學生同時段只留實體堂次。
+- **延伸（2026-10-11 / in-app #389 / GitHub #3847）**：去重只用來剔除 template／legacy 殘影，**不可吞掉兩筆都是真實 `ClassSession`（不同 id、不同 `StudentClass`）的同學生同時段**——例：續約課程起日與舊課程最後一堂重疊，同一學生同格有 2 堂 attended，舊邏輯只剩 1 張卡，科目數卻算 2，使用者看不出重複扣堂。現在兩張都顯示（請假與非請假混合仍收斂）；真正要處理的是重複堂次資料，由主任判斷。測試見 `calendarOccurrenceMerge.test.js` #3847 段。
 
 ---
 
