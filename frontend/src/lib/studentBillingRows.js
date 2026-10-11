@@ -22,6 +22,20 @@ export function splitOwed(items, today = todayYmd()) {
 }
 
 /**
+ * What one alert row still owes, per bill: every open period when the server sends `open_periods` (same invoices the
+ * student panel sums), else the single bill `payable_outstanding` describes (package rows, older payloads).
+ */
+export function owedItems(r) {
+  if (Array.isArray(r.open_periods) && r.open_periods.length) {
+    return r.open_periods.map((p) => ({ amount: Number(p.outstanding || 0), due_date: p.due_date || null }));
+  }
+  return [{ amount: Number(r.payable_outstanding ?? 0), due_date: r.due_date || null }];
+}
+
+/** Total a row still owes (all open bills); the campus-wide totals use the same number as the student list. */
+export const rowOwedTotal = (r) => owedItems(r).reduce((sum, it) => sum + Math.max(0, it.amount), 0);
+
+/**
  * @param {Array} alertRows rows from GET /alerts/tuition
  * @param {Array} students  [{ id, name }] of the campus (may be empty)
  * @param {string} today    YYYY-MM-DD
@@ -47,15 +61,18 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (r.last_paid_at && (!row.last_paid_at || r.last_paid_at > row.last_paid_at)) row.last_paid_at = r.last_paid_at;
     if (r.payment_status === 'pending_report') row.waiting_confirm += 1;
     if (!OWING.has(r.payment_status)) continue;
-    const amount = Number(r.payable_outstanding ?? 0);
-    if (amount <= 0) continue;
+    const items = owedItems(r);
+    if (!items.some((it) => it.amount > 0)) continue;
     row.open_contracts += 1;
-    // D8: due by today counts now; a future due date is "之後還會到期".
-    if (isDueLater(r.due_date, today)) {
-      row.owed_later += amount;
-    } else {
-      row.owed_now += amount;
-      if (r.due_date) row.overdue_days = Math.max(row.overdue_days, Math.round((now - dayStart(r.due_date)) / 86400000));
+    for (const it of items) {
+      if (it.amount <= 0) continue;
+      // D8: due by today counts now; a future due date is "之後還會到期".
+      if (isDueLater(it.due_date, today)) {
+        row.owed_later += it.amount;
+      } else {
+        row.owed_now += it.amount;
+        if (it.due_date) row.overdue_days = Math.max(row.overdue_days, Math.round((now - dayStart(it.due_date)) / 86400000));
+      }
     }
   }
   for (const s of students || []) ensure(Number(s.id), s.name);

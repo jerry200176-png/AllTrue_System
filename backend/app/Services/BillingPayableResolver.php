@@ -84,7 +84,7 @@ class BillingPayableResolver
             ->with(['payments' => fn ($query) => $query->select(['id', 'InvoiceID', 'Amount', 'Method']), 'items'])
             ->whereIn('StudentClassID', $ids->all())
             ->orderBy('id')
-            ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period'])
+            ->get(['id', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'Status', 'billing_period'])
             ->groupBy('StudentClassID');
         $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
 
@@ -156,10 +156,13 @@ class BillingPayableResolver
             $total = max(0, (int) $projection['total_amount']);
             $net = max(0, (int) $projection['net_applied']);
             $row = $periods[$key] ?? ['billing_period' => $projection['billing_period'], 'invoice_ids' => [], 'total' => 0,
-                'applied' => 0, 'overpaid' => 0, 'amount_discrepancy' => false, 'open_invoice_ids' => []];
+                'applied' => 0, 'overpaid' => 0, 'amount_discrepancy' => false, 'open_invoice_ids' => [], 'due_date' => null];
             $row['invoice_ids'][] = (int) $invoice->getAttribute('id');
             if ($total > min($total, $net)) {
                 $row['open_invoice_ids'][] = (int) $invoice->getAttribute('id');
+                // Earliest due date among the period's open invoices (what the student panel's due-by-today split reads).
+                $due = $invoice->getAttribute('DueDate') ? substr((string) $invoice->getAttribute('DueDate'), 0, 10) : null;
+                $row['due_date'] = $due !== null && ($row['due_date'] === null || $due < $row['due_date']) ? $due : $row['due_date'];
             }
             $row['total'] += $total;
             $row['applied'] += min($total, $net);
