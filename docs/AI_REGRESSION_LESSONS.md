@@ -6,6 +6,13 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R154. 「學生在此時段已有其他課程」要說是哪一科，主任才知道打開哪一堂（課程查找 C-PR6 同族，2026-10-11）
+
+- **現象**：#3846 讓「新增單堂」的衝堂提示點名了學生／科目／時間；但同一個 `SlotOccupiedException`（`student_slot_conflict`）從行事曆改時間、轉移堂次、重排、補尾等入口丟出時，訊息只有一句「已有其他課程」，主任得自己去翻學生的每一門課。
+- **根因**：訊息在例外類別裡是寫死字串，只有 `conflict_course_id` 在回應裡，沒有人把它翻成科目。
+- **強制規則**：衝堂訊息由 `SlotOccupiedException` 自己用 `conflict_course_id` 查科目名（「國文」）；所有入口共用，不要在各畫面各拼各的。查不到時維持原句，不可因此拋錯。
+- **測試必補**：`ClassSessionMaterializationServiceTest::test_student_overlap_message_names_the_blocking_subject_and_course`。
+
 ### R148. 「這一堂老師 ≠ 合約老師」不等於代課；歷史釘選的堂不可「回正班老師」（#3780 P1，2026-10-08）
 
 - **現象**：#3780 讓行事曆在「這一堂老師 ≠ 合約 `StudentClass.TeacherID`」時就顯示「回正班老師」。換合約老師後，已上過的堂被刻意釘在前任老師（history pin，#207／TD-076 `pin`），也符合這個條件；按下去會刪釘選、改 `LearningRecord.TeacherID`、調 `TeachingSessionCount`，改寫誰上過課與薪資。
