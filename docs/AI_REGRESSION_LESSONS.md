@@ -659,7 +659,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 - 主任核帳若找不到未繳 Invoice 就自動新建 Invoice/Payment，會讓同一筆課被重複入帳，畫面出現多筆繳費。
 - 已繳課程底下若殘留 unpaid Invoice，不能把該 Invoice 當成「可核帳目標」；這通常代表歷史錯帳或續報/帳單建立時期的殘留資料，應先作廢或修補資料。
-- **強制規則**：`PaymentReportController::directorRecord` 在課程已標記 `Paid=1` 或已有 paid Invoice 時，必須回 422；即使 request 指定了 unpaid `invoice_id` 也不可建立第二筆 Payment/PaymentReport。
+- **Founder Q2（2026-10-11，#3797／#3864）取代舊規則**：帳單＋Payment 紀錄才是真相，`Paid=1` 旁邊還欠的帳單**可以**收款；但只能收**目標帳單**依 Payment 紀錄（`InvoiceAmountReconciliationService`）算出的未收額（鎖住帳單後在 `directorRecord`／batch／`confirm` 都重算，超過回 422「這張帳單只欠 NT$X…」），不可用整門課的總未收額，也不可用儲存的 `PaidAmount`；`confirm` 寫回的 `PaidAmount`／`Status` 一律從 Payment 紀錄重算。Payment 紀錄已收足的帳單（即使 Status 過期仍是 unpaid）一律拒收；課程已收齊（resolver `paid`）且沒有未結帳單時仍回 422。
 - **強制規則**：`PaymentReportController::confirm` 必須套用同一個已繳防重 guard；家長回報 pending report 不可繞過 `directorRecord` 的防護而新建第二筆帳。
 - **強制規則**：帳單畫面顯示付款筆數時，只能計算正向有效付款；`Method='void'` 或負數沖銷不可算成「繳費次數」。
 - **強制規則**：歷史錯帳更正不可刪除 `Payment` 或手改金額；必須從收款/收據紀錄逐筆撤銷，建立負值沖銷並保存 `void_reason` 稽核。

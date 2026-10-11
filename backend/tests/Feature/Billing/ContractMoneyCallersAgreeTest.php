@@ -144,6 +144,33 @@ class ContractMoneyCallersAgreeTest extends TestCase
             if ($recorded !== 0) {
                 $answers['collect_invariant'] = "$recorded payment report(s) were created by refused attempts";
             }
+            // #3864 hotfix: each bill is capped by its OWN Payment-row outstanding (never the course total), and after a
+            // record + confirm its Payment rows never exceed its total while PaidAmount/Status equal that projection.
+            $recon = app(\App\Services\InvoiceAmountReconciliationService::class);
+            $owing = \App\Models\Invoice::with(['payments', 'items'])->where('StudentClassID', $id)->whereNotIn('Status', ['paid', 'void'])->orderBy('id')->get()
+                ->first(fn ($inv) => (int) $recon->resolve($inv, $course)['outstanding_amount'] > 0);
+            if ($owing) {
+                $left = (int) $recon->resolve($owing, $course)['outstanding_amount'];
+                $send = fn (int $amount) => $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+                    'student_class_id' => $id, 'invoice_id' => $owing->id, 'payment_date' => '2026-08-20', 'payment_method' => 'cash', 'amount' => $amount,
+                ]);
+                if (($s = $send($left + 1)->status()) !== 422) {
+                    $answers['collect_invariant'] = "invoice {$owing->id} owes $left but accepted $s for " . ($left + 1);
+                }
+                \App\Models\PaymentReport::where('StudentClassID', $id)->delete();
+                $reportId = $send($left)->json('report_id');
+                if ($reportId) {
+                    $this->withHeaders($headers)->putJson("/api/v1/payment-reports/$reportId/confirm");
+                }
+                $after = \App\Models\Invoice::with(['payments', 'items'])->findOrFail($owing->id);
+                $p = $recon->resolve($after, $course->fresh());
+                $wantStatus = $p['outstanding_amount'] <= 0 ? 'paid' : ($p['net_applied'] > 0 ? 'partial' : 'unpaid');
+                if ($p['net_applied'] > $p['total_amount']) {
+                    $answers['collect_invariant'] = "invoice {$after->id} Payment rows {$p['net_applied']} exceed total {$p['total_amount']}";
+                } elseif ($reportId && ((int) $after->PaidAmount !== $p['net_applied'] || (string) $after->Status !== $wantStatus)) {
+                    $answers['collect_invariant'] = "invoice {$after->id} stored {$after->PaidAmount}/{$after->Status} but Payment rows say {$p['net_applied']}/$wantStatus";
+                }
+            }
         }
 
         if ($answers === []) {
