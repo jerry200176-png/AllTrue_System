@@ -516,7 +516,7 @@
         <button v-if="directorBranchStatus === 'failed'" type="button" @click="retryDirectorBranches">重試載入分校</button>
       </div>
       <HubTabBar
-        v-if="!isPasswordChangeLocked && activeHub"
+        v-if="activeHub"
         :title="activeHub.label"
         :tabs="activeHub.tabs"
         :active="active"
