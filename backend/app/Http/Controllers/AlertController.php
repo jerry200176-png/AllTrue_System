@@ -710,21 +710,28 @@ class AlertController extends Controller
      */
     public function tuitionSlipData(Request $request, int $studentClassId)
     {
-        $sc = StudentClass::with(['student', 'coursePackage'])->findOrFail($studentClassId);
-
-        if ((int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid())) {
-            return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
-        }
-
-        $student = $sc->student;
-        if (!$student) {
-            return response()->json(['message' => '找不到學生資料'], 404);
-        }
-
+        // Authorize first: a missing record, a record without a student and another campus's record all answer the same
+        // bare 403, before any money is read (no status, amount or name can leak through a different error).
         $role = $request->attributes->get('auth_role');
-        $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
+        $campusIds = $role === 'super_admin' ? null : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        $sc = StudentClass::with(['student', 'coursePackage'])->find($studentClassId);
+        $student = $sc?->student;
+        if (!$sc || !$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) {
             abort(403);
+        }
+
+        // ARCH2: a slip exists only while the Verdict says the contract owes. Paid=1 beside an unpaid invoice still gets
+        // its slip (the money is owed); Payment rows that settle a Paid=0 contract refuse it. No Verdict answer
+        // (review_required) keeps the legacy flag test.
+        $settlement = $this->payableResolver->courseStatusesByStudentClassIds([$studentClassId], [$sc])[$studentClassId]['status'] ?? null;
+        if ($settlement === 'free') {
+            return response()->json(['message' => '這門課是免費課程，不需要繳費單'], 422);
+        }
+        $settled = in_array($settlement, ['unpaid', 'partial', 'unbilled'], true)
+            ? false
+            : ($settlement === 'paid' || (int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid()));
+        if ($settled) {
+            return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
         }
 
         $campus = Campus::find((int) $student->CampusID);
