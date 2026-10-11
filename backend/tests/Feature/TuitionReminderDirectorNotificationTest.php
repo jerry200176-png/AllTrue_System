@@ -59,6 +59,17 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         return Notification::where('SourceType', 'TuitionReminder')->firstOrFail();
     }
 
+    public function test_double_run_yields_one_live_row_per_course(): void
+    {
+        [$campus] = $this->fixture();
+        $this->artisan('tuition:send-reminders')->assertExitCode(0);
+        $this->artisan('tuition:send-reminders')->assertExitCode(0);
+
+        $rows = Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->get();
+        $this->assertCount(1, $rows);
+        $this->assertNull($rows[0]->ResolvedAt);
+    }
+
     public function test_command_then_sync_keeps_one_live_actionable_alert_per_course(): void
     {
         [$campus, , $course, $s] = $this->fixture();
@@ -129,5 +140,20 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         $course->forceFill(['Paid' => 0])->save();
         NotificationSyncService::sync([$campus->id]);
         $this->assertSame(0, NotificationRead::count(), 'reopened alert is unread');
+    }
+
+    public function test_severity_only_change_is_unread_again_and_no_change_keeps_read(): void
+    {
+        [$campus, $director, $course] = $this->fixture();
+        NotificationSyncService::sync([$campus->id]);
+        $n = Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->firstOrFail();
+        $this->markRead($n, $director);
+
+        NotificationSyncService::sync([$campus->id]);
+        $this->assertSame(1, NotificationRead::count(), 'nothing changed: read kept');
+
+        $n->forceFill(['Severity' => 'low'])->save(); // only Severity differs from what sync derives
+        NotificationSyncService::sync([$campus->id]);
+        $this->assertSame(0, NotificationRead::count(), 'severity-only change: unread again');
     }
 }
