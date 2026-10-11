@@ -368,8 +368,8 @@ class PaymentReportController extends Controller
             }
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
-            if ($sc && ($blockReason = $this->courseMoneyBlockReason((int) $sc->ID, (int) ($sc->Paid ?? 0)))) {
-                return $this->duplicateCoursePaymentResponse($blockReason);
+            if ($sc && $this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
+                return $this->duplicateCoursePaymentResponse($this->courseMoneyBlockReason((int) $sc->ID, (int) ($sc->Paid ?? 0)) ?? 'paid');
             }
             if ($sc && ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $report->reported_amount))) {
                 return $over;
@@ -589,8 +589,8 @@ class PaymentReportController extends Controller
             }
             $package = $this->lockPackageForCourse($sc);
 
-            if ($blockReason = $this->courseMoneyBlockReason((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
-                return $this->duplicateCoursePaymentResponse($blockReason);
+            if ($this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
+                return $this->duplicateCoursePaymentResponse($this->courseMoneyBlockReason((int) $sc->ID, (int) ($sc->Paid ?? 0)) ?? 'paid');
             }
             if ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $data['amount'])) {
                 return $over;
