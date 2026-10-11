@@ -15,7 +15,7 @@ last_reviewed: 2026-08-16
 
 | 模式 | 列入提醒的條件（皆須 `Stop = 0`，且堂數制／月結制各自還有欄位前提） |
 |------|-------------------------------------------------------------------|
-| **堂數制** `ScheduleMode = count` | **未繳費**（`Paid != 1`）**或** **剩餘堂數不足**（`RemainingSessions <= 2`，**含 0 堂**；已繳費也會列，屬續課／加購提醒）。 |
+| **堂數制** `ScheduleMode = count` | **未繳費**（`Paid != 1`）**或** **剩餘堂數不足**（`RemainingSessions <= 2`，**含 0 堂**；已繳費也會列，屬續課／加購提醒）**或** **仍有未結帳單**（非 paid/void 的 Invoice；Founder Q2 2026-10-11，#3797／#3864：`Paid=1` 不能藏住還欠的帳單）。 |
 | **月結制** `ScheduleMode = date` | 須有有效 **`settlement_day`（1–31）**。未繳且**已過**當月繳費日 → **一律**列入（逾期至標記已繳為止）。其餘：不論已繳或未繳，僅當「今天 ↔ 本次計算之繳費日」相隔 **0～4 天**（**小於 5 天**）才列入；**第 5 天整不算**。 |
 
 ## 變更管制（AI／工程師）
@@ -31,6 +31,7 @@ last_reviewed: 2026-08-16
 - 符合**任一**即列入提醒：
   1. **未繳費**：`Paid != 1`
   2. **剩餘堂數不足**：`RemainingSessions <= 2`（**含 0 堂**，需續課／加購）
+  3. **仍有未結帳單**（Founder Q2 2026-10-11，#3797）：即使 `Paid=1`，帳單＋Payment 紀錄說還欠就列入、可收款；收款只收**該張帳單**依 Payment 紀錄算出的未收額，超過回 422。
 
 `alert_type`：`unpaid` 或 `low_sessions`（若同時符合，以前者優先欄位展示時前端以堂數／未繳狀態區分）。
 
@@ -112,7 +113,7 @@ last_reviewed: 2026-08-16
 
 ## 單科合約的 payment_status 與已收金額改讀 ContractMoneyVerdict（2026-10-11，ADMIN-OPS billing）
 
-`alerts/tuition` 單科合約列的 `payment_status`（paid / partial / unpaid 的判定）與 `paid_amount` 改讀 `ContractMoneyVerdict`（帳單＋Payment 紀錄為準）；不再用 `StudentClass.Paid` 旗標與帳單「儲存的 PaidAmount 加總」。沒有帳單的舊合約仍以 `Paid` 旗標為準，Verdict 給不出答案（`review_required`）時沿用舊算法。**列入條件完全不變**（見上節：`payment_status` 不影響列入）。同一合約在帳務中心名單、課程查找、繳費通知上的「已繳／部分繳／未繳」因此一致。跨呼叫端一致性由 `ContractMoneyCallersAgreeTest` 守住；`Paid=1` 但仍有未收帳單的合約不在名單內，是另案待 Founder 決定（見該測試的 `PENDING`）。
+`alerts/tuition` 單科合約列的 `payment_status`（paid / partial / unpaid 的判定）與 `paid_amount` 改讀 `ContractMoneyVerdict`（帳單＋Payment 紀錄為準）；不再用 `StudentClass.Paid` 旗標與帳單「儲存的 PaidAmount 加總」。沒有帳單的舊合約仍以 `Paid` 旗標為準，Verdict 給不出答案（`review_required`）時沿用舊算法。**列入條件完全不變**（見上節：`payment_status` 不影響列入）。同一合約在帳務中心名單、課程查找、繳費通知上的「已繳／部分繳／未繳」因此一致。跨呼叫端一致性由 `ContractMoneyCallersAgreeTest` 守住；`Paid=1` 但仍有未收帳單的合約：Founder Q2（2026-10-11，#3797）決定列入並可收款（見堂數制第 3 條）。
 
 ## CoursePackage 月結方案的 payment_status（2026-04-22 Bug Fix）
 

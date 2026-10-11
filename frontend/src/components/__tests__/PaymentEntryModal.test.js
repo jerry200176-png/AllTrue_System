@@ -36,6 +36,24 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     expect(wrapper.emitted('confirmed')).toEqual([[{ message: '已送出待對帳', report_id: 42, payment_id: null, invoice_id: 2, status: 'pending' }]]);
   });
 
+  it('pays the queue row\'s payable invoice (the bill whose outstanding prefilled the amount)', async () => {
+    global.fetch.mockResolvedValue(ok({ report_id: 1 }));
+    const wrapper = mount(PaymentEntryModal, { props: { show: false, row: { ...row, payable_invoice_id: 77 } } });
+    await wrapper.setProps({ show: true });
+    await nextTick();
+    await wrapper.find('form').trigger('submit');
+    await tick();
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).invoice_id).toBe(77);
+
+    // A covered payable bill (outstanding 0) is not sent; the backend picks the bill that still owes.
+    const covered = mount(PaymentEntryModal, { props: { show: false, row: { ...row, payable_invoice_id: 78, payable_outstanding: 0 } } });
+    await covered.setProps({ show: true });
+    await nextTick();
+    await covered.find('form').trigger('submit');
+    await tick();
+    expect(JSON.parse(global.fetch.mock.calls[1][1].body).invoice_id).toBeUndefined();
+  });
+
   // ── Blocker 5 precondition: a failed payment API call must never emit
   // 'confirmed', so the parent never navigates to a receipt or treats it as success. ──
   it('does not emit confirmed when the API call fails (no navigation on payment failure)', async () => {
