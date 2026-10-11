@@ -11,6 +11,7 @@ use App\Services\ClassSessionMaterializationService;
  * @property int $id
  * @property int $StudentClassID
  * @property int|null $SubjectID  Per-session subject override; null = inherit from StudentClass.
+ * @property-read \App\Models\Subject|null $subject  Per-session subject override relation.
  * @property string $SessionDate
  * @property string $StartTime
  * @property string $EndTime

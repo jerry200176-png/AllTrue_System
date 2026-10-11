@@ -67,6 +67,7 @@ class ClassSessionObserver
             // ClassSession -> StudentClass -> Student. StudentClass itself has
             // no branch column, so deriving from it directly always yields null
             // and would hide every log from branch-scoped directors.
+            $session->loadMissing('studentClass.student');
             $student = optional($session->studentClass)->student;
             return (int) optional($student)->CampusID ?: null;
         } catch (\Throwable) {
