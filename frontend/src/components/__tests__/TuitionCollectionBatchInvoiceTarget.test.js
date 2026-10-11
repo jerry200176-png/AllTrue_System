@@ -90,6 +90,8 @@ describe('collection request fixture shared with the backend (#3875)', () => {
     expect(out.item2_modal_zero_amount_blocked.request).toBeNull();
     expect(out.item4_batch_newer_exceeds_older.request.entries).toEqual([{ student_class_id: '{{course}}', amount: 3000, invoice_id: '{{invoice:newer}}' }]);
 
-    await expect(`${JSON.stringify(out, null, 2)}\n`).toMatchFileSnapshot(FIXTURE);
+    // One case per line keeps the reviewed diff small and each case's drift on its own line.
+    const text = `{\n${Object.entries(out).map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(',\n')}\n}\n`;
+    await expect(text).toMatchFileSnapshot(FIXTURE);
   });
 });
