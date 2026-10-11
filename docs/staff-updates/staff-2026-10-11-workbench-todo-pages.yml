@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-11-workbench-todo-pages
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: major
+    title: 待辦改在工作台出現
+    summary: 課表回報、重疊課程審核有事才出現在今日工作台。
+    items:
+      - category: improved
+        text: 課表回報管理、重疊課程審核不再佔左側選單，有待處理時會列在今日工作台。
+      - category: improved
+        text: 工作台也會提醒收件匣有未讀通知，點下去直接開收件匣（右上角第一個圖示）。
+    source_refs:
+      - "changelog:2026-10-11:workbench-todo-pages"

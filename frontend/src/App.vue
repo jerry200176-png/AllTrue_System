@@ -937,7 +937,7 @@ import {
   PIN_UNLOCK_TTL_MS,
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
-import { findNavItem, getMobileTabItems, getNavigationGroups, getToolbarItems, navigationPages, requiredContextForPage } from './lib/navigationRegistry';
+import { findNavItem, getMobileTabItems, getNavigationGroups, getTodoPages, getToolbarItems, navigationPages, requiredContextForPage } from './lib/navigationRegistry';
 import HubTabBar from './components/HubTabBar.vue';
 import ActingContextChip from './components/ActingContextChip.vue';
 import { buildAppPageUrl, parseAppPage } from './lib/appNavigationHistory.js';
@@ -1728,7 +1728,7 @@ const INBOX_DEEP_LINK_KEYS = ['page', 'section', 'workflow_id', 'branch_id'];
 function authorizedNavigationPages() {
   const pages = new Set(['profile', 'release-notes']);
   navigationPages(sidebarNavGroups.value).forEach((page) => pages.add(page));
-  toolbarItems.value.forEach((item) => pages.add(item.page));
+  [...toolbarItems.value, ...getTodoPages(role.value)].forEach((item) => pages.add(item.page));
   return pages;
 }
 
