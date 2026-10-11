@@ -66,6 +66,33 @@ class AuthLoginThrottleTest extends TestCase
         ]);
     }
 
+    public function test_login_keeps_other_device_token_when_user_agent_differs(): void
+    {
+        // #3767: UI Smoke runs use a per-run User-Agent so parallel runs sharing
+        // one smoke account do not revoke each other's sessions.
+        $user = User::create([
+            'LoginName' => 'other-device@example.com',
+            'Name' => 'Other Device User',
+            'PSW' => password_hash('correct-pass', PASSWORD_DEFAULT),
+            'type' => 'T',
+            'phone' => 900100003,
+        ]);
+        UserCampus::create(['UserID' => $user->id, 'CampusID' => 1, 'Admin' => 0, 'Approved' => true]);
+
+        $tokens = [];
+        foreach (['Chrome AllTrueUISmoke/1-1', 'Chrome AllTrueUISmoke/2-1'] as $agent) {
+            $tokens[] = (string) $this
+                ->withHeaders(['User-Agent' => $agent])
+                ->postJson('/api/v1/auth/login', ['email' => 'other-device@example.com', 'password' => 'correct-pass'])
+                ->assertOk()
+                ->json('data.session.access_token');
+        }
+
+        foreach ($tokens as $token) {
+            $this->assertDatabaseHas('auth_tokens', ['token' => $token, 'user_id' => $user->id]);
+        }
+    }
+
     public function test_login_revokes_previous_token_on_same_device_and_uses_seven_day_expiry(): void
     {
         $email = 'same-device@example.com';

@@ -17,6 +17,15 @@ import { defineConfig, devices } from '@playwright/test';
  *         SMOKE_TEACHER_USER=... SMOKE_TEACHER_PASS=... \
  *         npm run test:e2e
  */
+// #3767: login revokes the same user's active tokens from the same User-Agent
+// (AuthController::revokeSameDeviceActiveTokens). Every run shares the stock
+// headless-Chrome UA and the same SMOKE_* accounts, so parallel runs logged
+// each other out. A per-run UA makes each run's session independent.
+const runTag = process.env.GITHUB_RUN_ID
+  ? `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT || 1}`
+  : `local-${process.pid}-${Date.now()}`;
+const smokeUserAgent = `${devices['Desktop Chrome'].userAgent} AllTrueUISmoke/${runTag}`;
+
 export default defineConfig({
   testDir: './e2e',
   // Foundation page evidence uses playwright.ui-foundation.config.js + dedicated Vite mount.
@@ -78,6 +87,6 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], userAgent: smokeUserAgent } },
   ],
 });
