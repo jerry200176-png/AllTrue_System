@@ -8,6 +8,6 @@ updates:
     summary: 行事曆提示學生已有課程時，現在可選擇建立試聽、續報或獨立課程。
     items:
       - category: fixed
-        text: 行事曆快速排課遇到學生已有進行中課程時，原本「仍要新增課程」一定失敗；現在改用與課程管理相同的選項，建立獨立課程需填原因。
+        text: 行事曆遇到已有課程時，「仍要新增課程」原本會失敗，現在可選試聽、續報或獨立課程。
     source_refs:
       - "changelog:2026-10-12:calendar-force-create-reason"
