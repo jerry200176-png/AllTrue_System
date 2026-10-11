@@ -92,6 +92,36 @@ class OverlappingCourseGuardTest extends TestCase
     }
 
     /**
+     * #3738 review: renewal_next_term must not bypass the same-slot student overlap guard
+     * (only independent_parallel / create_trial may stack sessions on one slot).
+     */
+    public function test_renewal_next_term_force_does_not_create_same_slot_duplicate_sessions(): void
+    {
+        $token = $this->createUserToken('A', [1], 'dir-ovl-renew@example.com');
+        $teacherId = $this->createTeacher(1, 'teach-ovl-renew@example.com');
+        $student = $this->createStudent(1, '續報重疊測試生');
+        $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $base = Carbon::now()->addWeeks(8)->next(Carbon::WEDNESDAY);
+        $dates = [];
+        $cur = $base->copy();
+        for ($i = 0; $i < 4; $i++) { $dates[] = $cur->toDateString(); $cur->addWeek(); }
+        $res1 = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $this->batchPayload($student->id, $teacherId, $dates, 'one_on_one'));
+        $res1->assertCreated();
+        $before = \Illuminate\Support\Facades\DB::table('ClassSession')->count();
+
+        // Same dates and 16:00 start again, forced as a "renewal".
+        $renew = $this->batchPayload($student->id, $teacherId, $dates, 'one_on_two');
+        $renew['force'] = true;
+        $renew['force_reason'] = 'renewal_next_term';
+        $renew['existing_contract_ids'] = [(int) $res1->json('student_class_id')];
+        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
+
+        $this->assertGreaterThanOrEqual(400, $res->status());
+        $this->assertSame($before, \Illuminate\Support\Facades\DB::table('ClassSession')->count());
+    }
+
+    /**
      * 試聽是旁聽正式課堂的加掛，不可被 overlapping_active_course 擋死。
      * 同型試聽重複則仍走 duplicate_active_course。
      */

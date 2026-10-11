@@ -559,7 +559,7 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { dedupeCalendarRowsByStudentSlot, mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
 import { hasCrossCampusBusySlot, normalizeCrossCampusBusySlots } from '../lib/crossCampusBusySlots.js';
 import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
-import { buildAttendanceNav, buildCourseMgmtOpsNav, buildManualSessionNav } from '../lib/authoritativeMutationRoutes.js';
+import { buildAttendanceNav, buildCourseMgmtOpsNav, buildManualSessionNav, buildStudentsCommercialNav } from '../lib/authoritativeMutationRoutes.js';
 import { lessonStatusBadge, LESSON_STATUS_LEGEND } from '../lib/lessonStatusBadge.js';
 import { buildForceOverrideFields, normalizeDuplicateConflicts } from '../lib/enrollmentConflictDecision.js';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
@@ -2074,7 +2074,7 @@ function handleSchedulerDuplicate(evt) {
 
 function interceptGoToPurchase(conflict) {
   showDuplicateInterceptModal.value = false;
-  emit('navigate', buildCourseMgmtOpsNav({ id: conflict.existing_course_id, student_id: interceptOriginalPayload.value?.student_id }));
+  emit('navigate', buildStudentsCommercialNav({ id: conflict.existing_course_id, student_id: interceptOriginalPayload.value?.student_id }, { intent: 'purchase' }));
 }
 
 async function forceCreateCourse(decision) {

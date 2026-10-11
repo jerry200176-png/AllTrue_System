@@ -962,6 +962,10 @@ class EnrollmentService
                     }
                 }
 
+                // #3738 review: only an audited parallel/trial decision may stack sessions on one slot;
+                // renewal_next_term keeps the student-overlap write guard.
+                $allowStudentOverlap = !empty($data['force'])
+                    && in_array((string) ($data['force_reason'] ?? ''), ['independent_parallel', 'create_trial'], true);
                 foreach ($rowsForSubject as $row) {
                     $date = $row['date'];
                     $slotStartTime = $row['start_time'];
@@ -971,7 +975,7 @@ class EnrollmentService
                     if ($row['kind'] === 'confirmed') {
                         $upsert = app(ClassSessionMaterializationService::class)->upsertSlot([
                             '_student_class' => $studentClass,
-                            '_allow_student_overlap' => !empty($data['force']),
+                            '_allow_student_overlap' => $allowStudentOverlap,
                             'StudentClassID' => $studentClass->ID,
                             'SessionDate' => $date,
                             'StartTime' => $slotStartTime,
@@ -1013,7 +1017,7 @@ class EnrollmentService
                     $isEndedAtCreateTime = $this->sessionEndedByEndTime($date, $slotEndTime, $decisionNow);
                     $upsert = app(ClassSessionMaterializationService::class)->upsertSlot([
                         '_student_class' => $studentClass,
-                        '_allow_student_overlap' => !empty($data['force']),
+                        '_allow_student_overlap' => $allowStudentOverlap,
                         'StudentClassID' => $studentClass->ID,
                         'SessionDate' => $date,
                         'StartTime' => $slotStartTime,

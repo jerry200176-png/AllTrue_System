@@ -88,3 +88,10 @@ describe('calendar trial duplicate must not create a second trial (#3738 review)
     expect(calendar).toContain("if (!payload || payload.class_type === 'trial')");
   });
 });
+
+describe('calendar conflict 去加購 enters the purchase flow (#3738 review)', () => {
+  it('navigates to students with intent purchase, not a bare course-mgmt open', () => {
+    expect(calendar).toMatch(/buildStudentsCommercialNav\(\{ id: conflict\.existing_course_id[^)]*\}, \{ intent: 'purchase' \}\)/);
+    expect(calendar).not.toMatch(/function interceptGoToPurchase[\s\S]{0,300}buildCourseMgmtOpsNav/);
+  });
+});
