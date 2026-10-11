@@ -26,9 +26,7 @@ class ContractMoneyCallersAgreeTest extends TestCase
     private const CASES = 120;
 
     /** caller => what moves it (remove the entry in that PR). */
-    private const PENDING = [
-        'slip' => 'tuition slip still refuses on the Paid flag (own follow-up PR)',
-    ];
+    private const PENDING = []; // every caller is on the Verdict (Founder Q2/Q3, 2026-10-11)
 
     public static function seeds(): iterable
     {
@@ -117,6 +115,34 @@ class ContractMoneyCallersAgreeTest extends TestCase
             $slip = $this->withHeaders($headers)->getJson("/api/v1/alerts/tuition-slip/$id")->status();
             if (($slip === 422) !== ($class === 'settled')) {
                 $answers['slip'] = "answers $slip but verdict {$v->status}";
+            }
+        }
+
+        // 6. R28 invariant: collecting is only ever against what still owes. Never above the outstanding amount, never
+        //    against a bill whose Payment rows already cover it (stored Status may be stale), whatever Paid says.
+        if ($class === 'owing' && $v->source === 'invoice' && !$c['package'] && $v->outstanding > 0) {
+            $over = $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+                'student_class_id' => $id, 'payment_date' => '2026-08-20', 'payment_method' => 'cash', 'amount' => $v->outstanding + 1,
+            ]);
+            if ($over->status() !== 422) {
+                $answers['collect_invariant'] = "accepted {$over->status()} amount outstanding+1 ({$v->outstanding})";
+            }
+            // A bill whose Payment rows cover it but whose stored Status went stale ("unpaid") must be refused too.
+            $this->invoice($course->fresh(), \App\Models\Student::findOrFail($course->StudentID), '2026-04', 1000, 'unpaid', 0, [[1000, 'cash']]);
+            foreach (\App\Models\Invoice::with(['payments', 'items'])->where('StudentClassID', $id)->where('Status', '!=', 'void')->get() as $inv) {
+                $p = app(\App\Services\InvoiceAmountReconciliationService::class)->resolve($inv, $course);
+                if ((int) $p['total_amount'] > 0 && (int) $p['outstanding_amount'] <= 0) {
+                    $res = $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+                        'student_class_id' => $id, 'invoice_id' => $inv->id, 'payment_date' => '2026-08-20', 'payment_method' => 'cash', 'amount' => 100,
+                    ]);
+                    if ($res->status() !== 422) {
+                        $answers['collect_invariant'] = "accepted a payment against invoice {$inv->id} already covered by Payment rows";
+                    }
+                }
+            }
+            $recorded = \App\Models\PaymentReport::where('StudentClassID', $id)->count();
+            if ($recorded !== 0) {
+                $answers['collect_invariant'] = "$recorded payment report(s) were created by refused attempts";
             }
         }
 

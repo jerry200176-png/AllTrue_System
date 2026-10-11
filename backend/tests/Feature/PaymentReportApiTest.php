@@ -1080,6 +1080,42 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(1, Payment::count());
     }
 
+    public function test_q2_fully_paid_invoice_is_refused_even_when_its_stored_status_is_stale(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 8800, 'Paid' => 1]);
+        $stale = Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01', 'TotalAmount' => 8800,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-04']);
+        Payment::create(['InvoiceID' => $stale->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
+
+        $this->recordDirect($token, $sc->ID, 100, $stale->id)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        $this->recordDirect($token, $sc->ID, 100)->assertStatus(422);
+        $this->assertSame(0, PaymentReport::count());
+        $this->assertSame(1, Payment::count());
+    }
+
+    public function test_q2_paid_flag_with_an_open_invoice_is_collectible_only_up_to_that_invoices_outstanding_and_only_once(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 8800, 'Paid' => 1]);
+        $this->invoiceWithCash($sc, 8800, 3000); // partial: 5800 still owed
+
+        $this->recordDirect($token, $sc->ID, 5801)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
+        $this->assertSame(0, PaymentReport::count());
+
+        $reportId = $this->recordDirect($token, $sc->ID, 5800)->assertOk()->json('report_id');
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/payment-reports/{$reportId}/confirm")->assertOk();
+        $this->assertSame(2, Payment::count());
+
+        // Retry after the successful record: the bill is covered now, no second Payment.
+        $this->recordDirect($token, $sc->ID, 5800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        $this->assertSame(2, Payment::count());
+        $this->assertSame(1, PaymentReport::count());
+    }
+
     public function test_guard_message_when_the_resolver_has_no_answer_says_nothing_was_recorded(): void
     {
         Carbon::setTestNow('2026-04-28 10:00:00');

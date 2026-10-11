@@ -401,6 +401,10 @@ class PaymentReportController extends Controller
                     ->first();
             }
 
+            if ($invoice && $this->invoiceCoveredByPayments($invoice, $sc instanceof StudentClass ? $sc : null)) {
+                return $this->invoiceAlreadyCoveredResponse();
+            }
+
             $hasPaidInvoice = false;
             if (! $invoice) {
                 $hasPaidInvoice = Invoice::where('StudentClassID', $report->StudentClassID)
@@ -636,6 +640,10 @@ class PaymentReportController extends Controller
                     })
                     ->lockForUpdate()
                     ->first();
+            }
+
+            if ($invoice && $this->invoiceCoveredByPayments($invoice, $sc instanceof StudentClass ? $sc : null)) {
+                return $this->invoiceAlreadyCoveredResponse();
             }
 
             $hasPaidInvoice = false;
@@ -905,6 +913,26 @@ class PaymentReportController extends Controller
             'Paid' => 1,
             'PayDate' => $paidAt,
         ]);
+    }
+
+    /**
+     * R28 invariant (Founder Q2 coordination): a payment may only be recorded against a bill that still owes. A bill whose
+     * Payment rows already cover its total is refused even when its stored Status is stale ("unpaid"), whatever the Paid flag says.
+     */
+    private function invoiceCoveredByPayments(Invoice $invoice, ?StudentClass $sc): bool
+    {
+        $invoice->loadMissing(['payments', 'items']);
+        $projection = app(InvoiceAmountReconciliationService::class)->resolve($invoice, $sc);
+
+        return (int) $projection['total_amount'] > 0 && (int) $projection['outstanding_amount'] <= 0;
+    }
+
+    private function invoiceAlreadyCoveredResponse()
+    {
+        return response()->json([
+            'message' => '這張帳單已有確認的收款，不能再登記；若帳單狀態對不上，請在學生帳務核對收款紀錄，作廢重複或錯誤的帳單。沒有登記任何款項。',
+            'code' => 'course_already_paid',
+        ], 422);
     }
 
     private function duplicateCoursePaymentResponse(string $reason = 'paid')
