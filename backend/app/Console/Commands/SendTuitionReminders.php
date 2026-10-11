@@ -118,17 +118,19 @@ class SendTuitionReminders extends Command
                 continue;
             }
 
-            // Find directors for this campus
-            $directorIds = $this->directorRecipientIds((int) $campusId);
-
-            foreach ($directorIds as $directorId) {
-                Notification::create([
-                    'UserID'    => $directorId,
-                    'CampusID'  => $campusId,
-                    'Type'      => 'tuition',
-                    'Title'     => $title,
-                    'Body'      => $body,
-                    'CreatedAt' => now(),
+            // Notifications are campus-scoped (no per-user column) with a NOT NULL unique SourceKey (#3376):
+            // one row per campus per day, idempotent on re-runs. Only when the campus has a director to read it.
+            if ($this->directorRecipientIds((int) $campusId) !== []) {
+                $sourceKey = "tuition-reminder:{$campusId}:" . now()->toDateString();
+                Notification::updateOrCreate(['SourceKey' => $sourceKey], [
+                    'CampusID'   => $campusId,
+                    'Type'       => 'tuition',
+                    'Severity'   => 'medium',
+                    'Title'      => $title,
+                    'Body'       => $body,
+                    'SourceType' => 'TuitionReminder',
+                    'SourceID'   => (string) $campusId,
+                    'OccurredAt' => now(),
                 ]);
             }
 
