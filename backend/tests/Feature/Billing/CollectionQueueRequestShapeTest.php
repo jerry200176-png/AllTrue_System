@@ -145,6 +145,30 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertLedger($older, 0, 'unpaid');
     }
 
+    /** Whole NT$ only (Payment.Amount is an integer column): 0.50 / 0.99 / 1.50 never become a truncated NT$0 / NT$1 Payment row. */
+    public function test_fractional_amounts_are_refused_at_intake_batch_and_confirm(): void
+    {
+        [$sc, $older] = $this->newerCoveredOlderOwing();
+        foreach ([0.5, 0.99, 1.5] as $amount) {
+            $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $older->id, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => $amount])
+                ->assertStatus(422)->assertJsonValidationErrors('amount');
+            $this->report('director-record-batch', ['payment_date' => '2026-04-28', 'payment_method' => 'cash',
+                'entries' => [['student_class_id' => $sc->ID, 'invoice_id' => $older->id, 'amount' => $amount]]])
+                ->assertStatus(422)->assertJsonValidationErrors('entries.0.amount');
+        }
+        $this->assertSame(0, PaymentReport::count());
+
+        foreach ([0.5, 0.99, 1.5] as $amount) { // pending reports recorded before this fix
+            $report = PaymentReport::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'InvoiceID' => $older->id,
+                'reported_by_name' => 'x', 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'reported_amount' => $amount,
+                'status' => 'pending', 'report_token_hash' => hash('sha256', uniqid('f', true)), 'token_expires_at' => now()->addDay()]);
+            $this->confirm($report->id)->assertStatus(422)->assertJsonPath('code', 'fractional_amount');
+            $this->assertSame('pending', $report->fresh()->status);
+        }
+        $this->assertSame(0, Payment::where('InvoiceID', $older->id)->count(), 'no truncated Payment row');
+        $this->assertLedger($older, 0, 'unpaid');
+    }
+
     public function test_item3_fallback_finds_the_stored_paid_bill_that_still_owes(): void
     {
         [$sc, $inv] = $this->storedPaidLedgerPartial();

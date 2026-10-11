@@ -172,7 +172,7 @@ class PaymentReportController extends Controller
             'token'          => 'required|string',
             'payment_date'   => 'required|date|before_or_equal:today',
             'payment_method' => 'required|in:transfer,cash',
-            'reported_amount' => 'required|numeric|min:1|max:999999',
+            'reported_amount' => 'required|integer|min:1|max:999999',
             'account_last5'  => 'nullable|string|max:5|regex:/^[0-9]*$/',
         ]);
 
@@ -365,6 +365,13 @@ class PaymentReportController extends Controller
 
             if ($report->status !== 'pending') {
                 return response()->json(['message' => '此回報已處理過'], 422);
+            }
+            // Payment.Amount is whole NT$; a fractional legacy report would be truncated (0.50 → a NT$0 Payment).
+            if (fmod((float) $report->reported_amount, 1.0) !== 0.0) {
+                return response()->json([
+                    'message' => '回報金額有小數，收款只能是整數元；請退回這筆回報後重新登記。沒有登記任何款項。',
+                    'code' => 'fractional_amount',
+                ], 422);
             }
 
             $note = $confirmationNote !== ''
@@ -567,7 +574,8 @@ class PaymentReportController extends Controller
             'invoice_id'       => 'nullable|integer',
             'payment_date'     => 'required|date|before_or_equal:today',
             'payment_method'   => 'required|in:transfer,cash',
-            'amount'           => 'required|numeric|min:0|max:999999',
+            // Whole NT$ only: Payment/Invoice amounts are integer columns (#3875 review).
+            'amount'           => 'required|integer|min:0|max:999999',
             'account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
             'note'             => 'nullable|string|max:500',
         ]);
@@ -725,7 +733,7 @@ class PaymentReportController extends Controller
             'note'           => 'nullable|string|max:500',
             'entries'        => 'required|array|min:1|max:40',
             'entries.*.student_class_id' => 'required|integer',
-            'entries.*.amount'           => 'required|numeric|min:0|max:999999',
+            'entries.*.amount'           => 'required|integer|min:0|max:999999',
             'entries.*.account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
             'entries.*.invoice_id'       => 'nullable|integer',
         ]);
