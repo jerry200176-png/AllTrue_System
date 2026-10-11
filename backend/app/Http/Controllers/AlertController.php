@@ -701,7 +701,17 @@ class AlertController extends Controller
     {
         $sc = StudentClass::with(['student', 'coursePackage'])->findOrFail($studentClassId);
 
-        if ((int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid())) {
+        // ARCH2: a slip exists only while the Verdict says the contract owes. Paid=1 beside an unpaid invoice still gets
+        // its slip (the money is owed); Payment rows that settle a Paid=0 contract refuse it. No Verdict answer
+        // (review_required) keeps the legacy flag test.
+        $settlement = $this->payableResolver->courseStatusesByStudentClassIds([$studentClassId], [$sc])[$studentClassId]['status'] ?? null;
+        if ($settlement === 'free') {
+            return response()->json(['message' => '這門課是免費課程，不需要繳費單'], 422);
+        }
+        $settled = in_array($settlement, ['unpaid', 'partial', 'unbilled'], true)
+            ? false
+            : ($settlement === 'paid' || (int) ($sc->getAttribute('Paid') ?? 0) === 1 || $sc->isEffectivelyPaid());
+        if ($settled) {
             return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
         }
 

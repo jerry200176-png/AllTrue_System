@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-11-slip-follows-verdict
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: digest
+    title: 繳費單跟著帳單走
+    summary: 還欠款就能開繳費單，款項收齊或免費課程就不開，並說明原因。
+    items:
+      - category: improved
+        text: 課程被勾成已繳費、帳單卻還沒收到款時，現在可以開繳費單。
+      - category: improved
+        text: 款項已收齊的合約、免費課程不會再產生繳費單。
+    source_refs:
+      - "changelog:2026-10-11:slip-follows-verdict"
