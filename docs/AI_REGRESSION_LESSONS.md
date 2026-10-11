@@ -6,12 +6,26 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R154. 「學生在此時段已有其他課程」要說是哪一科，主任才知道打開哪一堂（課程查找 C-PR6 同族，2026-10-11）
+
+- **現象**：#3846 讓「新增單堂」的衝堂提示點名了學生／科目／時間；但同一個 `SlotOccupiedException`（`student_slot_conflict`）從行事曆改時間、轉移堂次、重排、補尾等入口丟出時，訊息只有一句「已有其他課程」，主任得自己去翻學生的每一門課。
+- **根因**：訊息在例外類別裡是寫死字串，只有 `conflict_course_id` 在回應裡，沒有人把它翻成科目。
+- **強制規則**：衝堂訊息由 `SlotOccupiedException` 自己用 `conflict_course_id` 查科目名（「國文」）；所有入口共用，不要在各畫面各拼各的。查不到時維持原句，不可因此拋錯。
+- **測試必補**：`ClassSessionMaterializationServiceTest::test_student_overlap_message_names_the_blocking_subject_and_course`。
+
 ### R148. 「這一堂老師 ≠ 合約老師」不等於代課；歷史釘選的堂不可「回正班老師」（#3780 P1，2026-10-08）
 
 - **現象**：#3780 讓行事曆在「這一堂老師 ≠ 合約 `StudentClass.TeacherID`」時就顯示「回正班老師」。換合約老師後，已上過的堂被刻意釘在前任老師（history pin，#207／TD-076 `pin`），也符合這個條件；按下去會刪釘選、改 `LearningRecord.TeacherID`、調 `TeachingSessionCount`，改寫誰上過課與薪資。
 - **根因**：用 ID 不相等推論「代課來源」。代課與釘選在 `schedules` 長得一樣（`scheduled` + `original_schedule_id` + 非合約老師），只有代課會在同一交易寫未解決的 `Notifications`（`SourceKey = substitute:<ClassSession id>`，undo／restore 才設 `ResolvedAt`）。
 - **強制規則**：`restoreOriginalTeacherFromSubstitute()` 先查這筆未解決代課通知，沒有就回 409（不動排程、LR、堂數）；`class-sessions` 輸出 `substitute_notice`，前端「回正班老師」只看它，不看 ID 不相等。誰真的上課仍以 `SubstituteScheduleService::teacherForOccurrence` 為準（ADR-EFFECTIVE-TEACHER）。
 - **測試必補**：`OccurrenceResolverV2Test`：釘選堂（flag 關／開）回 409 且全部不變；真代課仍可回正班老師；`useCalendarSubstitute.test.js`／`SubstituteTeacherPickerModal.test.js`：無通知不顯示按鈕。
+
+### R153. 伺服器拒絕不可被 catch 吞成「網路錯誤」／「未知錯誤」；非 2xx 的錯誤本文要容忍非 JSON（in-app #375 同族，2026-10-11）
+
+- **現象**：#3467 修了老師補卡；同一頁「手動登記」被 502/HTML 或空本文拒絕時，`await res.json()` 在 else 分支丟例外，落到 catch 顯示「網路錯誤」；其他按鈕遇到沒有 message 的 5xx 只顯示「未知錯誤」，主任不知道是自己的資料問題還是系統問題。
+- **根因**：各處各自寫 `err.message || '未知錯誤'`，沒有共用的「非 2xx 怎麼說」。
+- **強制規則**：非 2xx 一律 `res.json().catch(() => ({}))` 後用 `httpFailureMessage(res.status, body)`（先欄位錯誤、再 message、最後點名 HTTP 狀態）；catch 區塊只留給真的連不上。
+- **測試必補**：`HttpFailureMessage.test.js`（欄位錯誤優先、message、空本文／HTML 本文顯示 HTTP 狀態）。
 
 ### R149. 提前結束的合約底下，過期仍「預排」的堂次要用精確名單的 POP 取消，不可手改或放寬守門（in-app #341，2026-10-08）
 

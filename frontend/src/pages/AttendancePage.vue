@@ -1108,6 +1108,7 @@ import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 import { classifyAttendanceSessionRows } from '../lib/sessionConsistency';
 import { attendanceMarkConfirmHint } from '../lib/attendanceMarkConfirmHint';
+import { httpFailureMessage } from '../lib/humanizeApiErrorMessage';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
 
 const props = defineProps({
@@ -1280,7 +1281,7 @@ async function confirmDelete() {
       showAttToast('已刪除記錄', 'success');
       await fetchRecords();
     } else {
-      showAttToast('刪除失敗：' + (json.message || '未知錯誤'), 'error');
+      showAttToast('刪除失敗：' + httpFailureMessage(res.status, json), 'error');
     }
   } catch {
     showAttToast('刪除失敗：網路錯誤', 'error');
@@ -1339,7 +1340,7 @@ async function confirmConvert() {
       showAttToast(`已轉換為到班，已扣除一堂（剩餘 ${json.remaining_sessions} 堂）`, 'success');
       await fetchRecords();
     } else {
-      showAttToast('轉換失敗：' + (json.message || '未知錯誤'), 'error');
+      showAttToast('轉換失敗：' + httpFailureMessage(res.status, json), 'error');
     }
   } catch {
     showAttToast('轉換失敗：網路錯誤', 'error');
@@ -1578,7 +1579,7 @@ async function submitDirQuick() {
       fetchRecords();
     } else {
       const err = await res.json().catch(() => ({}));
-      manualMsg.value = '補建失敗：' + (err.message || '未知錯誤');
+      manualMsg.value = '補建失敗：' + httpFailureMessage(res.status, err);
       manualMsgType.value = 'error';
     }
   } catch (e) {
@@ -1925,7 +1926,7 @@ function extractApiError(err) {
     const first = Object.values(err.errors)[0];
     if (Array.isArray(first) && first.length) return first[0];
   }
-  return err.message || '未知錯誤';
+  return err.message || '伺服器沒有回應原因，請稍後再試';
 }
 
 async function doSubmitPendingMark(s, status) {
@@ -2228,7 +2229,7 @@ const saveStatusEdit = async (record) => {
         pendingMarkMsgType.value = 'success';
         await Promise.all([fetchPendingSessions(), fetchRecords()]);
       } else {
-        alert('請假失敗：' + (json.message || '未知錯誤'));
+        alert('請假失敗：' + httpFailureMessage(res.status, json));
       }
       return;
     }
@@ -2248,7 +2249,7 @@ const saveStatusEdit = async (record) => {
       await fetchRecords();
     } else {
       const err = await res.json().catch(() => ({}));
-      alert('修改失敗：' + (err.message || '未知錯誤'));
+      alert('修改失敗：' + httpFailureMessage(res.status, err));
     }
   } catch (e) {
     alert('修改失敗：' + (e?.message || '網路錯誤'));
@@ -2288,8 +2289,8 @@ const submitManual = async () => {
       manualForm.value.memo = '';
       fetchRecords();
     } else {
-      const err = await res.json();
-      manualMsg.value = '登記失敗：' + (err.message || '未知錯誤');
+      const err = await res.json().catch(() => ({}));
+      manualMsg.value = '登記失敗：' + httpFailureMessage(res.status, err);
       manualMsgType.value = 'error';
     }
   } catch (e) {

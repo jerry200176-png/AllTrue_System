@@ -133,6 +133,23 @@ class ClassSessionMaterializationServiceTest extends TestCase
         }
     }
 
+    public function test_student_overlap_message_names_the_blocking_subject_and_course(): void
+    {
+        DB::table('Subject')->insert(['id' => 91001, 'School_id' => 1, 'Grade_no' => 1, 'Subject_Name' => '國文', 'CampusID' => null]);
+        $blockingId = $this->createCourse(1, 1, ['SubjectID' => 91001]);
+        $otherId = $this->createCourse(1, 2, ['SubjectID' => 2]);
+        $service = app(ClassSessionMaterializationService::class);
+        $service->upsertSlot(['StudentClassID' => $blockingId, 'SessionDate' => '2099-09-14', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled']);
+
+        try {
+            $service->upsertSlot(['StudentClassID' => $otherId, 'SessionDate' => '2099-09-14', 'StartTime' => '17:00', 'EndTime' => '19:00', 'Status' => 'scheduled']);
+            $this->fail('Expected overlap to be rejected.');
+        } catch (SlotOccupiedException $e) {
+            $this->assertStringContainsString('「國文」', $e->getMessage());
+            $this->assertSame($blockingId, $e->toResponseArray()['conflict_course_id']);
+        }
+    }
+
     public function test_direct_class_session_save_also_rejects_student_overlap(): void
     {
         $firstCourseId = $this->createCourse(1, 1);

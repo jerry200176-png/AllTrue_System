@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property string|null $Subject_Name
+ */
 class Subject extends Model
 {
     protected $table = 'Subject';
