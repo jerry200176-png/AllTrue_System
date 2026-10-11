@@ -169,6 +169,8 @@ final class EnsureSessionHorizonService
                 $course = $course instanceof StudentClass ? $course : null;
                 foreach ($candidates as $o) {
                     $end = $o['end_hm'] ?? $this->defaultEnd($o['start_hm']);
+                    // R20 same-start check stays (stricter on purpose); the write guard also rejects partial
+                    // overlaps, so skip those too instead of failing the whole batch (in-app #380, R142).
                     if ($this->slotConflicts($studentId, $course, $studentClassId, $o, $asOf)) {
                         Log::warning('ensure_horizon_cross_sc_conflict', [
                             'student_class_id' => $studentClassId,
