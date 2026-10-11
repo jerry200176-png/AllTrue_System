@@ -13,7 +13,7 @@ last_reviewed: 2026-09-05
 - **強制規則**：`restoreOriginalTeacherFromSubstitute()` 先查這筆未解決代課通知，沒有就回 409（不動排程、LR、堂數）；`class-sessions` 輸出 `substitute_notice`，前端「回正班老師」只看它，不看 ID 不相等。誰真的上課仍以 `SubstituteScheduleService::teacherForOccurrence` 為準（ADR-EFFECTIVE-TEACHER）。
 - **測試必補**：`OccurrenceResolverV2Test`：釘選堂（flag 關／開）回 409 且全部不變；真代課仍可回正班老師；`useCalendarSubstitute.test.js`／`SubstituteTeacherPickerModal.test.js`：無通知不顯示按鈕。
 
-### R150. 伺服器拒絕不可被 catch 吞成「網路錯誤」／「未知錯誤」；非 2xx 的錯誤本文要容忍非 JSON（in-app #375 同族，2026-10-11）
+### R153. 伺服器拒絕不可被 catch 吞成「網路錯誤」／「未知錯誤」；非 2xx 的錯誤本文要容忍非 JSON（in-app #375 同族，2026-10-11）
 
 - **現象**：#3467 修了老師補卡；同一頁「手動登記」被 502/HTML 或空本文拒絕時，`await res.json()` 在 else 分支丟例外，落到 catch 顯示「網路錯誤」；其他按鈕遇到沒有 message 的 5xx 只顯示「未知錯誤」，主任不知道是自己的資料問題還是系統問題。
 - **根因**：各處各自寫 `err.message || '未知錯誤'`，沒有共用的「非 2xx 怎麼說」。
