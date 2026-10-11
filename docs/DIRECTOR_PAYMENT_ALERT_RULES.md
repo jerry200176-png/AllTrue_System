@@ -110,6 +110,10 @@ last_reviewed: 2026-08-16
 
 修改 `computePaymentStatus()` 時，不得連帶修改列入條件的 query；反之亦然。兩者為獨立邏輯，以避免互相干擾。
 
+## 單科合約的 payment_status 與已收金額改讀 ContractMoneyVerdict（2026-10-11，ADMIN-OPS billing）
+
+`alerts/tuition` 單科合約列的 `payment_status`（paid / partial / unpaid 的判定）與 `paid_amount` 改讀 `ContractMoneyVerdict`（帳單＋Payment 紀錄為準）；不再用 `StudentClass.Paid` 旗標與帳單「儲存的 PaidAmount 加總」。沒有帳單的舊合約仍以 `Paid` 旗標為準，Verdict 給不出答案（`review_required`）時沿用舊算法。**列入條件完全不變**（見上節：`payment_status` 不影響列入）。同一合約在帳務中心名單、課程查找、繳費通知上的「已繳／部分繳／未繳」因此一致。跨呼叫端一致性由 `ContractMoneyCallersAgreeTest` 守住；`Paid=1` 但仍有未收帳單的合約不在名單內，是另案待 Founder 決定（見該測試的 `PENDING`）。
+
 ## CoursePackage 月結方案的 payment_status（2026-04-22 Bug Fix）
 
 `AlertController::tuition` 的月結多科方案（`CoursePackage.billing_mode = 'monthly'`）路徑中，`payment_status` 與 `outstanding` 需正確反映 `$pkg->paid`：

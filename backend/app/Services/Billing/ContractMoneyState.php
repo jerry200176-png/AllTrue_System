@@ -22,8 +22,12 @@ final class ContractMoneyState
     /**
      * Alerts/tuition 7-step ladder (was AlertController::computePaymentStatus).
      * pending_report > pending_reconciliation > partial > unpaid > renew_needed > monthly_due_soon > paid.
+     *
+     * $settlement = ContractMoneyVerdict status (paid|free|partial|unpaid|unbilled). When given it decides paid / partial
+     * instead of the Paid flag and the stored PaidAmount sum (ARCH2: invoices + Payment rows are the truth). Any other value
+     * (review_required, null) keeps the legacy inputs.
      */
-    public static function alertStatus(?StudentClass $sc, int $paidAmount, int $charge, bool $hasPendingReport): string
+    public static function alertStatus(?StudentClass $sc, int $paidAmount, int $charge, bool $hasPendingReport, ?string $settlement = null): string
     {
         if (!$sc) {
             return 'unpaid';
@@ -36,12 +40,15 @@ final class ContractMoneyState
         }
 
         $closedReason = (string) ($sc->getAttribute('closed_reason') ?? '');
-        $isPaid = StudentClass::isFullyPaid((int) ($sc->Paid ?? 0) === 1 || $sc->isEffectivelyPaid(), $paidAmount, $charge);
+        $decided = in_array($settlement, ['paid', 'free', 'partial', 'unpaid', 'unbilled'], true);
+        $isPaid = $decided
+            ? in_array($settlement, ['paid', 'free'], true)
+            : StudentClass::isFullyPaid((int) ($sc->Paid ?? 0) === 1 || $sc->isEffectivelyPaid(), $paidAmount, $charge);
 
         if (!$isPaid && in_array($closedReason, ['settled_pending', 'contract_amended'], true)) {
             return 'pending_reconciliation';
         }
-        if (!$isPaid && $paidAmount > 0 && $charge > 0 && $paidAmount < $charge) {
+        if (!$isPaid && ($decided ? $settlement === 'partial' : ($paidAmount > 0 && $charge > 0 && $paidAmount < $charge))) {
             return 'partial';
         }
         if (!$isPaid) {
