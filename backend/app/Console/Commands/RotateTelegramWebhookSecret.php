@@ -6,6 +6,7 @@ use App\Models\Campus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * #1139: TelegramWebhookController already fails closed when
@@ -19,6 +20,8 @@ use Illuminate\Support\Facades\Log;
  */
 class RotateTelegramWebhookSecret extends Command
 {
+    private const ALLOWED_CAMPUS_ID = 15;
+
     protected $signature = 'telegram:rotate-webhook-secret
         {campus : Campus ID or code}
         {--dry-run : Generate and show the secret, but do not call Telegram or write the DB}';
@@ -34,6 +37,12 @@ class RotateTelegramWebhookSecret extends Command
 
         if (!$campus) {
             $this->error("Campus not found: {$identifier}");
+            return self::FAILURE;
+        }
+
+        // Hard scope (#1139 Founder approval): campus 15 only. Checked before any HTTP or DB side effect.
+        if ((int) $campus->id !== self::ALLOWED_CAMPUS_ID) {
+            $this->error('Rotation is restricted to campus ' . self::ALLOWED_CAMPUS_ID . '; refusing campus ' . $campus->id . '.');
             return self::FAILURE;
         }
 
@@ -54,25 +63,80 @@ class RotateTelegramWebhookSecret extends Command
 
         $webhookUrl = rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/' . ($campus->code ?: $campus->id);
 
-        $response = Http::timeout(15)->asJson()->post(
-            "https://api.telegram.org/bot{$botToken}/setWebhook",
-            ['url' => $webhookUrl, 'secret_token' => $secret]
-        );
+        $previous = trim((string) ($campus->TelegramWebhookSecret ?? ''));
 
-        if (!$response->successful() || !($response->json('ok') ?? false)) {
-            Log::error('telegram.webhook.rotate_secret.failed', [
-                'campus_id' => $campus->id,
-                'status'    => $response->status(),
-                'body'      => $response->body(),
-            ]);
-            $this->error('Telegram setWebhook rejected the request — DB NOT updated. Response: ' . $response->body());
+        // Outcome of a transport failure is unknown (timeout may still have applied), so it is compensated too.
+        $registered = $this->setWebhook($botToken, $webhookUrl, $secret, $error);
+        if (!$registered) {
+            Log::error('telegram.webhook.rotate_secret.failed', ['campus_id' => $campus->id, 'error' => $error]);
+            $this->error('Telegram setWebhook rejected the request — DB NOT updated. ' . $error);
             return self::FAILURE;
         }
 
-        $campus->TelegramWebhookSecret = $secret;
-        $campus->save();
+        try {
+            $campus->TelegramWebhookSecret = $secret;
+            $campus->save();
+        } catch (Throwable $e) {
+            return $this->compensate($campus, $botToken, $webhookUrl, $previous, [$botToken, $secret], $e);
+        }
 
         $this->info("Campus {$campus->id} ({$campus->name}): webhook secret rotated and registered with Telegram.");
+        $this->verifyRegistration($botToken, $webhookUrl);
         return self::SUCCESS;
+    }
+
+    private function setWebhook(string $botToken, string $url, ?string $secret, ?string &$error = null): bool
+    {
+        $payload = ['url' => $url] + ($secret !== null && $secret !== '' ? ['secret_token' => $secret] : []);
+        try {
+            $response = Http::timeout(15)->asJson()->post("https://api.telegram.org/bot{$botToken}/setWebhook", $payload);
+        } catch (Throwable $e) {
+            $error = 'Transport error: ' . $this->mask($e->getMessage(), [$botToken, (string) $secret]);
+            return false;
+        }
+        if (!$response->successful() || !($response->json('ok') ?? false)) {
+            $error = 'HTTP ' . $response->status() . ': ' . $this->mask((string) $response->json('description'), [$botToken, (string) $secret]);
+            return false;
+        }
+        return true;
+    }
+
+    /** DB save failed after Telegram accepted the new secret: restore the previous registration. */
+    private function compensate(Campus $campus, string $botToken, string $url, string $previous, array $secrets, Throwable $e): int
+    {
+        $this->error('Database save failed after Telegram setWebhook: ' . $this->mask($e->getMessage(), $secrets));
+        $restored = $this->setWebhook($botToken, $url, $previous, $err);
+        Log::critical('telegram.webhook.rotate_secret.db_failed', ['campus_id' => $campus->id, 'restored' => $restored]);
+        $this->error($restored
+            ? 'Previous Telegram registration RESTORED; nothing changed. Re-run the rotation when the database is healthy.'
+            : 'RESTORE FAILED (' . $err . '). Telegram may hold a secret the DB does not know, so webhooks can be rejected. '
+              . 'Recovery: when DB and Telegram are reachable, re-run telegram:rotate-webhook-secret 15 (it overwrites both sides with a fresh secret).');
+        return self::FAILURE;
+    }
+
+    /** Non-fatal post-check: Telegram's view of the webhook (not just the DB column). Prints no secret. */
+    private function verifyRegistration(string $botToken, string $url): void
+    {
+        try {
+            $info = Http::timeout(15)->get("https://api.telegram.org/bot{$botToken}/getWebhookInfo")->json('result') ?? [];
+        } catch (Throwable $e) {
+            $this->warn('getWebhookInfo failed: ' . $this->mask($e->getMessage(), [$botToken]));
+            return;
+        }
+        $this->line(json_encode([
+            'telegram_url_matches' => ($info['url'] ?? null) === $url,
+            'pending_update_count' => $info['pending_update_count'] ?? null,
+            'last_error_present'   => !empty($info['last_error_message']),
+        ]));
+    }
+
+    private function mask(string $text, array $secrets): string
+    {
+        foreach ($secrets as $s) {
+            if ($s !== '') {
+                $text = str_replace($s, '[REDACTED]', $text);
+            }
+        }
+        return preg_replace('#bot\d+:[A-Za-z0-9_-]+#', 'bot[REDACTED]', $text);
     }
 }
