@@ -9,12 +9,26 @@ const dir = '.github/workflows';
 const FIXTURES = new Set(['ci-ephemeral', 'alltruepw', 'rootpw', 'root']); // non-sensitive CI-only DB fixtures
 const SECRET_VAR = '[A-Za-z_]*(?:PASS(?:WORD)?|SECRET)[A-Za-z_]*'; // session tokens are add-mask'ed per workflow
 const ENV_FILE = String.raw`\S*\.env(?!\.(?:example|sample|dist|template)\b)(?:\.[\w-]+)?(?=[\s;&|)"']|$)`;
+// Each echo/printf is judged on its own text (up to the next `;`/`&&`/`||` after the secret var).
+// Safe sinks: redirect to a real file (NOT `>&2`, `/dev/stderr`, `2>`), or a hash pipe. base64 is reversible, so not safe.
+const FILE_REDIRECT = /(?<![\d&])>>?\s*(?!&|\/dev\/(?:stdout|stderr|fd|tty))\S/;
+const HASH_PIPE = /\|\s*(?:sha\d*sum|shasum|md5sum|openssl\s+dgst)/;
+const SECRET_RE = new RegExp(`\\$\\{?${SECRET_VAR}\\b`, 'i');
+function echoesSecret(line) {
+  return line.split(/(?=\b(?:echo|printf)\b)/).filter((x) => /^(?:echo|printf)\b/.test(x)).some((seg) => {
+    const m = SECRET_RE.exec(seg);
+    if (!m) return false;
+    const cut = seg.slice(m.index).search(/;|&&|\|\|/);
+    const region = cut < 0 ? seg : seg.slice(0, m.index + cut);
+    return !FILE_REDIRECT.test(region) && !HASH_PIPE.test(region);
+  });
+}
 const rules = [
   ['shell tracing', /(?:^|[;&\s])set\s+-[a-z]*x|\b(?:ba|da|z|k|a)?sh\s+(?:-\S+\s+)*-[a-z]*x|xtrace/],
   ['env dump', new RegExp(`(?:^|[;&|]\\s*|^\\s*)(?:printenv|export\\s+-p|env)\\s*(?:$|[|;&])|\\bprintenv\\s+(?:-\\S+\\s+)*\\$?${SECRET_VAR}\\b`)],
   ['cat/print .env', new RegExp(String.raw`\b(?:cat|less|more|bat)\s+(?:-\S+\s+)*` + ENV_FILE)],
   // only hashing / redirects to a file are safe; base64 is reversible so it is NOT exempt
-  ['echo of secret var', new RegExp(`\\b(?:echo|printf)\\b(?![^\\n]*(?:>>?|\\|\\s*(?:sha\\d*sum|shasum|md5sum|openssl\\s+dgst)))[^\\n]*\\$\\{?${SECRET_VAR}\\b`, 'i')],
+  ['echo of secret var', { test: echoesSecret }],
 ];
 // literal value assigned to a *PASS(WORD)* key (workflow env/yaml or .env heredoc) must be a known fixture
 const literal = new RegExp(`^\\s*([A-Z_]*PASS(?:WORD)?[A-Z_]*)\\s*[:=]\\s*(['"]?)([^\\s'"$]+)\\2\\s*$`);
@@ -28,12 +42,13 @@ def walk(n, p, acc):
         for k, v in n.items():
             q = p + '.' + str(k)
             if k == 'run' and isinstance(v, str): acc['runs'].append([q, v])
+            elif k == 'shell' and isinstance(v, str): acc['shells'].append([q, v])
             elif re.search(r'PASS', str(k), re.I) and isinstance(v, (str, int, float)) and not isinstance(v, bool): acc['kvs'].append([q, str(k), str(v)])
             else: walk(v, q, acc)
     elif isinstance(n, list):
         for i, v in enumerate(n): walk(v, p + '[' + str(i) + ']', acc)
 for it in json.load(sys.stdin):
-    acc = {'name': it['name'], 'runs': [], 'kvs': []}
+    acc = {'name': it['name'], 'runs': [], 'shells': [], 'kvs': []}
     walk(yaml.safe_load(it['text']), '', acc)
     out.append(acc)
 json.dump(out, sys.stdout)
@@ -55,20 +70,42 @@ function dropQuietCaptures(line) {
   return out;
 }
 
+// Remove balanced $(...) that is the value of a plain assignment (X=$(...)); anything after it on the line stays.
+function dropAssignCaptures(line) {
+  let out = '', i = 0;
+  const re = /(?:^|[;&|(\s])(?:export\s+)?\w+=["']?\$\(/g;
+  for (let m; (m = re.exec(line)); ) {
+    let d = 0, j = m.index + m[0].length - 1;
+    for (; j < line.length; j++) { if (line[j] === '(') d++; else if (line[j] === ')' && --d === 0) break; }
+    out += line.slice(i, m.index); i = j + 1; re.lastIndex = i;
+  }
+  return out + line.slice(i);
+}
+
 function scanScript(where, script) {
   const bad = [];
   // join backslash continuations so a split command is matched as one
-  script.replace(/\\\r?\n\s*/g, ' ').split('\n').forEach((raw, i) => {
+  const lines = script.replace(/\\\r?\n\s*/g, ' ').split('\n');
+  // lines inside a `{ ...; } > file` group (own-line braces) are redirected to a file, not the log
+  const grouped = new Set();
+  const open = [];
+  lines.forEach((l, i) => {
+    if (/^\s*\{\s*$/.test(l)) open.push(i);
+    else if (/^\s*\}/.test(l) && open.length) {
+      const start = open.pop();
+      if (/^\s*\}\s*>>?\s*(?!&|\/dev\/(?:stdout|stderr|fd|tty))\S/.test(l)) for (let k = start; k <= i; k++) grouped.add(k);
+    }
+  });
+  lines.forEach((raw, i) => {
     const line = raw.replace(/^\s*#.*/, '')
       // ponytail: only the add-mask command is exempt, not the rest of the line
       .replace(/\b(?:echo|printf)\s+['"]?::add-mask::[^;&|\n]*/g, '');
-    // plain assignment from a capture ($(cat .env)) is not printed; a capture inside echo is still scanned
-    const assign = /^\s*(?:export\s+)?\w+=["']?\$\(/.test(line);
-    // `=%q` (state-file group redirect) is not a stdout echo
-    if (/=%q/.test(line)) return;
+    // plain assignment from a capture (X=$(cat .env)) is not printed, but a later command on the line still is
+    const noAssign = dropAssignCaptures(line);
     for (const [why, re] of rules) {
-      if (assign && why === 'cat/print .env') continue;
-      if (re.test(why === 'echo of secret var' ? dropQuietCaptures(line) : line)) bad.push(`${where} line ${i + 1} ${why}: ${raw.trim()}`);
+      const subject = why === 'cat/print .env' ? noAssign : why === 'echo of secret var' ? dropQuietCaptures(line) : line;
+      if (why === 'echo of secret var' && grouped.has(i)) continue;
+      if (re.test(subject)) bad.push(`${where} line ${i + 1} ${why}: ${raw.trim()}`);
     }
     const m = line.match(literal);
     if (m && !m[3].includes('{{') && !FIXTURES.has(m[3])) bad.push(`${where} line ${i + 1} literal credential: ${m[1]}=<redacted>`);
@@ -78,8 +115,10 @@ function scanScript(where, script) {
 
 function scanAll(items) {
   const parsed = JSON.parse(execFileSync('python3', ['-c', PY], { input: JSON.stringify(items), maxBuffer: 1 << 28 }));
-  return parsed.flatMap(({ name, runs, kvs }) => [
+  return parsed.flatMap(({ name, runs, shells, kvs }) => [
     ...runs.flatMap(([p, s]) => scanScript(`${name}${p}`, s)),
+    // `shell: bash -x {0}` traces every command of its step/job/workflow, including secret-bearing ones
+    ...shells.filter(([, v]) => rules[0][1].test(v)).map(([p, v]) => `${name}${p} shell tracing: shell: ${v}`),
     ...kvs.flatMap(([p, k, v]) => (FIXTURES.has(v) || v.includes('{{') ? [] : [`${name}${p} literal credential: ${k}=<redacted>`])),
   ]);
 }
@@ -88,6 +127,18 @@ export const scan = (name, text) => scanAll([{ name, text }]);
 // self-test: each bypass reported on #3884 (Codex review 5484099102) must trip; benign forms must not
 const wf = (run, indent = '') => `jobs:\n  j:\n    steps:\n      - run: ${run}`.replace(/\n/g, `\n${indent}`);
 const trip = {
+  'group redirected to stderr': wf('|\n          {\n            echo "$DB_PASSWORD"\n          } >&2'),
+  'echo secret >&2': wf('|\n          echo "$DB_PASSWORD" >&2'),
+  'echo secret 2>&1': wf('|\n          echo "$DB_PASSWORD" 2>&1'),
+  'echo secret > /dev/stderr': wf('|\n          echo "$DB_PASSWORD" > /dev/stderr'),
+  'printf %q of secret': wf("|\n          printf 'DB_PASSWORD=%q\\n' \"$DB_PASSWORD\""),
+  'secret echo then unrelated redirect': wf('|\n          echo "$DB_PASSWORD"; echo hi > out.txt'),
+  'secret inside quoted ;': wf('|\n          echo "a; $DB_PASSWORD"'),
+  'shell: bash -x (step)': 'jobs:\n  j:\n    steps:\n      - shell: bash -x {0}\n        run: mysql -p"$DB_PASSWORD" -e "SELECT 1"',
+  'shell: bash -o xtrace (job defaults)': 'jobs:\n  j:\n    defaults:\n      run:\n        shell: bash -eo xtrace {0}\n    steps:\n      - run: echo hi',
+  'shell: sh -ex (workflow defaults)': 'defaults:\n  run:\n    shell: sh -ex {0}\njobs:\n  j:\n    steps:\n      - run: echo hi',
+  'assignment then cat .env': wf('|\n          X="$(date)"; cat backend/.env'),
+  'assignment then cat .env.production': wf('|\n          X=$(date) && cat .env.production'),
   'set -x': wf('|\n          set -x'),
   'cat .env': wf('|\n          cat backend/.env'),
   printenv: wf('|\n          printenv'),
@@ -109,6 +160,9 @@ const trip = {
 };
 for (const [k, y] of Object.entries(trip)) if (!scan('probe', y).length) { console.error('guard missed probe:', k); process.exit(1); }
 const ok = {
+  'group redirected to file': wf('|\n          {\n            echo "$DB_PASSWORD"\n          } > "$F"'),
+  'printf %q to state file': wf("|\n          printf 'DB_PASSWORD=%q\\n' \"$DB_PASSWORD\" >> \"$STATE\""),
+  'shell: bash -e (no trace)': 'jobs:\n  j:\n    steps:\n      - shell: bash -eo pipefail {0}\n        run: echo hi',
   'add-mask + fixture + capture assign': wf('|\n          echo "::add-mask::$DB_PASS"\n          DB_PASS="$(grep ^DB_PASSWORD= .env | cut -d= -f2-)"\n          X="$(cat .env)"') + '\nenv:\n  DB_PASSWORD: ci-ephemeral',
   'secret as arg inside non-echo capture': wf('|\n          echo "n=$(mysql -p"$db_pass" -e "SELECT COUNT(*) FROM t")"'),
   'hash / redirect / example': wf('|\n          echo "$DB_PASSWORD" | sha256sum\n          echo "$DB_PASSWORD" >> "$F"\n          cat .env.example\n          set +x'),
