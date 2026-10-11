@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\Notification;
 use App\Observers\ClassSessionObserver;
 use App\Observers\NotificationObserver;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\URL;
 
@@ -19,6 +20,10 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Notification::observe(NotificationObserver::class);
+
+        // N+1 guard: lazy loads throw outside production (tests/CI/local), so a
+        // missing with()/load() fails the suite; production is unaffected.
+        Model::preventLazyLoading(! $this->app->environment('production'));
 
         // AppServiceProvider is registered before Illuminate's
         // DatabaseServiceProvider in config/app.php, so the Eloquent event

@@ -61,3 +61,14 @@ export function humanizeApiErrorMessage(message, fallback = '操作失敗，請�
   }
   return raw;
 }
+
+/**
+ * A rejected request (non-2xx) must never read as "網路錯誤" or "未知錯誤" (in-app #375 family).
+ * Prefer the server's first field error, then its message; otherwise name the HTTP status.
+ */
+export function httpFailureMessage(status, body) {
+  const first = Object.values(body?.errors || {}).flat()[0];
+  const text = String(first || body?.message || '').trim();
+  if (text) return humanizeApiErrorMessage(text);
+  return `伺服器沒有成功處理（HTTP ${status || '?'}），請稍後再試；持續發生請回報`;
+}

@@ -1394,7 +1394,7 @@ class FinanceController extends Controller
             ->whereIn('StudentSingIn.Status', AttendanceStatus::payableCodes())
             ->where('ClassSession.Status', '!=', 'cancelled')
             ->whereBetween('ClassSession.SessionDate', [$startDate, $endDate])
-            ->with('studentClass');
+            ->with(['studentClass.student', 'subject']);
 
         if ($branchFiltered && empty($classIds)) {
             $query->whereRaw('1=0');
@@ -1745,7 +1745,7 @@ class FinanceController extends Controller
             'learning_record_id'       => $r->id,
             'session_date'             => $r->SessionDate ? substr((string) $r->SessionDate, 0, 10) : '',
             'student_name'             => $studentName,
-            'subject'                  => $this->normalizeSubjectLabel($r->Subject ?: $sc->displaySubjectName()),
+            'subject'                  => $this->normalizeSubjectLabel($r->subject?->Subject_Name ?: $sc->displaySubjectName()),
             'level'                    => $level,
             'level_label'              => $levelLabels[$level] ?? $level,
             'class_type'               => $classType,
