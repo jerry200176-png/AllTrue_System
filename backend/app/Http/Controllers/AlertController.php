@@ -83,7 +83,11 @@ class AlertController extends Controller
             ->where(function ($q) use ($pendingReportClassIds) {
                 $q->where('Paid', 0)
                   ->orWhereNull('Paid')
-                  ->orWhere('RemainingSessions', '<=', 2);
+                  ->orWhere('RemainingSessions', '<=', 2)
+                  // Founder Q2: invoices + payments are the truth; Paid=1 never hides a contract whose bill is still open.
+                  ->orWhereExists(fn ($inv) => $inv->select(DB::raw(1))->from('Invoice')
+                      ->whereColumn('Invoice.StudentClassID', 'StudentClass.ID')
+                      ->where(fn ($st) => $st->whereNull('Invoice.Status')->orWhereNotIn('Invoice.Status', ['paid', 'void'])));
                 if (!empty($pendingReportClassIds)) {
                     $q->orWhereIn('ID', $pendingReportClassIds);
                 }
@@ -345,7 +349,7 @@ class AlertController extends Controller
             ->merge(
                 $countResults
                     ->filter(fn ($c) => !$countPkgMemberIds->contains($c->ID))
-                    ->map(fn ($c) => $this->mapCountModeAlert($c, $subjectNameMap))->filter()
+                    ->map(fn ($c) => $this->mapCountModeAlert($c, $subjectNameMap, $courseStatuses[(int) $c->ID] ?? null))->filter()
             )
             ->merge(
                 // Exclude monthly-package members from individual date-mode alerts
@@ -372,7 +376,11 @@ class AlertController extends Controller
                     : $this->countModeCharge($sc);
                 $invoiceAgg = $invoiceAggMap[$classId] ?? null;
                 $payable = $payableMap[$classId] ?? $this->payableResolver->unbilled();
-                $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
+                // ARCH2: what is paid / what status = the Verdict (invoices + Payment rows), not the stored PaidAmount sum.
+                $verdict = $courseStatuses[$classId] ?? null;
+                $paidAmount = ($verdict['source'] ?? null) === 'invoice'
+                    ? (int) $verdict['applied']
+                    : ($invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0);
                 $rawPaid = (int) ($sc->Paid ?? 0) === 1;
                 $scIsPaid = $this->isFullyPaid($rawPaid || ($sc ? $sc->isEffectivelyPaid() : false), $paidAmount, $charge);
                 // F7 S3b: one outstanding answer = the resolver's course-level value; no invoice => estimate.
@@ -380,7 +388,7 @@ class AlertController extends Controller
 
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
 
-                $paymentStatus = ContractMoneyState::alertStatus($sc, $paidAmount, $charge, $pendingReportId !== null);
+                $paymentStatus = ContractMoneyState::alertStatus($sc, $paidAmount, $charge, $pendingReportId !== null, $verdict['status'] ?? null);
                 if ($row['alert_type'] === 'pending_reconciliation') {
                     // F7 S3a: stopped + still owing per the invoices. Every amount the UI reads comes from the
                     // resolver's cumulative totals (never the single-invoice payable or the contract price).
@@ -424,6 +432,13 @@ class AlertController extends Controller
                     'payable_amount_source'    => $payable['payable_amount_source'],
                     'paid_amount'              => $paidAmount,
                     'outstanding'              => $outstanding,
+                    // Every period that still owes (not just the one bill `payable_*` describes): the student list sums these.
+                    'open_periods'             => ($courseStatuses[$classId]['source'] ?? null) === 'invoice'
+                        ? collect($courseStatuses[$classId]['periods'])
+                            ->filter(fn ($p) => ($p['invoice_ids'] ?? []) !== [] && (int) ($p['outstanding'] ?? 0) > 0)
+                            ->map(fn ($p) => ['billing_period' => $p['billing_period'], 'outstanding' => (int) $p['outstanding'], 'due_date' => $p['due_date'] ?? null])
+                            ->values()->all()
+                        : [],
                     'payment_status'           => $paymentStatus,
                     'latest_payment_report_id' => $pendingReportId,
                     'has_newer_course'         => $newerInfo !== null,
@@ -452,10 +467,12 @@ class AlertController extends Controller
         return response()->json($rows);
     }
 
-    private function mapCountModeAlert(StudentClass $c, array $subjectNameMap = []): ?array
+    /** @param array<string, mixed>|null $verdict BillingPayableResolver course row; invoices that still owe beat the Paid flag (Founder Q2) */
+    private function mapCountModeAlert(StudentClass $c, array $subjectNameMap = [], ?array $verdict = null): ?array
     {
         $remaining = max(0, (int) ($c->RemainingSessions ?? 0));
-        $isPaid = (int) ($c->Paid ?? 0) === 1 || $c->isEffectivelyPaid();
+        $owesOnInvoices = ($verdict['source'] ?? null) === 'invoice' && in_array($verdict['status'] ?? null, ['unpaid', 'partial'], true);
+        $isPaid = !$owesOnInvoices && ((int) ($c->Paid ?? 0) === 1 || $c->isEffectivelyPaid());
         $isUnpaid = !$isPaid;
         $isLowSessions = $remaining <= 2;
 
@@ -699,21 +716,28 @@ class AlertController extends Controller
      */
     public function tuitionSlipData(Request $request, int $studentClassId)
     {
-        $sc = StudentClass::with(['student', 'coursePackage'])->findOrFail($studentClassId);
-
-        if ((int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid())) {
-            return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
-        }
-
-        $student = $sc->student;
-        if (!$student) {
-            return response()->json(['message' => '找不到學生資料'], 404);
-        }
-
+        // Authorize first: a missing record, a record without a student and another campus's record all answer the same
+        // bare 403, before any money is read (no status, amount or name can leak through a different error).
         $role = $request->attributes->get('auth_role');
-        $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
+        $campusIds = $role === 'super_admin' ? null : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        $sc = StudentClass::with(['student', 'coursePackage'])->find($studentClassId);
+        $student = $sc?->student;
+        if (!$sc || !$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) {
             abort(403);
+        }
+
+        // ARCH2: a slip exists only while the Verdict says the contract owes. Paid=1 beside an unpaid invoice still gets
+        // its slip (the money is owed); Payment rows that settle a Paid=0 contract refuse it. No Verdict answer
+        // (review_required) keeps the legacy flag test.
+        $settlement = $this->payableResolver->courseStatusesByStudentClassIds([$studentClassId], [$sc])[$studentClassId]['status'] ?? null;
+        if ($settlement === 'free') {
+            return response()->json(['message' => '這門課是免費課程，不需要繳費單'], 422);
+        }
+        $settled = in_array($settlement, ['unpaid', 'partial', 'unbilled'], true)
+            ? false
+            : ($settlement === 'paid' || (int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid()));
+        if ($settled) {
+            return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
         }
 
         $campus = Campus::find((int) $student->CampusID);
@@ -793,6 +817,7 @@ class AlertController extends Controller
             'estimated_amount' => $charge,
             'charge_semantics' => 'estimate_only',
             'payable_amount'   => $payable['payable_amount'],
+            'payable_outstanding' => $payable['payable_outstanding'],
             'payable_status'   => $payable['payable_status'],
             'payable_source'   => $payable['payable_source'],
             'payable_invoice_id' => $payable['payable_invoice_id'],

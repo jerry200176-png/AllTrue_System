@@ -1522,12 +1522,6 @@ parameters:
 			path: app/Http/Controllers/FinanceController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Subject\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/FinanceController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$TeacherID\.$#'
 			identifier: property.notFound
 			count: 4

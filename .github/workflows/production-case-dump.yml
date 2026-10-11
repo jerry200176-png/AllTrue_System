@@ -24,6 +24,7 @@ on:
           - unpaid_hidden_candidates
           - unbilled_monthly_sessions
           - f7_prod_discrepancy
+          - paid_flag_open_invoice
           - swipe_line_path
           - class_sessions_explain_319
           - substitute_calendar_xinzhuang
@@ -108,7 +109,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -1017,6 +1018,33 @@ jobs:
             $out['courses_with_unbilled_lessons'] = count($rows);
             $out['unbilled_lessons_total'] = array_sum(array_map(fn ($r) => array_sum($r['uncovered_billable_by_month']), $rows));
             $out['by_campus_month'] = array_values($summary);
+            $out['rows'] = $rows;
+          }} elseif ($case === 'paid_flag_open_invoice') {{
+            // Read-only (Founder Q2, 2026-10-11): contracts flagged paid (Paid=1 or paid package) whose invoices still owe.
+            // These become listed in the queue and collectible. `has_paid_period` marks the R28 shape (a settled period
+            // next to an open one). IDs, campus id, mode and amounts only; no names, no writes.
+            $resolver = app(\App\Services\BillingPayableResolver::class);
+            $ids = $db::table('StudentClass')->where(fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop')->orWhereNull('EndDate')->orWhereDate('EndDate', '>=', '2026-01-01'))
+              ->orderBy('ID')->pluck('ID')->map(fn ($id) => (int)$id)->all();
+            $rows = [];
+            foreach (array_chunk($ids, 400) as $chunk) {{
+              $models = \App\Models\StudentClass::query()->whereIn('ID', $chunk)->get();
+              $statuses = $resolver->courseStatusesByStudentClassIds($chunk, $models);
+              foreach ($models as $c) {{
+                $r = $statuses[(int)$c->getAttribute('ID')] ?? null;
+                if (!$r || ($r['source'] ?? '') !== 'invoice' || !in_array($r['status'], ['unpaid', 'partial'], true) || !$c->isEffectivelyPaid()) continue;
+                $periods = $r['periods'] ?? [];
+                $rows[] = ['id' => (int)$c->getAttribute('ID'), 'campus_id' => (int)$db::table('Student')->where('id', $c->getAttribute('StudentID'))->value('CampusID'),
+                  'mode' => (string)$c->getAttribute('ScheduleMode'), 'remaining' => (int)$c->getAttribute('RemainingSessions'), 'stopped' => (int)$c->getAttribute('Stop') === 1,
+                  'closed_reason' => (string)($c->getAttribute('closed_reason') ?? ''), 'status' => $r['status'], 'outstanding' => (int)$r['outstanding'],
+                  'open_periods' => count(array_filter($periods, fn ($p) => ($p['outstanding'] ?? 0) > 0)),
+                  'has_paid_period' => count(array_filter($periods, fn ($p) => ($p['status'] ?? '') === 'paid')) > 0];
+              }}
+            }}
+            $out['count'] = count($rows);
+            // New in the queue: active count-mode contracts with more than 2 lessons left (the others were listed already).
+            $out['newly_listed_ids'] = array_values(array_map(fn ($r) => $r['id'], array_filter($rows, fn ($r) => $r['mode'] === 'count' && !$r['stopped'] && $r['remaining'] > 2)));
+            $out['r28_shape_ids'] = array_values(array_map(fn ($r) => $r['id'], array_filter($rows, fn ($r) => $r['has_paid_period'])));
             $out['rows'] = $rows;
           }} elseif ($case === 'f7_prod_discrepancy') {{
             // Read-only F7 S0 prod-snapshot discrepancy report (packet section 7): run the S1 resolver

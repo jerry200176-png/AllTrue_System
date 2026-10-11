@@ -369,7 +369,7 @@ class PaymentReportController extends Controller
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
             if ($sc && $this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
-                return $this->duplicateCoursePaymentResponse();
+                return $this->duplicateCoursePaymentResponse($this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0)) ?? 'paid');
             }
             if ($sc && ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $report->reported_amount))) {
                 return $over;
@@ -399,6 +399,10 @@ class PaymentReportController extends Controller
                     })
                     ->lockForUpdate()
                     ->first();
+            }
+
+            if ($invoice && $this->invoiceCoveredByPayments($invoice, $sc instanceof StudentClass ? $sc : null)) {
+                return $this->invoiceAlreadyCoveredResponse();
             }
 
             $hasPaidInvoice = false;
@@ -590,7 +594,7 @@ class PaymentReportController extends Controller
             $package = $this->lockPackageForCourse($sc);
 
             if ($this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
-                return $this->duplicateCoursePaymentResponse();
+                return $this->duplicateCoursePaymentResponse($this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0)) ?? 'paid');
             }
             if ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $data['amount'])) {
                 return $over;
@@ -636,6 +640,10 @@ class PaymentReportController extends Controller
                     })
                     ->lockForUpdate()
                     ->first();
+            }
+
+            if ($invoice && $this->invoiceCoveredByPayments($invoice, $sc instanceof StudentClass ? $sc : null)) {
+                return $this->invoiceAlreadyCoveredResponse();
             }
 
             $hasPaidInvoice = false;
@@ -831,18 +839,32 @@ class PaymentReportController extends Controller
      * Blocks `paid` and `free`; partial (the remainder may be recorded), unbilled, review_required and a plain unpaid
      * course may take a payment. Package members follow the resolver (a paid package counts while no non-void invoice exists).
      * Fail closed: no resolver answer (error, unknown course) blocks.
-     * R28 carve-out: Paid=1 with a wholly unpaid period is a residual/stale invoice that needs repair, not a payment
-     * (legacy rows may carry Paid=1 from a partial receipt before F7 S7, so Paid=1 alone never blocks and `partial` stays recordable).
+     * Founder Q2 (2026-10-11): the R28 carve-out is gone. Invoices + Payment rows are the truth; a Paid=1 flag beside an
+     * unpaid/partial invoice does not block, so the owed amount can be recorded.
      */
     private function courseAlreadyHasConfirmedPayment(int $studentClassId, int $coursePaid): bool
+    {
+        return $this->courseMoneyBlockReason($studentClassId, $coursePaid) !== null;
+    }
+
+    /**
+     * Why the guard above blocks (null = it allows): paid | free |
+     * unknown (no resolver answer). The decision is the guard's; the reason only picks the sentence the director reads.
+     */
+    private function courseMoneyBlockReason(int $studentClassId, int $coursePaid): ?string
     {
         try {
             $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$studentClassId])[$studentClassId]['status'] ?? null;
         } catch (\Throwable) {
-            return true;
+            return 'unknown';
         }
 
-        return $status === null || in_array($status, ['paid', 'free'], true) || ($coursePaid === 1 && $status === 'unpaid');
+        return match (true) {
+            $status === null => 'unknown',
+            $status === 'paid' => 'paid',
+            $status === 'free' => 'free',
+            default => null,
+        };
     }
 
     /**
@@ -893,10 +915,35 @@ class PaymentReportController extends Controller
         ]);
     }
 
-    private function duplicateCoursePaymentResponse()
+    /**
+     * R28 invariant (Founder Q2 coordination): a payment may only be recorded against a bill that still owes. A bill whose
+     * Payment rows already cover its total is refused even when its stored Status is stale ("unpaid"), whatever the Paid flag says.
+     */
+    private function invoiceCoveredByPayments(Invoice $invoice, ?StudentClass $sc): bool
+    {
+        $invoice->loadMissing(['payments', 'items']);
+        $projection = app(InvoiceAmountReconciliationService::class)->resolve($invoice, $sc);
+
+        return (int) $projection['total_amount'] > 0 && (int) $projection['outstanding_amount'] <= 0;
+    }
+
+    private function invoiceAlreadyCoveredResponse()
     {
         return response()->json([
-            'message' => '此課程已標記為已繳費，請勿重複入帳；若需更正請先作廢原收款後再重新核帳。',
+            'message' => '這張帳單已有確認的收款，不能再登記；若帳單狀態對不上，請在學生帳務核對收款紀錄，作廢重複或錯誤的帳單。沒有登記任何款項。',
+            'code' => 'course_already_paid',
+        ], 422);
+    }
+
+    private function duplicateCoursePaymentResponse(string $reason = 'paid')
+    {
+        // Same code and status for every reason; only the sentence differs so the director knows what to do next.
+        return response()->json([
+            'message' => match ($reason) {
+                'free' => '這門課是免費課程（輔導、試上或 0 元），不需要收款。',
+                'unknown' => '暫時無法確認這門課的繳費狀態，沒有登記任何款項。請稍後再試；一直失敗請回報。',
+                default => '這門課的款項已收齊，不需要再登記；若收錯了，請先作廢原收款再重新登記。',
+            },
             'code'    => 'course_already_paid',
         ], 422);
     }

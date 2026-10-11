@@ -840,7 +840,7 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(1, Invoice::where('StudentClassID', $sc->ID)->count());
     }
 
-    public function test_director_record_rejects_paid_course_even_when_unpaid_invoice_remains(): void
+    public function test_director_record_accepts_paid_flag_course_when_an_invoice_is_still_unpaid(): void
     {
         Carbon::setTestNow('2026-04-28 10:00:00');
 
@@ -890,15 +890,10 @@ class PaymentReportApiTest extends TestCase
             'amount' => 8800,
         ]);
 
-        $res->assertStatus(422)
-            ->assertJsonPath('code', 'course_already_paid');
-
-        $staleInvoice->refresh();
-        $this->assertSame('unpaid', (string) $staleInvoice->Status);
-        $this->assertSame(0, (int) $staleInvoice->PaidAmount);
+        // Founder Q2 (2026-10-11): invoices + payments are the truth; Paid=1 does not hide the unpaid May bill.
+        $res->assertOk();
         $this->assertSame(1, Payment::where('InvoiceID', $paidInvoice->id)->count());
-        $this->assertSame(0, Payment::where('InvoiceID', $staleInvoice->id)->count());
-        $this->assertSame(0, PaymentReport::where('InvoiceID', $staleInvoice->id)->count());
+        $this->assertSame(1, PaymentReport::where('InvoiceID', $staleInvoice->id)->count());
     }
 
     public function test_confirm_date_mode_reports_never_leave_two_live_invoices_for_one_course_period(): void
@@ -1064,6 +1059,73 @@ class PaymentReportApiTest extends TestCase
 
         $this->recordDirect($token, $sc->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
         $this->assertSame(0, Payment::count());
+    }
+
+    public function test_guard_message_says_why_the_payment_cannot_be_recorded(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+
+        $paid = $this->createCountModeClass($student->id, ['Charge' => 8800]);
+        $this->invoiceWithCash($paid, 8800, 8800);
+        $this->recordDirect($token, $paid->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid')
+            ->assertJsonPath('message', '這門課的款項已收齊，不需要再登記；若收錯了，請先作廢原收款再重新登記。');
+
+        // Founder Q2: Paid=1 left on while the invoice is wholly unpaid is NOT blocked any more; the owed amount is recorded.
+        $flagged = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $this->invoiceWithCash($flagged, 8800, 0);
+        $this->recordDirect($token, $flagged->ID, 8800)->assertOk();
+
+        $this->assertSame(1, Payment::count());
+    }
+
+    public function test_q2_fully_paid_invoice_is_refused_even_when_its_stored_status_is_stale(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 8800, 'Paid' => 1]);
+        $stale = Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01', 'TotalAmount' => 8800,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-04']);
+        Payment::create(['InvoiceID' => $stale->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
+
+        $this->recordDirect($token, $sc->ID, 100, $stale->id)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        $this->recordDirect($token, $sc->ID, 100)->assertStatus(422);
+        $this->assertSame(0, PaymentReport::count());
+        $this->assertSame(1, Payment::count());
+    }
+
+    public function test_q2_paid_flag_with_an_open_invoice_is_collectible_only_up_to_that_invoices_outstanding_and_only_once(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 8800, 'Paid' => 1]);
+        $this->invoiceWithCash($sc, 8800, 3000); // partial: 5800 still owed
+
+        $this->recordDirect($token, $sc->ID, 5801)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
+        $this->assertSame(0, PaymentReport::count());
+
+        $reportId = $this->recordDirect($token, $sc->ID, 5800)->assertOk()->json('report_id');
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/payment-reports/{$reportId}/confirm")->assertOk();
+        $this->assertSame(2, Payment::count());
+
+        // Retry after the successful record: the bill is covered now, no second Payment.
+        $this->recordDirect($token, $sc->ID, 5800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        $this->assertSame(2, Payment::count());
+        $this->assertSame(1, PaymentReport::count());
+    }
+
+    public function test_guard_message_when_the_resolver_has_no_answer_says_nothing_was_recorded(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 8800]);
+        $this->mock(\App\Services\BillingPayableResolver::class)
+            ->shouldReceive('courseStatusesByStudentClassIds')->andThrow(new \RuntimeException('boom'));
+
+        $this->assertStringContainsString('沒有登記任何款項', $this->recordDirect($token, $sc->ID, 8800)->assertStatus(422)
+            ->assertJsonPath('code', 'course_already_paid')->json('message'));
     }
 
     public function test_confirm_rejects_duplicate_payment_when_course_already_paid(): void
