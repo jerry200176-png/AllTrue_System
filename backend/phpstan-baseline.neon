@@ -2514,7 +2514,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 10
+			count: 9
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
