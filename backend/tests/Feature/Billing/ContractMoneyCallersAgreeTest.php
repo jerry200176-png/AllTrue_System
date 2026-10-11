@@ -28,6 +28,8 @@ class ContractMoneyCallersAgreeTest extends TestCase
     /** caller => what moves it (remove the entry in that PR). */
     private const PENDING = [
         'alerts_listing' => 'Founder decision: a Paid=1 contract with an open invoice is not listed (DIRECTOR_PAYMENT_ALERT_RULES)',
+        'intake_guard' => 'Founder decision: R28 carve-out blocks recording a payment while Paid=1 and the period is wholly unpaid',
+        'slip' => 'tuition slip still refuses on the Paid flag (own follow-up PR)',
     ];
 
     public static function seeds(): iterable
@@ -94,6 +96,29 @@ class ContractMoneyCallersAgreeTest extends TestCase
             };
             if ($listClass !== null && $listClass !== $class && !($listRow['closed_reason'] ?? null)) {
                 $answers['course_list'] = "status {$listRow['payment_status']} but verdict {$v->status}";
+            }
+        }
+
+        // 3. Student ledger (the billing panel): its owed total is the Verdict's outstanding.
+        if ($class && $v->source === 'invoice') {
+            $ledger = $this->withHeaders($headers)->getJson('/api/v1/accounting/ledger?student_class_id=' . $id)->assertOk()->json('summary');
+            if ((int) $ledger['outstanding_total'] !== $v->outstanding) {
+                $answers['ledger'] = "outstanding_total {$ledger['outstanding_total']} but verdict {$v->outstanding}";
+            }
+        }
+        // 4. Duplicate-payment guard: blocks exactly the settled contracts.
+        if ($class) {
+            $ctl = app(\App\Http\Controllers\PaymentReportController::class);
+            $blocked = (new \ReflectionMethod($ctl, 'courseAlreadyHasConfirmedPayment'))->invoke($ctl, $id, (int) $course->Paid);
+            if ($blocked !== ($class === 'settled')) {
+                $answers['intake_guard'] = ($blocked ? 'blocks' : 'allows') . " a payment but verdict {$v->status}";
+            }
+        }
+        // 5. Tuition slip: offered for owing contracts, refused for settled ones.
+        if ($class) {
+            $slip = $this->withHeaders($headers)->getJson("/api/v1/alerts/tuition-slip/$id")->status();
+            if (($slip === 422) !== ($class === 'settled')) {
+                $answers['slip'] = "answers $slip but verdict {$v->status}";
             }
         }
 
