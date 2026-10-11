@@ -127,10 +127,7 @@ final class EnsureSessionHorizonService
             $course = StudentClass::query()->find($studentClassId);
             $course = $course instanceof StudentClass ? $course : null;
             $asOf = ($today ?? Carbon::today())->toDateString();
-            $wouldSkip = count(array_filter(
-                $candidates,
-                fn ($o) => $this->slotConflicts($studentId, $course, $studentClassId, $o, $asOf)
-            ));
+            $wouldSkip = $this->countDryRunSkips($candidates, $studentId, $course, $studentClassId, $asOf);
             $result['ensure']['ok'] = true;
             $result['ensure']['blocked'] = false;
             $result['ensure']['primary_reason'] = 'DRY_RUN_OK';
@@ -217,6 +214,44 @@ final class EnsureSessionHorizonService
         $result['ensure']['provenance_note'] = $note;
 
         return $result;
+    }
+
+    /**
+     * Dry-run skip count with O(1) queries per course (#3727 review): three date-bounded lookups find which
+     * candidates can possibly collide; only those pay for the exact per-slot check shared with execute.
+     *
+     * @param array<int,array<string,mixed>> $candidates
+     */
+    private function countDryRunSkips(array $candidates, int $studentId, ?StudentClass $course, int $studentClassId, string $asOf): int
+    {
+        $dates = array_values(array_unique(array_map(fn ($o) => substr((string) $o['date'], 0, 10), $candidates)));
+        // upsertSlot() reuses any same-course row at the same date/start (cancelled/voided included) and skips.
+        $selfKeys = DB::table('ClassSession')
+            ->where('StudentClassID', $studentClassId)
+            ->whereIn(DB::raw('DATE(SessionDate)'), $dates)
+            ->get([DB::raw('DATE(SessionDate) as d'), DB::raw('SUBSTRING(StartTime, 1, 5) as t')])
+            ->mapWithKeys(fn ($r) => [$r->d.'|'.$r->t => true])->all();
+        $busy = [];
+        if ($studentId > 0) {
+            $busy = DB::table('ClassSession as cs')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                ->where('sc.StudentID', $studentId)->where('cs.StudentClassID', '!=', $studentClassId)
+                ->whereIn(DB::raw('DATE(cs.SessionDate)'), $dates)
+                ->selectRaw('DATE(cs.SessionDate) as d')->pluck('d')->flip()->all();
+            $busy += DB::table('schedules')
+                ->where('student_id', $studentId)->whereIn(DB::raw('DATE(schedule_date)'), $dates)
+                ->selectRaw('DATE(schedule_date) as d')->pluck('d')->flip()->all();
+        }
+        $skip = 0;
+        foreach ($candidates as $o) {
+            $d = substr((string) $o['date'], 0, 10);
+            if (isset($selfKeys[$d.'|'.substr((string) $o['start_hm'], 0, 5)])
+                || (isset($busy[$d]) && $this->slotConflicts($studentId, $course, $studentClassId, $o, $asOf))) {
+                $skip++;
+            }
+        }
+
+        return $skip;
     }
 
     /**

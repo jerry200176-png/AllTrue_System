@@ -261,6 +261,79 @@ class EnsureSessionHorizonTest extends TestCase
         $this->assertSame($baseline['would_create'] - 1, $dry['would_create']);
     }
 
+    /** Course with remaining sessions plus one overlapping session of another course on the first candidate date. */
+    private function courseWithOverlap(): array
+    {
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $first = app(EnsureSessionHorizonService::class)->ensure(
+            $sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN
+        )['ensure']['candidates'][0]['date'];
+        $other = $this->course(['StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID')]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $other, 'SessionDate' => $first, 'StartTime' => '17:00:00',
+            'EndTime' => '18:00:00', 'Status' => 'scheduled', 'Note' => '',
+        ]);
+
+        return [$sc, $first];
+    }
+
+    public function test_dry_run_counts_same_course_cancelled_slot_as_skip_and_matches_execute(): void
+    {
+        // #3727 review r4242402698: upsertSlot() reuses a cancelled same-course row, so execute skips it.
+        putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
+        $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $first = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure']['candidates'][0];
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $sc, 'SessionDate' => $first['date'], 'StartTime' => $first['start_hm'].':00',
+            'EndTime' => '18:00:00', 'Status' => 'cancelled', 'Note' => '',
+        ]);
+
+        $dry = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+        $exec = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE)['ensure'];
+
+        $this->assertSame(1, $dry['would_skip']);
+        $this->assertSame($exec['created_count'], $dry['would_create']);
+        $this->assertSame($exec['skipped_count'], $dry['would_skip']);
+    }
+
+    public function test_summary_command_reports_net_would_create_and_would_skip(): void
+    {
+        // #3727 review r4242402693
+        [$sc] = $this->courseWithOverlap();
+        $net = app(EnsureSessionHorizonService::class)->ensure(
+            $sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN
+        )['ensure']['would_create'];
+        $this->assertSame(0, Artisan::call('sessions:ensure-horizon', [
+            'student_class_id' => $sc, '--as-of' => '2026-07-13', '--summary' => true,
+        ]));
+        $this->assertStringContainsString("candidates={$net} created=0 skipped=1", Artisan::output());
+    }
+
+    public function test_dry_run_conflict_lookup_does_not_scale_with_candidates(): void
+    {
+        // #3727 review r4242374860: batched, date-bounded lookups instead of per-candidate queries.
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $this->assertGreaterThanOrEqual(3, count($svc->ensure($sc, null, $this->today, null)['ensure']['candidates']));
+        $schedulesQueries = 0;
+        DB::listen(function ($q) use (&$schedulesQueries) {
+            if (stripos($q->sql, 'schedules') !== false && stripos($q->sql, 'student_id') !== false) {
+                $schedulesQueries++;
+            }
+        });
+
+        $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN);
+
+        $this->assertLessThanOrEqual(1, $schedulesQueries);
+    }
+
     public function test_shared_pool_shortage_warns_but_does_not_block_planned_sessions(): void
     {
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');

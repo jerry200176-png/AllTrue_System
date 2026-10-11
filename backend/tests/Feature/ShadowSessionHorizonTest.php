@@ -39,6 +39,29 @@ class ShadowSessionHorizonTest extends TestCase
         $this->assertSame($before, DB::table('ClassSession')->count());
     }
 
+    public function test_overlapping_slot_surfaces_as_preview_vs_ensure_drift(): void
+    {
+        // #3727 review r4242402687: drift must compare coverable_new with the net (would_create) count.
+        $sc = $this->course(['week' => 1, 'time' => '16:00', 'RemainingSessions' => 8]);
+        foreach (['2026-06-22', '2026-06-29', '2026-07-06'] as $d) {
+            $this->sess($sc, $d, '16:00:00', '18:00:00');
+        }
+        $report = app(ShadowSessionHorizonService::class)->run(null, $this->today);
+        $this->assertSame(0, $report['metrics']['preview_vs_ensure_drift_courses']);
+
+        $studentId = (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID');
+        $other = $this->course(['StudentID' => $studentId, 'week' => 1, 'time' => '17:00', 'RemainingSessions' => 0, 'Stop' => 1]);
+        DB::table('StudentClass')->where('ID', $other)->update(['Stop' => 0]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $other, 'SessionDate' => '2026-07-20', 'StartTime' => '17:00:00',
+            'EndTime' => '18:00:00', 'Status' => 'scheduled', 'Note' => '',
+        ]);
+
+        $report = app(ShadowSessionHorizonService::class)->run(null, $this->today);
+
+        $this->assertGreaterThanOrEqual(1, $report['metrics']['preview_vs_ensure_drift_courses']);
+    }
+
     public function test_command_read_only(): void
     {
         $sc = $this->course(['week' => 1, 'time' => '16:00', 'RemainingSessions' => 4]);
