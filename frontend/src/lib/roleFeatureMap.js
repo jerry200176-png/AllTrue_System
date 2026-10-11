@@ -64,8 +64,9 @@ export function getRoleFeatureMap(role, options = {}) {
 
   for (const group of navGroups) {
     const isPrimary = Boolean(group.primary);
-    const mappedItems = group.items.map(item => {
-      const frequency = isPrimary ? 'high' : 'advanced';
+    // Hub tabs are listed individually: the map documents every feature, not just sidebar entries.
+    const mappedItems = group.items.flatMap(item => (item.tabs ? item.tabs.map(tab => ({ ...item, ...tab, lowFrequency: true })) : [item])).map(item => {
+      const frequency = isPrimary && !item.lowFrequency ? 'high' : 'advanced';
       const usage = usages[item.page] || (isTeacher ? '日常教學操作頁面。' : '校務營運操作頁面。');
       const feat = { page: item.page, label: item.label, icon: item.icon, categoryKey: group.key, categoryTitle: group.title, frequency, frequencyLabel: frequency === 'high' ? '常用高頻' : '進階功能', usage, badgeTypes: item.badgeTypes ? [...item.badgeTypes] : [] };
       allItems.push(feat);

@@ -111,11 +111,11 @@
                 :key="item.page"
                 type="button"
                 @click="setActivePage(item.page)"
-                :class="{ active: active === item.page }"
+                :class="{ active: isNavItemActive(item) }"
                 :disabled="isNavItemDisabled(item.page)"
                 :title="sidebarCollapsed ? item.label : ''"
                 :aria-label="sidebarCollapsed ? item.label : undefined"
-                :aria-current="active === item.page ? 'page' : undefined"
+                :aria-current="isNavItemActive(item) ? 'page' : undefined"
               >
                 <span class="material-symbols-outlined nav-icon" aria-hidden="true">{{ item.icon }}</span>
                 <span class="nav-label" v-show="!sidebarCollapsed">{{ item.label }}</span>
@@ -515,6 +515,14 @@
         <p>{{ directorBranchStatus === 'failed' ? '無法載入授權分校，請重試或聯繫管理員。' : '正在確認您的分校權限…' }}</p>
         <button v-if="directorBranchStatus === 'failed'" type="button" @click="retryDirectorBranches">重試載入分校</button>
       </div>
+      <HubTabBar
+        v-if="!isPasswordChangeLocked && activeHub"
+        :title="activeHub.label"
+        :tabs="activeHub.tabs"
+        :active="active"
+        :badge-count="getItemBadgeCount"
+        @select="setActivePage"
+      />
       <DirectorDashboard v-if="!isPasswordChangeLocked && directorBranchReady && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" :focus-workflow-id="directorFocusWorkflowId" :focus-section="directorFocusSection" @navigate="onNavigateFromNotifications" />
       <NotificationsCenter
         v-if="!isPasswordChangeLocked && directorBranchReady && active === 'notifications'"
@@ -909,7 +917,8 @@ import {
   PIN_UNLOCK_TTL_MS,
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
-import { getMobileTabItems, getNavigationGroups, requiredContextForPage } from './lib/navigationRegistry';
+import { findNavItem, getMobileTabItems, getNavigationGroups, navigationPages, requiredContextForPage } from './lib/navigationRegistry';
+import HubTabBar from './components/HubTabBar.vue';
 import ActingContextChip from './components/ActingContextChip.vue';
 import { buildAppPageUrl, parseAppPage } from './lib/appNavigationHistory.js';
 import { resolveActiveAfterProfileLoad } from './lib/resolveActiveAfterProfileLoad';
@@ -1698,9 +1707,7 @@ const INBOX_DEEP_LINK_KEYS = ['page', 'section', 'workflow_id', 'branch_id'];
 
 function authorizedNavigationPages() {
   const pages = new Set(['profile', 'release-notes']);
-  sidebarNavGroups.value.forEach((group) => {
-    group.items.forEach((item) => pages.add(item.page));
-  });
+  navigationPages(sidebarNavGroups.value).forEach((page) => pages.add(page));
   return pages;
 }
 
@@ -2239,6 +2246,10 @@ const mobileMoreFilteredGroups = computed(() => {
     }))
     .filter(group => group.items.length > 0);
 });
+// Hub items (報表與薪資 / 設定 / 系統管理) show their tabs above the active page; each tab is still its own ?app_page= key.
+const activeNavItem = computed(() => findNavItem(sidebarNavGroups.value, active.value));
+const activeHub = computed(() => (activeNavItem.value?.tabs ? activeNavItem.value : null));
+const isNavItemActive = (item) => item.page === active.value || Boolean(item.tabs?.some(tab => tab.page === active.value));
 const sidebarPrimaryGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary !== false));
 const sidebarMoreGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary === false));
 const sidebarMoreSearchQuery = ref('');
@@ -2268,11 +2279,14 @@ const activeGlobalSearchFeatureGroups = computed(() => {
       ? mobileMoreFilteredGroups.value
       : sidebarMoreFilteredGroups.value;
   }
+  // Search finds a hub's tabs directly (e.g. 兼職薪資) rather than only the hub name.
   return sidebarNavGroups.value
     .map(group => ({
       ...group,
-      items: group.items.filter(item => item.label.toLowerCase().includes(query)
-        || (group.title && group.title.toLowerCase().includes(query))),
+      items: group.items
+        .flatMap(item => (item.tabs ? item.tabs.map(tab => ({ ...item, ...tab, tabs: undefined })) : [item]))
+        .filter(item => item.label.toLowerCase().includes(query)
+          || (group.title && group.title.toLowerCase().includes(query))),
     }))
     .filter(group => group.items.length > 0);
 });

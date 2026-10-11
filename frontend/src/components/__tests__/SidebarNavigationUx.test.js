@@ -9,15 +9,16 @@ const pageSource = (name) => readFileSync(resolve(__dirname, '../../pages', name
 
 describe('sidebar navigation UX contract', () => {
   it('uses work-oriented group names and keeps course lookup beside students', () => {
-    for (const marker of ["title: '今日工作'", "title: '教學現場'", "key: 'students-courses'", "title: '學生與課程'", "label: '課程查找'", "title: '設定與資源'"]) {
+    for (const marker of ["title: '今日工作'", "title: '教學現場'", "key: 'students-courses'", "title: '學生與課程'", "label: '課程查找'"]) {
       expect(registrySource).toContain(marker);
     }
     expect(getNavigationGroups('director').flatMap(group => group.items.map(item => item.page)))
       .toContain('course-mgmt');
+    expect(registrySource).toContain("title: '帳務與管理'");
   });
 
   it('exposes active state and accessible names in every navigation renderer', () => {
-    expect(appSource).toContain(":aria-current=\"active === item.page ? 'page' : undefined\"");
+    expect(appSource).toContain(":aria-current=\"isNavItemActive(item) ? 'page' : undefined\"");
     expect(appSource).toContain(":aria-label=\"sidebarCollapsed ? item.label : undefined\"");
     expect(appSource).toContain(":aria-current=\"tab.page !== 'more' && active === tab.page ? 'page' : undefined\"");
     expect(appSource).toContain(':aria-expanded="String(isSidebarGroupOpen(group))"');
