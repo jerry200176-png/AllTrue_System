@@ -122,7 +122,7 @@ class SendTuitionReminders extends Command
             // one row per campus per day, idempotent on re-runs. Only when the campus has a director to read it.
             if ($this->directorRecipientIds((int) $campusId) !== []) {
                 $sourceKey = "tuition-reminder:{$campusId}:" . now()->toDateString();
-                Notification::updateOrCreate(['SourceKey' => $sourceKey], [
+                Notification::query()->updateOrCreate(['SourceKey' => $sourceKey], [
                     'CampusID'   => $campusId,
                     'Type'       => 'tuition',
                     'Severity'   => 'medium',
