@@ -53,7 +53,7 @@ function onKey(event) {
 .hub-tab:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: -2px; border-radius: 6px; }
 .hub-tab.active { color: var(--ds-ink); border-bottom-color: var(--ds-primary); }
 .hub-tab-badge {
-  min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--ds-primary); color: #fff;
+  min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--ds-primary); color: var(--ds-on-primary);
   font-size: 11px; line-height: 18px; text-align: center;
 }
 </style>
