@@ -443,6 +443,8 @@ class AccountingController extends Controller
             ->orderByDesc('ID')
             ->get();
         $classIds = $classes->pluck('ID')->map(fn ($id) => (int) $id)->values()->all();
+        $subjectNames = $this->subjectNameLookup($classes);
+        $this->invoiceAmounts->preloadSessions($classIds);
         $firstSessionDates = ClassSession::query()
             ->whereIn('StudentClassID', $classIds)
             ->select('StudentClassID')
@@ -472,7 +474,7 @@ class AccountingController extends Controller
         $reportsByInvoiceId = $reports->whereNotNull('InvoiceID')->groupBy('InvoiceID');
         $anomalies = [];
 
-        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, &$anomalies) {
+        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
             $invoiceStudentClassId = (int) $invoice->getAttribute('StudentClassID');
             $invoiceStudentClass = $invoice->getRelationValue('studentClass');
             $payments = $invoice->payments;
@@ -597,7 +599,7 @@ class AccountingController extends Controller
                 'invoice_no' => $this->invoiceNo($invoice),
                 'student_class_id' => (int) $invoice->StudentClassID,
                 'course_ref' => $this->courseRef((int) $invoice->StudentClassID),
-                'subject' => $invoiceStudentClass?->displaySubjectName(),
+                'subject' => $invoiceStudentClass?->displaySubjectName($subjectNames),
                 'first_session_date' => $firstSessionDates->get($invoiceStudentClassId),
                 'billing_period' => $invoice->billing_period,
                 // Service range from the items: a 9/28–10/27 cycle is billing_period 2026-09,
@@ -626,6 +628,7 @@ class AccountingController extends Controller
                 'anomalies' => $invoiceAnomalies,
             ];
         })->values();
+        $this->invoiceAmounts->forgetPreloadedSessions();
 
         $invoiceIds = $invoices->pluck('id')->map(fn ($id) => (int) $id)->all();
         $paymentIds = $invoices->flatMap(fn ($invoice) => $invoice->payments)->pluck('id')->map(fn ($id) => (int) $id)->all();
@@ -709,7 +712,7 @@ class AccountingController extends Controller
             'courses' => $classes->map(fn (StudentClass $class) => [
                 'id' => (int) $class->ID,
                 'course_ref' => $this->courseRef((int) $class->ID),
-                'subject' => $class->displaySubjectName(),
+                'subject' => $class->displaySubjectName($subjectNames),
                 'schedule_mode' => (string) ($class->ScheduleMode ?? ''),
                 'charge' => (int) ($class->Charge ?? 0),
                 'paid' => (int) ($class->Paid ?? 0) === 1,
@@ -897,6 +900,21 @@ class AccountingController extends Controller
         }
 
         return null;
+    }
+
+    /** Same lookup order as StudentClass::displaySubjectName() (Subject, then legacy BaseData), in two queries. */
+    private function subjectNameLookup($classes): array
+    {
+        $ids = $classes->pluck('SubjectID')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values()->all();
+        if ($ids === []) {
+            return [];
+        }
+        $names = DB::table('Subject')->whereIn('id', $ids)->pluck('Subject_Name', 'id')->all();
+        foreach (DB::table('BaseData')->where('Name', '課程')->whereIn('id', $ids)->orderBy('id')->pluck('Val', 'id')->all() as $id => $val) {
+            $names[$id] ??= $val;
+        }
+
+        return $names;
     }
 
     private function ledgerAnomaly(string $code, string $severity, string $message, Invoice $invoice, ?int $reportId = null, ?int $paymentId = null): array
