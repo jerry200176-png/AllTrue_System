@@ -34,12 +34,11 @@ class AccountingLedgerPayloadSnapshotTest extends TestCase
             $payload = $this->getJson('/api/v1/accounting/ledger?student_class_id=9101', ['Authorization' => 'Bearer snap-token'])
                 ->assertOk()->json();
         });
-        $json = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n";
-
+        // Compact one-line fixture (keeps the PR under the 700-line presubmit limit); compared as decoded data.
         if (getenv('LEDGER_SNAPSHOT_UPDATE') === '1') {
-            file_put_contents(self::FIXTURE, $json);
+            file_put_contents(self::FIXTURE, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
         }
-        $this->assertSame(file_get_contents(self::FIXTURE), $json);
+        $this->assertSame(json_decode((string) file_get_contents(self::FIXTURE), true), $payload);
     }
 
     private function seedStudent(): void
