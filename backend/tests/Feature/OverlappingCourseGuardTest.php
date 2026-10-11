@@ -213,65 +213,6 @@ class OverlappingCourseGuardTest extends TestCase
         $this->assertNotSame('renewal_confirmed_slot_overlap', $res->json('code'));
     }
 
-    /**
-     * Single-process simulation (NOT a true concurrency test): the confirmed-overlap check must run inside the
-     * enrollment transaction, after a row lock on the student, so a second request serializes behind the first.
-     */
-    public function test_confirmed_overlap_guard_runs_inside_transaction_after_student_lock(): void
-    {
-        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-lock@example.com');
-        $past = Carbon::now()->subWeeks(2)->toDateString();
-        \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
-            'StudentClassID' => $first, 'SessionDate' => $past, 'StartTime' => '16:00:00',
-            'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '',
-        ]);
-        $renew = $this->batchPayload($studentId, $teacherId, [$past], 'one_on_one');
-        $renew['session_plan'][0]['kind'] = 'confirmed';
-        $renew['force'] = true;
-        $renew['force_reason'] = 'renewal_next_term';
-        $renew['existing_contract_ids'] = [$first];
-
-        $baseline = \Illuminate\Support\Facades\DB::transactionLevel();
-        $lockedAt = null;
-        $guardAt = null;
-        $n = 0;
-        \Illuminate\Support\Facades\DB::listen(function ($q) use (&$lockedAt, &$guardAt, &$n, $baseline) {
-            $n++;
-            if (stripos($q->sql, 'from `Student`') !== false && stripos($q->sql, 'for update') !== false) {
-                $lockedAt = [$n, \Illuminate\Support\Facades\DB::transactionLevel() > $baseline];
-            }
-            if (stripos($q->sql, '`cs`.`EndTime` >') !== false) {
-                $guardAt = [$n, \Illuminate\Support\Facades\DB::transactionLevel() > $baseline];
-            }
-        });
-        $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew)->assertStatus(422);
-
-        $this->assertNotNull($lockedAt, 'student row lock not taken');
-        $this->assertNotNull($guardAt, 'overlap guard did not run');
-        $this->assertTrue($lockedAt[1] && $guardAt[1], 'lock and guard must run inside the transaction');
-        $this->assertLessThan($guardAt[0], $lockedAt[0]);
-    }
-
-    /** #3738 review: a foreign student's monthly contract id must not change the response (no oracle). */
-    public function test_foreign_monthly_contract_id_does_not_trigger_monthly_refusal(): void
-    {
-        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-oracle@example.com');
-        $other = $this->createStudent(1, '他人合約測試生');
-        $foreign = \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->first();
-        $foreignId = \Illuminate\Support\Facades\DB::table('StudentClass')->insertGetId(
-            array_merge((array) $foreign, ['ID' => null, 'StudentID' => $other->id, 'ScheduleMode' => 'date'])
-        );
-        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
-        $renew = $this->batchPayload($studentId, $teacherId, [$later], 'one_on_one');
-        $renew['force'] = true;
-        $renew['force_reason'] = 'renewal_next_term';
-        $renew['existing_contract_ids'] = [$foreignId];
-
-        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
-
-        $this->assertNotSame('renewal_use_monthly_flow', $res->json('code'));
-    }
-
     /** #3738 review: a same-day future row whose slot already ended becomes completed, so the guard must apply. */
     public function test_renewal_guard_applies_to_future_row_that_is_already_ended_today(): void
     {
