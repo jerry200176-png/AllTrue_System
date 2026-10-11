@@ -83,3 +83,11 @@ describe('SmartCalendar accessibility contracts', () => {
     expect(source).toContain('@click="!isTeacher && onSlotClick');
   });
 });
+
+describe('SmartCalendar forced duplicate create (#3738)', () => {
+  it('uses the audited decision modal and sends force_reason, never a bare force: true', () => {
+    expect(source).toContain('<EnrollmentConflictDecisionModal');
+    expect(source).toContain('buildForceOverrideFields(decision)');
+    expect(source).not.toMatch(/force:\s*true/);
+  });
+});

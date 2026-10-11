@@ -401,46 +401,18 @@
       @duplicate-course="handleSchedulerDuplicate"
     />
 
-    <!-- Duplicate / overlap intercept（與課程管理／學生管理對齊；避免行事曆快速排課 409 靜默失敗） -->
-    <div v-if="showDuplicateInterceptModal" class="modal-overlay" @click.self="showDuplicateInterceptModal = false">
-      <div class="modal" style="width: 480px;">
-        <h3 class="duplicate-course-heading">此學生已有進行中的課程</h3>
-        <p style="margin-bottom: 12px;">
-          系統偵測到相同科目的進行中課程或日期重疊。試聽／確定要另開一筆時，可按「仍要新增課程」；續報請改用加購堂數。
-        </p>
-        <div style="max-height: 200px; overflow-y: auto; margin-bottom: 16px;">
-          <table class="course-inner-table" style="font-size: 13px; width: 100%;">
-            <thead>
-              <tr>
-                <th>科目</th>
-                <th>類型</th>
-                <th>剩餘堂數</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="c in duplicateConflicts" :key="c.existing_course_id || c.id">
-                <td>{{ getSubjectLabel(c.subject_name || c.subject) || c.subject_name || c.subject }}</td>
-                <td>{{ { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' }[c.class_type] || c.class_type || '—' }}</td>
-                <td>
-                  {{ c.remaining_sessions ?? 0 }} 堂
-                  <button
-                    v-if="needsFirstManualLesson(c) && !isTeacher"
-                    type="button"
-                    class="btn-secondary btn-sm"
-                    @click="showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptOriginalPayload?.student_id, c.existing_course_id)"
-                  >新增下一堂</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="actions" style="gap: 8px; display: flex; justify-content: flex-end;">
-          <button class="ghost" type="button" @click="showDuplicateInterceptModal = false" :disabled="forceSubmitting">取消</button>
-          <button class="ghost" type="button" @click="forceCreateCourse()" :disabled="forceSubmitting">{{ forceSubmitting ? '建立中...' : '我知道，仍要新增課程' }}</button>
-        </div>
-      </div>
-    </div>
-
+    <!-- Duplicate / overlap intercept：與課程管理／學生管理共用決策視窗，強制建立必帶 force_reason（#3738） -->
+    <EnrollmentConflictDecisionModal
+      :show="showDuplicateInterceptModal"
+      :conflicts="duplicateConflicts"
+      :class-type="String(interceptOriginalPayload?.class_type || '')"
+      :submitting="forceSubmitting"
+      :subject-label-fn="getSubjectLabel"
+      @cancel="showDuplicateInterceptModal = false"
+      @purchase="interceptGoToPurchase"
+      @manual-session="(c) => { showDuplicateInterceptModal = false; openManualSessionInCourseMgmt(interceptOriginalPayload?.student_id, c.existing_course_id); }"
+      @decision="forceCreateCourse"
+    />
 
     <!-- #740 Modals：單堂檢視（SessionEdit） -->
     <CalendarSessionEditModal
@@ -588,7 +560,8 @@ import { hasCrossCampusBusySlot, normalizeCrossCampusBusySlots } from '../lib/cr
 import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
 import { buildAttendanceNav, buildCourseMgmtOpsNav, buildManualSessionNav } from '../lib/authoritativeMutationRoutes.js';
 import { lessonStatusBadge, LESSON_STATUS_LEGEND } from '../lib/lessonStatusBadge.js';
-import { needsFirstManualLesson, normalizeDuplicateConflicts } from '../lib/enrollmentConflictDecision.js';
+import { buildForceOverrideFields, normalizeDuplicateConflicts } from '../lib/enrollmentConflictDecision.js';
+import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import {
   resolveCalendarDataFetchBoundsYmd,
   isRangeWithinFetchedBounds,
@@ -2098,7 +2071,12 @@ function handleSchedulerDuplicate(evt) {
   showDuplicateInterceptModal.value = true;
 }
 
-async function forceCreateCourse() {
+function interceptGoToPurchase(conflict) {
+  showDuplicateInterceptModal.value = false;
+  emit('navigate', buildCourseMgmtOpsNav({ id: conflict.existing_course_id, student_id: interceptOriginalPayload.value?.student_id }));
+}
+
+async function forceCreateCourse(decision) {
   const payload = interceptOriginalPayload.value;
   if (!payload) {
     showDuplicateInterceptModal.value = false;
@@ -2107,7 +2085,7 @@ async function forceCreateCourse() {
   if (!calendarWorkflowStarts.has('create')) startCalendarWorkflow('create');
   forceSubmitting.value = true;
   try {
-    const result = await createUniversalClassSchedule({ ...payload, force: true });
+    const result = await createUniversalClassSchedule({ ...payload, ...buildForceOverrideFields(decision) });
     showDuplicateInterceptModal.value = false;
     interceptOriginalPayload.value = null;
     showModal.value = false;
