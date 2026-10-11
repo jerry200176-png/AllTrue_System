@@ -7,7 +7,7 @@
       <div class="manual-session-grid">
         <label class="form-group">
           <span>上課日期</span>
-          <input v-model="form.session_date" type="date" :min="today" :disabled="submitting" @change="$emit('check')" />
+          <input ref="dateInput" v-model="form.session_date" type="date" :min="today" :disabled="submitting" @change="$emit('check')" />
         </label>
         <label class="form-group">
           <span>開始時間</span>
@@ -20,7 +20,16 @@
         <strong>{{ result.can_add ? '可以預約' : (result.message || '無法預約') }}</strong>
         <span>預計時段 {{ result.start_time }}–{{ result.end_time }}（{{ result.duration_minutes }} 分鐘）；{{ isMonthly ? '月結會依實際上課計費' : `可預約額度 ${result.available_sessions ?? 0} 堂` }}</span>
         <span v-if="result.renewal_warning" class="manual-session-warning">⚠️ {{ result.renewal_message }}</span>
-        <span v-if="result.conflict_detail">衝堂詳情：{{ result.conflict_detail.message || result.conflict_detail.type || '已有其他排課' }}</span>
+        <template v-if="result.conflict_detail">
+          <span v-if="!blockers.length">衝堂詳情：{{ result.conflict_detail.message || result.conflict_detail.type || '已有其他排課' }}</span>
+          <ul v-else class="manual-session-blockers" aria-label="衝堂的課">
+            <li v-for="b in blockers" :key="`${b.source}-${b.source_id}`">
+              {{ b.student_name || '另一位學生' }}{{ b.subject_name ? `・${b.subject_name}` : '' }}，{{ form.session_date }} {{ b.start_time }}–{{ b.end_time }}
+              <button v-if="b.course_id" type="button" class="ghost small manual-session-open-blocker" @click="$emit('open-course', b)">打開那堂課</button>
+            </li>
+          </ul>
+          <button type="button" class="ghost small manual-session-change-slot" @click="focusDate">換一個時段</button>
+        </template>
         <button v-if="!result.can_add" type="button" class="manual-session-retry ghost" @click="$emit('check')">重新檢查</button>
       </div>
 
@@ -51,7 +60,9 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed, ref } from 'vue';
+
+const props = defineProps({
   show: Boolean,
   form: { type: Object, required: true },
   result: { type: Object, default: null },
@@ -60,7 +71,17 @@ defineProps({
   isMonthly: Boolean,
   today: { type: String, required: true },
 });
-defineEmits(['close', 'check', 'submit', 'edit-course', 'next-period']);
+defineEmits(['close', 'check', 'submit', 'edit-course', 'next-period', 'open-course']);
+const dateInput = ref(null);
+// Who holds the slot: overlap_details from the server's schedule conflicts, de-duplicated.
+const blockers = computed(() => {
+  const seen = new Set();
+  return (props.result?.conflicts || []).flatMap((c) => c.overlap_details || []).filter((b) => {
+    const k = `${b.source}-${b.source_id}`;
+    return !seen.has(k) && seen.add(k);
+  });
+});
+const focusDate = () => dateInput.value?.focus();
 </script>
 
 <style scoped>
