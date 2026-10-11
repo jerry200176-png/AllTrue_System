@@ -78,7 +78,8 @@
                 :key="c.id"
                 :course="c"
                 :outstanding="owedFor(c.id)"
-                :pending-report="pendingReportFor(c.id)"
+                :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
+                :shared-follower="!packageLead(c)"
                 :last-payment="payLineFor(c)"
                 :amounts="amountsFor(c.id)"
                 :month-lines="monthLinesFor(c.id)"
@@ -555,12 +556,20 @@ const monthLinesFor = (id) => Object.fromEntries(courseInvoices(id).map((inv) =>
     .sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)))[0];
   return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? String(paid.paid_at).slice(0, 10) : '', paidAmount: Number(inv.calculated_applied_amount || 0) }];
 }).filter(([k]) => k));
+// #3753 (D18): members of one shared CoursePackage are one obligation; one pending report covers them all.
+const packageMemberIds = (id) => {
+  const pkg = (payload.value?.courses || []).find((c) => Number(c.id) === Number(id))?.package_id;
+  return pkg ? (payload.value?.courses || []).filter((c) => c.package_id === pkg).map((c) => Number(c.id)) : [Number(id)];
+};
 const pendingReportFor = (id) => {
-  const r = (payload.value?.receipts || []).find((x) => Number(x.student_class_id) === Number(id) && x.status === 'pending');
+  const ids = packageMemberIds(id);
+  const r = (payload.value?.receipts || []).find((x) => ids.includes(Number(x.student_class_id)) && x.status === 'pending');
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
+// The first card of a shared package carries its single payment action; the other members point to it.
+const packageLead = (c) => !c.package_id || contractCourses.value.find((x) => x.package_id === c.package_id)?.id === c.id;
 
 // D18: every contract the card would offer 登記收款 for (no pending report, money due or not yet billed),
 // oldest open invoice first; the allocation step fills the oldest and never exceeds what is owed.
@@ -570,7 +579,7 @@ const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
   .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
     || Number(a.id) - Number(b.id))[0];
 const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
-  .filter((c) => c.class_type !== 'tutoring' && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid))
+  .filter((c) => c.class_type !== 'tutoring' && packageLead(c) && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid))
   .map((c) => {
     const inv = oldestOpenInvoice(c.id);
     return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };

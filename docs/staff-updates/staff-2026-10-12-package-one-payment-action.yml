@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-12-package-one-payment-action
+    published_at: "2026-10-12"
+    audiences:
+      - director
+    importance: minor
+    title: 共用方案只登記一次收款
+    summary: 同一共用方案的幾門課，帳務面板只有一個收款入口，不會重複登記。
+    items:
+      - category: fixed
+        text: 共用方案的課只在第一張卡登記收款；已有一筆等你確認時，同方案其他課不能再登記第二筆。
+    source_refs:
+      - "changelog:2026-10-12:package-one-payment-action"

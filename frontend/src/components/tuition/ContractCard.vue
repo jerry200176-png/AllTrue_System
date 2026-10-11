@@ -27,6 +27,7 @@
         <AtButton size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</AtButton>
       </template>
+      <span v-else-if="sharedFollower && !noObligation && (outstanding > 0 || !course.paid)" class="contract__muted" data-testid="contract-shared-follower">共用方案，在同方案第一張卡登記收款</span>
       <AtButton v-else-if="!noObligation && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
@@ -113,6 +114,8 @@ const props = defineProps({
   amounts: { type: Object, default: null },
   // Monthly mode: { 'YYYY-MM': { due, paidDate, paidAmount } } from this contract's invoices.
   monthLines: { type: Object, default: () => ({}) },
+  // #3753: another member of the same shared package carries the payment action.
+  sharedFollower: { type: Boolean, default: false },
 });
 const emit = defineEmits(['changed', 'record', 'issue']);
 

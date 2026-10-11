@@ -675,13 +675,17 @@ class PaymentReportController extends Controller
                 }
             }
 
-            $existingPending = PaymentReport::where('StudentClassID', $sc->ID)
+            // #3753: a shared CoursePackage is one obligation, so one pending report covers every member.
+            $existingPending = PaymentReport::whereIn('StudentClassID', $package
+                    ? StudentClass::where('PackageID', $package->id)->pluck('ID')->all()
+                    : [$sc->ID])
                 ->where('status', 'pending')
                 ->lockForUpdate()
                 ->first();
             if ($existingPending) {
                 return response()->json([
-                    'message' => '此課程已有「等你確認」的繳費回報，請先到帳務中心確認收款或退回後再登錄。',
+                    'message' => ((int) $existingPending->StudentClassID === (int) $sc->ID ? '此課程' : '同一共用方案')
+                        . '已有「等你確認」的繳費回報，請先到帳務中心確認收款或退回後再登錄。',
                     'code' => 'pending_report_exists',
                     'report_id' => $existingPending->id,
                 ], 422);
