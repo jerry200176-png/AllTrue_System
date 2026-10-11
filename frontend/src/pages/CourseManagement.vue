@@ -1148,6 +1148,7 @@
       @submit="submitManualSession"
       @edit-course="editManualSessionCourse"
       @next-period="selectNextMonthlyContract"
+      @open-course="openConflictBlockerCourse"
     />
 
     <div v-if="showPackageConversionModal" class="modal-overlay" @click.self="!packageConversionSubmitting && (showPackageConversionModal = false)">
@@ -3280,6 +3281,18 @@ function openManualSessionModal(course, prefill = null) {
   };
   showManualSessionModal.value = true;
   runManualSessionCheck();
+}
+
+/** 衝堂提示「打開那堂課」：已載入就直接開；否則以學生名篩選後由 pendingLessonsCourseId 開啟。 */
+function openConflictBlockerCourse(blocker) {
+  const id = Number(blocker?.course_id) || 0;
+  if (!id) return;
+  closeManualSessionModal();
+  const loaded = courses.value.find((c) => c.id === id);
+  if (loaded) { openCourseManager(loaded, 'sessions'); return; }
+  pendingLessonsCourseId.value = id;
+  if (blocker.student_name) filters.value.name = String(blocker.student_name).slice(0, 40);
+  loadCourses(1);
 }
 
 function closeManualSessionModal() {

@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-11-course-conflict-notice
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: digest
+    title: 排課撞時間，直接告訴你撞到誰
+    summary: 新增下一堂遇到衝堂時，會寫出是哪位學生、哪一科、幾點到幾點。
+    items:
+      - category: improved
+        text: 衝堂時顯示佔住時段的學生、科目與時間，不用再自己去行事曆找。
+      - category: improved
+        text: 可按「換一個時段」直接改日期，或按「打開那堂課」看那堂課的內容。
