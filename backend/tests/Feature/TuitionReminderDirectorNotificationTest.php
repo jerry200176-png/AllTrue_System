@@ -59,58 +59,53 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         return Notification::where('SourceType', 'TuitionReminder')->firstOrFail();
     }
 
-    public function test_sync_keeps_the_aggregate_live_and_per_course_stream_does_not_duplicate_it(): void
+    public function test_command_then_sync_keeps_one_live_actionable_alert_per_course(): void
     {
-        [$campus, , $course] = $this->fixture();
-        NotificationSyncService::sync([$campus->id]); // per-course row exists (cooldown scenario)
-        $this->assertNotNull(Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->whereNull('ResolvedAt')->first());
+        [$campus, , $course, $s] = $this->fixture();
+        $second = $this->addCourse($s);
+        NotificationSyncService::sync([$campus->id]); // cooldown scenario: per-course rows already exist
 
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
         NotificationSyncService::sync([$campus->id]);
-        NotificationSyncService::sync(); // all-campus scope too
+        NotificationSyncService::sync();
 
-        $this->assertNull($this->aggregate()->ResolvedAt);
-        $this->assertSame(1, Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->count());
+        $live = Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->pluck('SourceKey')->sort()->values()->all();
+        $this->assertSame(
+            collect(["tuition:{$campus->id}:{$course->ID}", "tuition:{$campus->id}:{$second->ID}"])->sort()->values()->all(),
+            $live
+        );
+        $this->assertSame(0, Notification::where('SourceType', 'TuitionReminder')->count());
     }
 
-    public function test_changed_content_reopens_read_state_but_unchanged_rerun_keeps_it(): void
+    public function test_paid_course_is_retired_by_the_next_run(): void
     {
-        [$campus, $director, , $s] = $this->fixture();
+        [$campus, , $course] = $this->fixture();
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
-        $this->markRead($this->aggregate(), $director);
+        $course->forceFill(['Paid' => 1])->save();
+        NotificationSyncService::sync([$campus->id]);
+
+        $this->assertSame(0, Notification::where('Type', 'tuition')->whereNull('ResolvedAt')->count());
+    }
+
+    public function test_changed_owed_amount_or_reopen_is_unread_again_but_unchanged_rerun_keeps_read(): void
+    {
+        [$campus, $director, $course] = $this->fixture();
+        $this->artisan('tuition:send-reminders')->assertExitCode(0);
+        $n = Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->firstOrFail();
+        $this->markRead($n, $director);
 
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
         $this->assertSame(1, NotificationRead::count(), 'unchanged rerun keeps read state');
 
-        $this->addCourse($s);
+        $course->forceFill(['Charge' => 7000])->save();
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
-        $this->assertSame(0, NotificationRead::count(), 'changed content shows as unread again');
-        $this->assertSame(1, Notification::where('SourceType', 'TuitionReminder')->count());
-    }
+        $this->assertSame(0, NotificationRead::count(), 'changed amount shows unread again');
 
-    public function test_overdue_unpaid_course_creates_one_campus_notification_even_when_run_twice(): void
-    {
-        $campus = Campus::factory()->create();
-        $director = User::create([
-            'LoginName' => 'tuition-rem-'.uniqid('', true).'@example.com', 'Name' => 'Director',
-            'PSW' => password_hash('secret-123', PASSWORD_DEFAULT), 'type' => 'D',
-            'phone' => '09'.random_int(10000000, 99999999), 'MustChangePassword' => false,
-        ]);
-        UserCampus::create(['CampusID' => $campus->id, 'UserID' => $director->id, 'Admin' => 0, 'Approved' => 1]);
-        $s = Student::create(['name' => 'S', 'CampusID' => $campus->id, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
-        StudentClass::create([
-            'StudentID' => $s->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
-            'StartDate' => now()->subDays(30), 'TotalHours' => 20, 'Charge' => 5000, 'Paid' => 0,
-            'MDate' => now()->subDays(30), 'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 10,
-            'SessionDuration' => 120, 'RemainingSessions' => 5, 'ClassType' => 'one_on_one', 'UsedSessions' => 0,
-        ]);
-
-        $this->artisan('tuition:send-reminders')->assertExitCode(0);
-        $this->artisan('tuition:send-reminders')->assertExitCode(0);
-
-        $rows = Notification::where('Type', 'tuition')->get();
-        $this->assertCount(1, $rows);
-        $this->assertSame((int) $campus->id, (int) $rows[0]->CampusID);
-        $this->assertStringStartsWith("tuition-reminder:{$campus->id}:", $rows[0]->SourceKey);
+        $this->markRead($n, $director);
+        $course->forceFill(['Paid' => 1])->save();
+        NotificationSyncService::sync([$campus->id]);
+        $course->forceFill(['Paid' => 0])->save();
+        NotificationSyncService::sync([$campus->id]);
+        $this->assertSame(0, NotificationRead::count(), 'reopened alert is unread');
     }
 }

@@ -2,9 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Notification;
-use App\Models\NotificationRead;
-use Illuminate\Database\QueryException;
+use App\Services\NotificationSyncService;
 use App\Services\Line\LinePush;
 use App\Services\Line\ParentLinePush;
 use App\Models\Student;
@@ -56,7 +54,6 @@ class SendTuitionReminders extends Command
 
         // Group by campus for director notifications
         $byCampus = [];
-        $coursesByCampus = [];
 
         foreach ($unpaidCourses as $course) {
             if ($course->isEffectivelyPaid()) {
@@ -71,7 +68,6 @@ class SendTuitionReminders extends Command
 
             $studentName = (string) ($student->getAttribute('name') ?? 'Unknown');
             $byCampus[$campusId][] = $studentName;
-            $coursesByCampus[$campusId][(int) $course->ID] = (int) ($course->Charge ?? 0);
 
             // Fan-out to every verified LINE binding (dad + mom), not first() only.
             $parents = app(ParentLinePush::class);
@@ -122,10 +118,11 @@ class SendTuitionReminders extends Command
                 continue;
             }
 
-            // Campus-scoped, one row per campus per day (#3376). NotificationSyncService keeps it live
-            // (SourceType TuitionReminder) and skips the per-course rows this aggregate covers.
+            // Directors are notified through the single actionable per-course/invoice stream
+            // (NotificationSyncService): no second aggregate stream, so no duplicates, no orphaning,
+            // campus/ownership and paid-state are re-evaluated by the sync itself (#3877 follow-up).
             if ($this->directorRecipientIds((int) $campusId) !== []) {
-                $this->upsertDirectorNotice((int) $campusId, $title, $body, $coursesByCampus[$campusId] ?? []);
+                NotificationSyncService::sync([(int) $campusId]);
             }
 
             Log::info("tuition_reminders_sent", [
@@ -140,44 +137,6 @@ class SendTuitionReminders extends Command
 
         $this->info($dryRun ? 'Dry-run complete.' : 'Reminders sent.');
         return self::SUCCESS;
-    }
-
-    /** @param array<int,int> $courses class id => charge */
-    private function upsertDirectorNotice(int $campusId, string $title, string $body, array $courses): void
-    {
-        ksort($courses);
-        $hash = md5(json_encode([$title, $body, $courses]));
-        $sourceKey = "tuition-reminder:{$campusId}:" . now()->toDateString();
-        $attrs = [
-            'CampusID' => $campusId, 'Type' => 'tuition', 'Severity' => 'medium', 'Title' => $title, 'Body' => $body,
-            'SourceType' => 'TuitionReminder', 'SourceID' => (string) $campusId, 'OccurredAt' => now(), 'ResolvedAt' => null,
-            'Payload' => ['content_hash' => $hash, 'class_ids' => array_keys($courses)],
-        ];
-
-        for ($attempt = 0; ; $attempt++) {
-            try {
-                DB::transaction(function () use ($sourceKey, $attrs, $hash, $courses, $campusId) {
-                    $row = Notification::query()->where('SourceKey', $sourceKey)->lockForUpdate()->first();
-                    if (!$row) {
-                        $row = Notification::query()->create($attrs + ['SourceKey' => $sourceKey]);
-                    } elseif (($row->Payload['content_hash'] ?? null) !== $hash || $row->ResolvedAt !== null) {
-                        // Changed same-day content: reopen for everyone who already read/archived it.
-                        $row->fill($attrs)->save();
-                        NotificationRead::query()->where('NotificationID', $row->id)->delete();
-                    }
-                    // Same overdue items must not also alert through the per-course stream.
-                    $keys = array_map(fn ($id) => "tuition:{$campusId}:{$id}", array_keys($courses));
-                    Notification::query()->whereIn('SourceKey', $keys)->whereNull('ResolvedAt')->update(['ResolvedAt' => now()]);
-                });
-
-                return;
-            } catch (QueryException $e) {
-                // Concurrent first insert lost the unique SourceKey race: retry once as an update.
-                if ($attempt >= 1 || (int) ($e->errorInfo[1] ?? 0) !== 1062 && !str_contains($e->getMessage(), 'UNIQUE')) {
-                    throw $e;
-                }
-            }
-        }
     }
 
     /** @return list<int> */
