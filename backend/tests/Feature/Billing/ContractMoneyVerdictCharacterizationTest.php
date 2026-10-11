@@ -22,7 +22,7 @@ use Tests\TestCase;
  * Columns (one string per caller):
  *   resolver  = BillingPayableResolver::courseStatusesByStudentClassIds  status/total/applied/outstanding/source
  *   payable   = BillingPayableResolver::byStudentClassIds (tuition slip)  status/amount/outstanding
- *   alert     = AlertController ladder: ContractMoneyState::alertStatus fed by SUM(stored PaidAmount) + courseOutstanding
+ *   alert     = AlertController ladder: ContractMoneyState::alertStatus fed by the Verdict status + applied + courseOutstanding
  *   guard     = PaymentReportController::courseAlreadyHasConfirmedPayment (blocks a new payment report)
  *   intake    = PaymentReportController legacy intake guard (no open invoice && (Paid=1 || a paid invoice)) => duplicate
  *   recon     = InvoiceAmountReconciliationService over the course's invoices (Accounting/Coverage): total/applied/outstanding
@@ -41,13 +41,13 @@ class ContractMoneyVerdictCharacterizationTest extends TestCase
         $s = $resolver->courseStatusesByStudentClassIds([$id], [$course])[$id];
         $p = $resolver->byStudentClassIds([$id], [$course])[$id];
 
-        // AlertController ~349-373 (count-mode charge = Charge here).
+        // AlertController row build (count-mode charge = Charge here): status fed by the Verdict (ADMIN-OPS billing).
         $agg = $resolver->invoiceAggregateByStudentClassIds([$id])[$id] ?? null;
-        $paid = $agg ? (int) $agg['paid_amount'] : 0;
+        $paid = $s['source'] === 'invoice' ? (int) $s['applied'] : ($agg ? (int) $agg['paid_amount'] : 0);
         $charge = (int) $course->Charge;
         $isPaid = StudentClass::isFullyPaid((int) $course->Paid === 1 || $course->isEffectivelyPaid(), $paid, $charge);
         $alertOut = ($s['source'] === 'invoice') ? (int) $s['outstanding'] : ($isPaid ? 0 : max(0, $charge - $paid));
-        $alert = ContractMoneyState::alertStatus($course, $paid, $charge, false) . "/$alertOut";
+        $alert = ContractMoneyState::alertStatus($course, $paid, $charge, false, $s['status']) . "/$alertOut";
 
         $ctl = app(PaymentReportController::class);
         $m = new \ReflectionMethod($ctl, 'courseAlreadyHasConfirmedPayment');
@@ -104,7 +104,7 @@ class ContractMoneyVerdictCharacterizationTest extends TestCase
         'paid1_unpaid_invoice' => [
             'resolver' => 'unpaid/10000/0/10000/invoice',
             'payable' => 'invoiced/10000/10000',
-            'alert' => 'paid/10000',
+            'alert' => 'unpaid/10000',
             'guard' => 'block',
             'intake' => 'ok',
             'recon' => '10000/0/10000',
@@ -152,7 +152,7 @@ class ContractMoneyVerdictCharacterizationTest extends TestCase
         'zero_dollar_trial' => [
             'resolver' => 'free/0/0/0/none',
             'payable' => 'unbilled/null/null',
-            'alert' => 'unpaid/0',
+            'alert' => 'paid/0',
             'guard' => 'block',
             'intake' => 'ok',
             'recon' => '0/0/0',

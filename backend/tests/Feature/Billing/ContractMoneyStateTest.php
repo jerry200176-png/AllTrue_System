@@ -49,6 +49,17 @@ class ContractMoneyStateTest extends TestCase
         $this->assertSame($expected, ContractMoneyState::alertStatus($sc, $paid, $charge, $pending));
     }
 
+    public function test_alert_status_follows_the_verdict_over_flag_and_stored_sum(): void
+    {
+        $flagged = $this->course(['Paid' => 1, 'RemainingSessions' => 8]);
+        $this->assertSame('unpaid', ContractMoneyState::alertStatus($flagged, 100, 100, false, 'unpaid'), 'Paid=1 + unpaid invoices reads unpaid');
+        $this->assertSame('partial', ContractMoneyState::alertStatus($flagged, 0, 100, false, 'partial'));
+        $unflagged = $this->course(['Paid' => 0, 'RemainingSessions' => 8]);
+        $this->assertSame('paid', ContractMoneyState::alertStatus($unflagged, 0, 100, false, 'paid'), 'paid by Payment rows although the stored sum says 0');
+        $this->assertSame('pending_reconciliation', ContractMoneyState::alertStatus($this->course(['closed_reason' => 'settled_pending']), 0, 100, false, 'unpaid'));
+        $this->assertSame('paid', ContractMoneyState::alertStatus($this->course(['Paid' => 1, 'RemainingSessions' => 8]), 0, 100, false, 'review_required'), 'no verdict keeps the legacy inputs');
+    }
+
     public function test_list_status(): void
     {
         $this->assertSame('paid', ContractMoneyState::listStatus(true, 0, 100, true), 'paid wins over older pending report (#249)');

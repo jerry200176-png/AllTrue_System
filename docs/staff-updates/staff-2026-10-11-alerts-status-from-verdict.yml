@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-11-alerts-status-from-verdict
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心的繳費狀態更準
+    summary: 已繳、部分繳、未繳與已收金額，改成跟帳單、收款紀錄一致。
+    items:
+      - category: improved
+        text: 已經收齊的合約不會再掛在「未繳費」；只收一部分的不會再顯示「已繳」。
+      - category: improved
+        text: 帳務中心名單的「已收」金額，和學生帳務裡的收款紀錄相同。
+    source_refs:
+      - "changelog:2026-10-11:alerts-status-from-verdict"

@@ -372,7 +372,11 @@ class AlertController extends Controller
                     : $this->countModeCharge($sc);
                 $invoiceAgg = $invoiceAggMap[$classId] ?? null;
                 $payable = $payableMap[$classId] ?? $this->payableResolver->unbilled();
-                $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
+                // ARCH2: what is paid / what status = the Verdict (invoices + Payment rows), not the stored PaidAmount sum.
+                $verdict = $courseStatuses[$classId] ?? null;
+                $paidAmount = ($verdict['source'] ?? null) === 'invoice'
+                    ? (int) $verdict['applied']
+                    : ($invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0);
                 $rawPaid = (int) ($sc->Paid ?? 0) === 1;
                 $scIsPaid = $this->isFullyPaid($rawPaid || ($sc ? $sc->isEffectivelyPaid() : false), $paidAmount, $charge);
                 // F7 S3b: one outstanding answer = the resolver's course-level value; no invoice => estimate.
@@ -380,7 +384,7 @@ class AlertController extends Controller
 
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
 
-                $paymentStatus = ContractMoneyState::alertStatus($sc, $paidAmount, $charge, $pendingReportId !== null);
+                $paymentStatus = ContractMoneyState::alertStatus($sc, $paidAmount, $charge, $pendingReportId !== null, $verdict['status'] ?? null);
                 if ($row['alert_type'] === 'pending_reconciliation') {
                     // F7 S3a: stopped + still owing per the invoices. Every amount the UI reads comes from the
                     // resolver's cumulative totals (never the single-invoice payable or the contract price).
