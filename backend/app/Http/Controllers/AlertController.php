@@ -703,6 +703,7 @@ class AlertController extends Controller
         // bare 403, before any money is read (no status, amount or name can leak through a different error).
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? null : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        /** @var StudentClass|null $sc */
         $sc = StudentClass::with(['student', 'coursePackage'])->find($studentClassId);
         $student = $sc?->student;
         if (!$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) {
