@@ -156,4 +156,98 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         NotificationSyncService::sync([$campus->id]);
         $this->assertSame(0, NotificationRead::count(), 'severity-only change: unread again');
     }
+
+    /** @return array<string, array{0: string, 1: string}> */
+    public static function tamperedFields(): array
+    {
+        return [
+            'Title' => ['Title', 'stale title'],
+            'Body' => ['Body', 'stale body'],
+            'Severity' => ['Severity', 'low'],
+            'Payload.outstanding' => ['Payload', 'outstanding'],
+        ];
+    }
+
+    /**
+     * Isolated read-reset: the per-course notice and its read row are pre-created directly (no command).
+     * Exactly one stored field differs from what sync derives.
+     *
+     * @dataProvider tamperedFields
+     */
+    public function test_sync_resets_read_when_one_stored_field_differs(string $field, string $value): void
+    {
+        [$campus, $director, $course] = $this->fixture();
+        NotificationSyncService::sync([$campus->id]);
+        $n = Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->firstOrFail();
+        $this->markRead($n, $director);
+        if ($field === 'Payload') {
+            $n->Payload = array_merge($n->Payload, [$value => 1]);
+        } else {
+            $n->{$field} = $value;
+        }
+        $n->save();
+
+        NotificationSyncService::sync([$campus->id]);
+        $this->assertSame(0, NotificationRead::count());
+    }
+
+    public function test_transferred_student_alert_follows_current_campus_only(): void
+    {
+        [$campus, , $course, $s] = $this->fixture();
+        NotificationSyncService::sync();
+        $other = Campus::factory()->create();
+        $s->forceFill(['CampusID' => $other->id])->save();
+        NotificationSyncService::sync();
+
+        $live = Notification::where('Type', 'tuition')->whereNull('ResolvedAt')->pluck('SourceKey')->all();
+        $this->assertContains("tuition:{$other->id}:{$course->ID}", $live);
+        $this->assertNotContains("tuition:{$campus->id}:{$course->ID}", $live);
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function scheduleModes(): array
+    {
+        return ['date-mode, past cutoff, no invoice' => ['date'], 'count-mode, no invoice' => ['count']];
+    }
+
+    /**
+     * The command reminds parents of every effectively-unpaid course; the director must have exactly one alert for it.
+     *
+     * @dataProvider scheduleModes
+     */
+    public function test_every_course_the_command_reminds_has_a_single_director_alert(string $mode): void
+    {
+        [$campus, , $course] = $this->fixture();
+        $course->forceFill(['ScheduleMode' => $mode])->save();
+
+        $this->artisan('tuition:send-reminders')->assertExitCode(0);
+        $this->artisan('tuition:send-reminders')->assertExitCode(0);
+
+        $rows = Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->get();
+        $this->assertCount(1, $rows);
+        $this->assertSame("tuition:{$campus->id}:{$course->ID}", $rows[0]->SourceKey);
+    }
+
+    public function test_count_mode_course_with_overdue_invoice_has_one_notice_for_the_debt(): void
+    {
+        [$campus, , $course, $s] = $this->fixture();
+        $inv = \App\Models\Invoice::create([
+            'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => now()->subDays(10)->toDateString(),
+            'DueDate' => now()->subDays(2)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
+        ]);
+        NotificationSyncService::sync([$campus->id]);
+        $this->artisan('tuition:send-reminders')->assertExitCode(0);
+
+        $live = Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->pluck('SourceKey')->all();
+        $this->assertSame(["tuition:{$campus->id}:{$course->ID}"], $live);
+        $this->assertNull(Notification::where('SourceKey', "invoice_overdue:{$campus->id}:{$inv->id}")->whereNull('ResolvedAt')->first());
+
+        $this->artisan('tuition:send-reminders')->assertExitCode(0); // rerun: same stable key
+        $this->assertSame($live, Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->pluck('SourceKey')->all());
+
+        $course->forceFill(['Paid' => 1])->save();
+        $inv->forceFill(['Status' => 'paid', 'PaidAmount' => 5000])->save();
+        NotificationSyncService::sync([$campus->id]);
+        $this->assertSame(0, Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->count(), 'settled debt retires');
+    }
 }

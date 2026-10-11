@@ -34,6 +34,19 @@ class NotificationSyncService
             self::buildPendingSwipeNotifications($scopedCampusIds)
         );
 
+        // One notice per owed debt: the per-course notice (resolver-based outstanding, also exists when there
+        // is no invoice) wins over an overdue-Invoice notice for the same (campus, course).
+        $courses = [];
+        foreach ($activeByKey as $row) {
+            if (($row['Type'] ?? null) === 'tuition' && ($row['SourceType'] ?? null) === 'StudentClass') {
+                $courses[(int) $row['CampusID'] . ':' . (int) $row['SourceID']] = true;
+            }
+        }
+        $activeByKey = array_filter($activeByKey, fn ($row) => !(
+            ($row['SourceType'] ?? null) === 'Invoice' && ($row['Payload']['student_class_id'] ?? null)
+            && isset($courses[(int) $row['CampusID'] . ':' . (int) $row['Payload']['student_class_id']])
+        ));
+
         $created = 0;
         $updated = 0;
         $resolved = 0;
@@ -100,6 +113,7 @@ class NotificationSyncService
                             'source_type' => (string) ($payload['SourceType'] ?? ''),
                             'source_key_sha256' => hash('sha256', $sourceKey),
                         ]);
+                        self::reopenIfOwedChanged($existing, $payload);
                         self::applyPayload($existing, $payload);
                         if ($existing->isDirty()) {
                             $existing->save();
@@ -213,7 +227,8 @@ class NotificationSyncService
      */
     private static function reopenIfOwedChanged(Notification $existing, array $payload): void
     {
-        if (($payload['Type'] ?? null) !== 'tuition') {
+        // Only the per-course stream: invoice-overdue rows embed a day counter that changes daily.
+        if (($payload['Type'] ?? null) !== 'tuition' || ($payload['SourceType'] ?? null) !== 'StudentClass') {
             return;
         }
         $changed = $existing->ResolvedAt !== null;
@@ -245,7 +260,6 @@ class NotificationSyncService
         $query = StudentClass::query()
             ->with(['student', 'subjectRecord', 'coursePackage'])
             ->where('Stop', 0)
-            ->where('ScheduleMode', 'count')
             ->where(function ($q) {
                 $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
             })
@@ -289,7 +303,8 @@ class NotificationSyncService
             $subject = self::displaySubjectForClass($class);
 
             $title = "{$student->name} {$subject} 未繳費";
-            $body = "剩餘 {$remaining} 堂，狀態：未繳費";
+            // Date-mode courses have no session countdown; the command also reminds those parents.
+            $body = ($class->ScheduleMode ?? null) === 'count' ? "剩餘 {$remaining} 堂，狀態：未繳費" : '狀態：未繳費';
 
             $sourceKey = "tuition:{$campusId}:{$class->ID}";
             $rows[$sourceKey] = [
