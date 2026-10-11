@@ -33,6 +33,18 @@ class NotificationSyncService
             self::buildPendingSwipeNotifications($scopedCampusIds)
         );
 
+        // The command-owned daily TuitionReminder aggregate is a live source, not an orphan.
+        $liveReminders = Notification::query()->where('SourceType', 'TuitionReminder')->whereNull('ResolvedAt')
+            ->where('SourceKey', 'like', 'tuition-reminder:%:' . now()->toDateString())
+            ->when(!empty($scopedCampusIds), fn ($q) => $q->whereIn('CampusID', $scopedCampusIds))
+            ->get()->keyBy('SourceKey');
+        $covered = $liveReminders->flatMap(fn ($n) => $n->Payload['class_ids'] ?? [])->map(fn ($i) => (int) $i)->flip()->all();
+        if ($covered) {
+            // Covered classes are already in the aggregate; one active alert per overdue item.
+            $activeByKey = array_filter($activeByKey, fn ($p) => !(($p['Type'] ?? '') === 'tuition'
+                && ($p['SourceType'] ?? '') === 'StudentClass' && isset($covered[(int) $p['SourceID']])));
+        }
+
         $created = 0;
         $updated = 0;
         $resolved = 0;
@@ -42,6 +54,7 @@ class NotificationSyncService
             $managedTypes,
             $scopedCampusIds,
             $activeByKey,
+            $liveReminders,
             &$created,
             &$updated,
             &$resolved,
@@ -111,7 +124,7 @@ class NotificationSyncService
             }
 
             foreach ($scopedUnresolved as $sourceKey => $notification) {
-                if (isset($activeByKey[$sourceKey])) {
+                if (isset($activeByKey[$sourceKey]) || $liveReminders->has($sourceKey)) {
                     continue;
                 }
 
