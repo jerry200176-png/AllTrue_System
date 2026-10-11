@@ -887,4 +887,9 @@ assert.match(phaseCSource,
   assert.match(phaseASource, /must be in this repository/, 'issue URLs from other repositories are rejected before any write');
   assert.match(phaseCSource, /"action" => \$ok \? "resolved" : "failed"/);
   assert.match(phaseCSource, /r\.get\("action"\) in \("resolved", "skip_already"\)/, 'resolved and already-resolved (retry) targets close issues; failed ones never');
+  // in-app #389 (2026-10-11): the reply linked a follow-up issue (#3847) before the canonical one, and the
+  // first-link rule auto-closed the wrong issue. Explicit "issue" wins; a reply linking >1 issue never auto-closes.
+  assert.match(phaseCSource, /if \(isset\(\$cfg\["issue"\]\)\) return \(int\) \$cfg\["issue"\];/, 'explicit issue key binds the canonical issue');
+  assert.match(phaseCSource, /return count\(\$ids\) === 1 \? \$ids\[0\] : null;/, 'a reply with several issue links binds none');
+  assert.doesNotMatch(phaseCSource, /preg_match\("#\/AllTrue_System\/issues\/\(\[0-9\]\+\)#", \(string\)\(\$cfg\["reply"\]/, 'first-link binding is gone');
 }
