@@ -14,10 +14,10 @@ class TuitionSlipFollowsVerdictTest extends TestCase
     use RefreshDatabase;
     use BuildsMoneyFixtures;
 
-    private function slip(int $courseId)
+    private function slip(int $courseId, int $campusId = 1)
     {
-        $user = User::create(['LoginName' => 'slip@example.com', 'Name' => 'd', 'PSW' => 'secret', 'type' => 'A', 'phone' => 912345678]);
-        UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        $user = User::create(['LoginName' => uniqid("slip") . "@example.com", 'Name' => 'd', 'PSW' => 'secret', 'type' => 'A', 'phone' => 912345678]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
         $token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
 
@@ -59,5 +59,19 @@ class TuitionSlipFollowsVerdictTest extends TestCase
         $course = $this->course([], ['Paid' => 1]);
 
         $this->slip($course->ID)->assertStatus(422)->assertJson(['message' => '此課程已繳費，不需產生繳費單']);
+    }
+
+    public function test_other_campus_director_gets_the_same_bare_403_as_for_a_missing_id(): void
+    {
+        $settled = $this->course([['2026-08', 10000, 'paid', 10000, [[10000, 'cash']]]]);
+        $owing = $this->course([['2026-08', 10000, 'unpaid', 0, []]]);
+        $missing = $this->slip(99999999, 2);
+        $missing->assertStatus(403);
+
+        foreach ([$settled, $owing] as $course) {
+            $res = $this->slip($course->ID, 2);
+            $res->assertStatus(403);
+            $this->assertSame($missing->getContent(), $res->getContent(), 'no money, status or name in the body');
+        }
     }
 }
