@@ -401,6 +401,10 @@ class PaymentReportController extends Controller
                     ->first();
             }
 
+            if ($invoice && $this->invoiceCoveredByPayments($invoice, $sc instanceof StudentClass ? $sc : null)) {
+                return $this->invoiceAlreadyCoveredResponse();
+            }
+
             $hasPaidInvoice = false;
             if (! $invoice) {
                 $hasPaidInvoice = Invoice::where('StudentClassID', $report->StudentClassID)
@@ -638,6 +642,10 @@ class PaymentReportController extends Controller
                     ->first();
             }
 
+            if ($invoice && $this->invoiceCoveredByPayments($invoice, $sc instanceof StudentClass ? $sc : null)) {
+                return $this->invoiceAlreadyCoveredResponse();
+            }
+
             $hasPaidInvoice = false;
             if (! $invoice) {
                 $hasPaidInvoice = Invoice::where('StudentClassID', $sc->ID)
@@ -831,11 +839,10 @@ class PaymentReportController extends Controller
      * Blocks `paid` and `free`; partial (the remainder may be recorded), unbilled, review_required and a plain unpaid
      * course may take a payment. Package members follow the resolver (a paid package counts while no non-void invoice exists).
      * Fail closed: no resolver answer (error, unknown course) blocks.
-     * R28 carve-out: Paid=1 with a wholly unpaid period is a residual/stale invoice that needs repair, not a payment
-     * (legacy rows may carry Paid=1 from a partial receipt before F7 S7, so Paid=1 alone never blocks and `partial` stays recordable).
-     */
-    /**
-     * Why the guard above blocks (null = it allows): paid | free | flag_conflict (Paid=1 but the invoices still owe) |
+     * Founder Q2 (2026-10-11): the R28 carve-out is gone. Invoices + Payment rows are the truth; a Paid=1 flag beside an
+     * unpaid/partial invoice does not block, so the owed amount can be recorded.
+     *
+     * Why it blocks (null = it allows): paid | free |
      * unknown (no resolver answer). The decision is the guard's; the reason only picks the sentence the director reads.
      */
     private function courseMoneyBlockReason(int $studentClassId, int $coursePaid): ?string
@@ -850,7 +857,6 @@ class PaymentReportController extends Controller
             $status === null => 'unknown',
             $status === 'paid' => 'paid',
             $status === 'free' => 'free',
-            $coursePaid === 1 && $status === 'unpaid' => 'flag_conflict',
             default => null,
         };
     }
@@ -903,15 +909,34 @@ class PaymentReportController extends Controller
         ]);
     }
 
+    /**
+     * R28 invariant (Founder Q2 coordination): a payment may only be recorded against a bill that still owes. A bill whose
+     * Payment rows already cover its total is refused even when its stored Status is stale ("unpaid"), whatever the Paid flag says.
+     */
+    private function invoiceCoveredByPayments(Invoice $invoice, ?StudentClass $sc): bool
+    {
+        $invoice->loadMissing(['payments', 'items']);
+        $projection = app(InvoiceAmountReconciliationService::class)->resolve($invoice, $sc);
+
+        return (int) $projection['total_amount'] > 0 && (int) $projection['outstanding_amount'] <= 0;
+    }
+
+    private function invoiceAlreadyCoveredResponse()
+    {
+        return response()->json([
+            'message' => '這張帳單已有確認的收款，不能再登記；若帳單狀態對不上，請在學生帳務核對收款紀錄，作廢重複或錯誤的帳單。沒有登記任何款項。',
+            'code' => 'course_already_paid',
+        ], 422);
+    }
+
     private function duplicateCoursePaymentResponse(string $reason)
     {
         // Same code and status for every reason; only the sentence differs so the director knows what to do next.
         return response()->json([
             'message' => match ($reason) {
                 'free' => '這門課是免費課程（輔導、試上或 0 元），不需要收款。',
-                // R28: never suggest clearing the Paid flag; a stale/duplicate bill is voided in the ledger panel.
-                'flag_conflict' => '這門課的帳單狀態對不上（已有已收款的帳單，另有一張未繳）。請先在學生帳務核對帳單與收款紀錄，作廢重複或錯誤的帳單，不要清除已付款標記。沒有登記任何款項。',
                 'paid' => '這門課的款項已收齊，不需要再登記；若收錯了，請先作廢原收款再重新登記。',
+                // Any other/unknown reason is the safe sentence, never "已收齊".
                 default => '暫時無法確認這門課的繳費狀態，沒有登記任何款項。請稍後再試；一直失敗請回報。',
             },
             'code'    => 'course_already_paid',
