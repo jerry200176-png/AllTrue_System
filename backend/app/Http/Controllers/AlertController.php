@@ -87,7 +87,11 @@ class AlertController extends Controller
                   // Founder Q2: invoices + payments are the truth; Paid=1 never hides a contract whose bill is still open.
                   ->orWhereExists(fn ($inv) => $inv->select(DB::raw(1))->from('Invoice')
                       ->whereColumn('Invoice.StudentClassID', 'StudentClass.ID')
-                      ->whereRaw(Invoice::mayOweSql()));
+                      ->whereRaw(Invoice::mayOweSql())
+                      // Stale-paid widening (#3781) is for single courses only: whether a member's stale-paid bill reopens a
+                      // paid shared package is undecided (#3785 hold), so package members keep the stored-Status rule.
+                      ->where(fn ($p) => $p->whereNull('StudentClass.PackageID')->orWhere('StudentClass.PackageID', 0)
+                          ->orWhereRaw("COALESCE(Invoice.Status, '') <> 'paid'")));
                 if (!empty($pendingReportClassIds)) {
                     $q->orWhereIn('ID', $pendingReportClassIds);
                 }

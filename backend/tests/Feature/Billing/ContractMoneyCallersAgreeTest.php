@@ -222,6 +222,25 @@ class ContractMoneyCallersAgreeTest extends TestCase
         $this->assertSame([], $answers, "verdict {$v->status}/{$v->outstanding}");
     }
 
+    /**
+     * #3891 review: a paid shared package is listed by package (DIRECTOR_PAYMENT_ALERT_RULES), never member by member.
+     * Whether a member's stale-paid bill reopens the package is a package money rule not decided yet (#3785 hold), so
+     * the stale-paid widening must not emit a lone member row for it.
+     */
+    public function test_stale_paid_member_of_a_paid_package_is_not_listed_as_a_lone_course(): void
+    {
+        $course = $this->course([['2026-08', 10000, 'paid', 10000, [[4000, 'cash']]]], ['Paid' => 1, 'Rate' => 1000]);
+        $pkg = \App\Models\CoursePackage::create([
+            'student_id' => $course->StudentID, 'campus_id' => 1, 'name' => 'Shared', 'billing_mode' => 'session',
+            'total_sessions' => 16, 'remaining_sessions' => 16, 'used_sessions' => 0, 'rate' => 1500, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'paid_at' => '2026-08-05', 'stop' => false, 'enabled' => true,
+        ]);
+        $course->update(['PackageID' => $pkg->id]);
+
+        $rows = collect($this->withHeaders($this->directorHeaders())->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+        $this->assertNull($rows->first(fn ($r) => (int) ($r['id'] ?? 0) === (int) $course->ID && empty($r['package_id'])));
+    }
+
     /** @return array<string, string> */
     private function directorHeaders(): array
     {
