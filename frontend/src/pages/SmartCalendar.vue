@@ -406,6 +406,7 @@
       :show="showDuplicateInterceptModal"
       :conflicts="duplicateConflicts"
       :class-type="String(interceptOriginalPayload?.class_type || '')"
+      :block-create="interceptOriginalPayload?.class_type === 'trial'"
       :submitting="forceSubmitting"
       :subject-label-fn="getSubjectLabel"
       @cancel="showDuplicateInterceptModal = false"
@@ -2078,7 +2079,7 @@ function interceptGoToPurchase(conflict) {
 
 async function forceCreateCourse(decision) {
   const payload = interceptOriginalPayload.value;
-  if (!payload) {
+  if (!payload || payload.class_type === 'trial') {
     showDuplicateInterceptModal.value = false;
     return;
   }

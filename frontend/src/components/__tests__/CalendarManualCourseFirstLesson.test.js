@@ -72,3 +72,19 @@ describe('manual course → first lesson (in-app #382)', () => {
     expect(courseMgmt).toMatch(/if \(handoffNarrowedList\.value\) \{\s*handoffNarrowedList\.value = false;\s*loadCourses\(1\);/);
   });
 });
+
+describe('calendar trial duplicate must not create a second trial (#3738 review)', () => {
+  const trialMount = (blockCreate) => mount(EnrollmentConflictDecisionModal, {
+    props: { show: true, conflicts: [conflict({ class_type: 'trial' })], classType: 'trial', blockCreate },
+  });
+  it('blockCreate hides 建立試聽, and emits no create_trial', async () => {
+    const w = trialMount(true);
+    expect(w.findAll('button').some((b) => b.text() === '建立試聽')).toBe(false);
+    w.vm.$.setupState.emitDecision('create_trial');
+    expect(w.emitted('decision')).toBeUndefined();
+  });
+  it('SmartCalendar blocks create for trial payloads and refuses to force one', () => {
+    expect(calendar).toContain(":block-create=\"interceptOriginalPayload?.class_type === 'trial'\"");
+    expect(calendar).toContain("if (!payload || payload.class_type === 'trial')");
+  });
+});

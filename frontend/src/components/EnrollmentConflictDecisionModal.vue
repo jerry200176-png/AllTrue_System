@@ -96,6 +96,7 @@
         </button>
         <template v-if="isTrial">
           <button
+            v-if="!blockCreate"
             class="primary"
             type="button"
             :disabled="submitting"
@@ -140,6 +141,8 @@ const props = defineProps({
   classType: { type: String, default: '' },
   submitting: { type: Boolean, default: false },
   subjectLabelFn: { type: Function, default: null },
+  // #3738 review: a same-subject trial duplicate must route to the existing trial, never create a second one.
+  blockCreate: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['cancel', 'purchase', 'decision', 'manual-session']);
@@ -184,7 +187,7 @@ function emitCancel() {
 }
 
 function emitDecision(kind) {
-  if (props.submitting) return;
+  if (props.submitting || (props.blockCreate && kind === 'create_trial')) return;
   const existingIds = (props.conflicts || [])
     .map((c) => c.existing_course_id ?? c.id)
     .filter((id) => id != null);
