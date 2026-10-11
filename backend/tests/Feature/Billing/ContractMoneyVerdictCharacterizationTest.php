@@ -105,7 +105,7 @@ class ContractMoneyVerdictCharacterizationTest extends TestCase
             'resolver' => 'unpaid/10000/0/10000/invoice',
             'payable' => 'invoiced/10000/10000',
             'alert' => 'unpaid/10000',
-            'guard' => 'block',
+            'guard' => 'allow',
             'intake' => 'ok',
             'recon' => '10000/0/10000',
         ],

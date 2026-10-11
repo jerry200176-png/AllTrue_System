@@ -83,7 +83,10 @@ export function paymentSlipView(raw) {
   }
   const modeLabel = raw.schedule_mode === 'date' ? '月結制' : '堂數制';
   const hasCanonicalPayable = raw.payable_status === 'invoiced' && raw.payable_amount != null;
-  const displayedAmount = hasCanonicalPayable ? raw.payable_amount : (raw.estimated_amount ?? 0);
+  // Founder Q2: the slip shows what is really still owed (a part-paid bill shows the balance, not the bill total).
+  const owedNow = hasCanonicalPayable && raw.payable_outstanding != null ? raw.payable_outstanding : null;
+  const partlyPaid = owedNow != null && owedNow < raw.payable_amount;
+  const displayedAmount = hasCanonicalPayable ? (owedNow ?? raw.payable_amount) : (raw.estimated_amount ?? 0);
   const items = [{
     description: `${raw.subject}（${modeLabel}${hasCanonicalPayable ? '' : '・估算'}）`,
     period: raw.schedule_mode === 'date' && raw.period_sessions != null
@@ -100,9 +103,9 @@ export function paymentSlipView(raw) {
     student_name: raw.student_name,
     campus_name: raw.campus_name,
     title: '繳費通知',
-    amount_label: hasCanonicalPayable ? '應繳費用' : '預估金額（尚無帳單）',
+    amount_label: partlyPaid ? '尚欠金額' : (hasCanonicalPayable ? '應繳費用' : '預估金額（尚無帳單）'),
     amount: displayedAmount,
-    sub_amounts: null,
+    sub_amounts: partlyPaid ? `帳單總額 ${formatAmount(raw.payable_amount)}・已繳 ${formatAmount(raw.payable_amount - owedNow)}` : null,
     ref_label: raw.subject,
     due: raw.due_date
       ? {

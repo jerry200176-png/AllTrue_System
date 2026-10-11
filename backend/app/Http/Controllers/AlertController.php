@@ -83,7 +83,11 @@ class AlertController extends Controller
             ->where(function ($q) use ($pendingReportClassIds) {
                 $q->where('Paid', 0)
                   ->orWhereNull('Paid')
-                  ->orWhere('RemainingSessions', '<=', 2);
+                  ->orWhere('RemainingSessions', '<=', 2)
+                  // Founder Q2: invoices + payments are the truth; Paid=1 never hides a contract whose bill is still open.
+                  ->orWhereExists(fn ($inv) => $inv->select(DB::raw(1))->from('Invoice')
+                      ->whereColumn('Invoice.StudentClassID', 'StudentClass.ID')
+                      ->where(fn ($st) => $st->whereNull('Invoice.Status')->orWhereNotIn('Invoice.Status', ['paid', 'void'])));
                 if (!empty($pendingReportClassIds)) {
                     $q->orWhereIn('ID', $pendingReportClassIds);
                 }
@@ -345,7 +349,7 @@ class AlertController extends Controller
             ->merge(
                 $countResults
                     ->filter(fn ($c) => !$countPkgMemberIds->contains($c->ID))
-                    ->map(fn ($c) => $this->mapCountModeAlert($c, $subjectNameMap))->filter()
+                    ->map(fn ($c) => $this->mapCountModeAlert($c, $subjectNameMap, $courseStatuses[(int) $c->ID] ?? null))->filter()
             )
             ->merge(
                 // Exclude monthly-package members from individual date-mode alerts
@@ -463,10 +467,12 @@ class AlertController extends Controller
         return response()->json($rows);
     }
 
-    private function mapCountModeAlert(StudentClass $c, array $subjectNameMap = []): ?array
+    /** @param array<string, mixed>|null $verdict BillingPayableResolver course row; invoices that still owe beat the Paid flag (Founder Q2) */
+    private function mapCountModeAlert(StudentClass $c, array $subjectNameMap = [], ?array $verdict = null): ?array
     {
         $remaining = max(0, (int) ($c->RemainingSessions ?? 0));
-        $isPaid = (int) ($c->Paid ?? 0) === 1 || $c->isEffectivelyPaid();
+        $owesOnInvoices = ($verdict['source'] ?? null) === 'invoice' && in_array($verdict['status'] ?? null, ['unpaid', 'partial'], true);
+        $isPaid = !$owesOnInvoices && ((int) ($c->Paid ?? 0) === 1 || $c->isEffectivelyPaid());
         $isUnpaid = !$isPaid;
         $isLowSessions = $remaining <= 2;
 
@@ -811,6 +817,7 @@ class AlertController extends Controller
             'estimated_amount' => $charge,
             'charge_semantics' => 'estimate_only',
             'payable_amount'   => $payable['payable_amount'],
+            'payable_outstanding' => $payable['payable_outstanding'],
             'payable_status'   => $payable['payable_status'],
             'payable_source'   => $payable['payable_source'],
             'payable_invoice_id' => $payable['payable_invoice_id'],

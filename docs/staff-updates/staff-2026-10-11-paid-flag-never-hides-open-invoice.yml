@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-11-paid-flag-never-hides-open-invoice
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: digest
+    title: 勾了已繳費、帳單還沒收齊，也會列出來
+    summary: 以帳單與收款紀錄為準，還欠的錢不會被「已繳費」勾選蓋住。
+    items:
+      - category: improved
+        text: 課程被勾已繳費但帳單還有欠款，會出現在待收名單，可以直接登記收款。
+      - category: improved
+        text: 繳費單顯示還欠多少；已收款蓋滿的帳單不能再重複登記。
+    source_refs:
+      - "changelog:2026-10-11:paid-flag-never-hides-open-invoice"
