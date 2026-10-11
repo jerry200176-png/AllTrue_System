@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Services\Scheduling\DeductionBasis;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -485,7 +486,9 @@ class StudentClass extends Model
             return (string) ($subjectNames[$id] ?? '課程');
         }
 
-        return (string) (DB::table('Subject')->where('id', $id)->value('Subject_Name')
+        // Loop callers (lists, sort comparators) hit this per row: one lookup per subject id, not per course.
+        // Array store is per-process (fresh per request/test); 60s TTL bounds staleness in queue workers.
+        return (string) Cache::store('array')->remember("subject_display_name:{$id}", 60, fn () => DB::table('Subject')->where('id', $id)->value('Subject_Name')
             ?? DB::table('BaseData')->where('Name', '課程')->where('id', $id)->value('Val')
             ?? '課程');
     }
