@@ -505,7 +505,7 @@ for (const [id, revision, issue] of [
     const entry = phaseCSource.match(/\n            389 => \[([\s\S]*?)\n            \],/);
     assert.ok(entry, 'scoped Phase-C entry 389 must exist');
     assert.ok(entry[1].includes('"rev" => "d0793e1b99cd5d941034d6a58ea3dafc1d4309f5"'), '389 requires the exact containing merge');
-    assert.ok(entry[1].includes('"deploy" => "37780068906"'), '389 deploy binding');
+    assert.ok(entry[1].includes('"deploy" => "37788515787"'), '389 deploy binding');
     assert.ok(entry[1].includes('issues/3832'), '389 must notify its canonical issue');
     assert.ok(entry[1].includes('仍等待您實際確認'), '389 must not claim reporter acceptance');
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '389 must disclose no production UI check');
@@ -516,7 +516,7 @@ for (const [id, revision, issue] of [
     const entry = phaseCSource.match(/\n            355 => \[([\s\S]*?)\n            \],/);
     assert.ok(entry, 'scoped Phase-C entry 355 must exist');
     assert.ok(entry[1].includes('"rev" => "d83eb91107bd1c365ac15707f722bd20c5f5f739"'), '355 requires the exact containing merge');
-    assert.ok(entry[1].includes('"deploy" => "37778982075"'), '355 deploy binding');
+    assert.ok(entry[1].includes('"deploy" => "37788515787"'), '355 deploy binding');
     assert.ok(entry[1].includes('issues/3209'), '355 must notify its canonical issue');
     assert.ok(entry[1].includes('仍等待您實際確認'), '355 must not claim reporter acceptance');
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '355 must disclose no production UI check');
@@ -527,7 +527,7 @@ for (const [id, revision, issue] of [
     const entry = phaseCSource.match(/\n            354 => \[([\s\S]*?)\n            \],/);
     assert.ok(entry, 'scoped Phase-C entry 354 must exist');
     assert.ok(entry[1].includes('"rev" => "d83eb91107bd1c365ac15707f722bd20c5f5f739"'), '354 requires the exact containing merge');
-    assert.ok(entry[1].includes('"deploy" => "37778982075"'), '354 deploy binding');
+    assert.ok(entry[1].includes('"deploy" => "37788515787"'), '354 deploy binding');
     assert.ok(entry[1].includes('issues/3210'), '354 must notify its canonical issue');
     assert.ok(entry[1].includes('仍等待您實際確認'), '354 must not claim reporter acceptance');
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '354 must disclose no production UI check');
@@ -538,7 +538,7 @@ for (const [id, revision, issue] of [
     const entry = phaseCSource.match(/\n            346 => \[([\s\S]*?)\n            \],/);
     assert.ok(entry, 'scoped Phase-C entry 346 must exist');
     assert.ok(entry[1].includes('"rev" => "d83eb91107bd1c365ac15707f722bd20c5f5f739"'), '346 requires the exact containing merge');
-    assert.ok(entry[1].includes('"deploy" => "37778982075"'), '346 deploy binding');
+    assert.ok(entry[1].includes('"deploy" => "37788515787"'), '346 deploy binding');
     assert.ok(entry[1].includes('issues/3214'), '346 must notify its canonical issue');
     assert.ok(entry[1].includes('仍等待您實際確認'), '346 must not claim reporter acceptance');
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '346 must disclose no production UI check');
