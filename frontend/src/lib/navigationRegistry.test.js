@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findNavItem, getMobileTabItems, getNavigationGroups, navigationPages, requiredContextForPage } from './navigationRegistry';
+import { findNavItem, getMobileTabItems, getNavigationGroups, getToolbarItems, navigationPages, requiredContextForPage } from './navigationRegistry';
 
 const pages = role => navigationPages(getNavigationGroups(role));
 const sidebar = role => getNavigationGroups(role).flatMap(group => group.items.map(item => item.label));
@@ -39,10 +39,12 @@ describe('navigation registry', () => {
   it('returns fresh nested data so renderers cannot mutate the source model', () => {
     const first = getNavigationGroups('director');
     first[0].items[0].label = 'changed';
-    first.find(group => group.key === 'communication').items[0].badgeTypes.push('changed');
+    first.find(group => group.key === 'teaching').items[1].badgeTypes.push('changed');
+    getToolbarItems('director')[1].badgeTypes.push('changed');
     const second = getNavigationGroups('director');
     expect(second[0].items[0].label).toBe('今日工作台');
-    expect(second.find(group => group.key === 'communication').items[0].badgeTypes).toEqual(['chat']);
+    expect(second.find(group => group.key === 'teaching').items[1].badgeTypes).toEqual(['pending_swipe', 'attendance']);
+    expect(getToolbarItems('director')[1].badgeTypes).toEqual(['chat']);
   });
 
   it('keeps low-frequency tools available without opening every sidebar group by default', () => {
@@ -51,11 +53,11 @@ describe('navigation registry', () => {
       'overview', 'teaching', 'students-courses', 'finance',
     ]);
     expect(groups.filter(group => group.primary === false).map(group => group.key)).toEqual([
-      'teaching-tools', 'communication',
+      'teaching-tools',
     ]);
     expect(groups.find(group => group.key === 'teaching-tools').defaultOpen).toBe(false);
     expect(navigationPages(groups)).toEqual(expect.arrayContaining([
-      'tuition-report', 'teacher-eligibility', 'chat', 'bugs',
+      'tuition-report', 'teacher-eligibility',
     ]));
   });
 
@@ -81,7 +83,7 @@ describe('navigation registry', () => {
   });
 
   it('keeps the director sidebar short and the hub badge equal to its tabs', () => {
-    expect(sidebar('director').filter(l => !['待處理收件匣', '課表回報管理', '重疊課程審核', '內部訊息', '意見與建議'].includes(l))).toEqual([
+    expect(sidebar('director').filter(l => !['課表回報管理', '重疊課程審核'].includes(l))).toEqual([
       '今日工作台', '班級行事曆', '出缺勤', '學習評量', '學生管理', '課程查找', '新生問班', '帳務中心', '報表與薪資', '設定',
     ]);
     expect(sidebar('super_admin')).toContain('系統管理');
@@ -133,5 +135,28 @@ describe('navigation registry', () => {
     expect(requiredContextForPage('director-accounts')).toBeNull();
     expect(requiredContextForPage('teachers')).toBe('director');
     expect(requiredContextForPage('subject-units')).toBeNull();
+  });
+
+  it('moves the inbox, messages and feedback to top-bar icons for directors only', () => {
+    expect(getToolbarItems('director').map(i => [i.page, i.label, i.badgeTypes || []])).toEqual([
+      ['notifications', '待處理收件匣', []],
+      ['chat', '內部訊息', ['chat']],
+      ['bugs', '意見與建議', ['bugs']],
+    ]);
+    expect(getToolbarItems('super_admin').map(i => i.page)).toEqual(['notifications', 'chat', 'bugs']);
+    expect(getToolbarItems('teacher')).toEqual([]);
+    expect(getToolbarItems('student')).toEqual([]);
+    for (const page of ['notifications', 'chat', 'bugs']) {
+      expect(pages('director')).not.toContain(page);
+      expect(sidebar('director')).not.toContain(getToolbarItems('director').find(i => i.page === page).label);
+    }
+    // teacher sidebar is unchanged
+    expect(pages('teacher')).toEqual(expect.arrayContaining(['chat', 'bugs']));
+  });
+
+  it('keeps retired inbox/messages/feedback keys director-routable and never forces a context switch for shared pages', () => {
+    expect(requiredContextForPage('notifications')).toBe('director');
+    expect(requiredContextForPage('chat')).toBeNull();
+    expect(requiredContextForPage('bugs')).toBeNull();
   });
 });

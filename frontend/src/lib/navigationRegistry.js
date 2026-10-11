@@ -41,7 +41,6 @@ function directorGroups(role, { admissionsEnabled = true } = {}) {
       key: 'overview', title: '今日工作', defaultOpen: true, primary: true,
       items: [
         { page: 'director', label: '今日工作台', icon: 'dashboard' },
-        { page: 'notifications', label: '待處理收件匣', icon: 'inbox' },
       ],
     },
     {
@@ -71,19 +70,25 @@ function directorGroups(role, { admissionsEnabled = true } = {}) {
       key: 'finance', title: '帳務與管理', defaultOpen: true, primary: true,
       items: adminItems,
     },
-    {
-      key: 'communication', title: '訊息與回報', defaultOpen: false, primary: false,
-      items: [
-        { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
-        { page: 'bugs', label: '意見與建議', icon: 'rate_review', badgeTypes: ['bugs'] },
-      ],
-    },
   ];
   if (!admissionsEnabled) {
     const group = groups.find(item => item.key === 'students-courses');
     if (group) group.items = group.items.filter(item => item.page !== 'admission-inquiries');
   }
   return groups;
+}
+
+// Director top-bar icons (bell / messages / feedback). Same page keys as before, so old URLs still open them;
+// they are routable pages that no longer take a sidebar row.
+const DIRECTOR_TOOLBAR = [
+  { page: 'notifications', label: '待處理收件匣', icon: 'inbox' },
+  { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
+  { page: 'bugs', label: '意見與建議', icon: 'rate_review', badgeTypes: ['bugs'] },
+];
+
+/** Top-bar icon items for a role (teachers keep chat/feedback in their own sidebar group). */
+export function getToolbarItems(role) {
+  return isDirectorRole(role) ? DIRECTOR_TOOLBAR.map(item => ({ ...item, ...(item.badgeTypes ? { badgeTypes: [...item.badgeTypes] } : {}) })) : [];
 }
 
 function teacherGroups({ truefitEnabled = false } = {}) {
@@ -173,7 +178,7 @@ export function getMobileTabItems(role) {
  */
 const pagesOf = (groups) => new Set(navigationPages(groups));
 // Director-capability pages only: super_admin-only pages (director-accounts, branch-*) must never trigger an auto-switch.
-const DIRECTOR_PAGES = pagesOf(directorGroups('director'));
+const DIRECTOR_PAGES = new Set([...pagesOf(directorGroups('director')), ...DIRECTOR_TOOLBAR.map(item => item.page)]);
 const TEACHER_PAGES = pagesOf(teacherGroups({ truefitEnabled: true }));
 export function requiredContextForPage(page) {
   if (DIRECTOR_PAGES.has(page) && !TEACHER_PAGES.has(page)) return 'director';

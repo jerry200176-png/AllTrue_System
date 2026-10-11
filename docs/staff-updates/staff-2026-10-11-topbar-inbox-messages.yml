@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-11-topbar-inbox-messages
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: major
+    title: 收件匣與訊息搬到右上角
+    summary: 三個常看的入口改成右上角圖示，數字徽章照舊。
+    items:
+      - category: improved
+        text: 待處理收件匣是右上角第一個圖示，有新事項時圖示上會顯示數字。
+      - category: improved
+        text: 內部訊息、意見與建議是右上角另外兩個圖示，不再放在左側選單。
+    source_refs:
+      - "changelog:2026-10-11:topbar-inbox-messages"

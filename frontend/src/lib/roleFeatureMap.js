@@ -1,4 +1,4 @@
-import { getNavigationGroups } from './navigationRegistry.js';
+import { getNavigationGroups, getToolbarItems } from './navigationRegistry.js';
 import { isDirectorRole } from './roleCapabilities.js';
 
 const FEATURE_USAGES = {
@@ -56,7 +56,8 @@ export function getRoleFeatureMap(role, options = {}) {
   const roleKey = isTeacher ? 'teacher' : 'director';
   const roleLabel = isTeacher ? '老師' : (role === 'super_admin' ? '總部管理員' : '主任');
   const usages = FEATURE_USAGES[roleKey] || {};
-  const navGroups = getNavigationGroups(role, options);
+  const toolbar = getToolbarItems(role);
+  const navGroups = [...getNavigationGroups(role, options), ...(toolbar.length ? [{ key: 'toolbar', title: '頂部工具列', primary: true, items: toolbar }] : [])];
   const groups = [];
   const allItems = [];
   const highFrequencyItems = [];

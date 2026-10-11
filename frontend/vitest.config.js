@@ -14,6 +14,7 @@ export default defineConfig({
       'src/lib/tokenContrast.test.js',
       'src/lib/learningRecordSessionPolicy.test.js',
       'src/lib/authedFetch.test.js',
+      'src/lib/navigationRegistry.test.js',
     ],
     globals: false,
     coverage: {
