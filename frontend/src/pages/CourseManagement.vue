@@ -2710,7 +2710,7 @@ const focusActionMenuItem = (courseId, direction = 'first') => {
   const items = actionMenuItems(courseId);
   if (!items.length) return;
   if (direction === 'last') {
-    items.at(-1)?.focus();
+    items[items.length - 1]?.focus();
     return;
   }
   items[0]?.focus();
@@ -2753,7 +2753,7 @@ const handleActionMenuKeydown = async (courseId, event) => {
     return;
   }
   if (key === 'End') {
-    items.at(-1)?.focus();
+    items[items.length - 1]?.focus();
     return;
   }
   const currentIndex = Math.max(0, items.indexOf(document.activeElement));
