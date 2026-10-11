@@ -608,6 +608,7 @@ class EnrollmentService
                                 'existing_course_id' => $sc->ID,
                                 'subject' => $subjectOnly,
                                 'class_type' => $sc->ClassType ?? '',
+                                'schedule_mode' => strtolower((string) ($sc->ScheduleMode ?? '')),
                                 'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
                                 // in-app #382: a manual course with no upcoming lesson needs 「新增下一堂」, not a second course.
                                 'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
@@ -639,6 +640,7 @@ class EnrollmentService
                                 'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
                                 // Same facts as duplicate conflicts, so the shared modal can still offer 新增下一堂 (#382).
                                 'class_type' => $sc->ClassType ?? '',
+                                'schedule_mode' => strtolower((string) ($sc->ScheduleMode ?? '')),
                                 'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
                                 'future_session_count' => $sc->scheduling_policy === 'manual_occurrence'
                                     ? app(ManualSessionBookingService::class)->reservedSessionCount($sc, Carbon::today()->toDateString())
@@ -670,6 +672,12 @@ class EnrollmentService
             $forceGate = $this->validateForceOverride($request, $data);
             if ($forceGate !== null) {
                 return $forceGate;
+            }
+            if (($data['force_reason'] ?? '') === 'renewal_next_term') {
+                $confirmedGate = $this->guardRenewalConfirmedOverlap((int) ($data['student_id'] ?? 0), $subjectGroups);
+                if ($confirmedGate !== null) {
+                    return $confirmedGate;
+                }
             }
         }
 
@@ -1120,6 +1128,43 @@ class EnrollmentService
      *
      * @param  array<string, mixed>  $data
      */
+    /**
+     * Past/completed rows are not covered by the future-only write guard, so a renewal would add a second
+     * completed lesson (and LearningRecord / deduction) on a slot the student already has.
+     *
+     * @param array<string, array<int, array<string, mixed>>> $subjectGroups
+     */
+    private function guardRenewalConfirmedOverlap(int $studentId, array $subjectGroups): ?JsonResponse
+    {
+        if ($studentId <= 0) {
+            return null;
+        }
+        foreach ($subjectGroups as $rows) {
+            foreach ($rows as $row) {
+                if (($row['kind'] ?? '') !== 'confirmed' || empty($row['date']) || empty($row['start_time'])) {
+                    continue;
+                }
+                $start = (string) $row['start_time'];
+                $end = $this->computeEndTime($start, max(30, (int) $row['duration_minutes']));
+                $clash = DB::table('ClassSession as cs')
+                    ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                    ->where('sc.StudentID', $studentId)
+                    ->whereDate('cs.SessionDate', $row['date'])
+                    ->whereNotIn('cs.Status', \App\Support\SessionStatus::futureReservationExclusionStatuses())
+                    ->where('cs.StartTime', '<', $end)->where('cs.EndTime', '>', $start)
+                    ->exists();
+                if ($clash) {
+                    return response()->json([
+                        'message' => '已確認的上課日期與學生既有課程同一時段重疊，續報不能重複建立這堂課。',
+                        'code' => 'renewal_confirmed_slot_overlap',
+                    ], 422);
+                }
+            }
+        }
+
+        return null;
+    }
+
     private function validateForceOverride(Request $request, array $data): ?JsonResponse
     {
         $allowed = ['create_trial', 'renewal_next_term', 'independent_parallel'];
@@ -1158,6 +1203,20 @@ class EnrollmentService
             }
         }
         $existingIds = array_values(array_unique($existingIds));
+
+        // Monthly (date-mode) renewal settles old contract, future sessions and invoice atomically in
+        // ContractRenewal::renewMonthly; generic enrollment must not stand in for it.
+        if ($reason === 'renewal_next_term') {
+            $monthlyExisting = $existingIds !== [] && DB::table('StudentClass')->whereIn('ID', $existingIds)
+                ->where(fn ($q) => $q->whereNull('ScheduleMode')->orWhereRaw('LOWER(ScheduleMode) <> ?', ['count']))
+                ->exists();
+            if ($monthlyExisting || ($data['payment_type'] ?? 'session') !== 'session') {
+                return response()->json([
+                    'message' => '月繳課程的續報請從該課程的「續約」進行，不能用強制建立代替。',
+                    'code' => 'renewal_use_monthly_flow',
+                ], 422);
+            }
+        }
 
         $actorId = null;
         try {

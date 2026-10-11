@@ -71,7 +71,7 @@
         <p class="enrollment-conflict-options-title">請選擇下一步</p>
         <ul class="enrollment-conflict-option-list">
           <li><strong>從既有課程延續</strong>：選上方對應課程。付費課依原加購規則；輔導課建立不收費的下一期並保留關聯。</li>
-          <li v-if="!isTutoring"><strong>建立下一期續報</strong>：使用這次填寫的設定另建課程，不自動延續原課程或建立前後期關聯。</li>
+          <li v-if="canRenewHere"><strong>建立下一期續報</strong>：使用這次填寫的設定另建課程，不自動延續原課程或建立前後期關聯。</li>
           <li><strong>建立獨立課程</strong>：與既有合約平行，需填寫原因（會留下操作紀錄）。</li>
           <li><strong>取消</strong>：不建立。</li>
         </ul>
@@ -107,7 +107,7 @@
         </template>
         <template v-else>
           <button
-            v-if="!isTutoring"
+            v-if="canRenewHere"
             class="ghost"
             type="button"
             :disabled="submitting"
@@ -152,6 +152,9 @@ const headingId = 'enrollment-conflict-heading';
 const independentReason = ref('');
 
 const isTrial = computed(() => String(props.classType || '').toLowerCase() === 'trial');
+// Monthly (non-count) contracts renew through their own 續約 flow, never through generic enrollment.
+const canRenewHere = computed(() => !isTutoring.value
+  && !(props.conflicts || []).some((c) => c?.schedule_mode && c.schedule_mode !== 'count'));
 const isTutoring = computed(() => String(props.classType || '').toLowerCase() === 'tutoring');
 
 watch(

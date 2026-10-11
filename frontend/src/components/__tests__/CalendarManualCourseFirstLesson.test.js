@@ -95,3 +95,13 @@ describe('calendar conflict 去加購 enters the purchase flow (#3738 review)', 
     expect(calendar).not.toMatch(/function interceptGoToPurchase[\s\S]{0,300}buildCourseMgmtOpsNav/);
   });
 });
+
+describe('monthly contracts do not offer generic renewal (#3738 review)', () => {
+  const renewalBtn = (mode) => mount(EnrollmentConflictDecisionModal, {
+    props: { show: true, conflicts: [conflict({ class_type: 'one_on_one', schedule_mode: mode })], classType: 'one_on_one' },
+  }).findAll('button').some((b) => b.text() === '建立下一期續報');
+  it('hides 建立下一期續報 for a monthly conflict and keeps it for a session-count one', () => {
+    expect(renewalBtn('date')).toBe(false);
+    expect(renewalBtn('count')).toBe(true);
+  });
+});

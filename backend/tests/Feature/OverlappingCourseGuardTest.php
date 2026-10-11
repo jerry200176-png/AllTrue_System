@@ -121,6 +121,62 @@ class OverlappingCourseGuardTest extends TestCase
         $this->assertSame($before, \Illuminate\Support\Facades\DB::table('ClassSession')->count());
     }
 
+    /** @return array{0:array,1:int,2:int,3:int} [headers, studentId, teacherId, firstStudentClassId] */
+    private function renewalFixture(string $email): array
+    {
+        $token = $this->createUserToken('A', [1], 'dir-'.$email);
+        $teacherId = $this->createTeacher(1, 'teach-'.$email);
+        $student = $this->createStudent(1, '續報守衛測試生');
+        $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $future = Carbon::now()->addWeeks(8)->next(Carbon::WEDNESDAY)->toDateString();
+        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $this->batchPayload($student->id, $teacherId, [$future]));
+        $res->assertCreated();
+
+        return [$h, $student->id, $teacherId, (int) $res->json('student_class_id')];
+    }
+
+    /** #3738 review: a past/completed same-slot row bypassed the write guard and added a second completed lesson. */
+    public function test_renewal_next_term_force_refuses_confirmed_same_slot_without_second_session(): void
+    {
+        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-past@example.com');
+        $past = Carbon::now()->subWeeks(2)->toDateString();
+        \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
+            'StudentClassID' => $first, 'SessionDate' => $past, 'StartTime' => '16:00:00',
+            'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '',
+        ]);
+        $sessions = \Illuminate\Support\Facades\DB::table('ClassSession')->count();
+        $records = \Illuminate\Support\Facades\DB::table('LearningRecord')->count();
+
+        $renew = $this->batchPayload($studentId, $teacherId, [$past], 'one_on_one');
+        $renew['session_plan'][0]['kind'] = 'confirmed';
+        $renew['force'] = true;
+        $renew['force_reason'] = 'renewal_next_term';
+        $renew['existing_contract_ids'] = [$first];
+        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
+
+        $this->assertSame(422, $res->status());
+        $this->assertSame($sessions, \Illuminate\Support\Facades\DB::table('ClassSession')->count());
+        $this->assertSame($records, \Illuminate\Support\Facades\DB::table('LearningRecord')->count());
+    }
+
+    /** #3738 review: monthly (date-mode) renewal belongs to ContractRenewal::renewMonthly, not generic enrollment. */
+    public function test_renewal_next_term_force_is_refused_for_monthly_contract(): void
+    {
+        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-monthly@example.com');
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->update(['ScheduleMode' => 'date']);
+        $classes = \Illuminate\Support\Facades\DB::table('StudentClass')->count();
+
+        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
+        $renew = $this->batchPayload($studentId, $teacherId, [$later], 'one_on_one');
+        $renew['force'] = true;
+        $renew['force_reason'] = 'renewal_next_term';
+        $renew['existing_contract_ids'] = [$first];
+        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
+
+        $res->assertStatus(422)->assertJson(['code' => 'renewal_use_monthly_flow']);
+        $this->assertSame($classes, \Illuminate\Support\Facades\DB::table('StudentClass')->count());
+    }
+
     /**
      * 試聽是旁聽正式課堂的加掛，不可被 overlapping_active_course 擋死。
      * 同型試聽重複則仍走 duplicate_active_course。
