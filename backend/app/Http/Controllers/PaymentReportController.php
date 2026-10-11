@@ -963,7 +963,9 @@ class PaymentReportController extends Controller
                 'invoice_id' => (int) $invoice->id,
             ], 422);
         }
-        if ($amount <= $outstanding) {
+        // A monthly bill repriced to NT$0 by held sessions is refused by the monthly_amount_stale guard with its own sentence.
+        if ($amount <= $outstanding
+            || ((int) $projection['total_amount'] <= 0 && $projection['amount_source'] === 'billable_sessions')) {
             return null;
         }
 
