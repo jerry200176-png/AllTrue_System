@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-11-payment-guard-says-why
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: digest
+    title: 登記收款被擋，會說明為什麼
+    summary: 不能登記收款時，畫面會說明原因和下一步，不再一律寫「已繳費」。
+    items:
+      - category: improved
+        text: 款項已收齊、課程被勾成已繳費但帳單沒收到款、暫時查不到狀態，三種情況各有一句白話說明。
+    source_refs:
+      - "changelog:2026-10-11:payment-guard-says-why"
