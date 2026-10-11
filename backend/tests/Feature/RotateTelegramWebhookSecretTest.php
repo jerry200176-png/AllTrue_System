@@ -184,4 +184,16 @@ class RotateTelegramWebhookSecretTest extends TestCase
         $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15', '--rollback' => true]));
         $this->assertSame('live-secret', DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
     }
+
+    public function test_rollback_with_dry_run_is_rejected_without_side_effects(): void
+    {
+        $this->campus15(['code' => 'rotaterbdry', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => 'live-secret']);
+        Http::fake();
+
+        $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15', '--rollback' => true, '--dry-run' => true]));
+
+        Http::assertNothingSent();
+        $this->assertSame('live-secret', DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
+        $this->assertStringContainsString('cannot be combined', Artisan::output());
+    }
 }

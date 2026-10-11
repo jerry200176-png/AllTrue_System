@@ -53,6 +53,11 @@ class RotateTelegramWebhookSecret extends Command
             return self::FAILURE;
         }
 
+        if ($this->option('rollback') && $this->option('dry-run')) {
+            $this->error('--rollback cannot be combined with --dry-run; nothing was done.');
+            return self::FAILURE;
+        }
+
         if ($this->option('rollback')) {
             return $this->rollback($campus, $botToken);
         }
