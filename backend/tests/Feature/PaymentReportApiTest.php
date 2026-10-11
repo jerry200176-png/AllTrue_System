@@ -1077,7 +1077,29 @@ class PaymentReportApiTest extends TestCase
         $this->invoiceWithCash($flagged, 8800, 0);
         $this->recordDirect($token, $flagged->ID, 8800)->assertOk();
 
-        $this->assertSame(1, Payment::count());
+        // R28: a refusal on a covered bill (paid period + stale status) never tells staff to clear the Paid flag.
+        $covered = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $stale = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $covered->ID, 'IssueDate' => '2026-04-01', 'TotalAmount' => 8800,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-04']);
+        Payment::create(['InvoiceID' => $stale->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
+        $msg = $this->recordDirect($token, $covered->ID, 100, $stale->id)->assertStatus(422)->assertJsonPath('code', 'course_already_paid')->json('message');
+        $this->assertStringContainsString('作廢', $msg);
+        $this->assertStringNotContainsString('改回', $msg);
+        $this->assertDoesNotMatchRegularExpression('/(請|先|再)[^。]{0,6}(清除|取消|改回)[^。]{0,8}(已付|已繳|未繳)/u', $msg, 'must never tell staff to clear Paid (R28)');
+
+        $this->assertSame(2, Payment::count());
+    }
+
+    public function test_guard_resolves_the_course_once_per_request(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 8800]);
+        $this->mock(\App\Services\BillingPayableResolver::class)
+            ->shouldReceive('courseStatusesByStudentClassIds')->once()
+            ->andReturn([$sc->ID => ['status' => 'paid', 'outstanding' => 0, 'source' => 'invoice']]);
+
+        $this->recordDirect($token, $sc->ID, 8800)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
     }
 
     public function test_q2_fully_paid_invoice_is_refused_even_when_its_stored_status_is_stale(): void

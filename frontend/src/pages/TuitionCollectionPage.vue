@@ -1088,6 +1088,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
+import { summarizeBatchResults } from '../lib/batchResultSummary.js';
 import { rowOwedTotal } from '../lib/studentBillingRows.js';
 import { useToast } from '../composables/useToast';
 import { authedFetch } from '../lib/authedFetch.js';
@@ -1421,6 +1422,8 @@ function toggleSelectAll(checked) {
   selectedIds.value = [...next];
 }
 
+const batchRowLabel = (r) => [r.student_name, r.subject].filter(Boolean).join(' ') || `課程 ${r.id}`;
+
 function clearSelection() {
   selectedIds.value = [];
 }
@@ -1507,9 +1510,11 @@ async function submitBatchReport() {
     if (!resp.ok && resp.status !== 207) {
       throw new Error(humanizeApiErrorMessage(json.message || `送出失敗（${resp.status}）`));
     }
-    showToast(json.message || `已送出，狀態改為「${REPORT_STATUS_LABELS.pending}」`);
+    const partial = resp.status === 207 ? summarizeBatchResults(json, rows, (r) => r.id, batchRowLabel) : null;
+    showToast(partial?.text ? `${json.message}\n${partial.text}` : (json.message || `已送出，狀態改為「${REPORT_STATUS_LABELS.pending}」`), partial?.text ? 'warning' : 'success');
     batchPreviewOpen.value = false;
-    clearSelection();
+    // Keep the entries that did not go through selected so the director can see and retry them.
+    if (partial?.failedRowIds.length) selectedIds.value = partial.failedRowIds; else clearSelection();
     loadAlerts();
     finishBillingWorkflow(workflowStep, 'completed', { result: resp.status === 207 ? 'partial' : 'ok' });
     void trackWorkflowEvent('billing', 'returned', props.branchId, { step: workflowStep, target: 'queue' });
@@ -1550,9 +1555,10 @@ async function submitBatchConfirm() {
     if (!resp.ok && resp.status !== 207) {
       throw new Error(humanizeApiErrorMessage(json.message || `確認失敗（${resp.status}）`));
     }
-    showToast(json.message || `已確認，狀態改為「${TUITION_STATUS_CONFIG.paid.label}」`);
+    const partial = resp.status === 207 ? summarizeBatchResults(json, rows, (r) => r.latest_payment_report_id, batchRowLabel) : null;
+    showToast(partial?.text ? `${json.message}\n${partial.text}` : (json.message || `已確認，狀態改為「${TUITION_STATUS_CONFIG.paid.label}」`), partial?.text ? 'warning' : 'success');
     batchPreviewOpen.value = false;
-    clearSelection();
+    if (partial?.failedRowIds.length) selectedIds.value = partial.failedRowIds; else clearSelection();
     loadAlerts();
     finishBillingWorkflow(workflowStep, 'completed', { result: resp.status === 207 ? 'partial' : 'ok' });
     void trackWorkflowEvent('billing', 'returned', props.branchId, { step: workflowStep, target: 'queue' });
