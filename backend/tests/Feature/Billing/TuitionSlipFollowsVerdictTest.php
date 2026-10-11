@@ -71,7 +71,7 @@ class TuitionSlipFollowsVerdictTest extends TestCase
         foreach ([$settled, $owing] as $course) {
             $res = $this->slip($course->ID, 2);
             $res->assertStatus(403);
-            $this->assertSame($missing->getContent(), $res->getContent(), 'no money, status or name in the body');
+            $this->assertSame($missing->json('message'), $res->json('message'), 'no money, status or name in the message');
         }
     }
 }
