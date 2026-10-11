@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-11-sidebar-hubs
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: major
+    title: 左側選單變精簡
+    summary: 低頻功能收進「報表與薪資」「設定」，頁面上方用分頁切換。
+    items:
+      - category: improved
+        text: 當月學收、科目數統計、兼職薪資、正職薪資要件，在「報表與薪資」。
+      - category: improved
+        text: 老師管理、教室、科目與 LINE 通知、綁定相關頁面，在「設定」。
+      - category: improved
+        text: 總部：主任審核、分校管理、分校健康、夜間對帳，在「系統管理」。
+    source_refs:
+      - "changelog:2026-10-11:sidebar-hubs"

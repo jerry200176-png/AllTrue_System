@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getMobileTabItems, getNavigationGroups } from './navigationRegistry';
+import { findNavItem, getMobileTabItems, getNavigationGroups, navigationPages, requiredContextForPage } from './navigationRegistry';
 
-const pages = role => getNavigationGroups(role).flatMap(group => group.items.map(item => item.page));
+const pages = role => navigationPages(getNavigationGroups(role));
+const sidebar = role => getNavigationGroups(role).flatMap(group => group.items.map(item => item.label));
 
 describe('navigation registry', () => {
   it('keeps role visibility and legacy page keys stable', () => {
@@ -22,8 +23,7 @@ describe('navigation registry', () => {
   });
 
   it('hides the admissions entry when the client rollout flag is off', () => {
-    expect(getNavigationGroups('director', { admissionsEnabled: false })
-      .flatMap(group => group.items.map(item => item.page)))
+    expect(navigationPages(getNavigationGroups('director', { admissionsEnabled: false })))
       .not.toContain('admission-inquiries');
   });
 
@@ -51,11 +51,10 @@ describe('navigation registry', () => {
       'overview', 'teaching', 'students-courses', 'finance',
     ]);
     expect(groups.filter(group => group.primary === false).map(group => group.key)).toEqual([
-      'teaching-tools', 'reports-payroll', 'communication', 'settings',
+      'teaching-tools', 'communication',
     ]);
     expect(groups.find(group => group.key === 'teaching-tools').defaultOpen).toBe(false);
-    expect(groups.find(group => group.key === 'reports-payroll').defaultOpen).toBe(false);
-    expect(groups.flatMap(group => group.items.map(item => item.page))).toEqual(expect.arrayContaining([
+    expect(navigationPages(groups)).toEqual(expect.arrayContaining([
       'tuition-report', 'teacher-eligibility', 'chat', 'bugs',
     ]));
   });
@@ -65,5 +64,74 @@ describe('navigation registry', () => {
       const rolePages = pages(role);
       expect(new Set(rolePages).size).toBe(rolePages.length);
     }
+  });
+
+  it('folds reports, settings and system admin into three tabbed hubs', () => {
+    const hubs = role => getNavigationGroups(role).flatMap(g => g.items).filter(i => i.tabs);
+    expect(hubs('director').map(h => [h.label, h.tabs.map(t => t.label)])).toEqual([
+      ['報表與薪資', ['當月學收', '科目數統計', '兼職薪資', '正職薪資要件']],
+      ['設定', ['老師管理', '教室', '科目', '家長 LINE 通知', 'LINE 綁定管理', '綁定衝突審查', '綁定健康度']],
+    ]);
+    expect(hubs('super_admin').map(h => h.label)).toEqual(['報表與薪資', '設定', '系統管理']);
+    expect(hubs('super_admin')[2].tabs.map(t => t.page)).toEqual([
+      'director-accounts', 'branch-management', 'branch-health-board', 'nightly-reconcile',
+    ]);
+    expect(hubs('teacher')).toEqual([]);
+    for (const hub of hubs('super_admin')) expect(hub.page).toBe(hub.tabs[0].page);
+  });
+
+  it('keeps the director sidebar short and the hub badge equal to its tabs', () => {
+    expect(sidebar('director').filter(l => !['待處理收件匣', '課表回報管理', '重疊課程審核', '內部訊息', '意見與建議'].includes(l))).toEqual([
+      '今日工作台', '班級行事曆', '出缺勤', '學習評量', '學生管理', '課程查找', '新生問班', '帳務中心', '報表與薪資', '設定',
+    ]);
+    expect(sidebar('super_admin')).toContain('系統管理');
+    expect(sidebar('director')).not.toContain('系統管理');
+    const settings = getNavigationGroups('director').flatMap(g => g.items).find(i => i.label === '設定');
+    expect(settings.badgeTypes).toEqual(['pending_teachers']);
+    const system = getNavigationGroups('super_admin').flatMap(g => g.items).find(i => i.label === '系統管理');
+    expect(system.badgeTypes).toEqual(['director_pending']);
+  });
+
+  // Retired standalone sidebar entries: old ?app_page= URLs, bookmarks and LINE links keep working
+  // because each old key is now a tab of its hub (same key, same screen).
+  const RETIRED = {
+    director: {
+      'tuition-report': ['報表與薪資', '當月學收'],
+      'subject-units': ['報表與薪資', '科目數統計'],
+      'parttime-payroll': ['報表與薪資', '兼職薪資'],
+      'teacher-eligibility': ['報表與薪資', '正職薪資要件'],
+      teachers: ['設定', '老師管理'],
+      classroom: ['設定', '教室'],
+      'subject-settings': ['設定', '科目'],
+      'line-integration': ['設定', '家長 LINE 通知'],
+      'binding-management': ['設定', 'LINE 綁定管理'],
+      'binding-conflicts': ['設定', '綁定衝突審查'],
+      'binding-health': ['設定', '綁定健康度'],
+    },
+    super_admin: {
+      'director-accounts': ['系統管理', '主任審核'],
+      'branch-management': ['系統管理', '分校管理'],
+      'branch-health-board': ['系統管理', '分校健康'],
+      'nightly-reconcile': ['系統管理', '夜間堂數對帳'],
+    },
+  };
+  for (const [role, map] of Object.entries(RETIRED)) {
+    for (const [key, [hubLabel, tabLabel]] of Object.entries(map)) {
+      it(`retired key ${key} still resolves to ${hubLabel} > ${tabLabel} for ${role}`, () => {
+        const groups = getNavigationGroups(role);
+        expect(navigationPages(groups)).toContain(key);
+        const item = findNavItem(groups, key);
+        expect(item.label).toBe(hubLabel);
+        expect(item.tabs.find(t => t.page === key).label).toBe(tabLabel);
+      });
+    }
+  }
+
+  it('does not expose super_admin-only tabs to directors or switch context for them', () => {
+    expect(pages('director')).not.toEqual(expect.arrayContaining(['director-accounts']));
+    expect(findNavItem(getNavigationGroups('director'), 'nightly-reconcile')).toBeNull();
+    expect(requiredContextForPage('director-accounts')).toBeNull();
+    expect(requiredContextForPage('teachers')).toBe('director');
+    expect(requiredContextForPage('subject-units')).toBeNull();
   });
 });

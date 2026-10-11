@@ -551,7 +551,7 @@ const props = defineProps({
 
 const bugs = ref([]);
 const PAGE_LABELS = Object.fromEntries(
-  ['director', 'teacher'].flatMap((role) => getNavigationGroups(role).flatMap((g) => g.items.map((i) => [i.page, i.label]))),
+  ['director', 'teacher'].flatMap((role) => getNavigationGroups(role).flatMap((g) => g.items.flatMap((i) => (i.tabs || [i]).map((t) => [t.page, t.label])))),
 );
 const listDisplay = (bug) => bugListDisplay(bug, (key) => PAGE_LABELS[key]);
 const activeBug = ref(null);
