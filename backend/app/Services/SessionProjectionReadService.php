@@ -62,6 +62,7 @@ class SessionProjectionReadService
         int $branchId = 0,
         ?StudentClass $class = null
     ): array {
+        $class?->loadMissing(['student', 'teacher', 'subjectRecord']);
         $student = $class?->getAttribute('student');
         $teacher = $class?->getAttribute('teacher');
         $subject = $class?->getAttribute('subjectRecord');
