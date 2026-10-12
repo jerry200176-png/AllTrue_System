@@ -154,7 +154,8 @@ const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p
 // Same source as the printed receipt (receipts first, PayDate only as the parent's fallback; never "fixed" here).
 const payLineText = computed(() => {
   const p = props.lastPayment;
-  return p?.date ? `繳費日 ${dateOnly(p.date)}　${money(p.amount)}` : '還沒繳費';
+  if (p?.date) return `繳費日 ${dateOnly(p.date)}　${money(p.amount)}`;
+  return legacyPaid.value ? LEGACY_PAID_LABEL : '還沒繳費';
 });
 const monthLineText = (key) => {
   const m = props.monthLines?.[key];

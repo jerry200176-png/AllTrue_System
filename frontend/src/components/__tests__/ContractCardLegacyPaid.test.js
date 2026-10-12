@@ -32,6 +32,8 @@ describe('ContractCard legacy paid / no invoice', () => {
       expect(r.text()).not.toContain('還沒開帳單');
     }
     expect(w.text()).not.toContain('還沒開帳單');
+    expect(w.text()).not.toContain('還沒繳費');
+    expect(w.get('[data-testid="contract-last-payment"]').text()).toBe('舊制已繳（無新系統帳單）');
     expect(w.find('[data-testid="contract-issue"]').exists()).toBe(false);
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
   });
@@ -39,6 +41,7 @@ describe('ContractCard legacy paid / no invoice', () => {
   it('unpaid course with no invoice keeps 還沒開帳單 and the existing actions', async () => {
     const w = await mountCard({ course: { id: 9, paid: false }, amounts: null, billDraft: { amount: 1000 } });
     expect(w.text()).toContain('還沒開帳單');
+    expect(w.get('[data-testid="contract-last-payment"]').text()).toBe('還沒繳費');
     expect(w.find('[data-testid="contract-legacy-paid"]').exists()).toBe(false);
     expect(w.find('[data-testid="contract-issue"]').exists()).toBe(true);
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(true);

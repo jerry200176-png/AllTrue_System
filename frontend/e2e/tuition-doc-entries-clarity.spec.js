@@ -55,6 +55,8 @@ for (const [name, width, height] of [['1280', 1280, 800], ['390', 390, 844]]) {
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
     await expect(page.locator('#tuition-row-105:visible').first().getByTestId('tc-doc-ledger')).toBeVisible();
+    await expect(page.locator('#tuition-row-105:visible').first().getByTestId('tc-void')).toBeDisabled();
+    await expect(page.locator('#tuition-row-105:visible').first().getByTestId('tc-void-reason')).toHaveText('舊制沒有系統收款，無可撤銷');
     await page.screenshot({ path: path.join(outDir, `slip-receipt-states-${name}.png`), fullPage: true });
 
     // 開啟既有繳費單預覽 → 關閉；整個流程只能有 GET
@@ -90,6 +92,8 @@ for (const [name, width, height] of [['1280', 1280, 800], ['390', 390, 844]]) {
     await expect(page.getByTestId('contract-legacy-paid')).toHaveText('舊制已繳（無新系統帳單）');
     await expect(page.getByTestId('contract-session').first()).toContainText('舊制已繳（無新系統帳單）');
     await expect(dialog.getByText('還沒開帳單')).toHaveCount(0);
+    await expect(dialog.getByText('還沒繳費')).toHaveCount(0);
+    await expect(dialog.locator('.ledger-owed__label')).toHaveText('此學生到今天未繳（含其他課程）');
     await expect(page.getByTestId('contract-issue')).toHaveCount(0);
     await expect(page.getByTestId('contract-record')).toHaveCount(0);
     await expect(page.getByTestId('ledger-target-empty')).toContainText('這門課目前沒有帳單和收款');

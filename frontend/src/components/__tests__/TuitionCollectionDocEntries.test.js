@@ -61,6 +61,16 @@ describe('帳務中心 學生列：繳費單／收據入口', () => {
     w.unmount();
   });
 
+  it('撤銷 is disabled with a reason for legacy paid (nothing to void), still enabled for invoiced paid', async () => {
+    const w = await mountPage();
+    const v105 = rowOf(w, 105).get('[data-testid="tc-void"]');
+    expect(v105.element.disabled).toBe(true);
+    expect(rowOf(w, 105).get('[data-testid="tc-void-reason"]').text()).toBe('舊制沒有系統收款，無可撤銷');
+    expect(rowOf(w, 103).get('[data-testid="tc-void"]').element.disabled).toBe(false);
+    expect(rowOf(w, 103).find('[data-testid="tc-void-reason"]').exists()).toBe(false);
+    w.unmount();
+  });
+
   it('non-director session: both disabled with 沒有權限', async () => {
     session('teacher');
     const w = await mountPage();

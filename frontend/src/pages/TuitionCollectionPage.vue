@@ -477,10 +477,11 @@
 
                     <!-- paid / renew_needed / monthly_due_soon: void + receipt -->
                     <template v-if="r.payment_status === 'paid' || r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'">
-                      <button v-if="canVoid" class="tc-btn tc-btn--void" @click="openVoidDialog(r)" :disabled="actionLoading === r.id" title="撤銷收款">
+                      <button v-if="canVoid" class="tc-btn tc-btn--void" data-testid="tc-void" @click="openVoidDialog(r)" :disabled="actionLoading === r.id || isLegacyPaidNoInvoice(r)" :title="isLegacyPaidNoInvoice(r) ? NO_VOIDABLE_PAYMENT : '撤銷收款'">
                         <span class="material-symbols-outlined">undo</span>
                         撤銷
                       </button>
+                      <span v-if="canVoid && isLegacyPaidNoInvoice(r)" class="tc-renew-hint" data-testid="tc-void-reason">{{ NO_VOIDABLE_PAYMENT }}</span>
                       <template v-if="r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'">
                         <span
                           v-if="r.payment_status === 'renew_needed' && r.has_newer_course"
@@ -1095,6 +1096,7 @@ import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import MonthlyDraftsPanel from '../components/tuition/MonthlyDraftsPanel.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import TuitionDocActions from '../components/TuitionDocActions.vue';
+import { isLegacyPaidNoInvoice } from '../lib/legacyPaid.js';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
@@ -1292,6 +1294,8 @@ function getAuthRole() {
   return session?.user?.role || session?.role || '';
 }
 
+// 舊制已繳沒有任何系統收款，後端找不到可撤銷的紀錄，所以不提供撤銷。
+const NO_VOIDABLE_PAYMENT = '舊制沒有系統收款，無可撤銷';
 const canViewBillingDocs = computed(() => isDirectorRole(getAuthRole()));
 const canVoid = computed(() => {
   const role = getAuthRole();

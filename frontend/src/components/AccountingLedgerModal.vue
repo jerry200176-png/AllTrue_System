@@ -36,7 +36,7 @@
           <div v-show="!allocating">
           <!-- PRD v2 D8: owed-by-today first, same rule as the student list. -->
           <div class="ledger-owed" data-testid="ledger-owed">
-            <p class="ledger-owed__label">到今天未繳</p>
+            <p class="ledger-owed__label">{{ owedLabel }}</p>
             <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
             <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
             <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}。下面「需先處理」會寫是哪一筆，可以撤銷多出來的那一筆。</p>
@@ -528,6 +528,13 @@ const panelTitle = computed(() => (payload.value?.student?.name ? `${payload.val
 const owedSplit = computed(() => splitOwed((payload.value?.invoices || [])
   .filter((inv) => inv.status !== 'void')
   .map((inv) => ({ amount: inv.outstanding_amount, due_date: inv.due_date }))));
+// 開啟單一課程、但未繳來自其他課程時，標題要說清楚是整個學生的金額。
+const owedLabel = computed(() => {
+  const scopeId = Number(payload.value?.scope?.student_class_id || 0);
+  const otherOwes = !!scopeId && (payload.value?.invoices || []).some((inv) => inv.status !== 'void'
+    && Number(inv.student_class_id) !== scopeId && Number(inv.outstanding_amount || 0) > 0);
+  return otherOwes ? '此學生到今天未繳（含其他課程）' : '到今天未繳';
+});
 const overpaidTotal = computed(() => Number(payload.value?.summary?.overpaid_total || 0));
 
 const owedFor = (id) => (payload.value?.invoices || [])

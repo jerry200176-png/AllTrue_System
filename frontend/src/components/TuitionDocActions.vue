@@ -36,6 +36,7 @@
 
 <script setup>
 import { computed } from 'vue';
+import { isLegacyPaidNoInvoice } from '../lib/legacyPaid.js';
 
 // 繳費單／收據固定兩顆入口。可用條件沿用帳務中心既有的 payment_status 判斷，
 // 不新增 API／金流規則；不可用時 disabled 並顯示一行原因。
@@ -53,8 +54,7 @@ const uid = `tc-doc-${props.row.id}`;
 
 // 舊制已繳費、沒有帳單（後端 legacy_paid_without_invoice：無帳單且 Paid=1；
 // 帳務中心待處理列沒帶旗標時，以「已繳狀態＋無 invoice_id」判斷）。
-const legacy = computed(() => !!props.row.legacy_paid_without_invoice
-  || (RECEIPT_STATUSES.includes(props.row.payment_status) && !props.row.invoice_id));
+const legacy = computed(() => isLegacyPaidNoInvoice(props.row));
 
 const slip = computed(() => {
   if (!props.canView) return { ok: false, reason: NO_PERMISSION };
