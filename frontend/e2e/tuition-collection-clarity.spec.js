@@ -45,7 +45,7 @@ test('In-App #339: dense receivable actions leave readable space for amounts wit
     const actions = row.locator('td:last-child');
     await expect(row.locator('td').nth(6)).toContainText('4,200');
     await expect(row.locator('td').nth(8)).toContainText('4,200');
-    await expect(actions.locator('button')).toHaveText(['account_balance 繳費明細', 'receipt_long 繳費單', 'check_circle 登記已回報']);
+    await expect(actions.locator('button')).toHaveText(['account_balance 繳費明細', 'receipt_long 繳費單', 'receipt 收據', 'check_circle 登記已回報']);
     const box = await actions.boundingBox();
     expect(box.width).toBeLessThanOrEqual(width * 0.35);
     await expect(actions).toHaveCSS('position', 'sticky');
@@ -60,7 +60,7 @@ test('In-App #339: dense receivable actions leave readable space for amounts wit
     await page.keyboard.press('Tab');
     await expect(actions.locator('button').nth(1)).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(actions.locator('button').nth(2)).toBeFocused();
+    await expect(actions.locator('button').nth(3)).toBeFocused();
     // Amounts may require table scrolling, but the sticky action region must
     // leave enough visible width to read each amount in full.
     for (const index of [6, 7, 8]) {

@@ -42,7 +42,7 @@ export function courseActions(course, caps = {}) {
       { id: 'contract-adjust', label: '合約／堂次調整' },
       caps.contractAmended && { id: 'contract-revert', label: '撤銷調整' },
       caps.packagePreview && { id: 'package-preview', label: '轉多科方案預檢' },
-      caps.paymentNotice && { id: 'payment-slip', label: '繳費通知' },
+      caps.paymentNotice && { id: 'payment-slip', label: '繳費單' },
       { id: 'invoice', label: '在這裡看帳務' },
     ] },
     { id: 'end', label: '狀態', items: [

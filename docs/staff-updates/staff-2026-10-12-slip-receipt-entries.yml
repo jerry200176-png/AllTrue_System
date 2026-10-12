@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-12-slip-receipt-entries
+    published_at: "2026-10-12"
+    audiences:
+      - director
+    importance: digest
+    title: 繳費單、收據入口更好找
+    summary: 帳務中心每列固定顯示繳費單與收據，不能用時會寫原因。
+    items:
+      - category: improved
+        text: 每列都有繳費單、收據；不能用時變灰並說明原因。
+      - category: improved
+        text: 「繳費通知」統一改稱「繳費單」，用法與規則不變。
+    source_refs:
+      - "changelog:2026-10-12:slip-receipt-discoverability"
