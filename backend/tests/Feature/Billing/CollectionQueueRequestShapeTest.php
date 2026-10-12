@@ -205,11 +205,8 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertLedger($inv, 8800, 'paid');
     }
 
-    /**
-     * r4242583488 — BLOCKED: Paid=1 with a stored-paid bill still owing by Payment rows never reaches GET alerts/tuition.
-     * Including it changes AlertController::tuition list conditions (DIRECTOR_PAYMENT_ALERT_RULES change control; high-risk
-     * file per alltrue-code-review) and #3862 (on hold) edits the same controller → needs a Founder rule.
-     */
+    /** r4242583488 BLOCKED (Founder rule): Paid=1 + stored-paid bill owing by Payment rows is absent from alerts/tuition;
+     * fixing it changes AlertController::tuition list conditions (change-controlled, high-risk; #3862 hold). */
     public function test_review_paid_flag_contract_owing_by_payment_rows_is_in_the_queue(): void
     {
         $this->markTestSkipped('Blocked on Founder rule: AlertController::tuition inclusion change (#3888 r4242583488; #3862 hold).');
@@ -322,7 +319,6 @@ class CollectionQueueRequestShapeTest extends TestCase
         $inv = Invoice::create(array_merge(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => "$period-01",
             'TotalAmount' => $total, 'PaidAmount' => $paid, 'Status' => 'partial', 'billing_period' => $period], $over));
         Payment::create(['InvoiceID' => $inv->id, 'Amount' => $paid, 'PaidAt' => "$period-05", 'Method' => 'cash']);
-
         return $inv;
     }
 
