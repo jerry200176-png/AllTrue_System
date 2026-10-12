@@ -150,8 +150,11 @@ async function submit() {
       payment_method: form.payment_method,
       amount,
     };
-    if (props.row.invoice_id) {
-      body.invoice_id = props.row.invoice_id;
+    // Queue rows carry payable_invoice_id: pay the bill whose outstanding prefilled the amount (#3864 hotfix).
+    const invoiceId = props.row.invoice_id
+      ?? (Number(props.row.payable_outstanding) > 0 ? props.row.payable_invoice_id : null);
+    if (invoiceId) {
+      body.invoice_id = invoiceId;
     }
     if (form.payment_method === 'transfer' && form.account_last5) {
       body.account_last5 = form.account_last5;

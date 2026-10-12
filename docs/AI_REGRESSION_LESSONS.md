@@ -659,7 +659,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 - 主任核帳若找不到未繳 Invoice 就自動新建 Invoice/Payment，會讓同一筆課被重複入帳，畫面出現多筆繳費。
 - 已繳課程底下若殘留 unpaid Invoice，不能把該 Invoice 當成「可核帳目標」；這通常代表歷史錯帳或續報/帳單建立時期的殘留資料，應先作廢或修補資料。
-- **強制規則**：`PaymentReportController::directorRecord` 在課程已標記 `Paid=1` 或已有 paid Invoice 時，必須回 422；即使 request 指定了 unpaid `invoice_id` 也不可建立第二筆 Payment/PaymentReport。
+- **Founder Q2（2026-10-11，#3797／#3864）取代舊規則**：帳單＋Payment 紀錄才是真相，`Paid=1` 旁邊還欠的帳單**可以**收款；但只能收**目標帳單**依 Payment 紀錄（`InvoiceAmountReconciliationService`）算出的未收額（鎖住帳單後在 `directorRecord`／batch／`confirm` 都重算，超過回 422「這張帳單只欠 NT$X…」），不可用整門課的總未收額，也不可用儲存的 `PaidAmount`；`confirm` 寫回的 `PaidAmount`／`Status` 一律從 Payment 紀錄重算。Payment 紀錄已收足的帳單（即使 Status 過期仍是 unpaid）一律拒收；課程已收齊（resolver `paid`）且沒有未結帳單時仍回 422。
 - **強制規則**：`PaymentReportController::confirm` 必須套用同一個已繳防重 guard；家長回報 pending report 不可繞過 `directorRecord` 的防護而新建第二筆帳。
 - **強制規則**：帳單畫面顯示付款筆數時，只能計算正向有效付款；`Method='void'` 或負數沖銷不可算成「繳費次數」。
 - **強制規則**：歷史錯帳更正不可刪除 `Payment` 或手改金額；必須從收款/收據紀錄逐筆撤銷，建立負值沖銷並保存 `void_reason` 稽核。
@@ -861,6 +861,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **根因**：`calendarOccurrenceMerge.dedupeByStudentSlot()` 舊 key 優先使用 `student_course_id`，不同 `StudentClass` 的同學生同日同開始時間不會互相去重。
 - **強制規則**：週檢視 occurrence 去重的學生時段 key 必須用學生識別 + 日期/星期 + 開始時間；`class_session_id` backed occurrence 優先於 exception/base/synthetic contract。
 - **測試必補**：`calendarOccurrenceMerge.test.js` 覆蓋 legacy active contract + current `ClassSession` 同學生同時段只留實體堂次。
+- **延伸（2026-10-11 / in-app #389 / GitHub #3847）**：去重只用來剔除 template／legacy 殘影，**不可吞掉兩筆都是真實 `ClassSession`（不同 id、不同 `StudentClass`）的同學生同時段**——例：續約課程起日與舊課程最後一堂重疊，同一學生同格有 2 堂 attended，舊邏輯只剩 1 張卡，科目數卻算 2，使用者看不出重複扣堂。現在兩張都顯示（請假與非請假混合仍收斂）；真正要處理的是重複堂次資料，由主任判斷。測試見 `calendarOccurrenceMerge.test.js` #3847 段。
 
 ---
 

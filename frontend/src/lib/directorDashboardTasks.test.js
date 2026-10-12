@@ -35,3 +35,13 @@ assert.equal(isLiveScheduleRow({ status: 'rescheduled' }), true);
 assert.equal(isLiveScheduleRow({ status: 'superseded' }), false);
 assert.equal(isLiveScheduleRow({ status: 'Leave' }), false);
 assert.equal(isLiveScheduleRow({ status: 'cancelled' }), false);
+
+// Sidebar IA: schedule reports, duplicate review and the inbox live in the to-do list, only while pending.
+const todo = buildDirectorDashboardTasks({ scheduleDiscrepancyCount: 2, duplicateReviewCount: 3, inboxCount: 5 });
+assert.deepEqual(todo.map((item) => item.type).sort(), ['duplicate-review', 'inbox', 'schedule-discrepancy']);
+assert.equal(todo.find((item) => item.type === 'schedule-discrepancy').target.page, 'schedule-discrepancy');
+assert.equal(todo.find((item) => item.type === 'duplicate-review').target.page, 'duplicate-review');
+assert.equal(todo.find((item) => item.type === 'duplicate-review').count, 3);
+assert.equal(todo.find((item) => item.type === 'inbox').target.page, 'notifications');
+assert.equal(todo.find((item) => item.type === 'inbox').count, 5);
+assert.equal(buildDirectorDashboardTasks({ scheduleDiscrepancyCount: 0, duplicateReviewCount: 0, inboxCount: 0 }).length, 0);

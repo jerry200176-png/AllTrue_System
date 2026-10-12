@@ -3,27 +3,44 @@
 import { isDirectorRole } from './roleCapabilities.js';
 
 
+// A hub item is one sidebar entry whose `tabs` are the retired standalone pages.
+// `item.page` is the default tab, and every tab keeps its original page key, so old
+// ?app_page= URLs, bookmarks and LINE links still resolve to the same screen.
+const REPORT_TABS = [
+  { page: 'tuition-report', label: '當月學收' },
+  { page: 'subject-units', label: '科目數統計' },
+  { page: 'parttime-payroll', label: '兼職薪資' },
+  { page: 'teacher-eligibility', label: '正職薪資要件' },
+];
+const SETTINGS_TABS = [
+  { page: 'teachers', label: '老師管理', badgeTypes: ['pending_teachers'] },
+  { page: 'classroom', label: '教室' },
+  { page: 'subject-settings', label: '科目' },
+  { page: 'line-integration', label: '家長 LINE 通知' },
+  { page: 'binding-management', label: 'LINE 綁定管理' },
+  { page: 'binding-conflicts', label: '綁定衝突審查' },
+  { page: 'binding-health', label: '綁定健康度' },
+];
+const SYSTEM_TABS = [
+  { page: 'director-accounts', label: '主任審核', badgeTypes: ['director_pending'] },
+  { page: 'branch-management', label: '分校管理' },
+  { page: 'branch-health-board', label: '分校健康' },
+  { page: 'nightly-reconcile', label: '夜間堂數對帳' },
+];
+const hub = (label, icon, tabs) => ({ page: tabs[0].page, label, icon, tabs });
+
 function directorGroups(role, { admissionsEnabled = true } = {}) {
-  const systemItems = [
-    { page: 'line-integration', label: '家長 LINE 通知', icon: 'chat' },
-    { page: 'binding-management', label: 'LINE 綁定管理', icon: 'link' },
-    { page: 'binding-conflicts', label: '綁定衝突審查', icon: 'gpp_maybe' },
-    { page: 'binding-health', label: '綁定健康度', icon: 'monitor_heart' },
+  const adminItems = [
+    { page: 'tuition-collect', label: '帳務中心', icon: 'payments' },
+    hub('報表與薪資', 'bar_chart', REPORT_TABS),
+    hub('設定', 'settings', SETTINGS_TABS),
   ];
-  if (role === 'super_admin') {
-    systemItems.push(
-      { page: 'director-accounts', label: '主任審核', icon: 'admin_panel_settings', badgeTypes: ['director_pending'] },
-      { page: 'branch-management', label: '分校管理', icon: 'store' },
-      { page: 'branch-health-board', label: '分校健康', icon: 'monitor_heart' },
-      { page: 'nightly-reconcile', label: '夜間堂數對帳', icon: 'receipt_long' },
-    );
-  }
+  if (role === 'super_admin') adminItems.push(hub('系統管理', 'admin_panel_settings', SYSTEM_TABS));
   const groups = [
     {
       key: 'overview', title: '今日工作', defaultOpen: true, primary: true,
       items: [
         { page: 'director', label: '今日工作台', icon: 'dashboard' },
-        { page: 'notifications', label: '待處理收件匣', icon: 'inbox' },
       ],
     },
     {
@@ -31,14 +48,7 @@ function directorGroups(role, { admissionsEnabled = true } = {}) {
       items: [
         { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
         { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
-        { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
         { page: 'learning', label: '學習評量', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
-      ],
-    },
-    {
-      key: 'teaching-tools', title: '進階教學工具', defaultOpen: false, primary: false,
-      items: [
-        { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
       ],
     },
     {
@@ -50,35 +60,8 @@ function directorGroups(role, { admissionsEnabled = true } = {}) {
       ],
     },
     {
-      key: 'finance', title: '財務與人事', defaultOpen: true, primary: true,
-      items: [
-        { page: 'tuition-collect', label: '帳務中心', icon: 'payments' },
-        { page: 'teachers', label: '老師管理', icon: 'badge', badgeTypes: ['pending_teachers'] },
-      ],
-    },
-    {
-      key: 'reports-payroll', title: '報表與薪資', defaultOpen: false, primary: false,
-      items: [
-        { page: 'tuition-report', label: '當月學收', icon: 'bar_chart' },
-        { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
-        { page: 'parttime-payroll', label: '兼職薪資', icon: 'account_balance_wallet' },
-        { page: 'teacher-eligibility', label: '正職薪資要件', icon: 'rule' },
-      ],
-    },
-    {
-      key: 'communication', title: '訊息與回報', defaultOpen: false, primary: false,
-      items: [
-        { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
-        { page: 'bugs', label: '意見與建議', icon: 'rate_review', badgeTypes: ['bugs'] },
-      ],
-    },
-    {
-      key: 'settings', title: '設定與資源', defaultOpen: false, primary: false,
-      items: [
-        { page: 'classroom', label: '教室管理', icon: 'meeting_room' },
-        { page: 'subject-settings', label: '科目管理', icon: 'library_books' },
-        ...systemItems,
-      ],
+      key: 'finance', title: '帳務與管理', defaultOpen: true, primary: true,
+      items: adminItems,
     },
   ];
   if (!admissionsEnabled) {
@@ -86,6 +69,31 @@ function directorGroups(role, { admissionsEnabled = true } = {}) {
     if (group) group.items = group.items.filter(item => item.page !== 'admission-inquiries');
   }
   return groups;
+}
+
+// Director top-bar icons (bell / messages / feedback). Same page keys as before, so old URLs still open them;
+// they are routable pages that no longer take a sidebar row.
+const DIRECTOR_TOOLBAR = [
+  { page: 'notifications', label: '待處理收件匣', icon: 'inbox' },
+  { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
+  { page: 'bugs', label: '意見與建議', icon: 'rate_review', badgeTypes: ['bugs'] },
+];
+
+// Pending-work pages: no sidebar row. The director workbench lists them as to-do items only while something is
+// pending (see directorDashboardTasks.js); the page keys stay routable for old URLs and LINE links.
+const DIRECTOR_TODO_PAGES = [
+  { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
+  { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
+];
+
+/** Routable director pages that live in the workbench to-do list instead of the sidebar. */
+export function getTodoPages(role) {
+  return isDirectorRole(role) ? DIRECTOR_TODO_PAGES.map(item => ({ ...item, ...(item.badgeTypes ? { badgeTypes: [...item.badgeTypes] } : {}) })) : [];
+}
+
+/** Top-bar icon items for a role (teachers keep chat/feedback in their own sidebar group). */
+export function getToolbarItems(role) {
+  return isDirectorRole(role) ? DIRECTOR_TOOLBAR.map(item => ({ ...item, ...(item.badgeTypes ? { badgeTypes: [...item.badgeTypes] } : {}) })) : [];
 }
 
 function teacherGroups({ truefitEnabled = false } = {}) {
@@ -119,14 +127,26 @@ function teacherGroups({ truefitEnabled = false } = {}) {
 function cloneGroups(groups) {
   return groups.map(group => ({
     ...group,
-    items: group.items.map(item => ({
-      ...item,
-      requiredContext: requiredContextForPage(item.page),
-      ...(item.badgeTypes ? { badgeTypes: [...item.badgeTypes] } : {}),
-    })),
+    items: group.items.map(item => {
+      const tabs = item.tabs?.map(tab => ({ ...tab, ...(tab.badgeTypes ? { badgeTypes: [...tab.badgeTypes] } : {}) }));
+      const hubBadges = tabs ? [...new Set(tabs.flatMap(tab => tab.badgeTypes || []))] : [];
+      const badgeTypes = item.badgeTypes || (hubBadges.length ? hubBadges : null);
+      return {
+        ...item,
+        requiredContext: requiredContextForPage(item.page),
+        ...(tabs ? { tabs } : {}),
+        ...(badgeTypes ? { badgeTypes: [...badgeTypes] } : {}),
+      };
+    }),
   }));
 }
 
+/** Every routable page key in the groups: sidebar items plus the tabs inside hub items. */
+export const navigationPages = (groups) => groups.flatMap(g => g.items.flatMap(i => (i.tabs ? i.tabs.map(t => t.page) : [i.page])));
+
+/** The sidebar item that owns `page` (the hub for a tab, the item itself otherwise). */
+export const findNavItem = (groups, page) => groups.flatMap(g => g.items)
+  .find(i => i.page === page || i.tabs?.some(t => t.page === page)) || null;
 /** Return a fresh role-scoped model for every renderer. */
 export function getNavigationGroups(role, options = {}) {
   if (isDirectorRole(role)) return cloneGroups(directorGroups(role, options));
@@ -161,9 +181,9 @@ export function getMobileTabItems(role) {
  * Route-implied acting context (#2908): pages exposed only in one role's menu.
  * Derived from the menus above so it cannot drift; shared pages need no context.
  */
-const pagesOf = (groups) => new Set(groups.flatMap((g) => g.items.map((i) => i.page)));
+const pagesOf = (groups) => new Set(navigationPages(groups));
 // Director-capability pages only: super_admin-only pages (director-accounts, branch-*) must never trigger an auto-switch.
-const DIRECTOR_PAGES = pagesOf(directorGroups('director'));
+const DIRECTOR_PAGES = new Set([...pagesOf(directorGroups('director')), ...DIRECTOR_TOOLBAR.map(item => item.page), ...DIRECTOR_TODO_PAGES.map(item => item.page)]);
 const TEACHER_PAGES = pagesOf(teacherGroups({ truefitEnabled: true }));
 export function requiredContextForPage(page) {
   if (DIRECTOR_PAGES.has(page) && !TEACHER_PAGES.has(page)) return 'director';

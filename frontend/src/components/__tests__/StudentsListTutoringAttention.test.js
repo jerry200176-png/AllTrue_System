@@ -66,7 +66,8 @@ describe('In-App #351: tutoring next steps preserve the no-charge and anomaly co
       const action = wrapper.find('.student-course-card__primary');
       expect(buttonLabel(action)).toBe('查看帳務資料');
       await action.trigger('click');
-      expect(wrapper.emitted('navigate')).toHaveLength(1);
+      expect(wrapper.emitted('navigate')).toBeUndefined(); // D2: billing opens in place
+      expect(wrapper.findComponent({ name: 'AccountingLedgerModal' }).props('show')).toBe(true);
     });
   });
 

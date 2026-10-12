@@ -169,12 +169,6 @@ parameters:
 			path: app/Console/Commands/RotateTelegramWebhookSecret.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\Notification\:\:create\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Console/Commands/SendTuitionReminders.php
-
-		-
 			message: '#^Anonymous function has an unused use \$pkg\.$#'
 			identifier: closure.unusedUse
 			count: 1
@@ -2514,7 +2508,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 10
+			count: 8
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
@@ -2634,7 +2628,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Invoice\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 7
+			count: 5
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-

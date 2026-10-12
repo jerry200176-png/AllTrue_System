@@ -1,4 +1,4 @@
-import { getNavigationGroups } from './navigationRegistry.js';
+import { getNavigationGroups, getToolbarItems, getTodoPages } from './navigationRegistry.js';
 import { isDirectorRole } from './roleCapabilities.js';
 
 const FEATURE_USAGES = {
@@ -56,7 +56,13 @@ export function getRoleFeatureMap(role, options = {}) {
   const roleKey = isTeacher ? 'teacher' : 'director';
   const roleLabel = isTeacher ? '老師' : (role === 'super_admin' ? '總部管理員' : '主任');
   const usages = FEATURE_USAGES[roleKey] || {};
-  const navGroups = getNavigationGroups(role, options);
+  const toolbar = getToolbarItems(role);
+  const todo = getTodoPages(role);
+  const navGroups = [
+    ...getNavigationGroups(role, options),
+    ...(toolbar.length ? [{ key: 'toolbar', title: '頂部工具列', primary: true, items: toolbar }] : []),
+    ...(todo.length ? [{ key: 'workbench-todo', title: '工作台待辦（有事才出現）', primary: true, items: todo }] : []),
+  ];
   const groups = [];
   const allItems = [];
   const highFrequencyItems = [];
@@ -64,8 +70,9 @@ export function getRoleFeatureMap(role, options = {}) {
 
   for (const group of navGroups) {
     const isPrimary = Boolean(group.primary);
-    const mappedItems = group.items.map(item => {
-      const frequency = isPrimary ? 'high' : 'advanced';
+    // Hub tabs are listed individually: the map documents every feature, not just sidebar entries.
+    const mappedItems = group.items.flatMap(item => (item.tabs ? item.tabs.map(tab => ({ ...item, ...tab, lowFrequency: true })) : [item])).map(item => {
+      const frequency = isPrimary && !item.lowFrequency ? 'high' : 'advanced';
       const usage = usages[item.page] || (isTeacher ? '日常教學操作頁面。' : '校務營運操作頁面。');
       const feat = { page: item.page, label: item.label, icon: item.icon, categoryKey: group.key, categoryTitle: group.title, frequency, frequencyLabel: frequency === 'high' ? '常用高頻' : '進階功能', usage, badgeTypes: item.badgeTypes ? [...item.badgeTypes] : [] };
       allItems.push(feat);

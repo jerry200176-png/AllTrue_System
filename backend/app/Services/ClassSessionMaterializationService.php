@@ -363,6 +363,13 @@ class ClassSessionMaterializationService
             $payload['session_charge'] = $slot['session_charge'] !== null ? (int) $slot['session_charge'] : null;
         }
 
+        // Occurrence identity P1: freeze the expanded series slot on create. Extras
+        // (manual_occurrence bookings) have no series slot, so identity stays NULL.
+        if (empty($slot['_extra_occurrence'])) {
+            $payload['OriginalSessionDate'] = $sessionDate;
+            $payload['OriginalStartTimeHM'] = substr($startTime, 0, 5);
+        }
+
         return $payload;
     }
 

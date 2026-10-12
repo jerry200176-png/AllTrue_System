@@ -912,6 +912,18 @@ jobs:
               "rev" => "d83eb91107bd1c365ac15707f722bd20c5f5f739",
               "deploy" => "37788515787",
             ],
+            369 => [
+              "reply" => "已處理完成：月結帳單依「確認已上的堂數」計算的修正早已上線；您回報的那一筆當時畫面是舊金額，之後又多上了一堂，帳單與課程的三個舊數字（明細金額、帳單當時記錄的堂數與金額、課程總費用）已經用有紀錄的更正流程改成 5 堂＝7,500 元，與實際上課堂數一致；收款與已繳金額都沒有變動，帳單 7,500 元已全額繳清。這次只做資料核對與工程檢查，沒有在正式環境實際操作畫面。仍等待您實際確認。請重新整理帳務中心看看；順利的話請按「確認已修好」；若金額仍不對請按「問題仍存在」並簡述月份與金額（請勿貼姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3356",
+              "issue" => 3356,
+              "rev" => "781843b1273f3e1e52d6a7ec05f1d7bd804b3729",
+              "deploy" => "38140354682",
+            ],
+            341 => [
+              "reply" => "已處理完成：我們查到原因了。「提前結束合約」只會取消還沒到的預排課，這門課有 3 堂已經過去但一直沒被點名的課（9/3、9/10、9/17）還停在預排，才會一直被算成超排；後面「取消又補」的 9/24、10/1 是請假自動補堂產生、之後被提前結束取消的。這 3 堂過去的預排課已用有紀錄的資料更正取消，沒有動到已上課紀錄和扣堂。這次只做資料核對與工程檢查，沒有在正式環境實際操作畫面。仍等待您實際確認。請重新整理課程管理看看；順利的話請按「確認已修好」；若仍有超排請按「問題仍存在」並簡述分校與操作步驟（請勿貼姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3199",
+              "issue" => 3199,
+              "rev" => "f65ebe5b139a0808ebc7c835c25c9d611e41f02b",
+              "deploy" => "38140354682",
+            ],
           ];
           // One authorized target per run. A request for an unknown ID or an
           // unshipped revision fails before any comment/status mutation.
@@ -1010,8 +1022,13 @@ jobs:
           }
           // F14: every allowlisted target carries its issue, so a retry after a failed close-issue job still closes it.
           // A shared issue closes only when every allowlisted report linking it is resolved or closed.
+          // An explicit "issue" key wins. Otherwise the reply must link exactly one issue: a reply that also
+          // mentions a follow-up issue (in-app #389 linked #3847 first) must never auto-close the wrong one.
           $issueOf = static function ($cfg) {
-            return preg_match("#/AllTrue_System/issues/([0-9]+)#", (string)($cfg["reply"] ?? ""), $m) ? (int)$m[1] : null;
+            if (isset($cfg["issue"])) return (int) $cfg["issue"];
+            preg_match_all("#/AllTrue_System/issues/([0-9]+)#", (string)($cfg["reply"] ?? ""), $m);
+            $ids = array_values(array_unique(array_map("intval", $m[1] ?? [])));
+            return count($ids) === 1 ? $ids[0] : null;
           };
           foreach ($results as $i => $row) {
             $issue = $issueOf($items[$row["id"]] ?? []);

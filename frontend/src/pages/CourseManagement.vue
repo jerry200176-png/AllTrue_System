@@ -385,7 +385,7 @@
                       <div v-if="c.last_paid_at" class="paid-date-hint">{{ c.last_paid_at }}</div>
                       <div v-if="c.payment_status === 'paid' && c.latest_payment_report_id" class="field-hint">
                         已繳清；另有回報待核對。
-                        <button type="button" class="small ghost" @click="emit('navigate', buildTuitionCollectNav(c, { intent: 'pending' }))">查看待核對回報</button>
+                        <button type="button" class="small ghost" @click="openLedgerForCourse(c)">查看待核對回報</button>
                       </div>
                     </td>
                     <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
@@ -1465,9 +1465,7 @@ import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
-  buildTuitionCollectNav,
   buildStudentsCommercialNav,
-  tuitionIntentForPaymentStatus,
 } from '../lib/authoritativeMutationRoutes.js';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
 import { listExceptionWorkflows } from '../api';
@@ -1543,20 +1541,11 @@ const props = defineProps({
 const allowFinancialDiscount = computed(() => isDirectorRole(props.userRole));
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
 
-const goToTuitionBilling = (course) => {
-  emit('navigate', buildTuitionCollectNav(course, {
-    intent: tuitionIntentForPaymentStatus(course?.payment_status),
-  }));
-};
-
-// 課程查找 C-PR5 (PRD D2): the student's billing opens in place (the ledger panel), not on another page.
+// 課程查找 C-PR5 (PRD D2): the student's billing opens in place (the ledger panel), not on another page: paying, confirming
+// a report and voiding all happen inside it.
 const openTuitionLedger = (course) => openLedgerForCourse(course);
-// 登記繳費回報 / 待核對回報 still go to 帳務中心 (that is where reports are filed and reviewed); a settled
-// course just shows its billing in place.
-const onPaymentNextAction = (course) => {
-  if (['unpaid', 'partial', 'pending_report'].includes(course?.payment_status)) goToTuitionBilling(course);
-  else openLedgerForCourse(course);
-};
+const goToTuitionBilling = openTuitionLedger;
+const onPaymentNextAction = openTuitionLedger;
 
 const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
@@ -2721,7 +2710,7 @@ const focusActionMenuItem = (courseId, direction = 'first') => {
   const items = actionMenuItems(courseId);
   if (!items.length) return;
   if (direction === 'last') {
-    items.at(-1)?.focus();
+    items[items.length - 1]?.focus();
     return;
   }
   items[0]?.focus();
@@ -2764,7 +2753,7 @@ const handleActionMenuKeydown = async (courseId, event) => {
     return;
   }
   if (key === 'End') {
-    items.at(-1)?.focus();
+    items[items.length - 1]?.focus();
     return;
   }
   const currentIndex = Math.max(0, items.indexOf(document.activeElement));

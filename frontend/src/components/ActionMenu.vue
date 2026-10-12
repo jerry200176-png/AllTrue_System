@@ -92,7 +92,8 @@ async function openAt(index) {
   place();
   open.value = true;
   await nextTick();
-  items().at(index < 0 ? -1 : index)?.focus();
+  const list = items();
+  list[index < 0 ? list.length - 1 : index]?.focus();
 }
 function close(returnFocus = false) {
   if (!open.value) return;
@@ -115,7 +116,7 @@ function onKey(e) {
   if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
   else if (e.key === 'Home') { e.preventDefault(); list[0]?.focus(); }
-  else if (e.key === 'End') { e.preventDefault(); list.at(-1)?.focus(); }
+  else if (e.key === 'End') { e.preventDefault(); list[list.length - 1]?.focus(); }
   else if (e.key === 'Escape') { e.preventDefault(); close(true); }
   else if (e.key === 'Tab') close(false);
   else if (e.key.length === 1 && /\S/.test(e.key)) {

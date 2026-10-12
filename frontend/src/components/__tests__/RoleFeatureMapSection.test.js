@@ -7,8 +7,8 @@ describe('RoleFeatureMapSection component', () => {
     const wrapper = mount(RoleFeatureMapSection, { props: { role: 'director', admissionsEnabled: true } });
     expect(wrapper.text()).toContain('主任功能指南');
     expect(wrapper.text()).toContain('24');
-    expect(wrapper.text()).toContain('常用高頻 (11)');
-    expect(wrapper.text()).toContain('進階工具 (13)');
+    expect(wrapper.text()).toContain('常用高頻 (13)');
+    expect(wrapper.text()).toContain('進階工具 (11)');
 
     const pages = wrapper.findAll('.rfm-card').map(c => c.attributes('data-page'));
     expect(pages).toHaveLength(24);
@@ -46,10 +46,10 @@ describe('RoleFeatureMapSection component', () => {
     expect(wrapper.findAll('.rfm-card')).toHaveLength(24);
 
     await wrapper.find('[data-testid="filter-high"]').trigger('click');
-    expect(wrapper.findAll('.rfm-card')).toHaveLength(11);
+    expect(wrapper.findAll('.rfm-card')).toHaveLength(13);
 
     await wrapper.find('[data-testid="filter-advanced"]').trigger('click');
-    expect(wrapper.findAll('.rfm-card')).toHaveLength(13);
+    expect(wrapper.findAll('.rfm-card')).toHaveLength(11);
 
     const input = wrapper.find('.search-input');
     await input.setValue('兼職');

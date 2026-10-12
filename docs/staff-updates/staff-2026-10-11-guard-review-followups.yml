@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-11-guard-review-followups
+    published_at: "2026-10-11"
+    audiences:
+      - director
+    importance: digest
+    title: 批次收款只成功一部分，會告訴你哪幾筆
+    summary: 批次登記或確認有失敗時，列出學生、科目與原因，失敗的維持勾選。
+    items:
+      - category: improved
+        text: 批次登記收款、批次確認入帳不再只顯示成功幾筆，會寫出哪幾筆沒成功與原因。
+      - category: improved
+        text: 帳單狀態對不上被擋時，說明改成請到學生帳務核對並作廢重複的帳單。
+    source_refs:
+      - "changelog:2026-10-11:guard-review-followups"

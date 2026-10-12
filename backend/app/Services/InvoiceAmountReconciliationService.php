@@ -20,6 +20,17 @@ class InvoiceAmountReconciliationService
     {
     }
 
+    /** Batch the session lookups for a many-invoice response; always pair with forgetPreloadedSessions(). */
+    public function preloadSessions(array $courseIds): void
+    {
+        $this->monthlyBilling->preloadSessions($courseIds);
+    }
+
+    public function forgetPreloadedSessions(): void
+    {
+        $this->monthlyBilling->forgetPreloadedSessions();
+    }
+
     /**
      * @return array{
      *   total_amount:int,

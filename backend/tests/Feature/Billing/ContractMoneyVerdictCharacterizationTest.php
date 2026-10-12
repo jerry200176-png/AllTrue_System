@@ -23,7 +23,7 @@ use Tests\TestCase;
  *   resolver  = BillingPayableResolver::courseStatusesByStudentClassIds  status/total/applied/outstanding/source
  *   payable   = BillingPayableResolver::byStudentClassIds (tuition slip)  status/amount/outstanding
  *   alert     = AlertController ladder: ContractMoneyState::alertStatus fed by the Verdict status + applied + courseOutstanding
- *   guard     = PaymentReportController::courseAlreadyHasConfirmedPayment (blocks a new payment report)
+ *   guard     = PaymentReportController::courseMoneyBlockReason (null = allows) (blocks a new payment report)
  *   intake    = PaymentReportController legacy intake guard (no open invoice && (Paid=1 || a paid invoice)) => duplicate
  *   recon     = InvoiceAmountReconciliationService over the course's invoices (Accounting/Coverage): total/applied/outstanding
  */
@@ -50,7 +50,7 @@ class ContractMoneyVerdictCharacterizationTest extends TestCase
         $alert = ContractMoneyState::alertStatus($course, $paid, $charge, false, $s['status']) . "/$alertOut";
 
         $ctl = app(PaymentReportController::class);
-        $m = new \ReflectionMethod($ctl, 'courseAlreadyHasConfirmedPayment');
+        $m = new \ReflectionMethod($ctl, 'courseMoneyBlockReason');
         $guard = $m->invoke($ctl, $id, (int) $course->Paid) ? 'block' : 'allow';
         $open = Invoice::where('StudentClassID', $id)->where(fn ($q) => $q->whereNull('Status')->orWhereNotIn('Status', ['paid', 'void']))->exists();
         $paidInv = Invoice::where('StudentClassID', $id)->where('Status', 'paid')->exists();
@@ -105,7 +105,7 @@ class ContractMoneyVerdictCharacterizationTest extends TestCase
             'resolver' => 'unpaid/10000/0/10000/invoice',
             'payable' => 'invoiced/10000/10000',
             'alert' => 'unpaid/10000',
-            'guard' => 'block',
+            'guard' => 'allow',
             'intake' => 'ok',
             'recon' => '10000/0/10000',
         ],

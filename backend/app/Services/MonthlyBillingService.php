@@ -105,7 +105,7 @@ class MonthlyBillingService
 
         if ($sessions->isEmpty()) {
             $evidence = (string) $course->getAttribute('ScheduleMode') === 'date'
-                ? $this->periodSessionQuery($course, $billingPeriod)->get(['Status']) : collect();
+                ? ($this->preloadedPeriodSessions($course, $billingPeriod) ?? $this->periodSessionQuery($course, $billingPeriod)->get(['Status'])) : collect();
             $knownZero = $evidence->isNotEmpty() && $evidence->every(fn ($row) => in_array($row->Status, ['scheduled', 'cancelled', 'voided', 'leave', 'rescheduled'], true));
             return [
                 'charge' => $knownZero ? 0 : $storedCharge,
@@ -187,10 +187,61 @@ class MonthlyBillingService
     /** @return Collection<int, ClassSession> */
     public function billableSessionsForPeriod(Model $course, string $billingPeriod): Collection
     {
+        if (($rows = $this->preloadedPeriodSessions($course, $billingPeriod)) !== null) {
+            return $rows
+                ->filter(fn (ClassSession $session) => in_array(strtolower(rtrim((string) $session->Status)), self::BILLABLE_STATUSES, true))
+                ->sortBy(fn (ClassSession $session) => [(string) $session->SessionDate, (string) $session->StartTime, (int) $session->getKey()])
+                ->values();
+        }
+
         return $this->periodSessionQuery($course, $billingPeriod)
             ->whereIn('Status', self::BILLABLE_STATUSES)
             ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
             ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+    }
+
+    /** @var array<int, Collection<int, ClassSession>>|null course id => all its sessions, set only while a caller batches many invoices. */
+    private ?array $preloadedSessions = null;
+
+    /** One query for every listed course's sessions; summarizePeriod then filters in memory. Pair with forgetPreloadedSessions(). */
+    public function preloadSessions(array $courseIds): void
+    {
+        $ids = array_values(array_unique(array_map('intval', $courseIds)));
+        $grouped = $ids === [] ? collect() : ClassSession::query()->whereIn('StudentClassID', $ids)
+            ->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge'])
+            ->groupBy(fn (ClassSession $session) => (int) $session->StudentClassID);
+        $this->preloadedSessions = [];
+        foreach ($ids as $id) {
+            $this->preloadedSessions[$id] = $grouped->get($id, collect());
+        }
+    }
+
+    public function forgetPreloadedSessions(): void
+    {
+        $this->preloadedSessions = null;
+    }
+
+    /** Same rows as periodSessionQuery() (month window, date-mode contract bounds), or null when this course was not preloaded. */
+    private function preloadedPeriodSessions(Model $course, string $billingPeriod): ?Collection
+    {
+        $all = $this->preloadedSessions[(int) $course->getKey()] ?? null;
+        if ($all === null) {
+            return null;
+        }
+        try {
+            $anchor = Carbon::createFromFormat('!Y-m', $billingPeriod);
+        } catch (\Throwable) {
+            $anchor = Carbon::today();
+        }
+        $from = $anchor->copy()->startOfMonth()->toDateString();
+        $to = $anchor->copy()->endOfMonth()->toDateString();
+        if (strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) === 'date') {
+            $courseStart = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : $from;
+            $courseEnd = $course->getAttribute('EndDate') ? Carbon::parse($course->getAttribute('EndDate'))->toDateString() : $to;
+            [$from, $to] = [max($from, $courseStart), min($to, $courseEnd)];
+        }
+
+        return $all->filter(fn (ClassSession $session) => substr((string) $session->SessionDate, 0, 10) >= $from && substr((string) $session->SessionDate, 0, 10) <= $to)->values();
     }
 
     private function periodSessionQuery(

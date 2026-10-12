@@ -111,11 +111,11 @@
                 :key="item.page"
                 type="button"
                 @click="setActivePage(item.page)"
-                :class="{ active: active === item.page }"
+                :class="{ active: isNavItemActive(item) }"
                 :disabled="isNavItemDisabled(item.page)"
                 :title="sidebarCollapsed ? item.label : ''"
                 :aria-label="sidebarCollapsed ? item.label : undefined"
-                :aria-current="active === item.page ? 'page' : undefined"
+                :aria-current="isNavItemActive(item) ? 'page' : undefined"
               >
                 <span class="material-symbols-outlined nav-icon" aria-hidden="true">{{ item.icon }}</span>
                 <span class="nav-label" v-show="!sidebarCollapsed">{{ item.label }}</span>
@@ -375,6 +375,26 @@
           {{ dashboardReturnContext.label }}
         </button>
         <div class="main-topbar-spacer"></div>
+        <div v-if="toolbarItems.length" class="topbar-icons" data-guide="app-topbar-icons">
+          <button
+            v-for="item in toolbarItems"
+            :key="item.page"
+            type="button"
+            class="topbar-icon-btn"
+            :class="{ active: active === item.page }"
+            :title="item.label"
+            :aria-label="getItemBadgeCount(item) > 0 ? `${item.label}，${getItemBadgeCount(item)} 則待處理` : item.label"
+            :aria-current="active === item.page ? 'page' : undefined"
+            @click="setActivePage(item.page)"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">{{ item.icon }}</span>
+            <span
+              v-if="getItemBadgeCount(item) > 0"
+              :class="['topbar-icon-badge', { 'topbar-icon-badge-urgent': isItemBadgeUrgent(item) }]"
+              aria-hidden="true"
+            >{{ getItemBadgeCount(item) > 99 ? '99+' : getItemBadgeCount(item) }}</span>
+          </button>
+        </div>
         <ActingContextChip
           v-if="showStaffModeSwitch && (role === 'director' || role === 'teacher')"
           :context="role"
@@ -515,6 +535,14 @@
         <p>{{ directorBranchStatus === 'failed' ? '無法載入授權分校，請重試或聯繫管理員。' : '正在確認您的分校權限…' }}</p>
         <button v-if="directorBranchStatus === 'failed'" type="button" @click="retryDirectorBranches">重試載入分校</button>
       </div>
+      <HubTabBar
+        v-if="activeHub"
+        :title="activeHub.label"
+        :tabs="activeHub.tabs"
+        :active="active"
+        :badge-count="getItemBadgeCount"
+        @select="setActivePage"
+      />
       <DirectorDashboard v-if="!isPasswordChangeLocked && directorBranchReady && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" :focus-workflow-id="directorFocusWorkflowId" :focus-section="directorFocusSection" @navigate="onNavigateFromNotifications" />
       <NotificationsCenter
         v-if="!isPasswordChangeLocked && directorBranchReady && active === 'notifications'"
@@ -909,7 +937,8 @@ import {
   PIN_UNLOCK_TTL_MS,
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
-import { getMobileTabItems, getNavigationGroups, requiredContextForPage } from './lib/navigationRegistry';
+import { findNavItem, getMobileTabItems, getNavigationGroups, getTodoPages, getToolbarItems, navigationPages, requiredContextForPage } from './lib/navigationRegistry';
+import HubTabBar from './components/HubTabBar.vue';
 import ActingContextChip from './components/ActingContextChip.vue';
 import { buildAppPageUrl, parseAppPage } from './lib/appNavigationHistory.js';
 import { resolveActiveAfterProfileLoad } from './lib/resolveActiveAfterProfileLoad';
@@ -1698,9 +1727,8 @@ const INBOX_DEEP_LINK_KEYS = ['page', 'section', 'workflow_id', 'branch_id'];
 
 function authorizedNavigationPages() {
   const pages = new Set(['profile', 'release-notes']);
-  sidebarNavGroups.value.forEach((group) => {
-    group.items.forEach((item) => pages.add(item.page));
-  });
+  navigationPages(sidebarNavGroups.value).forEach((page) => pages.add(page));
+  [...toolbarItems.value, ...getTodoPages(role.value)].forEach((item) => pages.add(item.page));
   return pages;
 }
 
@@ -2221,6 +2249,7 @@ const avatarLetter = computed(() => {
 const avatarUrl = computed(() => userProfile.value?.avatar_url || '');
 
 const sidebarGroupOpen = ref({});
+const toolbarItems = computed(() => getToolbarItems(role.value));
 const sidebarNavGroups = computed(() => getNavigationGroups(role.value, {
   admissionsEnabled: perfFlags.ADMISSIONS_FUNNEL_V1,
   truefitEnabled: isTrueFitFeatureEnabled(),
@@ -2239,6 +2268,10 @@ const mobileMoreFilteredGroups = computed(() => {
     }))
     .filter(group => group.items.length > 0);
 });
+// Hub items (報表與薪資 / 設定 / 系統管理) show their tabs above the active page; each tab is still its own ?app_page= key.
+const activeNavItem = computed(() => findNavItem(sidebarNavGroups.value, active.value));
+const activeHub = computed(() => (activeNavItem.value?.tabs ? activeNavItem.value : null));
+const isNavItemActive = (item) => item.page === active.value || Boolean(item.tabs?.some(tab => tab.page === active.value));
 const sidebarPrimaryGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary !== false));
 const sidebarMoreGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary === false));
 const sidebarMoreSearchQuery = ref('');
@@ -2268,11 +2301,14 @@ const activeGlobalSearchFeatureGroups = computed(() => {
       ? mobileMoreFilteredGroups.value
       : sidebarMoreFilteredGroups.value;
   }
+  // Search finds a hub's tabs directly (e.g. 兼職薪資) rather than only the hub name.
   return sidebarNavGroups.value
     .map(group => ({
       ...group,
-      items: group.items.filter(item => item.label.toLowerCase().includes(query)
-        || (group.title && group.title.toLowerCase().includes(query))),
+      items: group.items
+        .flatMap(item => (item.tabs ? item.tabs.map(tab => ({ ...item, ...tab, tabs: undefined })) : [item]))
+        .filter(item => item.label.toLowerCase().includes(query)
+          || (group.title && group.title.toLowerCase().includes(query))),
     }))
     .filter(group => group.items.length > 0);
 });
@@ -3773,6 +3809,60 @@ function formatBuildTime(rawIso) {
 
 .main-topbar-spacer {
   flex: 1;
+}
+
+.topbar-icons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topbar-icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-canvas);
+  color: var(--ds-ink);
+  cursor: pointer;
+}
+
+.topbar-icon-btn .material-symbols-outlined {
+  font-size: 22px;
+}
+
+.topbar-icon-btn:hover,
+.topbar-icon-btn.active {
+  background: var(--ds-primary-wash);
+  border-color: var(--ds-primary);
+}
+
+.topbar-icon-btn:focus-visible {
+  outline: 2px solid var(--ds-primary);
+  outline-offset: 2px;
+}
+
+.topbar-icon-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.topbar-icon-badge-urgent {
+  background: var(--ds-danger);
 }
 
 .dashboard-return-button {

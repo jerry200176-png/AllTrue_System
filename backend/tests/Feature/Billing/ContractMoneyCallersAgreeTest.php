@@ -26,11 +26,7 @@ class ContractMoneyCallersAgreeTest extends TestCase
     private const CASES = 120;
 
     /** caller => what moves it (remove the entry in that PR). */
-    private const PENDING = [
-        'alerts_listing' => 'Founder decision: a Paid=1 contract with an open invoice is not listed (DIRECTOR_PAYMENT_ALERT_RULES)',
-        'intake_guard' => 'Founder decision: R28 carve-out blocks recording a payment while Paid=1 and the period is wholly unpaid',
-        'slip' => 'tuition slip still refuses on the Paid flag (own follow-up PR)',
-    ];
+    private const PENDING = []; // every caller is on the Verdict (Founder Q2/Q3, 2026-10-11)
 
     public static function seeds(): iterable
     {
@@ -110,7 +106,7 @@ class ContractMoneyCallersAgreeTest extends TestCase
         // 4. Duplicate-payment guard: blocks exactly the settled contracts.
         if ($class) {
             $ctl = app(\App\Http\Controllers\PaymentReportController::class);
-            $blocked = (new \ReflectionMethod($ctl, 'courseAlreadyHasConfirmedPayment'))->invoke($ctl, $id, (int) $course->Paid);
+            $blocked = (new \ReflectionMethod($ctl, 'courseMoneyBlockReason'))->invoke($ctl, $id, (int) $course->Paid) !== null;
             if ($blocked !== ($class === 'settled')) {
                 $answers['intake_guard'] = ($blocked ? 'blocks' : 'allows') . " a payment but verdict {$v->status}";
             }
@@ -123,6 +119,61 @@ class ContractMoneyCallersAgreeTest extends TestCase
             } elseif ($slip === 200 && $v->status === 'unbilled' && !$c['date']
                 && (int) $this->withHeaders($headers)->getJson("/api/v1/alerts/tuition-slip/$id")->json('charge') !== $v->outstanding) {
                 $answers['slip'] = 'unbilled slip charge differs from verdict ' . $v->outstanding;
+            }
+        }
+
+        // 6. R28 invariant: collecting is only ever against what still owes. Never above the outstanding amount, never
+        //    against a bill whose Payment rows already cover it (stored Status may be stale), whatever Paid says.
+        if ($class === 'owing' && $v->source === 'invoice' && !$c['package'] && $v->outstanding > 0) {
+            $over = $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+                'student_class_id' => $id, 'payment_date' => '2026-08-20', 'payment_method' => 'cash', 'amount' => $v->outstanding + 1,
+            ]);
+            if ($over->status() !== 422) {
+                $answers['collect_invariant'] = "accepted {$over->status()} amount outstanding+1 ({$v->outstanding})";
+            }
+            // A bill whose Payment rows cover it but whose stored Status went stale ("unpaid") must be refused too.
+            $this->invoice($course->fresh(), \App\Models\Student::findOrFail($course->StudentID), '2026-04', 1000, 'unpaid', 0, [[1000, 'cash']]);
+            foreach (\App\Models\Invoice::with(['payments', 'items'])->where('StudentClassID', $id)->where('Status', '!=', 'void')->get() as $inv) {
+                $p = app(\App\Services\InvoiceAmountReconciliationService::class)->resolve($inv, $course);
+                if ((int) $p['total_amount'] > 0 && (int) $p['outstanding_amount'] <= 0) {
+                    $res = $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+                        'student_class_id' => $id, 'invoice_id' => $inv->id, 'payment_date' => '2026-08-20', 'payment_method' => 'cash', 'amount' => 100,
+                    ]);
+                    if ($res->status() !== 422) {
+                        $answers['collect_invariant'] = "accepted a payment against invoice {$inv->id} already covered by Payment rows";
+                    }
+                }
+            }
+            $recorded = \App\Models\PaymentReport::where('StudentClassID', $id)->count();
+            if ($recorded !== 0) {
+                $answers['collect_invariant'] = "$recorded payment report(s) were created by refused attempts";
+            }
+            // #3864 hotfix: each bill is capped by its OWN Payment-row outstanding (never the course total), and after a
+            // record + confirm its Payment rows never exceed its total while PaidAmount/Status equal that projection.
+            $recon = app(\App\Services\InvoiceAmountReconciliationService::class);
+            $owing = \App\Models\Invoice::with(['payments', 'items'])->where('StudentClassID', $id)->whereNotIn('Status', ['paid', 'void'])->orderBy('id')->get()
+                ->first(fn ($inv) => (int) $recon->resolve($inv, $course)['outstanding_amount'] > 0);
+            if ($owing) {
+                $left = (int) $recon->resolve($owing, $course)['outstanding_amount'];
+                $send = fn (int $amount) => $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+                    'student_class_id' => $id, 'invoice_id' => $owing->id, 'payment_date' => '2026-08-20', 'payment_method' => 'cash', 'amount' => $amount,
+                ]);
+                if (($s = $send($left + 1)->status()) !== 422) {
+                    $answers['collect_invariant'] = "invoice {$owing->id} owes $left but accepted $s for " . ($left + 1);
+                }
+                \App\Models\PaymentReport::where('StudentClassID', $id)->delete();
+                $reportId = $send($left)->json('report_id');
+                if ($reportId) {
+                    $this->withHeaders($headers)->putJson("/api/v1/payment-reports/$reportId/confirm");
+                }
+                $after = \App\Models\Invoice::with(['payments', 'items'])->findOrFail($owing->id);
+                $p = $recon->resolve($after, $course->fresh());
+                $wantStatus = $p['outstanding_amount'] <= 0 ? 'paid' : ($p['net_applied'] > 0 ? 'partial' : 'unpaid');
+                if ($p['net_applied'] > $p['total_amount']) {
+                    $answers['collect_invariant'] = "invoice {$after->id} Payment rows {$p['net_applied']} exceed total {$p['total_amount']}";
+                } elseif ($reportId && ((int) $after->PaidAmount !== $p['net_applied'] || (string) $after->Status !== $wantStatus)) {
+                    $answers['collect_invariant'] = "invoice {$after->id} stored {$after->PaidAmount}/{$after->Status} but Payment rows say {$p['net_applied']}/$wantStatus";
+                }
             }
         }
 

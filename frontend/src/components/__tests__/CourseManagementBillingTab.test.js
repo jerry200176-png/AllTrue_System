@@ -64,10 +64,10 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('付款狀態不可直接操作');
     expect(source).toContain('class="small ghost payment-next-action"');
     expect(source).toContain('@click="onPaymentNextAction(c)"');
-    // reports are filed on 帳務中心 (navigate); a settled course opens the ledger panel in place
-    expect(source).toContain("if (['unpaid', 'partial', 'pending_report'].includes(course?.payment_status)) goToTuitionBilling(course);");
-    expect(source).toContain('else openLedgerForCourse(course);');
+    // PRD v2 D2: every billing action opens the ledger panel in place, never another page
+    expect(source).toContain('const onPaymentNextAction = openTuitionLedger;');
     expect(source).toContain('const openTuitionLedger = (course) => openLedgerForCourse(course);');
+    expect(source).not.toMatch(/emit\('navigate', buildTuitionCollectNav/);
     expect(source).toContain('<th>堂數</th>');
     expect(source).not.toContain('<th>剩餘堂數</th>');
     expect(source).not.toContain("'btn-status'");
