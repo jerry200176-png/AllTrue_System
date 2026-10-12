@@ -256,7 +256,7 @@ final class EnsureSessionHorizonService
                 $r20 = !in_array($status, ['cancelled', 'voided'], true); // same-start check: no contract filters
                 $guard = !$ownExempt && !in_array($status, $excluded, true) && $contractOk($r);
                 if ($r20 || $guard) {
-                    $busy[$r->d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e, $r20, $guard];
+                    $busy[$r->d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e, $r20, $guard, false];
                 }
             }
             if (!$ownExempt) {
@@ -266,12 +266,21 @@ final class EnsureSessionHorizonService
                     ->where('s.status', 'scheduled')->whereNull('s.original_schedule_id')
                     ->selectRaw('DATE(s.schedule_date) as d, s.start_time as s, s.end_time as e, s.student_course_id as cid, sc.ID as scid, sc.PackageID as pkg, sc.Stop as stop, sc.ClassType as ctype, sc.StartDate as sd, sc.EndDate as ed')
                     ->get();
+                $byDate = [];
                 foreach ($rows as $r) {
                     if ((int) $r->cid === $studentClassId || ($r->cid !== null && $r->scid === null)) {
                         continue; // own row / orphaned link: never a conflict
                     }
                     if ($r->scid === null || $contractOk($r)) {
-                        $busy[$r->d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e, false, true];
+                        $r->student_course_id = $r->cid;
+                        $r->start_time = $r->s;
+                        $byDate[$r->d][] = $r;
+                    }
+                }
+                // Authoritative stale-projection filter, one ClassSession query for all dates.
+                foreach (app(\App\Services\StaleScheduleExceptionFilter::class)->rejectStaleBatch($byDate) as $d => $kept) {
+                    foreach ($kept as $r) {
+                        $busy[$d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e, false, true, true];
                     }
                 }
             }
@@ -288,7 +297,17 @@ final class EnsureSessionHorizonService
             $end = $this->hms((string) ($o['end_hm'] ?? $this->defaultEnd($o['start_hm'])));
             $startFull = $this->hms($start);
             $touches = false;
-            foreach ($busy[$d] ?? [] as [$bs, $be, $r20, $guard]) {
+            $start5 = substr($startFull, 0, 5);
+            $end5 = substr($end, 0, 5);
+            foreach ($busy[$d] ?? [] as [$bs, $be, $r20, $guard, $isSched]) {
+                // schedules.* are VARCHAR and execute compares them to minute-only strings: mirror that (16:00:00 > '16:00').
+                if ($isSched) {
+                    if (strcmp($bs, $end5) < 0 && strcmp($be, $start5) > 0) {
+                        $touches = true;
+                        break;
+                    }
+                    continue;
+                }
                 // Same start always touches for R20 rows (it ignores the other row's end, e.g. 00:00 when omitted).
                 if (($r20 && substr($bs, 0, 5) === $start) || ($guard && $this->hms($bs) < $end && $this->hms($be) > $startFull)) {
                     $touches = true;

@@ -467,6 +467,65 @@ class EnsureSessionHorizonTest extends TestCase
         $this->assertSame($sqlFew, $sqlMany, "SQL grew: {$few} cands={$sqlFew}, {$many} cands={$sqlMany}");
     }
 
+    private function scheduleRow(int $studentId, string $date, string $start, string $end, ?int $courseId): void
+    {
+        DB::table('schedules')->insert([
+            'student_id' => $studentId, 'teacher_id' => 0, 'subject' => 'Math', 'day_of_week' => Carbon::parse($date)->dayOfWeekIso,
+            'start_time' => $start, 'end_time' => $end, 'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'extra',
+            'deduction' => 1, 'branch_id' => 1, 'schedule_date' => $date, 'student_course_id' => $courseId, 'original_schedule_id' => null,
+        ]);
+    }
+
+    public function test_dry_run_sql_does_not_grow_for_stale_schedule_exceptions(): void
+    {
+        // #3727 review r4245762586: overlapping scheduled rows whose ClassSessions are all cancelled are stale.
+        $cost = function (int $weeks): array {
+            Carbon::setTestNow($this->today);
+            $sc = $this->explicitCourse(remaining: 40);
+            $studentId = (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID');
+            $other = $this->course(['StudentID' => $studentId]);
+            $svc = app(EnsureSessionHorizonService::class);
+            $through = $this->today->copy()->addWeeks($weeks);
+            $cands = $svc->ensure($sc, $through, $this->today, null)['ensure']['candidates'];
+            foreach ($cands as $o) {
+                DB::table('ClassSession')->insert(['StudentClassID' => $other, 'SessionDate' => $o['date'], 'StartTime' => '15:00:00',
+                    'EndTime' => '17:00:00', 'Status' => 'cancelled', 'Note' => '']);
+                $this->scheduleRow($studentId, $o['date'], '15:00:00', '17:00:00', $other);
+            }
+            $n = 0;
+            DB::listen(function () use (&$n) { $n++; });
+            $dry = $svc->ensure($sc, $through, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+
+            return [count($cands), $dry['would_skip'], $n];
+        };
+        [$few, $skipFew, $sqlFew] = $cost(5);
+        [$many, $skipMany, $sqlMany] = $cost(20);
+
+        $this->assertGreaterThan($few, $many);
+        $this->assertSame(0, $skipFew + $skipMany);
+        $this->assertSame($sqlFew, $sqlMany, "SQL grew: {$few} cands={$sqlFew}, {$many} cands={$sqlMany}");
+    }
+
+    public function test_dry_run_matches_execute_for_schedule_only_row_ending_exactly_at_the_start(): void
+    {
+        // #3727 review r4245762590: execute compares VARCHAR '16:00:00' > '16:00' (true), so it skips this slot.
+        putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
+        $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $first = $svc->ensure($sc, null, $this->today, null)['ensure']['candidates'][0]['date'];
+        $this->scheduleRow((int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID'), $first, '15:00:00', '16:00:00', null);
+
+        $dry = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+        $exec = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE)['ensure'];
+
+        $this->assertSame($exec['skipped_count'], $dry['would_skip']);
+        $this->assertSame($exec['created_count'], $dry['would_create']);
+    }
+
     public function test_shared_pool_shortage_warns_but_does_not_block_planned_sessions(): void
     {
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
