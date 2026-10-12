@@ -335,6 +335,24 @@ class OverlappingCourseGuardTest extends TestCase
             ->assertStatus(422)->assertJson(['code' => 'renewal_use_monthly_flow']);
     }
 
+    /** #3738 review: a renewal on another weekday must still start after the old contract ends. */
+    public function test_renewal_next_term_force_is_refused_when_contract_ranges_overlap_on_another_weekday(): void
+    {
+        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-range@example.com');
+        $wed = (string) \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->value('StartDate');
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->update(['EndDate' => Carbon::parse($wed)->addMonths(3)->toDateString()]);
+        $thu = Carbon::parse($wed)->addDay()->toDateString();
+        $renew = $this->batchPayload($studentId, $teacherId, [$thu], 'one_on_one');
+        $renew['days_of_week'] = [4];
+        $renew['force'] = true;
+        $renew['force_reason'] = 'renewal_next_term';
+        $classes = \Illuminate\Support\Facades\DB::table('StudentClass')->count();
+
+        $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew)
+            ->assertStatus(422)->assertJson(['code' => 'renewal_range_overlap']);
+        $this->assertSame($classes, \Illuminate\Support\Facades\DB::table('StudentClass')->count());
+    }
+
     /**
      * 試聽是旁聽正式課堂的加掛，不可被 overlapping_active_course 擋死。
      * 同型試聽重複則仍走 duplicate_active_course。

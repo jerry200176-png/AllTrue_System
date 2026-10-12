@@ -1230,9 +1230,10 @@ class EnrollmentService
             // Blank/NULL ScheduleMode is a legacy session-count contract.
             $studentIdForGate = $resolvedStudentId > 0 ? $resolvedStudentId : (int) ($data['student_id'] ?? 0);
             $monthlyExisting = false;
+            $newClassType = (string) ($data['class_type'] ?? '');
+            $newTeacher = (int) ($data['teacher_id'] ?? 0);
+            $newStart = $newEnd = null;
             if ($studentIdForGate > 0 && $subjectIds !== []) {
-                $newClassType = (string) ($data['class_type'] ?? '');
-                $newTeacher = (int) ($data['teacher_id'] ?? 0);
                 $planDates = array_filter(array_merge(
                     $data['confirmed_dates'] ?? [],
                     $data['future_dates'] ?? [],
@@ -1252,6 +1253,18 @@ class EnrollmentService
                     })
                     ->whereRaw("LOWER(COALESCE(NULLIF(ScheduleMode, ''), 'count')) = ?", ['date'])
                     ->exists();
+            }
+            // A "next term" must start after the contract it renews: force skipped the 409 range check, so redo it
+            // (same predicate as overlapping_active_course: same teacher + overlapping date range, non-trial).
+            if ($studentIdForGate > 0 && $subjectIds !== [] && $newTeacher > 0 && $newStart && $newEnd
+                && $newClassType !== 'trial'
+                && DB::table('StudentClass')->where('StudentID', $studentIdForGate)->where('Stop', 0)
+                    ->whereIn('SubjectID', $subjectIds)->where('TeacherID', $newTeacher)
+                    ->whereDate('StartDate', '<=', $newEnd)->whereDate('EndDate', '>=', $newStart)->exists()) {
+                return response()->json([
+                    'message' => '續報的新課起始日必須在原課程結束之後，請調整起始日或改用「加購堂數」。',
+                    'code' => 'renewal_range_overlap',
+                ], 422);
             }
             if ($monthlyExisting || ($data['payment_type'] ?? 'session') !== 'session') {
                 return response()->json([

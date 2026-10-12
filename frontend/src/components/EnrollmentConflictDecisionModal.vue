@@ -47,7 +47,7 @@
               </td>
               <td v-if="showActions">
                 <button
-                  v-if="needsFirstManualLesson(c)"
+                  v-if="canManualSession && needsFirstManualLesson(c)"
                   class="small btn-renew-warn"
                   type="button"
                   :disabled="submitting"
@@ -146,6 +146,8 @@ const props = defineProps({
   blockCreate: { type: Boolean, default: false },
   // Payment type of the course being attempted; a monthly attempt can never be a generic renewal.
   attemptedPaymentType: { type: String, default: '' },
+  // 新增下一堂 is director/admin only on the server (403 for teachers), so callers can hide it.
+  canManualSession: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['cancel', 'purchase', 'decision', 'manual-session']);
@@ -160,7 +162,7 @@ const canRenewHere = computed(() => !isTutoring.value
   && (!props.attemptedPaymentType || props.attemptedPaymentType === 'session')
   && !(props.conflicts || []).some((c) => c?.schedule_mode && c.schedule_mode !== 'count'));
 // #3745: a trial has no 加購, but an empty manual trial still needs 新增下一堂.
-const showActions = computed(() => !isTrial.value || (props.conflicts || []).some(needsFirstManualLesson));
+const showActions = computed(() => !isTrial.value || (props.canManualSession && (props.conflicts || []).some(needsFirstManualLesson)));
 const isTutoring = computed(() => String(props.classType || '').toLowerCase() === 'tutoring');
 
 watch(

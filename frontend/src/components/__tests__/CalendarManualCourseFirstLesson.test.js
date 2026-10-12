@@ -135,3 +135,14 @@ describe('monthly attempt never offers generic renewal (#3738 review)', () => {
     expect(courseMgmt).toContain(':attempted-payment-type=');
   });
 });
+
+describe('teachers are not offered 新增下一堂 (#3738 review)', () => {
+  it('hides the manual-session CTA when canManualSession is false, shows it by default', () => {
+    const has = (props) => mount(EnrollmentConflictDecisionModal, {
+      props: { show: true, conflicts: [conflict()], classType: 'tutoring', ...props },
+    }).findAll('button').some((b) => b.text() === '新增下一堂');
+    expect(has({})).toBe(true);
+    expect(has({ canManualSession: false })).toBe(false);
+    expect(calendar).toContain(':can-manual-session="!isTeacher"');
+  });
+});
