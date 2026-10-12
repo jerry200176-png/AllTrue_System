@@ -241,8 +241,7 @@ class BillingPayableResolver
             (new \Illuminate\Database\Eloquent\Collection($needItems->all()))->load('items');
         }
 
-        // Selection may project several monthly candidates: one session query for them all (only AlertController calls
-        // this, never inside another preload window).
+        // One session query for all monthly candidates (sole caller AlertController is never inside another preload).
         $dateIds = $invoicesByClass->keys()->filter(fn ($classId) => (string) ($courseMap[$classId]->ScheduleMode ?? '') === 'date')->all();
         if ($dateIds !== []) {
             $this->invoiceAmounts->preloadSessions($dateIds);
@@ -356,11 +355,8 @@ class BillingPayableResolver
     }
 
     /**
-     * The bill the queue shows and the collect buttons pay: the first (open status, newest period — oldest for a monthly
-     * course, its earliest unsettled period — then id) whose
-     * Payment-row projection still owes, whatever its stored Status (#3875); none owes → the first. Only bills whose
-     * payments do not already cover the stored total (or unpaid ones with none, which may be repriced) are projected.
-     *
+     * The bill the queue shows and collect buttons pay: first (open status, newest period — oldest for monthly — then id)
+     * whose Payment-row projection still owes, any stored Status (#3875); none owes → the first. Only mayOwe() bills project.
      * @param Collection<int, Invoice> $invoices
      * @return array{0: ?Invoice, 1: ?array}
      */

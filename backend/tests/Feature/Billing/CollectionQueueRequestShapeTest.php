@@ -16,11 +16,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * #3875: the four collection gaps left after #3874, run across the stack with synthetic data. The request bodies are the
- * ones the REAL PaymentEntryModal / TuitionCollectionPage sent, captured by
- * frontend/src/components/__tests__/TuitionCollectionBatchInvoiceTarget.test.js into
- * tests/Fixtures/collection_requests_3875.json (that test fails if the frontend drifts from the file). Here each case's
- * queue row is checked against the live GET alerts/tuition row, then its body goes through intake → confirm → Payment ledger.
+ * #3875 across the stack: bodies the REAL modal/page sent (tests/Fixtures/collection_requests_3875.json, written and
+ * drift-checked by TuitionCollectionBatchInvoiceTarget.test.js) → live alerts/tuition row check → intake → confirm → ledger.
  */
 class CollectionQueueRequestShapeTest extends TestCase
 {
@@ -205,14 +202,21 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertLedger($inv, 8800, 'paid');
     }
 
-    /** r4242583488 BLOCKED (Founder rule): Paid=1 + stored-paid bill owing by Payment rows is absent from alerts/tuition;
-     * fixing it changes AlertController::tuition list conditions (change-controlled, high-risk; #3862 hold). */
+    /** r4242583488: Paid=1 + stored-paid bill still owing by Payment rows is in the queue (DIRECTOR_PAYMENT_ALERT_RULES 堂數制 rule 3). */
     public function test_review_paid_flag_contract_owing_by_payment_rows_is_in_the_queue(): void
     {
-        $this->markTestSkipped('Blocked on Founder rule: AlertController::tuition inclusion change (#3888 r4242583488; #3862 hold).');
-        [$sc] = $this->storedPaidLedgerPartial();
-        $sc->update(['Paid' => 1]);
-        $this->queueRow($sc);
+        if (!method_exists(Invoice::class, 'mayOweSql')) {
+            $this->markTestSkipped('alerts/tuition listing is #3891 (#3781, Invoice::mayOweSql); runs once it lands.');
+        }
+        [$sc, $inv] = $this->storedPaidLedgerPartial();
+        $sc->update(['Paid' => 1]); // RemainingSessions 5: only rule 3 can list it
+        $row = $this->queueRow($sc);
+        $this->assertSame([$inv->id, 4000], [(int) $row['payable_invoice_id'], (int) $row['payable_outstanding']]);
+        [$covered] = $this->storedPaidLedgerPartial();
+        Payment::create(['InvoiceID' => Invoice::where('StudentClassID', $covered->ID)->value('id'), 'Amount' => 4000, 'PaidAt' => '2026-04-03', 'Method' => 'cash']);
+        $covered->update(['Paid' => 1]);
+        $ids = collect($this->withHeaders($this->headers)->getJson('/api/v1/alerts/tuition?branch_id=1')->json())->pluck('id')->map(fn ($id) => (int) $id);
+        $this->assertFalse($ids->contains((int) $covered->ID), 'a Paid=1 contract whose rows cover the bill stays out');
     }
 
     public function test_item3_fallback_finds_the_stored_paid_bill_that_still_owes(): void
@@ -245,11 +249,7 @@ class CollectionQueueRequestShapeTest extends TestCase
 
     // ── shared fixture ──────────────────────────────────────────────────────
 
-    /**
-     * Loads one case of the fixture the frontend test generated, maps its id placeholders to the rows just created, and
-     * checks the queue row the frontend was given equals what GET alerts/tuition returns now (fields the modal/page read),
-     * so the captured request really is what the director's screen would send for this data.
-     */
+    /** One fixture case with id placeholders mapped; asserts its row equals the live alerts/tuition row the UI would get. */
     private function fixtureCase(string $name, array $ids): array
     {
         $all = json_decode((string) file_get_contents(base_path('tests/Fixtures/collection_requests_3875.json')), true, 512, JSON_THROW_ON_ERROR);
