@@ -5,11 +5,11 @@ import TuitionCollectionPage from '../../pages/TuitionCollectionPage.vue';
 // #3894 — real page + real PaymentSlipModal/ReceiptModal, mocked fetch, synthetic rows.
 // Asserts the entry points only ever READ: no POST/PUT/PATCH/DELETE to any endpoint.
 const rows = [
-  { id: 101, student_name: '測試甲', subject: '數學', schedule_mode: 'date', payment_status: 'unpaid', charge: 4200, paid_amount: 0, outstanding: 4200, payable_amount: 4200, payable_outstanding: 4200, invoice_id: 501 },
-  { id: 102, student_name: '測試乙', subject: '英文', schedule_mode: 'date', payment_status: 'partial', charge: 4000, paid_amount: 1000, outstanding: 3000, payable_amount: 4000, payable_outstanding: 3000, invoice_id: 502 },
-  { id: 103, student_name: '測試丙', subject: '自然', schedule_mode: 'date', payment_status: 'paid', charge: 3800, paid_amount: 3800, outstanding: 0, payable_amount: 3800, payable_outstanding: 0, invoice_id: 503 },
-  { id: 104, student_name: '測試丁', subject: '國文', schedule_mode: 'date', payment_status: 'none', charge: 0, paid_amount: 0, outstanding: 0 },
-  { id: 105, student_name: '測試戊', subject: '社會', schedule_mode: 'date', payment_status: 'paid', charge: 3000, paid_amount: 3000, outstanding: 0, payable_amount: 3000, payable_outstanding: 0 },
+  { id: 101, student_name: '測試甲', subject: '數學', schedule_mode: 'date', payment_status: 'unpaid', charge: 4200, paid_amount: 0, outstanding: 4200, payable_amount: 4200, payable_outstanding: 4200, payable_status: 'invoiced', payable_invoice_id: 501 },
+  { id: 102, student_name: '測試乙', subject: '英文', schedule_mode: 'date', payment_status: 'partial', charge: 4000, paid_amount: 1000, outstanding: 3000, payable_amount: 4000, payable_outstanding: 3000, payable_status: 'invoiced', payable_invoice_id: 502 },
+  { id: 103, student_name: '測試丙', subject: '自然', schedule_mode: 'date', payment_status: 'paid', charge: 3800, paid_amount: 3800, outstanding: 0, payable_amount: 3800, payable_outstanding: 0, payable_status: 'invoiced', payable_invoice_id: 503 },
+  { id: 104, student_name: '測試丁', subject: '國文', schedule_mode: 'date', payment_status: 'none', payable_status: 'unbilled', charge: 0, paid_amount: 0, outstanding: 0 },
+  { id: 105, student_name: '測試戊', subject: '社會', schedule_mode: 'date', payment_status: 'paid', payable_status: 'unbilled', charge: 3000, paid_amount: 3000, outstanding: 0, payable_amount: 3000, payable_outstanding: 0 },
 ];
 const slipJson = { student_name: '測試甲', student_class_id: 101, subject: '數學', amount: 4200, items: [] };
 let calls;

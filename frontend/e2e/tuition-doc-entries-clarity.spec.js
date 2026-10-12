@@ -9,11 +9,11 @@ const outDir = process.env.UI_FOUNDATION_SHOT_DIR
   || path.resolve(__dirname, '../../docs/design/evidence/tuition-doc-entries');
 const base = { schedule_mode: 'date', charge: 4000, paid_amount: 0, outstanding: 4000, payable_amount: 4000, payable_outstanding: 4000 };
 const rows = [
-  { ...base, id: 101, student_name: '測試甲', subject: '數學', payment_status: 'unpaid', invoice_id: 501 },
-  { ...base, id: 102, student_name: '測試乙', subject: '英文', payment_status: 'partial', paid_amount: 1000, outstanding: 3000, payable_outstanding: 3000, invoice_id: 502 },
-  { ...base, id: 103, student_name: '測試丙', subject: '自然', payment_status: 'paid', paid_amount: 4000, outstanding: 0, payable_outstanding: 0, invoice_id: 503 },
-  { ...base, id: 104, student_name: '測試丁', subject: '國文', payment_status: 'none', charge: 0, payable_amount: 0, outstanding: 0, payable_outstanding: 0 },
-  { ...base, id: 105, student_name: '測試戊', subject: '社會', payment_status: 'paid', paid_amount: 4000, outstanding: 0, payable_outstanding: 0 },
+  { ...base, id: 101, student_name: '測試甲', subject: '數學', payment_status: 'unpaid', payable_status: 'invoiced', payable_invoice_id: 501 },
+  { ...base, id: 102, student_name: '測試乙', subject: '英文', payment_status: 'partial', paid_amount: 1000, outstanding: 3000, payable_outstanding: 3000, payable_status: 'invoiced', payable_invoice_id: 502 },
+  { ...base, id: 103, student_name: '測試丙', subject: '自然', payment_status: 'paid', paid_amount: 4000, outstanding: 0, payable_outstanding: 0, payable_status: 'invoiced', payable_invoice_id: 503 },
+  { ...base, id: 104, student_name: '測試丁', subject: '國文', payment_status: 'none', payable_status: 'unbilled', charge: 0, payable_amount: 0, outstanding: 0, payable_outstanding: 0 },
+  { ...base, id: 105, student_name: '測試戊', subject: '社會', payment_status: 'paid', payable_status: 'unbilled', paid_amount: 4000, outstanding: 0, payable_outstanding: 0 },
 ];
 const expected = {
   101: { slip: true, receipt: false, receiptReason: '收款確認後才有收據' },

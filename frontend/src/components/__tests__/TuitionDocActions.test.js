@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import TuitionDocActions from '../TuitionDocActions.vue';
 
 // #3894 — 繳費單／收據固定兩顆入口；synthetic rows only.
-const mk = (payment_status, canView = true, id = 1, invoice_id = 500) =>
-  mount(TuitionDocActions, { props: { row: { id, payment_status, invoice_id }, canView } });
+const mk = (payment_status, canView = true, id = 1, payable_status = 'invoiced') =>
+  mount(TuitionDocActions, { props: { row: { id, payment_status, payable_status }, canView } });
 const state = (w) => ({
   slip: w.get('[data-testid="tc-doc-slip"]').element.disabled,
   receipt: w.get('[data-testid="tc-doc-receipt"]').element.disabled,
@@ -48,8 +48,8 @@ describe('TuitionDocActions state matrix', () => {
   });
 
   it.each([
-    ['flag', { id: 1, payment_status: 'paid', invoice_id: 500, legacy_paid_without_invoice: true }],
-    ['paid without invoice', { id: 1, payment_status: 'paid', invoice_id: null }],
+    ['flag', { id: 1, payment_status: 'paid', payable_status: 'invoiced', legacy_paid_without_invoice: true }],
+    ['paid without invoice', { id: 1, payment_status: 'paid', payable_status: 'unbilled' }],
   ])('legacy paid, no invoice (%s): both disabled with reasons and a ledger link', async (_n, row) => {
     const w = mount(TuitionDocActions, { props: { row } });
     expect(state(w)).toEqual({
@@ -64,7 +64,7 @@ describe('TuitionDocActions state matrix', () => {
 
   it('no ledger link when not legacy or without permission', () => {
     expect(mk('paid').find('[data-testid="tc-doc-ledger"]').exists()).toBe(false);
-    const w = mount(TuitionDocActions, { props: { row: { id: 1, payment_status: 'paid', invoice_id: null }, canView: false } });
+    const w = mount(TuitionDocActions, { props: { row: { id: 1, payment_status: 'paid', payable_status: 'unbilled' }, canView: false } });
     expect(w.find('[data-testid="tc-doc-ledger"]').exists()).toBe(false);
   });
 
