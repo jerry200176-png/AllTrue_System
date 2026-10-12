@@ -79,7 +79,11 @@ new → triaged → in_progress → resolved → (reporter-verify) → closed
 ```bash
 # 1. 版本（公開 HTTPS，不 SSH、不用 -k）
 curl -fsS https://daan.lifenet.com.tw/version.json
-curl -fsS https://daan.lifenet.com.tw/deployment.json   # backend_sha／frontend_build_sha == 核准 SHA
+curl -fsS https://daan.lifenet.com.tw/deployment.json
+#   backend_sha == 核准 SHA；frontend_build_sha 只有在本次有重建前端時才需等於核准 SHA
+#   （backend-only 部署會沿用舊前端 build，version.json 不變屬正常）
+#   並對照成功的 deploy.yml run：run 結論 success、job log 列出同一 SHA。
+#   只看 endpoint 不夠——部署失敗回滾時 manifest 可能沒被改回。
 
 # 2. Health
 curl -fsS https://daan.lifenet.com.tw/api/v1/health
@@ -118,8 +122,8 @@ curl -fsS https://daan.lifenet.com.tw/api/v1/health
 | 變更類型 | 回滾方式 |
 |----------|----------|
 | Code deploy | 只用現行 workflow 已證明可執行的路徑（見 `alltrue-release` SKILL）；通常為 revert PR → land queue → deploy.yml |
-| Migration | 經受保護的 deploy／POP 流程與 Founder GO；不在 Pi 手動 `migrate:rollback` |
-| 資料修復 | POP dry-run → approve → apply（含 snapshot JSON 與 `--rollback`）；不手動 SSH `mysqldump` |
+| Migration | 只走 `deploy.yml`（`docs/CONTROL_PLANE_CONTRACT.md`：code／migration／前端 build 僅由 deploy.yml 執行）＋Founder GO；POP 不是 schema migration 的執行器；不在 Pi 手動 `migrate:rollback` |
+| 資料修復 | POP `dry-run` → `approve`（含 snapshot JSON 與 `--rollback`）。⚠ `approve` **就會**交給 Pi 本機排程器執行並驗證，之後沒有另一道 apply 關卡——approve 前必須已取得 Founder 對該範圍的核准；不手動 SSH `mysqldump` |
 
 高風險（帳務/堂數/auth）：**Gate 6 必填**才能執行 production 寫入。
 
