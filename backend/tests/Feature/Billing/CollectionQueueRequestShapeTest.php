@@ -169,6 +169,55 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertLedger($older, 0, 'unpaid');
     }
 
+    // ── #3888 Codex review (2026-10-11 17:52Z on 632fb584) ─────────────────
+
+    /** r4242583482: a monthly course's queue target is its earliest unsettled period, not the newest. */
+    public function test_review_monthly_queue_target_is_the_oldest_owing_period(): void
+    {
+        $sc = $this->course(['ScheduleMode' => 'date', 'Charge' => 6000]);
+        [$feb, $mar] = [$this->monthly($sc, '2026-02', 6000, 1000), $this->monthly($sc, '2026-03', 6000, 1000)];
+        $row = app(\App\Services\BillingPayableResolver::class)->byStudentClassIds([$sc->ID], [$sc])[$sc->ID];
+        $this->assertSame([$feb->id, 5000], [$row['payable_invoice_id'], $row['payable_outstanding']], "not March #{$mar->id}");
+    }
+
+    /** r4242583490: an unbilled charge-bearing contract (no invoice) refuses NT$0 at intake, batch and confirm. */
+    public function test_review_zero_report_on_an_unbilled_contract_is_refused(): void
+    {
+        $sc = $this->course(['Charge' => 6000]);
+        $this->report('director-record', ['student_class_id' => $sc->ID, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 0])
+            ->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
+        $this->report('director-record-batch', ['payment_date' => '2026-04-28', 'payment_method' => 'cash', 'entries' => [['student_class_id' => $sc->ID, 'amount' => 0]]])
+            ->assertStatus(207)->assertJsonPath('results.0.code', 'zero_amount_with_balance');
+        $this->confirm($this->pendingReport($sc, null, 0)->id)->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
+        $this->assertSame([0, 0], [Invoice::count(), Payment::count()]);
+    }
+
+    /** r4242583492: stored-paid monthly bill, Payment rows 3,000/8,800, sessions now price the month at 0 → owes 5,800. */
+    public function test_review_fixed_total_monthly_bill_collects_its_projected_outstanding(): void
+    {
+        $sc = $this->course(['ScheduleMode' => 'date', 'Charge' => 8800, 'Rate' => 1500, 'StartDate' => '2026-04-01', 'EndDate' => '2026-04-30']);
+        \App\Models\ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => '2026-04-29', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled']);
+        $inv = $this->monthly($sc, '2026-04', 8800, 3000, ['Status' => 'paid', 'PaidAmount' => 8800]);
+
+        $res = $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 5800])
+            ->assertOk();
+        $this->confirm($res->json('report_id'))->assertOk();
+        $this->assertLedger($inv, 8800, 'paid');
+    }
+
+    /**
+     * r4242583488 — BLOCKED: Paid=1 with a stored-paid bill still owing by Payment rows never reaches GET alerts/tuition.
+     * Including it changes AlertController::tuition list conditions (DIRECTOR_PAYMENT_ALERT_RULES change control; high-risk
+     * file per alltrue-code-review) and #3862 (on hold) edits the same controller → needs a Founder rule.
+     */
+    public function test_review_paid_flag_contract_owing_by_payment_rows_is_in_the_queue(): void
+    {
+        $this->markTestSkipped('Blocked on Founder rule: AlertController::tuition inclusion change (#3888 r4242583488; #3862 hold).');
+        [$sc] = $this->storedPaidLedgerPartial();
+        $sc->update(['Paid' => 1]);
+        $this->queueRow($sc);
+    }
+
     public function test_item3_fallback_finds_the_stored_paid_bill_that_still_owes(): void
     {
         [$sc, $inv] = $this->storedPaidLedgerPartial();
@@ -266,6 +315,15 @@ class CollectionQueueRequestShapeTest extends TestCase
         $sc = $this->course(['Charge' => $olderOwes + $newerOwes]);
 
         return [$sc, $this->invoice($sc, '2026-01-01', $olderOwes, 'unpaid'), $this->invoice($sc, '2026-02-01', $newerOwes, 'unpaid')];
+    }
+
+    private function monthly(StudentClass $sc, string $period, int $total, int $paid, array $over = []): Invoice
+    {
+        $inv = Invoice::create(array_merge(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => "$period-01",
+            'TotalAmount' => $total, 'PaidAmount' => $paid, 'Status' => 'partial', 'billing_period' => $period], $over));
+        Payment::create(['InvoiceID' => $inv->id, 'Amount' => $paid, 'PaidAt' => "$period-05", 'Method' => 'cash']);
+
+        return $inv;
     }
 
     private function invoice(StudentClass $sc, string $issueDate, int $total, string $status): Invoice

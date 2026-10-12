@@ -441,7 +441,7 @@ class PaymentReportController extends Controller
                 // Partial receipts remain allowed; explicit cross-month cycles keep their invoice authority.
                 // Paid so far = Payment rows, never the stored PaidAmount (#3864 hotfix P1-b).
                 $limit = max(0, (int) $actual['charge'] - (int) ($monthlyProjection['net_applied'] ?? 0));
-                if ($actual['source'] === 'billable_sessions' && (!$invoice || $monthlyProjection['computed_total_amount'] !== null)
+                if ($actual['source'] === 'billable_sessions' && (!$invoice || ($monthlyProjection['computed_total_amount'] !== null && $monthlyProjection['repriceable']))
                     && (int) $report->reported_amount > $limit) {
                     return response()->json(['message' => '月結已上堂次或應收已變動，請重新核對回報金額。',
                         'code' => 'monthly_amount_stale', 'expected_amount' => $limit, 'billing_period' => $period,
@@ -666,8 +666,11 @@ class PaymentReportController extends Controller
                     ? (string) $invoice->billing_period
                     : $this->monthlyBilling->defaultPeriodFor($sc, $data['payment_date']);
                 $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
-                // Paid so far = Payment rows, never the stored PaidAmount (#3864 hotfix P1-b).
-                $expectedAmount = max(0, (int) $billing['charge'] - ($invoice ? (int) $this->invoiceProjection($invoice, $lockedCourse)['net_applied'] : 0));
+                // Paid so far = Payment rows, never the stored PaidAmount (#3864 hotfix P1-b). A non-repriceable bill
+                // (paid/partial/has payments) keeps its fixed total: owe its projected outstanding (#3888 review).
+                $projection = $invoice ? $this->invoiceProjection($invoice, $lockedCourse) : null;
+                $expectedAmount = $projection && !$projection['repriceable'] ? (int) $projection['outstanding_amount']
+                    : max(0, (int) $billing['charge'] - (int) ($projection['net_applied'] ?? 0));
                 if ((int) $data['amount'] !== $expectedAmount) {
                     return response()->json([
                         'message' => sprintf('月結本期應收為 NT$%d，請重新載入繳費通知後再登記。', $expectedAmount),
@@ -959,7 +962,11 @@ class PaymentReportController extends Controller
     private function amountExceedsInvoiceResponse(?Invoice $invoice, ?StudentClass $sc, float $amount)
     {
         if (!$invoice) {
-            return null;
+            // Unbilled charge-bearing contract: NT$0 is not a report either (free courses never reach here, #3888 review).
+            return $amount <= 0 && (int) ($sc?->Charge ?? 0) > 0 ? response()->json([
+                'message' => '這門課要收費，金額不可為 0；請填實際收到的金額。沒有登記任何款項。',
+                'code' => 'zero_amount_with_balance',
+            ], 422) : null;
         }
         $projection = $this->invoiceProjection($invoice, $sc);
         $outstanding = (int) $projection['outstanding_amount'];

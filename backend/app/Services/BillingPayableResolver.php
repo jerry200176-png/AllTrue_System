@@ -241,6 +241,12 @@ class BillingPayableResolver
             (new \Illuminate\Database\Eloquent\Collection($needItems->all()))->load('items');
         }
 
+        // Selection may project several monthly candidates: one session query for them all (only AlertController calls
+        // this, never inside another preload window).
+        $dateIds = $invoicesByClass->keys()->filter(fn ($classId) => (string) ($courseMap[$classId]->ScheduleMode ?? '') === 'date')->all();
+        if ($dateIds !== []) {
+            $this->invoiceAmounts->preloadSessions($dateIds);
+        }
         $resolved = [];
         foreach ($ids as $classId) {
             [$invoice, $projection] = $this->selectRelevantInvoice($invoicesByClass->get($classId, collect()), $courseMap[$classId] ?? null);
@@ -260,6 +266,9 @@ class BillingPayableResolver
                 'payable_billing_period' => $projection['billing_period'],
                 'payable_amount_source' => $projection['amount_source'],
             ];
+        }
+        if ($dateIds !== []) {
+            $this->invoiceAmounts->forgetPreloadedSessions();
         }
 
         return $resolved;
@@ -347,7 +356,8 @@ class BillingPayableResolver
     }
 
     /**
-     * The bill the queue shows and the collect buttons pay: the first (open status, newest period, newest id) whose
+     * The bill the queue shows and the collect buttons pay: the first (open status, newest period — oldest for a monthly
+     * course, its earliest unsettled period — then id) whose
      * Payment-row projection still owes, whatever its stored Status (#3875); none owes → the first. Only bills whose
      * payments do not already cover the stored total (or unpaid ones with none, which may be repriced) are projected.
      *
@@ -357,7 +367,7 @@ class BillingPayableResolver
     private function selectRelevantInvoice(Collection $invoices, ?StudentClass $course): array
     {
         $first = null;
-        foreach ($this->sortRelevant($invoices) as $invoice) {
+        foreach ($this->sortRelevant($invoices, (string) ($course?->ScheduleMode ?? '') === 'date') as $invoice) {
             if ($first !== null && !$this->mayOwe($invoice)) {
                 continue;
             }
@@ -386,9 +396,9 @@ class BillingPayableResolver
     }
 
     /** @param Collection<int, Invoice> $invoices */
-    private function sortRelevant(Collection $invoices): Collection
+    private function sortRelevant(Collection $invoices, bool $oldestFirst = false): Collection
     {
-        return $invoices->sort(function (Invoice $left, Invoice $right): int {
+        return $invoices->sort(function (Invoice $left, Invoice $right) use ($oldestFirst): int {
             $leftOpen = in_array((string) ($left->getAttribute('Status') ?? ''), ['unpaid', 'partial'], true);
             $rightOpen = in_array((string) ($right->getAttribute('Status') ?? ''), ['unpaid', 'partial'], true);
             if ($leftOpen !== $rightOpen) {
@@ -398,10 +408,10 @@ class BillingPayableResolver
             $leftPeriod = (string) ($left->getAttribute('billing_period') ?: substr((string) $left->getAttribute('IssueDate'), 0, 7));
             $rightPeriod = (string) ($right->getAttribute('billing_period') ?: substr((string) $right->getAttribute('IssueDate'), 0, 7));
             if ($leftPeriod !== $rightPeriod) {
-                return strcmp($rightPeriod, $leftPeriod);
+                return $oldestFirst ? strcmp($leftPeriod, $rightPeriod) : strcmp($rightPeriod, $leftPeriod);
             }
 
-            return (int) $right->getAttribute('id') <=> (int) $left->getAttribute('id');
+            return ($oldestFirst ? -1 : 1) * ((int) $right->getAttribute('id') <=> (int) $left->getAttribute('id'));
         });
     }
 }
