@@ -210,15 +210,20 @@ class CollectionQueueRequestShapeTest extends TestCase
     /** r4242583492: stored-paid monthly bill, Payment rows 3,000/8,800, sessions now price the month at 0 → owes 5,800. */
     public function test_review_fixed_total_monthly_bill_collects_its_projected_outstanding(): void
     {
-        $sc = $this->course(['ScheduleMode' => 'date', 'Charge' => 8800, 'Rate' => 1500, 'StartDate' => '2026-04-01', 'EndDate' => '2026-04-30']);
-        \App\Models\ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => '2026-04-29', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled']);
-        $inv = $this->monthly($sc, '2026-04', 8800, 3000, ['Status' => 'paid', 'PaidAmount' => 8800]);
+        $sc = $this->course(['ScheduleMode' => 'date', 'Charge' => 8800, 'Rate' => 1500, 'StartDate' => '2026-03-01', 'EndDate' => '2026-04-30']);
+        foreach ([['2026-03-10', 'attended'], ['2026-03-31', 'scheduled'], ['2026-04-09', 'attended']] as [$day, $st]) {
+            \App\Models\ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => $day, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $st]);
+        }
+        $inv = $this->monthly($sc, '2026-03', 8800, 3000, ['Status' => 'paid', 'PaidAmount' => 8800]); // March bill, paid 2026-04-28
 
         $res = $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, ...self::D, 'amount' => 5800])
             ->assertOk();
         $this->confirm($res->json('report_id'))->assertOk();
         $this->assertLedger($inv, 8800, 'paid');
         $this->assertNull($inv->fresh()->billing_snapshot, 'r4245816754: no snapshot of today\'s sessions on a fixed bill');
+        // r4246114454: the receipt prints the bill's March service period and its sessions, not the payment month (April).
+        $this->withHeaders($this->headers)->getJson('/api/v1/payment-reports/' . $res->json('report_id') . '/receipt')
+            ->assertJsonPath('period_start', '2026/03/01')->assertJsonPath('period_end', '2026/03/31')->assertJsonPath('attended_dates', ['2026/03/10']);
     }
 
     public function test_item3_fallback_finds_the_stored_paid_bill_that_still_owes(): void
@@ -252,19 +257,13 @@ class CollectionQueueRequestShapeTest extends TestCase
     {
         $all = json_decode((string) file_get_contents(base_path('tests/Fixtures/collection_requests_3875.json')), true, 512, JSON_THROW_ON_ERROR);
         $this->assertArrayHasKey($name, $all, "fixture case $name (regenerate: npx vitest run -u src/components/__tests__/TuitionCollectionBatchInvoiceTarget.test.js)");
-        $map = function ($v) use (&$map, $ids) {
-            if (is_array($v)) {
-                return array_map($map, $v);
-            }
+        $case = $all[$name];
+        array_walk_recursive($case, function (&$v) use ($ids) {
             if (is_string($v) && preg_match('/^\{\{(.+)\}\}$/', $v, $m)) {
                 $this->assertArrayHasKey($m[1], $ids, "placeholder {$m[1]}");
-
-                return (int) $ids[$m[1]];
+                $v = (int) $ids[$m[1]];
             }
-
-            return $v;
-        };
-        $case = $map($all[$name]);
+        });
 
         $live = $this->queueRow(StudentClass::findOrFail($ids['course']));
         foreach (['id', 'payment_status', 'payable_status', 'charge', 'payable_amount', 'payable_outstanding', 'payable_invoice_id'] as $field) {
@@ -277,37 +276,27 @@ class CollectionQueueRequestShapeTest extends TestCase
     private function newerCoveredOlderOwing(): array
     {
         $sc = $this->course(['Charge' => 8000]);
-        $older = $this->invoice($sc, '2026-02-01', 3000, 'unpaid');
-        $newer = $this->invoice($sc, '2026-03-01', 5000, 'unpaid');
+        [$older, $newer] = [$this->invoice($sc, '2026-02-01', 3000, 'unpaid'), $this->invoice($sc, '2026-03-01', 5000, 'unpaid')];
         Payment::create(['InvoiceID' => $newer->id, 'Amount' => 5000, 'PaidAt' => '2026-03-05', 'Method' => 'cash']);
-
         return [$sc, $older, $newer];
     }
 
-    /** Positive-Charge count-mode contract whose only bill is NT$0 (resolver: review_required). */
     private function zeroTotalInvoice(): array
     {
-        $sc = $this->course(['Charge' => 6000]);
-
-        return [$sc, $this->invoice($sc, '2026-04-01', 0, 'unpaid')];
+        return [$sc = $this->course(['Charge' => 6000]), $this->invoice($sc, '2026-04-01', 0, 'unpaid')];
     }
 
-    /** Stored paid/full, Payment rows only 2,000 of 6,000. */
     private function storedPaidLedgerPartial(): array
     {
         $sc = $this->course(['Charge' => 6000]);
-        $inv = Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01',
-            'TotalAmount' => 6000, 'PaidAmount' => 6000, 'Status' => 'paid']);
-        Payment::create(['InvoiceID' => $inv->id, 'Amount' => 2000, 'PaidAt' => '2026-04-02', 'Method' => 'cash']);
-
+        $inv = $this->invoice($sc, '2026-04-01', 6000, 'paid', ['PaidAmount' => 6000]);
+        Payment::create(['InvoiceID' => $inv->id, 'Amount' => 2000, 'PaidAt' => '2026-04-02', 'Method' => 'cash']); // rows 2,000 of 6,000
         return [$sc, $inv];
     }
 
     private function twoHistoricalOpen(int $olderOwes, int $newerOwes): array
     {
-        $sc = $this->course(['Charge' => $olderOwes + $newerOwes]);
-
-        return [$sc, $this->invoice($sc, '2026-01-01', $olderOwes, 'unpaid'), $this->invoice($sc, '2026-02-01', $newerOwes, 'unpaid')];
+        return [$sc = $this->course(['Charge' => $olderOwes + $newerOwes]), $this->invoice($sc, '2026-01-01', $olderOwes, 'unpaid'), $this->invoice($sc, '2026-02-01', $newerOwes, 'unpaid')];
     }
 
     private function monthly(StudentClass $sc, string $period, int $total, int $paid, array $over = []): Invoice
@@ -318,16 +307,15 @@ class CollectionQueueRequestShapeTest extends TestCase
         return $inv;
     }
 
-    private function invoice(StudentClass $sc, string $issueDate, int $total, string $status): Invoice
+    private function invoice(StudentClass $sc, string $issueDate, int $total, string $status, array $over = []): Invoice
     {
-        return Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => $issueDate,
-            'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => $status]);
+        return Invoice::create(array_merge(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => $issueDate,
+            'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => $status], $over));
     }
 
     private function queueRow(StudentClass $sc): array
     {
-        $rows = $this->withHeaders($this->headers)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json();
-        $row = collect($rows)->first(fn ($r) => (int) $r['id'] === (int) $sc->ID && empty($r['package_id']));
+        $row = collect($this->withHeaders($this->headers)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->first(fn ($r) => (int) $r['id'] === (int) $sc->ID && empty($r['package_id']));
         $this->assertNotNull($row, 'the course is in the collection queue');
 
         return $row;

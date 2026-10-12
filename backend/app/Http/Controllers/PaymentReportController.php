@@ -1216,9 +1216,14 @@ class PaymentReportController extends Controller
             ));
         } elseif ($sc) {
             $reportedDate = $sc->ScheduleMode === 'date' ? Carbon::make($report->payment_date) : null;
+            // No snapshot: the bill's own service period (item periods, else billing_period), not the payment month (#3888).
+            $items = $invoice && $reportedDate ? $invoice->items()->whereNotNull('PeriodStart')->whereNotNull('PeriodEnd')->get() : collect();
+            $anchor = preg_match('/^\d{4}-\d{2}$/', (string) $invoiceBillingPeriod) ? Carbon::createFromFormat('!Y-m', (string) $invoiceBillingPeriod) : $reportedDate;
+            [$from, $to] = $items->isNotEmpty() ? [Carbon::parse($items->min('PeriodStart')), Carbon::parse($items->max('PeriodEnd'))]
+                : [$anchor?->copy()->startOfMonth(), $anchor?->copy()->endOfMonth()];
             if ($sc->ScheduleMode === 'date') {
-                $periodStart = $reportedDate?->copy()->startOfMonth()->format('Y/m/d');
-                $periodEnd = $reportedDate?->copy()->endOfMonth()->format('Y/m/d');
+                $periodStart = $from?->format('Y/m/d');
+                $periodEnd = $to?->format('Y/m/d');
             } else {
                 $periodStart = $sc->StartDate ? Carbon::parse($sc->StartDate)->format('Y/m/d') : null;
                 $periodEnd = $sc->EndDate ? Carbon::parse($sc->EndDate)->format('Y/m/d') : null;
@@ -1229,10 +1234,7 @@ class PaymentReportController extends Controller
                 ->orderBy('SessionDate');
 
             if ($reportedDate !== null) {
-                $monthStart = $reportedDate->copy()->startOfMonth()->toDateString();
-                $monthEnd   = $reportedDate->copy()->endOfMonth()->toDateString();
-                $sessionQuery->whereDate('SessionDate', '>=', $monthStart)
-                             ->whereDate('SessionDate', '<=', $monthEnd);
+                $sessionQuery->whereDate('SessionDate', '>=', $from->toDateString())->whereDate('SessionDate', '<=', $to->toDateString());
             }
 
             if ($sc->ScheduleMode === 'date') {
