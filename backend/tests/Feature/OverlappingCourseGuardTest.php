@@ -73,6 +73,10 @@ class OverlappingCourseGuardTest extends TestCase
             ->postJson('/api/v1/class-sessions/batch', $this->batchPayload($student->id, $teacherId, $second, 'one_on_two'));
         $res2->assertStatus(409)->assertJson(['code' => 'overlapping_active_course']);
 
+        $audit = null;
+        \Illuminate\Support\Facades\Log::listen(function ($e) use (&$audit) {
+            $e->message === 'enrollment_force_override' && $audit = $e->context;
+        });
         // 勾選強制建立 → 須帶審計原因（獨立平行課）
         $forced = $this->batchPayload($student->id, $teacherId, $second, 'one_on_two');
         $forced['force'] = true;
@@ -82,6 +86,8 @@ class OverlappingCourseGuardTest extends TestCase
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->postJson('/api/v1/class-sessions/batch', $forced)
             ->assertCreated();
+        // #3738 review: the audit log must carry the authenticated actor (auth_user attribute, not auth_user_id).
+        $this->assertGreaterThan(0, (int) ($audit['actor_user_id'] ?? 0));
 
         // force 但未帶 reason → 422
         $forcedNoReason = $this->batchPayload($student->id, $teacherId, $second, 'one_on_three');
@@ -106,7 +112,6 @@ class OverlappingCourseGuardTest extends TestCase
         return [$h, $student->id, $teacherId, (int) $res->json('student_class_id')];
     }
 
-    /** Forced renewal_next_term of $dates; $over patches the payload. */
     private function renew(array $fx, array $dates, array $over = [], string $classType = 'one_on_one'): \Illuminate\Testing\TestResponse
     {
         [$h, $studentId, $teacherId, $first] = $fx;
@@ -127,7 +132,6 @@ class OverlappingCourseGuardTest extends TestCase
         return Carbon::now()->addWeeks($weeks)->next(Carbon::WEDNESDAY)->toDateString();
     }
 
-    /** @return array<int,int> [sessions, learning records, contracts] */
     private function counts(): array
     {
         return [DB::table('ClassSession')->count(), DB::table('LearningRecord')->count(), DB::table('StudentClass')->count()];
@@ -240,6 +244,9 @@ class OverlappingCourseGuardTest extends TestCase
         $manual = $this->renew($fx, [$wed], ['scheduling_policy' => 'manual_occurrence', 'session_plan' => [],
             'course_start_date' => $thu, 'end_date' => Carbon::parse($wed)->addMonth()->toDateString()]);
         $this->assertSame('renewal_range_overlap', $manual->json('code'), $manual->getContent());
+        DB::table('StudentClass')->where('ID', $fx[3])->update(['EndDate' => null]);
+        $open = $this->renew($fx, [$wed], ['scheduling_policy' => 'manual_occurrence', 'session_plan' => [], 'course_start_date' => $this->later(30)]);
+        $this->assertSame('renewal_range_overlap', $open->json('code'), $open->getContent());
         $this->assertSame($before, $this->counts());
     }
 
@@ -261,7 +268,7 @@ class OverlappingCourseGuardTest extends TestCase
         $later = $this->later();
         $payload = array_merge($this->batchPayload($sourceId, $teacherId, [$later]), ['future_dates' => [$later],
             'identity_group_id' => $group, 'branch_id' => 2, 'force' => true, 'force_reason' => 'renewal_next_term']);
-        // Not reachable over HTTP today (batchStore has no identity_group_id, /enrollments has no force): call the service.
+        // Not reachable over HTTP today; call the service.
         $request = \Illuminate\Http\Request::create('/x', 'POST');
         $request->attributes->set('auth_role', 'super_admin');
         $request->attributes->set('auth_user', \App\Models\User::find($teacherId));

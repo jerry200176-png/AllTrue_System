@@ -21,7 +21,6 @@ class RenewalSnapshotRaceTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** Committed data on purpose: no wrapping transaction (the second connection must see commits). */
     protected function connectionsToTransact()
     {
         return [];
@@ -59,13 +58,7 @@ class RenewalSnapshotRaceTest extends TestCase
         parent::tearDown();
     }
 
-    /**
-     * Deterministic barrier: right before the enrollment transaction's first student FOR UPDATE, the second
-     * connection ($a) commits $concurrent. Then the forced renewal ($renewDate/$kind) runs on the default connection.
-     *
-     * @param callable(\Illuminate\Database\Connection,int,array):void $concurrent
-     * @return array{0:\Illuminate\Testing\TestResponse,1:int} [response, first course id]
-     */
+    /** Barrier: right before the transaction's first student FOR UPDATE, connection A commits $concurrent; then the forced renewal runs. */
     private function race(callable $concurrent, string $renewDate, string $kind, int $weekday = 3): array
     {
         try {
@@ -125,7 +118,6 @@ class RenewalSnapshotRaceTest extends TestCase
 
     public function test_second_concurrent_count_renewal_is_revalidated_under_the_lock(): void
     {
-        // The concurrent connection commits a charged contract for the same term on another weekday (Thursday).
         $thu = Carbon::now()->addWeeks(30)->next(Carbon::THURSDAY)->toDateString();
         $classes = DB::table('StudentClass')->count();
         [$res] = $this->race(function ($a, $first) use ($thu) {

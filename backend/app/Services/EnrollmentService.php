@@ -1159,16 +1159,19 @@ class EnrollmentService
             array_map(fn ($p) => is_array($p) ? ($p['session_date'] ?? null) : null, $data['session_plan'] ?? [])
         ));
         sort($dates);
-        // Manual-occurrence renewals submit no dates: fall back to the contract range like the 409 discovery.
-        $start = substr((string) ($dates[0] ?? $data['course_start_date'] ?? ''), 0, 10) ?: null;
+        // Manual-occurrence renewals submit no dates: fall back to the contract range like the 409 discovery;
+        // no start at all means "from today", no end means open-ended (so any same-teacher active contract overlaps).
+        $start = substr((string) ($dates[0] ?? $data['course_start_date'] ?? now()->toDateString()), 0, 10);
         $end = substr((string) ($dates !== [] ? end($dates) : ($data['end_date'] ?? '')), 0, 10) ?: null;
         $monthly = false;
         if ($studentId > 0 && $subjectIds !== []) {
             $base = fn () => DB::table('StudentClass')->where('StudentID', $studentId)->where('Stop', 0)
                 ->whereIn('SubjectID', $subjectIds);
-            $overlap = $classType !== 'trial' && $teacher > 0 && $start && $end;
+            $overlap = $classType !== 'trial' && $teacher > 0;
+            // An open-ended existing contract (EndDate NULL, e.g. manual_occurrence) never proves the old term ended.
             $overlapping = fn ($q) => $q->where('TeacherID', $teacher)
-                ->whereDate('StartDate', '<=', $end)->whereDate('EndDate', '>=', $start);
+                ->when($end, fn ($w) => $w->whereDate('StartDate', '<=', $end))
+                ->where(fn ($w) => $w->whereNull('EndDate')->orWhereDate('EndDate', '>=', $start));
             $monthly = $base()->where(function ($q) use ($classType, $overlap, $overlapping) {
                 $q->where('ClassType', $classType);
                 if ($overlap) {
@@ -1293,8 +1296,8 @@ class EnrollmentService
         $actorId = null;
         try {
             $actorId = $request->attributes->get('auth_user_id')
-                ?? $request->user()->id
-                ?? null;
+                ?? $request->attributes->get('auth_user')?->id
+                ?? $request->user()?->id;
         } catch (\Throwable $e) {
             $actorId = null;
         }
