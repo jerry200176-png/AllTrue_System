@@ -77,14 +77,16 @@ new → triaged → in_progress → resolved → (reporter-verify) → closed
 最低限度：
 
 ```bash
-# 1. 版本
-ssh admin@pi.lifenet.com.tw 'cd /home/admin/backend && git rev-parse --short HEAD'
+# 1. 版本（公開 HTTPS，不 SSH、不用 -k）
+curl -fsS https://daan.lifenet.com.tw/version.json
+curl -fsS https://daan.lifenet.com.tw/deployment.json   # backend_sha／frontend_build_sha == 核准 SHA
 
 # 2. Health
-curl -sk https://daan.lifenet.com.tw/api/v1/health
+curl -fsS https://daan.lifenet.com.tw/api/v1/health
 
 # 3. 業務抽樣（依 bug 類型）
-# 例：tinker 唯讀查詢、特定 API smoke、前端 bundle grep
+# 例：唯讀 `production-case-dump.yml` case、bug-detail-dump、特定 API smoke、前端 bundle grep
+# 不直接 SSH／tinker／raw SQL；需要新唯讀查詢時新增 case-dump case（見 AGENTS.md）
 ```
 
 記錄格式：
@@ -115,9 +117,9 @@ curl -sk https://daan.lifenet.com.tw/api/v1/health
 
 | 變更類型 | 回滾方式 |
 |----------|----------|
-| Code deploy | `git revert <merge-commit>` + 等 deploy.yml |
-| Migration | `migrate:rollback`（僅在有 down() 且已評估風險時） |
-| 資料修復 | 修復前 `mysqldump` + snapshot JSON + `--rollback` 指令 |
+| Code deploy | 只用現行 workflow 已證明可執行的路徑（見 `alltrue-release` SKILL）；通常為 revert PR → land queue → deploy.yml |
+| Migration | 經受保護的 deploy／POP 流程與 Founder GO；不在 Pi 手動 `migrate:rollback` |
+| 資料修復 | POP dry-run → approve → apply（含 snapshot JSON 與 `--rollback`）；不手動 SSH `mysqldump` |
 
 高風險（帳務/堂數/auth）：**Gate 6 必填**才能執行 production 寫入。
 
