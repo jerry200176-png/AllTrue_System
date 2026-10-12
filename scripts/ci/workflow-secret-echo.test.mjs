@@ -11,15 +11,19 @@ const SECRET_VAR = '[A-Za-z_]*(?:PASS(?:WORD)?|SECRET)[A-Za-z_]*'; // session to
 const ENV_FILE = String.raw`\S*\.env(?!\.(?:example|sample|dist|template)\b)(?:\.[\w-]+)?(?=[\s;&|)"']|$)`;
 // Each echo/printf is judged on its own text (up to the next `;`/`&&`/`||` after the secret var).
 // Safe sinks: redirect to a real file (NOT `>&2`, `/dev/stderr`, `2>`), or a hash pipe. base64 is reversible, so not safe.
-const FILE_REDIRECT = /(?<![\d&])>>?\s*(?!&|\/dev\/(?:stdout|stderr|fd|tty))\S/;
+// stdout (`>`, `1>`, `&>`, `>>`) to a real path; not `2>`, `>&N`, process substitution `>(..)`, or /dev|/proc aliases (/dev/null is fine).
+const FILE_REDIRECT = /(?:^|[^\d&>])(?:1|&)?>>?\s*(?!&|>?\(|\/dev\/(?!null\b)|\/proc\/)["']?[^\s"']/;
+// output inside an outer `{ ...; } > file` group that can still reach the log (tee, >&N, device/proc paths, >(..))
+const LEAKS_BACK = />&(?![1-]\b)|\btee\b|\/dev\/(?!null\b)|\/proc\/|>\(/;
 const HASH_PIPE = /\|\s*(?:sha\d*sum|shasum|md5sum|openssl\s+dgst)/;
 const SECRET_RE = new RegExp(`\\$\\{?${SECRET_VAR}\\b`, 'i');
-function echoesSecret(line) {
+function echoesSecret(line, grouped = false) {
   return line.split(/(?=\b(?:echo|printf)\b)/).filter((x) => /^(?:echo|printf)\b/.test(x)).some((seg) => {
     const m = SECRET_RE.exec(seg);
     if (!m) return false;
     const cut = seg.slice(m.index).search(/;|&&|\|\|/);
     const region = cut < 0 ? seg : seg.slice(0, m.index + cut);
+    if (grouped && !LEAKS_BACK.test(region)) return false;
     return !FILE_REDIRECT.test(region) && !HASH_PIPE.test(region);
   });
 }
@@ -28,7 +32,7 @@ const rules = [
   ['env dump', new RegExp(`(?:^|[;&|]\\s*|^\\s*)(?:printenv|export\\s+-p|env)\\s*(?:$|[|;&])|\\bprintenv\\s+(?:-\\S+\\s+)*\\$?${SECRET_VAR}\\b`)],
   ['cat/print .env', new RegExp(String.raw`\b(?:cat|less|more|bat)\s+(?:-\S+\s+)*` + ENV_FILE)],
   // only hashing / redirects to a file are safe; base64 is reversible so it is NOT exempt
-  ['echo of secret var', { test: echoesSecret }],
+  ['echo of secret var', { test: echoesSecret }], // called as test(line, grouped) below
 ];
 // literal value assigned to a *PASS(WORD)* key (workflow env/yaml or .env heredoc) must be a known fixture
 const literal = new RegExp(`^\\s*([A-Z_]*PASS(?:WORD)?[A-Z_]*)\\s*[:=]\\s*(['"]?)([^\\s'"$]+)\\2\\s*$`);
@@ -37,12 +41,20 @@ const literal = new RegExp(`^\\s*([A-Z_]*PASS(?:WORD)?[A-Z_]*)\\s*[:=]\\s*(['"]?
 const PY = `
 import sys, json, re, yaml
 out = []
+def leaves(n):
+    if isinstance(n, str): yield n
+    elif isinstance(n, dict):
+        for v in n.values(): yield from leaves(v)
+    elif isinstance(n, list):
+        for v in n: yield from leaves(v)
 def walk(n, p, acc):
     if isinstance(n, dict):
         for k, v in n.items():
             q = p + '.' + str(k)
+            # a matrix can feed a shell expression: inspect every matrix value as a possible shell
+            if k == 'matrix': acc['shells'] += [[q, x] for x in leaves(v)]
             if k == 'run' and isinstance(v, str): acc['runs'].append([q, v])
-            elif k == 'shell' and isinstance(v, str): acc['shells'].append([q, v])
+            elif k == 'shell' and isinstance(v, (str, list)): acc['shells'] += [[q, x] for x in leaves(v)]
             elif re.search(r'PASS', str(k), re.I) and isinstance(v, (str, int, float)) and not isinstance(v, bool): acc['kvs'].append([q, str(k), str(v)])
             else: walk(v, q, acc)
     elif isinstance(n, list):
@@ -93,7 +105,7 @@ function scanScript(where, script) {
     if (/^\s*\{\s*$/.test(l)) open.push(i);
     else if (/^\s*\}/.test(l) && open.length) {
       const start = open.pop();
-      if (/^\s*\}\s*>>?\s*(?!&|\/dev\/(?:stdout|stderr|fd|tty))\S/.test(l)) for (let k = start; k <= i; k++) grouped.add(k);
+      if (FILE_REDIRECT.test(l.replace(/^\s*\}/, ''))) for (let k = start; k <= i; k++) grouped.add(k);
     }
   });
   lines.forEach((raw, i) => {
@@ -104,8 +116,7 @@ function scanScript(where, script) {
     const noAssign = dropAssignCaptures(line);
     for (const [why, re] of rules) {
       const subject = why === 'cat/print .env' ? noAssign : why === 'echo of secret var' ? dropQuietCaptures(line) : line;
-      if (why === 'echo of secret var' && grouped.has(i)) continue;
-      if (re.test(subject)) bad.push(`${where} line ${i + 1} ${why}: ${raw.trim()}`);
+      if (re.test(subject, grouped.has(i))) bad.push(`${where} line ${i + 1} ${why}: ${raw.trim()}`);
     }
     const m = line.match(literal);
     if (m && !m[3].includes('{{') && !FIXTURES.has(m[3])) bad.push(`${where} line ${i + 1} literal credential: ${m[1]}=<redacted>`);
@@ -127,6 +138,13 @@ export const scan = (name, text) => scanAll([{ name, text }]);
 // self-test: each bypass reported on #3884 (Codex review 5484099102) must trip; benign forms must not
 const wf = (run, indent = '') => `jobs:\n  j:\n    steps:\n      - run: ${run}`.replace(/\n/g, `\n${indent}`);
 const trip = {
+  'redirect to process substitution': wf('|\n          echo "$DB_PASSWORD" > >(cat)'),
+  'redirect to /proc/self/fd/2': wf('|\n          echo "$DB_PASSWORD" > /proc/self/fd/2'),
+  'redirect to /dev/fd/2': wf('|\n          echo "$DB_PASSWORD" >/dev/fd/2'),
+  'group to file, inner tee /dev/stderr': wf('|\n          {\n            echo "$DB_PASSWORD" | tee /dev/stderr\n          } > "$F"'),
+  'group to file, inner >&2': wf('|\n          {\n            echo "$DB_PASSWORD" >&2\n          } > "$F"'),
+  'matrix shell list': 'jobs:\n  j:\n    strategy:\n      matrix:\n        shell: ["bash -x {0}"]\n    steps:\n      - shell: ${{ matrix.shell }}\n        run: echo hi',
+  'matrix include shell': 'jobs:\n  j:\n    strategy:\n      matrix:\n        include:\n          - sh: "bash -o xtrace {0}"\n    steps:\n      - shell: ${{ matrix.sh }}\n        run: echo hi',
   'group redirected to stderr': wf('|\n          {\n            echo "$DB_PASSWORD"\n          } >&2'),
   'echo secret >&2': wf('|\n          echo "$DB_PASSWORD" >&2'),
   'echo secret 2>&1': wf('|\n          echo "$DB_PASSWORD" 2>&1'),
@@ -160,6 +178,12 @@ const trip = {
 };
 for (const [k, y] of Object.entries(trip)) if (!scan('probe', y).length) { console.error('guard missed probe:', k); process.exit(1); }
 const ok = {
+  'echo 1> file': wf('|\n          echo "$DB_PASSWORD" 1> artifact'),
+  'echo &> file': wf('|\n          echo "$DB_PASSWORD" &> artifact'),
+  'echo &>> file': wf('|\n          echo "$DB_PASSWORD" &>> artifact'),
+  'echo > /dev/null': wf('|\n          echo "$DB_PASSWORD" > /dev/null'),
+  'group to file, inner 2>&1': wf('|\n          {\n            echo "$DB_PASSWORD" 2>&1\n          } > "$F"'),
+  'matrix shell without trace': 'jobs:\n  j:\n    strategy:\n      matrix:\n        shell: ["bash -e {0}"]\n    steps:\n      - shell: ${{ matrix.shell }}\n        run: echo hi',
   'group redirected to file': wf('|\n          {\n            echo "$DB_PASSWORD"\n          } > "$F"'),
   'printf %q to state file': wf("|\n          printf 'DB_PASSWORD=%q\\n' \"$DB_PASSWORD\" >> \"$STATE\""),
   'shell: bash -e (no trace)': 'jobs:\n  j:\n    steps:\n      - shell: bash -eo pipefail {0}\n        run: echo hi',

@@ -75,6 +75,8 @@ jobs:
           node scripts/ci/staff-identity-merge-workflow.test.mjs
           node scripts/ci/inapp-product-loop-entry.test.mjs
           node scripts/ci/staff-multirole-activation-workflow.test.mjs
+          # guard parses workflow YAML with PyYAML; make the dependency explicit instead of relying on the runner image
+          python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet --user 'PyYAML==6.0.2'
           node scripts/ci/workflow-secret-echo.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
