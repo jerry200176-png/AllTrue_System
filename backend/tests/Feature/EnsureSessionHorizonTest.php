@@ -402,6 +402,33 @@ class EnsureSessionHorizonTest extends TestCase
         $this->assertSame($exec['created_count'], $dry['would_create']);
     }
 
+    public function test_dry_run_matches_execute_at_seconds_precision_boundaries(): void
+    {
+        // #3727 parity: 15:00-16:00:30 overlaps a 16:00 slot (execute skips); 15:00-16:00:00 is merely adjacent.
+        putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
+        $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $cands = $svc->ensure($sc, null, $this->today, null)['ensure']['candidates'];
+        $other = $this->course(['StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID')]);
+        foreach ([[$cands[0]['date'], '16:00:30'], [$cands[1]['date'], '16:00:00']] as [$date, $end]) {
+            DB::table('ClassSession')->insert([
+                'StudentClassID' => $other, 'SessionDate' => $date, 'StartTime' => '15:00:00',
+                'EndTime' => $end, 'Status' => 'scheduled', 'Note' => '',
+            ]);
+        }
+
+        $dry = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+        $exec = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE)['ensure'];
+
+        $this->assertSame(1, $exec['skipped_count']);
+        $this->assertSame($exec['skipped_count'], $dry['would_skip']);
+        $this->assertSame($exec['created_count'], $dry['would_create']);
+    }
+
     public function test_shared_pool_shortage_warns_but_does_not_block_planned_sessions(): void
     {
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');

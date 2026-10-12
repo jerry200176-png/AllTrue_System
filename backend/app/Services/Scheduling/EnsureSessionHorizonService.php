@@ -259,11 +259,13 @@ final class EnsureSessionHorizonService
                 $skip++;
                 continue;
             }
-            $end = substr((string) ($o['end_hm'] ?? $this->defaultEnd($o['start_hm'])), 0, 5);
+            // Compare at stored (seconds) precision, like the exact predicate: 15:00-16:00:30 overlaps a 16:00 start.
+            $end = $this->hms((string) ($o['end_hm'] ?? $this->defaultEnd($o['start_hm'])));
+            $startFull = $this->hms($start);
             $touches = false;
             foreach ($busy[$d] ?? [] as [$bs, $be]) {
                 // Same start always touches (R20 same-start check ignores the other row's end, e.g. 00:00 when omitted).
-                if (substr($bs, 0, 5) === $start || (substr($bs, 0, 5) < $end && substr($be, 0, 5) > $start)) {
+                if (substr($bs, 0, 5) === $start || ($this->hms($bs) < $end && $this->hms($be) > $startFull)) {
                     $touches = true;
                     break;
                 }
@@ -288,6 +290,11 @@ final class EnsureSessionHorizonService
 
         return $this->hasCrossScConflict($studentId, $o['date'], $o['start_hm'], $studentClassId)
             || ($course && $this->materializer->findStudentSlotConflict($course, $o['date'], $o['start_hm'], $end, $asOf));
+    }
+
+    private function hms(string $t): string
+    {
+        return strlen($t) === 5 ? $t.':00' : substr($t, 0, 8);
     }
 
     private function loadStudentId(int $studentClassId): int
