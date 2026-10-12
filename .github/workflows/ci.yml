@@ -153,9 +153,6 @@ jobs:
               - 'frontend/src/components/design-system/**'
               - 'frontend/src/pages/NotificationsCenter.vue'
               - 'frontend/src/pages/StudentsList.vue'
-              - 'frontend/src/pages/TuitionCollectionPage.vue'
-              - 'frontend/src/components/TuitionDocActions.vue'
-              - 'frontend/e2e/tuition-doc-entries-clarity.spec.js'
               # axe gate dependency (Dependabot bumps of @axe-core/playwright)
               - 'frontend/package.json'
               - 'frontend/package-lock.json'
