@@ -231,24 +231,49 @@ final class EnsureSessionHorizonService
             ->whereIn(DB::raw('DATE(SessionDate)'), $dates)
             ->get([DB::raw('DATE(SessionDate) as d'), DB::raw('SUBSTRING(StartTime, 1, 5) as t')])
             ->mapWithKeys(fn ($r) => [$r->d.'|'.$r->t => true])->all();
-        // Other-course sessions/schedules of the student on those dates, as [date => [[start, end], ...]] (HH:MM).
-        // A superset of what the exact check can match; the exact check (period, trial, stale-exception rules)
-        // still decides, but only for candidates whose time interval touches one of these rows.
+        // Other-course sessions/schedules of the student on those dates, as [date => [[start, end], ...]].
+        // Rows carry the columns the write guard filters on, so semantically exempt rows (same shared package,
+        // trial, stopped course, outside the contract period, cancelled-family status, non-scheduled/anchor
+        // schedules) are dropped in memory here; only rows that can really conflict reach the exact check.
         $busy = [];
         if ($studentId > 0) {
+            $pkg = $course ? (int) $course->getAttribute('PackageID') : 0;
+            $ownExempt = $course && (strtolower(trim((string) $course->getAttribute('ClassType'))) === 'trial'
+                || ((int) $course->getAttribute('Stop') === 1 && (int) $course->getAttribute('RemainingSessions') <= 0));
+            $excluded = array_map('strtolower', \App\Support\SessionStatus::futureReservationExclusionStatuses());
+            $inPeriod = fn ($r) => (empty($r->sd) || substr((string) $r->sd, 0, 10) <= $r->d)
+                && (empty($r->ed) || substr((string) $r->ed, 0, 10) >= $r->d);
+            $contractOk = fn ($r) => (int) ($r->stop ?? 0) === 0 && strtolower((string) ($r->ctype ?? '')) !== 'trial'
+                && !($pkg > 0 && (int) ($r->pkg ?? 0) === $pkg) && $inPeriod($r);
             $rows = DB::table('ClassSession as cs')
                 ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
                 ->where('sc.StudentID', $studentId)->where('cs.StudentClassID', '!=', $studentClassId)
                 ->whereIn(DB::raw('DATE(cs.SessionDate)'), $dates)
-                ->selectRaw('DATE(cs.SessionDate) as d, cs.StartTime as s, cs.EndTime as e')->get();
+                ->selectRaw('DATE(cs.SessionDate) as d, cs.StartTime as s, cs.EndTime as e, cs.Status as st, sc.PackageID as pkg, sc.Stop as stop, sc.ClassType as ctype, sc.StartDate as sd, sc.EndDate as ed')
+                ->get();
             foreach ($rows as $r) {
-                $busy[$r->d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e];
+                $status = strtolower(trim((string) $r->st));
+                $r20 = !in_array($status, ['cancelled', 'voided'], true); // same-start check: no contract filters
+                $guard = !$ownExempt && !in_array($status, $excluded, true) && $contractOk($r);
+                if ($r20 || $guard) {
+                    $busy[$r->d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e, $r20, $guard];
+                }
             }
-            $rows = DB::table('schedules')
-                ->where('student_id', $studentId)->whereIn(DB::raw('DATE(schedule_date)'), $dates)
-                ->selectRaw('DATE(schedule_date) as d, start_time as s, end_time as e')->get();
-            foreach ($rows as $r) {
-                $busy[$r->d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e];
+            if (!$ownExempt) {
+                $rows = DB::table('schedules as s')
+                    ->leftJoin('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+                    ->where('s.student_id', $studentId)->whereIn(DB::raw('DATE(s.schedule_date)'), $dates)
+                    ->where('s.status', 'scheduled')->whereNull('s.original_schedule_id')
+                    ->selectRaw('DATE(s.schedule_date) as d, s.start_time as s, s.end_time as e, s.student_course_id as cid, sc.ID as scid, sc.PackageID as pkg, sc.Stop as stop, sc.ClassType as ctype, sc.StartDate as sd, sc.EndDate as ed')
+                    ->get();
+                foreach ($rows as $r) {
+                    if ((int) $r->cid === $studentClassId || ($r->cid !== null && $r->scid === null)) {
+                        continue; // own row / orphaned link: never a conflict
+                    }
+                    if ($r->scid === null || $contractOk($r)) {
+                        $busy[$r->d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e, false, true];
+                    }
+                }
             }
         }
         $skip = 0;
@@ -263,9 +288,9 @@ final class EnsureSessionHorizonService
             $end = $this->hms((string) ($o['end_hm'] ?? $this->defaultEnd($o['start_hm'])));
             $startFull = $this->hms($start);
             $touches = false;
-            foreach ($busy[$d] ?? [] as [$bs, $be]) {
-                // Same start always touches (R20 same-start check ignores the other row's end, e.g. 00:00 when omitted).
-                if (substr($bs, 0, 5) === $start || ($this->hms($bs) < $end && $this->hms($be) > $startFull)) {
+            foreach ($busy[$d] ?? [] as [$bs, $be, $r20, $guard]) {
+                // Same start always touches for R20 rows (it ignores the other row's end, e.g. 00:00 when omitted).
+                if (($r20 && substr($bs, 0, 5) === $start) || ($guard && $this->hms($bs) < $end && $this->hms($be) > $startFull)) {
                     $touches = true;
                     break;
                 }

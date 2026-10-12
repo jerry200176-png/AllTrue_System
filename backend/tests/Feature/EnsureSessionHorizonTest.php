@@ -429,6 +429,44 @@ class EnsureSessionHorizonTest extends TestCase
         $this->assertSame($exec['created_count'], $dry['would_create']);
     }
 
+    public function test_dry_run_sql_does_not_grow_for_time_overlapping_semantically_exempt_rows(): void
+    {
+        // #3727 review r4244112659: a same-shared-package course overlapping in time is exempt from the write guard,
+        // so it must be filtered in memory, not re-checked per candidate.
+        $cost = function (int $weeks): array {
+            Carbon::setTestNow($this->today);
+            $owner = 98900 + $weeks;
+            DB::table('Student')->insert(['id' => $owner, 'name' => 'Pkg', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1]);
+            $pkg = (int) DB::table('course_packages')->insertGetId([
+                'student_id' => $owner, 'campus_id' => 1, 'name' => 'exempt pool', 'total_sessions' => 99,
+                'remaining_sessions' => 99, 'used_sessions' => 0, 'stop' => 0, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $sc = $this->explicitCourse(remaining: 40, packageId: $pkg);
+            $studentId = (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID');
+            $other = $this->course(['StudentID' => $studentId, 'PackageID' => $pkg]);
+            $svc = app(EnsureSessionHorizonService::class);
+            $through = $this->today->copy()->addWeeks($weeks);
+            $cands = $svc->ensure($sc, $through, $this->today, null)['ensure']['candidates'];
+            foreach ($cands as $o) {
+                DB::table('ClassSession')->insert([ // overlaps 16:00-18:00 in time, different start, same package
+                    'StudentClassID' => $other, 'SessionDate' => $o['date'], 'StartTime' => '15:00:00',
+                    'EndTime' => '17:00:00', 'Status' => 'scheduled', 'Note' => '',
+                ]);
+            }
+            $n = 0;
+            DB::listen(function () use (&$n) { $n++; });
+            $dry = $svc->ensure($sc, $through, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+
+            return [count($cands), $dry['would_skip'], $n];
+        };
+        [$few, $skipFew, $sqlFew] = $cost(5);
+        [$many, $skipMany, $sqlMany] = $cost(20);
+
+        $this->assertGreaterThan($few, $many);
+        $this->assertSame(0, $skipFew + $skipMany);
+        $this->assertSame($sqlFew, $sqlMany, "SQL grew: {$few} cands={$sqlFew}, {$many} cands={$sqlMany}");
+    }
+
     public function test_shared_pool_shortage_warns_but_does_not_block_planned_sessions(): void
     {
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
