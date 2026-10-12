@@ -74,6 +74,29 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $this->assertTrue($moved);
     }
 
+    /**
+     * #3892 review (lock order): confirm() locks report -> course -> package; a package record must not then lock the
+     * sibling's report (package -> report), or the two deadlock. The package lock already serializes member records.
+     */
+    public function test_package_record_does_not_lock_sibling_reports_after_the_package(): void
+    {
+        [$a, $b] = $this->sharedPackage();
+        $h = $this->directorHeaders();
+        $this->record($h, (int) $a->ID)->assertOk();
+
+        $sql = [];
+        \Illuminate\Support\Facades\DB::listen(function ($q) use (&$sql) {
+            $sql[] = strtolower($q->sql);
+        });
+        $this->record($h, (int) $b->ID)->assertStatus(422)->assertJsonPath('code', 'pending_report_exists');
+
+        $reportReads = array_values(array_filter($sql, fn ($s) => str_contains($s, 'from `payment_reports`')));
+        $this->assertNotEmpty($reportReads);
+        foreach ($reportReads as $s) {
+            $this->assertStringNotContainsString('for update', $s);
+        }
+    }
+
     public function test_ledger_tells_the_panel_which_contracts_share_one_package(): void
     {
         [$a, $b, $pkg] = $this->sharedPackage();

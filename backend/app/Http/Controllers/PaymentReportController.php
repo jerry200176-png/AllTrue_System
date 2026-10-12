@@ -676,13 +676,13 @@ class PaymentReportController extends Controller
                 }
             }
 
-            // #3753: a shared CoursePackage is one obligation, so one pending report covers every member.
-            $existingPending = PaymentReport::whereIn('StudentClassID', $package
-                    ? StudentClass::where('PackageID', $package->id)->pluck('ID')->all()
-                    : [$sc->ID])
-                ->where('status', 'pending')
-                ->lockForUpdate()
-                ->first();
+            // #3753: a shared CoursePackage is one obligation, so one pending report covers every member. The package row
+            // lock (held above) serializes member records; locking the sibling's report after it would invert confirm()'s
+            // report -> package order and deadlock (#3892 review), so package members read without a row lock.
+            $existingPending = $package
+                ? PaymentReport::whereIn('StudentClassID', StudentClass::where('PackageID', $package->id)->pluck('ID')->all())
+                    ->where('status', 'pending')->first()
+                : PaymentReport::where('StudentClassID', $sc->ID)->where('status', 'pending')->lockForUpdate()->first();
             if ($existingPending) {
                 return response()->json([
                     'message' => ((int) $existingPending->StudentClassID === (int) $sc->ID ? '此課程' : '同一共用方案')
