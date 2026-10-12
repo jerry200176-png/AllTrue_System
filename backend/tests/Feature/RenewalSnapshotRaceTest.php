@@ -7,7 +7,7 @@ use App\Models\Student;
 use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -20,22 +20,55 @@ use Tests\TestCase;
  */
 class RenewalSnapshotRaceTest extends TestCase
 {
+    use RefreshDatabase;
+
+    /** Committed data on purpose: no wrapping transaction (the second connection must see commits). */
+    protected function connectionsToTransact()
+    {
+        return [];
+    }
+
+    /** @var array<string,int> table => max(id-like) before the test, to delete only what the test created */
+    private array $baseline = [];
+
     protected function setUp(): void
     {
         parent::setUp();
-        Artisan::call('migrate:fresh', ['--force' => true]);
-        DB::purge();
+        $this->baseline = $this->rowCounts();
+    }
+
+    /** @return array<string,int> */
+    private function rowCounts(): array
+    {
+        $out = [];
+        foreach (DB::select('select table_name as t from information_schema.tables where table_schema = database() and table_type = "BASE TABLE"') as $r) {
+            $out[$r->t] = (int) DB::table($r->t)->count();
+        }
+
+        return $out;
     }
 
     protected function tearDown(): void
     {
-        Artisan::call('migrate:fresh', ['--force' => true]); // leave a clean schema for RefreshDatabase tests
+        // Remove only what this test committed: tables whose row count grew are emptied of rows beyond the baseline.
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        foreach ($this->rowCounts() as $t => $n) {
+            if ($n > ($this->baseline[$t] ?? 0)) {
+                $col = DB::selectOne('select column_name as c from information_schema.columns where table_schema = database() and table_name = ? order by ordinal_position limit 1', [$t])->c;
+                DB::table($t)->orderByDesc($col)->limit($n - ($this->baseline[$t] ?? 0))->delete();
+            }
+        }
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
         parent::tearDown();
     }
 
     public function test_renewal_guard_sees_concurrent_commit_despite_repeatable_read(): void
     {
-        $iso = DB::selectOne('select @@tx_isolation as i')->i; // MariaDB/MySQL <8 name
+        try {
+            $iso = DB::selectOne('select @@transaction_isolation as i')->i; // MySQL 8
+        } catch (\Throwable) {
+            $iso = DB::selectOne('select @@tx_isolation as i')->i; // MariaDB / MySQL 5.7
+        }
         $this->assertSame('REPEATABLE-READ', $iso);
         DB::table('Subject')->count() ?: DB::table('Subject')->insert([['School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => 'Math']]);
         $user = User::create(['LoginName' => 'rr-dir@example.com', 'Name' => 'dir', 'PSW' => 'secret', 'type' => 'A', 'phone' => '0911000000', 'MustChangePassword' => false]);
