@@ -75,6 +75,7 @@ class RotateTelegramWebhookSecret extends Command
 
         $previous = trim((string) ($campus->TelegramWebhookSecret ?? ''));
 
+        $startedAt = time();
         $result = $this->setWebhook($botToken, $webhookUrl, $secret, $error);
         if ($result === 'rejected') {
             Log::error('telegram.webhook.rotate_secret.failed', ['campus_id' => $campus->getKey(), 'error' => $error]);
@@ -94,7 +95,17 @@ class RotateTelegramWebhookSecret extends Command
         }
 
         $this->info("Campus {$campus->getKey()} ({$campus->name}): webhook secret rotated and registered with Telegram.");
-        return $this->verifyRegistration($botToken, $webhookUrl) ? self::SUCCESS : self::FAILURE;
+        if ($this->verifyRegistration($botToken, $webhookUrl, $startedAt)) {
+            return self::SUCCESS;
+        }
+        // Verification failed after persisting: reconcile both sides back to the previous state.
+        try {
+            $campus->TelegramWebhookSecret = $previous === '' ? null : $previous;
+            $campus->save();
+        } catch (Throwable $e) {
+            $this->error('Could not restore the database secret: ' . $this->mask($e->getMessage(), [$botToken, $secret]));
+        }
+        return $this->compensate($campus, $botToken, $webhookUrl, $previous, 'Registration verification failed; reverting to the previous state.');
     }
 
     /** Reverse the external registration (the only real "undo" of an executed rotation). */
@@ -128,11 +139,12 @@ class RotateTelegramWebhookSecret extends Command
             $error = 'Transport error: ' . $this->mask($e->getMessage(), [$botToken, (string) $secret]);
             return 'unknown';
         }
-        if (!$response->successful() || !($response->json('ok') ?? false)) {
-            $error = 'HTTP ' . $response->status() . ': ' . $this->mask((string) $response->json('description'), [$botToken, (string) $secret]);
-            return 'rejected';
+        if ($response->successful() && $response->json('ok') === true) {
+            return 'ok';
         }
-        return 'ok';
+        $error = 'HTTP ' . $response->status() . ': ' . $this->mask((string) $response->json('description'), [$botToken, (string) $secret]);
+        // Only an explicit Bot API {"ok": false} proves nothing was applied; 5xx / malformed bodies are indeterminate.
+        return $response->json('ok') === false && $response->status() < 500 ? 'rejected' : 'unknown';
     }
 
     /** Setup failed after Telegram may have accepted the new secret: restore the previous registration. */
@@ -149,7 +161,7 @@ class RotateTelegramWebhookSecret extends Command
     }
 
     /** Post-check of Telegram's own view of the webhook. Prints no secret. false = verification failed. */
-    private function verifyRegistration(string $botToken, string $url): bool
+    private function verifyRegistration(string $botToken, string $url, int $startedAt): bool
     {
         try {
             $r = Http::timeout(15)->get("https://api.telegram.org/bot{$botToken}/getWebhookInfo");
@@ -165,7 +177,8 @@ class RotateTelegramWebhookSecret extends Command
         $report = [
             'telegram_url_matches' => ($info['url'] ?? null) === $url,
             'pending_update_count' => $info['pending_update_count'] ?? null,
-            'last_error_present'   => !empty($info['last_error_message']),
+            // Only an error dated at/after this rotation counts; older or undated errors are historical diagnostics.
+            'last_error_present'   => !empty($info['last_error_message']) && (int) ($info['last_error_date'] ?? 0) >= $startedAt,
         ];
         $this->line(json_encode($report));
         if (!$report['telegram_url_matches'] || $report['last_error_present']) {

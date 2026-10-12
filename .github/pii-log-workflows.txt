@@ -79,4 +79,3 @@ wuaitong-course-ops-20260827.yml
 wuaitong-signin-status-repair.yml
 xindian-capacity-diagnose.yml
 yang-1445-contract-repair.yml
-pop-telegram-webhook-secret.yml

@@ -12,3 +12,4 @@ secret-rotation-reminder.yml  # reminder only
 security-1128-remove-agent-artifacts.yml  # file cleanup, paths only
 migration-dryrun.yml  # inventory: non-production
 presubmit.yml  # inventory: non-production
+pop-telegram-webhook-secret.yml  # credential rotation (#1139); output is campus id, redacted messages and verification booleans only; keep run history as audit record
