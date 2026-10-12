@@ -78,12 +78,14 @@ class Invoice extends Model
 
     /**
      * SQL: a non-void invoice that may still owe. Payment rows are the truth (Founder Q2, R28): a stored Status of
-     * "paid" whose Payment rows fall short still owes (#3781).
+     * "paid" whose Payment rows fall short still owes (#3781) - for single courses only. Whether a shared-package
+     * member's stale-paid bill reopens the package is undecided (#3785 hold), so package members keep the stored Status.
      */
     public static function mayOweSql(string $invoice = 'Invoice'): string
     {
         return "($invoice.Status IS NULL OR $invoice.Status NOT IN ('paid', 'void')"
-            . " OR ($invoice.Status = 'paid' AND $invoice.TotalAmount > " . self::netPaidSql($invoice) . '))';
+            . " OR ($invoice.Status = 'paid' AND $invoice.TotalAmount > " . self::netPaidSql($invoice)
+            . " AND NOT EXISTS (SELECT 1 FROM StudentClass PS WHERE PS.ID = $invoice.StudentClassID AND PS.PackageID > 0)))";
     }
 
     public function student()

@@ -237,8 +237,13 @@ class ContractMoneyCallersAgreeTest extends TestCase
         ]);
         $course->update(['PackageID' => $pkg->id]);
 
-        $rows = collect($this->withHeaders($this->directorHeaders())->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+        $h = $this->directorHeaders();
+        $rows = collect($this->withHeaders($h)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
         $this->assertNull($rows->first(fn ($r) => (int) ($r['id'] ?? 0) === (int) $course->ID && empty($r['package_id'])));
+        // Same hold for the class-level finance lists (#3891 review): no member-level AR or bank match either.
+        $this->assertSame(0, (int) $this->withHeaders($h)->getJson('/api/v1/finance/ar-aging?branch_id=1')->assertOk()->json('totals.grand_total'));
+        $txn = \App\Models\BankTransaction::create(['campus_id' => 1, 'transaction_date' => '2026-08-20', 'amount' => 6000, 'reference' => 'pkg', 'status' => 'unmatched']);
+        $this->assertSame([], $this->withHeaders($h)->getJson("/api/v1/bank-reconciliation/{$txn->id}/suggest")->assertOk()->json('suggestions'));
     }
 
     /** @return array<string, string> */
