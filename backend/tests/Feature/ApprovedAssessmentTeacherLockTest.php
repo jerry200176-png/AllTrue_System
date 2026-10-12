@@ -146,6 +146,21 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         $this->assertSame((int) $this->scB->ID, (int) $s->fresh()->StudentClassID);
     }
 
+    public function test_backdoor_approve_does_not_resync_a_protected_row(): void
+    {
+        $s = $this->mkSession('attended');
+        $lr = $this->lr($s, 'approved', true);
+        $before = $this->snapshot($lr);
+        $this->api()->postJson('/api/v1/learning-records/backdoor-approve', [
+            'StudentClassID' => $this->sc->ID, 'TeacherID' => $this->bId, 'DirectorID' => $this->dirId, 'SessionDate' => self::DATE,
+        ])->assertStatus(201);
+        $after = $this->snapshot($lr);
+        $this->assertSame($before['lr'], $after['lr'], 'assessment row untouched');
+        $this->assertSame($before['tsc'], $after['tsc']);
+        $this->assertSame($before['units'], $after['units']);
+        $this->assertSame($before['audit'], $after['audit']);
+    }
+
     // ---- NOT protected: legitimate corrections still work and are audited -------------------------------------
 
     public function test_blank_or_system_filled_approved_row_can_still_be_corrected(): void
