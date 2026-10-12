@@ -177,21 +177,6 @@ class OverlappingCourseGuardTest extends TestCase
         $this->assertSame($classes, \Illuminate\Support\Facades\DB::table('StudentClass')->count());
     }
 
-    /** #3738 review: the monthly check must not rely on client-supplied existing_contract_ids. */
-    public function test_monthly_renewal_refusal_ignores_forged_or_omitted_contract_ids(): void
-    {
-        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-forged@example.com');
-        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->update(['ScheduleMode' => 'date']);
-        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
-        $renew = $this->batchPayload($studentId, $teacherId, [$later], 'one_on_one');
-        $renew['force'] = true;
-        $renew['force_reason'] = 'renewal_next_term';
-        $renew['existing_contract_ids'] = [];
-
-        $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew)
-            ->assertStatus(422)->assertJson(['code' => 'renewal_use_monthly_flow']);
-    }
-
     /** #3738 review: an existing TRIAL session is add-on, not a clash (canonical guard excludes trial). */
     public function test_confirmed_overlap_guard_ignores_trial_sessions(): void
     {

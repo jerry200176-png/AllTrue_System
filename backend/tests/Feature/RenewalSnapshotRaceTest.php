@@ -14,9 +14,8 @@ use Tests\TestCase;
 /**
  * #3738 review: MySQL REPEATABLE READ snapshot vs the forced-renewal student lock.
  *
- * Uses TWO real connections and committed data (no RefreshDatabase wrapper): just before the enrollment
- * transaction's first student FOR UPDATE, a second connection commits a completed session for the same slot.
- * If the request had already pinned a snapshot (plain read before the lock) it would miss that commit.
+ * Two real connections, committed rows: right before the enrollment transaction's first student FOR UPDATE,
+ * a second connection commits a completed session for the same slot (a stale snapshot would miss it).
  */
 class RenewalSnapshotRaceTest extends TestCase
 {
@@ -28,7 +27,6 @@ class RenewalSnapshotRaceTest extends TestCase
         return [];
     }
 
-    /** @var array<string,int> table => max(id-like) before the test, to delete only what the test created */
     private array $baseline = [];
 
     protected function setUp(): void
@@ -50,7 +48,6 @@ class RenewalSnapshotRaceTest extends TestCase
 
     protected function tearDown(): void
     {
-        // Remove only what this test committed: tables whose row count grew are emptied of rows beyond the baseline.
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
         foreach ($this->rowCounts() as $t => $n) {
             if ($n > ($this->baseline[$t] ?? 0)) {

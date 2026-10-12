@@ -1224,9 +1224,7 @@ class EnrollmentService
         // Monthly (date-mode) renewal settles old contract, future sessions and invoice atomically in
         // ContractRenewal::renewMonthly; generic enrollment must not stand in for it.
         if ($reason === 'renewal_next_term') {
-            // Server-derived only: client existing_contract_ids are ignored. The targets are recomputed with the same
-            // predicate as the 409 discovery: same student + subject, and either the same class type (duplicate) or
-            // the same teacher with an overlapping date range (overlap; trial attempts never overlap-match).
+            // Server-derived only (client existing_contract_ids ignored): same predicate as the 409 discovery.
             // Blank/NULL ScheduleMode is a legacy session-count contract.
             $studentIdForGate = $resolvedStudentId > 0 ? $resolvedStudentId : (int) ($data['student_id'] ?? 0);
             $monthlyExisting = false;
