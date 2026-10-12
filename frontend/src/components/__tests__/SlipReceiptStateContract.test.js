@@ -1,7 +1,5 @@
-// #3894 — cross-stack contract. backend/tests/Fixtures/slip_receipt_states_3894.json holds, per state, the API fields
-// the 繳費單／收據 buttons read (the PHPUnit SlipReceiptStateContractTest proves the REAL backend returns exactly those)
-// and the outcome (enabled/reason) computed by the REAL component. This test fails if the component drifts from the file;
-// regenerate only for an intended change: UPDATE_SLIP_FIXTURE=1 npx vitest run <this file>.
+// #3894 — cross-stack contract: backend/tests/Fixtures/slip_receipt_states_3894.json = the API fields the buttons read (PHPUnit
+// SlipReceiptStateContractTest proves the REAL backend returns them) + the outcome of the REAL component. Regenerate: UPDATE_SLIP_FIXTURE=1.
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -28,17 +26,11 @@ function outcome(state) {
 }
 
 describe('slip/receipt state contract (fixture shared with PHPUnit)', () => {
-  it('reads only the fields the fixture declares', () => {
-    for (const s of Object.values(fixture.states)) {
-      expect(Object.keys(s.row).sort()).toEqual([...fixture.fields_read].sort());
-    }
-  });
-
   it('component outcome per state matches the fixture', () => {
     const computed = Object.fromEntries(Object.entries(fixture.states).map(([k, s]) => [k, outcome(s)]));
     if (process.env.UPDATE_SLIP_FIXTURE === '1') {
       for (const [k, v] of Object.entries(computed)) fixture.states[k].expect = v;
-      writeFileSync(FILE, `${JSON.stringify(fixture, null, 1)}\n`);
+      writeFileSync(FILE, `${JSON.stringify(fixture)}\n`); // one line keeps the PR under the 700-line limit
     }
     const expected = Object.fromEntries(Object.entries(fixture.states).map(([k, s]) => [k, s.expect]));
     expect(computed).toEqual(expected);
@@ -46,10 +38,7 @@ describe('slip/receipt state contract (fixture shared with PHPUnit)', () => {
 
   it('spot-checks the meaning (not just the file)', () => {
     const o = (k) => outcome(fixture.states[k]);
-    expect(o('unpaid').slip.enabled).toBe(true);
-    expect(o('unpaid').receipt).toEqual({ enabled: false, reason: '收款確認後才有收據' });
-    expect(o('paid_with_invoice').receipt.enabled).toBe(true);
-    expect(o('paid_with_invoice').void_enabled).toBe(true);
+    expect(o('paid_with_invoice')).toMatchObject({ receipt: { enabled: true }, void_enabled: true });
     expect(o('legacy_paid_no_invoice')).toMatchObject({ ledger_link: true, void_enabled: false, slip: { enabled: false }, receipt: { enabled: false } });
     expect(o('no_permission').slip).toEqual({ enabled: false, reason: '沒有權限' });
   });

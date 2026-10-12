@@ -423,7 +423,7 @@
                       :busy="receiptLoading === r.id"
                       @slip="openSlip"
                       @receipt="viewReceiptForClass"
-      @ledger="openLedgerForClass"
+                      @ledger="openLedgerForClass"
                     />
 
                     <!-- #1100/FD-3: 本期順延與下一期重疊 — director-facing only, never auto-shifts dates -->

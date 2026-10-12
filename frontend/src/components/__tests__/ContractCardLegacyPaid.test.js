@@ -1,5 +1,4 @@
-// #3894 — 舊制已繳（課程已標記繳費、沒有系統帳單）不可顯示成「還沒開帳單」，
-// 也不可提供開帳單／登記收款。Synthetic data only.
+// #3894 — 舊制已繳（已標記繳費、沒有系統帳單）不可顯示成「還沒開帳單」，也不可提供開帳單／登記收款。Synthetic.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 
@@ -23,33 +22,26 @@ const mountCard = async (props) => {
 };
 beforeEach(() => authedFetch.mockReset());
 
+const has = (w, id) => w.find(`[data-testid="${id}"]`).exists();
+const LEGACY = '舊制已繳（無新系統帳單）';
+
 describe('ContractCard legacy paid / no invoice', () => {
-  it('shows a neutral legacy state, never 還沒開帳單 / 開帳單 / 登記這筆', async () => {
+  it('shows a neutral legacy state, never 還沒開帳單 / 還沒繳費 / 開帳單 / 登記這筆', async () => {
     const w = await mountCard({ course: { id: 9, paid: true }, amounts: null, billDraft: { amount: 1000 } });
-    expect(w.get('[data-testid="contract-legacy-paid"]').text()).toBe('舊制已繳（無新系統帳單）');
-    for (const r of w.findAll('[data-testid="contract-session"]')) {
-      expect(r.text()).toContain('舊制已繳（無新系統帳單）');
-      expect(r.text()).not.toContain('還沒開帳單');
-    }
-    expect(w.text()).not.toContain('還沒開帳單');
-    expect(w.text()).not.toContain('還沒繳費');
-    expect(w.get('[data-testid="contract-last-payment"]').text()).toBe('舊制已繳（無新系統帳單）');
-    expect(w.find('[data-testid="contract-issue"]').exists()).toBe(false);
-    expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+    expect(w.get('[data-testid="contract-legacy-paid"]').text()).toBe(LEGACY);
+    expect(w.get('[data-testid="contract-last-payment"]').text()).toBe(LEGACY);
+    w.findAll('[data-testid="contract-session"]').forEach((r) => expect(r.text()).toContain(LEGACY));
+    expect(w.text()).not.toMatch(/還沒開帳單|還沒繳費/);
+    expect([has(w, 'contract-issue'), has(w, 'contract-record')]).toEqual([false, false]);
   });
 
-  it('unpaid course with no invoice keeps 還沒開帳單 and the existing actions', async () => {
+  it('unpaid with no invoice keeps 還沒開帳單 and the actions; invoice-paid stays 已收清', async () => {
     const w = await mountCard({ course: { id: 9, paid: false }, amounts: null, billDraft: { amount: 1000 } });
     expect(w.text()).toContain('還沒開帳單');
     expect(w.get('[data-testid="contract-last-payment"]').text()).toBe('還沒繳費');
-    expect(w.find('[data-testid="contract-legacy-paid"]').exists()).toBe(false);
-    expect(w.find('[data-testid="contract-issue"]').exists()).toBe(true);
-    expect(w.find('[data-testid="contract-record"]').exists()).toBe(true);
-  });
-
-  it('paid via real invoice stays 已收清', async () => {
-    const w = await mountCard({ course: { id: 9, paid: true }, amounts: { due: 100, received: 100, owed: 0 } });
-    expect(w.get('[data-testid="contract-money"]').text()).toContain('已收清');
-    expect(w.find('[data-testid="contract-legacy-paid"]').exists()).toBe(false);
+    expect([has(w, 'contract-legacy-paid'), has(w, 'contract-issue'), has(w, 'contract-record')]).toEqual([false, true, true]);
+    const paid = await mountCard({ course: { id: 9, paid: true }, amounts: { due: 100, received: 100, owed: 0 } });
+    expect(paid.get('[data-testid="contract-money"]').text()).toContain('已收清');
+    expect(has(paid, 'contract-legacy-paid')).toBe(false);
   });
 });

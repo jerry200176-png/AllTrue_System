@@ -30,7 +30,7 @@ const rows = [
   },
 ];
 
-// 帳務中心預設先開「學生」清單（每位學生一列，點開看帳務）；逐課程的待處理佇列要從「待處理清單」進入。
+// 預設先開「學生」清單；逐課程佇列要從「待處理清單」進入。
 async function goQueue(page, url) {
   await page.goto(url);
   await page.getByRole('button', { name: /^待處理清單/ }).click();
@@ -191,11 +191,7 @@ async function installMock(page) {
       body: JSON.stringify({ data, summary: { course_count: data.length, legacy_count: 0, exception_count: 0, paid_total: data.length ? 9800 : 0, overpaid_total: 0, pending_reconciliation_count: data.length ? 1 : 0 } }),
     });
   });
-  // 學生清單（預設分頁）另外讀本校區學生名單。
-  await page.route('**/api/v1/students**', (route) => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({ data: new URL(page.url()).searchParams.get('mode') === 'empty' ? [] : rows.map((row) => ({ id: row.student_id, name: row.student_name, enable: 1 })) }),
-  }));
+  await page.route('**/api/v1/students**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: new URL(page.url()).searchParams.get('mode') === 'empty' ? [] : rows.map((row) => ({ id: row.student_id, name: row.student_name, enable: 1 })) }) })); // 預設「學生」清單讀本校區學生名單
   await page.route('**/api/v1/branches**', (route) => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 1, name: '內湖分校', code: 'neihu' }]),
   }));
