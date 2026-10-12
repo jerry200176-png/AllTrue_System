@@ -608,7 +608,7 @@ class EnrollmentService
                                 'existing_course_id' => $sc->ID,
                                 'subject' => $subjectOnly,
                                 'class_type' => $sc->ClassType ?? '',
-                                'schedule_mode' => strtolower((string) ($sc->ScheduleMode ?? '')),
+                                'schedule_mode' => strtolower((string) ($sc->ScheduleMode ?: 'count')),
                                 'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
                                 // in-app #382: a manual course with no upcoming lesson needs 「新增下一堂」, not a second course.
                                 'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
@@ -640,7 +640,7 @@ class EnrollmentService
                                 'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
                                 // Same facts as duplicate conflicts, so the shared modal can still offer 新增下一堂 (#382).
                                 'class_type' => $sc->ClassType ?? '',
-                                'schedule_mode' => strtolower((string) ($sc->ScheduleMode ?? '')),
+                                'schedule_mode' => strtolower((string) ($sc->ScheduleMode ?: 'count')),
                                 'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
                                 'future_session_count' => $sc->scheduling_policy === 'manual_occurrence'
                                     ? app(ManualSessionBookingService::class)->reservedSessionCount($sc, Carbon::today()->toDateString())
@@ -743,8 +743,11 @@ class EnrollmentService
             $campusIds,
             $isTutoring
         ) {
+            // Forced renewals take the student row lock as the FIRST statement of the transaction: under
+            // REPEATABLE READ any earlier plain read would pin a snapshot that predates a concurrent commit.
+            $lockRenewal = !empty($data['force']) && ($data['force_reason'] ?? '') === 'renewal_next_term';
             $student = $studentId > 0
-                ? Student::find($studentId)
+                ? ($lockRenewal ? Student::whereKey($studentId)->lockForUpdate()->first() : Student::find($studentId))
                 : $this->createStudentInline((array) ($data['student'] ?? []), $targetCampusId);
 
             if ($identityGroupId > 0 && $student && (int) $student->CampusID !== $targetCampusId) {
@@ -1165,7 +1168,8 @@ class EnrollmentService
                     ->whereRaw("LOWER(COALESCE(sc.ClassType, '')) <> ?", ['trial'])
                     ->whereNotIn('cs.Status', \App\Support\SessionStatus::futureReservationExclusionStatuses())
                     ->where('cs.StartTime', '<', $end)->where('cs.EndTime', '>', $start)
-                    ->exists();
+                    ->lockForUpdate()
+                    ->first(['cs.id']) !== null;
                 if ($clash) {
                     return response()->json([
                         'message' => '已確認的上課日期與學生既有課程同一時段重疊，續報不能重複建立這堂課。',
@@ -1220,15 +1224,21 @@ class EnrollmentService
         // Monthly (date-mode) renewal settles old contract, future sessions and invoice atomically in
         // ContractRenewal::renewMonthly; generic enrollment must not stand in for it.
         if ($reason === 'renewal_next_term') {
-            // Server-derived only: client existing_contract_ids are never read here, so a foreign contract id
-            // cannot be used as an oracle for other students'/campuses' contract types.
-            // Cross-campus identity enrollment remaps to the target-campus member; use that member.
+            // Decide on the contract actually being renewed, derived server-side. Supplied ids only count when
+            // they belong to this (resolved) student, are active and match the request's subjects; otherwise
+            // fall back to the duplicate-conflict predicate (same subject + same class type). Foreign ids are
+            // ignored, so they cannot act as an oracle. NULL ScheduleMode is a legacy session-count contract.
             $studentIdForGate = $resolvedStudentId > 0 ? $resolvedStudentId : (int) ($data['student_id'] ?? 0);
-            $monthlyExisting = $studentIdForGate > 0 && $subjectIds !== [] && DB::table('StudentClass')
-                ->where('StudentID', $studentIdForGate)->where('Stop', 0)
-                ->whereIn('SubjectID', $subjectIds)
-                ->where(fn ($q) => $q->whereNull('ScheduleMode')->orWhereRaw('LOWER(ScheduleMode) <> ?', ['count']))
-                ->exists();
+            $monthlyExisting = false;
+            if ($studentIdForGate > 0 && $subjectIds !== []) {
+                $base = DB::table('StudentClass')->where('StudentID', $studentIdForGate)->where('Stop', 0)
+                    ->whereIn('SubjectID', $subjectIds);
+                $targets = $existingIds !== [] ? (clone $base)->whereIn('ID', $existingIds) : null;
+                if ($targets === null || !(clone $targets)->exists()) {
+                    $targets = (clone $base)->where('ClassType', (string) ($data['class_type'] ?? ''));
+                }
+                $monthlyExisting = $targets->whereRaw("LOWER(COALESCE(NULLIF(ScheduleMode, ''), 'count')) = ?", ['date'])->exists();
+            }
             if ($monthlyExisting || ($data['payment_type'] ?? 'session') !== 'session') {
                 return response()->json([
                     'message' => '月繳課程的續報請從該課程的「續約」進行，不能用強制建立代替。',
