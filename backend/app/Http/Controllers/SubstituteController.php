@@ -363,6 +363,8 @@ class SubstituteController extends Controller
         } catch (\App\Exceptions\SlotOccupiedException $e) {
             // #1161: reverting onto an occupied slot is an expected domain outcome.
             return response()->json($e->toResponseArray(), 422);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            return $e->getResponse(); // #3824 transactional recheck: keep the 409
         } catch (\Throwable $e) {
             Log::error('[substitute_undo] failed', [
                 'class_session_id' => $classSessionId,

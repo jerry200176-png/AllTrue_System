@@ -2579,6 +2579,8 @@ class ClassSessionController extends Controller
             ]);
 
             return response()->json($e->toResponseArray(), 422);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            return $e->getResponse(); // #3824 transactional recheck: keep the 409
         } catch (\Throwable $e) {
             $this->logSubstituteDiag('failed', [
                 'class_session_id' => $id,

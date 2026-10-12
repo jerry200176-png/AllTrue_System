@@ -161,6 +161,77 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         $this->assertSame($before['audit'], $after['audit']);
     }
 
+    // ---- Codex review r4246700730 / 742 / 747 / 758 ----------------------------------------------------------
+
+    public function test_contract_change_locks_only_the_approved_occurrence_not_the_whole_day(): void
+    {
+        $day = '2026-04-18';
+        $locked = $this->mkSession('attended', $day);
+        $this->lr($locked, 'approved', true, $day);
+        ClassSession::create(['StudentClassID' => $this->sc->ID, 'SessionDate' => $day, 'StartTime' => '20:00:00', 'EndTime' => '22:00:00', 'Status' => 'scheduled']);
+        foreach (['16:00' => '18:00', '20:00' => '22:00'] as $st => $en) {
+            $this->schedule($day, $st, $en, $this->aId);
+        }
+        $this->api()->putJson("/api/v1/student-classes/{$this->sc->ID}", ['teacher_id' => $this->bId])->assertOk();
+        $this->assertSame([$this->bId], Schedule::where('student_course_id', $this->sc->ID)->whereDate('schedule_date', $day)->where('start_time', '20:00')->pluck('teacher_id')->map(fn ($v) => (int) $v)->unique()->all(), 'mutable 20:00 follows the new teacher');
+        $this->assertNotContains($this->bId, Schedule::where('student_course_id', $this->sc->ID)->whereDate('schedule_date', $day)->where('start_time', '16:00')->pluck('teacher_id')->map(fn ($v) => (int) $v)->all(), 'locked 16:00 keeps the old teacher');
+    }
+
+    public function test_legacy_schedule_writers_cannot_move_a_protected_occurrence(): void
+    {
+        $s = $this->mkSession('attended');
+        $lr = $this->lr($s, 'approved', true);
+        $row = $this->schedule(self::DATE, '16:00', '18:00', $this->aId);
+        $before = $this->snapshot($lr);
+        $this->api()->putJson("/api/v1/schedules/{$row->id}", ['teacher_id' => $this->bId])->assertStatus(409);
+        $this->api()->postJson('/api/v1/schedules', [
+            'student_id' => $this->sc->StudentID, 'teacher_id' => $this->bId, 'day_of_week' => 5, 'start_time' => '16:00', 'end_time' => '18:00',
+            'branch_id' => 1, 'schedule_date' => self::DATE, 'student_course_id' => $this->sc->ID, 'status' => 'scheduled', 'original_schedule_id' => $row->id,
+        ])->assertStatus(409);
+        $after = $this->snapshot($lr);
+        $this->assertSame($before['schedules'], $after['schedules'], 'no schedule row written');
+        $this->assertSame($before['lr'], $after['lr']);
+        $this->assertSame($before['tsc'], $after['tsc']);
+        $this->assertSame($before['units'], $after['units']);
+    }
+
+    public function test_auto_approval_placeholder_row_can_still_be_corrected(): void
+    {
+        $s = $this->mkSession('attended');
+        $lr = $this->lr($s, 'approved', false, null, '（系統自動核准）');
+        $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId, 'reason' => 'auto row'])->assertOk();
+        $this->assertSame($this->bId, (int) $lr->fresh()->TeacherID);
+    }
+
+    public function test_race_after_precheck_still_returns_409_for_substitute_and_undo(): void
+    {
+        $s = $this->mkSession('scheduled');
+        $lr = $this->lr($s, 'pending', true);
+        $flip = function () use ($lr) {
+            \Illuminate\Support\Facades\Event::forget('eloquent.retrieved: ' . LearningRecord::class);
+            DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'approved', 'ApprovedAt' => now(), 'ApprovedBy' => 1]);
+        };
+        \Illuminate\Support\Facades\Event::listen('eloquent.retrieved: ' . LearningRecord::class, $flip);
+        $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertStatus(409);
+        $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
+
+        // undo: substitute while still pending, then approve between precheck and transaction
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'pending', 'ApprovedAt' => null]);
+        $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertOk();
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'pending', 'ApprovedAt' => null]);
+        \Illuminate\Support\Facades\Event::listen('eloquent.retrieved: ' . LearningRecord::class, $flip);
+        $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute/undo")->assertStatus(409);
+    }
+
+    private function schedule(string $date, string $start, string $end, int $teacherId): Schedule
+    {
+        return Schedule::create([
+            'student_id' => $this->sc->StudentID, 'teacher_id' => $teacherId, 'subject' => 'Math', 'day_of_week' => 5, 'start_time' => $start, 'end_time' => $end,
+            'duration_hours' => 2, 'class_type' => 'regular', 'status' => 'scheduled', 'type' => 'normal', 'deduction' => 1, 'branch_id' => 1,
+            'schedule_date' => $date, 'student_course_id' => $this->sc->ID,
+        ]);
+    }
+
     // ---- NOT protected: legitimate corrections still work and are audited -------------------------------------
 
     public function test_blank_or_system_filled_approved_row_can_still_be_corrected(): void

@@ -169,6 +169,13 @@ class ScheduleController extends Controller
             }
         }
 
+        // #3824: a filled+approved occurrence keeps its teacher (legacy writers share the same invariant).
+        if (!empty($data['teacher_id'])
+            && ($locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) ($data['student_course_id'] ?? 0), $data['schedule_date'] ?? null, $data['start_time']))
+            && (int) $locked->TeacherID !== (int) $data['teacher_id']) {
+            return \App\Support\LearningRecordMutableOwnership::lockedResponse();
+        }
+
         $studentCampusId = (int) (Student::where('id', (int) $data['student_id'])->value('CampusID') ?? 0);
         if ($studentCampusId > 0 && $studentCampusId !== $branchId) {
             return response()->json(['message' => '學生不屬於該分校，無法建立調課紀錄'], 422);
@@ -1100,6 +1107,11 @@ class ScheduleController extends Controller
             'teacher_id'    => 'nullable|integer',
             'class_type'    => 'nullable|string|max:32',
         ]);
+
+        if (!empty($data['teacher_id']) && (int) $data['teacher_id'] !== (int) $schedule->teacher_id
+            && \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, (string) $schedule->schedule_date, (string) $schedule->start_time)) {
+            return \App\Support\LearningRecordMutableOwnership::lockedResponse(); // #3824
+        }
 
         $merged = array_merge($schedule->toArray(), array_filter($data, fn ($v) => $v !== null));
         $effectiveTeacherId = (int) ($merged['teacher_id'] ?? 0);

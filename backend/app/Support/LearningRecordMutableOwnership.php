@@ -33,12 +33,20 @@ final class LearningRecordMutableOwnership
         if (strtolower(trim((string) $record->getAttribute('Status'))) !== 'approved' || $record->getAttribute('ApprovedAt') === null) {
             return false;
         }
-        if (str_starts_with(trim((string) $record->getAttribute('Content')), '（系統補登')) {
+        if (self::isSystemFillContent((string) $record->getAttribute('Content'))) {
             $record = clone $record;
             $record->setAttribute('Content', '');
         }
 
         return self::hasSubstantiveTeacherContent($record);
+    }
+
+    /** System-generated markers (back-fill / auto-approval) are not a teacher-written body. */
+    private static function isSystemFillContent(string $content): bool
+    {
+        $content = trim($content);
+
+        return str_starts_with($content, '（系統補登') || $content === '（系統自動核准）';
     }
 
     /** The live protected LR of a session (row-locked when asked, inside a transaction). */
@@ -70,13 +78,31 @@ final class LearningRecordMutableOwnership
         ], 409);
     }
 
-    /** Dates (Y-m-d) >= $from of a contract's protected assessments. */
-    public static function protectedDates(int $courseId, string $from): array
+    /** The protected LR of the occurrence at course + date + start (HH:MM), if any. */
+    public static function protectedRecordForSlot(int $courseId, ?string $date, ?string $start, bool $lock = false): ?LearningRecord
+    {
+        if ($courseId <= 0 || !$date || !$start) {
+            return null;
+        }
+        $ids = ClassSession::query()->where('StudentClassID', $courseId)->whereDate('SessionDate', substr($date, 0, 10))
+            ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [substr($start, 0, 5)])->pluck('id');
+        foreach ($ids as $id) {
+            if ($lr = self::protectedRecordForSession((int) $id, $lock)) {
+                return $lr;
+            }
+        }
+
+        return null;
+    }
+
+    /** "Y-m-d HH:MM" occurrence keys >= $from of a contract's protected assessments (one occurrence, not the whole day). */
+    public static function protectedSlots(int $courseId, string $from): array
     {
         return LearningRecord::query()->where('StudentClassID', $courseId)->whereNull('VoidedAt')
             ->whereDate('SessionDate', '>=', $from)->where('Status', 'approved')->whereNotNull('ApprovedAt')->get()
             ->filter(fn ($lr) => self::isFilledAndApproved($lr))
-            ->map(fn ($lr) => substr((string) $lr->getAttribute('SessionDate'), 0, 10))->unique()->values()->all();
+            ->map(fn ($lr) => substr((string) $lr->getAttribute('SessionDate'), 0, 10) . ' ' . substr((string) $lr->getAttribute('StartTime'), 0, 5))
+            ->unique()->values()->all();
     }
 
     public static function canFollowCurrentCourseTeacher(LearningRecord $record): bool
