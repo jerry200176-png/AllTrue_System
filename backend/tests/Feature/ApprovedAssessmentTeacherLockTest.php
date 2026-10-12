@@ -29,6 +29,7 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
     private string $token;
     private int $aId;
     private int $bId;
+    private int $dirId;
     private StudentClass $sc;
     private StudentClass $scB;
 
@@ -45,6 +46,7 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
             return $u;
         };
         $dir = $mk('dir3824', 'A', 1);
+        $this->dirId = (int) $dir->id;
         $this->aId = (int) $mk('teachera', 'T', 0)->id;
         $this->bId = (int) $mk('teacherb', 'T', 0)->id;
         $this->token = bin2hex(random_bytes(16));
@@ -155,7 +157,7 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
             $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId, 'reason' => 'wrongly named at attendance'])->assertOk();
             $this->assertSame($this->bId, (int) $lr->fresh()->TeacherID);
             $this->assertSame($tscA - 1, (int) User::find($this->aId)->TeachingSessionCount, 'moved once, no double count');
-            $this->assertDatabaseHas('learning_record_teacher_changes', ['learning_record_id' => $lr->id, 'old_teacher_id' => $this->aId, 'new_teacher_id' => $this->bId, 'reason' => 'wrongly named at attendance']);
+            $this->assertDatabaseHas('learning_record_teacher_changes', ['learning_record_id' => $lr->id, 'old_teacher_id' => $this->aId, 'new_teacher_id' => $this->bId, 'reason' => 'wrongly named at attendance', 'changed_by' => $this->dirId]); // who/what/why audit snapshot
         }
     }
 
@@ -178,7 +180,7 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId, 'reason' => 'after rollback'])->assertOk();
         $this->assertSame($this->bId, (int) $lr->fresh()->TeacherID);
         $this->assertSame(0, (int) User::find($this->bId)->TeachingSessionCount, 'rolled-back row is not counted for B');
-        $this->assertDatabaseHas('learning_record_teacher_changes', ['learning_record_id' => $lr->id, 'new_teacher_id' => $this->bId, 'reason' => 'after rollback']);
+        $this->assertDatabaseHas('learning_record_teacher_changes', ['learning_record_id' => $lr->id, 'new_teacher_id' => $this->bId, 'reason' => 'after rollback', 'changed_by' => $this->dirId]);
     }
 
     // ---- helpers ------------------------------------------------------------------------------------------------
