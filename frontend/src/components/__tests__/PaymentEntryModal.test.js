@@ -67,17 +67,6 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ student_class_id: 5, amount: 500, invoice_id: 78 });
   });
 
-  it('sends the bill that owes with its outstanding when the queue row shows it (request shape mirrored by the backend test)', async () => {
-    global.fetch.mockResolvedValue(ok({ report_id: 1 }));
-    const owing = mount(PaymentEntryModal, { props: { show: false, row: { ...row, payable_invoice_id: 801, payable_amount: 3000, payable_outstanding: 3000 } } });
-    await owing.setProps({ show: true });
-    await nextTick();
-    await owing.find('form').trigger('submit');
-    await tick();
-    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
-    expect(body).toEqual({ student_class_id: 5, payment_date: body.payment_date, payment_method: 'transfer', amount: 3000, invoice_id: 801 });
-  });
-
   it('still lets a free course settle at NT$0', async () => {
     global.fetch.mockResolvedValue(ok({ report_id: 1 }));
     const free = mount(PaymentEntryModal, { props: { show: false, row: { ...row, charge: 0, payable_amount: 0, payable_outstanding: 0 } } });

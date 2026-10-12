@@ -970,9 +970,12 @@ class PaymentReportController extends Controller
         }
         $projection = $this->invoiceProjection($invoice, $sc);
         $outstanding = (int) $projection['outstanding_amount'];
-        if ($amount <= 0 && $outstanding > 0) {
+        // NT$0 on a stored NT$0 bill of a course that charges is an erroneous bill, not a free settlement (#3888 review).
+        $erroneousZero = (int) $projection['stored_total_amount'] <= 0 && (int) ($sc?->Charge ?? 0) > 0;
+        if ($amount <= 0 && ($outstanding > 0 || $erroneousZero)) {
             return response()->json([
-                'message' => sprintf('這張帳單還欠 NT$%d，金額不可為 0；請填實際收到的金額。沒有登記任何款項。', $outstanding),
+                'message' => $erroneousZero ? '這張帳單金額是 NT$0，但這門課要收費；請先在學生帳務更正帳單金額。沒有登記任何款項。'
+                    : sprintf('這張帳單還欠 NT$%d，金額不可為 0；請填實際收到的金額。沒有登記任何款項。', $outstanding),
                 'code' => 'zero_amount_with_balance',
                 'expected_amount' => $outstanding,
                 'invoice_id' => (int) $invoice->id,

@@ -42,8 +42,6 @@ class CollectionQueueRequestShapeTest extends TestCase
         parent::tearDown();
     }
 
-    // ── cross-stack: bodies the real frontend sent (frontend/.../TuitionCollectionBatchInvoiceTarget.test.js) ──
-
     /** Item 1: the queue row the modal received is the backend's real row; its captured body books the owing bill. */
     public function test_fixture_item1_modal_body_books_the_bill_that_owes(): void
     {
@@ -57,7 +55,6 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertSame(5000, (int) Payment::where('InvoiceID', $newer->id)->sum('Amount'), 'covered bill untouched');
         $this->assertSame(0, Payment::where('Amount', 0)->count(), 'no NT$0 Payment row');
     }
-
     /** Item 2: positive amount typed against the NT$0 bill the queue shows → refused at intake and at confirm. */
     public function test_fixture_item2_typed_amount_on_zero_bill_is_refused_at_intake_and_confirm(): void
     {
@@ -125,8 +122,6 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertLedger($older, 0, 'unpaid');
     }
 
-    // ── backend-only guards (bodies any client could send) ──────────────────
-
     public function test_item1_zero_report_against_a_bill_that_owes_is_refused_at_intake_and_confirm(): void
     {
         [$sc, $older] = $this->newerCoveredOlderOwing();
@@ -166,8 +161,6 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertLedger($older, 0, 'unpaid');
     }
 
-    // ── #3888 Codex review (2026-10-11 17:52Z on 632fb584) ─────────────────
-
     /** r4242583482: a monthly course's queue target is its earliest unsettled period, not the newest. */
     public function test_review_monthly_queue_target_is_the_oldest_owing_period(): void
     {
@@ -175,6 +168,29 @@ class CollectionQueueRequestShapeTest extends TestCase
         [$feb, $mar] = [$this->monthly($sc, '2026-02', 6000, 1000), $this->monthly($sc, '2026-03', 6000, 1000)];
         $row = app(\App\Services\BillingPayableResolver::class)->byStudentClassIds([$sc->ID], [$sc])[$sc->ID];
         $this->assertSame([$feb->id, 5000], [$row['payable_invoice_id'], $row['payable_outstanding']], "not March #{$mar->id}");
+    }
+
+    /** r4244111096: an older stored-paid monthly bill whose Payment rows still owe beats a newer stored-unpaid one. */
+    public function test_review_monthly_stored_paid_older_bill_still_owing_is_the_target(): void
+    {
+        $sc = $this->course(['ScheduleMode' => 'date', 'Charge' => 6000]);
+        $feb = $this->monthly($sc, '2026-02', 6000, 2000, ['Status' => 'paid', 'PaidAmount' => 6000]);
+        Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-03-01', 'TotalAmount' => 6000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-03']);
+        $row = app(\App\Services\BillingPayableResolver::class)->byStudentClassIds([$sc->ID], [$sc])[$sc->ID];
+        $this->assertSame([$feb->id, 4000], [$row['payable_invoice_id'], $row['payable_outstanding']]);
+    }
+
+    /** r4244111099: NT$0 against a stored NT$0 bill of a course that charges is refused; a free course is not this case. */
+    public function test_review_zero_report_on_an_erroneous_zero_bill_is_refused(): void
+    {
+        [$sc, $zero] = $this->zeroTotalInvoice();
+        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $zero->id, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 0])
+            ->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
+        $this->confirm($this->pendingReport($sc, $zero, 0)->id)->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
+        $this->assertSame(0, Payment::count());
+        $free = $this->course(['Charge' => 0, 'Rate' => 0]);
+        $this->report('director-record', ['student_class_id' => $free->ID, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 0])
+            ->assertJsonMissing(['code' => 'zero_amount_with_balance']);
     }
 
     /** r4242583490: an unbilled charge-bearing contract (no invoice) refuses NT$0 at intake, batch and confirm. */
@@ -247,8 +263,6 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertSame(0, PaymentReport::count());
     }
 
-    // ── shared fixture ──────────────────────────────────────────────────────
-
     /** One fixture case with id placeholders mapped; asserts its row equals the live alerts/tuition row the UI would get. */
     private function fixtureCase(string $name, array $ids): array
     {
@@ -275,8 +289,6 @@ class CollectionQueueRequestShapeTest extends TestCase
 
         return $case;
     }
-
-    // ── fixtures ────────────────────────────────────────────────────────────
 
     private function newerCoveredOlderOwing(): array
     {

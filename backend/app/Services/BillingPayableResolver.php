@@ -355,26 +355,21 @@ class BillingPayableResolver
     }
 
     /**
-     * The bill the queue shows and collect buttons pay: first (open status, newest period — oldest for monthly — then id)
-     * whose Payment-row projection still owes, any stored Status (#3875); none owes → the first. Only mayOwe() bills project.
+     * The bill the queue shows and collect buttons pay: the first (open status, newest period, then id; monthly: oldest
+     * period, any status) whose Payment-row projection still owes (#3875, #3888). None owes → the first in the default order.
      * @param Collection<int, Invoice> $invoices
      * @return array{0: ?Invoice, 1: ?array}
      */
     private function selectRelevantInvoice(Collection $invoices, ?StudentClass $course): array
     {
-        $first = null;
         foreach ($this->sortRelevant($invoices, (string) ($course?->ScheduleMode ?? '') === 'date') as $invoice) {
-            if ($first !== null && !$this->mayOwe($invoice)) {
-                continue;
-            }
-            $projection = $this->invoiceAmounts->resolve($invoice, $course);
-            $first ??= [$invoice, $projection];
-            if ((int) $projection['outstanding_amount'] > 0) {
+            if ($this->mayOwe($invoice) && (int) ($projection = $this->invoiceAmounts->resolve($invoice, $course))['outstanding_amount'] > 0) {
                 return [$invoice, $projection];
             }
         }
+        $fallback = $this->sortRelevant($invoices)->first();
 
-        return $first ?? [null, null];
+        return $fallback ? [$fallback, $this->invoiceAmounts->resolve($fallback, $course)] : [null, null];
     }
 
     /** Cheap superset of "projection still owes" from the loaded payments (see InvoiceAmountReconciliationService). */
@@ -397,7 +392,8 @@ class BillingPayableResolver
         return $invoices->sort(function (Invoice $left, Invoice $right) use ($oldestFirst): int {
             $leftOpen = in_array((string) ($left->getAttribute('Status') ?? ''), ['unpaid', 'partial'], true);
             $rightOpen = in_array((string) ($right->getAttribute('Status') ?? ''), ['unpaid', 'partial'], true);
-            if ($leftOpen !== $rightOpen) {
+            // Monthly: period order only; the Payment-row projection decides which still owes (#3888 r4244111096).
+            if ($leftOpen !== $rightOpen && !$oldestFirst) {
                 return $leftOpen ? -1 : 1;
             }
 
