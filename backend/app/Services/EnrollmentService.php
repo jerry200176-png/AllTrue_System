@@ -1224,20 +1224,34 @@ class EnrollmentService
         // Monthly (date-mode) renewal settles old contract, future sessions and invoice atomically in
         // ContractRenewal::renewMonthly; generic enrollment must not stand in for it.
         if ($reason === 'renewal_next_term') {
-            // Decide on the contract actually being renewed, derived server-side. Supplied ids only count when
-            // they belong to this (resolved) student, are active and match the request's subjects; otherwise
-            // fall back to the duplicate-conflict predicate (same subject + same class type). Foreign ids are
-            // ignored, so they cannot act as an oracle. NULL ScheduleMode is a legacy session-count contract.
+            // Server-derived only: client existing_contract_ids are ignored. The targets are recomputed with the same
+            // predicate as the 409 discovery: same student + subject, and either the same class type (duplicate) or
+            // the same teacher with an overlapping date range (overlap; trial attempts never overlap-match).
+            // Blank/NULL ScheduleMode is a legacy session-count contract.
             $studentIdForGate = $resolvedStudentId > 0 ? $resolvedStudentId : (int) ($data['student_id'] ?? 0);
             $monthlyExisting = false;
             if ($studentIdForGate > 0 && $subjectIds !== []) {
-                $base = DB::table('StudentClass')->where('StudentID', $studentIdForGate)->where('Stop', 0)
-                    ->whereIn('SubjectID', $subjectIds);
-                $targets = $existingIds !== [] ? (clone $base)->whereIn('ID', $existingIds) : null;
-                if ($targets === null || !(clone $targets)->exists()) {
-                    $targets = (clone $base)->where('ClassType', (string) ($data['class_type'] ?? ''));
-                }
-                $monthlyExisting = $targets->whereRaw("LOWER(COALESCE(NULLIF(ScheduleMode, ''), 'count')) = ?", ['date'])->exists();
+                $newClassType = (string) ($data['class_type'] ?? '');
+                $newTeacher = (int) ($data['teacher_id'] ?? 0);
+                $planDates = array_filter(array_merge(
+                    $data['confirmed_dates'] ?? [],
+                    $data['future_dates'] ?? [],
+                    array_map(fn ($p) => is_array($p) ? ($p['session_date'] ?? null) : null, $data['session_plan'] ?? [])
+                ));
+                sort($planDates);
+                $newStart = isset($planDates[0]) ? substr((string) $planDates[0], 0, 10) : null;
+                $newEnd = $planDates !== [] ? substr((string) end($planDates), 0, 10) : null;
+                $monthlyExisting = DB::table('StudentClass')->where('StudentID', $studentIdForGate)->where('Stop', 0)
+                    ->whereIn('SubjectID', $subjectIds)
+                    ->where(function ($q) use ($newClassType, $newTeacher, $newStart, $newEnd) {
+                        $q->where('ClassType', $newClassType);
+                        if ($newClassType !== 'trial' && $newTeacher > 0 && $newStart && $newEnd) {
+                            $q->orWhere(fn ($w) => $w->where('TeacherID', $newTeacher)
+                                ->whereDate('StartDate', '<=', $newEnd)->whereDate('EndDate', '>=', $newStart));
+                        }
+                    })
+                    ->whereRaw("LOWER(COALESCE(NULLIF(ScheduleMode, ''), 'count')) = ?", ['date'])
+                    ->exists();
             }
             if ($monthlyExisting || ($data['payment_type'] ?? 'session') !== 'session') {
                 return response()->json([

@@ -315,6 +315,26 @@ class OverlappingCourseGuardTest extends TestCase
         }
     }
 
+    /** #3738 review: a forged id of an unrelated count contract must not hide the real monthly conflict. */
+    public function test_forged_count_contract_id_cannot_bypass_monthly_conflict(): void
+    {
+        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-forged2@example.com');
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->update(['ScheduleMode' => 'date']); // real conflict: monthly one_on_one
+        $row = (array) \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->first();
+        unset($row['ID']);
+        $decoy = \Illuminate\Support\Facades\DB::table('StudentClass')->insertGetId(
+            array_merge($row, ['ClassType' => 'one_on_three', 'ScheduleMode' => 'count', 'TeacherID' => $teacherId + 999])
+        );
+        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
+        $renew = $this->batchPayload($studentId, $teacherId, [$later], 'one_on_one');
+        $renew['force'] = true;
+        $renew['force_reason'] = 'renewal_next_term';
+        $renew['existing_contract_ids'] = [$decoy];
+
+        $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew)
+            ->assertStatus(422)->assertJson(['code' => 'renewal_use_monthly_flow']);
+    }
+
     /**
      * 試聽是旁聽正式課堂的加掛，不可被 overlapping_active_course 擋死。
      * 同型試聽重複則仍走 duplicate_active_course。
