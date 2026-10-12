@@ -16,7 +16,7 @@ const FILE_REDIRECT = /(?:^|[^\d&>])(?:1|&)?>>?\s*(?!&|>?\(|\/dev\/(?!null\b)|\/
 // output inside an outer `{ ...; } > file` group that can still reach the log (tee, >&N, device/proc paths, >(..))
 const LEAKS_BACK = />&(?![1-]\b)|\btee\b|\/dev\/(?!null\b)|\/proc\/|>\(/;
 const HASH_PIPE = /\|\s*(?:sha\d*sum|shasum|md5sum|openssl\s+dgst)/;
-const SECRET_RE = new RegExp(`\\$\\{?${SECRET_VAR}\\b`, 'i');
+const SECRET_RE = new RegExp(`\\$\\{?${SECRET_VAR}\\b|\\$\\{\\{[^}]*\\b${SECRET_VAR}\\b`, 'i');
 function echoesSecret(line, grouped = false) {
   return line.split(/(?=\b(?:echo|printf)\b)/).filter((x) => /^(?:echo|printf)\b/.test(x)).some((seg) => {
     const m = SECRET_RE.exec(seg);
@@ -61,7 +61,7 @@ def walk(n, p, acc):
         for i, v in enumerate(n): walk(v, p + '[' + str(i) + ']', acc)
 for it in json.load(sys.stdin):
     acc = {'name': it['name'], 'runs': [], 'shells': [], 'kvs': []}
-    walk(yaml.safe_load(it['text']), '', acc)
+    for doc in yaml.safe_load_all(it['text']): walk(doc, '', acc)
     out.append(acc)
 json.dump(out, sys.stdout)
 `;
@@ -126,7 +126,11 @@ function scanScript(where, script) {
 
 function scanAll(items) {
   const parsed = JSON.parse(execFileSync('python3', ['-c', PY], { input: JSON.stringify(items), maxBuffer: 1 << 28 }));
+  const raw = Object.fromEntries(items.map((i) => [i.name, i.text]));
   return parsed.flatMap(({ name, runs, shells, kvs }) => [
+    // raw-text pass (superset of the #3884 scanner): catches tracing / env dumps / literals in env:, with:, defaults, inputs
+    // and anywhere else the YAML walker does not treat as a `run:` script
+    ...scanScript(`${name}(raw)`, raw[name]),
     ...runs.flatMap(([p, s]) => scanScript(`${name}${p}`, s)),
     // `shell: bash -x {0}` traces every command of its step/job/workflow, including secret-bearing ones
     ...shells.filter(([, v]) => rules[0][1].test(v)).map(([p, v]) => `${name}${p} shell tracing: shell: ${v}`),
@@ -137,7 +141,18 @@ export const scan = (name, text) => scanAll([{ name, text }]);
 
 // self-test: each bypass reported on #3884 (Codex review 5484099102) must trip; benign forms must not
 const wf = (run, indent = '') => `jobs:\n  j:\n    steps:\n      - run: ${run}`.replace(/\n/g, `\n${indent}`);
-const trip = {
+export const trip = {
+  // parser-differential forms: the scanner must see what GitHub Actions executes
+  'yaml anchor/alias run': 'jobs:\n  j:\n    steps:\n      - run: &r |\n          echo "$DB_PASSWORD"\n      - run: *r',
+  'yaml block chomp |-': wf('|-\n          echo "$DB_PASSWORD"'),
+  'yaml folded >+': wf('>+\n          echo\n          "$DB_PASSWORD"'),
+  'yaml flow-style map': 'jobs: {j: {steps: [{run: "echo $DB_PASSWORD"}]}}',
+  'yaml multi-document': 'a: 1\n---\n' + wf('|\n          echo "$DB_PASSWORD"'),
+  'yaml quoted keys': 'jobs:\n  j:\n    steps:\n      - "shell": bash -x {0}\n        \'run\': mysql -p"$DB_PASSWORD" -e x',
+  'shell expression, traced default': 'on:\n  workflow_dispatch:\n    inputs:\n      sh:\n        default: bash -x {0}\njobs:\n  j:\n    steps:\n      - shell: ${{ inputs.sh }}\n        run: echo hi',
+  'env SHELLOPTS=xtrace': 'jobs:\n  j:\n    env:\n      SHELLOPTS: xtrace\n    steps:\n      - run: echo hi',
+  'with.script set -x': 'jobs:\n  j:\n    steps:\n      - uses: x/y@v1\n        with:\n          script: |\n            set -x',
+  'echo of ${{ secrets.*PASSWORD }}': wf('|\n          echo "${{ secrets.DB_PASSWORD }}"'),
   'redirect to process substitution': wf('|\n          echo "$DB_PASSWORD" > >(cat)'),
   'redirect to /proc/self/fd/2': wf('|\n          echo "$DB_PASSWORD" > /proc/self/fd/2'),
   'redirect to /dev/fd/2': wf('|\n          echo "$DB_PASSWORD" >/dev/fd/2'),
@@ -177,7 +192,7 @@ const trip = {
   'P2 continued line': wf("|\n          printf '%s\\n' \"$DB_PASSWORD\" \\\n            ''"),
 };
 for (const [k, y] of Object.entries(trip)) if (!scan('probe', y).length) { console.error('guard missed probe:', k); process.exit(1); }
-const ok = {
+export const ok = {
   'echo 1> file': wf('|\n          echo "$DB_PASSWORD" 1> artifact'),
   'echo &> file': wf('|\n          echo "$DB_PASSWORD" &> artifact'),
   'echo &>> file': wf('|\n          echo "$DB_PASSWORD" &>> artifact'),
