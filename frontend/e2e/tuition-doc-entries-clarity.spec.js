@@ -67,3 +67,35 @@ for (const [name, width, height] of [['1280', 1280, 800], ['390', 390, 844]]) {
     expect(requests.filter((r) => !r.startsWith('GET '))).toEqual([]);
   });
 }
+
+for (const [name, width, height] of [['1280', 1280, 800], ['390', 390, 844]]) {
+  test(`舊制已繳：繳費明細不誤導、其他課程帳單有標示 @${name}`, async ({ page }) => {
+    const requests = await setup(page);
+    await page.route('**/api/v1/accounting/contracts/105/sessions', (r) => json(r, {
+      student_class_id: 105, subject: '社會', schedule_mode: 'count', start_date: '2026-09-01', end_date: '2026-12-31', memo: '', unscheduled_count: 0,
+      sessions: [
+        { class_session_id: 1, date: '2026-09-01', status: 'attended', payment: 'no_invoice' },
+        { class_session_id: 2, date: '2026-09-08', status: 'scheduled', payment: 'no_invoice' },
+      ],
+    }));
+    await page.route('**/api/v1/accounting/ledger**', (r) => json(r, {
+      summary: {}, scope: { student_class_id: 105 }, anomalies: [], receipts: [],
+      courses: [{ id: 105, subject: '社會', paid: true, schedule_mode: 'count', start_date: '2026-09-01', end_date: '2026-12-31' }],
+      invoices: [{ id: 9, student_class_id: 777, subject: '其他科', total_amount: 100, outstanding_amount: 100, calculated_applied_amount: 0, status: 'unpaid', payments: [], period_start: '2026-01-01', period_end: '2026-01-31' }],
+    }));
+    await page.setViewportSize({ width, height });
+    await page.goto('/tuition-collection-pilot-mount.html?tab=all');
+    await page.locator('#tuition-row-105:visible').first().getByTestId('tc-doc-ledger').click();
+    const dialog = page.locator('.ledger-modal');
+    await expect(page.getByTestId('contract-legacy-paid')).toHaveText('舊制已繳（無新系統帳單）');
+    await expect(page.getByTestId('contract-session').first()).toContainText('舊制已繳（無新系統帳單）');
+    await expect(dialog.getByText('還沒開帳單')).toHaveCount(0);
+    await expect(page.getByTestId('contract-issue')).toHaveCount(0);
+    await expect(page.getByTestId('contract-record')).toHaveCount(0);
+    await expect(page.getByTestId('ledger-target-empty')).toContainText('這門課目前沒有帳單和收款');
+    await expect(page.getByText('目前只有繳費單')).toHaveCount(0);
+    await expect(page.getByTestId('ledger-other-course')).toHaveText('其他課程');
+    await page.screenshot({ path: path.join(outDir, `legacy-ledger-${name}.png`), fullPage: true });
+    expect(requests.filter((r) => !r.startsWith('GET '))).toEqual([]);
+  });
+}

@@ -21,6 +21,7 @@
         <span class="contract__muted">還沒開帳單，金額待確認</span>
         <AtButton v-if="billDraft" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
       </template>
+      <span v-else-if="legacyPaid" data-testid="contract-legacy-paid">{{ LEGACY_PAID_LABEL }}</span>
       <span v-else>已收清</span>
       <template v-if="pendingReport">
         <span class="contract__chip pay-partial">家長說{{ pendingReport.date ? ` ${shortDate(pendingReport.date)} ` : '' }}繳了 {{ money(pendingReport.amount) }}，等你確認</span>
@@ -65,7 +66,7 @@
             <span class="contract__time">{{ s.start_time || '' }}</span>
             <span v-if="s.numberText" class="contract__num" data-testid="contract-session-no">{{ s.numberText }}</span>
             <span :class="['contract__chip', `tone-${statusTone(s.status)}`]">{{ STATUS_ZH[s.status] || '' }}</span>
-            <span :class="['contract__chip', `pay-${s.payment}`]">{{ PAYMENT_LABELS[s.payment] }}</span>
+            <span :class="['contract__chip', `pay-${s.payment}`]">{{ paymentLabel(s.payment) }}</span>
           </li>
         </ol>
       </section>
@@ -118,6 +119,8 @@ const emit = defineEmits(['changed', 'record', 'issue']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };
+// 舊制已繳（課程標記已繳、沒有任何系統帳單）：不是「欠帳單」，也不提供開帳單／登記收款。
+const LEGACY_PAID_LABEL = '舊制已繳（無新系統帳單）';
 const HELD = ['attended', 'completed', 'late', 'absent'];
 const UPCOMING = ['scheduled', 'rescheduled', 'expected'];
 
@@ -144,6 +147,8 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
   ? '月結：每個月依當月上課日收費'
   : '堂數制：先買堂數，上一堂扣一堂'));
 
+const legacyPaid = computed(() => !!props.course.paid && !props.amounts && !props.pendingReport);
+const paymentLabel = (p) => (p === 'no_invoice' && legacyPaid.value ? LEGACY_PAID_LABEL : PAYMENT_LABELS[p]);
 const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
 const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p.length === 2 ? `${Number(p[0])}/${Number(p[1])}` : ''; };
 // Same source as the printed receipt (receipts first, PayDate only as the parent's fallback; never "fixed" here).
@@ -161,7 +166,7 @@ const monthLineText = (key) => {
 function monthPayState(list) {
   const pays = list.map((s) => s.payment);
   if (pays.every((p) => p === 'paid')) return '已收';
-  if (pays.every((p) => p === 'no_invoice')) return '還沒開帳單';
+  if (pays.every((p) => p === 'no_invoice')) return legacyPaid.value ? '舊制已繳' : '還沒開帳單';
   if (pays.every((p) => p === 'unpaid' || p === 'no_invoice')) return '未繳';
   return '部分已收';
 }

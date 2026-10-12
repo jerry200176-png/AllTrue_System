@@ -36,9 +36,14 @@ describe('AccountingLedgerModal empty state, 後5碼 and 備註', () => {
   it('judges emptiness for the scoped course, not the whole student', async () => {
     const other = { id: 9, student_class_id: 2, total_amount: 100, status: 'unpaid', payments: [] };
     const w = await mountWith({ summary: {}, scope: { student_class_id: 1 }, invoices: [other], receipts: [], anomalies: [] });
-    expect(w.text()).toContain('目前只有繳費單');
+    // #3894: no contradictory "no invoices" copy while another course's invoice is listed.
+    expect(w.text()).not.toContain('目前只有繳費單');
+    expect(w.get('[data-testid="ledger-target-empty"]').text()).toContain('這門課目前沒有帳單和收款');
+    expect(w.get('[data-testid="ledger-other-course"]').text()).toBe('其他課程');
     const w2 = await mountWith({ summary: {}, scope: { student_class_id: 2 }, invoices: [other], receipts: [], anomalies: [] });
     expect(w2.text()).not.toContain('目前只有繳費單');
+    expect(w2.find('[data-testid="ledger-target-empty"]').exists()).toBe(false);
+    expect(w2.find('[data-testid="ledger-other-course"]').exists()).toBe(false);
   });
 
   it('shows 已退回 without a receipt number', async () => {
