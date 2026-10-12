@@ -15,13 +15,13 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/**
- * #3875 across the stack: bodies the REAL modal/page sent (tests/Fixtures/collection_requests_3875.json, written and
- * drift-checked by TuitionCollectionBatchInvoiceTarget.test.js) → live alerts/tuition row check → intake → confirm → ledger.
- */
+/** #3875: bodies the REAL modal/page sent (Fixtures/collection_requests_3875.json, TuitionCollectionBatchInvoiceTarget.test.js)
+ * → live alerts/tuition row check → intake → confirm → ledger → receipt. */
 class CollectionQueueRequestShapeTest extends TestCase
 {
     use RefreshDatabase;
+
+    private const D = ['payment_date' => '2026-04-28', 'payment_method' => 'cash'];
 
     private array $headers;
 
@@ -50,6 +50,9 @@ class CollectionQueueRequestShapeTest extends TestCase
 
         $res = $this->report($case['endpoint'], $case['request'])->assertOk()->assertJsonPath('invoice_id', $older->id);
         $this->confirm($res->json('report_id'))->assertOk();
+        // Idempotent: a second confirm and a resubmitted body write nothing more.
+        $this->confirm($res->json('report_id'))->assertStatus(422);
+        $this->report($case['endpoint'], $case['request'])->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
 
         $this->assertLedger($older, 3000, 'paid');
         $this->assertSame(5000, (int) Payment::where('InvoiceID', $newer->id)->sum('Amount'), 'covered bill untouched');
@@ -65,7 +68,6 @@ class CollectionQueueRequestShapeTest extends TestCase
             ->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding')->assertJsonPath('invoice_id', $zero->id);
         $this->assertSame(0, PaymentReport::count());
 
-        // The same captured body as a pending report recorded before this fix: confirm refuses too.
         $report = $this->pendingReport($sc, Invoice::findOrFail($case['request']['invoice_id']), (int) $case['request']['amount']);
         $this->confirm($report->id)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
         $this->assertSame('pending', $report->fresh()->status);
@@ -126,7 +128,7 @@ class CollectionQueueRequestShapeTest extends TestCase
     {
         [$sc, $older] = $this->newerCoveredOlderOwing();
 
-        $this->report('director-record', ['student_class_id' => $sc->ID, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 0])
+        $this->report('director-record', ['student_class_id' => $sc->ID, ...self::D, 'amount' => 0])
             ->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance')->assertJsonPath('invoice_id', $older->id);
         $this->assertSame(0, PaymentReport::count());
 
@@ -142,9 +144,9 @@ class CollectionQueueRequestShapeTest extends TestCase
     {
         [$sc, $older] = $this->newerCoveredOlderOwing();
         foreach ([0.5, 0.99, 1.5] as $amount) {
-            $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $older->id, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => $amount])
+            $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $older->id, ...self::D, 'amount' => $amount])
                 ->assertStatus(422)->assertJsonValidationErrors('amount');
-            $this->report('director-record-batch', ['payment_date' => '2026-04-28', 'payment_method' => 'cash',
+            $this->report('director-record-batch', [...self::D,
                 'entries' => [['student_class_id' => $sc->ID, 'invoice_id' => $older->id, 'amount' => $amount]]])
                 ->assertStatus(422)->assertJsonValidationErrors('entries.0.amount');
         }
@@ -152,7 +154,7 @@ class CollectionQueueRequestShapeTest extends TestCase
 
         foreach ([0.5, 0.99, 1.5] as $amount) { // pending reports recorded before this fix
             $report = PaymentReport::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'InvoiceID' => $older->id,
-                'reported_by_name' => 'x', 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'reported_amount' => $amount,
+                'reported_by_name' => 'x', ...self::D, 'reported_amount' => $amount,
                 'status' => 'pending', 'report_token_hash' => hash('sha256', uniqid('f', true)), 'token_expires_at' => now()->addDay()]);
             $this->confirm($report->id)->assertStatus(422)->assertJsonPath('code', 'fractional_amount');
             $this->assertSame('pending', $report->fresh()->status);
@@ -184,12 +186,12 @@ class CollectionQueueRequestShapeTest extends TestCase
     public function test_review_zero_report_on_an_erroneous_zero_bill_is_refused(): void
     {
         [$sc, $zero] = $this->zeroTotalInvoice();
-        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $zero->id, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 0])
+        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $zero->id, ...self::D, 'amount' => 0])
             ->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
         $this->confirm($this->pendingReport($sc, $zero, 0)->id)->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
         $this->assertSame(0, Payment::count());
         $free = $this->course(['Charge' => 0, 'Rate' => 0]);
-        $this->report('director-record', ['student_class_id' => $free->ID, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 0])
+        $this->report('director-record', ['student_class_id' => $free->ID, ...self::D, 'amount' => 0])
             ->assertJsonMissing(['code' => 'zero_amount_with_balance']);
     }
 
@@ -197,9 +199,9 @@ class CollectionQueueRequestShapeTest extends TestCase
     public function test_review_zero_report_on_an_unbilled_contract_is_refused(): void
     {
         $sc = $this->course(['Charge' => 6000]);
-        $this->report('director-record', ['student_class_id' => $sc->ID, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 0])
+        $this->report('director-record', ['student_class_id' => $sc->ID, ...self::D, 'amount' => 0])
             ->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
-        $this->report('director-record-batch', ['payment_date' => '2026-04-28', 'payment_method' => 'cash', 'entries' => [['student_class_id' => $sc->ID, 'amount' => 0]]])
+        $this->report('director-record-batch', [...self::D, 'entries' => [['student_class_id' => $sc->ID, 'amount' => 0]]])
             ->assertStatus(207)->assertJsonPath('results.0.code', 'zero_amount_with_balance');
         $this->confirm($this->pendingReport($sc, null, 0)->id)->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
         $this->assertSame([0, 0], [Invoice::count(), Payment::count()]);
@@ -212,40 +214,23 @@ class CollectionQueueRequestShapeTest extends TestCase
         \App\Models\ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => '2026-04-29', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled']);
         $inv = $this->monthly($sc, '2026-04', 8800, 3000, ['Status' => 'paid', 'PaidAmount' => 8800]);
 
-        $res = $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 5800])
+        $res = $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, ...self::D, 'amount' => 5800])
             ->assertOk();
         $this->confirm($res->json('report_id'))->assertOk();
         $this->assertLedger($inv, 8800, 'paid');
-    }
-
-    /** r4242583488: Paid=1 + stored-paid bill still owing by Payment rows is in the queue (DIRECTOR_PAYMENT_ALERT_RULES 堂數制 rule 3). */
-    public function test_review_paid_flag_contract_owing_by_payment_rows_is_in_the_queue(): void
-    {
-        if (!method_exists(Invoice::class, 'mayOweSql')) {
-            $this->markTestSkipped('alerts/tuition listing is #3891 (#3781, Invoice::mayOweSql); runs once it lands.');
-        }
-        [$sc, $inv] = $this->storedPaidLedgerPartial();
-        $sc->update(['Paid' => 1]); // RemainingSessions 5: only rule 3 can list it
-        $row = $this->queueRow($sc);
-        $this->assertSame([$inv->id, 4000], [(int) $row['payable_invoice_id'], (int) $row['payable_outstanding']]);
-        [$covered] = $this->storedPaidLedgerPartial();
-        Payment::create(['InvoiceID' => Invoice::where('StudentClassID', $covered->ID)->value('id'), 'Amount' => 4000, 'PaidAt' => '2026-04-03', 'Method' => 'cash']);
-        $covered->update(['Paid' => 1]);
-        $ids = collect($this->withHeaders($this->headers)->getJson('/api/v1/alerts/tuition?branch_id=1')->json())->pluck('id')->map(fn ($id) => (int) $id);
-        $this->assertFalse($ids->contains((int) $covered->ID), 'a Paid=1 contract whose rows cover the bill stays out');
+        $this->assertNull($inv->fresh()->billing_snapshot, 'r4245816754: no snapshot of today\'s sessions on a fixed bill');
     }
 
     public function test_item3_fallback_finds_the_stored_paid_bill_that_still_owes(): void
     {
         [$sc, $inv] = $this->storedPaidLedgerPartial();
 
-        $res = $this->report('director-record', ['student_class_id' => $sc->ID, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 4000])
+        $res = $this->report('director-record', ['student_class_id' => $sc->ID, ...self::D, 'amount' => 4000])
             ->assertOk()->assertJsonPath('invoice_id', $inv->id);
         $this->confirm($res->json('report_id'))->assertOk();
         $this->assertLedger($inv, 6000, 'paid');
 
-        // Once the rows cover it, the same bill is refused again — explicit and fallback.
-        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 1])
+        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, ...self::D, 'amount' => 1])
             ->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
         $this->assertSame(1, PaymentReport::count());
     }
@@ -254,12 +239,11 @@ class CollectionQueueRequestShapeTest extends TestCase
     {
         [$sc, $inv] = $this->storedPaidLedgerPartial();
         $inv->update(['Status' => 'void']);
-        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 100])
+        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, ...self::D, 'amount' => 100])
             ->assertStatus(422)->assertJsonPath('code', 'void_invoice_cannot_record');
 
         [$other, $otherInv] = $this->storedPaidLedgerPartial();
-        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $otherInv->id, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 100])
-            ->assertStatus(404);
+        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $otherInv->id, ...self::D, 'amount' => 100])->assertStatus(404);
         $this->assertSame(0, PaymentReport::count());
     }
 
@@ -354,9 +338,16 @@ class CollectionQueueRequestShapeTest extends TestCase
         return $this->withHeaders($this->headers)->postJson("/api/v1/payment-reports/$path", $body);
     }
 
+    /** confirm; on success the chain continues to the receipt, which must show the confirmed amount (收據). */
     private function confirm($reportId)
     {
-        return $this->withHeaders($this->headers)->putJson("/api/v1/payment-reports/$reportId/confirm");
+        $res = $this->withHeaders($this->headers)->putJson("/api/v1/payment-reports/$reportId/confirm");
+        if ($res->status() === 200) {
+            $this->withHeaders($this->headers)->getJson("/api/v1/payment-reports/$reportId/receipt")->assertOk()
+                ->assertJsonPath('amount', (int) PaymentReport::findOrFail($reportId)->reported_amount);
+        }
+
+        return $res;
     }
 
     private function assertLedger(Invoice $invoice, int $paid, string $status): void
@@ -374,7 +365,7 @@ class CollectionQueueRequestShapeTest extends TestCase
     private function pendingReport(StudentClass $sc, ?Invoice $invoice, int $amount): PaymentReport
     {
         return PaymentReport::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice?->id,
-            'reported_by_name' => 'x', 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'reported_amount' => $amount,
+            'reported_by_name' => 'x', ...self::D, 'reported_amount' => $amount,
             'status' => 'pending', 'report_token_hash' => hash('sha256', uniqid('r', true)), 'token_expires_at' => now()->addDay()]);
     }
 

@@ -485,7 +485,8 @@ class PaymentReportController extends Controller
                     $invoice->TotalAmount = (int) $billing['charge'];
                 }
 
-                if (empty($invoice->billing_snapshot)) {
+                // A fixed (non-repriceable) bill keeps its own evidence: never snapshot today's sessions onto it (#3888 review).
+                if (empty($invoice->billing_snapshot) && (!$monthlyProjection || $monthlyProjection['repriceable'])) {
                     $invoice->billing_period = $billingPeriod;
                     $invoice->billing_snapshot = [
                         'version' => 1,

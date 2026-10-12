@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-12-collect-gaps-3875
+    published_at: "2026-10-12"
+    audiences:
+      - director
+    importance: digest
+    title: 收款會收到真正欠款的帳單
+    summary: 登記收款與批次回報，會收到名單上那張還欠錢的帳單。
+    items:
+      - category: fixed
+        text: 帳單其實已收齊或狀態寫已繳但還欠錢時，會改收真正還欠的那張；月結收最早還沒繳清的那期。
+      - category: fixed
+        text: 要收費的課不能登記零元或小數金額；帳單金額是零元時，會提示先更正帳單。
+    source_refs:
+      - "changelog:2026-10-12:collect-gaps-3875"

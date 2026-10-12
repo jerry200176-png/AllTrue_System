@@ -4,12 +4,8 @@ import { nextTick } from 'vue';
 import PaymentEntryModal from '../PaymentEntryModal.vue';
 import TuitionCollectionPage from '../../pages/TuitionCollectionPage.vue';
 
-// #3875 cross-stack link. Each case mounts the REAL component with the queue row the backend serves for that synthetic
-// scenario and captures the request body it ACTUALLY sends. The captured bodies (with the input rows) are the shared
-// fixture backend/tests/Fixtures/collection_requests_3875.json: this test fails when what the frontend sends drifts from
-// it (regenerate with `npx vitest run -u <this file>`), and CollectionRequestFixtureTest.php checks the backend queue
-// rows still equal these rows, then posts the captured bodies through intake → confirm → Payment ledger.
-// Ids are placeholders the PHP test maps to the rows it creates.
+// #3875: real modal/page + backend queue row → captured request bodies → backend/tests/Fixtures/collection_requests_3875.json
+// (fails on drift; regenerate with `npx vitest run -u <this file>`), replayed by CollectionQueueRequestShapeTest.php.
 const FIXTURE = '../../../../backend/tests/Fixtures/collection_requests_3875.json';
 const TODAY = '2026-04-28';
 
@@ -85,12 +81,10 @@ describe('collection request fixture shared with the backend (#3875)', () => {
       out[name] = { kind: c.kind, row: c.row, typed_amount: c.typed ?? null, ...(c.kind === 'modal' ? await captureModal(c) : await captureBatch(c)) };
     }
 
-    // Spot checks that make the intent readable here; the file snapshot is the full contract.
     expect(out.item1_modal_owing_bill.request).toMatchObject({ amount: 3000, invoice_id: '{{invoice:older}}' });
     expect(out.item2_modal_zero_amount_blocked.request).toBeNull();
     expect(out.item4_batch_newer_exceeds_older.request.entries).toEqual([{ student_class_id: '{{course}}', amount: 3000, invoice_id: '{{invoice:newer}}' }]);
 
-    // One case per line keeps the reviewed diff small and each case's drift on its own line.
     const text = `{\n${Object.entries(out).map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(',\n')}\n}\n`;
     await expect(text).toMatchFileSnapshot(FIXTURE);
   });

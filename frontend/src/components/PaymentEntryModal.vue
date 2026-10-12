@@ -155,9 +155,8 @@ async function submit() {
       payment_method: form.payment_method,
       amount,
     };
-    // Queue rows carry payable_invoice_id: always pay the bill whose outstanding prefilled the amount, never let the
-    // backend fall back to another one (#3864 hotfix, #3875).
-    const invoiceId = props.row.invoice_id ?? props.row.payable_invoice_id;
+    // Pay the bill whose outstanding prefilled the amount (payable_invoice_id), not a display invoice_id (#3875, #3888).
+    const invoiceId = props.row.payable_invoice_id ?? props.row.invoice_id;
     if (invoiceId) {
       body.invoice_id = invoiceId;
     }
