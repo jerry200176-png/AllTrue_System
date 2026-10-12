@@ -6,6 +6,8 @@ use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Services\SubstituteScheduleService;
 use Carbon\Carbon;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -21,6 +23,61 @@ final class LearningRecordMutableOwnership
     ];
 
     private const PLACEHOLDER_CONTENT = ['', '（評量表）'];
+
+    /**
+     * #3824: protected = real assessment body AND approved (Status + ApprovedAt). Blank / placeholder / system
+     * back-fill rows (e.g. 「（系統補登/扣除堂數）」) and unapproved rows stay correctable.
+     */
+    public static function isFilledAndApproved(LearningRecord $record): bool
+    {
+        if (strtolower(trim((string) $record->getAttribute('Status'))) !== 'approved' || $record->getAttribute('ApprovedAt') === null) {
+            return false;
+        }
+        if (str_starts_with(trim((string) $record->getAttribute('Content')), '（系統補登')) {
+            $record = clone $record;
+            $record->setAttribute('Content', '');
+        }
+
+        return self::hasSubstantiveTeacherContent($record);
+    }
+
+    /** The live protected LR of a session (row-locked when asked, inside a transaction). */
+    public static function protectedRecordForSession(int $classSessionId, bool $lock = false): ?LearningRecord
+    {
+        if ($classSessionId <= 0) {
+            return null;
+        }
+        $q = LearningRecord::query()->where('ClassSessionID', $classSessionId)->whereNull('VoidedAt');
+        $lock && $q->lockForUpdate();
+        $lr = $q->first();
+
+        return $lr && self::isFilledAndApproved($lr) ? $lr : null;
+    }
+
+    /** Throws a 409 (rolls back the surrounding transaction) when the session's assessment is protected. */
+    public static function assertTeacherChangeAllowed(int $classSessionId): void
+    {
+        if (self::protectedRecordForSession($classSessionId, true) !== null) {
+            throw new HttpResponseException(self::lockedResponse());
+        }
+    }
+
+    public static function lockedResponse(): JsonResponse
+    {
+        return response()->json([
+            'message' => '這堂評量已填寫並核准，不能更改授課老師。如記錄有誤，請先退回核准再更正。',
+            'code' => 'approved_assessment_teacher_locked',
+        ], 409);
+    }
+
+    /** Dates (Y-m-d) >= $from of a contract's protected assessments. */
+    public static function protectedDates(int $courseId, string $from): array
+    {
+        return LearningRecord::query()->where('StudentClassID', $courseId)->whereNull('VoidedAt')
+            ->whereDate('SessionDate', '>=', $from)->where('Status', 'approved')->whereNotNull('ApprovedAt')->get()
+            ->filter(fn ($lr) => self::isFilledAndApproved($lr))
+            ->map(fn ($lr) => substr((string) $lr->getAttribute('SessionDate'), 0, 10))->unique()->values()->all();
+    }
 
     public static function canFollowCurrentCourseTeacher(LearningRecord $record): bool
     {

@@ -1363,6 +1363,7 @@ class LearningRecordController extends Controller
         }
 
         return DB::transaction(function () use ($request, $learningRecord, $newTeacherId, $oldTeacherId, $data, $updateClass, $targetCampusId) {
+            LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $learningRecord->ClassSessionID); // #3824
             // TD-076 B2 (flag on): pin taught occurrences while the old contract/LR evidence is still intact.
             $occurrenceV2 = OccurrenceAssignmentService::enabledFor($targetCampusId);
             if ($occurrenceV2 && $updateClass) {
@@ -1747,7 +1748,7 @@ class LearningRecordController extends Controller
                     $this->syncRecordWithClassSession($existing, $classSession, (int) ($data['TeacherID'] ?? 0));
                     $existing->save();
                     app(UserEngagementXpAwardService::class)->awardOnLearningRecordApprovedIfEligible($existing->fresh());
-                } else {
+                } elseif (!LearningRecordMutableOwnership::isFilledAndApproved($existing)) { // #3824
                     $this->syncRecordWithClassSession($existing, $classSession, (int) ($data['TeacherID'] ?? 0));
                 }
 

@@ -267,10 +267,13 @@ final class ContractTeacherChangeCascade
         }
 
         $today = Carbon::today()->toDateString();
+        // #3824: a day whose assessment is filled AND approved keeps its occurrence teacher (pin / substitute rows).
+        $locked = LearningRecordMutableOwnership::protectedDates($courseId, $today);
 
         Schedule::where('student_course_id', $courseId)
             ->where('status', 'scheduled')
             ->whereDate('schedule_date', '>=', $today)
+            ->whereNotIn(DB::raw('DATE(schedule_date)'), $locked)
             ->whereNull('original_schedule_id')
             ->where('teacher_id', $oldTeacherId)
             ->update([
@@ -282,6 +285,7 @@ final class ContractTeacherChangeCascade
             ->where('status', 'scheduled')
             ->whereDate('schedule_date', '>=', $today)
             ->whereNotNull('original_schedule_id')
+            ->whereNotIn(DB::raw('DATE(schedule_date)'), $locked)
             ->where('teacher_id', $oldTeacherId)
             ->pluck('original_schedule_id')
             ->filter(fn ($id) => (int) $id > 0)

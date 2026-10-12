@@ -235,12 +235,17 @@ class SubstituteController extends Controller
             && $origDate !== '' && $origStart !== '' && $origEnd !== ''
             && ($origDate !== $sessionDate || $origStart !== $startTime || $origEnd !== $this->hhmm($session->EndTime));
 
+        if (\App\Support\LearningRecordMutableOwnership::protectedRecordForSession((int) $session->id)) {
+            return \App\Support\LearningRecordMutableOwnership::lockedResponse(); // #3824
+        }
+
         try {
             $result = DB::transaction(function () use (
                 $session, $courseId, $sessionDate, $startTime, $oldTeacherId, $newTeacherId,
                 $lastNotification, $currentOperatorId, $payload,
                 $shouldRestoreTime, $origDate, $origStart, $origEnd, $campusId
             ) {
+                \App\Support\LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $session->id); // #3824
                 // TD-076 B1: one writer restores the live row (and slot); none at the slot = legacy delete path below.
                 $rescheduled = null;
                 $scheduledRow = OccurrenceAssignmentService::handles($session, $campusId)
