@@ -52,6 +52,8 @@ describe('AccountingLedgerModal empty state, 後5碼 and 備註', () => {
     const other = { id: 9, student_class_id: 2, total_amount: 100, outstanding_amount: 100, due_date: '2020-01-01', status: 'unpaid', payments: [] };
     const w = await mountWith({ summary: {}, scope: { student_class_id: 1 }, courses: [{ id: 1, paid: true }], invoices: [other], receipts: [], anomalies: [] });
     expect(w.get('.ledger-owed__label').text()).toBe('此學生到今天未繳（含其他課程）');
+    const later = await mountWith({ summary: {}, scope: { student_class_id: 1 }, courses: [{ id: 1, paid: true }], invoices: [{ ...other, due_date: '2999-01-01' }], receipts: [], anomalies: [] });
+    expect(later.get('.ledger-owed__label').text()).toBe('到今天未繳'); // future-dated other-course balance is not today's debt
   });
 
   it('shows 已退回 without a receipt number', async () => {

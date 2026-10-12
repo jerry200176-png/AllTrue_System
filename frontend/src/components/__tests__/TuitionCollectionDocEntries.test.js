@@ -41,18 +41,16 @@ afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ''; localStor
 const tid = (w, id, k) => rowOf(w, id).get(`[data-testid="${k}"]`);
 
 describe('帳務中心 學生列：繳費單／收據入口', () => {
-  it('撤銷 is disabled with a reason for legacy paid (nothing to void); the ledger link only reads', async () => {
+  it('legacy row: 撤銷 stays available (a confirmed receipt without invoice is voidable); the ledger link only reads', async () => {
     const w = await mountPage();
-    expect(tid(w, 105, 'tc-void').element.disabled).toBe(true);
-    expect(tid(w, 105, 'tc-void-reason').text()).toBe('舊制沒有系統收款，無可撤銷');
-    expect(tid(w, 103, 'tc-void').element.disabled).toBe(false);
+    expect(tid(w, 105, 'tc-void').element.disabled).toBe(false);
     await tid(w, 105, 'tc-doc-ledger').trigger('click');
     await flushPromises();
     expect(writes()).toEqual([]);
     w.unmount();
   });
 
-  it('double-click opens ONE existing preview (slip, receipt), cancel closes it, disabled entries call nothing, only GETs', async () => {
+  it('double-click opens ONE existing preview (slip, receipt), a backdrop click right after is swallowed, X closes at once, disabled entries call nothing, only GETs', async () => {
     const w = await mountPage();
     for (const [id, k] of [[101, 'slip'], [103, 'receipt']]) {
       await tid(w, id, `tc-doc-${k}`).trigger('click');
@@ -60,9 +58,11 @@ describe('帳務中心 學生列：繳費單／收據入口', () => {
       await flushPromises();
     }
     expect(document.querySelectorAll('.slip-modal')).toHaveLength(1);
+    document.querySelector('.modal-overlay').click(); // 雙擊的第二下落在遮罩上：只吞這一下，下面的 X 立即關閉
+    await flushPromises();
+    expect(document.querySelectorAll('.slip-modal')).toHaveLength(1);
     expect(calls.filter((c) => c.url.includes('/api/v1/payment-reports?'))).toHaveLength(1);
     expect(calls.some((c) => c.url.includes('/api/v1/payment-reports/9/receipt'))).toBe(true);
-    await new Promise((r) => setTimeout(r, 450)); // 剛開啟 400ms 內忽略關閉（雙擊保護）
     document.querySelector('.slip-modal .icon-btn').click();
     await flushPromises();
     expect(document.querySelectorAll('.slip-modal')).toHaveLength(0);

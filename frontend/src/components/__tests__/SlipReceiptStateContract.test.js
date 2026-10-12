@@ -7,7 +7,6 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import TuitionDocActions from '../TuitionDocActions.vue';
 import { isDirectorRole } from '../../lib/roleCapabilities.js';
-import { isLegacyPaidNoInvoice } from '../../lib/legacyPaid.js';
 
 const FILE = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../backend/tests/Fixtures/slip_receipt_states_3894.json');
 const fixture = JSON.parse(readFileSync(FILE, 'utf8'));
@@ -20,8 +19,6 @@ function outcome(state) {
     slip: { enabled: !w.get('[data-testid="tc-doc-slip"]').element.disabled, reason: reason('slip') },
     receipt: { enabled: !w.get('[data-testid="tc-doc-receipt"]').element.disabled, reason: reason('receipt') },
     ledger_link: w.find('[data-testid="tc-doc-ledger"]').exists(),
-    // 撤銷 is only offered on paid-status rows (page template); legacy rows have nothing to void.
-    void_enabled: ['paid', 'renew_needed', 'monthly_due_soon'].includes(row.payment_status) && isDirectorRole(state.role) ? !isLegacyPaidNoInvoice(row) : null,
   };
 }
 
@@ -38,8 +35,9 @@ describe('slip/receipt state contract (fixture shared with PHPUnit)', () => {
 
   it('spot-checks the meaning (not just the file)', () => {
     const o = (k) => outcome(fixture.states[k]);
-    expect(o('paid_with_invoice')).toMatchObject({ receipt: { enabled: true }, void_enabled: true });
-    expect(o('legacy_paid_no_invoice')).toMatchObject({ ledger_link: true, void_enabled: false, slip: { enabled: false }, receipt: { enabled: false } });
+    expect(o('paid_with_invoice').receipt.enabled).toBe(true);
+    // P1: 沒有帳單不代表沒有已確認收據（receipt_without_invoice）；收據一律交給既有查詢決定，不在列上猜
+    for (const k of ['legacy_paid_no_invoice', 'paid_confirmed_report_no_invoice']) expect(o(k)).toMatchObject({ ledger_link: true, slip: { enabled: false }, receipt: { enabled: true } });
     expect(o('no_permission').slip).toEqual({ enabled: false, reason: '沒有權限' });
   });
 });

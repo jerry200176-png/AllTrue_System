@@ -42,7 +42,6 @@ for (const [name, width, height] of SIZES) {
         if (s.expect[k].reason) await expect(row.getByTestId(`tc-doc-${k}-reason`)).toHaveText(s.expect[k].reason);
       }
       await expect(row.getByTestId('tc-doc-ledger')).toHaveCount(s.expect.ledger_link ? 1 : 0);
-      if (s.expect.void_enabled === false) await expect(row.getByTestId('tc-void')).toBeDisabled();
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
     await page.screenshot({ path: path.join(outDir, `slip-receipt-states-${name}.png`), fullPage: true });

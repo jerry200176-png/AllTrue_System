@@ -35,9 +35,14 @@ describe('TuitionDocActions', () => {
     expect(w.emitted('receipt')).toBeUndefined();
   });
 
-  it.each([{ legacy_paid_without_invoice: true }, { payable_status: 'unbilled' }])('legacy paid %j: reasons + ledger link', async (extra) => {
+  it('id-less package rows still get unique aria-describedby ids', () => {
+    const attrs = () => ['slip', 'receipt'].map((k) => mk({ id: null, payment_status: 'pending_report' }).get(`[data-testid="tc-doc-${k}"]`).attributes('aria-describedby'));
+    expect(new Set([...attrs(), ...attrs()]).size).toBe(4);
+  });
+
+  it.each([{ legacy_paid_without_invoice: true }, { payable_status: 'unbilled' }])('legacy paid %j: slip reason, receipt left to the lookup, ledger link', async (extra) => {
     const w = mk({ payment_status: 'paid', ...extra });
-    expect([why(w, 'slip'), why(w, 'receipt')]).toEqual(['已在舊系統繳清，沒有新帳單', '舊系統繳費，系統內沒有電子收據；可看繳費明細']);
+    expect([why(w, 'slip'), t(w, 'receipt')]).toEqual(['已在舊系統繳清，沒有新帳單', false]);
     await w.get('[data-testid="tc-doc-ledger"]').trigger('click');
     expect(w.emitted('ledger')).toHaveLength(1);
     expect(w.emitted('slip')).toBeUndefined();

@@ -55,13 +55,13 @@ class SlipReceiptStateContractTest extends TestCase
         }
     }
 
-    public function test_receipt_lookup_returns_a_confirmed_report_only_for_paid_with_invoice(): void
+    public function test_receipt_lookup_returns_a_confirmed_report_even_without_invoice_but_not_for_legacy_or_unpaid(): void
     {
         $courses = $this->seedStates();
         foreach ($courses as $name => $course) {
             $data = $this->getJson("/api/v1/payment-reports?student_class_id={$course->ID}&status=confirmed&branch_id=1", $this->director)
                 ->assertOk()->json('data');
-            if ($name === 'paid_with_invoice') {
+            if (in_array($name, ['paid_with_invoice', 'paid_confirmed_report_no_invoice'], true)) {
                 $this->assertNotEmpty($data, 'receipt button has a confirmed report to open');
                 $this->assertArrayHasKey('id', $data[0]);
                 $this->getJson("/api/v1/payment-reports/{$data[0]['id']}/receipt", $this->director)->assertOk();
@@ -107,7 +107,7 @@ class SlipReceiptStateContractTest extends TestCase
     private function seedStates(): array
     {
         $c = ['unpaid' => $this->course([]), 'partial' => $this->course([]), 'reported_pending' => $this->course([]), 'no_invoice_unpaid' => $this->course([]),
-            'paid_with_invoice' => $this->course(['Paid' => 1, 'RemainingSessions' => 0]), 'legacy_paid_no_invoice' => $this->course(['Paid' => 1, 'RemainingSessions' => 0])];
+            'paid_with_invoice' => $this->course(['Paid' => 1, 'RemainingSessions' => 0]), 'paid_confirmed_report_no_invoice' => $this->course(['Paid' => 1, 'RemainingSessions' => 0]), 'legacy_paid_no_invoice' => $this->course(['Paid' => 1, 'RemainingSessions' => 0])];
         $this->invoice($c['unpaid'], 0, 'unpaid');
         $partial = $this->invoice($c['partial'], 2000, 'partial');
         Payment::create(['InvoiceID' => $partial->id, 'Amount' => 2000, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
@@ -115,6 +115,8 @@ class SlipReceiptStateContractTest extends TestCase
         $paid = $this->invoice($c['paid_with_invoice'], 5000, 'paid');
         $payment = Payment::create(['InvoiceID' => $paid->id, 'Amount' => 5000, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
         $this->report($c['paid_with_invoice'], $paid, 'confirmed', $payment->id);
+        // P1: a confirmed receipt whose invoice is missing (ledger anomaly receipt_without_invoice) must stay openable
+        $this->report($c['paid_confirmed_report_no_invoice'], $paid, 'confirmed', null)->update(['InvoiceID' => null]);
 
         return $c;
     }

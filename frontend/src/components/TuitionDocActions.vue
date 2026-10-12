@@ -19,6 +19,10 @@
   </span>
 </template>
 
+<script>
+let seq = 0; // module-level: one counter for every instance
+</script>
+
 <script setup>
 import { computed } from 'vue';
 import { isLegacyPaidNoInvoice, PAID_STATUSES as RECEIPT_STATUSES } from '../lib/legacyPaid.js';
@@ -33,7 +37,8 @@ defineEmits(['slip', 'receipt', 'ledger']);
 
 const SLIP_STATUSES = ['unpaid', 'partial', 'pending_reconciliation'];
 const NO_PERMISSION = '沒有權限';
-const uid = `tc-doc-${props.row.id}`;
+// 月結包的列 id 為 null，所以用實例流水號讓 aria-describedby 不重複。
+const uid = `tc-doc-${++seq}`;
 
 const legacy = computed(() => isLegacyPaidNoInvoice(props.row));
 
@@ -49,7 +54,6 @@ const slip = computed(() => {
 
 const receipt = computed(() => {
   if (!props.canView) return { ok: false, reason: NO_PERMISSION };
-  if (legacy.value) return { ok: false, reason: '舊系統繳費，系統內沒有電子收據；可看繳費明細' };
   if (RECEIPT_STATUSES.includes(props.row.payment_status)) return { ok: true };
   return { ok: false, reason: '收款確認後才有收據' };
 });

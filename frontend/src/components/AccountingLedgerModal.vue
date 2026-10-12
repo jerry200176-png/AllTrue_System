@@ -531,9 +531,9 @@ const owedSplit = computed(() => splitOwed((payload.value?.invoices || [])
 // 開啟單一課程、但未繳來自其他課程時，標題要說清楚是整個學生的金額。
 const owedLabel = computed(() => {
   const scopeId = Number(payload.value?.scope?.student_class_id || 0);
-  const otherOwes = !!scopeId && (payload.value?.invoices || []).some((inv) => inv.status !== 'void'
-    && Number(inv.student_class_id) !== scopeId && Number(inv.outstanding_amount || 0) > 0);
-  return otherOwes ? '此學生到今天未繳（含其他課程）' : '到今天未繳';
+  const others = (payload.value?.invoices || []).filter((inv) => inv.status !== 'void' && Number(inv.student_class_id) !== scopeId);
+  const dueNow = splitOwed(others.map((inv) => ({ amount: inv.outstanding_amount, due_date: inv.due_date }))).now > 0; // 只算到今天已到期的，同 owedSplit
+  return scopeId && dueNow ? '此學生到今天未繳（含其他課程）' : '到今天未繳';
 });
 const overpaidTotal = computed(() => Number(payload.value?.summary?.overpaid_total || 0));
 

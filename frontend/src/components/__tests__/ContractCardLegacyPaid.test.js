@@ -8,10 +8,8 @@ import ContractCard from '../tuition/ContractCard.vue';
 
 const COVERAGE = {
   student_class_id: 9, subject: '數學', schedule_mode: 'count', start_date: '2026-09-01', end_date: '2026-12-31',
-  memo: '', unscheduled_count: 0,
-  sessions: [
-    { class_session_id: 1, date: '2026-09-01', status: 'attended', payment: 'no_invoice' },
-    { class_session_id: 2, date: '2026-09-08', status: 'scheduled', payment: 'no_invoice' },
+  memo: '', unscheduled_count: 0, sessions: [
+    { class_session_id: 1, date: '2026-09-01', status: 'attended', payment: 'no_invoice' }, { class_session_id: 2, date: '2026-09-08', status: 'scheduled', payment: 'no_invoice' },
   ],
 };
 const mountCard = async (props) => {
