@@ -218,7 +218,7 @@ class TuitionReminderDirectorNotificationTest extends TestCase
     public function test_every_course_the_command_reminds_has_a_single_director_alert(string $mode): void
     {
         [$campus, , $course] = $this->fixture();
-        $course->forceFill(['ScheduleMode' => $mode])->save();
+        $course->forceFill(['ScheduleMode' => $mode, 'settlement_day' => (int) now()->day])->save();
 
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
@@ -249,5 +249,68 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         $inv->forceFill(['Status' => 'paid', 'PaidAmount' => 5000])->save();
         NotificationSyncService::sync([$campus->id]);
         $this->assertSame(0, Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->count(), 'settled debt retires');
+    }
+
+    /** @return array<string, array{0: ?int, 1: bool}> settlement_day offset from 2026-10-15 => expected alert */
+    public static function monthlyWindow(): array
+    {
+        return [
+            'no settlement_day' => [null, false],
+            'due in 10 days (outside 0-4)' => [25, false],
+            'due in 5 days (day 5 excluded)' => [20, false],
+            'due in 4 days' => [19, true],
+            'due today' => [15, true],
+            'already past this month' => [10, true],
+        ];
+    }
+
+    /** @dataProvider monthlyWindow */
+    public function test_date_mode_notice_follows_the_monthly_billing_window(?int $settlementDay, bool $expected): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-15 09:00:00');
+        [$campus, , $course] = $this->fixture();
+        $course->forceFill(['ScheduleMode' => 'date', 'settlement_day' => $settlementDay])->save();
+
+        NotificationSyncService::sync([$campus->id]);
+
+        $this->assertSame($expected ? 1 : 0, Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->whereNull('ResolvedAt')->count());
+        \Illuminate\Support\Carbon::setTestNow();
+    }
+
+    public function test_surviving_course_notice_carries_a_consumer_supported_course_key(): void
+    {
+        [$campus, , $course, $s] = $this->fixture();
+        \App\Models\Invoice::create([
+            'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => now()->subDays(10)->toDateString(),
+            'DueDate' => now()->subDays(2)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
+        ]);
+        NotificationSyncService::sync([$campus->id]);
+
+        $n = Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->firstOrFail();
+        $this->assertSame((int) $course->ID, (int) ($n->Payload['student_class_id'] ?? 0));
+    }
+
+    public function test_suppressed_then_reopened_invoice_notice_is_unread_again(): void
+    {
+        [$campus, $director, $course, $s] = $this->fixture();
+        $inv = \App\Models\Invoice::create([
+            'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => now()->subDays(10)->toDateString(),
+            'DueDate' => now()->subDays(2)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
+        ]);
+        // Invoice notice exists and was read (course not yet in the per-course builder)
+        $course->forceFill(['Stop' => 1])->save();
+        NotificationSyncService::sync([$campus->id]);
+        $invN = Notification::where('SourceKey', "invoice_overdue:{$campus->id}:{$inv->id}")->firstOrFail();
+        $this->markRead($invN, $director);
+        // Course returns: per-course notice wins, invoice notice is suppressed (resolved)
+        $course->forceFill(['Stop' => 0])->save();
+        NotificationSyncService::sync([$campus->id]);
+        $this->assertNotNull($invN->fresh()->ResolvedAt);
+        // Course leaves the per-course builder while the invoice still owes: invoice notice reopens, unread
+        $course->forceFill(['Stop' => 1])->save();
+        NotificationSyncService::sync([$campus->id]);
+
+        $this->assertNull($invN->fresh()->ResolvedAt);
+        $this->assertSame(0, NotificationRead::where('NotificationID', $invN->id)->count());
     }
 }

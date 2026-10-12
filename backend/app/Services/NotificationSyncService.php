@@ -227,11 +227,19 @@ class NotificationSyncService
      */
     private static function reopenIfOwedChanged(Notification $existing, array $payload): void
     {
-        // Only the per-course stream: invoice-overdue rows embed a day counter that changes daily.
-        if (($payload['Type'] ?? null) !== 'tuition' || ($payload['SourceType'] ?? null) !== 'StudentClass') {
+        if (($payload['Type'] ?? null) !== 'tuition') {
             return;
         }
+        // Every resolved->open transition (any source) must show unread again.
         $changed = $existing->ResolvedAt !== null;
+        // Content-change reset only for the per-course stream: invoice-overdue rows embed a day counter that changes daily.
+        if (($payload['SourceType'] ?? null) !== 'StudentClass') {
+            if ($changed) {
+                NotificationRead::query()->where('NotificationID', $existing->id)->delete();
+            }
+
+            return;
+        }
         foreach (['Title', 'Body', 'Severity', 'SourceType', 'SourceID'] as $f) {
             $changed = $changed || (array_key_exists($f, $payload) && (string) $existing->{$f} !== (string) $payload[$f]);
         }
@@ -241,6 +249,17 @@ class NotificationSyncService
         if ($changed) {
             NotificationRead::query()->where('NotificationID', $existing->id)->delete();
         }
+    }
+
+    private static function monthlyInWindow(int $settlementDay): bool
+    {
+        if ($settlementDay < 1 || $settlementDay > 31) {
+            return false;
+        }
+        $today = now()->startOfDay();
+        $due = $today->copy()->startOfMonth()->addDays(min($settlementDay, $today->daysInMonth) - 1);
+
+        return $today->gt($due) || (int) $today->diffInDays($due) < 5;
     }
 
     private static function isSourceKeyDuplicate(QueryException $exception): bool
@@ -296,6 +315,12 @@ class NotificationSyncService
                 continue;
             }
 
+            // Monthly (date) courses follow docs/DIRECTOR_PAYMENT_ALERT_RULES.md: need a valid settlement_day;
+            // past this month's due date => always; otherwise only 0-4 days before it.
+            if (($class->ScheduleMode ?? null) !== 'count' && !self::monthlyInWindow((int) ($class->settlement_day ?? 0))) {
+                continue;
+            }
+
             $campusId = (int) ($student->CampusID ?? 0);
             $remaining = (int) ($class->RemainingSessions ?? 0);
             $isUnpaid = (int) ($class->Paid ?? 0) === 0;
@@ -320,6 +345,7 @@ class NotificationSyncService
                     'student_id' => (int) $student->id,
                     'student_name' => (string) $student->name,
                     'class_id' => (int) $class->ID,
+                    'student_class_id' => (int) $classId, // NotificationsCenter deep-link key
                     'subject' => $subject,
                     'remaining_sessions' => $remaining,
                     'charge' => $charge,
