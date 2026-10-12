@@ -146,3 +146,11 @@ describe('teachers are not offered 新增下一堂 (#3738 review)', () => {
     expect(calendar).toContain(':can-manual-session="!isTeacher"');
   });
 });
+
+describe('calendar force-create sends an audited reason (#3738)', () => {
+  it('uses the shared decision modal and buildForceOverrideFields, never a bare force: true', () => {
+    expect(calendar).toContain('<EnrollmentConflictDecisionModal');
+    expect(calendar).toContain('buildForceOverrideFields(decision)');
+    expect(calendar).not.toMatch(/force:\s*true/);
+  });
+});

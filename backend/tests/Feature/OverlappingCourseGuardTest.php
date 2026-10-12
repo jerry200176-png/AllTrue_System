@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -91,251 +92,182 @@ class OverlappingCourseGuardTest extends TestCase
             ->assertJson(['code' => 'force_reason_required']);
     }
 
-    /**
-     * #3738 review: renewal_next_term must not bypass the same-slot student overlap guard
-     * (only independent_parallel / create_trial may stack sessions on one slot).
-     */
-    public function test_renewal_next_term_force_does_not_create_same_slot_duplicate_sessions(): void
-    {
-        $token = $this->createUserToken('A', [1], 'dir-ovl-renew@example.com');
-        $teacherId = $this->createTeacher(1, 'teach-ovl-renew@example.com');
-        $student = $this->createStudent(1, '續報重疊測試生');
-        $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
-
-        $base = Carbon::now()->addWeeks(8)->next(Carbon::WEDNESDAY);
-        $dates = [];
-        $cur = $base->copy();
-        for ($i = 0; $i < 4; $i++) { $dates[] = $cur->toDateString(); $cur->addWeek(); }
-        $res1 = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $this->batchPayload($student->id, $teacherId, $dates, 'one_on_one'));
-        $res1->assertCreated();
-        $before = \Illuminate\Support\Facades\DB::table('ClassSession')->count();
-
-        // Same dates and 16:00 start again, forced as a "renewal".
-        $renew = $this->batchPayload($student->id, $teacherId, $dates, 'one_on_two');
-        $renew['force'] = true;
-        $renew['force_reason'] = 'renewal_next_term';
-        $renew['existing_contract_ids'] = [(int) $res1->json('student_class_id')];
-        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
-
-        $this->assertGreaterThanOrEqual(400, $res->status());
-        $this->assertSame($before, \Illuminate\Support\Facades\DB::table('ClassSession')->count());
-    }
-
     /** @return array{0:array,1:int,2:int,3:int} [headers, studentId, teacherId, firstStudentClassId] */
-    private function renewalFixture(string $email): array
+    private function renewalFixture(string $email, string $classType = 'one_on_one', array $dates = []): array
     {
         $token = $this->createUserToken('A', [1], 'dir-'.$email);
         $teacherId = $this->createTeacher(1, 'teach-'.$email);
         $student = $this->createStudent(1, '續報守衛測試生');
         $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
-        $future = Carbon::now()->addWeeks(8)->next(Carbon::WEDNESDAY)->toDateString();
-        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $this->batchPayload($student->id, $teacherId, [$future]));
+        $dates = $dates ?: [Carbon::now()->addWeeks(8)->next(Carbon::WEDNESDAY)->toDateString()];
+        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $this->batchPayload($student->id, $teacherId, $dates, $classType));
         $res->assertCreated();
 
         return [$h, $student->id, $teacherId, (int) $res->json('student_class_id')];
     }
 
+    /** Forced renewal_next_term of $dates; $over patches the payload. */
+    private function renew(array $fx, array $dates, array $over = [], string $classType = 'one_on_one'): \Illuminate\Testing\TestResponse
+    {
+        [$h, $studentId, $teacherId, $first] = $fx;
+        $payload = array_merge($this->batchPayload($studentId, $teacherId, $dates, $classType),
+            ['force' => true, 'force_reason' => 'renewal_next_term', 'existing_contract_ids' => [$first]], $over);
+
+        return $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $payload);
+    }
+
+    private function completed(int $course, string $date): void
+    {
+        DB::table('ClassSession')->insert(['StudentClassID' => $course, 'SessionDate' => $date, 'StartTime' => '16:00:00',
+            'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '']);
+    }
+
+    private function later(int $weeks = 20): string
+    {
+        return Carbon::now()->addWeeks($weeks)->next(Carbon::WEDNESDAY)->toDateString();
+    }
+
+    /** @return array<int,int> [sessions, learning records, contracts] */
+    private function counts(): array
+    {
+        return [DB::table('ClassSession')->count(), DB::table('LearningRecord')->count(), DB::table('StudentClass')->count()];
+    }
+
+    /** #3738 review: renewal_next_term must not bypass the same-slot student overlap guard (future slots). */
+    public function test_renewal_next_term_force_does_not_create_same_slot_duplicate_sessions(): void
+    {
+        $dates = [Carbon::now()->addWeeks(8)->next(Carbon::WEDNESDAY)->toDateString()];
+        $fx = $this->renewalFixture('renew-future@example.com', 'one_on_one', $dates);
+        $before = $this->counts();
+
+        $res = $this->renew($fx, $dates, [], 'one_on_two');
+
+        $this->assertGreaterThanOrEqual(400, $res->status());
+        $this->assertSame($before, $this->counts());
+    }
+
     /** #3738 review: a past/completed same-slot row bypassed the write guard and added a second completed lesson. */
     public function test_renewal_next_term_force_refuses_confirmed_same_slot_without_second_session(): void
     {
-        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-past@example.com');
+        $fx = $this->renewalFixture('renew-past@example.com');
         $past = Carbon::now()->subWeeks(2)->toDateString();
-        \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
-            'StudentClassID' => $first, 'SessionDate' => $past, 'StartTime' => '16:00:00',
-            'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '',
-        ]);
-        $sessions = \Illuminate\Support\Facades\DB::table('ClassSession')->count();
-        $records = \Illuminate\Support\Facades\DB::table('LearningRecord')->count();
+        $this->completed($fx[3], $past);
+        $before = $this->counts();
+        $plan = [['session_date' => $past, 'start_time' => '16:00', 'kind' => 'confirmed', 'subject' => 'Math']];
 
-        $renew = $this->batchPayload($studentId, $teacherId, [$past], 'one_on_one');
-        $renew['session_plan'][0]['kind'] = 'confirmed';
-        $renew['force'] = true;
-        $renew['force_reason'] = 'renewal_next_term';
-        $renew['existing_contract_ids'] = [$first];
-        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
-
-        $this->assertSame(422, $res->status());
-        $this->assertSame($sessions, \Illuminate\Support\Facades\DB::table('ClassSession')->count());
-        $this->assertSame($records, \Illuminate\Support\Facades\DB::table('LearningRecord')->count());
-    }
-
-    /** #3738 review: monthly (date-mode) renewal belongs to ContractRenewal::renewMonthly, not generic enrollment. */
-    public function test_renewal_next_term_force_is_refused_for_monthly_contract(): void
-    {
-        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-monthly@example.com');
-        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->update(['ScheduleMode' => 'date']);
-        $classes = \Illuminate\Support\Facades\DB::table('StudentClass')->count();
-
-        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
-        $renew = $this->batchPayload($studentId, $teacherId, [$later], 'one_on_one');
-        $renew['force'] = true;
-        $renew['force_reason'] = 'renewal_next_term';
-        $renew['existing_contract_ids'] = [$first];
-        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
-
-        $res->assertStatus(422)->assertJson(['code' => 'renewal_use_monthly_flow']);
-        $this->assertSame($classes, \Illuminate\Support\Facades\DB::table('StudentClass')->count());
-    }
-
-    /** #3738 review: an existing TRIAL session is add-on, not a clash (canonical guard excludes trial). */
-    public function test_confirmed_overlap_guard_ignores_trial_sessions(): void
-    {
-        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-trial@example.com');
-        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->update(['ClassType' => 'trial']);
-        $past = Carbon::now()->subWeeks(2)->toDateString();
-        \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
-            'StudentClassID' => $first, 'SessionDate' => $past, 'StartTime' => '16:00:00',
-            'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '',
-        ]);
-        $renew = $this->batchPayload($studentId, $teacherId, [$past], 'one_on_one');
-        $renew['session_plan'][0]['kind'] = 'confirmed';
-        $renew['force'] = true;
-        $renew['force_reason'] = 'renewal_next_term';
-        $renew['existing_contract_ids'] = [$first];
-
-        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
-
-        $this->assertNotSame('renewal_confirmed_slot_overlap', $res->json('code'));
+        $this->assertSame(422, $this->renew($fx, [$past], ['session_plan' => $plan])->status());
+        $this->assertSame($before, $this->counts());
     }
 
     /** #3738 review: a same-day future row whose slot already ended becomes completed, so the guard must apply. */
     public function test_renewal_guard_applies_to_future_row_that_is_already_ended_today(): void
     {
-        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-today@example.com');
+        $fx = $this->renewalFixture('renew-today@example.com');
         Carbon::setTestNow(Carbon::now()->setTime(20, 0));
         try {
             $today = Carbon::now()->toDateString();
-            \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
-                'StudentClassID' => $first, 'SessionDate' => $today, 'StartTime' => '16:00:00',
-                'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '',
-            ]);
-            $sessions = \Illuminate\Support\Facades\DB::table('ClassSession')->count();
-            $records = \Illuminate\Support\Facades\DB::table('LearningRecord')->count();
-            $renew = $this->batchPayload($studentId, $teacherId, [$today], 'one_on_one'); // kind: future
-            $renew['days_of_week'] = [Carbon::now()->dayOfWeekIso];
-            $renew['force'] = true;
-            $renew['force_reason'] = 'renewal_next_term';
-            $renew['existing_contract_ids'] = [$first];
+            $this->completed($fx[3], $today);
+            $before = $this->counts();
 
-            $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
+            $res = $this->renew($fx, [$today], ['days_of_week' => [Carbon::now()->dayOfWeekIso]]); // kind: future
 
-            $this->assertSame(422, $res->status(), $res->getContent());
             $this->assertSame('renewal_confirmed_slot_overlap', $res->json('code'), $res->getContent());
-            $this->assertSame($sessions, \Illuminate\Support\Facades\DB::table('ClassSession')->count());
-            $this->assertSame($records, \Illuminate\Support\Facades\DB::table('LearningRecord')->count());
+            $this->assertSame($before, $this->counts());
         } finally {
             Carbon::setTestNow();
         }
     }
 
-    /** #3738 review: cross-campus identity enrollment must check the target-campus member's contracts. */
-    public function test_monthly_guard_uses_resolved_target_campus_member(): void
+    /** #3738 review: an existing TRIAL session is add-on, not a clash (canonical guard excludes trial). */
+    public function test_confirmed_overlap_guard_ignores_trial_sessions(): void
     {
-        [$h, $sourceId, $teacherId, $sourceCourse] = $this->renewalFixture('renew-xcampus@example.com');
-        $svc = app(\App\Services\StudentIdentityService::class);
-        $group = \Illuminate\Support\Facades\DB::table('student_identity_groups')->insertGetId(['created_at' => now(), 'updated_at' => now()]);
-        $targetCampus = 2;
-        \Illuminate\Support\Facades\DB::table('Campus')->updateOrInsert(['id' => $targetCampus], ['id' => $targetCampus, 'Name' => 'Target']);
-        $target = $this->createStudent($targetCampus, '目標分校成員');
-        foreach ([[$sourceId, 1], [$target->id, $targetCampus]] as [$sid, $cid]) {
-            \Illuminate\Support\Facades\DB::table('student_identity_members')->insert([
-                'identity_group_id' => $group, 'student_id' => $sid, 'campus_id' => $cid, 'status' => 'active',
-                'created_at' => now(), 'updated_at' => now(),
-            ]);
-        }
-        $foreign = (array) \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $sourceCourse)->first();
-        unset($foreign['ID']);
-        \Illuminate\Support\Facades\DB::table('StudentClass')->insert(array_merge($foreign, ['StudentID' => $target->id, 'ScheduleMode' => 'date']));
+        $fx = $this->renewalFixture('renew-trial@example.com');
+        DB::table('StudentClass')->where('ID', $fx[3])->update(['ClassType' => 'trial']);
+        $past = Carbon::now()->subWeeks(2)->toDateString();
+        $this->completed($fx[3], $past);
+        $plan = [['session_date' => $past, 'start_time' => '16:00', 'kind' => 'confirmed', 'subject' => 'Math']];
 
-        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
-        $renew = $this->batchPayload($sourceId, $teacherId, [$later], 'one_on_one');
-        $renew['future_dates'] = [$later];
-        \Illuminate\Support\Facades\DB::table('UserCampus')->insert(['UserID' => $teacherId, 'CampusID' => $targetCampus]);
-        $renew['identity_group_id'] = $group;
-        $renew['branch_id'] = $targetCampus;
-        $renew['force'] = true;
-        $renew['force_reason'] = 'renewal_next_term';
-        // Not reachable over HTTP today (batchStore has no identity_group_id, /enrollments has no force), so the
-        // service is called directly, as AdmissionInquiryController does.
-        $request = \Illuminate\Http\Request::create('/x', 'POST');
-        $request->attributes->set('auth_role', 'super_admin');
-        $request->attributes->set('auth_user', \App\Models\User::find($teacherId));
-        $res = app(\App\Services\EnrollmentService::class)->store($request, $renew);
-        $res = \Illuminate\Testing\TestResponse::fromBaseResponse($res);
-
-        $this->assertSame('renewal_use_monthly_flow', $res->json('code'), $res->getContent());
+        $this->assertNotSame('renewal_confirmed_slot_overlap', $this->renew($fx, [$past], ['session_plan' => $plan])->json('code'));
     }
 
-    /** #3738 review: legacy empty/NULL ScheduleMode (column is NOT NULL here, so the blank value is tested) is a session-count contract, not monthly. */
-    public function test_null_schedule_mode_is_not_treated_as_monthly(): void
+    /** #3738 review: monthly (date-mode) renewal belongs to ContractRenewal::renewMonthly, not generic enrollment. */
+    public function test_renewal_next_term_force_is_refused_for_monthly_contract(): void
     {
-        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-null@example.com');
-        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->update(['ScheduleMode' => '']);
-        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
-        $renew = $this->batchPayload($studentId, $teacherId, [$later], 'one_on_one');
-        $renew['force'] = true;
-        $renew['force_reason'] = 'renewal_next_term';
-        $renew['existing_contract_ids'] = [$first];
+        $fx = $this->renewalFixture('renew-monthly@example.com');
+        DB::table('StudentClass')->where('ID', $fx[3])->update(['ScheduleMode' => 'date']);
+        $before = $this->counts();
 
-        $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
-
-        $this->assertNotSame('renewal_use_monthly_flow', $res->json('code'));
+        $this->renew($fx, [$this->later()], ['existing_contract_ids' => []])->assertStatus(422)->assertJson(['code' => 'renewal_use_monthly_flow']);
+        $this->assertSame($before, $this->counts());
     }
 
-    /** #3738 review: an unrelated monthly contract (other class type) must not block renewing the count contract. */
-    public function test_unrelated_monthly_contract_does_not_block_count_renewal(): void
+    /** #3738 review: blank/NULL ScheduleMode (NOT NULL column here, so blank is tested) is a count contract; an unrelated monthly one does not block. */
+    public function test_blank_mode_and_unrelated_monthly_contract_do_not_block_count_renewal(): void
     {
-        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-scope@example.com');
-        $row = (array) \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->first();
+        $fx = $this->renewalFixture('renew-scope@example.com');
+        DB::table('StudentClass')->where('ID', $fx[3])->update(['ScheduleMode' => '']);
+        $this->assertNotSame('renewal_use_monthly_flow', $this->renew($fx, [$this->later()])->json('code'));
+
+        DB::table('StudentClass')->where('ID', $fx[3])->update(['ScheduleMode' => 'count']);
+        $row = (array) DB::table('StudentClass')->where('ID', $fx[3])->first();
         unset($row['ID']);
-        \Illuminate\Support\Facades\DB::table('StudentClass')->insert(array_merge($row, ['ClassType' => 'one_on_two', 'ScheduleMode' => 'date']));
-        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
-        foreach ([[$first], []] as $ids) {
-            $renew = $this->batchPayload($studentId, $teacherId, [$later], 'one_on_one');
-            $renew['force'] = true;
-            $renew['force_reason'] = 'renewal_next_term';
-            $renew['existing_contract_ids'] = $ids;
-            $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
-            $this->assertNotSame('renewal_use_monthly_flow', $res->json('code'), json_encode($ids));
-        }
+        DB::table('StudentClass')->insert(array_merge($row, ['ClassType' => 'one_on_two', 'ScheduleMode' => 'date']));
+        $this->assertNotSame('renewal_use_monthly_flow', $this->renew($fx, [$this->later(30)])->json('code'));
     }
 
     /** #3738 review: a forged id of an unrelated count contract must not hide the real monthly conflict. */
     public function test_forged_count_contract_id_cannot_bypass_monthly_conflict(): void
     {
-        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-forged2@example.com');
-        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->update(['ScheduleMode' => 'date']); // real conflict: monthly one_on_one
-        $row = (array) \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->first();
+        $fx = $this->renewalFixture('renew-forged2@example.com');
+        DB::table('StudentClass')->where('ID', $fx[3])->update(['ScheduleMode' => 'date']);
+        $row = (array) DB::table('StudentClass')->where('ID', $fx[3])->first();
         unset($row['ID']);
-        $decoy = \Illuminate\Support\Facades\DB::table('StudentClass')->insertGetId(
-            array_merge($row, ['ClassType' => 'one_on_three', 'ScheduleMode' => 'count', 'TeacherID' => $teacherId + 999])
-        );
-        $later = Carbon::now()->addWeeks(20)->next(Carbon::WEDNESDAY)->toDateString();
-        $renew = $this->batchPayload($studentId, $teacherId, [$later], 'one_on_one');
-        $renew['force'] = true;
-        $renew['force_reason'] = 'renewal_next_term';
-        $renew['existing_contract_ids'] = [$decoy];
+        $decoy = DB::table('StudentClass')->insertGetId(array_merge($row, ['ClassType' => 'one_on_three', 'ScheduleMode' => 'count', 'TeacherID' => $fx[2] + 999]));
 
-        $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew)
-            ->assertStatus(422)->assertJson(['code' => 'renewal_use_monthly_flow']);
+        $this->renew($fx, [$this->later()], ['existing_contract_ids' => [$decoy]])->assertStatus(422)->assertJson(['code' => 'renewal_use_monthly_flow']);
     }
 
-    /** #3738 review: a renewal on another weekday must still start after the old contract ends. */
-    public function test_renewal_next_term_force_is_refused_when_contract_ranges_overlap_on_another_weekday(): void
+    /** #3738 review: another weekday, and a manual_occurrence renewal without dates, must still start after the old contract ends. */
+    public function test_renewal_next_term_force_is_refused_when_contract_ranges_overlap(): void
     {
-        [$h, $studentId, $teacherId, $first] = $this->renewalFixture('renew-range@example.com');
-        $wed = (string) \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->value('StartDate');
-        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $first)->update(['EndDate' => Carbon::parse($wed)->addMonths(3)->toDateString()]);
+        $fx = $this->renewalFixture('renew-range@example.com');
+        $wed = (string) DB::table('StudentClass')->where('ID', $fx[3])->value('StartDate');
+        DB::table('StudentClass')->where('ID', $fx[3])->update(['EndDate' => Carbon::parse($wed)->addMonths(3)->toDateString()]);
+        $before = $this->counts();
         $thu = Carbon::parse($wed)->addDay()->toDateString();
-        $renew = $this->batchPayload($studentId, $teacherId, [$thu], 'one_on_one');
-        $renew['days_of_week'] = [4];
-        $renew['force'] = true;
-        $renew['force_reason'] = 'renewal_next_term';
-        $classes = \Illuminate\Support\Facades\DB::table('StudentClass')->count();
 
-        $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew)
-            ->assertStatus(422)->assertJson(['code' => 'renewal_range_overlap']);
-        $this->assertSame($classes, \Illuminate\Support\Facades\DB::table('StudentClass')->count());
+        $this->renew($fx, [$thu], ['days_of_week' => [4]])->assertStatus(422)->assertJson(['code' => 'renewal_range_overlap']);
+        $manual = $this->renew($fx, [$wed], ['scheduling_policy' => 'manual_occurrence', 'session_plan' => [],
+            'course_start_date' => $thu, 'end_date' => Carbon::parse($wed)->addMonth()->toDateString()]);
+        $this->assertSame('renewal_range_overlap', $manual->json('code'), $manual->getContent());
+        $this->assertSame($before, $this->counts());
+    }
+
+    /** #3738 review: cross-campus identity enrollment must check the target-campus member's contracts. */
+    public function test_monthly_guard_uses_resolved_target_campus_member(): void
+    {
+        [, $sourceId, $teacherId, $sourceCourse] = $this->renewalFixture('renew-xcampus@example.com');
+        $group = DB::table('student_identity_groups')->insertGetId(['created_at' => now(), 'updated_at' => now()]);
+        DB::table('Campus')->updateOrInsert(['id' => 2], ['id' => 2, 'Name' => 'Target']);
+        $target = $this->createStudent(2, '目標分校成員');
+        foreach ([[$sourceId, 1], [$target->id, 2]] as [$sid, $cid]) {
+            DB::table('student_identity_members')->insert(['identity_group_id' => $group, 'student_id' => $sid,
+                'campus_id' => $cid, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $row = (array) DB::table('StudentClass')->where('ID', $sourceCourse)->first();
+        unset($row['ID']);
+        DB::table('StudentClass')->insert(array_merge($row, ['StudentID' => $target->id, 'ScheduleMode' => 'date']));
+        DB::table('UserCampus')->insert(['UserID' => $teacherId, 'CampusID' => 2]);
+        $later = $this->later();
+        $payload = array_merge($this->batchPayload($sourceId, $teacherId, [$later]), ['future_dates' => [$later],
+            'identity_group_id' => $group, 'branch_id' => 2, 'force' => true, 'force_reason' => 'renewal_next_term']);
+        // Not reachable over HTTP today (batchStore has no identity_group_id, /enrollments has no force): call the service.
+        $request = \Illuminate\Http\Request::create('/x', 'POST');
+        $request->attributes->set('auth_role', 'super_admin');
+        $request->attributes->set('auth_user', \App\Models\User::find($teacherId));
+        $res = \Illuminate\Testing\TestResponse::fromBaseResponse(app(\App\Services\EnrollmentService::class)->store($request, $payload));
+
+        $this->assertSame('renewal_use_monthly_flow', $res->json('code'), $res->getContent());
     }
 
     /**

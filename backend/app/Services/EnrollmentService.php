@@ -768,7 +768,11 @@ class EnrollmentService
             // Serialize forced renewals per student so two concurrent requests cannot both pass the check.
             if (!empty($data['force']) && ($data['force_reason'] ?? '') === 'renewal_next_term') {
                 DB::table('Student')->where('id', $student->id)->lockForUpdate()->value('id');
-                $confirmedGate = $this->guardRenewalConfirmedOverlap((int) $student->id, $subjectGroups);
+                $confirmedGate = $this->renewalTargetGate($data, array_values(array_unique(array_map(
+                    fn ($m) => (int) ($m['id'] ?? 0),
+                    $subjectMeta
+                ))), (int) $student->id)
+                    ?? $this->guardRenewalConfirmedOverlap((int) $student->id, $subjectGroups);
                 if ($confirmedGate !== null) {
                     return $confirmedGate;
                 }
@@ -1138,6 +1142,58 @@ class EnrollmentService
      * @param  array<string, mixed>  $data
      */
     /**
+     * Forced-renewal target checks, derived server-side (client existing_contract_ids are ignored) with the same
+     * predicate as the 409 discovery. Run once before the transaction and AGAIN under the student lock, so a
+     * concurrent renewal that committed in between is seen. Blank/NULL ScheduleMode is a session-count contract.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<int, int>  $subjectIds
+     */
+    private function renewalTargetGate(array $data, array $subjectIds, int $studentId): ?JsonResponse
+    {
+        $classType = (string) ($data['class_type'] ?? '');
+        $teacher = (int) ($data['teacher_id'] ?? 0);
+        $dates = array_filter(array_merge(
+            $data['confirmed_dates'] ?? [],
+            $data['future_dates'] ?? [],
+            array_map(fn ($p) => is_array($p) ? ($p['session_date'] ?? null) : null, $data['session_plan'] ?? [])
+        ));
+        sort($dates);
+        // Manual-occurrence renewals submit no dates: fall back to the contract range like the 409 discovery.
+        $start = substr((string) ($dates[0] ?? $data['course_start_date'] ?? ''), 0, 10) ?: null;
+        $end = substr((string) ($dates !== [] ? end($dates) : ($data['end_date'] ?? '')), 0, 10) ?: null;
+        $monthly = false;
+        if ($studentId > 0 && $subjectIds !== []) {
+            $base = fn () => DB::table('StudentClass')->where('StudentID', $studentId)->where('Stop', 0)
+                ->whereIn('SubjectID', $subjectIds);
+            $overlap = $classType !== 'trial' && $teacher > 0 && $start && $end;
+            $overlapping = fn ($q) => $q->where('TeacherID', $teacher)
+                ->whereDate('StartDate', '<=', $end)->whereDate('EndDate', '>=', $start);
+            $monthly = $base()->where(function ($q) use ($classType, $overlap, $overlapping) {
+                $q->where('ClassType', $classType);
+                if ($overlap) {
+                    $q->orWhere($overlapping);
+                }
+            })->whereRaw("LOWER(COALESCE(NULLIF(ScheduleMode, ''), 'count')) = ?", ['date'])->exists();
+            // A "next term" must start after the contract it renews (force skipped the 409 range check).
+            if ($overlap && $base()->where($overlapping)->exists()) {
+                return response()->json([
+                    'message' => '續報的新課起始日必須在原課程結束之後，請調整起始日或改用「加購堂數」。',
+                    'code' => 'renewal_range_overlap',
+                ], 422);
+            }
+        }
+        if ($monthly || ($data['payment_type'] ?? 'session') !== 'session') {
+            return response()->json([
+                'message' => '月繳課程的續報請從該課程的「續約」進行，不能用強制建立代替。',
+                'code' => 'renewal_use_monthly_flow',
+            ], 422);
+        }
+
+        return null;
+    }
+
+    /**
      * Past/completed rows are not covered by the future-only write guard, so a renewal would add a second
      * completed lesson (and LearningRecord / deduction) on a slot the student already has.
      *
@@ -1224,51 +1280,13 @@ class EnrollmentService
         // Monthly (date-mode) renewal settles old contract, future sessions and invoice atomically in
         // ContractRenewal::renewMonthly; generic enrollment must not stand in for it.
         if ($reason === 'renewal_next_term') {
-            // Server-derived only (client existing_contract_ids ignored): same predicate as the 409 discovery.
-            // Blank/NULL ScheduleMode is a legacy session-count contract.
-            $studentIdForGate = $resolvedStudentId > 0 ? $resolvedStudentId : (int) ($data['student_id'] ?? 0);
-            $monthlyExisting = false;
-            $newClassType = (string) ($data['class_type'] ?? '');
-            $newTeacher = (int) ($data['teacher_id'] ?? 0);
-            $newStart = $newEnd = null;
-            if ($studentIdForGate > 0 && $subjectIds !== []) {
-                $planDates = array_filter(array_merge(
-                    $data['confirmed_dates'] ?? [],
-                    $data['future_dates'] ?? [],
-                    array_map(fn ($p) => is_array($p) ? ($p['session_date'] ?? null) : null, $data['session_plan'] ?? [])
-                ));
-                sort($planDates);
-                $newStart = isset($planDates[0]) ? substr((string) $planDates[0], 0, 10) : null;
-                $newEnd = $planDates !== [] ? substr((string) end($planDates), 0, 10) : null;
-                $monthlyExisting = DB::table('StudentClass')->where('StudentID', $studentIdForGate)->where('Stop', 0)
-                    ->whereIn('SubjectID', $subjectIds)
-                    ->where(function ($q) use ($newClassType, $newTeacher, $newStart, $newEnd) {
-                        $q->where('ClassType', $newClassType);
-                        if ($newClassType !== 'trial' && $newTeacher > 0 && $newStart && $newEnd) {
-                            $q->orWhere(fn ($w) => $w->where('TeacherID', $newTeacher)
-                                ->whereDate('StartDate', '<=', $newEnd)->whereDate('EndDate', '>=', $newStart));
-                        }
-                    })
-                    ->whereRaw("LOWER(COALESCE(NULLIF(ScheduleMode, ''), 'count')) = ?", ['date'])
-                    ->exists();
-            }
-            // A "next term" must start after the contract it renews: force skipped the 409 range check, so redo it
-            // (same predicate as overlapping_active_course: same teacher + overlapping date range, non-trial).
-            if ($studentIdForGate > 0 && $subjectIds !== [] && $newTeacher > 0 && $newStart && $newEnd
-                && $newClassType !== 'trial'
-                && DB::table('StudentClass')->where('StudentID', $studentIdForGate)->where('Stop', 0)
-                    ->whereIn('SubjectID', $subjectIds)->where('TeacherID', $newTeacher)
-                    ->whereDate('StartDate', '<=', $newEnd)->whereDate('EndDate', '>=', $newStart)->exists()) {
-                return response()->json([
-                    'message' => '續報的新課起始日必須在原課程結束之後，請調整起始日或改用「加購堂數」。',
-                    'code' => 'renewal_range_overlap',
-                ], 422);
-            }
-            if ($monthlyExisting || ($data['payment_type'] ?? 'session') !== 'session') {
-                return response()->json([
-                    'message' => '月繳課程的續報請從該課程的「續約」進行，不能用強制建立代替。',
-                    'code' => 'renewal_use_monthly_flow',
-                ], 422);
+            $gate = $this->renewalTargetGate(
+                $data,
+                $subjectIds,
+                $resolvedStudentId > 0 ? $resolvedStudentId : (int) ($data['student_id'] ?? 0)
+            );
+            if ($gate !== null) {
+                return $gate;
             }
         }
 

@@ -5,9 +5,9 @@ updates:
       - director
     importance: digest
     title: 行事曆重複課程可以正常新增了
-    summary: 行事曆提示學生已有課程時，現在可選擇建立試聽、續報或獨立課程。
+    summary: 行事曆提示學生已有課程時，現在可選續報或獨立課程。
     items:
       - category: fixed
-        text: 行事曆遇到已有課程時，「仍要新增課程」原本會失敗，現在可選試聽、續報或獨立課程。
+        text: 行事曆遇到已有課程時，「仍要新增課程」原本會失敗，現在可選續報或獨立課程。
     source_refs:
       - "changelog:2026-10-12:calendar-force-create-reason"

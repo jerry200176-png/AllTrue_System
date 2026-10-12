@@ -59,7 +59,14 @@ class RenewalSnapshotRaceTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_renewal_guard_sees_concurrent_commit_despite_repeatable_read(): void
+    /**
+     * Deterministic barrier: right before the enrollment transaction's first student FOR UPDATE, the second
+     * connection ($a) commits $concurrent. Then the forced renewal ($renewDate/$kind) runs on the default connection.
+     *
+     * @param callable(\Illuminate\Database\Connection,int,array):void $concurrent
+     * @return array{0:\Illuminate\Testing\TestResponse,1:int} [response, first course id]
+     */
+    private function race(callable $concurrent, string $renewDate, string $kind, int $weekday = 3): array
     {
         try {
             $iso = DB::selectOne('select @@transaction_isolation as i')->i; // MySQL 8
@@ -76,9 +83,6 @@ class RenewalSnapshotRaceTest extends TestCase
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
         $student = Student::create(['name' => 'rr', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
         $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
-
-        $future = Carbon::now()->addWeeks(8)->next(Carbon::WEDNESDAY)->toDateString();
-        $past = Carbon::now()->subWeeks(2)->toDateString();
         $payload = fn (string $date, string $kind) => [
             'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacher->id, 'subject' => 'Math',
             'class_type' => 'one_on_one', 'total_classes' => 1, 'confirmed_dates' => [], 'future_dates' => [],
@@ -86,29 +90,63 @@ class RenewalSnapshotRaceTest extends TestCase
             'days_of_week' => [Carbon::parse($date)->dayOfWeekIso], 'start_time' => '16:00', 'duration_minutes' => 120,
             'price_per_session' => 500, 'payment_type' => 'session', 'course_start_date' => $date,
         ];
-        $first = (int) $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $payload($future, 'future'))
-            ->assertCreated()->json('student_class_id');
+        $first = (int) $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch',
+            $payload(Carbon::now()->addWeeks(8)->next(Carbon::WEDNESDAY)->toDateString(), 'future'))->assertCreated()->json('student_class_id');
 
         config(['database.connections.mysql_a' => config('database.connections.'.config('database.default'))]);
         $a = DB::connection('mysql_a');
-        $sessions = DB::table('ClassSession')->count();
         $fired = false;
-        DB::connection()->beforeExecuting(function ($q) use (&$fired, $a, $first, $past) {
+        DB::connection()->beforeExecuting(function ($q) use (&$fired, $a, $first, $student, $teacher, $concurrent) {
             if (!$fired && stripos($q, 'for update') !== false && stripos($q, '`Student`') !== false) {
                 $fired = true;
-                $a->transaction(fn () => $a->table('ClassSession')->insert([
-                    'StudentClassID' => $first, 'SessionDate' => $past, 'StartTime' => '16:00:00',
-                    'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '',
-                ]));
+                $a->transaction(fn () => $concurrent($a, $first, ['student' => $student->id, 'teacher' => $teacher->id]));
             }
         });
-
-        $renew = $payload($past, 'confirmed') + ['force' => true, 'force_reason' => 'renewal_next_term', 'existing_contract_ids' => [$first]];
+        $renew = $payload($renewDate, $kind) + ['force' => true, 'force_reason' => 'renewal_next_term', 'existing_contract_ids' => [$first]];
         $res = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $renew);
-
         $this->assertTrue($fired, 'student lock query never ran');
+
+        return [$res, $first];
+    }
+
+    public function test_renewal_guard_sees_concurrent_commit_despite_repeatable_read(): void
+    {
+        $past = Carbon::now()->subWeeks(2)->toDateString();
+        $sessions = DB::table('ClassSession')->count();
+        [$res] = $this->race(fn ($a, $first) => $a->table('ClassSession')->insert([
+            'StudentClassID' => $first, 'SessionDate' => $past, 'StartTime' => '16:00:00',
+            'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '',
+        ]), $past, 'confirmed');
+
         $this->assertSame(422, $res->status(), $res->getContent());
         $this->assertSame('renewal_confirmed_slot_overlap', $res->json('code'));
-        $this->assertSame($sessions + 1, DB::table('ClassSession')->count()); // only the concurrent commit
+        $this->assertSame($sessions + 2, DB::table('ClassSession')->count()); // first course session + the concurrent commit
+    }
+
+    public function test_second_concurrent_count_renewal_is_revalidated_under_the_lock(): void
+    {
+        // The concurrent connection commits a charged contract for the same term on another weekday (Thursday).
+        $thu = Carbon::now()->addWeeks(30)->next(Carbon::THURSDAY)->toDateString();
+        $classes = DB::table('StudentClass')->count();
+        [$res] = $this->race(function ($a, $first) use ($thu) {
+            $row = (array) $a->table('StudentClass')->where('ID', $first)->first();
+            unset($row['ID']);
+            $a->table('StudentClass')->insert(array_merge($row, ['StartDate' => $thu, 'EndDate' => $thu]));
+        }, $thu, 'future', 4);
+
+        $this->assertSame(422, $res->status(), $res->getContent());
+        $this->assertSame('renewal_range_overlap', $res->json('code'));
+        $this->assertSame($classes + 2, DB::table('StudentClass')->count()); // first course + the concurrent contract only
+    }
+
+    public function test_legitimate_renewal_still_succeeds_after_an_unrelated_concurrent_commit(): void
+    {
+        $later = Carbon::now()->addWeeks(40)->next(Carbon::WEDNESDAY)->toDateString();
+        [$res, $first] = $this->race(fn ($a, $first, $ids) => $a->table('Student')->where('id', $ids['student'])
+            ->update(['name' => 'renamed']), $later, 'future');
+
+        $this->assertSame(201, $res->status(), $res->getContent());
+        $this->assertSame(2, DB::table('StudentClass')->count());
+        $this->assertNotSame($first, (int) $res->json('student_class_id'));
     }
 }
