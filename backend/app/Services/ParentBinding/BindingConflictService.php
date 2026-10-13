@@ -138,7 +138,7 @@ final class BindingConflictService
         $binding = $this->bindingOf($studentId, $bindingId, $allowedCampusIds);
         DB::transaction(function () use ($studentId, $binding) {
             // #3933: unbinding also revokes guardian access (revoke first, then delete).
-            $this->bindings->revokeGuardianAccess($studentId, (string) $binding->line_user_id);
+            $this->bindings->revokeGuardianAccess($studentId, (string) $binding->getAttribute('line_user_id'));
             $binding->delete();
         });
 
@@ -160,6 +160,13 @@ final class BindingConflictService
         }
         if ($allowedCampusIds !== null && !in_array((int) $binding->campus_id, $allowedCampusIds, true)) {
             throw new \DomainException('Binding is outside the operator campus scope');
+        }
+        // #3933: removal also revokes the student's guardian access, so the
+        // operator must also cover the student's current campus.
+        $studentCampusId = DB::table('Student')->where('id', $studentId)->value('CampusID');
+        if ($allowedCampusIds !== null && $studentCampusId !== null
+            && !in_array((int) $studentCampusId, $allowedCampusIds, true)) {
+            throw new \DomainException('Student is outside the operator campus scope');
         }
 
         return $binding;

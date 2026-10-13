@@ -234,6 +234,26 @@ class BindingUnbindRevokesGuardianAccessTest extends TestCase
         $this->dashboard($token)->assertOk();
     }
 
+    public function test_conflict_delete_requires_the_students_current_campus(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $newCampus = CampusFactory::new()->create();
+        $student = StudentFactory::new()->create(['CampusID' => $newCampus->id, 'enable' => 1]);
+        $line = $this->lineId('p');
+        $staleBinding = $this->bindLine($student, $line);
+        $this->bindLine($student, $this->lineId('q'), $newCampus);
+        $token = $this->parentToken($student, $line);
+
+        $this->postJson("/api/v1/bindings/conflicts/{$student->id}/resolve", [
+            'action' => 'delete',
+            'binding_id' => $staleBinding->id,
+        ], ['X-User-Id' => (string) $this->director->id])->assertForbidden();
+
+        $this->assertDatabaseHas('student_line_bindings', ['id' => $staleBinding->id]);
+        $this->assertSame(StudentGuardian::STATUS_ACTIVE, $this->linkFor($student, $line)->status);
+        $this->dashboard($token)->assertOk();
+    }
+
     private function access(): ParentGuardianAccessService
     {
         return app(ParentGuardianAccessService::class);
