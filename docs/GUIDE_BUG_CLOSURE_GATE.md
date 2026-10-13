@@ -1,7 +1,7 @@
 # GUIDE — Bug 關閉閘門（Closure Gate）
 
 > **角色**：Reliability / QA / AI Agent 在宣告 bug「完成」前的強制檢查清單  
-> **權威流程**：[`CHAT_BUG_SYSTEM.md`](CHAT_BUG_SYSTEM.md) §3.6–§3.7（in-app 狀態機）  
+> **權威流程**：[`CHAT_BUG_SYSTEM.md`](CHAT_BUG_SYSTEM.md) §3.6–§3.7（in-app 狀態機）；各階段 workflow／觸發／cloud 可否自行完成 → [`sop/BUG_INTAKE_TO_PRODUCTION.md`](sop/BUG_INTAKE_TO_PRODUCTION.md) 對照表  
 > **衝突時**：P0 規則（`.cursorrules`）> 本指南 > 一般工程習慣
 
 ---
@@ -29,7 +29,7 @@
 ## 與 in-app 狀態機整合
 
 ```
-new → triaged → in_progress → resolved → (reporter-verify) → closed
+new → triaged → in_progress → resolved → (reporter-verify 或逾時) → closed
          ↑                           ↑
     Phase A 分診              Closure Gate 1–5 完成後才可 resolved
                               Gate 6 在資料修復/高風險變更時必填
@@ -41,7 +41,7 @@ new → triaged → in_progress → resolved → (reporter-verify) → closed
 |------|------|--------------|
 | `triaged` | `in_progress` | Gate 1 完成（根因假設或確認） |
 | `in_progress` | `resolved` | **Gate 1–5 全部完成** |
-| `resolved` | `closed` | 回報者 `reporter-verify`（Gate 4 延伸） |
+| `resolved` | `closed` | 回報者 `reporter-verify` 或逾時流程（Gate 4 延伸；Agent 不代按） |
 
 ⛔ `triaged` **不可**直接 → `resolved`（`BugReportService::VALID_TRANSITIONS` 會拒絕）。
 
@@ -51,8 +51,8 @@ new → triaged → in_progress → resolved → (reporter-verify) → closed
 |-------|------|--------------|
 | **A 分診** | 開 GitHub issue + in-app `triaged` + 公開回覆 | — |
 | **B 修復** | branch → 測試 RED → code → CI 綠 → PR merge → deploy | Gate 2 在 merge 前 |
-| **C 上線回寫** | `resolved` + 公開留言 + 等驗收 | Gate 3–5 在 `resolved` 前 |
-| **D 關閉** | 回報者確認 → `closed` | Gate 4 驗收延伸 |
+| **C 上線回寫** | `resolved` + 公開留言；GitHub issue 此時可關（Founder 2026-10-12 ③：merge＋上線驗證＋已回覆 in-app，不等回報者） | Gate 3–5 在 `resolved` 前 |
+| **D in-app 關閉** | 回報者確認或逾時 → `closed` | Gate 4 驗收延伸 |
 
 ---
 
