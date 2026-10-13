@@ -14,7 +14,7 @@
         {{ a.label }}
       </button>
       <span v-if="!a.state.ok" :id="`${uid}-${a.key}`" class="tc-doc-reason" :data-testid="`tc-doc-${a.key}-reason`">{{ a.state.reason }}</span>
-      <button v-if="a.key === 'receipt' && legacy && canView" type="button" class="tc-doc-link" data-testid="tc-doc-ledger" @click="$emit('ledger', row)">看繳費明細</button>
+      <button v-if="a.key === 'receipt' && legacy && canView && row.id != null" type="button" class="tc-doc-link" data-testid="tc-doc-ledger" @click="$emit('ledger', row)">看繳費明細</button>
     </span>
   </span>
 </template>

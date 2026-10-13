@@ -5,7 +5,6 @@ import { mount, flushPromises } from '@vue/test-utils';
 const authedFetch = vi.fn();
 vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: (...a) => authedFetch(...a), getAccessToken: async () => 'tok' }));
 import ContractCard from '../tuition/ContractCard.vue';
-
 const COVERAGE = {
   student_class_id: 9, subject: '數學', schedule_mode: 'count', start_date: '2026-09-01', end_date: '2026-12-31',
   memo: '', unscheduled_count: 0, sessions: [
@@ -19,10 +18,8 @@ const mountCard = async (props) => {
   return w;
 };
 beforeEach(() => authedFetch.mockReset());
-
 const has = (w, id) => w.find(`[data-testid="${id}"]`).exists();
 const LEGACY = '舊制已繳（無新系統帳單）';
-
 describe('ContractCard legacy paid / no invoice', () => {
   it('shows a neutral legacy state, never 還沒開帳單 / 還沒繳費 / 開帳單 / 登記這筆', async () => {
     const w = await mountCard({ course: { id: 9, paid: true }, amounts: null, billDraft: { amount: 1000 } });
@@ -31,8 +28,9 @@ describe('ContractCard legacy paid / no invoice', () => {
     w.findAll('[data-testid="contract-session"]').forEach((r) => expect(r.text()).toContain(LEGACY));
     expect(w.text()).not.toMatch(/還沒開帳單|還沒繳費/);
     expect([has(w, 'contract-issue'), has(w, 'contract-record')]).toEqual([false, false]);
+    const rc = await mountCard({ course: { id: 9, paid: true }, amounts: null, lastPayment: { date: '2026-09-01', amount: 1000, receipt: true } });
+    expect([has(rc, 'contract-legacy-paid'), rc.text().includes(LEGACY)]).toEqual([false, false]); // confirmed receipt without invoice is not legacy
   });
-
   it('unpaid with no invoice keeps 還沒開帳單 and the actions; invoice-paid stays 已收清', async () => {
     const w = await mountCard({ course: { id: 9, paid: false }, amounts: null, billDraft: { amount: 1000 } });
     expect(w.text()).toContain('還沒開帳單');

@@ -71,6 +71,8 @@ describe('帳務中心 學生列：繳費單／收據入口', () => {
     await tid(w, 101, 'tc-doc-receipt').trigger('click');
     await flushPromises();
     expect(calls.length).toBe(n);
+    await tid(w, 103, 'tc-doc-receipt').trigger('click'); await tid(w, 105, 'tc-doc-receipt').trigger('click'); await flushPromises();
+    expect(calls.filter((c) => c.url.includes('/api/v1/payment-reports?'))).toHaveLength(2); // B clicked while A in flight is ignored, so a late A never replaces B
     expect(writes()).toEqual([]);
     w.unmount();
   });

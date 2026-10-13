@@ -20,13 +20,11 @@ describe('TuitionDocActions', () => {
     const w = mk({ payment_status: status });
     expect([t(w, 'slip'), t(w, 'receipt'), why(w, 'slip'), why(w, 'receipt')]).toEqual(expected);
   });
-
   it('no permission disables both with 沒有權限 and never offers the ledger link', () => {
     const w = mk({ payment_status: 'paid', payable_status: 'unbilled' }, false);
     expect([t(w, 'slip'), t(w, 'receipt'), why(w, 'slip'), why(w, 'receipt')]).toEqual([true, true, '沒有權限', '沒有權限']);
     expect(w.find('[data-testid="tc-doc-ledger"]').exists()).toBe(false);
   });
-
   it('emits only for enabled buttons', async () => {
     const w = mk({ payment_status: 'unpaid' });
     await w.get('[data-testid="tc-doc-slip"]').trigger('click');
@@ -34,12 +32,11 @@ describe('TuitionDocActions', () => {
     expect(w.emitted('slip')[0][0]).toMatchObject({ id: 1 });
     expect(w.emitted('receipt')).toBeUndefined();
   });
-
   it('id-less package rows still get unique aria-describedby ids', () => {
     const attrs = () => ['slip', 'receipt'].map((k) => mk({ id: null, payment_status: 'pending_report' }).get(`[data-testid="tc-doc-${k}"]`).attributes('aria-describedby'));
     expect(new Set([...attrs(), ...attrs()]).size).toBe(4);
+    expect(mk({ id: null, payment_status: 'monthly_due_soon', payable_status: 'unbilled' }).find('[data-testid="tc-doc-ledger"]').exists()).toBe(false); // no class to scope a ledger
   });
-
   it.each([{ legacy_paid_without_invoice: true }, { payable_status: 'unbilled' }])('legacy paid %j: slip reason, receipt left to the lookup, ledger link', async (extra) => {
     const w = mk({ payment_status: 'paid', ...extra });
     expect([why(w, 'slip'), t(w, 'receipt')]).toEqual(['已在舊系統繳清，沒有新帳單', false]);

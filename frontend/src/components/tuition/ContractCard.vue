@@ -147,7 +147,7 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
   ? '月結：每個月依當月上課日收費'
   : '堂數制：先買堂數，上一堂扣一堂'));
 
-const legacyPaid = computed(() => !!props.course.paid && !props.amounts && !props.pendingReport);
+const legacyPaid = computed(() => !!props.course.paid && !props.amounts && !props.pendingReport && !props.lastPayment?.receipt);
 const paymentLabel = (p) => (p === 'no_invoice' && legacyPaid.value ? LEGACY_PAID_LABEL : PAYMENT_LABELS[p]);
 const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
 const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p.length === 2 ? `${Number(p[0])}/${Number(p[1])}` : ''; };

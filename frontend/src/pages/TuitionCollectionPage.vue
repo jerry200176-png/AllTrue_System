@@ -2336,8 +2336,8 @@ const receiptReportId = ref(null);
 const receiptLoading = ref(null);
 
 async function viewReceiptForClass(row) {
-  if (receiptLoading.value === row.id) return;
-  receiptLoading.value = row.id;
+  if (receiptLoading.value !== null) return; // one lookup at a time: a late reply can never replace a newer row's receipt
+  receiptLoading.value = row.id ?? 0;
   try {
     const token = getToken();
     const params = new URLSearchParams({ student_class_id: String(row.id), status: 'confirmed' });
