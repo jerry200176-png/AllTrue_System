@@ -106,13 +106,19 @@ class NotificationApiTest extends TestCase
         ]);
 
         $first->assertOk();
-        // tuition (classA unpaid; one notice per debt, so classA's overdue invoice adds none)
+        // overdue invoice (classA; one notice per debt, so classA's per-course notice adds none)
         // + low_sessions (paidLowSessionsClass) + learning_review + pending_swipe
         $this->assertSame(4, (int) $first->json('active_count'));
         $this->assertDatabaseCount('Notifications', 4);
-        $this->assertDatabaseMissing('Notifications', [
+        $this->assertDatabaseHas('Notifications', [
             'SourceType' => 'Invoice',
             'SourceID' => (string) $invoiceA->id,
+            'Severity' => 'low',
+            'Title' => '學生A 學費提醒（逾期 2 天）',
+        ]);
+        $this->assertDatabaseMissing('Notifications', [
+            'SourceType' => 'StudentClass',
+            'SourceID' => (string) $classA->ID,
         ]);
         $this->assertDatabaseMissing('Notifications', [
             'SourceType' => 'StudentClass',

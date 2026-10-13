@@ -34,17 +34,19 @@ class NotificationSyncService
             self::buildPendingSwipeNotifications($scopedCampusIds)
         );
 
-        // One notice per owed debt: the per-course notice (resolver-based outstanding, also exists when there
-        // is no invoice) wins over an overdue-Invoice notice for the same (campus, course).
-        $courses = [];
+        // One notice per owed debt: an overdue-Invoice notice (it carries the paid amount, due date and
+        // overdue tier) wins over the per-course notice for the same (campus, course); the per-course
+        // notice stays for courses with no overdue invoice.
+        $invoiceCourses = [];
         foreach ($activeByKey as $row) {
-            if (($row['Type'] ?? null) === 'tuition' && ($row['SourceType'] ?? null) === 'StudentClass') {
-                $courses[(int) $row['CampusID'] . ':' . (int) $row['SourceID']] = true;
+            if (($row['Type'] ?? null) === 'tuition' && ($row['SourceType'] ?? null) === 'Invoice'
+                && ($row['Payload']['student_class_id'] ?? null)) {
+                $invoiceCourses[(int) $row['CampusID'] . ':' . (int) $row['Payload']['student_class_id']] = true;
             }
         }
         $activeByKey = array_filter($activeByKey, fn ($row) => !(
-            ($row['SourceType'] ?? null) === 'Invoice' && ($row['Payload']['student_class_id'] ?? null)
-            && isset($courses[(int) $row['CampusID'] . ':' . (int) $row['Payload']['student_class_id']])
+            ($row['Type'] ?? null) === 'tuition' && ($row['SourceType'] ?? null) === 'StudentClass'
+            && isset($invoiceCourses[(int) $row['CampusID'] . ':' . (int) $row['SourceID']])
         ));
 
         $created = 0;
@@ -251,13 +253,20 @@ class NotificationSyncService
         }
     }
 
-    private static function monthlyInWindow(int $settlementDay): bool
+    /**
+     * docs/DIRECTOR_PAYMENT_ALERT_RULES.md: the earliest open (unpaid/partial) Invoice's DueDate decides
+     * the monthly window; only without one does this month's settlement_day apply.
+     */
+    private static function monthlyInWindow(int $settlementDay, ?string $openInvoiceDueDate): bool
     {
-        if ($settlementDay < 1 || $settlementDay > 31) {
+        $today = now()->startOfDay();
+        if ($openInvoiceDueDate !== null && $openInvoiceDueDate !== '') {
+            $due = Carbon::parse($openInvoiceDueDate)->startOfDay();
+        } elseif ($settlementDay >= 1 && $settlementDay <= 31) {
+            $due = $today->copy()->startOfMonth()->addDays(min($settlementDay, $today->daysInMonth) - 1);
+        } else {
             return false;
         }
-        $today = now()->startOfDay();
-        $due = $today->copy()->startOfMonth()->addDays(min($settlementDay, $today->daysInMonth) - 1);
 
         return $today->gt($due) || (int) $today->diffInDays($due) < 5;
     }
@@ -304,6 +313,17 @@ class NotificationSyncService
                 Log::warning('notification_tuition_resolver_failed', ['error' => $e::class]); // fall back to the legacy decision
             }
         }
+        $dateModeIds = $classes->filter(fn (StudentClass $c) => ($c->ScheduleMode ?? null) !== 'count')
+            ->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        $openInvoiceDue = empty($dateModeIds) ? [] : Invoice::query()
+            ->whereIn('StudentClassID', $dateModeIds)
+            ->whereIn('Status', ['unpaid', 'partial'])
+            ->whereNotNull('DueDate')
+            ->groupBy('StudentClassID')
+            ->selectRaw('StudentClassID, MIN(DueDate) as earliest_due')
+            ->pluck('earliest_due', 'StudentClassID')
+            ->map(fn ($d) => substr((string) $d, 0, 10))
+            ->all();
         foreach ($classes->keyBy(fn (StudentClass $c) => (int) $c->getAttribute('ID')) as $classId => $class) {
             $student = $class->student;
             if (!$student) {
@@ -315,9 +335,10 @@ class NotificationSyncService
                 continue;
             }
 
-            // Monthly (date) courses follow docs/DIRECTOR_PAYMENT_ALERT_RULES.md: need a valid settlement_day;
-            // past this month's due date => always; otherwise only 0-4 days before it.
-            if (($class->ScheduleMode ?? null) !== 'count' && !self::monthlyInWindow((int) ($class->settlement_day ?? 0))) {
+            // Monthly (date) courses follow docs/DIRECTOR_PAYMENT_ALERT_RULES.md: the earliest open invoice's
+            // DueDate, else a valid settlement_day; past due => always; otherwise only 0-4 days before it.
+            if (($class->ScheduleMode ?? null) !== 'count'
+                && !self::monthlyInWindow((int) ($class->settlement_day ?? 0), $openInvoiceDue[$classId] ?? null)) {
                 continue;
             }
 

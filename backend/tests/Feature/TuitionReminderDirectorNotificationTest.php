@@ -239,8 +239,8 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
 
         $live = Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->pluck('SourceKey')->all();
-        $this->assertSame(["tuition:{$campus->id}:{$course->ID}"], $live);
-        $this->assertNull(Notification::where('SourceKey', "invoice_overdue:{$campus->id}:{$inv->id}")->whereNull('ResolvedAt')->first());
+        $this->assertSame(["invoice_overdue:{$campus->id}:{$inv->id}"], $live);
+        $this->assertNull(Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->whereNull('ResolvedAt')->first());
 
         $this->artisan('tuition:send-reminders')->assertExitCode(0); // rerun: same stable key
         $this->assertSame($live, Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->pluck('SourceKey')->all());
@@ -277,40 +277,88 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         \Illuminate\Support\Carbon::setTestNow();
     }
 
-    public function test_surviving_course_notice_carries_a_consumer_supported_course_key(): void
+    public function test_course_notice_without_invoice_carries_a_consumer_supported_course_key(): void
     {
-        [$campus, , $course, $s] = $this->fixture();
-        \App\Models\Invoice::create([
-            'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => now()->subDays(10)->toDateString(),
-            'DueDate' => now()->subDays(2)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
-        ]);
+        [$campus, , $course] = $this->fixture();
         NotificationSyncService::sync([$campus->id]);
 
         $n = Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->firstOrFail();
         $this->assertSame((int) $course->ID, (int) ($n->Payload['student_class_id'] ?? 0));
     }
 
-    public function test_suppressed_then_reopened_invoice_notice_is_unread_again(): void
+    public function test_overdue_partial_invoice_notice_wins_and_keeps_payment_details(): void
+    {
+        [$campus, , $course, $s] = $this->fixture();
+        $inv = \App\Models\Invoice::create([
+            'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => now()->subDays(20)->toDateString(),
+            'DueDate' => now()->subDays(9)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 2000, 'Status' => 'partial', 'Note' => '',
+        ]);
+        NotificationSyncService::sync([$campus->id]);
+
+        $live = Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->get();
+        $this->assertCount(1, $live, 'one notice for the debt');
+        $n = $live->first();
+        $this->assertSame("invoice_overdue:{$campus->id}:{$inv->id}", $n->SourceKey);
+        $this->assertSame((int) $course->ID, (int) ($n->Payload['student_class_id'] ?? 0));
+        $this->assertSame(2000, (int) ($n->Payload['paid_amount'] ?? -1));
+        $this->assertSame('partial', $n->Payload['status'] ?? null);
+        $this->assertSame(9, (int) ($n->Payload['overdue_days'] ?? 0));
+        $this->assertStringContainsString('已繳 2000', (string) $n->Body);
+    }
+
+    public function test_suppressed_then_reopened_course_notice_is_unread_again(): void
     {
         [$campus, $director, $course, $s] = $this->fixture();
+        // The course notice exists and was read (no overdue invoice yet)
+        NotificationSyncService::sync([$campus->id]);
+        $courseN = Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->firstOrFail();
+        $this->markRead($courseN, $director);
+        // An overdue invoice appears: the invoice notice wins, the course notice is suppressed (resolved)
         $inv = \App\Models\Invoice::create([
             'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => now()->subDays(10)->toDateString(),
             'DueDate' => now()->subDays(2)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
         ]);
-        // Invoice notice exists and was read (course not yet in the per-course builder)
-        $course->forceFill(['Stop' => 1])->save();
         NotificationSyncService::sync([$campus->id]);
-        $invN = Notification::where('SourceKey', "invoice_overdue:{$campus->id}:{$inv->id}")->firstOrFail();
-        $this->markRead($invN, $director);
-        // Course returns: per-course notice wins, invoice notice is suppressed (resolved)
-        $course->forceFill(['Stop' => 0])->save();
-        NotificationSyncService::sync([$campus->id]);
-        $this->assertNotNull($invN->fresh()->ResolvedAt);
-        // Course leaves the per-course builder while the invoice still owes: invoice notice reopens, unread
-        $course->forceFill(['Stop' => 1])->save();
+        $this->assertNotNull($courseN->fresh()->ResolvedAt);
+        // The invoice is voided while the course still owes: the course notice reopens, unread
+        $inv->forceFill(['Status' => 'void'])->save();
         NotificationSyncService::sync([$campus->id]);
 
-        $this->assertNull($invN->fresh()->ResolvedAt);
-        $this->assertSame(0, NotificationRead::where('NotificationID', $invN->id)->count());
+        $this->assertNull($courseN->fresh()->ResolvedAt);
+        $this->assertSame(0, NotificationRead::where('NotificationID', $courseN->id)->count());
+    }
+
+    /** @return array<string, array{0: int, 1: int, 2: bool}> settlement_day, open invoice due offset (days from 2026-10-15) => expected alert */
+    public static function monthlyInvoiceWindow(): array
+    {
+        return [
+            'invoice due in 2 days, settlement_day 10 days away' => [25, 2, true],
+            'invoice due in 10 days, settlement_day already past' => [10, 10, false],
+            'invoice due in 5 days (day 5 excluded)' => [15, 5, false],
+            'invoice overdue, settlement_day 10 days away' => [25, -3, true],
+        ];
+    }
+
+    /** @dataProvider monthlyInvoiceWindow */
+    public function test_date_mode_window_uses_the_earliest_open_invoice_due_date(int $settlementDay, int $dueOffset, bool $expected): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-15 09:00:00');
+        [$campus, , $course, $s] = $this->fixture();
+        $course->forceFill(['ScheduleMode' => 'date', 'settlement_day' => $settlementDay])->save();
+        \App\Models\Invoice::create([
+            'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01',
+            'DueDate' => now()->addDays($dueOffset)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
+        ]);
+        // A later open invoice must not move the window.
+        \App\Models\Invoice::create([
+            'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01',
+            'DueDate' => now()->addDays($dueOffset + 31)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
+        ]);
+
+        NotificationSyncService::sync([$campus->id]);
+
+        $live = Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->count();
+        $this->assertSame($expected ? 1 : 0, $live);
+        \Illuminate\Support\Carbon::setTestNow();
     }
 }
