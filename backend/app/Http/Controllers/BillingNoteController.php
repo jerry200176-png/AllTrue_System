@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Student;
+use App\Models\StudentClass;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -99,9 +100,9 @@ class BillingNoteController extends Controller
     private function resolveSubject(string $type, int $id): ?array
     {
         [$studentId, $legacy] = match ($type) {
-            'invoice' => ($m = Invoice::query()->whereKey($id)->first()) instanceof Invoice ? [(int) $m->StudentID, (string) ($m->Note ?? '')] : [0, ''],
+            'invoice' => ($m = Invoice::query()->whereKey($id)->first()) instanceof Invoice ? [$this->invoiceStudent($m), (string) ($m->Note ?? '')] : [0, ''],
             'payment' => ($m = Payment::query()->find($id))
-                ? [(int) Invoice::query()->whereKey((int) $m->getAttribute('InvoiceID'))->value('StudentID'), (string) ($m->getAttribute('Note') ?? '')]
+                ? [$this->invoiceStudent(Invoice::query()->whereKey((int) $m->getAttribute('InvoiceID'))->first()), (string) ($m->getAttribute('Note') ?? '')]
                 : [0, ''],
             'payment_report' => ($m = PaymentReport::query()->with('payment')->whereKey($id)->first()) instanceof PaymentReport ? [(int) $m->getAttribute('StudentID'), $this->reportNote($m)] : [0, ''],
             default => [0, ''],
@@ -118,9 +119,21 @@ class BillingNoteController extends Controller
         if (!$payment instanceof Payment) {
             return $report->displayNote();
         }
-        $owner = (int) Invoice::query()->whereKey((int) $payment->getAttribute('InvoiceID'))->value('StudentID');
+        $owner = $this->invoiceStudent(Invoice::query()->whereKey((int) $payment->getAttribute('InvoiceID'))->first());
 
         return $owner !== (int) $report->getAttribute('StudentID') ? (string) ($report->getAttribute('note') ?? '') : $report->displayNote();
+    }
+
+    private function invoiceStudent(?Invoice $invoice): int
+    {
+        if (!$invoice || (int) $invoice->StudentID <= 0) {
+            return 0;
+        }
+        $studentId = (int) $invoice->StudentID;
+        $courseIds = array_values(array_unique(array_filter(array_map('intval', array_merge(
+            [(int) $invoice->StudentClassID], $invoice->items()->pluck('StudentClassID')->all()
+        )))));
+        return StudentClass::query()->whereIn('ID', $courseIds)->where('StudentID', $studentId)->count() === count($courseIds) ? $studentId : 0;
     }
 
     private function denyOtherCampus(Request $request, int $campusId): ?JsonResponse

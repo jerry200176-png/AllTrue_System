@@ -436,7 +436,11 @@ async function loadCoverage(kind, id) {
   if (payload.value === ledgerAtStart) coverage.value = { ...coverage.value, [key]: next };
 }
 
+let ledgerRequestVersion = 0;
 async function loadLedger() {
+  const requestVersion = ++ledgerRequestVersion;
+  loading.value = false;
+  payload.value = null;
   if (!props.show) return;
   const studentClassId = Number(props.studentClassId || 0);
   const reportId = Number(props.reportId || 0);
@@ -448,7 +452,6 @@ async function loadLedger() {
 
   loading.value = true;
   error.value = '';
-  payload.value = null;
   showAllExceptions.value = false;
   coverage.value = {};
   expandedReceiptIds.value = new Set();
@@ -465,14 +468,16 @@ async function loadLedger() {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     });
     const json = await resp.json().catch(() => ({}));
+    if (requestVersion !== ledgerRequestVersion) return;
     if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `載入失敗（${resp.status}）`));
     payload.value = json;
     autoExpandAttention();
     loadDrafts();
   } catch (e) {
+    if (requestVersion !== ledgerRequestVersion) return;
     error.value = humanizeApiErrorMessage(e.message || '載入學生帳務失敗');
   } finally {
-    loading.value = false;
+    if (requestVersion === ledgerRequestVersion) loading.value = false;
   }
 }
 
@@ -845,3 +850,4 @@ const anomalyLabel = (code) => labelMap({
   .ledger-sticky-pay{bottom:-16px;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
 }
 </style>
+
