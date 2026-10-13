@@ -43,7 +43,7 @@
         <span class="material-symbols-outlined" aria-hidden="true">{{ summary.mismatch_count > 0 ? 'error' : 'check_circle' }}</span>
         <div>
           <strong class="nr-verdict-title">{{ verdictTitle }}</strong>
-          <p class="nr-verdict-desc">{{ formatDateTime(summary.checked_at) }} 核對 {{ summary.total_checked }} 門上課中的課程：已用堂數、扣堂紀錄、點名紀錄。</p>
+          <p class="nr-verdict-desc">{{ formatDateTime(summary.checked_at) }} 核對 {{ summary.total_checked }} 門上課中的課程：已用堂數、扣堂紀錄、點名與評量紀錄。</p>
         </div>
       </div>
 
@@ -56,7 +56,7 @@
         <ul>
           <li><strong>課程上的已用堂數</strong>：課程目前記錄用掉幾堂。</li>
           <li><strong>系統應為</strong>：依點名、評量與扣堂紀錄算出應用掉幾堂，不超過買的堂數。</li>
-          <li><strong>點名出席</strong>：已到、遲到或完成的課堂數，只供參考。</li>
+          <li><strong>課堂狀態已上</strong>：課堂狀態為已到、遲到或完成的堂數，只供參考。</li>
         </ul>
         <p>這不是學費或銀行對帳。</p>
       </details>
@@ -171,7 +171,7 @@
                       <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'expected_used' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
                     </button>
                   </th>
-                  <th scope="col">點名出席</th>
+                  <th scope="col">課堂狀態已上</th>
                   <th
                     class="nr-th--sortable"
                     :aria-sort="sortKey === 'diff' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
@@ -268,15 +268,23 @@ const {
 // The job runs daily at 02:00; a report older than ~36h means it did not run.
 const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
 
+// The backend writes checked_at as "YYYY-MM-DD HH:mm:ss" in app time (Asia/Taipei, UTC+8)
+// with no offset; parse it as such so the threshold does not depend on the viewer's timezone.
+function parseServerTime(value) {
+  const text = String(value || '');
+  const m = text.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/);
+  return new Date(m ? `${m[1]}T${m[2]}+08:00` : text);
+}
+
 const isStale = computed(() => {
-  const checkedAt = new Date(summary.value?.checked_at || '');
+  const checkedAt = parseServerTime(summary.value?.checked_at);
   if (Number.isNaN(checkedAt.getTime())) return false;
   return Date.now() - checkedAt.getTime() > STALE_AFTER_MS;
 });
 
 const verdictTitle = computed(() => {
   const count = summary.value?.mismatch_count || 0;
-  if (count > 0) return `${count} 門課程的堂數對不上`;
+  if (count > 0) return `${count} 門課程需要確認`;
   return isStale.value ? '最近一次核對無異常' : '昨晚核對無異常';
 });
 

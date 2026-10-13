@@ -16,8 +16,8 @@ export const CATEGORY_GUIDE = Object.freeze({
     next: '到「出缺勤」確認這幾堂是否真的有上，再把課程編號交給工程團隊修正。',
   },
   ledger_ahead: {
-    meaning: '扣堂紀錄比課程上的已用堂數多，也比點名紀錄多。',
-    next: '到「出缺勤」查同一堂是否扣了兩次，再把課程編號交給工程團隊。',
+    meaning: '扣堂紀錄比課程上的已用堂數多，也比點名和評量紀錄多。',
+    next: '逐筆比對扣堂紀錄與該堂點名，找出沒有對應點名的扣堂，再把課程編號交給工程團隊。',
   },
   counter_overstated: {
     meaning: '課程上的已用堂數，比點名和扣堂紀錄都多。',
@@ -25,11 +25,11 @@ export const CATEGORY_GUIDE = Object.freeze({
   },
   partial_minutes: {
     meaning: '有按分鐘扣的課，換算成堂數後對不上。',
-    next: '到「課程查找」核對這門課一堂幾分鐘與實際上課時間。',
+    next: '核對扣堂紀錄裡每次扣的分鐘數，與「課程查找」裡這門課一堂幾分鐘。',
   },
   contract_cap: {
-    meaning: '點名次數超過這門課買的堂數。',
-    next: '請分校主任確認是否續課；堂數修正交給工程團隊。',
+    meaning: '點名或扣堂紀錄超過這門課買的堂數。',
+    next: '先到「出缺勤」查是否重複扣堂；確實上滿再請分校主任確認續課。',
   },
   source_conflict: {
     meaning: '已取消的課堂仍留有點名、評量或扣堂紀錄。',

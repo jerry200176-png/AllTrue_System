@@ -53,7 +53,7 @@ describe('NightlyReconcilePanel plain-language summary (#3900)', () => {
       cause_counts: { contract_cap: 2, source_conflict: 1 },
       mismatches: [row(11, 'contract_cap', 2), row(12, 'contract_cap', 1), row(13, 'source_conflict', 1)],
     });
-    expect(wrapper.get('[data-testid="nr-verdict"]').text()).toContain('3 門課程的堂數對不上');
+    expect(wrapper.get('[data-testid="nr-verdict"]').text()).toContain('3 門課程需要確認');
     const items = wrapper.findAll('.nr-guide-item');
     expect(items.map((item) => item.attributes('data-category'))).toEqual(['contract_cap', 'source_conflict']);
     expect(items[0].text()).toContain('2 門');
@@ -81,6 +81,20 @@ describe('NightlyReconcilePanel plain-language summary (#3900)', () => {
     // A stale report must not claim to be last night's.
     expect(wrapper.get('[data-testid="nr-verdict"]').text()).toContain('最近一次核對無異常');
     expect(wrapper.get('[data-testid="nr-verdict"]').text()).not.toContain('昨晚');
+  });
+
+  it('reads the offset-less server timestamp as Taipei time, not viewer-local time', async () => {
+    // 2026-10-12 02:00 +08:00 is 31h before 2026-10-13 09:00 +08:00: not stale anywhere.
+    vi.setSystemTime(new Date('2026-10-13T09:00:00+08:00'));
+    const fresh = await mountWith({
+      checked_at: '2026-10-12 02:00:00', threshold: 0, total_checked: 5, mismatch_count: 0, cause_counts: {}, mismatches: [],
+    });
+    expect(fresh.find('[data-testid="nr-stale"]').exists()).toBe(false);
+    vi.setSystemTime(new Date('2026-10-13T15:00:01+08:00'));
+    const stale = await mountWith({
+      checked_at: '2026-10-12 02:00:00', threshold: 0, total_checked: 5, mismatch_count: 0, cause_counts: {}, mismatches: [],
+    });
+    expect(stale.find('[data-testid="nr-stale"]').exists()).toBe(true);
   });
 
   it('has a meaning and a next step for every category the nightly command can emit', () => {
