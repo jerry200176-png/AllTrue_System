@@ -115,17 +115,3 @@ describe('StudentBillingList', () => {
     expect(w.find('[data-testid="sbl-empty"]').text()).toContain('找不到符合「不存在」的學生。請調整搜尋或篩選。');
   });
 });
-
-// #3892 review P1: the monthly package row of alerts/tuition, in the shape SharedPackageOnePaymentActionTest::
-// test_older_open_period_keeps_the_package_unpaid_when_the_current_month_is_paid asserts for the API.
-describe('monthly package row (alerts/tuition) -> student list and collection totals', () => {
-  const PKG = { id: null, package_id: 7, student_id: 5, student_name: '戊', schedule_mode: 'date', payment_status: 'unpaid',
-    payable_status: 'invoiced', payable_outstanding: 5000, payable_amount: 5000, outstanding: 5000, paid_amount: 17600,
-    open_periods: [{ billing_period: '2026-07', outstanding: 5000, due_date: '2026-07-15' }] };
-
-  it('counts the member invoices the package still owes', () => {
-    expect(rowOwedTotal(PKG)).toBe(5000);
-    const row = buildStudentBillingRows([PKG], [], '2026-08-02').find((r) => r.student_id === 5);
-    expect([row.owed_now, row.open_contracts, row.overdue_days]).toEqual([5000, 1, 18]);
-  });
-});

@@ -1377,8 +1377,6 @@ const hasBatchAmount = (r) => Number(r?.payable_outstanding ?? r?.payable_amount
 
 function isRowSelectable(r) {
   const ps = r?.payment_status;
-  // A monthly package row has no course id (#3892): its members are collected one by one in the ledger panel.
-  if (r?.id == null) return false;
   if (ps !== 'pending_report' && !hasBatchAmount(r)) return false;
   if (activeTab.value === 'pending_report') return ps === 'pending_report' && !!r.latest_payment_report_id;
   if (activeTab.value === 'pending_reconciliation') return ps === 'pending_reconciliation';

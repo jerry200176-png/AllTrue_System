@@ -533,9 +533,7 @@ class PaymentReportController extends Controller
                         : $sc->getAttribute('closed_reason'),
                 ]);
             }
-            // #3892 review P1: only a shared count-mode obligation settles the whole package; a monthly ('date') member
-            // settles itself, so confirming it never marks the package or its siblings paid (Founder Q3=A).
-            if ($sc && $this->isSharedPackageObligation($package, $sc) && $status === 'paid') {
+            if ($package && $status === 'paid') {
                 $paidAt = Carbon::make($report->payment_date)?->toDateString()
                     ?? Carbon::today()->toDateString();
                 $this->markPackagePaid($package, $paidAt);
