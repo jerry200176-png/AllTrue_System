@@ -1390,7 +1390,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                 php() { echo php >> "$TRACE"; return 0; }
                 write_deployment_manifest() { echo manifest >> "$TRACE"; return 0; }
                 grep() { if [ "$1" = '^DEPLOY_SECRET=' ]; then echo DEPLOY_SECRET=isolated; else command grep "$@"; fi; }
-                curl() { echo curl >> "$TRACE"; printf '{"status":"ok","ok":true}'; }
+                curl() { echo curl >> "$TRACE"; printf '{"status":"ok","ok":true,"opcache_cleared":true}'; }
             """)
             result = subprocess.run(
                 ["bash", "-c", harness + function + "\nrollback_deploy\n"],
@@ -1447,6 +1447,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertLess(function.index("php artisan opcache:reset"), refresh)
         self.assertLess(refresh, function.index('echo "Rollback health check..."'))
         self.assertNotIn("abort_deploy", function)  # no recursion from inside the rollback
+        # `ok` is true even when opcache_reset() failed; only opcache_cleared proves the refresh.
+        self.assertIn("""grep -q '"opcache_cleared":true'""", function)
 
     # D1 (Founder 2026-10-13): a failed migration aborts the deploy through the
     # shared rollback path; it must never fall through to build/health/success.
