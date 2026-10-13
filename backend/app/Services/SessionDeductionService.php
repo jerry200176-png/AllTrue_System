@@ -252,10 +252,12 @@ class SessionDeductionService
             $usedByAttendance = max($observedUsed, $ledgerUsed);
             $sessionCount = max(0, (int) ($course->SessionCount ?? 0));
             $isSessionMode = (string) ($course->ScheduleMode ?? 'count') === 'count';
-            // #3834: same rule as recomputeCounters(): a gated-off opted-in course counts whole lessons.
-            $hasPartial = (int) ($ledgerRow->has_partial ?? 0) === 1
-                && !($course->isActualDurationBasis() && !self::isActualDurationActive($course));
+            $hasPartial = (int) ($ledgerRow->has_partial ?? 0) === 1;
             $netMinutes = (int) ($ledgerRow->net_minutes ?? 0);
+            if ($hasPartial && $course->isActualDurationBasis() && !self::isActualDurationActive($course)) {
+                // #3834: same rule as recomputeCounters() for a gated-off opted-in course.
+                [$hasPartial, $netMinutes] = self::gatedOffMinuteTotals((int) $id, max(1, $course->perSessionMinutes()), $today);
+            }
             $expectedUsed = $usedByAttendance;
 
             if ($isSessionMode && $sessionCount > 0 && $hasPartial) {
@@ -469,12 +471,14 @@ class SessionDeductionService
                 // 否 → 完全沿用既有 count-based 邏輯（行為 byte-identical），僅補寫衍生分鐘欄。
                 // 是 → 分鐘為權威，RemainingSessions 改為 ROUND_HALF_UP 衍生顯示值。
                 // #3834 — an opted-in course whose minute billing is gated off (flag off,
-                // campus removed from the pilot, or student moved off-pilot) counts every
-                // attendance as one whole lesson, including events recorded in minutes
-                // while it was live. Re-reading those rows against SessionDuration would
-                // leave a fractional balance and mix minute and whole-lesson semantics.
+                // campus removed from the pilot, or student moved off-pilot) behaves as
+                // fixed_session: ordinary attendances (including minute rows recorded while
+                // it was live) count as whole lessons; makeups keep their prorated minutes.
                 $gatedOffActualDuration = $sc->isActualDurationBasis() && !self::isActualDurationActive($sc);
-                $hasPartial = !$gatedOffActualDuration && SessionDeductionLedger::query()
+                [$gatedPartial, $gatedNet] = $gatedOffActualDuration
+                    ? self::gatedOffMinuteTotals($studentClassId, $perSession, $today)
+                    : [false, 0];
+                $hasPartial = $gatedOffActualDuration ? $gatedPartial : SessionDeductionLedger::query()
                     ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                     ->where('student_class_id', $studentClassId)
                     ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
@@ -487,7 +491,7 @@ class SessionDeductionService
                     ->exists();
 
                 if ($hasPartial) {
-                    $netMinutes = (int) (SessionDeductionLedger::query()
+                    $netMinutes = $gatedOffActualDuration ? $gatedNet : (int) (SessionDeductionLedger::query()
                         ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                         ->where('student_class_id', $studentClassId)
                         ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
@@ -534,6 +538,38 @@ class SessionDeductionService
 
             $sc->save();
         });
+    }
+
+    /**
+     * #3834: [has_partial, net_minutes] of a gated-off opted-in course under fixed_session rules.
+     * Only a makeup row (an `extra` Schedule at its session's date and start, the same test as
+     * resolvePartialMakeupMinutes()) keeps its minutes; every other row is one whole lesson.
+     *
+     * @return array{0: bool, 1: int}
+     */
+    private static function gatedOffMinuteTotals(int $studentClassId, int $perSession, string $today): array
+    {
+        $makeups = Schedule::query()->where('student_course_id', $studentClassId)->where('type', 'extra')
+            ->where('status', '!=', Schedule::STATUS_SUPERSEDED)->get(['schedule_date', 'start_time'])
+            ->mapWithKeys(fn ($s) => [substr((string) $s->schedule_date, 0, 10) . '|' . substr((string) $s->start_time, 0, 5) => true]);
+        $rows = SessionDeductionLedger::query()
+            ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
+            ->where('student_class_id', $studentClassId)
+            ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+            ->where(fn ($q) => $q->whereNull('ledger_cs.id')->orWhereDate('ledger_cs.SessionDate', '<=', $today))
+            ->get(['session_deduction_ledger.event_type', 'session_deduction_ledger.minutes', 'ledger_cs.SessionDate as cs_date', 'ledger_cs.StartTime as cs_start']);
+
+        $hasPartial = false;
+        $net = 0;
+        foreach ($rows as $row) {
+            $isMakeup = $row->cs_date !== null
+                && isset($makeups[substr((string) $row->cs_date, 0, 10) . '|' . substr((string) $row->cs_start, 0, 5)]);
+            $minutes = $isMakeup && $row->minutes !== null ? (int) $row->minutes : $perSession;
+            $hasPartial = $hasPartial || $minutes !== $perSession;
+            $net += $row->event_type === 'deduct' ? $minutes : -$minutes;
+        }
+
+        return [$hasPartial, $net];
     }
 
     // ─── backward-compatible wrappers (used by existing callers) ──
@@ -630,7 +666,7 @@ class SessionDeductionService
      * pilot allowlist (#3834). Fail-safe: when any of the three is false, an opted-in
      * course still behaves as fixed_session.
      */
-    private static function isActualDurationActive(StudentClass $sc): bool
+    public static function isActualDurationActive(StudentClass $sc): bool
     {
         return (bool) config('perfflags.actual_duration_deduction_enabled', false)
             && $sc->isActualDurationBasis()

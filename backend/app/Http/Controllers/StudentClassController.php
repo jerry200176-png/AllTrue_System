@@ -6243,10 +6243,11 @@ class StudentClassController extends Controller
 
         // Lesson equivalents need a per-course standard; without one there is nothing
         // meaningful to divide by, so they stay null rather than assuming a default.
-        if ($standard >= 1 && $class instanceof StudentClass && $class->isActualDurationBasis()) {
-            // #3834: while minute billing is gated off, recomputeCounters() writes the minute fields in
-            // whole-session lengths, so divide by the same effective standard.
-            $standard = SessionDeductionService::billingStandardMinutes($class);
+        if ($standard >= 1 && $class instanceof StudentClass && $class->isActualDurationBasis()
+            && !SessionDeductionService::isActualDurationActive($class)) {
+            // #3834: gated off, the course bills whole lessons and its stored minute fields may still be in
+            // the old unit until the next recompute, so no lesson equivalents are derived from them.
+            $standard = 0;
         }
         if ($standard >= 1 && $remainingMinutes !== null) {
             $calc = new LessonEntitlementCoverageCalculator();

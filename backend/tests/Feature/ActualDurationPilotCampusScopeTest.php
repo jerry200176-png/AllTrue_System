@@ -208,11 +208,28 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame(2, $diag['expected_used'], 'the batch diagnostic agrees with the persisted counters');
         $row = collect($this->withHeaders($this->headers())->getJson('/api/v1/student-classes?per_page=200')->assertOk()->json('data'))
             ->firstWhere('ID', $sc->ID);
-        $this->assertSame(['6.00', '2.00'], [$row['remaining_lesson_equivalent'] ?? null, $row['used_lesson_equivalent'] ?? null]);
+        $this->assertSame([null, null], [$row['remaining_lesson_equivalent'] ?? null, $row['used_lesson_equivalent'] ?? null], 'no minute equivalents while gated off');
 
         config(['perfflags.actual_duration_campus_ids' => (string) $this->pilotCampusId]);
         SessionDeductionService::recomputeCounters($sc->ID);
         $this->assertSame(8 * 120 - 90 - 120, (int) $sc->fresh()->RemainingMinutes, 'back in the pilot: minutes again');
+    }
+
+    /** Codex P1 on #3948: gated off, a makeup keeps the fixed_session proration (90 of 120 minutes = 0.75 lesson). */
+    public function test_a_gated_off_course_still_prorates_a_makeup(): void
+    {
+        [$sc, $studentId] = $this->course($this->otherCampusId);
+        $date = Carbon::now()->subDays(10)->toDateString();
+        \App\Models\Schedule::create([
+            'student_id' => $studentId, 'teacher_id' => $this->teacherId, 'subject' => 'Math', 'day_of_week' => Carbon::parse($date)->dayOfWeekIso,
+            'start_time' => '14:00', 'end_time' => '15:30', 'duration_hours' => 1.5, 'class_type' => 'one_on_one', 'status' => 'scheduled',
+            'type' => 'extra', 'deduction' => 1, 'branch_id' => $this->otherCampusId, 'schedule_date' => $date, 'student_course_id' => $sc->ID,
+        ]);
+        $this->attend($sc, $studentId, '14:00:00', '15:30:00', 10);
+        SessionDeductionService::recomputeCounters($sc->ID);
+
+        $this->assertSame(960 - 90, (int) $sc->fresh()->RemainingMinutes);
+        $this->assertSame(1, SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID]['expected_used']);
     }
 
     public function test_copied_basis_follows_the_allowlist(): void
