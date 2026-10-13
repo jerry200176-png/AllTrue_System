@@ -1053,7 +1053,8 @@ final class ContractRenewal
             $dueDate = $periodReview['due_date'];
 
             $periodLabel = Carbon::parse($newStartDate)->locale('zh_TW')->isoFormat('YYYY年M月');
-            $invoice = app(InvoiceIssuer::class)->issue([
+            // #3991: an unpriced term gets no bill; staff record a price or mark the term 免費／贈送 (never an unmarked NT$0 bill).
+            $invoice = $totalAmount <= 0 ? null : app(InvoiceIssuer::class)->issue([
                 'StudentID'      => (int) $newCourse->StudentID,
                 'StudentClassID' => (int) $newCourse->ID,
                 'IssueDate'      => Carbon::today()->toDateString(),
@@ -1092,7 +1093,7 @@ final class ContractRenewal
                     'schedule_mode' => $newCourse->ScheduleMode,
                     'paid' => (int) ($newCourse->Paid ?? 0),
                 ],
-                'invoice' => [
+                'invoice' => $invoice === null ? null : [
                     'id' => (int) $invoice->id,
                     'billing_period' => $invoice->billing_period,
                     'status' => $invoice->Status,

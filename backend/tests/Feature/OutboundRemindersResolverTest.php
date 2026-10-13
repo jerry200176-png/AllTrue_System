@@ -79,13 +79,18 @@ class OutboundRemindersResolverTest extends TestCase
     {
         $course = $this->course(0, 0);
         $course->update(['ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'EndDate' => '2026-09-30']);
-        Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-01', 'DueDate' => '2026-08-15',
-            'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid', 'billing_period' => '2026-08', 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+        foreach (['2026-08', '2026-09'] as $period) {
+            Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => $period . '-01', 'DueDate' => $period . '-15',
+                'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid', 'billing_period' => $period, 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+        }
         $resolver = app(\App\Services\BillingPayableResolver::class);
         $this->assertSame('free', $resolver->courseStatusesByStudentClassIds([$course->ID])[$course->ID]['status']);
         $this->assertSame(0, $this->dunned());
         $this->assertFalse($this->reminded());
 
+        // #3991 review: one marked month does not settle another month under review.
+        Invoice::query()->where('billing_period', '2026-09')->where('StudentClassID', $course->ID)->delete();
+        $this->assertSame('review_required', $resolver->courseStatusesByStudentClassIds([$course->ID])[$course->ID]['status']);
         // Without the mark the same shape stays under review (never silently free).
         Invoice::query()->where('StudentClassID', $course->ID)->update(['zero_amount_reason' => null]);
         $this->assertSame('review_required', $resolver->courseStatusesByStudentClassIds([$course->ID])[$course->ID]['status']);

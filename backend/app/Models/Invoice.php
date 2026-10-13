@@ -74,6 +74,13 @@ class Invoice extends Model
         return (string) $this->getAttribute('zero_amount_reason') === self::ZERO_REASON_FREE_GIFT;
     }
 
+    /** #3991: a course with any fee on record (rate, charge, package, or a live priced amendment) can never be 免費／贈送. */
+    public static function courseHasFee(StudentClass $course): bool
+    {
+        return (float) ($course->Rate ?? 0) > 0 || (int) ($course->Charge ?? 0) > 0 || (int) ($course->PackageID ?? 0) > 0
+            || StudentClassPricingAmendment::query()->where('student_class_id', $course->ID)->whereNull('voided_at')->where('rate', '>', 0)->exists();
+    }
+
     public function scopeNotVoided($query)
     {
         return $query->where(function ($q) {

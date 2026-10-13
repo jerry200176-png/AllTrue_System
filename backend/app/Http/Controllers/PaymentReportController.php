@@ -588,6 +588,10 @@ class PaymentReportController extends Controller
         if (!$sc->student) {
             return response()->json(['message' => '課程資料不存在'], 404);
         }
+        if ($freeGift // #3991 review: campus-scoped write; authorize the course's campus before classifying it && $request->attributes->get('auth_role') !== 'super_admin'
+            && !in_array((int) $sc->student->CampusID, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
         // #3991: an explicit 免費／贈送 mark skips the generic zero-fee guard (it is not a payment); tutoring stays refused.
         if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc, $freeGift)) {
             return $blockedTutoringPayment;
@@ -614,13 +618,6 @@ class PaymentReportController extends Controller
 
         $userId = $request->attributes->get('auth_user_id');
         if ($freeGift) {
-            // #3991 review: a bill is a campus-scoped write; the course's campus must be one the caller holds.
-            $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-            $campusId = (int) Student::query()->whereKey((int) StudentClass::query()->whereKey((int) $data['student_class_id'])->value('StudentID'))->value('CampusID');
-            if ($request->attributes->get('auth_role') !== 'super_admin' && !in_array($campusId, $campusIds, true)) {
-                return response()->json(['message' => 'Forbidden'], 403);
-            }
-
             return $this->recordFreeGiftBill((int) $data['student_class_id'], $data, $userId);
         }
 
@@ -770,12 +767,13 @@ class PaymentReportController extends Controller
             if ($refusal = ContractMoneyState::waivedRefusal($course, '此合約已確認不收，不能登錄帳單')) {
                 return $refusal;
             }
-            if ((float) ($course->Rate ?? 0) > 0 || (int) ($course->Charge ?? 0) > 0 || (int) ($course->PackageID ?? 0) > 0) {
+            if (Invoice::courseHasFee($course)) {
                 return response()->json([
                     'message' => '這門課有設定費用（或費用在套裝上），不能登錄為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。沒有登記任何款項。',
                     'code' => 'free_gift_course_has_fee',
                 ], 422);
             }
+            $freeNote = trim(Invoice::ZERO_REASON_FREE_GIFT_LABEL . ' ' . trim((string) ($data['note'] ?? '')));
             $named = !empty($data['invoice_id']);
             $period = !$named && $course->getAttribute('ScheduleMode') === 'date'
                 ? $this->monthlyBilling->defaultPeriodFor($course, $data['payment_date']) : null;
@@ -786,8 +784,12 @@ class PaymentReportController extends Controller
             if ($period !== null) {
                 $query->where('billing_period', $period);
             }
-            $invoice = $query->where('StudentClassID', $course->ID)
-                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->orderBy('id')->lockForUpdate()->first();
+            $matches = $query->where('StudentClassID', $course->ID)
+                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->orderBy('id')->lockForUpdate()->get();
+            if ($matches->count() > 1) { // #3991 review: never pick one of several live bills for the same term
+                return response()->json(['message' => '這期有多張有效帳單，請先在學生帳務更正。沒有登記任何款項。', 'code' => 'free_gift_invoice_ambiguous'], 409);
+            }
+            $invoice = $matches->first();
             if (!$invoice && $named) {
                 return response()->json(['message' => '指定帳單不存在、已作廢或不屬於此課程'], 404);
             }
@@ -802,14 +804,16 @@ class PaymentReportController extends Controller
             }
             if ($invoice) {
                 $projection = $this->invoiceProjection($invoice, $course);
-                if ((int) $projection['total_amount'] > 0 || (int) $projection['net_applied'] > 0) {
+                if ((int) $projection['total_amount'] > 0 || (int) $projection['net_applied'] > 0 || (int) $invoice->TotalAmount !== 0
+                    || $invoice->payments()->exists() || PaymentReport::query()->where('InvoiceID', $invoice->id)->exists()) {
                     return response()->json([
                         'message' => sprintf('這期已有 NT$%d 的帳單或收款，不能改成「%s」。沒有登記任何款項。', $projection['total_amount'], Invoice::ZERO_REASON_FREE_GIFT_LABEL),
                         'code' => 'free_gift_invoice_has_amount',
                         'invoice_id' => (int) $invoice->id,
                     ], 422);
                 }
-                $invoice->fill(['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT, 'Status' => 'paid', 'PaidAmount' => 0])->save();
+                $invoice->fill(['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT, 'Status' => 'paid', 'PaidAmount' => 0,
+                    'Note' => mb_substr(trim($invoice->Note . ' ' . $freeNote), 0, 255)])->save();
             } else {
                 try {
                     $invoice = app(InvoiceIssuer::class)->issue([
@@ -819,7 +823,7 @@ class PaymentReportController extends Controller
                         'TotalAmount' => 0,
                         'Status' => 'paid',
                         'ScheduleModeAtIssue' => $course->getAttribute('ScheduleMode'),
-                        'Note' => trim(Invoice::ZERO_REASON_FREE_GIFT_LABEL . ' ' . trim((string) ($data['note'] ?? ''))),
+                        'Note' => mb_substr($freeNote, 0, 255), // Invoice.Note is VARCHAR(255)
                         'billing_period' => $period,
                         'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT,
                     ], [], true);

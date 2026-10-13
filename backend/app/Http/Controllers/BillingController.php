@@ -116,7 +116,7 @@ class BillingController extends Controller
                 'code' => 'zero_amount_unmarked',
             ], 422);
         }
-        if ($markedFree && (int) $data['TotalAmount'] !== 0) {
+        if ($markedFree && ((int) $data['TotalAmount'] !== 0 || collect($data['Items'] ?? [])->contains(fn ($i) => (int) ($i['Amount'] ?? 0) !== 0))) {
             return response()->json([
                 'message' => '標記為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」的帳單金額必須是 NT$0。沒有建立任何帳單。',
                 'code' => 'free_gift_requires_zero',
@@ -153,7 +153,7 @@ class BillingController extends Controller
                     ], 422);
                 }
                 // #3991 review: same rule as director-record — only a course with no fee may carry the 免費／贈送 mark.
-                if ($markedFree && $found->contains(fn (StudentClass $c) => (float) ($c->Rate ?? 0) > 0 || (int) ($c->Charge ?? 0) > 0 || (int) ($c->PackageID ?? 0) > 0)) {
+                if ($markedFree && $found->contains(fn (StudentClass $c) => Invoice::courseHasFee($c))) {
                     return response()->json([
                         'message' => '這門課有設定費用（或費用在套裝上），不能標記為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。沒有建立任何帳單。',
                         'code' => 'free_gift_course_has_fee',
@@ -350,7 +350,8 @@ class BillingController extends Controller
 
             $netApplied = $this->invoiceNetAppliedAmount((int) $invoice->id);
 
-            if (in_array($status, ['paid', 'partial'], true) || (int) ($invoice->PaidAmount ?? 0) > 0 || $netApplied > 0) {
+            $freeGiftOnly = $invoice->isMarkedFreeGift() && (int) $invoice->TotalAmount === 0 && !$invoice->payments()->exists(); // #3991: wrong-period mark is correctable
+            if ((in_array($status, ['paid', 'partial'], true) && !$freeGiftOnly) || (int) ($invoice->PaidAmount ?? 0) > 0 || $netApplied > 0) {
                 return response()->json([
                     'message' => '此帳單已有收款紀錄，請先走收款撤銷/沖銷流程，不可直接作廢帳單。',
                 ], 422);
@@ -367,7 +368,7 @@ class BillingController extends Controller
 
             $note = trim((string) ($invoice->Note ?? ''));
             $invoice->Status = 'void';
-            $invoice->Note = trim($note . ' ' . $audit);
+            $invoice->Note = trim(mb_substr($note, 0, max(0, 254 - mb_strlen($audit))) . ' ' . $audit); // VARCHAR(255): keep the whole audit tag
             $invoice->save();
 
             Log::info('[InvoiceVoid] invoice voided', [

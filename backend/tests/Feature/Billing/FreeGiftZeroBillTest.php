@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentClassPricingAmendment;
 use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
@@ -162,6 +163,28 @@ class FreeGiftZeroBillTest extends TestCase
         }
 
         $this->assertSame(0, Invoice::query()->where('StudentID', $other->id)->count());
+    }
+
+    /** #3991 review round 3: amended fee, ambiguous or paid-into terms are refused; the note survives; a wrong mark can be voided. */
+    public function test_free_gift_refusals_note_and_void(): void
+    {
+        $token = $this->directorToken();
+        $amended = $this->monthlyCourse($this->student());
+        StudentClassPricingAmendment::create(['student_class_id' => $amended->ID, 'effective_from' => '2026-09-01', 'rate' => 800, 'source_reference' => 't', 'reason' => 't']);
+        $this->withToken($token)->postJson(self::RECORD, $this->payload($amended, ['free_gift' => true]))->assertStatus(422)->assertJsonPath('code', 'free_gift_course_has_fee');
+        $course = $this->monthlyCourse($this->student());
+        $bill = fn () => Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01', 'Note' => 'auto', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-10']);
+        [$first, $second] = [$bill(), $bill()];
+        $record = fn () => $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true, 'note' => str_repeat('備', 300)]));
+        $record()->assertStatus(409)->assertJsonPath('code', 'free_gift_invoice_ambiguous');
+        $second->fill(['Status' => 'void'])->save();
+        $report = PaymentReport::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'InvoiceID' => $first->id, 'reported_by_name' => 't', 'report_token_hash' => hash('sha256', uniqid()), 'token_expires_at' => now(), 'reported_amount' => 0, 'status' => 'rejected', 'payment_date' => '2026-10-01', 'payment_method' => 'cash']);
+        $record()->assertStatus(422)->assertJsonPath('code', 'free_gift_invoice_has_amount');
+        $report->delete();
+        $record()->assertOk()->assertJsonPath('invoice_id', $first->id);
+        $this->assertSame(['auto ' . Invoice::ZERO_REASON_FREE_GIFT_LABEL, 255], [mb_substr((string) $first->fresh()->Note, 0, 10), mb_strlen((string) $first->fresh()->Note)]);
+        $this->withToken($token)->postJson("/api/v1/invoices/{$first->id}/void", ['reason' => 'wrong term'])->assertOk();
+        $this->assertSame('void', (string) $first->fresh()->Status);
     }
 
     /** @param array<string, mixed> $over @return array<string, mixed> */
