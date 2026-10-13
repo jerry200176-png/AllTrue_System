@@ -39,7 +39,7 @@ describe('TuitionDocActions', () => {
   });
   it.each([{ legacy_paid_without_invoice: true }, { payable_status: 'unbilled' }])('legacy paid %j: slip reason, receipt left to the lookup, ledger link', async (extra) => {
     const w = mk({ payment_status: 'paid', ...extra });
-    expect([why(w, 'slip'), t(w, 'receipt')]).toEqual(['已在舊系統繳清，沒有新帳單', false]);
+    expect([why(w, 'slip'), t(w, 'receipt')]).toEqual(['已繳清，系統裡沒有帳單', false]);
     await w.get('[data-testid="tc-doc-ledger"]').trigger('click');
     expect(w.emitted('ledger')).toHaveLength(1);
     expect(w.emitted('slip')).toBeUndefined();

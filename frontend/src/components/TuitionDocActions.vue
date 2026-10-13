@@ -44,7 +44,7 @@ const legacy = computed(() => isLegacyPaidNoInvoice(props.row));
 
 const slip = computed(() => {
   if (!props.canView) return { ok: false, reason: NO_PERMISSION };
-  if (legacy.value) return { ok: false, reason: '已在舊系統繳清，沒有新帳單' };
+  if (legacy.value) return { ok: false, reason: '已繳清，系統裡沒有帳單' };
   const s = props.row.payment_status;
   if (SLIP_STATUSES.includes(s)) return { ok: true };
   if (s === 'pending_report') return { ok: false, reason: '已回報，等確認入帳' };
