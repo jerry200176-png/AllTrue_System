@@ -724,9 +724,9 @@
                         class="small ghost btn-payment-slip"
                         data-testid="billing-payment-slip-action"
                         type="button"
-                        title="產生繳費通知單"
+                        title="產生繳費單"
                         @click="openPaymentSlip(row.course)"
-                      >繳費通知</button>
+                      >繳費單</button>
                       <button class="small ghost btn-invoices" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
                       <button v-if="shouldShowPaymentAction(row.course)" class="small primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
                       <span v-if="isTutoringBillingAnomaly(row.course)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
@@ -1112,6 +1112,7 @@
 
     <EnrollmentConflictDecisionModal
       :show="showDuplicateInterceptModal"
+      :attempted-payment-type="String(interceptOriginalPayload?.payment_type || '')"
       :conflicts="duplicateConflicts"
       :class-type="interceptPendingClassType"
       :submitting="forceSubmitting"
