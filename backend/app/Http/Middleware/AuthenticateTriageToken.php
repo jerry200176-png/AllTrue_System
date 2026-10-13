@@ -6,6 +6,7 @@ use App\Models\SecurityAuditEvent;
 use App\Services\TriageTokenService;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 
 /**
  * Authenticates a read-only triage token on the triage.* routes and writes one
@@ -41,6 +42,7 @@ final class AuthenticateTriageToken
 
     private function audit(Request $request, ?int $tokenId, string $outcome, int $status, string $reason): void
     {
+        $route = $request->route();
         $bugId = $request->route('id');
         $attachmentId = $request->route('attachmentId');
         SecurityAuditEvent::append('triage_token.read', $outcome, [
@@ -52,7 +54,7 @@ final class AuthenticateTriageToken
             'token_id' => $tokenId ?? 0,
             'bug_report_id' => is_numeric($bugId) ? (int) $bugId : 0,
             'attachment_id' => is_numeric($attachmentId) ? (int) $attachmentId : 0,
-            'route' => (string) ($request->route()?->getName() ?? ''),
+            'route' => $route instanceof Route ? (string) $route->getName() : '',
             'method' => $request->method(),
             'client_ip' => (string) $request->ip(),
             'http_status' => $status,

@@ -6,6 +6,7 @@ use App\Models\SecurityAuditEvent;
 use App\Services\TriageTokenService;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 
 /**
  * Deny-by-default boundary for read-only triage tokens (api middleware group).
@@ -29,7 +30,8 @@ final class RestrictAccessTokenScope
             return $next($request);
         }
 
-        $routeName = $request->route()?->getName();
+        $route = $request->route();
+        $routeName = $route instanceof Route ? $route->getName() : null;
         $allowed = (array) config('triage_tokens.allowed_routes', []);
         if (is_string($routeName) && in_array($routeName, $allowed, true)
             && in_array($request->method(), ['GET', 'HEAD'], true)) {
@@ -42,7 +44,7 @@ final class RestrictAccessTokenScope
         ], [
             'token_id' => $pat ? (int) $pat->getKey() : 0,
             'method' => $request->method(),
-            'route' => is_string($routeName) ? $routeName : (string) $request->route()?->uri(),
+            'route' => is_string($routeName) ? $routeName : ($route instanceof Route ? $route->uri() : ''),
             'client_ip' => (string) $request->ip(),
             'http_status' => 403,
         ]);

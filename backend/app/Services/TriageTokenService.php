@@ -54,7 +54,9 @@ final class TriageTokenService
 
     public static function find(int $id): ?PersonalAccessToken
     {
-        return self::query()->whereKey($id)->first();
+        $pat = self::query()->whereKey($id)->first();
+
+        return $pat instanceof PersonalAccessToken ? $pat : null;
     }
 
     /** Resolve "<id>|<secret>" to a triage token row (null when unknown or not a triage token). */
@@ -87,7 +89,7 @@ final class TriageTokenService
         if ($pat->getAttribute('tokenable_type') !== User::class) {
             return false;
         }
-        $owner = User::find((int) $pat->getAttribute('tokenable_id'));
+        $owner = User::query()->find((int) $pat->getAttribute('tokenable_id'));
 
         return $owner instanceof User && $owner->type === 'S';
     }
@@ -99,8 +101,7 @@ final class TriageTokenService
         return is_array($abilities) && array_values($abilities) === [self::ability()];
     }
 
-    /** @return \Illuminate\Database\Eloquent\Builder<PersonalAccessToken> */
-    private static function query()
+    private static function query(): \Illuminate\Database\Eloquent\Builder
     {
         return PersonalAccessToken::query()
             ->where('tokenable_type', User::class)
