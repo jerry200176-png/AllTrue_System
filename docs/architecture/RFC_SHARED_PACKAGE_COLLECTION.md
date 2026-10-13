@@ -87,7 +87,7 @@ last_reviewed: 2026-10-13
 ### 3a. API／client 與既有隔離邊界
 
 - `GET alerts/tuition` 及 package/invoice/Payment aggregates 必須先限制在 authenticated campus scope。非 super_admin 的空 `auth_campus_ids` 回空或 403；`branch_id` 不得擴大 scope。只保留既有文件化 super_admin 例外。
-- Q5 single／batch confirm 在任何帳務 write 前驗證 report、student、course、package 的身份與 campus 一致，且屬 authenticated campus scope；空 scope fail closed。batch 不能繞過 single 的同一驗證。
+- 所有 package 正向收款與 reversal／void producer（含 Q5 single／batch confirm、`BillingController::recordPayment`、`PaymentReportController::void` 及 `BillingController` 各 invoice-void 路徑），在每個帳務 transaction／write 前驗證 report／invoice、student、所有關聯 course 與 package 的身份與 campus 一致，且屬 authenticated campus scope。非 super_admin 空 scope fail closed；只有既有文件化 super_admin 例外。batch 及直接 invoice 入口不能繞過同一驗證，失敗須零 Payment／reversal／invoice／report／package／member 變更。
 - `TuitionCollectionPage.vue` 卡片、tabs、counts、action filters 與 `StudentsList.vue` chips（及主任首頁同 payload consumers）明確支持 `needs_review`：顯示待核對與 reasons、保留 null 金額，不轉成 0／全額或未繳 label；人工核對佇列可見，但不加入可收總額，不提供登錄／批次 confirm／催繳。
 
 ### 3b. Package 收款與人工審核合約
@@ -97,7 +97,8 @@ last_reviewed: 2026-10-13
 - **審核與待收分開**（§5c C2）：停止、無帳單、有 pending report 的方案保持 R2-4 待收排除，提供獨立 report-review entry／projection，回傳 report IDs、摘要與 package context，使人員可依原審核規則確認／拒絕；不憑 pending 金額新增應收、不打開一般待收登錄。該入口及其 single/batch 操作遵守 §3a campus 隔離與 R8.8。
 - **人工繳費單**：`DirectorDashboard` → `PaymentSlipModal` → `alerts/tuition-slip` 不得以 anchor 課程金額生成 package 繳費圖。manual copy/download 需 package-aware 路徑，顯示 package 科目、aggregate remaining 及明確所選 invoice 的本次可收額；該路徑未驗證前停用 package row 的舊 member slip action，needs_review 不產生金額繳費單。這是既有「不重收全額」要求的 consumer guard，不批准自動對外發送。
 - **實收防護**：非免費 count package 的 reported receipt amount 須嚴格大於 0，single／batch 登錄及確認皆驗證；拒絕零值須無 invoice／Payment／confirmed-report／receipt 變更，不能把零值 receipt 當成已確認收款。既有免費排除 R0 不變。
-- **逆向結清與收據**：§5c C3/C4 分別在獨立 future write PR 完成，所有合法 package void/reversal producer 原子重算 package/member flags；收據以 package snapshot 呈現整包科目、covered session 範圍及本筆實收，不創造科目價款分攤。不修歷史資料。
+- **正向結清共用邊界**：所有 package Payment producer 共用同一 package settlement routine，不限 `PaymentReportController::confirm`；已註冊 `POST invoices/{invoice}/payments`（`BillingController::recordPayment`）亦在相同 transaction／locks 下依 package ledger 重算 `CoursePackage.paid/paid_at` 與全部 member `Paid/PayDate`。部分實收不得標整包已繳，aggregate 達到可靠 X 才結清；既有 direct invoice action 仍每次只支付明確選中的 invoice。不得只同步該 invoice header/items 的 member；R8 歸屬 anomaly 不可藉此自動修復。這是已決 aggregate-settlement 的 producer 完整性要求，屬 future write PR，非本文件 PR runtime 變更。
+- **逆向結清與收據**：§5c C3/C4 分別在獨立 future write PR 完成，所有合法 package void/reversal producer 先通過 §3a authorization 再原子重算 package/member flags；收據以 package snapshot 呈現整包科目、covered session 範圍及本筆實收，不創造科目價款分攤。不修歷史資料。
 
 ## 4. Phase 2 驗收（實作時）
 
@@ -119,7 +120,9 @@ last_reviewed: 2026-10-13
 15. multi-subject package partial/final 收據 snapshot、實收金額、covered sessions 及重印一致，不只呈現 anchor 科目。
 16. 非 anchor 部分付款後人工繳費單圖／copy/download 不再要求全額或顯示單科，所選 invoice 的本次可收額與 server 相符；未就緒舊 action 停用。已結清剩 ≤2 堂仍呈現既有續課控制且無待收款。
 17. 非免費 package single／batch 的 amount=0 在登錄／確認皆拒絕，invoice／Payment／report confirmation／receipt 無變更。
-18. §5c 決策已定不等於完成實作；各 future PR 所屬回歸、獨立 review、required CI 與 rollback 證據通過前，不宣稱 Phase 2 runtime-ready／已部署。
+18. `BillingController::recordPayment` 直接支付 package invoice：部分／最終付款皆以整包 ledger 決定 package 與全部 sibling flags，與 report confirm 一致；同一 invoice 金額限制、重送／並行、空 scope／跨 campus 零寫入均有回歸。
+19. 每個 reversal producer（report void 與各 invoice-void 路徑）以非 super_admin 空 campus、跨 campus invoice/report ID、錯誤 student/course/package 身份驗證拒絕，Payment／reversal／invoice／report／package／member 全無變更；保留已授權與 super_admin 例外成功案例。
+20. §5c 決策已定不等於完成實作；各 future PR 所屬回歸、獨立 review、required CI 與 rollback 證據通過前，不宣稱 Phase 2 runtime-ready／已部署。
 
 ---
 
