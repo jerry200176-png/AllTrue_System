@@ -649,7 +649,7 @@
             </div>
           </div>
           <button type="button" class="small ghost" style="margin-top:8px;" @click="goToBindingManagement(students.find((s) => s.id === editingStudentId))">
-            前往 LINE 綁定管理
+            前往家長 LINE 綁定
           </button>
         </div>
 
