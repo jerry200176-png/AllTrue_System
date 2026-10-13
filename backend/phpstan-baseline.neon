@@ -2133,11 +2133,6 @@ parameters:
 			count: 1
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
-		-
-			message: '#^Call to an undefined static method App\\Models\\ParentSession\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:find\(\)\.$#'
@@ -2289,11 +2284,6 @@ parameters:
 			count: 1
 			path: app/Http/Controllers/ParentFeedbackController.php
 
-		-
-			message: '#^Call to an undefined static method App\\Models\\ParentSession\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/ParentFeedbackController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:find\(\)\.$#'

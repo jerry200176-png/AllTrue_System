@@ -19,9 +19,7 @@ use Illuminate\Support\Facades\Log;
  * 異常偵測：同一學生有超過 3 個 LINE user 綁定 → 可能有誤綁/衝突，
  * 僅回報不處理，供主任審查。
  *
- * #3944 follow-up: each orphan goes through BindingService::deleteBinding(),
- * so the guardian link is revoked and that LINE account's parent sessions for
- * the student are expired in the same transaction as the row delete.
+ * #3944 follow-up: orphans go through BindingService::deleteBinding() (link revoked, sessions expired, atomically).
  *
  * @see ADR-004 — Parent Binding Phase 1-3 架構設計
  */
@@ -55,7 +53,6 @@ class CleanupOrphanBindings extends Command
                     'reason'        => 'student_record_does_not_exist',
                 ]);
 
-                // Revoke guardian link + sessions, then delete (atomic).
                 if ($bindings->deleteBinding((int) $orphan->id)) {
                     $orphanDeleted++;
                 }
@@ -83,7 +80,6 @@ class CleanupOrphanBindings extends Command
                     'reason'        => 'student_disabled_enable_0',
                 ]);
 
-                // Revoke guardian link + sessions, then delete (atomic).
                 if ($bindings->deleteBinding((int) $orphan->id)) {
                     $orphanDeleted++;
                 }

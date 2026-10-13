@@ -24,14 +24,7 @@ use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
-/**
- * #3944 follow-up (review threads 4256776859 / 4256776870).
- *
- * 1. A LINE session anchored to identity-group member B must not keep reaching
- *    member A after A is unbound from that LINE account.
- * 2. The nightly bindings:cleanup-orphans job must revoke guardian access and
- *    expire sessions, not just delete the binding row.
- */
+/** #3944 follow-up: a LINE session never keeps reaching an unbound group member; nightly orphan cleanup revokes access and sessions. */
 class GuardianRevocationGapsTest extends TestCase
 {
     use RefreshDatabase;
@@ -98,8 +91,7 @@ class GuardianRevocationGapsTest extends TestCase
         // Token issued before the unbind, anchored to the still-bound member B.
         $token = $this->groupToken($b, $group, $line);
 
-        $this->deleteJson('/api/v1/bindings/' . $bindingA->id, [], ['X-User-Id' => (string) $this->director->id])
-            ->assertOk();
+        $this->unbind($bindingA);
 
         // B itself is still bound: the token keeps working for B only.
         $dashboard = $this->dashboard($token)->assertOk();
@@ -139,8 +131,7 @@ class GuardianRevocationGapsTest extends TestCase
             collect($before->json('identity_groups.0.members'))->pluck('student_id')->all()
         );
 
-        $this->deleteJson('/api/v1/bindings/' . $bindingA->id, [], ['X-User-Id' => (string) $this->director->id])
-            ->assertOk();
+        $this->unbind($bindingA);
 
         $after = $this->postJson('/api/v1/parent/login-line', ['access_token' => 'valid-token'])->assertOk();
         $after->assertJsonPath('student.id', $b->id);
@@ -162,7 +153,7 @@ class GuardianRevocationGapsTest extends TestCase
         $bindingA = $this->bindLine($a, $line, $this->campusA);
         $this->bindLine($b, $line, $this->campusB);
         $this->bindLine($c, $line, $campusC);
-        $this->deleteJson('/api/v1/bindings/' . $bindingA->id, [], ['X-User-Id' => (string) $this->director->id])->assertOk();
+        $this->unbind($bindingA);
         Http::fake(['https://api.line.me/v2/profile' => Http::response(['userId' => $line], 200)]);
 
         $rows = $this->postJson('/api/v1/parent/login-line', ['access_token' => 'valid-token'])->assertOk()->json('identity_groups');
@@ -233,7 +224,7 @@ class GuardianRevocationGapsTest extends TestCase
         $token = $this->groupToken($b, null, $mine);
         $this->assertSame([$a->id, $b->id], collect($this->dashboard($token)->assertOk()->json('students'))->pluck('id')->sort()->values()->all());
 
-        $this->deleteJson('/api/v1/bindings/' . $bindingA->id, [], ['X-User-Id' => (string) $this->director->id])->assertOk();
+        $this->unbind($bindingA);
 
         $this->assertNotContains($a->id, collect($this->dashboard($token)->assertOk()->json('students') ?? [])->pluck('id')->all());
     }
@@ -258,6 +249,46 @@ class GuardianRevocationGapsTest extends TestCase
         $this->dashboard($token)->assertUnauthorized();
     }
 
+    /** @return array<string, array{0: bool, 1: bool}> [guardian row for B only, flag] */
+    public static function zeroRowModes(): array
+    {
+        return ['no guardian rows, on' => [false, true], 'no guardian rows, off' => [false, false],
+            'guardian without a link to A, on' => [true, true], 'guardian without a link to A, off' => [true, false]];
+    }
+
+    /** Zero-row fixtures (no link to A): after A's unbind neither old token nor fresh login regains A; no guardian row is ever created. */
+    /** @dataProvider zeroRowModes */
+    public function test_zero_guardian_row_fixtures_never_regain_an_unbound_record(bool $guardianForB, bool $flag): void
+    {
+        config(['perfflags.multi_guardian_enabled' => $flag]);
+        $line = $this->lineId('3');
+        [$a, $b, $group] = $this->groupedPair(StudentIdentityService::MODE_ACTIONS);
+        $bindingA = $this->slbOnly($a, $line, $this->campusA);
+        $guardianForB ? $this->bindLine($b, $line, $this->campusB) : $this->slbOnly($b, $line, $this->campusB);
+        $rows = fn () => [Guardian::query()->where('line_user_id', $line)->count(), StudentGuardian::query()->where('student_id', $a->id)->count(),
+            StudentGuardian::query()->where('student_id', $b->id)->count()];
+        $this->assertSame([(int) $guardianForB, 0, (int) $guardianForB], $rows());
+        Http::fake(['https://api.line.me/v2/profile' => Http::response(['userId' => $line], 200)]);
+        $login = function () { // switcher rows collapse a group to one entry, so read the group's members as well
+            $r = $this->postJson('/api/v1/parent/login-line', ['access_token' => 'valid-token'])->assertOk();
+
+            return collect($r->json('students'))->pluck('id')->merge(collect($r->json('identity_groups'))->pluck('members.*.student_id')->flatten())
+                ->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+        };
+
+        // Flag on + a Guardian row: the relationship table is canonical, so A (no link) is not reachable even before the unbind.
+        $this->assertSame($flag && $guardianForB ? [$b->id] : [$a->id, $b->id], $login());
+        $classA = $this->course($a);
+        $token = $this->groupToken($b, $group, $line);
+        $this->unbind($bindingA);
+
+        $this->assertSame([(int) $guardianForB, 0, (int) $guardianForB], $rows());
+        $this->assertNotContains($classA, collect($this->dashboard($token)->assertOk()->json('classes'))->pluck('id')->all());
+        $this->switchTo($token, $a)->assertForbidden();
+        $this->assertSame([$b->id], $login());
+        $this->switchTo($token, $b)->assertOk();
+    }
+
     public function test_phone_login_group_session_is_unaffected_by_a_line_unbind(): void
     {
         config(['perfflags.multi_guardian_enabled' => true]);
@@ -267,8 +298,7 @@ class GuardianRevocationGapsTest extends TestCase
         $classB = $this->course($b);
         $phoneToken = $this->groupToken($b, $group, null);
 
-        $this->deleteJson('/api/v1/bindings/' . $bindingA->id, [], ['X-User-Id' => (string) $this->director->id])
-            ->assertOk();
+        $this->unbind($bindingA);
 
         $dashboard = $this->dashboard($phoneToken)->assertOk();
         $this->assertEqualsCanonicalizing([$classA, $classB], collect($dashboard->json('classes'))->pluck('id')->all());
@@ -295,10 +325,7 @@ class GuardianRevocationGapsTest extends TestCase
 
         $this->assertDatabaseMissing('student_line_bindings', ['student_id' => $disabled->id]);
         $this->assertSame(StudentGuardian::STATUS_REVOKED, $this->linkFor($disabled, $line)->status);
-        $this->assertSame(0, ParentSession::query()
-            ->where('StudentID', $disabled->id)
-            ->where('ExpiresAt', '>', now())
-            ->count());
+        $this->assertSame(0, ParentSession::query()->where('StudentID', $disabled->id)->where('ExpiresAt', '>', now())->count());
         $this->dashboard($disabledToken)->assertUnauthorized();
 
         // The same LINE account's other student and other guardians are untouched.
@@ -312,27 +339,14 @@ class GuardianRevocationGapsTest extends TestCase
     {
         config(['perfflags.multi_guardian_enabled' => false]);
         $line = $this->lineId('f');
-        StudentLineBinding::create([
-            'student_id' => 999999,
-            'line_user_id' => $line,
-            'campus_id' => $this->campusA->id,
-            'bound_at' => now(),
-        ]);
-        ParentSession::create([
-            'StudentID' => 999999,
-            'line_user_id' => $line,
-            'TokenHash' => hash('sha256', Str::random(48)),
-            'ExpiresAt' => now()->addDays(30),
-        ]);
+        StudentLineBinding::create(['student_id' => 999999, 'line_user_id' => $line, 'campus_id' => $this->campusA->id, 'bound_at' => now()]);
+        $this->groupToken(StudentFactory::new()->make(['id' => 999999]), null, $line);
 
         Artisan::call('bindings:cleanup-orphans');
         $this->assertStringContainsString('orphan_bindings_deleted=1', Artisan::output());
 
         $this->assertDatabaseMissing('student_line_bindings', ['student_id' => 999999]);
-        $this->assertSame(0, ParentSession::query()
-            ->where('StudentID', 999999)
-            ->where('ExpiresAt', '>', now())
-            ->count());
+        $this->assertSame(0, ParentSession::query()->where('StudentID', 999999)->where('ExpiresAt', '>', now())->count());
     }
 
     // ── helpers ────────────────────────────────────────────────────────
@@ -356,17 +370,17 @@ class GuardianRevocationGapsTest extends TestCase
         return 'U' . str_repeat($char, 32);
     }
 
+    /** A verified LINE binding only: no Guardian / StudentGuardian row (legacy, pre-dual-write). */
+    private function slbOnly(Student $student, string $line, Campus $campus): StudentLineBinding
+    {
+        return StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => $line, 'campus_id' => $campus->id,
+            'bound_at' => now(), 'verified_at' => now(), 'verification_method' => 'contact_phone']);
+    }
+
     /** A verified LINE binding plus the guardian link it produces under dual-write. */
     private function bindLine(Student $student, string $line, Campus $campus): StudentLineBinding
     {
-        $binding = StudentLineBinding::create([
-            'student_id' => $student->id,
-            'line_user_id' => $line,
-            'campus_id' => $campus->id,
-            'bound_at' => now(),
-            'verified_at' => now(),
-            'verification_method' => 'contact_phone',
-        ]);
+        $binding = $this->slbOnly($student, $line, $campus);
         $guardian = Guardian::query()->firstOrCreate(['line_user_id' => $line], ['display_name' => 'G']);
         StudentGuardian::query()->firstOrCreate(['student_id' => $student->id, 'guardian_id' => $guardian->id], [
             'campus_id' => $campus->id,
@@ -386,22 +400,14 @@ class GuardianRevocationGapsTest extends TestCase
     {
         $guardian = Guardian::query()->where('line_user_id', $line)->firstOrFail();
 
-        return StudentGuardian::query()
-            ->where('student_id', $student->id)
-            ->where('guardian_id', $guardian->id)
-            ->firstOrFail();
+        return StudentGuardian::query()->where('student_id', $student->id)->where('guardian_id', $guardian->id)->firstOrFail();
     }
 
     private function groupToken(Student $anchor, ?StudentIdentityGroup $group, ?string $line): string
     {
         $raw = Str::random(48);
-        ParentSession::create([
-            'StudentID' => $anchor->id,
-            'identity_group_id' => $group?->id,
-            'line_user_id' => $line,
-            'TokenHash' => hash('sha256', $raw),
-            'ExpiresAt' => now()->addDays(30),
-        ]);
+        ParentSession::create(['StudentID' => $anchor->id, 'identity_group_id' => $group?->id, 'line_user_id' => $line,
+            'TokenHash' => hash('sha256', $raw), 'ExpiresAt' => now()->addDays(30)]);
 
         return $raw;
     }
@@ -420,13 +426,8 @@ class GuardianRevocationGapsTest extends TestCase
     /** Y2: tomorrow at 23:00 so it is never "already started". */
     private function futureSession(int $studentClassId): ClassSession
     {
-        return ClassSession::create([
-            'StudentClassID' => $studentClassId,
-            'SessionDate' => now()->addDay()->toDateString(),
-            'StartTime' => '23:00',
-            'EndTime' => '23:50',
-            'Status' => 'scheduled',
-        ]);
+        return ClassSession::create(['StudentClassID' => $studentClassId, 'SessionDate' => now()->addDay()->toDateString(),
+            'StartTime' => '23:00', 'EndTime' => '23:50', 'Status' => 'scheduled']);
     }
 
     private function learningRecord(Student $student, int $studentClassId): int
@@ -448,11 +449,7 @@ class GuardianRevocationGapsTest extends TestCase
     /** @return array<int, int> student ids owning the billing-history rows */
     private function billingStudentClassOwners(string $token): array
     {
-        $ids = collect($this->getJson('/api/v1/parent/billing-history', $this->bearer($token))
-            ->assertOk()
-            ->json('records'))
-            ->pluck('student_class_id')
-            ->all();
+        $ids = collect($this->getJson('/api/v1/parent/billing-history', $this->bearer($token))->assertOk()->json('records'))->pluck('student_class_id')->all();
 
         return DB::table('StudentClass')->whereIn('ID', $ids)->pluck('StudentID')
             ->map(fn ($id) => (int) $id)->unique()->values()->all();
@@ -462,6 +459,11 @@ class GuardianRevocationGapsTest extends TestCase
     private function bearer(string $token): array
     {
         return ['Authorization' => 'Bearer ' . $token];
+    }
+
+    private function unbind(StudentLineBinding $binding): void
+    {
+        $this->deleteJson('/api/v1/bindings/' . $binding->id, [], ['X-User-Id' => (string) $this->director->id])->assertOk();
     }
 
     private function dashboard(string $token): TestResponse

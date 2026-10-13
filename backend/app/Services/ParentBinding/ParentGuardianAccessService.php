@@ -114,12 +114,8 @@ final class ParentGuardianAccessService
     }
 
     /**
-     * #3944 follow-up: identity-group fan-out must not outlive a revoked
-     * guardian relationship. A session always reaches its own anchor student
-     * (resolveSession() revalidates that one). A LINE-login session reaches any
-     * other student, including an identity-group member, only while this LINE
-     * subject may still access that student. Phone-login sessions (no LINE
-     * subject) keep the phone-verified identity-group rule.
+     * #3944 follow-up: a session reaches its anchor (revalidated by anchorRevoked()); a LINE session reaches any other
+     * student, group members included, only while its subject may access that student. Phone sessions keep the group rule.
      */
     public function sessionMayReachStudent(ParentSession $session, int $studentId): bool
     {
@@ -135,8 +131,7 @@ final class ParentGuardianAccessService
     }
 
     /**
-     * Drop identity-group members this session may no longer reach (see
-     * sessionMayReachStudent). One access lookup for the whole member list.
+     * sessionMayReachStudent() for a whole member list, in one access lookup.
      *
      * @param Collection<int, mixed> $members rows exposing student_id
      * @return Collection<int, mixed>
@@ -149,14 +144,9 @@ final class ParentGuardianAccessService
         }
 
         $anchorId = (int) $session->getAttribute('StudentID');
-        $reachable = $this->studentsForLineUser($lineUserId)
-            ->map(fn ($s) => (int) $s->id)
-            ->push($anchorId)
-            ->flip();
+        $reachable = $this->studentsForLineUser($lineUserId)->map(fn ($s) => (int) $s->id)->push($anchorId)->flip();
 
-        return $members
-            ->filter(fn ($m) => $reachable->has((int) $m->student_id))
-            ->values();
+        return $members->filter(fn ($m) => $reachable->has((int) $m->student_id))->values();
     }
 
     /**
