@@ -192,6 +192,7 @@
                             </li>
                           </ol>
                         </div>
+                        <BillingNotesPanel subject-type="invoice" :subject-id="inv.id" />
                       </td>
                     </tr>
                   </template>
@@ -223,6 +224,7 @@
                   <template v-if="r.account_last5 && r.note"> · </template>
                   <template v-if="r.note">備註：{{ r.note }}</template>
                 </small>
+                <BillingNotesPanel subject-type="payment_report" :subject-id="r.report_id" />
                 <LedgerCoverageDates
                   v-if="isReceiptExpanded(r.report_id)"
                   class="ledger-receipt-coverage"
@@ -281,6 +283,7 @@ import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
 import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
+import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
