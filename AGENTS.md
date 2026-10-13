@@ -41,7 +41,7 @@
 
 **操作者權限（適用於每一次任務，不是要讀的檔案，是規則本身）**：操作者是 **Agent**。T0/T1 在 required checks、風險適當 review 與證據通過後可自行 merge／關 issue；T2 另需 independent review、rollback boundary 與完整 CI。read-only production-case-dump probe（`.github/workflows/production-case-dump.yml` 僅新增/修正唯讀 case，diff 無寫入標記）為 T2，Agent 於 CI 綠燈 + review 後自行 merge；寫入仍為 T3 Founder GO。T3 / protected 工作可研究、實作、測試並準備 evidence package，但在 production activation、production data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO。機器禁令：Pi SSH / artisan / phpunit、印 secrets、force-push、`--admin`、Gmail 刪信。產品 P0 與 Control Plane I1 仍有效。Capabilities 詳見 `docs/governance/AGENT_CAPABILITY_REGISTRY.md`，勿假設權限。
 
-**Founder 常設決定（2026-10-12，對話中「照推薦」；權威表見 portfolio-ops `governance/AUTONOMY_POLICY.md`）**：①實作既定規則的 R3 程式（帳務／權限）：exact head required checks 綠＋獨立 review（Codex 或 reviewer agent）＋無未解 P1 → Agent 自行 merge 並走既有 release train，上線後驗 `deployment.json`／health；新的帳務語意問題仍問 Founder。②仍只限 Founder：正式資料修改、production migration 執行、credential rotation、不可逆操作；GitHub Environment reviewer 等平台關卡維持到 Founder 自己改。③關 issue：merge＋上線驗證（版本＋health＋smoke）＋已回覆 in-app 即可關，不等回報者確認，復發再開；重複／被取代附證據可關。④Review 停止規則：P1 必修；P2 集中修一輪後 merge，之後的 P2 開 follow-up issue。⑤既有明確 hold（#3862、#3785、RFID 真機）維持。
+**Founder 常設決定**：唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（每次任務都適用；此處不寫摘要，避免分歧）。
 
 ### 必讀（3 份，每次任務都讀）
 
