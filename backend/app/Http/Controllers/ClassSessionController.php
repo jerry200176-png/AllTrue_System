@@ -660,7 +660,7 @@ class ClassSessionController extends Controller
             if (empty($slots)) {
                 continue;
             }
-            $slotStarts = array_values(array_unique(array_map(fn ($slot) => substr((string) ($slot['start_time'] ?? ''), 0, 5), $slots)));
+            $slotStarts = array_values(array_unique(array_map(fn ($slot) => substr((string) $slot['start_time'], 0, 5), $slots)));
             $covered = $this->monthlyCoveredSlotStarts($slotStarts, $rowsByClass[(int) $studentClass->ID] ?? []);
 
             foreach ($slots as $slot) {
