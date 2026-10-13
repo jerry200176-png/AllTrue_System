@@ -348,7 +348,9 @@ class NotificationSyncService
         }
 
         $rows = [];
-        $classes = self::withinTuitionReminderWindow($query->get());
+        /** @var \Illuminate\Database\Eloquent\Collection<int, StudentClass> $eligible */
+        $eligible = $query->get();
+        $classes = self::withinTuitionReminderWindow($eligible);
         // F7 S5: the resolver decides who still owes; flag off = legacy predicate only (plus shadow comparison).
         $statuses = [];
         $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
