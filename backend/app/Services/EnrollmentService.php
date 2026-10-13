@@ -743,8 +743,7 @@ class EnrollmentService
             $campusIds,
             $isTutoring
         ) {
-            // Forced renewals take the student row lock as the FIRST statement of the transaction: under
-            // REPEATABLE READ any earlier plain read would pin a snapshot that predates a concurrent commit.
+            // Lock student before any REPEATABLE READ snapshot.
             $lockRenewal = !empty($data['force']) && ($data['force_reason'] ?? '') === 'renewal_next_term';
             $student = $studentId > 0
                 ? ($lockRenewal ? Student::query()->whereKey($studentId)->lockForUpdate()->first() : Student::find($studentId))
@@ -765,14 +764,14 @@ class EnrollmentService
                 return response()->json(['message' => '無法建立學生'], 422);
             }
 
-            // Serialize forced renewals per student so two concurrent requests cannot both pass the check.
+            $decisionNow = Carbon::now();
             if (!empty($data['force']) && ($data['force_reason'] ?? '') === 'renewal_next_term') {
                 DB::table('Student')->where('id', $student->id)->lockForUpdate()->value('id');
                 $confirmedGate = $this->renewalTargetGate($data, array_values(array_unique(array_map(
                     fn ($m) => (int) $m['id'],
                     $subjectMeta
                 ))), (int) $student->id)
-                    ?? $this->guardRenewalConfirmedOverlap((int) $student->id, $subjectGroups);
+                    ?? $this->guardRenewalConfirmedOverlap((int) $student->id, $subjectGroups, $decisionNow);
                 if ($confirmedGate !== null) {
                     return $confirmedGate;
                 }
@@ -792,8 +791,6 @@ class EnrollmentService
             if ($approvedByUserId <= 0) {
                 $approvedByUserId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
             }
-            $decisionNow = Carbon::now();
-
             $createdConfirmedSessions = 0;
             $createdFutureSessions = 0;
             $createdLearningRecords = 0;
@@ -983,8 +980,6 @@ class EnrollmentService
                     }
                 }
 
-                // #3738 review: only an audited parallel/trial decision may stack sessions on one slot;
-                // renewal_next_term keeps the student-overlap write guard.
                 $allowStudentOverlap = !empty($data['force'])
                     && in_array((string) ($data['force_reason'] ?? ''), ['independent_parallel', 'create_trial'], true);
                 foreach ($rowsForSubject as $row) {
@@ -1142,10 +1137,7 @@ class EnrollmentService
      * @param  array<string, mixed>  $data
      */
     /**
-     * Forced-renewal target checks, derived server-side (client existing_contract_ids are ignored) with the same
-     * predicate as the 409 discovery. Run once before the transaction and AGAIN under the student lock, so a
-     * concurrent renewal that committed in between is seen. Blank/NULL ScheduleMode is a session-count contract.
-     *
+     * Recheck server-derived renewal targets under the student lock.
      * @param  array<string, mixed>  $data
      * @param  array<int, int>  $subjectIds
      */
@@ -1159,8 +1151,6 @@ class EnrollmentService
             array_map(fn ($p) => is_array($p) ? ($p['session_date'] ?? null) : null, $data['session_plan'] ?? [])
         ));
         sort($dates);
-        // Manual-occurrence renewals submit no dates: fall back to the contract range like the 409 discovery;
-        // no start at all means "from today", no end means open-ended (so any same-teacher active contract overlaps).
         $start = substr((string) ($dates[0] ?? $data['course_start_date'] ?? now()->toDateString()), 0, 10);
         $end = substr((string) ($dates !== [] ? end($dates) : ($data['end_date'] ?? '')), 0, 10) ?: null;
         $monthly = false;
@@ -1168,8 +1158,6 @@ class EnrollmentService
             $base = fn () => DB::table('StudentClass')->where('StudentID', $studentId)->where('Stop', 0)
                 ->whereIn('SubjectID', $subjectIds);
             $overlap = $classType !== 'trial' && $teacher > 0;
-            // An open-ended existing contract (EndDate NULL, e.g. manual_occurrence) never proves the old term ended.
-            // Same class type counts too: that is the 409 `duplicate_active_course` case, whatever the teacher.
             $overlapping = fn ($q) => $q->where(fn ($t) => $t->where('TeacherID', $teacher)->when($classType !== '', fn ($w) => $w->orWhere('ClassType', $classType)))
                 ->when($end, fn ($w) => $w->whereDate('StartDate', '<=', $end))
                 ->where(fn ($w) => $w->whereNull('EndDate')->orWhereDate('EndDate', '>=', $start));
@@ -1179,7 +1167,6 @@ class EnrollmentService
                     $q->orWhere($overlapping);
                 }
             })->whereRaw("LOWER(COALESCE(NULLIF(ScheduleMode, ''), 'count')) = ?", ['date'])->exists();
-            // A "next term" must start after the contract it renews (force skipped the 409 range check).
             if ($overlap && $base()->where($overlapping)->exists()) {
                 return response()->json([
                     'message' => '續報的新課起始日必須在原課程結束之後，請調整起始日或改用「加購堂數」。',
@@ -1198,12 +1185,10 @@ class EnrollmentService
     }
 
     /**
-     * Past/completed rows are not covered by the future-only write guard, so a renewal would add a second
-     * completed lesson (and LearningRecord / deduction) on a slot the student already has.
-     *
+     * Refuse duplicate completed slots using the materialization timestamp.
      * @param array<string, array<int, array<string, mixed>>> $subjectGroups
      */
-    private function guardRenewalConfirmedOverlap(int $studentId, array $subjectGroups): ?JsonResponse
+    private function guardRenewalConfirmedOverlap(int $studentId, array $subjectGroups, Carbon $decisionNow): ?JsonResponse
     {
         if ($studentId <= 0) {
             return null;
@@ -1215,23 +1200,18 @@ class EnrollmentService
                 }
                 $start = (string) $row['start_time'];
                 $end = $this->computeEndTime($start, max(30, (int) $row['duration_minutes']));
-                // Decide on the FINAL kind: a future row whose slot already ended is stored completed (and gets a
-                // learning record / deduction), exactly like a confirmed row.
-                if (($row['kind'] ?? '') !== 'confirmed' && !$this->sessionEndedByEndTime((string) $row['date'], $end)) {
+                if (($row['kind'] ?? '') !== 'confirmed' && !$this->sessionEndedByEndTime((string) $row['date'], $end, $decisionNow)) {
                     continue;
                 }
                 $clash = DB::table('ClassSession as cs')
                     ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
                     ->where('sc.StudentID', $studentId)
                     ->whereDate('cs.SessionDate', $row['date'])
-                    // Same exclusion as the canonical student-slot guard: trial sessions are add-on, not a clash.
                     ->whereRaw("LOWER(COALESCE(sc.ClassType, '')) <> ?", ['trial'])
                     ->whereNotIn('cs.Status', \App\Support\SessionStatus::futureReservationExclusionStatuses())
                     ->where('cs.StartTime', '<', $end)->where('cs.EndTime', '>', $start)
                     ->lockForUpdate()
                     ->first(['cs.id']) !== null;
-                // A booking that exists only in `schedules` (not yet materialized) is the same clash; mirror the
-                // canonical student-slot guard: live `scheduled` rows, no history anchors/orphans/trial, no stale exceptions.
                 $clash = $clash || app(\App\Services\StaleScheduleExceptionFilter::class)->rejectStale(
                     DB::table('schedules as s')->leftJoin('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
                         ->where('s.student_id', $studentId)->whereDate('s.schedule_date', $row['date'])
@@ -1294,8 +1274,6 @@ class EnrollmentService
         }
         $existingIds = array_values(array_unique($existingIds));
 
-        // Monthly (date-mode) renewal settles old contract, future sessions and invoice atomically in
-        // ContractRenewal::renewMonthly; generic enrollment must not stand in for it.
         if ($reason === 'renewal_next_term') {
             $gate = $this->renewalTargetGate(
                 $data,
@@ -2099,3 +2077,4 @@ class EnrollmentService
         }
     }
 }
+
