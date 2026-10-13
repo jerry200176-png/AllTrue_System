@@ -293,10 +293,10 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         $course->forceFill(['ScheduleMode' => 'date', 'settlement_day' => $settlementDay])->save();
 
         NotificationSyncService::sync([$campus->id]);
-        $this->mock(\App\Services\Line\ParentLinePush::class)->shouldReceive('bindings')
-            ->with((int) $course->StudentID, (int) $campus->id)->times($expected ? 1 : 0)
-            ->andReturn(collect());
+        $parents = $this->mock(\App\Services\Line\ParentLinePush::class);
+        $parents->shouldReceive('bindings')->andReturn(collect());
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
+        $expected ? $parents->shouldHaveReceived('bindings')->with((int) $course->StudentID, (int) $campus->id)->once() : $parents->shouldNotHaveReceived('bindings', [(int) $course->StudentID, (int) $campus->id]);
 
 
         $this->assertSame($expected ? 1 : 0, Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->whereNull('ResolvedAt')->count());
@@ -407,10 +407,10 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         ]);
 
         NotificationSyncService::sync([$campus->id]);
-        $this->mock(\App\Services\Line\ParentLinePush::class)->shouldReceive('bindings')
-            ->with((int) $course->StudentID, (int) $campus->id)->times($expected ? 1 : 0)
-            ->andReturn(collect());
+        $parents = $this->mock(\App\Services\Line\ParentLinePush::class);
+        $parents->shouldReceive('bindings')->andReturn(collect());
         $this->artisan('tuition:send-reminders')->assertExitCode(0);
+        $expected ? $parents->shouldHaveReceived('bindings')->with((int) $course->StudentID, (int) $campus->id)->once() : $parents->shouldNotHaveReceived('bindings', [(int) $course->StudentID, (int) $campus->id]);
 
 
         $live = Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->count();
