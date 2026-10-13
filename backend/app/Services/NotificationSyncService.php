@@ -507,11 +507,25 @@ class NotificationSyncService
             $query->whereIn('Student.CampusID', $campusIds);
         }
 
+        $invoices = $query->get();
+        // R28: paid comes from Payment rows (a negative or Method=void row is a reversal), never the stored
+        // PaidAmount/Status, so the winning invoice notice cannot show a stale 已繳 0 (#3885 review).
+        $paidByInvoice = $invoices->isEmpty() ? collect() : DB::table('Payment')
+            ->whereIn('InvoiceID', $invoices->pluck('id')->all())->groupBy('InvoiceID')
+            ->selectRaw("InvoiceID, SUM(CASE WHEN Amount > 0 AND Method <> 'void' THEN Amount ELSE 0 END)"
+                . " - SUM(CASE WHEN Amount < 0 OR Method = 'void' THEN ABS(Amount) ELSE 0 END) AS net")
+            ->pluck('net', 'InvoiceID');
+
         $rows = [];
-        foreach ($query->get() as $invoice) {
+        foreach ($invoices as $invoice) {
             $campusId = (int) ($invoice->campus_id ?? 0);
             if (!empty($campusIds) && !in_array($campusId, $campusIds, true)) {
                 continue;
+            }
+            $totalAmount = (int) ($invoice->TotalAmount ?? 0);
+            $paidAmount = max(0, (int) ($paidByInvoice[$invoice->id] ?? 0));
+            if ($totalAmount > 0 && $paidAmount >= $totalAmount) {
+                continue; // fully covered by Payment rows: nothing is owed on this bill
             }
 
             $dueAt = Carbon::parse($invoice->DueDate);
@@ -521,8 +535,6 @@ class NotificationSyncService
             $overdueDays = max(1, (int) $dueAt->copy()->startOfDay()->diffInDays(now()->startOfDay()));
             $studentName = (string) ($invoice->getAttribute('student_name') ?: '學生');
             $subject = '學費';
-            $totalAmount = (int) ($invoice->TotalAmount ?? 0);
-            $paidAmount = (int) ($invoice->PaidAmount ?? 0);
             [$tier, $severity, $actionText] = self::resolveOverdueTier($overdueDays);
 
             $sourceKey = "invoice_overdue:{$campusId}:{$invoice->id}";
@@ -544,7 +556,7 @@ class NotificationSyncService
                     'due_date' => $dueAt->toDateString(),
                     'overdue_days' => $overdueDays,
                     'overdue_tier' => $tier,
-                    'status' => (string) $invoice->Status,
+                    'status' => $paidAmount > 0 ? 'partial' : 'unpaid',
                     'total_amount' => $totalAmount,
                     'paid_amount' => $paidAmount,
                 ],

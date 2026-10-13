@@ -312,8 +312,11 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         [$campus, , $course, $s] = $this->fixture();
         $inv = \App\Models\Invoice::create([
             'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => now()->subDays(20)->toDateString(),
-            'DueDate' => now()->subDays(9)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 2000, 'Status' => 'partial', 'Note' => '',
+            // Stored columns are stale on purpose (#3885 review): the Payment rows are the truth.
+            'DueDate' => now()->subDays(9)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
         ]);
+        \App\Models\Payment::create(['InvoiceID' => $inv->id, 'Amount' => 2500, 'PaidAt' => now()->subDays(5), 'Method' => 'cash', 'Note' => '']);
+        \App\Models\Payment::create(['InvoiceID' => $inv->id, 'Amount' => -500, 'PaidAt' => now()->subDays(4), 'Method' => 'cash', 'Note' => '']);
         NotificationSyncService::sync([$campus->id]);
 
         $live = Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->get();
