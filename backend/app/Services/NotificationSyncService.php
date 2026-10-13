@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Invoice;
 use App\Models\LearningRecord;
 use App\Models\Notification;
+use App\Models\NotificationRead;
 use App\Models\PendingSwipe;
 use App\Models\StudentClass;
 use Carbon\Carbon;
@@ -32,6 +33,21 @@ class NotificationSyncService
             self::buildLearningNotifications($scopedCampusIds),
             self::buildPendingSwipeNotifications($scopedCampusIds)
         );
+
+        // One notice per owed debt: an overdue-Invoice notice (it carries the paid amount, due date and
+        // overdue tier) wins over the per-course notice for the same (campus, course); the per-course
+        // notice stays for courses with no overdue invoice.
+        $invoiceCourses = [];
+        foreach ($activeByKey as $row) {
+            if (($row['Type'] ?? null) === 'tuition' && ($row['SourceType'] ?? null) === 'Invoice'
+                && ($row['Payload']['student_class_id'] ?? null)) {
+                $invoiceCourses[(int) $row['CampusID'] . ':' . (int) $row['Payload']['student_class_id']] = true;
+            }
+        }
+        $activeByKey = array_filter($activeByKey, fn ($row) => !(
+            ($row['Type'] ?? null) === 'tuition' && ($row['SourceType'] ?? null) === 'StudentClass'
+            && isset($invoiceCourses[(int) $row['CampusID'] . ':' . (int) $row['SourceID']])
+        ));
 
         $created = 0;
         $updated = 0;
@@ -67,6 +83,7 @@ class NotificationSyncService
                 /** @var Notification|null $existing */
                 $existing = $existingByKey->get($sourceKey);
                 if ($existing) {
+                    self::reopenIfOwedChanged($existing, $payload);
                     self::applyPayload($existing, $payload);
                     if ($existing->isDirty()) {
                         $existing->save();
@@ -98,6 +115,7 @@ class NotificationSyncService
                             'source_type' => (string) ($payload['SourceType'] ?? ''),
                             'source_key_sha256' => hash('sha256', $sourceKey),
                         ]);
+                        self::reopenIfOwedChanged($existing, $payload);
                         self::applyPayload($existing, $payload);
                         if ($existing->isDirty()) {
                             $existing->save();
@@ -128,6 +146,32 @@ class NotificationSyncService
             'active_count' => count($activeByKey),
             'source_key_races_recovered' => $sourceKeyRacesRecovered,
         ];
+    }
+
+    /** System-only: retire tuition notices left in a student's former campus after transfer. */
+    public static function retireTransferredTuition(): int
+    {
+        $open = Notification::query()->where('Type', 'tuition')->whereNull('ResolvedAt')
+            ->whereIn('SourceType', ['StudentClass', 'Invoice'])->get(['id', 'CampusID', 'SourceType', 'SourceID']);
+        $ids = fn (string $type) => $open->where('SourceType', $type)->pluck('SourceID')->map(fn ($v) => (int) $v)->unique()->values()->all();
+        $courseStudent = DB::table('StudentClass')->whereIn('ID', $ids('StudentClass') ?: [0])->pluck('StudentID', 'ID');
+        $invoiceStudent = DB::table('Invoice')->whereIn('id', $ids('Invoice') ?: [0])->pluck('StudentID', 'id');
+        $studentIds = $courseStudent->values()->merge($invoiceStudent->values())->map(fn ($v) => (int) $v)->unique()->values()->all();
+        $campusOf = DB::table('Student')->whereIn('id', $studentIds ?: [0])->pluck('CampusID', 'id');
+
+        $retired = 0;
+        foreach ($open as $notification) {
+            $owner = $notification->SourceType === 'Invoice' ? $invoiceStudent : $courseStudent;
+            $studentId = (int) ($owner[(int) $notification->SourceID] ?? 0);
+            $campusId = (int) ($campusOf[$studentId] ?? 0);
+            if ($campusId > 0 && $campusId !== (int) $notification->CampusID) {
+                $notification->ResolvedAt = now();
+                $notification->save();
+                $retired++;
+            }
+        }
+
+        return $retired;
     }
 
     /**
@@ -204,6 +248,76 @@ class NotificationSyncService
         $existing->ResolvedAt = null;
     }
 
+    /**
+     * A tuition alert that was resolved (re-opened now) or whose director-visible content changed
+     * (title, body, severity, deep-link source, owed-amount composition) must show unread again;
+     * an unchanged re-sync keeps each director's read state.
+     */
+    private static function reopenIfOwedChanged(Notification $existing, array $payload): void
+    {
+        if (($payload['Type'] ?? null) !== 'tuition') {
+            return;
+        }
+        // Every resolved->open transition (any source) must show unread again.
+        $changed = $existing->ResolvedAt !== null;
+        // Content-change reset only for the per-course stream: invoice-overdue rows embed a day counter that changes daily.
+        if (($payload['SourceType'] ?? null) !== 'StudentClass') {
+            if ($changed) {
+                NotificationRead::query()->where('NotificationID', $existing->id)->delete();
+            }
+
+            return;
+        }
+        foreach (['Title', 'Body', 'Severity', 'SourceType', 'SourceID'] as $f) {
+            $changed = $changed || (array_key_exists($f, $payload) && (string) $existing->{$f} !== (string) $payload[$f]);
+        }
+        // Compare only keys the stored row already has: a legacy/partial payload gaining new keys is not a content change.
+        $old = (array) ($existing->Payload ?? []);
+        $changed = $changed || (array_intersect_key((array) ($payload['Payload'] ?? []), $old) != $old);
+        if ($changed) {
+            NotificationRead::query()->where('NotificationID', $existing->id)->delete();
+        }
+    }
+
+    /**
+     * docs/DIRECTOR_PAYMENT_ALERT_RULES.md: a valid settlement_day is required; the earliest open
+     * (unpaid/partial) Invoice's DueDate decides the monthly window, else this month's settlement_day.
+     */
+    private static function monthlyInWindow(int $settlementDay, ?string $openInvoiceDueDate): bool
+    {
+        // A monthly course without a valid settlement_day (1-31) is not a monthly-alert course at all.
+        if ($settlementDay < 1 || $settlementDay > 31) {
+            return false;
+        }
+        $today = now()->startOfDay();
+        $due = ($openInvoiceDueDate !== null && $openInvoiceDueDate !== '')
+            ? Carbon::parse($openInvoiceDueDate)->startOfDay()
+            : $today->copy()->startOfMonth()->addDays(min($settlementDay, $today->daysInMonth) - 1);
+
+        return $today->gt($due) || (int) $today->diffInDays($due) < 5;
+    }
+
+    /**
+     * @param \Illuminate\Database\Eloquent\Collection<int, StudentClass> $classes
+     * @return \Illuminate\Database\Eloquent\Collection<int, StudentClass>
+     */
+    public static function withinTuitionReminderWindow(\Illuminate\Database\Eloquent\Collection $classes): \Illuminate\Database\Eloquent\Collection
+    {
+        $dateModeIds = $classes->filter(fn (StudentClass $c) => ($c->ScheduleMode ?? null) !== 'count')
+            ->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        $openInvoiceDue = empty($dateModeIds) ? [] : Invoice::query()
+            ->whereIn('StudentClassID', $dateModeIds)
+            ->whereIn('Status', ['unpaid', 'partial'])
+            ->whereNotNull('DueDate')
+            ->groupBy('StudentClassID')
+            ->selectRaw('StudentClassID, MIN(DueDate) as earliest_due')
+            ->pluck('earliest_due', 'StudentClassID')
+            ->map(fn ($d) => substr((string) $d, 0, 10))
+            ->all();
+        return $classes->filter(fn (StudentClass $class) => ($class->ScheduleMode ?? null) === 'count'
+            || self::monthlyInWindow((int) ($class->settlement_day ?? 0), $openInvoiceDue[(int) $class->ID] ?? null))->values();
+    }
+
     private static function isSourceKeyDuplicate(QueryException $exception): bool
     {
         $driverCode = (int) ($exception->errorInfo[1] ?? 0);
@@ -221,7 +335,6 @@ class NotificationSyncService
         $query = StudentClass::query()
             ->with(['student', 'subjectRecord', 'coursePackage'])
             ->where('Stop', 0)
-            ->where('ScheduleMode', 'count')
             ->where(function ($q) {
                 $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
             })
@@ -235,7 +348,9 @@ class NotificationSyncService
         }
 
         $rows = [];
-        $classes = $query->get();
+        /** @var \Illuminate\Database\Eloquent\Collection<int, StudentClass> $eligible */
+        $eligible = $query->get();
+        $classes = self::withinTuitionReminderWindow($eligible);
         // F7 S5: the resolver decides who still owes; flag off = legacy predicate only (plus shadow comparison).
         $statuses = [];
         $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
@@ -264,8 +379,14 @@ class NotificationSyncService
             $charge = (int) ($class->Charge ?? $class->Pay ?? 0);
             $subject = self::displaySubjectForClass($class);
 
-            $title = "{$student->name} {$subject} 未繳費";
-            $body = "剩餘 {$remaining} 堂，狀態：未繳費";
+            $partial = ($resolved['source'] ?? null) === 'invoice' && ($resolved['status'] ?? null) === 'partial';
+            $label = $partial ? '部分已繳' : '未繳費';
+            $title = "{$student->name} {$subject} {$label}";
+            // Date-mode courses have no session countdown; the command also reminds those parents.
+            $body = ($class->ScheduleMode ?? null) === 'count' ? "剩餘 {$remaining} 堂，狀態：{$label}" : "狀態：{$label}";
+            if ($partial) {
+                $body .= '，已繳 ' . (int) ($resolved['applied'] ?? 0) . '，尚欠 ' . (int) ($resolved['outstanding'] ?? 0);
+            }
 
             $sourceKey = "tuition:{$campusId}:{$class->ID}";
             $rows[$sourceKey] = [
@@ -281,6 +402,7 @@ class NotificationSyncService
                     'student_id' => (int) $student->id,
                     'student_name' => (string) $student->name,
                     'class_id' => (int) $class->ID,
+                    'student_class_id' => (int) $classId, // NotificationsCenter deep-link key
                     'subject' => $subject,
                     'remaining_sessions' => $remaining,
                     'charge' => $charge,
@@ -369,7 +491,8 @@ class NotificationSyncService
      */
     private static function buildInvoiceOverdueNotifications(array $campusIds): array
     {
-        $query = Invoice::query()
+        $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
+        $query = Invoice::query()->with($onResolver ? ['studentClass', 'payments'] : [])
             ->leftJoin('Student', 'Invoice.StudentID', '=', 'Student.id')
             ->whereNotNull('Invoice.DueDate')
             ->whereIn('Invoice.Status', ['unpaid', 'partial'])
@@ -382,6 +505,8 @@ class NotificationSyncService
                 'Invoice.TotalAmount',
                 'Invoice.PaidAmount',
                 'Invoice.Status',
+                'Invoice.IssueDate',
+                'Invoice.billing_period',
                 'Student.name as student_name',
                 'Student.CampusID as campus_id',
             ]);
@@ -390,11 +515,32 @@ class NotificationSyncService
             $query->whereIn('Student.CampusID', $campusIds);
         }
 
+        $amounts = app(InvoiceAmountReconciliationService::class);
+        $invoices = $query->get();
+        if ($onResolver) {
+            $monthly = $invoices->filter(fn ($invoice) => (string) ($invoice->studentClass->ScheduleMode ?? '') === 'date');
+            if ($monthly->isNotEmpty()) {
+                (new \Illuminate\Database\Eloquent\Collection($monthly->all()))->load('items');
+            }
+            $amounts->preloadSessions($monthly->pluck('StudentClassID')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all());
+        }
         $rows = [];
-        foreach ($query->get() as $invoice) {
+        try {
+        foreach ($invoices as $invoice) {
             $campusId = (int) ($invoice->campus_id ?? 0);
             if (!empty($campusIds) && !in_array($campusId, $campusIds, true)) {
                 continue;
+            }
+            if ($onResolver) {
+                $projection = $amounts->resolve($invoice);
+                if ((int) $projection['outstanding_amount'] <= 0) {
+                    continue;
+                }
+                $totalAmount = (int) $projection['total_amount'];
+                $paidAmount = (int) $projection['applied_amount'];
+            } else {
+                $totalAmount = (int) $invoice->TotalAmount;
+                $paidAmount = (int) $invoice->PaidAmount;
             }
 
             $dueAt = Carbon::parse($invoice->DueDate);
@@ -404,8 +550,6 @@ class NotificationSyncService
             $overdueDays = max(1, (int) $dueAt->copy()->startOfDay()->diffInDays(now()->startOfDay()));
             $studentName = (string) ($invoice->getAttribute('student_name') ?: '學生');
             $subject = '學費';
-            $totalAmount = (int) ($invoice->TotalAmount ?? 0);
-            $paidAmount = (int) ($invoice->PaidAmount ?? 0);
             [$tier, $severity, $actionText] = self::resolveOverdueTier($overdueDays);
 
             $sourceKey = "invoice_overdue:{$campusId}:{$invoice->id}";
@@ -427,13 +571,19 @@ class NotificationSyncService
                     'due_date' => $dueAt->toDateString(),
                     'overdue_days' => $overdueDays,
                     'overdue_tier' => $tier,
-                    'status' => (string) $invoice->Status,
+                    'status' => $onResolver ? ($paidAmount > 0 ? 'partial' : 'unpaid') : (string) $invoice->Status,
                     'total_amount' => $totalAmount,
                     'paid_amount' => $paidAmount,
                 ],
                 'OccurredAt' => $dueAt->startOfDay(),
                 'ResolvedAt' => null,
             ];
+        }
+
+        } finally {
+            if ($onResolver) {
+                $amounts->forgetPreloadedSessions();
+            }
         }
 
         return $rows;

@@ -720,6 +720,10 @@ class AccountingController extends Controller
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
                 'first_session_date' => $firstSessionDates->get((int) $class->getAttribute('ID')),
                 'stop' => (int) ($class->Stop ?? 0) === 1,
+                // #3753: members of one shared CoursePackage are one payment obligation (one action in the panel).
+                // Monthly ('date') members stay separate: each is billed and recorded by its own period subtotal (#3892 review).
+                'package_id' => (int) ($class->PackageID ?? 0) > 0 && strtolower((string) ($class->ScheduleMode ?? 'count')) !== 'date'
+                    ? (int) $class->PackageID : null,
             ])->values()->all(),
             'invoices' => $invoiceRows->all(),
             'receipts' => $reportRows->all(),

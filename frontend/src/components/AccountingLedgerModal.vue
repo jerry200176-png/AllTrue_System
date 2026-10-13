@@ -72,13 +72,16 @@
 
           <section v-if="contractCourses.length" class="ledger-section">
             <h4>合約（每一堂課與付款）</h4>
+            <p v-if="contractCourses.some(hasMultiplePackageBills)" class="ledger-empty" data-testid="ledger-package-batch-note">共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p>
             <div class="ledger-contracts">
               <ContractCard
                 v-for="c in contractCourses"
                 :key="c.id"
                 :course="c"
                 :outstanding="owedFor(c.id)"
-                :pending-report="pendingReportFor(c.id)"
+                :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
+                :shared-follower="!packageLead(c)"
+                :shared-lead-subject="packageLead(c) ? '' : (packageLeadOf(c)?.subject || '')"
                 :last-payment="payLineFor(c)"
                 :amounts="amountsFor(c.id)"
                 :month-lines="monthLinesFor(c.id)"
@@ -188,10 +191,12 @@
                                   <span v-if="p.unapplied_amount">多收 {{ formatCurrency(p.unapplied_amount) }}</span>
                                   <span v-if="p.note">備註：{{ p.note }}</span>
                                 </div>
+                                <BillingNotesPanel subject-type="payment" :subject-id="p.id" />
                               </div>
                             </li>
                           </ol>
                         </div>
+                        <BillingNotesPanel subject-type="invoice" :subject-id="inv.id" />
                       </td>
                     </tr>
                   </template>
@@ -223,6 +228,7 @@
                   <template v-if="r.account_last5 && r.note"> · </template>
                   <template v-if="r.note">備註：{{ r.note }}</template>
                 </small>
+                <BillingNotesPanel subject-type="payment_report" :subject-id="r.report_id" />
                 <LedgerCoverageDates
                   v-if="isReceiptExpanded(r.report_id)"
                   class="ledger-receipt-coverage"
@@ -281,6 +287,7 @@ import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
 import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
+import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
@@ -432,7 +439,11 @@ async function loadCoverage(kind, id) {
   if (payload.value === ledgerAtStart) coverage.value = { ...coverage.value, [key]: next };
 }
 
+let ledgerRequestVersion = 0;
 async function loadLedger() {
+  const requestVersion = ++ledgerRequestVersion;
+  loading.value = false;
+  payload.value = null;
   if (!props.show) return;
   const studentClassId = Number(props.studentClassId || 0);
   const reportId = Number(props.reportId || 0);
@@ -444,7 +455,6 @@ async function loadLedger() {
 
   loading.value = true;
   error.value = '';
-  payload.value = null;
   showAllExceptions.value = false;
   coverage.value = {};
   expandedReceiptIds.value = new Set();
@@ -461,14 +471,16 @@ async function loadLedger() {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     });
     const json = await resp.json().catch(() => ({}));
+    if (requestVersion !== ledgerRequestVersion) return;
     if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `載入失敗（${resp.status}）`));
     payload.value = json;
     autoExpandAttention();
     loadDrafts();
   } catch (e) {
+    if (requestVersion !== ledgerRequestVersion) return;
     error.value = humanizeApiErrorMessage(e.message || '載入學生帳務失敗');
   } finally {
-    loading.value = false;
+    if (requestVersion === ledgerRequestVersion) loading.value = false;
   }
 }
 
@@ -555,12 +567,33 @@ const monthLinesFor = (id) => Object.fromEntries(courseInvoices(id).map((inv) =>
     .sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)))[0];
   return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? String(paid.paid_at).slice(0, 10) : '', paidAmount: Number(inv.calculated_applied_amount || 0) }];
 }).filter(([k]) => k));
+// #3753 (D18): members of one shared CoursePackage are one obligation; one pending report covers them all.
+const packageMemberIds = (id) => {
+  const pkg = (payload.value?.courses || []).find((c) => Number(c.id) === Number(id))?.package_id;
+  return pkg ? (payload.value?.courses || []).filter((c) => c.package_id === pkg).map((c) => Number(c.id)) : [Number(id)];
+};
 const pendingReportFor = (id) => {
-  const r = (payload.value?.receipts || []).find((x) => Number(x.student_class_id) === Number(id) && x.status === 'pending');
+  const ids = packageMemberIds(id);
+  const r = (payload.value?.receipts || []).find((x) => ids.includes(Number(x.student_class_id)) && x.status === 'pending');
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
+// One card of a shared package carries its single payment action; the other members point to it. Lead = the member
+// holding a pending report, else the first one that still needs payment (mixed states), else the first member.
+// #3892 review: a legacy package whose bills are already open on several members stays actionable per member (each
+// card records against its own bills) until reconciled; package-wide allocation is a follow-up.
+const packageLeadOf = (c) => {
+  if (!c.package_id) return c;
+  const members = contractCourses.value.filter((x) => x.package_id === c.package_id);
+  const pending = (payload.value?.receipts || []).find((r) => r.status === 'pending' && members.some((m) => Number(m.id) === Number(r.student_class_id)));
+  if (!pending && members.filter((m) => owedFor(m.id) > 0).length > 1) return c;
+  return (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
+    || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];
+};
+const packageLead = (c) => packageLeadOf(c).id === c.id;
+// Multiple existing member bills cannot share one batch: the first report blocks siblings. Keep explicit card actions.
+const hasMultiplePackageBills = (c) => !!c.package_id && contractCourses.value.filter((m) => m.package_id === c.package_id && owedFor(m.id) > 0).length > 1;
 
 // D18: every contract the card would offer 登記收款 for (no pending report, money due or not yet billed),
 // oldest open invoice first; the allocation step fills the oldest and never exceeds what is owed.
@@ -570,7 +603,7 @@ const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
   .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
     || Number(a.id) - Number(b.id))[0];
 const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
-  .filter((c) => c.class_type !== 'tutoring' && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid))
+  .filter((c) => c.class_type !== 'tutoring' && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid))
   .map((c) => {
     const inv = oldestOpenInvoice(c.id);
     return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };
@@ -841,3 +874,4 @@ const anomalyLabel = (code) => labelMap({
   .ledger-sticky-pay{bottom:-16px;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
 }
 </style>
+
