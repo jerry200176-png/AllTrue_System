@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\TelegramWebhookController;
 use App\Models\Campus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -71,6 +72,13 @@ class RotateTelegramWebhookSecret extends Command
             return self::SUCCESS;
         }
 
+        // Founder 2026-10-13 (#1139): refuse activation unless the bind flow trusts only verified guardians of the same student and campus.
+        $trust = app(TelegramWebhookController::class)->bindingTrust();
+        if ($trust !== TelegramWebhookController::BINDING_TRUST_VERIFIED_GUARDIAN) {
+            $this->error("Activation refused: the Telegram webhook binds by '{$trust}', not by a verified guardian binding for the same student and campus. Nothing was sent to Telegram or saved.");
+            return self::FAILURE;
+        }
+
         $webhookUrl = rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/' . ($campus->code ?: $campus->getKey());
 
         $previous = trim((string) ($campus->TelegramWebhookSecret ?? ''));
@@ -91,7 +99,15 @@ class RotateTelegramWebhookSecret extends Command
             $campus->TelegramWebhookSecret = $secret;
             $campus->save();
         } catch (Throwable $e) {
-            return $this->compensate($campus, $botToken, $webhookUrl, $previous, 'Database save failed after setWebhook: ' . $this->mask($e->getMessage(), [$botToken, $secret, $previous]));
+            $msg = 'Database save failed after setWebhook: ' . $this->mask($e->getMessage(), [$botToken, $secret, $previous]);
+            $persisted = $this->persistedSecret($campus); // save() can commit and still throw (lost acknowledgement)
+            if ($persisted === $previous) {
+                return $this->compensate($campus, $botToken, $webhookUrl, $previous, $msg);
+            }
+            if ($persisted !== $secret) {
+                return $this->dbStateUnknown($campus, $msg);
+            }
+            $this->warn($msg . ' The new secret is persisted, so Telegram keeps it too; continuing to verification.');
         }
 
         $this->info("Campus {$campus->getKey()} ({$campus->name}): webhook secret rotated and registered with Telegram.");
@@ -105,11 +121,7 @@ class RotateTelegramWebhookSecret extends Command
         } catch (Throwable $e) {
             $msg = 'Could not restore the database secret: ' . $this->mask($e->getMessage(), [$botToken, $secret, $previous]);
             // The UPDATE may have committed even though save() threw (lost acknowledgement): decide from what is persisted.
-            try {
-                $persisted = trim((string) Campus::query()->whereKey($campus->getKey())->value('TelegramWebhookSecret'));
-            } catch (Throwable) {
-                $persisted = null;
-            }
+            $persisted = $this->persistedSecret($campus);
             if ($persisted === $previous) {
                 return $this->compensate($campus, $botToken, $webhookUrl, $previous, $msg . ' The previous secret is persisted; reverting Telegram to match.');
             }
@@ -149,8 +161,15 @@ class RotateTelegramWebhookSecret extends Command
             $campus->setAttribute('TelegramWebhookSecret', null);
             $campus->save();
         } catch (Throwable $e) {
-            // Telegram already dropped the webhook but the DB still holds the secret: re-register it so both sides match.
-            return $this->compensate($campus, $botToken, $url, $previous, 'Database update failed after deleteWebhook: ' . $this->mask($e->getMessage(), [$botToken, $previous]));
+            $msg = 'Database update failed after deleteWebhook: ' . $this->mask($e->getMessage(), [$botToken, $previous]);
+            $persisted = $this->persistedSecret($campus);
+            if ($persisted === null || ($persisted !== '' && $persisted !== $previous)) {
+                return $this->dbStateUnknown($campus, $msg);
+            }
+            if ($persisted !== '') { // Telegram dropped the webhook but the DB still holds the secret: re-register it.
+                return $this->compensate($campus, $botToken, $url, $previous, $msg);
+            }
+            $this->warn($msg . ' The clear is persisted anyway; both sides are in the fail-closed state.');
         }
         $this->info("Campus {$campus->getKey()}: Telegram webhook deleted and secret cleared (webhook fails closed).");
         return self::SUCCESS;
@@ -213,6 +232,23 @@ class RotateTelegramWebhookSecret extends Command
             return false;
         }
         return true;
+    }
+
+    private function dbStateUnknown(Campus $campus, string $msg): int
+    {
+        Log::critical('telegram.webhook.rotate_secret.db_state_unknown', ['campus_id' => $campus->getKey()]);
+        $this->error($msg . ' DB STATE UNKNOWN (could not read it back); Telegram was NOT changed. Recovery: re-run telegram:rotate-webhook-secret 15 when healthy, or run it with --rollback.');
+        return self::FAILURE;
+    }
+
+    /** What the DB actually holds after a save() that threw; null = could not read it back. */
+    private function persistedSecret(Campus $campus): ?string
+    {
+        try {
+            return trim((string) Campus::query()->whereKey($campus->getKey())->value('TelegramWebhookSecret'));
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function mask(string $text, array $secrets): string

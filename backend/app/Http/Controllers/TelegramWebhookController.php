@@ -10,6 +10,14 @@ use Illuminate\Support\Facades\Log;
 
 class TelegramWebhookController extends Controller
 {
+    public const BINDING_TRUST_VERIFIED_GUARDIAN = 'verified_guardian';
+
+    /** #1139 activation gate: binds by student name today, NOT by a verified guardian (pinned by TelegramWebhookSecurityTest). */
+    public function bindingTrust(): string
+    {
+        return 'student_name';
+    }
+
     public function handle(Request $request, string $code)
     {
         $code = trim($code);
