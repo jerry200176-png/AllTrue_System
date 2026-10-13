@@ -107,6 +107,31 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $this->assertSame((int) $pkg->id, $courses[(int) $b->ID]['package_id']);
     }
 
+    /**
+     * #3892 review P1 (r4254303211): monthly ('date') package members are billed and recorded per member against their own
+     * period subtotal, so they are NOT grouped behind one card and one member's pending report does not block another's.
+     */
+    public function test_monthly_package_members_stay_independently_actionable(): void
+    {
+        [$a, $b, $pkg] = $this->sharedPackage();
+        $pkg->update(['billing_mode' => 'monthly']);
+        $a->update(['ScheduleMode' => 'date']);
+        $b->update(['ScheduleMode' => 'date']);
+        $h = $this->directorHeaders();
+
+        $courses = collect($this->withHeaders($h)->getJson('/api/v1/accounting/ledger?student_class_id=' . $a->ID)
+            ->assertOk()->json('courses'))->keyBy('id');
+        $this->assertNull($courses[(int) $a->ID]['package_id']);
+        $this->assertNull($courses[(int) $b->ID]['package_id']);
+
+        $first = $this->record($h, (int) $a->ID);
+        $second = $this->record($h, (int) $b->ID);
+        if ($first->status() === 200) {
+            $this->assertNotSame('pending_report_exists', $second->json('code'), 'a sibling\'s pending report must not block a monthly member');
+        }
+        $this->assertNotSame('pending_report_exists', $second->json('code'));
+    }
+
     /** @return array<string, string> */
     private function directorHeaders(): array
     {

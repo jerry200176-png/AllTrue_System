@@ -679,7 +679,10 @@ class PaymentReportController extends Controller
             // #3753: a shared CoursePackage is one obligation, so one pending report covers every member. The package row
             // lock (held above) serializes member records; locking the sibling's report after it would invert confirm()'s
             // report -> package order and deadlock (#3892 review), so package members read without a row lock.
-            $existingPending = $package
+            // Monthly ('date') package members are recorded per member against their own period subtotal, so they keep
+            // the per-course pending check (#3892 review); only count-mode packages share one obligation.
+            $sharedObligation = $package && strtolower((string) ($lockedCourse->getAttribute('ScheduleMode') ?? 'count')) !== 'date';
+            $existingPending = $sharedObligation
                 ? PaymentReport::query()->whereIn('StudentClassID', StudentClass::query()->where('PackageID', $package->getKey())->pluck('ID')->all())
                     ->where('status', 'pending')->first()
                 : PaymentReport::where('StudentClassID', $sc->ID)->where('status', 'pending')->lockForUpdate()->first();
