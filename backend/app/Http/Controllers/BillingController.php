@@ -212,6 +212,28 @@ class BillingController extends Controller
                 return response()->json(['message' => '作廢帳單不可登記收款'], 422);
             }
             $invoice = $fresh;
+            // R28 (#3873 item 4), same rule as payment-report confirm: what is paid comes from Payment rows, never
+            // the stored PaidAmount, and a payment may only take what the bill still owes by those rows.
+            $before = $this->lockedInvoiceProjection($invoice);
+            $repriced = $before['amount_source'] === 'billable_sessions';
+            if ((int) $before['total_amount'] > 0 && (int) $before['outstanding_amount'] <= 0) {
+                return response()->json([
+                    'message' => '這張帳單已有確認的收款，不能再登記；若帳單狀態對不上，請在學生帳務核對收款紀錄。沒有登記任何款項。',
+                    'code' => 'course_already_paid',
+                ], 422);
+            }
+            if (((int) $before['total_amount'] > 0 || $repriced) && (int) $data['Amount'] > (int) $before['outstanding_amount']) {
+                return response()->json([
+                    'message' => sprintf('這張帳單只欠 NT$%d，請改成 %d 以下。', $before['outstanding_amount'], $before['outstanding_amount']),
+                    'code' => 'amount_exceeds_outstanding',
+                    'expected_amount' => (int) $before['outstanding_amount'],
+                    'invoice_id' => (int) $invoice->id,
+                ], 422);
+            }
+            if ($repriced) {
+                // Unpaid monthly bill priced from its held lessons: keep that amount, as confirm does.
+                $invoice->TotalAmount = (int) $before['total_amount'];
+            }
             $payment = Payment::create([
                 'InvoiceID' => $invoice->id,
                 'Amount' => $data['Amount'],
@@ -220,13 +242,11 @@ class BillingController extends Controller
                 'Note' => $data['Note'] ?? '',
             ]);
 
-            $invoice->PaidAmount = (int) $invoice->PaidAmount + (int) $data['Amount'];
-
-            if ($invoice->PaidAmount >= $invoice->TotalAmount) {
-                $invoice->Status = 'paid';
-            } elseif ($invoice->PaidAmount > 0) {
-                $invoice->Status = 'partial';
-            }
+            $after = $this->lockedInvoiceProjection($invoice);
+            $invoice->PaidAmount = (int) $after['net_applied'];
+            $invoice->Status = (int) $after['outstanding_amount'] <= 0
+                ? 'paid'
+                : ((int) $after['net_applied'] > 0 ? 'partial' : 'unpaid');
 
             $invoice->save();
 
@@ -237,6 +257,15 @@ class BillingController extends Controller
                 'payment' => $payment,
             ]);
         });
+    }
+
+    /** The invoice's money from its Payment rows, read under lock (the caller holds the invoice row lock). */
+    private function lockedInvoiceProjection(Invoice $invoice): array
+    {
+        $invoice->setRelation('payments', $invoice->payments()->lockForUpdate()->get());
+        $invoice->loadMissing('items');
+
+        return $this->invoiceAmounts->resolve($invoice);
     }
 
     public function voidInvoice(Request $request, Invoice $invoice)
