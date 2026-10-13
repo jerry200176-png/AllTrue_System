@@ -579,7 +579,6 @@ class PaymentReportController extends Controller
             'amount'           => 'required|integer|min:0|max:999999',
             'account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
             'note'             => 'nullable|string|max:500',
-            // #3991: the only way to put a NT$0 bill on a course is to mark it 免費／贈送 explicitly.
             'free_gift'        => 'sometimes|boolean',
         ]);
         $freeGift = (bool) ($data['free_gift'] ?? false);
@@ -588,7 +587,7 @@ class PaymentReportController extends Controller
         if (!$sc->student) {
             return response()->json(['message' => '課程資料不存在'], 404);
         }
-        if ($freeGift // #3991 review: campus-scoped write; authorize the course's campus before classifying it && $request->attributes->get('auth_role') !== 'super_admin'
+        if ($freeGift && $request->attributes->get('auth_role') !== 'super_admin' // #3991 review: authorize the campus before classifying
             && !in_array((int) $sc->student->CampusID, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -601,7 +600,6 @@ class PaymentReportController extends Controller
         // the reported "金額顯示0應該顯示3000" came from an unset monthly fee. Block a NT$0
         // record for date-mode and point staff to set the fee first. Count-mode is untouched,
         // so legitimately-free (0-fee) tutoring courses still settle at 0.
-        // #3991 (Founder 2026-10-13): a missing or 0 fee is never free by itself; only an explicit 免費／贈送 mark is.
         if ($freeGift && (int) $data['amount'] !== 0) {
             return response()->json([
                 'message' => '標記為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」時金額必須是 NT$0。沒有登記任何款項。',
@@ -751,12 +749,8 @@ class PaymentReportController extends Controller
         });
     }
 
-    /**
-     * #3991 (Founder 2026-10-13): record the NT$0 bill of a free course, marked 免費／贈送 so it can be audited. It is a
-     * bill, not a payment: no PaymentReport, nothing to confirm. Only a course with no fee (no Rate, no Charge, not a
-     * package member) qualifies; an existing bill of the same term is marked only while it is NT$0 with no payments.
-     */
-    /** @param array<string, mixed> $data */
+    /** #3991 (Founder 2026-10-13): an audited NT$0 免費／贈送 bill for a course with no fee; a bill, not a payment.
+     * @param array<string, mixed> $data */
     private function recordFreeGiftBill(int $studentClassId, array $data, mixed $userId)
     {
         return DB::transaction(function () use ($studentClassId, $data, $userId) {
@@ -1105,7 +1099,7 @@ class PaymentReportController extends Controller
     {
         if (!$invoice) {
             // Unbilled charge-bearing contract: NT$0 is not a report either (free courses never reach here, #3888 review).
-            return $amount <= 0 && (int) ($sc->Charge ?? 0) > 0 ? response()->json([
+            return $amount <= 0 && ((int) ($sc->Charge ?? 0) > 0 || (float) ($sc->Rate ?? 0) > 0) ? response()->json([ // #3991: a Rate is a fee too
                 'message' => '這門課要收費，金額不可為 0；請填實際收到的金額。沒有登記任何款項。',
                 'code' => 'zero_amount_with_balance',
             ], 422) : null;
@@ -1113,7 +1107,7 @@ class PaymentReportController extends Controller
         $projection = $this->invoiceProjection($invoice, $sc);
         $outstanding = (int) $projection['outstanding_amount'];
         // NT$0 on a stored NT$0 bill of a course that charges is an erroneous bill, not a free settlement (#3888 review).
-        $erroneousZero = (int) $projection['stored_total_amount'] <= 0 && (int) ($sc->Charge ?? 0) > 0;
+        $erroneousZero = (int) $projection['stored_total_amount'] <= 0 && ((int) ($sc->Charge ?? 0) > 0 || (float) ($sc->Rate ?? 0) > 0);
         if ($amount <= 0 && ($outstanding > 0 || $erroneousZero)) {
             return response()->json([
                 'message' => $erroneousZero ? '這張帳單金額是 NT$0，但這門課要收費；請先在學生帳務更正帳單金額。沒有登記任何款項。'

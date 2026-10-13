@@ -4,6 +4,7 @@ namespace Tests\Feature\Billing;
 
 use App\Models\AuthToken;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -66,7 +67,6 @@ class FreeGiftZeroBillTest extends TestCase
     {
         $token = $this->directorToken();
         $course = $this->monthlyCourse($this->student(), ['ScheduleMode' => 'count', 'SessionCount' => 4, 'RemainingSessions' => 4]);
-
         $this->withToken($token)->postJson(self::RECORD, $this->payload($course))
             ->assertStatus(422)->assertJsonPath('code', 'zero_fee_no_payment_obligation');
         $res = $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))->assertOk();
@@ -172,6 +172,10 @@ class FreeGiftZeroBillTest extends TestCase
         $amended = $this->monthlyCourse($this->student());
         StudentClassPricingAmendment::create(['student_class_id' => $amended->ID, 'effective_from' => '2026-09-01', 'rate' => 800, 'source_reference' => 't', 'reason' => 't']);
         $this->withToken($token)->postJson(self::RECORD, $this->payload($amended, ['free_gift' => true]))->assertStatus(422)->assertJsonPath('code', 'free_gift_course_has_fee');
+        $itemOnly = $this->monthlyCourse($this->student()); // a positive line on another course's live bill is a fee on record
+        InvoiceItem::create(['InvoiceID' => Invoice::create(['StudentID' => $itemOnly->StudentID, 'StudentClassID' => $amended->ID, 'IssueDate' => '2026-10-01', 'Note' => '', 'TotalAmount' => 900, 'PaidAmount' => 0, 'Status' => 'unpaid'])->id, 'StudentClassID' => $itemOnly->ID, 'Description' => 't', 'Amount' => 900]);
+        $this->withToken($token)->postJson(self::RECORD, $this->payload($itemOnly, ['free_gift' => true]))->assertStatus(422)->assertJsonPath('code', 'free_gift_course_has_fee');
+        $this->withToken($token)->postJson(self::RECORD, $this->payload($this->monthlyCourse($this->student(), ['ScheduleMode' => 'count', 'SessionCount' => 4, 'RemainingSessions' => 4, 'Rate' => 750])))->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
         $course = $this->monthlyCourse($this->student());
         $bill = fn () => Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01', 'Note' => 'auto', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-10']);
         [$first, $second] = [$bill(), $bill()];
