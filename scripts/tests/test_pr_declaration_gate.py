@@ -203,8 +203,8 @@ class RequestFileTierTest(unittest.TestCase):
             for paths in ([path], [path, self.WRITE]):
                 with self.subTest(paths=paths):
                     self.assertEqual(classify_scope(paths, "")["tier_name"], "T3")
-                    self.assertFalse(validate_declaration("Risk-Class: R2\\nAutonomy-Tier: T2", paths)["valid"])
-                    self.assertTrue(validate_declaration("Risk-Class: R3\\nAutonomy-Tier: T3", paths)["valid"])
+                    self.assertFalse(validate_declaration("Risk-Class: R2\nAutonomy-Tier: T2", paths)["valid"])
+                    self.assertTrue(validate_declaration("Risk-Class: R3\nAutonomy-Tier: T3", paths)["valid"])
 
     def test_write_request_raises_a_docs_only_pr(self):
         self.assertEqual(classify_scope(["docs/sop/BUG_INTAKE_TO_PRODUCTION.md", self.WRITE], "")["tier_name"], "T2")
