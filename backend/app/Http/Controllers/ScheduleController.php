@@ -717,6 +717,9 @@ class ScheduleController extends Controller
                     return response()->json(['message' => 'Forbidden'], 403);
                 }
 
+                if ($classSessionId <= 0 && $this->dateHasTwoLessons($courseId, $sessionDate)) { // #3914 review: never pick the first
+                    return response()->json(['message' => '這門課這天有兩堂以上，請從要請假的那一堂操作。', 'code' => 'lesson_required'], 422);
+                }
                 $sessionQuery = ClassSession::where('StudentClassID', $courseId)
                     ->whereRaw("DATE(SessionDate) = ?", [$sessionDate]);
                 if ($classSessionId > 0) {
@@ -930,14 +933,14 @@ class ScheduleController extends Controller
                 // Record schedules leave entry (created after cascade so the "already cascaded"
                 // detection in applyLeaveCascade doesn't fire on retries)
                 $markerKey = ['student_course_id' => $courseId, 'schedule_date' => $sessionDate, 'status' => 'leave']
-                    + ($this->dateHasTwoLessons($courseId, $sessionDate) ? ['start_time' => $session->StartTime] : []); // #3914 review
+                    + ($this->dateHasTwoLessons($courseId, $sessionDate) ? ['start_time' => substr((string) $session->StartTime, 0, 5)] : []); // HH:MM like other producers // #3914 review
                 Schedule::firstOrCreate(
                     $markerKey,
                     [
                         'student_id'  => (int) $course->StudentID,
                         'day_of_week' => Carbon::parse($sessionDate)->dayOfWeekIso,
-                        'start_time'  => $session->StartTime,
-                        'end_time'    => $session->EndTime,
+                        'start_time'  => substr((string) $session->StartTime, 0, 5),
+                        'end_time'    => substr((string) $session->EndTime, 0, 5),
                         'class_type'  => $course->ClassType ?? 'one_on_one',
                         'type'        => 'normal',
                         'deduction'   => 0,
@@ -1164,6 +1167,13 @@ class ScheduleController extends Controller
             return $boundaryResponse;
         }
 
+        // #3914 review: a saved leave row is never moved to another lesson in place, whatever the new status
+        // (the old lesson would stay on leave with its tail); cancel the leave first, then act on the intended lesson.
+        $movesLesson = (!empty($data['schedule_date']) && Carbon::parse($data['schedule_date'])->toDateString() !== Carbon::parse($schedule->getAttribute('schedule_date'))->toDateString())
+            || (!empty($data['start_time']) && substr((string) $data['start_time'], 0, 5) !== substr((string) $schedule->getAttribute('start_time'), 0, 5));
+        if (strtolower((string) $schedule->getOriginal('status')) === 'leave' && $movesLesson) {
+            return response()->json(['message' => '已請假的課表不能直接改到另一堂；請先取消這次請假，再到要請假的那一堂請假。', 'code' => 'leave_row_retarget_forbidden'], 422);
+        }
         if (strtolower((string) ($merged['status'] ?? 'scheduled')) === 'leave' && $courseId > 0) {
             return $this->applyLeaveScheduleUpdate($schedule, $data, $courseId, $merged, $request);
         }
@@ -1334,12 +1344,6 @@ class ScheduleController extends Controller
         array $merged,
         Request $request
     ) {
-        // #3914 review: a saved leave row is never moved to another lesson in place (that would leave the old lesson on leave)
-        $movesLesson = (!empty($data['schedule_date']) && Carbon::parse($data['schedule_date'])->toDateString() !== Carbon::parse($schedule->getAttribute('schedule_date'))->toDateString())
-            || (!empty($data['start_time']) && substr((string) $data['start_time'], 0, 5) !== substr((string) $schedule->getAttribute('start_time'), 0, 5));
-        if (strtolower((string) $schedule->getOriginal('status')) === 'leave' && $movesLesson) {
-            return response()->json(['message' => '已請假的課表不能直接改到另一堂；請先取消這次請假，再到要請假的那一堂請假。', 'code' => 'leave_row_retarget_forbidden'], 422);
-        }
         DB::beginTransaction();
         try {
             $schedule->fill(array_filter($data, fn ($v) => $v !== null));

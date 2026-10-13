@@ -34,9 +34,7 @@ class LeaveCascadeSameDateLessonsTest extends TestCase
         DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $first));
         $this->assertSame(['leave', 'leave'], $this->statuses($first, $second));
         $this->assertNotNull($this->tailFor($courseId, $first));
-        // #3914 review: both tails share the next contract date, each in its own slot (no extra week)
-        $this->assertSame((string) $secondTail->SessionDate, (string) $this->tailFor($courseId, $first)->SessionDate);
-        $this->assertSame('17:00', substr((string) $this->tailFor($courseId, $first)->StartTime, 0, 5));
+        $this->assertSame('17:00', substr((string) $this->tailFor($courseId, $first)->StartTime, 0, 5), 'each tail keeps its own lesson\'s slot');
 
         // Undo the second lesson only: its own tail goes, the first lesson and its tail stay.
         DB::transaction(fn () => CourseLeaveCascadeService::undoLeaveCascade($courseId, '2026-07-01', $second));
@@ -96,8 +94,13 @@ class LeaveCascadeSameDateLessonsTest extends TestCase
         $this->assertSame(['leave', 'scheduled'], $this->statuses($first, $second));
 
         $row = Schedule::query()->where('student_course_id', $courseId)->where('status', 'leave')->firstOrFail();
-        $this->putJson("/api/v1/schedules/{$row->id}", ['status' => 'leave', 'start_time' => '19:30', 'end_time' => '21:30'], $h)
-            ->assertStatus(422)->assertJsonPath('code', 'leave_row_retarget_forbidden');
+        foreach (['leave', 'scheduled'] as $newStatus) { // moving it is refused whatever the new status
+            $this->putJson("/api/v1/schedules/{$row->id}", ['status' => $newStatus, 'start_time' => '19:30', 'end_time' => '21:30'], $h)
+                ->assertStatus(422)->assertJsonPath('code', 'leave_row_retarget_forbidden');
+        }
+        // a date-only retro leave on a two-lesson date is refused rather than resolved to the first lesson
+        $this->postJson('/api/v1/schedules/retro-leave', ['student_course_id' => $courseId, 'session_date' => '2026-12-02'], $h)
+            ->assertStatus(422)->assertJsonPath('code', 'lesson_required');
         $this->assertSame(['leave', 'scheduled'], $this->statuses($first, $second));
     }
 
@@ -109,6 +112,21 @@ class LeaveCascadeSameDateLessonsTest extends TestCase
             ['Authorization' => 'Bearer ' . $this->directorToken(), 'Accept' => 'application/json'])->assertOk();
         $times = Schedule::query()->where('student_course_id', $courseId)->where('status', 'leave')->get()->map(fn ($m) => substr((string) $m->start_time, 0, 5))->sort()->values()->all();
         $this->assertSame(['17:00', '19:30'], $times);
+    }
+
+    /** #3914 review: the attendance endpoint leaves only the selected lesson, with sign-in and tail for that lesson alone. */
+    public function test_attendance_leave_on_the_second_lesson_touches_only_that_lesson(): void
+    {
+        [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-12-02', 'count');
+        $studentId = (int) DB::table('StudentClass')->where('ID', $courseId)->value('StudentID');
+        $this->postJson('/api/v1/attendance', ['StudentID' => $studentId, 'StudentClassID' => $courseId, 'ClassSessionID' => $second, 'Status' => 'leave', 'mark_mode' => 'arrival'],
+            ['Authorization' => 'Bearer ' . $this->directorToken(), 'Accept' => 'application/json'])->assertSuccessful();
+
+        $this->assertSame(['scheduled', 'leave'], $this->statuses($first, $second));
+        $this->assertSame(0, \App\Models\StudentSignIn::query()->where('ClassSessionID', $first)->count(), 'the first lesson gets no attendance artifact');
+        $this->assertGreaterThan(0, \App\Models\StudentSignIn::query()->where('ClassSessionID', $second)->count());
+        $this->assertSame('19:30', substr((string) $this->tailFor($courseId, $second)?->StartTime, 0, 5));
+        $this->assertNull($this->tailFor($courseId, $first));
     }
 
     private function directorToken(): string

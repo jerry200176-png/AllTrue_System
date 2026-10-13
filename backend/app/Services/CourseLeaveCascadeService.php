@@ -618,15 +618,6 @@ class CourseLeaveCascadeService
         $twoLessonDate = self::lessonsOnDate($sessions, $normalizedLeaveDate) > 1;
         if ((int) $plan['append_count'] > 0 && $plan['append']) {
             $appendDate = $plan['append'];
-            if ($twoLessonDate) { // #3914 review: share the course's latest date when this lesson's slot there is still free
-                $live = $sessions->filter(fn ($s) => strtolower((string) ($s->Status ?? '')) !== 'cancelled');
-                $latest = $live->map(fn ($s) => Carbon::parse($s->SessionDate)->toDateString())->max();
-                $slotTaken = $live->contains(fn ($s) => Carbon::parse($s->SessionDate)->toDateString() === $latest
-                    && substr((string) $s->StartTime, 0, 5) === substr((string) $leaveSession->StartTime, 0, 5));
-                if ($latest && $latest > $normalizedLeaveDate && !$slotTaken) {
-                    [$appendDate, $plan['extended_end_date']] = [$latest, max($latest, (string) ($course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : $latest))];
-                }
-            }
             // #3914 review: a date with two lessons keeps the left lesson's own slot for its tail, not the weekday's first slot.
             $appendTimes = $twoLessonDate ? ['start' => '', 'end' => ''] : self::resolveContractSlotTimes($course, $appendDate);
             $appendStart = $appendTimes['start'] !== '' ? $appendTimes['start'] : $leaveSession->StartTime;
