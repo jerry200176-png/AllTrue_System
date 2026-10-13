@@ -30,7 +30,8 @@ class NotificationTuitionResolverTest extends TestCase
 
     private function invoice(StudentClass $course, int $total, int $paid): void
     {
-        $invoice = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-01', 'DueDate' => '2026-08-15',
+        // Not yet due: an overdue invoice has its own notice, which replaces the per-course one (#3877).
+        $invoice = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-01', 'DueDate' => now()->addDays(14)->toDateString(),
             'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-08']);
         if ($paid > 0) {
             Payment::create(['InvoiceID' => $invoice->id, 'Amount' => $paid, 'PaidAt' => '2026-08-05', 'Method' => 'cash']);
