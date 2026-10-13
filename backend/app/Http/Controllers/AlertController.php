@@ -464,11 +464,17 @@ class AlertController extends Controller
         // Merge package-level alerts after individual rows are normalized.
         $rows = $rows->merge($countPkgAlerts)->merge($monthlyPkgAlerts)->values();
 
-        // #3942: the 收據 entry opens a confirmed report, so the row says whether one exists instead of guessing from
-        // payment_status (a confirmed partial payment keeps the invoice `partial` but already has a receipt).
-        $receiptCourseIds = PaymentReport::query()->where('status', 'confirmed')
-            ->whereIn('StudentClassID', $rows->pluck('id')->filter()->all())->distinct()->pluck('StudentClassID')->flip();
-        $rows = $rows->map(fn ($row) => $row + ['has_confirmed_receipt' => isset($row['id'], $receiptCourseIds[$row['id']])])->values();
+        // #3942: the 收據 entry opens a confirmed report. A confirmed partial payment keeps the bill `partial` but already has
+        // a receipt, so the row carries the confirmed report of ITS CURRENT BILL (any member course of a package bill), never
+        // an older term's receipt.
+        $receiptByInvoice = PaymentReport::query()->where('status', 'confirmed')
+            ->whereIn('InvoiceID', $rows->pluck('payable_invoice_id')->filter()->all())
+            ->groupBy('InvoiceID')->selectRaw('InvoiceID, MAX(id) AS report_id')->pluck('report_id', 'InvoiceID');
+        $rows = $rows->map(function ($row) use ($receiptByInvoice) {
+            $reportId = $receiptByInvoice[$row['payable_invoice_id'] ?? 0] ?? null;
+
+            return $row + ['has_confirmed_receipt' => $reportId !== null, 'receipt_report_id' => $reportId !== null ? (int) $reportId : null];
+        })->values();
 
         return response()->json($rows);
     }
