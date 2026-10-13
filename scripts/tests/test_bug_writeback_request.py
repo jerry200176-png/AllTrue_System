@@ -1,5 +1,6 @@
 """Governed request-file path for in-app bug write-backs (scripts/bug_writeback_request.py)."""
 import os
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -109,6 +110,21 @@ class EntryValidationTest(unittest.TestCase):
         with self.assertRaises(wb.RequestError):
             wb.plan("", "requests: []\nextra: 1\n", REPO)
 
+    def test_duplicate_mapping_keys_fail_closed(self):
+        dup = doc(entry()).replace("bug_id: 512", "bug_id: 512\n  bug_id: 999", 1)
+        with self.assertRaises(wb.RequestError) as ctx:
+            wb.plan("", dup, REPO)
+        self.assertIn("duplicate mapping key bug_id", str(ctx.exception))
+        with self.assertRaises(wb.RequestError):
+            wb.plan("", "requests: []\nrequests: []\n", REPO)
+
+    def test_entries_are_append_only(self):
+        first = doc(entry())
+        for later in (doc(), doc(entry(bug_id=513)), doc(entry(request_id="req-0002"))):
+            with self.assertRaises(wb.RequestError) as ctx:
+                wb.plan(first, later, REPO)
+            self.assertIn("append-only", str(ctx.exception))
+
     def test_one_bad_new_entry_blocks_the_whole_run(self):
         with self.assertRaises(wb.RequestError):
             wb.plan("", doc(entry(), entry(request_id="req-0002", public_reply="StudentClass " + URL)), REPO)
@@ -153,6 +169,19 @@ class IdempotencyTest(unittest.TestCase):
         # Runs in required CI, so an invalid entry fails before it can merge, not after.
         text = (ROOT / "operations/closeout/bug-writeback.request.yml").read_text(encoding="utf-8")
         wb.plan("", text, REPO)
+
+    def test_checked_in_request_file_is_append_only_vs_base(self):
+        # Required CI has full history: removing or editing an entry already on the base branch fails here.
+        import subprocess
+
+        rel = "operations/closeout/bug-writeback.request.yml"
+        ref = f"origin/{os.environ.get('GITHUB_BASE_REF') or 'main'}"
+        got = subprocess.run(["git", "show", f"{ref}:{rel}"], cwd=ROOT, capture_output=True, text=True)
+        if got.returncode != 0:
+            if os.environ.get("GITHUB_ACTIONS") and not re.search(r"does not exist|exists on disk, but not in", got.stderr):
+                self.fail(f"cannot read {ref}:{rel}")
+            self.skipTest(f"{rel} is not on {ref} yet")
+        wb.plan(got.stdout, (ROOT / rel).read_text(encoding="utf-8"), REPO)
 
 
 if __name__ == "__main__":

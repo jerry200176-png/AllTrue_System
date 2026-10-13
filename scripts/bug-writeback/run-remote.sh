@@ -143,12 +143,18 @@ if ($expected === "closed") {
 // Idempotency must therefore match this exact follow-up payload,
 // not merely the shared issue link, or the requested post-deploy
 // verification message is silently skipped.
+// Same row lock as phase-a: the dispatch workflow and the request-file workflow serialize here,
+// so two producers cannot both miss the exact-payload check and post the comment twice.
+\Illuminate\Support\Facades\DB::transaction(function () use ($bugId, $expected, $reply, $actor, $issueUrl) {
+$locked = \App\Models\BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
+if ((string)$locked->status !== $expected) { throw new \RuntimeException("status changed: ".$locked->status); }
 $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
     ->where("body", $reply)->exists();
 $comment = $already ? ["ok" => true, "skipped" => true] : \App\Services\BugReportService::addComment($bugId, $actor, $reply, false);
 $commentSucceeded = ($comment["ok"] ?? false) || isset($comment["id"]) || ($comment["skipped"] ?? false);
 if (!$commentSucceeded) { throw new \RuntimeException(json_encode($comment)); }
-echo json_encode(["bug_id" => $bugId, "status" => (string)$bug->status, "comment_id" => is_array($comment) ? ($comment["skipped"] ?? false) : $comment->id, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
+echo json_encode(["bug_id" => $bugId, "status" => (string)$locked->status, "comment_id" => is_array($comment) ? ($comment["skipped"] ?? false) : $comment->id, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
+});
 }
 '
 REMOTE

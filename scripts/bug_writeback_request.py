@@ -11,6 +11,7 @@
   disposition       triage only, optional (default bug)
   expected_status   followup only, required
 
+Entries are append-only: removing or changing an existing entry is refused, here and in CI.
 Only request_ids absent from the previous version of the file run (idempotent per push);
 the server-side script also skips a reply that is already posted. `resolved`/`closed` never
 pass through here: those stay on the evidence-gated Phase-C paths. The log carries request IDs,
@@ -93,7 +94,19 @@ def load_requests(text: str | None) -> list[dict]:
     import yaml
 
     class Loader(yaml.SafeLoader):
-        pass
+        def construct_mapping(self, node, deep=False):
+            # SafeLoader keeps the last of two equal keys; a duplicated bug_id/action/public_reply
+            # must not silently retarget the write-back, so any duplicate key fails closed.
+            if isinstance(node, yaml.MappingNode):
+                self.flatten_mapping(node)
+                seen = []
+                for key_node, _ in node.value:
+                    key = self.construct_object(key_node, deep=deep)
+                    if key in seen:
+                        label = key if key in FIELDS or key == "requests" else "(key)"
+                        raise RequestError(f"duplicate mapping key {label}")
+                    seen.append(key)
+            return super().construct_mapping(node, deep=deep)
 
     def strict_int(loader, node):
         # YAML 1.1 reads 0512 as octal 330: only plain decimal integers may name a bug.
@@ -166,8 +179,13 @@ def validate_entry(entry: dict, repo: str) -> dict:
 
 def plan(before_text: str | None, after_text: str | None, repo: str) -> list[dict]:
     """Validate every new request before any write; one bad entry stops the whole run."""
-    before_ids = {e["request_id"] for e in load_requests(before_text)}
-    new = [e for e in load_requests(after_text) if e["request_id"] not in before_ids]
+    before, after = load_requests(before_text), load_requests(after_text)
+    after_by_id = {e["request_id"]: e for e in after}
+    for e in before:  # append-only: a removed and later re-added ID would otherwise run again
+        if after_by_id.get(e["request_id"]) != e:
+            raise RequestError(f"{e['request_id']}: request entries are append-only (removed or changed)")
+    before_ids = {e["request_id"] for e in before}
+    new = [e for e in after if e["request_id"] not in before_ids]
     return [validate_entry(e, repo) for e in new]
 
 
