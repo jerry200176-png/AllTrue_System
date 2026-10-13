@@ -1154,6 +1154,17 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("continue", block[block.index('if "HTTP 404"'):block.index("raise")])
         self.assertIn("raise", block)  # any other API failure still fails closed
 
+    def test_message_reference_to_the_merged_pr_of_this_commit_is_provenance(self):
+        """run 38466259165: /commits/dfcde48/pulls was empty for #3939's own squash commit; only an exact merge_commit_sha match counts."""
+        block = self.workflow[self.workflow.index("for pr_number in referenced_prs:"):]
+        block = block[:block.index("                  for candidate in candidates:")]
+        self.assertIn('candidate_pr.get("merge_commit_sha") == commit_sha', block)
+        self.assertIn('candidate_pr.get("merged_at")', block)
+        self.assertLess(block.index("merged_matches.append("), block.index("reconcile_preexisting_pr_provenance("))
+        self.assertIn("if not recovered and len(merged_matches) == 1:", block)
+        self.assertIn("candidates = merged_matches", block)
+        self.assertIn("provenance_complete = False", block[block.index("candidates = merged_matches"):])
+
     def test_classifier_gh_api_rejects_empty_or_invalid_json(self):
         """GOV-ACTIVATE-CLASSIFIER-JSON-EOF: empty/truncated gh bodies must fail closed with path context."""
         lookup = self.workflow[self.workflow.index("          def gh_api(path, *extra):"):]
