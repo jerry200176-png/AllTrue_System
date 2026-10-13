@@ -64,10 +64,11 @@ class AccountingController extends Controller
             if ($svc->findDuplicate($course, $review['start_date'], $end) !== null) {
                 continue;
             }
-            $blocker = $review['blockers'][0] ?? null;
+            $preview = $svc->previewPeriod($course, $review['start_date'], $end);
+            // #3991: renewing an unpriced term opens no bill, so it is not offered as 「確認開立」.
+            $blocker = $review['blockers'][0] ?? ((int) $preview['charge'] <= 0 ? ['code' => 'renewal_unpriced', 'message' => '新一期沒有費用：請先設定月費；免費課程請續約後在登記收款勾選「免費／贈送」。'] : null);
             $oldEnd = Carbon::parse($course->getAttribute('EndDate'))->toDateString();
             $status = $blocker ? 'blocked' : ($oldEnd < $monthStart->toDateString() ? 'lapsed_no_lessons' : 'ready');
-            $preview = $svc->previewPeriod($course, $review['start_date'], $end);
             $totals[$status]++;
             $rows[] = [
                 'student_class_id' => (int) $course->getKey(),
@@ -621,12 +622,13 @@ class AccountingController extends Controller
                 'overpaid_amount' => $overpaidAmount,
                 'outstanding_amount' => $outstanding,
                 'status' => $status,
-                'can_direct_void' => !in_array($status, ['paid', 'partial', 'void'], true) && $paidAmount <= 0 && $netApplied <= 0,
+                'can_direct_void' => (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->isMarkedFreeGift() && $paymentRows->isEmpty()))
+                    && $paidAmount <= 0 && $netApplied <= 0,
                 'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0),
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,
-            ];
+            ] + ($invoice->zero_amount_reason !== null ? ['zero_amount_reason' => $invoice->zero_amount_reason] : []); // #3991: 免費／贈送 badge
         })->values();
         $this->invoiceAmounts->forgetPreloadedSessions();
 
@@ -709,13 +711,15 @@ class AccountingController extends Controller
                 'receipt_count' => $reportRows->where('status', 'confirmed')->count(),
                 'anomaly_count' => $uniqueAnomalies->count(),
             ],
+            // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
             'courses' => $classes->map(fn (StudentClass $class) => [
                 'id' => (int) $class->ID,
                 'course_ref' => $this->courseRef((int) $class->ID),
                 'subject' => $class->displaySubjectName($subjectNames),
                 'schedule_mode' => (string) ($class->ScheduleMode ?? ''),
                 'charge' => (int) ($class->Charge ?? 0),
-                'paid' => (int) ($class->Paid ?? 0) === 1,
+                'paid' => (int) ($class->Paid ?? 0) === 1 || $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
+                    && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class))), // #3991: current term
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
                 'first_session_date' => $firstSessionDates->get((int) $class->getAttribute('ID')),

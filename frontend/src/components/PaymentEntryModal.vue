@@ -66,12 +66,17 @@
               step="1"
             />
           </div>
-          <p v-if="isZeroCharge" class="pe-hint">免費課程，金額為 NT$ 0，確認後會標記為已結算。</p>
+          <label v-if="isZeroCharge" class="pe-check">
+            <input type="checkbox" v-model="form.free_gift" data-testid="pe-free-gift" />
+            這期是「{{ FREE_GIFT_LABEL }}」：登錄一張 NT$ 0 帳單（不是收款）
+          </label>
+          <p v-if="isZeroCharge" class="pe-hint">課程沒填費用不會自動當免費；確定免費才勾選，否則請先到課程管理設定費用。</p>
         </div>
 
-        <div class="pe-workflow-hint" role="note">
+        <div class="pe-workflow-hint" role="note" data-testid="pe-workflow-hint">
           <span class="material-symbols-outlined" aria-hidden="true">info</span>
-          <span>送出後會顯示「{{ TUITION_STATUS_CONFIG.pending_report.label }}」，你在這裡按「確認入帳」才算收到。</span>
+          <span v-if="form.free_gift">送出後直接留下一張 NT$ 0「{{ FREE_GIFT_LABEL }}」帳單，不是收款，不需要確認入帳。</span>
+          <span v-else>送出後會顯示「{{ TUITION_STATUS_CONFIG.pending_report.label }}」，你在這裡按「確認入帳」才算收到。</span>
         </div>
 
         <div class="pe-field">
@@ -85,7 +90,7 @@
           <button type="button" class="ghost" @click="$emit('close')">取消</button>
           <button type="submit" class="primary" :disabled="submitting">
             <span v-if="submitting" class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
-            {{ submitting ? '處理中…' : '登記收款' }}
+            {{ submitting ? '處理中…' : (form.free_gift ? `登錄${FREE_GIFT_LABEL}帳單` : '登記收款') }}
           </button>
         </div>
       </form>
@@ -96,7 +101,7 @@
 <script setup>
 import { ref, reactive, watch, computed } from 'vue';
 import { recordPayment } from '../lib/paymentActions.js';
-import { REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
+import { FREE_GIFT_LABEL, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -113,6 +118,7 @@ const form = reactive({
   account_last5: '',
   amount: 0,
   note: '',
+  free_gift: false,
 });
 
 const submitting = ref(false);
@@ -128,6 +134,7 @@ watch(() => props.show, (val) => {
       ? ''
       : (props.row.payable_outstanding ?? props.row.payable_amount ?? '');
     form.note = '';
+    form.free_gift = false;
     submitError.value = '';
   }
 });
@@ -146,6 +153,15 @@ async function submit() {
     submitError.value = '金額為 0 不能登記。請填實際收到的金額；若畫面顯示應繳 0 但課程仍未繳，請到學生帳務核對帳單。';
     return;
   }
+  // #3991 (Founder 2026-10-13): a missing or 0 fee is never free by itself; NT$0 needs the explicit 免費／贈送 mark.
+  if (amount === 0 && !form.free_gift) {
+    submitError.value = `金額為 0 時請勾選「${FREE_GIFT_LABEL}」；若這門課要收費，請先到課程管理設定費用。`;
+    return;
+  }
+  if (form.free_gift && amount !== 0) {
+    submitError.value = `勾選「${FREE_GIFT_LABEL}」時金額必須是 0。`;
+    return;
+  }
 
   submitting.value = true;
   try {
@@ -155,6 +171,9 @@ async function submit() {
       payment_method: form.payment_method,
       amount,
     };
+    if (form.free_gift) {
+      body.free_gift = true;
+    }
     // Pay the bill whose outstanding prefilled the amount (payable_invoice_id), not a display invoice_id (#3875, #3888).
     const invoiceId = props.row.payable_invoice_id ?? props.row.invoice_id;
     if (invoiceId) {
@@ -333,6 +352,12 @@ async function submit() {
 .pe-amount-wrap input {
   padding-left: 44px !important;
   font-variant-numeric: tabular-nums;
+}
+.pe-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
 }
 .pe-hint {
   margin: 6px 0 0;
