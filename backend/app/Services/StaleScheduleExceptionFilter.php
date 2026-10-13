@@ -36,62 +36,73 @@ class StaleScheduleExceptionFilter
     public function rejectStale(iterable $rows, string $ymd): array
     {
         $rows = is_array($rows) ? $rows : iterator_to_array($rows, false);
-        if (empty($rows)) {
-            return [];
-        }
 
+        return $this->rejectStaleBatch([$ymd => $rows])[$ymd] ?? [];
+    }
+
+    /**
+     * Same rule as rejectStale() for many dates with ONE ClassSession query (dry-run scans).
+     *
+     * @param  array<string, array<int, object>>  $rowsByYmd  Y-m-d => rows (student_course_id, start_time)
+     * @return array<string, array<int, object>> kept rows per date
+     */
+    public function rejectStaleBatch(array $rowsByYmd): array
+    {
         $courseIds = [];
-        foreach ($rows as $row) {
-            $courseId = (int) ($row->student_course_id ?? 0);
-            if ($courseId > 0) {
-                $courseIds[$courseId] = true;
+        foreach ($rowsByYmd as $rows) {
+            foreach ($rows as $row) {
+                $courseId = (int) ($row->student_course_id ?? 0);
+                if ($courseId > 0) {
+                    $courseIds[$courseId] = true;
+                }
             }
         }
-        if (empty($courseIds)) {
-            return array_values($rows);
-        }
-
-        // key = courseId|HH:MM → 該 key 是否存在 active ClassSession
-        $sessions = DB::table('ClassSession')
-            ->whereIn('StudentClassID', array_keys($courseIds))
-            ->whereDate('SessionDate', $ymd)
-            ->select('StudentClassID', 'StartTime', 'Status')
-            ->get();
-
+        // key = ymd|courseId|HH:MM → does an active ClassSession exist; plus active starts per ymd|course
         $keyState = [];
-        $activeStartsByCourse = [];
-        foreach ($sessions as $session) {
-            $courseId = (int) $session->StudentClassID;
-            $hhmm = $this->hhmm($session->StartTime);
-            $key = $courseId . '|' . $hhmm;
-            $isActive = !in_array(strtolower(trim((string) $session->Status)), self::INACTIVE_STATUSES, true);
-            $keyState[$key] = ($keyState[$key] ?? false) || $isActive;
-            if ($isActive) {
-                $activeStartsByCourse[$courseId][$hhmm] = true;
+        $activeStarts = [];
+        if ($courseIds !== []) {
+            $sessions = DB::table('ClassSession')
+                ->whereIn('StudentClassID', array_keys($courseIds))
+                ->whereIn(DB::raw('DATE(SessionDate)'), array_keys($rowsByYmd))
+                ->select('StudentClassID', 'StartTime', 'Status', DB::raw('DATE(SessionDate) as ymd'))
+                ->get();
+            foreach ($sessions as $session) {
+                $courseId = (int) $session->StudentClassID;
+                $hhmm = $this->hhmm($session->StartTime);
+                $key = $session->ymd . '|' . $courseId . '|' . $hhmm;
+                $isActive = !in_array(strtolower(trim((string) $session->Status)), self::INACTIVE_STATUSES, true);
+                $keyState[$key] = ($keyState[$key] ?? false) || $isActive;
+                if ($isActive) {
+                    $activeStarts[$session->ymd . '|' . $courseId][$hhmm] = true;
+                }
             }
         }
 
-        $kept = [];
-        foreach ($rows as $row) {
-            $courseId = (int) ($row->student_course_id ?? 0);
-            $hhmm = $this->hhmm($row->start_time ?? null);
-            $key = $courseId . '|' . $hhmm;
-            if ($courseId <= 0) {
-                $kept[] = $row;
-                continue;
+        $out = [];
+        foreach ($rowsByYmd as $ymd => $rows) {
+            $kept = [];
+            foreach ($rows as $row) {
+                $courseId = (int) ($row->student_course_id ?? 0);
+                $hhmm = $this->hhmm($row->start_time ?? null);
+                if ($courseId <= 0) {
+                    $kept[] = $row;
+                    continue;
+                }
+                // Same-day second move: live ClassSession exists at another clock.
+                $starts = $activeStarts[$ymd . '|' . $courseId] ?? [];
+                if ($starts !== [] && !isset($starts[$hhmm])) {
+                    continue;
+                }
+                // 沒有任何 ClassSession 證據 → 保留；有證據且存在 active → 保留
+                $key = $ymd . '|' . $courseId . '|' . $hhmm;
+                if (!array_key_exists($key, $keyState) || $keyState[$key]) {
+                    $kept[] = $row;
+                }
             }
-            // Same-day second move: live ClassSession exists at another clock.
-            $activeStarts = $activeStartsByCourse[$courseId] ?? [];
-            if ($activeStarts !== [] && !isset($activeStarts[$hhmm])) {
-                continue;
-            }
-            // 沒有任何 ClassSession 證據 → 保留；有證據且存在 active → 保留
-            if (!array_key_exists($key, $keyState) || $keyState[$key]) {
-                $kept[] = $row;
-            }
+            $out[$ymd] = $kept;
         }
 
-        return $kept;
+        return $out;
     }
 
     private function hhmm(mixed $value): string
