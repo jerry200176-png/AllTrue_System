@@ -13,6 +13,12 @@ use Illuminate\Support\Facades\DB;
 
 class SessionDeductionService
 {
+    private const BASE_USAGE_SOURCES = ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'];
+    private const USAGE_SOURCES = [
+        'attendance', 'retro_leave', 'status_adjust', 'duplicate_session',
+        'attendance_makeup', 'attendance_regular', 'retro_leave_makeup', 'retro_leave_regular',
+        'status_adjust_makeup', 'status_adjust_regular', 'duplicate_session_makeup', 'duplicate_session_regular',
+    ];
     /**
      * A date-mode SessionCount describes planned occurrences, not prepaid credit.
      * Keep usage evidence checks for both modes; only count contracts have a
@@ -36,6 +42,7 @@ class SessionDeductionService
         return [
             'expected_remaining' => $expectedRemaining,
             'review_required' => (int) $diagnostic['cancelled_usage_artifacts'] > 0
+                || (bool) ($diagnostic['ambiguous_minute_evidence'] ?? false)
                 || ($storedUsed ?? (int) ($course->UsedSessions ?? 0)) !== (int) $diagnostic['expected_used']
                 || ($isCountMode && ($storedRemaining ?? (int) ($course->RemainingSessions ?? 0)) !== $expectedRemaining),
         ];
@@ -135,6 +142,7 @@ class SessionDeductionService
      *
      * @param  array<int|string>  $studentClassIds
      * @return array<int,array{
+     *   ambiguous_minute_evidence:bool,
      *   expected_used:int,
      *   observed_used:int,
      *   class_session_used:int,
@@ -157,7 +165,7 @@ class SessionDeductionService
         $today = Carbon::today()->toDateString();
         $courses = StudentClass::query()
             ->whereIn('ID', $ids)
-            ->get(['ID', 'StudentID', 'ScheduleMode', 'SessionCount', 'SessionDuration', 'deduction_basis', 'standard_lesson_minutes'])
+            ->get(['ID', 'StudentID', 'ScheduleMode', 'SessionCount', 'SessionDuration', 'deduction_basis', 'standard_lesson_minutes', 'UsedSessions'])
             ->keyBy('ID');
         $observed = self::batchObservedUsedSessions($ids);
 
@@ -208,7 +216,7 @@ class SessionDeductionService
             ->join('StudentClass as sc', 'sc.ID', '=', 'ledger.student_class_id')
             ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'ledger.class_session_id')
             ->whereIn('ledger.student_class_id', $ids)
-            ->whereIn('ledger.source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+            ->whereIn('ledger.source', self::USAGE_SOURCES)
             ->where(function ($query) use ($today) {
                 $query->whereNull('ledger_cs.id')
                     ->orWhere(function ($linked) use ($today) {
@@ -254,9 +262,10 @@ class SessionDeductionService
             $isSessionMode = (string) ($course->ScheduleMode ?? 'count') === 'count';
             $hasPartial = (int) ($ledgerRow->has_partial ?? 0) === 1;
             $netMinutes = (int) ($ledgerRow->net_minutes ?? 0);
+            $ambiguousMinuteEvidence = false;
             if ($hasPartial && $course->isActualDurationBasis() && !self::isActualDurationActive($course)) {
                 // #3834: same rule as recomputeCounters() for a gated-off opted-in course.
-                [$hasPartial, $netMinutes] = self::gatedOffMinuteTotals((int) $id, max(1, $course->perSessionMinutes()), $today);
+                [$hasPartial, $netMinutes, $ambiguousMinuteEvidence] = self::gatedOffMinuteTotals((int) $id, max(1, $course->perSessionMinutes()), $today);
             }
             $expectedUsed = $usedByAttendance;
 
@@ -274,7 +283,9 @@ class SessionDeductionService
                 $expectedUsed = min($sessionCount, $usedByAttendance);
             }
 
+            $expectedUsed = $ambiguousMinuteEvidence ? (int) $course->UsedSessions : $expectedUsed;
             $out[$id] = [
+                'ambiguous_minute_evidence' => $ambiguousMinuteEvidence,
                 'expected_used' => $expectedUsed,
                 'observed_used' => $observedUsed,
                 'class_session_used' => $classSessionUsedCount,
@@ -316,11 +327,16 @@ class SessionDeductionService
                 return false;
             }
 
+            // #3948: freeze minute-event interpretation before its extra schedule can disappear.
+            $kind = $minutes !== null && $minutes > 0 && $classSessionId
+                ? self::minuteEventKindAtDeduction($studentClassId, $classSessionId)
+                : null;
+            $ledgerSource = self::minuteEventSource($source, $kind);
             SessionDeductionLedger::create([
                 'student_class_id' => $studentClassId,
                 'class_session_id' => $classSessionId ?: null,
                 'event_type'       => 'deduct',
-                'source'           => $source,
+                'source'           => $ledgerSource,
                 // #613 A1：null＝整堂（引擎以 perSessionMinutes 換算），>0＝部分時數。
                 'minutes'          => ($minutes !== null && $minutes > 0) ? $minutes : null,
                 'created_by'       => $createdBy,
@@ -356,23 +372,24 @@ class SessionDeductionService
             }
 
             // #613 A1：還原必須沖回「對應 deduct 當初記錄的分鐘」，否則部分扣堂的淨值會漂移。
-            if ($minutes === null && $classSessionId && $classSessionId > 0) {
-                $matched = SessionDeductionLedger::query()
+            $matched = $classSessionId && $classSessionId > 0
+                ? SessionDeductionLedger::query()
                     ->where('student_class_id', $studentClassId)
                     ->where('class_session_id', $classSessionId)
                     ->where('event_type', 'deduct')
                     ->orderByDesc('id')
-                    ->value('minutes');
-                if ($matched !== null) {
-                    $minutes = (int) $matched;
-                }
+                    ->first(['minutes', 'source'])
+                : null;
+            if ($minutes === null && $matched?->minutes !== null) {
+                $minutes = (int) $matched->minutes;
             }
+            $ledgerSource = self::minuteEventSource($source, self::minuteEventKindFromSource($matched?->source));
 
             SessionDeductionLedger::create([
                 'student_class_id' => $studentClassId,
                 'class_session_id' => $classSessionId ?: null,
                 'event_type'       => 'reverse',
-                'source'           => $source,
+                'source'           => $ledgerSource,
                 'minutes'          => ($minutes !== null && $minutes > 0) ? $minutes : null,
                 'created_by'       => $createdBy,
                 'note'             => $note,
@@ -450,7 +467,7 @@ class SessionDeductionService
             $ledgerUsed = SessionDeductionLedger::query()
                 ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                 ->where('student_class_id', $studentClassId)
-                ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+                ->whereIn('source', self::USAGE_SOURCES)
                 ->where(function ($query) use ($today) {
                     $query->whereNull('ledger_cs.id')
                         ->orWhereDate('ledger_cs.SessionDate', '<=', $today);
@@ -475,13 +492,17 @@ class SessionDeductionService
                 // fixed_session: ordinary attendances (including minute rows recorded while
                 // it was live) count as whole lessons; makeups keep their prorated minutes.
                 $gatedOffActualDuration = $sc->isActualDurationBasis() && !self::isActualDurationActive($sc);
-                [$gatedPartial, $gatedNet] = $gatedOffActualDuration
+                [$gatedPartial, $gatedNet, $ambiguousMinuteEvidence] = $gatedOffActualDuration
                     ? self::gatedOffMinuteTotals($studentClassId, $perSession, $today)
-                    : [false, 0];
+                    : [false, 0, false];
+                if ($ambiguousMinuteEvidence) {
+                    // Unknown legacy history is review work, not permission to rewrite a deduction.
+                    return;
+                }
                 $hasPartial = $gatedOffActualDuration ? $gatedPartial : SessionDeductionLedger::query()
                     ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                     ->where('student_class_id', $studentClassId)
-                    ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+                    ->whereIn('source', self::USAGE_SOURCES)
                     ->where(function ($query) use ($today) {
                         $query->whereNull('ledger_cs.id')
                             ->orWhereDate('ledger_cs.SessionDate', '<=', $today);
@@ -494,7 +515,7 @@ class SessionDeductionService
                     $netMinutes = $gatedOffActualDuration ? $gatedNet : (int) (SessionDeductionLedger::query()
                         ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                         ->where('student_class_id', $studentClassId)
-                        ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+                        ->whereIn('source', self::USAGE_SOURCES)
                         ->where(function ($query) use ($today) {
                             $query->whereNull('ledger_cs.id')
                                 ->orWhereDate('ledger_cs.SessionDate', '<=', $today);
@@ -542,10 +563,10 @@ class SessionDeductionService
 
     /**
      * #3834: [has_partial, net_minutes] of a gated-off opted-in course under fixed_session rules.
-     * Only a makeup row (an `extra` Schedule at its session's date and start, the same test as
-     * resolvePartialMakeupMinutes()) keeps its minutes; every other row is one whole lesson.
+     * Immutable ledger snapshots survive hard deletion; surviving extra schedules only identify
+     * legacy makeups. Missing legacy identity is review work, not an automatic recount.
      *
-     * @return array{0: bool, 1: int}
+     * @return array{0: bool, 1: int, 2: bool}
      */
     private static function gatedOffMinuteTotals(int $studentClassId, int $perSession, string $today): array
     {
@@ -556,21 +577,52 @@ class SessionDeductionService
         $rows = SessionDeductionLedger::query()
             ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
             ->where('student_class_id', $studentClassId)
-            ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+            ->whereIn('source', self::USAGE_SOURCES)
             ->where(fn ($q) => $q->whereNull('ledger_cs.id')->orWhereDate('ledger_cs.SessionDate', '<=', $today))
-            ->get(['session_deduction_ledger.event_type', 'session_deduction_ledger.minutes', 'ledger_cs.SessionDate as cs_date', 'ledger_cs.StartTime as cs_start']);
+            ->get(['session_deduction_ledger.event_type', 'session_deduction_ledger.minutes', 'session_deduction_ledger.source', 'ledger_cs.SessionDate as cs_date', 'ledger_cs.StartTime as cs_start']);
 
         $hasPartial = false;
+        $ambiguous = false;
         $net = 0;
         foreach ($rows as $row) {
-            $isMakeup = $row->cs_date !== null
+            $kind = self::minuteEventKindFromSource($row->source);
+            $isLegacyMakeup = $kind === null && $row->cs_date !== null
                 && isset($makeups[substr((string) $row->cs_date, 0, 10) . '|' . substr((string) $row->cs_start, 0, 5)]);
-            $minutes = $isMakeup && $row->minutes !== null ? (int) $row->minutes : $perSession;
+            $ambiguous = $ambiguous || ($row->minutes !== null && (int) $row->minutes !== $perSession && $kind === null && !$isLegacyMakeup);
+            $minutes = ($kind === 'M' || $isLegacyMakeup) && $row->minutes !== null ? (int) $row->minutes : $perSession;
             $hasPartial = $hasPartial || $minutes !== $perSession;
             $net += $row->event_type === 'deduct' ? $minutes : -$minutes;
         }
 
-        return [$hasPartial, $net];
+        return [$hasPartial, $net, $ambiguous];
+    }
+
+    /** Server-resolved identity, recorded in source without touching the audit note. */
+    private static function minuteEventKindAtDeduction(int $courseId, int $sessionId): ?string
+    {
+        $session = ClassSession::query()->where('StudentClassID', $courseId)->find($sessionId);
+        if (!$session) {
+            return null;
+        }
+        $isMakeup = Schedule::query()->where('student_course_id', $courseId)
+            ->whereDate('schedule_date', $session->SessionDate)->where('type', 'extra')
+            ->get(['start_time'])->contains(fn ($row) => substr((string) $row->start_time, 0, 5) === substr((string) $session->StartTime, 0, 5));
+
+        return $isMakeup ? 'M' : 'F';
+    }
+
+    /** Variant preserves the canonical producer family in the existing varchar(32). */
+    private static function minuteEventSource(string $source, ?string $kind): string
+    {
+        return $kind !== null && in_array($source, self::BASE_USAGE_SOURCES, true)
+            ? $source . ($kind === 'M' ? '_makeup' : '_regular')
+            : $source;
+    }
+
+    private static function minuteEventKindFromSource(?string $source): ?string
+    {
+        return in_array($source, self::USAGE_SOURCES, true) && !in_array($source, self::BASE_USAGE_SOURCES, true)
+            ? (str_ends_with($source, '_makeup') ? 'M' : 'F') : null;
     }
 
     // ─── backward-compatible wrappers (used by existing callers) ──
