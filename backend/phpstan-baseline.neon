@@ -391,12 +391,6 @@ parameters:
 			path: app/Http/Controllers/AdoptionInsightsController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/AlertController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$name\.$#'
 			identifier: property.notFound
 			count: 1
@@ -424,12 +418,6 @@ parameters:
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$student\.$#'
 			identifier: property.notFound
 			count: 1
-			path: app/Http/Controllers/AlertController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$student_id\.$#'
-			identifier: property.notFound
-			count: 2
 			path: app/Http/Controllers/AlertController.php
 
 		-
@@ -1096,12 +1084,6 @@ parameters:
 			path: app/Http/Controllers/CoursePackageController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$campus_id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$class_type\.$#'
 			identifier: property.notFound
 			count: 1
@@ -1123,12 +1105,6 @@ parameters:
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$enabled\.$#'
 			identifier: property.notFound
 			count: 1
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 2
 			path: app/Http/Controllers/CoursePackageController.php
 
 		-
@@ -1169,12 +1145,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$stop\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$student_id\.$#'
 			identifier: property.notFound
 			count: 1
 			path: app/Http/Controllers/CoursePackageController.php
@@ -2486,12 +2456,6 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/PasswordResetRequestController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/PaymentReportController.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid\.$#'
