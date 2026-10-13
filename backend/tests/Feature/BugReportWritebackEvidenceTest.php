@@ -95,8 +95,14 @@ final class BugReportWritebackEvidenceTest extends TestCase
             $this->assertFalse(BugReportWritebackEvidence::verify($read, $proof['captured_at'], $proof['proof']),
                 'verification outside a write transaction must fail closed');
             $a->beginTransaction();
-            $locked = BugReport::on('evidence_race_a')->whereKey($bug->id)->lockForUpdate()->firstOrFail();
+            $locked = $read; // verify must acquire the current parent lock itself.
             $this->assertTrue(BugReportWritebackEvidence::verify($locked, $proof['captured_at'], $proof['proof']));
+            try {
+                $b->table('bug_reports')->where('id', $bug->id)->update(['description' => 'Concurrent edit']);
+                $this->fail('Parent edit committed while verified evidence was still in use.');
+            } catch (QueryException $e) {
+                $this->assertSame(1205, (int) ($e->errorInfo[1] ?? 0));
+            }
             DB::setDefaultConnection('evidence_race_b');
             try {
                 BugReportService::updateCommentVisibility($bug->id, $comment->id, true);
@@ -118,6 +124,14 @@ final class BugReportWritebackEvidenceTest extends TestCase
             DB::purge('evidence_race_a');
             DB::purge('evidence_race_b');
         }
+    }
+
+    public function test_stale_parent_model_cannot_verify_after_a_report_update(): void
+    {
+        $bug = $this->bug();
+        $evidence = BugReportWritebackEvidence::capture($bug);
+        BugReport::query()->whereKey($bug->id)->update(['description' => 'Changed after the read']);
+        $this->assertFalse(BugReportWritebackEvidence::verify($bug, $evidence['captured_at'], $evidence['proof']));
     }
 
     private function bug(): BugReport
