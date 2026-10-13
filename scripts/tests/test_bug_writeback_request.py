@@ -125,6 +125,20 @@ class EntryValidationTest(unittest.TestCase):
                 wb.plan(first, later, REPO)
             self.assertIn("append-only", str(ctx.exception))
 
+    def test_new_requests_per_push_are_bounded_by_the_job_timeout(self):
+        self.assertLess(wb.MAX_NEW_PER_PUSH * wb.REMOTE_TIMEOUT_S, 20 * 60)
+        many = [entry(request_id=f"req-{i:04d}", bug_id=500 + i) for i in range(wb.MAX_NEW_PER_PUSH + 1)]
+        with self.assertRaises(wb.RequestError) as ctx:
+            wb.plan("", doc(*many), REPO)
+        self.assertIn(f"at most {wb.MAX_NEW_PER_PUSH}", str(ctx.exception))
+        self.assertEqual(len(wb.plan("", doc(*many[:-1]), REPO)), wb.MAX_NEW_PER_PUSH)
+
+    def test_hung_remote_call_times_out_and_is_reported(self):
+        import subprocess as sp
+
+        with mock.patch.object(wb.subprocess, "run", side_effect=sp.TimeoutExpired(cmd="bash", timeout=1)):
+            self.assertEqual(wb.run_remote("phase-a", {}), 124)
+
     def test_one_bad_new_entry_blocks_the_whole_run(self):
         with self.assertRaises(wb.RequestError):
             wb.plan("", doc(entry(), entry(request_id="req-0002", public_reply="StudentClass " + URL)), REPO)

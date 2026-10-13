@@ -34,6 +34,10 @@ REPLY_MAX_CHARS = 1500
 REQUEST_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 FIELDS = {"request_id", "bug_id", "action", "github_issue_url", "public_reply", "disposition", "expected_status"}
 REMOTE_SCRIPT = Path(__file__).resolve().parent / "bug-writeback" / "run-remote.sh"
+# Each remote call is bounded so one hung SSH/tinker call cannot let the 20-minute job timeout kill
+# the run before later requests are attempted: MAX_NEW_PER_PUSH * REMOTE_TIMEOUT_S stays below it.
+REMOTE_TIMEOUT_S = 180
+MAX_NEW_PER_PUSH = 5
 
 # §3.8 forbidden in a public reply: field/table names, code paths, SQL/tooling, internal shorthand.
 # re.A: CJK text is not a word character, so "看StudentClass表" still matches.
@@ -186,6 +190,8 @@ def plan(before_text: str | None, after_text: str | None, repo: str) -> list[dic
             raise RequestError(f"{e['request_id']}: request entries are append-only (removed or changed)")
     before_ids = {e["request_id"] for e in before}
     new = [e for e in after if e["request_id"] not in before_ids]
+    if len(new) > MAX_NEW_PER_PUSH:
+        raise RequestError(f"{len(new)} new requests in one push; at most {MAX_NEW_PER_PUSH} (split the PR)")
     return [validate_entry(e, repo) for e in new]
 
 
@@ -194,13 +200,17 @@ Runner = Callable[[str, dict], int]
 
 def run_remote(mode: str, env: dict) -> int:
     """Call the shared write-back script; its output may hold reply text, so it is discarded."""
-    result = subprocess.run(
-        ["bash", str(REMOTE_SCRIPT), mode],
-        env={**os.environ, **env},
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["bash", str(REMOTE_SCRIPT), mode],
+            env={**os.environ, **env},
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=REMOTE_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        return 124  # reported as failed; later requests still run
     return result.returncode
 
 

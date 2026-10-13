@@ -45,9 +45,10 @@ $allowedStatuses = getenv("CLOSE_AS_LOGGED") === "true" ? ["new", "triaged", "cl
 if (!in_array($status, $allowedStatuses, true)) {
     throw new \RuntimeException("refusing status: ".$status);
 }
-$admin = \Illuminate\Support\Facades\DB::table("UserCampus")
-    ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
-$actor = $admin ? (int)$admin : 1;
+// Global write-back: the actor is the verified super-admin (type S), as bugs:auto-intake uses,
+// never a campus director picked by lowest ID and never a guessed user 1.
+$actor = (int)(\App\Models\User::query()->where("type", "S")->orderBy("id")->value("id") ?? 0);
+if ($actor <= 0) { throw new \RuntimeException("no type=S actor user"); }
 $svc = \App\Services\BugReportService::class;
 if (getenv("CLOSE_AS_LOGGED") === "true") {
     $closed = $svc::closeAsLogged($bugId, $actor, $disposition, $issueUrl, $reply);
@@ -129,9 +130,10 @@ $reply = (string)getenv("PUBLIC_REPLY");
 $bug = \App\Models\BugReport::find($bugId);
 if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
 if ((string)$bug->status !== $expected) { throw new \RuntimeException("status changed: ".$bug->status); }
-$admin = \Illuminate\Support\Facades\DB::table("UserCampus")
-    ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
-$actor = $admin ? (int)$admin : 1;
+// Global write-back: the actor is the verified super-admin (type S), as bugs:auto-intake uses,
+// never a campus director picked by lowest ID and never a guessed user 1.
+$actor = (int)(\App\Models\User::query()->where("type", "S")->orderBy("id")->value("id") ?? 0);
+if ($actor <= 0) { throw new \RuntimeException("no type=S actor user"); }
 if ($expected === "closed") {
     $shipped = \App\Services\BugReportService::notifyLoggedSuggestionShipped(
         $bugId, $actor, $issueUrl, (string)getenv("PRODUCTION_REVISION"), (string)getenv("DEPLOY_RUN_ID"), $reply

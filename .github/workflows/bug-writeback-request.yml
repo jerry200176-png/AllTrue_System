@@ -12,9 +12,14 @@ on:
     paths:
       - 'operations/closeout/bug-writeback.request.yml'
 
-# No concurrency group on purpose: GitHub keeps only one pending run per group, so a third push
-# would replace the second and its new request_ids (diffed against its own `before`) would never run.
-# Each push applies only its own diff; run-remote.sh serializes writes per report with a row lock.
+# One run at a time, in push order: `queue: max` keeps every pending run (the default keeps only
+# the newest and cancels the rest, which would drop request_ids), so a follow-up never overtakes the
+# triage it depends on. Each push applies only its own diff; run-remote.sh also takes a row lock.
+concurrency:
+  group: bug-writeback-request
+  cancel-in-progress: false
+  queue: max
+
 permissions:
   contents: read
 
