@@ -191,10 +191,12 @@
                                   <span v-if="p.unapplied_amount">多收 {{ formatCurrency(p.unapplied_amount) }}</span>
                                   <span v-if="p.note">備註：{{ p.note }}</span>
                                 </div>
+                                <BillingNotesPanel subject-type="payment" :subject-id="p.id" />
                               </div>
                             </li>
                           </ol>
                         </div>
+                        <BillingNotesPanel subject-type="invoice" :subject-id="inv.id" />
                       </td>
                     </tr>
                   </template>
@@ -226,6 +228,7 @@
                   <template v-if="r.account_last5 && r.note"> · </template>
                   <template v-if="r.note">備註：{{ r.note }}</template>
                 </small>
+                <BillingNotesPanel subject-type="payment_report" :subject-id="r.report_id" />
                 <LedgerCoverageDates
                   v-if="isReceiptExpanded(r.report_id)"
                   class="ledger-receipt-coverage"
@@ -284,6 +287,7 @@ import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
 import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
+import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
@@ -435,7 +439,11 @@ async function loadCoverage(kind, id) {
   if (payload.value === ledgerAtStart) coverage.value = { ...coverage.value, [key]: next };
 }
 
+let ledgerRequestVersion = 0;
 async function loadLedger() {
+  const requestVersion = ++ledgerRequestVersion;
+  loading.value = false;
+  payload.value = null;
   if (!props.show) return;
   const studentClassId = Number(props.studentClassId || 0);
   const reportId = Number(props.reportId || 0);
@@ -447,7 +455,6 @@ async function loadLedger() {
 
   loading.value = true;
   error.value = '';
-  payload.value = null;
   showAllExceptions.value = false;
   coverage.value = {};
   expandedReceiptIds.value = new Set();
@@ -464,14 +471,16 @@ async function loadLedger() {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     });
     const json = await resp.json().catch(() => ({}));
+    if (requestVersion !== ledgerRequestVersion) return;
     if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `載入失敗（${resp.status}）`));
     payload.value = json;
     autoExpandAttention();
     loadDrafts();
   } catch (e) {
+    if (requestVersion !== ledgerRequestVersion) return;
     error.value = humanizeApiErrorMessage(e.message || '載入學生帳務失敗');
   } finally {
-    loading.value = false;
+    if (requestVersion === ledgerRequestVersion) loading.value = false;
   }
 }
 
@@ -865,3 +874,4 @@ const anomalyLabel = (code) => labelMap({
   .ledger-sticky-pay{bottom:-16px;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
 }
 </style>
+
