@@ -72,6 +72,14 @@ final class LearningRecordMutableOwnership
         }
     }
 
+    /** Contract transfer boundary: 409 when a moved session's protected assessment names a teacher other than the target contract's. */
+    public static function assertTransferAllowed(iterable $sessionIds, int $targetTeacherId): void
+    {
+        foreach ($sessionIds as $sessionId) {
+            self::assertTeacherChangeAllowed((int) $sessionId, $targetTeacherId);
+        }
+    }
+
     public static function lockedResponse(): JsonResponse
     {
         return response()->json([

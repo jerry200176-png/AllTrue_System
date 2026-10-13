@@ -1993,10 +1993,12 @@ class LearningRecordController extends Controller
         }
 
         // #3824: the atomic reschedule writes teacher_id onto the live row; a protected occurrence keeps its teacher.
-        if (isset($data['teacher_id'])
-            && ($locked = LearningRecordMutableOwnership::protectedRecordForSlot((int) $studentClass->ID, $data['old_date'] ?? null, $data['old_start_time'] ?? $data['start_time'] ?? null))
-            && (int) $locked->TeacherID !== (int) $data['teacher_id']) {
-            return LearningRecordMutableOwnership::lockedResponse();
+        // An omitted teacher_id would fall back to the target/contract teacher, so pin the protected record's teacher.
+        if ($locked = LearningRecordMutableOwnership::protectedRecordForSlot((int) $studentClass->ID, $data['old_date'] ?? null, $data['old_start_time'] ?? $data['start_time'] ?? null)) {
+            if (isset($data['teacher_id']) && (int) $locked->TeacherID !== (int) $data['teacher_id']) {
+                return LearningRecordMutableOwnership::lockedResponse();
+            }
+            $data['teacher_id'] = (int) $locked->TeacherID;
         }
 
         $authUser = $request->attributes->get('auth_user');

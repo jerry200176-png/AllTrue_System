@@ -309,6 +309,25 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
     }
 
+    public function test_transfer_and_recover_transfer_to_another_teachers_contract_are_refused(): void
+    {
+        $s = $this->mkSession('attended');
+        $lr = $this->lr($s, 'approved', true);
+        $body = ['session_ids' => [$s->id], 'target_student_class_id' => $this->scB->ID, 'reason' => 'synthetic'];
+        $this->assertLocked($lr, fn () => $this->api()->postJson("/api/v1/student-classes/{$this->sc->ID}/transfer-sessions", $body));
+        $this->assertLocked($lr, fn () => $this->api()->postJson("/api/v1/student-classes/{$this->sc->ID}/recover-transfer-sessions", $body));
+    }
+
+    public function test_reschedule_without_teacher_id_keeps_the_assessments_teacher_on_the_moved_occurrence(): void
+    {
+        $lr = $this->lr($this->mkSession('attended'), 'approved', true);
+        DB::table('StudentClass')->where('ID', $this->sc->ID)->update(['TeacherID' => $this->bId]);
+        $this->api()->postJson('/api/v1/learning-records/reschedule-session', ['student_class_id' => $this->sc->ID, 'old_date' => self::DATE,
+            'old_start_time' => '16:00', 'new_date' => '2026-04-20', 'start_time' => '16:00', 'end_time' => '18:00', 'ensure_schedule_exception' => true])->assertOk();
+        $this->assertSame($this->aId, (int) DB::table('schedules')->whereDate('schedule_date', '2026-04-20')->value('teacher_id'));
+        $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
+    }
+
     public function test_ensure_past_and_atomic_reschedule_do_not_rewrite_the_recorded_teacher(): void
     {
         $lr = $this->lr($this->mkSession('attended'), 'approved', true);
