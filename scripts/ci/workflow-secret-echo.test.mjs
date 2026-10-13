@@ -269,10 +269,10 @@ function sink(P, s, ctx, cred) {
 // a capture whose inner text cannot reach the log: no redirect other than to /dev/null or from a file, no log alias
 const cleanCapture = (inner) => !ALIAS.test(inner) && !/>/.test(inner.replace(/(?:\d+|&)?>>?\s*\/dev\/null\b/g, '').replace(/<<?<?-?/g, ''));
 const credExpr = (expr) => /\btoJSON\s*\(\s*(?:env|secrets)\s*\)/i.test(expr) || expr.replace(/\bsecrets\.\w+/g, '').split(/[^\w]+/).some(isSecretName); // direct secrets.* are masked; whole env is sensitive
-function credHits(w, exprs, sensitive = new Set()) {
+function credHits(w, exprs, sensitive = new Set(), transformed = false) {
   const hits = [];
   for (const m of w.text.matchAll(CRED)) {
-    if (m[2] !== undefined ? credExpr(exprs[+m[2]]) : isSecretName(m[1]) || sensitive.has(m[1])) hits.push(m.index);
+    if (m[2] !== undefined ? credExpr(exprs[+m[2]]) || (transformed && /\bsecrets(?:\.|\[)/.test(exprs[+m[2]])) : isSecretName(m[1]) || sensitive.has(m[1])) hits.push(m.index);
   }
   for (const m of w.text.matchAll(/\$\(\(([\s\S]*?)\)\)/g)) {
     if ((m[1].match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).some((name) => isSecretName(name) || sensitive.has(name))) hits.push(m.index);
@@ -328,7 +328,7 @@ function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns tr
         collectRaw(w.subs[0].script, out); continue;
       } // NAME="$(...)"
       const subHits = w.subs.filter((sb) => analyze(sb.script, sb.kind === '>(' ? 'top' : 'sub', out, exprs, new Set(sensitive)) && sb.kind !== '>(').map((sb) => sb.at);
-      for (const at of [...credHits(w, exprs, sensitive), ...subHits]) {
+      for (const at of [...credHits(w, exprs, sensitive, printer && P.length > 1), ...subHits]) {
         const before = w.text.slice(0, at);
         if (w.q[at] === "'" && w.text[at] !== '\x01') rec(w.pos[at], 'safe');
         else if (normalized.some((n) => w.pos[at] >= n.start && w.pos[at] < n.end)) rec(w.pos[at], 'safe');
@@ -388,7 +388,7 @@ function collectRaw(script, out) { // occurrences inside a clean capture: record
   }
 }
 
-function scanScript(where, script0) {
+function scanScript(where, script0, sensitive = new Set()) {
   const exprs = [];
   // ${{ }} is substituted by GitHub before the shell runs: same-length placeholder keeps offsets stable
   let script = '', cursor = 0;
@@ -420,7 +420,7 @@ function scanScript(where, script0) {
     const literal = /^([A-Za-z_][A-Za-z0-9_]*)=(.+)$/.exec(w.text);
     if (literal && isSecretName(literal[1]) && !w.subs.length && !/[\x01\x03$`]/.test(literal[2]) && !FIXTURES.has(literal[2])) why[lineOf(w.off)].add('literal credential');
   }
-  if (!parsed.bad) analyze(parsed, 'top', occ, exprs);
+  if (!parsed.bad) analyze(parsed, 'top', occ, exprs, sensitive);
   const allowances = [...script0.matchAll(ALLOW_ALL)].flatMap((m) => {
     const owner = parsed.comments.find(([a, b]) => m.index >= a && m.index < b)?.[2];
     return owner && m[1].trim().length >= 10 ? [owner] : [];
@@ -434,7 +434,7 @@ function scanScript(where, script0) {
   const inComment = (off) => parsed.comments.some(([a, b]) => off >= a && off < b);
   // raw cross-check: an occurrence the lexer did not account for (or an unparsable script) is a finding
   for (const re of [CRED, ENV_FILE, PROC_ENV]) for (const m of script.matchAll(re)) {
-    const hit = m[0].startsWith('$') ? isSecretName(m[1]) : m[2] !== undefined ? credExpr(exprs[+m[2]]) : true;
+    const hit = m[0].startsWith('$') ? isSecretName(m[1]) || sensitive.has(m[1]) : m[2] !== undefined ? credExpr(exprs[+m[2]]) : true;
     if (hit && !inComment(m.index) && (parsed.bad || !covered.has(m.index))) why[lineOf(m.index)].add('unparsed occurrence');
   }
   // tracing split by a line continuation: join continuations (same length keeps offsets) and flag the starting line
@@ -496,11 +496,21 @@ json.dump(out, sys.stdout)
 function scanAll(items) {
   const parsed = JSON.parse(execFileSync('python3', ['-c', PY], { input: JSON.stringify(items), maxBuffer: 1 << 28 }));
   return parsed.flatMap(({ name, runs, shells, kvs, all }) => [
-    ...runs.flatMap(([p, s]) => scanScript(`${name}${p}`, s).map((f) => ({ ...f, context: createHash('sha256').update(s).digest('hex').slice(0, 16) }))),
+    ...runs.flatMap(([p, s]) => {
+      const bindings = new Map();
+      for (const [q, k, v] of kvs.filter(([q, k]) => q.endsWith(`.env.${k}`) && p.startsWith(q.slice(0, -(`.env.${k}`).length) + '.')).sort(([a], [b]) => a.length - b.length)) bindings.set(k, v.includes('${{') && credExpr(v));
+      const aliases = new Set([...bindings].filter(([, credential]) => credential).map(([key]) => key));
+      const results = scanScript(`${name}${p}`, s, aliases);
+      if (p.endsWith('.script')) for (const match of s.matchAll(/\bprocess\s*\.\s*env\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*(['"])(.*?)\2\s*\])/g)) {
+        if (isSecretName(match[1] ?? match[3]) || aliases.has(match[1] ?? match[3])) results.push({ where: `${name}${p}`, text: match[0], why: 'JavaScript credential environment read requires reviewed private transport' });
+      }
+      return results.map((f) => ({ ...f, context: createHash('sha256').update(s).digest('hex').slice(0, 16) }));
+    }),
     // `shell: bash -x {0}` traces every command; an expression shell may pull a traced value from anywhere in the file
     ...shells.filter(([, v]) => TRACE.test(v)).map(([p, v]) => ({ where: `${name}${p}`, text: `shell: ${v}`, why: 'shell tracing' })),
     ...shells.filter(([, v]) => /^(?:pwsh|powershell|cmd|python|node|ruby)(?:\s|$)/i.test(v.trim())).map(([p, v]) => ({ where: `${name}${p}`, text: `shell: ${v}`, why: 'unsupported shell; use a reviewed Bash transport' })),
     ...(shells.some(([, v]) => v.includes('${{')) ? all.filter((v) => TRACE.test(v)).map((v) => ({ where: name, text: `expression shell: ${v}`, why: 'shell tracing' })) : []),
+    ...(shells.some(([, v]) => v.includes('${{')) ? all.filter((v) => /^-[a-z]*[xv]$|^(?:xtrace|verbose)$/i.test(v.trim())).map((v) => ({ where: name, text: `expression shell fragment: ${v}`, why: 'composed shell tracing' })) : []),
     ...kvs.filter(([, k, v]) => /^SHELLOPTS$/i.test(k) && /xtrace/.test(v)).map(([p, k, v]) => ({ where: `${name}${p}`, text: `${k}: ${v}`, why: 'shell tracing' })),
     ...kvs.filter(([, k, v]) => isSecretName(k) && v.trim() !== '' && !FIXTURES.has(v) && !v.includes('${{'))
       .map(([p, k]) => ({ where: `${name}${p}`, text: `literal ${k}`, why: 'literal credential' })),
@@ -562,6 +572,11 @@ export const trip = {
   'later command allowance cannot excuse earlier echo': blk('echo "$DB_PASSWORD"; echo hi # secret-echo-allow: harmless later command'),
 
   'nice long operand env dump': blk('nice --adjustment 5 env'),
+  'transformed registered secret': blk('echo "${{ secrets.DB_PASSWORD }}" | base64'),
+  'JavaScript credential environment log': 'jobs:\n  j:\n    steps:\n      - uses: actions/github-script@v7\n        with:\n          script: console.log(process.env.DB_PASSWORD)',
+  'JavaScript bracket credential environment log': 'jobs:\n  j:\n    steps:\n      - uses: actions/github-script@v7\n        with:\n          script: console.log(process.env["DB_PASSWORD"])',
+  'YAML generated credential alias': 'jobs:\n  j:\n    env:\n      VALUE: ${{ steps.generate.outputs.password }}\n    steps:\n      - run: echo "$VALUE"',
+  'composed matrix shell tracing': 'jobs:\n  j:\n    strategy:\n      matrix:\n        shell: [bash]\n        flags: [-x]\n    steps:\n      - shell: ${{ matrix.shell }} ${{ matrix.flags }} {0}\n        run: mysql -p"$DB_PASSWORD" -e "SELECT 1"',
   'xargs environment dump': blk('xargs env </dev/null'),
   'xargs parsed options environment dump': blk('xargs -n 1 -- env </dev/null'),
   'xargs optional long operand environment dump': blk('xargs --replace env </dev/null'),
@@ -714,6 +729,8 @@ export const trip = {
   'composite action run step': 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo "$DB_PASSWORD"',
 };
 export const ok = {
+  'YAML public child binding overrides credential alias': 'jobs:\n  j:\n    env:\n      VALUE: ${{ steps.generate.outputs.password }}\n    steps:\n      - env:\n          VALUE: public metadata\n        run: echo "$VALUE"',
+  'YAML aliases do not cross jobs': 'jobs:\n  j:\n    env:\n      VALUE: ${{ steps.generate.outputs.password }}\n    steps:\n      - run: true\n  jj:\n    steps:\n      - run: echo "$VALUE"',
   'single-quoted variable instruction': blk('echo \'$DB_PASSWORD\''),
   'SSH password-authentication option is not a credential assignment': blk('ssh -o PasswordAuthentication=no user@host true'),
   'closing command marker covers captured child': blk('X="$(cat "$DB_PASSWORD"', ')" # secret-echo-allow: reviewed captured child with separately proven quiet diagnostics'),
