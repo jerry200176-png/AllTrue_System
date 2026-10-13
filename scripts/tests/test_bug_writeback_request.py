@@ -133,11 +133,19 @@ class EntryValidationTest(unittest.TestCase):
         self.assertIn(f"at most {wb.MAX_NEW_PER_PUSH}", str(ctx.exception))
         self.assertEqual(len(wb.plan("", doc(*many[:-1]), REPO)), wb.MAX_NEW_PER_PUSH)
 
-    def test_hung_remote_call_times_out_and_is_reported(self):
-        import subprocess as sp
+    def test_hung_remote_call_kills_its_whole_process_group(self):
+        import tempfile
+        import time
 
-        with mock.patch.object(wb.subprocess, "run", side_effect=sp.TimeoutExpired(cmd="bash", timeout=1)):
-            self.assertEqual(wb.run_remote("phase-a", {}), 124)
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = Path(tmp) / "late-write"
+            script = Path(tmp) / "remote.sh"
+            # Stands in for run-remote.sh: a child (like ssh) that would write after the timeout.
+            script.write_text(f"(sleep 2; touch {marker}) &\nwait\n", encoding="utf-8")
+            with mock.patch.object(wb, "REMOTE_SCRIPT", script):
+                self.assertEqual(wb.run_remote("phase-a", {}, timeout=0.5), 124)
+            time.sleep(2.5)
+            self.assertFalse(marker.exists(), "the timed-out child must not finish its write")
 
     def test_one_bad_new_entry_blocks_the_whole_run(self):
         with self.assertRaises(wb.RequestError):

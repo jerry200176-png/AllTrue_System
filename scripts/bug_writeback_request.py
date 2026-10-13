@@ -13,7 +13,7 @@
 
 Entries are append-only: removing or changing an existing entry is refused, here and in CI.
 Only request_ids absent from the last applied version of the file run (the workflow diffs against
-its last successful run);
+its last completed, not cancelled run; a failed entry is retried with a new request_id);
 the server-side script also skips a reply that is already posted. `resolved`/`closed` never
 pass through here: those stay on the evidence-gated Phase-C paths. The log carries request IDs,
 bug IDs, actions and counts only: the repository is public.
@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -204,20 +205,25 @@ def plan(before_text: str | None, after_text: str | None, repo: str) -> list[dic
 Runner = Callable[[str, dict], int]
 
 
-def run_remote(mode: str, env: dict) -> int:
-    """Call the shared write-back script; its output may hold reply text, so it is discarded."""
+def run_remote(mode: str, env: dict, timeout: float | None = None) -> int:
+    """Call the shared write-back script; its output may hold reply text, so it is discarded.
+
+    The script runs in its own process group: on timeout the whole group (bash and its ssh
+    child) is killed before the next request starts, so no orphaned sender can finish later.
+    """
+    proc = subprocess.Popen(
+        ["bash", str(REMOTE_SCRIPT), mode],
+        env={**os.environ, **env},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
     try:
-        result = subprocess.run(
-            ["bash", str(REMOTE_SCRIPT), mode],
-            env={**os.environ, **env},
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-            timeout=REMOTE_TIMEOUT_S,
-        )
+        return proc.wait(timeout=REMOTE_TIMEOUT_S if timeout is None else timeout)
     except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
         return 124  # reported as failed; later requests still run
-    return result.returncode
 
 
 def apply(items: Iterable[dict], runner: Runner = run_remote, log: Callable[[str], None] = print) -> int:
