@@ -964,7 +964,7 @@ class PaymentReportController extends Controller
     {
         if (!$invoice) {
             // Unbilled charge-bearing contract: NT$0 is not a report either (free courses never reach here, #3888 review).
-            return $amount <= 0 && (int) ($sc?->Charge ?? 0) > 0 ? response()->json([
+            return $amount <= 0 && (int) ($sc->Charge ?? 0) > 0 ? response()->json([
                 'message' => '這門課要收費，金額不可為 0；請填實際收到的金額。沒有登記任何款項。',
                 'code' => 'zero_amount_with_balance',
             ], 422) : null;
@@ -972,7 +972,7 @@ class PaymentReportController extends Controller
         $projection = $this->invoiceProjection($invoice, $sc);
         $outstanding = (int) $projection['outstanding_amount'];
         // NT$0 on a stored NT$0 bill of a course that charges is an erroneous bill, not a free settlement (#3888 review).
-        $erroneousZero = (int) $projection['stored_total_amount'] <= 0 && (int) ($sc?->Charge ?? 0) > 0;
+        $erroneousZero = (int) $projection['stored_total_amount'] <= 0 && (int) ($sc->Charge ?? 0) > 0;
         if ($amount <= 0 && ($outstanding > 0 || $erroneousZero)) {
             return response()->json([
                 'message' => $erroneousZero ? '這張帳單金額是 NT$0，但這門課要收費；請先在學生帳務更正帳單金額。沒有登記任何款項。'

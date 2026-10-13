@@ -362,7 +362,7 @@ class BillingPayableResolver
      */
     private function selectRelevantInvoice(Collection $invoices, ?StudentClass $course): array
     {
-        foreach ($this->sortRelevant($invoices, (string) ($course?->ScheduleMode ?? '') === 'date') as $invoice) {
+        foreach ($this->sortRelevant($invoices, (string) ($course->ScheduleMode ?? '') === 'date') as $invoice) {
             if ($this->mayOwe($invoice) && (int) ($projection = $this->invoiceAmounts->resolve($invoice, $course))['outstanding_amount'] > 0) {
                 return [$invoice, $projection];
             }
