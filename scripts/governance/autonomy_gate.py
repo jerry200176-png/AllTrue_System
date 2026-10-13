@@ -42,6 +42,8 @@ _T3_PREFIXES = (
     "backend/app/Http/Controllers/Auth",
     "backend/app/Http/Middleware/",
     "backend/routes/api.php",
+    "scripts/bug-writeback/",
+    "scripts/bug_writeback_request.py",
     "scripts/ops/",
     "scripts/production",
     "governance/",
@@ -104,6 +106,8 @@ _CONTROL_PLANE_PREFIXES = (
 )
 
 _CONTROL_PLANE_EXACT = {
+    "scripts/bug-writeback/run-remote.sh",
+    "scripts/bug_writeback_request.py",
     ".cursorrules",
     "AGENTS.md",
     "CLAUDE.md",

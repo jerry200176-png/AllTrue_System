@@ -198,6 +198,14 @@ class RequestFileTierTest(unittest.TestCase):
         self.assertFalse(rejected["valid"])
         self.assertEqual(validate_declaration("Risk-Class: R2\nAutonomy-Tier: T2", [self.WRITE])["effective_tier"], "T2")
 
+    def test_writeback_executors_are_protected_even_without_workflow_changes(self):
+        for path in ("scripts/bug_writeback_request.py", "scripts/bug-writeback/run-remote.sh"):
+            for paths in ([path], [path, self.WRITE]):
+                with self.subTest(paths=paths):
+                    self.assertEqual(classify_scope(paths, "")["tier_name"], "T3")
+                    self.assertFalse(validate_declaration("Risk-Class: R2\\nAutonomy-Tier: T2", paths)["valid"])
+                    self.assertTrue(validate_declaration("Risk-Class: R3\\nAutonomy-Tier: T3", paths)["valid"])
+
     def test_write_request_raises_a_docs_only_pr(self):
         self.assertEqual(classify_scope(["docs/sop/BUG_INTAKE_TO_PRODUCTION.md", self.WRITE], "")["tier_name"], "T2")
 
