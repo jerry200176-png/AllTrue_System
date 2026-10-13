@@ -80,7 +80,7 @@ test.describe('Binding Management clarity browser verification', () => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto(`/binding-management-pilot-mount.html`);
       await page.waitForSelector('.bmp-page');
-      await expect(page.getByRole('heading', { name: 'LINE 綁定管理' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: '家長 LINE 綁定' })).toBeVisible();
       await expect(page.getByRole('button', { name: '重新整理' })).toBeVisible();
       await expect(page.getByLabel('搜尋學生姓名')).toBeVisible();
       await expect(page.locator('.bmp-page strong').filter({ hasText: '林小明' })).toHaveCount(2);
