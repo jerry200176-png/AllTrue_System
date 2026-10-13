@@ -420,7 +420,7 @@
                     <TuitionDocActions
                       :row="r"
                       :can-view="canViewBillingDocs"
-                      :busy="receiptLoading === r.id"
+                      :busy="receiptLoading !== null && receiptLoading === r.id"
                       @slip="openSlip"
                       @receipt="viewReceiptForClass"
                       @ledger="openLedgerForClass"
