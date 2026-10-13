@@ -158,6 +158,18 @@ function resolve(words) { // skip assignments and wrapper commands; `dump` marks
       }
       continue;
     }
+    if (name === 'timeout' || name === 'stdbuf') {
+      let j = k + 1;
+      for (; j < words.length && words[j].text.startsWith('-'); j++) {
+        const o = words[j].text;
+        if (o === '--') { j++; break; }
+        if (/^--(?:help|version)$/.test(o)) return { k, name, help: true };
+        if (name === 'timeout' && /^-?[ks]$|^--(?:kill-after|signal)$/.test(o)) j++;
+        if (name === 'stdbuf' && /^-[ioe]$|^--(?:input|output|error)$/.test(o)) j++;
+      }
+      if (name === 'timeout') j++; // duration operand precedes the executable
+      k = j; continue;
+    }
     if (name === 'sudo') { k++; while (words[k] && /^-/.test(words[k].text)) k += /^-[ugCh]$/.test(words[k].text) ? 2 : 1; continue; }
     if (name === 'env') {
       if (args.length === 1 && /^--(?:help|version)$/.test(args[0])) return { k, name, help: true };
@@ -197,6 +209,22 @@ function stdoutTarget(c, initial) { // final destination of fd 1 after the comma
 }
 const isHash = (c) => { const r = resolve(c.words); return HASHES.has(r.name) && c.words.slice(r.k + 1).every((w) => /^-|^\d+$/.test(w.text)); };
 const varOnly = (t) => /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$|^\x01\d+\x01\x02*$/.test(t);
+// Only Docker login's parsed password-stdin option consumes the incoming password.
+// An arbitrary executable or an option operand with the same spelling is not trusted.
+function passwordConsumer(c) {
+  const r = resolve(c.words), args = c.words.slice(r.k + 1).map((w) => w.text);
+  if (r.name !== 'docker' || args.shift() !== 'login') return false;
+  let stdin = false, server = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--password-stdin') { if (stdin) return false; stdin = true; }
+    else if (a === '-u' || a === '--username') { if (!args[++i] || args[i].startsWith('-')) return false; }
+    else if (/^--username=.+$|^-u[^-].+$/.test(a)) continue;
+    else if (!a.startsWith('-') && !server) server = true;
+    else return false; // unknown options, --, or additional operands need an annotation
+  }
+  return stdin;
+}
 // where does sensitive output of stage s of pipeline P end up? 'safe' | 'unsafe' | 'taint' (captured by $(...))
 function sink(P, s, ctx, cred) {
   const c = P[s];
@@ -208,7 +236,7 @@ function sink(P, s, ctx, cred) {
   const next = P[s + 1], nr = resolve(next.words);
   if (isHash(next)) return hasAlias(next) || stdoutTarget(next, 'x') === 'log' ? 'unsafe' : 'safe';
   if (cred && s === 0 && P.length === 2 && /^(?:echo|printf)$/.test(resolve(c.words).name) && !c.redirs.length
-    && next.words.some((w) => w.text === '--password-stdin') && !hasAlias(next)
+    && passwordConsumer(next) && !hasAlias(next)
     && c.words.slice(resolve(c.words).k + 1).filter((w, i) => !/^-[neE]+$/.test(w.text) && !(i === 0 && /^%/.test(w.text))).every((w) => varOnly(w.text))) return 'safe';
   if (FILTERS.has(nr.name)) return sink(P, s + 1, ctx, cred);
   return 'unsafe';
@@ -417,6 +445,15 @@ const formatBaseline = (b) => `{\n  "//": "#1387 shrink-only: existing findings 
 const wf = (run) => `jobs:\n  j:\n    steps:\n      - run: ${run}`;
 const blk = (...l) => wf(`|\n${l.map((x) => `          ${x}`).join('\n')}`);
 export const trip = {
+  'timeout env dump': blk('timeout 5 env', 'timeout --signal TERM --kill-after 2s 5s printenv'),
+  'timeout with end of options': blk('timeout -- 5 env'),
+  'stdbuf env dump': blk('stdbuf -oL env', 'stdbuf --output L --error=0 printenv'),
+  'nested execution wrappers': blk('timeout 5 stdbuf -o L env'),
+  'bogus password stdin consumer': blk('echo "$DB_PASSWORD" | bash -c \'cat\' --password-stdin'),
+  'password stdin is username operand': blk('echo "$DB_PASSWORD" | docker login -u --password-stdin'),
+  'password stdin after option terminator': blk('echo "$DB_PASSWORD" | docker login -- --password-stdin'),
+  'password stdin on other docker command': blk('echo "$DB_PASSWORD" | docker run --password-stdin'),
+
   'yaml anchor/alias run': 'jobs:\n  j:\n    steps:\n      - run: &r |\n          echo "$DB_PASSWORD"\n      - run: *r',
   'yaml block chomp |-': wf('|-\n          echo "$DB_PASSWORD"'),
   'yaml folded >+': wf('>+\n          echo\n          "$DB_PASSWORD"'),
@@ -537,6 +574,9 @@ export const trip = {
   'composite action run step': 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo "$DB_PASSWORD"',
 };
 export const ok = {
+  'wrapped nonsecret command': blk('timeout --kill-after=2s 5s echo hi', 'stdbuf --output=L echo hi'),
+  'wrapped Docker password consumer': blk('echo "$DB_PASSWORD" | timeout 5 docker login --username=user --password-stdin ghcr.io'),
+
   'echo > file': blk('echo "$DB_PASSWORD" > credentials.txt'),
   'echo >> "$F" / 1> / &> / &>> / > /dev/null': blk('echo "$DB_PASSWORD" >> "$F"', 'echo "$DB_PASSWORD" 1> a', 'echo "$DB_PASSWORD" &> a', 'echo "$DB_PASSWORD" &>> a', 'echo "$DB_PASSWORD" > /dev/null'),
   'quoted ; inside value to file': blk('echo "$DB_PASSWORD;mode=prod" > credentials.txt'),
