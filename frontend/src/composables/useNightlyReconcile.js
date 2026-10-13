@@ -211,7 +211,7 @@ export function useNightlyReconcile(tokenRef) {
       source_conflict: '課堂狀態與扣堂證據衝突',
       unknown: '待分類',
     };
-    return map[cat] || cat;
+    return map[cat] || (cat ? map.unknown : '');
   }
 
   return {

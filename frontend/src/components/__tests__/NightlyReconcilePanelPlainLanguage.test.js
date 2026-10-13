@@ -71,6 +71,8 @@ describe('NightlyReconcilePanel plain-language summary (#3900)', () => {
       mismatches: [row(21, 'something_new', 2)],
     });
     expect(wrapper.get('.nr-guide-item').text()).toContain(CATEGORY_GUIDE.unknown.next);
+    expect(wrapper.get('.nr-guide-item h3').text()).toContain('待分類');
+    expect(wrapper.get('.nr-guide-item h3').text()).not.toContain('something_new');
   });
 
   it('warns when the latest report is more than a day old', async () => {
