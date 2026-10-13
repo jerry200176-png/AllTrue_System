@@ -20,8 +20,8 @@ name: UI Smoke (Playwright)
 # #3767：所有 run 共用同一組 production 登入帳號（SMOKE_DIRECTOR_* / SMOKE_TEACHER_*）。
 # 兩個 run 同時登入會互踢 token／觸發登入節流。因此真正跑 Playwright 的 job 用
 # job 層 concurrency `ui-smoke-production-accounts`（全 repo 共用、不取消執行中者）序列化；
-# 偵測 job 不在佇列裡，沒動 UI 的 PR 不會排隊。GitHub 同一 group 最多 1 個執行中＋1 個等待中，
-# 更新的等待者會取代較舊的等待者（被取代者顯示 cancelled，需要時 re-run）。不新增任何正式帳號。
+# 偵測 job 不在佇列裡，沒動 UI 的 PR 不會排隊。queue: max 保留最多 100 個等待中 job，
+# 避免別的 PR／排程取代 pending smoke；仍一次只執行一個。不新增任何正式帳號。
 
 on:
   pull_request:
@@ -95,6 +95,7 @@ jobs:
     concurrency:
       group: ui-smoke-production-accounts
       cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

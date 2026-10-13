@@ -58,6 +58,8 @@ class UiSmokeWorkflowGateTest(unittest.TestCase):
             self.assertEqual(group, "ui-smoke-production-accounts")
             self.assertNotIn("${{", group, "the group must be shared by all runs, not per PR/run")
             self.assertIs(concurrency.get("cancel-in-progress"), False)
+            # Default queue: single replaces an unrelated pending run when a third arrives.
+            self.assertEqual(concurrency.get("queue"), "max")
         # Skipped (non-UI) PRs must not queue behind the production session.
         self.assertEqual(jobs["ui-smoke"]["needs"], "detect")
         self.assertIn("needs.detect.outputs.run == 'true'", jobs["ui-smoke"]["if"])
