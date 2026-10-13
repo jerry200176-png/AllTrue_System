@@ -1,13 +1,13 @@
 ---
 owner: jerry (CEO)
-status: Draft — Phase 1 spec; Phase 2 blocked on Founder Q1–Q4
+status: Accepted — Founder decisions 2026-10-13 (§5a); Phase 2 in implementation
 review_cycle: as-needed
 last_reviewed: 2026-10-13
 ---
 
 # RFC: 共用方案（CoursePackage）待收規則 — 整包一列、部分已繳、待核對
 
-> **Status:** Draft（Phase 1：現況盤點 + 規則規格）。**未實作**；Phase 2 等 §5 的 Founder 選項拍板。  
+> **Status:** Accepted（Founder 2026-10-13 拍板 Q1–Q5，見 §5a）。Phase 2 實作：讀取端（待收列＋不催繳）與 confirm 寫入修正（Q5）分兩個 PR。  
 > **Date:** 2026-10-13  
 > **Issue:** Refs [#3785](https://github.com/jerry200176-png/AllTrue_System/issues/3785)（hold）；相關 PR #3891（`Invoice::mayOweSql`，package member 保持 stored Status）、#3892（一個方案一個收款動作）  
 > **Founder 決策（2026-10-13）：** 共用方案核對後**真的**還欠錢 → 重新列入「待收」，顯示「部分已繳」與**真實差額**；整包**一列**，不按科目算、不重複算、不重收全額。先定義整包應收、付款歸屬、去重；無法判定者列「待核對」。**不自動催繳**（不發提醒、不推 LINE），**不改 production 資料**。  
@@ -114,6 +114,23 @@ A：本 RFC 只做 count 方案，月結方案維持現狀（建議，月結以�
 A：Phase 2 把方案成員自 `unpaid_reminder`／`SendTuitionReminders` 全部排除，方案只在帳務中心人工收（建議，符合「不自動催繳」）。B：保留現狀的成員提醒，只排除待核對方案（每科一則的重複提醒仍在）。C：改成每方案一則提醒（新的對外通知行為，需另外批准）。
 
 ---
+
+## 5a. Founder decisions 2026-10-13（定案）
+
+| # | 決定 | 落實方式 |
+|---|---|---|
+| Q1 | **C**：有成員帳單時 `X = Σ 非作廢成員帳單 TotalAmount`；若 `X ≠ round(rate × total_sessions)`（或 `rate_unit ≠ session`、費率／堂數缺漏而無法比對）→ 待核對。沒有帳單時 `X = rate × total_sessions`。 | R4；R8.4 依 C 解讀 |
+| Q2 | **A**：只靠 `InvoiceItem` 連到成員的帳單 → 整包待核對。 | R8.1 |
+| Q3 | **A**：月結方案暫不納入本規則；#3892 已讓月結成員各自可收款。 | §3 範圍不變 |
+| Q4 | **A**：count 方案的成員完全排除於自動提醒／催繳（`DunningService`、`tuition:send-reminders`、LINE），由人員手動跟進。 | R10 |
+| Q5 | **修**：`PaymentReportController::confirm` 中，方案成員沒有預開帳單、確認的是部分金額時，**不得** `markPackagePaid`；方案維持部分已繳，直到 Payment rows 合計達到 `X`。不改寫既有資料；舊的誤標已繳方案經讀取端規則（旗標已繳但 Payment rows < X）顯示待核對。 | 寫入路徑另一 PR（建於 #3892 合併後） |
+
+實作時的解讀（若與 Founder 意圖不同，請在 PR 指正）：
+
+- **R7 保留**：沒有任何成員帳單且 `pkg.paid = true` → 已繳（legacy_flag，F7 S1）。R8.7 只在有帳單時適用；否則所有舊的「旗標已繳、從未開單」方案都會一次湧入待核對。Q5 所指的舊誤標方案都有 confirm 開出的帳單，仍會被 R8.7 或 Q1 比對抓到。
+- **Q4 只涵蓋 count 方案成員**（與 Q3 一致）；月結方案成員的提醒照舊。
+- 已停止的 count 方案只在成員有帳單時列出（與過去「停課成員有欠款帳單才列」一致）；沒有帳單的已停止方案不列。
+- 待核對列：`payment_status = 'needs_review'`、`review_reasons[]`，金額欄位（`charge`／`outstanding`／`payable_*`）皆為 null。
 
 ## 6. 回滾
 
