@@ -3,6 +3,7 @@
 namespace App\Services\ParentBinding;
 
 use App\Models\Guardian;
+use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentGuardian;
 use App\Models\Campus;
@@ -173,14 +174,18 @@ final class BindingService
 
     public function deleteBinding(int $bindingId): bool
     {
-        return DB::transaction(function () use ($bindingId) {
-            $binding = DB::table('student_line_bindings')->where('id', $bindingId)->lockForUpdate()->first();
-            if (!$binding) {
+        $binding = DB::table('student_line_bindings')->where('id', $bindingId)->first();
+        if (!$binding) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($binding, $bindingId) {
+            // Revoke before deleting: same lock order as GuardianSyncService::revoke()
+            // (student_guardians -> parent_sessions -> student_line_bindings).
+            $revoked = $this->revokeGuardianAccess((int) $binding->student_id, (string) $binding->line_user_id);
+            if (DB::table('student_line_bindings')->where('id', $bindingId)->delete() === 0) {
                 return false;
             }
-
-            DB::table('student_line_bindings')->where('id', $bindingId)->delete();
-            $revoked = $this->revokeGuardianAccess((int) $binding->student_id, (string) $binding->line_user_id);
 
             Log::info('parent_binding.deleted', [
                 'binding_id' => $bindingId,
@@ -195,11 +200,12 @@ final class BindingService
     }
 
     /**
-     * #3933: unbinding also revokes guardian access. Revokes this LINE
-     * subject's guardian link to this student via GuardianSyncService::revoke()
-     * and expires its parent sessions for this student. Other guardians and
-     * this LINE subject's other students are untouched. Idempotent; applies
-     * whether or not PERF_MULTI_GUARDIAN is on (dual-write is always on).
+     * #3933: unbinding also revokes guardian access. Call it right before the
+     * (student, LINE) binding row is deleted (one row per pair: unique index).
+     * Revokes this LINE subject's guardian link to this student via
+     * GuardianSyncService::revoke() and expires its parent sessions for this
+     * student. Other guardians and this LINE subject's other students are
+     * untouched. Idempotent; applies whether or not PERF_MULTI_GUARDIAN is on.
      *
      * @return array{guardian_links_revoked: int, parent_sessions_invalidated: int}
      */
@@ -212,6 +218,13 @@ final class BindingService
         }
 
         return DB::transaction(function () use ($studentId, $lineUserId, $result) {
+            // Telemetry only: revoke() expires these too, so count them first.
+            $result['parent_sessions_invalidated'] = ParentSession::query()
+                ->where('StudentID', $studentId)
+                ->where('line_user_id', $lineUserId)
+                ->where('ExpiresAt', '>', now())
+                ->count();
+
             if (GuardianSyncService::dualWriteEnabled()) {
                 $guardianId = Guardian::query()->where('line_user_id', $lineUserId)->value('id');
                 if ($guardianId !== null) {
@@ -228,8 +241,8 @@ final class BindingService
                 }
             }
 
-            // Also covers LINE subjects with no guardian row yet (compat window).
-            $result['parent_sessions_invalidated'] = $this->guardianAccess->invalidateSessionsForLineUser($studentId, $lineUserId);
+            // Also covers a LINE subject with no guardian row yet (compat window).
+            $this->guardianAccess->invalidateSessionsForLineUser($studentId, $lineUserId);
 
             return $result;
         });

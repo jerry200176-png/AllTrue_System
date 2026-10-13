@@ -15,6 +15,7 @@ use Database\Factories\StudentFactory;
 use Database\Factories\UserCampusFactory;
 use Database\Factories\UserFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -50,7 +51,7 @@ class BindingUnbindRevokesGuardianAccessTest extends TestCase
         $student = $this->student();
         $line = $this->lineId('a');
         $binding = $this->bindLine($student, $line);
-        $token = $this->session($student, $line);
+        $token = $this->parentToken($student, $line);
 
         $this->assertTrue($this->access()->lineMayAccessStudent($line, (int) $student->id));
         $this->dashboard($token)->assertOk();
@@ -72,7 +73,7 @@ class BindingUnbindRevokesGuardianAccessTest extends TestCase
         $other = $this->lineId('c');
         $binding = $this->bindLine($student, $replaced);
         $this->bindLine($student, $other);
-        $otherToken = $this->session($student, $other);
+        $otherToken = $this->parentToken($student, $other);
 
         $this->unbind($binding)->assertOk();
 
@@ -90,7 +91,7 @@ class BindingUnbindRevokesGuardianAccessTest extends TestCase
         $sibling = $this->student();
         $binding = $this->bindLine($child, $line);
         $this->bindLine($sibling, $line);
-        $siblingToken = $this->session($sibling, $line);
+        $siblingToken = $this->parentToken($sibling, $line);
 
         $this->unbind($binding)->assertOk();
 
@@ -108,7 +109,7 @@ class BindingUnbindRevokesGuardianAccessTest extends TestCase
         $other = $this->lineId('f');
         $binding = $this->bindLine($student, $line);
         $this->bindLine($student, $other);
-        $otherToken = $this->session($student, $other);
+        $otherToken = $this->parentToken($student, $other);
 
         $this->unbind($binding)->assertOk();
         $revokedAt = $this->linkFor($student, $line)->revoked_at;
@@ -127,7 +128,7 @@ class BindingUnbindRevokesGuardianAccessTest extends TestCase
         $student = $this->student();
         $line = $this->lineId('g');
         $binding = $this->bindLine($student, $line);
-        $token = $this->session($student, $line);
+        $token = $this->parentToken($student, $line);
 
         $this->deleteJson('/api/v1/bindings/' . $binding->id, [], ['X-User-Id' => (string) $outsider->id])
             ->assertForbidden();
@@ -143,7 +144,7 @@ class BindingUnbindRevokesGuardianAccessTest extends TestCase
         $student = $this->student();
         $line = $this->lineId('h');
         $binding = $this->bindLine($student, $line);
-        $token = $this->session($student, $line);
+        $token = $this->parentToken($student, $line);
 
         $this->deleteJson(
             '/api/v1/students/' . $student->id . '/line-bindings/' . $binding->id,
@@ -154,6 +155,83 @@ class BindingUnbindRevokesGuardianAccessTest extends TestCase
         $this->assertSame(StudentGuardian::STATUS_REVOKED, $this->linkFor($student, $line)->status);
         $this->assertFalse($this->access()->lineMayAccessStudent($line, (int) $student->id));
         $this->dashboard($token)->assertUnauthorized();
+    }
+
+    public function test_unbind_log_counts_the_sessions_it_signed_out(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $student = $this->student();
+        $line = $this->lineId('i');
+        $binding = $this->bindLine($student, $line);
+        $this->parentToken($student, $line);
+        Log::spy();
+
+        $this->unbind($binding)->assertOk();
+
+        Log::shouldHaveReceived('info')->withArgs(function ($message, $context = []) {
+            return $message === 'parent_binding.deleted' && is_array($context)
+                && $context['guardian_links_revoked'] === 1
+                && $context['parent_sessions_invalidated'] === 1;
+        })->once();
+    }
+
+    public function test_conflict_delete_revokes_only_the_removed_line_account(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $student = $this->student();
+        $removed = $this->lineId('k');
+        $kept = $this->lineId('l');
+        $binding = $this->bindLine($student, $removed);
+        $this->bindLine($student, $kept, CampusFactory::new()->create());
+        $removedToken = $this->parentToken($student, $removed);
+        $keptToken = $this->parentToken($student, $kept);
+
+        $this->postJson("/api/v1/bindings/conflicts/{$student->id}/resolve", [
+            'action' => 'delete',
+            'binding_id' => $binding->id,
+        ], ['X-User-Id' => (string) $this->director->id])->assertOk();
+
+        $this->assertSame(StudentGuardian::STATUS_REVOKED, $this->linkFor($student, $removed)->status);
+        $this->dashboard($removedToken)->assertUnauthorized();
+        $this->assertSame(StudentGuardian::STATUS_ACTIVE, $this->linkFor($student, $kept)->status);
+        $this->dashboard($keptToken)->assertOk();
+    }
+
+    public function test_conflict_keep_revokes_the_purged_line_accounts(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $student = $this->student();
+        $kept = $this->lineId('m');
+        $purged = $this->lineId('n');
+        $keep = $this->bindLine($student, $kept);
+        $this->bindLine($student, $purged, CampusFactory::new()->create());
+        $purgedToken = $this->parentToken($student, $purged);
+        $super = UserFactory::new()->superAdmin()->create();
+
+        $this->postJson("/api/v1/bindings/conflicts/{$student->id}/resolve", [
+            'action' => 'keep',
+            'binding_id' => $keep->id,
+        ], ['X-User-Id' => (string) $super->id])->assertOk();
+
+        $this->assertSame(StudentGuardian::STATUS_REVOKED, $this->linkFor($student, $purged)->status);
+        $this->dashboard($purgedToken)->assertUnauthorized();
+        $this->assertSame(StudentGuardian::STATUS_ACTIVE, $this->linkFor($student, $kept)->status);
+    }
+
+    public function test_binding_list_unbind_requires_the_students_current_campus(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $newCampus = CampusFactory::new()->create();
+        $student = StudentFactory::new()->create(['CampusID' => $newCampus->id, 'enable' => 1]);
+        $line = $this->lineId('o');
+        $staleBinding = $this->bindLine($student, $line);
+        $token = $this->parentToken($student, $line);
+
+        $this->unbind($staleBinding)->assertForbidden();
+
+        $this->assertDatabaseHas('student_line_bindings', ['id' => $staleBinding->id]);
+        $this->assertSame(StudentGuardian::STATUS_ACTIVE, $this->linkFor($student, $line)->status);
+        $this->dashboard($token)->assertOk();
     }
 
     private function access(): ParentGuardianAccessService
@@ -172,20 +250,18 @@ class BindingUnbindRevokesGuardianAccessTest extends TestCase
     }
 
     /** A verified LINE binding plus the guardian link it produces under dual-write. */
-    private function bindLine(Student $student, string $line): StudentLineBinding
+    private function bindLine(Student $student, string $line, ?Campus $campus = null): StudentLineBinding
     {
         $binding = StudentLineBinding::create([
             'student_id' => $student->id,
             'line_user_id' => $line,
-            'campus_id' => $this->campus->id,
+            'campus_id' => ($campus ?? $this->campus)->id,
             'bound_at' => now(),
             'verified_at' => now(),
             'verification_method' => 'contact_phone',
         ]);
         $guardian = Guardian::query()->firstOrCreate(['line_user_id' => $line], ['display_name' => 'G']);
-        StudentGuardian::create([
-            'student_id' => $student->id,
-            'guardian_id' => $guardian->id,
+        StudentGuardian::query()->firstOrCreate(['student_id' => $student->id, 'guardian_id' => $guardian->id], [
             'campus_id' => $this->campus->id,
             'role' => StudentGuardian::ROLE_GUARDIAN,
             'is_primary' => !StudentGuardian::query()->where('student_id', $student->id)->exists(),
@@ -209,7 +285,7 @@ class BindingUnbindRevokesGuardianAccessTest extends TestCase
             ->firstOrFail();
     }
 
-    private function session(Student $student, string $line): string
+    private function parentToken(Student $student, string $line): string
     {
         $raw = Str::random(48);
         ParentSession::create([

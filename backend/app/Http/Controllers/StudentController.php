@@ -656,8 +656,8 @@ class StudentController extends Controller
         $lineUserId = $binding->line_user_id;
         // #3933: unbinding also revokes guardian access (same path as the binding list).
         DB::transaction(function () use ($binding, $student, $lineUserId) {
-            $binding->delete();
             app(BindingService::class)->revokeGuardianAccess((int) $student->id, (string) $lineUserId);
+            $binding->delete();
         });
 
         SecurityAuditEvent::append('line.binding.revoked', 'success', [
