@@ -499,6 +499,8 @@ class NotificationSyncService
                 'Invoice.TotalAmount',
                 'Invoice.PaidAmount',
                 'Invoice.Status',
+                'Invoice.IssueDate',
+                'Invoice.billing_period',
                 'Student.name as student_name',
                 'Student.CampusID as campus_id',
             ]);
@@ -507,26 +509,21 @@ class NotificationSyncService
             $query->whereIn('Student.CampusID', $campusIds);
         }
 
-        $invoices = $query->get();
-        // R28: paid comes from Payment rows (a negative or Method=void row is a reversal), never the stored
-        // PaidAmount/Status, so the winning invoice notice cannot show a stale 已繳 0 (#3885 review).
-        $paidByInvoice = $invoices->isEmpty() ? collect() : DB::table('Payment')
-            ->whereIn('InvoiceID', $invoices->pluck('id')->all())->groupBy('InvoiceID')
-            ->selectRaw("InvoiceID, SUM(CASE WHEN Amount > 0 AND Method <> 'void' THEN Amount ELSE 0 END)"
-                . " - SUM(CASE WHEN Amount < 0 OR Method = 'void' THEN ABS(Amount) ELSE 0 END) AS net")
-            ->pluck('net', 'InvoiceID');
-
+        // R28 (#3885 review): total and paid come from the canonical invoice projection (Payment rows, incl.
+        // legacy NULL-method rows; held-session pricing), never the stored columns, because this notice wins.
+        $amounts = app(InvoiceAmountReconciliationService::class);
         $rows = [];
-        foreach ($invoices as $invoice) {
+        foreach ($query->get() as $invoice) {
             $campusId = (int) ($invoice->campus_id ?? 0);
             if (!empty($campusIds) && !in_array($campusId, $campusIds, true)) {
                 continue;
             }
-            $totalAmount = (int) ($invoice->TotalAmount ?? 0);
-            $paidAmount = max(0, (int) ($paidByInvoice[$invoice->id] ?? 0));
-            if ($totalAmount > 0 && $paidAmount >= $totalAmount) {
-                continue; // fully covered by Payment rows: nothing is owed on this bill
+            $projection = $amounts->resolve($invoice);
+            if ((int) $projection['outstanding_amount'] <= 0) {
+                continue; // nothing is owed on this bill
             }
+            $totalAmount = (int) $projection['total_amount'];
+            $paidAmount = (int) $projection['applied_amount'];
 
             $dueAt = Carbon::parse($invoice->DueDate);
             // Overdue tiers are calendar-day policy, not elapsed-hour policy.

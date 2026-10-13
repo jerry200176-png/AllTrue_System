@@ -330,6 +330,29 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         $this->assertStringContainsString('已繳 2000', (string) $n->Body);
     }
 
+    /** #3885 review: the winning invoice notice shows the canonical projection's total, not the stored column. */
+    public function test_invoice_notice_uses_the_canonical_invoice_total(): void
+    {
+        [$campus, , $course, $s] = $this->fixture();
+        $inv = \App\Models\Invoice::create([
+            'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => now()->subDays(20)->toDateString(),
+            'DueDate' => now()->subDays(9)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
+        ]);
+        $real = app(\App\Services\InvoiceAmountReconciliationService::class);
+        $this->mock(\App\Services\InvoiceAmountReconciliationService::class, function ($m) use ($real, $inv) {
+            $m->shouldReceive('preloadSessions')->andReturnUsing(fn ($ids) => $real->preloadSessions($ids));
+            $m->shouldReceive('forgetPreloadedSessions')->andReturnUsing(fn () => $real->forgetPreloadedSessions());
+            $m->shouldReceive('resolve')->andReturnUsing(fn ($invoice, $course = null) => (int) $invoice->id === (int) $inv->id
+                ? ['total_amount' => 3600, 'applied_amount' => 0, 'outstanding_amount' => 3600] + $real->resolve($invoice, $course)
+                : $real->resolve($invoice, $course));
+        });
+        NotificationSyncService::sync([$campus->id]);
+
+        $n = Notification::where('SourceKey', "invoice_overdue:{$campus->id}:{$inv->id}")->firstOrFail();
+        $this->assertSame(3600, (int) ($n->Payload['total_amount'] ?? -1));
+        $this->assertStringContainsString('應繳 3600', (string) $n->Body);
+    }
+
     public function test_suppressed_then_reopened_course_notice_is_unread_again(): void
     {
         [$campus, $director, $course, $s] = $this->fixture();
