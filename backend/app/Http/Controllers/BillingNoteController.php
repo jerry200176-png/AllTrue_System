@@ -72,13 +72,15 @@ class BillingNoteController extends Controller
         }
 
         $author = $request->attributes->get('auth_user');
-        $note = BillingNote::create([
+        $note = new BillingNote();
+        $note->fill([
             'campus_id' => $subject['campus_id'],
             'subject_type' => $data['subject_type'],
             'subject_id' => (int) $data['subject_id'],
             'body' => $body,
             'author_user_id' => (int) ($author->id ?? 0),
         ]);
+        $note->save();
 
         return response()->json($this->entry($note, (string) ($author->Name ?? '')), 201);
     }
@@ -100,11 +102,11 @@ class BillingNoteController extends Controller
     {
         [$studentId, $legacy] = match ($type) {
             'student_class' => ($m = StudentClass::query()->where('ID', $id)->first()) ? [(int) $m->StudentID, (string) ($m->Memo ?? '')] : [0, ''],
-            'invoice' => ($m = Invoice::query()->find($id)) ? [(int) $m->StudentID, (string) ($m->Note ?? '')] : [0, ''],
+            'invoice' => ($m = Invoice::query()->whereKey($id)->first()) instanceof Invoice ? [(int) $m->StudentID, (string) ($m->Note ?? '')] : [0, ''],
             'payment' => ($m = Payment::query()->find($id))
                 ? [(int) Invoice::query()->whereKey((int) $m->getAttribute('InvoiceID'))->value('StudentID'), (string) ($m->getAttribute('Note') ?? '')]
                 : [0, ''],
-            'payment_report' => ($m = PaymentReport::query()->find($id)) ? [(int) $m->getAttribute('StudentID'), $m->displayNote()] : [0, ''],
+            'payment_report' => ($m = PaymentReport::query()->whereKey($id)->first()) instanceof PaymentReport ? [(int) $m->getAttribute('StudentID'), $m->displayNote()] : [0, ''],
             default => [0, ''],
         };
         $campusId = $studentId > 0 ? (int) Student::query()->whereKey($studentId)->value('CampusID') : 0;
