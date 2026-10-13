@@ -3,7 +3,7 @@
 # Append entries; never edit, remove-and-re-add or reuse a request_id. On merge to main only
 # IDs beyond the permanent reservation prefix run; unknown outcomes require reconciliation. The file is public: the reply
 # is the only free text, and it must follow §3.8 (plain language, no names/phones/e-mails).
-# A PR that edits this file is a production write: T2 at minimum (autonomy_gate.py).
+# A PR editing this file is a production write: T3 Founder GO for its concrete targets/effects.
 #
 # Example entry:
 #   - request_id: 2026-10-13-triage-512
