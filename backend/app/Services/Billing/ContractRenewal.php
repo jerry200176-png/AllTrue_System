@@ -4,6 +4,7 @@ namespace App\Services\Billing;
 
 use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\ClassSessionMaterializationService;
@@ -22,6 +23,38 @@ use Illuminate\Support\Facades\Schema;
  */
 final class ContractRenewal
 {
+    /** #2567 (Founder 2026-10-13): renewing settles the prior term, so its fee must be on record first. */
+    public const PRIOR_FEE_MISSING_MESSAGE = '前一期費用尚未登錄（單堂費用與應收金額都是 0，也沒有帳單）。請先在課程編輯填寫「單堂費用」，或在帳務登錄前一期帳單（免費課程請登錄 0 元帳單），再續約或加購。';
+
+    /**
+     * Blocker when the source course has no fee on record: no per-session price, no charge and no
+     * non-void bill (its own or a line item on another invoice). A NT$0 bill counts: the Founder rule
+     * (2026-10-13) is to record a 0-amount bill for a truly free course. Trial (converted, not
+     * renewed), tutoring (no payment obligation) and package members (fee lives on the package) are exempt.
+     *
+     * @return array{code: string, message: string}|null
+     */
+    public function priorFeeBlocker(StudentClass $source): ?array
+    {
+        $type = strtolower(trim((string) ($source->getAttribute('ClassType') ?? '')));
+        if (in_array($type, ['trial', 'tutoring'], true) || (int) ($source->getAttribute('PackageID') ?? 0) > 0) {
+            return null;
+        }
+        if ((float) ($source->getAttribute('Rate') ?? 0) > 0 || (int) ($source->getAttribute('Charge') ?? 0) > 0) {
+            return null;
+        }
+        $id = (int) $source->getAttribute('ID');
+        $candidates = Invoice::query()->where('StudentClassID', $id)->pluck('id')
+            ->merge(InvoiceItem::query()->where('StudentClassID', $id)->pluck('InvoiceID'))
+            ->map(fn ($v) => (int) $v)->unique()->values()->all();
+        // Lock the evidence rows by primary key: voidInvoice() locks the same invoice row, so a concurrent void either
+        // commits first (and is seen here) or waits until this renewal commits. Never accept evidence being voided.
+        $billed = $candidates !== []
+            && Invoice::query()->whereKey($candidates)->scopes('notVoided')->lockForUpdate()->pluck('id')->isNotEmpty();
+
+        return $billed ? null : ['code' => 'prior_fee_missing', 'message' => self::PRIOR_FEE_MISSING_MESSAGE];
+    }
+
     public function findDuplicatePurchaseBatch(StudentClass $studentClass, string $startDate, int $sessions): ?StudentClass
     {
         return StudentClass::query()->where('ID', '<>', $studentClass->ID)
@@ -229,6 +262,10 @@ final class ContractRenewal
                 'code' => 'mode_required',
                 'message' => '請選擇續報類型。',
             ];
+        }
+
+        if ($priorFee = $this->priorFeeBlocker($studentClass)) {
+            $blockers[] = $priorFee;
         }
 
         if (!empty($blockers)) {
@@ -524,6 +561,10 @@ final class ContractRenewal
                         'paid' => (int) ($duplicate->Paid ?? 0),
                     ],
                 ], 409);
+            }
+
+            if ($priorFee = $this->priorFeeBlocker($studentClass)) {
+                return $this->reply($this->priorFeeRefusal($priorFee), 422);
             }
 
             $rate = (float) ($studentClass->Rate ?? 0);
@@ -914,6 +955,10 @@ final class ContractRenewal
                 ], 409);
             }
 
+            if ($priorFee = $this->priorFeeBlocker($studentClass)) {
+                return $this->reply($this->priorFeeRefusal($priorFee), 422);
+            }
+
             $preview = app(MonthlyRenewalPeriodService::class)->previewPeriod($studentClass, $newStartDate, $newEndDate);
             $rate = $preview['rate'];
             $rateUnit = $preview['rate_unit'];
@@ -1048,6 +1093,12 @@ final class ContractRenewal
                 ],
             ], 201);
         });
+    }
+
+    /** @param array{code: string, message: string} $blocker @return array<string, mixed> */
+    private function priorFeeRefusal(array $blocker): array
+    {
+        return $blocker + ['errors' => ['prior_fee' => [$blocker['message']]]];
     }
 
     /** @param array<string, mixed> $body @return array{status: int, body: array<string, mixed>} */
