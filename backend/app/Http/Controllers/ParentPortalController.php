@@ -2080,8 +2080,9 @@ class ParentPortalController extends Controller
 
         return response()->json([
             'records' => $records,
-            'identity_group_id' => $identityGroup?->id,
-            'active_scope' => $identityGroup && $accessMode !== StudentIdentityService::MODE_OFF ? 'all' : 'campus',
+            // Same rule as dashboard(): the group scope survives only while more than one member is still reachable.
+            'identity_group_id' => $identityMembers->count() > 1 ? $identityGroup?->id : null,
+            'active_scope' => $identityGroup && $accessMode !== StudentIdentityService::MODE_OFF && $identityMembers->count() > 1 ? 'all' : 'campus',
         ]);
     }
 
@@ -2132,14 +2133,7 @@ class ParentPortalController extends Controller
 
         // When portal dual-read is on, a revoked guardian link must fail closed
         // even if ExpiresAt has not been swept yet.
-        $lineUserId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
-        if ($lineUserId !== ''
-            && $this->isValidLineUserId($lineUserId)
-            && ParentGuardianAccessService::portalDualReadEnabled()
-            && !app(ParentGuardianAccessService::class)->lineMayAccessStudent($lineUserId, (int) $session->StudentID)
-        ) {
-            $session->ExpiresAt = Carbon::now();
-            $session->save();
+        if (app(ParentGuardianAccessService::class)->anchorRevoked($session)) {
             return null;
         }
 

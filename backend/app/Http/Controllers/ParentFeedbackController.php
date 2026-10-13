@@ -290,8 +290,6 @@ class ParentFeedbackController extends Controller
         if ($token === '') {
             return null;
         }
-        return ParentSession::where('TokenHash', hash('sha256', $token))
-            ->where('ExpiresAt', '>', Carbon::now())
-            ->first();
+        return app(\App\Services\ParentBinding\ParentGuardianAccessService::class)->liveSession($token); // #3944 follow-up
     }
 }

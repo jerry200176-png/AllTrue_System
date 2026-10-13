@@ -109,6 +109,9 @@ class GuardianRevocationGapsTest extends TestCase
             ->assertOk();
         $this->assertNotContains($classA, collect($campusScoped->json('classes'))->pluck('id')->all());
         $this->assertSame([$b->id], $this->billingStudentClassOwners($token));
+        // Codex r4261327132: with only the anchor left, billing metadata is campus-scoped like the dashboard.
+        $this->getJson('/api/v1/parent/billing-history', $this->bearer($token))->assertOk()
+            ->assertJsonPath('active_scope', 'campus')->assertJsonPath('identity_group_id', null);
 
         // A is unreachable for reads and actions.
         $this->switchTo($token, $a)->assertForbidden();
@@ -235,7 +238,7 @@ class GuardianRevocationGapsTest extends TestCase
         $this->assertNotContains($a->id, collect($this->dashboard($token)->assertOk()->json('students') ?? [])->pluck('id')->all());
     }
 
-    /** Codex r4261240532: a suspended link on the anchor ends the LINE session on the feedback endpoints too. */
+    /** Codex r4261240532 / r4261327121: a suspended anchor link ends the LINE session on every parent-token endpoint. */
     public function test_feedback_endpoints_revalidate_the_anchor_link(): void
     {
         config(['perfflags.multi_guardian_enabled' => true]);
@@ -245,10 +248,14 @@ class GuardianRevocationGapsTest extends TestCase
         $record = $this->learningRecord($a, $this->course($a));
         $token = $this->groupToken($a, null, $line);
         $this->feedback($token, $record)->assertOk();
+        $this->getJson('/api/v1/parent/system-trust-summary', $this->bearer($token))->assertOk();
 
         $this->linkFor($a, $line)->update(['status' => StudentGuardian::STATUS_SUSPENDED]);
 
         $this->feedback($token, $record)->assertUnauthorized();
+        $this->postJson('/api/v1/parent/feedback', [], $this->bearer($token))->assertUnauthorized();
+        $this->getJson('/api/v1/parent/system-trust-summary', $this->bearer($token))->assertUnauthorized();
+        $this->dashboard($token)->assertUnauthorized();
     }
 
     public function test_phone_login_group_session_is_unaffected_by_a_line_unbind(): void

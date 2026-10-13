@@ -85,6 +85,35 @@ final class ParentGuardianAccessService
     }
 
     /**
+     * #3944 follow-up: the one parent-token lookup for every parent endpoint. An unexpired session is live only while
+     * its LINE subject (if any) may still reach the anchor student; a revoked or suspended link expires it at once.
+     */
+    public function liveSession(?string $token): ?ParentSession
+    {
+        $token = trim((string) $token);
+        if ($token === '') {
+            return null;
+        }
+        $session = ParentSession::query()->where('TokenHash', hash('sha256', $token))->where('ExpiresAt', '>', now())->first();
+
+        return $session && !$this->anchorRevoked($session) ? $session : null;
+    }
+
+    /** True (and the session is expired now) when portal dual-read is on and the LINE subject lost its anchor link. */
+    public function anchorRevoked(ParentSession $session): bool
+    {
+        $line = trim((string) ($session->getAttribute('line_user_id') ?? ''));
+        if (!preg_match('/^U[0-9a-f]{32}$/i', $line) || !self::portalDualReadEnabled()
+            || $this->lineMayAccessStudent($line, (int) $session->getAttribute('StudentID'))) {
+            return false;
+        }
+        $session->setAttribute('ExpiresAt', now());
+        $session->save();
+
+        return true;
+    }
+
+    /**
      * #3944 follow-up: identity-group fan-out must not outlive a revoked
      * guardian relationship. A session always reaches its own anchor student
      * (resolveSession() revalidates that one). A LINE-login session reaches any
