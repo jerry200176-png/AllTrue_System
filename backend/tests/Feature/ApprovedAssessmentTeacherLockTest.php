@@ -338,6 +338,9 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
             'student_class_id' => $this->sc->ID, 'old_date' => self::DATE, 'old_start_time' => '16:00', 'new_date' => '2026-04-20',
             'start_time' => '16:00', 'end_time' => '18:00', 'teacher_id' => $this->bId,
         ]));
+        $this->assertLocked($lr, fn () => $this->api()->postJson('/api/v1/learning-records/reschedule-session', [ // legacy caller: no old_start_time
+            'student_class_id' => $this->sc->ID, 'old_date' => self::DATE, 'new_date' => self::DATE, 'start_time' => '18:00', 'end_time' => '20:00', 'teacher_id' => $this->bId,
+        ]));
     }
 
     public function test_contract_change_keeps_a_protected_child_of_a_stale_anchor_and_reads_the_bound_session_slot(): void
