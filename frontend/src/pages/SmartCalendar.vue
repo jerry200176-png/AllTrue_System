@@ -1396,7 +1396,7 @@ const isSessionOnLeaveOnDate = (course, ymd) => {
   }
   const leaveCourseId = course.is_exception ? (course.student_course_id ?? course.id) : course.id;
   if (leaveCourseId == null) return false;
-  return hasLeaveExceptionForCourseDate(exceptions.value, ymd, leaveCourseId, course.start_time);
+  return hasLeaveExceptionForCourseDate(exceptions.value, toYmd(ymd), leaveCourseId, course.start_time);
 };
 
 const courseOccupiesHourOnDate = (course, ymd, hour) => {
