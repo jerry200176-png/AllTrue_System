@@ -303,7 +303,7 @@ final class ContractTeacherChangeCascade
                 ->whereNotIn(DB::raw("CONCAT(DATE(schedule_date), ' ', SUBSTRING(start_time, 1, 5))"), $locked)
                 ->delete();
 
-            $keptAnchorIds = Schedule::where('student_course_id', $courseId)->where('status', 'scheduled')
+            $keptAnchorIds = Schedule::query()->where('student_course_id', $courseId)->where('status', 'scheduled')
                 ->whereIn('original_schedule_id', $staleAnchorIds)->pluck('original_schedule_id')->all();
             Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', '>=', $today)

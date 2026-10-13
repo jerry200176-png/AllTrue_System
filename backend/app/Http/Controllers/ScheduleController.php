@@ -351,7 +351,7 @@ class ScheduleController extends Controller
         // (e.g. a rescheduled anchor) would delete the pin row.
         if ($courseId > 0
             && ($locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot($courseId, $data['schedule_date'] ?? null, $data['start_time']))
-            && (($effectiveTeacherId > 0 && (int) $locked->TeacherID !== $effectiveTeacherId) || ($data['status'] ?? 'scheduled') !== 'scheduled')) {
+            && (($effectiveTeacherId > 0 && (int) $locked->TeacherID !== $effectiveTeacherId) || $data['status'] !== 'scheduled')) {
             return \App\Support\LearningRecordMutableOwnership::lockedResponse();
         }
 
