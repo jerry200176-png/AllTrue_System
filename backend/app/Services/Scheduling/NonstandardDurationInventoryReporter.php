@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
  *
  * Every query is a SELECT. Nothing here (nor the wrapping
  * `sessions:report-nonstandard-duration` command) may call save()/update()/insert()/
- * delete(), dispatch a job, or invoke SessionDeductionService/PackageDeductionService.
+ * delete(), dispatch a job, or mutate entitlements through deduction services.
  * Diagnostic report, never a repair tool. Query count is bounded and independent of
  * how many courses are scanned: every per-course figure comes from a GROUP BY
  * aggregate, never a per-course query.
@@ -97,7 +97,7 @@ final class NonstandardDurationInventoryReporter
 
         $perSession = 'CASE WHEN sc.SessionDuration >= 1 THEN sc.SessionDuration ELSE '
             . self::LEGACY_ENGINE_FALLBACK_MINUTES . ' END';
-        $sources = "'" . implode("','", self::CONSUMPTION_SOURCES) . "'";
+        $sources = "'" . implode("','", \App\Services\SessionDeductionService::usageSources(self::CONSUMPTION_SOURCES)) . "'";
 
         $rows = DB::table('session_deduction_ledger as l')
             ->join('StudentClass as sc', 'sc.ID', '=', 'l.student_class_id')
