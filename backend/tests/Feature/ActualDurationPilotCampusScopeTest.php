@@ -199,7 +199,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
             SessionDeductionService::recomputeCounters($sc->ID);
             $this->assertSame(8 * SessionDeductionService::billingStandardMinutes($sc) - $minutes, (int) $sc->fresh()->RemainingMinutes);
             $this->assertSame(1, SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID]['expected_used']);
-            // Codex P1 (round 5): superseding the makeup row later must not reclassify the deducted makeup as a whole lesson.
             \App\Models\Schedule::query()->where('student_course_id', $sc->ID)->update(['status' => \App\Models\Schedule::STATUS_SUPERSEDED]);
             SessionDeductionService::recomputeCounters($sc->ID);
             $this->assertSame(8 * SessionDeductionService::billingStandardMinutes($sc) - $minutes, (int) $sc->fresh()->RemainingMinutes);
@@ -266,7 +265,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame(DeductionBasis::ACTUAL_DURATION, SessionDeductionService::pilotSafeCopiedBasis($other));
     }
 
-    // ── helpers ───────────────────────────────────────────────────────
 
     /** @return array<string, string> */
     private function headers(): array
