@@ -17,6 +17,25 @@ describe('BindingManagementPage responsive presentation contract', () => {
     expect(source).toContain('min-height: var(--ds-control-height-touch, 44px)');
   });
 
+  it('names the page for parents and maps each LINE reply a parent can get to a director action (#3900)', () => {
+    const webhook = readFileSync(resolve(__dirname, '../../../../backend/app/Http/Controllers/LineWebhookController.php'), 'utf8');
+    expect(source).toContain('title="家長 LINE 綁定"');
+    expect(source).toContain('<summary>家長綁不上怎麼辦</summary>');
+    // The guide quotes the parent's LINE reply; keep it tied to the replies the webhook really sends.
+    for (const [reply, quoted] of [
+      ['找不到「', '找不到學生'],
+      ['手機號碼不符', '手機號碼不符'],
+      ['未登記手機號碼', '未登記手機號碼'],
+      ['已在其他分校綁定', '已在其他分校綁定'],
+    ]) {
+      expect(webhook).toContain(reply);
+      expect(source).toContain(`「${quoted}」`);
+    }
+    expect(webhook).toContain('綁定 王小明 0912345678');
+    expect(source).toContain('綁定 王小明 0912345678');
+    expect(source).toContain('到「綁定衝突審查」');
+  });
+
   it('keeps destructive unbinding on the existing confirmation and API path', () => {
     expect(source).toContain('@click="openUnbindDialog(row)"');
     expect(source).toContain('title="解除 LINE 綁定"');

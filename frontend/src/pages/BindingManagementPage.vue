@@ -2,8 +2,8 @@
   <div class="bmp-page">
     <!-- Header -->
     <AtPageHeader
-      title="LINE 綁定管理"
-      description="檢視家長 LINE 綁定狀態、搜尋學生並解除綁定。資料依所選分校隔離。"
+      title="家長 LINE 綁定"
+      description="查家長是否已綁定，解除錯誤或舊的綁定。只顯示所選分校。"
       icon="link"
     >
       <template #meta>
@@ -14,6 +14,19 @@
         <AtButton shape="rect" variant="ghost" icon="refresh" @click="refresh">重新整理</AtButton>
       </template>
     </AtPageHeader>
+
+    <!-- 主任處理家長綁定問題的對照表；訊息文字對應 LineWebhookController 的回覆。 -->
+    <details class="bmp-guide" data-testid="binding-guide">
+      <summary>家長綁不上怎麼辦</summary>
+      <p>家長加入分校 LINE 官方帳號，傳「綁定 學生姓名 家長手機」，例：綁定 王小明 0912345678。</p>
+      <dl>
+        <div><dt>家長收到「找不到學生」或「手機號碼不符」</dt><dd>到「學生管理」核對學生姓名與家長手機，改好後請家長再傳一次。</dd></div>
+        <div><dt>家長收到「未登記手機號碼」</dt><dd>到「學生管理」補上家長手機。</dd></div>
+        <div><dt>家長收到「已在其他分校綁定」</dt><dd>學生登記在別的分校。請家長改用該分校的 LINE 官方帳號。</dd></div>
+        <div><dt>同一學生在兩個分校都有綁定</dt><dd>到「綁定衝突審查」保留正確的一筆。</dd></div>
+        <div><dt>家長換了手機或 LINE 帳號</dt><dd>在下方清單解除舊綁定，請家長用新帳號再綁一次。</dd></div>
+      </dl>
+    </details>
 
     <!-- 綁定率統計卡片 -->
     <div class="bmp-stats" data-guide="binding-stats">
@@ -550,6 +563,18 @@ onMounted(() => { load(); loadStats(); });
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   }
 }
+
+.bmp-guide {
+  margin-bottom: 16px;
+  font-size: var(--ds-font-size-sm);
+  color: var(--ds-text-secondary);
+}
+.bmp-guide summary { cursor: pointer; font-weight: 600; color: var(--ds-text-primary); }
+.bmp-guide p { margin: 8px 0; }
+.bmp-guide dl { margin: 0; border-top: 1px solid var(--ds-border); }
+.bmp-guide dl > div { padding: 8px 0; border-bottom: 1px solid var(--ds-border); }
+.bmp-guide dt { font-weight: 600; color: var(--ds-text-primary); }
+.bmp-guide dd { margin: 2px 0 0; line-height: 1.5; }
 
 @media (max-width: 640px) {
   .bmp-desktop-table { display: none; }

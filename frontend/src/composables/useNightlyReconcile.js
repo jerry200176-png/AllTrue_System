@@ -7,6 +7,40 @@ import { getReconcileLatest } from '../api';
  *
  * @param {import('vue').Ref<string>} tokenRef - supabase access_token
  */
+// What each mismatch type means and what to do next. Derived from
+// NightlyReconcile::classifyMismatch() and docs/GUIDE_NIGHTLY_SESSION_RECONCILE.md.
+// Repairs never happen on this page: the report is read-only.
+export const CATEGORY_GUIDE = Object.freeze({
+  attendance_ahead: {
+    meaning: '點名或評量紀錄比課程上的已用堂數多。',
+    next: '到「出缺勤」確認這幾堂是否真的有上，再把課程編號交給工程團隊修正。',
+  },
+  ledger_ahead: {
+    meaning: '扣堂紀錄比課程上的已用堂數多，也比點名紀錄多。',
+    next: '到「出缺勤」查同一堂是否扣了兩次，再把課程編號交給工程團隊。',
+  },
+  counter_overstated: {
+    meaning: '課程上的已用堂數，比點名和扣堂紀錄都多。',
+    next: '到「課程查找」看這門課是否漏點名，再把課程編號交給工程團隊。',
+  },
+  partial_minutes: {
+    meaning: '有按分鐘扣的課，換算成堂數後對不上。',
+    next: '到「課程查找」核對這門課一堂幾分鐘與實際上課時間。',
+  },
+  contract_cap: {
+    meaning: '點名次數超過這門課買的堂數。',
+    next: '請分校主任確認是否續課；堂數修正交給工程團隊。',
+  },
+  source_conflict: {
+    meaning: '已取消的課堂仍留有點名、評量或扣堂紀錄。',
+    next: '到「出缺勤」確認這堂到底有沒有上，再把課程編號交給工程團隊。',
+  },
+  unknown: {
+    meaning: '系統無法歸類這筆差異。',
+    next: '把課程編號交給工程團隊。',
+  },
+});
+
 export function useNightlyReconcile(tokenRef) {
   // ---- 原始資料 ----
   const report = ref(null);            // GET /latest 回傳的整包 data（null = 無報告）
@@ -163,6 +197,10 @@ export function useNightlyReconcile(tokenRef) {
     return 'reconcile-diff--danger';
   }
 
+  function categoryGuide(cat) {
+    return CATEGORY_GUIDE[cat] || CATEGORY_GUIDE.unknown;
+  }
+
   function categoryLabel(cat) {
     const map = {
       attendance_ahead: '出勤／評量證據領先',
@@ -195,5 +233,6 @@ export function useNightlyReconcile(tokenRef) {
     sortDir,
     diffColorClass,
     categoryLabel,
+    categoryGuide,
   };
 }
