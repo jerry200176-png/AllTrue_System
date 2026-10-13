@@ -1389,7 +1389,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                 composer() { echo composer >> "$TRACE"; return "$COMPOSER_EXIT"; }
                 php() { echo php >> "$TRACE"; return 0; }
                 write_deployment_manifest() { echo manifest >> "$TRACE"; return 0; }
-                curl() { printf '{"status":"ok"}'; }
+                grep() { if [ "$1" = '^DEPLOY_SECRET=' ]; then echo DEPLOY_SECRET=isolated; else command grep "$@"; fi; }
+                curl() { echo curl >> "$TRACE"; printf '{"status":"ok","ok":true}'; }
             """)
             result = subprocess.run(
                 ["bash", "-c", harness + function + "\nrollback_deploy\n"],
@@ -1414,8 +1415,16 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
     def test_rollback_restores_locked_dependencies_before_manifest_and_php(self):
         result, calls = self._execute_isolated_rollback()
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(["git", "composer", "manifest", "php"], calls)
+        # optimize, then the FPM refresh (CLI opcache:reset + 16 web-process requests), then health.
+        self.assertEqual(["git", "composer", "manifest", "php", "php"] + ["curl"] * 17, calls)
         self.assertIn("Rollback 成功", result.stdout)
+
+    def test_rollback_refreshes_fpm_workers_before_health(self):
+        function = self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
+        refresh = function.index("https://daan.lifenet.com.tw/api/internal/opcache-reset")
+        self.assertLess(function.index("php artisan opcache:reset"), refresh)
+        self.assertLess(refresh, function.index('echo "Rollback health check..."'))
+        self.assertNotIn("abort_deploy", function)  # no recursion from inside the rollback
 
     # D1 (Founder 2026-10-13): a failed migration aborts the deploy through the
     # shared rollback path; it must never fall through to build/health/success.
