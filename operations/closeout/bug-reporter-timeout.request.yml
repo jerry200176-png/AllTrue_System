@@ -1,0 +1,16 @@
+# Governed cloud trigger for bug-reporter-timeout.yml (Founder 2026-10-13).
+# Rules: scripts/bug_reporter_timeout_request.py and docs/sop/BUG_INTAKE_TO_PRODUCTION.md.
+# A merge to main that changes this file runs the workflow once per new request_id
+# (a request_id seen in any earlier version never runs again; mode idle never runs).
+#   mode: auto-dry-run    -> lists what the 14-day auto-close would close (IDs only, writes nothing)
+#   mode: reviewed-apply  -> closes exactly reviewed_ids that are still eligible (14-day window,
+#                            resolved queue only, no 20-per-run cap); ineligible IDs are skipped
+#                            and reported. Production must contain the current timeout command.
+# A PR that edits this file is a production write: T2 at minimum (autonomy_gate.py).
+# Example:
+#   request_id: 2026-10-17-timeout-batch-1
+#   mode: reviewed-apply
+#   reviewed_ids: [301, 302, 305]
+request_id: bootstrap-idle
+mode: idle
+reviewed_ids: []

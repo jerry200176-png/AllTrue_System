@@ -9,9 +9,17 @@ name: Bug reporter verification timeout
 #   reports with no reporter reply for 14 days, with the standard plain public reply. Resolved queue
 #   only, capped per run, re-checked under a row lock, idempotent. A reporter reply (or 問題仍存在)
 #   reopens the report. A deployed command without --auto fails the run instead of guessing.
+# - push of operations/closeout/bug-reporter-timeout.request.yml (Founder 2026-10-13, cloud sessions
+#   cannot dispatch): once per new request_id, `auto-dry-run`, or `reviewed-apply` = `--auto
+#   --reviewed-batch`: exactly the IDs reviewed in the merged PR, past the per-run cap, each still
+#   eligible (ineligible ones are skipped and reported). Resolved by scripts/bug_reporter_timeout_request.py.
 on:
   schedule:
     - cron: "40 2 * * *" # 10:40 Asia/Taipei
+  push:
+    branches: [main]
+    paths:
+      - "operations/closeout/bug-reporter-timeout.request.yml"
   workflow_dispatch:
     inputs:
       mode:
@@ -57,21 +65,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout pinned SSH trust helper
+      - name: Checkout pinned SSH trust helper and request resolver
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            scripts/bug_reporter_timeout_request.py
+            operations/closeout/bug-reporter-timeout.request.yml
           sparse-checkout-cone-mode: false
+          # The request resolver reads earlier versions of the request file (one run per request_id).
+          fetch-depth: ${{ github.event_name == 'push' && '0' || '1' }}
           persist-credentials: false
 
+      - name: Resolve request file
+        id: request
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          python3 scripts/bug_reporter_timeout_request.py --repo . --head "$GITHUB_SHA" > "$RUNNER_TEMP/request.out"
+          cat "$RUNNER_TEMP/request.out" | tee -a "$GITHUB_OUTPUT"
+
       - name: Configure pinned production SSH trust
+        if: github.event_name != 'push' || steps.request.outputs.run == 'true'
         uses: ./.github/actions/production-ssh-trust
         with:
           host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
           host-key: ${{ secrets.PI_HOST_KEY }}
 
       - name: Setup SSH
+        if: github.event_name != 'push' || steps.request.outputs.run == 'true'
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
@@ -84,10 +106,14 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
 
       - name: Run reporter timeout command
+        if: github.event_name != 'push' || steps.request.outputs.run == 'true'
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          MODE: ${{ github.event_name == 'schedule' && 'auto' || inputs.mode }}
+          EVENT_NAME: ${{ github.event_name }}
+          MODE: ${{ github.event_name == 'schedule' && 'auto' || github.event_name == 'push' && steps.request.outputs.mode || inputs.mode }}
+          BATCH_IDS: ${{ steps.request.outputs.reviewed_ids }}
+          EVIDENCE_SHA: ${{ steps.request.outputs.evidence_sha }}
           DAYS: ${{ inputs.days || '7' }}
           ACTOR: ${{ inputs.actor }}
           CONFIRMATION: ${{ inputs.confirmation }}
@@ -97,9 +123,24 @@ jobs:
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "main only" >&2; exit 1; }
           [[ "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid workflow SHA" >&2; exit 1; }
-          [[ "$MODE" == "dry-run" || "$MODE" == "apply" || "$MODE" == "auto-dry-run" || "$MODE" == "auto" ]] || { echo "invalid mode" >&2; exit 1; }
+          [[ "$MODE" == "dry-run" || "$MODE" == "apply" || "$MODE" == "auto-dry-run" || "$MODE" == "auto" || "$MODE" == "reviewed-apply" ]] || { echo "invalid mode" >&2; exit 1; }
           [[ "$DAYS" =~ ^[1-9][0-9]*$ ]] || { echo "days must be a positive integer" >&2; exit 1; }
-          if [[ "$MODE" == auto* ]]; then
+          if [[ "$MODE" == "reviewed-apply" ]]; then
+            # The merged request-file PR is the review: push only, never a dispatch input.
+            [[ "$EVENT_NAME" == "push" ]] || { echo "reviewed-apply comes only from the merged request file" >&2; exit 1; }
+            [[ -z "$REVIEWED_IDS" && -z "$CONFIRMATION" ]] || { echo "reviewed-apply takes no dispatch inputs" >&2; exit 1; }
+            [[ "$BATCH_IDS" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]] || { echo "reviewed-apply requires reviewed IDs" >&2; exit 1; }
+            [[ "$EVIDENCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid evidence SHA" >&2; exit 1; }
+            IFS=, read -r -a batch_id_list <<< "$BATCH_IDS"
+            declare -A seen_batch_ids=()
+            for batch_id in "${batch_id_list[@]}"; do
+              [[ -z "${seen_batch_ids[$batch_id]:-}" ]] || { echo "duplicate reviewed ID" >&2; exit 1; }
+              seen_batch_ids[$batch_id]=1
+            done
+          elif [[ -n "$BATCH_IDS" ]]; then
+            echo "request reviewed IDs are reviewed-apply only" >&2
+            exit 1
+          elif [[ "$MODE" == auto* ]]; then
             [[ -z "$REVIEWED_IDS" && -z "$CONFIRMATION" ]] || { echo "auto modes take no reviewed_ids or confirmation" >&2; exit 1; }
           elif [[ "$MODE" == "apply" ]]; then
             [[ "$CONFIRMATION" == "CLOSE_STALE_RESOLVED" ]] || { echo "apply requires confirmation=CLOSE_STALE_RESOLVED" >&2; exit 1; }
@@ -127,7 +168,7 @@ jobs:
             -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" "MODE='$MODE' DAYS='$DAYS' ACTOR_ARG='$ACTOR_ARG' REVIEWED_IDS='$REVIEWED_IDS' WORKFLOW_SHA='$WORKFLOW_SHA' bash -s" <<'REMOTE' | tee out/timeout.log
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "MODE='$MODE' DAYS='$DAYS' ACTOR_ARG='$ACTOR_ARG' REVIEWED_IDS='$REVIEWED_IDS' WORKFLOW_SHA='$WORKFLOW_SHA' BATCH_IDS='$BATCH_IDS' EVIDENCE_SHA='$EVIDENCE_SHA' bash -s" <<'REMOTE' | tee out/timeout.log
           set -euo pipefail
           cd /home/admin/backend
           PROD_SHA="$(git rev-parse HEAD)"
@@ -137,7 +178,24 @@ jobs:
             command_help="$(php artisan bugs:close-stale-resolved --help)"
             [[ "$command_help" == *--reviewed-ids* ]] || { echo "deployed command lacks reviewed-ID gate" >&2; exit 1; }
           fi
+          if [[ "$MODE" == "reviewed-apply" ]]; then
+            # The request commit is not deployed when its push run starts, so the evidence is the
+            # newest commit that changed the code the command runs (scripts/bug_reporter_timeout_request.py).
+            git merge-base --is-ancestor "$EVIDENCE_SHA" "$PROD_SHA" || { echo "timeout command evidence SHA is not in production" >&2; exit 1; }
+            command_help="$(php artisan bugs:close-stale-resolved --help)"
+            [[ "$command_help" == *--reviewed-batch* ]] || { echo "deployed command lacks --reviewed-batch" >&2; exit 1; }
+          fi
           php artisan list --format=txt | grep -q 'bugs:close-stale-resolved'
+          if [[ "$MODE" == "reviewed-apply" ]]; then
+            echo "=== REVIEWED BATCH DRY-RUN ==="
+            php artisan bugs:close-stale-resolved --auto --dry-run --reviewed-batch="$BATCH_IDS" $ACTOR_ARG
+            echo "=== REVIEWED BATCH APPLY ==="
+            php artisan bugs:close-stale-resolved --auto --reviewed-batch="$BATCH_IDS" $ACTOR_ARG
+            echo "=== POST-APPLY AUTO DRY-RUN ==="
+            php artisan bugs:close-stale-resolved --auto --dry-run $ACTOR_ARG
+            echo "result=REVIEWED_BATCH_APPLIED_AND_RECHECKED"
+            exit 0
+          fi
           if [[ "$MODE" == auto* ]]; then
             # The command enforces the 14-day window, the resolved-only queue and the per-run cap itself,
             # so only its presence matters here (main may be ahead of production by docs-only commits).
@@ -170,6 +228,7 @@ jobs:
           REMOTE
 
       - name: Upload timeout evidence
+        if: github.event_name != 'push' || steps.request.outputs.run == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: bug-reporter-timeout-${{ github.run_id }}

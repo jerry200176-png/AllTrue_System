@@ -114,6 +114,9 @@ jobs:
       - name: Test production identity evidence transport
         run: python3 scripts/tests/test_production_identity.py
 
+      - name: Test bug reporter timeout request file (one run per request_id, T2)
+        run: python3 scripts/tests/test_bug_reporter_timeout_request.py
+
       - name: Test production SSH host trust contract
         run: bash scripts/tests/production-ssh-trust.test.sh
 

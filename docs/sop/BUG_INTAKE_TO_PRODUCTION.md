@@ -12,7 +12,7 @@
 | Phase A 分診回寫 | `bug-phase-a-triage.yml`：`new`→`triaged` + 公開回覆；建議類 `close_as_logged` | **dispatch-only** | 不行：交出 `bug_id`、`github_issue_url`、含 issue URL 的 §3.8 `public_reply`；建議類另加 `disposition` 與 `close_as_logged=true`（預設是 `bug`／`false`） |
 | 進度補充／建議上線通知 | `bug-followup-comment.yml`：只留言、不改狀態；`expected_status=closed`（已上線的建議）會記 production evidence 並關 GitHub issue（守門同 Phase C） | **dispatch-only** | 不行：交出 `bug_id`、`expected_status`、`github_issue_url`、`public_reply`；`expected_status=closed`（已上線的建議）另需 40 字元 `production_revision` 與 `deploy_run_id` |
 | Phase C 上線後回寫 | `bug-phase-c-allowlist.yml`：已上線修復 → `resolved` + 公開回覆，並自動關對應 issue（F14；`type:epic`、`lifecycle:frozen` 不關，issue 標題或 SourceRef 對到的任何 in-app 回報不在本次已檢查清單內就不關）。`bug-phase-c-autodispatch.yml` 在 allowlist 有新增 ID 合併進 main 後逐筆 dispatch 並驗證 | push：PR 在 allowlist 新增條目（`reply`／`rev`／`deploy`）→ merge；或 push request-file `operations/closeout/bug-phase-c-allowlist.request.md`；已在 allowlist 的 ID 可直接 dispatch（`bug_id`） | 可以（開 PR → CI → merge）；只限 `rev` 已在 production 的修復，不可拿來做 Phase A |
-| `resolved`→`closed` 逾時 | `bug-reporter-timeout.yml` `auto`（排程）：只看 `resolved`，14 天無回報者回覆即結案並白話回覆；回報者回覆會重開（Founder 2A）。符合者超過 20 筆時整批拒絕、**一筆都不關**，要先人工 dry-run 處理。人工 `dry-run`／`apply` 是另一條路：`days` 預設 **7**（只作用於 `resolved`），另外也檢查固定 14 天的 `triaged` 等回報者佇列；`apply` 必填 `confirmation=CLOSE_STALE_RESOLVED` 與逐筆審過的 `reviewed_ids` | `auto`：schedule 每日 10:40 台北（亦可 dispatch `auto-dry-run`／`auto`）；`dry-run`／`apply`：只限人工 dispatch | `auto` 自動；人工 `apply` 不行：交出 dry-run 審過的 `reviewed_ids` 與 `days` |
+| `resolved`→`closed` 逾時 | `bug-reporter-timeout.yml` `auto`（排程）：只看 `resolved`，14 天無回報者回覆即結案並白話回覆；回報者回覆會重開（Founder 2A）。符合者超過 20 筆時整批拒絕、**一筆都不關**，要先人工 dry-run 處理。人工 `dry-run`／`apply` 是另一條路：`days` 預設 **7**（只作用於 `resolved`），另外也檢查固定 14 天的 `triaged` 等回報者佇列；`apply` 必填 `confirmation=CLOSE_STALE_RESOLVED` 與逐筆審過的 `reviewed_ids` | `auto`：schedule 每日 10:40 台北（亦可 dispatch `auto-dry-run`／`auto`）；`dry-run`／`apply`：只限人工 dispatch；push request-file `operations/closeout/bug-reporter-timeout.request.yml`（`auto-dry-run`／`reviewed-apply`） | `auto` 自動；超過 20 筆的批次：可以，走 request file `reviewed-apply`（見 [Closing the 14-day timeout batch from a cloud session](#closing-the-14-day-timeout-batch-from-a-cloud-session)）；人工 7 天 `apply` 不行：交出 dry-run 審過的 `reviewed_ids` 與 `days` |
 | 週報 | `bug-sla-weekly-report.yml`：「in-app 週報 YYYY-Www」issue | schedule 週一 09:00 台北；可人工 dispatch 重產 | 自動 |
 
 **關 GitHub issue（Founder 常設決定 2026-10-12 ③）**：merge + 上線驗證（版本＋health＋smoke，見下方 Deployment evidence gate）+ 已回覆 in-app → 即可關，不等回報者確認；復發再開。In-app 的 `resolved`→`closed` 仍只由回報者 `reporter-verify` 或上表逾時流程完成，Agent 不代按。
@@ -89,6 +89,36 @@ exact commit. A green CI run proves only that the commit can be merged.
    identity. `deployment.json.frontend_build_sha` and `version.json.build_sha`
    identify the frontend bundle when applicable. A healthy response alone does
    not prove that the target build is live.
+
+## Closing the 14-day timeout batch from a cloud session
+
+Founder 2026-10-13. The schedule's `auto` run refuses the whole batch when more than
+`AUTO_MAX_PER_RUN` (20) reports are eligible, and cloud sessions cannot dispatch. A merged
+edit of `operations/closeout/bug-reporter-timeout.request.yml` runs `bug-reporter-timeout.yml`
+on push, with the same job and the same command (`scripts/bug_reporter_timeout_request.py`
+resolves the file first).
+
+1. Branch `chore/…` from `origin/main`. Set a new `request_id` and `mode: auto-dry-run`.
+   PR, CI green, review, merge. Read the run log within 6 hours (the PII purge deletes
+   older runs): it lists `bug #<id> [resolved]: would_close` lines and counts only.
+2. Review each listed ID (no reporter reply since the retest request, nothing that says
+   the fix is wrong). Open a second PR with a new `request_id`, `mode: reviewed-apply` and
+   `reviewed_ids: [..]`. Any length is allowed; this is the only path past the cap.
+3. A PR that edits the request file is a production write, so `autonomy_gate.py` rates it
+   **T2 at minimum** (green CI plus an independent review, never T0 auto-merge).
+4. On merge the workflow runs `bugs:close-stale-resolved --auto --reviewed-batch=<ids>`:
+   the 14-day window and the resolved queue of `--auto`, only the listed IDs, each
+   re-checked under a row lock. An ID that is no longer eligible (the reporter replied,
+   already closed, not 14 days yet, awaiting-reporter queue) is skipped and printed as
+   `skipped_ineligible`; eligible reports not in the list stay open. The run first checks
+   that production contains the newest commit that changed the command's code (the
+   request commit itself is not deployed yet) and that the deployed command has
+   `--reviewed-batch`; otherwise it changes nothing.
+
+Each `request_id` runs once: a `request_id` that any earlier version of the file carried is
+skipped, so re-pushing or reverting does nothing. `mode: idle` never runs. A failed or
+cancelled run (one pending run per concurrency group, so a queued schedule run can replace
+it) is not retried; open a new PR with a new `request_id`.
 
 Canonical long-form:
 

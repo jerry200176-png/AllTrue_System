@@ -506,6 +506,68 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_reviewed_batch_may_exceed_the_auto_cap_and_skips_ineligible_ids(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-20 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $cap = \App\Console\Commands\CloseStaleResolvedBugsCommand::AUTO_MAX_PER_RUN;
+        $ids = [];
+        for ($i = 0; $i <= $cap; $i++) {
+            $ids[] = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(20), true)->id;
+        }
+        $young = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(10), true);
+        $unlisted = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(20), true);
+        $awaiting = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDays(20));
+        $batch = implode(',', array_merge($ids, [$young->id, $awaiting->id]));
+
+        // The unattended path keeps its cap: it still refuses the pile, and its dry-run only lists.
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--actor' => $admin->id])->assertExitCode(1);
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--dry-run' => true, '--actor' => $admin->id])
+            ->expectsOutput('[dry-run] --auto would refuse ' . ($cap + 2) . " eligible reports (max {$cap})")
+            ->assertExitCode(0);
+        $this->assertSame(0, BugReport::where('status', 'closed')->count(), 'dry-run writes nothing');
+
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--dry-run' => true, '--reviewed-batch' => $batch, '--actor' => $admin->id])
+            ->expectsOutput("bug #{$young->id}: skipped_ineligible")
+            ->expectsOutput("bug #{$unlisted->id} [resolved]: awaiting_individual_review")
+            ->expectsOutput("bug #{$ids[0]} [resolved]: would_close")
+            ->assertExitCode(0);
+        $this->assertSame(0, BugReport::where('status', 'closed')->count(), 'batch dry-run writes nothing');
+
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--reviewed-batch' => $batch, '--actor' => $admin->id])
+            ->expectsOutput("bug #{$young->id}: skipped_ineligible")
+            ->expectsOutput("bug #{$awaiting->id}: skipped_ineligible")
+            ->expectsOutput('done acted=' . ($cap + 1) . ' skipped=3')
+            ->assertExitCode(0);
+        $this->assertSame($cap + 1, BugReport::whereIn('id', $ids)->where('status', 'closed')->count(), 'reviewed batch passes the cap');
+        $this->assertSame('resolved', $young->fresh()->status, 'eligibility is never loosened');
+        $this->assertSame('resolved', $unlisted->fresh()->status, 'only reviewed IDs close');
+        $this->assertSame('triaged', $awaiting->fresh()->status, 'the batch is the resolved queue only');
+
+        // Rerunning the same batch closes nothing twice.
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--reviewed-batch' => $batch, '--actor' => $admin->id])
+            ->expectsOutput('done acted=0 skipped=' . ($cap + 4))
+            ->assertExitCode(0);
+        $this->assertSame(1, BugReportStatusLog::where('bug_report_id', $ids[0])->where('to_status', 'closed')->count());
+
+        Carbon::setTestNow();
+    }
+
+    public function test_reviewed_batch_fails_closed_on_flag_misuse(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-20 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(20), true);
+        foreach ([(string) $bug->id . ',' . $bug->id, '0', $bug->id . ';1', ' , '] as $bad) {
+            $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--reviewed-batch' => $bad, '--actor' => $admin->id])->assertExitCode(1);
+        }
+        $this->artisan('bugs:close-stale-resolved', ['--reviewed-batch' => (string) $bug->id, '--actor' => $admin->id])->assertExitCode(1);
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--reviewed-batch' => (string) $bug->id, '--reviewed-ids' => (string) $bug->id, '--actor' => $admin->id])->assertExitCode(1);
+        $this->assertSame('resolved', $bug->fresh()->status);
+
+        Carbon::setTestNow();
+    }
+
     public function test_reporter_verify_reopened_sends_a_resolved_bug_back_to_in_progress(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-20 12:00:00'));

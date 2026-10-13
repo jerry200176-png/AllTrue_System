@@ -123,6 +123,7 @@ Claude Code on the web／其他雲端 session 的 container 是全新隔離環�
 **兩者有 15 分鐘新鮮度限制**（`scripts/validate-bug-intake-evidence.py --max-age-minutes 15`）：queue-dump 與 detail-dump 必須在同一輪 15 分鐘內連續觸發並互相對得上，否則視為 stale、禁止拿舊 dump 直接分診。
 **回寫（new→triaged + 公開留言）沒有雲端路徑**：`bug-phase-a-triage.yml`／`bug-followup-comment.yml` 只有 `workflow_dispatch`、**沒有** push fallback（這是刻意的——會寫production，不像唯讀 dump 給雲端 agent 開後門）。雲端 session 能做到開 GitHub issue 為止；`bug_id` + `github_issue_url` + 符合 §3.8 白話規則的 `public_reply`（必須含 issue URL）要交給有 `workflow_dispatch` 權限的人類手動跑。`bug-phase-c-allowlist.yml` 雖有 push trigger，但限定「修復已上線」的 Phase C，不可拿來做未驗證的 Phase A。
 完整程序見 [`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`](docs/sop/BUG_INTAKE_TO_PRODUCTION.md)。
+**14 天逾時結案批次（Founder 2026-10-13）**：改 `operations/closeout/bug-reporter-timeout.request.yml`（新 `request_id`；`auto-dry-run` 或 `reviewed-apply` + `reviewed_ids`，可超過 20 筆上限但每筆仍需符合資格）→ PR（T2）→ merge 觸發；見 SOP〈Closing the 14-day timeout batch from a cloud session〉。
 
 完整 Gotchas G-001 ~ G-012：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
 

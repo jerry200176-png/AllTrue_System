@@ -165,9 +165,9 @@
     "bug-reporter-timeout.yml": {
       "classification": "in-app-lifecycle-writeback",
       "production_mutation": "confirmed",
-      "trigger": "workflow_dispatch",
+      "trigger": "workflow_dispatch; schedule (auto); push to main of operations/closeout/bug-reporter-timeout.request.yml (auto-dry-run or reviewed-apply, once per request_id)",
       "production_command_or_path": "bugs:close-stale-resolved after dry-run; status writeback",
-      "authorization": "Manual mode=apply plus exact CLOSE_STALE_RESOLVED confirmation and pinned SSH trust",
+      "authorization": "Manual mode=apply plus exact CLOSE_STALE_RESOLVED confirmation and pinned SSH trust; Founder 2A auto (capped); Founder 2026-10-13 request-file reviewed-apply via merged PR (autonomy_gate T2 minimum), eligible IDs only, evidence SHA in production",
       "concurrency": "bug-reporter-timeout; cancel-in-progress=false",
       "rollback": "Manual reopen/status correction; post-apply dry-run verification",
       "canonical": true,

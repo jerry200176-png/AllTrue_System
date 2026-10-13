@@ -76,6 +76,13 @@ _NON_DEPLOYABLE_PATTERNS = (
     "operations/closeout/**",
 )
 
+# Request files whose merge to main runs a production status write (bug-reporter-timeout.yml
+# reviewed-apply closes in-app reports). A PR editing one is that write's review: T2 at
+# minimum (green CI plus independent review), never T0 auto-merge.
+_TIMEOUT_WRITE_REQUEST_FILES = {
+    "operations/closeout/bug-reporter-timeout.request.yml",
+}
+
 _DEPLOYABLE_EXACT = {
     "composer.json",
     "composer.lock",
@@ -555,6 +562,9 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
         elif not non_runtime_only and any(path.startswith(prefix) for prefix in _T2_PREFIXES):
             minimum = max(minimum, 2)
             reasons.append(f"product/runtime path: {path}")
+    for path in sorted(set(normalized) & _TIMEOUT_WRITE_REQUEST_FILES):
+        minimum = max(minimum, 2)
+        reasons.append(f"production-write request file: {path}")
 
     if not non_runtime_only:
         matched_t3 = [marker for marker in _T3_MARKERS if marker in haystack]

@@ -17,7 +17,10 @@ class CloseStaleResolvedBugsCommand extends Command
     /** --auto closes only reports resolved this long ago (Founder 2A, 2026-10-08). */
     public const AUTO_DAYS = 14;
 
-    /** --auto refuses to act when more than this many are eligible: a sudden pile means look first. */
+    /**
+     * --auto refuses to act when more than this many are eligible: a sudden pile means look first.
+     * --auto --reviewed-batch (a merged, reviewed request file) is the only way past it.
+     */
     public const AUTO_MAX_PER_RUN = 20;
 
     protected $signature = 'bugs:close-stale-resolved
@@ -25,6 +28,7 @@ class CloseStaleResolvedBugsCommand extends Command
                             {--dry-run : List eligible bugs without changing status}
                             {--reviewed-ids= : Comma-separated eligible IDs individually reviewed for regression signals (required for apply)}
                             {--auto : Unattended daily run: close resolved reports silent for AUTO_DAYS days, no --reviewed-ids; fail-closed (resolved queue only, capped)}
+                            {--reviewed-batch= : With --auto: comma-separated IDs reviewed in a merged request file; not capped, only these close, ineligible ones are skipped and reported}
                             {--actor= : User id for status log (default: first super_admin type S)}';
 
     protected $description = 'Close resolved in-app bugs after reporter-verify timeout (Evidence Contract). Manual by default.';
@@ -35,6 +39,20 @@ class CloseStaleResolvedBugsCommand extends Command
         if ($auto && ((string) $this->option('reviewed-ids') !== '' || $this->input->hasParameterOption('--days'))) {
             $this->error('--auto fixes its own window and takes no --reviewed-ids or --days');
             return self::FAILURE;
+        }
+        $rawBatch = trim((string) $this->option('reviewed-batch'));
+        $batch = $rawBatch !== '';
+        if ($batch && !$auto) {
+            $this->error('--reviewed-batch requires --auto');
+            return self::FAILURE;
+        }
+        $batchIds = [];
+        if ($batch) {
+            $batchIds = preg_match('/^[1-9][0-9]*(?:,[1-9][0-9]*)*$/', $rawBatch) ? array_map('intval', explode(',', $rawBatch)) : [];
+            if ($batchIds === [] || count($batchIds) !== count(array_unique($batchIds))) {
+                $this->error('--reviewed-batch must be unique positive IDs (ID[,ID]); no status was changed');
+                return self::FAILURE;
+            }
         }
         $rawDays = $auto ? (string) self::AUTO_DAYS : (string) $this->option('days');
         if (!preg_match('/^[1-9][0-9]*$/', $rawDays) || (int) $rawDays < BugReportService::REPORTER_TIMEOUT_MIN_DAYS) {
@@ -74,11 +92,14 @@ class CloseStaleResolvedBugsCommand extends Command
         }
         $eligibleIds = array_map('intval', array_column($eligible, 'bug_id'));
         $reviewedIds = [];
-        if ($auto && count($eligibleIds) > self::AUTO_MAX_PER_RUN) {
+        $overCap = $auto && !$batch && count($eligibleIds) > self::AUTO_MAX_PER_RUN;
+        if ($overCap && !$dryRun) {
             $this->error('--auto refuses ' . count($eligibleIds) . ' eligible reports (max ' . self::AUTO_MAX_PER_RUN . '); review with a dry-run first. No status was changed');
             return self::FAILURE;
         }
-        if ($auto) {
+        if ($batch) {
+            $reviewedIds = $batchIds; // the cap does not apply; eligibility and the lock-time recheck still do
+        } elseif ($auto) {
             $reviewedIds = $eligibleIds; // eligibility already excludes any reporter reply; closeByReporterTimeout rechecks under lock
         } elseif (!$dryRun) {
             $rawReviewed = trim((string) $this->option('reviewed-ids'));
@@ -92,13 +113,20 @@ class CloseStaleResolvedBugsCommand extends Command
                 return self::FAILURE;
             }
         }
-        $this->info(($dryRun ? '[dry-run] ' : '') . 'eligible=' . count($eligible) . " days={$days} actor={$actorId}");
+        $this->info(($dryRun ? '[dry-run] ' : '') . 'eligible=' . count($eligible) . " days={$days} actor={$actorId}" . ($batch ? ' reviewed_batch=' . count($batchIds) : ''));
+        if ($overCap) {
+            $this->warn('[dry-run] --auto would refuse ' . count($eligibleIds) . ' eligible reports (max ' . self::AUTO_MAX_PER_RUN . ')');
+        }
 
         $closed = 0;
         $skipped = 0;
+        foreach (array_diff($batchIds, $eligibleIds) as $bugId) {
+            $this->line("bug #{$bugId}: skipped_ineligible");
+            $skipped++;
+        }
         foreach ($eligible as $row) {
             $bugId = (int) $row['bug_id'];
-            if (!$dryRun && !in_array($bugId, $reviewedIds, true)) {
+            if ((!$dryRun || $batch) && !in_array($bugId, $reviewedIds, true)) {
                 $this->line("bug #{$bugId} [{$queues[$bugId]}]: awaiting_individual_review");
                 $skipped++;
                 continue;
@@ -119,6 +147,7 @@ class CloseStaleResolvedBugsCommand extends Command
             'eligible' => count($eligible),
             'acted' => $closed,
             'skipped' => $skipped,
+            'reviewed_batch' => count($batchIds),
             'actor_user_id' => $actorId,
         ]);
 
