@@ -70,7 +70,7 @@
       </div>
 
       <div v-if="Number.isFinite(Number(props.form?.original_amount))" class="form-group" data-testid="renew-estimated-amount">
-        <span class="hint">預估金額 NT$ {{ Number(props.form.original_amount).toLocaleString() }}（依確認已上堂次計算）</span>
+        <span class="hint">預估金額 NT$ {{ Number(props.form.original_amount).toLocaleString() }}（依預排堂數估算；實際收費依確認已上堂次）</span>
       </div>
 
       <div class="actions">

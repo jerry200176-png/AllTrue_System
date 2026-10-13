@@ -60,6 +60,7 @@ describe('transaction discount preview', () => {
     for (const rel of [
       '../UniversalClassScheduler.vue',
       '../course-management/RenewMonthlyModal.vue',
+      '../course-management/MonthlyBatchRenewModal.vue',
       '../../pages/StudentsList.vue',
       '../../pages/SmartCalendar.vue',
       '../../pages/CourseManagement.vue',
@@ -67,6 +68,7 @@ describe('transaction discount preview', () => {
     ]) {
       const source = read(rel);
       expect(source, rel).not.toContain('交易折扣');
+      expect(source, rel).not.toContain('打折');
       expect(source, rel).not.toContain('allow-financial-discount');
       expect(source, rel).not.toMatch(/discount: \{ type: 'NONE'/);
     }
