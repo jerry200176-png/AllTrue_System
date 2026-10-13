@@ -236,7 +236,7 @@ class RotateTelegramWebhookSecret extends Command
 
     private static function webhookUrl(Campus $campus): string
     {
-        return rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/' . ($campus->code ?: $campus->getKey());
+        return rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/' . ($campus->getAttribute('code') ?: $campus->getKey());
     }
 
     private function dbStateUnknown(Campus $campus, string $msg): int
