@@ -2503,8 +2503,9 @@ jobs:
           state_set STATUS cutover_pending
 
           ENV_TMP="$(mktemp .env.1387-staged.XXXXXX)"
-          awk -v user="$STAGED_DB_USERNAME" -v pass="$STAGED_DB_PASSWORD" '
-            BEGIN { users=0; passwords=0 }
+          export STAGED_DB_PASSWORD
+          awk -v user="$STAGED_DB_USERNAME" '
+            BEGIN { pass=ENVIRON["STAGED_DB_PASSWORD"]; users=0; passwords=0 }
             /^DB_USERNAME=/ { print "DB_USERNAME=" user; users++; next }
             /^DB_PASSWORD=/ { print "DB_PASSWORD=" pass; passwords++; next }
             { print }

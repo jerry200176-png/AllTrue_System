@@ -4,7 +4,7 @@
 // Lines that already existed when the guard became fail-closed sit in a shrink-only baseline
 // (scripts/ci/workflow-secret-echo.baseline.json): CI fails on any finding not in it and on any baseline growth.
 // Regenerate (only to shrink it) with: node scripts/ci/workflow-secret-echo.test.mjs --write-baseline
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -154,7 +154,7 @@ function resolve(words) { // skip assignments and wrapper commands; `dump` marks
         const o = words[k].text;
         if (o === '--') { k++; break; }
         if (name === 'command' && /[vV]/.test(o)) return { k, name }; // command -v / -V only describes the command
-        if ((name === 'exec' && o === '-a') || (name === 'nice' && o === '-n')) k++; // option with an operand
+        if ((name === 'exec' && o === '-a') || (name === 'nice' && (o === '-n' || o === '--adjustment'))) k++; // option with an operand
       }
       continue;
     }
@@ -170,7 +170,7 @@ function resolve(words) { // skip assignments and wrapper commands; `dump` marks
       if (name === 'timeout') j++; // duration operand precedes the executable
       k = j; continue;
     }
-    if (name === 'sudo') { k++; while (words[k] && /^-/.test(words[k].text)) k += /^-[ugCh]$/.test(words[k].text) ? 2 : 1; continue; }
+    if (name === 'sudo') { k++; while (words[k] && /^-/.test(words[k].text)) k += /^-[ugCh]$|^--(?:user|group|chdir|close-from|host)$/.test(words[k].text) ? 2 : 1; continue; }
     if (name === 'env') {
       if (args.length === 1 && /^--(?:help|version)$/.test(args[0])) return { k, name, help: true };
       let j = k + 1;
@@ -266,7 +266,7 @@ function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sen
       || (info.name === 'grep' && args.some((a) => /^-[a-zA-Z]*q|^--(?:quiet|silent)$/.test(a))));
     const pure = c.redirs.length === 0 && (info.k >= c.words.length || (/^(?:export|local|readonly|declare|typeset)$/.test(info.name)
       && c.words.slice(info.k + 1).every((w) => assignRe.test(w.text) || /^-/.test(w.text))));
-    const viaSink = (cred) => (STDOUT_ONLY.has(info.name) ? sink(P, s, ctx, cred) : 'unsafe');
+    const viaSink = (cred) => (STDOUT_ONLY.has(info.name) && (!cred || printer) ? sink(P, s, ctx, cred) : 'unsafe');
     if (info.dump) rec(c.words[info.k]?.off ?? c.redirs[0]?.off, viaSink(false));
     if (/^(?:ba|da|z|k)?sh$/.test(info.name)) { // `bash -c '<script>'` runs a nested shell program: analyze it too
       const opts = c.words.slice(info.k + 1), ci = opts.findIndex((w) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(w.text));
@@ -313,7 +313,7 @@ function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sen
       const sh = bw.subs.filter((sb) => analyze(sb.script, 'sub', out, exprs)).map((sb) => sb.at);
       for (const at of [...credHits(bw, exprs), ...sh]) {
         const sql = info.name !== 'cat' && /IDENTIFIED\s+BY\s*\\?['"]?$/i.test(bw.text.slice(0, at).split('\n').pop());
-        rec(bw.pos[at] ?? off, sql ? 'safe' : info.name === 'cat' ? viaSink(true) : 'unsafe');
+        rec(bw.pos[at] ?? off, sql ? 'safe' : info.name === 'cat' ? sink(P, s, ctx, true) : 'unsafe');
       }
     }
   });
@@ -336,7 +336,23 @@ function collectRaw(script, out) { // occurrences inside a clean capture: record
 function scanScript(where, script0) {
   const exprs = [];
   // ${{ }} is substituted by GitHub before the shell runs: same-length placeholder keeps offsets stable
-  const script = script0.replace(/\$\{\{[^}]*\}\}/g, (e) => { exprs.push(e); const id = `\x01${exprs.length - 1}\x01`; return id + '\x02'.repeat(Math.max(0, e.length - id.length)); });
+  let script = '', cursor = 0;
+  for (;;) {
+    const at = script0.indexOf('${{', cursor);
+    if (at < 0) { script += script0.slice(cursor); break; }
+    script += script0.slice(cursor, at);
+    let end = at + 3, quoted = false;
+    for (; end < script0.length; end++) {
+      if (script0[end] === "'") {
+        if (quoted && script0[end + 1] === "'") { end++; continue; }
+        quoted = !quoted;
+      } else if (!quoted && script0.slice(end, end + 2) === '}}') { end += 2; break; }
+    }
+    const e = script0.slice(at, end); exprs.push(e);
+    const id = `\x01${exprs.length - 1}\x01`;
+    script += id + '\x02'.repeat(Math.max(0, e.length - id.length));
+    cursor = end;
+  }
   const starts = [0]; for (let i = 0; i < script.length; i++) if (script[i] === '\n') starts.push(i + 1);
   const lineOf = (off) => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= off) lo = mid; else hi = mid - 1; } return lo; };
   const lines = script0.split('\n');
@@ -406,16 +422,16 @@ json.dump(out, sys.stdout)
 function scanAll(items) {
   const parsed = JSON.parse(execFileSync('python3', ['-c', PY], { input: JSON.stringify(items), maxBuffer: 1 << 28 }));
   return parsed.flatMap(({ name, runs, shells, kvs, all }) => [
-    ...runs.flatMap(([p, s]) => scanScript(`${name}${p}`, s)),
+    ...runs.flatMap(([p, s]) => scanScript(`${name}${p}`, s).map((f) => ({ ...f, context: createHash('sha256').update(s).digest('hex').slice(0, 16) }))),
     // `shell: bash -x {0}` traces every command; an expression shell may pull a traced value from anywhere in the file
     ...shells.filter(([, v]) => TRACE.test(v)).map(([p, v]) => ({ where: `${name}${p}`, text: `shell: ${v}`, why: 'shell tracing' })),
     ...(shells.some(([, v]) => v.includes('${{')) ? all.filter((v) => TRACE.test(v)).map((v) => ({ where: name, text: `expression shell: ${v}`, why: 'shell tracing' })) : []),
     ...kvs.filter(([, k, v]) => /^SHELLOPTS$/i.test(k) && /xtrace/.test(v)).map(([p, k, v]) => ({ where: `${name}${p}`, text: `${k}: ${v}`, why: 'shell tracing' })),
     ...kvs.filter(([, k, v]) => isSecretName(k) && v.trim() !== '' && !FIXTURES.has(v) && !v.includes('${{'))
       .map(([p, k]) => ({ where: `${name}${p}`, text: `literal ${k}`, why: 'literal credential' })),
-  ].map((f) => ({ ...f, wf: name, fp: fingerprint(f.text) })));
+  ].map((f) => ({ ...f, wf: name, fp: fingerprint(f.text) + (f.context ? ':' + f.context : '') })));
 }
-// stable across line moves: hash of the whitespace-normalised line text (never the line number or YAML path)
+// Line identity is stable across moves; run/script findings also bind the exact enclosing script.\n// Changing a redirect, wrapper, or other surrounding command invalidates its old baseline allowance.
 export const fingerprint = (text) => createHash('sha256').update(text.trim().replace(/\s+/g, ' ')).digest('hex').slice(0, 16);
 export const scan = (name, text) => scanAll([{ name, text }]);
 
@@ -445,6 +461,13 @@ const formatBaseline = (b) => `{\n  "//": "#1387 shrink-only: existing findings 
 const wf = (run) => `jobs:\n  j:\n    steps:\n      - run: ${run}`;
 const blk = (...l) => wf(`|\n${l.map((x) => `          ${x}`).join('\n')}`);
 export const trip = {
+  'nice long operand env dump': blk('nice --adjustment 5 env'),
+  'sudo long operand env dump': blk('sudo --user root env'),
+  'secret filename stderr diagnostic': blk('cat "$DB_PASSWORD" > credentials.txt'),
+  'secret head argument stderr diagnostic': blk('head "$DB_PASSWORD" > credentials.txt'),
+  'format braces expression': blk('echo "${{ format(\'{0}\', env.DB_PASSWORD) }}"'),
+  'format escaped quote braces': blk('echo "${{ format(\'it\'\'s {0}\', env.DB_PASSWORD) }}"'),
+
   'timeout env dump': blk('timeout 5 env', 'timeout --signal TERM --kill-after 2s 5s printenv'),
   'timeout with end of options': blk('timeout -- 5 env'),
   'stdbuf env dump': blk('stdbuf -oL env', 'stdbuf --output L --error=0 printenv'),
@@ -607,19 +630,44 @@ const fail = (...m) => { console.error(...m); process.exit(1); };
 for (const [k, y] of Object.entries(trip)) if (!scan('probe', y).length) fail('guard missed probe:', k);
 for (const [k, y] of Object.entries(ok)) { const r = scan('ok', y); if (r.length) fail('guard false positive:', k, r); }
 { // baseline: suppresses only its exact fingerprint, an edited line stops matching, growth is detected
+  const contextual = scan('context.yml', blk('unknown "$DB_PASSWORD"', '} > "$STATE_FILE"'));
+  const removedSink = scan('context.yml', blk('unknown "$DB_PASSWORD"'));
+  const changedSink = scan('context.yml', blk('unknown "$DB_PASSWORD"', '} > /dev/stderr'));
+  const contextBase = toBaseline(contextual);
+  if (!applyBaseline(removedSink, contextBase).fresh.length || !applyBaseline(changedSink, contextBase).fresh.length)
+    fail('editing surrounding sink must invalidate the baseline allowance');
   const two = scan('w.yml', blk('cat backend/.env', 'printenv'));
   const base = { 'w.yml': [two[0].fp] };
   const r1 = applyBaseline(two, base);
   if (r1.fresh.length !== 1 || r1.fresh[0].fp !== two[1].fp || r1.stale.length) fail('baseline must suppress exactly its own fingerprint', r1);
   const edited = scan('w.yml', blk('cat  backend/.env.production', 'printenv'));
-  if (applyBaseline(edited, { 'w.yml': [two[0].fp, two[1].fp] }).fresh.length !== 1) fail('an edited line must stop matching its baseline entry');
-  if (applyBaseline(scan('w.yml', blk('  cat   backend/.env')), base).fresh.length) fail('whitespace-only re-indent must keep matching');
+  if (applyBaseline(edited, { 'w.yml': [two[0].fp, two[1].fp] }).fresh.length !== 2) fail('an edited script must invalidate all its baseline entries');
+  if (!applyBaseline(scan('w.yml', blk('  cat   backend/.env')), base).fresh.length) fail('changing run text must invalidate context allowance');
   if (applyBaseline(scan('other.yml', blk('cat backend/.env')), base).fresh.length !== 1) fail('a fingerprint is scoped to its workflow');
   if (applyBaseline([], base).stale.length !== 1) fail('stale baseline entries must be reported');
   if (problems([], applyBaseline([], base).stale, [], 'origin/main').length !== 1) fail('a stale baseline entry must fail the check');
   if (growth({ 'w.yml': ['a', 'b'] }, { 'w.yml': ['a'] }).join() !== 'w.yml b') fail('baseline growth must be detected');
   if (growth({ 'w.yml': ['a', 'a'] }, { 'w.yml': ['a'] }).length !== 1) fail('a duplicated entry is growth');
   if (growth({ 'w.yml': ['a'] }, { 'w.yml': ['a', 'b'], 'x.yml': ['c'] }).length) fail('shrinking is allowed');
+}
+
+
+// Validate the staged-rotation awk transport with a synthetic 64-hex fixture only.
+// Capture every byte; never print the fixture or execute any workflow/SSH/rotation.
+{
+  const fixture = 'a1'.repeat(32), user = 'alltrue_staged_fixture';
+  const original = 'BEGIN { users=0; passwords=0 }\n/^DB_USERNAME=/ { print "DB_USERNAME=" user; users++; next }\n/^DB_PASSWORD=/ { print "DB_PASSWORD=" pass; passwords++; next }\n{ print }\nEND { if (users != 1 || passwords != 1) exit 42 }';
+  const transported = original.replace('BEGIN { users=0; passwords=0 }', 'BEGIN { pass=ENVIRON["STAGED_DB_PASSWORD"]; users=0; passwords=0 }');
+  for (const [input, status] of [
+    ['APP_ENV=fixture\nDB_USERNAME=old\nDB_PASSWORD=old\nOTHER=retained\n', 0],
+    ['DB_USERNAME=old\n', 42],
+    ['DB_USERNAME=old\nDB_PASSWORD=old\nDB_PASSWORD=second\n', 42],
+  ]) {
+    const a = spawnSync('awk', ['-v', 'user=' + user, '-v', 'pass=' + fixture, original], { input, env: {}, encoding: 'utf8' });
+    const b = spawnSync('awk', ['-v', 'user=' + user, transported], { input, env: { STAGED_DB_PASSWORD: fixture }, encoding: 'utf8' });
+    if (a.error || b.error || a.status !== status || b.status !== status || a.stdout !== b.stdout || a.stderr !== b.stderr)
+      fail('staged credential environment transport must preserve bytes and exit status');
+  }
 }
 
 // --- repository check ---------------------------------------------------------------------------------------------
