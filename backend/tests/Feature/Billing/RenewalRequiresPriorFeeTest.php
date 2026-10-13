@@ -40,7 +40,7 @@ class RenewalRequiresPriorFeeTest extends TestCase
     {
         $source = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
 
-        $this->post("/api/v1/student-classes/{$source->ID}/renew-monthly", ['end_date' => '2026-05-31'])
+        $this->postAuthenticatedJson("/api/v1/student-classes/{$source->ID}/renew-monthly", ['end_date' => '2026-05-31'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'prior_fee_missing')
             ->assertJsonPath('message', ContractRenewal::PRIOR_FEE_MISSING_MESSAGE);
@@ -53,13 +53,13 @@ class RenewalRequiresPriorFeeTest extends TestCase
     public function test_preview_reports_the_blocker_for_monthly_and_count_courses(): void
     {
         $monthly = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
-        $this->post("/api/v1/student-classes/{$monthly->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-05-31'])
+        $this->postAuthenticatedJson("/api/v1/student-classes/{$monthly->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-05-31'])
             ->assertStatus(422)
             ->assertJsonPath('severity', 'blocked')
             ->assertJsonPath('blockers.0.code', 'prior_fee_missing');
 
         $count = $this->countCourse(['Rate' => 0, 'Charge' => 0]);
-        $this->post("/api/v1/student-classes/{$count->ID}/renewal-preview", ['mode' => 'purchase_batch', 'sessions' => 4, 'start_date' => '2026-05-05'])
+        $this->postAuthenticatedJson("/api/v1/student-classes/{$count->ID}/renewal-preview", ['mode' => 'purchase_batch', 'sessions' => 4, 'start_date' => '2026-05-05'])
             ->assertStatus(422)
             ->assertJsonPath('severity', 'blocked')
             ->assertJsonPath('blockers.0.code', 'prior_fee_missing');
@@ -69,7 +69,7 @@ class RenewalRequiresPriorFeeTest extends TestCase
     {
         $source = $this->countCourse(['Rate' => 0, 'Charge' => 0]);
 
-        $this->post("/api/v1/student-classes/{$source->ID}/purchase-batch", ['sessions' => 4, 'start_date' => '2026-05-05', 'mode' => 'new_purchase'])
+        $this->postAuthenticatedJson("/api/v1/student-classes/{$source->ID}/purchase-batch", ['sessions' => 4, 'start_date' => '2026-05-05', 'mode' => 'new_purchase'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'prior_fee_missing')
             ->assertJsonPath('errors.prior_fee.0', ContractRenewal::PRIOR_FEE_MISSING_MESSAGE);
@@ -82,7 +82,7 @@ class RenewalRequiresPriorFeeTest extends TestCase
         $source = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
         $this->invoice($source, 4800, 'void');
 
-        $this->post("/api/v1/student-classes/{$source->ID}/renew-monthly", ['end_date' => '2026-05-31'])
+        $this->postAuthenticatedJson("/api/v1/student-classes/{$source->ID}/renew-monthly", ['end_date' => '2026-05-31'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'prior_fee_missing');
     }
@@ -92,7 +92,7 @@ class RenewalRequiresPriorFeeTest extends TestCase
         $source = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
         $this->invoice($source, 4800, 'unpaid');
 
-        $this->post("/api/v1/student-classes/{$source->ID}/renew-monthly", ['end_date' => '2026-05-31'])
+        $this->postAuthenticatedJson("/api/v1/student-classes/{$source->ID}/renew-monthly", ['end_date' => '2026-05-31'])
             ->assertCreated();
 
         $this->assertSame(2, StudentClass::query()->count());
@@ -102,11 +102,11 @@ class RenewalRequiresPriorFeeTest extends TestCase
     public function test_renewal_is_unchanged_when_the_course_has_a_price(): void
     {
         $monthly = $this->monthlyCourse(['Rate' => 600, 'Charge' => 0]);
-        $this->post("/api/v1/student-classes/{$monthly->ID}/renew-monthly", ['end_date' => '2026-05-31'])
+        $this->postAuthenticatedJson("/api/v1/student-classes/{$monthly->ID}/renew-monthly", ['end_date' => '2026-05-31'])
             ->assertCreated();
 
         $count = $this->countCourse(['Rate' => 500, 'Charge' => 4000]);
-        $this->post("/api/v1/student-classes/{$count->ID}/purchase-batch", ['sessions' => 4, 'start_date' => '2026-05-05', 'mode' => 'new_purchase'])
+        $this->postAuthenticatedJson("/api/v1/student-classes/{$count->ID}/purchase-batch", ['sessions' => 4, 'start_date' => '2026-05-05', 'mode' => 'new_purchase'])
             ->assertCreated();
     }
 
@@ -128,7 +128,7 @@ class RenewalRequiresPriorFeeTest extends TestCase
     }
 
     /** @param array<string, mixed> $body */
-    private function post(string $uri, array $body): \Illuminate\Testing\TestResponse
+    private function postAuthenticatedJson(string $uri, array $body): \Illuminate\Testing\TestResponse
     {
         return $this->withHeaders(['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json'])->postJson($uri, $body);
     }
