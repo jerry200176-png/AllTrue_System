@@ -1,0 +1,1 @@
+- R3 / T3 preparatory control-plane library: pinned durable write-back prefix and explicit unknown outcomes; no consumer activation or production request. Owner: AllTrue engineering. Validation: five local regression tests; fresh CI required. Rollback: revert this unconsumed library commit. Activation remains held for combined Founder GO with #3943.
