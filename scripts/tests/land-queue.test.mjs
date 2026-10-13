@@ -53,12 +53,18 @@ test('decide: unknown thread count never merges (fail closed)', () => {
   assert.equal(decide(pr({ unresolvedThreads: null, rollup: [{ name: 'A', conclusion: 'FAILURE' }, ok[1]] }), req).reason, 'checks');
 });
 
-test('unresolvedCount: counts unresolved on one complete page, otherwise unknown', () => {
+test('unresolvedCount: a thread is open until resolved AND replied; otherwise unknown', () => {
   const page = (nodes, hasNextPage = false) => ({ nodes, pageInfo: { hasNextPage } });
+  const t = (isResolved, replies) => ({ isResolved, comments: { totalCount: replies } });
   assert.equal(unresolvedCount(page([])), 0);
-  assert.equal(unresolvedCount(page([{ isResolved: true }, { isResolved: false }, { isResolved: false }])), 2);
-  assert.equal(unresolvedCount(page([{ isResolved: true }])), 0);
-  assert.equal(unresolvedCount(page(Array(100).fill({ isResolved: true }), true)), null); // >100 threads
+  assert.equal(unresolvedCount(page([t(true, 2), t(false, 2), t(false, 1)])), 2);
+  assert.equal(unresolvedCount(page([t(true, 3)])), 0);
+  // Resolved without a reply still blocks.
+  assert.equal(unresolvedCount(page([t(true, 1)])), 1);
+  assert.equal(unresolvedCount(page([t(true, 2), t(true, 1)])), 1);
+  // Missing comment count is unknown, never zero.
+  assert.equal(unresolvedCount(page([{ isResolved: true }])), null);
+  assert.equal(unresolvedCount(page(Array(100).fill(t(true, 2)), true)), null); // >100 threads
   assert.equal(unresolvedCount({ nodes: [] }), null); // no pageInfo
   assert.equal(unresolvedCount(null), null);
   assert.equal(unresolvedCount(undefined), null);

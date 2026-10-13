@@ -57,11 +57,19 @@ export function checkStates(rollup, required) {
   }));
 }
 
-// Unresolved review threads from a reviewThreads(first:100) connection, or null when unknown
-// (missing, a failed query, or more than one page). Unknown never merges (fail closed).
+// Open review threads from a reviewThreads(first:100) connection, or null when unknown
+// (missing, a failed query, more than one page, or a thread without a comment count).
+// A thread is open until it is resolved AND has a reply (2+ comments): resolving without
+// replying does not clear it. Unknown never merges (fail closed).
 export function unresolvedCount(conn) {
   if (!conn || !Array.isArray(conn.nodes) || conn.pageInfo?.hasNextPage !== false) return null;
-  return conn.nodes.filter((t) => !t?.isResolved).length;
+  let open = 0;
+  for (const t of conn.nodes) {
+    const replies = t?.comments?.totalCount;
+    if (!Number.isInteger(replies)) return null;
+    if (!t.isResolved || replies < 2) open++;
+  }
+  return open;
 }
 
 // pr: {mergeStateStatus, behindBy, rollup, unresolvedThreads}. Spec order: BEHIND, DIRTY, threads, failed, merge, wait.
@@ -164,7 +172,7 @@ function rollupFor(sha) {
 
 // Separate query so a failure yields "unknown" (no merge) instead of aborting the whole queue run.
 const QT = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
-  reviewThreads(first:100){nodes{isResolved} pageInfo{hasNextPage}}}}}`;
+  reviewThreads(first:100){nodes{isResolved comments{totalCount}} pageInfo{hasNextPage}}}}}`;
 function unresolvedThreads(n) {
   const [o, r] = REPO.split('/');
   try {
