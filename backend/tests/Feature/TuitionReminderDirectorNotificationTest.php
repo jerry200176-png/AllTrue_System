@@ -293,6 +293,11 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         $course->forceFill(['ScheduleMode' => 'date', 'settlement_day' => $settlementDay])->save();
 
         NotificationSyncService::sync([$campus->id]);
+        $this->mock(\App\Services\Line\ParentLinePush::class)->shouldReceive('bindings')
+            ->with((int) $course->StudentID, (int) $campus->id)->times($expected ? 1 : 0)
+            ->andReturn(collect());
+        $this->artisan('tuition:send-reminders')->assertExitCode(0);
+
 
         $this->assertSame($expected ? 1 : 0, Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->whereNull('ResolvedAt')->count());
         \Illuminate\Support\Carbon::setTestNow();
@@ -404,6 +409,11 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         ]);
 
         NotificationSyncService::sync([$campus->id]);
+        $this->mock(\App\Services\Line\ParentLinePush::class)->shouldReceive('bindings')
+            ->with((int) $course->StudentID, (int) $campus->id)->times($expected ? 1 : 0)
+            ->andReturn(collect());
+        $this->artisan('tuition:send-reminders')->assertExitCode(0);
+
 
         $live = Notification::where('Type', 'tuition')->where('CampusID', $campus->id)->whereNull('ResolvedAt')->count();
         $this->assertSame($expected ? 1 : 0, $live);
