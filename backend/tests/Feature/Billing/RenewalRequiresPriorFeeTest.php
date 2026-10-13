@@ -128,13 +128,15 @@ class RenewalRequiresPriorFeeTest extends TestCase
             ->assertCreated();
     }
 
-    /** #3947 review: fee evidence is a line item on another invoice; it counts until that invoice is voided. */
-    public function test_a_line_item_on_another_invoice_counts_until_that_invoice_is_voided(): void
+    public static function invoiceItemAmounts(): array { return ['positive' => [4800], 'free' => [0]]; }
+
+    /** @dataProvider invoiceItemAmounts */
+    public function test_a_line_item_on_another_invoice_counts_until_that_invoice_is_voided(int $amount): void
     {
         $source = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
         $bill = Invoice::create(['StudentID' => $source->StudentID, 'IssueDate' => '2026-04-01', 'DueDate' => '2026-04-15', 'Note' => '',
-            'TotalAmount' => 4800, 'PaidAmount' => 0, 'Status' => 'unpaid']);
-        InvoiceItem::create(['InvoiceID' => $bill->id, 'StudentClassID' => $source->ID, 'Description' => '四月', 'Amount' => 4800]);
+            'TotalAmount' => $amount, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        InvoiceItem::create(['InvoiceID' => $bill->id, 'StudentClassID' => $source->ID, 'Description' => '四月', 'Amount' => $amount]);
         $gate = app(ContractRenewal::class);
 
         $this->assertNull($gate->priorFeeBlocker($source));
@@ -217,3 +219,4 @@ class RenewalRequiresPriorFeeTest extends TestCase
         return $token;
     }
 }
+
