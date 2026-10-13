@@ -82,8 +82,9 @@ curl -sf -H "$H" -o /tmp/a.png "$B/bug-reports/<id>/attachments/<attachment_id>"
   and comments carry only IDs (in-app #, attachment ID, campus ID), counts and your
   own technical findings: never reporter or student names, phone numbers, report
   text, comments, or screenshots. Delete downloaded attachments after viewing.
-- Every request is logged in `security_audit_events` (`triage_token.read`: token
-  ID, route, report ID, IP). A 401 `token_expired` means: ask a super admin for a
+- Every request is logged in `security_audit_events` (`triage_token.read`: route,
+  status, time; token, report, attachment and IP as `SecurityAuditEvent::ref()`
+  HMACs, so match a known ID/IP by computing its ref). A 401 `token_expired` means: ask a super admin for a
   new token. Revoke it in the same screen if it may have leaked.
 
 ## Deployment evidence gate (merge ≠ production)
