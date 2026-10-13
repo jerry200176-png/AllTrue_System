@@ -238,7 +238,7 @@ class AlertController extends Controller
                 $charge = round($monthlySessions * $rate, 2);
                 $manualPaid = (bool) $pkg->paid;
                 $memberMoney = $members->map(fn (StudentClass $m) => $this->courseAlertMoney($m, $today,
-                    $memberOpenInvoices[(int) $m->ID] ?? null, $memberStatuses[(int) $m->ID] ?? null, $memberInvoiceAgg[(int) $m->ID] ?? null,
+                    $memberOpenInvoices[(int) $m->ID] ?? null, $memberStatuses, (int) $m->ID, $memberInvoiceAgg[(int) $m->ID] ?? null,
                     (int) round(($memberSessionCounts[(int) $m->ID] ?? 0) * $rate)));
                 // Paid = the manual toggle, or every member row owes nothing (invoices + Payment rows beat the Paid flag).
                 $pkgPaid = $manualPaid || ($members->isNotEmpty() && $memberMoney->every(fn ($row) => $row['outstanding'] <= 0));
@@ -378,7 +378,7 @@ class AlertController extends Controller
 
                 $payable = $payableMap[$classId] ?? $this->payableResolver->unbilled();
                 $verdict = $courseStatuses[$classId] ?? null;
-                $money = $this->courseAlertMoney($sc, $today, $openMonthlyInvoiceMap[$classId] ?? null, $verdict, $invoiceAggMap[$classId] ?? null);
+                $money = $this->courseAlertMoney($sc, $today, $openMonthlyInvoiceMap[$classId] ?? null, $courseStatuses, $classId, $invoiceAggMap[$classId] ?? null);
                 ['charge' => $charge, 'paid_amount' => $paidAmount, 'outstanding' => $outstanding, 'invoice_projection' => $invoiceProjection] = $money;
 
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
@@ -694,11 +694,11 @@ class AlertController extends Controller
      * $estimate replaces MonthlyBillingService only for a date-mode contract without an open invoice (package members).
      *
      * @param array<string, mixed>|null $openInvoice openInvoiceByStudentClassIds() row
-     * @param array<string, mixed>|null $verdict BillingPayableResolver::courseStatusesByStudentClassIds() row
+     * @param array<int, array<string, mixed>> $courseStatuses BillingPayableResolver::courseStatusesByStudentClassIds() map
      * @param array<string, int>|null $invoiceAgg BillingPayableResolver::invoiceAggregateByStudentClassIds() row
      * @return array{charge: int, paid_amount: int, paid: bool, outstanding: int, invoice_projection: array<string, mixed>|null}
      */
-    private function courseAlertMoney(?StudentClass $sc, Carbon $today, ?array $openInvoice, ?array $verdict, ?array $invoiceAgg, ?int $estimate = null): array
+    private function courseAlertMoney(?StudentClass $sc, Carbon $today, ?array $openInvoice, array $courseStatuses, int $classId, ?array $invoiceAgg, ?int $estimate = null): array
     {
         $invoiceProjection = $openInvoice && isset($openInvoice['invoice'])
             ? $this->invoiceAmounts->resolve($openInvoice['invoice'], $sc)
@@ -709,15 +709,16 @@ class AlertController extends Controller
                 : ($estimate ?? (int) $this->monthlyBilling->summarize($sc, $today)['charge']))
             : $this->countModeCharge($sc);
         // ARCH2: what is paid / what status = the Verdict (invoices + Payment rows), not the stored PaidAmount sum.
+        $verdict = $courseStatuses[$classId] ?? null;
         $paidAmount = ($verdict['source'] ?? null) === 'invoice'
             ? (int) $verdict['applied']
             : ($invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0);
         $rawPaid = (int) ($sc->Paid ?? 0) === 1;
-        $isPaid = $this->isFullyPaid($rawPaid || ($sc ? $sc->isEffectivelyPaid() : false), $paidAmount, $charge);
+        $scIsPaid = $this->isFullyPaid($rawPaid || ($sc ? $sc->isEffectivelyPaid() : false), $paidAmount, $charge);
         // F7 S3b: one outstanding answer = the resolver's course-level value; no invoice => estimate.
-        $outstanding = $this->courseOutstanding($verdict) ?? ($isPaid ? 0 : max(0, $charge - $paidAmount));
+        $outstanding = $this->courseOutstanding($courseStatuses[$classId] ?? null) ?? ($scIsPaid ? 0 : max(0, $charge - $paidAmount));
 
-        return ['charge' => $charge, 'paid_amount' => $paidAmount, 'paid' => $isPaid, 'outstanding' => $outstanding, 'invoice_projection' => $invoiceProjection];
+        return ['charge' => $charge, 'paid_amount' => $paidAmount, 'paid' => $scIsPaid, 'outstanding' => $outstanding, 'invoice_projection' => $invoiceProjection];
     }
 
     /**
