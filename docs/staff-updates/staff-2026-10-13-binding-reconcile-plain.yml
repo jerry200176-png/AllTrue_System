@@ -10,6 +10,6 @@ updates:
       - category: improved
         text: 「LINE 綁定管理」改名「家長 LINE 綁定」，位置不變。
       - category: improved
-        text: 頁面上方展開「家長綁不上怎麼辦」，依家長收到的回覆找到處理方式；不能自己處理的會寫明回報超級管理員。
+        text: 頁面上方展開「家長綁不上怎麼辦」，依家長收到的回覆找到要去的頁面。
     source_refs:
       - "changelog:2026-10-13:binding-reconcile-plain-ux"
