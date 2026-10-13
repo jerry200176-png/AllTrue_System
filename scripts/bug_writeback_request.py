@@ -12,7 +12,8 @@
   expected_status   followup only, required
 
 Entries are append-only: removing or changing an existing entry is refused, here and in CI.
-Only request_ids absent from the previous version of the file run (idempotent per push);
+Only request_ids absent from the last applied version of the file run (the workflow diffs against
+its last successful run);
 the server-side script also skips a reply that is already posted. `resolved`/`closed` never
 pass through here: those stay on the evidence-gated Phase-C paths. The log carries request IDs,
 bug IDs, actions and counts only: the repository is public.
@@ -179,6 +180,11 @@ def validate_entry(entry: dict, repo: str) -> dict:
             raise RequestError(f"{rid}: followup expected_status must be one of {sorted(FOLLOWUP_STATUSES)}")
         env.update(EXPECTED_STATUS=status, PRODUCTION_REVISION="", DEPLOY_RUN_ID="")
     return {"request_id": rid, "bug_id": bug_id, "action": action, "mode": ACTIONS[action], "env": env}
+
+
+def validate_all(text: str | None, repo: str) -> list[dict]:
+    """Validate every entry of a file (CI); the per-push batch limit does not apply to history."""
+    return [validate_entry(e, repo) for e in load_requests(text)]
 
 
 def plan(before_text: str | None, after_text: str | None, repo: str) -> list[dict]:

@@ -182,7 +182,12 @@ class IdempotencyTest(unittest.TestCase):
     def test_checked_in_request_file_is_fully_valid(self):
         # Runs in required CI, so an invalid entry fails before it can merge, not after.
         text = (ROOT / "operations/closeout/bug-writeback.request.yml").read_text(encoding="utf-8")
-        wb.plan("", text, REPO)
+        wb.validate_all(text, REPO)  # every entry, without the per-push batch limit
+
+    def test_history_longer_than_one_batch_stays_valid(self):
+        many = [entry(request_id=f"req-{i:04d}", bug_id=500 + i) for i in range(wb.MAX_NEW_PER_PUSH + 3)]
+        self.assertEqual(len(wb.validate_all(doc(*many), REPO)), len(many))
+        self.assertEqual(len(wb.plan(doc(*many[:-1]), doc(*many), REPO)), 1)
 
     def test_checked_in_request_file_is_append_only_vs_base(self):
         # Required CI has full history: removing or editing an entry already on the base branch fails here.

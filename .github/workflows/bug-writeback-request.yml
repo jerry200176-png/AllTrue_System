@@ -2,8 +2,9 @@
 name: Bug write-back request (Phase-A triage / follow-up)
 
 # Governed cloud path for the in-app write-backs that otherwise need workflow_dispatch
-# (Founder 2026-10-13). A merged PR appends entries to the request file; only request_ids
-# absent from the previous version run, through the same script as bug-phase-a-triage.yml and
+# (Founder 2026-10-13). A merged PR appends entries to the request file; the request_ids added
+# since the last successful run of this workflow run, in file order, through the same script as
+# bug-phase-a-triage.yml and
 # bug-followup-comment.yml. Never resolved/closed (Phase-C keeps those). Public repo: the log
 # carries request IDs, bug IDs, actions and counts only; remote output is discarded.
 on:
@@ -12,9 +13,11 @@ on:
     paths:
       - 'operations/closeout/bug-writeback.request.yml'
 
-# One run at a time, in push order: `queue: max` keeps every pending run (the default keeps only
-# the newest and cancels the rest, which would drop request_ids), so a follow-up never overtakes the
-# triage it depends on. Each push applies only its own diff; run-remote.sh also takes a row lock.
+# One run at a time; `queue: max` keeps every pending run. Queue order is not push order, so each
+# run diffs against the last *successful* run (durable, from the Actions API), not its own `before`:
+# a later push that starts first applies the earlier push's entries too, in file order, and the
+# earlier run then finds nothing new. A failed run's entries are retried by the next run; the
+# remote write-backs are idempotent (status checks, duplicate-comment checks, row lock).
 concurrency:
   group: bug-writeback-request
   cancel-in-progress: false
@@ -22,6 +25,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   writeback:
@@ -31,7 +35,8 @@ jobs:
       - name: Checkout request file, shared write-back scripts and SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 2
+          fetch-depth: 0 # ancestry against the last successful run
+          filter: blob:none
           sparse-checkout: |
             .github/actions/production-ssh-trust
             operations/closeout/bug-writeback.request.yml
@@ -43,13 +48,21 @@ jobs:
       - name: Validate new requests (before any production access)
         id: plan
         env:
-          BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+          EVENT_BEFORE: ${{ github.event.before }}
           REQUEST: operations/closeout/bug-writeback.request.yml
         run: |
           set -euo pipefail
           python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet 'pyyaml==6.0.2'
+          last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/bug-writeback-request.yml/runs?branch=main&event=push&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // ""')
+          if [[ -n "$last" ]] && git merge-base --is-ancestor "$GITHUB_SHA" "$last"; then
+            echo "already applied by the run for $last (queued runs can start out of push order)"
+            echo "count=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BEFORE="${last:-$EVENT_BEFORE}"
           [[ "$BEFORE" =~ ^[0-9a-f]{40}$ && "$BEFORE" != 0000000000000000000000000000000000000000 ]] || { echo "no previous commit; refusing"; exit 1; }
-          git cat-file -e "${BEFORE}^{commit}" 2>/dev/null || git fetch --quiet --no-tags --depth=1 origin "$BEFORE"
+          git merge-base --is-ancestor "$BEFORE" "$GITHUB_SHA" || { echo "last applied commit is not an ancestor; refusing"; exit 1; }
           if git cat-file -e "${BEFORE}:${REQUEST}" 2>/dev/null; then
             git show "${BEFORE}:${REQUEST}" > "$RUNNER_TEMP/before.yml"
           else
