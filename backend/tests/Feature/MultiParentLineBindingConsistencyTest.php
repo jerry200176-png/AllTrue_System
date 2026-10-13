@@ -245,6 +245,7 @@ class MultiParentLineBindingConsistencyTest extends TestCase
             'Stop' => 0,
             'ClassType' => 'one_on_one',
             'ScheduleMode' => 'date',
+            'settlement_day' => (int) now()->day,
             'SessionCount' => 1,
             'RemainingSessions' => 1,
             'UsedSessions' => 0,
