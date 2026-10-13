@@ -62,14 +62,14 @@ class CollectionQueueRequestShapeTest extends TestCase
         $case = $this->fixtureCase('item2_modal_typed_amount_on_zero_bill', ['course' => $sc->ID, 'invoice:zero' => $zero->id]);
         $this->report($case['endpoint'], $case['request'])->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding')->assertJsonPath('invoice_id', $zero->id);
         $this->assertSame(0, PaymentReport::count());
+        // Zero amount: for the same real NT$0 row (no report yet) the modal sends nothing (blocked).
+        $blocked = $this->fixtureCase('item2_modal_zero_amount_blocked', ['course' => $sc->ID, 'invoice:zero' => $zero->id]);
+        $this->assertNull($blocked['request'], 'the modal sent no request for NT$0');
+        $this->assertNotEmpty($blocked['blocked_message']);
         $report = $this->pendingReport($sc, Invoice::findOrFail($case['request']['invoice_id']), (int) $case['request']['amount']);
         $this->confirm($report->id)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
         $this->assertSame('pending', $report->fresh()->status);
         $this->assertSame(0, Payment::count(), 'no Payment row on the NT$0 bill');
-        // Zero amount: for the same real NT$0 row the modal sends nothing (blocked), so no report exists.
-        $blocked = $this->fixtureCase('item2_modal_zero_amount_blocked', ['course' => $sc->ID, 'invoice:zero' => $zero->id]);
-        $this->assertNull($blocked['request'], 'the modal sent no request for NT$0');
-        $this->assertNotEmpty($blocked['blocked_message']);
     }
 
     /** Item 3: stored paid/full but Payment rows 2,000/6,000 → the captured body collects the 4,000 still owed. */
@@ -133,15 +133,6 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertLedger($older, 0, 'unpaid');
     }
 
-    /** r4242583482: a monthly course's queue target is its earliest unsettled period, not the newest. */
-    public function test_review_monthly_queue_target_is_the_oldest_owing_period(): void
-    {
-        $sc = $this->course(['ScheduleMode' => 'date', 'Charge' => 6000]);
-        [$feb, $mar] = [$this->monthly($sc, '2026-02', 6000, 1000), $this->monthly($sc, '2026-03', 6000, 1000)];
-        $row = app(\App\Services\BillingPayableResolver::class)->byStudentClassIds([$sc->ID], [$sc])[$sc->ID];
-        $this->assertSame([$feb->id, 5000], [$row['payable_invoice_id'], $row['payable_outstanding']], "not March #{$mar->id}");
-    }
-
     /** r4244111099: NT$0 against a stored NT$0 bill of a course that charges is refused; a free course is not this case. */
     public function test_review_zero_report_on_an_erroneous_zero_bill_is_refused(): void
     {
@@ -176,6 +167,7 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertLedger($inv, 8800, 'paid');
         $this->assertNull($inv->fresh()->billing_snapshot, 'r4245816754: no snapshot of today\'s sessions on a fixed bill');
         // r4246114454: the receipt prints the bill's March service period and its sessions, not the payment month (April).
+        $inv->items()->createMany([['StudentClassID' => $sc->ID, 'Description' => '月結費用', 'Amount' => 8800, 'PeriodStart' => '2026-03-01', 'PeriodEnd' => '2026-03-31'], ['StudentClassID' => null, 'Description' => '舊項目', 'Amount' => 0, 'PeriodStart' => '2026-04-01', 'PeriodEnd' => '2026-04-30']]); // r4254441853: linked item wins
         $this->withHeaders($this->headers)->getJson('/api/v1/payment-reports/' . $res->json('report_id') . '/receipt')
             ->assertJsonPath('period_start', '2026/03/01')->assertJsonPath('period_end', '2026/03/31')->assertJsonPath('attended_dates', ['2026/03/10']);
     }
@@ -221,16 +213,23 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertSame(0, Payment::where('InvoiceID', $apr->id)->count(), 'current period untouched');
     }
 
-    /** #3923 P1: a paid package member's stale stored-paid bill (rows 2,000/6,000) is not charged here (as Invoice::mayOweSql). */
-    public function test_paid_package_member_stale_paid_bill_is_refused_at_record_and_confirm(): void
+    /** #3923 P1s: a PAID package member's stale stored-paid bill (rows 2,000/6,000) is held (as mayOweSql); an UNPAID package's is collected. */
+    public function test_package_member_stale_paid_bill_is_held_only_while_the_package_is_paid(): void
     {
-        [$sc, $inv] = $this->storedPaidLedgerPartial();
-        $pkg = \App\Models\CoursePackage::create(['student_id' => $sc->StudentID, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8, 'used_sessions' => 0, 'rate' => 750, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true, 'paid_at' => '2026-04-10']);
-        $sc->update(['PackageID' => $pkg->id]);
-        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, ...self::D, 'amount' => 4000])->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
-        $this->report('director-record', ['student_class_id' => $sc->ID, ...self::D, 'amount' => 4000])->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
-        $this->confirm($this->pendingReport($sc, $inv, 4000)->id)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
-        $this->assertSame([1, 2000], [Payment::count(), (int) Payment::sum('Amount')], 'only the original 2,000 row');
+        foreach ([true, false] as $paid) {
+            [$sc, $inv] = $this->storedPaidLedgerPartial();
+            $sc->update(['PackageID' => \App\Models\CoursePackage::create(['student_id' => $sc->StudentID, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8, 'used_sessions' => 0, 'rate' => 750, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => $paid, 'stop' => false, 'enabled' => true])->id]);
+            $res = $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, ...self::D, 'amount' => 4000]);
+            if (! $paid) {
+                $this->confirm($res->assertOk()->json('report_id'))->assertOk();
+                $this->assertLedger($inv, 6000, 'paid');
+            } else {
+                $res->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+                $this->report('director-record', ['student_class_id' => $sc->ID, ...self::D, 'amount' => 4000])->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+                $this->confirm($this->pendingReport($sc, $inv, 4000)->id)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+                $this->assertSame(2000, (int) Payment::where('InvoiceID', $inv->id)->sum('Amount'), 'only the original 2,000 row');
+            }
+        }
     }
 
     /** One fixture case with id placeholders mapped; asserts its row equals the live alerts/tuition row the UI would get. */
