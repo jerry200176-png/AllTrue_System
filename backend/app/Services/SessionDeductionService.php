@@ -751,7 +751,7 @@ class SessionDeductionService
      */
     public static function pilotSafeCopiedBasis(StudentClass $source): string
     {
-        return $source->isActualDurationBasis() && !self::isActualDurationCampusAllowedForCourse($source)
+        return $source->isActualDurationBasis() && (!(bool) config('perfflags.actual_duration_deduction_enabled', false) || !self::isActualDurationCampusAllowedForCourse($source))
             ? \App\Services\Scheduling\DeductionBasis::FIXED_SESSION
             : $source->deduction_basis;
     }
