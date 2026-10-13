@@ -30,6 +30,7 @@ use App\Services\SessionProjectionReadService;
 use App\Services\SubstituteService;
 use App\Support\TeacherProfileDirectory;
 use App\Support\AttendanceStatus;
+use App\Support\LearningRecordMutableOwnership;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -616,23 +617,8 @@ class ClassSessionController extends Controller
         // 取代原本逐 slot 兩次 exists()（N+1，會隨老師當日課數線性增長）。
         // 以 classId|HH:MM 為鍵；TIME 欄位比較本就忽略秒，與原 SQL 語意一致。
         $classIds = $classes->pluck('ID')->map(fn ($v) => (int) $v)->all();
-        $suppressedSet = [];
-        $existingSet = [];
-        if (!empty($classIds)) {
-            Schedule::whereIn('student_course_id', $classIds)
-                ->whereDate('schedule_date', $targetDate)
-                ->whereIn('status', ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'])
-                ->get(['student_course_id', 'start_time'])
-                ->each(function ($r) use (&$suppressedSet) {
-                    $suppressedSet[(int) $r->student_course_id . '|' . substr((string) $r->start_time, 0, 5)] = true;
-                });
-            ClassSession::whereIn('StudentClassID', $classIds)
-                ->whereDate('SessionDate', $targetDate)
-                ->get(['StudentClassID', 'StartTime'])
-                ->each(function ($r) use (&$existingSet) {
-                    $existingSet[(int) $r->StudentClassID . '|' . substr((string) $r->StartTime, 0, 5)] = true;
-                });
-        }
+        // #3901 (R136/R155): one row per lesson already on this date; see monthlyLessonRowsByClass().
+        $rowsByClass = !empty($classIds) ? $this->monthlyLessonRowsByClass($classIds, $targetDate) : [];
 
         foreach ($classes as $studentClass) {
             $startDate = $studentClass->StartDate ? Carbon::parse($studentClass->StartDate)->toDateString() : null;
@@ -648,18 +634,12 @@ class ClassSessionController extends Controller
             if (empty($slots)) {
                 continue;
             }
+            $slotStarts = array_values(array_unique(array_map(fn ($slot) => substr((string) $slot['start_time'], 0, 5), $slots)));
+            $covered = $this->monthlyCoveredSlotStarts($slotStarts, $rowsByClass[(int) $studentClass->ID] ?? [], $targetDate);
 
             foreach ($slots as $slot) {
                 $startHm = substr((string) ($slot['start_time'] ?? ''), 0, 5);
-                if ($startHm === '') {
-                    continue;
-                }
-
-                $key = (int) $studentClass->ID . '|' . $startHm;
-                if (isset($suppressedSet[$key])) {
-                    continue;
-                }
-                if (isset($existingSet[$key])) {
+                if ($startHm === '' || isset($covered[$startHm])) {
                     continue;
                 }
 
@@ -675,13 +655,174 @@ class ClassSessionController extends Controller
                         'Note'                => 'projected-monthly-materialized-auto',
                         'IsContractException' => 0,
                     ]);
-                    // 同一請求內避免重複建立（多 slot 同時段時的防呆，等同原 exists() 在建立後轉真）。
-                    $existingSet[$key] = true;
+                    // 同一請求內避免重複建立（多 slot 同時段時的防呆）。
+                    $covered[$startHm] = true;
                 } catch (SlotOccupiedException $e) {
                     $this->logReadSideMaterializationConflict('monthly', $studentClass, $e);
                 }
             }
         }
+    }
+
+    /**
+     * #3901 (R136/R155): the lessons each monthly course already has on the date, one row per lesson:
+     * [current HH:MM, frozen original date, frozen original HH:MM]. An independently identified moved lesson (then put on
+     * leave / cancelled) still stands for the contract slot it came from, so a read adds no replacement.
+     * - A ClassSession is authoritative; a Schedule marker at its time is the same lesson (counted once).
+     * - Frozen identity comes from the session, else from a Schedule row of the same lesson: its TD-076
+     *   columns, else the original_schedule_id reschedule chain back to the slot it left. A chain that
+     *   starts on another date is a moved-in lesson and stands for no slot of this date.
+     * - A makeup (type=extra) has no series slot: each extra Schedule absorbs one identity-less session
+     *   at its time. A session with frozen identity, or with a marker identity at its time, is never a makeup.
+     * - Same-time sessions take the distinct marker identities one-for-one.
+     * - A rescheduled marker that was itself a move target is an intermediate hop, not a lesson.
+     * - Superseded schedules (TD-076 repair history) and internal reschedule placeholders are ignored.
+     *
+     * @param  list<int>  $classIds
+     * @return array<int, list<array{0:string,1:?string,2:?string}>>
+     */
+    private function monthlyLessonRowsByClass(array $classIds, string $targetDate): array
+    {
+        $hm = fn ($t): string => substr((string) $t, 0, 5);
+        $ymd = fn ($d): ?string => $d ? Carbon::parse($d)->toDateString() : null;
+        $isExtra = fn (Schedule $r): bool => strtolower((string) $r->type) === 'extra';
+        $schedules = Schedule::whereIn('student_course_id', $classIds)->whereDate('schedule_date', $targetDate)
+            ->get(['id', 'student_course_id', 'start_time', 'status', 'type', 'original_schedule_id', 'original_schedule_date', 'original_start_time'])
+            ->keyBy('id');
+        $origin = function (Schedule $row) use ($schedules, $hm, $ymd, $targetDate): array {
+            $cur = $row;
+            for ($hops = 0; $hops < \App\Services\BackfillScheduleOccurrenceIdentityService::MAX_HOPS; $hops++) {
+                if ($cur->original_start_time) {
+                    return [$ymd($cur->original_schedule_date), $hm($cur->original_start_time)];
+                }
+                $parentId = (int) ($cur->original_schedule_id ?? 0);
+                if ($parentId <= 0) {
+                    return $cur === $row ? [null, null] : [$targetDate, $hm($cur->start_time)];
+                }
+                $parent = $schedules->get($parentId);
+                if (!$parent instanceof Schedule) {
+                    return ['', '--:--']; // moved in from another date: stands for no slot of this date
+                }
+                $cur = $parent;
+            }
+
+            return [null, null];
+        };
+        $scheduleKey = fn (Schedule $r): string => (int) $r->student_course_id . '|' . $hm($r->start_time);
+        $extraBudget = [];
+        $sameLesson = [];
+        foreach ($schedules as $r) {
+            if (strtolower((string) $r->status) === Schedule::STATUS_SUPERSEDED) {
+                continue; // TD-076 repair history: invisible to readers, never an identity or a makeup
+            }
+            if ($isExtra($r)) {
+                $extraBudget[$scheduleKey($r)] = ($extraBudget[$scheduleKey($r)] ?? 0) + 1;
+            } else {
+                $sameLesson[$scheduleKey($r)][] = $r;
+            }
+        }
+        // Distinct slot identities the markers at one time stand for. Same-time sessions consume them
+        // one-for-one (two cancelled lessons from different slots cover both); a further session repeats the
+        // last one. Identities no session consumed stay in $pending for their own marker rows below.
+        $pending = [];
+        /** @var array<string, array{0:?string,1:?string}> $last */
+        $last = [];
+        $hasOrigin = function (string $key) use (&$pending, &$last, $sameLesson, $origin): bool {
+            if (!isset($pending[$key])) {
+                $pending[$key] = [];
+                foreach ($sameLesson[$key] ?? [] as $r) {
+                    $found = $origin($r);
+                    if ($found[1] !== null && !in_array($found, $pending[$key], true)) {
+                        $pending[$key][] = $found;
+                    }
+                }
+            }
+
+            return $pending[$key] !== [] || isset($last[$key]);
+        };
+        $nextOrigin = function (string $key) use (&$pending, &$last, $hasOrigin): array {
+            if (!$hasOrigin($key)) {
+                return [null, null];
+            }
+            if ($pending[$key] !== []) {
+                $last[$key] = array_shift($pending[$key]);
+            }
+
+            return $last[$key];
+        };
+
+        $rows = [];
+        $taken = [];
+        // Internal reschedule placeholders are bookkeeping, hidden from the index; they stand for no lesson.
+        $sessions = ClassSession::whereIn('StudentClassID', $classIds)->whereDate('SessionDate', $targetDate)
+            ->where(fn ($q) => $q->whereNull('Note')->orWhere('Note', 'NOT LIKE', '%cancelled-duplicate-reschedule-placeholder%'))
+            ->orderBy('id')->get(['id', 'StudentClassID', 'StartTime', 'OriginalSessionDate', 'OriginalStartTimeHM']);
+        foreach ($sessions as $s) {
+            $classId = (int) $s->StudentClassID;
+            $key = $classId . '|' . $hm($s->StartTime);
+            if ($s->OriginalStartTimeHM) {
+                $rows[$classId][] = [$hm($s->StartTime), $ymd($s->OriginalSessionDate), $hm($s->OriginalStartTimeHM)];
+            } elseif (($extraBudget[$key] ?? 0) > 0 && !$hasOrigin($key)) {
+                // The makeup's own session. A marker identity at this time means a regular lesson
+                // moved here, so the identity wins over the makeup.
+                $extraBudget[$key]--;
+
+                continue;
+            } else {
+                $rows[$classId][] = [$hm($s->StartTime), ...$nextOrigin($key)];
+            }
+            $taken[$key] = true;
+        }
+
+        foreach ($sameLesson as $key => $markers) {
+            $markers = array_values(array_filter($markers, fn (Schedule $r) => in_array(strtolower((string) $r->status), ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'], true)
+                && !(strtolower((string) $r->status) === 'rescheduled' && (int) ($r->original_schedule_id ?? 0) > 0)));
+            if ($markers === []) {
+                continue;
+            }
+            $classId = (int) $markers[0]->student_course_id;
+            $hasOrigin($key);
+            $emitted = false;
+            // Each lesson marker whose identity no session at this time took still stands for its own slot
+            // (a partially materialized same-time group keeps every lesson it records).
+            foreach ($markers as $r) {
+                $found = $origin($r);
+                $at = array_search($found, $pending[$key], true);
+                if ($found[1] !== null && $at !== false) {
+                    array_splice($pending[$key], (int) $at, 1);
+                    $rows[$classId][] = [$hm($r->start_time), ...$found];
+                    $emitted = true;
+                }
+            }
+            if (!$emitted && !isset($taken[$key])) {
+                $rows[$classId][] = [$hm($markers[0]->start_time), ...$nextOrigin($key)];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * #3901: which contract slots of a monthly course already have a lesson on the date.
+     *
+     * @param  list<string>  $slotStarts  contract slot start times (HH:MM) of the weekday
+     * @param  list<array{0:string,1:?string,2:?string}>  $rows  [current HH:MM, frozen original date, frozen original HH:MM] per lesson
+     * @return array<string, true>
+     */
+    private function monthlyCoveredSlotStarts(array $slotStarts, array $rows, string $targetDate): array
+    {
+        $covered = [];
+        foreach ($rows as [$current, $originDate, $originHm]) {
+            if ($originHm !== null && $originDate === $targetDate) {
+                $covered[$originHm] = true;
+            }
+            if (in_array($current, $slotStarts, true)) {
+                $covered[$current] = true;
+            }
+        }
+        // Legacy off-contract rows without independent identity are ambiguous: retain exact-time coverage.
+
+        return $covered;
     }
 
     /**
@@ -2110,6 +2251,12 @@ class ClassSessionController extends Controller
                 $error = '確認不收的合約不能改派堂次。';
             } elseif ((int) $new->getAttribute('StudentID') !== (int) $old->getAttribute('StudentID') || (int) $new->getAttribute('SubjectID') !== (int) $old->getAttribute('SubjectID')) {
                 $error = '新舊課程合約的學生或科目不一致，拒絕改派。';
+            } elseif (($lockedLr = LearningRecordMutableOwnership::protectedRecordForSession((int) $session->id, true))
+                && (int) $lockedLr->TeacherID !== (int) $new->getAttribute('TeacherID')) {
+                // #3824: compare the assessment's recorded teacher, not the two contract defaults (review r4247040032).
+                DB::rollBack();
+
+                return LearningRecordMutableOwnership::lockedResponse(); // #3824
             } elseif (!in_array(strtolower((string) $session->Status), self::REASSIGN_STATUSES, true)) {
                 $error = '此堂次狀態（' . $session->Status . '）不支援改派合約。';
             } elseif (strtolower((string) $session->Status) !== 'cancelled' && ClassSession::query()->where('StudentClassID', $newId)
@@ -2239,6 +2386,11 @@ class ClassSessionController extends Controller
 
         $newTeacherId = (int) $data['substitute_teacher_id'];
         $oldTeacherId = (int) ($studentClass->TeacherID ?? 0);
+
+        // #3824: only a real reassignment is refused; re-asserting the assessment's own teacher is a safe repair.
+        if (($protectedLr = LearningRecordMutableOwnership::protectedRecordForSession((int) $session->id)) && (int) $protectedLr->TeacherID !== $newTeacherId) {
+            return LearningRecordMutableOwnership::lockedResponse(); // rechecked under lock inside the transaction
+        }
 
         try {
             $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
@@ -2569,6 +2721,8 @@ class ClassSessionController extends Controller
             ]);
 
             return response()->json($e->toResponseArray(), 422);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            return $e->getResponse(); // #3824 transactional recheck: keep the 409
         } catch (\Throwable $e) {
             $this->logSubstituteDiag('failed', [
                 'class_session_id' => $id,
@@ -2617,6 +2771,7 @@ class ClassSessionController extends Controller
             $classType, $dayOfWeek, $campusId, $roomId, $existingRescheduled, $existingScheduled,
             $crossCampus, $hasReschedule, $origSessionDate, $origStartTime, $origEndTime
         ) {
+            LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $session->id, (int) $newTeacherId); // #3824
             $durationHours = 2;
             if ($startTime && $endTime) {
                 $mins = abs(Carbon::parse($startTime)->diffInMinutes(Carbon::parse($endTime)));
@@ -3078,6 +3233,7 @@ class ClassSessionController extends Controller
             $originalTeacherId,
             $data
         ) {
+            LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $session->id); // #3824
             $courseId = (int) $studentClass->ID;
             $authUser = $request->attributes->get('auth_user');
             $changedBy = (int) ($authUser->id ?? 0);
@@ -3654,3 +3810,4 @@ class ClassSessionController extends Controller
         }
     }
 }
+
