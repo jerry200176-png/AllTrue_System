@@ -1544,7 +1544,7 @@ jobs:
             local rb_secret rb_response
             rb_secret="$(grep '^DEPLOY_SECRET=' /home/admin/backend/.env | cut -d= -f2-)"
             for _ in $(seq 1 16); do
-              if [ -z "$rb_secret" ] || ! rb_response=$(curl -skf -X POST -H "X-Deploy-Secret: ${rb_secret}" -H "Connection: close" -H "Content-Type: application/json" https://daan.lifenet.com.tw/api/internal/opcache-reset) || ! echo "$rb_response" | grep -q '"ok":true'; then # secret-echo-allow: header to the internal reset endpoint; never printed
+              if [ -z "$rb_secret" ] || ! rb_response=$(curl -skf --connect-timeout 10 --max-time 30 -X POST -H "X-Deploy-Secret: ${rb_secret}" -H "Connection: close" -H "Content-Type: application/json" https://daan.lifenet.com.tw/api/internal/opcache-reset) || ! echo "$rb_response" | grep -q '"ok":true'; then # secret-echo-allow: header to the internal reset endpoint; never printed
                 echo "❌ rollback FPM refresh failed"; rollback_failed=1; break
               fi
             done
