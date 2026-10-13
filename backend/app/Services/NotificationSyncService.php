@@ -509,21 +509,30 @@ class NotificationSyncService
             $query->whereIn('Student.CampusID', $campusIds);
         }
 
-        // R28 (#3885 review): total and paid come from the canonical invoice projection (Payment rows, incl.
-        // legacy NULL-method rows; held-session pricing), never the stored columns, because this notice wins.
+        $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
         $amounts = app(InvoiceAmountReconciliationService::class);
+        $invoices = $onResolver ? $query->with(['studentClass', 'payments', 'items'])->get() : $query->get();
+        if ($onResolver) {
+            $amounts->preloadSessions($invoices->pluck('StudentClassID')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all());
+        }
         $rows = [];
-        foreach ($query->get() as $invoice) {
+        try {
+        foreach ($invoices as $invoice) {
             $campusId = (int) ($invoice->campus_id ?? 0);
             if (!empty($campusIds) && !in_array($campusId, $campusIds, true)) {
                 continue;
             }
-            $projection = $amounts->resolve($invoice);
-            if ((int) $projection['outstanding_amount'] <= 0) {
-                continue; // nothing is owed on this bill
+            if ($onResolver) {
+                $projection = $amounts->resolve($invoice);
+                if ((int) $projection['outstanding_amount'] <= 0) {
+                    continue;
+                }
+                $totalAmount = (int) $projection['total_amount'];
+                $paidAmount = (int) $projection['applied_amount'];
+            } else {
+                $totalAmount = (int) $invoice->TotalAmount;
+                $paidAmount = (int) $invoice->PaidAmount;
             }
-            $totalAmount = (int) $projection['total_amount'];
-            $paidAmount = (int) $projection['applied_amount'];
 
             $dueAt = Carbon::parse($invoice->DueDate);
             // Overdue tiers are calendar-day policy, not elapsed-hour policy.
@@ -553,13 +562,19 @@ class NotificationSyncService
                     'due_date' => $dueAt->toDateString(),
                     'overdue_days' => $overdueDays,
                     'overdue_tier' => $tier,
-                    'status' => $paidAmount > 0 ? 'partial' : 'unpaid',
+                    'status' => $onResolver ? ($paidAmount > 0 ? 'partial' : 'unpaid') : (string) $invoice->Status,
                     'total_amount' => $totalAmount,
                     'paid_amount' => $paidAmount,
                 ],
                 'OccurredAt' => $dueAt->startOfDay(),
                 'ResolvedAt' => null,
             ];
+        }
+
+        } finally {
+            if ($onResolver) {
+                $amounts->forgetPreloadedSessions();
+            }
         }
 
         return $rows;
