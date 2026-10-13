@@ -486,7 +486,8 @@ class NotificationSyncService
      */
     private static function buildInvoiceOverdueNotifications(array $campusIds): array
     {
-        $query = Invoice::query()
+        $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
+        $query = Invoice::query()->with($onResolver ? ['studentClass', 'payments', 'items'] : [])
             ->leftJoin('Student', 'Invoice.StudentID', '=', 'Student.id')
             ->whereNotNull('Invoice.DueDate')
             ->whereIn('Invoice.Status', ['unpaid', 'partial'])
@@ -509,9 +510,8 @@ class NotificationSyncService
             $query->whereIn('Student.CampusID', $campusIds);
         }
 
-        $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
         $amounts = app(InvoiceAmountReconciliationService::class);
-        $invoices = $onResolver ? $query->with(['studentClass', 'payments', 'items'])->get() : $query->get();
+        $invoices = $query->get();
         if ($onResolver) {
             $amounts->preloadSessions($invoices->pluck('StudentClassID')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all());
         }
