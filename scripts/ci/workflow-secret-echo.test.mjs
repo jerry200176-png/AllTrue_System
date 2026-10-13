@@ -19,24 +19,50 @@ const LEAKS_BACK = />&(?![1-]\b)|\btee\b|\/dev\/(?!null\b)|\/proc\/|>\(/;
 const LOG_ALIAS = /\/dev\/(?!null\b)|\/proc\/|>\(|>&(?![1-]\b)\d/;
 // hash pipes, or a pipe into a client reading the secret from stdin (docker/helm login --password-stdin)
 const HASH_PIPE = /\|\s*(?:sha\d*sum|shasum|md5sum|openssl\s+dgst)|\|[^|;&]*--password-stdin\b/;
+// Same-length copy of a command with `; & | < >` inside quotes blanked, so quoted text is never read as a
+// delimiter, pipe or redirect (`echo "$PW;x" > f`, `echo "run: echo $PW | docker login --password-stdin"`).
+function unquotedSyntax(text) {
+  let q = '', out = '';
+  for (const ch of text) {
+    if (q) { if (ch === q) q = ''; out += /[;&|<>]/.test(ch) ? '_' : ch; }
+    else { if (ch === '"' || ch === "'") q = ch; out += ch; }
+  }
+  return out;
+}
+// a command whose stdout goes to a file or hash (and nothing copies it back to the log) does not print
+const toSafeSink = (region) => !LOG_ALIAS.test(region) && (FILE_REDIRECT.test(region) || HASH_PIPE.test(region));
 const SECRET_RE = new RegExp(`\\$\\{?${SECRET_VAR}\\b|\\$\\{\\{[^}]*\\b${SECRET_VAR}\\b`, 'i');
 function echoesSecret(line, grouped = false) {
-  return line.split(/(?=\b(?:echo|printf)\b)/).filter((x) => /^(?:echo|printf)\b/.test(x)).some((seg) => {
+  const lineSyn = unquotedSyntax(line); // quote state of the whole line, not of each echo segment
+  const starts = [...line.matchAll(/\b(?:echo|printf)\b/g)].map((x) => x.index);
+  return starts.some((at, k) => {
+    const seg = line.slice(at, starts[k + 1]);
     const m = SECRET_RE.exec(seg);
     if (!m) return false;
-    const cut = seg.slice(m.index).search(/;|&&|\|\|/);
-    const region = cut < 0 ? seg : seg.slice(0, m.index + cut);
+    const syn = lineSyn.slice(at, starts[k + 1]);
+    const cut = syn.slice(m.index).search(/;|&&|\|\|/);
+    const region = cut < 0 ? syn : syn.slice(0, m.index + cut);
     if (grouped && !LEAKS_BACK.test(region)) return false;
     if (LOG_ALIAS.test(region)) return true;
     return !FILE_REDIRECT.test(region) && !HASH_PIPE.test(region);
   });
 }
+const ENV_DUMP = /(?:^|[;&|]\s*|^\s*)(?:printenv|export\s+-p|env)(?:\s+(?:-[uCS]\s*(?:'[^']*'|"[^"]*"|[^\s;&|]+)|--(?:unset|chdir|split-string)(?:=|\s+)(?:'[^']*'|"[^"]*"|[^\s;&|]+)|-\S+))*\s*(?:$|[|;&])/g;
+// reading an env file is a leak unless that command's stdout goes to a file / hash sink
+function readsEnvFile(line) {
+  const syn = unquotedSyntax(line);
+  return [...syn.matchAll(new RegExp(String.raw`\b(?:cat|less|more|bat)\s+(?:-\S+\s+)*(?:0?<\s*)?` + ENV_FILE, 'g'))].some((m) => {
+    const rest = syn.slice(m.index);
+    const cut = rest.slice(m[0].length).search(/;|&&|\|\|/);
+    return !toSafeSink(cut < 0 ? rest : rest.slice(0, m[0].length + cut));
+  });
+}
 const rules = [
-  ['shell tracing', /(?:^|[;&\s])set\s+-[a-z]*x|\b(?:ba|da|z|k|a)?sh\s+(?:-\S+\s+)*-[a-z]*x|xtrace/],
+  ['shell tracing', /(?:^|[;&\s])set\s+-[a-z]*x|\b(?:ba|da|z|k|a)?sh\s+(?:-\S+\s+)*-[a-z]*x|-[a-z]*o\s*xtrace\b|SHELLOPTS\W+\S*xtrace/],
   // option-only dumps (env -0, printenv --null) still print everything; printenv VAR is case-insensitive
-  ['env dump', { test: (l) => /(?:^|[;&|]\s*|^\s*)(?:printenv|export\s+-p|env)(?:\s+-\S+)*\s*(?:$|[|;&])/.test(l)
+  ['env dump', { test: (l) => [...l.matchAll(ENV_DUMP)].some((m) => !/\s--?(?:help|version)\b/.test(m[0]))
     || new RegExp(`\\bprintenv\\s+(?:-\\S+\\s+)*\\$?${SECRET_VAR}\\b`, 'i').test(l) }],
-  ['cat/print .env', new RegExp(String.raw`\b(?:cat|less|more|bat)\s+(?:-\S+\s+)*(?:0?<\s*)?` + ENV_FILE)],
+  ['cat/print .env', { test: readsEnvFile }],
   // only hashing / redirects to a file are safe; base64 is reversible so it is NOT exempt
   ['echo of secret var', { test: echoesSecret }], // called as test(line, grouped) below
 ];
@@ -117,7 +143,7 @@ function scanScript(where, script) {
   lines.forEach((raw, i) => {
     const line = raw.replace(/^\s*#.*/, '')
       // ponytail: only the add-mask command is exempt, not the rest of the line
-      .replace(/(^\s*(?:-\s*)?(?:run:\s*)?|[;&|]\s*)(?:echo|printf)\s+['"]?::add-mask::[^;&|\n]*/g, '$1');
+      .replace(/(^\s*(?:-\s*)?(?:run:\s*)?|[;&|]\s*)(?:echo|printf)\s+(?:(?:'%[^']*'|"%[^"]*")\s+)?['"]?::add-mask::[^;&|\n]*/g, '$1');
     // plain assignment from a capture (X=$(cat .env)) is not printed, but a later command on the line still is
     const noAssign = dropAssignCaptures(line);
     for (const [why, re] of rules) {
@@ -206,6 +232,12 @@ export const trip = {
   'nested add-mask then secret': wf('|\n          echo "prefix $(echo ::add-mask::$TOKEN) $DB_PASSWORD"'),
   'with.script execSync cat .env': "jobs:\n  j:\n    steps:\n      - uses: actions/github-script@v7\n        with:\n          script: |\n            require('child_process').execSync('cat backend/.env', {stdio: 'inherit'})",
   'DB_PASSWD literal': 'env:\n  DB_PASSWD: hunter2',
+  'env -u NAME (no command)': wf('|\n          env -u HOME'),
+  'env -C dir (no command)': wf('|\n          env -C /tmp'),
+  'env --unset=NAME': wf('|\n          env --unset=HOME | sort'),
+  'quoted diagnostic with --password-stdin': wf('|\n          echo "Running: echo $DB_PASSWORD | docker login --password-stdin"'),
+  'quoted ; then real redirect elsewhere': wf('|\n          echo "$DB_PASSWORD"; echo "a > b"'),
+  'cat .env then tee /dev/stderr into file': wf('|\n          cat backend/.env | tee /dev/stderr > copy'),
   'P2 continued line': wf("|\n          printf '%s\\n' \"$DB_PASSWORD\" \\\n            ''"),
 };
 for (const [k, y] of Object.entries(trip)) if (!scan('probe', y).length) { console.error('guard missed probe:', k); process.exit(1); }
@@ -215,6 +247,13 @@ export const ok = {
   'tee to file then /dev/null': wf('|\n          echo "$DB_PASSWORD" | tee artifact > /dev/null'),
   'single-line run add-mask': 'jobs:\n  j:\n    steps:\n      - run: echo "::add-mask::$DB_PASSWORD"',
   'echo | docker login --password-stdin': wf('|\n          echo "$REGISTRY_PASSWORD" | docker login -u u --password-stdin ghcr.io'),
+  'env --help / --version': wf('|\n          env --help\n          printenv --version'),
+  'env -u NAME cmd': wf('|\n          env -u HOME ./run.sh'),
+  'quoted ; inside value to file': wf('|\n          echo "$DB_PASSWORD;mode=prod" > credentials.txt'),
+  'step name mentions xtrace': 'jobs:\n  j:\n    steps:\n      - name: Diagnose xtrace behavior\n        run: echo hi',
+  'cat < .env to file': wf('|\n          cat < backend/.env > protected-copy'),
+  'cat < .env | openssl enc > file': wf('|\n          cat < backend/.env | openssl enc -aes-256-cbc -pbkdf2 -pass env:K > encrypted.bin'),
+  'printf format add-mask': wf("|\n          printf '%s\\n' \"::add-mask::$DB_PASSWORD\""),
   'echo 1> file': wf('|\n          echo "$DB_PASSWORD" 1> artifact'),
   'echo &> file': wf('|\n          echo "$DB_PASSWORD" &> artifact'),
   'echo &>> file': wf('|\n          echo "$DB_PASSWORD" &>> artifact'),
