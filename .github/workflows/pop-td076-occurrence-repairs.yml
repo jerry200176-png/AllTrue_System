@@ -38,6 +38,7 @@ permissions:
 concurrency:
   group: alltrue-production-side-effects-v2
   cancel-in-progress: false
+  queue: max
 jobs:
   guard:
     name: Validate exact TD-076 repair gate

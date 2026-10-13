@@ -9,6 +9,8 @@ import tempfile
 import textwrap
 import unittest
 
+import yaml
+
 
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github/workflows/ui-smoke.yml"
 
@@ -36,6 +38,48 @@ class UiSmokeWorkflowGateTest(unittest.TestCase):
         self.assertIn("GITHUB_RUN_ID", config)
         self.assertIn("GITHUB_RUN_ATTEMPT", config)
         self.assertIn("userAgent: smokeUserAgent", config)
+
+    def test_production_account_runs_are_serialized(self):
+        # #3767: every run that logs in with the shared production smoke accounts
+        # must hold one repo-wide concurrency group and never cancel a running login.
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        account_jobs = [
+            job_id
+            for job_id, job in jobs.items()
+            if any("SMOKE_DIRECTOR_" in str(step.get("env", {})) or "SMOKE_TEACHER_" in str(step.get("env", {}))
+                   for step in job.get("steps", []))
+        ]
+        self.assertEqual(account_jobs, ["ui-smoke"])
+        for job_id in account_jobs:
+            concurrency = jobs[job_id].get("concurrency")
+            self.assertIsInstance(concurrency, dict, f"{job_id} needs job-level concurrency")
+            group = concurrency.get("group", "")
+            self.assertEqual(group, "ui-smoke-production-accounts")
+            self.assertNotIn("${{", group, "the group must be shared by all runs, not per PR/run")
+            self.assertIs(concurrency.get("cancel-in-progress"), False)
+            # Default queue: single replaces an unrelated pending run when a third arrives.
+            self.assertEqual(concurrency.get("queue"), "max")
+        # Skipped (non-UI) PRs must not queue behind the production session.
+        self.assertEqual(jobs["ui-smoke"]["needs"], "detect")
+        self.assertIn("needs.detect.outputs.run == 'true'", jobs["ui-smoke"]["if"])
+        self.assertNotIn("concurrency", jobs["detect"])
+
+    def test_required_check_fails_when_detection_or_smoke_fails(self):
+        # A skipped job can satisfy a required check: the stable check name must always run
+        # and fail unless detection succeeded (and Playwright, when the diff is relevant).
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        gates = [job_id for job_id, job in jobs.items() if job.get("name") == "UI Smoke (Playwright)"]
+        self.assertEqual(gates, ["ui-smoke-gate"])
+        gate = jobs["ui-smoke-gate"]
+        self.assertEqual(gate["needs"], ["detect", "ui-smoke"])
+        self.assertIn("always()", gate["if"])
+        self.assertNotIn("concurrency", gate)
+        script = gate["steps"][0]["run"]
+        self.assertIn('[[ "$DETECT" == success ]]', script)
+        self.assertIn('[[ "$SMOKE" == success ]]', script)
+        self.assertEqual(gate["steps"][0]["env"]["DETECT"], "${{ needs.detect.result }}")
 
     def test_git_diff_error_fails_instead_of_skipping_playwright(self):
         script = workflow_run_script("Detect frontend diff (PR only)")

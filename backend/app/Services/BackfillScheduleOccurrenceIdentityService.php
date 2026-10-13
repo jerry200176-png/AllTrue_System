@@ -16,7 +16,7 @@ use RuntimeException;
 final class BackfillScheduleOccurrenceIdentityService
 {
     private const LIVE_STATUSES = ['scheduled', 'leave'];
-    private const MAX_HOPS = 40;
+    public const MAX_HOPS = 40;
 
     /** @return array<string, mixed> */
     public function plan(?int $studentCourseId = null): array
