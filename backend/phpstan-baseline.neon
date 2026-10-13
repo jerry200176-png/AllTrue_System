@@ -4231,7 +4231,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 6
+			count: 3
 			path: app/Services/NotificationSyncService.php
 
 		-
@@ -4273,7 +4273,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\:\:\$student\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 1
 			path: app/Services/NotificationSyncService.php
 
 		-
