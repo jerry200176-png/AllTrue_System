@@ -2632,12 +2632,6 @@ parameters:
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
-			message: '#^Parameter \#1 \$studentClass of method App\\Http\\Controllers\\PaymentReportController\:\:lockPackageForCourse\(\) expects App\\Models\\StudentClass, Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Http/Controllers/PaymentReportController.php
-
-		-
 			message: '#^Using nullsafe property access "\?\-\>CampusID" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 1
