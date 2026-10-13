@@ -790,7 +790,15 @@ jobs:
                       recovered = []
                       for pr_number in referenced_prs:
                           try:
-                              candidate_pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
+                              try:
+                                  candidate_pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
+                              except RuntimeError as error:
+                                  # A message may cite an issue, e.g. "(#3908) (#3939)": that 404 is not
+                                  # provenance. Other API failures still abort the classifier (fail closed).
+                                  if "HTTP 404" in str(error):
+                                      print(f"#{pr_number} in commit message is not a pull request; skipped")
+                                      continue
+                                  raise
                               if candidate_pr.get("base", {}).get("ref") != "main":
                                   continue
                               pr_files = pages(gh_api(

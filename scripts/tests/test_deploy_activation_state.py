@@ -1146,6 +1146,14 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('"required_status_checks"', self.workflow)
         self.assertIn('"author_association"', (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8"))
 
+    def test_message_issue_reference_404_is_skipped_not_fatal(self):
+        """run 38408201108: '(#3908) (#3939)' cited an issue; /pulls/3908 404 must not abort the classifier."""
+        block = self.workflow[self.workflow.index("for pr_number in referenced_prs:"):]
+        block = block[:block.index("reconcile_preexisting_pr_provenance(")]
+        self.assertIn('if "HTTP 404" in str(error):', block)
+        self.assertIn("continue", block[block.index('if "HTTP 404"'):block.index("raise")])
+        self.assertIn("raise", block)  # any other API failure still fails closed
+
     def test_classifier_gh_api_rejects_empty_or_invalid_json(self):
         """GOV-ACTIVATE-CLASSIFIER-JSON-EOF: empty/truncated gh bodies must fail closed with path context."""
         lookup = self.workflow[self.workflow.index("          def gh_api(path, *extra):"):]
