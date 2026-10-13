@@ -171,6 +171,9 @@ class BugReportService
             return null;
         }
 
+        // Capture before assembling detail so later changes can only invalidate the proof.
+        $writebackEvidence = BugReportWritebackEvidence::capture($bug);
+
         $commentsQuery = $bug->comments()->with('author')->orderBy('id');
         if (!$includeInternalNotes) {
             $commentsQuery->where('is_internal_note', false);
@@ -222,6 +225,7 @@ class BugReportService
         );
 
         return [
+            'writeback_evidence' => $writebackEvidence,
             'id' => $bug->id,
             'campus_id' => $bug->CampusID,
             'reporter_user_id' => $bug->reporter_user_id,
