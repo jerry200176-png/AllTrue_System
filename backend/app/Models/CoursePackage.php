@@ -4,6 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $student_id
+ * @property int $campus_id
+ */
 class CoursePackage extends Model
 {
     protected $table = 'course_packages';
