@@ -2,8 +2,8 @@
   <div class="bmp-page">
     <!-- Header -->
     <AtPageHeader
-      title="LINE 綁定管理"
-      description="檢視家長 LINE 綁定狀態、搜尋學生並解除綁定。資料依所選分校隔離。"
+      title="家長 LINE 綁定"
+      description="查家長是否已綁定。只顯示所選分校。"
       icon="link"
     >
       <template #meta>
@@ -14,6 +14,20 @@
         <AtButton shape="rect" variant="ghost" icon="refresh" @click="refresh">重新整理</AtButton>
       </template>
     </AtPageHeader>
+
+    <!-- 主任處理家長綁定問題的對照表；訊息文字對應 LineWebhookController 的回覆。 -->
+    <details class="bmp-guide" data-testid="binding-guide">
+      <summary>家長綁不上怎麼辦</summary>
+      <p>家長加入分校 LINE 官方帳號，傳「綁定 學生姓名 家長手機」，例：綁定 王小明 0912345678。</p>
+      <dl>
+        <div><dt>家長收到「找不到學生」或「手機號碼不符」</dt><dd>到「學生管理」核對學生姓名與家長手機。家長手機登記錯了，請回報超級管理員更正；改好後請家長再傳一次。</dd></div>
+        <div><dt>家長收到「未登記手機號碼」</dt><dd>到「學生管理」補上家長手機。</dd></div>
+        <div><dt>家長收到「已在其他分校綁定」</dt><dd>系統在別的分校找到同名同手機的學生。先確認學生現在在哪個分校上課：分校登錯（例如轉校後沒改），請回報超級管理員更正學生的分校，改好後再請家長傳一次；確定在別的分校上課，才請家長改用該分校的 LINE 官方帳號。</dd></div>
+        <div><dt>同一學生在兩個分校都有綁定</dt><dd>記下學生姓名與兩個分校，回報超級管理員處理。</dd></div>
+        <div><dt>家長換了手機號碼</dt><dd>請回報超級管理員更新家長手機。LINE 帳號沒變的話，現有綁定照常有效，不用解除或重綁；之後重新綁定或其他家長綁定都要用新號碼。</dd></div>
+        <div><dt>家長換了 LINE 帳號</dt><dd>請回報超級管理員處理舊帳號，不要自己在下方清單解除；處理好後再請家長用新帳號綁定。</dd></div>
+      </dl>
+    </details>
 
     <!-- 綁定率統計卡片 -->
     <div class="bmp-stats" data-guide="binding-stats">
@@ -550,6 +564,18 @@ onMounted(() => { load(); loadStats(); });
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   }
 }
+
+.bmp-guide {
+  margin-bottom: 16px;
+  font-size: var(--ds-font-size-sm);
+  color: var(--ds-text-secondary);
+}
+.bmp-guide summary { cursor: pointer; font-weight: 600; color: var(--ds-text-primary); }
+.bmp-guide p { margin: 8px 0; }
+.bmp-guide dl { margin: 0; border-top: 1px solid var(--ds-border); }
+.bmp-guide dl > div { padding: 8px 0; border-bottom: 1px solid var(--ds-border); }
+.bmp-guide dt { font-weight: 600; color: var(--ds-text-primary); }
+.bmp-guide dd { margin: 2px 0 0; line-height: 1.5; }
 
 @media (max-width: 640px) {
   .bmp-desktop-table { display: none; }
