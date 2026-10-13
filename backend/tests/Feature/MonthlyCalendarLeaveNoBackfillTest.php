@@ -35,6 +35,7 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         // The contract slot is Tue 18:00, but this lesson was moved to 19:00 on the
         // same day and then put on leave. The contract time no longer matches it.
         $leave = $this->createSession($course, '2026-10-13', '19:00', '21:00', 'leave');
+        $leave->forceFill(['OriginalSessionDate' => '2026-10-13', 'OriginalStartTimeHM' => '18:00'])->save();
 
         $this->withHeaders(['Authorization' => "Bearer {$teacherToken}", 'Accept' => 'application/json'])
             ->getJson('/api/v1/class-sessions?start=2026-10-13&end=2026-10-13')
@@ -63,17 +64,40 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         $this->assertSame(['13:00 cancelled', '18:00 scheduled'], $starts);
     }
 
-    public function test_a_legacy_moved_lesson_only_stands_for_its_nearest_slot_not_the_whole_day(): void
+    public function test_a_moved_lesson_with_independent_identity_covers_only_its_original_slot(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
         [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-c@example.com');
         $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
-        // 13:00 was moved to 14:00 and put on leave (legacy row, no occurrence identity); 18:00 is unmaterialized.
-        $this->createSession($course, '2026-10-13', '14:00', '16:00', 'leave');
+        // Independent occurrence identity proves 13:00 moved to 14:00; 18:00 is unmaterialized.
+        $moved = $this->createSession($course, '2026-10-13', '14:00', '16:00', 'leave');
+        $moved->forceFill(['OriginalSessionDate' => '2026-10-13', 'OriginalStartTimeHM' => '13:00'])->save();
 
         $this->readTeacherDay($teacherToken);
 
         $this->assertSame(['14:00 leave', '18:00 scheduled'], $this->startsOn($course));
+    }
+
+
+    public static function legacyOneOffNotes(): array
+    {
+        return ['default add-session note' => ['系統加課'], 'custom add-session note' => ['臨時加課'], 'ambiguous moved lesson' => ['']];
+    }
+
+    /** @dataProvider legacyOneOffNotes */
+    public function test_legacy_off_contract_session_without_independent_identity_does_not_hide_recurring_slots(string $note): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-extra@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        $extra = $this->createSession($course, '2026-10-13', '14:00', '16:00', 'scheduled');
+        $extra->forceFill(['Note' => $note, 'OriginalSessionDate' => null, 'OriginalStartTimeHM' => null])->save();
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['13:00 scheduled', '14:00 scheduled', '18:00 scheduled'], $this->startsOn($course));
+        $this->assertSame((int) $extra->id, (int) ClassSession::find($extra->id)->id);
+        $this->assertNull($extra->fresh()->OriginalStartTimeHM, 'A read must not invent a legacy occurrence identity.');
     }
 
     public function test_a_lesson_moved_onto_another_contract_slot_keeps_its_original_slot_covered(): void
@@ -258,8 +282,9 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
         [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-n@example.com');
         $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
-        // Legacy 13:00 lesson moved to 13:30 (no identity); a superseded repair row at 13:30 claims 18:00.
-        $this->createSession($course, '2026-10-13', '13:30', '15:30', 'leave');
+        // Proven 13:00 lesson moved to 13:30; a superseded repair row at 13:30 claims 18:00.
+        $moved = $this->createSession($course, '2026-10-13', '13:30', '15:30', 'leave');
+        $moved->forceFill(['OriginalSessionDate' => '2026-10-13', 'OriginalStartTimeHM' => '13:00'])->save();
         $this->extraSchedule($course, $teacherId, '13:30', Schedule::STATUS_SUPERSEDED, 'normal', ['original_schedule_date' => '2026-10-13', 'original_start_time' => '18:00']);
 
         $this->readTeacherDay($teacherToken);
@@ -349,3 +374,4 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         return [(int) $user->id, $token];
     }
 }
+

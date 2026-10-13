@@ -666,7 +666,7 @@ class ClassSessionController extends Controller
 
     /**
      * #3901 (R136/R155): the lessons each monthly course already has on the date, one row per lesson:
-     * [current HH:MM, frozen original date, frozen original HH:MM]. A lesson that was moved (then put on
+     * [current HH:MM, frozen original date, frozen original HH:MM]. An independently identified moved lesson (then put on
      * leave / cancelled) still stands for the contract slot it came from, so a read adds no replacement.
      * - A ClassSession is authoritative; a Schedule marker at its time is the same lesson (counted once).
      * - Frozen identity comes from the session, else from a Schedule row of the same lesson: its TD-076
@@ -812,35 +812,15 @@ class ClassSessionController extends Controller
     private function monthlyCoveredSlotStarts(array $slotStarts, array $rows, string $targetDate): array
     {
         $covered = [];
-        $legacy = [];
         foreach ($rows as [$current, $originDate, $originHm]) {
             if ($originHm !== null && $originDate === $targetDate) {
-                $covered[$originHm] = true; // the slot this lesson came from
+                $covered[$originHm] = true;
             }
             if (in_array($current, $slotStarts, true)) {
-                $covered[$current] = true; // the time is physically taken
-            } elseif ($originHm === null) {
-                $legacy[] = $current; // moved lesson with no identity: guess by proximity below
-            } // a lesson moved in from another date (identity known) stands for no slot of this date
-        }
-        $minutes = fn (string $hm): int => ((int) substr($hm, 0, 2)) * 60 + (int) substr($hm, 3, 2);
-        foreach ($legacy as $current) {
-            $best = null;
-            $bestDist = PHP_INT_MAX;
-            foreach ($slotStarts as $slotStart) {
-                if (isset($covered[$slotStart])) {
-                    continue;
-                }
-                $dist = abs($minutes($slotStart) - $minutes($current));
-                if ($dist < $bestDist) {
-                    $best = $slotStart;
-                    $bestDist = $dist;
-                }
-            }
-            if ($best !== null) {
-                $covered[$best] = true;
+                $covered[$current] = true;
             }
         }
+        // Legacy off-contract rows without independent identity are ambiguous: retain exact-time coverage.
 
         return $covered;
     }
@@ -3830,3 +3810,4 @@ class ClassSessionController extends Controller
         }
     }
 }
+
