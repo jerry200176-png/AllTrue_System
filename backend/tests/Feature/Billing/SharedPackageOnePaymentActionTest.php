@@ -169,7 +169,7 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $h = $this->directorHeaders();
         $this->assertFalse($this->packageAlertRow($h, $pkg)['paid']);
 
-        $this->withHeaders($h)->putJson("/api/v1/course-packages/{$pkg->id}", ['paid' => true, 'paid_at' => '2026-09-01'])->assertOk();
+        $this->withHeaders($h)->putJson("/api/v1/course-packages/{$pkg->id}", ['paid' => true, 'paid_at' => '2026-08-01'])->assertOk();
 
         $row = $this->packageAlertRow($h, $pkg);
         $this->assertTrue($row['paid']);
@@ -177,14 +177,39 @@ class SharedPackageOnePaymentActionTest extends TestCase
     }
 
     /**
-     * Monthly ('date') package with two members, each with an unpaid 2026-08 invoice of 8800 and a pending report.
-     * Today is 2026-09-02, three days before the package's settlement day, so its alert row is always listed.
+     * #3892 review P1 (r4254497307): a paid earlier month never settles the current one. August is invoiced and paid for both
+     * members; September has attended sessions and no invoice yet, so the package row owes September's sessions x rate.
+     */
+    public function test_paid_prior_month_does_not_settle_the_current_month(): void
+    {
+        [$a, $b, $pkg] = $this->monthlyPackageWithPendingReports();
+        $h = $this->directorHeaders();
+        foreach ([$a, $b] as $c) {
+            \App\Models\Invoice::where('StudentClassID', $c->ID)->update(['Status' => 'paid', 'PaidAmount' => 8800]);
+            \App\Models\Payment::create(['InvoiceID' => \App\Models\Invoice::where('StudentClassID', $c->ID)->value('id'), 'Amount' => 8800, 'PaidAt' => '2026-08-01', 'Method' => 'cash']);
+            $c->update(['EndDate' => '2026-09-30']);
+        }
+        PaymentReport::whereIn('StudentClassID', [$a->ID, $b->ID])->update(['status' => 'confirmed']);
+
+        \Illuminate\Support\Carbon::setTestNow('2026-09-02 10:00:00');
+        foreach ([$a, $b] as $c) {
+            \App\Models\ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => '2026-09-01', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        }
+
+        $row = $this->packageAlertRow($h, $pkg);
+        $this->assertFalse($row['paid'], 'August being paid does not settle September');
+        $this->assertSame(2 * 1500, (int) $row['outstanding'], 'September owes its attended sessions x rate');
+    }
+
+    /**
+     * Monthly ('date') package with two members, each with an unpaid invoice of 8800 for the current month (2026-08) and a
+     * pending report. Today is 2026-08-02, three days before the package's settlement day, so its alert row is always listed.
      *
      * @return array{0: \App\Models\StudentClass, 1: \App\Models\StudentClass, 2: CoursePackage, 3: list<PaymentReport>}
      */
     private function monthlyPackageWithPendingReports(): array
     {
-        \Illuminate\Support\Carbon::setTestNow('2026-09-02 10:00:00');
+        \Illuminate\Support\Carbon::setTestNow('2026-08-02 10:00:00');
         [$a, $b, $pkg] = $this->sharedPackage();
         $pkg->update(['billing_mode' => CoursePackage::BILLING_MODE_MONTHLY, 'settlement_day' => 5]);
         $student = Student::findOrFail($a->StudentID);
@@ -193,7 +218,7 @@ class SharedPackageOnePaymentActionTest extends TestCase
             $c->update(['ScheduleMode' => 'date', 'Charge' => 8800, 'StartDate' => '2026-07-01', 'EndDate' => '2026-08-31', 'SessionCount' => 0, 'settlement_day' => 5]);
             $inv = $this->invoice($c, $student, '2026-08', 8800, 'unpaid', 0, []);
             $reports[] = PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $c->ID, 'InvoiceID' => $inv->id,
-                'reported_by_name' => 'x', 'payment_date' => '2026-08-20', 'payment_method' => 'cash', 'reported_amount' => 8800,
+                'reported_by_name' => 'x', 'payment_date' => '2026-08-01', 'payment_method' => 'cash', 'reported_amount' => 8800,
                 'status' => 'pending', 'report_token_hash' => hash('sha256', uniqid('r', true)), 'token_expires_at' => now()->addDay()]);
         }
 

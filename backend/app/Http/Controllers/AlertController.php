@@ -235,7 +235,7 @@ class AlertController extends Controller
                 $rate = (float) $pkg->rate;
                 $charge = round($monthlySessions * $rate, 2);
                 $manualPaid = (bool) $pkg->paid;
-                $settlement = self::monthlyPackageSettlement($members->pluck('ID')->all(), $memberStatuses, $memberSessionCounts, $rate, $manualPaid);
+                $settlement = self::monthlyPackageSettlement($members->pluck('ID')->all(), $memberStatuses, $memberSessionCounts, $rate, $manualPaid, $today->format('Y-m'));
                 $pkgPaid = $settlement['paid'];
 
                 $fakeSc = $this->makeFakeSCForPackage($pkg);
@@ -697,36 +697,34 @@ class AlertController extends Controller
     }
 
     /**
-     * #3892 review P1 (Founder Q3=A): a monthly package is settled when its manual paid flag is set or when every member's
-     * authoritative ledger verdict is paid. Otherwise it owes, per member: nothing once paid, the invoice balance when the
-     * member is invoiced, else this month's attended sessions x rate (the FR-006 estimate).
+     * #3892 review P1 (Founder Q3=A): a monthly package is settled for the billing period the alert computes ($period, the
+     * current month) when its manual paid flag is set, or when every member has an invoice for that period fully covered by
+     * payments. Otherwise it owes, per member: every invoiced period's open balance, plus this month's attended sessions x
+     * rate when the member has no invoice for $period yet (the FR-006 estimate). A paid earlier month never settles a later
+     * one (the resolver's course-level `paid` spans all invoices, and B15 skips package members).
      *
      * @param list<int|string> $memberIds
      * @param array<int, array<string, mixed>> $statuses BillingPayableResolver::courseStatusesByStudentClassIds()
      * @param array<int, int> $sessionCounts
      * @return array{paid: bool, outstanding: float|int, applied: int}
      */
-    public static function monthlyPackageSettlement(array $memberIds, array $statuses, array $sessionCounts, float $rate, bool $manualPaid): array
+    public static function monthlyPackageSettlement(array $memberIds, array $statuses, array $sessionCounts, float $rate, bool $manualPaid, string $period): array
     {
-        $ids = array_map('intval', $memberIds);
-        $allPaid = $ids !== [] && collect($ids)->every(fn (int $id) => ($statuses[$id]['status'] ?? null) === 'paid');
-        if ($manualPaid || $allPaid) {
-            return ['paid' => true, 'outstanding' => 0, 'applied' => (int) collect($ids)->sum(fn (int $id) => (int) ($statuses[$id]['applied'] ?? 0))];
-        }
         $outstanding = 0;
         $applied = 0;
-        foreach ($ids as $id) {
-            $verdict = $statuses[$id] ?? null;
-            if (($verdict['status'] ?? null) === 'paid') {
-                $applied += (int) ($verdict['applied'] ?? 0);
-                continue;
+        $allPaid = $memberIds !== [];
+        foreach (array_map('intval', $memberIds) as $id) {
+            $invoiced = collect($statuses[$id]['periods'] ?? [])->filter(fn ($row) => !empty($row['invoice_ids']));
+            $current = $invoiced->firstWhere('billing_period', $period);
+            $outstanding += (int) $invoiced->sum(fn ($row) => max(0, (int) ($row['outstanding'] ?? 0)));
+            $applied += (int) ($current['applied'] ?? 0);
+            if ($current === null) {
+                $outstanding += ($sessionCounts[$id] ?? 0) * $rate;
             }
-            if (($verdict['source'] ?? null) === 'invoice') {
-                $outstanding += (int) ($verdict['outstanding'] ?? 0);
-                $applied += (int) ($verdict['applied'] ?? 0);
-                continue;
-            }
-            $outstanding += ($sessionCounts[$id] ?? 0) * $rate;
+            $allPaid = $allPaid && $current !== null && (int) ($current['outstanding'] ?? 1) <= 0;
+        }
+        if ($manualPaid || $allPaid) {
+            return ['paid' => true, 'outstanding' => 0, 'applied' => $applied];
         }
 
         return ['paid' => false, 'outstanding' => round($outstanding, 2), 'applied' => $applied];
