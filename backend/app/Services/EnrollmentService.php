@@ -1137,7 +1137,6 @@ class EnrollmentService
      * @param  array<string, mixed>  $data
      */
     /**
-     * Recheck server-derived renewal targets under the student lock.
      * @param  array<string, mixed>  $data
      * @param  array<int, int>  $subjectIds
      */
@@ -1183,9 +1182,7 @@ class EnrollmentService
 
         return null;
     }
-
     /**
-     * Refuse duplicate completed slots using the materialization timestamp.
      * @param array<string, array<int, array<string, mixed>>> $subjectGroups
      */
     private function guardRenewalConfirmedOverlap(int $studentId, array $subjectGroups, Carbon $decisionNow): ?JsonResponse
