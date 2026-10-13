@@ -34,7 +34,7 @@ const NO_ARG_TRUST = new Set(['', 'echo', 'printf', 'print', 'cat', 'tee', 'logg
 const ALIAS = /\/dev\/(?!null\b)|\/proc\//;
 // GitHub renders the job summary and shows GITHUB_OUTPUT / GITHUB_ENV values in later steps: a file
 // redirect to one of them is a public sink, not a safe file
-const PUBLIC_FILE = /^\$\{?GITHUB_(?:STEP_SUMMARY|OUTPUT|ENV)\}?$/;
+const PUBLIC_FILE = /^\$(?:GITHUB_(?:STEP_SUMMARY|OUTPUT|ENV)|\{GITHUB_(?:STEP_SUMMARY|OUTPUT|ENV)(?::?[-+?=][\s\S]*)?\})$/;
 const RESERVED = /^(?:\{|\}|if|then|elif|else|fi|do|done|while|until|!|time|esac)$/;
 
 // --- shell lexer: commands with words (char text + source offset + quote per char), redirects, heredocs, nested substitutions
@@ -257,7 +257,7 @@ function sink(P, s, ctx, cred) {
 }
 // a capture whose inner text cannot reach the log: no redirect other than to /dev/null or from a file, no log alias
 const cleanCapture = (inner) => !ALIAS.test(inner) && !/>/.test(inner.replace(/(?:\d+|&)?>>?\s*\/dev\/null\b/g, '').replace(/<<?<?-?/g, ''));
-const credExpr = (expr) => expr.replace(/\bsecrets\.\w+/g, '').split(/[^\w]+/).some(isSecretName); // secrets.* are masked
+const credExpr = (expr) => /\btoJSON\s*\(\s*(?:env|secrets)\s*\)/i.test(expr) || expr.replace(/\bsecrets\.\w+/g, '').split(/[^\w]+/).some(isSecretName); // direct secrets.* are masked; whole env is sensitive
 function credHits(w, exprs, sensitive = new Set()) {
   const hits = [];
   for (const m of w.text.matchAll(CRED)) {
@@ -319,7 +319,8 @@ function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns tr
       const subHits = w.subs.filter((sb) => analyze(sb.script, sb.kind === '>(' ? 'top' : 'sub', out, exprs, new Set(sensitive)) && sb.kind !== '>(').map((sb) => sb.at);
       for (const at of [...credHits(w, exprs, sensitive), ...subHits]) {
         const before = w.text.slice(0, at);
-        if (normalized.some((n) => w.pos[at] >= n.start && w.pos[at] < n.end)) rec(w.pos[at], 'safe');
+        if (w.q[at] === "'" && w.text[at] !== '\x01') rec(w.pos[at], 'safe');
+        else if (normalized.some((n) => w.pos[at] >= n.start && w.pos[at] < n.end)) rec(w.pos[at], 'safe');
         else if (!NO_ARG_TRUST.has(info.name) && !pure && (/^(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)$/.test(info.name) && /^(?:-p|--password=)$/.test(before) && varOrSub(w.text.slice(at))
           || /IDENTIFIED\s+BY\s*\\?['"]?$/i.test(before))) rec(w.pos[at], 'safe');
         else if (/^(?:test|\[|\[\[)$/.test(info.name)
@@ -402,6 +403,12 @@ function scanScript(where, script0) {
   const why = lines.map(() => new Set());
   const parsed = lex(script);
   const occ = Object.assign([], { comments: parsed.comments });
+  for (const command of parsed.cmds) for (const [index, w] of command.words.entries()) {
+    const executable = resolve(command.words);
+    if (index >= executable.k && !/^(?:export|local|readonly|declare|typeset)$/.test(executable.name)) continue;
+    const literal = /^([A-Za-z_][A-Za-z0-9_]*)=(.+)$/.exec(w.text);
+    if (literal && isSecretName(literal[1]) && !w.subs.length && !/[\x01\x03$`]/.test(literal[2]) && !FIXTURES.has(literal[2])) why[lineOf(w.off)].add('literal credential');
+  }
   if (!parsed.bad) analyze(parsed, 'top', occ, exprs);
   const allowances = [...script0.matchAll(ALLOW_ALL)].flatMap((m) => {
     const owner = parsed.comments.find(([a, b]) => m.index >= a && m.index < b)?.[2];
@@ -544,6 +551,9 @@ export const trip = {
   'later command allowance cannot excuse earlier echo': blk('echo "$DB_PASSWORD"; echo hi # secret-echo-allow: harmless later command'),
 
   'nice long operand env dump': blk('nice --adjustment 5 env'),
+  'summary parameter operator sink': blk('echo "$DB_PASSWORD" >> "${GITHUB_STEP_SUMMARY:?missing}"'),
+  'whole env context serialization': blk('echo \'${{ toJSON(env) }}\''),
+  'inline literal assignment command list': blk('DB_PASSWORD=committed_fixture_secret; mysql -p"$DB_PASSWORD" -e \'SELECT 1\''),
   'arithmetic bare credential': blk('echo "$((DB_PASSWORD))"'),
   'proc environment dump': blk('cat /proc/self/environ | tr \'\\0\' \'\\n\''),
   'Bash verbose input logging': blk('set -v; mysql -p"${{ env.DB_PASSWORD }}" -e \'SELECT 1\''),
@@ -690,6 +700,8 @@ export const trip = {
   'composite action run step': 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo "$DB_PASSWORD"',
 };
 export const ok = {
+  'single-quoted variable instruction': blk('echo \'$DB_PASSWORD\''),
+  'SSH password-authentication option is not a credential assignment': blk('ssh -o PasswordAuthentication=no user@host true'),
   'closing command marker covers captured child': blk('X="$(cat "$DB_PASSWORD"', ')" # secret-echo-allow: reviewed captured child with separately proven quiet diagnostics'),
 
   'captured environment hash is safe': blk('X="$(cat backend/.env | sha256sum)"; echo "$X"'),
