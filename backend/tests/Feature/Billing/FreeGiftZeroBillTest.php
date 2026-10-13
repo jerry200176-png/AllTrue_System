@@ -79,7 +79,6 @@ class FreeGiftZeroBillTest extends TestCase
     public function test_a_foreign_campus_director_cannot_record_a_free_gift_bill(): void
     {
         $course = $this->monthlyCourse($this->student());
-
         $this->withToken($this->directorToken(2))->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))
             ->assertForbidden();
         $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
