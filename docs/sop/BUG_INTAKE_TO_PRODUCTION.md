@@ -9,6 +9,7 @@
 | 收件建單 + 收到回覆 | `bug-auto-intake.yml`：每筆 `new` 開／重用 IDs-only GitHub issue（SourceRef 去重）、加 `area:<類別>`、同類提醒、留固定「收到，我們正在查」回覆（Founder 6A）。狀態**維持 `new`**，等 Phase A | schedule 每小時 :23；人工 dispatch 預設 dry-run，`dry_run=false` 會真的建單並寫 production | 自動，不需動作 |
 | 撈佇列 | `bug-queue-dump.yml`：log 只有 ID／數量；明文 artifact 另含 metadata（嚴重度、分校 ID、page key、時間、回報者 user ID／角色、回饋類型），標題／描述／留言不在其中；文字在加密 `*.full.tar.gz.enc`（#3605；queue 不含描述／留言）；附 in-app ↔ issue reconcile step summary | push request-file `operations/closeout/bug-queue-dump.request.md`；或 dispatch | 可觸發；看得到 log 的 ID／數量；artifact 與全文要本機下載並解密 |
 | 撈單筆 | `bug-detail-dump.yml`（`summary.json` 明文含分校／page／回報者 metadata；加密 JSON 會截斷：描述 4000、留言 1500、狀態備註 1000 字，超過要標 coverage gap；附件只有 metadata、沒有圖檔） | push request-file `operations/closeout/bug-detail-dump.request.md`（改檔內 `bug_id:` 行）；或 dispatch | 同上 |
+| 即時唯讀（金鑰） | 無 workflow：`GET /api/v1/triage/bug-reports…`，帶 `ALLTRUE_TRIAGE_TOKEN`（見下方「Reading reports with `ALLTRUE_TRIAGE_TOKEN`」） | 直接 HTTPS | 可以：已設定金鑰且網路允許正式站 host 時，讀全文、留言、附件；不能寫 |
 | Phase A 分診回寫 | `bug-phase-a-triage.yml`：`new`→`triaged` + 公開回覆；建議類 `close_as_logged` | **dispatch-only** | 不行：交出 `bug_id`、`github_issue_url`、含 issue URL 的 §3.8 `public_reply`；建議類另加 `disposition` 與 `close_as_logged=true`（預設是 `bug`／`false`） |
 | 進度補充／建議上線通知 | `bug-followup-comment.yml`：只留言、不改狀態；`expected_status=closed`（已上線的建議）會記 production evidence 並關 GitHub issue（守門同 Phase C） | **dispatch-only** | 不行：交出 `bug_id`、`expected_status`、`github_issue_url`、`public_reply`；`expected_status=closed`（已上線的建議）另需 40 字元 `production_revision` 與 `deploy_run_id` |
 | Phase C 上線後回寫 | `bug-phase-c-allowlist.yml`：已上線修復 → `resolved` + 公開回覆，並自動關對應 issue（F14；`type:epic`、`lifecycle:frozen` 不關，issue 標題或 SourceRef 對到的任何 in-app 回報不在本次已檢查清單內就不關）。`bug-phase-c-autodispatch.yml` 在 allowlist 有新增 ID 合併進 main 後逐筆 dispatch 並驗證 | push：PR 在 allowlist 新增條目（`reply`／`rev`／`deploy`）→ merge；或 push request-file `operations/closeout/bug-phase-c-allowlist.request.md`；已在 allowlist 的 ID 可直接 dispatch（`bug_id`） | 可以（開 PR → CI → merge）；只限 `rev` 已在 production 的修復，不可拿來做 Phase A |
@@ -57,6 +58,33 @@ openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass file:$HOME/.alltrue-dump-
 
 Decrypted files stay local; never paste them into issues, PRs or comments. Do not
 shortcut any of this with SSH, guessed IDs or stale artifacts.
+
+## Reading reports with `ALLTRUE_TRIAGE_TOKEN` (cloud sessions, read-only)
+
+A super admin creates the token in 個人資料 → 安全性 → **AI 分診唯讀金鑰**. The
+plaintext is shown once and expires after `config/triage_tokens.php` `ttl_days`
+(default 90). Store it only as the cloud environment secret
+`ALLTRUE_TRIAGE_TOKEN`; the environment's network policy must allow the
+production host. The token reads live data, so the 15-minute dump freshness gate
+does not apply to it; the dumps above stay the fallback when no token is set.
+
+```bash
+H="Authorization: Bearer $ALLTRUE_TRIAGE_TOKEN"; B=https://daan.lifenet.com.tw/api/v1/triage
+curl -sf -H "$H" "$B/bug-reports?status=new,triaged,in_progress&since_id=0&limit=100"  # next page: since_id=<next_since_id>
+curl -sf -H "$H" "$B/bug-reports/<id>"          # description, comments (incl. internal notes), status logs, attachments[].download_path
+curl -sf -H "$H" -o /tmp/a.png "$B/bug-reports/<id>/attachments/<attachment_id>"
+```
+
+- **Read-only.** Any other route answers 403 to this token, and there is no write
+  endpoint. Write-back (`new`→`triaged`, public replies, Phase C) still goes
+  through the dispatch workflows in the table above.
+- **Never post report content to GitHub.** The repo is public. Issues, PRs, commits
+  and comments carry only IDs (in-app #, attachment ID, campus ID), counts and your
+  own technical findings: never reporter or student names, phone numbers, report
+  text, comments, or screenshots. Delete downloaded attachments after viewing.
+- Every request is logged in `security_audit_events` (`triage_token.read`: token
+  ID, route, report ID, IP). A 401 `token_expired` means: ask a super admin for a
+  new token. Revoke it in the same screen if it may have leaked.
 
 ## Deployment evidence gate (merge ≠ production)
 

@@ -288,6 +288,8 @@
           </table>
           <div v-else class="empty-text">目前沒有可用的登入裝置資訊。</div>
         </div>
+
+        <TriageTokenPanel v-if="isSuperAdmin" :token="token" />
       </section>
 
       <section v-if="activeTab === 'notifications'" id="profile-panel-notifications" class="card" data-guide="profile-active-panel" role="tabpanel" aria-labelledby="profile-tab-notifications" tabindex="0">
@@ -356,6 +358,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AvatarCropModal from '../components/AvatarCropModal.vue';
+import TriageTokenPanel from '../components/TriageTokenPanel.vue';
 import {
   getMe,
   getNotificationPrefs,
@@ -402,6 +405,7 @@ const loading = ref(true);
 const activeTab = ref(props.forcePasswordChange ? 'security' : props.initialTab || 'profile');
 const forcePasswordChange = computed(() => props.forcePasswordChange);
 const isTeacher = ref(false);
+const isSuperAdmin = ref(false);
 const teacherUiSfxEnabled = ref(false);
 const teacherStreakDisplayEnabled = ref(false);
 const hasEngagementRankOption = ref(false);
@@ -532,6 +536,7 @@ async function loadData() {
   try {
     const me = await getMe(props.token);
     isTeacher.value = (me?.role === 'teacher');
+    isSuperAdmin.value = (me?.role === 'super_admin');
     teacherUiSfxEnabled.value = isTeacher.value && isTeacherUiSfxEnabled();
     teacherStreakDisplayEnabled.value = isTeacher.value && isTeacherStreakDisplayEnabled();
     hasEngagementRankOption.value = Boolean(me?.engagement);
