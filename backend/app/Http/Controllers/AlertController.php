@@ -464,6 +464,12 @@ class AlertController extends Controller
         // Merge package-level alerts after individual rows are normalized.
         $rows = $rows->merge($countPkgAlerts)->merge($monthlyPkgAlerts)->values();
 
+        // #3942: the 收據 entry opens a confirmed report, so the row says whether one exists instead of guessing from
+        // payment_status (a confirmed partial payment keeps the invoice `partial` but already has a receipt).
+        $receiptCourseIds = PaymentReport::query()->where('status', 'confirmed')
+            ->whereIn('StudentClassID', $rows->pluck('id')->filter()->all())->distinct()->pluck('StudentClassID')->flip();
+        $rows = $rows->map(fn ($row) => $row + ['has_confirmed_receipt' => isset($row['id'], $receiptCourseIds[$row['id']])])->values();
+
         return response()->json($rows);
     }
 

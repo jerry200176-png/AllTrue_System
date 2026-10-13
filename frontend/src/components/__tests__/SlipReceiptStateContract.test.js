@@ -38,5 +38,7 @@ describe('slip/receipt state contract (fixture shared with PHPUnit)', () => {
     // P1: 沒有帳單不代表沒有已確認收據（receipt_without_invoice）；收據一律交給既有查詢決定，不在列上猜
     for (const k of ['legacy_paid_no_invoice', 'paid_confirmed_report_no_invoice']) expect(o(k)).toMatchObject({ ledger_link: true, slip: { enabled: false }, receipt: { enabled: true } });
     expect(o('no_permission').slip).toEqual({ enabled: false, reason: '沒有權限' });
+    // #3942: a confirmed partial payment opens its receipt; a partial bill with no confirmed report still does not
+    expect([o('partial_confirmed').receipt.enabled, o('partial').receipt.enabled]).toEqual([true, false]);
   });
 });
