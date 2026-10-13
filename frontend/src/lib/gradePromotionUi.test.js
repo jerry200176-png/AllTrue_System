@@ -129,3 +129,23 @@ console.log('gradePromotionUi.test.js: ok');
   assert.deepEqual(withCohort.only_grades, ['J1'], 'server receives the cohort to re-apply');
   assert.ok(studentsListSource.includes('effectivePromotionExcluded(') && studentsListSource.includes('onlyGrades: gradePromotionGrades.value'), 'modal wires the cohort filter');
 }
+
+// #3758 (deferred from #3734): with a cohort chosen the server re-applies only_grades against a fresh preview, so the
+// client sends only the director's manual unticks. Sending every out-of-cohort row as an exclusion would drop a
+// student whose grade moved into the cohort after the preview was shown.
+{
+  const manual = new Set([3]);
+  const payload = buildGradePromotionConfirmPayload({
+    branchId: 1, seasonYear: 2026, idempotencyKey: 'gp-test-key-3758', excludeStudentIds: manual, onlyGrades: ['J1'],
+  });
+  assert.deepEqual(payload.exclude_student_ids, [3], 'only manual unticks are sent');
+  assert.deepEqual(payload.only_grades, ['J1']);
+  assert.ok(
+    /excludeStudentIds:\s*gradePromotionExcluded\.value/.test(studentsListSource),
+    'confirm sends the manual exclusion set, not effectivePromotionExcluded'
+  );
+  assert.ok(
+    !/excludeStudentIds:\s*gradePromotionEffectiveExcluded/.test(studentsListSource),
+    'cohort-derived exclusions stay client-side (counts and locks only)'
+  );
+}
