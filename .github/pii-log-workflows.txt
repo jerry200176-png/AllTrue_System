@@ -62,6 +62,7 @@ pop-unbilled-backlog-catchup.yml
 pop-invoice1997-stale-values.yml
 pop-past-scheduled-cancel.yml
 pop-unpaid-hidden-closures.yml
+pop-telegram-webhook-secret.yml
 production-case-dump.yml
 security-1124-migrate-uploads.yml
 security-1124-restore-recovered-uploads.yml
