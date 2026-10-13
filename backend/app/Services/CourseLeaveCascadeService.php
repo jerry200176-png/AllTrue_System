@@ -187,10 +187,13 @@ class CourseLeaveCascadeService
      *
      * Must be called inside a DB::transaction.
      *
-     * @return array{0:array,1:?string,2:string}  [session_rows, extended_end_date, leave_session_date]
+     * #3914: pass $sessionId (the clicked lesson) whenever the caller knows it; a date can hold two lessons of one
+     * course, and the date alone always resolves to the first.
+     *
+     * @return array{0:array,1:?string,2:string,3:int}  [session_rows, extended_end_date, leave_session_date, leave_session_id]
      * @throws \InvalidArgumentException
      */
-    public static function applyLeaveCascade(int $courseId, string $leaveDate): array
+    public static function applyLeaveCascade(int $courseId, string $leaveDate, ?int $sessionId = null): array
     {
         $course = StudentClass::where('ID', $courseId)->lockForUpdate()->first();
         if (!$course) {
@@ -209,9 +212,10 @@ class CourseLeaveCascadeService
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
 
         // Find the target session: accept scheduled/leave (but not cancelled/leave_adjusted)
-        $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate) {
+        $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate, $sessionId) {
             $status = strtolower((string) ($session->Status ?? ''));
             return Carbon::parse($session->SessionDate)->toDateString() === $normalizedLeaveDate
+                && ($sessionId === null || (int) $session->id === $sessionId)
                 && !in_array($status, ['cancelled', 'leave_adjusted'], true);
         });
         if (!$leaveSession) {
@@ -226,7 +230,7 @@ class CourseLeaveCascadeService
         if ($leaveStatus === self::NOTE_LEAVE
             && strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date') {
             self::voidLiveArtifactsForLeave((int) $leaveSession->id);
-            return [self::fetchCourseSessionRows($courseId), null, $normalizedLeaveDate];
+            return [self::fetchCourseSessionRows($courseId), null, $normalizedLeaveDate, (int) $leaveSession->id];
         }
 
         if (in_array($leaveStatus, ['completed', 'attended'], true)) {
@@ -236,14 +240,16 @@ class CourseLeaveCascadeService
         // KEEP policy idempotency: leave + provenance append for THIS leave.
         if ($leaveStatus === 'leave') {
             $leaveSessionId = (int) $leaveSession->id;
-            $hasAppend = $sessions->contains(function ($s) use ($normalizedLeaveDate, $leaveSessionId) {
+            // #3914: with two lessons on the date, only this lesson's own `:ls=` provenance proves its tail exists.
+            $dateOnly = self::lessonsOnDate($sessions, $normalizedLeaveDate) <= 1;
+            $hasAppend = $sessions->contains(function ($s) use ($normalizedLeaveDate, $leaveSessionId, $dateOnly) {
                 $note = (string) ($s->Note ?? '');
                 $st = strtolower((string) ($s->Status ?? ''));
                 if ($st !== 'scheduled' || !str_contains($note, self::NOTE_AUTO_EXTENDED)) {
                     return false;
                 }
-                return str_contains($note, ':ld=' . $normalizedLeaveDate)
-                    || str_contains($note, ':ls=' . $leaveSessionId);
+                return ($dateOnly && str_contains($note, ':ld=' . $normalizedLeaveDate))
+                    || self::noteHasLeaveSession($note, $leaveSessionId);
             });
             // Legacy half-written leave (no provenance): treat "already cascaded"
             // only when natural next slot is vacant AND a later billable exists.
@@ -296,7 +302,46 @@ class CourseLeaveCascadeService
 
         [$rows, $extendedEndDate] = self::appendTailAfterLeave($courseId, $leaveSessionDate, $leaveSession);
 
-        return [$rows, $extendedEndDate, $leaveSessionDate];
+        return [$rows, $extendedEndDate, $leaveSessionDate, (int) $leaveSession->id];
+    }
+
+    /** The scheduled auto-extended tail whose provenance names exactly this leave lesson. */
+    private static function ownTail(\Illuminate\Support\Collection $sessions, int $leaveSessionId): ?ClassSession
+    {
+        $tail = $sessions->first(fn ($s) => strtolower((string) ($s->Status ?? '')) === 'scheduled'
+            && str_contains((string) ($s->Note ?? ''), self::NOTE_AUTO_EXTENDED)
+            && self::noteHasLeaveSession((string) ($s->Note ?? ''), $leaveSessionId));
+
+        return $tail instanceof ClassSession ? $tail : null;
+    }
+
+    /** Non-cancelled lessons of the course on one date. */
+    private static function lessonsOnDate(\Illuminate\Support\Collection $sessions, string $date): int
+    {
+        return $sessions->filter(fn ($s) => Carbon::parse($s->SessionDate)->toDateString() === $date
+            && strtolower((string) ($s->Status ?? '')) !== 'cancelled')->count();
+    }
+
+    /** Exact `:ls=<id>` provenance (so :ls=12 never matches :ls=123). */
+    private static function noteHasLeaveSession(string $note, int $sessionId): bool
+    {
+        return (bool) preg_match('/:ls=' . $sessionId . '(?!\d)/', $note);
+    }
+
+    /**
+     * #3914: the lesson a calendar row means — the course's lesson on that date at that start time. Null when the time
+     * does not single one out, so callers fall back to the date (unchanged behaviour for one lesson per date).
+     */
+    public static function sessionIdAt(int $courseId, string $date, ?string $startTime): ?int
+    {
+        if ($startTime === null || trim($startTime) === '') {
+            return null;
+        }
+        $ids = ClassSession::query()->where('StudentClassID', $courseId)->whereDate('SessionDate', Carbon::parse($date)->toDateString())
+            ->where('StartTime', 'like', substr(trim($startTime), 0, 5) . '%')
+            ->whereRaw('LOWER(COALESCE(Status, \'\')) <> ?', ['cancelled'])->pluck('id');
+
+        return $ids->count() === 1 ? (int) $ids->first() : null;
     }
 
     /**
@@ -813,7 +858,7 @@ class CourseLeaveCascadeService
      *
      * @return array{0:array,1:?string,2:string,3:?string}
      */
-    public static function undoLeaveCascade(int $courseId, string $leaveDate): array
+    public static function undoLeaveCascade(int $courseId, string $leaveDate, ?int $sessionId = null): array
     {
         $course = StudentClass::where('ID', $courseId)->lockForUpdate()->first();
         if (!$course) {
@@ -830,10 +875,11 @@ class CourseLeaveCascadeService
             throw new \InvalidArgumentException('課程尚無堂次可撤銷');
         }
 
-        $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate) {
+        $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate, $sessionId) {
             $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
             $status = strtolower((string) ($session->Status ?? ''));
-            return $sessionDate === $normalizedLeaveDate && $status === 'leave';
+            return $sessionDate === $normalizedLeaveDate && $status === 'leave'
+                && ($sessionId === null || (int) $session->id === $sessionId); // #3914: undo the clicked lesson
         });
         if (!$leaveSession) {
             throw new \InvalidArgumentException('找不到可撤銷的請假堂次');
@@ -866,7 +912,9 @@ class CourseLeaveCascadeService
             return [self::fetchCourseSessionRows($courseId), $end, $normalizedLeaveDate, null];
         }
 
-        $appendedSession = $sessions
+        // #3914: this lesson's own tail first; another same-date lesson's tail is never taken for it.
+        $appendedSession = self::ownTail($sessions, (int) $leaveSession->id)
+            ?? (self::lessonsOnDate($sessions, $normalizedLeaveDate) > 1 ? null : $sessions
             ->filter(function ($session) use ($normalizedLeaveDate) {
                 $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
                 $status = strtolower((string) ($session->Status ?? ''));
@@ -876,7 +924,7 @@ class CourseLeaveCascadeService
                     && str_contains($note, self::NOTE_AUTO_EXTENDED);
             })
             ->sortByDesc('SessionDate')
-            ->first();
+            ->first());
         if (!$appendedSession) {
             // A legacy/manual repair may leave the leave row without its
             // auto-tail. Undoing the leave is still safe: restore only the
@@ -1198,6 +1246,10 @@ class CourseLeaveCascadeService
     public static function findAppendedSessionForLeave($sessions, string $leaveDate, int $leaveSessionId): ?ClassSession
     {
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
+        $own = self::ownTail($sessions, $leaveSessionId);
+        if ($own || self::lessonsOnDate($sessions, $normalizedLeaveDate) > 1) {
+            return $own; // #3914: with two lessons on the date, another lesson's tail is never this one's
+        }
         $match = $sessions->first(function ($s) use ($normalizedLeaveDate, $leaveSessionId) {
             $note = (string) ($s->getAttribute('Note') ?? '');
             $st = strtolower((string) ($s->getAttribute('Status') ?? ''));
