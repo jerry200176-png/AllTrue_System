@@ -205,7 +205,7 @@ class CrossCampusAuthorizationMatrixTest extends TestCase
             'LoginName' => 'dir-xcampus-' . uniqid() . '@test.com',
             'Name' => '主任跨分校測試',
             'PSW' => 'secret',
-            'type' => 'A',
+            'type' => 'D', // approved director (DirectorAccountController::approve sets D; A is a pending applicant)
             'phone' => '0912345678',
             'MustChangePassword' => false,
         ]);
