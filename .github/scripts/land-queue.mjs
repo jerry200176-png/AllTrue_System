@@ -131,6 +131,15 @@ export function batchVerdict(states, ageMs, ttlMs = 2 * 3600e3) {
   return ageMs > ttlMs ? 'red' : 'wait';
 }
 
+// Thread counts read by load() can be stale by the time a PR is squashed (a reviewer may open one in between).
+// Re-read immediately before every squash, serial or batch; only a known 0 squashes. Returns whether it squashed.
+export function guardedSquash(n, sha, readThreads, doSquash, log = console.log) {
+  const open = readThreads(n);
+  if (open !== 0) { log(`#${n}: review threads ${Number.isInteger(open) ? open + ' open' : 'unknown'} right before squash; not merging`); return false; }
+  doSquash(n, sha);
+  return true;
+}
+
 export const marker = (reason, sha) => `<!-- land-queue:${reason}:${sha} -->`;
 
 const REPO = process.env.REPO || process.env.GITHUB_REPOSITORY;
@@ -278,9 +287,7 @@ function landBatch(name, base, members) {
     if (mainTip() !== expect) { console.log('main moved while landing; remaining members re-batch next run'); break; }
     // Thread counts were read when the batch was assessed; a reviewer may have opened one since. Re-read right
     // before each squash and stop (remaining members re-batch next run) unless it is still a known 0.
-    const open = unresolvedThreads(m.n);
-    if (open !== 0) { console.log(`#${m.n}: review threads ${open === null ? 'unknown' : open + ' open'} before squash; stopping batch`); break; }
-    squash(m.n, m.sha);
+    if (!guardedSquash(m.n, m.sha, unresolvedThreads, squash)) { console.log('stopping batch'); break; }
     expect = api(`pulls/${m.n}`).merge_commit_sha;
     console.log(`batch landed #${m.n} -> ${expect}`);
     // GitHub offers no compare-and-swap on the base, so verify right after each merge: the landed tree must be
@@ -375,7 +382,8 @@ function processQueue() {
     }
     if (d.action === 'reject') { reject(n, pr.sha, d); continue; }
     // One serial merge per run: main moved, so every other head's behindBy is stale (strict used to refuse them).
-    if (d.action === 'merge') { squash(n, pr.sha); break; }
+    // load()'s thread count may be stale; guardedSquash re-reads it and skips this PR unless it is still 0.
+    if (d.action === 'merge') { if (guardedSquash(n, pr.sha, unresolvedThreads, squash)) break; continue; }
     kickChecksIfMissing(n, pr);
     continue; // wait: don't block the PRs behind it (no head-of-line blocking)
   }

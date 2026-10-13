@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, isBatchBase, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
+import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
 
 const req = ['A', 'B'];
 const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
@@ -193,4 +193,23 @@ test('batchSerial: intentional-revert, untrusted author or an earlier red batch 
   assert.equal(batchSerial({ authorAssociation: trusted, labels: ['queue'] }, true), true); // red batch is not rebuilt with it
   assert.equal(batchSerial({ authorAssociation: 'NONE', labels: [] }, false), true);
   assert.equal(batchSerial({ authorAssociation: trusted }, false), false);
+});
+
+test('guardedSquash: re-reads threads right before squash; only a known 0 merges (serial and batch)', () => {
+  const run = (reading) => {
+    const calls = [];
+    const logs = [];
+    const did = guardedSquash(7, 'abc', (n) => { calls.push(['read', n]); return reading; }, (n, sha) => calls.push(['squash', n, sha]), (m) => logs.push(m));
+    return { did, calls, logs };
+  };
+  const ok = run(0);
+  assert.equal(ok.did, true);
+  assert.deepEqual(ok.calls, [['read', 7], ['squash', 7, 'abc']]); // read happens before squash
+  for (const reading of [1, 3, null, undefined]) {
+    const r = run(reading);
+    assert.equal(r.did, false);
+    assert.deepEqual(r.calls, [['read', 7]]); // never squashed
+    assert.equal(r.logs.length, 1);
+    assert.match(r.logs[0], /^#7: review threads (\d+ open|unknown) right before squash; not merging$/);
+  }
 });
