@@ -101,6 +101,7 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
         $this->flag(true);
         $past = $this->taughtSession('2026-04-10', $this->aId, signInManual: true);
         $lr = LearningRecord::where('ClassSessionID', $past->id)->firstOrFail();
+        $lr->update(['Content' => '']); // #3824: only an unfilled approved row stays correctable
 
         $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId])->assertOk();
 
@@ -114,6 +115,7 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
         $this->flag(false);
         $past = $this->taughtSession('2026-04-10', $this->aId, signInManual: true);
         $lr = LearningRecord::where('ClassSessionID', $past->id)->firstOrFail();
+        $lr->update(['Content' => '']); // #3824: only an unfilled approved row stays correctable
 
         $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId])->assertOk();
 

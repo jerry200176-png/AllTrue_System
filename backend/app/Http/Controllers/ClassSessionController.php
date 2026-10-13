@@ -30,6 +30,7 @@ use App\Services\SessionProjectionReadService;
 use App\Services\SubstituteService;
 use App\Support\TeacherProfileDirectory;
 use App\Support\AttendanceStatus;
+use App\Support\LearningRecordMutableOwnership;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -2270,6 +2271,12 @@ class ClassSessionController extends Controller
                 $error = '確認不收的合約不能改派堂次。';
             } elseif ((int) $new->getAttribute('StudentID') !== (int) $old->getAttribute('StudentID') || (int) $new->getAttribute('SubjectID') !== (int) $old->getAttribute('SubjectID')) {
                 $error = '新舊課程合約的學生或科目不一致，拒絕改派。';
+            } elseif (($lockedLr = LearningRecordMutableOwnership::protectedRecordForSession((int) $session->id, true))
+                && (int) $lockedLr->TeacherID !== (int) $new->getAttribute('TeacherID')) {
+                // #3824: compare the assessment's recorded teacher, not the two contract defaults (review r4247040032).
+                DB::rollBack();
+
+                return LearningRecordMutableOwnership::lockedResponse(); // #3824
             } elseif (!in_array(strtolower((string) $session->Status), self::REASSIGN_STATUSES, true)) {
                 $error = '此堂次狀態（' . $session->Status . '）不支援改派合約。';
             } elseif (strtolower((string) $session->Status) !== 'cancelled' && ClassSession::query()->where('StudentClassID', $newId)
@@ -2399,6 +2406,11 @@ class ClassSessionController extends Controller
 
         $newTeacherId = (int) $data['substitute_teacher_id'];
         $oldTeacherId = (int) ($studentClass->TeacherID ?? 0);
+
+        // #3824: only a real reassignment is refused; re-asserting the assessment's own teacher is a safe repair.
+        if (($protectedLr = LearningRecordMutableOwnership::protectedRecordForSession((int) $session->id)) && (int) $protectedLr->TeacherID !== $newTeacherId) {
+            return LearningRecordMutableOwnership::lockedResponse(); // rechecked under lock inside the transaction
+        }
 
         try {
             $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
@@ -2729,6 +2741,8 @@ class ClassSessionController extends Controller
             ]);
 
             return response()->json($e->toResponseArray(), 422);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            return $e->getResponse(); // #3824 transactional recheck: keep the 409
         } catch (\Throwable $e) {
             $this->logSubstituteDiag('failed', [
                 'class_session_id' => $id,
@@ -2777,6 +2791,7 @@ class ClassSessionController extends Controller
             $classType, $dayOfWeek, $campusId, $roomId, $existingRescheduled, $existingScheduled,
             $crossCampus, $hasReschedule, $origSessionDate, $origStartTime, $origEndTime
         ) {
+            LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $session->id, (int) $newTeacherId); // #3824
             $durationHours = 2;
             if ($startTime && $endTime) {
                 $mins = abs(Carbon::parse($startTime)->diffInMinutes(Carbon::parse($endTime)));
@@ -3238,6 +3253,7 @@ class ClassSessionController extends Controller
             $originalTeacherId,
             $data
         ) {
+            LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $session->id); // #3824
             $courseId = (int) $studentClass->ID;
             $authUser = $request->attributes->get('auth_user');
             $changedBy = (int) ($authUser->id ?? 0);

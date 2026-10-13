@@ -63,6 +63,7 @@ final class SessionContractRecoveryService
                     ['errors' => ['session_ids' => ['不可恢復或轉移堂次：' . implode(', ', $blocked)]]]
                 );
             }
+            \App\Support\LearningRecordMutableOwnership::assertTransferAllowed($foundIds, (int) $target->TeacherID); // #3824
             $conflicts = $this->targetSlotConflicts($targetClassId, $sessions);
             if ($conflicts->isNotEmpty()) {
                 $dates = $conflicts->pluck('date')->unique()->values()->implode('、');
