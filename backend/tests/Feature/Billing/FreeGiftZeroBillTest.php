@@ -41,9 +41,7 @@ class FreeGiftZeroBillTest extends TestCase
     {
         $token = $this->directorToken();
         $course = $this->monthlyCourse($this->student());
-
         $res = $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]));
-
         $res->assertOk()->assertJsonPath('zero_amount_reason', Invoice::ZERO_REASON_FREE_GIFT);
         $invoice = Invoice::query()->findOrFail((int) $res->json('invoice_id'));
         $this->assertSame(Invoice::ZERO_REASON_FREE_GIFT, $invoice->zero_amount_reason);
@@ -53,7 +51,6 @@ class FreeGiftZeroBillTest extends TestCase
         $this->assertNotNull($invoice->billing_period);
         // A bill, not a payment: nothing waits for confirmation.
         $this->assertSame(0, PaymentReport::query()->where('StudentClassID', $course->ID)->count());
-
         // The ledger exposes the mark so the UI can show the 免費／贈送 badge.
         $ledger = $this->withToken($token)->getJson('/api/v1/accounting/ledger?student_id=' . $course->StudentID)->assertOk();
         $row = collect($ledger->json('invoices'))->firstWhere('id', $invoice->id);
@@ -74,6 +71,8 @@ class FreeGiftZeroBillTest extends TestCase
             ->assertStatus(422)->assertJsonPath('code', 'zero_fee_no_payment_obligation');
         $res = $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))->assertOk();
         $this->assertSame(Invoice::ZERO_REASON_FREE_GIFT, Invoice::query()->findOrFail((int) $res->json('invoice_id'))->zero_amount_reason);
+        Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-20', 'Note' => '', 'TotalAmount' => 3000, 'PaidAmount' => 0, 'Status' => 'unpaid']); // a later positive bill ends the mark
+        $this->assertFalse(collect($this->withToken($token)->getJson('/api/v1/accounting/ledger?student_id=' . $course->StudentID)->json('courses'))->firstWhere('id', $course->ID)['paid']);
     }
 
     /** #3991 review: a director of another campus cannot write a free/gift bill. */

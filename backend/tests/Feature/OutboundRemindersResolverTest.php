@@ -78,8 +78,7 @@ class OutboundRemindersResolverTest extends TestCase
     public function test_marked_free_gift_monthly_course_is_not_reminded_despite_period_review(): void
     {
         $course = $this->course(0, 0);
-        // The contract runs to October but bills stop in September: B15 flags a coverage review, so the review is truly active.
-        $course->update(['ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'EndDate' => '2026-10-31']);
+        $course->update(['ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'EndDate' => '2026-10-31']); // bills stop in Sep: B15 review is active
         foreach (['2026-08', '2026-09'] as $period) {
             Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => $period . '-01', 'DueDate' => $period . '-15',
                 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid', 'billing_period' => $period, 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
@@ -89,12 +88,12 @@ class OutboundRemindersResolverTest extends TestCase
         $this->assertSame('free', $status());
         $this->assertSame(0, $this->dunned());
         $this->assertFalse($this->reminded());
-
-        // Without the marks the same shape is under review (never silently free).
-        Invoice::query()->where('StudentClassID', $course->ID)->update(['zero_amount_reason' => null]);
+        $amendment = \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $course->ID, 'effective_from' => '2026-09-01', 'rate' => 800, 'source_reference' => 't', 'reason' => 't']);
+        $this->assertNotSame('free', $status()); // #3991 review: a priced amendment after the mark ends its effect for both senders
+        $amendment->delete();
+        Invoice::query()->where('StudentClassID', $course->ID)->update(['zero_amount_reason' => null]); // unmarked: the same shape is under review
         $this->assertSame('review_required', $status());
-        // #3991 review: a marked August does not settle a September with lessons and no marked bill.
-        Invoice::query()->where('StudentClassID', $course->ID)->update(['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+        Invoice::query()->where('StudentClassID', $course->ID)->update(['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]); // marked Aug never settles an unbilled Sep with lessons
         Invoice::query()->where('billing_period', '2026-09')->where('StudentClassID', $course->ID)->delete();
         $this->assertSame('review_required', $status());
     }
