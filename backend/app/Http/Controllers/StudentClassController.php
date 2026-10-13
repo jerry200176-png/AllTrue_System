@@ -6325,7 +6325,7 @@ class StudentClassController extends Controller
             // editing a course that is already actual_duration is never blocked here.
             if ($basis === DeductionBasis::ACTUAL_DURATION
                 && !$studentClass->isActualDurationBasis()
-                && !SessionDeductionService::isActualDurationCampusAllowed((int) ($studentClass->student?->CampusID ?? 0))
+                && !SessionDeductionService::isActualDurationCampusAllowedForCourse($studentClass)
             ) {
                 return response()->json([
                     'message' => '依實際時長扣堂目前僅在試辦分校開放',

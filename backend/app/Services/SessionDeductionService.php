@@ -626,7 +626,21 @@ class SessionDeductionService
     {
         return (bool) config('perfflags.actual_duration_deduction_enabled', false)
             && $sc->isActualDurationBasis()
-            && self::isActualDurationCampusAllowed((int) ($sc->student?->CampusID ?? 0));
+            && self::isActualDurationCampusAllowedForCourse($sc);
+    }
+
+    /**
+     * #3834 — is this course's campus (its student's CampusID; StudentClass has no
+     * campus column) in the pilot allowlist? Read without global scopes so the
+     * operational-tenant filter can never turn a real campus into "unknown".
+     */
+    public static function isActualDurationCampusAllowedForCourse(StudentClass $sc): bool
+    {
+        $campusId = $sc->relationLoaded('student') && $sc->student !== null
+            ? (int) $sc->student->CampusID
+            : (int) (\App\Models\Student::withoutGlobalScopes()->whereKey($sc->StudentID)->value('CampusID') ?? 0);
+
+        return self::isActualDurationCampusAllowed($campusId);
     }
 
     /**
