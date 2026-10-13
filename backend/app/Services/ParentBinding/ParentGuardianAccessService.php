@@ -3,6 +3,7 @@
 namespace App\Services\ParentBinding;
 
 use App\Models\Guardian;
+use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentGuardian;
 use App\Models\StudentLineBinding;
@@ -81,6 +82,52 @@ final class ParentGuardianAccessService
     {
         return $this->studentsForLineUser($lineUserId)
             ->contains(fn ($s) => (int) $s->id === $studentId);
+    }
+
+    /**
+     * #3944 follow-up: identity-group fan-out must not outlive a revoked
+     * guardian relationship. A session always reaches its own anchor student
+     * (resolveSession() revalidates that one). A LINE-login session reaches any
+     * other student, including an identity-group member, only while this LINE
+     * subject may still access that student. Phone-login sessions (no LINE
+     * subject) keep the phone-verified identity-group rule.
+     */
+    public function sessionMayReachStudent(ParentSession $session, int $studentId): bool
+    {
+        if ((int) $session->getAttribute('StudentID') === $studentId) {
+            return true;
+        }
+        $lineUserId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
+        if ($lineUserId === '') {
+            return true;
+        }
+
+        return $this->lineMayAccessStudent($lineUserId, $studentId);
+    }
+
+    /**
+     * Drop identity-group members this session may no longer reach (see
+     * sessionMayReachStudent). One access lookup for the whole member list.
+     *
+     * @param Collection<int, mixed> $members rows exposing student_id
+     * @return Collection<int, mixed>
+     */
+    public function reachableGroupMembers(ParentSession $session, Collection $members): Collection
+    {
+        $lineUserId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
+        if ($lineUserId === '' || $members->isEmpty()) {
+            return $members;
+        }
+
+        $anchorId = (int) $session->getAttribute('StudentID');
+        $reachable = $this->studentsForLineUser($lineUserId)
+            ->map(fn ($s) => (int) $s->id)
+            ->push($anchorId)
+            ->flip();
+
+        return $members
+            ->filter(fn ($m) => $reachable->has((int) $m->student_id))
+            ->values();
     }
 
     /**

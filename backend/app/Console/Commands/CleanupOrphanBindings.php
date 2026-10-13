@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Student;
 use App\Models\StudentLineBinding;
+use App\Services\ParentBinding\BindingService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -18,6 +19,10 @@ use Illuminate\Support\Facades\Log;
  * 異常偵測：同一學生有超過 3 個 LINE user 綁定 → 可能有誤綁/衝突，
  * 僅回報不處理，供主任審查。
  *
+ * #3944 follow-up: each orphan goes through BindingService::deleteBinding(),
+ * so the guardian link is revoked and that LINE account's parent sessions for
+ * the student are expired in the same transaction as the row delete.
+ *
  * @see ADR-004 — Parent Binding Phase 1-3 架構設計
  */
 class CleanupOrphanBindings extends Command
@@ -25,13 +30,13 @@ class CleanupOrphanBindings extends Command
     protected $signature = 'bindings:cleanup-orphans';
     protected $description = 'Clean up orphan StudentLineBindings (deleted/disabled students) and report anomaly (>3 LINE users per student).';
 
-    public function handle(): int
+    public function handle(BindingService $bindings): int
     {
         $orphanDeleted = 0;
         $anomalyStudents = 0;
 
         // ── Phase 1: Clean up bindings to non-existent students ──
-        DB::transaction(function () use (&$orphanDeleted) {
+        DB::transaction(function () use (&$orphanDeleted, $bindings) {
             $hardOrphans = StudentLineBinding::query()
                 ->whereNotExists(function ($sub) {
                     $sub->select(DB::raw(1))
@@ -50,13 +55,15 @@ class CleanupOrphanBindings extends Command
                     'reason'        => 'student_record_does_not_exist',
                 ]);
 
-                $orphan->delete();
-                $orphanDeleted++;
+                // Revoke guardian link + sessions, then delete (atomic).
+                if ($bindings->deleteBinding((int) $orphan->id)) {
+                    $orphanDeleted++;
+                }
             }
         });
 
         // ── Phase 2: Clean up bindings to disabled (enable=0) students ──
-        DB::transaction(function () use (&$orphanDeleted) {
+        DB::transaction(function () use (&$orphanDeleted, $bindings) {
             $disabledOrphans = StudentLineBinding::query()
                 ->whereExists(function ($sub) {
                     $sub->select(DB::raw(1))
@@ -76,8 +83,10 @@ class CleanupOrphanBindings extends Command
                     'reason'        => 'student_disabled_enable_0',
                 ]);
 
-                $orphan->delete();
-                $orphanDeleted++;
+                // Revoke guardian link + sessions, then delete (atomic).
+                if ($bindings->deleteBinding((int) $orphan->id)) {
+                    $orphanDeleted++;
+                }
             }
         });
 

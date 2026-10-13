@@ -419,7 +419,8 @@ class ParentPortalController extends Controller
         if ($session->getAttribute('identity_group_id')
             && $targetGroup
             && (int) $targetGroup->id === (int) $session->getAttribute('identity_group_id')
-            && $this->identityService()->accessMode((int) $session->getAttribute('identity_group_id')) !== StudentIdentityService::MODE_OFF) {
+            && $this->identityService()->accessMode((int) $session->getAttribute('identity_group_id')) !== StudentIdentityService::MODE_OFF
+            && app(ParentGuardianAccessService::class)->sessionMayReachStudent($session, (int) $targetStudent->id)) {
             $allowed = true;
         }
 
@@ -487,9 +488,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Student not found'], 404);
         }
 
-        [$identityGroup, $accessMode, $identityMembers] = $session->getAttribute('identity_group_id')
-            ? $this->identityService()->parentContext((int) $student->id)
-            : [null, StudentIdentityService::MODE_OFF, collect()];
+        [$identityGroup, $accessMode, $identityMembers] = $this->sessionParentContext($session, $student);
         $crossCampusEnabled = $identityGroup
             && $accessMode !== StudentIdentityService::MODE_OFF
             && $identityMembers->count() > 1;
@@ -1763,7 +1762,8 @@ class ParentPortalController extends Controller
         $sessionGroupId = (int) ($session->getAttribute('identity_group_id') ?: 0);
         $ownsClass = (int) $studentClass->StudentID === (int) $session->StudentID;
         if (!$ownsClass && $sessionGroupId > 0 && $targetGroup && (int) $targetGroup->id === $sessionGroupId) {
-            $ownsClass = $this->identityService()->accessMode($sessionGroupId) === StudentIdentityService::MODE_ACTIONS;
+            $ownsClass = $this->identityService()->accessMode($sessionGroupId) === StudentIdentityService::MODE_ACTIONS
+                && app(ParentGuardianAccessService::class)->sessionMayReachStudent($session, (int) $studentClass->StudentID);
         }
 
         if (!$ownsClass) {
@@ -2029,9 +2029,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Student not found'], 404);
         }
 
-        [$identityGroup, $accessMode, $identityMembers] = $session->getAttribute('identity_group_id')
-            ? $this->identityService()->parentContext((int) $student->id)
-            : [null, StudentIdentityService::MODE_OFF, collect()];
+        [$identityGroup, $accessMode, $identityMembers] = $this->sessionParentContext($session, $student);
         $studentIds = $identityMembers->pluck('student_id')->map(fn ($id) => (int) $id)->values()->all() ?: [(int) $student->id];
         $billingCampusMap = $this->portalCampuses()->whereIn('id', $this->portalStudents()->whereIn('id', $studentIds)->pluck('CampusID')->unique()->all())->get()->keyBy('id');
         $classes = StudentClass::query()->whereIn('StudentID', $studentIds)
@@ -2061,6 +2059,22 @@ class ParentPortalController extends Controller
             'identity_group_id' => $identityGroup?->id,
             'active_scope' => $identityGroup && $accessMode !== StudentIdentityService::MODE_OFF ? 'all' : 'campus',
         ]);
+    }
+
+    /**
+     * Identity-group context for this session, minus members whose guardian
+     * relationship was revoked for the session's LINE subject (#3944 follow-up).
+     *
+     * @return array{0: mixed, 1: string, 2: \Illuminate\Support\Collection<int, mixed>}
+     */
+    private function sessionParentContext(ParentSession $session, Student $student): array
+    {
+        if (!$session->getAttribute('identity_group_id')) {
+            return [null, StudentIdentityService::MODE_OFF, collect()];
+        }
+        [$group, $mode, $members] = $this->identityService()->parentContext((int) $student->id);
+
+        return [$group, $mode, app(ParentGuardianAccessService::class)->reachableGroupMembers($session, $members)];
     }
 
     private function resolveSession(Request $request): ?ParentSession

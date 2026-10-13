@@ -289,8 +289,10 @@ final class BindingService
         $count = 0;
 
         foreach ($orphans as $orphan) {
-            DB::table('student_line_bindings')->where('id', $orphan->id)->delete();
-            $count++;
+            // #3944 follow-up: revoke guardian access + sessions, not a bare delete.
+            if ($this->deleteBinding((int) $orphan->id)) {
+                $count++;
+            }
         }
 
         if ($count > 0) {
