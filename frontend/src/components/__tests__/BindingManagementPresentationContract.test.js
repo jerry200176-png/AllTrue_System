@@ -33,13 +33,27 @@ describe('BindingManagementPage responsive presentation contract', () => {
     }
     expect(webhook).toContain('綁定 王小明 0912345678');
     expect(source).toContain('綁定 王小明 0912345678');
-    expect(source).toContain('到「綁定衝突審查」');
     // The cross-campus reply only proves a same-name/phone match elsewhere: verify the campus first.
     expect(source).toContain('先確認學生現在在哪個分校上課');
     // A phone-only change keeps the binding but still needs the new number on file.
-    expect(source).toContain('到「學生管理」改成新的家長手機');
     expect(source).toContain('不用解除或重綁');
     expect(source).not.toContain('則不用處理');
+  });
+
+  it('routes the guide only to workflows that work today; broken ones escalate (#3915 review)', () => {
+    const guide = source.slice(source.indexOf('data-testid="binding-guide"'), source.indexOf('</details>'));
+    // Unbinding from the list does not revoke multi-guardian access, the conflict-review page cannot
+    // resolve conflicts, and staff cannot change a student's campus or a multi-guardian phone.
+    expect(guide).not.toContain('綁定衝突審查');
+    expect(guide).not.toContain('在下方清單解除舊綁定');
+    expect(guide).not.toContain('更正學生的分校，再請家長');
+    expect(guide).not.toContain('改成新的家長手機');
+    expect(guide).toContain('不要自己在下方清單解除');
+    for (const situation of ['同一學生在兩個分校都有綁定', '家長換了手機號碼', '家長換了 LINE 帳號']) {
+      const row = guide.slice(guide.indexOf(situation), guide.indexOf('</div>', guide.indexOf(situation)));
+      expect(row).toContain('回報超級管理員');
+    }
+    expect(source).not.toContain('解除錯誤或舊的綁定');
   });
 
   it('keeps destructive unbinding on the existing confirmation and API path', () => {
