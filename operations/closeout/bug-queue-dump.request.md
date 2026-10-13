@@ -33,3 +33,5 @@ Purpose: weekly triage sweep — pull current `new`/`triaged`/`in_progress` queu
 # kickoff 2026-09-13T06:14:00Z — post-#289 Phase-C reconciliation; read the current open queue and detect only new reports or counterexamples without writing product data
 
 # kickoff 2026-10-13T02:21:54Z — Founder asked to process all in-app 意見與建議 now; pull the live open queue + issue reconciliation before triage
+
+# kickoff 2026-10-13T03:17:09Z — refresh live open queue (new/triaged/in_progress/resolved counts) after #3905/#3915 work; detect any report above max id 393 for intake reconciliation
