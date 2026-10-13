@@ -107,6 +107,7 @@ class NotificationTuitionResolverTest extends TestCase
         $ids = [];
         for ($i = 0; $i < 2; $i++) {
             $course = $this->course(10000);
+            if ($i === 1) { $course->update(['ScheduleMode' => 'date']); }
             $ids[] = (int) $course->ID;
             Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
                 'IssueDate' => now()->subDays(20)->toDateString(), 'DueDate' => now()->subDays(9)->toDateString(),
@@ -114,18 +115,36 @@ class NotificationTuitionResolverTest extends TestCase
         }
         config(['billing.paid_status_outbound_notifications' => true]);
         $this->mock(\App\Services\InvoiceAmountReconciliationService::class, function ($m) use ($ids) {
-            $m->shouldReceive('preloadSessions')->once()->with($ids);
+            $m->shouldReceive('preloadSessions')->once()->with([$ids[1]]);
             $m->shouldReceive('forgetPreloadedSessions')->once();
             $m->shouldReceive('resolve')->twice()->andReturnUsing(function ($invoice) {
-                foreach (['studentClass', 'payments', 'items'] as $relation) {
+                foreach (['studentClass', 'payments'] as $relation) {
                     $this->assertTrue($invoice->relationLoaded($relation), $relation . ' must be batched before projection');
                 }
+                $this->assertSame($invoice->studentClass->ScheduleMode === 'date', $invoice->relationLoaded('items'));
                 return ['total_amount' => 10000, 'applied_amount' => 0, 'outstanding_amount' => 10000];
             });
         });
         $builder = new \ReflectionMethod(NotificationSyncService::class, 'buildInvoiceOverdueNotifications');
         $builder->setAccessible(true);
         $this->assertCount(2, $builder->invoke(null, [1]));
+    }
+
+
+    public function test_partial_monthly_invoice_due_soon_has_a_partial_notice(): void
+    {
+        $course = $this->course(10000);
+        $course->update(['ScheduleMode' => 'date', 'settlement_day' => (int) now()->addDays(2)->format('d')]);
+        $this->invoice($course, 10000, 4000);
+        Invoice::query()->where('StudentClassID', $course->ID)->update(['DueDate' => now()->addDays(2)->toDateString()]);
+        config(['billing.paid_status_outbound_notifications' => true]);
+        $notice = $this->tuition()->first();
+        $this->assertNotNull($notice);
+        $this->assertStringContainsString('部分已繳', $notice->Title);
+        $this->assertStringContainsString('已繳 4000，尚欠 6000', $notice->Body);
+        $this->assertSame(6000, (int) $notice->Payload['outstanding']);
+        config(['billing.paid_status_outbound_notifications' => false]);
+        $this->assertStringContainsString('狀態：未繳費', $this->tuition()->first()->Body);
     }
 
     public function test_review_required_course_keeps_the_legacy_decision(): void

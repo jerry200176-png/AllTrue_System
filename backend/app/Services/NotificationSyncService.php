@@ -379,9 +379,14 @@ class NotificationSyncService
             $charge = (int) ($class->Charge ?? $class->Pay ?? 0);
             $subject = self::displaySubjectForClass($class);
 
-            $title = "{$student->name} {$subject} 未繳費";
+            $partial = ($resolved['source'] ?? null) === 'invoice' && ($resolved['status'] ?? null) === 'partial';
+            $label = $partial ? '部分已繳' : '未繳費';
+            $title = "{$student->name} {$subject} {$label}";
             // Date-mode courses have no session countdown; the command also reminds those parents.
-            $body = ($class->ScheduleMode ?? null) === 'count' ? "剩餘 {$remaining} 堂，狀態：未繳費" : '狀態：未繳費';
+            $body = ($class->ScheduleMode ?? null) === 'count' ? "剩餘 {$remaining} 堂，狀態：{$label}" : "狀態：{$label}";
+            if ($partial) {
+                $body .= '，已繳 ' . (int) ($resolved['applied'] ?? 0) . '，尚欠 ' . (int) ($resolved['outstanding'] ?? 0);
+            }
 
             $sourceKey = "tuition:{$campusId}:{$class->ID}";
             $rows[$sourceKey] = [
@@ -487,7 +492,7 @@ class NotificationSyncService
     private static function buildInvoiceOverdueNotifications(array $campusIds): array
     {
         $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
-        $query = Invoice::query()->with($onResolver ? ['studentClass', 'payments', 'items'] : [])
+        $query = Invoice::query()->with($onResolver ? ['studentClass', 'payments'] : [])
             ->leftJoin('Student', 'Invoice.StudentID', '=', 'Student.id')
             ->whereNotNull('Invoice.DueDate')
             ->whereIn('Invoice.Status', ['unpaid', 'partial'])
@@ -513,7 +518,11 @@ class NotificationSyncService
         $amounts = app(InvoiceAmountReconciliationService::class);
         $invoices = $query->get();
         if ($onResolver) {
-            $amounts->preloadSessions($invoices->pluck('StudentClassID')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all());
+            $monthly = $invoices->filter(fn ($invoice) => (string) ($invoice->studentClass->ScheduleMode ?? '') === 'date');
+            if ($monthly->isNotEmpty()) {
+                (new \Illuminate\Database\Eloquent\Collection($monthly->all()))->load('items');
+            }
+            $amounts->preloadSessions($monthly->pluck('StudentClassID')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all());
         }
         $rows = [];
         try {
