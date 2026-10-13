@@ -2,7 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\Schedule;
+use App\Models\User;
+use App\Models\UserCampus;
 use App\Services\CourseLeaveCascadeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +28,7 @@ class LeaveCascadeSameDateLessonsTest extends TestCase
         $this->assertSame(['scheduled', 'leave'], $this->statuses($first, $second));
         $secondTail = $this->tailFor($courseId, $second);
         $this->assertNotNull($secondTail, 'the second lesson gets its own tail');
+        $this->assertSame('19:30', substr((string) $secondTail->StartTime, 0, 5), 'the tail keeps the left lesson\'s own slot');
 
         // The first lesson of the same date is still leaveable; the second's tail is not taken as proof it is done.
         DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $first));
@@ -57,6 +62,61 @@ class LeaveCascadeSameDateLessonsTest extends TestCase
         $this->assertNull(CourseLeaveCascadeService::sessionIdAt($courseId, '2026-07-01', '08:00'));
     }
 
+    /** #3914 review: with two lessons on the date, a caller that does not name one is refused instead of hitting the first. */
+    public function test_an_unnamed_leave_or_undo_on_a_two_lesson_date_is_refused(): void
+    {
+        [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'count');
+        foreach ([fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01'), fn () => CourseLeaveCascadeService::undoLeaveCascade($courseId, '2026-07-01')] as $call) {
+            try {
+                DB::transaction($call);
+                $this->fail('an unnamed lesson must be refused');
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('兩堂以上', $e->getMessage());
+            }
+        }
+        $this->assertSame(['scheduled', 'scheduled'], $this->statuses($first, $second));
+    }
+
+    /** #3914 review: each lesson keeps its own calendar marker; undo removes only its own; a leave row is never moved in place. */
+    public function test_leave_markers_follow_each_lesson(): void
+    {
+        [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-12-02', 'count');
+        $h = ['Authorization' => 'Bearer ' . $this->directorToken(), 'Accept' => 'application/json'];
+        $markers = fn () => Schedule::query()->where('student_course_id', $courseId)->where('status', 'leave')->get()
+            ->map(fn ($m) => substr((string) $m->start_time, 0, 5))->sort()->values()->all();
+        foreach ([$first, $second] as $id) {
+            $this->postJson('/api/v1/schedules/leave-by-session', ['class_session_id' => $id], $h)->assertOk();
+        }
+        $this->assertSame(['17:00', '19:30'], $markers());
+        $this->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $second], $h)->assertOk();
+        $this->assertSame(['17:00'], $markers());
+        $this->assertSame(['leave', 'scheduled'], $this->statuses($first, $second));
+
+        $row = Schedule::query()->where('student_course_id', $courseId)->where('status', 'leave')->firstOrFail();
+        $this->putJson("/api/v1/schedules/{$row->id}", ['status' => 'leave', 'start_time' => '19:30', 'end_time' => '21:30'], $h)
+            ->assertStatus(422)->assertJsonPath('code', 'leave_row_retarget_forbidden');
+        $this->assertSame(['leave', 'scheduled'], $this->statuses($first, $second));
+    }
+
+    /** #3914 review: a closure day marks both lessons, each marker at its own time. */
+    public function test_bulk_leave_records_each_lesson_at_its_own_time(): void
+    {
+        [$courseId] = $this->courseWithTwoLessonsOn('2026-12-02', 'count');
+        $this->postJson('/api/v1/schedules/bulk-leave', ['branch_id' => 1, 'start_date' => '2026-12-02', 'end_date' => '2026-12-02'],
+            ['Authorization' => 'Bearer ' . $this->directorToken(), 'Accept' => 'application/json'])->assertOk();
+        $times = Schedule::query()->where('student_course_id', $courseId)->where('status', 'leave')->get()->map(fn ($m) => substr((string) $m->start_time, 0, 5))->sort()->values()->all();
+        $this->assertSame(['17:00', '19:30'], $times);
+    }
+
+    private function directorToken(): string
+    {
+        $user = User::create(['LoginName' => 'leave-3914-' . uniqid() . '@example.com', 'Name' => '主任', 'PSW' => 'secret', 'type' => 'A', 'phone' => '0912345678', 'MustChangePassword' => false]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        AuthToken::create(['user_id' => $user->id, 'token' => $token = bin2hex(random_bytes(16)), 'expires_at' => now()->addDay()]);
+
+        return $token;
+    }
+
     /** @return array{0:int,1:int,2:int} [course, 17:00 lesson, 19:30 lesson] */
     private function courseWithTwoLessonsOn(string $date, string $mode): array
     {
@@ -64,13 +124,14 @@ class LeaveCascadeSameDateLessonsTest extends TestCase
         $courseId = (int) DB::table('StudentClass')->insertGetId([
             'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 77622, 'by1' => 1, 'Period' => 4,
             'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Rate' => 0, 'ClassType' => 'one_on_one',
-            'StartDate' => $date, 'EndDate' => $mode === 'date' ? '2026-07-31' : null, 'SessionCount' => 6, 'SessionDuration' => 120,
+            'StartDate' => $date, 'EndDate' => $mode === 'date' ? date('Y-m-t', strtotime($date)) : null, 'SessionCount' => 6, 'SessionDuration' => 120,
             'RemainingSessions' => 6, 'UsedSessions' => 0, 'Stop' => 0, 'ScheduleMode' => $mode,
             'week' => 3, 'time' => '17:00:00', 'week1' => 3, 'time1' => '19:30:00',
         ]);
         $ids = [];
-        foreach ([[$date, '17:00:00', '19:00:00'], [$date, '19:30:00', '21:30:00'], ['2026-07-08', '17:00:00', '19:00:00'],
-            ['2026-07-08', '19:30:00', '21:30:00'], ['2026-07-15', '17:00:00', '19:00:00'], ['2026-07-15', '19:30:00', '21:30:00']] as [$d, $s, $e]) {
+        [$w1, $w2] = [date('Y-m-d', strtotime($date . ' +7 days')), date('Y-m-d', strtotime($date . ' +14 days'))];
+        foreach ([[$date, '17:00:00', '19:00:00'], [$date, '19:30:00', '21:30:00'], [$w1, '17:00:00', '19:00:00'],
+            [$w1, '19:30:00', '21:30:00'], [$w2, '17:00:00', '19:00:00'], [$w2, '19:30:00', '21:30:00']] as [$d, $s, $e]) {
             $ids[] = (int) DB::table('ClassSession')->insertGetId(['StudentClassID' => $courseId, 'SessionDate' => $d, 'StartTime' => $s,
                 'EndTime' => $e, 'Status' => 'scheduled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
         }

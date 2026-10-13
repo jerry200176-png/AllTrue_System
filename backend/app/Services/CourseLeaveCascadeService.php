@@ -210,6 +210,7 @@ class CourseLeaveCascadeService
         }
 
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
+        self::requireNamedLesson($sessions, $normalizedLeaveDate, $sessionId);
 
         // Find the target session: accept scheduled/leave (but not cancelled/leave_adjusted)
         $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate, $sessionId) {
@@ -320,6 +321,14 @@ class CourseLeaveCascadeService
     {
         return $sessions->filter(fn ($s) => Carbon::parse($s->SessionDate)->toDateString() === $date
             && strtolower((string) ($s->Status ?? '')) !== 'cancelled')->count();
+    }
+
+    /** #3914 review: on a date with two or more lessons the caller must name one; never fall back to the day's first. */
+    private static function requireNamedLesson(\Illuminate\Support\Collection $sessions, string $date, ?int $sessionId): void
+    {
+        if ($sessionId === null && self::lessonsOnDate($sessions, $date) > 1) {
+            throw new \InvalidArgumentException('這門課這天有兩堂以上，請從要請假（或取消請假）的那一堂操作。');
+        }
     }
 
     /** Exact `:ls=<id>` provenance (so :ls=12 never matches :ls=123). */
@@ -608,7 +617,8 @@ class CourseLeaveCascadeService
         $newSession = null;
         if ((int) $plan['append_count'] > 0 && $plan['append']) {
             $appendDate = $plan['append'];
-            $appendTimes = self::resolveContractSlotTimes($course, $appendDate);
+            // #3914 review: a date with two lessons keeps the left lesson's own slot for its tail, not the weekday's first slot.
+            $appendTimes = self::lessonsOnDate($sessions, $normalizedLeaveDate) > 1 ? ['start' => '', 'end' => ''] : self::resolveContractSlotTimes($course, $appendDate);
             $appendStart = $appendTimes['start'] !== '' ? $appendTimes['start'] : $leaveSession->StartTime;
             $appendEnd = $appendTimes['end'] !== '' ? $appendTimes['end'] : $leaveSession->EndTime;
             $note = self::NOTE_AUTO_EXTENDED . ':ld=' . $normalizedLeaveDate . ':ls=' . (int) $leaveSession->id;
@@ -874,6 +884,7 @@ class CourseLeaveCascadeService
         if ($sessions->isEmpty()) {
             throw new \InvalidArgumentException('課程尚無堂次可撤銷');
         }
+        self::requireNamedLesson($sessions, $normalizedLeaveDate, $sessionId);
 
         $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate, $sessionId) {
             $sessionDate = Carbon::parse($session->SessionDate)->toDateString();

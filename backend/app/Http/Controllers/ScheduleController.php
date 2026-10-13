@@ -663,10 +663,7 @@ class ScheduleController extends Controller
                     $leaveSessionDate = $sessionDate;
                 }
 
-                Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
-                    ->where('status', 'leave')
-                    ->delete();
+                $this->leaveMarkers($courseId, $sessionDate, (string) $session->StartTime)->delete(); // #3914 review: only this lesson's marker
 
                 return response()->json([
                     'message' => ($recoveryWarning ?? null) === 'tail_missing'
@@ -932,8 +929,10 @@ class ScheduleController extends Controller
 
                 // Record schedules leave entry (created after cascade so the "already cascaded"
                 // detection in applyLeaveCascade doesn't fire on retries)
+                $markerKey = ['student_course_id' => $courseId, 'schedule_date' => $sessionDate, 'status' => 'leave']
+                    + ($this->dateHasTwoLessons($courseId, $sessionDate) ? ['start_time' => $session->StartTime] : []); // #3914 review
                 Schedule::firstOrCreate(
-                    ['student_course_id' => $courseId, 'schedule_date' => $sessionDate, 'status' => 'leave'],
+                    $markerKey,
                     [
                         'student_id'  => (int) $course->StudentID,
                         'day_of_week' => Carbon::parse($sessionDate)->dayOfWeekIso,
@@ -996,7 +995,7 @@ class ScheduleController extends Controller
             ->where('st.CampusID', $branchId)
             ->whereBetween('cs.SessionDate', [$startDate, $endDate])
             ->whereNotIn(DB::raw('LOWER(cs.Status)'), ['completed', 'attended', 'cancelled', 'leave'])
-            ->select(['cs.id as session_id', 'cs.StudentClassID as course_id', 'cs.SessionDate'])
+            ->select(['cs.id as session_id', 'cs.StudentClassID as course_id', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime'])
             ->orderBy('cs.SessionDate')
             ->orderBy('cs.StudentClassID')
             ->get();
@@ -1029,7 +1028,8 @@ class ScheduleController extends Controller
 
             try {
                 $leaveSessionId = (int) $row->session_id;
-                DB::transaction(function () use ($courseId, $sessionDate, $branchId, $leaveSessionId) {
+                $lessonTimes = [substr((string) ($row->StartTime ?? ''), 0, 5), substr((string) ($row->EndTime ?? ''), 0, 5)];
+                DB::transaction(function () use ($courseId, $sessionDate, $branchId, $leaveSessionId, $lessonTimes) {
                     CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate, $leaveSessionId);
 
                     $course = StudentClass::where('ID', $courseId)->first();
@@ -1038,8 +1038,9 @@ class ScheduleController extends Controller
                         $teacherId = (int) ($course->TeacherID ?? 0);
                         $subject = (string) ($course->SubjectID ?? '');
                         $classType = (string) ($course->ClassType ?? 'one_on_one');
-                        $startTime = $course->time ? substr((string) $course->time, 0, 5) : '16:00';
-                        $endTime = $course->time2 ? substr((string) $course->time2, 0, 5) : '18:00';
+                        // #3914 review: the marker carries the lesson's own time, so two lessons on one date stay distinct
+                        $startTime = $lessonTimes[0] !== '' ? $lessonTimes[0] : ($course->time ? substr((string) $course->time, 0, 5) : '16:00');
+                        $endTime = $lessonTimes[1] !== '' ? $lessonTimes[1] : ($course->time2 ? substr((string) $course->time2, 0, 5) : '18:00');
                         $dayOfWeek = Carbon::parse($sessionDate)->dayOfWeekIso;
 
                         Schedule::create([
@@ -1308,6 +1309,21 @@ class ScheduleController extends Controller
         }
     }
 
+    /** #3914 review: does this course hold two or more (non-cancelled) lessons on the date? */
+    private function dateHasTwoLessons(int $courseId, string $date): bool
+    {
+        return ClassSession::query()->where('StudentClassID', $courseId)->whereDate('SessionDate', $date)
+            ->whereRaw('LOWER(COALESCE(Status, \'\')) <> ?', ['cancelled'])->count() > 1;
+    }
+
+    /** #3914 review: the calendar's leave markers for one course/date; with two lessons that date, only this lesson's. */
+    private function leaveMarkers(int $courseId, string $date, string $startTime): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = Schedule::query()->where('student_course_id', $courseId)->whereDate('schedule_date', $date)->where('status', 'leave');
+
+        return $this->dateHasTwoLessons($courseId, $date) ? $query->where('start_time', 'like', substr($startTime, 0, 5) . '%') : $query;
+    }
+
     private function applyLeaveScheduleUpdate(
         Schedule $schedule,
         array $data,
@@ -1315,6 +1331,12 @@ class ScheduleController extends Controller
         array $merged,
         Request $request
     ) {
+        // #3914 review: a saved leave row is never moved to another lesson in place (that would leave the old lesson on leave)
+        $movesLesson = (!empty($data['schedule_date']) && Carbon::parse($data['schedule_date'])->toDateString() !== Carbon::parse($schedule->getAttribute('schedule_date'))->toDateString())
+            || (!empty($data['start_time']) && substr((string) $data['start_time'], 0, 5) !== substr((string) $schedule->getAttribute('start_time'), 0, 5));
+        if (strtolower((string) $schedule->getOriginal('status')) === 'leave' && $movesLesson) {
+            return response()->json(['message' => '已請假的課表不能直接改到另一堂；請先取消這次請假，再到要請假的那一堂請假。', 'code' => 'leave_row_retarget_forbidden'], 422);
+        }
         DB::beginTransaction();
         try {
             $schedule->fill(array_filter($data, fn ($v) => $v !== null));
