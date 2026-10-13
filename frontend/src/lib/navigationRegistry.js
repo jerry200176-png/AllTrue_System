@@ -17,7 +17,7 @@ const SETTINGS_TABS = [
   { page: 'classroom', label: '教室' },
   { page: 'subject-settings', label: '科目' },
   { page: 'line-integration', label: '家長 LINE 通知' },
-  { page: 'binding-management', label: 'LINE 綁定管理' },
+  { page: 'binding-management', label: '家長 LINE 綁定' },
   { page: 'binding-conflicts', label: '綁定衝突審查' },
   { page: 'binding-health', label: '綁定健康度' },
 ];
