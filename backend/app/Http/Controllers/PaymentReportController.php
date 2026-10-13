@@ -680,12 +680,12 @@ class PaymentReportController extends Controller
             // lock (held above) serializes member records; locking the sibling's report after it would invert confirm()'s
             // report -> package order and deadlock (#3892 review), so package members read without a row lock.
             $existingPending = $package
-                ? PaymentReport::whereIn('StudentClassID', StudentClass::where('PackageID', $package->id)->pluck('ID')->all())
+                ? PaymentReport::query()->whereIn('StudentClassID', StudentClass::query()->where('PackageID', $package->getKey())->pluck('ID')->all())
                     ->where('status', 'pending')->first()
                 : PaymentReport::where('StudentClassID', $sc->ID)->where('status', 'pending')->lockForUpdate()->first();
             if ($existingPending) {
                 return response()->json([
-                    'message' => ((int) $existingPending->StudentClassID === (int) $sc->ID ? '此課程' : '同一共用方案')
+                    'message' => ((int) $existingPending->StudentClassID === (int) $lockedCourse->getKey() ? '此課程' : '同一共用方案')
                         . '已有「等你確認」的繳費回報，請先到帳務中心確認收款或退回後再登錄。',
                     'code' => 'pending_report_exists',
                     'report_id' => $existingPending->id,
