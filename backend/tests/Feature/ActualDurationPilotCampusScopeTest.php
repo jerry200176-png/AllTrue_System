@@ -235,7 +235,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         \App\Models\Schedule::query()->where('student_course_id', $sc->ID)->update(['status' => \App\Models\Schedule::STATUS_SUPERSEDED]);
         SessionDeductionService::recomputeCounters($sc->ID);
         $this->assertSame(960 - 90, (int) $sc->fresh()->RemainingMinutes);
-        // #3948 r4257007368: hard deletion and flag rollback preserve the immutable makeup identity.
         $this->withHeaders($this->headers())->deleteJson('/api/v1/schedules/' . $schedule->id)->assertOk();
         $this->assertDatabaseMissing('schedules', ['id' => $schedule->id]);
         config(['perfflags.actual_duration_deduction_enabled' => false]);
@@ -253,7 +252,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame('retro_leave_makeup', $reverse->source);
     }
 
-    /** #3948: ambiguous unmarked history requires review; no guessed historical repair. */
     public function test_unmarked_minute_history_requires_review_without_recount(): void
     {
         [$sc, $studentId] = $this->course($this->pilotCampusId);
@@ -271,13 +269,17 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     public function test_copied_basis_follows_the_allowlist(): void
     {
         [$pilot] = $this->course($this->pilotCampusId);
-        [$other] = $this->course($this->otherCampusId);
+        [$other] = $this->course($this->otherCampusId, ['SessionDuration' => 180]);
         [$fixed] = $this->course($this->pilotCampusId, ['deduction_basis' => DeductionBasis::FIXED_SESSION]);
 
         $this->assertSame(DeductionBasis::ACTUAL_DURATION, SessionDeductionService::pilotSafeCopiedBasis($pilot));
         $this->assertSame(DeductionBasis::FIXED_SESSION, SessionDeductionService::pilotSafeCopiedBasis($other));
         $this->assertSame(DeductionBasis::FIXED_SESSION, SessionDeductionService::pilotSafeCopiedBasis($fixed));
 
+        [$copy] = $this->course($this->otherCampusId, array_merge(['SessionDuration' => 180], SessionDeductionService::pilotSafeCopiedContract($other)));
+        SessionDeductionService::syncCounters($copy);
+        $row = collect($this->withHeaders($this->headers())->getJson('/api/v1/student-classes?per_page=200')->assertOk()->json('data'))->firstWhere('ID', $copy->ID);
+        $this->assertSame([8, null], [(int) $row['RemainingSessions'], $row['remaining_lesson_equivalent']]);
         config(['perfflags.actual_duration_campus_ids' => '*']);
         $this->assertSame(DeductionBasis::ACTUAL_DURATION, SessionDeductionService::pilotSafeCopiedBasis($other));
     }
