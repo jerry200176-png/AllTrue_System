@@ -82,10 +82,10 @@ class DumpIdsOnlyTest(unittest.TestCase):
         run = run_step("production-case-dump.yml", "Run bounded")
         py = textwrap.dedent(re.search(r"python3 - <<'PY' > /tmp/production_case_probe.php\n(.*?)\n\s*PY\n", run, re.S).group(1))
         base = {**os.environ, "TARGET_STUDENT_CLASS_ID": "", "TARGET_STUDENT_ID": ""}
-        r = subprocess.run(["python3", "-W", "ignore", "-"], input=py, env={**base, "CASE_KEY": "parent_lou"}, capture_output=True, text=True)
+        r = subprocess.run(["python3", "-W", "ignore", "-"], input=py, env={**base, "CASE_KEY": "parent_student_probe"}, capture_output=True, text=True)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("requires student_id", r.stderr)
-        r = subprocess.run(["python3", "-W", "ignore", "-"], input=py, env={**base, "CASE_KEY": "parent_lou", "TARGET_STUDENT_ID": "12"}, capture_output=True, text=True)
+        r = subprocess.run(["python3", "-W", "ignore", "-"], input=py, env={**base, "CASE_KEY": "parent_student_probe", "TARGET_STUDENT_ID": "12"}, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("$targetStudentId = 12;", r.stdout)
 
