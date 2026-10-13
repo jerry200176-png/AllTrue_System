@@ -162,31 +162,36 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $this->assertFalse((bool) $pkg->fresh()->paid, 'the package flag itself is still never set by member confirmations');
     }
 
-    /**
-     * #3892 review: the manual package paid toggle (FR-006) marks the package row paid, but like a single course's Paid flag it
-     * never hides what the member invoices still owe (Founder Q2: invoices + Payment rows beat the flag).
-     */
-    public function test_manual_paid_toggle_marks_the_row_paid_without_hiding_open_invoices(): void
+    /** #3892 review P1 (r4256563878): the manual paid toggle never overrides an open member balance (Founder Q2). */
+    public function test_manual_paid_toggle_with_an_open_invoice_stays_receivable(): void
     {
         [, , $pkg] = $this->monthlyPackageWithPendingReports();
         $h = $this->directorHeaders();
-        $this->assertFalse($this->packageAlertRow($h, $pkg)['paid']);
-
         $this->withHeaders($h)->putJson("/api/v1/course-packages/{$pkg->id}", ['paid' => true, 'paid_at' => '2026-08-01'])->assertOk();
 
         $row = $this->packageAlertRow($h, $pkg);
-        $this->assertTrue($row['paid']);
-        $this->assertSame('monthly_due_soon', $row['payment_status']);
-        $this->assertSame(2 * 8800, (int) $row['outstanding'], 'both member invoices are still unpaid');
-        // #3892 review P1 (r4256455992): the toggle never invents a collection; paid_amount is what Payment rows hold.
+        $this->assertFalse($row['paid']);
+        $this->assertSame('unpaid', $row['payment_status']);
+        $this->assertSame(2 * 8800, (int) $row['outstanding']);
+        $this->assertSame(2 * 8800, (int) $row['payable_outstanding']);
+        // r4256455992: the toggle never invents a collection; paid_amount is what Payment rows hold.
         $this->assertSame(0, (int) $row['paid_amount']);
     }
 
-    /**
-     * #3892 review (r4254497307 -> single-course parity): August is invoiced and paid for both members; September has attended
-     * sessions and no invoice yet. Each member's own row owes nothing (its invoices are the truth), so the package row does
-     * too; September's sessions stay visible as the estimate (`charge`) until September is invoiced, as for a single course.
-     */
+    /** #3892 review P1 (r4256563893): A's July bill (due 7/15) is overdue while settlement day 28 is far: listed overdue. */
+    public function test_older_overdue_member_invoice_shows_overdue_when_settlement_day_is_far(): void
+    {
+        [$a, , $pkg, $student] = $this->monthlyPackage('2026-08-10 10:00:00');
+        $pkg->update(['settlement_day' => 28]);
+        $this->invoice($a, $student, '2026-07', 5000, 'unpaid', 0, []);
+
+        $row = $this->packageAlertRow($this->directorHeaders(), $pkg);
+        $this->assertSame('2026-07-15', $row['due_date']);
+        $this->assertSame(-26, (int) $row['days_until_settlement']);
+        $this->assertSame('unpaid', $row['payment_status']);
+    }
+
+    /** #3892 review (single-course parity): August paid, September attended but not invoiced: owes nothing, estimate shown. */
     public function test_paid_prior_month_with_current_sessions_follows_the_member_rows(): void
     {
         [$a, $b, $pkg] = $this->monthlyPackageWithPendingReports();
@@ -222,9 +227,11 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $this->assertFalse($row['paid']);
         $this->assertSame(5000, (int) $row['outstanding']);
         $this->assertSame('unpaid', $row['payment_status']);
-        $this->assertSame(2 * 8800, (int) $row['paid_amount']);
-        // #3892 review P1 (r4256456024): the open member invoice is in the authoritative payable shape the student list
-        // (studentBillingRows.owedItems) and collection totals read; StudentBillingList.test.js feeds this shape to the UI.
+        // #3892 review P1 (r4256563885): paid and payable share the open-period scope (July: 0 of 5000), rate <= 100%.
+        $this->assertSame(0, (int) $row['paid_amount']);
+        $this->assertSame(5000, (int) $row['payable_amount']);
+        $this->assertLessThanOrEqual((int) $row['payable_amount'], (int) $row['paid_amount']);
+        // #3892 review P1 (r4256456024): the payable shape the UI reads (StudentBillingList.test.js feeds it to the list).
         $this->assertSame('invoiced', $row['payable_status']);
         $this->assertSame(5000, (int) $row['payable_outstanding']);
         $this->assertSame((int) $july->id, (int) $row['payable_invoice_id']);
@@ -232,10 +239,7 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $this->assertSame([['billing_period' => '2026-07', 'outstanding' => 5000, 'due_date' => '2026-07-15']], $row['open_periods']);
     }
 
-    /**
-     * #3892 review P2 (r4256456002): B's only invoice is zero-value, so the resolver cannot classify it (review_required,
-     * outstanding 0). A paid A plus an unclassifiable B is not a paid package.
-     */
+    /** #3892 review P2 (r4256456002): B's only invoice is zero-value (review_required), so the package is not paid. */
     public function test_review_required_member_does_not_settle_the_package(): void
     {
         [$a, $b, $pkg, $student] = $this->monthlyPackage('2026-08-02 10:00:00');
@@ -247,10 +251,7 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $this->assertSame('unpaid', $row['payment_status']);
     }
 
-    /**
-     * #3892 review P1 (r4254553679): A's open invoice is labelled September but covers 9/28-10/27, and A attended twice in
-     * October. The invoice is A's answer (single-course rule), so October's sessions are not priced again on top of it.
-     */
+    /** #3892 review P1 (r4254553679): A's September bill covers October sessions; they are not priced again on top of it. */
     public function test_cross_month_invoice_is_not_double_counted_with_the_session_estimate(): void
     {
         [$a, , $pkg, $student] = $this->monthlyPackage('2026-10-03 10:00:00');
@@ -275,6 +276,8 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $this->assertTrue($row['paid']);
         $this->assertSame(0, (int) $row['outstanding']);
         $this->assertSame('monthly_due_soon', $row['payment_status']);
+        // #3892 review P2 (r4256563899): settled through a member, so the last payment date is that member's Payment.
+        $this->assertSame('2026-08-05', $row['last_paid_at']);
     }
 
     /**

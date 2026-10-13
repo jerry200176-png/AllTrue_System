@@ -230,6 +230,7 @@ class AlertController extends Controller
             $memberStatuses = $this->payableResolver->courseStatusesByStudentClassIds($memberIds, $memberCourses);
             $memberOpenInvoices = $this->openInvoiceByStudentClassIds($memberIds);
             $memberInvoiceAgg = $this->payableResolver->invoiceAggregateByStudentClassIds($memberIds);
+            $memberLastPaidAt = $this->payableResolver->lastPaidAtByStudentClassIds($memberIds);
 
             foreach ($monthlyPkgs as $pkg) {
                 $members = $membersByPkg->get($pkg->id, collect());
@@ -249,20 +250,37 @@ class AlertController extends Controller
                 // Paid = the manual toggle, or some member paid and every member row owes nothing (invoices + Payment rows beat
                 // the Paid flag). Nothing billed and nothing paid yet is not "paid" (MX-004).
                 $pkgPaid = $manualPaid || ($settlement['applied'] > 0 && $memberMoney->every(fn ($row) => $row['outstanding'] <= 0 && !$row['review']));
-                // Member invoices that still owe, in the shape the student list / collection totals read (open_periods, payable_*).
+                // #3892 review: member invoices that still owe decide the whole row from ONE scope (the open periods): payable
+                // and paid amounts, the due date / schedule (earliest open period) and the status (receivable, never paid,
+                // whatever the manual toggle says). Without open periods the row keeps the settlement / estimate rules above.
                 $openPeriods = $memberMoney->flatMap(fn ($row) => self::openPeriods($row['verdict']))->sortBy('billing_period')->values();
                 $firstOpen = $memberMoney->first(fn ($row) => self::openPeriods($row['verdict']) !== []);
-                $payable = $openPeriods->isEmpty() ? $this->payableResolver->unbilled() : [
-                    'payable_amount' => (int) $openPeriods->sum('total'), 'payable_outstanding' => (int) $openPeriods->sum('outstanding'),
-                    'payable_status' => 'invoiced', 'payable_source' => 'invoice',
-                    'payable_invoice_id' => $firstOpen['verdict']['current_invoice_id'] ?? null, 'payable_billing_period' => $openPeriods->first()['billing_period'],
-                ];
+                $payable = $this->payableResolver->unbilled();
+                $paidAmount = $settlement['applied'];
+                $openInvoice = null;
+                if ($openPeriods->isNotEmpty()) {
+                    $pkgPaid = false;
+                    $paidAmount = (int) $openPeriods->sum(fn ($p) => $p['total'] - $p['outstanding']);
+                    $payable = ['payable_amount' => (int) $openPeriods->sum('total'), 'payable_outstanding' => (int) $openPeriods->sum('outstanding'),
+                        'payable_status' => 'invoiced', 'payable_source' => 'invoice',
+                        'payable_invoice_id' => $firstOpen['verdict']['current_invoice_id'] ?? null, 'payable_billing_period' => $openPeriods->first()['billing_period']];
+                    $earliestDue = $openPeriods->pluck('due_date')->filter()->min();
+                    $openInvoice = $earliestDue === null ? null : ['id' => (int) $payable['payable_invoice_id'], 'due_date' => $earliestDue,
+                        'billing_period' => $payable['payable_billing_period'], 'status' => $paidAmount > 0 ? 'partial' : 'unpaid'];
+                }
+                $lastPaidAt = $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : $members->map(fn ($m) => $memberLastPaidAt[(int) $m->ID] ?? null)->filter()->max();
 
                 $fakeSc = $this->makeFakeSCForPackage($pkg);
                 $fakeSc->Paid = $pkgPaid ? 1 : 0;
-                $alertRow = $this->mapMonthlyAlert($fakeSc, $today);
+                // Listed when the earliest open invoice is due (or overdue), or in the package's own settlement window; either
+                // way the due fields are the earliest open invoice's, so an overdue member bill never reads as on time.
+                $alertRow = $this->mapMonthlyAlert($fakeSc, $today, $openInvoice) ?? ($openInvoice ? $this->mapMonthlyAlert($fakeSc, $today) : null);
                 if ($alertRow === null) {
                     continue;
+                }
+                if ($openInvoice !== null) {
+                    $alertRow['due_date'] = $openInvoice['due_date'];
+                    $alertRow['days_until_settlement'] = (int) $today->copy()->startOfDay()->diffInDays(Carbon::parse($openInvoice['due_date'])->startOfDay(), false);
                 }
 
                 $monthlyPkgAlerts->push(array_merge($alertRow, [
@@ -287,11 +305,12 @@ class AlertController extends Controller
                     'open_periods'     => $openPeriods->map(fn ($p) => array_diff_key($p, ['total' => 1]))->all(),
                     'outstanding'      => $settlement['outstanding'],
                     'paid'             => $pkgPaid,
-                    'paid_at'          => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
-                    'last_paid_at'     => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
-                    // Money actually received (Payment rows); the manual toggle may set `paid` but never invents a collection.
-                    'paid_amount'      => $settlement['applied'],
-                    'payment_status'   => $pkgPaid ? 'monthly_due_soon' : 'unpaid',
+                    // Settled through the members: the latest member Payment date (the package flag's paid_at stays null).
+                    'paid_at'          => $pkgPaid ? $lastPaidAt : null,
+                    'last_paid_at'     => $lastPaidAt,
+                    // Money actually received (Payment rows), in the same scope as payable_*; the toggle never invents one.
+                    'paid_amount'      => $paidAmount,
+                    'payment_status'   => $pkgPaid ? 'monthly_due_soon' : ($openPeriods->isNotEmpty() && $paidAmount > 0 ? 'partial' : 'unpaid'),
                     'latest_payment_report_id' => null,
                     'has_newer_course'         => false,
                     'newer_course_id'          => null,
