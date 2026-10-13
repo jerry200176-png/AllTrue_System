@@ -43,15 +43,17 @@ For a qualifying R0/R1 fix, `resolved` means engineering delivery with a public 
 
 After `resolved` + public ask-to-retest:
 
-- Wait **7 calendar days** for reporter reply.  
+Source of truth is the code; the values below are checked against it by `scripts/tests/test_evidence_contract_timeouts.py` (#3918).
+
+- **Daily automatic run (Founder 2A, 2026-10-08):** `bug-reporter-timeout.yml` runs `php artisan bugs:close-stale-resolved --auto` every day. It closes `resolved` reports with no reporter reply for `CloseStaleResolvedBugsCommand::AUTO_DAYS` = **14** calendar days, with the standard plain public reply. Resolved queue only (never the awaiting-reporter queue). If more than `CloseStaleResolvedBugsCommand::AUTO_MAX_PER_RUN` = **20** reports are eligible, the whole run refuses and changes nothing.  
+- **Manual run:** `php artisan bugs:close-stale-resolved --dry-run` then apply with `--reviewed-ids` (each ID individually reviewed) — see [`docs/sop/BUG_REPORTER_TIMEOUT.md`](../sop/BUG_REPORTER_TIMEOUT.md). `--days` defaults to 7 and may not be lower than `BugReportService::REPORTER_TIMEOUT_MIN_DAYS` = **7** calendar days.  
 - If no reply and no regression signal: may move to `closed` with note `closed_by_timeout` citing this contract.  
-- **Command (manual):** `php artisan bugs:close-stale-resolved --dry-run` then apply — see [`docs/sop/BUG_REPORTER_TIMEOUT.md`](../sop/BUG_REPORTER_TIMEOUT.md). Not auto-scheduled.  
 - Excludes resolves lacking `[resolution_evidence]` (legacy / unverified).  
 - If reporter reports still broken: reopen to `in_progress` (do not game close).
 
 ### Awaiting-reporter timeout (`triaged`)
 
-- Applies to `triaged` bugs whose latest **non-internal** comment is a staff question (author is not the reporter), at least **14 calendar days** old, with no reporter reply after it. The 14 days is a fixed constant (`AWAITING_REPORTER_TIMEOUT_DAYS`), independent of the workflow/command `--days`.
+- Applies to `triaged` bugs whose latest **non-internal** comment is a staff question (author is not the reporter), at least **14 calendar days** old, with no reporter reply after it. The 14 days is a fixed constant (`BugReportService::AWAITING_REPORTER_TIMEOUT_DAYS` = **14**), independent of the workflow/command `--days`.
 - Same individually reviewed apply (`--reviewed-ids`) as above. The public comment and the `closed` status (note `closed_by_timeout — awaiting reporter reply 14 days`) commit atomically after an eligibility recheck.
 - Reopen: a reporter's public comment on a `closed_by_timeout` bug moves an awaiting-timeout closure to `triaged` and a resolved-timeout closure to `in_progress` (note `reopened_by_reporter_reply`). Staff comments and reporter-verified closes never reopen.
 
