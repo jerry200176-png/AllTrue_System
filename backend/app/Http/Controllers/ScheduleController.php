@@ -663,7 +663,7 @@ class ScheduleController extends Controller
                     $leaveSessionDate = $sessionDate;
                 }
 
-                $this->leaveMarkers($courseId, $sessionDate, (string) $session->StartTime)->delete(); // #3914 review: only this lesson's marker
+                $this->deleteLeaveMarkers($courseId, $sessionDate, (string) $session->StartTime); // #3914 review: only this lesson's marker
 
                 return response()->json([
                     'message' => ($recoveryWarning ?? null) === 'tail_missing'
@@ -1316,12 +1316,15 @@ class ScheduleController extends Controller
             ->whereRaw('LOWER(COALESCE(Status, \'\')) <> ?', ['cancelled'])->count() > 1;
     }
 
-    /** #3914 review: the calendar's leave markers for one course/date; with two lessons that date, only this lesson's. */
-    private function leaveMarkers(int $courseId, string $date, string $startTime): \Illuminate\Database\Eloquent\Builder
+    /** #3914 review: delete the calendar's leave markers for one course/date; with two lessons that date, only this lesson's. */
+    private function deleteLeaveMarkers(int $courseId, string $date, string $startTime): int
     {
         $query = Schedule::query()->where('student_course_id', $courseId)->whereDate('schedule_date', $date)->where('status', 'leave');
+        if ($this->dateHasTwoLessons($courseId, $date)) {
+            $query->where('start_time', 'like', substr($startTime, 0, 5) . '%');
+        }
 
-        return $this->dateHasTwoLessons($courseId, $date) ? $query->where('start_time', 'like', substr($startTime, 0, 5) . '%') : $query;
+        return (int) $query->delete();
     }
 
     private function applyLeaveScheduleUpdate(
