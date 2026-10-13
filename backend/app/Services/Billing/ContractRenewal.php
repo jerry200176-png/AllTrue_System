@@ -24,11 +24,12 @@ use Illuminate\Support\Facades\Schema;
 final class ContractRenewal
 {
     /** #2567 (Founder 2026-10-13): renewing settles the prior term, so its fee must be on record first. */
-    public const PRIOR_FEE_MISSING_MESSAGE = '前一期費用尚未登錄（單堂費用與應收金額都是 0）。請先在課程編輯填寫「單堂費用」，或在帳務登錄前一期帳單金額，再續約或加購。';
+    public const PRIOR_FEE_MISSING_MESSAGE = '前一期費用尚未登錄（單堂費用與應收金額都是 0，也沒有帳單）。請先在課程編輯填寫「單堂費用」，或在帳務登錄前一期帳單（免費課程請登錄 0 元帳單），再續約或加購。';
 
     /**
      * Blocker when the source course has no fee on record: no per-session price, no charge and no
-     * non-void billable invoice (its own or a line item on another invoice). Trial (converted, not
+     * non-void bill (its own or a line item on another invoice). A NT$0 bill counts: the Founder rule
+     * (2026-10-13) is to record a 0-amount bill for a truly free course. Trial (converted, not
      * renewed), tutoring (no payment obligation) and package members (fee lives on the package) are exempt.
      *
      * @return array{code: string, message: string}|null
@@ -43,8 +44,8 @@ final class ContractRenewal
             return null;
         }
         $id = (int) $source->getAttribute('ID');
-        $candidates = Invoice::query()->where('StudentClassID', $id)->where('TotalAmount', '>', 0)->pluck('id')
-            ->merge(InvoiceItem::query()->where('StudentClassID', $id)->where('Amount', '>', 0)->pluck('InvoiceID'))
+        $candidates = Invoice::query()->where('StudentClassID', $id)->pluck('id')
+            ->merge(InvoiceItem::query()->where('StudentClassID', $id)->pluck('InvoiceID'))
             ->map(fn ($v) => (int) $v)->unique()->values()->all();
         // Lock the evidence rows by primary key: voidInvoice() locks the same invoice row, so a concurrent void either
         // commits first (and is seen here) or waits until this renewal commits. Never accept evidence being voided.

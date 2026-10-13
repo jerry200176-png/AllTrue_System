@@ -101,6 +101,22 @@ class RenewalRequiresPriorFeeTest extends TestCase
         $this->assertSame('unpaid', Invoice::query()->where('StudentClassID', $source->ID)->value('Status'));
     }
 
+    /** Founder 2026-10-13 (comment 6137846023): a truly free course records a NT$0 bill; that bill is a fee on record unless voided. */
+    public function test_a_zero_amount_bill_counts_as_an_entered_fee_until_voided(): void
+    {
+        $free = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
+        $this->invoice($free, 0, 'unpaid');
+        $this->assertNull(app(ContractRenewal::class)->priorFeeBlocker($free));
+        $this->postAuthenticatedJson("/api/v1/student-classes/{$free->ID}/renew-monthly", ['end_date' => '2026-05-31'])
+            ->assertCreated();
+
+        $voided = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
+        $this->invoice($voided, 0, 'void');
+        $this->postAuthenticatedJson("/api/v1/student-classes/{$voided->ID}/renew-monthly", ['end_date' => '2026-05-31'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'prior_fee_missing');
+    }
+
     public function test_renewal_is_unchanged_when_the_course_has_a_price(): void
     {
         $monthly = $this->monthlyCourse(['Rate' => 600, 'Charge' => 0]);
