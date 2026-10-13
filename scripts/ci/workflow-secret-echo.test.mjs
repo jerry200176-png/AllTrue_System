@@ -174,6 +174,17 @@ function resolve(words) { // skip assignments and wrapper commands; `dump` marks
       k = j; continue;
     }
     if (name === 'sudo') { k++; while (words[k] && /^-/.test(words[k].text)) k += /^-[ugCh]$|^--(?:user|group|chdir|close-from|host)$/.test(words[k].text) ? 2 : 1; continue; }
+    if (name === 'xargs') {
+      let j = k + 1;
+      for (; j < words.length && words[j].text.startsWith('-'); j++) {
+        const option = words[j].text;
+        if (option === '--') { j++; break; }
+        if (/^--(?:help|version)$/.test(option)) return { k, name, help: true };
+        if (/^-[adEILnPs]$|^--(?:arg-file|delimiter|max-args|max-procs|max-chars)$/.test(option)) j++;
+      }
+      if (j >= words.length) return { k, name }; // default echo receives stdin; the producing pipeline is checked
+      k = j; continue;
+    }
     if (name === 'env') {
       if (args.length === 1 && /^--(?:help|version)$/.test(args[0])) return { k, name, help: true };
       let j = k + 1;
@@ -261,7 +272,7 @@ const credExpr = (expr) => /\btoJSON\s*\(\s*(?:env|secrets)\s*\)/i.test(expr) ||
 function credHits(w, exprs, sensitive = new Set()) {
   const hits = [];
   for (const m of w.text.matchAll(CRED)) {
-    if (m[2] !== undefined ? credExpr(exprs[+m[2]]) : isSecretName(m[1]) || sensitive.has(m[1])) hits.push(m.index); // '$X' too: fail closed
+    if (m[2] !== undefined ? credExpr(exprs[+m[2]]) : isSecretName(m[1]) || sensitive.has(m[1])) hits.push(m.index);
   }
   for (const m of w.text.matchAll(/\$\(\(([\s\S]*?)\)\)/g)) {
     if ((m[1].match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).some((name) => isSecretName(name) || sensitive.has(name))) hits.push(m.index);
@@ -551,6 +562,9 @@ export const trip = {
   'later command allowance cannot excuse earlier echo': blk('echo "$DB_PASSWORD"; echo hi # secret-echo-allow: harmless later command'),
 
   'nice long operand env dump': blk('nice --adjustment 5 env'),
+  'xargs environment dump': blk('xargs env </dev/null'),
+  'xargs parsed options environment dump': blk('xargs -n 1 -- env </dev/null'),
+  'xargs optional long operand environment dump': blk('xargs --replace env </dev/null'),
   'summary parameter operator sink': blk('echo "$DB_PASSWORD" >> "${GITHUB_STEP_SUMMARY:?missing}"'),
   'whole env context serialization': blk('echo \'${{ toJSON(env) }}\''),
   'inline literal assignment command list': blk('DB_PASSWORD=committed_fixture_secret; mysql -p"$DB_PASSWORD" -e \'SELECT 1\''),
