@@ -267,10 +267,13 @@ final class ContractTeacherChangeCascade
         }
 
         $today = Carbon::today()->toDateString();
+        // #3824: an occurrence whose assessment is filled AND approved keeps its occurrence teacher (pin / substitute rows).
+        $locked = LearningRecordMutableOwnership::protectedSlots($courseId, $today);
 
         Schedule::where('student_course_id', $courseId)
             ->where('status', 'scheduled')
             ->whereDate('schedule_date', '>=', $today)
+            ->whereNotIn(DB::raw("CONCAT(DATE(schedule_date), ' ', SUBSTRING(start_time, 1, 5))"), $locked)
             ->whereNull('original_schedule_id')
             ->where('teacher_id', $oldTeacherId)
             ->update([
@@ -282,6 +285,7 @@ final class ContractTeacherChangeCascade
             ->where('status', 'scheduled')
             ->whereDate('schedule_date', '>=', $today)
             ->whereNotNull('original_schedule_id')
+            ->whereNotIn(DB::raw("CONCAT(DATE(schedule_date), ' ', SUBSTRING(start_time, 1, 5))"), $locked)
             ->where('teacher_id', $oldTeacherId)
             ->pluck('original_schedule_id')
             ->filter(fn ($id) => (int) $id > 0)
@@ -291,16 +295,21 @@ final class ContractTeacherChangeCascade
             ->all();
 
         if (!empty($staleAnchorIds)) {
+            // #3824: a legacy duplicate chain can hold a protected child under the same anchor; delete only unprotected rows.
             Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', '>=', $today)
                 ->where('status', 'scheduled')
                 ->whereIn('original_schedule_id', $staleAnchorIds)
+                ->whereNotIn(DB::raw("CONCAT(DATE(schedule_date), ' ', SUBSTRING(start_time, 1, 5))"), $locked)
                 ->delete();
 
+            $keptAnchorIds = Schedule::query()->where('student_course_id', $courseId)->where('status', 'scheduled')
+                ->whereIn('original_schedule_id', $staleAnchorIds)->pluck('original_schedule_id')->all();
             Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', '>=', $today)
                 ->where('status', 'rescheduled')
                 ->whereIn('id', $staleAnchorIds)
+                ->whereNotIn('id', $keptAnchorIds)
                 ->delete();
         }
     }
