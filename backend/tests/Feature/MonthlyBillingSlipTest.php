@@ -509,6 +509,7 @@ class MonthlyBillingSlipTest extends TestCase
         $slip = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson("/api/v1/alerts/tuition-slip/{$course->ID}")->assertOk()->json();
         $period = $slip['payable_billing_period'];
+        $this->assertSame('2026-08', $period, 'with #3888 the payable bill is the oldest owing period');
         $this->assertSame($ids[$period] ?? null, $slip['payable_invoice_id']);
         $this->assertSame([$period, $due[$period] ?? null], [$slip['billing_period'], $slip['due_date']]);
     }
