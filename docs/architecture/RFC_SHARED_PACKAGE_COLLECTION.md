@@ -204,7 +204,6 @@ Founder 在本次 PR 收尾 chat 明確核准下列原待決項；不授權歷�
 | C2（原 OPEN-2） | 已停止、無帳單但有 pending report 保留待收排除，另設獨立審核入口供確認／拒絕。 | 保留 R2-4 原意；報告可達性與 campus 隔離依 §3a/§3b。獨立 future 審核 workflow PR。 |
 | C3（原 OPEN-3） | 合法 reversal／void 後重算 package 與所有 member settlement flags，不能留下 sibling 已繳。 | 同 transaction／locks、ledger 權威、各 reversal producer、settle→void 回歸與 rollback evidence。獨立 future write PR；不修歷史資料。 |
 | C4（原 OPEN-4） | 收據呈現整包科目／covered session 範圍與本筆實收金額，不能只顯示 anchor 科目。 | package-aware receipt snapshot、partial／final／重印回歸，不分攤科目價款。獨立 future receipt/write PR。 |
-
 | C5（加購收尾） | 新加購事件保存成交單價／堂數／前後整數應收與唯一操作鍵；舊定稿帳單、收款及收據不改，可靠未改費率的 count 方案另建累計應收差額帳單，明列取整差額，人員明確選單收款；事件與 invoice／entitlement／ledger settlement 原子且冪等。 | §3b prospective 加購及 AC27–29；unknown／折扣／改價／legacy 無可靠帳單保持核對。獨立 future write PR，不批准歷史修復。 |
 
 Founder 對研究後的具體加購提案在本 chat 明確回覆：「如果這是你研究完大公司的產品後 就這樣定案吧」。此批准涵蓋 C5 新事件／價格快照／差額帳單／累計元整差額與 AC，不是 runtime 已交付或 production data 操作批准。
