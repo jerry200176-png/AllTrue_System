@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-12-approved-assessment-teacher-lock
+    published_at: "2026-10-12"
+    audiences:
+      - director
+    importance: major
+    title: 已核准評量的授課老師不再被改走
+    summary: 評量已填寫並核准後，換老師、代課都不會動到該堂的老師與科目數。
+    items:
+      - category: improved
+        text: 已填寫內容且已核准的評量，代課、回正班、換老師時會被擋下並提示；要更正請先退回核准。
+      - category: improved
+        text: 沒填內容或還沒核准的評量，仍可照常更正老師。
+    source_refs:
+      - "changelog:2026-10-12:approved-assessment-teacher-lock"
