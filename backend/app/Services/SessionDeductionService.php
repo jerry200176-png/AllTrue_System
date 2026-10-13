@@ -327,7 +327,6 @@ class SessionDeductionService
                 return false;
             }
 
-            // #3948: freeze minute-event interpretation before its extra schedule can disappear.
             $kind = $minutes !== null && $minutes > 0 && $classSessionId
                 ? self::minuteEventKindAtDeduction($studentClassId, $classSessionId)
                 : null;
@@ -496,7 +495,6 @@ class SessionDeductionService
                     ? self::gatedOffMinuteTotals($studentClassId, $perSession, $today)
                     : [false, 0, false];
                 if ($ambiguousMinuteEvidence) {
-                    // Unknown legacy history is review work, not permission to rewrite a deduction.
                     return;
                 }
                 $hasPartial = $gatedOffActualDuration ? $gatedPartial : SessionDeductionLedger::query()
@@ -563,8 +561,6 @@ class SessionDeductionService
 
     /**
      * #3834: [has_partial, net_minutes] of a gated-off opted-in course under fixed_session rules.
-     * Immutable ledger snapshots survive hard deletion; surviving extra schedules only identify
-     * legacy makeups. Missing legacy identity is review work, not an automatic recount.
      *
      * @return array{0: bool, 1: int, 2: bool}
      */
@@ -597,28 +593,24 @@ class SessionDeductionService
         return [$hasPartial, $net, $ambiguous];
     }
 
-    /** Server-resolved identity, recorded in source without touching the audit note. */
     private static function minuteEventKindAtDeduction(int $courseId, int $sessionId): ?string
     {
-        $session = ClassSession::query()->where('StudentClassID', $courseId)->find($sessionId);
-        if (!$session) {
+        $session = ClassSession::query()->where('StudentClassID', $courseId)->where('id', $sessionId)->first();
+        if (!$session instanceof ClassSession) {
             return null;
         }
         $isMakeup = Schedule::query()->where('student_course_id', $courseId)
-            ->whereDate('schedule_date', $session->SessionDate)->where('type', 'extra')
+            ->whereDate('schedule_date', $session->SessionDate)->where('type', 'extra')->where('status', '!=', Schedule::STATUS_SUPERSEDED)
             ->get(['start_time'])->contains(fn ($row) => substr((string) $row->start_time, 0, 5) === substr((string) $session->StartTime, 0, 5));
 
         return $isMakeup ? 'M' : 'F';
     }
-
-    /** Variant preserves the canonical producer family in the existing varchar(32). */
     private static function minuteEventSource(string $source, ?string $kind): string
     {
         return $kind !== null && in_array($source, self::BASE_USAGE_SOURCES, true)
             ? $source . ($kind === 'M' ? '_makeup' : '_regular')
             : $source;
     }
-
     private static function minuteEventKindFromSource(?string $source): ?string
     {
         return in_array($source, self::USAGE_SOURCES, true) && !in_array($source, self::BASE_USAGE_SOURCES, true)
@@ -757,6 +749,13 @@ class SessionDeductionService
         return $source->isActualDurationBasis() && !self::isActualDurationCampusAllowedForCourse($source)
             ? \App\Services\Scheduling\DeductionBasis::FIXED_SESSION
             : $source->deduction_basis;
+    }
+
+    /** @return array{deduction_basis:string,standard_lesson_minutes:?int} */
+    public static function pilotSafeCopiedContract(StudentClass $source): array
+    {
+        $basis = self::pilotSafeCopiedBasis($source);
+        return ['deduction_basis' => $basis, 'standard_lesson_minutes' => $basis === \App\Services\Scheduling\DeductionBasis::ACTUAL_DURATION ? $source->standard_lesson_minutes : null];
     }
 
     /**
