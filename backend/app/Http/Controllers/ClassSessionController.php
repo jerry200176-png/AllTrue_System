@@ -672,8 +672,10 @@ class ClassSessionController extends Controller
      *   columns, else the original_schedule_id reschedule chain back to the slot it left. A chain that
      *   starts on another date is a moved-in lesson and stands for no slot of this date.
      * - A makeup (type=extra) has no series slot: each extra Schedule absorbs one identity-less session
-     *   at its time. A session with frozen identity is never a makeup.
+     *   at its time. A session with frozen identity, or with a marker identity at its time, is never a makeup.
+     * - Same-time sessions take the distinct marker identities one-for-one.
      * - A rescheduled marker that was itself a move target is an intermediate hop, not a lesson.
+     * - Superseded schedules (TD-076 repair history) and internal reschedule placeholders are ignored.
      *
      * @param  list<int>  $classIds
      * @return array<int, list<array{0:string,1:?string,2:?string}>>
@@ -688,7 +690,7 @@ class ClassSessionController extends Controller
             ->keyBy('id');
         $origin = function (Schedule $row) use ($schedules, $hm, $ymd, $targetDate): array {
             $cur = $row;
-            for ($hops = 0; $hops < 20; $hops++) {
+            for ($hops = 0; $hops < \App\Services\BackfillScheduleOccurrenceIdentityService::MAX_HOPS; $hops++) {
                 if ($cur->original_start_time) {
                     return [$ymd($cur->original_schedule_date), $hm($cur->original_start_time)];
                 }
@@ -709,39 +711,58 @@ class ClassSessionController extends Controller
         $extraBudget = [];
         $sameLesson = [];
         foreach ($schedules as $r) {
+            if (strtolower((string) $r->status) === Schedule::STATUS_SUPERSEDED) {
+                continue; // TD-076 repair history: invisible to readers, never an identity or a makeup
+            }
             if ($isExtra($r)) {
                 $extraBudget[$scheduleKey($r)] = ($extraBudget[$scheduleKey($r)] ?? 0) + 1;
             } else {
                 $sameLesson[$scheduleKey($r)][] = $r;
             }
         }
-        $bestOrigin = function (string $key) use ($sameLesson, $origin): array {
-            $found = [null, null];
-            foreach ($sameLesson[$key] ?? [] as $r) {
-                $found = $origin($r);
-                if ($found[1] !== null) {
-                    break;
+        // Distinct slot identities the markers at one time stand for. Same-time sessions consume them
+        // one-for-one (two cancelled lessons from different slots cover both); once one is left, it repeats.
+        $pending = [];
+        $hasOrigin = function (string $key) use (&$pending, $sameLesson, $origin): bool {
+            if (!isset($pending[$key])) {
+                $pending[$key] = [];
+                foreach ($sameLesson[$key] ?? [] as $r) {
+                    $found = $origin($r);
+                    if ($found[1] !== null && !in_array($found, $pending[$key], true)) {
+                        $pending[$key][] = $found;
+                    }
                 }
             }
 
-            return $found;
+            return $pending[$key] !== [];
+        };
+        $nextOrigin = function (string $key) use (&$pending, $hasOrigin): array {
+            if (!$hasOrigin($key)) {
+                return [null, null];
+            }
+
+            return count($pending[$key]) > 1 ? array_shift($pending[$key]) : $pending[$key][0];
         };
 
         $rows = [];
         $taken = [];
+        // Internal reschedule placeholders are bookkeeping, hidden from the index; they stand for no lesson.
         $sessions = ClassSession::whereIn('StudentClassID', $classIds)->whereDate('SessionDate', $targetDate)
+            ->where(fn ($q) => $q->whereNull('Note')->orWhere('Note', 'NOT LIKE', '%cancelled-duplicate-reschedule-placeholder%'))
             ->orderBy('id')->get(['id', 'StudentClassID', 'StartTime', 'OriginalSessionDate', 'OriginalStartTimeHM']);
         foreach ($sessions as $s) {
             $classId = (int) $s->StudentClassID;
             $key = $classId . '|' . $hm($s->StartTime);
             if ($s->OriginalStartTimeHM) {
                 $rows[$classId][] = [$hm($s->StartTime), $ymd($s->OriginalSessionDate), $hm($s->OriginalStartTimeHM)];
-            } elseif (($extraBudget[$key] ?? 0) > 0) {
-                $extraBudget[$key]--; // the makeup's own session
+            } elseif (($extraBudget[$key] ?? 0) > 0 && !$hasOrigin($key)) {
+                // The makeup's own session. A marker identity at this time means a regular lesson
+                // moved here, so the identity wins over the makeup.
+                $extraBudget[$key]--;
 
                 continue;
             } else {
-                $rows[$classId][] = [$hm($s->StartTime), ...$bestOrigin($key)];
+                $rows[$classId][] = [$hm($s->StartTime), ...$nextOrigin($key)];
             }
             $taken[$key] = true;
         }
@@ -755,7 +776,7 @@ class ClassSessionController extends Controller
             if ($markers === []) {
                 continue;
             }
-            $rows[(int) $markers[0]->student_course_id][] = [$hm($markers[0]->start_time), ...$bestOrigin($key)];
+            $rows[(int) $markers[0]->student_course_id][] = [$hm($markers[0]->start_time), ...$nextOrigin($key)];
         }
 
         return $rows;

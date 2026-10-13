@@ -194,6 +194,82 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         $this->assertSame(['14:00 cancelled', '14:00 leave', '18:00 scheduled'], $this->startsOn($course));
     }
 
+    public function test_two_cancelled_same_time_lessons_from_different_slots_cover_both(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-k@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // Both contract lessons were moved to 15:00 and cancelled; their markers carry different slots.
+        $this->createSession($course, '2026-10-13', '15:00', '17:00', 'cancelled');
+        $this->createSession($course, '2026-10-13', '15:00', '17:00', 'cancelled');
+        $this->extraSchedule($course, $teacherId, '15:00', 'cancelled', 'normal', ['original_schedule_date' => '2026-10-13', 'original_start_time' => '13:00']);
+        $this->extraSchedule($course, $teacherId, '15:00', 'cancelled', 'normal', ['original_schedule_date' => '2026-10-13', 'original_start_time' => '18:00']);
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['15:00 cancelled', '15:00 cancelled'], $this->startsOn($course));
+    }
+
+    public function test_a_marker_identity_wins_over_a_schedule_only_makeup_at_the_same_time(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-l@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // A makeup Schedule with no session of its own, and the regular 13:00 lesson moved onto its time.
+        $this->extraSchedule($course, $teacherId, '15:00', 'scheduled', 'extra');
+        $this->createSession($course, '2026-10-13', '15:00', '17:00', 'scheduled');
+        $this->extraSchedule($course, $teacherId, '15:00', 'scheduled', 'normal', ['original_schedule_date' => '2026-10-13', 'original_start_time' => '13:00']);
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['15:00 scheduled', '18:00 scheduled'], $this->startsOn($course), 'No second 13:00 lesson.');
+    }
+
+    public function test_a_reschedule_placeholder_does_not_claim_a_contract_slot(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-m@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        $placeholder = $this->createSession($course, '2026-10-13', '17:00', '19:00', 'cancelled');
+        $placeholder->forceFill(['Note' => 'moved; cancelled-duplicate-reschedule-placeholder'])->save();
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['13:00 scheduled', '17:00 cancelled', '18:00 scheduled'], $this->startsOn($course));
+    }
+
+    public function test_a_superseded_schedule_lends_no_identity(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-n@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // Legacy 13:00 lesson moved to 13:30 (no identity); a superseded repair row at 13:30 claims 18:00.
+        $this->createSession($course, '2026-10-13', '13:30', '15:30', 'leave');
+        $this->extraSchedule($course, $teacherId, '13:30', Schedule::STATUS_SUPERSEDED, 'normal', ['original_schedule_date' => '2026-10-13', 'original_start_time' => '18:00']);
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['13:30 leave', '18:00 scheduled'], $this->startsOn($course));
+    }
+
+    public function test_a_long_reschedule_chain_still_reaches_its_slot(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-o@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // 18:00 moved 26 times on the same day, ending at 06:30 (live session, no identity).
+        $prev = $this->extraSchedule($course, $teacherId, '18:00', 'rescheduled', 'normal');
+        for ($i = 1; $i <= 25; $i++) {
+            $prev = $this->extraSchedule($course, $teacherId, sprintf('06:%02d', $i), 'rescheduled', 'normal', ['original_schedule_id' => $prev->id]);
+        }
+        $this->extraSchedule($course, $teacherId, '06:30', 'scheduled', 'normal', ['original_schedule_id' => $prev->id]);
+        $this->createSession($course, '2026-10-13', '06:30', '08:30', 'scheduled');
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['06:30 scheduled', '13:00 scheduled'], $this->startsOn($course), 'The 13:00 lesson must not disappear.');
+    }
+
     /** @param array<string, mixed> $identity */
     private function extraSchedule(StudentClass $course, int $teacherId, string $start, string $status, string $type, array $identity = []): Schedule
     {
