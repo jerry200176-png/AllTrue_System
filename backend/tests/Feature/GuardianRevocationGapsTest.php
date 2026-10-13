@@ -167,15 +167,49 @@ class GuardianRevocationGapsTest extends TestCase
         $this->assertStringNotContainsString($a->name, json_encode($rows, JSON_UNESCAPED_UNICODE));
     }
 
-    /** Access contract (strict): a LINE account never bound to a group member does not reach it through the group. */
-    public function test_line_session_does_not_reach_a_group_member_it_was_never_bound_to(): void
+    /**
+     * Access contract (strict): a LINE account never bound to a group member does not reach it through the group.
+     *
+     * @dataProvider flagModes
+     */
+    public function test_line_session_does_not_reach_a_group_member_it_was_never_bound_to(bool $flag): void
     {
-        config(['perfflags.multi_guardian_enabled' => true]);
+        config(['perfflags.multi_guardian_enabled' => $flag]);
         $line = $this->lineId('f');
         [$a, $b, $group] = $this->groupedPair(StudentIdentityService::MODE_ACTIONS);
         $this->bindLine($b, $line, $this->campusB); // same child, bound at campus B only
         $classA = $this->course($a);
         $token = $this->groupToken($b, $group, $line);
+
+        $this->assertNotContains($classA, collect($this->dashboard($token)->assertOk()->json('classes'))->pluck('id')->all());
+        $this->switchTo($token, $a)->assertForbidden();
+    }
+
+    /** Access contract: two separately bound children (no identity group) stay reachable from either session. */
+    /** @dataProvider flagModes */
+    public function test_separately_bound_children_stay_reachable_without_a_group(bool $flag): void
+    {
+        config(['perfflags.multi_guardian_enabled' => $flag]);
+        $line = $this->lineId('9');
+        $k1 = StudentFactory::new()->create(['CampusID' => $this->campusA->id, 'enable' => 1]);
+        $k2 = StudentFactory::new()->create(['CampusID' => $this->campusB->id, 'enable' => 1]);
+        $this->bindLine($k1, $line, $this->campusA);
+        $this->bindLine($k2, $line, $this->campusB);
+
+        $this->switchTo($this->groupToken($k1, null, $line), $k2)->assertOk()->assertJsonPath('student.id', $k2->id);
+    }
+
+    /** Access contract: a suspended guardian link stops group reach like a revoked one (flag on: no SLB fallback). */
+    public function test_suspended_guardian_link_stops_group_reach(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $line = $this->lineId('8');
+        [$a, $b, $group] = $this->groupedPair(StudentIdentityService::MODE_ACTIONS);
+        $this->bindLine($a, $line, $this->campusA);
+        $this->bindLine($b, $line, $this->campusB);
+        $classA = $this->course($a);
+        $token = $this->groupToken($b, $group, $line);
+        $this->linkFor($a, $line)->update(['status' => StudentGuardian::STATUS_SUSPENDED]);
 
         $this->assertNotContains($classA, collect($this->dashboard($token)->assertOk()->json('classes'))->pluck('id')->all());
         $this->switchTo($token, $a)->assertForbidden();
