@@ -8,14 +8,17 @@ import { join } from 'node:path';
 const dir = '.github/workflows';
 const FIXTURES = new Set(['ci-ephemeral', 'alltruepw', 'rootpw', 'root']); // non-sensitive CI-only DB fixtures
 const SECRET_VAR = '[A-Za-z_]*(?:PASS(?:WORD)?|SECRET)[A-Za-z_]*'; // session tokens are add-mask'ed per workflow
-const ENV_FILE = String.raw`\S*\.env(?!\.(?:example|sample|dist|template)\b)(?:\.[\w-]+)?(?=[\s;&|)"']|$)`;
+const ENV_FILE = String.raw`\S*\.env(?!\.(?:example|sample|dist|template)\b)(?:\.[\w-]+)*(?=[\s;&|)"']|$)`;
 // Each echo/printf is judged on its own text (up to the next `;`/`&&`/`||` after the secret var).
 // Safe sinks: redirect to a real file (NOT `>&2`, `/dev/stderr`, `2>`), or a hash pipe. base64 is reversible, so not safe.
 // stdout (`>`, `1>`, `&>`, `>>`) to a real path; not `2>`, `>&N`, process substitution `>(..)`, or /dev|/proc aliases (/dev/null is fine).
 const FILE_REDIRECT = /(?:^|[^\d&>])(?:1|&)?>>?\s*(?!&|>?\(|\/dev\/(?!null\b)|\/proc\/)["']?[^\s"']/;
 // output inside an outer `{ ...; } > file` group that can still reach the log (tee, >&N, device/proc paths, >(..))
 const LEAKS_BACK = />&(?![1-]\b)|\btee\b|\/dev\/(?!null\b)|\/proc\/|>\(/;
-const HASH_PIPE = /\|\s*(?:sha\d*sum|shasum|md5sum|openssl\s+dgst)/;
+// anywhere in the command: a stage that still writes to the log (tee /dev/stderr, >(..), /proc fd, >&2)
+const LOG_ALIAS = /\/dev\/(?!null\b)|\/proc\/|>\(|>&(?![1-]\b)\d/;
+// hash pipes, or a pipe into a client reading the secret from stdin (docker/helm login --password-stdin)
+const HASH_PIPE = /\|\s*(?:sha\d*sum|shasum|md5sum|openssl\s+dgst)|\|[^|;&]*--password-stdin\b/;
 const SECRET_RE = new RegExp(`\\$\\{?${SECRET_VAR}\\b|\\$\\{\\{[^}]*\\b${SECRET_VAR}\\b`, 'i');
 function echoesSecret(line, grouped = false) {
   return line.split(/(?=\b(?:echo|printf)\b)/).filter((x) => /^(?:echo|printf)\b/.test(x)).some((seg) => {
@@ -24,18 +27,21 @@ function echoesSecret(line, grouped = false) {
     const cut = seg.slice(m.index).search(/;|&&|\|\|/);
     const region = cut < 0 ? seg : seg.slice(0, m.index + cut);
     if (grouped && !LEAKS_BACK.test(region)) return false;
+    if (LOG_ALIAS.test(region)) return true;
     return !FILE_REDIRECT.test(region) && !HASH_PIPE.test(region);
   });
 }
 const rules = [
   ['shell tracing', /(?:^|[;&\s])set\s+-[a-z]*x|\b(?:ba|da|z|k|a)?sh\s+(?:-\S+\s+)*-[a-z]*x|xtrace/],
-  ['env dump', new RegExp(`(?:^|[;&|]\\s*|^\\s*)(?:printenv|export\\s+-p|env)\\s*(?:$|[|;&])|\\bprintenv\\s+(?:-\\S+\\s+)*\\$?${SECRET_VAR}\\b`)],
-  ['cat/print .env', new RegExp(String.raw`\b(?:cat|less|more|bat)\s+(?:-\S+\s+)*` + ENV_FILE)],
+  // option-only dumps (env -0, printenv --null) still print everything; printenv VAR is case-insensitive
+  ['env dump', { test: (l) => /(?:^|[;&|]\s*|^\s*)(?:printenv|export\s+-p|env)(?:\s+-\S+)*\s*(?:$|[|;&])/.test(l)
+    || new RegExp(`\\bprintenv\\s+(?:-\\S+\\s+)*\\$?${SECRET_VAR}\\b`, 'i').test(l) }],
+  ['cat/print .env', new RegExp(String.raw`\b(?:cat|less|more|bat)\s+(?:-\S+\s+)*(?:0?<\s*)?` + ENV_FILE)],
   // only hashing / redirects to a file are safe; base64 is reversible so it is NOT exempt
   ['echo of secret var', { test: echoesSecret }], // called as test(line, grouped) below
 ];
 // literal value assigned to a *PASS(WORD)* key (workflow env/yaml or .env heredoc) must be a known fixture
-const literal = new RegExp(`^\\s*([A-Z_]*PASS(?:WORD)?[A-Z_]*)\\s*[:=]\\s*(['"]?)([^\\s'"$]+)\\2\\s*$`);
+const literal = new RegExp(`^\\s*((?:[A-Z_]*_)?PASS(?:WORD|WD)?(?:_[A-Z_]*)?|[A-Z_]*PASSWORD[A-Z_]*)\\s*[:=]\\s*(['"]?)([^\\s'"$]+)\\2\\s*$`);
 
 // Python: yield every parsed `run:` string and every PASS-named scalar, with a YAML path.
 const PY = `
@@ -55,7 +61,7 @@ def walk(n, p, acc):
             if k == 'matrix': acc['shells'] += [[q, x] for x in leaves(v)]
             if k == 'run' and isinstance(v, str): acc['runs'].append([q, v])
             elif k == 'shell' and isinstance(v, (str, list)): acc['shells'] += [[q, x] for x in leaves(v)]
-            elif re.search(r'PASS', str(k), re.I) and isinstance(v, (str, int, float)) and not isinstance(v, bool): acc['kvs'].append([q, str(k), str(v)])
+            elif re.search(r'(?:^|_)PASS(?:WORD|WD)?(?:_|$)|PASSWORD', str(k), re.I) and isinstance(v, (str, int, float)) and not isinstance(v, bool): acc['kvs'].append([q, str(k), str(v)])
             else: walk(v, q, acc)
     elif isinstance(n, list):
         for i, v in enumerate(n): walk(v, p + '[' + str(i) + ']', acc)
@@ -111,7 +117,7 @@ function scanScript(where, script) {
   lines.forEach((raw, i) => {
     const line = raw.replace(/^\s*#.*/, '')
       // ponytail: only the add-mask command is exempt, not the rest of the line
-      .replace(/\b(?:echo|printf)\s+['"]?::add-mask::[^;&|\n]*/g, '');
+      .replace(/(^\s*(?:-\s*)?(?:run:\s*)?|[;&|]\s*)(?:echo|printf)\s+['"]?::add-mask::[^;&|\n]*/g, '$1');
     // plain assignment from a capture (X=$(cat .env)) is not printed, but a later command on the line still is
     const noAssign = dropAssignCaptures(line);
     for (const [why, re] of rules) {
@@ -189,10 +195,26 @@ export const trip = {
   'P2 printenv VAR': wf('|\n          printenv DB_PASSWORD'),
   'P2 folded >': wf('>\n          echo\n          "$DB_PASSWORD"'),
   'P2 folded >-': wf('>-\n          cat\n          backend/.env'),
+  'tee /dev/stderr before file sink': wf('|\n          echo "$DB_PASSWORD" | tee /dev/stderr > artifact'),
+  'tee /proc fd before hash': wf('|\n          echo "$DB_PASSWORD" | tee /proc/self/fd/2 | sha256sum'),
+  'env -0': wf('|\n          env -0'),
+  'printenv --null': wf('|\n          printenv --null'),
+  'printenv lowercase var': wf('|\n          printenv db_password'),
+  'cat < .env': wf('|\n          cat < backend/.env'),
+  'cat 0< .env': wf('|\n          cat 0< backend/.env'),
+  '.env.production.local': wf('|\n          cat backend/.env.production.local'),
+  'nested add-mask then secret': wf('|\n          echo "prefix $(echo ::add-mask::$TOKEN) $DB_PASSWORD"'),
+  'with.script execSync cat .env': "jobs:\n  j:\n    steps:\n      - uses: actions/github-script@v7\n        with:\n          script: |\n            require('child_process').execSync('cat backend/.env', {stdio: 'inherit'})",
+  'DB_PASSWD literal': 'env:\n  DB_PASSWD: hunter2',
   'P2 continued line': wf("|\n          printf '%s\\n' \"$DB_PASSWORD\" \\\n            ''"),
 };
 for (const [k, y] of Object.entries(trip)) if (!scan('probe', y).length) { console.error('guard missed probe:', k); process.exit(1); }
 export const ok = {
+  'BYPASS_REASON / COMPASS_MODE keys': 'env:\n  BYPASS_REASON: approved\n  COMPASS_MODE: north',
+  'env -i command': wf('|\n          env -i PATH="$PATH" ./run.sh'),
+  'tee to file then /dev/null': wf('|\n          echo "$DB_PASSWORD" | tee artifact > /dev/null'),
+  'single-line run add-mask': 'jobs:\n  j:\n    steps:\n      - run: echo "::add-mask::$DB_PASSWORD"',
+  'echo | docker login --password-stdin': wf('|\n          echo "$REGISTRY_PASSWORD" | docker login -u u --password-stdin ghcr.io'),
   'echo 1> file': wf('|\n          echo "$DB_PASSWORD" 1> artifact'),
   'echo &> file': wf('|\n          echo "$DB_PASSWORD" &> artifact'),
   'echo &>> file': wf('|\n          echo "$DB_PASSWORD" &>> artifact'),
