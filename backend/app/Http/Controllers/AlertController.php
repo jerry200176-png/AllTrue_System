@@ -334,8 +334,6 @@ class AlertController extends Controller
                 'payable_invoice_id' => $payable['payable_invoice_id'],
                 'billing_period'    => $payable['payable_billing_period'],
                 'paid_amount'        => $paidAmount,
-                // #3942: a confirmed report may sit on a non-anchor member's current bill; the receipt lookup checks them all.
-                'receipt_invoice_ids' => array_values(array_filter(array_map(fn ($mid) => $payableMap[$mid]['payable_invoice_id'] ?? null, [$anchorId, ...$pkgMemberIds]))),
                 // F7 S3b: one outstanding answer = the resolver's course-level value; no invoice => estimate.
                 'outstanding'        => $this->courseOutstanding($courseStatuses[$anchorId] ?? null) ?? ($isPaid ? 0 : max(0, $charge - $paidAmount)),
                 'payment_status'     => $this->computePackageCountPaymentStatus($pkg, $paidAmount, $charge, $pendingReportId !== null),
@@ -467,14 +465,13 @@ class AlertController extends Controller
         $rows = $rows->merge($countPkgAlerts)->merge($monthlyPkgAlerts)->values();
 
         // #3942: the 收據 entry opens a confirmed report. A confirmed partial payment keeps the bill `partial` but already has
-        // a receipt, so the row carries the confirmed report of ITS CURRENT BILL (any member course of a package bill), never
-        // an older term's receipt.
+        // a receipt, so the row carries the confirmed report of ITS CURRENT BILL, never an older term's receipt. A package row
+        // reads its anchor's bill, the same bill its amounts come from (member-wide package money + receipts: follow-up).
         $receiptByInvoice = PaymentReport::query()->where('status', 'confirmed')
-            ->whereIn('InvoiceID', $rows->flatMap(fn ($r) => $r['receipt_invoice_ids'] ?? [$r['payable_invoice_id'] ?? null])->filter()->all())
+            ->whereIn('InvoiceID', $rows->pluck('payable_invoice_id')->filter()->all())
             ->groupBy('InvoiceID')->selectRaw('InvoiceID, MAX(id) AS report_id')->pluck('report_id', 'InvoiceID');
         $rows = $rows->map(function ($row) use ($receiptByInvoice) {
-            $reportId = collect($row['receipt_invoice_ids'] ?? [$row['payable_invoice_id'] ?? 0])->map(fn ($id) => $receiptByInvoice[$id] ?? null)->filter()->max(); // newest across member bills
-            unset($row['receipt_invoice_ids']);
+            $reportId = $receiptByInvoice[$row['payable_invoice_id'] ?? 0] ?? null;
 
             return $row + ['has_confirmed_receipt' => $reportId !== null, 'receipt_report_id' => $reportId !== null ? (int) $reportId : null];
         })->values();
