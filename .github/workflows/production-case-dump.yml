@@ -45,6 +45,11 @@ on:
         required: false
         default: ''
         type: string
+      expected_teacher_ids:
+        description: 'contract_muzha_student only: expected teacher IDs (comma-separated numbers) to compare with the contracts'
+        required: false
+        default: ''
+        type: string
       subject_name:
         description: 'Subject name for billing probe (PII is not written to the artifact)'
         required: false
@@ -90,6 +95,7 @@ jobs:
           CASE_KEY: ${{ inputs.case_key }}
           TARGET_STUDENT_ID: ${{ inputs.student_id }}
           TARGET_STUDENT_CLASS_ID: ${{ inputs.student_class_id }}
+          EXPECTED_TEACHER_IDS: ${{ inputs.expected_teacher_ids }}
           TARGET_SUBJECT_NAME: ${{ inputs.subject_name }}
         run: |
           set -euo pipefail
@@ -122,11 +128,15 @@ jobs:
               raise SystemExit(f'{case} requires student_id')
           if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
+          expected_teacher_ids = os.environ.get('EXPECTED_TEACHER_IDS') or ''
+          if expected_teacher_ids and (case != 'contract_muzha_student' or not all(x.isdigit() for x in expected_teacher_ids.split(','))):
+              raise SystemExit('expected_teacher_ids is only for contract_muzha_student, as comma-separated numbers')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
           print(f'''<?php
           $case = {case!r};
           $targetStudentId = {int(target_student_id) if target_student_id else 'null'};
           $targetStudentClassId = {int(target_student_class_id) if target_student_class_id else 'null'};
+          $expectedTeacherIds = {json.dumps([int(x) for x in expected_teacher_ids.split(',')]) if expected_teacher_ids else 'null'};
           $targetSubjectName = {json.dumps(target_subject_name, ensure_ascii=False)};
           $db = \\Illuminate\\Support\\Facades\\DB::class;
           $out = ['ok' => true, 'case' => $case, 'read_only' => true,
@@ -1248,8 +1258,10 @@ jobs:
             $out['subjects'] = $rowsOf($db::table('Subject')->where(fn ($q) => $q->where('Subject_Name', 'like', '%英%')->orWhere('Subject_Name', 'like', '%數學%')));
             $classes = $rowsOf($db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID'));
             $classIds = array_map(fn ($r) => (int)$r['ID'], $classes);
-            // #3627: teacher ids come from the student's own contracts; no name lookup in source.
-            $out['teachers'] = collect($classes)->pluck('TeacherID')->filter()->map(fn ($i) => (int)$i)->unique()->sort()->values()->all();
+            // #3627: no name lookup in source. The expected teachers are an explicit, independent ID input
+            // (null when not given); the contracts' own TeacherIDs are reported separately for comparison.
+            $out['teachers'] = $expectedTeacherIds;
+            $out['contract_teacher_ids'] = collect($classes)->pluck('TeacherID')->filter()->map(fn ($i) => (int)$i)->unique()->sort()->values()->all();
             $out['student_classes'] = $classes;
             if ($tbl('course_contract_group_members')) {{
               $out['group_members'] = $rowsOf($db::table('course_contract_group_members')->whereIn('student_class_id', $classIds));
