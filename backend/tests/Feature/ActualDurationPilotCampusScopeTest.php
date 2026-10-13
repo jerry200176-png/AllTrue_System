@@ -16,15 +16,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/**
- * #3834 — actual-duration pilot scoped to an allowlist of campuses
- * (`perfflags.actual_duration_campus_ids`). The allowlist is a third gate on top of
- * the environment flag and the course's own deduction_basis; outside it, an
- * opted-in course deducts exactly like fixed_session.
- *
- * Every test builds the allowlist from the campuses it created, so these tests
- * follow the config value rather than any particular production CampusID.
- */
+/** #3834: actual-duration pilot; every campus ID and allowlist comes from test fixtures. */
 class ActualDurationPilotCampusScopeTest extends TestCase
 {
     use RefreshDatabase;
@@ -183,16 +175,16 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame(90, $sc->fresh()->resolvedStandardLessonMinutes());
     }
 
-    /** Renewal / tutoring copies never mint a new actual_duration contract off-pilot. */
-    /**
-     * Codex P1 on #3948: a course that recorded a minute event while piloting must,
-     * once its campus leaves the allowlist, count every attendance as one whole lesson.
-     * SessionDuration (180) differs from the standard (120) so the old 90-minute row
-     * would otherwise be re-read as a partial lesson against 180.
-     */
+    /** #3948: rollback counts whole lessons; superseded extras cannot retag new attendance. */
     public function test_removing_the_campus_recounts_history_as_whole_lessons(): void
     {
         [$sc, $studentId] = $this->course($this->pilotCampusId, ['SessionDuration' => 180]);
+        \App\Models\Schedule::create([
+            'student_id' => $studentId, 'student_course_id' => $sc->ID, 'teacher_id' => $this->teacherId, 'branch_id' => $this->pilotCampusId,
+            'subject' => 'Math', 'schedule_date' => Carbon::now()->subDays(12)->toDateString(), 'day_of_week' => Carbon::now()->subDays(12)->dayOfWeekIso, 'start_time' => '14:00', 'end_time' => '15:30',
+            'duration_hours' => 1.5, 'class_type' => 'one_on_one', 'status' => \App\Models\Schedule::STATUS_SUPERSEDED, 'type' => 'extra', 'deduction' => 1,
+        ]);
+
         $this->attend($sc, $studentId, '14:00:00', '15:30:00', 12);
         $this->assertSame(90, (int) $this->ledgerMinutes($sc), 'live pilot records actual minutes');
 
@@ -252,7 +244,7 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame('retro_leave_makeup', $reverse->source);
     }
 
-    public function test_unmarked_minute_history_requires_review_without_recount(): void
+    public function test_unmarked_minute_history_is_held_until_matching_reversal(): void
     {
         [$sc, $studentId] = $this->course($this->pilotCampusId);
         $this->attend($sc, $studentId, '14:00:00', '15:30:00', 10);
@@ -264,6 +256,15 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $diag = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID];
         $this->assertTrue($diag['ambiguous_minute_evidence']);
         $this->assertTrue(SessionDeductionService::usageBalanceAssessment($sc->fresh(), $diag)['review_required']);
+        $sessionId = (int) SessionDeductionLedger::where('student_class_id', $sc->ID)->value('class_session_id');
+        $this->assertTrue(SessionDeductionService::reverseForSession($sc->ID, $sessionId));
+        \App\Models\StudentSignIn::where('ClassSessionID', $sessionId)->update(['VoidedAt' => now()]);
+        ClassSession::whereKey($sessionId)->update(['Status' => 'scheduled']);
+        SessionDeductionService::recomputeCounters($sc->ID);
+        $this->assertSame(960, (int) $sc->fresh()->RemainingMinutes);
+        $this->attend($sc, $studentId, '14:00:00', '16:00:00', 8);
+        $this->assertSame([1, 7], [(int) $sc->fresh()->UsedSessions, (int) $sc->fresh()->RemainingSessions]);
+        $this->assertFalse(SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID]['ambiguous_minute_evidence']);
     }
 
     public function test_copied_basis_follows_the_allowlist(): void
