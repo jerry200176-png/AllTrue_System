@@ -91,7 +91,7 @@ class RotateTelegramWebhookSecret extends Command
             $campus->TelegramWebhookSecret = $secret;
             $campus->save();
         } catch (Throwable $e) {
-            return $this->compensate($campus, $botToken, $webhookUrl, $previous, 'Database save failed after setWebhook: ' . $this->mask($e->getMessage(), [$botToken, $secret]));
+            return $this->compensate($campus, $botToken, $webhookUrl, $previous, 'Database save failed after setWebhook: ' . $this->mask($e->getMessage(), [$botToken, $secret, $previous]));
         }
 
         $this->info("Campus {$campus->getKey()} ({$campus->name}): webhook secret rotated and registered with Telegram.");
@@ -103,7 +103,12 @@ class RotateTelegramWebhookSecret extends Command
             $campus->TelegramWebhookSecret = $previous === '' ? null : $previous;
             $campus->save();
         } catch (Throwable $e) {
-            $this->error('Could not restore the database secret: ' . $this->mask($e->getMessage(), [$botToken, $secret]));
+            // DB still holds the new secret, which Telegram also has: leave Telegram alone so both sides stay in sync.
+            Log::critical('telegram.webhook.rotate_secret.verify_restore_failed', ['campus_id' => $campus->getKey()]);
+            $this->error('Could not restore the database secret: ' . $this->mask($e->getMessage(), [$botToken, $secret, $previous])
+                . ' Telegram was NOT reverted, so Telegram and the DB both keep the new secret. '
+                . 'Recovery: re-run telegram:rotate-webhook-secret 15 when healthy, or run it with --rollback.');
+            return self::FAILURE;
         }
         return $this->compensate($campus, $botToken, $webhookUrl, $previous, 'Registration verification failed; reverting to the previous state.');
     }
@@ -123,8 +128,15 @@ class RotateTelegramWebhookSecret extends Command
             $this->error("Rollback aborted, DB NOT changed ({$err}). Re-run when Telegram is reachable.");
             return self::FAILURE;
         }
-        $campus->setAttribute('TelegramWebhookSecret', null);
-        $campus->save();
+        $previous = trim((string) ($campus->TelegramWebhookSecret ?? ''));
+        try {
+            $campus->setAttribute('TelegramWebhookSecret', null);
+            $campus->save();
+        } catch (Throwable $e) {
+            // Telegram already dropped the webhook but the DB still holds the secret: re-register it so both sides match.
+            $url = rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/' . ($campus->code ?: $campus->getKey());
+            return $this->compensate($campus, $botToken, $url, $previous, 'Database update failed after deleteWebhook: ' . $this->mask($e->getMessage(), [$botToken, $previous]));
+        }
         $this->info("Campus {$campus->getKey()}: Telegram webhook deleted and secret cleared (webhook fails closed).");
         return self::SUCCESS;
     }

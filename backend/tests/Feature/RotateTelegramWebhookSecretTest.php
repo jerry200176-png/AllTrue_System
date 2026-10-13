@@ -248,6 +248,49 @@ class RotateTelegramWebhookSecretTest extends TestCase
         $this->assertNotEmpty(DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
     }
 
+    public function test_verification_unavailable_and_db_restore_failure_keeps_both_sides_on_new_secret(): void
+    {
+        $this->campus15(['code' => 'rotatenorestore', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => 'old-secret']);
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'getWebhookInfo')) {
+                throw new \Illuminate\Http\Client\ConnectionException('timeout');
+            }
+            return Http::response(['ok' => true], 200);
+        });
+        $saves = 0;
+        Campus::saving(function () use (&$saves) {
+            if (++$saves > 1) {
+                throw new \RuntimeException('db down while writing old-secret');
+            }
+        });
+
+        $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15']));
+        $output = Artisan::output();
+
+        $sets = Http::recorded()->filter(fn ($p) => str_contains($p[0]->url(), 'setWebhook'))->values();
+        $this->assertCount(1, $sets, 'Telegram must not be reverted when the DB could not be reverted');
+        $this->assertSame($sets[0][0]['secret_token'], DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
+        $this->assertStringNotContainsString('old-secret', $output);
+        $this->assertStringContainsString('Telegram was NOT reverted', $output);
+    }
+
+    public function test_rollback_db_failure_reregisters_previous_secret_without_leaking_it(): void
+    {
+        $this->campus15(['code' => 'rotaterbdb', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => 'live-secret']);
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true], 200)]);
+        Campus::saving(fn () => throw new \RuntimeException('db down while writing live-secret'));
+
+        $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15', '--rollback' => true]));
+        $output = Artisan::output();
+
+        $sets = Http::recorded()->filter(fn ($p) => str_contains($p[0]->url(), 'setWebhook'))->values();
+        $this->assertCount(1, $sets);
+        $this->assertSame('live-secret', $sets[0][0]['secret_token']);
+        $this->assertSame('live-secret', DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
+        $this->assertStringNotContainsString('live-secret', $output);
+        $this->assertStringContainsString('RESTORED', $output);
+    }
+
     public function test_delivery_error_newer_than_rotation_fails_and_restores(): void
     {
         $this->campus15(['code' => 'rotatenew', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => 'old-secret']);
