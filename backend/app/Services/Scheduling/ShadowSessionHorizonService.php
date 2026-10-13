@@ -50,7 +50,8 @@ final class ShadowSessionHorizonService
 
             $uncovered = (int) ($p['occurrence_summary']['uncovered_new'] ?? 0);
             $previewUncovered += $uncovered;
-            $candN = count($e['candidates'] ?? []);
+            // #3727: net of slots execute will skip, for the total, the drift check and the sample alike.
+            $candN = (int) ($e['would_create'] ?? count($e['candidates'] ?? []));
             $ensureCandidates += $candN;
             if (!empty($p['auto_ensure_eligible'])) {
                 $ensureEligible++;
@@ -61,8 +62,11 @@ final class ShadowSessionHorizonService
 
             // Drift: Preview covered-new count vs Ensure dry-run candidates (eligible only).
             $coverable = (int) ($p['occurrence_summary']['coverable_new'] ?? 0);
+            // A shared package intentionally plans covered AND uncovered (overplan) occurrences, so its
+            // expected Ensure count is expected_new = coverable + uncovered (#3727 review).
+            $expectedEnsure = !empty($p['package_id']) ? $coverable + $uncovered : $coverable;
             $drift = false;
-            if (!empty($p['auto_ensure_eligible']) && $reason === 'DRY_RUN_OK' && $coverable !== $candN) {
+            if (!empty($p['auto_ensure_eligible']) && $reason === 'DRY_RUN_OK' && $expectedEnsure !== $candN) {
                 $drift = true;
                 $driftCourses++;
             }
