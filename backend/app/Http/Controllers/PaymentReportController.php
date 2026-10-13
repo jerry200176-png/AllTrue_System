@@ -527,7 +527,9 @@ class PaymentReportController extends Controller
                         : $sc->getAttribute('closed_reason'),
                 ]);
             }
-            if ($package && $status === 'paid') {
+            // #3892 review P1: only a shared count-mode obligation settles the whole package; a monthly ('date') member
+            // settles itself, so confirming it never marks the package or its siblings paid (Founder Q3=A).
+            if ($sc && $this->isSharedPackageObligation($package, $sc) && $status === 'paid') {
                 $paidAt = Carbon::make($report->payment_date)?->toDateString()
                     ?? Carbon::today()->toDateString();
                 $this->markPackagePaid($package, $paidAt);
@@ -681,8 +683,7 @@ class PaymentReportController extends Controller
             // report -> package order and deadlock (#3892 review), so package members read without a row lock.
             // Monthly ('date') package members are recorded per member against their own period subtotal, so they keep
             // the per-course pending check (#3892 review); only count-mode packages share one obligation.
-            $sharedObligation = $package && strtolower((string) ($lockedCourse->getAttribute('ScheduleMode') ?? 'count')) !== 'date';
-            $existingPending = $sharedObligation
+            $existingPending = $this->isSharedPackageObligation($package, $lockedCourse)
                 ? PaymentReport::query()->whereIn('StudentClassID', StudentClass::query()->where('PackageID', $package->getKey())->pluck('ID')->all())
                     ->where('status', 'pending')->first()
                 : PaymentReport::where('StudentClassID', $sc->ID)->where('status', 'pending')->lockForUpdate()->first();
@@ -901,6 +902,17 @@ class PaymentReportController extends Controller
         }
 
         return CoursePackage::where('id', $packageId)->lockForUpdate()->first();
+    }
+
+    /**
+     * #3753 / #3892: a CoursePackage is one shared payment obligation only for count-mode members. Monthly ('date')
+     * members are billed and settled per member against their own period subtotal.
+     *
+     * @phpstan-assert-if-true CoursePackage $package
+     */
+    private function isSharedPackageObligation(?CoursePackage $package, StudentClass $course): bool
+    {
+        return $package !== null && strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) !== 'date';
     }
 
     private function markPackagePaid(CoursePackage $package, string $paidAt): void

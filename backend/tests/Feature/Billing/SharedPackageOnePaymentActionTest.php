@@ -132,6 +132,35 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $this->assertNotSame('pending_report_exists', $second->json('code'));
     }
 
+    /**
+     * #3892 review P1 (r4254384774): confirming one monthly member settles that member only. It must not cascade Paid=1 to
+     * the package and its siblings, or the sibling's pending report can no longer be confirmed (Founder Q3=A).
+     */
+    public function test_confirming_one_monthly_member_does_not_mark_the_package_or_sibling_paid(): void
+    {
+        [$a, $b, $pkg] = $this->sharedPackage();
+        $pkg->update(['billing_mode' => 'monthly']);
+        $student = Student::findOrFail($a->StudentID);
+        $h = $this->directorHeaders();
+        $reports = [];
+        foreach ([$a, $b] as $c) {
+            $c->update(['ScheduleMode' => 'date', 'Charge' => 8800, 'StartDate' => '2026-07-01', 'EndDate' => '2026-08-31', 'SessionCount' => 0]);
+            $inv = $this->invoice($c, $student, '2026-08', 8800, 'unpaid', 0, []);
+            $reports[] = PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $c->ID, 'InvoiceID' => $inv->id,
+                'reported_by_name' => 'x', 'payment_date' => '2026-08-20', 'payment_method' => 'cash', 'reported_amount' => 8800,
+                'status' => 'pending', 'report_token_hash' => hash('sha256', uniqid('r', true)), 'token_expires_at' => now()->addDay()]);
+        }
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$reports[0]->id}/confirm")->assertOk();
+        $this->assertSame(1, (int) $a->fresh()->Paid);
+        $this->assertSame(0, (int) $b->fresh()->Paid, 'a monthly sibling stays unpaid');
+        $this->assertFalse((bool) $pkg->fresh()->paid, 'a monthly package is not settled by one member');
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$reports[1]->id}/confirm")->assertOk();
+        $this->assertSame('confirmed', $reports[1]->fresh()->status);
+        $this->assertSame(1, (int) $b->fresh()->Paid);
+    }
+
     /** @return array<string, string> */
     private function directorHeaders(): array
     {
