@@ -361,7 +361,6 @@ class TuitionReminderDirectorNotificationTest extends TestCase
     public function test_suppressed_then_reopened_course_notice_is_unread_again(): void
     {
         [$campus, $director, $course, $s] = $this->fixture();
-        // The course notice exists and was read (no overdue invoice yet)
         NotificationSyncService::sync([$campus->id]);
         $courseN = Notification::where('SourceKey', "tuition:{$campus->id}:{$course->ID}")->firstOrFail();
         $this->markRead($courseN, $director);
@@ -402,7 +401,6 @@ class TuitionReminderDirectorNotificationTest extends TestCase
             'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01',
             'DueDate' => now()->addDays($dueOffset)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
         ]);
-        // A later open invoice must not move the window.
         \App\Models\Invoice::create([
             'StudentID' => $s->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01',
             'DueDate' => now()->addDays($dueOffset + 31)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
