@@ -1503,6 +1503,8 @@ async function submitBatchReport() {
         entries: rows.map((r) => ({
           student_class_id: r.id,
           amount: Number(r.payable_outstanding ?? r.payable_amount ?? 0),
+          // #3875: the bill this row shows; without it the backend fallback may pick an older one.
+          invoice_id: r.payable_invoice_id || undefined,
           account_last5: batchForm.value.payment_method === 'transfer' ? (batchLast5ById.value[r.id] || undefined) : undefined,
         })),
       }),
