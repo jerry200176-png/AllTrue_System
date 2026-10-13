@@ -626,8 +626,9 @@ class ClassSessionController extends Controller
                 ->whereDate('schedule_date', $targetDate)
                 ->whereIn('status', ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'])
                 ->get(['student_course_id', 'start_time'])
-                ->each(function ($r) use (&$suppressedSet) {
+                ->each(function ($r) use (&$suppressedSet, &$timesOnDateByClass) {
                     $suppressedSet[(int) $r->student_course_id . '|' . substr((string) $r->start_time, 0, 5)] = true;
+                    $timesOnDateByClass[(int) $r->student_course_id][] = substr((string) $r->start_time, 0, 5);
                 });
             ClassSession::whereIn('StudentClassID', $classIds)
                 ->whereDate('SessionDate', $targetDate)
@@ -652,7 +653,7 @@ class ClassSessionController extends Controller
             if (empty($slots)) {
                 continue;
             }
-            $slotStarts = array_map(fn ($slot) => substr((string) ($slot['start_time'] ?? ''), 0, 5), $slots);
+            $slotStarts = array_map(fn ($slot) => substr($slot['start_time'], 0, 5), $slots);
             if (array_diff($timesOnDateByClass[(int) $studentClass->ID] ?? [], $slotStarts) !== []) {
                 continue;
             }
