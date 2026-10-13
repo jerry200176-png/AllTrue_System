@@ -2,7 +2,10 @@
 
 namespace App\Services\ParentBinding;
 
+use App\Models\Guardian;
+use App\Models\ParentSession;
 use App\Models\Student;
+use App\Models\StudentGuardian;
 use App\Models\Campus;
 use App\Support\ParentBinding\ParentBindingCodes as C;
 use Illuminate\Support\Collection;
@@ -20,6 +23,8 @@ final class BindingService
     public function __construct(
         private readonly ParentBindingClassifier $classifier,
         private readonly ParentBindingObservability $observability,
+        private readonly GuardianSyncService $guardianSync,
+        private readonly ParentGuardianAccessService $guardianAccess,
     ) {}
 
     // ── Query ──────────────────────────────────────────────
@@ -174,15 +179,73 @@ final class BindingService
             return false;
         }
 
-        DB::table('student_line_bindings')->where('id', $bindingId)->delete();
+        return DB::transaction(function () use ($binding, $bindingId) {
+            // Revoke before deleting: same lock order as GuardianSyncService::revoke()
+            // (student_guardians -> parent_sessions -> student_line_bindings).
+            $revoked = $this->revokeGuardianAccess((int) $binding->student_id, (string) $binding->line_user_id);
+            if (DB::table('student_line_bindings')->where('id', $bindingId)->delete() === 0) {
+                return false;
+            }
 
-        Log::info('parent_binding.deleted', [
-            'binding_id' => $bindingId,
-            'student_id' => $binding->student_id,
-            'line_user_id' => $binding->line_user_id,
-        ]);
+            Log::info('parent_binding.deleted', [
+                'binding_id' => $bindingId,
+                'student_id' => $binding->student_id,
+                'line_user_id' => $binding->line_user_id,
+                'guardian_links_revoked' => $revoked['guardian_links_revoked'],
+                'parent_sessions_invalidated' => $revoked['parent_sessions_invalidated'],
+            ]);
 
-        return true;
+            return true;
+        });
+    }
+
+    /**
+     * #3933: unbinding also revokes guardian access. Call it right before the
+     * (student, LINE) binding row is deleted (one row per pair: unique index).
+     * Revokes this LINE subject's guardian link to this student via
+     * GuardianSyncService::revoke() and expires its parent sessions for this
+     * student. Other guardians and this LINE subject's other students are
+     * untouched. Idempotent; applies whether or not PERF_MULTI_GUARDIAN is on.
+     *
+     * @return array{guardian_links_revoked: int, parent_sessions_invalidated: int}
+     */
+    public function revokeGuardianAccess(int $studentId, string $lineUserId): array
+    {
+        $lineUserId = trim($lineUserId);
+        $result = ['guardian_links_revoked' => 0, 'parent_sessions_invalidated' => 0];
+        if ($lineUserId === '') {
+            return $result;
+        }
+
+        return DB::transaction(function () use ($studentId, $lineUserId, $result) {
+            // Telemetry only: revoke() expires these too, so count them first.
+            $result['parent_sessions_invalidated'] = ParentSession::query()
+                ->where('StudentID', $studentId)
+                ->where('line_user_id', $lineUserId)
+                ->where('ExpiresAt', '>', now())
+                ->count();
+
+            if (GuardianSyncService::dualWriteEnabled()) {
+                $guardianId = Guardian::query()->where('line_user_id', $lineUserId)->value('id');
+                if ($guardianId !== null) {
+                    $links = StudentGuardian::query()
+                        ->where('student_id', $studentId)
+                        ->where('guardian_id', (int) $guardianId)
+                        ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
+                        ->lockForUpdate()
+                        ->get();
+                    foreach ($links as $link) {
+                        $this->guardianSync->revoke($link);
+                        $result['guardian_links_revoked']++;
+                    }
+                }
+            }
+
+            // Also covers a LINE subject with no guardian row yet (compat window).
+            $this->guardianAccess->invalidateSessionsForLineUser($studentId, $lineUserId);
+
+            return $result;
+        });
     }
 
     public function unbindStudent(int $studentId, string $lineUserId): int

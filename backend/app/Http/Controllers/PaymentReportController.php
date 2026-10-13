@@ -172,7 +172,7 @@ class PaymentReportController extends Controller
             'token'          => 'required|string',
             'payment_date'   => 'required|date|before_or_equal:today',
             'payment_method' => 'required|in:transfer,cash',
-            'reported_amount' => 'required|numeric|min:1|max:999999',
+            'reported_amount' => 'required|integer|min:1|max:999999',
             'account_last5'  => 'nullable|string|max:5|regex:/^[0-9]*$/',
         ]);
 
@@ -212,7 +212,7 @@ class PaymentReportController extends Controller
             // Same target confirm() will pick; cap against that bill, not the course total (#3864 hotfix P1-a).
             $target = $this->pickOpenInvoice((int) $locked->getKey(), $locked);
             $refusal = $target && $this->invoiceCoveredByPayments($target, $locked)
-                ? $this->invoiceAlreadyCoveredResponse()
+                ? $this->invoiceAlreadyCoveredResponse($target)
                 : $this->amountExceedsInvoiceResponse($target, $locked, (float) $data['reported_amount']);
             if ($refusal) {
                 return null;
@@ -366,6 +366,13 @@ class PaymentReportController extends Controller
             if ($report->status !== 'pending') {
                 return response()->json(['message' => '此回報已處理過'], 422);
             }
+            // Payment.Amount is whole NT$; a fractional legacy report would be truncated (0.50 → a NT$0 Payment).
+            if (fmod((float) $report->reported_amount, 1.0) !== 0.0) {
+                return response()->json([
+                    'message' => '回報金額有小數，收款只能是整數元；請退回這筆回報後重新登記。沒有登記任何款項。',
+                    'code' => 'fractional_amount',
+                ], 422);
+            }
 
             $note = $confirmationNote !== ''
                 ? $confirmationNote
@@ -393,9 +400,7 @@ class PaymentReportController extends Controller
                     ->where('StudentClassID', $report->StudentClassID)
                     ->lockForUpdate()
                     ->first();
-                if ($invoice && (string) $invoice->Status === 'paid') {
-                    return $this->duplicateCoursePaymentResponse('paid');
-                }
+                // A stored Status=paid does not decide: the Payment-row projection below does (#3875).
                 if ($invoice && (string) $invoice->Status === 'void') {
                     return response()->json([
                         'message' => '作廢帳單不可重新入帳，請使用目前有效帳單或讓系統建立新的對應帳單。',
@@ -409,7 +414,7 @@ class PaymentReportController extends Controller
             }
 
             if ($invoice && $this->invoiceCoveredByPayments($invoice, $sc instanceof StudentClass ? $sc : null)) {
-                return $this->invoiceAlreadyCoveredResponse();
+                return $this->invoiceAlreadyCoveredResponse($invoice);
             }
             if ($over = $this->amountExceedsInvoiceResponse($invoice, $sc, (float) $report->reported_amount)) {
                 return $over;
@@ -436,7 +441,7 @@ class PaymentReportController extends Controller
                 // Partial receipts remain allowed; explicit cross-month cycles keep their invoice authority.
                 // Paid so far = Payment rows, never the stored PaidAmount (#3864 hotfix P1-b).
                 $limit = max(0, (int) $actual['charge'] - (int) ($monthlyProjection['net_applied'] ?? 0));
-                if ($actual['source'] === 'billable_sessions' && (!$invoice || $monthlyProjection['computed_total_amount'] !== null)
+                if ($actual['source'] === 'billable_sessions' && (!$invoice || ($monthlyProjection['computed_total_amount'] !== null && $monthlyProjection['repriceable']))
                     && (int) $report->reported_amount > $limit) {
                     return response()->json(['message' => '月結已上堂次或應收已變動，請重新核對回報金額。',
                         'code' => 'monthly_amount_stale', 'expected_amount' => $limit, 'billing_period' => $period,
@@ -480,7 +485,8 @@ class PaymentReportController extends Controller
                     $invoice->TotalAmount = (int) $billing['charge'];
                 }
 
-                if (empty($invoice->billing_snapshot)) {
+                // A fixed (non-repriceable) bill keeps its own evidence: never snapshot today's sessions onto it (#3888 review).
+                if (empty($invoice->billing_snapshot) && (!$monthlyProjection || $monthlyProjection['repriceable'])) {
                     $invoice->billing_period = $billingPeriod;
                     $invoice->billing_snapshot = [
                         'version' => 1,
@@ -569,7 +575,8 @@ class PaymentReportController extends Controller
             'invoice_id'       => 'nullable|integer',
             'payment_date'     => 'required|date|before_or_equal:today',
             'payment_method'   => 'required|in:transfer,cash',
-            'amount'           => 'required|numeric|min:0|max:999999',
+            // Whole NT$ only: Payment/Invoice amounts are integer columns (#3875 review).
+            'amount'           => 'required|integer|min:0|max:999999',
             'account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
             'note'             => 'nullable|string|max:500',
         ]);
@@ -622,9 +629,7 @@ class PaymentReportController extends Controller
                 if (!$invoice) {
                     return response()->json(['message' => '指定帳單不存在或不屬於此課程'], 404);
                 }
-                if ((string) $invoice->Status === 'paid') {
-                    return response()->json(['message' => '指定帳單已繳清，請勿重複入帳'], 422);
-                }
+                // A stored Status=paid does not decide: the Payment-row projection below does (#3875).
                 if ((string) $invoice->Status === 'void') {
                     return response()->json([
                         'message' => '作廢帳單不可重新登記，請讓系統建立新的對應帳單。',
@@ -633,14 +638,13 @@ class PaymentReportController extends Controller
                 }
             }
 
-            // FR-006：月結制優先找當月 billing_period 的未繳帳單；否則任何未繳帳單（legacy 課程或堂數制）
+            // 沒指定帳單：用名單上顯示的那張（月結＝最早未繳清的一期；Founder 2026-10-13，取代 FR-006 當月優先）
             if (! $invoice) {
-                $invoice = $this->pickOpenInvoice((int) $sc->ID, $lockedCourse,
-                    $this->monthlyBilling->defaultPeriodFor($sc, Carbon::now('Asia/Taipei')));
+                $invoice = $this->pickOpenInvoice((int) $sc->ID, $lockedCourse);
             }
 
             if ($invoice && $this->invoiceCoveredByPayments($invoice, $lockedCourse)) {
-                return $this->invoiceAlreadyCoveredResponse();
+                return $this->invoiceAlreadyCoveredResponse($invoice);
             }
             if ($over = $this->amountExceedsInvoiceResponse($invoice, $lockedCourse, (float) $data['amount'])) {
                 return $over;
@@ -662,8 +666,11 @@ class PaymentReportController extends Controller
                     ? (string) $invoice->billing_period
                     : $this->monthlyBilling->defaultPeriodFor($sc, $data['payment_date']);
                 $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
-                // Paid so far = Payment rows, never the stored PaidAmount (#3864 hotfix P1-b).
-                $expectedAmount = max(0, (int) $billing['charge'] - ($invoice ? (int) $this->invoiceProjection($invoice, $lockedCourse)['net_applied'] : 0));
+                // Paid so far = Payment rows, never the stored PaidAmount (#3864 hotfix P1-b). A non-repriceable bill
+                // (paid/partial/has payments) keeps its fixed total: owe its projected outstanding (#3888 review).
+                $projection = $invoice ? $this->invoiceProjection($invoice, $lockedCourse) : null;
+                $expectedAmount = $projection && !$projection['repriceable'] ? (int) $projection['outstanding_amount']
+                    : max(0, (int) $billing['charge'] - (int) ($projection['net_applied'] ?? 0));
                 if ((int) $data['amount'] !== $expectedAmount) {
                     return response()->json([
                         'message' => sprintf('月結本期應收為 NT$%d，請重新載入繳費通知後再登記。', $expectedAmount),
@@ -729,7 +736,7 @@ class PaymentReportController extends Controller
             'note'           => 'nullable|string|max:500',
             'entries'        => 'required|array|min:1|max:40',
             'entries.*.student_class_id' => 'required|integer',
-            'entries.*.amount'           => 'required|numeric|min:0|max:999999',
+            'entries.*.amount'           => 'required|integer|min:0|max:999999',
             'entries.*.account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
             'entries.*.invoice_id'       => 'nullable|integer',
         ]);
@@ -915,7 +922,14 @@ class PaymentReportController extends Controller
     {
         $projection = $this->invoiceProjection($invoice, $sc);
 
-        return (int) $projection['total_amount'] > 0 && (int) $projection['outstanding_amount'] <= 0;
+        return $this->packagePaidHold($invoice) || ((int) $projection['total_amount'] > 0 && (int) $projection['outstanding_amount'] <= 0);
+    }
+
+    /** As Invoice::mayOweSql (#3891): a PAID package member's stored-paid bill stays settled (待核對); an unpaid package holds nothing. */
+    private function packagePaidHold(Invoice $invoice): bool
+    {
+        return (string) $invoice->Status === 'paid' && StudentClass::query()->join('course_packages', 'course_packages.id', '=', 'StudentClass.PackageID')
+            ->where('StudentClass.ID', $invoice->StudentClassID)->where('course_packages.paid', true)->exists();
     }
 
     /**
@@ -931,49 +945,73 @@ class PaymentReportController extends Controller
     }
 
     /**
-     * Open (not paid/void) invoice to collect against when the caller named none: the preferred period first, then
-     * oldest id; the first one whose Payment rows still leave it owing wins over a stale-status bill that is covered.
-     * All covered → the first one, so the caller refuses it as covered.
+     * Invoice to collect against when the caller named none: the bill the collection list shows (Founder 2026-10-13),
+     * i.e. the resolver's collection order (monthly: oldest period first). Every non-void bill is a candidate and its
+     * Payment-row projection decides whether it still owes, whatever its stored Status (#3875: stored paid can still
+     * owe). None owes → the first not-stored-paid one, so the caller refuses it as covered; never another bill.
      */
-    private function pickOpenInvoice(int $studentClassId, ?StudentClass $sc, ?string $preferPeriod = null): ?Invoice
+    private function pickOpenInvoice(int $studentClassId, ?StudentClass $sc): ?Invoice
     {
-        $open = Invoice::where('StudentClassID', $studentClassId)
-            ->where(fn ($q) => $q->whereNull('Status')->orWhereNotIn('Status', ['paid', 'void']))
-            ->orderBy('id')->lockForUpdate()->get()
-            ->sortBy(fn (Invoice $i) => $preferPeriod !== null && (string) $i->billing_period === $preferPeriod ? 0 : 1);
+        $live = app(BillingPayableResolver::class)->collectionOrder(Invoice::where('StudentClassID', $studentClassId)
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+            ->orderBy('id')->lockForUpdate()->get(), $sc);
 
-        return $open->first(fn (Invoice $i) => (int) $this->invoiceProjection($i, $sc)['outstanding_amount'] > 0) ?? $open->first();
+        return $live->first(fn (Invoice $i) => !$this->packagePaidHold($i) && (int) $this->invoiceProjection($i, $sc)['outstanding_amount'] > 0)
+            ?? $live->first(fn (Invoice $i) => (string) $i->Status !== 'paid');
     }
 
     /**
      * #3864 hotfix P1-a: the amount is capped by the TARGET invoice's own outstanding (Payment-row projection), not the
      * course-wide total — otherwise a payment owed to another bill lands on this one as an overpayment.
-     * A NT$0 bill is left to the existing guards (free courses settle at 0).
+     * #3875: a NT$0 bill takes no positive amount (that would overpay it at once), and NT$0 is not a report against a bill
+     * that still owes. NT$0 on a NT$0 bill stays allowed (free courses settle at 0).
      */
     private function amountExceedsInvoiceResponse(?Invoice $invoice, ?StudentClass $sc, float $amount)
     {
         if (!$invoice) {
-            return null;
+            // Unbilled charge-bearing contract: NT$0 is not a report either (free courses never reach here, #3888 review).
+            return $amount <= 0 && (int) ($sc->Charge ?? 0) > 0 ? response()->json([
+                'message' => '這門課要收費，金額不可為 0；請填實際收到的金額。沒有登記任何款項。',
+                'code' => 'zero_amount_with_balance',
+            ], 422) : null;
         }
         $projection = $this->invoiceProjection($invoice, $sc);
         $outstanding = (int) $projection['outstanding_amount'];
-        if ((int) $projection['total_amount'] <= 0 || $amount <= $outstanding) {
+        // NT$0 on a stored NT$0 bill of a course that charges is an erroneous bill, not a free settlement (#3888 review).
+        $erroneousZero = (int) $projection['stored_total_amount'] <= 0 && (int) ($sc->Charge ?? 0) > 0;
+        if ($amount <= 0 && ($outstanding > 0 || $erroneousZero)) {
+            return response()->json([
+                'message' => $erroneousZero ? '這張帳單金額是 NT$0，但這門課要收費；請先在學生帳務更正帳單金額。沒有登記任何款項。'
+                    : sprintf('這張帳單還欠 NT$%d，金額不可為 0；請填實際收到的金額。沒有登記任何款項。', $outstanding),
+                'code' => 'zero_amount_with_balance',
+                'expected_amount' => $outstanding,
+                'invoice_id' => (int) $invoice->id,
+            ], 422);
+        }
+        // A monthly bill repriced to NT$0 by held sessions is refused by the monthly_amount_stale guard with its own sentence.
+        if ($amount <= $outstanding
+            || ((int) $projection['total_amount'] <= 0 && $projection['amount_source'] === 'billable_sessions')) {
             return null;
         }
 
         return response()->json([
-            'message' => sprintf('這張帳單只欠 NT$%d，請改成 %d 以下，或分到其他帳單。', $outstanding, $outstanding),
+            'message' => (int) $projection['total_amount'] <= 0
+                ? '這張帳單金額是 NT$0，不能登記收款；請先在學生帳務更正帳單金額。沒有登記任何款項。'
+                : sprintf('這張帳單只欠 NT$%d，請改成 %d 以下，或分到其他帳單。', $outstanding, $outstanding),
             'code' => 'amount_exceeds_outstanding',
             'expected_amount' => $outstanding,
             'invoice_id' => (int) $invoice->id,
         ], 422);
     }
 
-    private function invoiceAlreadyCoveredResponse()
+    /** The target bill is settled by its Payment rows: warn and block; the money is never moved to another bill. */
+    private function invoiceAlreadyCoveredResponse(Invoice $invoice)
     {
         return response()->json([
-            'message' => '這張帳單已有確認的收款，不能再登記；若帳單狀態對不上，請在學生帳務核對收款紀錄，作廢重複或錯誤的帳單。沒有登記任何款項。',
+            'message' => $this->packagePaidHold($invoice) ? '這張套餐帳單已標記繳清，收款紀錄待核對，不能在這裡登記；請在學生帳務核對套餐收款。沒有登記任何款項。'
+                : '這張帳單依收款紀錄已繳清，不能再登記，也不會改記到其他帳單。請重新整理名單；若帳單狀態對不上，請在學生帳務核對收款紀錄，作廢重複或錯誤的帳單。沒有登記任何款項。',
             'code' => 'course_already_paid',
+            'invoice_id' => (int) $invoice->id,
         ], 422);
     }
 
@@ -1187,9 +1225,14 @@ class PaymentReportController extends Controller
             ));
         } elseif ($sc) {
             $reportedDate = $sc->ScheduleMode === 'date' ? Carbon::make($report->payment_date) : null;
+            // No snapshot: the bill's service period (#3888), slip precedence: this course's items, a single item, else billing_period.
+            [$itemStart, $itemEnd] = $invoice && $reportedDate ? $this->monthlyBilling->serviceRangeForCourse($invoice, (int) $sc->ID) : [null, null];
+            $anchor = preg_match('/^\d{4}-\d{2}$/', (string) $invoiceBillingPeriod) ? Carbon::createFromFormat('!Y-m', (string) $invoiceBillingPeriod) : $reportedDate;
+            [$from, $to] = $itemStart !== null && $itemEnd !== null ? [Carbon::parse($itemStart), Carbon::parse($itemEnd)]
+                : [$anchor?->copy()->startOfMonth(), $anchor?->copy()->endOfMonth()];
             if ($sc->ScheduleMode === 'date') {
-                $periodStart = $reportedDate?->copy()->startOfMonth()->format('Y/m/d');
-                $periodEnd = $reportedDate?->copy()->endOfMonth()->format('Y/m/d');
+                $periodStart = $from?->format('Y/m/d');
+                $periodEnd = $to?->format('Y/m/d');
             } else {
                 $periodStart = $sc->StartDate ? Carbon::parse($sc->StartDate)->format('Y/m/d') : null;
                 $periodEnd = $sc->EndDate ? Carbon::parse($sc->EndDate)->format('Y/m/d') : null;
@@ -1200,10 +1243,7 @@ class PaymentReportController extends Controller
                 ->orderBy('SessionDate');
 
             if ($reportedDate !== null) {
-                $monthStart = $reportedDate->copy()->startOfMonth()->toDateString();
-                $monthEnd   = $reportedDate->copy()->endOfMonth()->toDateString();
-                $sessionQuery->whereDate('SessionDate', '>=', $monthStart)
-                             ->whereDate('SessionDate', '<=', $monthEnd);
+                $sessionQuery->whereDate('SessionDate', '>=', $from->toDateString())->whereDate('SessionDate', '<=', $to->toDateString());
             }
 
             if ($sc->ScheduleMode === 'date') {
