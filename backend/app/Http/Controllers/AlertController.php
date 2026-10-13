@@ -751,13 +751,17 @@ class AlertController extends Controller
         $payable = $this->payableResolver->byStudentClassIds([$studentClassId], [$sc])[$studentClassId]
             ?? $this->payableResolver->unbilled();
         $payablePeriod = (string) ($payable['payable_billing_period'] ?? '');
-        $openInvoice = $mode === 'date' && ! preg_match('/^\d{4}-\d{2}$/', $payablePeriod)
-            ? Invoice::query()
+        // The payable bill itself (its item service range drives the lesson list); else the newest open one.
+        $payableInvoice = $mode === 'date' && (int) ($payable['payable_invoice_id'] ?? 0) > 0
+            ? Invoice::query()->where('StudentClassID', $studentClassId)->whereKey((int) $payable['payable_invoice_id'])->first()
+            : null;
+        $openInvoice = $mode === 'date'
+            ? ($payableInvoice ?? Invoice::query()
                 ->where('StudentClassID', $studentClassId)
                 ->whereIn('Status', ['unpaid', 'partial'])
                 ->orderByDesc('billing_period')
                 ->orderByDesc('id')
-                ->first(['id', 'billing_period'])
+                ->first())
             : null;
         $openBillingPeriod = preg_match('/^\d{4}-\d{2}$/', $payablePeriod)
             ? $payablePeriod
