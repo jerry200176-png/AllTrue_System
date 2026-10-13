@@ -88,7 +88,8 @@ export function lockedByCohort(row, grades) {
  *   idempotencyKey: string,
  *   excludeStudentIds: Iterable<number>,
  *   onlyGrades?: Iterable<string>,
- * }} args
+ * }} args  excludeStudentIds = the director's manual unticks only; rows outside onlyGrades are left to the server,
+ *          which re-applies the cohort to a fresh preview (#3758).
  */
 export function buildGradePromotionConfirmPayload({
   branchId,
