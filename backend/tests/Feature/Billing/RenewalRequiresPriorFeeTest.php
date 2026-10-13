@@ -101,20 +101,41 @@ class RenewalRequiresPriorFeeTest extends TestCase
         $this->assertSame('unpaid', Invoice::query()->where('StudentClassID', $source->ID)->value('Status'));
     }
 
-    /** Founder 2026-10-13 (comment 6137846023): a truly free course records a NT$0 bill; that bill is a fee on record unless voided. */
-    public function test_a_zero_amount_bill_counts_as_an_entered_fee_until_voided(): void
+    /**
+     * #3991 (Founder 2026-10-13): a free course may have a NT$0 bill only when it is marked 免費／贈送. An unmarked
+     * NT$0 bill is not a fee on record, and a marked one stops counting once voided.
+     */
+    public function test_a_zero_amount_bill_counts_only_when_marked_free_gift_and_not_voided(): void
     {
+        $unmarked = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
+        $this->invoice($unmarked, 0, 'unpaid');
+        $this->assertSame('prior_fee_missing', app(ContractRenewal::class)->priorFeeBlocker($unmarked)['code'] ?? null);
+
         $free = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
-        $this->invoice($free, 0, 'unpaid');
+        $this->invoice($free, 0, 'paid', Invoice::ZERO_REASON_FREE_GIFT);
         $this->assertNull(app(ContractRenewal::class)->priorFeeBlocker($free));
         $this->postAuthenticatedJson("/api/v1/student-classes/{$free->ID}/renew-monthly", ['end_date' => '2026-05-31'])
             ->assertCreated();
 
         $voided = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
-        $this->invoice($voided, 0, 'void');
+        $this->invoice($voided, 0, 'void', Invoice::ZERO_REASON_FREE_GIFT);
         $this->postAuthenticatedJson("/api/v1/student-classes/{$voided->ID}/renew-monthly", ['end_date' => '2026-05-31'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'prior_fee_missing');
+    }
+
+    /** #3991 item 2: a bill of another student is never fee evidence for this course. */
+    public function test_a_bill_of_another_student_is_not_fee_evidence(): void
+    {
+        $source = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
+        $otherStudentId = (int) $this->countCourse([])->StudentID;
+        Invoice::create(['StudentID' => $otherStudentId, 'StudentClassID' => $source->ID, 'IssueDate' => '2026-04-01', 'Note' => '',
+            'billing_period' => '2026-04', 'TotalAmount' => 4800, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $item = Invoice::create(['StudentID' => $otherStudentId, 'IssueDate' => '2026-04-01', 'Note' => '',
+            'TotalAmount' => 4800, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        InvoiceItem::create(['InvoiceID' => $item->id, 'StudentClassID' => $source->ID, 'Description' => 'April', 'Amount' => 4800]);
+
+        $this->assertSame('prior_fee_missing', app(ContractRenewal::class)->priorFeeBlocker($source)['code'] ?? null);
     }
 
     public function test_renewal_is_unchanged_when_the_course_has_a_price(): void
@@ -134,8 +155,9 @@ class RenewalRequiresPriorFeeTest extends TestCase
     public function test_a_line_item_on_another_invoice_counts_until_that_invoice_is_voided(int $amount): void
     {
         $source = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
+        // #3991: a NT$0 line item is fee evidence only on a bill marked 免費／贈送.
         $bill = Invoice::create(['StudentID' => $source->StudentID, 'IssueDate' => '2026-04-01', 'DueDate' => '2026-04-15', 'Note' => '',
-            'TotalAmount' => $amount, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+            'TotalAmount' => $amount, 'PaidAmount' => 0, 'Status' => 'unpaid', 'zero_amount_reason' => $amount === 0 ? Invoice::ZERO_REASON_FREE_GIFT : null]);
         InvoiceItem::create(['InvoiceID' => $bill->id, 'StudentClassID' => $source->ID, 'Description' => '四月', 'Amount' => $amount]);
         $gate = app(ContractRenewal::class);
 
@@ -179,11 +201,12 @@ class RenewalRequiresPriorFeeTest extends TestCase
         return $this->withHeaders(['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json'])->postJson($uri, $body);
     }
 
-    private function invoice(StudentClass $course, int $amount, string $status): void
+    private function invoice(StudentClass $course, int $amount, string $status, ?string $zeroReason = null): void
     {
         Invoice::create([
             'StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-04-01', 'DueDate' => '2026-04-15',
             'billing_period' => '2026-04', 'ScheduleModeAtIssue' => (string) $course->ScheduleMode, 'Note' => '', 'TotalAmount' => $amount, 'PaidAmount' => 0, 'Status' => $status,
+            'zero_amount_reason' => $zeroReason,
         ]);
     }
 
