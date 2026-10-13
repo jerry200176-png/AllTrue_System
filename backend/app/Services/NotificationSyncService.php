@@ -137,6 +137,8 @@ class NotificationSyncService
                 $notification->save();
                 $resolved++;
             }
+
+            $resolved += self::retireTransferredTuition($activeByKey, $scopedCampusIds);
         });
 
         return [
@@ -146,6 +148,57 @@ class NotificationSyncService
             'active_count' => count($activeByKey),
             'source_key_races_recovered' => $sourceKeyRacesRecovered,
         ];
+    }
+
+    /**
+     * #3877: a student transfer moves a debt to another campus, so its notice gets a new SourceKey.
+     * A campus-scoped sync never reads the old campus, which would keep the student's name and debt
+     * visible there. Retire open tuition notices outside the scope whose course or invoice now has a
+     * live notice inside it. An unscoped sync already covers every campus.
+     *
+     * @param  array<string, array<string, mixed>>  $activeByKey
+     * @param  array<int>  $scopedCampusIds
+     */
+    private static function retireTransferredTuition(array $activeByKey, array $scopedCampusIds): int
+    {
+        if (empty($scopedCampusIds)) {
+            return 0;
+        }
+
+        $courseIds = [];
+        $invoiceIds = [];
+        foreach ($activeByKey as $row) {
+            if (($row['Type'] ?? null) !== 'tuition') {
+                continue;
+            }
+            if (($row['SourceType'] ?? null) === 'Invoice') {
+                $invoiceIds[] = (string) $row['SourceID'];
+                if ($row['Payload']['student_class_id'] ?? null) {
+                    $courseIds[] = (string) $row['Payload']['student_class_id'];
+                }
+            } elseif (($row['SourceType'] ?? null) === 'StudentClass') {
+                $courseIds[] = (string) $row['SourceID'];
+            }
+        }
+        if ($courseIds === [] && $invoiceIds === []) {
+            return 0;
+        }
+
+        $stale = Notification::query()
+            ->where('Type', 'tuition')
+            ->whereNull('ResolvedAt')
+            ->whereNotIn('CampusID', $scopedCampusIds)
+            ->where(function ($q) use ($courseIds, $invoiceIds) {
+                $q->where(fn ($c) => $c->where('SourceType', 'StudentClass')->whereIn('SourceID', $courseIds ?: ['']))
+                    ->orWhere(fn ($i) => $i->where('SourceType', 'Invoice')->whereIn('SourceID', $invoiceIds ?: ['']));
+            })
+            ->get();
+        foreach ($stale as $notification) {
+            $notification->ResolvedAt = now();
+            $notification->save();
+        }
+
+        return $stale->count();
     }
 
     /**

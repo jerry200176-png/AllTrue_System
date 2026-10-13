@@ -204,6 +204,26 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         $this->assertNotContains("tuition:{$campus->id}:{$course->ID}", $live);
     }
 
+    /** The command syncs only the destination campus; that scoped sync must still retire the old-campus notice. */
+    public function test_scoped_sync_of_the_new_campus_retires_the_old_campus_notice(): void
+    {
+        [$campus, , $course, $s] = $this->fixture();
+        NotificationSyncService::sync([$campus->id]);
+        $other = Campus::factory()->create();
+        $unrelated = $this->addCourse(Student::create([
+            'name' => '同校學生', 'CampusID' => $campus->id, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]));
+        NotificationSyncService::sync([$campus->id]);
+        $s->forceFill(['CampusID' => $other->id])->save();
+
+        NotificationSyncService::sync([$other->id]);
+
+        $live = Notification::where('Type', 'tuition')->whereNull('ResolvedAt')->pluck('SourceKey')->all();
+        $this->assertContains("tuition:{$other->id}:{$course->ID}", $live);
+        $this->assertNotContains("tuition:{$campus->id}:{$course->ID}", $live, 'old campus no longer shows the transferred debt');
+        $this->assertContains("tuition:{$campus->id}:{$unrelated->ID}", $live, 'other old-campus debts are untouched');
+    }
+
     /** @return array<string, array{0: string}> */
     public static function scheduleModes(): array
     {
