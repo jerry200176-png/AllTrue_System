@@ -19,9 +19,7 @@ final class AuthenticateTriageToken
     {
         $pat = TriageTokenService::resolve($request->bearerToken());
         if ($pat === null) {
-            if (TriageTokenService::mayAuditUnresolved($request->ip())) {
-                $this->audit($request, null, 'failure', 401, 'invalid_token');
-            }
+            $this->audit($request, null, 'failure', 401, 'invalid_token');
             return response()->json(['message' => 'Unauthorized'], 401);
         }
         if (TriageTokenService::isExpired($pat)) {
@@ -45,6 +43,7 @@ final class AuthenticateTriageToken
 
     private function audit(Request $request, ?int $tokenId, string $outcome, int $status, string $reason): void
     {
+        if ($status >= 400 && $reason !== 'read_failed' && !TriageTokenService::mayAuditUnresolved($request->ip())) { return; } // unusable credentials share the cross-route cap
         $route = $request->route();
         $bugId = $request->route('id');
         $attachmentId = $request->route('attachmentId');
