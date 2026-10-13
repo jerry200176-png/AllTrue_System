@@ -74,7 +74,7 @@ Founder approval and prerequisite freshness/cursor deployment; an empty file wri
    Triage allows `new`/`triaged`; follow-up requires `expected_status=triaged|in_progress`.
    No names, phone/email identifiers or internal jargon in this public Git history.
    `resolved`, `closed` and logged-close dispositions remain on existing dispatch/Phase-C.
-3. Request PRs are T2 minimum: green CI plus independent review, no unresolved P1.
+3. Each request PR requires T3 Founder GO for its specific targets/effects, green CI and independent review; no unresolved P1.
    Executor/cursor changes are T3. Validate additions against immutable history before merge.
 4. The main-only workflow drains at most five IDs per run from one frozen reviewed snapshot.
    A pinned permanent state comment in #3998 binds the prefix and request content hashes;
