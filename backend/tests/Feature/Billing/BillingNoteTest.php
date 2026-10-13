@@ -80,7 +80,7 @@ class BillingNoteTest extends TestCase
     public function test_payment_report_note_uses_only_its_own_students_payment(): void
     {
         $h = $this->staff('A', $this->campus->id, 'Director');
-        $report = fn (int $paymentId) => PaymentReport::create(['StudentID' => $this->student->id, 'StudentClassID' => (int) StudentClass::query()->value('ID'),
+        $report = fn (int $paymentId) => PaymentReport::create(['StudentID' => $this->student->id, 'StudentClassID' => (int) Invoice::query()->whereKey((int) $this->payment->InvoiceID)->value('StudentClassID'),
             'reported_by_name' => 'p', 'reported_amount' => 5000, 'payment_method' => 'cash', 'payment_date' => now()->toDateString(), 'status' => 'confirmed',
             'note' => '家長回報備註', 'payment_id' => $paymentId, 'report_token_hash' => hash('sha256', (string) $paymentId), 'token_expires_at' => now()]);
         $own = $report($this->payment->id);
@@ -168,7 +168,7 @@ class BillingNoteTest extends TestCase
                 \App\Models\InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $otherCourse->ID, 'Description' => 'Fixture', 'Amount' => 5000]);
             }
             foreach (['invoice' => $invoice->id, 'payment' => $this->payment->id] as $type => $id) {
-                foreach ($headers as $h) {
+                foreach (array_reverse($headers) as $h) {
                     $this->getJson("/api/v1/accounting/notes?subject_type={$type}&subject_id={$id}", $h)->assertNotFound();
                     $this->postJson('/api/v1/accounting/notes', ['subject_type' => $type, 'subject_id' => $id, 'body' => 'Fixture'], $h)->assertNotFound();
                 }
