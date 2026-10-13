@@ -151,6 +151,35 @@ class BillingNoteTest extends TestCase
     }
 
     /** @return array<string, mixed> */
+
+    public function test_mismatched_invoice_header_and_item_owners_refuse_read_and_append(): void
+    {
+        $otherCampus = Campus::factory()->create();
+        $other = Student::create(['name' => 'Other fixture', 'CampusID' => $otherCampus->id, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $invoice = Invoice::findOrFail((int) $this->payment->InvoiceID);
+        $courseId = (int) $invoice->StudentClassID;
+        $otherCourse = StudentClass::findOrFail($courseId)->replicate();
+        $otherCourse->StudentID = $other->id;
+        $otherCourse->save();
+        $headers = [$this->staff('A', $this->campus->id, 'Owner fixture'), $this->staff('A', $otherCampus->id, 'Other fixture')];
+        foreach ([false, true] as $itemOnly) {
+            $invoice->forceFill(['StudentID' => $itemOnly ? $this->student->id : $other->id, 'StudentClassID' => $itemOnly ? null : $courseId])->save();
+            if ($itemOnly) {
+                \App\Models\InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $otherCourse->ID, 'Description' => 'Fixture', 'Amount' => 5000]);
+            }
+            foreach (['invoice' => $invoice->id, 'payment' => $this->payment->id] as $type => $id) {
+                foreach ($headers as $h) {
+                    $this->getJson("/api/v1/accounting/notes?subject_type={$type}&subject_id={$id}", $h)->assertNotFound();
+                    $this->postJson('/api/v1/accounting/notes', ['subject_type' => $type, 'subject_id' => $id, 'body' => 'Fixture'], $h)->assertNotFound();
+                }
+            }
+            $this->assertDatabaseCount('billing_notes', 0);
+        }
+        $invoice->items()->delete();
+        $invoice->forceFill(['StudentID' => $this->student->id, 'StudentClassID' => $courseId])->save();
+        $this->postJson('/api/v1/accounting/notes', $this->body('Valid fixture'), $headers[0])->assertCreated();
+    }
+
     private function body(string $text): array
     {
         return ['subject_type' => 'payment', 'subject_id' => $this->payment->id, 'body' => $text];
