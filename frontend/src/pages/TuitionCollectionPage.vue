@@ -416,6 +416,16 @@
                       繳費明細
                     </button>
 
+                    <!-- #3894: 繳費單／收據固定兩顆入口，不可用時 disabled 並說明原因 -->
+                    <TuitionDocActions
+                      :row="r"
+                      :can-view="canViewBillingDocs"
+                      :busy="receiptLoading !== null && receiptLoading === r.id"
+                      @slip="openSlip"
+                      @receipt="viewReceiptForClass"
+                      @ledger="openLedgerForClass"
+                    />
+
                     <!-- #1100/FD-3: 本期順延與下一期重疊 — director-facing only, never auto-shifts dates -->
                     <span
                       v-if="r.newer_course_overlap"
@@ -433,10 +443,6 @@
                     </span>
 
                     <template v-if="r.payment_status === 'unpaid' || r.payment_status === 'partial'">
-                      <button class="tc-btn tc-btn--slip" @click="openSlip(r)" title="產生繳費通知單">
-                        <span class="material-symbols-outlined">receipt_long</span>
-                        繳費單
-                      </button>
                       <button class="tc-btn tc-btn--confirm" @click="openPaymentEntry(r)" title="登記已回報" :disabled="actionLoading === r.id">
                         <span class="material-symbols-outlined">check_circle</span>
                         登記已回報
@@ -446,10 +452,6 @@
                     <!-- settled_pending: closed for scheduling, payment still actionable -->
                     <template v-if="r.payment_status === 'pending_reconciliation'">
                       <span class="tc-renew-hint">已結案，尚未完成繳費</span>
-                      <button class="tc-btn tc-btn--slip" @click="openSlip(r)" title="產生繳費通知單">
-                        <span class="material-symbols-outlined">receipt_long</span>
-                        繳費單
-                      </button>
                       <button class="tc-btn tc-btn--confirm" @click="openPaymentEntry(r)" title="登記已回報" :disabled="actionLoading === r.id">
                         <span class="material-symbols-outlined">check_circle</span>
                         登記已回報
@@ -475,11 +477,7 @@
 
                     <!-- paid / renew_needed / monthly_due_soon: void + receipt -->
                     <template v-if="r.payment_status === 'paid' || r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'">
-                      <button class="tc-btn tc-btn--receipt" @click="viewReceiptForClass(r)" title="查看收據">
-                        <span class="material-symbols-outlined">receipt</span>
-                        收據
-                      </button>
-                      <button v-if="canVoid" class="tc-btn tc-btn--void" @click="openVoidDialog(r)" :disabled="actionLoading === r.id" title="撤銷收款">
+                      <button v-if="canVoid" class="tc-btn tc-btn--void" data-testid="tc-void" @click="openVoidDialog(r)" :disabled="actionLoading === r.id" title="撤銷收款">
                         <span class="material-symbols-outlined">undo</span>
                         撤銷
                       </button>
@@ -895,6 +893,7 @@
       :show="slipOpen"
       :invoice-id="slipInvoiceId"
       :student-class-id="slipStudentClassId"
+      @click.capture="onSlipBackdropClick"
       @close="slipOpen = false"
     />
 
@@ -909,6 +908,7 @@
     <ReceiptModal
       :show="receiptOpen"
       :report-id="receiptReportId"
+      @click.capture="onSlipBackdropClick"
       @close="receiptOpen = false"
     />
 
@@ -1096,6 +1096,7 @@ import * as paymentActions from '../lib/paymentActions.js';
 import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import MonthlyDraftsPanel from '../components/tuition/MonthlyDraftsPanel.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
+import TuitionDocActions from '../components/TuitionDocActions.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
@@ -1293,6 +1294,7 @@ function getAuthRole() {
   return session?.user?.role || session?.role || '';
 }
 
+const canViewBillingDocs = computed(() => isDirectorRole(getAuthRole()));
 const canVoid = computed(() => {
   const role = getAuthRole();
   return isDirectorRole(role);
@@ -1882,7 +1884,14 @@ function exportCSV() {
   setTimeout(() => { csvExporting.value = false; }, 500);
 }
 
+let slipOpenedAt = 0;
+// 雙擊時第二下會落在剛出現的遮罩上；只吞掉剛開啟 400ms 內的遮罩點擊，X／關閉鈕照常立即關閉。
+function onSlipBackdropClick(e) {
+  if (e.target.classList?.contains('modal-overlay') && Date.now() - slipOpenedAt < 400) e.stopImmediatePropagation();
+}
 function openSlip(row) {
+  if (slipOpen.value) return;
+  slipOpenedAt = Date.now();
   slipInvoiceId.value = row.invoice_id || null;
   slipStudentClassId.value = row.invoice_id ? null : row.id;
   slipOpen.value = true;
@@ -2332,7 +2341,18 @@ async function findConfirmedReportForClass(row) {
 const receiptOpen = ref(false);
 const receiptReportId = ref(null);
 
+const receiptLoading = ref(null);
+
 async function viewReceiptForClass(row) {
+  if (receiptLoading.value !== null) return; // one lookup at a time: a late reply can never replace a newer row's receipt
+  if (row.receipt_report_id) { // issue 3942: the row names the confirmed report of its current bill; open exactly that one
+    if (receiptOpen.value) return;
+    slipOpenedAt = Date.now(); // same 400ms backdrop guard as the slip: a double-click's second press must not close it
+    receiptReportId.value = row.receipt_report_id;
+    receiptOpen.value = true;
+    return;
+  }
+  receiptLoading.value = row.id ?? 0;
   try {
     const token = getToken();
     const params = new URLSearchParams({ student_class_id: String(row.id), status: 'confirmed' });
@@ -2352,6 +2372,8 @@ async function viewReceiptForClass(row) {
     }
   } catch {
     showToast('查詢收據失敗', 'error');
+  } finally {
+    receiptLoading.value = null;
   }
 }
 
@@ -3726,8 +3748,8 @@ loadCampusStudents();
   .tc-table:not(.acct-table) td:nth-child(9)::before { content: '未結清'; }
   .tc-table:not(.acct-table) td:nth-child(10)::before { content: '最近付款'; }
   .tc-table:not(.acct-table) td:nth-child(11)::before { content: '到期／逾期'; }
-  .tc-table:not(.acct-table) .tc-actions { justify-content: flex-start; }
-  .tc-table:not(.acct-table) .tc-col-actions { padding-top: 10px; }
+  .tc-table:not(.acct-table) .tc-actions { justify-content: flex-start; flex-wrap: wrap; }
+  .tc-table:not(.acct-table) .tc-col-actions { padding-top: 10px; width: 100%; }
 
   .tc-table.acct-table,
   .tc-table.acct-table tbody {

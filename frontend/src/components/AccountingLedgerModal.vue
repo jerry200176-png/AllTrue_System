@@ -36,7 +36,7 @@
           <div v-show="!allocating">
           <!-- PRD v2 D8: owed-by-today first, same rule as the student list. -->
           <div class="ledger-owed" data-testid="ledger-owed">
-            <p class="ledger-owed__label">到今天未繳</p>
+            <p class="ledger-owed__label">{{ owedLabel }}</p>
             <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
             <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
             <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}。下面「需先處理」會寫是哪一筆，可以撤銷多出來的那一筆。</p>
@@ -96,6 +96,7 @@
           <section class="ledger-section">
             <h4>帳單</h4>
             <div v-if="ledgerBothEmpty && payload.scope?.no_payment_obligation" class="ledger-empty">輔導課不需繳費，所以這裡不會有帳單或收據。</div>
+            <div v-else-if="ledgerBothEmpty && payload.invoices?.length" class="ledger-empty" data-testid="ledger-target-empty">這門課目前沒有帳單和收款（舊制已繳，或尚未開立）。下面列的是此學生「其他課程」的帳單。</div>
             <div v-else-if="ledgerBothEmpty" class="ledger-empty">目前只有繳費單（依課程估算），還沒有帳單和收款。登記收款並確認入帳後，才會出現在這裡。</div>
             <div v-if="!payload.invoices?.length && !ledgerBothEmpty" class="ledger-empty">此學生尚無帳單。</div>
             <div v-else-if="payload.invoices?.length" class="ledger-table-wrap">
@@ -131,6 +132,7 @@
                       </td>
                       <td class="ledger-cell-title">
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
+                        <small v-if="isOtherCourseInvoice(inv)" class="ledger-other-course" data-testid="ledger-other-course">其他課程</small>
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
@@ -487,6 +489,11 @@ async function loadLedger() {
 
 watch(() => [props.show, props.studentClassId, props.reportId, props.studentId, props.branchId], loadLedger, { immediate: true });
 
+// 開啟的是單一課程時，列表裡別的課程的帳單要標「其他課程」（#3894）。
+const isOtherCourseInvoice = (inv) => {
+  const scopeId = Number(payload.value?.scope?.student_class_id || 0);
+  return !!scopeId && Number(inv.student_class_id) !== scopeId;
+};
 // Empty-state is judged for the opened course when the API reports one, else student-wide.
 const ledgerBothEmpty = computed(() => {
   const scopeId = Number(payload.value?.scope?.student_class_id || 0);
@@ -534,6 +541,13 @@ const panelTitle = computed(() => (payload.value?.student?.name ? `${payload.val
 const owedSplit = computed(() => splitOwed((payload.value?.invoices || [])
   .filter((inv) => inv.status !== 'void')
   .map((inv) => ({ amount: inv.outstanding_amount, due_date: inv.due_date }))));
+// 開啟單一課程、但未繳來自其他課程時，標題要說清楚是整個學生的金額。
+const owedLabel = computed(() => {
+  const scopeId = Number(payload.value?.scope?.student_class_id || 0);
+  const others = (payload.value?.invoices || []).filter((inv) => inv.status !== 'void' && Number(inv.student_class_id) !== scopeId);
+  const dueNow = splitOwed(others.map((inv) => ({ amount: inv.outstanding_amount, due_date: inv.due_date }))).now > 0; // 只算到今天已到期的，同 owedSplit
+  return scopeId && dueNow ? '此學生到今天未繳（含其他課程）' : '到今天未繳';
+});
 const overpaidTotal = computed(() => Number(payload.value?.summary?.overpaid_total || 0));
 
 const owedFor = (id) => (payload.value?.invoices || [])
@@ -818,6 +832,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-row--open td{background:var(--ds-canvas-soft)}
 .ledger-row--attention td:nth-child(2) strong{color:var(--ds-ink)}
 .ledger-overpay-hint{display:block;color:var(--ds-danger);font-weight:600}
+.ledger-other-course{display:inline-block;color:var(--ds-ink-mute);font-weight:600}
 .due{color:var(--ds-danger);font-weight:700}
 
 .ledger-chip{display:inline-flex;border-radius:6px;padding:2px 7px;background:var(--ds-canvas-soft);color:var(--ds-ink-mute);font-size:12px;font-weight:700}

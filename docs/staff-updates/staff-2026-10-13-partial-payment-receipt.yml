@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-13-partial-payment-receipt
+    published_at: "2026-10-13"
+    audiences:
+      - director
+    importance: digest
+    title: 只繳一部分也能開收據
+    summary: 帳單只收到一部分、但已確認入帳時，收據按鈕可以直接開這筆收據。
+    items:
+      - category: fixed
+        text: 已確認的部分收款，收據按鈕不再變灰，會開這張帳單的收據。
+    source_refs:
+      - "changelog:2026-10-13:partial-payment-receipt"
