@@ -100,6 +100,21 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         $this->assertNull($extra->fresh()->OriginalStartTimeHM, 'A read must not invent a legacy occurrence identity.');
     }
 
+    /** Owner decision (#3905 thread 4256922713): a lesson added through add-session at a non-contract time hides no contract slot. */
+    public function test_a_lesson_added_through_add_session_off_contract_does_not_hide_recurring_slots(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-add@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        $this->withHeaders(['Authorization' => "Bearer {$teacherToken}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/student-classes/{$course->ID}/add-session", ['session_date' => '2026-10-13', 'start_time' => '14:00', 'duration_minutes' => 120])
+            ->assertSuccessful();
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['13:00 scheduled', '14:00 scheduled', '18:00 scheduled'], $this->startsOn($course));
+    }
+
     public function test_a_lesson_moved_onto_another_contract_slot_keeps_its_original_slot_covered(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
