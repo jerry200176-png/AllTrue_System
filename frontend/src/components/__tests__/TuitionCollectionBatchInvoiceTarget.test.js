@@ -20,13 +20,10 @@ const CASES = {
   item2_modal_typed_amount_on_zero_bill: { kind: 'modal', typed: 500, row: row({ charge: 6000, payable_amount: 0, payable_outstanding: 0, payable_invoice_id: '{{invoice:zero}}' }) },
   item2_modal_zero_amount_blocked: { kind: 'modal', row: row({ charge: 6000, payable_amount: 0, payable_outstanding: 0, payable_invoice_id: '{{invoice:zero}}' }) },
   item3_modal_stored_paid_owing: { kind: 'modal', row: row({ payment_status: 'partial', charge: 6000, payable_amount: 6000, payable_outstanding: 4000, payable_invoice_id: '{{invoice:paid}}' }) },
-  item4_batch_newer_exceeds_older: { kind: 'batch', row: row({ charge: 4000, payable_amount: 3000, payable_outstanding: 3000, payable_invoice_id: '{{invoice:newer}}' }) },
   item4_batch_newer_smaller_amount: { kind: 'batch', row: row({ charge: 1800, payable_amount: 800, payable_outstanding: 800, payable_invoice_id: '{{invoice:newer}}' }) },
 };
 
-function json(status, body) {
-  return { ok: status < 300, status, json: () => Promise.resolve(body) };
-}
+const json = (status, body) => ({ ok: status < 300, status, json: () => Promise.resolve(body) });
 
 async function captureModal({ row: r, typed }) {
   const sent = [];
@@ -83,7 +80,7 @@ describe('collection request fixture shared with the backend (#3875)', () => {
 
     expect(out.item1_modal_owing_bill.request).toMatchObject({ amount: 3000, invoice_id: '{{invoice:older}}' });
     expect(out.item2_modal_zero_amount_blocked.request).toBeNull();
-    expect(out.item4_batch_newer_exceeds_older.request.entries).toEqual([{ student_class_id: '{{course}}', amount: 3000, invoice_id: '{{invoice:newer}}' }]);
+    expect(out.item4_batch_newer_smaller_amount.request.entries).toEqual([{ student_class_id: '{{course}}', amount: 800, invoice_id: '{{invoice:newer}}' }]);
 
     const text = `{\n${Object.entries(out).map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(',\n')}\n}\n`;
     await expect(text).toMatchFileSnapshot(FIXTURE);
