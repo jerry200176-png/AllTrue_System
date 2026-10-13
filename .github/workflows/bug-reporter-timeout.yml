@@ -83,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/bug_reporter_timeout_request.py --repo . --head "$GITHUB_SHA" > "$RUNNER_TEMP/request.out"
-          cat "$RUNNER_TEMP/request.out" | tee -a "$GITHUB_OUTPUT"
+          tee -a "$GITHUB_OUTPUT" < "$RUNNER_TEMP/request.out"
 
       - name: Configure pinned production SSH trust
         if: github.event_name != 'push' || steps.request.outputs.run == 'true'
@@ -111,7 +111,8 @@ jobs:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           EVENT_NAME: ${{ github.event_name }}
-          MODE: ${{ github.event_name == 'schedule' && 'auto' || github.event_name == 'push' && steps.request.outputs.mode || inputs.mode }}
+          MODE: ${{ github.event_name == 'schedule' && 'auto' || inputs.mode }}
+          REQUEST_MODE: ${{ steps.request.outputs.mode }}
           BATCH_IDS: ${{ steps.request.outputs.reviewed_ids }}
           EVIDENCE_SHA: ${{ steps.request.outputs.evidence_sha }}
           DAYS: ${{ inputs.days || '7' }}
@@ -122,6 +123,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "main only" >&2; exit 1; }
+          if [[ "$EVENT_NAME" == "push" ]]; then MODE="$REQUEST_MODE"; fi # push has no inputs; the request file sets the mode
           [[ "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid workflow SHA" >&2; exit 1; }
           [[ "$MODE" == "dry-run" || "$MODE" == "apply" || "$MODE" == "auto-dry-run" || "$MODE" == "auto" || "$MODE" == "reviewed-apply" ]] || { echo "invalid mode" >&2; exit 1; }
           [[ "$DAYS" =~ ^[1-9][0-9]*$ ]] || { echo "days must be a positive integer" >&2; exit 1; }

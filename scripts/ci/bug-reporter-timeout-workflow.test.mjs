@@ -29,6 +29,7 @@ function request(overrides = {}) {
     EVENT_NAME: 'workflow_dispatch',
     BATCH_IDS: '',
     EVIDENCE_SHA: '',
+    REQUEST_MODE: '',
     ...overrides,
   };
   return spawnSync('bash', ['-c', validation], { env, encoding: 'utf8' }).status;
@@ -54,7 +55,7 @@ assert.match(step, /REVIEWED_IDS: \$\{\{ inputs\.reviewed_ids \}\}/, 'workflow d
 
 // Founder 2A: daily unattended auto mode.
 assert.match(workflow, /schedule:\n    - cron: "40 2 \* \* \*"/, 'daily schedule');
-assert.match(step, /MODE: \$\{\{ github\.event_name == 'schedule' && 'auto' \|\| github\.event_name == 'push' && steps\.request\.outputs\.mode \|\| inputs\.mode \}\}/, 'schedule runs auto, push reads the request file, never apply');
+assert.match(step, /MODE: \$\{\{ github\.event_name == 'schedule' && 'auto' \|\| inputs\.mode \}\}/, 'schedule runs auto, never apply');
 assert.equal(request({ MODE: 'auto', DAYS: '7' }), 0, 'scheduled auto run validates (inputs default to empty/7)');
 assert.equal(request({ MODE: 'auto-dry-run' }), 0, 'auto dry-run is allowed');
 assert.notEqual(request({ MODE: 'auto', REVIEWED_IDS: '335' }), 0, 'auto takes no reviewed IDs');
@@ -73,7 +74,10 @@ for (const name of ['Configure pinned production SSH trust', 'Setup SSH', 'Run r
   assert.ok(at >= 0, name);
   assert.match(workflow.slice(at, at + 300), /if: github\.event_name != 'push' \|\| steps\.request\.outputs\.run == 'true'/, `${name} is skipped for an idle or already-used request`);
 }
-const batch = { EVENT_NAME: 'push', MODE: 'reviewed-apply', BATCH_IDS: Array.from({ length: 25 }, (_, i) => 300 + i).join(','), EVIDENCE_SHA: 'b'.repeat(40) };
+assert.match(step, /REQUEST_MODE: \$\{\{ steps\.request\.outputs\.mode \}\}/, 'push mode comes from the request file');
+assert.notEqual(request({ MODE: 'reviewed-apply', EVENT_NAME: 'workflow_dispatch', BATCH_IDS: '301', EVIDENCE_SHA: 'b'.repeat(40) }), 0, 'reviewed-apply is never a dispatch mode');
+assert.notEqual(request({ EVENT_NAME: 'push', MODE: '', REQUEST_MODE: '' }), 0, 'a push without a resolved mode fails closed');
+const batch = { EVENT_NAME: 'push', MODE: '', REQUEST_MODE: 'reviewed-apply', BATCH_IDS: Array.from({ length: 25 }, (_, i) => 300 + i).join(','), EVIDENCE_SHA: 'b'.repeat(40) };
 assert.equal(request(batch), 0, 'a reviewed batch may exceed the auto cap');
 assert.notEqual(request({ ...batch, EVENT_NAME: 'workflow_dispatch' }), 0, 'reviewed-apply is push only');
 assert.notEqual(request({ ...batch, BATCH_IDS: '' }), 0, 'reviewed-apply needs IDs');
@@ -82,7 +86,7 @@ assert.notEqual(request({ ...batch, BATCH_IDS: '301;echo unsafe' }), 0, 'non-num
 assert.notEqual(request({ ...batch, EVIDENCE_SHA: '' }), 0, 'reviewed-apply needs the evidence SHA');
 assert.notEqual(request({ ...batch, CONFIRMATION: 'CLOSE_STALE_RESOLVED' }), 0, 'reviewed-apply takes no dispatch inputs');
 assert.notEqual(request({ MODE: 'auto', BATCH_IDS: '301' }), 0, 'auto never takes request IDs');
-assert.equal(request({ EVENT_NAME: 'push', MODE: 'auto-dry-run' }), 0, 'request auto-dry-run validates');
+assert.equal(request({ EVENT_NAME: 'push', MODE: '', REQUEST_MODE: 'auto-dry-run' }), 0, 'request auto-dry-run validates');
 assert.match(shell, /git merge-base --is-ancestor "\$EVIDENCE_SHA" "\$PROD_SHA"/, 'reviewed-apply checks production ancestry');
 assert.match(shell, /\[\[ "\$command_help" == \*--reviewed-batch\* \]\]/, 'reviewed-apply checks deployed command support');
 assert.match(shell, /php artisan bugs:close-stale-resolved --auto --reviewed-batch="\$BATCH_IDS" \$ACTOR_ARG\n/, 'reviewed-apply passes exactly the reviewed IDs');
