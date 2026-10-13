@@ -64,6 +64,10 @@ class TransactionDiscountCalculator
             $normalizedValue = rtrim(rtrim(number_format($basisPoints / 100, 2, '.', ''), '0'), '.');
         }
 
+        if (!config('billing.transaction_discounts_enabled', false)) {
+            throw ValidationException::withMessages(['discount' => ['折扣功能已停用，請以原價建立。']]);
+        }
+
         if ($reason === '') {
             throw ValidationException::withMessages(['discount.reason' => ['非零折扣必須填寫原因。']]);
         }

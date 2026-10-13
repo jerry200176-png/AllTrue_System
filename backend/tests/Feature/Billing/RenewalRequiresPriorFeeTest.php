@@ -143,9 +143,11 @@ class RenewalRequiresPriorFeeTest extends TestCase
         $monthly = $this->monthlyCourse(['Rate' => 600, 'Charge' => 0]);
         $this->postAuthenticatedJson("/api/v1/student-classes/{$monthly->ID}/renew-monthly", ['end_date' => '2026-05-31'])
             ->assertCreated();
-        $full = $this->postAuthenticatedJson("/api/v1/student-classes/{$this->monthlyCourse(['Rate' => 600, 'Charge' => 0])->ID}/renew-monthly", ['end_date' => '2026-05-31',
-            'discount' => ['type' => 'PERCENTAGE', 'value' => '100', 'reason' => 'full scholarship']])->assertCreated(); // #3991 review: a 100% discount keeps its NT$0 bill
-        $this->assertSame(0, (int) Invoice::query()->findOrFail((int) $full->json('invoice.id'))->TotalAmount);
+        // Founder 2026-10-14「不要有折扣功能了」(#4020): a 100% discount no longer yields an NT$0 renewal; it is refused before any bill.
+        $invoices = Invoice::count();
+        $this->postAuthenticatedJson("/api/v1/student-classes/{$this->monthlyCourse(['Rate' => 600, 'Charge' => 0])->ID}/renew-monthly", ['end_date' => '2026-05-31',
+            'discount' => ['type' => 'PERCENTAGE', 'value' => '100', 'reason' => 'full scholarship']])->assertStatus(422)->assertJsonValidationErrors('discount');
+        $this->assertSame($invoices, Invoice::count());
 
         $count = $this->countCourse(['Rate' => 500, 'Charge' => 4000]);
         $this->postAuthenticatedJson("/api/v1/student-classes/{$count->ID}/purchase-batch", ['sessions' => 4, 'start_date' => '2026-05-05', 'mode' => 'new_purchase'])
