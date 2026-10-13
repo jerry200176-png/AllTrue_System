@@ -40,10 +40,13 @@ class AlertController extends Controller
     {
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        if ($role !== 'super_admin' && empty($campusIds)) { // #3942 review: an empty campus scope never means "every campus"
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
 
         if ($request->filled('branch_id')) {
             $bid = (int) $request->input('branch_id');
-            if ($role !== 'super_admin' && !empty($campusIds) && !in_array($bid, $campusIds, true)) {
+            if ($role !== 'super_admin' && !in_array($bid, $campusIds, true)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
             $campusIds = [$bid];
@@ -463,6 +466,20 @@ class AlertController extends Controller
 
         // Merge package-level alerts after individual rows are normalized.
         $rows = $rows->merge($countPkgAlerts)->merge($monthlyPkgAlerts)->values();
+
+        // #3942: the 收據 entry opens a confirmed report. A confirmed partial payment keeps the bill `partial` but already has
+        // a receipt, so the row carries the confirmed report of ITS CURRENT BILL, never an older term's receipt. A package row
+        // reads its anchor's bill, the same bill its amounts come from (member-wide package money + receipts: follow-up).
+        // A report filed without InvoiceID but linked to a Payment on the bill (receipt_without_invoice) counts for that bill.
+        $billOf = DB::raw('COALESCE(pr.InvoiceID, p.InvoiceID)');
+        $receiptByInvoice = DB::table('payment_reports as pr')->leftJoin('Payment as p', 'p.id', '=', 'pr.payment_id')->where('pr.status', 'confirmed')
+            ->whereIn($billOf, $rows->pluck('payable_invoice_id')->filter()->all())
+            ->groupBy($billOf)->selectRaw('COALESCE(pr.InvoiceID, p.InvoiceID) AS bill_id, MAX(pr.id) AS report_id')->pluck('report_id', 'bill_id');
+        $rows = $rows->map(function ($row) use ($receiptByInvoice) {
+            $reportId = $receiptByInvoice[$row['payable_invoice_id'] ?? 0] ?? null;
+
+            return $row + ['has_confirmed_receipt' => $reportId !== null, 'receipt_report_id' => $reportId !== null ? (int) $reportId : null];
+        })->values();
 
         return response()->json($rows);
     }
