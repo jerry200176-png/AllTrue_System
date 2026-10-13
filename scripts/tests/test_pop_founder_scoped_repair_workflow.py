@@ -43,7 +43,7 @@ def test_founder_repair_workflow_is_exactly_scoped_and_protected():
     assert "curl -sS" in text and '-o "$output"' in text
 def test_confirmation_and_sha_are_fail_closed():
     text = WORKFLOW.read_text()
-    assert "DRY_RUN_HUANG_YIKUI_MATH_20260902" in text
-    assert "APPROVE_HUANG_YIKUI_MATH_20260902" in text
+    assert "DRY_RUN_STUDENT_30_MATH_20260902" in text
+    assert "APPROVE_STUDENT_30_MATH_20260902" in text
     assert "d21ed8de1a2a80034aee50d214ac68b7944f3251" in text
     assert "Founder gate passed" in text
