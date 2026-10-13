@@ -232,28 +232,28 @@ class BillingPayableResolver
             ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period'])
             ->groupBy('StudentClassID');
 
-        $selected = [];
-        foreach ($ids as $classId) {
-            $selected[$classId] = $this->selectRelevantInvoice($invoicesByClass->get($classId, collect()));
-        }
         // resolve() reads items only for date-mode courses (#3454): one batched query, none for count-only batches.
-        $needItems = collect($selected)
-            ->filter(fn ($invoice, $classId) => $invoice
-                && (string) ($courseMap[$classId]->ScheduleMode ?? '') === 'date')
-            ->values();
+        // Selection projects candidates too (#3875), so every date-mode candidate gets its items here.
+        $needItems = $invoicesByClass
+            ->filter(fn ($invoices, $classId) => (string) ($courseMap[$classId]->ScheduleMode ?? '') === 'date')
+            ->flatten(1);
         if ($needItems->isNotEmpty()) {
             (new \Illuminate\Database\Eloquent\Collection($needItems->all()))->load('items');
         }
 
+        // One session query for all monthly candidates (sole caller AlertController is never inside another preload).
+        $dateIds = $invoicesByClass->keys()->filter(fn ($classId) => (string) ($courseMap[$classId]->ScheduleMode ?? '') === 'date')->all();
+        if ($dateIds !== []) {
+            $this->invoiceAmounts->preloadSessions($dateIds);
+        }
         $resolved = [];
         foreach ($ids as $classId) {
-            $invoice = $selected[$classId];
+            [$invoice, $projection] = $this->selectRelevantInvoice($invoicesByClass->get($classId, collect()), $courseMap[$classId] ?? null);
             if (!$invoice) {
                 $resolved[$classId] = $this->unbilled();
                 continue;
             }
 
-            $projection = $this->invoiceAmounts->resolve($invoice, $courseMap[$classId] ?? null);
             $amount = max(0, (int) $projection['total_amount']);
             $applied = min($amount, max(0, (int) $projection['net_applied']));
             $resolved[$classId] = [
@@ -265,6 +265,9 @@ class BillingPayableResolver
                 'payable_billing_period' => $projection['billing_period'],
                 'payable_amount_source' => $projection['amount_source'],
             ];
+        }
+        if ($dateIds !== []) {
+            $this->invoiceAmounts->forgetPreloadedSessions();
         }
 
         return $resolved;
@@ -351,23 +354,56 @@ class BillingPayableResolver
         ];
     }
 
-    /** @param Collection<int, Invoice> $invoices */
-    private function selectRelevantInvoice(Collection $invoices): ?Invoice
+    /**
+     * The bill the queue shows and collect buttons pay: the first (open status, newest period, then id; monthly: oldest
+     * period, any status) whose Payment-row projection still owes (#3875, #3888). None owes → the first in the default order.
+     * @param Collection<int, Invoice> $invoices
+     * @return array{0: ?Invoice, 1: ?array}
+     */
+    private function selectRelevantInvoice(Collection $invoices, ?StudentClass $course): array
     {
-        return $invoices->sort(function (Invoice $left, Invoice $right): int {
+        foreach ($this->sortRelevant($invoices, (string) ($course->ScheduleMode ?? '') === 'date') as $invoice) {
+            if ($this->mayOwe($invoice) && (int) ($projection = $this->invoiceAmounts->resolve($invoice, $course))['outstanding_amount'] > 0) {
+                return [$invoice, $projection];
+            }
+        }
+        $fallback = $this->sortRelevant($invoices)->first();
+
+        return $fallback ? [$fallback, $this->invoiceAmounts->resolve($fallback, $course)] : [null, null];
+    }
+
+    /** Cheap superset of "projection still owes" from the loaded payments (see InvoiceAmountReconciliationService). */
+    private function mayOwe(Invoice $invoice): bool
+    {
+        $net = 0;
+        foreach ($invoice->getRelationValue('payments') ?? [] as $payment) {
+            $amount = (int) ($payment->Amount ?? 0);
+            $net += ($amount < 0 || (string) ($payment->Method ?? '') === 'void') ? -abs($amount) : $amount;
+        }
+        $net = max(0, $net);
+
+        return (int) ($invoice->getAttribute('TotalAmount') ?? 0) > $net
+            || ((string) ($invoice->getAttribute('Status') ?? '') === 'unpaid' && $net === 0);
+    }
+
+    /** @param Collection<int, Invoice> $invoices */
+    private function sortRelevant(Collection $invoices, bool $oldestFirst = false): Collection
+    {
+        return $invoices->sort(function (Invoice $left, Invoice $right) use ($oldestFirst): int {
             $leftOpen = in_array((string) ($left->getAttribute('Status') ?? ''), ['unpaid', 'partial'], true);
             $rightOpen = in_array((string) ($right->getAttribute('Status') ?? ''), ['unpaid', 'partial'], true);
-            if ($leftOpen !== $rightOpen) {
+            // Monthly: period order only; the Payment-row projection decides which still owes (#3888 r4244111096).
+            if ($leftOpen !== $rightOpen && !$oldestFirst) {
                 return $leftOpen ? -1 : 1;
             }
 
             $leftPeriod = (string) ($left->getAttribute('billing_period') ?: substr((string) $left->getAttribute('IssueDate'), 0, 7));
             $rightPeriod = (string) ($right->getAttribute('billing_period') ?: substr((string) $right->getAttribute('IssueDate'), 0, 7));
             if ($leftPeriod !== $rightPeriod) {
-                return strcmp($rightPeriod, $leftPeriod);
+                return $oldestFirst ? strcmp($leftPeriod, $rightPeriod) : strcmp($rightPeriod, $leftPeriod);
             }
 
-            return (int) $right->getAttribute('id') <=> (int) $left->getAttribute('id');
-        })->first();
+            return ($oldestFirst ? -1 : 1) * ((int) $right->getAttribute('id') <=> (int) $left->getAttribute('id'));
+        });
     }
 }
