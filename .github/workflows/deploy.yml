@@ -1328,6 +1328,7 @@ jobs:
       # production side-effect workflow and non-cancelling.
       group: alltrue-production-side-effects-v2
       cancel-in-progress: false
+      queue: max
 
     steps:
       # Founder 1A: without a reviewer, re-verify the GO evidence right before any
@@ -1886,6 +1887,7 @@ jobs:
     concurrency:
       group: alltrue-production-side-effects-v2
       cancel-in-progress: false
+      queue: max
     steps:
       - name: Checkout exact smoke revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2101,6 +2103,7 @@ jobs:
     concurrency:
       group: alltrue-production-side-effects-v2
       cancel-in-progress: false
+      queue: max
     steps:
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2241,6 +2244,7 @@ jobs:
     concurrency:
       group: alltrue-production-side-effects-v2
       cancel-in-progress: false
+      queue: max
     environment:
       name: production-activation
     steps:
