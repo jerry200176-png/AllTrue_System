@@ -101,7 +101,7 @@ jobs:
           set -euo pipefail
           mkdir -p out
           if [[ "$CASE_KEY" == "laravel_2833_preflight" ]]; then
-            [[ -z "$TARGET_STUDENT_ID" && -z "$TARGET_STUDENT_CLASS_ID" && "$TARGET_SUBJECT_NAME" == "數學" ]]
+            [[ -z "$TARGET_STUDENT_ID" && -z "$TARGET_STUDENT_CLASS_ID" && -z "$EXPECTED_TEACHER_IDS" && "$TARGET_SUBJECT_NAME" == "數學" ]]
             PREFLIGHT_B64=$(base64 -w0 scripts/laravel-2833-preflight.php)
             REQUEST_B64=$(base64 -w0 operations/closeout/laravel-2833-preflight.request.json)
             ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
@@ -129,14 +129,17 @@ jobs:
           if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           expected_teacher_ids = os.environ.get('EXPECTED_TEACHER_IDS') or ''
-          if expected_teacher_ids and (case != 'contract_muzha_student' or not all(x.isdigit() for x in expected_teacher_ids.split(','))):
-              raise SystemExit('expected_teacher_ids is only for contract_muzha_student, as comma-separated numbers')
+          teacher_ids = expected_teacher_ids.split(',') if expected_teacher_ids else []
+          if teacher_ids and (case != 'contract_muzha_student' or len(teacher_ids) > 20 or any(not x.isascii() or not x.isdigit() or int(x) <= 0 for x in teacher_ids)):
+              raise SystemExit('expected_teacher_ids must be 1-20 positive ASCII IDs for contract_muzha_student')
+          if case == 'contract_muzha_student' and not teacher_ids:
+              raise SystemExit('contract_muzha_student requires independent expected_teacher_ids')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
           print(f'''<?php
           $case = {case!r};
           $targetStudentId = {int(target_student_id) if target_student_id else 'null'};
           $targetStudentClassId = {int(target_student_class_id) if target_student_class_id else 'null'};
-          $expectedTeacherIds = {json.dumps([int(x) for x in expected_teacher_ids.split(',')]) if expected_teacher_ids else 'null'};
+          $expectedTeacherIds = {json.dumps(sorted(set(map(int, teacher_ids)))) if teacher_ids else 'null'};
           $targetSubjectName = {json.dumps(target_subject_name, ensure_ascii=False)};
           $db = \\Illuminate\\Support\\Facades\\DB::class;
           $out = ['ok' => true, 'case' => $case, 'read_only' => true,
@@ -1259,7 +1262,7 @@ jobs:
             $classes = $rowsOf($db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID'));
             $classIds = array_map(fn ($r) => (int)$r['ID'], $classes);
             // #3627: no name lookup in source. The expected teachers are an explicit, independent ID input
-            // (null when not given); the contracts' own TeacherIDs are reported separately for comparison.
+            // (required for this case); contracts' own TeacherIDs are reported separately for comparison.
             $out['teachers'] = $expectedTeacherIds;
             $out['contract_teacher_ids'] = collect($classes)->pluck('TeacherID')->filter()->map(fn ($i) => (int)$i)->unique()->sort()->values()->all();
             $out['student_classes'] = $classes;
@@ -1856,3 +1859,4 @@ jobs:
           name: production-case-${{ inputs.case_key }}
           path: out/production-case.json
           retention-days: 14
+
