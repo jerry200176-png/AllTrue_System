@@ -125,12 +125,24 @@ A：Phase 2 把方案成員自 `unpaid_reminder`／`SendTuitionReminders` 全部
 | Q4 | **A**：count 方案的成員完全排除於自動提醒／催繳（`DunningService`、`tuition:send-reminders`、LINE），由人員手動跟進。 | R10 |
 | Q5 | **修**：`PaymentReportController::confirm` 中，方案成員沒有預開帳單、確認的是部分金額時，**不得** `markPackagePaid`；方案維持部分已繳，直到 Payment rows 合計達到 `X`。不改寫既有資料；舊的誤標已繳方案經讀取端規則（旗標已繳但 Payment rows < X）顯示待核對。 | 寫入路徑另一 PR（建於 #3892 合併後） |
 
-實作時的解讀（若與 Founder 意圖不同，請在 PR 指正）：
+實作時的解讀（Founder 2026-10-13 round 2 已確認，見下表）：
 
 - **R7 保留**：沒有任何成員帳單且 `pkg.paid = true` → 已繳（legacy_flag，F7 S1）。R8.7 只在有帳單時適用；否則所有舊的「旗標已繳、從未開單」方案都會一次湧入待核對。Q5 所指的舊誤標方案都有 confirm 開出的帳單，仍會被 R8.7 或 Q1 比對抓到。
 - **Q4 只涵蓋 count 方案成員**（與 Q3 一致）；月結方案成員的提醒照舊。
 - 已停止的 count 方案只在成員有帳單時列出（與過去「停課成員有欠款帳單才列」一致）；沒有帳單的已停止方案不列。
 - 待核對列：`payment_status = 'needs_review'`、`review_reasons[]`，金額欄位（`charge`／`outstanding`／`payable_*`）皆為 null。
+
+### Founder decisions 2026-10-13 (round 2)
+
+Founder 2026-10-13 對 Phase 2 實作時浮現的五個歧義一律採建議選項 (a)：
+
+| # | 問題 | 決定 |
+|---|---|---|
+| R2-1 | Q5：confirm 自動開的方案帳單金額 | **(a)** 以 `X = rate × total_sessions` 開單（不是「收多少開多少」）；部分收款維持部分已繳，收款合計達 X 才標已繳；超過 X 擋下（422）。X 無法判定時照收到金額開單，但不因此標已繳。 |
+| R2-2 | R7 vs R8.7：沒有任何成員帳單、`pkg.paid = true` | **(a)** 視為已繳（legacy_flag，F7 S1）；R8.7 只在有帳單時適用。 |
+| R2-3 | Q4 範圍 | **(a)** 只排除 count 方案成員的自動提醒；月結方案成員照舊。 |
+| R2-4 | 已停止、沒有任何帳單的 count 方案 | **(a)** 不列入待收。 |
+| R2-5 | 教職員 in-app 通知（`NotificationSyncService`） | **(a)** 維持現狀（每成員一則），本 RFC 不改。 |
 
 ## 6. 回滾
 
