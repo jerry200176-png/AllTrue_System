@@ -159,7 +159,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |----------|---------|
 | API 路由清單 | `CLAUDE.md` §API 路由 |
 | DB schema / 資料表結構 | `CLAUDE.md` §核心資料表 |
-| 高風險邏輯（繳費/堂數） | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` · 核帳拆分 [`architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md) · 共用方案待收（Draft）[`architecture/RFC_SHARED_PACKAGE_COLLECTION.md`](architecture/RFC_SHARED_PACKAGE_COLLECTION.md) |
+| 高風險邏輯（繳費/堂數） | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` · 核帳拆分 [`architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md) · 共用方案待收（Accepted；Phase 2 HOLD，見 §5b OPEN）[`architecture/RFC_SHARED_PACKAGE_COLLECTION.md`](architecture/RFC_SHARED_PACKAGE_COLLECTION.md) |
 | Migration 規則 | `.cursor/rules/module-migration.mdc` |
 | 測試規則 / Factory | `.cursor/rules/module-test.mdc` |
 
