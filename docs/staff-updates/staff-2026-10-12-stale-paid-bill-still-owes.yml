@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-12-stale-paid-bill-still-owes
+    published_at: "2026-10-12"
+    audiences:
+      - director
+    importance: digest
+    title: 堂數制收款不足的帳單照樣列出
+    summary: 堂數制單一課程照收款紀錄判斷欠多少；月結課程與共用方案還沒涵蓋。
+    items:
+      - category: fixed
+        text: 堂數制、非共用方案的課程，帳單狀態寫「已繳」但收款紀錄不足時，待收清單、應收帳齡和銀行對帳建議都會列出還欠的金額。
+    source_refs:
+      - "changelog:2026-10-12:stale-paid-bill-still-owes"
