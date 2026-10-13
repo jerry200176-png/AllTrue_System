@@ -53,9 +53,9 @@ class EnsureSessionHorizonCommand extends Command
             $this->line('ok='.(($e['ok'] ?? false) ? 'yes' : 'no')
                 .' blocked='.(($e['blocked'] ?? true) ? 'yes' : 'no')
                 .' reason='.($e['primary_reason'] ?? 'n/a'));
-            $this->line('candidates='.count($e['candidates'] ?? [])
+            $this->line('candidates='.($e['would_create'] ?? count($e['candidates'] ?? []))
                 .' created='.($e['created_count'] ?? 0)
-                .' skipped='.($e['skipped_count'] ?? 0));
+                .' skipped='.($e['would_skip'] ?? $e['skipped_count'] ?? 0));
 
             return $exit;
         }
