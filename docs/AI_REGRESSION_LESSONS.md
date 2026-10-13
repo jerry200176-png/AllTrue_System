@@ -660,6 +660,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 主任核帳若找不到未繳 Invoice 就自動新建 Invoice/Payment，會讓同一筆課被重複入帳，畫面出現多筆繳費。
 - 已繳課程底下若殘留 unpaid Invoice，不能把該 Invoice 當成「可核帳目標」；這通常代表歷史錯帳或續報/帳單建立時期的殘留資料，應先作廢或修補資料。
 - **Founder Q2（2026-10-11，#3797／#3864）取代舊規則**：帳單＋Payment 紀錄才是真相，`Paid=1` 旁邊還欠的帳單**可以**收款；但只能收**目標帳單**依 Payment 紀錄（`InvoiceAmountReconciliationService`）算出的未收額（鎖住帳單後在 `directorRecord`／batch／`confirm` 都重算，超過回 422「這張帳單只欠 NT$X…」），不可用整門課的總未收額，也不可用儲存的 `PaidAmount`；`confirm` 寫回的 `PaidAmount`／`Status` 一律從 Payment 紀錄重算。Payment 紀錄已收足的帳單（即使 Status 過期仍是 unpaid）一律拒收；課程已收齊（resolver `paid`）且沒有未結帳單時仍回 422。
+- **#3875 補強**：可不可收、收哪張，一律看非作廢帳單的 Payment 紀錄投影，**不看儲存的 `Status=paid`**（指定帳單與自動找帳單皆然；作廢、別門課帳單仍拒絕）。NT$0 帳單不收正數金額；對還欠錢的帳單不收 0 元回報（intake 與 confirm 都擋）。待收名單顯示的帳單＝投影仍欠的那張，前端單筆與批次都必須把該 `payable_invoice_id` 帶進 request，不可讓後端 fallback 另選帳單。
 - **強制規則**：`PaymentReportController::confirm` 必須套用同一個已繳防重 guard；家長回報 pending report 不可繞過 `directorRecord` 的防護而新建第二筆帳。
 - **強制規則**：帳單畫面顯示付款筆數時，只能計算正向有效付款；`Method='void'` 或負數沖銷不可算成「繳費次數」。
 - **強制規則**：歷史錯帳更正不可刪除 `Payment` 或手改金額；必須從收款/收據紀錄逐筆撤銷，建立負值沖銷並保存 `void_reason` 稽核。
