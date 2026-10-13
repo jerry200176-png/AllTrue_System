@@ -621,6 +621,7 @@ class AccountingController extends Controller
                 'overpaid_amount' => $overpaidAmount,
                 'outstanding_amount' => $outstanding,
                 'status' => $status,
+                'zero_amount_reason' => $invoice->zero_amount_reason, // #3991: 免費／贈送 badge
                 'can_direct_void' => !in_array($status, ['paid', 'partial', 'void'], true) && $paidAmount <= 0 && $netApplied <= 0,
                 'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0),
                 'payments' => $paymentRows->all(),

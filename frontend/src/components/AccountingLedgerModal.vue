@@ -137,6 +137,7 @@
                       <td class="num" data-label="未結清" :class="{ due: (inv.outstanding_amount || 0) > 0 }">{{ formatCurrency(inv.outstanding_amount) }}</td>
                       <td data-label="狀態">
                         <span :class="['ledger-chip', invoiceStatusClass(inv.status)]">{{ invoiceStatusLabel(inv.status) }}</span>
+                        <span v-if="inv.zero_amount_reason === ZERO_REASON_FREE_GIFT" class="ledger-chip chip--muted" :data-testid="`ledger-free-gift-${inv.id}`">{{ FREE_GIFT_LABEL }}</span>
                       </td>
                       <td class="ledger-cell-actions">
                         <div class="ledger-actions">
@@ -279,7 +280,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
-import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
+import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import ContractCard from './tuition/ContractCard.vue';
 import AtButton from './design-system/AtButton.vue';

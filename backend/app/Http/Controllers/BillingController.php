@@ -18,6 +18,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class BillingController extends Controller
 {
@@ -105,7 +106,22 @@ class BillingController extends Controller
             'MonthlySplit' => 'nullable|boolean',
             'SplitStart' => 'nullable|date',
             'SplitEnd' => 'nullable|date|after_or_equal:SplitStart',
+            'zero_amount_reason' => ['nullable', 'string', Rule::in([Invoice::ZERO_REASON_FREE_GIFT])],
         ]);
+        // #3991 (Founder 2026-10-13): a NT$0 bill must be marked 免費／贈送; a missing or 0 fee is never free by itself.
+        $markedFree = ($data['zero_amount_reason'] ?? null) === Invoice::ZERO_REASON_FREE_GIFT;
+        if ((int) $data['TotalAmount'] === 0 && !$markedFree) {
+            return response()->json([
+                'message' => 'NT$0 帳單必須標記為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」；沒填費用的課程請先設定費用。沒有建立任何帳單。',
+                'code' => 'zero_amount_unmarked',
+            ], 422);
+        }
+        if ($markedFree && (int) $data['TotalAmount'] !== 0) {
+            return response()->json([
+                'message' => '標記為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」的帳單金額必須是 NT$0。沒有建立任何帳單。',
+                'code' => 'free_gift_requires_zero',
+            ], 422);
+        }
 
         // Campus scope: the invoice student, the anchor contract and every item contract.
         $this->assertInvoiceStudentCampusAllowed($request, (int) (Student::query()->whereKey($data['StudentID'])->value('CampusID') ?? 0));
@@ -115,7 +131,7 @@ class BillingController extends Controller
             $this->assertInvoiceStudentCampusAllowed($request, (int) $itemCourse->student?->CampusID);
         }
 
-        return DB::transaction(function () use ($data, $issuer) {
+        return DB::transaction(function () use ($data, $issuer, $markedFree) {
             // Lock order everywhere: student, then courses, then invoices. Purge locks the student
             // first too, so an invoice can never be written for a student deleted concurrently (#3593).
             if (!Student::query()->whereKey($data['StudentID'])->lockForUpdate()->first(['id'])) {
@@ -125,9 +141,16 @@ class BillingController extends Controller
             $courseIds = collect([$data['StudentClassID'] ?? null])->merge(array_column($data['Items'] ?? [], 'StudentClassID'))
                 ->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
             if ($courseIds !== []) {
-                $found = StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+                $found = StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID', 'StudentID']);
                 if ($found->count() !== count($courseIds)) {
                     return response()->json(['message' => '找不到部分課程，可能已被刪除'], 404); // never bill a deleted contract
+                }
+                // #3991: a bill is fee evidence for its courses, so every course on it must belong to the billed student.
+                if ($found->contains(fn (StudentClass $c) => (int) $c->getAttribute('StudentID') !== (int) $data['StudentID'])) {
+                    return response()->json([
+                        'message' => '帳單上的課程不屬於這位學生，不能建立帳單。沒有建立任何帳單。',
+                        'code' => 'invoice_course_student_mismatch',
+                    ], 422);
                 }
             }
             if (!empty($data['StudentClassID'])) {
@@ -173,6 +196,7 @@ class BillingController extends Controller
                     'ScheduleModeAtIssue' => $scheduleModeAtIssue,
                     'Note' => $data['Note'] ?? '',
                     'billing_period' => $data['billing_period'] ?? null,
+                    'zero_amount_reason' => $markedFree ? Invoice::ZERO_REASON_FREE_GIFT : null,
                 ], $items, true);
             } catch (BillingPeriodInvoiceExists) {
                 return response()->json([

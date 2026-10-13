@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $Note
  * @property string|null $billing_period
  * @property array<string, mixed>|null $billing_snapshot
+ * @property string|null $zero_amount_reason
  * @property string|null $reconciled_at
  * @property int|null $reconciled_by
  * @property \Carbon\CarbonInterface|null $created_at
@@ -27,6 +28,14 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Invoice extends Model
 {
+    /**
+     * #3991 (Founder 2026-10-13): the only reason a NT$0 bill may exist on a monthly course. A missing or 0 fee is
+     * never treated as free; staff must mark the bill 免費／贈送 explicitly (stored in zero_amount_reason).
+     */
+    public const ZERO_REASON_FREE_GIFT = 'free_gift';
+
+    public const ZERO_REASON_FREE_GIFT_LABEL = '免費／贈送';
+
     protected static function booted(): void
     {
         // A waived (確認不收) contract is terminal: no new billing line may point at it.
@@ -53,11 +62,17 @@ class Invoice extends Model
         'reconciled_by',
         'billing_period',
         'billing_snapshot',
+        'zero_amount_reason',
     ];
 
     protected $casts = [
         'billing_snapshot' => 'array',
     ];
+
+    public function isMarkedFreeGift(): bool
+    {
+        return (string) $this->getAttribute('zero_amount_reason') === self::ZERO_REASON_FREE_GIFT;
+    }
 
     public function scopeNotVoided($query)
     {
