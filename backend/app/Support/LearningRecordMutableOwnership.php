@@ -63,10 +63,11 @@ final class LearningRecordMutableOwnership
         return $lr && self::isFilledAndApproved($lr) ? $lr : null;
     }
 
-    /** Throws a 409 (rolls back the surrounding transaction) when the session's assessment is protected. */
-    public static function assertTeacherChangeAllowed(int $classSessionId): void
+    /** Throws a 409 (rolls back the surrounding transaction) when the session's assessment is protected and $newTeacherId is not its teacher. */
+    public static function assertTeacherChangeAllowed(int $classSessionId, ?int $newTeacherId = null): void
     {
-        if (self::protectedRecordForSession($classSessionId, true) !== null) {
+        $locked = self::protectedRecordForSession($classSessionId, true);
+        if ($locked !== null && (int) $locked->TeacherID !== $newTeacherId) {
             throw new HttpResponseException(self::lockedResponse());
         }
     }
@@ -96,14 +97,22 @@ final class LearningRecordMutableOwnership
         return null;
     }
 
-    /** "Y-m-d HH:MM" occurrence keys >= $from of a contract's protected assessments (one occurrence, not the whole day). */
+    /**
+     * "Y-m-d HH:MM" occurrence keys >= $from of a contract's protected assessments (one occurrence, not the whole day).
+     * Keys come from the bound ClassSession (authoritative); the LR mirror columns are only a fallback for unbound rows.
+     */
     public static function protectedSlots(int $courseId, string $from): array
     {
-        return LearningRecord::query()->where('StudentClassID', $courseId)->whereNull('VoidedAt')
-            ->whereDate('SessionDate', '>=', $from)->where('Status', 'approved')->get()
-            ->filter(fn ($lr) => self::isFilledAndApproved($lr))
-            ->map(fn ($lr) => substr((string) $lr->getAttribute('SessionDate'), 0, 10) . ' ' . substr((string) $lr->getAttribute('StartTime'), 0, 5))
-            ->unique()->values()->all();
+        $records = LearningRecord::query()->where('StudentClassID', $courseId)->whereNull('VoidedAt')->where('Status', 'approved')->get()
+            ->filter(fn ($lr) => self::isFilledAndApproved($lr));
+        $sessions = ClassSession::query()->whereIn('id', $records->pluck('ClassSessionID')->filter()->map(fn ($id) => (int) $id)->all())->get()->keyBy('id');
+
+        return $records->map(function ($lr) use ($sessions) {
+            $cs = $sessions->get((int) $lr->getAttribute('ClassSessionID'));
+
+            return substr((string) ($cs ? $cs->SessionDate : $lr->getAttribute('SessionDate')), 0, 10)
+                . ' ' . substr((string) ($cs ? $cs->StartTime : $lr->getAttribute('StartTime')), 0, 5);
+        })->filter(fn ($key) => substr($key, 0, 10) >= $from)->unique()->values()->all();
     }
 
     public static function canFollowCurrentCourseTeacher(LearningRecord $record): bool

@@ -295,16 +295,21 @@ final class ContractTeacherChangeCascade
             ->all();
 
         if (!empty($staleAnchorIds)) {
+            // #3824: a legacy duplicate chain can hold a protected child under the same anchor; delete only unprotected rows.
             Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', '>=', $today)
                 ->where('status', 'scheduled')
                 ->whereIn('original_schedule_id', $staleAnchorIds)
+                ->whereNotIn(DB::raw("CONCAT(DATE(schedule_date), ' ', SUBSTRING(start_time, 1, 5))"), $locked)
                 ->delete();
 
+            $keptAnchorIds = Schedule::where('student_course_id', $courseId)->where('status', 'scheduled')
+                ->whereIn('original_schedule_id', $staleAnchorIds)->pluck('original_schedule_id')->all();
             Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', '>=', $today)
                 ->where('status', 'rescheduled')
                 ->whereIn('id', $staleAnchorIds)
+                ->whereNotIn('id', $keptAnchorIds)
                 ->delete();
         }
     }

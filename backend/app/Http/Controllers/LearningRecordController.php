@@ -1428,6 +1428,10 @@ class LearningRecordController extends Controller
         if (!in_array($role, ['director', 'super_admin', 'admin'], true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
+        if (LearningRecordMutableOwnership::isFilledAndApproved($learningRecord)) {
+            // #3824: deleting would unprotect the occurrence without rolling back the teacher's count or audit.
+            return response()->json(['message' => '這堂評量已填寫並核准，不能刪除。請先退回核准再處理。', 'code' => 'approved_assessment_teacher_locked'], 409);
+        }
         $learningRecord->delete();
         return response()->json(['message' => 'Deleted']);
     }
@@ -1988,6 +1992,13 @@ class LearningRecordController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
+        // #3824: the atomic reschedule writes teacher_id onto the live row; a protected occurrence keeps its teacher.
+        if (isset($data['teacher_id'])
+            && ($locked = LearningRecordMutableOwnership::protectedRecordForSlot((int) $studentClass->ID, $data['old_date'] ?? null, $data['old_start_time'] ?? $data['start_time'] ?? null))
+            && (int) $locked->TeacherID !== (int) $data['teacher_id']) {
+            return LearningRecordMutableOwnership::lockedResponse();
+        }
+
         $authUser = $request->attributes->get('auth_user');
         try {
             return response()->json(
@@ -2175,7 +2186,8 @@ class LearningRecordController extends Controller
         );
         $contractTid = (int) ($fallbackTeacherId ?? 0);
         $effectiveTeacherId = $subTid !== null ? $subTid : max(0, $contractTid);
-        if ($effectiveTeacherId > 0 && (int) $record->TeacherID !== $effectiveTeacherId) {
+        // #3824: a filled+approved assessment keeps its recorded teacher; only the session mirrors heal here.
+        if ($effectiveTeacherId > 0 && (int) $record->TeacherID !== $effectiveTeacherId && !LearningRecordMutableOwnership::isFilledAndApproved($record)) {
             $record->TeacherID = $effectiveTeacherId;
             $dirty = true;
         }

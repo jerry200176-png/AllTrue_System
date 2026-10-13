@@ -2247,8 +2247,9 @@ class ClassSessionController extends Controller
         $newTeacherId = (int) $data['substitute_teacher_id'];
         $oldTeacherId = (int) ($studentClass->TeacherID ?? 0);
 
-        if (LearningRecordMutableOwnership::protectedRecordForSession((int) $session->id)) {
-            return LearningRecordMutableOwnership::lockedResponse(); // #3824 (rechecked under lock inside the transactions)
+        // #3824: only a real reassignment is refused; re-asserting the assessment's own teacher is a safe repair.
+        if (($protectedLr = LearningRecordMutableOwnership::protectedRecordForSession((int) $session->id)) && (int) $protectedLr->TeacherID !== $newTeacherId) {
+            return LearningRecordMutableOwnership::lockedResponse(); // rechecked under lock inside the transaction
         }
 
         try {
@@ -2630,7 +2631,7 @@ class ClassSessionController extends Controller
             $classType, $dayOfWeek, $campusId, $roomId, $existingRescheduled, $existingScheduled,
             $crossCampus, $hasReschedule, $origSessionDate, $origStartTime, $origEndTime
         ) {
-            LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $session->id); // #3824
+            LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $session->id, (int) $newTeacherId); // #3824
             $durationHours = 2;
             if ($startTime && $endTime) {
                 $mins = abs(Carbon::parse($startTime)->diffInMinutes(Carbon::parse($endTime)));

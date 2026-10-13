@@ -210,13 +210,6 @@ class ScheduleController extends Controller
         if ($effectiveTeacherId > 0) {
             $data['teacher_id'] = $effectiveTeacherId;
         }
-        // #3824: a filled+approved occurrence keeps its teacher. Checked after the course/campus check and after
-        // the teacher fallback, so the teacher actually written is compared (review r4247039986 / r4247040020).
-        if ($effectiveTeacherId > 0
-            && ($locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot($courseId, $data['schedule_date'] ?? null, $data['start_time']))
-            && (int) $locked->TeacherID !== $effectiveTeacherId) {
-            return \App\Support\LearningRecordMutableOwnership::lockedResponse();
-        }
         if (empty($data['class_type'])) {
             $data['class_type'] = $effectiveClassType;
         }
@@ -351,6 +344,15 @@ class ScheduleController extends Controller
                 $effectiveTeacherId = $priorSubstituteTeacherId;
                 $data['teacher_id'] = $priorSubstituteTeacherId;
             }
+        }
+
+        // #3824: a filled+approved occurrence keeps its teacher and its live row. Checked after the campus check and
+        // after every teacher redirect above, so the teacher actually written is compared; any other status
+        // (e.g. a rescheduled anchor) would delete the pin row.
+        if ($courseId > 0
+            && ($locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot($courseId, $data['schedule_date'] ?? null, $data['start_time']))
+            && (($effectiveTeacherId > 0 && (int) $locked->TeacherID !== $effectiveTeacherId) || ($data['status'] ?? 'scheduled') !== 'scheduled')) {
+            return \App\Support\LearningRecordMutableOwnership::lockedResponse();
         }
 
         if (($data['status'] ?? 'scheduled') === 'scheduled') {
@@ -1113,9 +1115,16 @@ class ScheduleController extends Controller
         if ($locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, (string) $schedule->schedule_date, (string) $schedule->start_time)) {
             $moves = fn (string $k, int $len) => isset($data[$k]) && strtolower(substr((string) $data[$k], 0, $len)) !== strtolower(substr((string) $schedule->{$k}, 0, $len));
             if ($moves('schedule_date', 10) || $moves('start_time', 5) || $moves('status', 32)
-                || (!empty($data['teacher_id']) && (int) $data['teacher_id'] !== (int) $schedule->teacher_id && (int) $data['teacher_id'] !== (int) $locked->TeacherID)) {
+                || (isset($data['teacher_id']) && (int) $data['teacher_id'] !== (int) $schedule->teacher_id && (int) $data['teacher_id'] !== (int) $locked->TeacherID)) {
                 return \App\Support\LearningRecordMutableOwnership::lockedResponse();
             }
+        }
+
+        // #3824: moving ANOTHER row onto a protected occurrence must also carry the assessment's teacher.
+        if ((isset($data['schedule_date']) || isset($data['start_time']))
+            && ($dest = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, $data['schedule_date'] ?? (string) $schedule->schedule_date, $data['start_time'] ?? (string) $schedule->start_time))
+            && (int) ($data['teacher_id'] ?? $schedule->teacher_id) !== (int) $dest->TeacherID) {
+            return \App\Support\LearningRecordMutableOwnership::lockedResponse();
         }
 
         $merged = array_merge($schedule->toArray(), array_filter($data, fn ($v) => $v !== null));
@@ -1351,7 +1360,9 @@ class ScheduleController extends Controller
     {
         // #3824: the pin row of a protected occurrence cannot be deleted (review r4247040009).
         $locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, (string) $schedule->schedule_date, (string) $schedule->start_time);
-        if ($locked && (int) $locked->TeacherID === (int) $schedule->teacher_id) {
+        // A makeup (type=extra) keeps the contract teacher on its row while the assessment records the substitute,
+        // so an approved makeup is protected whoever the row names.
+        if ($locked && ($schedule->type === 'extra' || (int) $locked->TeacherID === (int) $schedule->teacher_id)) {
             return \App\Support\LearningRecordMutableOwnership::lockedResponse();
         }
         $schedule->delete();
@@ -1378,6 +1389,10 @@ class ScheduleController extends Controller
 
         if ($schedule->status !== 'scheduled') {
             return response()->json(['error' => 'Schedule is not in scheduled status'], 422);
+        }
+
+        if (\App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, (string) $schedule->schedule_date, (string) $schedule->start_time)) {
+            return \App\Support\LearningRecordMutableOwnership::lockedResponse(); // #3824: an approved makeup cannot be cancelled
         }
 
         DB::transaction(function () use ($schedule) {

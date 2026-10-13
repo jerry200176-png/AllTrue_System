@@ -272,6 +272,70 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         $this->assertLocked($lr, fn () => $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId]));
     }
 
+    // ---- Codex review r4254200253 .. r4254248273 --------------------------------------------------------------
+
+    public function test_schedule_writers_cannot_zero_the_teacher_repost_a_rescheduled_anchor_or_move_onto_the_slot(): void
+    {
+        $lr = $this->lr($this->mkSession('attended'), 'approved', true);
+        $row = $this->schedule(self::DATE, '16:00', '18:00', $this->aId);
+        $other = $this->schedule(self::DATE, '19:00', '21:00', $this->bId);
+        DB::table('StudentClass')->where('ID', $this->sc->ID)->update(['TeacherID' => $this->bId]);
+        $this->assertLocked($lr, fn () => $this->api()->putJson("/api/v1/schedules/{$row->id}", ['teacher_id' => 0])); // 0 falls back to the contract teacher
+        $this->assertLocked($lr, fn () => $this->api()->putJson("/api/v1/schedules/{$other->id}", ['schedule_date' => self::DATE, 'start_time' => '16:00', 'end_time' => '18:00']));
+        $this->assertLocked($lr, fn () => $this->api()->postJson('/api/v1/schedules', [
+            'student_id' => $this->sc->StudentID, 'teacher_id' => $this->aId, 'day_of_week' => 5, 'start_time' => '16:00', 'end_time' => '18:00',
+            'branch_id' => 1, 'schedule_date' => self::DATE, 'student_course_id' => $this->sc->ID, 'status' => 'rescheduled', 'original_schedule_id' => $row->id,
+        ])); // the rescheduled branch would delete the pin row
+    }
+
+    public function test_an_approved_makeup_cannot_be_deleted_or_cancelled_and_its_assessment_cannot_be_deleted(): void
+    {
+        $lr = $this->lr($this->mkSession('attended'), 'approved', true);
+        $this->approve($lr, $this->bId); // substitute B taught it; the makeup row keeps the contract teacher A
+        $row = $this->schedule(self::DATE, '16:00', '18:00', $this->aId);
+        $row->update(['type' => 'extra']);
+        $this->assertLocked($lr, fn () => $this->api()->deleteJson("/api/v1/schedules/{$row->id}"), $this->bId);
+        $this->assertLocked($lr, fn () => $this->api()->postJson("/api/v1/schedules/{$row->id}/cancel-makeup"), $this->bId);
+        $this->assertLocked($lr, fn () => $this->api()->deleteJson("/api/v1/learning-records/{$lr->id}"), $this->bId);
+        $this->assertNull(LearningRecord::find($lr->id)->VoidedAt);
+    }
+
+    public function test_substitute_repair_that_keeps_the_assessments_teacher_is_allowed(): void
+    {
+        $s = $this->mkSession('scheduled');
+        $lr = $this->lr($s, 'approved', true);
+        DB::table('StudentClass')->where('ID', $this->sc->ID)->update(['TeacherID' => $this->bId]); // stale pin: the contract teacher B is effective
+        $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->aId])->assertOk();
+        $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
+    }
+
+    public function test_ensure_past_and_atomic_reschedule_do_not_rewrite_the_recorded_teacher(): void
+    {
+        $lr = $this->lr($this->mkSession('attended'), 'approved', true);
+        DB::table('StudentClass')->where('ID', $this->sc->ID)->update(['TeacherID' => $this->bId]);
+        $this->api()->postJson('/api/v1/learning-records/ensure-past', ['branch_id' => 1])->assertOk();
+        $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
+        $this->assertLocked($lr, fn () => $this->api()->postJson('/api/v1/learning-records/reschedule-session', [
+            'student_class_id' => $this->sc->ID, 'old_date' => self::DATE, 'old_start_time' => '16:00', 'new_date' => '2026-04-20',
+            'start_time' => '16:00', 'end_time' => '18:00', 'teacher_id' => $this->bId,
+        ]));
+    }
+
+    public function test_contract_change_keeps_a_protected_child_of_a_stale_anchor_and_reads_the_bound_session_slot(): void
+    {
+        $day = '2026-04-18';
+        $this->lr($this->mkSession('attended', $day), 'approved', true, $day);
+        DB::table('LearningRecord')->update(['SessionDate' => '2026-01-01', 'StartTime' => '09:00:00']); // drifted mirror columns
+        $anchor = $this->schedule($day, '16:00', '18:00', $this->aId);
+        $anchor->update(['status' => 'rescheduled']);
+        $kept = $this->schedule($day, '16:00', '18:00', $this->aId);
+        $drop = $this->schedule($day, '20:00', '22:00', $this->aId);
+        Schedule::whereIn('id', [$kept->id, $drop->id])->update(['original_schedule_id' => $anchor->id]);
+        $this->api()->putJson("/api/v1/student-classes/{$this->sc->ID}", ['teacher_id' => $this->bId])->assertOk();
+        $this->assertTrue(Schedule::whereKey($kept->id)->exists(), 'the protected pin survives the stale-anchor cleanup');
+        $this->assertSame($this->aId, (int) Schedule::find($kept->id)->teacher_id);
+    }
+
     private function schedule(string $date, string $start, string $end, int $teacherId): Schedule
     {
         return Schedule::create([
