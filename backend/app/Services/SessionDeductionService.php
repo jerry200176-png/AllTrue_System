@@ -575,35 +575,32 @@ class SessionDeductionService
             ->where('student_class_id', $studentClassId)
             ->whereIn('source', self::USAGE_SOURCES)
             ->where(fn ($q) => $q->whereNull('ledger_cs.id')->orWhereDate('ledger_cs.SessionDate', '<=', $today))
-            ->get(['session_deduction_ledger.event_type', 'session_deduction_ledger.minutes', 'session_deduction_ledger.source', 'ledger_cs.SessionDate as cs_date', 'ledger_cs.StartTime as cs_start']);
+            ->get(['session_deduction_ledger.id', 'session_deduction_ledger.class_session_id', 'session_deduction_ledger.event_type', 'session_deduction_ledger.minutes', 'session_deduction_ledger.source', 'ledger_cs.SessionDate as cs_date', 'ledger_cs.StartTime as cs_start']);
 
         $hasPartial = false;
-        $ambiguous = false;
+        $ambiguousNets = [];
         $net = 0;
         foreach ($rows as $row) {
             $kind = self::minuteEventKindFromSource($row->source);
             $isLegacyMakeup = $kind === null && $row->cs_date !== null
                 && isset($makeups[substr((string) $row->cs_date, 0, 10) . '|' . substr((string) $row->cs_start, 0, 5)]);
-            $ambiguous = $ambiguous || ($row->minutes !== null && (int) $row->minutes !== $perSession && $kind === null && !$isLegacyMakeup);
+            if ($row->minutes !== null && (int) $row->minutes !== $perSession && $kind === null && !$isLegacyMakeup) {
+                $key = (int) $row->class_session_id > 0 ? $row->class_session_id . '|' . $row->minutes : 'orphan|' . $row->id;
+                $ambiguousNets[$key] = ($ambiguousNets[$key] ?? 0) + ($row->event_type === 'deduct' ? 1 : -1);
+            }
             $minutes = ($kind === 'M' || $isLegacyMakeup) && $row->minutes !== null ? (int) $row->minutes : $perSession;
             $hasPartial = $hasPartial || $minutes !== $perSession;
             $net += $row->event_type === 'deduct' ? $minutes : -$minutes;
         }
 
-        return [$hasPartial, $net, $ambiguous];
+        return [$hasPartial, $net, array_filter($ambiguousNets) !== []];
     }
 
     private static function minuteEventKindAtDeduction(int $courseId, int $sessionId): ?string
     {
-        $session = ClassSession::query()->where('StudentClassID', $courseId)->where('id', $sessionId)->first();
-        if (!$session instanceof ClassSession) {
-            return null;
-        }
-        $isMakeup = Schedule::query()->where('student_course_id', $courseId)
-            ->whereDate('schedule_date', $session->SessionDate)->where('type', 'extra')->where('status', '!=', Schedule::STATUS_SUPERSEDED)
-            ->get(['start_time'])->contains(fn ($row) => substr((string) $row->start_time, 0, 5) === substr((string) $session->StartTime, 0, 5));
-
-        return $isMakeup ? 'M' : 'F';
+        $row = DB::table('ClassSession as cs')->where('cs.id', $sessionId)->where('cs.StudentClassID', $courseId)
+            ->selectRaw("EXISTS(SELECT 1 FROM schedules s WHERE s.student_course_id = cs.StudentClassID AND s.type = 'extra' AND s.status <> ? AND DATE(s.schedule_date) = DATE(cs.SessionDate) AND SUBSTR(s.start_time,1,5) = SUBSTR(cs.StartTime,1,5)) AS makeup", [Schedule::STATUS_SUPERSEDED])->first();
+        return $row === null ? null : ((bool) $row->makeup ? 'M' : 'F');
     }
     private static function minuteEventSource(string $source, ?string $kind): string
     {
