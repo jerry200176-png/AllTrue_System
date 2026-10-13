@@ -76,8 +76,19 @@ def load_requests(text: str | None) -> list[dict]:
         return []
     import yaml
 
+    class Loader(yaml.SafeLoader):
+        pass
+
+    def strict_int(loader, node):
+        # YAML 1.1 reads 0512 as octal 330: only plain decimal integers may name a bug.
+        value = loader.construct_scalar(node)
+        if not re.fullmatch(r"-?(?:0|[1-9][0-9]*)", value):
+            raise RequestError("integers must be plain decimal (no leading zero, 0x, 0o, _ or :)")
+        return int(value)
+
+    Loader.add_constructor("tag:yaml.org,2002:int", strict_int)
     try:
-        doc = yaml.safe_load(text)
+        doc = yaml.load(text, Loader=Loader)  # noqa: S506 - SafeLoader subclass
     except yaml.YAMLError as exc:
         raise RequestError("request file is not valid YAML") from exc
     if not isinstance(doc, dict) or set(doc) != {"requests"}:

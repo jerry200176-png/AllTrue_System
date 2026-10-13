@@ -85,6 +85,8 @@ class EntryValidationTest(unittest.TestCase):
         self.refuse(entry(bug_id="512"), "bug_id")
         self.refuse(entry(bug_id=True), "bug_id")
         self.refuse(entry(request_id="Has Spaces"), "request_id")
+        with self.assertRaises(wb.RequestError):  # YAML 1.1 would read 0512 as octal 330
+            wb.plan("", doc(entry()).replace("bug_id: 512", "bug_id: 0512"), REPO)
         with self.assertRaises(wb.RequestError):
             wb.plan("", doc(entry(), entry(bug_id=513)), REPO)
         with self.assertRaises(wb.RequestError):
