@@ -3,8 +3,11 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Payment;
+use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
@@ -126,6 +129,54 @@ class InvoiceRecordPaymentProjectionTest extends TestCase
         $this->assertSame(4500, (int) $invoice->TotalAmount);
         $this->assertSame(4500, (int) $invoice->PaidAmount);
         $this->assertSame('paid', (string) $invoice->Status);
+    }
+
+    /** The repriced amount is backed by the same billing snapshot confirm stores, and it survives later session edits. */
+    public function test_repriced_monthly_bill_keeps_a_billing_snapshot_after_session_edits(): void
+    {
+        $course = $this->course(
+            [['2026-07', 6000, 'unpaid', 0, []]],
+            ['ScheduleMode' => 'date', 'Rate' => 1500, 'Charge' => 6000],
+            ['2026-07-06', '2026-07-13', '2026-07-20'],
+        );
+        $invoice = Invoice::where('StudentClassID', $course->ID)->firstOrFail();
+
+        $this->pay($invoice, 4500)->assertOk();
+        ClassSession::where('StudentClassID', $course->ID)->where('SessionDate', '2026-07-20')->delete();
+
+        $invoice->refresh();
+        $snapshot = $invoice->billing_snapshot;
+        $this->assertSame('2026-07', $snapshot['billing_period']);
+        $this->assertSame(3, $snapshot['period_sessions']);
+        $this->assertSame(4500, $snapshot['charge']);
+        $this->assertCount(3, $snapshot['sessions']);
+        $this->assertSame(4500, (int) $invoice->TotalAmount);
+    }
+
+    /**
+     * A date-mode anchor course plus another course on one bill: the anchor's held lessons (4,500) do not price the
+     * whole bill, so the stored 8,000 total stays the cap and is never rewritten.
+     */
+    public function test_multi_course_bill_keeps_its_stored_total(): void
+    {
+        $course = $this->course(
+            [['2026-07', 8000, 'unpaid', 0, []]],
+            ['ScheduleMode' => 'date', 'Rate' => 1500, 'Charge' => 6000],
+            ['2026-07-06', '2026-07-13', '2026-07-20'],
+        );
+        $other = $this->course([], ['Charge' => 2000], [], Student::findOrFail($course->StudentID));
+        $invoice = Invoice::where('StudentClassID', $course->ID)->firstOrFail();
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => 'a', 'Amount' => 6000]);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $other->ID, 'Description' => 'b', 'Amount' => 2000]);
+
+        $this->pay($invoice, 8001)->assertStatus(422)->assertJsonPath('expected_amount', 8000);
+        $this->pay($invoice, 4500)->assertOk();
+
+        $invoice->refresh();
+        $this->assertSame(8000, (int) $invoice->TotalAmount);
+        $this->assertSame(4500, (int) $invoice->PaidAmount);
+        $this->assertSame('partial', (string) $invoice->Status);
+        $this->assertNull($invoice->billing_snapshot);
     }
 
     private function countInvoice(int $total, string $status, int $storedPaid, array $payments): Invoice

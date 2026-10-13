@@ -214,7 +214,9 @@ class BillingController extends Controller
             $invoice = $fresh;
             // R28 (#3873 item 4), same rule as payment-report confirm: what is paid comes from Payment rows, never
             // the stored PaidAmount, and a payment may only take what the bill still owes by those rows.
-            $before = $this->lockedInvoiceProjection($invoice);
+            // A bill spanning several courses cannot be priced from its anchor course's lessons alone.
+            $multiCourse = count($courseIds) > 1;
+            $before = $this->lockedInvoiceProjection($invoice, $multiCourse);
             $repriced = $before['amount_source'] === 'billable_sessions';
             if ((int) $before['total_amount'] > 0 && (int) $before['outstanding_amount'] <= 0) {
                 return response()->json([
@@ -233,6 +235,22 @@ class BillingController extends Controller
             if ($repriced) {
                 // Unpaid monthly bill priced from its held lessons: keep that amount, as confirm does.
                 $invoice->TotalAmount = (int) $before['total_amount'];
+                if (empty($invoice->billing_snapshot)) {
+                    // Same immutable evidence confirm stores, so later session edits cannot explain the amount away.
+                    $period = (string) $before['billing_period'];
+                    $course = StudentClass::query()->where('ID', (int) $invoice->getAttribute('StudentClassID'))->firstOrFail();
+                    $invoice->billing_period = $period;
+                    $invoice->billing_snapshot = [
+                        'version' => 1,
+                        'source' => 'monthly_billable_sessions',
+                        'billing_period' => $period,
+                        'period_start' => $before['period_start'],
+                        'period_end' => $before['period_end'],
+                        'period_sessions' => (int) $before['period_sessions'],
+                        'charge' => (int) $before['total_amount'],
+                        'sessions' => $this->monthlyBilling->billableSessionDetailsForPeriod($course, $period),
+                    ];
+                }
             }
             $payment = Payment::create([
                 'InvoiceID' => $invoice->id,
@@ -242,7 +260,7 @@ class BillingController extends Controller
                 'Note' => $data['Note'] ?? '',
             ]);
 
-            $after = $this->lockedInvoiceProjection($invoice);
+            $after = $this->lockedInvoiceProjection($invoice, $multiCourse);
             $invoice->PaidAmount = (int) $after['net_applied'];
             $invoice->Status = (int) $after['outstanding_amount'] <= 0
                 ? 'paid'
@@ -259,13 +277,23 @@ class BillingController extends Controller
         });
     }
 
-    /** The invoice's money from its Payment rows, read under lock (the caller holds the invoice row lock). */
-    private function lockedInvoiceProjection(Invoice $invoice): array
+    /**
+     * The invoice's money from its Payment rows, read under lock (the caller holds the invoice row lock).
+     * A multi-course bill keeps its stored total: the held-lesson price covers only the anchor course.
+     */
+    private function lockedInvoiceProjection(Invoice $invoice, bool $multiCourse): array
     {
         $invoice->setRelation('payments', $invoice->payments()->lockForUpdate()->get());
         $invoice->loadMissing('items');
+        $projection = $this->invoiceAmounts->resolve($invoice);
+        if ($multiCourse && $projection['amount_source'] === 'billable_sessions') {
+            $total = (int) $projection['stored_total_amount'];
+            $net = (int) $projection['net_applied'];
+            $projection = ['total_amount' => $total, 'amount_source' => 'invoice_total', 'applied_amount' => min($total, $net),
+                'overpaid_amount' => max(0, $net - $total), 'outstanding_amount' => max(0, $total - $net)] + $projection;
+        }
 
-        return $this->invoiceAmounts->resolve($invoice);
+        return $projection;
     }
 
     public function voidInvoice(Request $request, Invoice $invoice)
