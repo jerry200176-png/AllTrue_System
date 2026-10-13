@@ -86,6 +86,7 @@ class MonthlyRenewTest extends TestCase
             'time'             => '18:00:00',
             'SessionDuration'  => 120,
             'Paid'             => 1,
+            'Charge'           => 4800, // #2567: the prior fee must be on record before renewal
         ]);
 
         ClassSession::create([
@@ -1162,8 +1163,10 @@ class MonthlyRenewTest extends TestCase
         );
     }
 
-    public function test_legacy_monthly_course_without_charge_creates_zero_invoice(): void
+    public function test_legacy_monthly_course_without_any_fee_is_refused_until_the_prior_fee_is_entered(): void
     {
+        // #2567 (Founder 2026-10-13): this used to create a NT$0 invoice and settle the old term
+        // ("主任手動核帳時再填金額"); a prior term with no fee on record now blocks the renewal.
         $token = $this->createDirectorToken([1], 'director-invoice-legacy@example.com');
         $student = $this->createStudent();
 
@@ -1176,23 +1179,15 @@ class MonthlyRenewTest extends TestCase
             'Rate'           => 0,
         ]);
 
-        $res = $this->withHeaders([
+        $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept'        => 'application/json',
         ])->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
             'end_date' => '2026-05-31',
-        ]);
+        ])->assertStatus(422)->assertJsonPath('code', 'prior_fee_missing');
 
-        $res->assertCreated();
-        $newCourseId = (int) $res->json('new_course.id');
-
-        // 即使金額為 0 也應建立 Invoice（主任手動核帳時再填金額）
-        $this->assertDatabaseHas('Invoice', [
-            'StudentClassID' => $newCourseId,
-            'billing_period' => '2026-05',
-            'Status'         => 'unpaid',
-            'TotalAmount'    => 0,
-        ]);
+        $this->assertSame(0, Invoice::count());
+        $this->assertSame(1, StudentClass::where('StudentID', $student->id)->count());
     }
 
     // ── FR-006：directorRecord 優先找當月 billing_period Invoice ─────────────
