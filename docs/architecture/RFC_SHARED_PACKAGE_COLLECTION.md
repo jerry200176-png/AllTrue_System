@@ -1,13 +1,13 @@
 ---
 owner: jerry (CEO)
-status: Accepted decisions (§5a); Phase 2 readiness HOLD — §5b OPEN
+status: Accepted decisions (§5a, §5c); future Phase 2 implementation and verification pending
 review_cycle: as-needed
 last_reviewed: 2026-10-13
 ---
 
 # RFC: 共用方案（CoursePackage）待收規則 — 整包一列、部分已繳、待核對
 
-> **Status:** Accepted（Founder 2026-10-13 拍板 Q1–Q5，見 §5a）。Phase 2 分讀取端（待收列＋不催繳）與 confirm 寫入修正（Q5）兩個 PR；完整 implementation readiness 為 HOLD，§5b OPEN 尚待 owner 決定。
+> **Status:** Accepted（Founder 2026-10-13 拍板 Q1–Q5，見 §5a）。Phase 2 分讀取端（待收列＋不催繳）與 confirm 寫入修正（Q5）兩個 PR；§5b OPEN-1–4 已由 §5c Founder 收尾決策定案；本 PR 僅文件，Phase 2 尚待獨立實作與驗證。
 > **Date:** 2026-10-13  
 > **Issue:** Refs [#3785](https://github.com/jerry200176-png/AllTrue_System/issues/3785)（hold）；相關 PR #3891（`Invoice::mayOweSql`，package member 保持 stored Status）、#3892（一個方案一個收款動作）  
 > **Founder 決策（2026-10-13）：** 共用方案核對後**真的**還欠錢 → 重新列入「待收」，顯示「部分已繳」與**真實差額**；整包**一列**，不按科目算、不重複算、不重收全額。先定義整包應收、付款歸屬、去重；無法判定者列「待核對」。**不自動催繳**（count 方案不發自動繳費提醒或 LINE；教職員 in-app 通知依 R2-5 維持每成員一則），**不改 production 資料**。
@@ -52,7 +52,7 @@ last_reviewed: 2026-10-13
 
 ---
 
-## 2. 規則規格（已決金額語意依 §5a；實作 OPEN 邊界見 §5b）
+## 2. 規則規格（已決金額語意依 §5a；收尾合約依 §5c）
 
 以 `CoursePackage.id` 為鍵，在 `GET alerts/tuition` 及其待收畫面中**一個方案至多一列**；符合列入條件時恰好一列，成員不得再以單科身分出現（D2、D3）。此 invariant 不涵蓋 D7 帳齡／銀行對帳明細；教職員 `NotificationSyncService` in-app 通知依 R2-5 維持每成員一則。
 
@@ -63,7 +63,7 @@ last_reviewed: 2026-10-13
 - **R3 已收** `paid = Σ_{inv ∈ I} min(TotalAmount_inv, netApplied_inv)`；超付另記 `overpaid = Σ max(0, netApplied − TotalAmount)`。netApplied 用既有 `InvoiceAmountReconciliationService` 規則（Payment rows；不讀 stored `PaidAmount`／`Status`）。先保存 `signed_net = positiveTotal − voidedTotal`，負值依 R8.5 待核對，再 clamp 為 `max(0, signed_net)` 計算已收。現行 service 的 `net_applied` 已 clamp，不可直接拿它偵測負 net。
 - **R4 應收**（§5a Q1=C）：`I` 非空時 `X = Σ TotalAmount_inv`；與 `round(rate × total_sessions)` 比對，不一致或無法比對即待核對（R8.4）。`I` 為空時採同一 rate-based X，無法算出則待核對；R7 無帳單 legacy 已繳例外優先。Q5 新 confirm 在 X 可判定時依已決 R2-1 使用 full X，Payment 只記實收；X 不可判定時保留 R2-1「依實收開單但不因此標已繳」例外，不得把該例外當成可靠 X。
 - **R5 差額** `remaining = max(0, X − paid)`。
-- **R6 狀態**：先處理 R0 排除與 R8 待核對；可靠 X 下，`paid ≥ X` → 已繳（不作待收款項）；`0 < paid < X` → **部分已繳**，顯示 `remaining`；`paid = 0` → 未繳，顯示 `X`。依 R135，結清事實優先：已繳方案有 pending 回報仍保持 `payment_status=paid`，另保留 `latest_payment_report_id`／回報摘要供顯式審核；不得隱藏非 anchor 成員回報。未結清且只有一筆 pending 回報時沿用既有 `pending_report`，不把回報金額視為已收。歷史多筆 pending 依 R8.8 處理；#3892 的新寫入去重不能證明歷史資料只有一張。已停止無帳單的 pending 回報可達性依 §5b OPEN-2，尚不能宣告驗收完成。
+- **R6 狀態**：先處理 R0 排除與 R8 待核對；可靠 X 下，`paid ≥ X` → 金錢已結清（不作待收款項）；已繳 count 方案剩餘堂數 ≤2 時，保留既有 `renew_needed`／`low_sessions` 續課提示與續課／結束控制，不把零欠款誤作新待收。`0 < paid < X` → **部分已繳**，顯示 `remaining`；`paid = 0` → 未繳，顯示 `X`。依 R135，結清事實優先：已繳方案有 pending 回報不得改成未結清；一般為 `payment_status=paid`，低堂數時保留上述既有續課狀態，另保留 `latest_payment_report_id`／回報摘要供顯式審核；不得隱藏非 anchor 成員回報。未結清且只有一筆 pending 回報時沿用既有 `pending_report`，不把回報金額視為已收。歷史多筆 pending 依 R8.8 處理；#3892 的新寫入去重不能證明歷史資料只有一張。已停止無帳單仍不列待收；pending 回報透過獨立審核入口呈現，依 §5c C2，不推算可收金額。
 - **R7 Legacy 旗標**（沿用 F7 S1 已決規則）：`I` 為空且 `pkg.paid = true` → 已繳（legacy_flag）。`I` 為空且 `pkg.paid = false` → 依已決 Q1=C 的 rate-based X。R8.7 只在 `I` 非空時適用。`I` 非空時旗標不得蓋過 Payment rows（Founder Q2）。
 - **R8 待核對**（`needs_review`；不顯示差額、**排除於對外自動催繳／提醒／LINE**（staff in-app 例外依 R2-5）、只給主任人工核對）任一成立即是：
   1. 任一張非作廢帳單以 `InvoiceItem.StudentClassID` 連到成員、但表頭不在 `M`（含表頭 null）——付款無法確定歸屬（#3785 item 1）。
@@ -82,13 +82,22 @@ last_reviewed: 2026-10-13
 ## 3. 範圍
 
 - 涵蓋：count 方案（`billing_mode='count'`）在 `GET alerts/tuition`（帳務中心待收、主任首頁、學生列表 chips）的列。
-- 不涵蓋：月結方案（D4，見 Q3）；帳齡／銀行對帳明細（D7）；Phase 2-read 不涵蓋寫入路徑（confirm 時開單金額、`markPackagePaid`）；已決 Q5/R2-1 由獨立 Phase 2-write PR 處理。§5b 未定事項不能用本文件作已批准實作的依據。
+- 不涵蓋：月結方案（D4，見 Q3）；帳齡／銀行對帳明細（D7）；Phase 2-read 不涵蓋寫入路徑（confirm 時開單金額、`markPackagePaid`）；已決 Q5/R2-1 由獨立 Phase 2-write PR 處理。§5c 核准合約由各自獨立 future PR 實作／驗證；本 PR 不代表 runtime 已修正或已上線。
 
 ### 3a. API／client 與既有隔離邊界
 
 - `GET alerts/tuition` 及 package/invoice/Payment aggregates 必須先限制在 authenticated campus scope。非 super_admin 的空 `auth_campus_ids` 回空或 403；`branch_id` 不得擴大 scope。只保留既有文件化 super_admin 例外。
 - Q5 single／batch confirm 在任何帳務 write 前驗證 report、student、course、package 的身份與 campus 一致，且屬 authenticated campus scope；空 scope fail closed。batch 不能繞過 single 的同一驗證。
 - `TuitionCollectionPage.vue` 卡片、tabs、counts、action filters 與 `StudentsList.vue` chips（及主任首頁同 payload consumers）明確支持 `needs_review`：顯示待核對與 reasons、保留 null 金額，不轉成 0／全額或未繳 label；人工核對佇列可見，但不加入可收總額，不提供登錄／批次 confirm／催繳。
+
+### 3b. Package 收款與人工審核合約
+
+- **選單張帳單**（§5c C1）：同一 package row 保留 aggregate `remaining` 與整包科目；收款 action 明確選擇一張屬於 R2 集合的 `InvoiceID`，另顯示該張依 Payment rows 算出的可收餘額。提交／確認／batch 金額上限依選中的 invoice，不把整包總餘額當作單張可收額；付款只歸所選 invoice，付完重算 package row，其他仍欠 invoice 由人員再次明確選擇。不得自動分配或任選 anchor。
+- **新帳單只建一次**：R2-1 在 package 層級查詢／鎖定既有相容且可歸屬 invoice（身份／campus、方案範圍與應收語意符合本 RFC）；第一次部分付款建立 full-X invoice 後，後續從其他 member 進入亦必須沿用該 invoice，不得因 reporting member 不同再次開 full-X invoice。多張既有 invoice 依前項明確選擇；ambiguous identity 依 R8 核對。並行／重送不得重複建立 invoice 或 Payment。
+- **審核與待收分開**（§5c C2）：停止、無帳單、有 pending report 的方案保持 R2-4 待收排除，提供獨立 report-review entry／projection，回傳 report IDs、摘要與 package context，使人員可依原審核規則確認／拒絕；不憑 pending 金額新增應收、不打開一般待收登錄。該入口及其 single/batch 操作遵守 §3a campus 隔離與 R8.8。
+- **人工繳費單**：`DirectorDashboard` → `PaymentSlipModal` → `alerts/tuition-slip` 不得以 anchor 課程金額生成 package 繳費圖。manual copy/download 需 package-aware 路徑，顯示 package 科目、aggregate remaining 及明確所選 invoice 的本次可收額；該路徑未驗證前停用 package row 的舊 member slip action，needs_review 不產生金額繳費單。這是既有「不重收全額」要求的 consumer guard，不批准自動對外發送。
+- **實收防護**：非免費 count package 的 reported receipt amount 須嚴格大於 0，single／batch 登錄及確認皆驗證；拒絕零值須無 invoice／Payment／confirmed-report／receipt 變更，不能把零值 receipt 當成已確認收款。既有免費排除 R0 不變。
+- **逆向結清與收據**：§5c C3/C4 分別在獨立 future write PR 完成，所有合法 package void/reversal producer 原子重算 package/member flags；收據以 package snapshot 呈現整包科目、covered session 範圍及本筆實收，不創造科目價款分攤。不修歷史資料。
 
 ## 4. Phase 2 驗收（實作時）
 
@@ -100,10 +109,17 @@ last_reviewed: 2026-10-13
 6. 與 #3891 的關係：若 #3891 先合，package member 在 `mayOweSql` 的排除條款保留（方案改由本規則的方案列處理）；Phase 2 在 #3891 合併後從 main 開分支，不堆疊。
 
 7. 每種 count 付款狀態與未被 alert 選中的成員都在實際 sender 層驗證零自動提醒／LINE；月結、單科及 R2-5 staff in-app 例外保持既有政策。
-8. 已結清且非 anchor 有 pending 回報維持 paid 並可顯式審核；歷史多筆 pending 回傳全部 IDs 且不可任選 confirm。保留 R135 的 paid-package regression。
+8. 已結清且非 anchor 有 pending 回報維持金錢結清並可顯式審核（低堂數既有續課狀態仍保留）；歷史多筆 pending 回傳全部 IDs 且不可任選 confirm。保留 R135 的 paid-package regression。
 9. signed negative net、另一學生帳單、跨 campus header/items、nonvoid item-only 帳單 → 待核對；void item-only 不觸發此歸屬 anomaly；免費／輔導課先排除。
 10. 非 super_admin 空 scope、越權 branch_id 與跨 campus package 讀取不漏資料；single／batch confirm 越權時零帳務寫入。
-11. Q5 full-X 自動開單的部分／結清回歸依 R2-1；§5b OPEN 未完成前，不能以其餘測試通過宣稱完整 Phase 2-ready。
+11. Q5 full-X 自動開單的部分／結清回歸依 R2-1；member A 部分確認後從 member B 最終確認仍使用同張 package invoice，無重複應收；並行／重送回歸證明沒有重複 invoice／Payment。
+12. 兩張仍欠 invoice：一個 package row 顯示總餘額，明確選一張只收該張餘額，付完重算再選另一張；超過所選餘額或跨 package InvoiceID 被拒絕，single／batch 無自動分配。
+13. 停止、無帳單但 pending report 不進待收，獨立審核入口仍可取得 report IDs 並確認／拒絕，空／越權 campus 被拒絕。
+14. settle→合法 void/reversal 後原子重算 package 與全部 member flags，回到 ledger 所示 partial/unpaid；涵蓋每個 reversal sender/producer、重送與 rollback boundary，無歷史資料修復。
+15. multi-subject package partial/final 收據 snapshot、實收金額、covered sessions 及重印一致，不只呈現 anchor 科目。
+16. 非 anchor 部分付款後人工繳費單圖／copy/download 不再要求全額或顯示單科，所選 invoice 的本次可收額與 server 相符；未就緒舊 action 停用。已結清剩 ≤2 堂仍呈現既有續課控制且無待收款。
+17. 非免費 package single／batch 的 amount=0 在登錄／確認皆拒絕，invoice／Payment／report confirmation／receipt 無變更。
+18. §5c 決策已定不等於完成實作；各 future PR 所屬回歸、獨立 review、required CI 與 rollback 證據通過前，不宣稱 Phase 2 runtime-ready／已部署。
 
 ---
 
@@ -159,16 +175,22 @@ Founder 2026-10-13 對 Phase 2 實作時浮現的五個歧義一律採建議選�
 | R2-4 | 已停止、沒有任何帳單的 count 方案 | **(a)** 不列入待收。 |
 | R2-5 | 教職員 in-app 通知（`NotificationSyncService`） | **(a)** 維持現狀（每成員一則），本 RFC 不改。 |
 
-## 5b. OPEN implementation hold（不是新 Founder 決定）
+## 5b. Closeout 決策追蹤（原 OPEN 已關閉）
 
-§5a 原始決策原文保留。以下發現尚未被該決策完整定義；owner 需明確選擇、批准具體邊界或確認延後。完整 Phase 2 implementation readiness 為 **HOLD**，不能把 docs merge 或 read-side 綠燈當作這些寫入行為已批准。
+OPEN-1 多帳單 action、OPEN-2 停止方案 pending 可達性、OPEN-3 合法逆向結清、OPEN-4 收據範圍，已由 §5c 的 Founder 2026-10-13 決策定案。這裡關閉的是產品／合約歧義；runtime 實作、測試及上線另由 future PR 交付。§5a 原始決策原文不變。
 
-| ID | 未定邊界／驗證提案 | owner 決定前的限制 |
+## 5c. Founder decisions 2026-10-13 closeout（定案）
+
+Founder 在本次 PR 收尾 chat 明確核准下列原待決項；不授權歷史修復或 production migration。
+
+| # | 決定 | 實作／驗證邊界 |
 |---|---|---|
-| OPEN-1 | 多張仍欠成員帳單：package remaining 為總和，但 PaymentReport／Payment 只指向一張 Invoice。需選擇一列內明確選一張 invoice、顯示其可收額並逐張收，或另定跨 invoice allocation／atomicity／idempotency／receipt 契約。 | 不發明分攤／先後順序，不把 aggregate remaining 直接送入單張 confirm；現有可算金額仍可讀取，但該 package 收款 action 合約尚未 ready。 |
-| OPEN-2 | 已停止、無帳單但有 pending 回報：R2-4 明定不列待收，R135 要求回報可達。提案是保留待收排除並提供獨立 report-review projection／入口；另一選項為批准 R2-4 的窄 pending 例外。 | 不默改 R2-4；確認／拒絕入口可達性是驗收 blocker，具體 UI/API 邊界仍待 owner 決定。 |
-| OPEN-3 | inverse void 驗證提案：新 confirm 結清後合法 void/reversal，是否在同 transaction／locks 重算 package 與全部 member settlement flags，避免 sibling 仍 paid、合法 reversal 被讀成 legacy anomaly；需涵蓋每個 reversal producer。 | Q5 尚未明文定義逆向 flags 行為；若改動既有 void 行為，需 owner 對具體 write scope 決定及 settle→void 回歸／rollback 證據。不自動修既有資料。 |
-| OPEN-4 | receipt 驗證提案：partial／final package 款項的收據是否採 package-aware snapshot，列整包名稱、covered subjects/session 範圍與實收，不只顯示 anchor 科目；不引入科目價款分攤。 | 收據內容與 snapshot 範圍需 owner 確認；multi-subject partial/final／重印回歸必備，不將提案寫成既有 Founder 決策。 |
+| C1（原 OPEN-1） | 多帳單 package 維持一列，aggregate total／remaining 與每次收款分開；人員每次明確選一張 invoice，只收其可收餘額，其他 invoice 逐張再選，不自動 allocation。 | §3b；package-wide invoice reuse、InvoiceID 身份／scope、單張金額上限及多帳單回歸。獨立 future 收款 write PR。 |
+| C2（原 OPEN-2） | 已停止、無帳單但有 pending report 保留待收排除，另設獨立審核入口供確認／拒絕。 | 保留 R2-4 原意；報告可達性與 campus 隔離依 §3a/§3b。獨立 future 審核 workflow PR。 |
+| C3（原 OPEN-3） | 合法 reversal／void 後重算 package 與所有 member settlement flags，不能留下 sibling 已繳。 | 同 transaction／locks、ledger 權威、各 reversal producer、settle→void 回歸與 rollback evidence。獨立 future write PR；不修歷史資料。 |
+| C4（原 OPEN-4） | 收據呈現整包科目／covered session 範圍與本筆實收金額，不能只顯示 anchor 科目。 | package-aware receipt snapshot、partial／final／重印回歸，不分攤科目價款。獨立 future receipt/write PR。 |
+
+每個 future PR 必須各自完成所屬實作、驗證、風險適當 review、required checks 與 rollback boundary；本文件 PR 不改 runtime，不作 historical repair／production migration，也不代表上述功能已交付。
 
 ## 6. 回滾
 
