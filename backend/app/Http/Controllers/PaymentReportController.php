@@ -925,10 +925,11 @@ class PaymentReportController extends Controller
         return $this->packagePaidHold($invoice) || ((int) $projection['total_amount'] > 0 && (int) $projection['outstanding_amount'] <= 0);
     }
 
-    /** As Invoice::mayOweSql (#3891): a package member's stored-paid bill stays settled; stale shared-package bills are 待核對, never charged here. */
+    /** As Invoice::mayOweSql (#3891): a PAID package member's stored-paid bill stays settled (待核對); an unpaid package holds nothing. */
     private function packagePaidHold(Invoice $invoice): bool
     {
-        return (string) $invoice->Status === 'paid' && (int) StudentClass::query()->whereKey($invoice->StudentClassID)->value('PackageID') > 0;
+        return (string) $invoice->Status === 'paid' && StudentClass::query()->join('course_packages', 'course_packages.id', '=', 'StudentClass.PackageID')
+            ->where('StudentClass.ID', $invoice->StudentClassID)->where('course_packages.paid', true)->exists();
     }
 
     /**
@@ -1224,10 +1225,10 @@ class PaymentReportController extends Controller
             ));
         } elseif ($sc) {
             $reportedDate = $sc->ScheduleMode === 'date' ? Carbon::make($report->payment_date) : null;
-            // No snapshot: the bill's own service period (this course's or unowned item periods, else billing_period), not the payment month (#3888).
-            $items = $invoice && $reportedDate ? $invoice->items()->where(fn ($q) => $q->where('StudentClassID', $sc->ID)->orWhereNull('StudentClassID'))->whereNotNull('PeriodStart')->whereNotNull('PeriodEnd')->get() : collect();
+            // No snapshot: the bill's service period (#3888), slip precedence: this course's items, a single item, else billing_period.
+            [$itemStart, $itemEnd] = $invoice && $reportedDate ? $this->monthlyBilling->serviceRangeForCourse($invoice, (int) $sc->ID) : [null, null];
             $anchor = preg_match('/^\d{4}-\d{2}$/', (string) $invoiceBillingPeriod) ? Carbon::createFromFormat('!Y-m', (string) $invoiceBillingPeriod) : $reportedDate;
-            [$from, $to] = $items->isNotEmpty() ? [Carbon::parse($items->min('PeriodStart')), Carbon::parse($items->max('PeriodEnd'))]
+            [$from, $to] = $itemStart !== null && $itemEnd !== null ? [Carbon::parse($itemStart), Carbon::parse($itemEnd)]
                 : [$anchor?->copy()->startOfMonth(), $anchor?->copy()->endOfMonth()];
             if ($sc->ScheduleMode === 'date') {
                 $periodStart = $from?->format('Y/m/d');
