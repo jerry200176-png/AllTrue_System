@@ -618,6 +618,10 @@ class ClassSessionController extends Controller
         $classIds = $classes->pluck('ID')->map(fn ($v) => (int) $v)->all();
         $suppressedSet = [];
         $existingSet = [];
+        // #3901: same rule as the monthly projection (SessionProjectionReadService::
+        // buildProjectedFromEffectiveDates skips a date that already has any real row).
+        // A leave/moved lesson on this date must not get a replacement at the contract time.
+        $classHasRowOnDate = [];
         if (!empty($classIds)) {
             Schedule::whereIn('student_course_id', $classIds)
                 ->whereDate('schedule_date', $targetDate)
@@ -629,12 +633,16 @@ class ClassSessionController extends Controller
             ClassSession::whereIn('StudentClassID', $classIds)
                 ->whereDate('SessionDate', $targetDate)
                 ->get(['StudentClassID', 'StartTime'])
-                ->each(function ($r) use (&$existingSet) {
+                ->each(function ($r) use (&$existingSet, &$classHasRowOnDate) {
                     $existingSet[(int) $r->StudentClassID . '|' . substr((string) $r->StartTime, 0, 5)] = true;
+                    $classHasRowOnDate[(int) $r->StudentClassID] = true;
                 });
         }
 
         foreach ($classes as $studentClass) {
+            if (isset($classHasRowOnDate[(int) $studentClass->ID])) {
+                continue;
+            }
             $startDate = $studentClass->StartDate ? Carbon::parse($studentClass->StartDate)->toDateString() : null;
             $endDate = $studentClass->EndDate ? Carbon::parse($studentClass->EndDate)->toDateString() : null;
             if ($startDate && $targetDate < $startDate) {

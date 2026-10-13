@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-10-13-monthly-leave-no-backfill
+    published_at: "2026-10-13"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 月結請假不再冒出補課
+    summary: 月結課程請假後，當天不會再自動多出一堂；請假會記在你點的那一堂。
+    items:
+      - category: fixed
+        text: 月結課程請假後，當天不再自動補出一堂新課，不用再改用「取消」處理。
+      - category: fixed
+        text: 同一天有兩堂課時，請假會記在你點選的那一堂。
+    source_refs:
+      - "changelog:2026-10-13:monthly-leave-no-backfill"

@@ -562,7 +562,11 @@ class AttendanceController extends Controller
                     ]);
 
                     [$rows, $extendedEndDate, $leaveSessionDate] =
-                        CourseLeaveCascadeService::applyLeaveCascade((int) $studentClass->ID, $leaveDate);
+                        CourseLeaveCascadeService::applyLeaveCascade(
+                            (int) $studentClass->ID,
+                            $leaveDate,
+                            (string) ($classSession->StartTime ?? '')
+                        );
 
                     $this->leaveAttendanceService->createClosedForSession(
                         $classSession,

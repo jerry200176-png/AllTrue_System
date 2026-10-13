@@ -392,11 +392,17 @@ class ScheduleController extends Controller
             try {
                 return DB::transaction(function () use ($data, $courseId, $recordedByUserId) {
                     $schedule = Schedule::create($data);
-                    [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade((int) $courseId, (string) $data['schedule_date']);
+                    [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade(
+                        (int) $courseId,
+                        (string) $data['schedule_date'],
+                        (string) ($data['start_time'] ?? '')
+                    );
                     $course = StudentClass::where('ID', $courseId)->first();
 
                     $leaveSession = ClassSession::where('StudentClassID', $courseId)
                         ->whereDate('SessionDate', $leaveSessionDate)
+                        ->orderByRaw("CASE WHEN SUBSTRING(StartTime, 1, 5) = ? THEN 0 ELSE 1 END", [substr((string) ($data['start_time'] ?? ''), 0, 5)])
+                        ->orderBy('id')
                         ->first();
                     if ($leaveSession) {
                         if ($course && !StudentSignIn::where('ClassSessionID', $leaveSession->id)->whereNull('VoidedAt')->exists()) {
@@ -726,7 +732,7 @@ class ScheduleController extends Controller
                 $isAttended = in_array($status, ['attended', 'completed', 'late', 'present', 'absent'], true);
 
                 if (!$isAttended && $status === 'scheduled') {
-                    [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate);
+                    [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate, (string) ($session->StartTime ?? ''));
                     return response()->json([
                         'message'             => strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date'
                             ? '請假登記完成：本堂已標記請假，月結課程維持原合約日期區間，不補課、不延長到期日'
@@ -899,7 +905,7 @@ class ScheduleController extends Controller
 
                 // Run cascade (accepts leave sessions where cascade hasn't run)
                 [$rows, $extendedEndDate, $leaveSessionDate] =
-                    CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate);
+                    CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate, (string) ($session->StartTime ?? ''));
 
                 $hasSignIn = StudentSignIn::where('ClassSessionID', (int) $session->id)
                     ->whereNull('VoidedAt')
@@ -1288,7 +1294,8 @@ class ScheduleController extends Controller
             $schedule->save();
             [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade(
                 $courseId,
-                (string) ($merged['schedule_date'] ?? $schedule->getAttribute('schedule_date'))
+                (string) ($merged['schedule_date'] ?? $schedule->getAttribute('schedule_date')),
+                (string) ($merged['start_time'] ?? '')
             );
             $course = StudentClass::query()->where('ID', $courseId)->first();
             $leaveSession = ClassSession::query()
