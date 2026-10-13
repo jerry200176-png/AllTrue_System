@@ -224,11 +224,13 @@ class ContractMoneyCallersAgreeTest extends TestCase
 
     /**
      * #3891 review (P2): bank suggestions compare the course's summed debt, not one invoice at a time. A stale-paid
-     * bill owing 6,000 plus an unpaid bill owing 2,000 is one 8,000 course balance (the resolver's outstanding).
+     * bill owing 6,000 plus an unpaid bill owing 2,000 is one 8,000 course balance (the resolver's outstanding). The
+     * suggested date is the oldest bill that still owes, not an older stored-unpaid bill its Payment rows cover.
      */
     public function test_bank_suggest_matches_the_course_balance_across_invoices(): void
     {
-        $course = $this->course([['2026-07', 10000, 'paid', 10000, [[4000, 'cash']]], ['2026-08', 2000, 'unpaid', 0, []]], ['Paid' => 1, 'Rate' => 1000]);
+        $course = $this->course([['2026-06', 3000, 'unpaid', 0, [[3000, 'cash']]], ['2026-07', 10000, 'paid', 10000, [[4000, 'cash']]],
+            ['2026-08', 2000, 'unpaid', 0, []]], ['Paid' => 1, 'Rate' => 1000]);
         $v = app(ContractMoneyVerdict::class)->forCourse($course);
         $this->assertSame(['partial', 8000], [$v->status, $v->outstanding]);
         $txn = \App\Models\BankTransaction::create(['campus_id' => 1, 'transaction_date' => '2026-08-20', 'amount' => 8000, 'reference' => 'sum', 'status' => 'unmatched']);

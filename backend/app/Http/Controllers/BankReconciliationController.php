@@ -147,7 +147,7 @@ class BankReconciliationController extends Controller
         $open = DB::query()->fromSub($perInvoice, 'oi')
             ->groupBy('oi.StudentClassID')
             ->havingRaw('SUM(oi.TotalAmount = ?) > 0 OR SUM(oi.remaining = ?) > 0 OR SUM(oi.remaining) = ?', [$amount, $amount, $amount])
-            ->selectRaw('oi.StudentClassID AS StudentClassID, MIN(oi.IssueDate) AS oldest_issue')
+            ->selectRaw('oi.StudentClassID AS StudentClassID, MIN(CASE WHEN oi.remaining > 0 THEN oi.IssueDate END) AS oldest_issue')
             ->limit(200)
             ->pluck('oldest_issue', 'StudentClassID');
         $matches = [];
