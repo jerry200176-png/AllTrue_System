@@ -239,11 +239,24 @@ class AlertController extends Controller
                 $manualPaid = (bool) $pkg->paid;
                 $memberMoney = $members->map(fn (StudentClass $m) => $this->courseAlertMoney($m, $today,
                     $memberOpenInvoices[(int) $m->ID] ?? null, $memberStatuses, (int) $m->ID, $memberInvoiceAgg[(int) $m->ID] ?? null,
-                    (int) round(($memberSessionCounts[(int) $m->ID] ?? 0) * $rate)));
+                    (int) round(($memberSessionCounts[(int) $m->ID] ?? 0) * $rate)) + [
+                        // An invoiced member the resolver cannot classify (e.g. a zero-value non-void invoice) is never settled.
+                        'review' => ($memberStatuses[(int) $m->ID]['source'] ?? null) === 'invoice'
+                            && ($memberStatuses[(int) $m->ID]['status'] ?? null) === 'review_required',
+                        'verdict' => $memberStatuses[(int) $m->ID] ?? null,
+                    ]);
                 $settlement = ['outstanding' => (int) $memberMoney->sum('outstanding'), 'applied' => (int) $memberMoney->sum('paid_amount')];
                 // Paid = the manual toggle, or some member paid and every member row owes nothing (invoices + Payment rows beat
                 // the Paid flag). Nothing billed and nothing paid yet is not "paid" (MX-004).
-                $pkgPaid = $manualPaid || ($settlement['applied'] > 0 && $memberMoney->every(fn ($row) => $row['outstanding'] <= 0));
+                $pkgPaid = $manualPaid || ($settlement['applied'] > 0 && $memberMoney->every(fn ($row) => $row['outstanding'] <= 0 && !$row['review']));
+                // Member invoices that still owe, in the shape the student list / collection totals read (open_periods, payable_*).
+                $openPeriods = $memberMoney->flatMap(fn ($row) => self::openPeriods($row['verdict']))->sortBy('billing_period')->values();
+                $firstOpen = $memberMoney->first(fn ($row) => self::openPeriods($row['verdict']) !== []);
+                $payable = $openPeriods->isEmpty() ? $this->payableResolver->unbilled() : [
+                    'payable_amount' => (int) $openPeriods->sum('total'), 'payable_outstanding' => (int) $openPeriods->sum('outstanding'),
+                    'payable_status' => 'invoiced', 'payable_source' => 'invoice',
+                    'payable_invoice_id' => $firstOpen['verdict']['current_invoice_id'] ?? null, 'payable_billing_period' => $openPeriods->first()['billing_period'],
+                ];
 
                 $fakeSc = $this->makeFakeSCForPackage($pkg);
                 $fakeSc->Paid = $pkgPaid ? 1 : 0;
@@ -265,17 +278,19 @@ class AlertController extends Controller
                     'charge'           => $charge,
                     'estimated_amount' => $charge,
                     'charge_semantics' => 'estimate_only',
-                    'payable_amount'   => null,
-                    'payable_outstanding' => null,
-                    'payable_status'    => 'unbilled',
-                    'payable_source'    => null,
-                    'payable_invoice_id' => null,
-                    'billing_period'    => null,
+                    'payable_amount'   => $payable['payable_amount'],
+                    'payable_outstanding' => $payable['payable_outstanding'],
+                    'payable_status'    => $payable['payable_status'],
+                    'payable_source'    => $payable['payable_source'],
+                    'payable_invoice_id' => $payable['payable_invoice_id'],
+                    'billing_period'    => $payable['payable_billing_period'],
+                    'open_periods'     => $openPeriods->map(fn ($p) => array_diff_key($p, ['total' => 1]))->all(),
                     'outstanding'      => $settlement['outstanding'],
                     'paid'             => $pkgPaid,
                     'paid_at'          => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
                     'last_paid_at'     => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
-                    'paid_amount'      => $manualPaid ? (int) round($charge) : $settlement['applied'],
+                    // Money actually received (Payment rows); the manual toggle may set `paid` but never invents a collection.
+                    'paid_amount'      => $settlement['applied'],
                     'payment_status'   => $pkgPaid ? 'monthly_due_soon' : 'unpaid',
                     'latest_payment_report_id' => null,
                     'has_newer_course'         => false,
@@ -720,6 +735,24 @@ class AlertController extends Controller
         $outstanding = $this->courseOutstanding($courseStatuses[$classId] ?? null) ?? ($scIsPaid ? 0 : max(0, $charge - $paidAmount));
 
         return ['charge' => $charge, 'paid_amount' => $paidAmount, 'paid' => $scIsPaid, 'outstanding' => $outstanding, 'invoice_projection' => $invoiceProjection];
+    }
+
+    /**
+     * A contract's invoiced periods that still owe, as the single-course row's `open_periods` lists them (plus `total`).
+     *
+     * @param array<string, mixed>|null $verdict BillingPayableResolver course row
+     * @return list<array{billing_period: mixed, outstanding: int, due_date: mixed, total: int}>
+     */
+    private static function openPeriods(?array $verdict): array
+    {
+        if (($verdict['source'] ?? null) !== 'invoice') {
+            return [];
+        }
+
+        return collect($verdict['periods'] ?? [])
+            ->filter(fn ($p) => ($p['invoice_ids'] ?? []) !== [] && (int) ($p['outstanding'] ?? 0) > 0)
+            ->map(fn ($p) => ['billing_period' => $p['billing_period'], 'outstanding' => (int) $p['outstanding'], 'due_date' => $p['due_date'] ?? null, 'total' => (int) ($p['total'] ?? 0)])
+            ->values()->all();
     }
 
     /**

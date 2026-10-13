@@ -571,10 +571,13 @@ const pendingReportFor = (id) => {
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
 // One card of a shared package carries its single payment action; the other members point to it. Lead = the member
 // holding a pending report, else the first one that still needs payment (mixed states), else the first member.
+// #3892 review: a legacy package whose bills are already open on several members stays actionable per member (each
+// card records against its own bills) until reconciled; package-wide allocation is a follow-up.
 const packageLeadOf = (c) => {
   if (!c.package_id) return c;
   const members = contractCourses.value.filter((x) => x.package_id === c.package_id);
   const pending = (payload.value?.receipts || []).find((r) => r.status === 'pending' && members.some((m) => Number(m.id) === Number(r.student_class_id)));
+  if (!pending && members.filter((m) => owedFor(m.id) > 0).length > 1) return c;
   return (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
     || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];
 };

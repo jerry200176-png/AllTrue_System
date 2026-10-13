@@ -64,4 +64,12 @@ describe('帳務面板 · 共用方案只有一個收款入口 (#3753)', () => {
     expect(w.findAll('[data-testid="contract-record"]')).toHaveLength(1); // only 理化
     expect(w.find('[data-testid="ledger-sticky-pay-btn"]').text()).toContain('理化');
   });
+
+  it('#3892 review: a legacy package with open bills on two members keeps one action per member until reconciled', async () => {
+    const inv = (id, sc) => ({ id, student_class_id: sc, status: 'unpaid', total_amount: 6000, outstanding_amount: 6000, calculated_applied_amount: 0, due_date: '2026-08-15', payments: [] });
+    const w = await mountLedger(ledger({ invoices: [inv(11, 1), inv(12, 2)] }));
+    expect(w.findAll('[data-testid="contract-shared-follower"]')).toHaveLength(0);
+    expect(w.findAll('[data-testid="contract-record"]')).toHaveLength(3); // 數學 + 英文 + 理化
+    expect(w.find('[data-testid="ledger-sticky-pay-btn"]').text()).toContain('3 份合約');
+  });
 });

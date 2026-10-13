@@ -178,6 +178,8 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $this->assertTrue($row['paid']);
         $this->assertSame('monthly_due_soon', $row['payment_status']);
         $this->assertSame(2 * 8800, (int) $row['outstanding'], 'both member invoices are still unpaid');
+        // #3892 review P1 (r4256455992): the toggle never invents a collection; paid_amount is what Payment rows hold.
+        $this->assertSame(0, (int) $row['paid_amount']);
     }
 
     /**
@@ -214,11 +216,34 @@ class SharedPackageOnePaymentActionTest extends TestCase
         foreach ([$a, $b] as $c) {
             $this->invoice($c, $student, '2026-08', 8800, 'paid', 8800, [[8800, 'cash']]);
         }
-        $this->invoice($a, $student, '2026-07', 5000, 'unpaid', 0, []);
+        $july = $this->invoice($a, $student, '2026-07', 5000, 'unpaid', 0, []);
 
         $row = $this->packageAlertRow($this->directorHeaders(), $pkg);
         $this->assertFalse($row['paid']);
         $this->assertSame(5000, (int) $row['outstanding']);
+        $this->assertSame('unpaid', $row['payment_status']);
+        $this->assertSame(2 * 8800, (int) $row['paid_amount']);
+        // #3892 review P1 (r4256456024): the open member invoice is in the authoritative payable shape the student list
+        // (studentBillingRows.owedItems) and collection totals read; StudentBillingList.test.js feeds this shape to the UI.
+        $this->assertSame('invoiced', $row['payable_status']);
+        $this->assertSame(5000, (int) $row['payable_outstanding']);
+        $this->assertSame((int) $july->id, (int) $row['payable_invoice_id']);
+        $this->assertSame('2026-07', $row['billing_period']);
+        $this->assertSame([['billing_period' => '2026-07', 'outstanding' => 5000, 'due_date' => '2026-07-15']], $row['open_periods']);
+    }
+
+    /**
+     * #3892 review P2 (r4256456002): B's only invoice is zero-value, so the resolver cannot classify it (review_required,
+     * outstanding 0). A paid A plus an unclassifiable B is not a paid package.
+     */
+    public function test_review_required_member_does_not_settle_the_package(): void
+    {
+        [$a, $b, $pkg, $student] = $this->monthlyPackage('2026-08-02 10:00:00');
+        $this->invoice($a, $student, '2026-08', 8800, 'paid', 8800, [[8800, 'cash']]);
+        $this->invoice($b, $student, '2026-08', 0, 'unpaid', 0, []);
+
+        $row = $this->packageAlertRow($this->directorHeaders(), $pkg);
+        $this->assertFalse($row['paid']);
         $this->assertSame('unpaid', $row['payment_status']);
     }
 
