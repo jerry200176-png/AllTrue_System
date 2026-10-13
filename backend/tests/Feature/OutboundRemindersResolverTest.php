@@ -74,6 +74,30 @@ class OutboundRemindersResolverTest extends TestCase
         $this->assertTrue($this->reminded());
     }
 
+    /** #3991 review: a no-fee monthly course whose bill staff marked 免費／贈送 is settled even when the period engine wants review. */
+    public function test_marked_free_gift_monthly_course_is_not_reminded_despite_period_review(): void
+    {
+        $course = $this->course(0, 0);
+        $course->update(['ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'EndDate' => '2026-10-31']); // bills stop in Sep: B15 review is active
+        foreach (['2026-08', '2026-09'] as $period) {
+            Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => $period . '-01', 'DueDate' => $period . '-15',
+                'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid', 'billing_period' => $period, 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+        }
+        \App\Models\ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-09-10', 'StartTime' => '14:00', 'EndTime' => '16:00', 'Status' => 'attended']);
+        $status = fn () => app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$course->ID])[$course->ID]['status'];
+        $this->assertSame('free', $status());
+        $this->assertSame(0, $this->dunned());
+        $this->assertFalse($this->reminded());
+        $amendment = \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $course->ID, 'effective_from' => '2026-09-01', 'rate' => 800, 'source_reference' => 't', 'reason' => 't']);
+        $this->assertNotSame('free', $status()); // #3991 review: a priced amendment after the mark ends its effect for both senders
+        $amendment->delete();
+        Invoice::query()->where('StudentClassID', $course->ID)->update(['zero_amount_reason' => null]); // unmarked: the same shape is under review
+        $this->assertSame('review_required', $status());
+        Invoice::query()->where('StudentClassID', $course->ID)->update(['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]); // marked Aug never settles an unbilled Sep with lessons
+        Invoice::query()->where('billing_period', '2026-09')->where('StudentClassID', $course->ID)->delete();
+        $this->assertSame('review_required', $status());
+    }
+
     public function test_partial_invoice_is_still_reminded(): void
     {
         $this->invoice($this->course(10000), 10000, 4000);

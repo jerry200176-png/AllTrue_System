@@ -579,13 +579,20 @@ class PaymentReportController extends Controller
             'amount'           => 'required|integer|min:0|max:999999',
             'account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
             'note'             => 'nullable|string|max:500',
+            'free_gift'        => 'sometimes|boolean',
         ]);
+        $freeGift = (bool) ($data['free_gift'] ?? false);
 
         $sc = StudentClass::with('student')->findOrFail($data['student_class_id']);
         if (!$sc->student) {
             return response()->json(['message' => '課程資料不存在'], 404);
         }
-        if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc)) {
+        if ($freeGift && $request->attributes->get('auth_role') !== 'super_admin' // #3991 review: authorize the campus before classifying
+            && !in_array((int) $sc->student->CampusID, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        // #3991: an explicit 免費／贈送 mark skips the generic zero-fee guard (it is not a payment); tutoring stays refused.
+        if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc, $freeGift)) {
             return $blockedTutoringPayment;
         }
 
@@ -593,14 +600,24 @@ class PaymentReportController extends Controller
         // the reported "金額顯示0應該顯示3000" came from an unset monthly fee. Block a NT$0
         // record for date-mode and point staff to set the fee first. Count-mode is untouched,
         // so legitimately-free (0-fee) tutoring courses still settle at 0.
-        if ($sc->getAttribute('ScheduleMode') === 'date' && (float) ($data['amount'] ?? 0) <= 0) {
+        if ($freeGift && (int) $data['amount'] !== 0) {
             return response()->json([
-                'message' => '月結課程的繳費金額不可為 0；若月費顯示為 0，請先於課程管理設定正確月費金額後再登記。',
+                'message' => '標記為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」時金額必須是 NT$0。沒有登記任何款項。',
+                'code' => 'free_gift_requires_zero',
+            ], 422);
+        }
+        if (!$freeGift && $sc->getAttribute('ScheduleMode') === 'date' && (float) ($data['amount'] ?? 0) <= 0) {
+            return response()->json([
+                'message' => '月結課程的繳費金額不可為 0；若月費顯示為 0，請先於課程管理設定正確月費金額後再登記。'
+                    . '若這門課確定免費，請勾選「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。',
                 'code' => 'monthly_fee_unset',
             ], 422);
         }
 
         $userId = $request->attributes->get('auth_user_id');
+        if ($freeGift) {
+            return $this->recordFreeGiftBill((int) $data['student_class_id'], $data, $userId);
+        }
 
         return DB::transaction(function () use ($data, $sc, $userId) {
             $invoice = null;
@@ -728,6 +745,90 @@ class PaymentReportController extends Controller
                 'payment_id' => null,
                 'invoice_id' => $invoice?->id,
                 'status'     => 'pending',
+            ]);
+        });
+    }
+
+    /** #3991 (Founder 2026-10-13): an audited NT$0 免費／贈送 bill for a course with no fee; a bill, not a payment.
+     * @param array<string, mixed> $data */
+    private function recordFreeGiftBill(int $studentClassId, array $data, mixed $userId)
+    {
+        return DB::transaction(function () use ($studentClassId, $data, $userId) {
+            $course = StudentClass::query()->whereKey($studentClassId)->lockForUpdate()->first();
+            if (!$course) {
+                return response()->json(['message' => '找不到此課程'], 404);
+            }
+            if ($refusal = ContractMoneyState::waivedRefusal($course, '此合約已確認不收，不能登錄帳單')) {
+                return $refusal;
+            }
+            if (Invoice::courseHasFee($course)) {
+                return response()->json([
+                    'message' => '這門課有設定費用（或費用在套裝上），不能登錄為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。沒有登記任何款項。',
+                    'code' => 'free_gift_course_has_fee',
+                ], 422);
+            }
+            $freeNote = trim(Invoice::ZERO_REASON_FREE_GIFT_LABEL . ' ' . trim((string) ($data['note'] ?? '')));
+            $named = !empty($data['invoice_id']);
+            $period = !$named && $course->getAttribute('ScheduleMode') === 'date'
+                ? $this->monthlyBilling->defaultPeriodFor($course, $data['payment_date']) : null;
+            $query = Invoice::query();
+            if ($named) {
+                $query->whereKey((int) $data['invoice_id']);
+            }
+            if ($period !== null) {
+                $query->where('billing_period', $period);
+            }
+            $matches = $query->where('StudentClassID', $course->ID)
+                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->orderBy('id')->lockForUpdate()->get();
+            if ($matches->count() > 1) { // #3991 review: never pick one of several live bills for the same term
+                return response()->json(['message' => '這期有多張有效帳單，請先在學生帳務更正。沒有登記任何款項。', 'code' => 'free_gift_invoice_ambiguous'], 409);
+            }
+            $invoice = $matches->first();
+            if (!$invoice && $named) {
+                return response()->json(['message' => '指定帳單不存在、已作廢或不屬於此課程'], 404);
+            }
+
+            if ($invoice && (int) $invoice->StudentID !== (int) $course->StudentID) {
+                // #3991 review: never relabel a bill that belongs to another student.
+                return response()->json([
+                    'message' => '這張帳單不屬於這門課的學生，不能改成「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。請先在學生帳務更正帳單。沒有登記任何款項。',
+                    'code' => 'free_gift_invoice_owner_mismatch',
+                    'invoice_id' => (int) $invoice->id,
+                ], 422);
+            }
+            if ($invoice && $invoice->billing_period === null && $course->getAttribute('ScheduleMode') === 'date') { // #3991 review: never guess the month
+                return response()->json(['message' => '這張月結帳單沒有月份，請先在學生帳務更正帳單月份。沒有登記任何款項。', 'code' => 'free_gift_invoice_unperiodized'], 422);
+            }
+            if ($invoice) {
+                $projection = $this->invoiceProjection($invoice, $course);
+                if ((int) $projection['total_amount'] > 0 || (int) $projection['net_applied'] > 0 || (int) $invoice->TotalAmount !== 0
+                    || $invoice->payments()->exists() || PaymentReport::query()->where('InvoiceID', $invoice->id)->exists()) {
+                    return response()->json([
+                        'message' => sprintf('這期已有 NT$%d 的帳單或收款，不能改成「%s」。沒有登記任何款項。', $projection['total_amount'], Invoice::ZERO_REASON_FREE_GIFT_LABEL),
+                        'code' => 'free_gift_invoice_has_amount',
+                        'invoice_id' => (int) $invoice->id,
+                    ], 422);
+                }
+                $invoice->fill(['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT, 'Status' => 'paid', 'PaidAmount' => 0,
+                    'Note' => mb_substr(trim($invoice->Note . ' ' . $freeNote), 0, 255)])->save();
+            } else {
+                try {
+                    $invoice = app(InvoiceIssuer::class)->issue(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+                        'IssueDate' => $data['payment_date'], 'TotalAmount' => 0, 'Status' => 'paid', 'ScheduleModeAtIssue' => $course->getAttribute('ScheduleMode'),
+                        'Note' => mb_substr($freeNote, 0, 255), // Invoice.Note is VARCHAR(255)
+                        'billing_period' => $period, 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT], [], true);
+                } catch (BillingPeriodInvoiceExists) {
+                    return response()->json(['message' => '此課程該月份已有有效帳單，請重新整理後再試。', 'code' => 'billing_period_invoice_exists'], 409);
+                }
+            }
+
+            Log::info('PaymentReport director-record free-gift bill', ['invoice_id' => (int) $invoice->id, 'student_class_id' => (int) $course->ID, 'user_id' => $userId]);
+
+            return response()->json([
+                'message' => '已登錄 NT$0「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」帳單（不是收款，不用確認入帳）',
+                'report_id' => null, 'payment_id' => null, 'invoice_id' => (int) $invoice->id,
+                'status' => Invoice::ZERO_REASON_FREE_GIFT,
+                'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT,
             ]);
         });
     }
@@ -988,7 +1089,7 @@ class PaymentReportController extends Controller
     {
         if (!$invoice) {
             // Unbilled charge-bearing contract: NT$0 is not a report either (free courses never reach here, #3888 review).
-            return $amount <= 0 && (int) ($sc->Charge ?? 0) > 0 ? response()->json([
+            return $amount <= 0 && ((int) ($sc->Charge ?? 0) > 0 || (float) ($sc->Rate ?? 0) > 0) ? response()->json([ // #3991: a Rate is a fee too
                 'message' => '這門課要收費，金額不可為 0；請填實際收到的金額。沒有登記任何款項。',
                 'code' => 'zero_amount_with_balance',
             ], 422) : null;
@@ -996,7 +1097,7 @@ class PaymentReportController extends Controller
         $projection = $this->invoiceProjection($invoice, $sc);
         $outstanding = (int) $projection['outstanding_amount'];
         // NT$0 on a stored NT$0 bill of a course that charges is an erroneous bill, not a free settlement (#3888 review).
-        $erroneousZero = (int) $projection['stored_total_amount'] <= 0 && (int) ($sc->Charge ?? 0) > 0;
+        $erroneousZero = (int) $projection['stored_total_amount'] <= 0 && ((int) ($sc->Charge ?? 0) > 0 || (float) ($sc->Rate ?? 0) > 0);
         if ($amount <= 0 && ($outstanding > 0 || $erroneousZero)) {
             return response()->json([
                 'message' => $erroneousZero ? '這張帳單金額是 NT$0，但這門課要收費；請先在學生帳務更正帳單金額。沒有登記任何款項。'
@@ -1379,7 +1480,7 @@ class PaymentReportController extends Controller
         ]);
     }
 
-    private function tutoringPaymentBlocked($course)
+    private function tutoringPaymentBlocked($course, bool $explicitFreeGift = false)
     {
         if (!$course instanceof StudentClass) {
             return null;
@@ -1393,7 +1494,7 @@ class PaymentReportController extends Controller
         }
         // #3203: any course the resolver calls `free` (e.g. a 0-total trial) has no payment obligation either.
         // Only 0-charge courses can be free; paid courses skip this and keep the later fail-closed guards.
-        if ((int) ($course->Charge ?? 0) > 0) {
+        if ((int) ($course->Charge ?? 0) > 0 || $explicitFreeGift) {
             return null;
         }
         $id = (int) $course->getKey();

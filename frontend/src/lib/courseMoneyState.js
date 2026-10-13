@@ -156,6 +156,9 @@ export const WAIVED_LABEL = TUITION_STATUS_CONFIG.waived.label;
 export const ENDED_PENDING_LABEL = '課已結束，等你確認收款';
 export const PAUSED_PENDING_LABEL = '暫停中・等你確認收款';
 export const INVOICE_STATUS_LABELS = { paid: '已收', unpaid: '未繳', partial: '繳了一部分', void: '已作廢' };
+// #3991 (Founder 2026-10-13): a NT$0 bill exists only when marked free/gift. Mirrors Invoice::ZERO_REASON_FREE_GIFT.
+export const ZERO_REASON_FREE_GIFT = 'free_gift';
+export const FREE_GIFT_LABEL = '免費／贈送';
 // `voided` only exists in the ledger, the one screen that lists voids.
 export const REPORT_STATUS_LABELS = { pending: '等你確認', confirmed: '已收', rejected: '已退回', voided: '已撤銷' };
 
