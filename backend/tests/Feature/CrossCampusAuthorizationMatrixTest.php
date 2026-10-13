@@ -65,7 +65,7 @@ class CrossCampusAuthorizationMatrixTest extends TestCase
         $this->assertSame('settled_pending', (string) $sc->fresh()->closed_reason);
 
         $this->asDirectorOf($this->campusB)->postJson($uri, $payload)->assertOk();
-        $this->assertNotSame('settled_pending', (string) $sc->fresh()->closed_reason);
+        $this->assertSame('waived', (string) $sc->fresh()->closed_reason);
     }
 
     public function test_payment_report_receipt_is_campus_scoped(): void
@@ -151,9 +151,55 @@ class CrossCampusAuthorizationMatrixTest extends TestCase
         $this->asDirectorOf($this->campusB)->getJson($uri)->assertOk();
     }
 
+    // ── No campus membership / super admin ─────────────────────────────────
+
+    public function test_director_without_campus_is_refused_and_super_admin_is_allowed(): void
+    {
+        $sc = $this->courseOn($this->campusB, [
+            'Charge' => 3000,
+            'Paid' => 0,
+            'Stop' => 1,
+            'closed_reason' => 'settled_pending',
+        ]);
+        $sessionId = $this->sessionOn($sc);
+        $signin = StudentSignIn::create([
+            'StudentID' => $sc->StudentID,
+            'StudentClassID' => null,
+            'ClassSessionID' => null,
+            'Memo' => 'self_study',
+            'SignInDT' => now()->toDateTimeString(),
+            'Status' => 'present',
+            'CampusID' => $this->campusB->id,
+            'PersonType' => 'student',
+            'SessionDeducted' => false,
+            'MDT' => now(),
+        ]);
+        $reads = [
+            "/api/v1/students/{$sc->StudentID}",
+            "/api/v1/student-classes/{$sc->ID}",
+            "/api/v1/student-classes/{$sc->ID}/invoices",
+            "/api/v1/class-sessions/{$sessionId}/recovery",
+            "/api/v1/class-sessions/{$sessionId}/reassign-contract-targets",
+        ];
+
+        foreach ($reads as $uri) {
+            $this->asDirectorOf(null)->getJson($uri)->assertForbidden();
+            $this->asSuperAdmin()->getJson($uri)->assertOk();
+        }
+
+        $this->asDirectorOf(null)
+            ->postJson("/api/v1/accounting/courses/{$sc->ID}/waive", ['reason' => '跨分校授權測試', 'expected_amount' => 3000])
+            ->assertForbidden();
+        $this->assertSame('settled_pending', (string) $sc->fresh()->closed_reason);
+
+        $this->asDirectorOf(null)->patchJson("/api/v1/attendance/{$signin->id}", ['status' => 'absent'])->assertForbidden();
+        $this->assertSame('present', (string) $signin->fresh()->Status);
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────
 
-    private function asDirectorOf(Campus $campus): static
+    /** A director of $campus; null = an approved director account with no campus membership. */
+    private function asDirectorOf(?Campus $campus): static
     {
         $user = User::create([
             'LoginName' => 'dir-xcampus-' . uniqid() . '@test.com',
@@ -163,7 +209,29 @@ class CrossCampusAuthorizationMatrixTest extends TestCase
             'phone' => '0912345678',
             'MustChangePassword' => false,
         ]);
-        UserCampus::create(['CampusID' => $campus->id, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        if ($campus !== null) {
+            UserCampus::create(['CampusID' => $campus->id, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        }
+
+        return $this->withTokenFor($user);
+    }
+
+    private function asSuperAdmin(): static
+    {
+        $user = User::create([
+            'LoginName' => 'sa-xcampus-' . uniqid() . '@test.com',
+            'Name' => '超管跨分校測試',
+            'PSW' => 'secret',
+            'type' => 'S',
+            'phone' => '0912345678',
+            'MustChangePassword' => false,
+        ]);
+
+        return $this->withTokenFor($user);
+    }
+
+    private function withTokenFor(User $user): static
+    {
         $token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
 
