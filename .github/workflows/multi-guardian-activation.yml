@@ -522,13 +522,13 @@ jobs:
           import json,os
           print(json.dumps({"account":os.environ["ACCOUNT"],"password":os.environ["PASSWORD"],"role":"director"}))
           PY
-          )"
+          )" # secret-echo-allow: private JSON capture consumed only by frozen login request
             curl -sk -X POST "$API/auth/login" -H 'Content-Type: application/json' -H 'Accept: application/json' -d "$payload" \
               | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('access_token') or d.get('token') or '')"
           }
-          TOKEN="$(try_login "${ACCEPTANCE_TEACHER_LOGIN:-}" "${ACCEPTANCE_TEACHER_PASSWORD:-}" || true)"
+          TOKEN="$(try_login "${ACCEPTANCE_TEACHER_LOGIN:-}" "${ACCEPTANCE_TEACHER_PASSWORD:-}" || true)" # secret-echo-allow: login token captured; frozen bearer and private consumers only
           if [ -z "$TOKEN" ]; then
-            TOKEN="$(try_login "${SMOKE_DIRECTOR_LOGIN:-}" "${SMOKE_DIRECTOR_PASSWORD:-}" || true)"
+            TOKEN="$(try_login "${SMOKE_DIRECTOR_LOGIN:-}" "${SMOKE_DIRECTOR_PASSWORD:-}" || true)" # secret-echo-allow: login token captured; frozen bearer and private consumers only
           fi
           DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
           DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"

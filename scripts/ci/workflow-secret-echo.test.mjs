@@ -6,8 +6,9 @@
 // Regenerate (only to shrink it) with: node scripts/ci/workflow-secret-echo.test.mjs --write-baseline
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const dir = '.github/workflows';
 const ACTIONS = '.github/actions'; // local composite actions run inside the workflows that use them
@@ -274,12 +275,10 @@ function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns tr
   for (const c of script.cmds) { pipes[pipes.length - 1].push(c); if (c.sep !== '|' && c.sep !== '|&') pipes.push([]); }
   for (const P of pipes) P.forEach((c, s) => {
     scope = c.scope;
-    const at = c.words[0]?.off ?? c.redirs[0]?.off ?? 0;
-    for (const n of normalized) if (at >= n.end) sensitive.delete(n.name);
     const info = resolve(c.words);
     const args = c.words.slice(info.k + 1).map((w) => w.text);
     const printer = /^(?:echo|printf)$/.test(info.name);
-    const nonRead = !hasAlias(c) && (/^(?:rm|cp|mv|test|\[|\[\[|touch|chmod|chown|for|case)$/.test(info.name)
+    const nonRead = !hasAlias(c) && (/^(?:rm|cp|mv|test|\[|\[\[|touch|chmod|chown|mktemp|for|case)$/.test(info.name)
       || (info.name === 'sed' && args.some((a) => /^-[a-zA-Z]*i|^--in-place/.test(a)))
       || (info.name === 'grep' && args.some((a) => /^-[a-zA-Z]*q|^--(?:quiet|silent)$/.test(a))));
     const pure = c.redirs.length === 0 && (info.k >= c.words.length || (/^(?:export|local|readonly|declare|typeset)$/.test(info.name)
@@ -308,7 +307,7 @@ function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns tr
     for (const w of c.words) {
       const capture = pure && assignRe.test(w.text) && /^[^=]*=\x03$/.test(w.text) && w.subs.length === 1;
       if (capture && cleanCapture(w.subs[0].script.src)) {
-        if (analyze(w.subs[0].script, 'sub', Object.assign([], { comments: [] }), exprs, new Set(sensitive))) sensitive.add(w.text.split('=')[0]);
+        if (analyze(w.subs[0].script, 'sub', out, exprs, new Set(sensitive))) sensitive.add(w.text.split('=')[0]);
         collectRaw(w.subs[0].script, out); continue;
       } // NAME="$(...)"
       const subHits = w.subs.filter((sb) => analyze(sb.script, sb.kind === '>(' ? 'top' : 'sub', out, exprs, new Set(sensitive)) && sb.kind !== '>(').map((sb) => sb.at);
@@ -397,8 +396,16 @@ function scanScript(where, script0) {
   const parsed = lex(script);
   const occ = Object.assign([], { comments: parsed.comments });
   if (!parsed.bad) analyze(parsed, 'top', occ, exprs);
+  const allowances = [...script0.matchAll(ALLOW_ALL)].flatMap((m) => {
+    const owner = parsed.comments.find(([a, b]) => m.index >= a && m.index < b)?.[2];
+    return owner && m[1].trim().length >= 10 ? [owner] : [];
+  });
+  const allowedScope = (scope) => {
+    for (; scope; scope = scope.parent) if (allowances.includes(scope)) return true;
+    return false;
+  };
   const covered = new Set(occ.map((o) => o.off));
-  for (const o of occ) if (!o.safe) why[lineOf(o.off)].add('not a safe form');
+  for (const o of occ) if (!o.safe && !allowedScope(o.scope)) why[lineOf(o.off)].add('not a safe form');
   const inComment = (off) => parsed.comments.some(([a, b]) => off >= a && off < b);
   // raw cross-check: an occurrence the lexer did not account for (or an unparsable script) is a finding
   for (const re of [CRED, ENV_FILE]) for (const m of script.matchAll(re)) {
@@ -503,6 +510,14 @@ const formatBaseline = (b) => `{\n  "//": "#1387 shrink-only: existing findings 
 const wf = (run) => `jobs:\n  j:\n    steps:\n      - run: ${run}`;
 const blk = (...l) => wf(`|\n${l.map((x) => `          ${x}`).join('\n')}`);
 export const trip = {
+  'multiline nested marker cannot excuse outer echo': blk('echo "$DB_PASSWORD" "$(printf hi # secret-echo-allow: harmless nested output', ')"'),
+
+  'captured secret filename stderr remains unsafe': blk('X="$(cat "$DB_PASSWORD")"'),
+
+  'reassignment after normalization remains tainted': blk('value="$(cat backend/.env)"; case "$value" in true|false) ;; *) value=false ;; esac; value="$(cat backend/.env)"; echo "$value"'),
+  'conditional skipped normalization remains tainted': blk('value="$(cat backend/.env)"; if false; then case "$value" in true|false) ;; *) value=false ;; esac; fi; echo "$value"'),
+  'unproven normalization output remains tainted': blk('value="$(grep \'^FLAG=\' backend/.env | cut -d= -f2-)"; case "$value" in true|false) ;; *) value=false ;; esac', 'echo "$value"'),
+
   'metadata selector prefix cannot excuse password key': blk('X="$(grep \'^DB_USERNAME\' backend/.env)"; echo "$X"'),
   'quoted normalization text cannot remove taint': blk('value="$(cat backend/.env)"; printf \'case "$value" in true|false) ;; *) value=false ;; esac\'', 'echo "$value"'),
   'comment normalization text cannot remove taint': blk('value="$(cat backend/.env)" # case "$value" in true|false) ;; *) value=false ;; esac', 'echo "$value"'),
@@ -655,12 +670,16 @@ export const trip = {
   'composite action run step': 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo "$DB_PASSWORD"',
 };
 export const ok = {
+  'closing command marker covers captured child': blk('X="$(cat "$DB_PASSWORD"', ')" # secret-echo-allow: reviewed captured child with separately proven quiet diagnostics'),
+
+  'captured environment hash is safe': blk('X="$(cat backend/.env | sha256sum)"; echo "$X"'),
+
   'outer scoped annotation covers eval assignment': blk('backup="$(cat backend/.env)"', 'eval \'result=$backup\' # secret-echo-allow: assign captured backup; no output'),
 
   'captured count metadata': blk('X="$(grep -c \'^FLAG=\' backend/.env)"; echo "$X"'),
   'captured public username field': blk('X="$(grep -m1 \'^DB_USERNAME=\' backend/.env | cut -d= -f2-)"; echo "$X"'),
   'captured secret unary predicate': blk('X="$(cat backend/.env)"; if [[ -n "$X" ]]; then echo present; fi'),
-  'literal boolean normalization': blk('value="$(grep \'^FLAG=\' backend/.env | cut -d= -f2-)"; case "$value" in true|false) ;; *) value=false ;; esac', 'echo "$value"'),
+
 
   'sensitive capture hashed': blk('X="$(cat backend/.env)"; echo "$X" | sha256sum'),
   'ordinary capture printed': blk('X="$(date)"; echo "$X"'),
@@ -758,6 +777,43 @@ for (const [k, y] of Object.entries(ok)) { const r = scan('ok', y); if (r.length
   if (select('^DB_USERNAME=', adversarial) !== 'DB_USERNAME=fixture_user\n'
     || select('DB_USERNAME', adversarial) === select('^DB_USERNAME=', adversarial))
     fail('anchored username selector must reject a matching password value');
+}
+
+
+// Narrow capture annotations are justified by frozen producer/consumer programs.
+// A future public print, verbose/trace option, changed helper, or new callsite invalidates the proof.
+{
+  const contracts = {
+    'deploy.yml': '6f1f1c88ed5a10a65852d787c93fc6e8d32dac2b7e906cf2814bbbe2fb7f69bc',
+    'actual-duration-acceptance.yml': '063c896ae2603651b362654af106e74fcdc2ce6a67e10707a063c0950835bf97',
+    'multi-guardian-activation.yml': 'e9e59d11428058b3f8eb355859fa0b1b21ffee841d4826a98fe676108011713f',
+  };
+  const hash = (s) => createHash('sha256').update(s).digest('hex');
+  for (const [name, expected] of Object.entries(contracts)) {
+    const producerConsumers = readFileSync(join(dir, name), 'utf8').trimEnd();
+    if (hash(producerConsumers) !== expected) fail('capture annotation producer/consumer changed; re-review exact quiet transport:', name);
+  }
+  if (hash(readFileSync('scripts/smoke-auth-lib.sh', 'utf8')) !== '7d5fc28c79e9439c1600782e09ff76cdfdfca05b042a0d6b643cad031d27c920')
+    fail('quiet auth helper changed; re-review capture annotation');
+  const d = readFileSync(join(dir, 'deploy.yml'), 'utf8');
+  const start = d.indexOf('          apply_bool_feature_flag() {');
+  const end = d.indexOf('          apply_bool_feature_flag "$ADMISSIONS', start);
+  if (start < 0 || end < 0) fail('reviewed boolean formatter missing');
+  const sandbox = mkdtempSync(join(tmpdir(), 'secret-guard-formatter-'));
+  try {
+    const backend = join(sandbox, 'backend.env'), frontend = join(sandbox, 'frontend.env');
+    const fn = d.slice(start, end).replaceAll('/home/admin/backend/.env', backend).replaceAll('/home/admin/frontend/.env.production.local', frontend);
+    for (const mode of ['on', 'off', 'unchanged', '']) for (const stored of ['true', 'false', 'unexpected_private_fixture']) {
+      writeFileSync(backend, 'ADMISSIONS_FUNNEL_V1=' + stored + '\n'); writeFileSync(frontend, '');
+      const program = fn + '\napply_bool_feature_flag "$FIXTURE_MODE" ADMISSIONS_FUNNEL_V1 VITE_ADMISSIONS_FUNNEL_V1 OUT_CHANGED OUT_PRESENT OUT_BACKUP\n';
+      const r = spawnSync('bash', ['-eu', '-c', program], { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', FIXTURE_MODE: mode } });
+      const value = mode === 'on' ? 'true' : mode === 'off' ? 'false' : ['true', 'false'].includes(stored) ? stored : 'false';
+      if (r.error || r.status !== 0 || !r.stdout.includes('value=' + value + ')')
+        || (r.stdout + r.stderr).includes('unexpected_private_fixture')
+        || readFileSync(frontend, 'utf8') !== 'VITE_ADMISSIONS_FUNNEL_V1=' + value + '\n')
+        fail('reviewed formatter must emit only normalized booleans in every mode');
+    }
+  } finally { rmSync(sandbox, { recursive: true, force: true }); }
 }
 
 // --- repository check ---------------------------------------------------------------------------------------------

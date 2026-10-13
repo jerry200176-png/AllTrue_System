@@ -233,7 +233,7 @@ jobs:
         run: |
           set -euo pipefail
           source scripts/smoke-auth-lib.sh
-          TOKEN="$(smoke_login_and_token "$BASE_URL/api/v1" "$ACCEPTANCE_TEACHER_LOGIN" "$ACCEPTANCE_TEACHER_PASSWORD" director acceptance-test)"
+          TOKEN="$(smoke_login_and_token "$BASE_URL/api/v1" "$ACCEPTANCE_TEACHER_LOGIN" "$ACCEPTANCE_TEACHER_PASSWORD" director acceptance-test)" # secret-echo-allow: quiet auth helper; token captured to private file and frozen consumers
           echo "$TOKEN" > /tmp/token.txt
           echo "✅ authenticated as the designated acceptance-test director"
 

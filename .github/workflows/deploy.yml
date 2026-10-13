@@ -1727,7 +1727,7 @@ jobs:
               case "$value" in true|false) ;; *) value=false ;; esac
             fi
             printf '%s=%s\n' "$vite_key" "$value" >> /home/admin/frontend/.env.production.local
-            echo "✅ ${key} prepared (mode=${mode:-unchanged}, value=$value)"
+            echo "✅ ${key} prepared (mode=${mode:-unchanged}, value=$value)" # secret-echo-allow: reviewed formatter emits only normalized true or false; function and callers frozen
             eval "$4=$changed"
             eval "$5=$present"
             eval "$6=\"\$backup\"" # secret-echo-allow: copy saved flag line into constant caller variable; no output
@@ -1820,7 +1820,8 @@ jobs:
                 https://daan.lifenet.com.tw/api/internal/opcache-reset \
                 -H "X-Deploy-Secret: ${DEPLOY_SECRET}" \
                 -H "Connection: close" \
-                -H "Content-Type: application/json"); then
+                -H "Content-Type: application/json") # secret-echo-allow: captured quiet opcache response; auth header and consumers frozen
+            then
               abort_deploy "FPM web-process refresh request failed on attempt ${attempt}"
             fi
             if ! echo "$OPCACHE_RESPONSE" | grep -q '"ok":true' || \
