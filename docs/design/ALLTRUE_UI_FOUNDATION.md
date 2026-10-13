@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-07-26
+last_reviewed: 2026-10-13
 ---
 
 # AllTrue UI Foundation
@@ -86,6 +86,7 @@ Existing + foundation set under `frontend/src/components/design-system/`:
 | `AtFilterBar` | Search/filter grid — **pilot** |
 | `AtButton` | `shape=pill` legacy default / `shape=rect` ops; loading — **pilot** |
 | `AtIconButton` | Accessible icon-only control — **students pilot** |
+| `AtIcon` | Inline SVG icon (`name`, `size=sm\|md\|lg\|inherit`, `currentColor`, `aria-hidden` unless `label`) — replaces emoji in templates (§11 rule 5). `AtButton icon` / `AtIconButton` / nav still use Material Symbols until a later U-package moves them |
 | `AtBadge` | Status with text + tone (+ dot) — **pilot** |
 | `AtEmpty` | Compact empty state — **pilot** |
 | `AtInlineAlert` | Inline error/warning/info — **inbox pilot** |
@@ -162,3 +163,21 @@ Rollback: revert the stacked PR; page-scoped + additive primitives. See audit ta
 | Founder-star references | `.cursor/rules/frontend-brand-taste.mdc` | Reference index | `taste-skill` / `impeccable` for anti-slop taste, `awesome-design-md` for design-document discipline, shadcn/Radix and Carbon/Fluent/Primer for accessible product patterns; no code or visual skin copied |
 
 **Decision:** Do not vendor `@gitlab/ui` or `@carbon/vue` in this pilot — implement AllTrue-owned `At*` primitives on existing Vue 3 + CSS tokens (zero new runtime UI dependency).
+
+## 11. Style ratchet (only-down guards)
+
+Rules 2–6 of the anti-AI-slop UI plan (nine-area engineering plan §10, work package U1, Refs #3115) are enforced like the raw-hex guard: existing pages keep their current counts, and no file may add more.
+
+| Rule | Allowed | Counted as off-system |
+|---|---|---|
+| 2. Font size | `var(--ds-font-size-*)` (7 sizes) | any other `font-size:` value |
+| 3. Radius | `var(--ds-radius-sm\|md\|lg)`; `--ds-radius-pill` only for status badges (review-enforced, not counted) | any other `border-*radius:` value |
+| 4. Shadow | `var(--ds-shadow-1\|2)`; focus ring on `var(--ds-focus-ring)` | any other `box-shadow:` value; use dividers, not card-in-card |
+| 5. Icons | `<AtIcon>`; icon-only buttons carry `aria-label` | emoji / pictograph glyphs inside a Vue `<template>` |
+| 6. Dialogs | `AtDialog` / `AtInlineAlert` / toast | `alert(` / `confirm(` / `window.alert(` / `window.confirm(` |
+
+`0`, `none` and CSS-wide keywords are neutral. The whole value must be the variable (`calc(var(--ds-font-size-sm) + 2px)` counts). Not yet counted: camelCase/`:style` object styles and the `font:` shorthand. Comments, tests (`__tests__`, `*.test.*`, `*.spec.*`) and `*.generated.js` are not counted.
+
+- Check: `node scripts/design-style-ratchet.mjs` (repo root). It runs at the end of `scripts/check-no-raw-hex.sh`, so `npm run lint:design` (blocking CI step "Design raw-hex guard") enforces it.
+- Baseline: `docs/design-style-baseline.json`, one line per file under `frontend/src`.
+- After a cleanup lowers counts (the check prints a hint), lock it in: `node scripts/design-style-ratchet.mjs --update-baseline`. Never raise the baseline to pass a new usage; moving or renaming a file also needs a baseline refresh in the same PR.
