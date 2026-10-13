@@ -239,7 +239,7 @@
   --ds-ink: #e2e8f0;
   --ds-ink-secondary: #cbd5e1;
   --ds-ink-mute: #94a3b8;
-  --ds-ink-faint: #64748b;
+  --ds-ink-faint: #94a3b8; /* same as dark ink-mute: CourseManagement meta counts stay >= 4.5:1 on dark surfaces */
   --ds-canvas: #1e293b;
   --ds-canvas-soft: #0f172a;
   --ds-surface-2: #0f172a;

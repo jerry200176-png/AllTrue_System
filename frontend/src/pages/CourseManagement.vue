@@ -8268,6 +8268,9 @@ button.danger:disabled {
 [data-theme="dark"] .date-chip.over-quota .chip-state {
   color: var(--ds-canvas-soft);
 }
+[data-theme="dark"] .btn-renew-warn {
+  color: var(--ds-on-brand) !important;
+}
 
 /* ── Dark mode: history section ── */
 [data-theme="dark"] .history-section {
