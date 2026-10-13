@@ -121,10 +121,18 @@ final class EnsureSessionHorizonService
         }
 
         if ($mode !== self::MODE_EXECUTE) {
+            // #3727: mirror the execute-path skips (R20 same-start + write-guard overlap) so dry-run and
+            // ShadowSessionHorizonService evidence never count slots execute will skip.
+            $studentId = $this->loadStudentId($studentClassId);
+            $course = StudentClass::query()->find($studentClassId);
+            $course = $course instanceof StudentClass ? $course : null;
+            $asOf = ($today ?? Carbon::today())->toDateString();
+            $wouldSkip = $this->countDryRunSkips($candidates, $studentId, $course, $studentClassId, $asOf);
             $result['ensure']['ok'] = true;
             $result['ensure']['blocked'] = false;
             $result['ensure']['primary_reason'] = 'DRY_RUN_OK';
-            $result['ensure']['would_create'] = count($candidates);
+            $result['ensure']['would_create'] = count($candidates) - $wouldSkip;
+            $result['ensure']['would_skip'] = $wouldSkip;
             $result['meta']['read_only'] = true;
 
             return $result;
@@ -160,8 +168,7 @@ final class EnsureSessionHorizonService
                     $end = $o['end_hm'] ?? $this->defaultEnd($o['start_hm']);
                     // R20 same-start check stays (stricter on purpose); the write guard also rejects partial
                     // overlaps, so skip those too instead of failing the whole batch (in-app #380, R142).
-                    if ($this->hasCrossScConflict($studentId, $o['date'], $o['start_hm'], $studentClassId)
-                        || ($course && $this->materializer->findStudentSlotConflict($course, $o['date'], $o['start_hm'], $end, $asOf))) {
+                    if ($this->slotConflicts($studentId, $course, $studentClassId, $o, $asOf)) {
                         Log::warning('ensure_horizon_cross_sc_conflict', [
                             'student_class_id' => $studentClassId,
                             'date' => $o['date'],
@@ -207,6 +214,131 @@ final class EnsureSessionHorizonService
         $result['ensure']['provenance_note'] = $note;
 
         return $result;
+    }
+
+    /**
+     * Dry-run skip count with O(1) queries per course (#3727 review): three date-bounded lookups find which
+     * candidates can possibly collide; only those pay for the exact per-slot check shared with execute.
+     *
+     * @param array<int,array<string,mixed>> $candidates
+     */
+    private function countDryRunSkips(array $candidates, int $studentId, ?StudentClass $course, int $studentClassId, string $asOf): int
+    {
+        $dates = array_values(array_unique(array_map(fn ($o) => substr((string) $o['date'], 0, 10), $candidates)));
+        // upsertSlot() reuses any same-course row at the same date/start (cancelled/voided included) and skips.
+        $selfKeys = DB::table('ClassSession')
+            ->where('StudentClassID', $studentClassId)
+            ->whereIn(DB::raw('DATE(SessionDate)'), $dates)
+            ->get([DB::raw('DATE(SessionDate) as d'), DB::raw('SUBSTRING(StartTime, 1, 5) as t')])
+            ->mapWithKeys(fn ($r) => [$r->d.'|'.$r->t => true])->all();
+        // Other-course sessions/schedules of the student on those dates, as [date => [[start, end], ...]].
+        // Rows carry the columns the write guard filters on, so semantically exempt rows (same shared package,
+        // trial, stopped course, outside the contract period, cancelled-family status, non-scheduled/anchor
+        // schedules) are dropped in memory here; only rows that can really conflict reach the exact check.
+        $busy = [];
+        if ($studentId > 0) {
+            $pkg = $course ? (int) $course->getAttribute('PackageID') : 0;
+            $ownExempt = $course && (strtolower(trim((string) $course->getAttribute('ClassType'))) === 'trial'
+                || ((int) $course->getAttribute('Stop') === 1 && (int) $course->getAttribute('RemainingSessions') <= 0));
+            $excluded = array_map('strtolower', \App\Support\SessionStatus::futureReservationExclusionStatuses());
+            $inPeriod = fn ($r) => (empty($r->sd) || substr((string) $r->sd, 0, 10) <= $r->d)
+                && (empty($r->ed) || substr((string) $r->ed, 0, 10) >= $r->d);
+            $contractOk = fn ($r) => (int) ($r->stop ?? 0) === 0 && strtolower((string) ($r->ctype ?? '')) !== 'trial'
+                && !($pkg > 0 && (int) ($r->pkg ?? 0) === $pkg) && $inPeriod($r);
+            $rows = DB::table('ClassSession as cs')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                ->where('sc.StudentID', $studentId)->where('cs.StudentClassID', '!=', $studentClassId)
+                ->whereIn(DB::raw('DATE(cs.SessionDate)'), $dates)
+                ->selectRaw('DATE(cs.SessionDate) as d, cs.StartTime as s, cs.EndTime as e, cs.Status as st, sc.PackageID as pkg, sc.Stop as stop, sc.ClassType as ctype, sc.StartDate as sd, sc.EndDate as ed')
+                ->get();
+            foreach ($rows as $r) {
+                $status = strtolower(trim((string) $r->st));
+                $r20 = !in_array($status, ['cancelled', 'voided'], true); // same-start check: no contract filters
+                $guard = !$ownExempt && !in_array($status, $excluded, true) && $contractOk($r);
+                if ($r20 || $guard) {
+                    $busy[$r->d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e, $r20, $guard, false];
+                }
+            }
+            if (!$ownExempt) {
+                $rows = DB::table('schedules as s')
+                    ->leftJoin('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+                    ->where('s.student_id', $studentId)->whereIn(DB::raw('DATE(s.schedule_date)'), $dates)
+                    ->where('s.status', 'scheduled')->whereNull('s.original_schedule_id')
+                    ->selectRaw('DATE(s.schedule_date) as d, s.start_time as s, s.end_time as e, s.student_course_id as cid, sc.ID as scid, sc.PackageID as pkg, sc.Stop as stop, sc.ClassType as ctype, sc.StartDate as sd, sc.EndDate as ed')
+                    ->get();
+                $byDate = [];
+                foreach ($rows as $r) {
+                    if ((int) $r->cid === $studentClassId || ($r->cid !== null && $r->scid === null)) {
+                        continue; // own row / orphaned link: never a conflict
+                    }
+                    if ($r->scid === null || $contractOk($r)) {
+                        $r->student_course_id = $r->cid;
+                        $r->start_time = $r->s;
+                        $byDate[$r->d][] = $r;
+                    }
+                }
+                // Authoritative stale-projection filter, one ClassSession query for all dates.
+                foreach (app(\App\Services\StaleScheduleExceptionFilter::class)->rejectStaleBatch($byDate) as $d => $kept) {
+                    foreach ($kept as $r) {
+                        $busy[$d][] = [(string) $r->s, $r->e === null ? '99:99' : (string) $r->e, false, true, true];
+                    }
+                }
+            }
+        }
+        $skip = 0;
+        foreach ($candidates as $o) {
+            $d = substr((string) $o['date'], 0, 10);
+            $start = substr((string) $o['start_hm'], 0, 5);
+            if (isset($selfKeys[$d.'|'.$start])) {
+                $skip++;
+                continue;
+            }
+            // Compare at stored (seconds) precision, like the exact predicate: 15:00-16:00:30 overlaps a 16:00 start.
+            $end = $this->hms((string) ($o['end_hm'] ?? $this->defaultEnd($o['start_hm'])));
+            $startFull = $this->hms($start);
+            $touches = false;
+            $start5 = substr($startFull, 0, 5);
+            $end5 = substr($end, 0, 5);
+            foreach ($busy[$d] ?? [] as [$bs, $be, $r20, $guard, $isSched]) {
+                // schedules.* are VARCHAR and execute compares them to minute-only strings: mirror that (16:00:00 > '16:00').
+                if ($isSched) {
+                    if (strcmp($bs, $end5) < 0 && strcmp($be, $start5) > 0) {
+                        $touches = true;
+                        break;
+                    }
+                    continue;
+                }
+                // Same start always touches for R20 rows (it ignores the other row's end, e.g. 00:00 when omitted).
+                if (($r20 && substr($bs, 0, 5) === $start) || ($guard && $this->hms($bs) < $end && $this->hms($be) > $startFull)) {
+                    $touches = true;
+                    break;
+                }
+            }
+            if ($touches && $this->slotConflicts($studentId, $course, $studentClassId, $o, $asOf)) {
+                $skip++;
+            }
+        }
+
+        return $skip;
+    }
+
+    /**
+     * R20 same-start check stays (stricter on purpose); the write guard also rejects partial overlaps
+     * (in-app #380, R142). Shared by dry-run and execute so their counts agree.
+     *
+     * @param array<string,mixed> $o
+     */
+    private function slotConflicts(int $studentId, ?StudentClass $course, int $studentClassId, array $o, string $asOf): bool
+    {
+        $end = $o['end_hm'] ?? $this->defaultEnd($o['start_hm']);
+
+        return $this->hasCrossScConflict($studentId, $o['date'], $o['start_hm'], $studentClassId)
+            || ($course && $this->materializer->findStudentSlotConflict($course, $o['date'], $o['start_hm'], $end, $asOf));
+    }
+
+    private function hms(string $t): string
+    {
+        return strlen($t) === 5 ? $t.':00' : substr($t, 0, 8);
     }
 
     private function loadStudentId(int $studentClassId): int
