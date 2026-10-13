@@ -34,7 +34,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->pilotCampusId = (int) Campus::factory()->create()->id;
         $this->otherCampusId = (int) Campus::factory()->create()->id;
         config(['perfflags.actual_duration_campus_ids' => (string) $this->pilotCampusId]);
-
         $this->teacherId = $this->mkUser('T', 'adp-t' . uniqid() . '@e.com');
         $dirId = $this->mkUser('A', 'adp-d' . uniqid() . '@e.com');
         foreach ([$this->pilotCampusId, $this->otherCampusId] as $campusId) {
@@ -48,9 +47,7 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     public function test_allowlisted_campus_with_flag_on_deducts_actual_minutes(): void
     {
         [$sc, $studentId] = $this->course($this->pilotCampusId);
-
         $this->attend180($sc, $studentId);
-
         $this->assertSame(780, (int) $sc->fresh()->RemainingMinutes, '960 purchased - 180 actual');
         $this->assertSame(180, (int) $this->ledgerMinutes($sc));
     }
@@ -58,9 +55,7 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     public function test_campus_outside_the_allowlist_deducts_one_whole_lesson(): void
     {
         [$sc, $studentId] = $this->course($this->otherCampusId);
-
         $this->attend180($sc, $studentId);
-
         $this->assertSame(7, (int) $sc->fresh()->RemainingSessions, 'one whole lesson, as fixed_session');
         $this->assertNull($this->ledgerMinutes($sc), 'whole-session encoding, no minutes');
     }
@@ -69,9 +64,7 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     {
         config(['perfflags.actual_duration_deduction_enabled' => false]);
         [$sc, $studentId] = $this->course($this->pilotCampusId);
-
         $this->attend180($sc, $studentId);
-
         $this->assertSame(7, (int) $sc->fresh()->RemainingSessions);
         $this->assertNull($this->ledgerMinutes($sc));
     }
@@ -80,12 +73,10 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     public function test_deduction_follows_a_changed_allowlist(): void
     {
         config(['perfflags.actual_duration_campus_ids' => (string) $this->otherCampusId]);
-
         [$pilot, $pilotStudent] = $this->course($this->pilotCampusId);
         [$other, $otherStudent] = $this->course($this->otherCampusId);
         $this->attend180($pilot, $pilotStudent);
         $this->attend180($other, $otherStudent);
-
         $this->assertNull($this->ledgerMinutes($pilot), 'removed from the list -> fixed_session');
         $this->assertSame(180, (int) $this->ledgerMinutes($other), 'added to the list -> actual minutes');
     }
@@ -94,18 +85,14 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     {
         $a = $this->pilotCampusId;
         $b = $this->otherCampusId;
-
         config(['perfflags.actual_duration_campus_ids' => " {$b} , {$a} "]);
         $this->assertTrue(SessionDeductionService::isActualDurationCampusAllowed($a));
         $this->assertTrue(SessionDeductionService::isActualDurationCampusAllowed($b));
-
         config(['perfflags.actual_duration_campus_ids' => '']);
         $this->assertFalse(SessionDeductionService::isActualDurationCampusAllowed($a), 'empty = no campus');
-
         config(['perfflags.actual_duration_campus_ids' => '*']);
         $this->assertTrue(SessionDeductionService::isActualDurationCampusAllowed($b), '* = every campus');
         $this->assertFalse(SessionDeductionService::isActualDurationCampusAllowed(0), 'unknown campus never allowed, even under *');
-
         config(['perfflags.actual_duration_campus_ids' => (string) $a]);
         $this->assertFalse(SessionDeductionService::isActualDurationCampusAllowed(0), 'unknown campus never allowed');
     }
@@ -113,7 +100,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     public function test_create_api_refuses_an_actual_duration_course_outside_the_allowlist(): void
     {
         $studentId = $this->student($this->otherCampusId);
-
         $this->createCourse($studentId, $this->otherCampusId, DeductionBasis::ACTUAL_DURATION)
             ->assertStatus(422)
             ->assertJsonPath('errors.deduction_basis.0', '此分校尚未開放依實際時長扣堂，請改用「每次上課扣一堂」。');
@@ -170,64 +156,69 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     /** #3948: rollback counts whole lessons; superseded extras cannot retag new attendance. */
     public function test_removing_the_campus_recounts_history_as_whole_lessons(): void
     {
-        [$sc, $studentId] = $this->course($this->pilotCampusId, ['SessionDuration' => 180]);
-        \App\Models\Schedule::create([
-            'student_id' => $studentId, 'student_course_id' => $sc->ID, 'teacher_id' => $this->teacherId, 'branch_id' => $this->pilotCampusId,
-            'subject' => 'Math', 'schedule_date' => Carbon::now()->subDays(12)->toDateString(), 'day_of_week' => Carbon::now()->subDays(12)->dayOfWeekIso, 'start_time' => '14:00', 'end_time' => '15:30',
-            'duration_hours' => 1.5, 'class_type' => 'one_on_one', 'status' => \App\Models\Schedule::STATUS_SUPERSEDED, 'type' => 'extra', 'deduction' => 1,
-        ]);
-        $this->attend($sc, $studentId, '14:00:00', '15:30:00', 12);
-        $this->assertSame(90, (int) $this->ledgerMinutes($sc), 'live pilot records actual minutes');
-        config(['perfflags.actual_duration_campus_ids' => (string) $this->otherCampusId]);
-        $this->attend($sc, $studentId, '14:00:00', '17:00:00', 10);
-        SessionDeductionService::recomputeCounters($sc->ID);
-        $fresh = $sc->fresh();
-        $this->assertSame(6, (int) $fresh->RemainingSessions, 'two attendances = two whole lessons');
-        $this->assertSame(2, (int) $fresh->UsedSessions);
-        $this->assertSame(6 * 180, (int) $fresh->RemainingMinutes, 'no fractional balance');
-        $diag = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID];
-        $this->assertSame(2, $diag['expected_used'], 'the batch diagnostic agrees with the persisted counters');
-        $row = collect($this->withHeaders($this->headers())->getJson('/api/v1/student-classes?per_page=200')->assertOk()->json('data'))
-            ->firstWhere('ID', $sc->ID);
-        $this->assertSame([null, null], [$row['remaining_lesson_equivalent'] ?? null, $row['used_lesson_equivalent'] ?? null], 'no minute equivalents while gated off');
-        config(['perfflags.actual_duration_campus_ids' => (string) $this->pilotCampusId]);
-        SessionDeductionService::recomputeCounters($sc->ID);
-        $this->assertSame(8 * 120 - 90 - 120, (int) $sc->fresh()->RemainingMinutes, 'back in the pilot: minutes again');
+        foreach ([\App\Models\Schedule::STATUS_SUPERSEDED, 'cancelled'] as $staleStatus) {
+            [$sc, $studentId] = $this->course($this->pilotCampusId, ['SessionDuration' => 180]);
+            \App\Models\Schedule::create([
+                'student_id' => $studentId, 'student_course_id' => $sc->ID, 'teacher_id' => $this->teacherId, 'branch_id' => $this->pilotCampusId,
+                'subject' => 'Math', 'schedule_date' => Carbon::now()->subDays(12)->toDateString(), 'day_of_week' => Carbon::now()->subDays(12)->dayOfWeekIso, 'start_time' => '14:00', 'end_time' => '15:30',
+                'duration_hours' => 1.5, 'class_type' => 'one_on_one', 'status' => $staleStatus, 'type' => 'extra', 'deduction' => 1,
+            ]);
+            $this->attend($sc, $studentId, '14:00:00', '15:30:00', 12);
+            $this->assertSame(90, (int) $this->ledgerMinutes($sc), 'live pilot records actual minutes');
+            config(['perfflags.actual_duration_campus_ids' => (string) $this->otherCampusId]);
+            $this->attend($sc, $studentId, '14:00:00', '17:00:00', 10);
+            SessionDeductionService::recomputeCounters($sc->ID);
+            $fresh = $sc->fresh();
+            $this->assertSame(6, (int) $fresh->RemainingSessions, 'two attendances = two whole lessons');
+            $this->assertSame(2, (int) $fresh->UsedSessions);
+            $this->assertSame(6 * 180, (int) $fresh->RemainingMinutes, 'no fractional balance');
+            $diag = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID];
+            $this->assertSame(2, $diag['expected_used'], 'the batch diagnostic agrees with the persisted counters');
+            $row = collect($this->withHeaders($this->headers())->getJson('/api/v1/student-classes?per_page=200')->assertOk()->json('data'))
+                ->firstWhere('ID', $sc->ID);
+            $this->assertSame([null, null], [$row['remaining_lesson_equivalent'] ?? null, $row['used_lesson_equivalent'] ?? null], 'no minute equivalents while gated off');
+            config(['perfflags.actual_duration_campus_ids' => (string) $this->pilotCampusId]);
+            SessionDeductionService::recomputeCounters($sc->ID);
+            $this->assertSame(8 * 120 - 90 - 120, (int) $sc->fresh()->RemainingMinutes, 'back in the pilot: minutes again');
+        }
     }
 
     /** Codex P1 on #3948: gated off, a makeup keeps the fixed_session proration (90 of 120 minutes = 0.75 lesson). */
     public function test_a_gated_off_course_still_prorates_a_makeup(): void
     {
-        [$sc, $studentId] = $this->course($this->otherCampusId);
-        $date = Carbon::now()->subDays(10)->toDateString();
-        $schedule = \App\Models\Schedule::create([
-            'student_id' => $studentId, 'teacher_id' => $this->teacherId, 'subject' => 'Math', 'day_of_week' => Carbon::parse($date)->dayOfWeekIso,
-            'start_time' => '14:00', 'end_time' => '15:30', 'duration_hours' => 1.5, 'class_type' => 'one_on_one', 'status' => 'scheduled',
-            'type' => 'extra', 'deduction' => 1, 'branch_id' => $this->otherCampusId, 'schedule_date' => $date, 'student_course_id' => $sc->ID,
-        ]);
-        $this->attend($sc, $studentId, '14:00:00', '15:30:00', 10);
-        SessionDeductionService::recomputeCounters($sc->ID);
-        $this->assertSame(960 - 90, (int) $sc->fresh()->RemainingMinutes);
-        $this->assertSame(1, SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID]['expected_used']);
-        // Codex P1 (round 5): superseding the makeup row later must not reclassify the deducted makeup as a whole lesson.
-        \App\Models\Schedule::query()->where('student_course_id', $sc->ID)->update(['status' => \App\Models\Schedule::STATUS_SUPERSEDED]);
-        SessionDeductionService::recomputeCounters($sc->ID);
-        $this->assertSame(960 - 90, (int) $sc->fresh()->RemainingMinutes);
-        $this->withHeaders($this->headers())->deleteJson('/api/v1/schedules/' . $schedule->id)->assertOk();
-        $this->assertDatabaseMissing('schedules', ['id' => $schedule->id]);
-        config(['perfflags.actual_duration_deduction_enabled' => false]);
-        SessionDeductionService::recomputeCounters($sc->ID);
-        $this->assertSame(870, (int) $sc->fresh()->RemainingMinutes);
-        $diag = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID];
-        $this->assertSame(90, $diag['ledger_net_minutes']);
-        $this->assertFalse($diag['ambiguous_minute_evidence']);
-        $sessionId = (int) SessionDeductionLedger::where('student_class_id', $sc->ID)->where('event_type', 'deduct')->value('class_session_id');
-        $this->assertTrue(SessionDeductionService::reverseForSession($sc->ID, $sessionId));
-        SessionDeductionService::recomputeCounters($sc->ID);
-        $this->assertSame(960, (int) $sc->fresh()->RemainingMinutes);
-        $reverse = SessionDeductionLedger::where('student_class_id', $sc->ID)->where('event_type', 'reverse')->firstOrFail();
-        $this->assertSame(90, (int) $reverse->minutes);
-        $this->assertSame('retro_leave_makeup', $reverse->source);
+        foreach ([[$this->otherCampusId, 120, 90, '15:30'], [$this->pilotCampusId, 180, 120, '16:00']] as [$campusId, $duration, $minutes, $endTime]) {
+            config(['perfflags.actual_duration_deduction_enabled' => true]);
+            [$sc, $studentId] = $this->course($campusId, ['SessionDuration' => $duration]);
+            $date = Carbon::now()->subDays(10)->toDateString();
+            $schedule = \App\Models\Schedule::create([
+                'student_id' => $studentId, 'teacher_id' => $this->teacherId, 'subject' => 'Math', 'day_of_week' => Carbon::parse($date)->dayOfWeekIso,
+                'start_time' => '14:00', 'end_time' => $endTime, 'duration_hours' => $minutes / 60, 'class_type' => 'one_on_one', 'status' => 'scheduled',
+                'type' => 'extra', 'deduction' => 1, 'branch_id' => $campusId, 'schedule_date' => $date, 'student_course_id' => $sc->ID,
+            ]);
+            $this->attend($sc, $studentId, '14:00:00', $endTime . ':00', 10);
+            SessionDeductionService::recomputeCounters($sc->ID);
+            $this->assertSame(8 * SessionDeductionService::billingStandardMinutes($sc) - $minutes, (int) $sc->fresh()->RemainingMinutes);
+            $this->assertSame(1, SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID]['expected_used']);
+            // Codex P1 (round 5): superseding the makeup row later must not reclassify the deducted makeup as a whole lesson.
+            \App\Models\Schedule::query()->where('student_course_id', $sc->ID)->update(['status' => \App\Models\Schedule::STATUS_SUPERSEDED]);
+            SessionDeductionService::recomputeCounters($sc->ID);
+            $this->assertSame(8 * SessionDeductionService::billingStandardMinutes($sc) - $minutes, (int) $sc->fresh()->RemainingMinutes);
+            $this->withHeaders($this->headers())->deleteJson('/api/v1/schedules/' . $schedule->id)->assertOk();
+            $this->assertDatabaseMissing('schedules', ['id' => $schedule->id]);
+            config(['perfflags.actual_duration_deduction_enabled' => false]);
+            SessionDeductionService::recomputeCounters($sc->ID);
+            $this->assertSame(8 * $duration - $minutes, (int) $sc->fresh()->RemainingMinutes);
+            $diag = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID];
+            $this->assertSame($minutes, $diag['ledger_net_minutes']);
+            $this->assertFalse($diag['ambiguous_minute_evidence']);
+            $sessionId = (int) SessionDeductionLedger::where('student_class_id', $sc->ID)->where('event_type', 'deduct')->value('class_session_id');
+            $this->assertTrue(SessionDeductionService::reverseForSession($sc->ID, $sessionId));
+            SessionDeductionService::recomputeCounters($sc->ID);
+            $this->assertSame(8 * $duration, (int) $sc->fresh()->RemainingMinutes);
+            $reverse = SessionDeductionLedger::where('student_class_id', $sc->ID)->where('event_type', 'reverse')->firstOrFail();
+            $this->assertSame($minutes, (int) $reverse->minutes);
+            $this->assertSame('retro_leave_makeup', $reverse->source);
+        }
     }
 
     public function test_unmarked_minute_history_is_held_until_matching_reversal(): void
