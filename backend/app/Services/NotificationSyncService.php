@@ -137,8 +137,6 @@ class NotificationSyncService
                 $notification->save();
                 $resolved++;
             }
-
-            $resolved += self::retireTransferredTuition($activeByKey, $scopedCampusIds);
         });
 
         return [
@@ -151,54 +149,34 @@ class NotificationSyncService
     }
 
     /**
-     * #3877: a student transfer moves a debt to another campus, so its notice gets a new SourceKey.
-     * A campus-scoped sync never reads the old campus, which would keep the student's name and debt
-     * visible there. Retire open tuition notices outside the scope whose course or invoice now has a
-     * live notice inside it. An unscoped sync already covers every campus.
-     *
-     * @param  array<string, array<string, mixed>>  $activeByKey
-     * @param  array<int>  $scopedCampusIds
+     * #3877: a student transfer moves a debt to another campus, and a campus-scoped sync never reads the
+     * old campus, so its open tuition notice (student name and debt) would stay visible there. System path
+     * only (tuition:send-reminders), never a user-scoped sync: retire every open tuition notice whose course
+     * or invoice student now belongs to another campus, whether or not the debt still qualifies anywhere.
      */
-    private static function retireTransferredTuition(array $activeByKey, array $scopedCampusIds): int
+    public static function retireTransferredTuition(): int
     {
-        if (empty($scopedCampusIds)) {
-            return 0;
-        }
+        $open = Notification::query()->where('Type', 'tuition')->whereNull('ResolvedAt')
+            ->whereIn('SourceType', ['StudentClass', 'Invoice'])->get(['id', 'CampusID', 'SourceType', 'SourceID']);
+        $ids = fn (string $type) => $open->where('SourceType', $type)->pluck('SourceID')->map(fn ($v) => (int) $v)->unique()->values()->all();
+        $courseStudent = DB::table('StudentClass')->whereIn('ID', $ids('StudentClass') ?: [0])->pluck('StudentID', 'ID');
+        $invoiceStudent = DB::table('Invoice')->whereIn('id', $ids('Invoice') ?: [0])->pluck('StudentID', 'id');
+        $studentIds = $courseStudent->values()->merge($invoiceStudent->values())->map(fn ($v) => (int) $v)->unique()->values()->all();
+        $campusOf = DB::table('Student')->whereIn('id', $studentIds ?: [0])->pluck('CampusID', 'id');
 
-        $courseIds = [];
-        $invoiceIds = [];
-        foreach ($activeByKey as $row) {
-            if (($row['Type'] ?? null) !== 'tuition') {
-                continue;
+        $retired = 0;
+        foreach ($open as $notification) {
+            $owner = $notification->SourceType === 'Invoice' ? $invoiceStudent : $courseStudent;
+            $studentId = (int) ($owner[(int) $notification->SourceID] ?? 0);
+            $campusId = (int) ($campusOf[$studentId] ?? 0);
+            if ($campusId > 0 && $campusId !== (int) $notification->CampusID) {
+                $notification->ResolvedAt = now();
+                $notification->save();
+                $retired++;
             }
-            if (($row['SourceType'] ?? null) === 'Invoice') {
-                $invoiceIds[] = (string) $row['SourceID'];
-                if ($row['Payload']['student_class_id'] ?? null) {
-                    $courseIds[] = (string) $row['Payload']['student_class_id'];
-                }
-            } elseif (($row['SourceType'] ?? null) === 'StudentClass') {
-                $courseIds[] = (string) $row['SourceID'];
-            }
-        }
-        if ($courseIds === [] && $invoiceIds === []) {
-            return 0;
         }
 
-        $stale = Notification::query()
-            ->where('Type', 'tuition')
-            ->whereNull('ResolvedAt')
-            ->whereNotIn('CampusID', $scopedCampusIds)
-            ->where(function ($q) use ($courseIds, $invoiceIds) {
-                $q->where(fn ($c) => $c->where('SourceType', 'StudentClass')->whereIn('SourceID', $courseIds ?: ['']))
-                    ->orWhere(fn ($i) => $i->where('SourceType', 'Invoice')->whereIn('SourceID', $invoiceIds ?: ['']));
-            })
-            ->get();
-        foreach ($stale as $notification) {
-            $notification->ResolvedAt = now();
-            $notification->save();
-        }
-
-        return $stale->count();
+        return $retired;
     }
 
     /**

@@ -45,6 +45,11 @@ class SendTuitionReminders extends Command
         $settled = app(\App\Services\BillingPayableResolver::class)->settledCourseIds($unpaidCourses, 'tuition_reminders');
         $unpaidCourses = $unpaidCourses->reject(fn (StudentClass $c) => isset($settled[(int) $c->ID]))->values();
 
+        // #3877: per-campus syncs never read a transferred student's old campus; retire those notices here.
+        if (!$dryRun) {
+            NotificationSyncService::retireTransferredTuition();
+        }
+
         if ($unpaidCourses->isEmpty()) {
             $this->info('No overdue unpaid courses found.');
             return self::SUCCESS;
