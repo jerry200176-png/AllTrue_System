@@ -46,6 +46,16 @@ describe('帳務面板 · 共用方案只有一個收款入口 (#3753)', () => {
     expect(w.find('[data-testid="ledger-sticky-pay-btn"]').text()).toContain('2 份合約');
   });
 
+  it('the follower hint names the card that holds the action, not the first member (pending report on a later member)', async () => {
+    const w = await mountLedger(ledger({
+      receipts: [{ report_id: 5, student_class_id: 2, amount: 24000, status: 'pending', payment_date: '2026-08-20' }],
+    }));
+    const hint = w.find('[data-testid="contract-shared-follower"]');
+    expect(hint.exists()).toBe(true);
+    expect(hint.text()).toContain('「英文」');
+    expect(hint.text()).not.toContain('第一張');
+  });
+
   it('a pending report on one member shows once for the package and offers no second record', async () => {
     const w = await mountLedger(ledger({
       receipts: [{ report_id: 5, student_class_id: 2, amount: 24000, status: 'pending', payment_date: '2026-08-20' }],
