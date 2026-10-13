@@ -33,7 +33,7 @@
               <th>科目</th>
               <th>類型</th>
               <th>剩餘堂數</th>
-              <th v-if="showActions">操作</th>
+              <th v-if="!isTrial">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -45,7 +45,7 @@
               >
                 {{ c.remaining_sessions ?? 0 }} 堂
               </td>
-              <td v-if="showActions">
+              <td v-if="!isTrial">
                 <button
                   v-if="canManualSession && needsFirstManualLesson(c)"
                   class="small btn-renew-warn"
@@ -54,7 +54,6 @@
                   @click="emit('manual-session', c)"
                 >新增下一堂</button>
                 <button
-                  v-if="!isTrial"
                   class="small btn-renew-warn"
                   type="button"
                   :disabled="submitting"
@@ -161,8 +160,6 @@ const isTrial = computed(() => String(props.classType || '').toLowerCase() === '
 const canRenewHere = computed(() => !isTutoring.value
   && (!props.attemptedPaymentType || props.attemptedPaymentType === 'session')
   && !(props.conflicts || []).some((c) => c?.schedule_mode && c.schedule_mode !== 'count'));
-// #3745: a trial has no 加購, but an empty manual trial still needs 新增下一堂.
-const showActions = computed(() => !isTrial.value || (props.canManualSession && (props.conflicts || []).some(needsFirstManualLesson)));
 const isTutoring = computed(() => String(props.classType || '').toLowerCase() === 'tutoring');
 
 watch(

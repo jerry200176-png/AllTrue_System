@@ -21,22 +21,6 @@ const mountModal = (conflicts) => mount(EnrollmentConflictDecisionModal, {
 });
 
 describe('manual course → first lesson (in-app #382)', () => {
-  it('trial duplicate modal offers 新增下一堂 (not 加購) for an empty manual trial (#3745)', async () => {
-    const w = mount(EnrollmentConflictDecisionModal, {
-      props: { show: true, conflicts: [conflict({ class_type: 'trial' })], classType: 'trial', subjectLabelFn: (s) => s },
-    });
-    const btn = w.findAll('button').find((b) => b.text() === '新增下一堂');
-    expect(btn).toBeTruthy();
-    await btn.trigger('click');
-    expect(w.emitted('manual-session')[0][0].existing_course_id).toBe(4296);
-    expect(w.findAll('button').some((b) => b.text() === '去加購')).toBe(false);
-    // A trial that already has lessons keeps the action column hidden.
-    const plain = mount(EnrollmentConflictDecisionModal, {
-      props: { show: true, conflicts: [conflict({ class_type: 'trial', future_session_count: 2 })], classType: 'trial' },
-    });
-    expect(plain.text()).not.toContain('操作');
-  });
-
   it('duplicate modal offers 新增下一堂 for a manual course with lessons left and nothing scheduled', async () => {
     const w = mountModal([conflict()]);
     const btn = w.findAll('button').find((b) => b.text() === '新增下一堂');
