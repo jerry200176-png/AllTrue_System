@@ -7,6 +7,40 @@ import { getReconcileLatest } from '../api';
  *
  * @param {import('vue').Ref<string>} tokenRef - supabase access_token
  */
+// What each mismatch type means and what to do next. Derived from
+// NightlyReconcile::classifyMismatch() and docs/GUIDE_NIGHTLY_SESSION_RECONCILE.md.
+// Repairs never happen on this page: the report is read-only.
+export const CATEGORY_GUIDE = Object.freeze({
+  attendance_ahead: {
+    meaning: '點名、已上課的課堂或評量紀錄，比課程上的已用堂數多。',
+    next: '到「出缺勤」確認這幾堂是否真的有上，再把課程編號交給工程團隊修正。',
+  },
+  ledger_ahead: {
+    meaning: '扣堂紀錄比課程上的已用堂數多，也比點名、已上課的課堂和評量紀錄多。',
+    next: '逐筆比對扣堂與退回紀錄，和這門課的點名、課堂狀態、評量；找出哪一項都對不上的扣堂，再把課程編號交給工程團隊。',
+  },
+  counter_overstated: {
+    meaning: '課程上的已用堂數，比依點名、已上課的課堂、評量和扣堂紀錄算出的還多。',
+    next: '到「課程查找」看這門課是否漏點名，再把課程編號交給工程團隊。',
+  },
+  partial_minutes: {
+    meaning: '有按分鐘扣的課，換算成堂數後對不上。',
+    next: '核對扣堂紀錄裡每次扣的分鐘數，與「課程查找」裡這門課一堂幾分鐘。',
+  },
+  contract_cap: {
+    meaning: '依點名、已上課的課堂、評量或扣堂紀錄算出的已用堂數，超過這門課買的堂數（只檢查堂數制的課）。',
+    next: '先比對這門課的點名、課堂狀態、評量與扣堂紀錄，找出重複或多算的一項（例如同一堂扣兩次、課堂狀態誤標已上）；每一項都對、確實上滿，再請分校主任確認續課。',
+  },
+  source_conflict: {
+    meaning: '已取消的課堂仍留有點名、評量或扣堂紀錄。',
+    next: '到「出缺勤」確認這堂到底有沒有上，再把課程編號交給工程團隊。',
+  },
+  unknown: {
+    meaning: '系統無法歸類這筆差異。',
+    next: '把課程編號交給工程團隊。',
+  },
+});
+
 export function useNightlyReconcile(tokenRef) {
   // ---- 原始資料 ----
   const report = ref(null);            // GET /latest 回傳的整包 data（null = 無報告）
@@ -163,6 +197,10 @@ export function useNightlyReconcile(tokenRef) {
     return 'reconcile-diff--danger';
   }
 
+  function categoryGuide(cat) {
+    return CATEGORY_GUIDE[cat] || CATEGORY_GUIDE.unknown;
+  }
+
   function categoryLabel(cat) {
     const map = {
       attendance_ahead: '出勤／評量證據領先',
@@ -173,7 +211,7 @@ export function useNightlyReconcile(tokenRef) {
       source_conflict: '課堂狀態與扣堂證據衝突',
       unknown: '待分類',
     };
-    return map[cat] || cat;
+    return map[cat] || (cat ? map.unknown : '');
   }
 
   return {
@@ -195,5 +233,6 @@ export function useNightlyReconcile(tokenRef) {
     sortDir,
     diffColorClass,
     categoryLabel,
+    categoryGuide,
   };
 }
