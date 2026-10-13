@@ -32,7 +32,6 @@ describe('slip/receipt state contract (fixture shared with PHPUnit)', () => {
     const expected = Object.fromEntries(Object.entries(fixture.states).map(([k, s]) => [k, s.expect]));
     expect(computed).toEqual(expected);
   });
-
   it('spot-checks the meaning (not just the file)', () => {
     const o = (k) => outcome(fixture.states[k]);
     expect(o('paid_with_invoice').receipt.enabled).toBe(true);

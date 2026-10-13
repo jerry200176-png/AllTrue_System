@@ -173,6 +173,10 @@ jobs:
               - 'frontend/src/pages/TeacherEligibilityPage.vue'
               - 'frontend/e2e/teacher-eligibility-clarity.spec.js'
               - 'frontend/e2e/teacher-eligibility-playwright.config.js'
+              # tuition 繳費單／收據 fixture specs (#3894) + the surfaces and shared fixture they cover
+              - 'frontend/e2e/tuition-*-clarity.spec.js'
+              - 'frontend/src/{pages/TuitionCollectionPage,components/TuitionDocActions,components/AccountingLedgerModal,components/tuition/*}.vue'
+              - 'backend/tests/Fixtures/slip_receipt_states_3894.json'
 
   # PR diff → Golden § 對照表（全自動；取代人工勾選 QA_GOLDEN_SCENARIOS）
   golden_scenarios:

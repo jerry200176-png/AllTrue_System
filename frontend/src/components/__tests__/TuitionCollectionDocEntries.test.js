@@ -34,12 +34,9 @@ async function mountPage() {
 }
 const rowOf = (w, id) => w.get(`#tuition-row-${id}`);
 const writes = () => calls.filter((c) => c.method !== 'GET');
-
 beforeEach(() => { installFetch(); session('director'); });
 afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ''; localStorage.clear(); });
-
 const tid = (w, id, k) => rowOf(w, id).get(`[data-testid="${k}"]`);
-
 describe('帳務中心 學生列：繳費單／收據入口', () => {
   it('legacy row: 撤銷 stays available (a confirmed receipt without invoice is voidable); the ledger link only reads', async () => {
     const w = await mountPage();
