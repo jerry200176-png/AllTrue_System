@@ -22,7 +22,8 @@ const ALLOW_ALL = /#(?=\s*secret-echo-allow:(.*)$)/gm; // every candidate `#`, r
 const ENV_FILE = /(?<=^|[\s"'`=<>(|;&,:{])(?:[^\s"'`<>|;&()=,{]*\/)?\.env(?!\.(?:example|sample|dist|template)\b)(?:\.[\w-]+)*(?:[*?[{][^\s;&|)"'`<>]*)?(?=[\s;&|)"'`<>,}]|$)/g;
 const CRED = /\$\{?!?([A-Za-z_][A-Za-z0-9_]*)|\x01(\d+)\x01/g; // $NAME ${NAME ${!NAME, or a ${{ }} placeholder
 // `set` traces when any of its option groups holds x (`set -x`, `set -e -x`, `set -o pipefail -x`)
-const TRACE = /(?:^|[;&\s(])set(?:[ \t]+[^\s;&|#]+)*?[ \t]+-[a-zA-Z]*x|\bset\s+-o\s+xtrace\b|\b(?:ba|da|z|k|a)?sh\s+(?:-\S+\s+)*-[a-z]*x|-[a-z]*o\s*xtrace\b|SHELLOPTS\W+\S*xtrace/;
+const TRACE = /(?:^|[;&\s(])set(?:[ \t]+[^\s;&|#]+)*?[ \t]+-[a-zA-Z]*[xv]|\bset\s+-o\s+(?:xtrace|verbose)\b|\b(?:ba|da|z|k|a)?sh\s+(?:-\S+\s+)*-[a-z]*[xv]|-[a-z]*o\s*(?:xtrace|verbose)\b|SHELLOPTS\W+\S*(?:xtrace|verbose)/;
+const PROC_ENV = /\/proc\/(?:self|thread-self|[0-9]+)\/environ\b/g;
 const LITERAL = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*(['"]?)([^\s'"$`]+)\2\s*$/;
 const HASHES = new Set(['sha1sum', 'sha224sum', 'sha256sum', 'sha384sum', 'sha512sum', 'shasum', 'md5sum', 'b2sum']);
 // commands whose only output is their stdout: a redirect/hash of that stdout is a safe sink
@@ -262,6 +263,9 @@ function credHits(w, exprs, sensitive = new Set()) {
   for (const m of w.text.matchAll(CRED)) {
     if (m[2] !== undefined ? credExpr(exprs[+m[2]]) : isSecretName(m[1]) || sensitive.has(m[1])) hits.push(m.index); // '$X' too: fail closed
   }
+  for (const m of w.text.matchAll(/\$\(\(([\s\S]*?)\)\)/g)) {
+    if ((m[1].match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).some((name) => isSecretName(name) || sensitive.has(name))) hits.push(m.index);
+  }
   return hits;
 }
 
@@ -328,6 +332,7 @@ function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns tr
         if ((printer && w.q[m.index]) || nonRead || (ctx === 'sub' && (countsOnly(c) || publicEnvField(info.name, args)))) rec(w.pos[m.index], 'safe');
         else rec(w.pos[m.index], viaSink(false));
       }
+      for (const m of w.text.matchAll(PROC_ENV)) rec(w.pos[m.index], nonRead ? 'safe' : viaSink(false));
     }
     for (const r of c.redirs) {
       if (!r.target) continue;
@@ -410,7 +415,7 @@ function scanScript(where, script0) {
   for (const o of occ) if (!o.safe && !allowedScope(o.scope)) why[lineOf(o.off)].add('not a safe form');
   const inComment = (off) => parsed.comments.some(([a, b]) => off >= a && off < b);
   // raw cross-check: an occurrence the lexer did not account for (or an unparsable script) is a finding
-  for (const re of [CRED, ENV_FILE]) for (const m of script.matchAll(re)) {
+  for (const re of [CRED, ENV_FILE, PROC_ENV]) for (const m of script.matchAll(re)) {
     const hit = m[0].startsWith('$') ? isSecretName(m[1]) : m[2] !== undefined ? credExpr(exprs[+m[2]]) : true;
     if (hit && !inComment(m.index) && (parsed.bad || !covered.has(m.index))) why[lineOf(m.index)].add('unparsed occurrence');
   }
@@ -539,6 +544,11 @@ export const trip = {
   'later command allowance cannot excuse earlier echo': blk('echo "$DB_PASSWORD"; echo hi # secret-echo-allow: harmless later command'),
 
   'nice long operand env dump': blk('nice --adjustment 5 env'),
+  'arithmetic bare credential': blk('echo "$((DB_PASSWORD))"'),
+  'proc environment dump': blk('cat /proc/self/environ | tr \'\\0\' \'\\n\''),
+  'Bash verbose input logging': blk('set -v; mysql -p"${{ env.DB_PASSWORD }}" -e \'SELECT 1\''),
+  'Bash verbose named option': blk('set -o verbose; mysql -p"${{ env.DB_PASSWORD }}" -e \'SELECT 1\''),
+  'Bash verbose invocation': blk('bash -v -c \'mysql -p"${{ env.DB_PASSWORD }}" -e "SELECT 1"\''),
   'printf numeric stderr leak': blk('printf \'%d\\n\' "$DB_PASSWORD" > credentials.txt'),
   'arbitrary password option stderr leak': blk('date --password="$DB_PASSWORD"'),
   'option-only export dump': blk('export -n', 'export --'),
