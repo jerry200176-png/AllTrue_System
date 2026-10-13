@@ -14,8 +14,9 @@ const BASELINE = 'scripts/ci/workflow-secret-echo.baseline.json';
 const FIXTURES = new Set(['ci-ephemeral', 'alltruepw', 'rootpw', 'root']); // non-sensitive CI-only DB fixtures
 // credential-like: PASS/PASSWD/PASSWORD/SECRET(S) is one of its `_`-separated tokens, or it contains PASSWORD
 const isSecretName = (n) => /PASSWORD/i.test(n) || n.split('_').some((t) => /^(?:PASS|PASSWD|PASSWORD|SECRETS?)$/i.test(t));
-const ALLOW = /#\s*secret-echo-allow:(.*)$/;
-const ENV_FILE = /(?<=^|[\s"'`=<>(|;&,:])(?:[^\s"'`<>|;&()=,]*\/)?\.env(?!\.(?:example|sample|dist|template)\b)(?:\.[\w-]+)*(?=[\s;&|)"'`<>,]|$)/g;
+const ALLOW_ALL = /#(?=\s*secret-echo-allow:(.*)$)/gm; // every candidate `#`, reason captured in the lookahead
+// a trailing glob / brace (`.env*`, `.env{,.local}`) can expand to any .env variant
+const ENV_FILE = /(?<=^|[\s"'`=<>(|;&,:{])(?:[^\s"'`<>|;&()=,{]*\/)?\.env(?!\.(?:example|sample|dist|template)\b)(?:\.[\w-]+)*(?:[*?[{][^\s;&|)"'`<>]*)?(?=[\s;&|)"'`<>,}]|$)/g;
 const CRED = /\$\{?!?([A-Za-z_][A-Za-z0-9_]*)|\x01(\d+)\x01/g; // $NAME ${NAME ${!NAME, or a ${{ }} placeholder
 const TRACE = /(?:^|[;&\s])set\s+-[a-z]*x|\bset\s+-o\s+xtrace\b|\b(?:ba|da|z|k|a)?sh\s+(?:-\S+\s+)*-[a-z]*x|-[a-z]*o\s*xtrace\b|SHELLOPTS\W+\S*xtrace/;
 const LITERAL = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*(['"]?)([^\s'"$`]+)\2\s*$/;
@@ -46,7 +47,9 @@ function lex(src, base = 0, heredocBody = false) {
   let i = 0, bad = false, cur = { words: [], redirs: [] };
   const push = (sep) => { if (cur.words.length || cur.redirs.length) cmds.push({ ...cur, sep }); cur = { words: [], redirs: [] }; };
   const sub = (w, kind, from, to, q) => {
-    w.subs.push({ kind, at: w.text.length, script: lex(src.slice(from, to), base + from) });
+    const script = lex(src.slice(from, to), base + from);
+    comments.push(...script.comments);
+    w.subs.push({ kind, at: w.text.length, script });
     w.text += '\x03'; w.pos.push(base + from); w.q.push(q);
   };
   function expansion(w, q) { // at `$` or backtick; returns false when it is a plain `$`
@@ -111,6 +114,7 @@ function lex(src, base = 0, heredocBody = false) {
       const j = matchClose(src, i + 1, '(', ')'); if (j < 0) { bad = true; break; }
       const w = { text: '\x03', pos: [base + i], q: [''], subs: [], off: base + i, procOut: c === '>' };
       w.subs.push({ kind: c + '(', at: 0, script: lex(src.slice(i + 2, j), base + i + 2) });
+      comments.push(...w.subs[0].script.comments);
       cur.words.push(w); i = j + 1;
     } else if (/^(?:\d+|&)?[<>]/.test(src.slice(i, i + 12))) {
       const fd = /^(\d+|&)?/.exec(src.slice(i))[0]; i += fd.length;
@@ -138,7 +142,7 @@ function resolve(words) { // skip assignments and wrapper commands; `dump` marks
   let k = 0;
   while (k < words.length && assignRe.test(words[k].text)) k++;
   for (;;) {
-    const name = words[k]?.text ?? '', args = words.slice(k + 1).map((w) => w.text);
+    const name = (words[k]?.text ?? '').replace(/^.*\//, ''), args = words.slice(k + 1).map((w) => w.text);
     if (/^(?:command|exec|nohup|builtin)$/.test(name)) { k++; continue; }
     if (name === 'sudo') { k++; while (words[k] && /^-/.test(words[k].text)) k += /^-[ugCh]$/.test(words[k].text) ? 2 : 1; continue; }
     if (name === 'env') {
@@ -160,7 +164,7 @@ function resolve(words) { // skip assignments and wrapper commands; `dump` marks
     }
     const opts = args.every((a) => a.startsWith('-'));
     const dump = (name === 'export' && args.every((a) => a === '-p')) || (name === 'set' && !args.length)
-      || (/^(?:declare|typeset)$/.test(name) && opts);
+      || (/^(?:declare|typeset)$/.test(name) && (opts || (args.some((a) => /^-[a-zA-Z]*p/.test(a)) && args.some((a) => !a.startsWith('-') && isSecretName(a)))));
     return { k, name, dump };
   }
 }
@@ -229,7 +233,7 @@ function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sen
         const before = w.text.slice(0, at);
         if (!NO_ARG_TRUST.has(info.name) && !pure && (/^(?:-p|--password=)$/.test(before) && varOrSub(w.text.slice(at))
           || /IDENTIFIED\s+BY\s*\\?['"]?$/i.test(before))) rec(w.pos[at], 'safe');
-        else if (printer && /^::add-mask::/.test(w.text)) rec(w.pos[at], 'safe');
+        else if (printer && /^::add-mask::/.test(w.text) && startsOutput(info, c.words, w)) rec(w.pos[at], 'safe');
         else rec(w.pos[at], pure ? 'unsafe' : viaSink(true));
       }
       for (const m of w.text.matchAll(ENV_FILE)) {
@@ -248,7 +252,7 @@ function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sen
       }
       if (!r.heredoc) continue;
       const { body, off } = r.heredoc;
-      if (!/^(?:cat|mysql|mariadb|psql)$/.test(info.name)) { analyze(lex(body, off), 'top', out, exprs); continue; } // a shell runs it
+      if (!/^(?:cat|mysql|mariadb|psql)$/.test(info.name)) { const hs = lex(body, off); out.comments?.push(...hs.comments); analyze(hs, 'top', out, exprs); continue; } // a shell runs it
       // data heredoc: .env text is data; expansions (unquoted delimiter) are printed by cat or executed as SQL
       const bw = r.quoted ? { text: '', pos: [], q: [], subs: [] } : lex(body, off, true).word;
       if (r.quoted) for (const m of body.matchAll(CRED)) rec(off + m.index, 'safe'); // printed/executed literally
@@ -261,6 +265,12 @@ function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sen
     }
   });
   return taint;
+}
+// `::add-mask::` works only at the start of the emitted line: first echo operand, or printf format / sole `%s` operand
+function startsOutput(info, words, w) {
+  const a = words.slice(info.k + 1);
+  if (info.name === 'echo') return a.find((x) => !/^-[neE]+$/.test(x.text)) === w;
+  return a[0] === w || (/^%s(?:\\n)?$/.test(a[0]?.text ?? '') && a[1] === w);
 }
 const varOrSub = (t) => /^(?:\$\{?[A-Za-z_][A-Za-z0-9_]*\}?|\x01\d+\x01\x02*|\x03)$/.test(t);
 function collectRaw(script, out) { // occurrences inside a clean capture: record as safe so the raw cross-check is satisfied
@@ -279,7 +289,7 @@ function scanScript(where, script0) {
   const lines = script0.split('\n');
   const why = lines.map(() => new Set());
   const parsed = lex(script);
-  const occ = [];
+  const occ = Object.assign([], { comments: parsed.comments });
   if (!parsed.bad) analyze(parsed, 'top', occ, exprs);
   const covered = new Set(occ.map((o) => o.off));
   for (const o of occ) if (!o.safe) why[lineOf(o.off)].add('not a safe form');
@@ -291,8 +301,9 @@ function scanScript(where, script0) {
   }
   const bad = [];
   lines.forEach((raw, i) => {
-    if (/^\s*#/.test(raw)) return;
-    const allow = raw.match(ALLOW);
+    if (/^\s*#/.test(raw) && inComment(starts[i] + raw.indexOf('#'))) return; // not a `#` line inside a quoted string
+    // the marker counts only inside a comment the lexer found (not in a quoted string or heredoc data)
+    const allow = [...raw.matchAll(ALLOW_ALL)].find((m) => inComment(starts[i] + m.index)) ?? null;
     const line = allow ? raw.slice(0, allow.index) : raw;
     if (TRACE.test(line)) why[i].add('shell tracing');
     const m = line.match(LITERAL);
@@ -357,6 +368,12 @@ export function applyBaseline(findings, baseline) { // multiset match per workfl
 }
 export const growth = (cur, base) => applyBaseline(Object.entries(cur).filter(([k]) => !k.startsWith('//'))
   .flatMap(([wf, fps]) => fps.map((fp) => ({ wf, fp }))), base).fresh.map((f) => `${f.wf} ${f.fp}`);
+// every reason the check fails; a stale entry fails too, so a fixed line cannot keep an allowance for later reuse
+export const problems = (fresh, stale, grown, baseRef) => [
+  ...stale.map((s) => `workflow-secret-echo: stale baseline entry (line fixed or changed), remove it from ${BASELINE}: ${s}`),
+  ...grown.map((g) => `workflow-secret-echo: ${BASELINE} grew vs ${baseRef} (shrink-only; fix or annotate the line instead): ${g}`),
+  ...fresh.map((f) => `${f.where} ${f.why} (fix, or add "# secret-echo-allow: <reason>"): ${f.text.trim()}`),
+];
 const toBaseline = (findings) => {
   const by = {};
   for (const f of findings) (by[f.wf] ??= []).push(f.fp);
@@ -453,6 +470,19 @@ export const trip = {
   'bare set dumps variables': blk('set'),
   'export -p': blk('export -p'),
   'unterminated quote': blk('echo "$DB_PASSWORD'),
+  // round 7 (Codex review of be2591d)
+  'allow marker inside quotes': blk('echo "$DB_PASSWORD # secret-echo-allow: this is not a shell comment"'),
+  'allow marker in heredoc data': blk('cat <<EOF', 'pw=$DB_PASSWORD # secret-echo-allow: heredoc text, not a comment', 'EOF'),
+  '# line inside a quoted string': blk('echo "first', '# $DB_PASSWORD"'),
+  'add-mask after an echo prefix': blk('echo prefix "::add-mask::$DB_PASSWORD"'),
+  'add-mask after a printf prefix': blk("printf 'prefix%s\\n' \"::add-mask::$DB_PASSWORD\""),
+  '/usr/bin/env': blk('/usr/bin/env'),
+  '/usr/bin/printenv | sort': blk('/usr/bin/printenv | sort'),
+  'declare -p NAME': blk('declare -p DB_PASSWORD'),
+  'typeset -p NAME': blk('typeset -p HOME DB_PASS'),
+  'cat .env*': blk('cat backend/.env*'),
+  'cat .env{,.local}': blk('cat backend/.env{,.local}'),
+  'cat {.env,.env.local}': blk('cat backend/{.env,.env.local}'),
 };
 export const ok = {
   'echo > file': blk('echo "$DB_PASSWORD" > credentials.txt'),
@@ -473,7 +503,9 @@ export const ok = {
   'cat heredoc to file': blk('cat > backend/.env <<EOF', 'DB_PASSWORD=$DB_PASSWORD', 'EOF'),
   '.env in a quoted message, in-place edits, writes': blk('echo "Writing backend/.env"', "sed -i 's/^X=.*/X=1/' backend/.env", 'grep -q ^APP_KEY= backend/.env',
     'rm -f .env.bak .env', 'cp .env.example .env', 'test -f backend/.env', 'if [ -f backend/.env ]; then echo yes; fi', 'echo "DB_HOST=127.0.0.1" >> backend/.env', 'cat .env.example'),
-  'annotated line': blk('curl -u "u:$DB_PASSWORD" https://x # secret-echo-allow: basic auth argument, curl never prints it'),
+  'annotated line': blk('curl -u "u:$DB_PASSWORD" https://x # secret-echo-allow: basic auth argument, curl never prints it',
+    'curl -u "u:$DB_PASSWORD" "https://x/#a" # secret-echo-allow: basic auth argument, curl never prints it'),
+  'declare -p non-secret / .envrc / .env.example*': blk('declare -p HOME', 'cat .envrc', 'cp .env.example* /tmp/'),
   'non-credential names, fixtures, untraced set': blk('echo "$BYPASS_REASON"', 'set +x', 'set -euo pipefail') + '\nenv:\n  BYPASS_REASON: approved\n  COMPASS_MODE: north\n  DB_PASSWORD: ci-ephemeral',
   'empty credential value': "env:\n  DB_PASSWORD: ''\njobs:\n  j:\n    steps:\n      - uses: x/y@v1\n        with: { password: '' }",
   'step name mentions xtrace / untraced shells': 'jobs:\n  j:\n    steps:\n      - name: Diagnose xtrace\n        shell: bash -eo pipefail {0}\n        run: echo hi',
@@ -492,6 +524,7 @@ for (const [k, y] of Object.entries(ok)) { const r = scan('ok', y); if (r.length
   if (applyBaseline(scan('w.yml', blk('  cat   backend/.env')), base).fresh.length) fail('whitespace-only re-indent must keep matching');
   if (applyBaseline(scan('other.yml', blk('cat backend/.env')), base).fresh.length !== 1) fail('a fingerprint is scoped to its workflow');
   if (applyBaseline([], base).stale.length !== 1) fail('stale baseline entries must be reported');
+  if (problems([], applyBaseline([], base).stale, [], 'origin/main').length !== 1) fail('a stale baseline entry must fail the check');
   if (growth({ 'w.yml': ['a', 'b'] }, { 'w.yml': ['a'] }).join() !== 'w.yml b') fail('baseline growth must be detected');
   if (growth({ 'w.yml': ['a', 'a'] }, { 'w.yml': ['a'] }).length !== 1) fail('a duplicated entry is growth');
   if (growth({ 'w.yml': ['a'] }, { 'w.yml': ['a', 'b'], 'x.yml': ['c'] }).length) fail('shrinking is allowed');
@@ -514,9 +547,6 @@ try { base = JSON.parse(execFileSync('git', ['show', `${mergeBase}:${BASELINE}`]
 catch (e) { if (!/does not exist|exists on disk, but not in/.test(String(e.stderr))) throw e; }
 const grown = base ? growth(baseline, base) : [];
 const { fresh, stale } = applyBaseline(findings, baseline);
-if (stale.length) console.log(`workflow-secret-echo: ${stale.length} stale baseline entr${stale.length === 1 ? 'y' : 'ies'} (fixed lines); remove them:\n  ${stale.join('\n  ')}`);
-if (grown.length) fail(`workflow-secret-echo: ${BASELINE} grew vs ${baseRef} (shrink-only; fix or annotate the line instead):\n  ${grown.join('\n  ')}`);
-if (fresh.length) {
-  fail(fresh.map((f) => `${f.where} ${f.why} (fix, or add "# secret-echo-allow: <reason>"): ${f.text.trim()}`).join('\n'));
-}
+const errors = problems(fresh, stale, grown, baseRef);
+if (errors.length) fail(errors.join('\n'));
 console.log(`workflow-secret-echo: ok (${findings.length} baselined finding(s), ${base ? 'ratchet vs ' + baseRef : 'baseline introduced in this change'})`);
