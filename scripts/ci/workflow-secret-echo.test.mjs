@@ -202,8 +202,8 @@ function resolve(words) { // skip assignments and wrapper commands; `dump` marks
       const names = args.filter((a) => !a.startsWith('-'));
       return { k, name, dump: !names.length || names.some((n) => isSecretName(n.replace(/^\$\{?|\}$/g, ''))) };
     }
-    const opts = args.every((a) => a.startsWith('-'));
-    const dump = (name === 'export' && opts)
+    const opts = args.every((a) => /^[+-]/.test(a));
+    const dump = (name === 'export' && args.every((a) => a.startsWith('-')))
       || (name === 'readonly' && args.every((a) => /^-[aAfp]+$/.test(a))) || (name === 'set' && !args.length)
       || (/^(?:declare|typeset)$/.test(name) && (opts || (args.some((a) => /^-[a-zA-Z]*p/.test(a)) && args.some((a) => !a.startsWith('-') && isSecretName(a)))));
     return { k, name, dump };
@@ -322,6 +322,7 @@ function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns tr
       }
     }
     for (const w of c.words) {
+      if (pure && assignRe.test(w.text) && credHits(w, exprs, sensitive).length) sensitive.add(w.text.match(/^[A-Za-z_][A-Za-z0-9_]*/)[0]);
       const capture = pure && assignRe.test(w.text) && /^[^=]*=\x03$/.test(w.text) && w.subs.length === 1;
       if (capture && cleanCapture(w.subs[0].script.src)) {
         if (analyze(w.subs[0].script, 'sub', out, exprs, new Set(sensitive))) sensitive.add(w.text.split('=')[0]);
@@ -477,7 +478,15 @@ def walk(n, p, acc):
     if isinstance(n, dict):
         for k, v in n.items():
             q = p + '.' + str(k)
-            if k == 'matrix': acc['shells'] += [[q, x] for x in leaves(v)]
+            if k == 'matrix' and isinstance(v, dict):
+                for field, value in v.items():
+                    if field == 'exclude': continue
+                    if field == 'include' and isinstance(value, list):
+                        for entry in value:
+                            if isinstance(entry, dict):
+                                for key, node in entry.items(): acc['matrices'] += [[q, key, x] for x in leaves(node)]
+                    else: acc['matrices'] += [[q, field, x] for x in leaves(value)]
+            if k == 'runs-on': acc['runners'] += [[q, x] for x in leaves(v)]
             if k in ('run', 'script') and isinstance(v, str): acc['runs'].append([q, v])
             elif k == 'shell': acc['shells'] += [[q, x] for x in leaves(v)]
             elif isinstance(v, str): acc['kvs'].append([q, str(k), v])
@@ -486,7 +495,7 @@ def walk(n, p, acc):
         for i, v in enumerate(n): walk(v, p + '[' + str(i) + ']', acc)
 out = []
 for it in json.load(sys.stdin):
-    acc = {'name': it['name'], 'runs': [], 'shells': [], 'kvs': [], 'all': []}
+    acc = {'name': it['name'], 'runs': [], 'shells': [], 'matrices': [], 'runners': [], 'kvs': [], 'all': []}
     for doc in yaml.load_all(it['text'], Loader=yaml.BaseLoader):
         walk(doc, '', acc)
         acc['all'] += list(leaves(doc))
@@ -495,7 +504,14 @@ json.dump(out, sys.stdout)
 `;
 function scanAll(items) {
   const parsed = JSON.parse(execFileSync('python3', ['-c', PY], { input: JSON.stringify(items), maxBuffer: 1 << 28 }));
-  return parsed.flatMap(({ name, runs, shells, kvs, all }) => [
+  return parsed.flatMap(({ name, runs, shells: declaredShells, matrices, runners, kvs, all }) => {
+    const jobScope = (path) => path.match(/^\.jobs\.[^.]+/)?.[0] ?? '';
+    const matrixValues = (path, expression) => {
+      const fields = new Set([...expression.matchAll(/\bmatrix(?:\.([\w-]+)|\[['"]([^'"]+)['"]\])/g)].map((m) => m[1] ?? m[2]));
+      return matrices.filter(([p, key]) => jobScope(p) === jobScope(path) && fields.has(key)).map(([, , value]) => value);
+    };
+    const shells = declaredShells.flatMap(([p, value]) => [[p, value], ...matrixValues(p, value).map((v) => [p, v])]);
+    return [
     ...runs.flatMap(([p, s]) => {
       const bindings = new Map();
       for (const [q, k, v] of kvs.filter(([q, k]) => q.endsWith(`.env.${k}`) && p.startsWith(q.slice(0, -(`.env.${k}`).length) + '.')).sort(([a], [b]) => a.length - b.length)) bindings.set(k, v.includes('${{') && credExpr(v));
@@ -509,12 +525,15 @@ function scanAll(items) {
     // `shell: bash -x {0}` traces every command; an expression shell may pull a traced value from anywhere in the file
     ...shells.filter(([, v]) => TRACE.test(v)).map(([p, v]) => ({ where: `${name}${p}`, text: `shell: ${v}`, why: 'shell tracing' })),
     ...shells.filter(([, v]) => /^(?:pwsh|powershell|cmd|python|node|ruby)(?:\s|$)/i.test(v.trim())).map(([p, v]) => ({ where: `${name}${p}`, text: `shell: ${v}`, why: 'unsupported shell; use a reviewed Bash transport' })),
+    ...shells.flatMap(([p, v]) => v.includes('${{') ? [] : scanScript(`${name}${p} template`, v)),
+    ...runners.filter(([p, v]) => /windows/i.test(v) || matrixValues(p, v).some((value) => /windows/i.test(value))).map(([p]) => ({ where: `${name}${p}`, text: 'Windows job', why: 'unsupported implicit Windows shell; reviewed Bash jobs only' })),
     ...(shells.some(([, v]) => v.includes('${{')) ? all.filter((v) => TRACE.test(v)).map((v) => ({ where: name, text: `expression shell: ${v}`, why: 'shell tracing' })) : []),
-    ...(shells.some(([, v]) => v.includes('${{')) ? all.filter((v) => /^-[a-z]*[xv]$|^(?:xtrace|verbose)$/i.test(v.trim())).map((v) => ({ where: name, text: `expression shell fragment: ${v}`, why: 'composed shell tracing' })) : []),
-    ...kvs.filter(([, k, v]) => /^SHELLOPTS$/i.test(k) && /xtrace/.test(v)).map(([p, k, v]) => ({ where: `${name}${p}`, text: `${k}: ${v}`, why: 'shell tracing' })),
+    ...declaredShells.flatMap(([p, v]) => matrixValues(p, v).filter((value) => TRACE.test(`bash ${value}`) || /^(?:xtrace|verbose)$/i.test(value.trim())).map((value) => ({ where: `${name}${p}`, text: `expression shell fragment: ${value}`, why: 'composed shell tracing' }))),
+    ...kvs.filter(([, k, v]) => /^SHELLOPTS$/i.test(k) && /xtrace|verbose/.test(v)).map(([p, k, v]) => ({ where: `${name}${p}`, text: `${k}: ${v}`, why: 'shell tracing' })),
     ...kvs.filter(([, k, v]) => isSecretName(k) && v.trim() !== '' && !FIXTURES.has(v) && !v.includes('${{'))
       .map(([p, k]) => ({ where: `${name}${p}`, text: `literal ${k}`, why: 'literal credential' })),
-  ].map((f) => ({ ...f, wf: name, fp: fingerprint(f.text) + (f.context ? ':' + f.context : '') })));
+  ].map((f) => ({ ...f, wf: name, fp: fingerprint(f.text) + (f.context ? ':' + f.context : '') }));
+  });
 }
 // Line identity is stable across moves; run/script findings also bind the exact enclosing script.\n// Changing a redirect, wrapper, or other surrounding command invalidates its old baseline allowance.
 export const fingerprint = (text) => createHash('sha256').update(text.trim().replace(/\s+/g, ' ')).digest('hex').slice(0, 16);
@@ -572,6 +591,11 @@ export const trip = {
   'later command allowance cannot excuse earlier echo': blk('echo "$DB_PASSWORD"; echo hi # secret-echo-allow: harmless later command'),
 
   'nice long operand env dump': blk('nice --adjustment 5 env'),
+  'annotated direct credential alias still taints': blk('X="$DB_PASSWORD" # secret-echo-allow: private staging assignment', 'echo "$X"'),
+  'inherited verbose shell option': 'jobs:\n  j:\n    env:\n      SHELLOPTS: verbose\n    steps:\n      - run: mysql -p"${{ env.DB_PASSWORD }}" -e "SELECT 1"',
+  'plus-option declaration dumps': blk('declare +x', 'typeset +x'),
+  'implicit Windows PowerShell': 'jobs:\n  j:\n    runs-on: windows-latest\n    steps:\n      - run: Write-Output $env:DB_PASSWORD',
+  'custom shell command env dump': 'jobs:\n  j:\n    steps:\n      - shell: bash -c \'env\' {0}\n        run: true',
   'transformed registered secret': blk('echo "${{ secrets.DB_PASSWORD }}" | base64'),
   'JavaScript credential environment log': 'jobs:\n  j:\n    steps:\n      - uses: actions/github-script@v7\n        with:\n          script: console.log(process.env.DB_PASSWORD)',
   'JavaScript bracket credential environment log': 'jobs:\n  j:\n    steps:\n      - uses: actions/github-script@v7\n        with:\n          script: console.log(process.env["DB_PASSWORD"])',
@@ -729,6 +753,7 @@ export const trip = {
   'composite action run step': 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo "$DB_PASSWORD"',
 };
 export const ok = {
+  'runtime matrix is not a shell matrix': 'jobs:\n  j:\n    strategy:\n      matrix:\n        runtime: [node, ruby]\n    steps:\n      - run: echo hi',
   'YAML public child binding overrides credential alias': 'jobs:\n  j:\n    env:\n      VALUE: ${{ steps.generate.outputs.password }}\n    steps:\n      - env:\n          VALUE: public metadata\n        run: echo "$VALUE"',
   'YAML aliases do not cross jobs': 'jobs:\n  j:\n    env:\n      VALUE: ${{ steps.generate.outputs.password }}\n    steps:\n      - run: true\n  jj:\n    steps:\n      - run: echo "$VALUE"',
   'single-quoted variable instruction': blk('echo \'$DB_PASSWORD\''),
