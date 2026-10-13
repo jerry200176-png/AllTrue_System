@@ -110,6 +110,14 @@ class RenewalRequiresPriorFeeTest extends TestCase
             ->assertCreated();
     }
 
+    public function test_package_member_fee_lives_on_the_package_and_is_not_blocked(): void
+    {
+        $member = $this->countCourse(['Rate' => 0, 'Charge' => 0, 'PackageID' => 5]);
+
+        $this->assertNull(app(ContractRenewal::class)->priorFeeBlocker($member));
+        $this->assertNotNull(app(ContractRenewal::class)->priorFeeBlocker($this->countCourse(['Rate' => 0, 'Charge' => 0])));
+    }
+
     public function test_trial_conversion_is_not_a_renewal_and_stays_allowed_without_a_fee(): void
     {
         $trial = $this->countCourse(['ClassType' => 'trial', 'Rate' => 0, 'Charge' => 0, 'SessionCount' => 1, 'RemainingSessions' => 1]);

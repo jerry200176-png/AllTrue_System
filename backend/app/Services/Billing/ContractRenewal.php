@@ -42,8 +42,7 @@ final class ContractRenewal
             return null;
         }
         $id = (int) $source->getAttribute('ID');
-        $billed = Invoice::query()
-            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+        $billed = Invoice::query()->notVoided()
             ->where(fn ($q) => $q->where(fn ($own) => $own->where('StudentClassID', $id)->where('TotalAmount', '>', 0))
                 ->orWhereHas('items', fn ($item) => $item->where('StudentClassID', $id)->where('Amount', '>', 0)))
             ->exists();

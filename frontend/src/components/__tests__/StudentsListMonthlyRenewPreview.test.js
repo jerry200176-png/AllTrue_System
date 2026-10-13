@@ -28,7 +28,7 @@ describe('StudentsList monthly renewal preview', () => {
   });
 
   it('#2567: a prior-fee blocker keeps submit disabled and its message reaches staff', () => {
-    const message = '前一期費用尚未登錄（單堂費用與應收金額都是 0）。請先在課程編輯填寫「單堂費用」，或在帳務登錄前一期帳單金額，再續約或加購。';
+    const message = 'server prior-fee blocker message';
     const form = {};
     invalidateMonthlyRenewalPreview(form, '2026-10-31');
     applyMonthlyRenewalPreview(form, { severity: 'blocked', proposed_course: { start_date: '2026-10-01' }, blockers: [{ code: 'prior_fee_missing', message }] });
