@@ -725,7 +725,7 @@ class ClassSessionController extends Controller
         // last one. Identities no session consumed stay in $pending for their own marker rows below.
         $pending = [];
         $last = [];
-        $hasOrigin = function (string $key) use (&$pending, $sameLesson, $origin): bool {
+        $hasOrigin = function (string $key) use (&$pending, &$last, $sameLesson, $origin): bool {
             if (!isset($pending[$key])) {
                 $pending[$key] = [];
                 foreach ($sameLesson[$key] ?? [] as $r) {
