@@ -616,26 +616,33 @@ class ClassSessionController extends Controller
         // 取代原本逐 slot 兩次 exists()（N+1，會隨老師當日課數線性增長）。
         // 以 classId|HH:MM 為鍵；TIME 欄位比較本就忽略秒，與原 SQL 語意一致。
         $classIds = $classes->pluck('ID')->map(fn ($v) => (int) $v)->all();
-        $suppressedSet = [];
-        $existingSet = [];
-        // #3901 (R136/R155): a lesson on this date at a non-contract time (moved, then
-        // leave/cancel) already stands for a contract slot; never add a replacement for it.
-        $timesOnDateByClass = [];
+        // #3901 (R136/R155): a lesson on this date that was moved (then put on leave / cancelled) still
+        // stands for the contract slot it came from; a read must not add a replacement for it.
+        // Per class: rows carrying occurrence identity (OriginalStartTimeHM) name their slot exactly;
+        // legacy rows (NULL identity) at a non-contract time are matched to the nearest still-unclaimed
+        // contract slot, so one moved lesson never hides an unrelated slot of the same day.
+        $rowsByClass = [];
         if (!empty($classIds)) {
             Schedule::whereIn('student_course_id', $classIds)
                 ->whereDate('schedule_date', $targetDate)
                 ->whereIn('status', ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'])
-                ->get(['student_course_id', 'start_time'])
-                ->each(function ($r) use (&$suppressedSet, &$timesOnDateByClass) {
-                    $suppressedSet[(int) $r->student_course_id . '|' . substr((string) $r->start_time, 0, 5)] = true;
-                    $timesOnDateByClass[(int) $r->student_course_id][] = substr((string) $r->start_time, 0, 5);
+                ->get(['student_course_id', 'start_time', 'type'])
+                ->each(function ($r) use (&$rowsByClass) {
+                    // An explicitly added extra (makeup) lesson never stands for a contract slot.
+                    if (strtolower((string) $r->type) === 'extra') {
+                        return;
+                    }
+                    $rowsByClass[(int) $r->student_course_id][] = [substr((string) $r->start_time, 0, 5), null];
                 });
             ClassSession::whereIn('StudentClassID', $classIds)
                 ->whereDate('SessionDate', $targetDate)
-                ->get(['StudentClassID', 'StartTime'])
-                ->each(function ($r) use (&$existingSet, &$timesOnDateByClass) {
-                    $existingSet[(int) $r->StudentClassID . '|' . substr((string) $r->StartTime, 0, 5)] = true;
-                    $timesOnDateByClass[(int) $r->StudentClassID][] = substr((string) $r->StartTime, 0, 5);
+                ->get(['StudentClassID', 'StartTime', 'OriginalSessionDate', 'OriginalStartTimeHM'])
+                ->each(function ($r) use (&$rowsByClass, $targetDate) {
+                    $origin = $r->OriginalStartTimeHM !== null
+                        && $r->OriginalSessionDate !== null
+                        && Carbon::parse($r->OriginalSessionDate)->toDateString() === $targetDate
+                        ? substr((string) $r->OriginalStartTimeHM, 0, 5) : null;
+                    $rowsByClass[(int) $r->StudentClassID][] = [substr((string) $r->StartTime, 0, 5), $origin];
                 });
         }
 
@@ -653,22 +660,12 @@ class ClassSessionController extends Controller
             if (empty($slots)) {
                 continue;
             }
-            $slotStarts = array_map(fn ($slot) => substr($slot['start_time'], 0, 5), $slots);
-            if (array_diff($timesOnDateByClass[(int) $studentClass->ID] ?? [], $slotStarts) !== []) {
-                continue;
-            }
+            $slotStarts = array_values(array_unique(array_map(fn ($slot) => substr((string) ($slot['start_time'] ?? ''), 0, 5), $slots)));
+            $covered = $this->monthlyCoveredSlotStarts($slotStarts, $rowsByClass[(int) $studentClass->ID] ?? []);
 
             foreach ($slots as $slot) {
                 $startHm = substr((string) ($slot['start_time'] ?? ''), 0, 5);
-                if ($startHm === '') {
-                    continue;
-                }
-
-                $key = (int) $studentClass->ID . '|' . $startHm;
-                if (isset($suppressedSet[$key])) {
-                    continue;
-                }
-                if (isset($existingSet[$key])) {
+                if ($startHm === '' || isset($covered[$startHm])) {
                     continue;
                 }
 
@@ -684,13 +681,56 @@ class ClassSessionController extends Controller
                         'Note'                => 'projected-monthly-materialized-auto',
                         'IsContractException' => 0,
                     ]);
-                    // 同一請求內避免重複建立（多 slot 同時段時的防呆，等同原 exists() 在建立後轉真）。
-                    $existingSet[$key] = true;
+                    // 同一請求內避免重複建立（多 slot 同時段時的防呆）。
+                    $covered[$startHm] = true;
                 } catch (SlotOccupiedException $e) {
                     $this->logReadSideMaterializationConflict('monthly', $studentClass, $e);
                 }
             }
         }
+    }
+
+    /**
+     * #3901: which contract slots of a monthly course already have a lesson on the date.
+     *
+     * @param  list<string>  $slotStarts  contract slot start times (HH:MM) of the weekday
+     * @param  list<array{0:string,1:?string}>  $rows  [current HH:MM, frozen original HH:MM|null] per existing lesson
+     * @return array<string, true>
+     */
+    private function monthlyCoveredSlotStarts(array $slotStarts, array $rows): array
+    {
+        $covered = [];
+        $legacy = [];
+        foreach ($rows as [$current, $origin]) {
+            if ($origin !== null) {
+                $covered[$origin] = true; // the slot this lesson came from
+            }
+            if (in_array($current, $slotStarts, true)) {
+                $covered[$current] = true; // the time is physically taken
+            } elseif ($origin === null) {
+                $legacy[] = $current; // moved lesson with no identity: guess by proximity below
+            }
+        }
+        $minutes = fn (string $hm): int => ((int) substr($hm, 0, 2)) * 60 + (int) substr($hm, 3, 2);
+        foreach ($legacy as $current) {
+            $best = null;
+            $bestDist = PHP_INT_MAX;
+            foreach ($slotStarts as $slotStart) {
+                if (isset($covered[$slotStart])) {
+                    continue;
+                }
+                $dist = abs($minutes($slotStart) - $minutes($current));
+                if ($dist < $bestDist) {
+                    $best = $slotStart;
+                    $bestDist = $dist;
+                }
+            }
+            if ($best !== null) {
+                $covered[$best] = true;
+            }
+        }
+
+        return $covered;
     }
 
     /**

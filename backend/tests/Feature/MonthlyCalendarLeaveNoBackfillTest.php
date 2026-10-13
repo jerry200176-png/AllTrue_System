@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -60,6 +61,65 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-10-13')
             ->orderBy('StartTime')->get()->map(fn ($s) => substr((string) $s->StartTime, 0, 5).' '.strtolower((string) $s->Status))->all();
         $this->assertSame(['13:00 cancelled', '18:00 scheduled'], $starts);
+    }
+
+    public function test_a_legacy_moved_lesson_only_stands_for_its_nearest_slot_not_the_whole_day(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-c@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // 13:00 was moved to 14:00 and put on leave (legacy row, no occurrence identity); 18:00 is unmaterialized.
+        $this->createSession($course, '2026-10-13', '14:00', '16:00', 'leave');
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['14:00 leave', '18:00 scheduled'], $this->startsOn($course));
+    }
+
+    public function test_a_lesson_moved_onto_another_contract_slot_keeps_its_original_slot_covered(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-d@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // The 13:00 lesson was moved to 18:00 and put on leave; its frozen identity still says 13:00.
+        $moved = $this->createSession($course, '2026-10-13', '18:00', '20:00', 'leave');
+        $moved->forceFill(['OriginalSessionDate' => '2026-10-13', 'OriginalStartTimeHM' => '13:00'])->save();
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['18:00 leave'], $this->startsOn($course), 'The 13:00 slot belongs to the moved lesson; no replacement.');
+    }
+
+    public function test_an_extra_makeup_row_does_not_hide_the_contract_slot(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-e@example.com');
+        $course = $this->createMonthlyCourse($teacherId);
+        Schedule::create([
+            'student_id' => $course->StudentID, 'teacher_id' => $teacherId, 'subject' => 'Math', 'day_of_week' => 2,
+            'start_time' => '10:00', 'end_time' => '12:00', 'duration_hours' => 2, 'class_type' => 'one_on_one',
+            'status' => 'cancelled', 'type' => 'extra', 'deduction' => 0, 'branch_id' => 1,
+            'schedule_date' => '2026-10-13', 'student_course_id' => $course->ID,
+        ]);
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['18:00 scheduled'], $this->startsOn($course));
+    }
+
+    private function readTeacherDay(string $token): void
+    {
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/class-sessions?start=2026-10-13&end=2026-10-13')
+            ->assertOk();
+    }
+
+    /** @return list<string> */
+    private function startsOn(StudentClass $course): array
+    {
+        return ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-10-13')
+            ->orderBy('StartTime')->get()
+            ->map(fn ($s) => substr((string) $s->StartTime, 0, 5).' '.strtolower((string) $s->Status))->all();
     }
 
     /** @param array<string, mixed> $extra */
