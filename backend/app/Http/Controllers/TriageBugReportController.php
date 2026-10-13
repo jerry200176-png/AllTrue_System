@@ -85,14 +85,22 @@ class TriageBugReportController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
         $path = (string) $attachment->getAttribute('stored_path');
-        if ($path === '' || str_contains($path, '..') || !Storage::disk('public')->exists($path)) {
+        $disk = Storage::disk('public');
+        if ($path === '' || str_contains($path, '..') || !$disk->exists($path)) {
             return response()->json(['message' => 'Not found'], 404);
         }
+        $contents = (string) $disk->get($path);
 
-        return Storage::disk('public')->download(
-            $path,
-            basename((string) ($attachment->getAttribute('original_name') ?: $path)),
-            ['X-Content-Type-Options' => 'nosniff', 'Cache-Control' => 'no-store']
+        return response()->streamDownload(
+            static function () use ($contents): void {
+                echo $contents;
+            },
+            "bug-{$id}-attachment-{$attachmentId}" . (($ext = pathinfo($path, PATHINFO_EXTENSION)) !== '' ? '.' . preg_replace('/[^A-Za-z0-9]/', '', $ext) : ''),
+            [
+                'Content-Type' => 'application/octet-stream',
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'no-store',
+            ]
         );
     }
 }
