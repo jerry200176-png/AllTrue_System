@@ -20,7 +20,7 @@ final class BugReportWritebackEvidence
         return ['captured_at' => $capturedAt, 'proof' => self::proof($bug, $capturedAt)];
     }
 
-    /** Current report row must be locked; child locking reads stay protected through the caller's commit. */
+    /** Current parent and child locking reads stay protected through the caller's commit. */
     public static function verify(BugReport $bug, string $capturedAt, string $proof): bool
     {
         if ($bug->getConnection()->transactionLevel() < 1
@@ -42,7 +42,9 @@ final class BugReportWritebackEvidence
             return false;
         }
 
-        return hash_equals(self::proof($bug, $capturedAt, true), $proof);
+        $current = BugReport::on($bug->getConnectionName())->whereKey($bug->getKey())->lockForUpdate()->first();
+
+        return $current instanceof BugReport && hash_equals(self::proof($current, $capturedAt, true), $proof);
     }
 
     private static function proof(BugReport $bug, string $capturedAt, bool $lockChildren = false): string
