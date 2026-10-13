@@ -202,23 +202,13 @@ final class TriageTokenTest extends TestCase
 
     private function user(string $type): User
     {
-        $this->seq++;
-
-        return User::create([
-            'LoginName' => "triage{$this->seq}@test.com",
-            'Name' => "Triage {$this->seq}",
-            'PSW' => 'secret',
-            'type' => $type,
-            'phone' => (string) (900000000 + $this->seq),
-        ]);
+        $n = ++$this->seq;
+        return User::create(['LoginName' => "triage{$n}@test.com", 'Name' => "Triage {$n}", 'PSW' => 'secret', 'type' => $type, 'phone' => (string) (900000000 + $n)]);
     }
 
     private function bug(User $reporter, string $status): BugReport
     {
-        return BugReport::create([
-            'CampusID' => 1, 'reporter_user_id' => $reporter->id, 'title' => "bug {$status}",
-            'description' => 'desc', 'severity' => 'medium', 'status' => $status,
-        ]);
+        return BugReport::create(['CampusID' => 1, 'reporter_user_id' => $reporter->id, 'title' => "bug {$status}", 'description' => 'desc', 'severity' => 'medium', 'status' => $status]);
     }
 
     /** @return array<string, string> */

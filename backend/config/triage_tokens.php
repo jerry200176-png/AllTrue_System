@@ -8,10 +8,6 @@ return [
     // Recognizable secret prefix (like ghp_ / lin_api_) for logs and secret scanners.
     'secret_prefix' => 'alltrue_triage_',
     // The ONLY routes a triage token may reach; every other API route answers 403.
-    'allowed_routes' => [
-        'triage.bug-reports.index',
-        'triage.bug-reports.show',
-        'triage.bug-reports.attachment',
-    ],
+    'allowed_routes' => ['triage.bug-reports.index', 'triage.bug-reports.show', 'triage.bug-reports.attachment'],
     'list_max_limit' => 100,
 ];

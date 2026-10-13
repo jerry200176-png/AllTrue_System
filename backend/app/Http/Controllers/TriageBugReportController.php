@@ -9,11 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
-/**
- * Read-only in-app bug report access for a triage token (GET only).
- * Authenticated and audited by AuthenticateTriageToken; every other route is
- * closed to the token by RestrictAccessTokenScope.
- */
+/** Read-only bug report access for a triage token (GET only); AuthenticateTriageToken audits, RestrictAccessTokenScope closes every other route. */
 class TriageBugReportController extends Controller
 {
     private const STATUSES = ['new', 'triaged', 'in_progress', 'resolved', 'closed'];
@@ -56,10 +52,7 @@ class TriageBugReportController extends Controller
             'updated_at' => $bug->updated_at?->toIso8601String(),
         ])->values();
 
-        return response()->json([
-            'data' => $rows,
-            'next_since_id' => $rows->isEmpty() ? null : $rows->last()['id'],
-        ]);
+        return response()->json(['data' => $rows, 'next_since_id' => $rows->isEmpty() ? null : $rows->last()['id']]);
     }
 
     public function show(int $id)
@@ -93,15 +86,9 @@ class TriageBugReportController extends Controller
         $contents = (string) $disk->get($path);
 
         return response()->streamDownload(
-            static function () use ($contents): void {
-                echo $contents;
-            },
+            static function () use ($contents): void { echo $contents; },
             "bug-{$id}-attachment-{$attachmentId}" . (($ext = pathinfo($path, PATHINFO_EXTENSION)) !== '' ? '.' . preg_replace('/[^A-Za-z0-9]/', '', $ext) : ''),
-            [
-                'Content-Type' => 'application/octet-stream',
-                'X-Content-Type-Options' => 'nosniff',
-                'Cache-Control' => 'no-store',
-            ]
+            ['Content-Type' => 'application/octet-stream', 'X-Content-Type-Options' => 'nosniff', 'Cache-Control' => 'no-store']
         );
     }
 }

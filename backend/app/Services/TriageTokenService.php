@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -19,8 +20,11 @@ final class TriageTokenService
     public static function mayAuditUnresolved(?string $ip): bool
     {
         $keys = ['triage-unresolved-audit:' . hash('sha256', (string) $ip) => 10, 'triage-unresolved-audit:all' => 120];
-        $open = array_filter($keys, fn (int $max, string $key) => \Illuminate\Support\Facades\RateLimiter::tooManyAttempts($key, $max), ARRAY_FILTER_USE_BOTH) === [];
-        return $open && array_map(fn (string $key) => \Illuminate\Support\Facades\RateLimiter::hit($key, 60), array_keys($keys)) !== [];
+        if (array_filter($keys, fn (int $max, string $key) => RateLimiter::tooManyAttempts($key, $max), ARRAY_FILTER_USE_BOTH) !== []) {
+            return false;
+        }
+        array_walk($keys, fn (int $max, string $key) => RateLimiter::hit($key, 60));
+        return true;
     }
 
     public static function looksLikeTriageToken(string $bearer): bool
