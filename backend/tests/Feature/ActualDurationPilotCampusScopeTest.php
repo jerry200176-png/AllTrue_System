@@ -25,7 +25,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     private int $teacherId;
     private int $pilotCampusId;
     private int $otherCampusId;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -43,7 +42,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $dirId, 'token' => $this->token, 'expires_at' => now()->addDay()]);
     }
-
     public function test_allowlisted_campus_with_flag_on_deducts_actual_minutes(): void
     {
         [$sc, $studentId] = $this->course($this->pilotCampusId);
@@ -51,7 +49,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame(780, (int) $sc->fresh()->RemainingMinutes, '960 purchased - 180 actual');
         $this->assertSame(180, (int) $this->ledgerMinutes($sc));
     }
-
     public function test_campus_outside_the_allowlist_deducts_one_whole_lesson(): void
     {
         [$sc, $studentId] = $this->course($this->otherCampusId);
@@ -59,7 +56,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame(7, (int) $sc->fresh()->RemainingSessions, 'one whole lesson, as fixed_session');
         $this->assertNull($this->ledgerMinutes($sc), 'whole-session encoding, no minutes');
     }
-
     public function test_flag_off_is_fixed_session_even_at_an_allowlisted_campus(): void
     {
         config(['perfflags.actual_duration_deduction_enabled' => false]);
@@ -68,7 +64,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame(7, (int) $sc->fresh()->RemainingSessions);
         $this->assertNull($this->ledgerMinutes($sc));
     }
-
     public function test_deduction_follows_a_changed_allowlist(): void
     {
         config(['perfflags.actual_duration_campus_ids' => (string) $this->otherCampusId]);
@@ -79,7 +74,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertNull($this->ledgerMinutes($pilot), 'removed from the list -> fixed_session');
         $this->assertSame(180, (int) $this->ledgerMinutes($other), 'added to the list -> actual minutes');
     }
-
     public function test_allowlist_parsing_follows_config(): void
     {
         $a = $this->pilotCampusId;
@@ -95,7 +89,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         config(['perfflags.actual_duration_campus_ids' => (string) $a]);
         $this->assertFalse(SessionDeductionService::isActualDurationCampusAllowed(0), 'unknown campus never allowed');
     }
-
     public function test_create_api_refuses_an_actual_duration_course_outside_the_allowlist(): void
     {
         $studentId = $this->student($this->otherCampusId);
@@ -106,14 +99,12 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         // Fixed-session courses at the same campus are untouched.
         $this->createCourse($studentId, $this->otherCampusId, DeductionBasis::FIXED_SESSION)->assertCreated();
     }
-
     public function test_create_api_accepts_an_actual_duration_course_at_an_allowlisted_campus(): void
     {
         $studentId = $this->student($this->pilotCampusId);
         $this->createCourse($studentId, $this->pilotCampusId, DeductionBasis::ACTUAL_DURATION)->assertCreated();
         $this->assertTrue(StudentClass::where('StudentID', $studentId)->firstOrFail()->isActualDurationBasis());
     }
-
     public function test_edit_cannot_opt_a_course_in_outside_the_allowlist(): void
     {
         [$sc] = $this->course($this->otherCampusId, ['deduction_basis' => DeductionBasis::FIXED_SESSION]);
@@ -126,7 +117,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
             ->assertJsonPath('errors.deduction_basis.0', '此分校尚未開放依實際時長扣堂，請改用「每次上課扣一堂」。');
         $this->assertSame(DeductionBasis::FIXED_SESSION, $sc->fresh()->deduction_basis);
     }
-
     public function test_edit_can_opt_a_course_in_at_an_allowlisted_campus(): void
     {
         [$sc] = $this->course($this->pilotCampusId, ['deduction_basis' => DeductionBasis::FIXED_SESSION]);
@@ -138,7 +128,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
             ->assertOk();
         $this->assertTrue($sc->fresh()->isActualDurationBasis());
     }
-
     public function test_edit_of_an_existing_actual_duration_course_is_not_blocked(): void
     {
         [$sc] = $this->course($this->otherCampusId);
@@ -150,7 +139,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
             ->assertOk();
         $this->assertSame(90, $sc->fresh()->resolvedStandardLessonMinutes());
     }
-
     public function test_removing_the_campus_recounts_history_as_whole_lessons(): void
     {
         foreach ([\App\Models\Schedule::STATUS_SUPERSEDED, 'cancelled'] as $staleStatus) {
@@ -179,7 +167,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
             $this->assertSame(8 * 120 - 90 - 120, (int) $sc->fresh()->RemainingMinutes, 'back in the pilot: minutes again');
         }
     }
-
     public function test_a_gated_off_course_still_prorates_a_makeup(): void
     {
         foreach ([[$this->otherCampusId, 120, 90, '15:30'], [$this->pilotCampusId, 180, 120, '16:00']] as [$campusId, $duration, $minutes, $endTime]) {
@@ -215,7 +202,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
             $this->assertSame('retro_leave_makeup', $reverse->source);
         }
     }
-
     public function test_unmarked_minute_history_is_held_until_matching_reversal(): void
     {
         [$sc, $studentId] = $this->course($this->pilotCampusId);
@@ -248,7 +234,21 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame([1, 7], [(int) $sc->fresh()->UsedSessions, (int) $sc->fresh()->RemainingSessions]);
         $this->assertFalse(SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID]['ambiguous_minute_evidence']);
     }
-
+    public function test_purchase_batch_api_preserves_only_an_enabled_pilot_contract(): void
+    {
+        foreach ([[$this->pilotCampusId, true, DeductionBasis::ACTUAL_DURATION, 90], [$this->otherCampusId, true, DeductionBasis::FIXED_SESSION, null], [$this->pilotCampusId, false, DeductionBasis::FIXED_SESSION, null]] as [$campus, $enabled, $basis, $standard]) {
+            config(['perfflags.actual_duration_deduction_enabled' => $enabled]);
+            [$source] = $this->course($campus, ['standard_lesson_minutes' => 90, 'SessionDuration' => 180]);
+            $result = $this->withHeaders($this->headers())->postJson('/api/v1/student-classes/' . $source->ID . '/purchase-batch', [
+                'sessions' => 4, 'start_date' => Carbon::now()->addMonths(8)->toDateString(),
+            ])->assertCreated();
+            $new = StudentClass::findOrFail($result->json('new_course.id'));
+            $this->assertSame($basis, $new->deduction_basis);
+            $this->assertSame($standard, $new->standard_lesson_minutes);
+            $this->assertSame(DeductionBasis::ACTUAL_DURATION, $source->fresh()->deduction_basis);
+            $this->assertSame(90, $source->fresh()->standard_lesson_minutes);
+        }
+    }
     public function test_copied_basis_follows_the_allowlist(): void
     {
         [$pilot] = $this->course($this->pilotCampusId);
@@ -271,12 +271,10 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     {
         return ['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json'];
     }
-
     private function attend180(StudentClass $sc, int $studentId): void
     {
         $this->attend($sc, $studentId, '14:00:00', '17:00:00', 10);
     }
-
     private function attend(StudentClass $sc, int $studentId, string $start, string $end, int $daysAgo): void
     {
         $cs = ClassSession::create([
@@ -290,13 +288,11 @@ class ActualDurationPilotCampusScopeTest extends TestCase
             'Status' => 'present',
         ])->assertCreated();
     }
-
     private function ledgerMinutes(StudentClass $sc): mixed
     {
         return SessionDeductionLedger::where('student_class_id', $sc->ID)
             ->where('event_type', 'deduct')->value('minutes');
     }
-
     private function student(int $campusId): int
     {
         return (int) Student::create([
@@ -322,7 +318,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         ], $over));
         return [$sc, $studentId];
     }
-
     private function createCourse(int $studentId, int $campusId, string $basis)
     {
         $plan = [];
@@ -357,7 +352,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         }
         return $this->withHeaders($this->headers())->postJson('/api/v1/class-sessions/batch', $payload);
     }
-
     private function mkUser(string $type, string $login): int
     {
         return (int) User::create([
