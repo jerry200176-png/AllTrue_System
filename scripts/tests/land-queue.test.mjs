@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, isBatchBase, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, orderQueue, parseMember, planBatch } from '../../.github/scripts/land-queue.mjs';
+import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
 
 const req = ['A', 'B'];
 const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
-const pr = (o = {}) => ({ mergeStateStatus: 'CLEAN', rollup: ok, ...o });
+const pr = (o = {}) => ({ mergeStateStatus: 'CLEAN', rollup: ok, unresolvedThreads: 0, ...o });
 
 test('orderQueue: oldest label first, skips drafts and non-main', () => {
   const q = orderQueue([
@@ -29,8 +29,60 @@ test('decide: failed check names it; latest rerun wins', () => {
   assert.equal(decide(pr({ rollup: rerun }), req).action, 'merge');
 });
 
-test('decide: unresolved review threads do not gate; pending or missing checks wait', () => {
-  assert.equal(decide(pr({ unresolvedThreads: 2 }), req).action, 'merge');
+test('decide: unresolved review threads reject; known zero keeps merge behavior', () => {
+  const d = decide(pr({ unresolvedThreads: 2 }), req);
+  assert.equal(d.action, 'reject');
+  assert.equal(d.reason, 'threads');
+  assert.match(d.text, /^2 unresolved review thread\(s\); reply to and resolve them, then re-add `queue`$/);
+  assert.match(decide(pr({ unresolvedThreads: 7 }), req).text, /^7 unresolved/);
+  // Threads reject even while checks are still pending (early feedback, label removed).
+  assert.equal(decide(pr({ unresolvedThreads: 1, rollup: [ok[0]] }), req).reason, 'threads');
+  // BEHIND / DIRTY are handled first.
+  assert.equal(decide(pr({ unresolvedThreads: 1, behindBy: 2 }), req).action, 'update');
+  assert.equal(decide(pr({ unresolvedThreads: 1, mergeStateStatus: 'DIRTY' }), req).reason, 'conflict');
+  assert.equal(decide(pr({ unresolvedThreads: 0 }), req).action, 'merge');
+});
+
+test('decide: unknown thread count never merges (fail closed)', () => {
+  for (const unresolvedThreads of [null, undefined, NaN, -1, 1.5, '0']) {
+    const d = decide(pr({ unresolvedThreads }), req);
+    assert.notEqual(d.action, 'merge', String(unresolvedThreads));
+    assert.equal(d.action, 'wait');
+  }
+  // Failed checks still reject with their own reason when the thread count is unknown.
+  assert.equal(decide(pr({ unresolvedThreads: null, rollup: [{ name: 'A', conclusion: 'FAILURE' }, ok[1]] }), req).reason, 'checks');
+});
+
+test('unresolvedCount: a thread is open until resolved AND replied; otherwise unknown', () => {
+  const page = (nodes, hasNextPage = false) => ({ nodes, pageInfo: { hasNextPage } });
+  const t = (isResolved, replies) => ({ isResolved, comments: { totalCount: replies } });
+  assert.equal(unresolvedCount(page([])), 0);
+  assert.equal(unresolvedCount(page([t(true, 2), t(false, 2), t(false, 1)])), 2);
+  assert.equal(unresolvedCount(page([t(true, 3)])), 0);
+  // Resolved without a reply still blocks.
+  assert.equal(unresolvedCount(page([t(true, 1)])), 1);
+  assert.equal(unresolvedCount(page([t(true, 2), t(true, 1)])), 1);
+  // Missing comment count is unknown, never zero.
+  assert.equal(unresolvedCount(page([{ isResolved: true }])), null);
+  assert.equal(unresolvedCount(page(Array(100).fill(t(true, 2)), true)), null); // >100 threads
+  assert.equal(unresolvedCount({ nodes: [] }), null); // no pageInfo
+  assert.equal(unresolvedCount(null), null);
+  assert.equal(unresolvedCount(undefined), null);
+});
+
+test('batch eligibility honors the thread gate (neutral keeps unresolvedThreads)', () => {
+  const behind = (o) => pr({ mergeStateStatus: 'BEHIND', behindBy: 3, ...o });
+  assert.equal(decide(neutral(behind({ unresolvedThreads: 0 })), req).action, 'merge');
+  assert.equal(decide(neutral(behind({ unresolvedThreads: 1 })), req).reason, 'threads');
+  assert.equal(decide(neutral(behind({ unresolvedThreads: null })), req).action, 'wait');
+  // A member whose thread opened after the batch was cut is no longer ready -> batch dropped.
+  const ready = (h) => decide(neutral(h), req).action === 'merge';
+  const members = [{ n: 1, sha: 'a' }, { n: 2, sha: 'b' }];
+  const current = new Map([[1, { sha: 'a', ready: ready(pr({ unresolvedThreads: 0 })) }], [2, { sha: 'b', ready: ready(pr({ unresolvedThreads: 1 })) }]]);
+  assert.equal(staleReason(members, 'm', 'm', current), '#2 no longer ready');
+});
+
+test('decide: pending or missing checks wait', () => {
   assert.equal(decide(pr({ rollup: [ok[0], { name: 'B', status: 'IN_PROGRESS', conclusion: null }] }), req).action, 'wait');
   assert.equal(decide(pr({ rollup: [ok[0]] }), req).action, 'wait');
   assert.equal(decide(pr({ mergeStateStatus: 'BLOCKED' }), req).action, 'wait');
@@ -141,4 +193,23 @@ test('batchSerial: intentional-revert, untrusted author or an earlier red batch 
   assert.equal(batchSerial({ authorAssociation: trusted, labels: ['queue'] }, true), true); // red batch is not rebuilt with it
   assert.equal(batchSerial({ authorAssociation: 'NONE', labels: [] }, false), true);
   assert.equal(batchSerial({ authorAssociation: trusted }, false), false);
+});
+
+test('guardedSquash: re-reads threads right before squash; only a known 0 merges (serial and batch)', () => {
+  const run = (reading) => {
+    const calls = [];
+    const logs = [];
+    const did = guardedSquash(7, 'abc', (n) => { calls.push(['read', n]); return reading; }, (n, sha) => calls.push(['squash', n, sha]), (m) => logs.push(m));
+    return { did, calls, logs };
+  };
+  const ok = run(0);
+  assert.equal(ok.did, true);
+  assert.deepEqual(ok.calls, [['read', 7], ['squash', 7, 'abc']]); // read happens before squash
+  for (const reading of [1, 3, null, undefined]) {
+    const r = run(reading);
+    assert.equal(r.did, false);
+    assert.deepEqual(r.calls, [['read', 7]]); // never squashed
+    assert.equal(r.logs.length, 1);
+    assert.match(r.logs[0], /^#7: review threads (\d+ open|unknown) right before squash; not merging$/);
+  }
 });
