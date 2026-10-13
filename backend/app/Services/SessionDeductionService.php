@@ -573,8 +573,8 @@ class SessionDeductionService
      */
     private static function gatedOffMinuteTotals(int $studentClassId, int $perSession, string $today): array
     {
-        // Any status: a makeup already deducted stays a makeup after its row is later superseded or cancelled.
-        $makeups = Schedule::query()->where('student_course_id', $studentClassId)->where('type', 'extra')
+        // Tagged makeup identity survives lifecycle changes; untagged history needs live evidence.
+        $makeups = Schedule::query()->where('student_course_id', $studentClassId)->where('type', 'extra')->whereNotIn('status', [Schedule::STATUS_SUPERSEDED, 'cancelled'])
             ->get(['schedule_date', 'start_time'])
             ->mapWithKeys(fn ($s) => [substr((string) $s->schedule_date, 0, 10) . '|' . substr((string) $s->start_time, 0, 5) => true]);
         $rows = SessionDeductionLedger::query()
