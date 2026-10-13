@@ -515,7 +515,11 @@ class ScheduleController extends Controller
             }
         }
 
-        $schedule = Schedule::create($data);
+        // #3738: take the forced renewal's per-student lock so its slot check and this booking serialize.
+        $schedule = DB::transaction(function () use ($data) {
+            DB::table('Student')->where('id', (int) $data['student_id'])->lockForUpdate()->value('id');
+            return Schedule::create($data);
+        });
 
         $this->ensureClassSessionForScheduleData($schedule->toArray());
 

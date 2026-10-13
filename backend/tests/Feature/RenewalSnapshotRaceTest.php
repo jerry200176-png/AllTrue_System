@@ -21,10 +21,7 @@ class RenewalSnapshotRaceTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function connectionsToTransact()
-    {
-        return [];
-    }
+    protected function connectionsToTransact() { return []; }
 
     private array $baseline = [];
 
@@ -37,12 +34,8 @@ class RenewalSnapshotRaceTest extends TestCase
     /** @return array<string,int> */
     private function rowCounts(): array
     {
-        $out = [];
-        foreach (DB::select('select table_name as t from information_schema.tables where table_schema = database() and table_type = "BASE TABLE"') as $r) {
-            $out[$r->t] = (int) DB::table($r->t)->count();
-        }
-
-        return $out;
+        $tables = DB::select('select table_name as t from information_schema.tables where table_schema = database() and table_type = "BASE TABLE"');
+        return collect($tables)->mapWithKeys(fn ($r) => [$r->t => (int) DB::table($r->t)->count()])->all();
     }
 
     protected function tearDown(): void
@@ -102,18 +95,26 @@ class RenewalSnapshotRaceTest extends TestCase
         return [$res, $first];
     }
 
-    public function test_renewal_guard_sees_concurrent_commit_despite_repeatable_read(): void
+    /** @return array<string, array{0: string}> */
+    public static function producers(): array
+    {
+        return ['completed session' => ['ClassSession'], 'schedule-only booking (#3738 review)' => ['schedules']];
+    }
+
+    /** @dataProvider producers */
+    public function test_renewal_guard_sees_concurrent_commit_despite_repeatable_read(string $table): void
     {
         $past = Carbon::now()->subWeeks(2)->toDateString();
         $sessions = DB::table('ClassSession')->count();
-        [$res] = $this->race(fn ($a, $first) => $a->table('ClassSession')->insert([
-            'StudentClassID' => $first, 'SessionDate' => $past, 'StartTime' => '16:00:00',
-            'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '',
-        ]), $past, 'confirmed');
-
+        $row = fn ($first, $ids) => $table === 'ClassSession'
+            ? ['StudentClassID' => $first, 'SessionDate' => $past, 'StartTime' => '16:00:00', 'EndTime' => '18:00:00', 'Status' => 'completed', 'Note' => '']
+            : ['student_id' => $ids['student'], 'teacher_id' => $ids['teacher'], 'subject' => 'Math', 'day_of_week' => Carbon::parse($past)->dayOfWeekIso,
+                'start_time' => '16:00', 'end_time' => '18:00', 'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'normal',
+                'deduction' => 1, 'branch_id' => 1, 'schedule_date' => $past];
+        [$res] = $this->race(fn ($a, $first, $ids) => $a->table($table)->insert($row($first, $ids)), $past, 'confirmed');
         $this->assertSame(422, $res->status(), $res->getContent());
         $this->assertSame('renewal_confirmed_slot_overlap', $res->json('code'));
-        $this->assertSame($sessions + 2, DB::table('ClassSession')->count()); // first course session + the concurrent commit
+        $this->assertSame($sessions + ($table === 'ClassSession' ? 2 : 1), DB::table('ClassSession')->count()); // first course (+ the concurrent commit)
     }
 
     public function test_second_concurrent_count_renewal_is_revalidated_under_the_lock(): void
