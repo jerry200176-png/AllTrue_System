@@ -7,8 +7,6 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Student;
-use App\Models\StudentClass;
-use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -39,14 +37,13 @@ class BillingNoteController extends Controller
             ->where('subject_id', (int) $data['subject_id'])
             ->orderBy('created_at')->orderBy('id')
             ->get();
-        $authors = User::query()->whereIn('id', $notes->pluck('author_user_id')->unique()->all())->pluck('Name', 'id');
 
         $entries = [];
         if ($subject['legacy_note'] !== '') {
             $entries[] = ['id' => null, 'body' => $subject['legacy_note'], 'author_name' => null, 'created_at' => null, 'legacy' => true];
         }
         foreach ($notes as $note) {
-            $entries[] = $this->entry($note, (string) ($authors[$note->author_user_id] ?? ''));
+            $entries[] = $this->entry($note);
         }
 
         return response()->json(['notes' => $entries]);
@@ -79,19 +76,20 @@ class BillingNoteController extends Controller
             'subject_id' => (int) $data['subject_id'],
             'body' => $body,
             'author_user_id' => (int) ($author->id ?? 0),
+            'author_name' => mb_substr((string) ($author->Name ?? ''), 0, 100),
         ]);
         $note->save();
 
-        return response()->json($this->entry($note, (string) ($author->Name ?? '')), 201);
+        return response()->json($this->entry($note), 201);
     }
 
     /** @return array<string, mixed> */
-    private function entry(BillingNote $note, string $authorName): array
+    private function entry(BillingNote $note): array
     {
         return [
             'id' => (int) $note->id,
             'body' => $note->body,
-            'author_name' => $authorName,
+            'author_name' => (string) $note->author_name,
             'created_at' => $note->created_at?->toIso8601String(),
             'legacy' => false,
         ];
@@ -101,7 +99,6 @@ class BillingNoteController extends Controller
     private function resolveSubject(string $type, int $id): ?array
     {
         [$studentId, $legacy] = match ($type) {
-            'student_class' => ($m = StudentClass::query()->where('ID', $id)->first()) ? [(int) $m->StudentID, (string) ($m->Memo ?? '')] : [0, ''],
             'invoice' => ($m = Invoice::query()->whereKey($id)->first()) instanceof Invoice ? [(int) $m->StudentID, (string) ($m->Note ?? '')] : [0, ''],
             'payment' => ($m = Payment::query()->find($id))
                 ? [(int) Invoice::query()->whereKey((int) $m->getAttribute('InvoiceID'))->value('StudentID'), (string) ($m->getAttribute('Note') ?? '')]

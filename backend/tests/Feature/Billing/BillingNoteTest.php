@@ -56,6 +56,25 @@ class BillingNoteTest extends TestCase
         $this->assertSame('現金，收據已交給家長', (string) $this->payment->fresh()->getAttribute('Note'), 'legacy column untouched');
     }
 
+    /** #3978 review: the author name is a write-time snapshot; renaming the account later does not rewrite it. */
+    public function test_author_name_is_kept_when_the_account_is_renamed(): void
+    {
+        $h = $this->staff('A', $this->campus->id, 'Director');
+        $this->postJson('/api/v1/accounting/notes', $this->body('先記一筆'), $h)->assertCreated();
+        User::query()->where('Name', 'Director')->update(['Name' => 'Renamed']);
+
+        $this->assertSame('Director', $this->getJson($this->listUrl(), $h)->assertOk()->json('notes.1.author_name'));
+    }
+
+    /** #3978 review: student_class has no UI or lifecycle owner (a contract can be deleted), so it is not a subject. */
+    public function test_student_class_is_not_a_note_subject(): void
+    {
+        $h = $this->staff('A', $this->campus->id, 'Director');
+        $courseId = (int) StudentClass::query()->value('ID');
+        $this->postJson('/api/v1/accounting/notes', ['subject_type' => 'student_class', 'subject_id' => $courseId, 'body' => 'x'], $h)->assertStatus(422);
+        $this->assertSame(0, BillingNote::query()->count());
+    }
+
     public function test_input_is_validated_against_the_model_limits(): void
     {
         $h = $this->staff('A', $this->campus->id, 'Director');

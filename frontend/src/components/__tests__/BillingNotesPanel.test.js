@@ -39,6 +39,21 @@ describe('BillingNotesPanel (#3836 append-only billing notes)', () => {
     expect(w.get('textarea').element.value).toBe('');
   });
 
+  it('does not submit while a load is in flight, so an older list cannot overwrite a saved note', async () => {
+    let resolveLoad;
+    const fetchMock = vi.fn().mockReturnValueOnce(new Promise((r) => { resolveLoad = r; }));
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mount(BillingNotesPanel, { props: { subjectType: 'invoice', subjectId: 3 } });
+    await w.get('.billing-notes__toggle').trigger('click');
+    await w.get('textarea').setValue('更正');
+    expect(w.get('form button[type="submit"]').attributes('disabled')).toBeDefined();
+    await w.get('form').trigger('submit');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveLoad({ ok: true, status: 200, json: async () => ({ notes: [] }) });
+    await flushPromises();
+    expect(w.get('form button[type="submit"]').attributes('disabled')).toBeUndefined();
+  });
+
   it('offers no edit or delete action and says notes are permanent', async () => {
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(ok({ notes: [{ id: 1, body: 'x', author_name: 'A', created_at: null, legacy: false }] })));
     const w = mount(BillingNotesPanel, { props: { subjectType: 'invoice', subjectId: 1 } });

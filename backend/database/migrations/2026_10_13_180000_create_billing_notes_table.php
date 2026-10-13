@@ -19,11 +19,13 @@ return new class extends Migration
         Schema::create('billing_notes', function (Blueprint $table) {
             $table->id();
             $table->unsignedInteger('campus_id')->index();
-            // student_class | invoice | payment | payment_report (validated by BillingNote::SUBJECT_TYPES)
+            // invoice | payment | payment_report (validated by BillingNote::SUBJECT_TYPES)
             $table->string('subject_type', 32);
             $table->unsignedBigInteger('subject_id');
             $table->text('body');
             $table->unsignedBigInteger('author_user_id');
+            // Name at write time: a later rename or account deletion must not change who wrote a permanent note.
+            $table->string('author_name', 100)->default('');
             $table->timestamp('created_at')->useCurrent();
             $table->index(['subject_type', 'subject_id', 'created_at'], 'idx_billing_notes_subject');
         });

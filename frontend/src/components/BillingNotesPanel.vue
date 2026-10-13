@@ -16,7 +16,7 @@
       <form class="billing-notes__form" @submit.prevent="add">
         <label :for="inputId">新增備註</label>
         <textarea :id="inputId" v-model="draft" rows="2" :maxlength="MAX_BODY" />
-        <button type="submit" :disabled="saving || !draft.trim()">{{ saving ? '儲存中…' : '新增' }}</button>
+        <button type="submit" :disabled="saving || loading || !draft.trim()">{{ saving ? '儲存中…' : '新增' }}</button>
       </form>
       <p class="billing-notes__muted">備註送出後不能修改或刪除；寫錯了請再新增一則更正。</p>
     </div>
@@ -76,7 +76,8 @@ function toggle() {
 
 async function add() {
   const body = draft.value.trim();
-  if (!body || saving.value) return;
+  // While a load is in flight its older result would overwrite the saved note, so wait for it.
+  if (!body || saving.value || loading.value) return;
   saving.value = true;
   error.value = '';
   try {

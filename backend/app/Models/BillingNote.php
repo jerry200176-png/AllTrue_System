@@ -14,11 +14,12 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $subject_id
  * @property string $body
  * @property int $author_user_id
+ * @property string $author_name  snapshot at write time
  * @property \Carbon\CarbonInterface|null $created_at
  */
 class BillingNote extends Model
 {
-    public const SUBJECT_TYPES = ['student_class', 'invoice', 'payment', 'payment_report'];
+    public const SUBJECT_TYPES = ['invoice', 'payment', 'payment_report'];
 
     public const MAX_BODY = 1000;
 
@@ -26,7 +27,7 @@ class BillingNote extends Model
 
     protected $table = 'billing_notes';
 
-    protected $fillable = ['campus_id', 'subject_type', 'subject_id', 'body', 'author_user_id'];
+    protected $fillable = ['campus_id', 'subject_type', 'subject_id', 'body', 'author_user_id', 'author_name'];
 
     protected $casts = [
         'campus_id' => 'integer',
