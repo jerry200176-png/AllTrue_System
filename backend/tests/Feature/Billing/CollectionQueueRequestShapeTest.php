@@ -232,6 +232,43 @@ class CollectionQueueRequestShapeTest extends TestCase
         }
     }
 
+    /**
+     * #3888+#3891 integration (Founder 2026-10-13, P1 r4242583488 / r4254222922): course and BOTH bills stored paid,
+     * the older bill short by Payment rows, the newer one fully covered. Queue → record → confirm must target the
+     * older bill for exactly what it still owes and leave the newer bill's Payment rows untouched.
+     */
+    public function test_integration_stale_paid_older_bill_is_collected_and_covered_newer_bill_is_untouched(): void
+    {
+        $sc = $this->course(['Charge' => 8000, 'Paid' => 1]);
+        $older = $this->invoice($sc, '2026-02-01', 3000, 'paid', ['PaidAmount' => 3000]);
+        Payment::create(['InvoiceID' => $older->id, 'Amount' => 1000, 'PaidAt' => '2026-02-05', 'Method' => 'cash']); // owes 2,000
+        $newer = $this->invoice($sc, '2026-03-01', 5000, 'paid', ['PaidAmount' => 5000]);
+        Payment::create(['InvoiceID' => $newer->id, 'Amount' => 5000, 'PaidAt' => '2026-03-05', 'Method' => 'cash']);
+        $newerRows = Payment::where('InvoiceID', $newer->id)->orderBy('id')->get(['id', 'Amount', 'PaidAt'])->toArray();
+
+        // 1. Collection queue: the course is listed, targeting the older bill for exactly what it still owes.
+        $row = $this->queueRow($sc);
+        $this->assertSame($older->id, (int) $row['payable_invoice_id'], 'queue targets the owing older bill, not the covered newer one');
+        $this->assertSame(2000, (int) $row['payable_outstanding']);
+
+        // 2. A settled target is refused (no switch to another bill) and writes nothing.
+        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $newer->id, ...self::D, 'amount' => 2000])
+            ->assertStatus(422)->assertJsonPath('code', 'course_already_paid')->assertJsonPath('invoice_id', $newer->id);
+        $this->assertSame(0, PaymentReport::count());
+
+        // 3. Record exactly what the queue row carries (what the modal sends), then confirm.
+        $res = $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $row['payable_invoice_id'],
+            ...self::D, 'amount' => $row['payable_outstanding']])->assertOk()->assertJsonPath('invoice_id', $older->id);
+        $this->confirm($res->json('report_id'))->assertOk();
+
+        // 4. Ledger: older bill now fully paid by Payment rows; newer bill's rows, PaidAmount and Status unchanged.
+        $this->assertLedger($older, 3000, 'paid');
+        $this->assertSame($newerRows, Payment::where('InvoiceID', $newer->id)->orderBy('id')->get(['id', 'Amount', 'PaidAt'])->toArray(),
+            'newer bill Payment rows untouched');
+        $this->assertSame([5000, 'paid'], [(int) $newer->fresh()->PaidAmount, (string) $newer->fresh()->Status]);
+        $this->assertSame(1, PaymentReport::count());
+    }
+
     /** One fixture case with id placeholders mapped; asserts its row equals the live alerts/tuition row the UI would get. */
     private function fixtureCase(string $name, array $ids): array
     {
