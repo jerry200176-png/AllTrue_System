@@ -554,7 +554,7 @@ const payLineFor = (course) => {
   const rc = (payload.value?.receipts || [])
     .filter((r) => Number(r.student_class_id) === Number(course.id) && r.status === 'confirmed' && Number(r.amount) > 0 && r.payment_date)
     .sort((a, b) => String(b.payment_date).localeCompare(String(a.payment_date)) || Number(b.report_id) - Number(a.report_id))[0];
-  if (rc) return { date: String(rc.payment_date).slice(0, 10), amount: Number(rc.amount), receipt: true };
+  if (rc) return { date: String(rc.payment_date).slice(0, 10), amount: Number(rc.amount) };
   return lastInvoicePayment(course.id) || (course.paid_at && Number(course.charge) > 0 ? { date: String(course.paid_at).slice(0, 10), amount: Number(course.charge) } : null);
 };
 const amountsFor = (id) => {

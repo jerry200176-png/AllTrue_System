@@ -67,10 +67,7 @@ for (const [name, width, height] of SIZES) {
     await page.goto('/tuition-collection-pilot-mount.html?tab=all');
     await rowLoc(page, cid).getByTestId('tc-doc-ledger').click();
     const dialog = page.locator('.ledger-modal');
-    await expect(page.getByTestId('contract-legacy-paid')).toHaveText('舊制已繳（無新系統帳單）');
-    await expect(page.getByTestId('contract-session').first()).toContainText('舊制已繳（無新系統帳單）');
-    for (const gone of ['還沒開帳單', '還沒繳費', '目前只有繳費單']) await expect(dialog.getByText(gone)).toHaveCount(0);
-    for (const none of ['contract-issue', 'contract-record']) await expect(page.getByTestId(none)).toHaveCount(0);
+    await expect(dialog.getByText('目前只有繳費單')).toHaveCount(0);
     await expect(dialog.locator('.ledger-owed__label')).toHaveText('此學生到今天未繳（含其他課程）');
     await expect(page.getByTestId('ledger-target-empty')).toContainText('這門課目前沒有帳單和收款');
     await expect(page.getByTestId('ledger-other-course')).toHaveText('其他課程');

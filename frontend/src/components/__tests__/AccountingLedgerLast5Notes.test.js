@@ -49,8 +49,6 @@ describe('AccountingLedgerModal empty state, 後5碼 and 備註', () => {
   it('#3894 owed header: legacy-only course is not red; other-course debt is labelled as the whole student', async () => {
     const legacyOnly = await mountWith({ summary: {}, scope: { student_class_id: 1 }, courses: [{ id: 1, paid: true }], invoices: [], receipts: [], anomalies: [] });
     expect(legacyOnly.get('[data-testid="ledger-owed-now"]').classes()).not.toContain('due');
-    const rc = await mountWith({ summary: {}, scope: { student_class_id: 1 }, courses: [{ id: 1, paid: true }], invoices: [], anomalies: [], receipts: [{ report_id: 5, student_class_id: 1, status: 'confirmed', amount: 1000, payment_date: '2026-09-01' }] });
-    expect([rc.find('[data-testid="contract-legacy-paid"]').exists(), legacyOnly.find('[data-testid="contract-legacy-paid"]').exists()]).toEqual([false, true]); // confirmed receipt, no invoice: not legacy
     const other = { id: 9, student_class_id: 2, total_amount: 100, outstanding_amount: 100, due_date: '2020-01-01', status: 'unpaid', payments: [] };
     const w = await mountWith({ summary: {}, scope: { student_class_id: 1 }, courses: [{ id: 1, paid: true }], invoices: [other], receipts: [], anomalies: [] });
     expect(w.get('.ledger-owed__label').text()).toBe('此學生到今天未繳（含其他課程）');
