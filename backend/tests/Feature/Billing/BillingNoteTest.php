@@ -7,6 +7,7 @@ use App\Models\BillingNote;
 use App\Models\Campus;
 use App\Models\Invoice;
 use App\Models\ParentSession;
+use App\Models\PaymentReport;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -73,6 +74,22 @@ class BillingNoteTest extends TestCase
         $courseId = (int) StudentClass::query()->value('ID');
         $this->postJson('/api/v1/accounting/notes', ['subject_type' => 'student_class', 'subject_id' => $courseId, 'body' => 'x'], $h)->assertStatus(422);
         $this->assertSame(0, BillingNote::query()->count());
+    }
+
+    /** #3978 review: a receipt's legacy note loads with its payment, and a payment of another student never lends its note. */
+    public function test_payment_report_note_uses_only_its_own_students_payment(): void
+    {
+        $h = $this->staff('A', $this->campus->id, 'Director');
+        $report = fn (int $paymentId) => PaymentReport::create(['StudentID' => $this->student->id, 'StudentClassID' => (int) StudentClass::query()->value('ID'),
+            'reported_by_name' => 'p', 'reported_amount' => 5000, 'payment_method' => 'cash', 'payment_date' => now()->toDateString(), 'status' => 'confirmed',
+            'note' => '家長回報備註', 'payment_id' => $paymentId, 'report_token_hash' => hash('sha256', (string) $paymentId), 'token_expires_at' => now()]);
+        $own = $report($this->payment->id);
+        $this->getJson("/api/v1/accounting/notes?subject_type=payment_report&subject_id={$own->id}", $h)->assertOk()->assertJsonPath('notes.0.body', '現金，收據已交給家長');
+
+        $other = Student::create(['name' => '他校生', 'CampusID' => Campus::factory()->create()->id, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $otherInvoice = Invoice::create(['StudentID' => $other->id, 'IssueDate' => now()->toDateString(), 'DueDate' => now()->toDateString(), 'TotalAmount' => 1, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+        $foreign = $report((int) Payment::create(['InvoiceID' => $otherInvoice->id, 'Amount' => 1, 'PaidAt' => now(), 'Method' => 'cash', 'Note' => '他校機密'])->id);
+        $this->getJson("/api/v1/accounting/notes?subject_type=payment_report&subject_id={$foreign->id}", $h)->assertOk()->assertJsonPath('notes.0.body', '家長回報備註');
     }
 
     public function test_input_is_validated_against_the_model_limits(): void

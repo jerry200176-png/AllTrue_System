@@ -103,12 +103,24 @@ class BillingNoteController extends Controller
             'payment' => ($m = Payment::query()->find($id))
                 ? [(int) Invoice::query()->whereKey((int) $m->getAttribute('InvoiceID'))->value('StudentID'), (string) ($m->getAttribute('Note') ?? '')]
                 : [0, ''],
-            'payment_report' => ($m = PaymentReport::query()->whereKey($id)->first()) instanceof PaymentReport ? [(int) $m->getAttribute('StudentID'), $m->displayNote()] : [0, ''],
+            'payment_report' => ($m = PaymentReport::query()->with('payment')->whereKey($id)->first()) instanceof PaymentReport ? [(int) $m->getAttribute('StudentID'), $this->reportNote($m)] : [0, ''],
             default => [0, ''],
         };
         $campusId = $studentId > 0 ? (int) Student::query()->whereKey($studentId)->value('CampusID') : 0;
 
         return $campusId > 0 ? ['campus_id' => $campusId, 'legacy_note' => trim($legacy)] : null;
+    }
+
+    /** #3978 review: a linked payment outside the report's student never lends its note (another campus's text). */
+    private function reportNote(PaymentReport $report): string
+    {
+        $payment = $report->getRelationValue('payment');
+        if (!$payment instanceof Payment) {
+            return $report->displayNote();
+        }
+        $owner = (int) Invoice::query()->whereKey((int) $payment->getAttribute('InvoiceID'))->value('StudentID');
+
+        return $owner !== (int) $report->getAttribute('StudentID') ? (string) ($report->getAttribute('note') ?? '') : $report->displayNote();
     }
 
     private function denyOtherCampus(Request $request, int $campusId): ?JsonResponse
