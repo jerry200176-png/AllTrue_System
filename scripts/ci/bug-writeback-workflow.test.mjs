@@ -922,3 +922,7 @@ assert.match(phaseCSource,
   assert.match(phaseCSource, /return count\(\$ids\) === 1 \? \$ids\[0\] : null;/, 'a reply with several issue links binds none');
   assert.doesNotMatch(phaseCSource, /preg_match\("#\/AllTrue_System\/issues\/\(\[0-9\]\+\)#", \(string\)\(\$cfg\["reply"\]/, 'first-link binding is gone');
 }
+
+const frozenRequestSource = fs.readFileSync('.github/workflows/bug-writeback-request.yml', 'utf8');
+const ancestryGate = frozenRequestSource.indexOf('git merge-base --is-ancestor "$PUSH_BEFORE" "$REQUEST_SHA"'), frozenCheckout = frozenRequestSource.indexOf('checkout --detach "$REQUEST_SHA"'), frozenExecution = frozenRequestSource.indexOf('python3 scripts/bug_writeback_request.py --snapshot-sha');
+assert.ok(ancestryGate >= 0 && frozenCheckout > ancestryGate && frozenExecution > frozenCheckout, 'validate main ancestry before checking out frozen request code; execute only that code');

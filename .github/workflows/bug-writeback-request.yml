@@ -2,8 +2,7 @@
 name: Bug write-back request (Phase-A triage / follow-up)
 
 # Governed cloud path for the in-app write-backs that otherwise need workflow_dispatch
-# (Founder 2026-10-13). A merged PR appends entries to the request file; the request_ids added
-# since the durable reservation prefix use the shared Phase-A/followup script in file order.
+# Pending executor approval; entries default empty and remain ordered by the durable prefix.
 # Never resolved/closed (Phase-C keeps those). Public repo: the log
 # carries request IDs, bug IDs, actions and counts only; remote output is discarded.
 on:
@@ -84,6 +83,7 @@ jobs:
             : > "$RUNNER_TEMP/push-before.yml"
           fi
           timeout 30 git -c credential.helper= -c 'credential.helper=!f() { printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' fetch origin main:refs/remotes/writeback/main
+          timeout 30 git -c credential.helper= -c 'credential.helper=!f() { printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' checkout --detach "$REQUEST_SHA"
           python3 scripts/bug_writeback_request.py --snapshot-sha "$REQUEST_SHA" --minimum-prefix "$EXPECTED_PREFIX" --push-before "$RUNNER_TEMP/push-before.yml" --after "$RUNNER_TEMP/after.yml"
       - name: Configure pinned production SSH trust
         if: steps.plan.outputs.count != '0'
