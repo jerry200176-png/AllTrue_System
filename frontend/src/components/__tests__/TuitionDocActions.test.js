@@ -6,8 +6,7 @@ import TuitionDocActions from '../TuitionDocActions.vue';
 const mk = (row, canView = true) => mount(TuitionDocActions, { props: { row: { id: 1, payable_status: 'invoiced', ...row }, canView } });
 const t = (w, k) => w.get(`[data-testid="tc-doc-${k}"]`).element.disabled;
 const why = (w, k) => (w.find(`[data-testid="tc-doc-${k}-reason"]`).exists() ? w.get(`[data-testid="tc-doc-${k}-reason"]`).text() : null);
-const NO_RECEIPT = '收款確認後才有收據';
-const PAID = '已繳清，不用繳費單';
+const NO_RECEIPT = '收款確認後才有收據', PAID = '已繳清，不用繳費單';
 
 describe('TuitionDocActions', () => {
   it.each([
@@ -36,6 +35,7 @@ describe('TuitionDocActions', () => {
     const attrs = () => ['slip', 'receipt'].map((k) => mk({ id: null, payment_status: 'pending_report' }).get(`[data-testid="tc-doc-${k}"]`).attributes('aria-describedby'));
     expect(new Set([...attrs(), ...attrs()]).size).toBe(4);
     expect(mk({ id: null, payment_status: 'monthly_due_soon', payable_status: 'unbilled' }).find('[data-testid="tc-doc-ledger"]').exists()).toBe(false); // no class to scope a ledger
+    expect([t(mk({ id: null, payment_status: 'monthly_due_soon' }), 'receipt'), why(mk({ id: null, payment_status: 'paid' }), 'receipt')]).toEqual([true, '共用方案收據請至成員課程查看']); // no class to look a receipt up by
   });
   it.each([{ legacy_paid_without_invoice: true }, { payable_status: 'unbilled' }])('legacy paid %j: slip reason, receipt left to the lookup, ledger link', async (extra) => {
     const w = mk({ payment_status: 'paid', ...extra });

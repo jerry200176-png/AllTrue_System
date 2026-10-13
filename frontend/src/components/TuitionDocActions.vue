@@ -37,8 +37,7 @@ defineEmits(['slip', 'receipt', 'ledger']);
 
 const SLIP_STATUSES = ['unpaid', 'partial', 'pending_reconciliation'];
 const NO_PERMISSION = '沒有權限';
-// 月結包的列 id 為 null，所以用實例流水號讓 aria-describedby 不重複。
-const uid = `tc-doc-${++seq}`;
+const uid = `tc-doc-${++seq}`; // 月結包的列 id 為 null，所以用實例流水號讓 aria-describedby 不重複。
 
 const legacy = computed(() => isLegacyPaidNoInvoice(props.row));
 
@@ -54,6 +53,7 @@ const slip = computed(() => {
 
 const receipt = computed(() => {
   if (!props.canView) return { ok: false, reason: NO_PERMISSION };
+  if (props.row.id == null) return { ok: false, reason: '共用方案收據請至成員課程查看' }; // 月結包列沒有課程 id 可查收據
   if (RECEIPT_STATUSES.includes(props.row.payment_status)) return { ok: true };
   return { ok: false, reason: '收款確認後才有收據' };
 });

@@ -175,7 +175,7 @@ jobs:
               - 'frontend/e2e/teacher-eligibility-playwright.config.js'
               # tuition 繳費單／收據 fixture specs (#3894) + the surfaces, their state helpers and shared fixture they cover
               - 'frontend/e2e/tuition-*-clarity.spec.js'
-              - 'frontend/src/{pages/TuitionCollectionPage.vue,components/TuitionDocActions.vue,components/AccountingLedgerModal.vue,components/tuition/*.vue,lib/{legacyPaid,billingDocumentView,courseMoneyState,studentBillingRows,paymentActions}.js}'
+              - 'frontend/src/{pages/TuitionCollectionPage.vue,components/TuitionDocActions.vue,components/AccountingLedgerModal.vue,components/PaymentSlipModal.vue,components/BillingDocument.vue,components/tuition/*.vue,lib/{legacyPaid,billingDocumentView,courseMoneyState,studentBillingRows,paymentActions}.js}'
               - 'backend/tests/Fixtures/slip_receipt_states_3894.json'
 
   # PR diff → Golden § 對照表（全自動；取代人工勾選 QA_GOLDEN_SCENARIOS）
