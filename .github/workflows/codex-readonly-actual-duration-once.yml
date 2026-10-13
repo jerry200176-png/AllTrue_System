@@ -1,0 +1,22 @@
+name: One-time readonly actual-duration verification dispatch
+on:
+  pull_request:
+    types: [opened]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch-readonly:
+    if: github.repository == 'jerry200176-png/AllTrue_System' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'ops/codex-readonly-actual-duration-verify-20261013'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Dispatch existing main verify_backend only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/readonly-verify.json" <<'JSON'
+          {"ref":"main","inputs":{"action":"verify_backend"}}
+          JSON
+          gh api --method POST repos/jerry200176-png/AllTrue_System/actions/workflows/actual-duration-activation.yml/dispatches --input "$RUNNER_TEMP/readonly-verify.json"
