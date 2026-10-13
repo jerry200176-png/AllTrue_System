@@ -12,7 +12,6 @@ class TriageTokenController extends Controller
 {
     public function __construct()
     {
-        // A suspended or inactive super admin may still hold a session; like login and token use, they get no access.
         $this->middleware(fn (Request $r, \Closure $next) => in_array($r->attributes->get('auth_user')?->status, ['inactive', 'suspended'], true) ? response()->json(['message' => 'Forbidden'], 403) : $next($r));
     }
 

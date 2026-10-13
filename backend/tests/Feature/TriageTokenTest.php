@@ -59,8 +59,7 @@ final class TriageTokenTest extends TestCase
             $this->getJson('/api/v1/admin/triage-tokens', $this->as($user))->assertForbidden();
             $this->deleteJson("/api/v1/admin/triage-tokens/{$id}", [], $this->as($user))->assertForbidden();
         }
-        $suspended = $this->user('S');
-        $suspended->forceFill(['status' => 'suspended'])->save();
+        ($suspended = $this->user('S'))->forceFill(['status' => 'suspended'])->save();
         $this->getJson('/api/v1/admin/triage-tokens', $this->as($suspended))->assertForbidden();
         $this->postJson('/api/v1/admin/triage-tokens', ['name' => 'x'], $this->as($suspended))->assertForbidden();
         // The token cannot mint or revoke tokens either.
@@ -149,7 +148,9 @@ final class TriageTokenTest extends TestCase
     {
         $this->withoutMiddleware(ThrottleRequestsByIp::class);
         $forged = ['Authorization' => 'Bearer 1|' . config('triage_tokens.secret_prefix') . 'forged'];
-        foreach (array_merge(...array_fill(0, 15, ['/api/v1/me', '/api/v1/invoices', '/api/v1/triage/bug-reports'])) as $uri) { $this->getJson($uri, $forged)->assertStatus(str_contains($uri, 'triage') ? 401 : 403); }
+        $expired = $this->bearer($this->createToken($this->user('S')));
+        $this->travel(100)->days(); // past ttl_days: resolve() still finds it, so it shares the cap with forged bearers
+        foreach (array_merge(...array_fill(0, 15, ['/api/v1/me', '/api/v1/invoices', '/api/v1/triage/bug-reports'])) as $uri) { $this->getJson($uri, $forged)->assertStatus(str_contains($uri, 'triage') ? 401 : 403); $this->getJson('/api/v1/bugs', $expired)->assertForbidden(); }
         $this->getJson('/api/v1/me', $this->bearer($this->createToken($this->user('S'))))->assertForbidden();
         $this->assertSame(11, $this->auditCount('triage_token.scope_denied') + $this->auditCount('triage_token.read')); // 10 forged rows per IP and minute; a real token's denial is never capped
     }
