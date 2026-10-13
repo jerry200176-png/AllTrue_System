@@ -220,7 +220,7 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     {
         [$sc, $studentId] = $this->course($this->otherCampusId);
         $date = Carbon::now()->subDays(10)->toDateString();
-        \App\Models\Schedule::create([
+        $schedule = \App\Models\Schedule::create([
             'student_id' => $studentId, 'teacher_id' => $this->teacherId, 'subject' => 'Math', 'day_of_week' => Carbon::parse($date)->dayOfWeekIso,
             'start_time' => '14:00', 'end_time' => '15:30', 'duration_hours' => 1.5, 'class_type' => 'one_on_one', 'status' => 'scheduled',
             'type' => 'extra', 'deduction' => 1, 'branch_id' => $this->otherCampusId, 'schedule_date' => $date, 'student_course_id' => $sc->ID,
@@ -235,6 +235,37 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         \App\Models\Schedule::query()->where('student_course_id', $sc->ID)->update(['status' => \App\Models\Schedule::STATUS_SUPERSEDED]);
         SessionDeductionService::recomputeCounters($sc->ID);
         $this->assertSame(960 - 90, (int) $sc->fresh()->RemainingMinutes);
+        // #3948 r4257007368: hard deletion and flag rollback preserve the immutable makeup identity.
+        $this->withHeaders($this->headers())->deleteJson('/api/v1/schedules/' . $schedule->id)->assertOk();
+        $this->assertDatabaseMissing('schedules', ['id' => $schedule->id]);
+        config(['perfflags.actual_duration_deduction_enabled' => false]);
+        SessionDeductionService::recomputeCounters($sc->ID);
+        $this->assertSame(870, (int) $sc->fresh()->RemainingMinutes);
+        $diag = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID];
+        $this->assertSame(90, $diag['ledger_net_minutes']);
+        $this->assertFalse($diag['ambiguous_minute_evidence']);
+        $sessionId = (int) SessionDeductionLedger::where('student_class_id', $sc->ID)->where('event_type', 'deduct')->value('class_session_id');
+        $this->assertTrue(SessionDeductionService::reverseForSession($sc->ID, $sessionId));
+        SessionDeductionService::recomputeCounters($sc->ID);
+        $this->assertSame(960, (int) $sc->fresh()->RemainingMinutes);
+        $reverse = SessionDeductionLedger::where('student_class_id', $sc->ID)->where('event_type', 'reverse')->firstOrFail();
+        $this->assertSame(90, (int) $reverse->minutes);
+        $this->assertSame('retro_leave_makeup', $reverse->source);
+    }
+
+    /** #3948: ambiguous unmarked history requires review; no guessed historical repair. */
+    public function test_unmarked_minute_history_requires_review_without_recount(): void
+    {
+        [$sc, $studentId] = $this->course($this->pilotCampusId);
+        $this->attend($sc, $studentId, '14:00:00', '15:30:00', 10);
+        SessionDeductionLedger::where('student_class_id', $sc->ID)->update(['source' => 'attendance']);
+        $before = $sc->fresh()->getAttributes();
+        config(['perfflags.actual_duration_deduction_enabled' => false]);
+        SessionDeductionService::recomputeCounters($sc->ID);
+        $this->assertSame($before, $sc->fresh()->getAttributes());
+        $diag = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID];
+        $this->assertTrue($diag['ambiguous_minute_evidence']);
+        $this->assertTrue(SessionDeductionService::usageBalanceAssessment($sc->fresh(), $diag)['review_required']);
     }
 
     public function test_copied_basis_follows_the_allowlist(): void
