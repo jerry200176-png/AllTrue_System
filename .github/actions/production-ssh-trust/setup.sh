@@ -2,10 +2,10 @@
 set -euo pipefail
 
 : "${INPUT_HOST:?production SSH host is required}"
-: "${INPUT_HOST_KEY:?pinned production SSH host key is required}"
+: "${INPUT_HOST_KEY:?pinned production SSH host key is required}" # secret-echo-allow: static presence assertion; no value output
 
 host=${INPUT_HOST}
-host_key=${INPUT_HOST_KEY}
+host_key=${INPUT_HOST_KEY} # secret-echo-allow: private host pin staging; only private known_hosts file consumer
 
 # The host is used in an SSH config pattern. Keep it strictly hostname/IP-like
 # so neither input can inject config directives or a second known_hosts entry.

@@ -16,7 +16,7 @@ const BASELINE = 'scripts/ci/workflow-secret-echo.baseline.json';
 const FIXTURES = new Set(['ci-ephemeral', 'alltruepw', 'rootpw', 'root']); // non-sensitive CI-only DB fixtures
 // credential-like: PASS/PASSWD/PASSWORD/SECRET(S) is one of its `_`-separated tokens, it contains PASSWORD,
 // or it is MYSQL_PWD (the MySQL client's password variable; the shell's own PWD stays non-secret)
-const isSecretName = (n) => /PASSWORD/i.test(n) || /^MYSQL_PWD$/i.test(n) || n.split('_').some((t) => /^(?:PASS|PASSWD|PASSWORD|SECRETS?)$/i.test(t));
+const isSecretName = (n) => /PASSWORD/i.test(n) || /^(?:MYSQL_PWD|INPUT_HOST_KEY)$/i.test(n) || n.split('_').some((t) => /^(?:PASS|PASSWD|PASSWORD|SECRETS?)$/i.test(t));
 const ALLOW_ALL = /#(?=\s*secret-echo-allow:(.*)$)/gm; // every candidate `#`, reason captured in the lookahead
 // a trailing glob / brace (`.env*`, `.env{,.local}`) can expand to any .env variant
 const ENV_FILE = /(?<=^|[\s"'`=<>(|;&,:{])(?:[^\s"'`<>|;&()=,{]*\/)?\.env(?!\.(?:example|sample|dist|template)\b)(?:\.[\w-]+)*(?:[*?[{][^\s;&|)"'`<>]*)?(?=[\s;&|)"'`<>,}]|$)/g;
@@ -591,6 +591,7 @@ export const trip = {
   'later command allowance cannot excuse earlier echo': blk('echo "$DB_PASSWORD"; echo hi # secret-echo-allow: harmless later command'),
 
   'nice long operand env dump': blk('nice --adjustment 5 env'),
+  'local action host pin is sensitive': blk('echo "$INPUT_HOST_KEY"'),
   'annotated direct credential alias still taints': blk('X="$DB_PASSWORD" # secret-echo-allow: private staging assignment', 'echo "$X"'),
   'inherited verbose shell option': 'jobs:\n  j:\n    env:\n      SHELLOPTS: verbose\n    steps:\n      - run: mysql -p"${{ env.DB_PASSWORD }}" -e "SELECT 1"',
   'plus-option declaration dumps': blk('declare +x', 'typeset +x'),
@@ -884,6 +885,9 @@ for (const [k, y] of Object.entries(ok)) { const r = scan('ok', y); if (r.length
   if (hash(readFileSync('scripts/smoke-auth-lib.sh', 'utf8')) !== '7d5fc28c79e9439c1600782e09ff76cdfdfca05b042a0d6b643cad031d27c920')
     fail('quiet auth helper changed; re-review capture annotation');
   const d = readFileSync(join(dir, 'deploy.yml'), 'utf8');
+  const localPinScript = readFileSync('.github/actions/production-ssh-trust/setup.sh', 'utf8');
+  if (hash(localPinScript.trimEnd()) !== 'ab69c68b67ccb7dc959d573be29c462281a853a4d23dfdc86f831a460b33a979') fail('local action private host-pin transport changed; re-review exact producer/consumer');
+  if (scan('local-action-script', blk(...localPinScript.split('\n'), 'echo "$INPUT_HOST_KEY"')).length === 0) fail('local action script append must not publish its host-pin input');
   const start = d.indexOf('          apply_bool_feature_flag() {');
   const end = d.indexOf('          apply_bool_feature_flag "$ADMISSIONS', start);
   if (start < 0 || end < 0) fail('reviewed boolean formatter missing');
@@ -917,11 +921,14 @@ export const inputs = () => [
   ...readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).sort().map((f) => ({ name: f, path: join(dir, f) })),
   ...(existsSync(ACTIONS) ? readdirSync(ACTIONS, { recursive: true }).map(String).filter((f) => /(?:^|\/)action\.ya?ml$/.test(f)).sort()
     .map((f) => ({ name: join(ACTIONS, f), path: join(ACTIONS, f) })) : []),
+  ...(existsSync(ACTIONS) ? readdirSync(ACTIONS, { recursive: true }).map(String).filter((f) => /\.sh$/.test(f)).sort()
+    .map((f) => ({ name: join(ACTIONS, f), path: join(ACTIONS, f), shellScript: true })) : []),
 ];
 const files = inputs();
+if (existsSync('.github/actions/production-ssh-trust/setup.sh') && !files.some((f) => f.path === '.github/actions/production-ssh-trust/setup.sh' && f.shellScript)) fail('local action invoked shell scripts must be scanned');
 if (existsSync(ACTIONS) && readdirSync(ACTIONS, { recursive: true }).map(String).some((f) => /(?:^|\/)action\.ya?ml$/.test(f))
   && !files.some((f) => f.name.startsWith(`${ACTIONS}/`))) fail('local composite action manifests must be scanned');
-const findings = scanAll(files.map((f) => ({ name: f.name, text: readFileSync(f.path, 'utf8') })));
+const findings = scanAll(files.map((f) => ({ name: f.name, text: f.shellScript ? JSON.stringify({ jobs: { local_action: { steps: [{ run: readFileSync(f.path, 'utf8') }] } } }) : readFileSync(f.path, 'utf8') })));
 if (process.argv.includes('--write-baseline')) {
   writeFileSync(BASELINE, formatBaseline(toBaseline(findings)));
   console.log(`wrote ${BASELINE} (${findings.length} entries); CI rejects it if it grew`);
