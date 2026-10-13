@@ -1,0 +1,255 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\AuthToken;
+use App\Models\Campus;
+use App\Models\ClassSession;
+use App\Models\SessionDeductionLedger;
+use App\Models\Student;
+use App\Models\StudentClass;
+use App\Models\User;
+use App\Models\UserCampus;
+use App\Services\Scheduling\DeductionBasis;
+use App\Services\SessionDeductionService;
+use Carbon\Carbon;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+/**
+ * #3834 — actual-duration pilot scoped to an allowlist of campuses
+ * (`perfflags.actual_duration_campus_ids`). The allowlist is a third gate on top of
+ * the environment flag and the course's own deduction_basis; outside it, an
+ * opted-in course deducts exactly like fixed_session.
+ *
+ * Every test builds the allowlist from the campuses it created, so these tests
+ * follow the config value rather than any particular production CampusID.
+ */
+class ActualDurationPilotCampusScopeTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private string $token;
+    private int $teacherId;
+    private int $pilotCampusId;
+    private int $otherCampusId;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['perfflags.actual_duration_deduction_enabled' => true]);
+
+        $this->pilotCampusId = (int) Campus::factory()->create()->id;
+        $this->otherCampusId = (int) Campus::factory()->create()->id;
+        config(['perfflags.actual_duration_campus_ids' => (string) $this->pilotCampusId]);
+
+        $this->teacherId = $this->mkUser('T', 'adp-t' . uniqid() . '@e.com');
+        $dirId = $this->mkUser('A', 'adp-d' . uniqid() . '@e.com');
+        foreach ([$this->pilotCampusId, $this->otherCampusId] as $campusId) {
+            UserCampus::create(['CampusID' => $campusId, 'UserID' => $this->teacherId, 'Admin' => 0, 'Approved' => 1]);
+            UserCampus::create(['CampusID' => $campusId, 'UserID' => $dirId, 'Admin' => 1, 'Approved' => 1]);
+        }
+        $this->token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $dirId, 'token' => $this->token, 'expires_at' => now()->addDay()]);
+    }
+
+    public function test_allowlisted_campus_with_flag_on_deducts_actual_minutes(): void
+    {
+        [$sc, $studentId] = $this->course($this->pilotCampusId);
+
+        $this->attend180($sc, $studentId);
+
+        $this->assertSame(780, (int) $sc->fresh()->RemainingMinutes, '960 purchased - 180 actual');
+        $this->assertSame(180, (int) $this->ledgerMinutes($sc));
+    }
+
+    public function test_campus_outside_the_allowlist_deducts_one_whole_lesson(): void
+    {
+        [$sc, $studentId] = $this->course($this->otherCampusId);
+
+        $this->attend180($sc, $studentId);
+
+        $this->assertSame(7, (int) $sc->fresh()->RemainingSessions, 'one whole lesson, as fixed_session');
+        $this->assertNull($this->ledgerMinutes($sc), 'whole-session encoding, no minutes');
+    }
+
+    public function test_flag_off_is_fixed_session_even_at_an_allowlisted_campus(): void
+    {
+        config(['perfflags.actual_duration_deduction_enabled' => false]);
+        [$sc, $studentId] = $this->course($this->pilotCampusId);
+
+        $this->attend180($sc, $studentId);
+
+        $this->assertSame(7, (int) $sc->fresh()->RemainingSessions);
+        $this->assertNull($this->ledgerMinutes($sc));
+    }
+
+    /** Swap the allowlist: the campus that was out is now in, and vice versa. */
+    public function test_deduction_follows_a_changed_allowlist(): void
+    {
+        config(['perfflags.actual_duration_campus_ids' => (string) $this->otherCampusId]);
+
+        [$pilot, $pilotStudent] = $this->course($this->pilotCampusId);
+        [$other, $otherStudent] = $this->course($this->otherCampusId);
+        $this->attend180($pilot, $pilotStudent);
+        $this->attend180($other, $otherStudent);
+
+        $this->assertNull($this->ledgerMinutes($pilot), 'removed from the list -> fixed_session');
+        $this->assertSame(180, (int) $this->ledgerMinutes($other), 'added to the list -> actual minutes');
+    }
+
+    public function test_allowlist_parsing_follows_config(): void
+    {
+        $a = $this->pilotCampusId;
+        $b = $this->otherCampusId;
+
+        config(['perfflags.actual_duration_campus_ids' => " {$b} , {$a} "]);
+        $this->assertTrue(SessionDeductionService::isActualDurationCampusAllowed($a));
+        $this->assertTrue(SessionDeductionService::isActualDurationCampusAllowed($b));
+
+        config(['perfflags.actual_duration_campus_ids' => '']);
+        $this->assertFalse(SessionDeductionService::isActualDurationCampusAllowed($a), 'empty = no campus');
+
+        config(['perfflags.actual_duration_campus_ids' => '*']);
+        $this->assertTrue(SessionDeductionService::isActualDurationCampusAllowed($b), '* = every campus');
+
+        config(['perfflags.actual_duration_campus_ids' => (string) $a]);
+        $this->assertFalse(SessionDeductionService::isActualDurationCampusAllowed(0), 'unknown campus never allowed');
+    }
+
+    public function test_create_api_refuses_an_actual_duration_course_outside_the_allowlist(): void
+    {
+        $studentId = $this->student($this->otherCampusId);
+
+        $this->createCourse($studentId, $this->otherCampusId, DeductionBasis::ACTUAL_DURATION)
+            ->assertStatus(422)
+            ->assertJsonPath('errors.deduction_basis.0', '此分校尚未開放依實際時長扣堂，請改用「每次上課扣一堂」。');
+        $this->assertSame(0, StudentClass::where('StudentID', $studentId)->count());
+
+        // Fixed-session courses at the same campus are untouched.
+        $this->createCourse($studentId, $this->otherCampusId, DeductionBasis::FIXED_SESSION)->assertCreated();
+    }
+
+    public function test_create_api_accepts_an_actual_duration_course_at_an_allowlisted_campus(): void
+    {
+        $studentId = $this->student($this->pilotCampusId);
+
+        $this->createCourse($studentId, $this->pilotCampusId, DeductionBasis::ACTUAL_DURATION)->assertCreated();
+        $this->assertTrue(StudentClass::where('StudentID', $studentId)->firstOrFail()->isActualDurationBasis());
+    }
+
+    public function test_edit_cannot_opt_a_course_in_outside_the_allowlist(): void
+    {
+        [$sc] = $this->course($this->otherCampusId, ['deduction_basis' => DeductionBasis::FIXED_SESSION]);
+
+        $this->withHeaders($this->headers())
+            ->putJson('/api/v1/student-classes/' . $sc->ID, [
+                'deduction_basis' => DeductionBasis::ACTUAL_DURATION,
+                'standard_lesson_minutes' => 120,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.deduction_basis.0', '此分校尚未開放依實際時長扣堂，請改用「每次上課扣一堂」。');
+
+        $this->assertSame(DeductionBasis::FIXED_SESSION, $sc->fresh()->deduction_basis);
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────
+
+    /** @return array<string, string> */
+    private function headers(): array
+    {
+        return ['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json'];
+    }
+
+    private function attend180(StudentClass $sc, int $studentId): void
+    {
+        $cs = ClassSession::create([
+            'StudentClassID' => $sc->ID, 'SessionDate' => Carbon::now()->subDays(10)->toDateString(),
+            'StartTime' => '14:00:00', 'EndTime' => '17:00:00', 'Status' => 'scheduled',
+        ]);
+
+        $this->withHeaders($this->headers())->postJson('/api/v1/attendance', [
+            'StudentID' => $studentId,
+            'StudentClassID' => $sc->ID,
+            'ClassSessionID' => $cs->id,
+            'Status' => 'present',
+        ])->assertCreated();
+    }
+
+    private function ledgerMinutes(StudentClass $sc): mixed
+    {
+        return SessionDeductionLedger::where('student_class_id', $sc->ID)
+            ->where('event_type', 'deduct')->value('minutes');
+    }
+
+    private function student(int $campusId): int
+    {
+        return (int) Student::create([
+            'name' => '試辦' . uniqid(), 'CampusID' => $campusId, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ])->id;
+    }
+
+    /** @return array{0: StudentClass, 1: int} */
+    private function course(int $campusId, array $over = []): array
+    {
+        $studentId = $this->student($campusId);
+        $sc = StudentClass::create(array_merge([
+            'StudentID' => $studentId, 'TeacherID' => $this->teacherId,
+            'GradeID' => 1, 'SubjectID' => 1, 'ClassType' => 'one_on_one',
+            'ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 120,
+            'RemainingSessions' => 8, 'UsedSessions' => 0,
+            'deduction_basis' => DeductionBasis::ACTUAL_DURATION, 'standard_lesson_minutes' => 120,
+            'Rate' => 500, 'TotalHours' => 16, 'Charge' => 4000, 'Pay' => 4000, 'Paid' => 0,
+            'Stop' => 0, 'by1' => 0, 'MDate' => now(),
+            'StartDate' => Carbon::now()->subMonth()->toDateString(),
+            'EndDate' => Carbon::now()->addMonths(6)->toDateString(),
+        ], $over));
+
+        return [$sc, $studentId];
+    }
+
+    private function createCourse(int $studentId, int $campusId, string $basis)
+    {
+        $plan = [];
+        for ($i = 0; $i < 6; $i++) {
+            $plan[] = [
+                'session_date' => Carbon::now()->addDays(7 + $i * 7)->toDateString(),
+                'start_time' => '14:00',
+                'kind' => 'future',
+                'duration_minutes' => 120,
+            ];
+        }
+        $payload = [
+            'branch_id' => $campusId,
+            'confirmed_dates' => [],
+            'future_dates' => [],
+            'student_id' => $studentId,
+            'teacher_id' => $this->teacherId,
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'payment_type' => 'session',
+            'price_per_session' => 500,
+            'duration_minutes' => 120,
+            'start_time' => '14:00',
+            'days_of_week' => [1, 2, 3, 4, 5, 6, 7],
+            'course_start_date' => Carbon::now()->addDays(7)->toDateString(),
+            'total_classes' => 6,
+            'session_plan' => $plan,
+            'deduction_basis' => $basis,
+        ];
+        if ($basis === DeductionBasis::ACTUAL_DURATION) {
+            $payload['standard_lesson_minutes'] = 120;
+        }
+
+        return $this->withHeaders($this->headers())->postJson('/api/v1/class-sessions/batch', $payload);
+    }
+
+    private function mkUser(string $type, string $login): int
+    {
+        return (int) User::create([
+            'LoginName' => $login, 'Name' => $type, 'PSW' => 'secret',
+            'type' => $type, 'phone' => '0900000000', 'MustChangePassword' => false,
+        ])->id;
+    }
+}

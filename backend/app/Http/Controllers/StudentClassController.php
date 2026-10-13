@@ -6320,6 +6320,18 @@ class StudentClassController extends Controller
                     'errors' => ['deduction_basis' => ['共用課程包不支援依實際時長扣堂。']],
                 ], 422);
             }
+
+            // #3834 pilot scope: only a NEW opt-in is refused outside the pilot campuses;
+            // editing a course that is already actual_duration is never blocked here.
+            if ($basis === DeductionBasis::ACTUAL_DURATION
+                && !$studentClass->isActualDurationBasis()
+                && !SessionDeductionService::isActualDurationCampusAllowed((int) ($studentClass->student?->CampusID ?? 0))
+            ) {
+                return response()->json([
+                    'message' => '依實際時長扣堂目前僅在試辦分校開放',
+                    'errors' => ['deduction_basis' => ['此分校尚未開放依實際時長扣堂，請改用「每次上課扣一堂」。']],
+                ], 422);
+            }
         }
 
         $lock = app(BillingContractLockGuard::class)->inspect($studentClass, $mapped);

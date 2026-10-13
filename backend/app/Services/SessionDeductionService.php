@@ -618,13 +618,37 @@ class SessionDeductionService
 
     /**
      * Is minute-proportional billing live for this course? Requires BOTH the
-     * environment flag and the course's own opt-in. Fail-safe: with the flag off, an
-     * opted-in course still behaves as fixed_session.
+     * environment flag, the course's own opt-in AND the course's campus being in the
+     * pilot allowlist (#3834). Fail-safe: when any of the three is false, an opted-in
+     * course still behaves as fixed_session.
      */
     private static function isActualDurationActive(StudentClass $sc): bool
     {
         return (bool) config('perfflags.actual_duration_deduction_enabled', false)
-            && $sc->isActualDurationBasis();
+            && $sc->isActualDurationBasis()
+            && self::isActualDurationCampusAllowed((int) ($sc->student?->CampusID ?? 0));
+    }
+
+    /**
+     * #3834 pilot scope — may actual-duration billing run for a course at this campus?
+     * Reads `perfflags.actual_duration_campus_ids` at call time: "*" = every campus,
+     * otherwise a comma-separated CampusID list (empty = none). Unknown campus (0)
+     * is never allowed unless the list is "*".
+     */
+    public static function isActualDurationCampusAllowed(int $campusId): bool
+    {
+        $raw = config('perfflags.actual_duration_campus_ids', '');
+        $raw = is_array($raw) ? implode(',', $raw) : trim((string) $raw);
+        if ($raw === '*') {
+            return true;
+        }
+        if ($campusId <= 0) {
+            return false;
+        }
+
+        $allowed = array_map('intval', array_filter(array_map('trim', explode(',', $raw)), 'strlen'));
+
+        return in_array($campusId, $allowed, true);
     }
 
     /**
