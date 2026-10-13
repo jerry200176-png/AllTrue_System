@@ -46,6 +46,8 @@ use App\Http\Controllers\TeacherLeaveController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
+use App\Http\Controllers\TriageBugReportController;
+use App\Http\Controllers\TriageTokenController;
 use App\Http\Controllers\TeacherDuplicateController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\PaymentReportController;
@@ -939,6 +941,21 @@ Route::prefix('v1')->group(function () {
         Route::post('bugs/{id}/status', [BugReportController::class, 'updateStatus']);
         Route::patch('bugs/{id}/comments/{commentId}/visibility', [BugReportController::class, 'updateCommentVisibility']);
         Route::post('bugs/mark-inbox-seen', [BugReportController::class, 'markInboxSeen']);
+    });
+
+    // ── Read-only AI triage token (config/triage_tokens.php; Founder GO 2026-10-13) ──
+    // GET only. RestrictAccessTokenScope closes every other route to the token.
+    Route::middleware(['triage_token', 'throttle:120,1'])->prefix('triage')->group(function () {
+        Route::get('bug-reports', [TriageBugReportController::class, 'index'])->name('triage.bug-reports.index');
+        Route::get('bug-reports/{id}', [TriageBugReportController::class, 'show'])
+            ->whereNumber('id')->name('triage.bug-reports.show');
+        Route::get('bug-reports/{id}/attachments/{attachmentId}', [TriageBugReportController::class, 'attachment'])
+            ->whereNumber(['id', 'attachmentId'])->name('triage.bug-reports.attachment');
+    });
+    Route::middleware(['super_admin', 'require_password_change'])->group(function () {
+        Route::get('admin/triage-tokens', [TriageTokenController::class, 'index']);
+        Route::post('admin/triage-tokens', [TriageTokenController::class, 'store']);
+        Route::delete('admin/triage-tokens/{id}', [TriageTokenController::class, 'destroy'])->whereNumber('id');
     });
 
     // ── Duplicate Sessions P2 Review (director + super_admin) ──

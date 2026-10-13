@@ -1,0 +1,62 @@
+<?php
+
+namespace App\Http\Middleware;
+
+use App\Models\SecurityAuditEvent;
+use App\Services\TriageTokenService;
+use Closure;
+use Illuminate\Http\Request;
+
+/**
+ * Authenticates a read-only triage token on the triage.* routes and writes one
+ * security_audit_events row per request (token id, route, report id, IP, status).
+ * User session tokens are not accepted here.
+ */
+final class AuthenticateTriageToken
+{
+    public function handle(Request $request, Closure $next)
+    {
+        $pat = TriageTokenService::resolve($request->bearerToken());
+        if ($pat === null) {
+            $this->audit($request, null, 'failure', 401, 'invalid_token');
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+        if (TriageTokenService::isExpired($pat)) {
+            $this->audit($request, (int) $pat->getKey(), 'failure', 401, 'token_expired');
+            return response()->json(['message' => 'Token expired', 'code' => 'token_expired'], 401);
+        }
+        if (!TriageTokenService::ownerIsSuperAdmin($pat)) {
+            $this->audit($request, (int) $pat->getKey(), 'denied', 403, 'owner_not_super_admin');
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $pat->forceFill(['last_used_at' => now()])->save();
+        $request->attributes->set('triage_token_id', (int) $pat->getKey());
+
+        $response = $next($request);
+        $this->audit($request, (int) $pat->getKey(), 'success', $response->getStatusCode(), 'read');
+
+        return $response;
+    }
+
+    private function audit(Request $request, ?int $tokenId, string $outcome, int $status, string $reason): void
+    {
+        $bugId = $request->route('id');
+        $attachmentId = $request->route('attachmentId');
+        SecurityAuditEvent::append('triage_token.read', $outcome, [
+            'actor_type' => 'triage_token',
+            'actor_id' => $tokenId,
+            'subject_type' => 'bug_report',
+            'subject_id' => is_numeric($bugId) ? (int) $bugId : null,
+        ], [
+            'token_id' => $tokenId ?? 0,
+            'bug_report_id' => is_numeric($bugId) ? (int) $bugId : 0,
+            'attachment_id' => is_numeric($attachmentId) ? (int) $attachmentId : 0,
+            'route' => (string) ($request->route()?->getName() ?? ''),
+            'method' => $request->method(),
+            'client_ip' => (string) $request->ip(),
+            'http_status' => $status,
+            'reason_code' => $reason,
+        ]);
+    }
+}
