@@ -1539,25 +1539,15 @@ jobs:
               fi
             fi
 
-            # An abort can happen after the target code was checked out (e.g. a failed migration),
-            # so FPM workers may hold target-revision bytecode. Same refresh as step [5/7]:
-            # CLI opcache:reset plus the web-process endpoint, before the rollback health check.
-            (cd /home/admin/backend && php artisan opcache:reset 2>/dev/null) \
-              || echo "⚠️ rollback OPcache reset 失敗（CLI）"
-            local rb_secret rb_response rb_attempt
+            # Abort after target checkout (e.g. failed migration): refresh FPM like [5/7].
+            (cd /home/admin/backend && php artisan opcache:reset 2>/dev/null) || echo "⚠️ rollback CLI opcache reset 失敗"
+            local rb_secret rb_response
             rb_secret="$(grep '^DEPLOY_SECRET=' /home/admin/backend/.env | cut -d= -f2-)"
-            if [ -z "$rb_secret" ]; then # secret-echo-allow: emptiness test only, prints nothing
-              echo "❌ DEPLOY_SECRET missing; cannot refresh FPM workers during rollback"
-              rollback_failed=1
-            else
-              for rb_attempt in $(seq 1 16); do
-                if ! rb_response=$(curl -skf -X POST -H "X-Deploy-Secret: ${rb_secret}" -H "Connection: close" -H "Content-Type: application/json" https://daan.lifenet.com.tw/api/internal/opcache-reset) || ! echo "$rb_response" | grep -q '"ok":true'; then # secret-echo-allow: request header to the internal reset endpoint; curl never prints it
-                  echo "❌ rollback FPM web-process refresh failed on attempt ${rb_attempt}"
-                  rollback_failed=1
-                  break
-                fi
-              done
-            fi
+            for _ in $(seq 1 16); do
+              if [ -z "$rb_secret" ] || ! rb_response=$(curl -skf -X POST -H "X-Deploy-Secret: ${rb_secret}" -H "Connection: close" -H "Content-Type: application/json" https://daan.lifenet.com.tw/api/internal/opcache-reset) || ! echo "$rb_response" | grep -q '"ok":true'; then # secret-echo-allow: header to the internal reset endpoint; never printed
+                echo "❌ rollback FPM refresh failed"; rollback_failed=1; break
+              fi
+            done
             unset rb_secret rb_response
 
             echo "Rollback health check..."

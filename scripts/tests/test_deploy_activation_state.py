@@ -1419,6 +1419,18 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertEqual(["git", "composer", "manifest", "php", "php"] + ["curl"] * 17, calls)
         self.assertIn("Rollback 成功", result.stdout)
 
+    def test_expression_bearing_run_scripts_stay_under_the_github_limit(self):
+        # GitHub evaluates a run script that contains ${{ }} as one expression and rejects the whole
+        # workflow (a 0-job failed run) when it exceeds 21,000 UTF-8 bytes.
+        import yaml
+
+        workflow = yaml.safe_load(self.workflow)
+        for job_id, job in workflow["jobs"].items():
+            for step in job.get("steps") or []:
+                run = step.get("run")
+                if isinstance(run, str) and "${{" in run:
+                    self.assertLess(len(run.encode("utf-8")), 21_000, f"{job_id}: {step.get('name')}")
+
     def test_rollback_refreshes_fpm_workers_before_health(self):
         function = self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
         refresh = function.index("https://daan.lifenet.com.tw/api/internal/opcache-reset")
