@@ -666,17 +666,18 @@ class SessionDeductionService
      * #3834 pilot scope — may actual-duration billing run for a course at this campus?
      * Reads `perfflags.actual_duration_campus_ids` at call time: "*" = every campus,
      * otherwise a comma-separated CampusID list (empty = none). Unknown campus (0)
-     * is never allowed unless the list is "*".
+     * is never allowed, not even under "*": a failed campus lookup falls back to
+     * whole-session deduction.
      */
     public static function isActualDurationCampusAllowed(int $campusId): bool
     {
         $raw = config('perfflags.actual_duration_campus_ids', '');
         $raw = is_array($raw) ? implode(',', $raw) : trim((string) $raw);
-        if ($raw === '*') {
-            return true;
-        }
         if ($campusId <= 0) {
             return false;
+        }
+        if ($raw === '*') {
+            return true;
         }
 
         $allowed = array_map('intval', array_filter(array_map('trim', explode(',', $raw)), 'strlen'));

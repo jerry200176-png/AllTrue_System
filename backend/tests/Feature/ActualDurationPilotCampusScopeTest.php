@@ -112,6 +112,7 @@ class ActualDurationPilotCampusScopeTest extends TestCase
 
         config(['perfflags.actual_duration_campus_ids' => '*']);
         $this->assertTrue(SessionDeductionService::isActualDurationCampusAllowed($b), '* = every campus');
+        $this->assertFalse(SessionDeductionService::isActualDurationCampusAllowed(0), 'unknown campus never allowed, even under *');
 
         config(['perfflags.actual_duration_campus_ids' => (string) $a]);
         $this->assertFalse(SessionDeductionService::isActualDurationCampusAllowed(0), 'unknown campus never allowed');

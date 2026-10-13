@@ -151,7 +151,7 @@ B1 是「排課時長與該課程自己的契約時長不符」的規模，並�
    - `actual_duration` 為 0 → 直接進下一步。
    - `actual_duration` 不為 0 → 先停。這些課若不在 11／13，部署後會改回整堂扣，需 Founder 先決定。
 1. **合併本 PR → `deploy.yml` 自動部署**（不需 `workflow_dispatch`）。核對 `version.json` 與 health。
-2. **部署後（唯讀）**：再跑一次 `verify_backend`，確認旗標仍為 `true`、分布沒變。
+2. **部署後（唯讀）**：再跑一次 `verify_backend`，確認旗標仍為 `true`、`effective-campus-ids=11,13`、分布沒變。名單不是 `11,13`（例如 `.env` 有覆寫或快取未更新）→ 先停，不進驗收。
 3. **驗收一門指定測試課**：`Actions → Actual-Duration Billing Production Acceptance (Founder-gated) → Run workflow`（`workflow_dispatch`）
    - `student_id`／`teacher_id`：Founder 指定的測試身分（不得是付費家庭的學生），且學生屬於該分校
    - `branch_id`：`11` 或 `13`
