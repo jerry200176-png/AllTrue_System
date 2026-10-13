@@ -263,6 +263,19 @@ class ContractMoneyCallersAgreeTest extends TestCase
         $this->assertSame([], $this->withHeaders($h)->getJson("/api/v1/bank-reconciliation/{$txn->id}/suggest")->assertOk()->json('suggestions'));
     }
 
+    /** #3923 review: an UNPAID package holds nothing, so its member's stale-paid bill (rows 4,000/10,000) still owes 6,000. */
+    public function test_stale_paid_member_of_an_unpaid_package_stays_owed(): void
+    {
+        $course = $this->course([['2026-08', 10000, 'paid', 10000, [[4000, 'cash']]]], ['Paid' => 1, 'Rate' => 1000]);
+        $course->update(['PackageID' => \App\Models\CoursePackage::create([
+            'student_id' => $course->StudentID, 'campus_id' => 1, 'name' => 'Unpaid', 'billing_mode' => 'session',
+            'total_sessions' => 16, 'remaining_sessions' => 16, 'used_sessions' => 0, 'rate' => 1500, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true,
+        ])->id]);
+        $this->assertSame(1, \App\Models\Invoice::query()->where('StudentClassID', $course->ID)->whereRaw(\App\Models\Invoice::mayOweSql())->count());
+        $this->assertSame(6000, (int) $this->withHeaders($this->directorHeaders())->getJson('/api/v1/finance/ar-aging?branch_id=1')->assertOk()->json('totals.grand_total'));
+    }
+
     /** @return array<string, string> */
     private function directorHeaders(): array
     {

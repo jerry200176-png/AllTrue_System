@@ -746,7 +746,12 @@ class AlertController extends Controller
         $mode = $sc->ScheduleMode ?? 'count';
         $today = Carbon::today();
         $studentClassId = (int) $sc->getAttribute('ID');
-        $openInvoice = $mode === 'date'
+        // The slip asks for the bill the queue shows (monthly = oldest owing period), so its period,
+        // lessons and deadline come from that same bill, not the newest stored-open one.
+        $payable = $this->payableResolver->byStudentClassIds([$studentClassId], [$sc])[$studentClassId]
+            ?? $this->payableResolver->unbilled();
+        $payablePeriod = (string) ($payable['payable_billing_period'] ?? '');
+        $openInvoice = $mode === 'date' && ! preg_match('/^\d{4}-\d{2}$/', $payablePeriod)
             ? Invoice::query()
                 ->where('StudentClassID', $studentClassId)
                 ->whereIn('Status', ['unpaid', 'partial'])
@@ -754,7 +759,9 @@ class AlertController extends Controller
                 ->orderByDesc('id')
                 ->first(['id', 'billing_period'])
             : null;
-        $openBillingPeriod = $openInvoice ? $openInvoice->getAttribute('billing_period') : null;
+        $openBillingPeriod = preg_match('/^\d{4}-\d{2}$/', $payablePeriod)
+            ? $payablePeriod
+            : ($openInvoice ? $openInvoice->getAttribute('billing_period') : null);
         $billingPeriod = $mode === 'date'
             ? (preg_match('/^\d{4}-\d{2}$/', (string) ($openBillingPeriod ?? ''))
                 ? (string) $openBillingPeriod
@@ -775,8 +782,6 @@ class AlertController extends Controller
                 'source' => 'stored_charge_count_mode',
             ];
         $charge = (int) $billing['charge'];
-        $payable = $this->payableResolver->byStudentClassIds([$studentClassId], [$sc])[$studentClassId]
-            ?? $this->payableResolver->unbilled();
 
         $dueDate = null;
         $daysUntilSettlement = null;
@@ -784,7 +789,11 @@ class AlertController extends Controller
         if ($mode === 'date') {
             $sd = (int) ($sc->settlement_day ?? 0);
             if ($sd >= 1 && $sd <= 31) {
-                $thisDue = $this->settlementDateInMonth((int) $today->year, (int) $today->month, $sd);
+                // An older owing period is due on its own month's settlement day.
+                $dueMonth = $billingPeriod !== null && $billingPeriod < $today->format('Y-m')
+                    ? Carbon::createFromFormat('Y-m-d', $billingPeriod . '-01')
+                    : $today;
+                $thisDue = $this->settlementDateInMonth((int) $dueMonth->year, (int) $dueMonth->month, $sd);
                 if ($today->lte($thisDue)) {
                     $dueDate = $thisDue->toDateString();
                     $daysUntilSettlement = (int) $today->diffInDays($thisDue, false);

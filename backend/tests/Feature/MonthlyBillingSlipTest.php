@@ -489,6 +489,28 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('sessions.*.date', ['2026-08-30', '2026-09-07', '2026-09-14']);
     }
 
+    public function test_tuition_slip_with_two_owing_periods_uses_the_payable_period(): void
+    {
+        // #3888 review (Codex P1 r4254441859): the slip asks for the payable bill's amount, so its period
+        // and deadline are that bill's (the oldest owing period), never the newest open invoice's.
+        Carbon::setTestNow(Carbon::parse('2026-09-20 09:00:00', 'Asia/Taipei'));
+        $token = $this->createDirectorToken('director-monthly-two-periods@example.com');
+        [$student, $course] = $this->makeMonthlyCourse('月結兩期未繳測試', '2026-08-01', '2026-09-30');
+        $ids = [];
+        foreach (['2026-08', '2026-09'] as $period) {
+            $ids[$period] = Invoice::create([
+                'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => $period . '-01', 'DueDate' => $period . '-17',
+                'TotalAmount' => 6000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => $period,
+            ])->id;
+        }
+
+        $slip = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/alerts/tuition-slip/{$course->ID}")->assertOk()->json();
+        $period = $slip['payable_billing_period'];
+        $this->assertSame($ids[$period] ?? null, $slip['payable_invoice_id']);
+        $this->assertSame([$period, $period . '-17'], [$slip['billing_period'], $slip['due_date']]);
+    }
+
     public function test_monthly_split_cross_month_and_missing_rate_invoices_keep_their_amount(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-01 09:00:00', 'Asia/Taipei'));
