@@ -336,6 +336,7 @@ class TuitionReminderDirectorNotificationTest extends TestCase
             'invoice due in 10 days, settlement_day already past' => [10, 10, false],
             'invoice due in 5 days (day 5 excluded)' => [15, 5, false],
             'invoice overdue, settlement_day 10 days away' => [25, -3, true],
+            'invoice due in 2 days but no valid settlement_day' => [0, 2, false],
         ];
     }
 

@@ -254,19 +254,19 @@ class NotificationSyncService
     }
 
     /**
-     * docs/DIRECTOR_PAYMENT_ALERT_RULES.md: the earliest open (unpaid/partial) Invoice's DueDate decides
-     * the monthly window; only without one does this month's settlement_day apply.
+     * docs/DIRECTOR_PAYMENT_ALERT_RULES.md: a valid settlement_day is required; the earliest open
+     * (unpaid/partial) Invoice's DueDate decides the monthly window, else this month's settlement_day.
      */
     private static function monthlyInWindow(int $settlementDay, ?string $openInvoiceDueDate): bool
     {
-        $today = now()->startOfDay();
-        if ($openInvoiceDueDate !== null && $openInvoiceDueDate !== '') {
-            $due = Carbon::parse($openInvoiceDueDate)->startOfDay();
-        } elseif ($settlementDay >= 1 && $settlementDay <= 31) {
-            $due = $today->copy()->startOfMonth()->addDays(min($settlementDay, $today->daysInMonth) - 1);
-        } else {
+        // A monthly course without a valid settlement_day (1-31) is not a monthly-alert course at all.
+        if ($settlementDay < 1 || $settlementDay > 31) {
             return false;
         }
+        $today = now()->startOfDay();
+        $due = ($openInvoiceDueDate !== null && $openInvoiceDueDate !== '')
+            ? Carbon::parse($openInvoiceDueDate)->startOfDay()
+            : $today->copy()->startOfMonth()->addDays(min($settlementDay, $today->daysInMonth) - 1);
 
         return $today->gt($due) || (int) $today->diffInDays($due) < 5;
     }
