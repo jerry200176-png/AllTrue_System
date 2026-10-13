@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-12-tuition-reminder-sync-readstate
+    published_at: "2026-10-12"
+    audiences:
+      - director
+    importance: digest
+    title: 學費通知不再重複
+    summary: 同一筆欠款只會出現一則學費通知，月結課程未繳也會提醒。
+    items:
+      - category: fixed
+        text: 同一門課已有逾期帳單時，通知中心只留帳單那一則，並顯示已繳金額與逾期天數。
+      - category: improved
+        text: 月結課程未繳費時，到期前 4 天內或已逾期會出現在通知中心。
+      - category: fixed
+        text: 通知內容有變動或重新出現時，會重新變成未讀。
+    source_refs:
+      - "changelog:2026-10-12:tuition-reminder-sync-readstate"
