@@ -144,7 +144,7 @@ class BankReconciliationController extends Controller
             ->whereRaw(\App\Models\Invoice::mayOweSql())
             ->selectRaw('Invoice.StudentClassID AS StudentClassID, Invoice.IssueDate AS IssueDate, Invoice.TotalAmount AS TotalAmount, '
                 . 'GREATEST(0, Invoice.TotalAmount - ' . \App\Models\Invoice::netPaidSql() . ') AS remaining');
-        $open = DB::query()->fromSub($perInvoice, 'oi')
+        $open = $perInvoice->newQuery()->fromSub($perInvoice, 'oi')
             ->groupBy('oi.StudentClassID')
             ->havingRaw('SUM(oi.TotalAmount = ?) > 0 OR SUM(oi.remaining = ?) > 0 OR SUM(oi.remaining) = ?', [$amount, $amount, $amount])
             ->selectRaw('oi.StudentClassID AS StudentClassID, MIN(CASE WHEN oi.remaining > 0 THEN oi.IssueDate END) AS oldest_issue')
