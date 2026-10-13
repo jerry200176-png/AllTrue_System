@@ -216,3 +216,6 @@ tmp-cutover/
 frontend/src/lib/changelogDraft.generated.js
 frontend/src/lib/staffUpdates.generated.js
 frontend/src/lib/parentUpdates.generated.js
+
+# Personal Claude Code client state (account email/UUID) — never commit (public repo)
+/.claude.json
