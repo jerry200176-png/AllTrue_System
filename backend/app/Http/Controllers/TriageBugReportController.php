@@ -68,7 +68,8 @@ class TriageBugReportController extends Controller
         if ($detail === null) {
             return response()->json(['message' => 'Not found'], 404);
         }
-        $detail['attachments'] = array_map(fn (array $a) => $a + [
+        // Drop the public /storage url: reads must go through the audited, revocable route.
+        $detail['attachments'] = array_map(fn (array $a) => array_diff_key($a, ['url' => true]) + [
             'download_path' => "/api/v1/triage/bug-reports/{$id}/attachments/{$a['id']}",
         ], $detail['attachments']);
 

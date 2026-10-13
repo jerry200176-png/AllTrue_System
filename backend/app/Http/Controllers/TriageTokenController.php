@@ -56,6 +56,6 @@ class TriageTokenController extends Controller
             'actor_id' => $actor?->getKey(),
             'subject_type' => 'triage_token',
             'subject_id' => $tokenId,
-        ], ['token_id' => $tokenId, 'client_ip' => (string) request()->ip()]);
+        ], ['client_ip_ref' => SecurityAuditEvent::ref('ip', request()->ip())]);
     }
 }

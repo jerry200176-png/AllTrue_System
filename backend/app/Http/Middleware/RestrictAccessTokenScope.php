@@ -9,11 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 
 /**
- * Deny-by-default boundary for read-only triage tokens (api middleware group).
- *
- * A request that presents a triage token may reach only the GET routes named
- * in config('triage_tokens.allowed_routes'); every other API route answers 403
- * before any other auth runs. This checks the presented token itself, so a new
+ * Deny-by-default (api group): a request presenting a triage token gets 403 on every
+ * route except the GET routes in config('triage_tokens.allowed_routes'), so a new
  * route can never become reachable by forgetting an ability check on it.
  */
 final class RestrictAccessTokenScope
@@ -42,10 +39,9 @@ final class RestrictAccessTokenScope
             'actor_type' => 'triage_token',
             'actor_id' => $pat?->getKey(),
         ], [
-            'token_id' => $pat ? (int) $pat->getKey() : 0,
             'method' => $request->method(),
             'route' => is_string($routeName) ? $routeName : ($route instanceof Route ? $route->uri() : ''),
-            'client_ip' => (string) $request->ip(),
+            'client_ip_ref' => SecurityAuditEvent::ref('ip', $request->ip()),
             'http_status' => 403,
         ]);
 

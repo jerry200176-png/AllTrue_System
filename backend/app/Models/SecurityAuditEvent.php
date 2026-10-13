@@ -26,8 +26,8 @@ final class SecurityAuditEvent
         'verification_method',
         'transferred_session_count', 'recovered_session_count', 'reason_hash',
         'acting_as', 'capability_campus_count', 'outstanding_amount',
-        // Read-only triage token access log (config/triage_tokens.php).
-        'token_id', 'bug_report_id', 'attachment_id', 'route', 'client_ip',
+        // Triage token access log: route name + HMAC refs only (never raw IDs/IPs).
+        'route', 'client_ip_ref', 'attachment_ref',
     ];
 
     public static function ref(string $kind, int|string|null $value): ?string

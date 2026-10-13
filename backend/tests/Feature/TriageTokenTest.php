@@ -7,6 +7,7 @@ use App\Models\AuthToken;
 use App\Models\BugReport;
 use App\Models\BugReportAttachment;
 use App\Models\BugReportComment;
+use App\Models\SecurityAuditEvent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -84,6 +85,7 @@ final class TriageTokenTest extends TestCase
 
         $this->getJson("/api/v1/triage/bug-reports/{$bug->id}", $this->bearer($token))->assertOk()
             ->assertJsonPath('comments.0.body', 'internal')
+            ->assertJsonPath('attachments.0.url', null)
             ->assertJsonPath('attachments.0.download_path', "/api/v1/triage/bug-reports/{$bug->id}/attachments/{$att->id}");
 
         $download = $this->get("/api/v1/triage/bug-reports/{$bug->id}/attachments/{$att->id}", $this->bearer($token));
@@ -96,11 +98,13 @@ final class TriageTokenTest extends TestCase
         $rows = DB::table('security_audit_events')->where('event_type', 'triage_token.read')->orderBy('id')->get();
         $this->assertCount(5, $rows);
         $detail = json_decode($rows[2]->metadata, true);
-        $this->assertSame($tokenId, $detail['token_id']);
+        $this->assertSame(SecurityAuditEvent::ref('triage_token', $tokenId), $rows[2]->actor_ref);
+        $this->assertSame(SecurityAuditEvent::ref('bug_report', $bug->id), $rows[2]->subject_ref);
+        $this->assertSame(['success', 'failure'], [$rows[2]->outcome, $rows[4]->outcome]);
         $this->assertSame('triage.bug-reports.show', $detail['route']);
-        $this->assertSame($bug->id, $detail['bug_report_id']);
-        $this->assertSame('127.0.0.1', $detail['client_ip']);
+        $this->assertSame(SecurityAuditEvent::ref('ip', '127.0.0.1'), $detail['client_ip_ref']);
         $this->assertSame(200, $detail['http_status']);
+        $this->assertStringNotContainsString('127.0.0.1', $rows[2]->metadata);
         $this->assertNotNull($rows[2]->occurred_at);
     }
 
@@ -170,12 +174,13 @@ final class TriageTokenTest extends TestCase
         $this->getJson('/api/v1/admin/triage-tokens', $this->as($admin))->assertJsonCount(0, 'data');
     }
 
-    public function test_token_stops_working_when_owner_is_no_longer_super_admin(): void
+    public function test_token_stops_working_when_owner_is_suspended_or_demoted(): void
     {
         $admin = $this->user('S');
         $token = $this->createToken($admin);
-        $admin->forceFill(['type' => 'A'])->save();
-
+        $admin->forceFill(['status' => 'suspended'])->save();
+        $this->getJson('/api/v1/triage/bug-reports', $this->bearer($token))->assertForbidden();
+        $admin->forceFill(['status' => null, 'type' => 'A'])->save();
         $this->getJson('/api/v1/triage/bug-reports', $this->bearer($token))->assertForbidden();
         $this->postJson('/api/v1/triage/bug-reports', [], $this->bearer($token))->assertStatus(405);
     }

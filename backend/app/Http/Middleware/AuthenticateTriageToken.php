@@ -35,7 +35,8 @@ final class AuthenticateTriageToken
         $request->attributes->set('triage_token_id', (int) $pat->getKey());
 
         $response = $next($request);
-        $this->audit($request, (int) $pat->getKey(), 'success', $response->getStatusCode(), 'read');
+        $status = $response->getStatusCode();
+        $this->audit($request, (int) $pat->getKey(), $status < 400 ? 'success' : 'failure', $status, $status < 400 ? 'read' : 'read_failed');
 
         return $response;
     }
@@ -51,12 +52,10 @@ final class AuthenticateTriageToken
             'subject_type' => 'bug_report',
             'subject_id' => is_numeric($bugId) ? (int) $bugId : null,
         ], [
-            'token_id' => $tokenId ?? 0,
-            'bug_report_id' => is_numeric($bugId) ? (int) $bugId : 0,
-            'attachment_id' => is_numeric($attachmentId) ? (int) $attachmentId : 0,
+            'attachment_ref' => SecurityAuditEvent::ref('bug_report_attachment', is_numeric($attachmentId) ? (int) $attachmentId : null),
             'route' => $route instanceof Route ? (string) $route->getName() : '',
             'method' => $request->method(),
-            'client_ip' => (string) $request->ip(),
+            'client_ip_ref' => SecurityAuditEvent::ref('ip', $request->ip()),
             'http_status' => $status,
             'reason_code' => $reason,
         ]);

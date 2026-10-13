@@ -7,13 +7,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 
-/**
- * Read-only AI triage tokens (config/triage_tokens.php).
- *
- * Sanctum's personal_access_tokens row stores only sha256(secret); the
- * plaintext "<id>|<prefix><random>" is returned once by create().
- * Expiry is created_at + ttl_days, the same model Sanctum v2 uses.
- */
+/** Read-only AI triage tokens: Sanctum row stores sha256 only; expiry = created_at + ttl_days. */
 final class TriageTokenService
 {
     public static function ability(): string
@@ -91,7 +85,8 @@ final class TriageTokenService
         }
         $owner = User::query()->find((int) $pat->getAttribute('tokenable_id'));
 
-        return $owner instanceof User && $owner->type === 'S';
+        return $owner instanceof User && $owner->type === 'S'
+            && !in_array($owner->status, ['inactive', 'suspended'], true);
     }
 
     private static function hasOnlyTriageAbility(PersonalAccessToken $pat): bool
