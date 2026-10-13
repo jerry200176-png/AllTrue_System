@@ -4,8 +4,9 @@
 Cloud sessions cannot workflow_dispatch (Founder 2026-10-13), so a merged edit of the
 request file is the trigger. This script decides, before any production access:
 
-* whether the request runs at all: ``mode: idle`` never runs, and a ``request_id`` that
-  any earlier version of the file already carried never runs again (one run per id);
+* whether the request runs at all: ``mode: idle`` never runs, a ``request_id`` that
+  any earlier version of the file already carried never runs again (one run per id), and a
+  re-run attempt of the push run never runs (it would see the same commit as new);
 * the workflow mode (``auto-dry-run`` or ``reviewed-apply``) and the reviewed ID list;
 * the evidence SHA: the newest commit that changed the code the command runs. A
   reviewed apply requires production to contain it (the request commit itself is not
@@ -16,6 +17,7 @@ Output is ``key=value`` lines for $GITHUB_OUTPUT: IDs and counts only.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -100,13 +102,17 @@ def evidence_sha(repo: Path, head: str) -> str:
     return sha
 
 
-def resolve(repo: Path, head: str) -> dict[str, str]:
+def resolve(repo: Path, head: str, run_attempt: int = 1) -> dict[str, str]:
     request = parse_request(_git(repo, "show", f"{head}:{REQUEST_PATH}"))
     request_id = str(request["request_id"])
     ids = [str(i) for i in request["reviewed_ids"]]  # type: ignore[union-attr]
     out = {"request_id": request_id, "mode": str(request["mode"]), "reviewed_ids": ",".join(ids), "reviewed_count": str(len(ids))}
     if request["mode"] == "idle":
         out.update(run="false", reason="idle")
+    elif run_attempt != 1:
+        # "Re-run jobs" replays the same push SHA, where the request still looks new: never
+        # apply twice. A failed first attempt is retried by merging a new request_id.
+        out.update(run="false", reason="rerun_never_replays")
     elif request_id in prior_request_ids(repo, head):
         out.update(run="false", reason="request_id_already_used")
     else:
@@ -118,9 +124,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", default=".")
     parser.add_argument("--head", default="HEAD")
+    parser.add_argument("--run-attempt", default=os.environ.get("GITHUB_RUN_ATTEMPT", "1"))
     args = parser.parse_args(argv)
     try:
-        for key, value in resolve(Path(args.repo), args.head).items():
+        if re.fullmatch(r"[1-9][0-9]*", str(args.run_attempt)) is None:
+            raise RequestError("run attempt must be a positive integer")
+        for key, value in resolve(Path(args.repo), args.head, int(args.run_attempt)).items():
             print(f"{key}={value}")
     except (RequestError, subprocess.CalledProcessError, OSError) as exc:
         print(f"::error::bug-reporter-timeout request: {exc}", file=sys.stderr)

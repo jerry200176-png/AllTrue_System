@@ -529,8 +529,8 @@ class BugReporterTimeoutTest extends TestCase
 
         $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--dry-run' => true, '--reviewed-batch' => $batch, '--actor' => $admin->id])
             ->expectsOutput("bug #{$young->id}: skipped_ineligible")
-            ->expectsOutput("bug #{$unlisted->id} [resolved]: awaiting_individual_review")
             ->expectsOutput("bug #{$ids[0]} [resolved]: would_close")
+            ->expectsOutput("bug #{$unlisted->id} [resolved]: awaiting_individual_review")
             ->assertExitCode(0);
         $this->assertSame(0, BugReport::where('status', 'closed')->count(), 'batch dry-run writes nothing');
 

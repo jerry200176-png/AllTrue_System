@@ -95,6 +95,20 @@ class GitResolveTest(unittest.TestCase):
         # Reverting to an earlier request never replays it.
         self.assertEqual(self.request(body("2026-10-17-a", "reviewed-apply", "[301, 302]"))["run"], "false")
 
+    def test_rerun_attempt_never_replays_a_request(self):
+        self.request(body("2026-10-17-r", "reviewed-apply", "[301]"))
+        head = self.git("rev-parse", "HEAD")
+        self.assertEqual(req.resolve(self.repo, head, run_attempt=1)["run"], "true")
+        rerun = req.resolve(self.repo, head, run_attempt=2)
+        self.assertEqual((rerun["run"], rerun["reason"]), ("false", "rerun_never_replays"))
+        script = ROOT / "scripts" / "bug_reporter_timeout_request.py"
+        cli = subprocess.run([sys.executable, str(script), "--repo", str(self.repo), "--run-attempt", "3"],
+                             capture_output=True, text=True)
+        self.assertIn("run=false", cli.stdout.splitlines())
+        bad = subprocess.run([sys.executable, str(script), "--repo", str(self.repo), "--run-attempt", "x"],
+                             capture_output=True, text=True)
+        self.assertEqual((bad.returncode, bad.stdout), (1, ""))
+
     def test_request_is_read_at_head_even_when_head_did_not_touch_it(self):
         self.request(body("2026-10-17-c", "auto-dry-run"))
         self.write("README.md", "later\n")
