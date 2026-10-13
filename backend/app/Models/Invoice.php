@@ -71,10 +71,10 @@ class Invoice extends Model
         return (string) $this->getAttribute('zero_amount_reason') === self::ZERO_REASON_FREE_GIFT;
     }
 
-    /** #3991: a fee on record (rate, charge, package, live priced amendment, positive line on a live bill) rules out 免費／贈送. */
+    /** #3991: a fee or money on record (rate, charge, package, legacy Paid/Pay/PayDate, live priced amendment, positive live bill line) rules out 免費／贈送. */
     public static function courseHasFee(StudentClass $course): bool
     {
-        return (float) ($course->Rate ?? 0) > 0 || (int) ($course->Charge ?? 0) > 0 || (int) ($course->PackageID ?? 0) > 0
+        return (int) ($course->Paid ?? 0) === 1 || (int) ($course->Pay ?? 0) > 0 || !empty($course->PayDate) || (float) ($course->Rate ?? 0) > 0 || (int) ($course->Charge ?? 0) > 0 || (int) ($course->PackageID ?? 0) > 0
             || StudentClassPricingAmendment::query()->where('student_class_id', $course->ID)->whereNull('voided_at')->where('rate', '>', 0)->exists()
             || self::query()->scopes('notVoided')->whereIn('id', InvoiceItem::query()->where('StudentClassID', $course->ID)->where('Amount', '>', 0)->select('InvoiceID'))->exists();
     }

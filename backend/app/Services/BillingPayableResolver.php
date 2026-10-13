@@ -127,9 +127,10 @@ class BillingPayableResolver
         $monthlyReview = (bool) ($monthly['review_required'] ?? false);
         $isPackageMember = (int) ($course->getAttribute('PackageID') ?? 0) > 0;
         // #3991: staff marked a NT$0 bill 免費／贈送 on this no-fee course, so a period-engine review cannot reopen it.
-        // #3991 review: only when every period under review is a marked term; an unmarked uncovered month stays in review.
+        // #3991 review: B15 flags review only at the top level, so EVERY period it lists must be a marked term; an unmarked
+        // month with lessons (an `unattributed` row) keeps the course in review.
         $freePeriods = $invoices->filter(fn ($invoice) => $invoice->isMarkedFreeGift())->pluck('billing_period')->filter()->all();
-        $reviewPeriods = collect($monthly['periods'] ?? [])->where('payment_status', 'review_required')->pluck('billing_period');
+        $reviewPeriods = collect($monthly['periods'] ?? [])->pluck('billing_period');
         $markedFree = $reviewPeriods->isNotEmpty() && $reviewPeriods->diff($freePeriods)->isEmpty();
         $zeroFee = !$isPackageMember && (!$monthlyReview || $markedFree) && $charge <= 0 && (float) ($course->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
         if ($tutoring || $zeroFee) {

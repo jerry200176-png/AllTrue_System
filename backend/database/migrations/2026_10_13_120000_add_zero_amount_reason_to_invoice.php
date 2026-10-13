@@ -13,21 +13,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('Invoice') || Schema::hasColumn('Invoice', 'zero_amount_reason')) {
-            return;
+        if (Schema::hasTable('Invoice') && !Schema::hasColumn('Invoice', 'zero_amount_reason')) {
+            Schema::table('Invoice', fn (Blueprint $table) => $table->string('zero_amount_reason', 32)->nullable());
         }
-        Schema::table('Invoice', function (Blueprint $table) {
-            $table->string('zero_amount_reason', 32)->nullable();
-        });
     }
 
     public function down(): void
     {
-        if (!Schema::hasTable('Invoice') || !Schema::hasColumn('Invoice', 'zero_amount_reason')) {
-            return;
+        if (Schema::hasTable('Invoice') && Schema::hasColumn('Invoice', 'zero_amount_reason')) {
+            Schema::table('Invoice', fn (Blueprint $table) => $table->dropColumn('zero_amount_reason'));
         }
-        Schema::table('Invoice', function (Blueprint $table) {
-            $table->dropColumn('zero_amount_reason');
-        });
     }
 };

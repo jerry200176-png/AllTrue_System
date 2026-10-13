@@ -131,6 +131,10 @@ class FreeGiftZeroBillTest extends TestCase
             ->assertStatus(422)->assertJsonPath('code', 'free_gift_course_has_fee');
         $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true, 'amount' => 500]))
             ->assertStatus(422)->assertJsonPath('code', 'free_gift_requires_zero');
+        foreach ([['Paid' => 1], ['Pay' => 500], ['PayDate' => '2026-08-01']] as $legacy) { // #3991 review: legacy money on record
+            $this->withToken($token)->postJson(self::RECORD, $this->payload($this->monthlyCourse($this->student(), $legacy), ['free_gift' => true]))
+                ->assertStatus(422)->assertJsonPath('code', 'free_gift_course_has_fee');
+        }
 
         $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
     }
@@ -187,6 +191,11 @@ class FreeGiftZeroBillTest extends TestCase
         $report->delete();
         $record()->assertOk()->assertJsonPath('invoice_id', $first->id);
         $this->assertSame(['auto ' . Invoice::ZERO_REASON_FREE_GIFT_LABEL, 255], [mb_substr((string) $first->fresh()->Note, 0, 10), mb_strlen((string) $first->fresh()->Note)]);
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/charge-correction", ['new_charge' => 3000, 'reason' => 't'])
+            ->assertStatus(409)->assertJsonPath('code', 'charge_correction_free_gift_locked'); // #3991 review: void the mark first
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", ['new_session_count' => 4, 'new_charge' => 3000, 'reason' => 't'])
+            ->assertStatus(409)->assertJsonPath('code', 'billing_correction_free_gift_locked');
+        $this->assertSame([0, 0], [(int) $course->fresh()->Charge, (int) $first->fresh()->TotalAmount]);
         $this->withToken($token)->postJson("/api/v1/invoices/{$first->id}/void", ['reason' => 'wrong term'])->assertOk();
         $this->assertSame('void', (string) $first->fresh()->Status);
     }

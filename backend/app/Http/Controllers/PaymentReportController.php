@@ -810,33 +810,20 @@ class PaymentReportController extends Controller
                     'Note' => mb_substr(trim($invoice->Note . ' ' . $freeNote), 0, 255)])->save();
             } else {
                 try {
-                    $invoice = app(InvoiceIssuer::class)->issue([
-                        'StudentID' => $course->StudentID,
-                        'StudentClassID' => $course->ID,
-                        'IssueDate' => $data['payment_date'],
-                        'TotalAmount' => 0,
-                        'Status' => 'paid',
-                        'ScheduleModeAtIssue' => $course->getAttribute('ScheduleMode'),
+                    $invoice = app(InvoiceIssuer::class)->issue(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+                        'IssueDate' => $data['payment_date'], 'TotalAmount' => 0, 'Status' => 'paid', 'ScheduleModeAtIssue' => $course->getAttribute('ScheduleMode'),
                         'Note' => mb_substr($freeNote, 0, 255), // Invoice.Note is VARCHAR(255)
-                        'billing_period' => $period,
-                        'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT,
-                    ], [], true);
+                        'billing_period' => $period, 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT], [], true);
                 } catch (BillingPeriodInvoiceExists) {
                     return response()->json(['message' => '此課程該月份已有有效帳單，請重新整理後再試。', 'code' => 'billing_period_invoice_exists'], 409);
                 }
             }
 
-            Log::info('PaymentReport director-record free-gift bill', [
-                'invoice_id' => (int) $invoice->id,
-                'student_class_id' => (int) $course->ID,
-                'user_id' => $userId,
-            ]);
+            Log::info('PaymentReport director-record free-gift bill', ['invoice_id' => (int) $invoice->id, 'student_class_id' => (int) $course->ID, 'user_id' => $userId]);
 
             return response()->json([
                 'message' => '已登錄 NT$0「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」帳單（不是收款，不用確認入帳）',
-                'report_id' => null,
-                'payment_id' => null,
-                'invoice_id' => (int) $invoice->id,
+                'report_id' => null, 'payment_id' => null, 'invoice_id' => (int) $invoice->id,
                 'status' => Invoice::ZERO_REASON_FREE_GIFT,
                 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT,
             ]);
