@@ -724,6 +724,7 @@ class ClassSessionController extends Controller
         // one-for-one (two cancelled lessons from different slots cover both); a further session repeats the
         // last one. Identities no session consumed stay in $pending for their own marker rows below.
         $pending = [];
+        /** @var array<string, array{0:?string,1:?string}> $last */
         $last = [];
         $hasOrigin = function (string $key) use (&$pending, &$last, $sameLesson, $origin): bool {
             if (!isset($pending[$key])) {
