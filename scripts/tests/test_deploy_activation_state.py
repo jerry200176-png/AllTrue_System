@@ -1421,15 +1421,25 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
     def test_expression_bearing_run_scripts_stay_under_the_github_limit(self):
         # GitHub evaluates a run script that contains ${{ }} as one expression and rejects the whole
-        # workflow (a 0-job failed run) when it exceeds 21,000 UTF-8 bytes.
-        import yaml
-
-        workflow = yaml.safe_load(self.workflow)
-        for job_id, job in workflow["jobs"].items():
-            for step in job.get("steps") or []:
-                run = step.get("run")
-                if isinstance(run, str) and "${{" in run:
-                    self.assertLess(len(run.encode("utf-8")), 21_000, f"{job_id}: {step.get('name')}")
+        # workflow (a 0-job failed run) when it exceeds 21,000 UTF-8 bytes. Stdlib only: this test
+        # gates every deployment (contract-test job), which installs no Python packages.
+        lines = self.workflow.split("\n")
+        checked = 0
+        for i, line in enumerate(lines):
+            m = re.match(r"^(\s*)(?:- )?run: [|>][-+]?\s*$", line)
+            if not m:
+                continue
+            key_indent, body = len(m.group(1)), []
+            for nxt in lines[i + 1:]:
+                if nxt.strip() and len(nxt) - len(nxt.lstrip(" ")) <= key_indent:
+                    break
+                body.append(nxt)
+            indents = [len(x) - len(x.lstrip(" ")) for x in body if x.strip()]
+            script = "\n".join(x[min(indents):] for x in body) if indents else ""
+            if "${{" in script:
+                checked += 1
+                self.assertLess(len(script.encode("utf-8")), 21_000, f"run block at line {i + 1}")
+        self.assertGreater(checked, 0)
 
     def test_rollback_refreshes_fpm_workers_before_health(self):
         function = self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
