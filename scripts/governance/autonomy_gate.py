@@ -64,8 +64,8 @@ _T2_PREFIXES = (
 )
 
 # Request files whose merge to main triggers a production write. They are not
-# deployable, but a PR editing one is the write's approval: T2 at minimum (green CI
-# plus independent review), never T0 auto-merge. Read-only dump request files
+# deployable, but each PR editing one approves concrete production writes: T3
+# requires Founder GO as well as green CI and independent review. Read-only dump request files
 # (bug-queue-dump, bug-detail-dump) stay non-blocking (Founder decision 8, 2026-10-13).
 _PRODUCTION_WRITE_REQUEST_FILES = {
     "operations/closeout/bug-writeback.request.yml",
@@ -562,7 +562,7 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
             minimum = max(minimum, 3)
             reasons.append(f"protected path: {path}")
         elif path in _PRODUCTION_WRITE_REQUEST_FILES:
-            minimum = max(minimum, 2)
+            minimum = max(minimum, 3)
             reasons.append(f"production-write request file: {path}")
         elif not non_runtime_only and path.startswith("frontend/src/"):
             minimum = max(minimum, 1)
