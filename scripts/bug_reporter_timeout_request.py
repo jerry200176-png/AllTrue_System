@@ -6,7 +6,7 @@ request file is the trigger. This script decides, before any production access:
 
 * whether the request runs at all: ``mode: idle`` never runs, a ``request_id`` that
   any earlier version of the file already carried never runs again (one run per id), and a
-  re-run attempt of the push run never runs (it would see the same commit as new);
+  re-run attempt of the push run fails without running (it would see the same commit as new);
 * the workflow mode (``auto-dry-run`` or ``reviewed-apply``) and the reviewed ID list;
 * the evidence SHA: the newest commit that changed the code the command runs. A
   reviewed apply requires production to contain it (the request commit itself is not
@@ -111,8 +111,8 @@ def resolve(repo: Path, head: str, run_attempt: int = 1) -> dict[str, str]:
         out.update(run="false", reason="idle")
     elif run_attempt != 1:
         # "Re-run jobs" replays the same push SHA, where the request still looks new: never
-        # apply twice. A failed first attempt is retried by merging a new request_id.
-        out.update(run="false", reason="rerun_never_replays")
+        # apply twice, and fail so a rerun never looks like a recovered request.
+        raise RequestError("re-run attempts never replay a request; merge a new request_id instead")
     elif request_id in prior_request_ids(repo, head):
         out.update(run="false", reason="request_id_already_used")
     else:

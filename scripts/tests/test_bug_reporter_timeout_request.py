@@ -99,12 +99,13 @@ class GitResolveTest(unittest.TestCase):
         self.request(body("2026-10-17-r", "reviewed-apply", "[301]"))
         head = self.git("rev-parse", "HEAD")
         self.assertEqual(req.resolve(self.repo, head, run_attempt=1)["run"], "true")
-        rerun = req.resolve(self.repo, head, run_attempt=2)
-        self.assertEqual((rerun["run"], rerun["reason"]), ("false", "rerun_never_replays"))
+        with self.assertRaises(req.RequestError):
+            req.resolve(self.repo, head, run_attempt=2)
         script = ROOT / "scripts" / "bug_reporter_timeout_request.py"
         cli = subprocess.run([sys.executable, str(script), "--repo", str(self.repo), "--run-attempt", "3"],
                              capture_output=True, text=True)
-        self.assertIn("run=false", cli.stdout.splitlines())
+        self.assertEqual((cli.returncode, cli.stdout), (1, ""))  # the rerun fails red, nothing runs
+        self.assertIn("new request_id", cli.stderr)
         bad = subprocess.run([sys.executable, str(script), "--repo", str(self.repo), "--run-attempt", "x"],
                              capture_output=True, text=True)
         self.assertEqual((bad.returncode, bad.stdout), (1, ""))
