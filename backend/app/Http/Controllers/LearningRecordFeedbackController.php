@@ -574,9 +574,21 @@ class LearningRecordFeedbackController extends Controller
         $token = $request->bearerToken();
         if (!$token) return null;
 
-        return ParentSession::where('TokenHash', hash('sha256', $token))
+        $session = ParentSession::where('TokenHash', hash('sha256', $token))
             ->where('ExpiresAt', '>', Carbon::now())
             ->first();
+        // #3944 follow-up: same anchor revalidation as ParentPortalController::resolveSession(); a revoked or
+        // suspended guardian link ends a LINE session here too, even before ExpiresAt is swept.
+        $line = trim((string) ($session?->getAttribute('line_user_id') ?? ''));
+        if ($session && preg_match('/^U[0-9a-f]{32}$/i', $line) && ParentGuardianAccessService::portalDualReadEnabled()
+            && !app(ParentGuardianAccessService::class)->lineMayAccessStudent($line, (int) $session->StudentID)) {
+            $session->ExpiresAt = Carbon::now();
+            $session->save();
+
+            return null;
+        }
+
+        return $session;
     }
 
     private function authorizeParentRecord(ParentSession $session, LearningRecord $record, bool $requireActions = false)

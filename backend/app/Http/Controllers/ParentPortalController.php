@@ -1040,14 +1040,20 @@ class ParentPortalController extends Controller
             ->verified()
             ->pluck('line_user_id')
             ->filter(fn ($id) => $this->isValidLineUserId($id));
-        $siblingIdsByLine = $lineUserIds->isNotEmpty()
+        // #3944 follow-up: a LINE session lists only students its own subject may still reach, never siblings
+        // reached through another guardian's binding on this student (or through a binding it has lost).
+        $sessionLine = $this->sessionLineUserId($session);
+        $siblingIdsByLine = $sessionLine !== null
+            ? app(ParentGuardianAccessService::class)->studentsForLineUser($sessionLine)->pluck('id')
+                ->map(fn ($id) => (int) $id)->reject(fn ($id) => $id === (int) $student->id)->values()
+            : ($lineUserIds->isNotEmpty()
             ? StudentLineBinding::query()
                 ->whereNotNull('verified_at')
                 ->whereIn('line_user_id', $lineUserIds)
                 ->where('student_id', '!=', $student->id)
                 ->pluck('student_id')
                 ->unique()
-            : collect();
+            : collect());
 
         $siblingStudents = $siblingIdsByLine->isNotEmpty()
             ? $this->portalStudents()->whereIn('id', $siblingIdsByLine)->get()

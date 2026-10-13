@@ -215,6 +215,42 @@ class GuardianRevocationGapsTest extends TestCase
         $this->switchTo($token, $a)->assertForbidden();
     }
 
+    /** Codex r4261240553: the dashboard switcher never lists a student through another guardian's binding. */
+    /** @dataProvider flagModes */
+    public function test_dashboard_switcher_lists_only_students_the_session_line_still_reaches(bool $flag): void
+    {
+        config(['perfflags.multi_guardian_enabled' => $flag]);
+        [$mine, $other] = [$this->lineId('7'), $this->lineId('6')];
+        $a = StudentFactory::new()->create(['CampusID' => $this->campusA->id, 'enable' => 1]);
+        $b = StudentFactory::new()->create(['CampusID' => $this->campusA->id, 'enable' => 1]);
+        $bindingA = $this->bindLine($a, $mine, $this->campusA);
+        $this->bindLine($b, $mine, $this->campusA);
+        $this->bindLine($a, $other, $this->campusA);
+        $this->bindLine($b, $other, $this->campusA);
+        $token = $this->groupToken($b, null, $mine);
+        $this->assertSame([$a->id, $b->id], collect($this->dashboard($token)->assertOk()->json('students'))->pluck('id')->sort()->values()->all());
+
+        $this->deleteJson('/api/v1/bindings/' . $bindingA->id, [], ['X-User-Id' => (string) $this->director->id])->assertOk();
+
+        $this->assertNotContains($a->id, collect($this->dashboard($token)->assertOk()->json('students') ?? [])->pluck('id')->all());
+    }
+
+    /** Codex r4261240532: a suspended link on the anchor ends the LINE session on the feedback endpoints too. */
+    public function test_feedback_endpoints_revalidate_the_anchor_link(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $line = $this->lineId('5');
+        $a = StudentFactory::new()->create(['CampusID' => $this->campusA->id, 'enable' => 1]);
+        $this->bindLine($a, $line, $this->campusA);
+        $record = $this->learningRecord($a, $this->course($a));
+        $token = $this->groupToken($a, null, $line);
+        $this->feedback($token, $record)->assertOk();
+
+        $this->linkFor($a, $line)->update(['status' => StudentGuardian::STATUS_SUSPENDED]);
+
+        $this->feedback($token, $record)->assertUnauthorized();
+    }
+
     public function test_phone_login_group_session_is_unaffected_by_a_line_unbind(): void
     {
         config(['perfflags.multi_guardian_enabled' => true]);
