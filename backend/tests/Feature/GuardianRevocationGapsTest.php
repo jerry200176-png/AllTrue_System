@@ -146,6 +146,41 @@ class GuardianRevocationGapsTest extends TestCase
         $this->assertSame([], $after->json('identity_groups'));
     }
 
+    /** Codex r4260862499: a three-member group keeps no name derived from the unbound member. */
+    public function test_line_login_group_name_never_comes_from_an_unreachable_member(): void
+    {
+        $line = $this->lineId('e');
+        [$a, $b, $group] = $this->groupedPair(StudentIdentityService::MODE_ACTIONS);
+        $a->update(['name' => 'Source ' . Str::random(6)]);
+        $group->update(['display_name' => $a->name]);
+        $campusC = CampusFactory::new()->create();
+        $c = StudentFactory::new()->create(['CampusID' => $campusC->id, 'enable' => 1, 'name' => 'Third ' . Str::random(6), 'Phone' => $b->Phone]);
+        app(StudentIdentityService::class)->linkStudents((int) $b->id, (int) $c->id, null, 'super_admin', []);
+        $bindingA = $this->bindLine($a, $line, $this->campusA);
+        $this->bindLine($b, $line, $this->campusB);
+        $this->bindLine($c, $line, $campusC);
+        $this->deleteJson('/api/v1/bindings/' . $bindingA->id, [], ['X-User-Id' => (string) $this->director->id])->assertOk();
+        Http::fake(['https://api.line.me/v2/profile' => Http::response(['userId' => $line], 200)]);
+
+        $rows = $this->postJson('/api/v1/parent/login-line', ['access_token' => 'valid-token'])->assertOk()->json('identity_groups');
+        $this->assertEqualsCanonicalizing([$b->id, $c->id], collect($rows[0]['members'] ?? [])->pluck('student_id')->all());
+        $this->assertStringNotContainsString($a->name, json_encode($rows, JSON_UNESCAPED_UNICODE));
+    }
+
+    /** Access contract (strict): a LINE account never bound to a group member does not reach it through the group. */
+    public function test_line_session_does_not_reach_a_group_member_it_was_never_bound_to(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $line = $this->lineId('f');
+        [$a, $b, $group] = $this->groupedPair(StudentIdentityService::MODE_ACTIONS);
+        $this->bindLine($b, $line, $this->campusB); // same child, bound at campus B only
+        $classA = $this->course($a);
+        $token = $this->groupToken($b, $group, $line);
+
+        $this->assertNotContains($classA, collect($this->dashboard($token)->assertOk()->json('classes'))->pluck('id')->all());
+        $this->switchTo($token, $a)->assertForbidden();
+    }
+
     public function test_phone_login_group_session_is_unaffected_by_a_line_unbind(): void
     {
         config(['perfflags.multi_guardian_enabled' => true]);

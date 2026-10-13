@@ -2018,7 +2018,9 @@ class ParentPortalController extends Controller
                 }
                 return [
                     'id' => (int) $group->id,
-                    'name' => (string) ($group->display_name ?: ($members->first()?->student?->getAttribute('name') ?? '學生')),
+                    // A filtered group never shows display_name: it was copied from whichever record was linked first,
+                    // which may be the unreachable one (#3944 follow-up). Use a reachable member's own name instead.
+                    'name' => (string) (($reachable === null ? $group->display_name : null) ?: ($members->first()?->student?->getAttribute('name') ?? '學生')),
                     'members' => $members->map(function ($member) {
                         $campus = $this->portalCampuses()->find($member->campus_id);
                         return [
