@@ -1,75 +1,62 @@
 # Bug intake → production (wrapper)
 
+## 每個階段：誰／哪個 workflow／觸發方式／cloud session 能否自行完成
+
+本表是 in-app 回報各階段自動化的**唯一權威對照**；其他文件只連到這裡。真相以 `.github/workflows/` 為準，有出入時改本表。
+
+| 階段 | Workflow（做什麼） | 觸發 | Cloud session（無 SSH、`workflow_dispatch` 403） |
+|------|--------------------|------|------------------------------------------------|
+| 收件建單 + 收到回覆 | `bug-auto-intake.yml`：每筆 `new` 開／重用 IDs-only GitHub issue（SourceRef 去重）、加 `area:<類別>`、同類提醒、留固定「收到，我們正在查」回覆（Founder 6A）。狀態**維持 `new`**，等 Phase A | schedule 每小時 :23；人工 dispatch 預設 dry-run，`dry_run=false` 會真的建單並寫 production | 自動，不需動作 |
+| 撈佇列 | `bug-queue-dump.yml`：log 只有 ID／數量；明文 artifact 另含 metadata（嚴重度、分校 ID、page key、時間、回報者 user ID／角色、回饋類型），標題／描述／留言不在其中；文字在加密 `*.full.tar.gz.enc`（#3605；queue 不含描述／留言）；附 in-app ↔ issue reconcile step summary | push request-file `operations/closeout/bug-queue-dump.request.md`；或 dispatch | 可觸發；看得到 log 的 ID／數量；artifact 與全文要本機下載並解密 |
+| 撈單筆 | `bug-detail-dump.yml`（`summary.json` 明文含分校／page／回報者 metadata；加密 JSON 會截斷：描述 4000、留言 1500、狀態備註 1000 字，超過要標 coverage gap；附件只有 metadata、沒有圖檔） | push request-file `operations/closeout/bug-detail-dump.request.md`（改檔內 `bug_id:` 行）；或 dispatch | 同上 |
+| Phase A 分診回寫 | `bug-phase-a-triage.yml`：`new`→`triaged` + 公開回覆；建議類 `close_as_logged` | **dispatch-only** | 不行：交出 `bug_id`、`github_issue_url`、含 issue URL 的 §3.8 `public_reply`；建議類另加 `disposition` 與 `close_as_logged=true`（預設是 `bug`／`false`） |
+| 進度補充／建議上線通知 | `bug-followup-comment.yml`：只留言、不改狀態；`expected_status=closed`（已上線的建議）會記 production evidence 並關 GitHub issue（守門同 Phase C） | **dispatch-only** | 不行：交出 `bug_id`、`expected_status`、`github_issue_url`、`public_reply`；`expected_status=closed`（已上線的建議）另需 40 字元 `production_revision` 與 `deploy_run_id` |
+| Phase C 上線後回寫 | `bug-phase-c-allowlist.yml`：已上線修復 → `resolved` + 公開回覆，並自動關對應 issue（F14；`type:epic`、`lifecycle:frozen` 不關，issue 標題或 SourceRef 對到的任何 in-app 回報不在本次已檢查清單內就不關）。`bug-phase-c-autodispatch.yml` 在 allowlist 有新增 ID 合併進 main 後逐筆 dispatch 並驗證 | push：PR 在 allowlist 新增條目（`reply`／`rev`／`deploy`）→ merge；或 push request-file `operations/closeout/bug-phase-c-allowlist.request.md`；已在 allowlist 的 ID 可直接 dispatch（`bug_id`） | 可以（開 PR → CI → merge）；只限 `rev` 已在 production 的修復，不可拿來做 Phase A |
+| `resolved`→`closed` 逾時 | `bug-reporter-timeout.yml` `auto`（排程）：只看 `resolved`，14 天無回報者回覆即結案並白話回覆；回報者回覆會重開（Founder 2A）。符合者超過 20 筆時整批拒絕、**一筆都不關**，要先人工 dry-run 處理。人工 `dry-run`／`apply` 是另一條路：`days` 預設 **7**（只作用於 `resolved`），另外也檢查固定 14 天的 `triaged` 等回報者佇列；`apply` 必填 `confirmation=CLOSE_STALE_RESOLVED` 與逐筆審過的 `reviewed_ids` | `auto`：schedule 每日 10:40 台北（亦可 dispatch `auto-dry-run`／`auto`）；`dry-run`／`apply`：只限人工 dispatch | `auto` 自動；人工 `apply` 不行：交出 dry-run 審過的 `reviewed_ids` 與 `days` |
+| 週報 | `bug-sla-weekly-report.yml`：「in-app 週報 YYYY-Www」issue | schedule 週一 09:00 台北；可人工 dispatch 重產 | 自動 |
+
+**關 GitHub issue（Founder 常設決定 2026-10-12 ③）**：merge + 上線驗證（版本＋health＋smoke，見下方 Deployment evidence gate）+ 已回覆 in-app → 即可關，不等回報者確認；復發再開。In-app 的 `resolved`→`closed` 仍只由回報者 `reporter-verify` 或上表逾時流程完成，Agent 不代按。
+
 ## Freshness gate (mandatory)
 
-Never triage from an old `bug-queue-dump` artifact. A queue dump is only valid
-for 15 minutes and must be paired with the detail dump for the same bug ID.
+Never triage from an old dump. A queue dump is valid for 15 minutes and must be
+paired with the detail dump for the same bug ID.
 
-Required sequence:
+1. Run `bug-queue-dump.yml` (dispatch: prefer `-f target_bug_id=<id>`). Check
+   `meta.counts` against `open-bugs.json` and `resolved-bugs.json` (the open file
+   is capped at 50 and partial above that; `resolved` rows are engineering-resolved,
+   not reporter-accepted).
+2. Confirm the target ID appears exactly once with status `new`, `triaged`, or
+   `in_progress`; never infer it from `max_id` or an old report.
+3. Run `bug-detail-dump.yml` for that exact `bug_id`; confirm attachments, the
+   reporter's bug history, all comments and status logs are present.
+4. Run `scripts/validate-bug-intake-evidence.py` on the two decrypted payloads. A
+   failure (stale queue, mismatched IDs, bug no longer open, missing history) is
+   stop-the-line, not a reason for best-effort triage.
 
-1. Run `bug-queue-dump.yml` (prefer `-f target_bug_id=<id>`) and download
-   `meta.json` plus `open-bugs.json`. For a full unclosed inventory, also read
-   `resolved-bugs.json`: these rows are engineering-resolved, not necessarily
-   reporter-accepted. Check `meta.counts` against both file lengths; the open
-   file remains capped at 50 and is partial whenever the count exceeds 50.
-2. Confirm the target ID is present exactly once with status `new`, `triaged`,
-   or `in_progress`; do not infer the target from `max_id` or an old report.
-3. Run `bug-detail-dump.yml` with that exact `bug_id`.
-4. Confirm attachments, the reporter's complete bug history, all comments, and
-   all status logs are present before reading the symptom or proposing a fix.
-5. Run `scripts/validate-bug-intake-evidence.py`; a failure is a stop-the-line
-   condition, not a reason to continue with best-effort triage.
+## Triggering the dumps from a cloud session
 
-## Triggering the dumps from a cloud/remote session (no SSH, no `gh`)
+1. Branch from latest `origin/main` as **`chore/…`** (`scripts/ci/branch-policy.mjs`
+   only allows `chore|ci|fix`; an `ops/` branch fails Presubmit, e.g. PR #1668).
+2. Edit the request file from the table and append `# kickoff <UTC ISO8601> — <why>`.
+   For the detail dump the workflow parses the `bug_id: <n>` line, so change it.
+3. PR → CI green → merge. The push to `main` fires the workflow; find the run by
+   the merge commit SHA (list results are not reliably newest-first).
+4. Do both dumps in the same 15-minute window (one PR may change both files).
 
-A Claude Code on the web / cloud-agent session has no SSH key or DB
-credential mounted (checked: `~/.ssh`, `PI_SSH_*` env are empty by design —
-see `CLAUDE.md` §G-012) and `workflow_dispatch` returns 403 for cloud agents.
-The only working trigger is the `push: branches:[main]` path filter on each
-**read-only** dump workflow:
+The log carries IDs and counts; the plaintext artifacts add non-text metadata
+(see the table). Titles, descriptions and comments are only in `*.full.tar.gz.enc`, encrypted with `DUMP_ARTIFACT_KEY`; the
+workflows fail closed without it. Cloud sessions cannot download or decrypt it, so
+a local agent does (key in an ignored `chmod 600` file, never committed):
 
-1. Branch from latest `origin/main` with an allowed prefix —
-   **`chore/…`** (not `ops/…`; `scripts/ci/branch-policy.mjs` only allows
-   `chore|ci|fix`, and `Presubmit Checks` fails the PR otherwise, e.g. PR
-   #1668 → had to be closed and reopened as PR #1669 with a `chore/` branch).
-2. Append one line to the target request file:
-   `operations/closeout/bug-queue-dump.request.md` (no parameters — always
-   dumps the current open queue) and/or
-   `operations/closeout/bug-detail-dump.request.md` (this one **is** read by
-   the workflow: it parses the `bug_id: <n>` line near the top of the file
-   via regex, so you must edit that line to the target ID, not just append a
-   note — see the file's `Parse bug id` step). Append a
-   `# kickoff <UTC ISO8601> — <why>` line either way for the audit trail.
-3. Commit, push, open a PR into `main`, wait for CI green, merge.
-4. The merge's push to `main` fires the workflow. Find the run with
-   `mcp__github__actions_list` (`list_workflow_runs`, branch `main`, sorted
-   by `created_at` — results are **not** guaranteed newest-first and
-   `per_page`/branch filters may be silently ignored, so sort client-side and
-   match on the merge commit SHA).
-5. **The log no longer contains report text (public repo, #3605).** The job log and
-   the plaintext artifact files carry IDs, statuses, timestamps and counts only
-   (`open-bugs.json`, `resolved-bugs.json`, `meta.json`, `summary.json`). The full JSON
-   (titles, descriptions, comments) is in `*.full.tar.gz.enc`, encrypted with the
-   repository secret `DUMP_ARTIFACT_KEY`; the workflows fail closed if it is missing.
-   Cloud sessions (no key, artifact download blocked) can therefore only see IDs and
-   counts; a local agent decrypts. Put the passphrase in a local ignored file
-   (e.g. `~/.alltrue-dump-key`, `chmod 600`, never committed) and run:
+```bash
+gh run download <run-id> -R jerry200176-png/AllTrue_System -n bug-detail-dump -D dump
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass file:$HOME/.alltrue-dump-key \
+  -in dump/bug-detail.full.tar.gz.enc | tar xz -C dump   # bug-queue-dump.full.tar.gz.enc for the queue
+```
 
-   ```bash
-   gh run download <run-id> -R jerry200176-png/AllTrue_System -n bug-detail-dump -D dump
-   openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass file:$HOME/.alltrue-dump-key \
-     -in dump/bug-detail.full.tar.gz.enc | tar xz -C dump   # bug-queue-dump.full.tar.gz.enc for the queue
-   ```
-
-   Decrypted files stay local; never paste them into issues, PRs or comments.
-6. Immediately (same 15-minute window) repeat steps 1–5 for the paired dump,
-   then run `scripts/validate-bug-intake-evidence.py` against the two decrypted JSON
-   payloads (`bug-detail.json`, `open-bugs.json` from the decrypted tarballs).
-
-This is slow (branch → PR → CI → merge → workflow run, twice, back to back)
-by design — it is the price of never letting an AI agent hold Pi SSH
-credentials directly. Do not shortcut it by SSHing manually, guessing at bug
-IDs, or reusing a stale artifact.
+Decrypted files stay local; never paste them into issues, PRs or comments. Do not
+shortcut any of this with SSH, guessed IDs or stale artifacts.
 
 ## Deployment evidence gate (merge ≠ production)
 
@@ -103,35 +90,10 @@ exact commit. A green CI run proves only that the commit can be merged.
    identify the frontend bundle when applicable. A healthy response alone does
    not prove that the target build is live.
 
-## The write-back step has no cloud-agent path — plan for a human
-
-`bug-phase-a-triage.yml` (posts the `new`→`triaged` transition + public
-reply) and `bug-followup-comment.yml` (posts a follow-up without changing
-status; `expected_status` may be `triaged`, `in_progress`, or `resolved`)
-are **`workflow_dispatch`-only, no `push` fallback** — unlike the
-read-only dumps above. This is intentional: they write to production, so
-they are not given the request-file trigger that lets a 403'd cloud agent
-route around `workflow_dispatch`. A cloud session can do everything up to
-opening the GitHub issue, but cannot flip the in-app status or post the
-reply itself.
-
-When this happens: hand the human (or any session with `workflow_dispatch`
-access) the exact three inputs — `bug_id`, `github_issue_url`, and a
-§3.8-compliant `public_reply` that contains the issue URL verbatim (the
-workflow rejects the run otherwise) — rather than leaving Phase A half-done
-or silently skipping the write-back. `bug-phase-c-allowlist.yml` is the one
-exception with a `push` fallback, but it is explicitly scoped to bugs whose
-fix is *already deployed* (Phase C) — never repurpose it for a fresh,
-unverified Phase A triage.
-
-The validator intentionally fails when the queue is stale, the IDs differ, the
-bug is no longer open, or the reporter-history evidence is absent. This prevents
-a previously resolved bug from being mistaken for the newest report.
-
 Canonical long-form:
 
-1. [`CHAT_BUG_SYSTEM.md`](../CHAT_BUG_SYSTEM.md) §3.6–§3.7  
-2. [`GUIDE_BUG_CLOSURE_GATE.md`](../GUIDE_BUG_CLOSURE_GATE.md)  
-3. [`AI_REGRESSION_LESSONS.md`](../AI_REGRESSION_LESSONS.md) R51/R53 + module index  
+1. [`CHAT_BUG_SYSTEM.md`](../CHAT_BUG_SYSTEM.md) §3.6–§3.8
+2. [`GUIDE_BUG_CLOSURE_GATE.md`](../GUIDE_BUG_CLOSURE_GATE.md)
+3. [`AI_REGRESSION_LESSONS.md`](../AI_REGRESSION_LESSONS.md) R51/R53 + module index
 
 Success = Evidence Contract, not CI alone. Reporter-verify timeout = Evidence Contract §Reporter-verify timeout.
