@@ -141,6 +141,11 @@ async function submit() {
     submitError.value = '請填寫繳費日期與金額，金額不可小於 0';
     return;
   }
+  // #3875: NT$0 is never a report on a course that charges; only free courses settle at 0.
+  if (amount === 0 && !isZeroCharge.value) {
+    submitError.value = '金額為 0 不能登記。請填實際收到的金額；若畫面顯示應繳 0 但課程仍未繳，請到學生帳務核對帳單。';
+    return;
+  }
 
   submitting.value = true;
   try {
@@ -150,9 +155,8 @@ async function submit() {
       payment_method: form.payment_method,
       amount,
     };
-    // Queue rows carry payable_invoice_id: pay the bill whose outstanding prefilled the amount (#3864 hotfix).
-    const invoiceId = props.row.invoice_id
-      ?? (Number(props.row.payable_outstanding) > 0 ? props.row.payable_invoice_id : null);
+    // Pay the bill whose outstanding prefilled the amount (payable_invoice_id), not a display invoice_id (#3875, #3888).
+    const invoiceId = props.row.payable_invoice_id ?? props.row.invoice_id;
     if (invoiceId) {
       body.invoice_id = invoiceId;
     }
