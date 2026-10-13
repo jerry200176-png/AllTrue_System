@@ -1169,7 +1169,8 @@ class EnrollmentService
                 ->whereIn('SubjectID', $subjectIds);
             $overlap = $classType !== 'trial' && $teacher > 0;
             // An open-ended existing contract (EndDate NULL, e.g. manual_occurrence) never proves the old term ended.
-            $overlapping = fn ($q) => $q->where('TeacherID', $teacher)
+            // Same class type counts too: that is the 409 `duplicate_active_course` case, whatever the teacher.
+            $overlapping = fn ($q) => $q->where(fn ($t) => $t->where('TeacherID', $teacher)->when($classType !== '', fn ($w) => $w->orWhere('ClassType', $classType)))
                 ->when($end, fn ($w) => $w->whereDate('StartDate', '<=', $end))
                 ->where(fn ($w) => $w->whereNull('EndDate')->orWhereDate('EndDate', '>=', $start));
             $monthly = $base()->where(function ($q) use ($classType, $overlap, $overlapping) {
@@ -1229,6 +1230,18 @@ class EnrollmentService
                     ->where('cs.StartTime', '<', $end)->where('cs.EndTime', '>', $start)
                     ->lockForUpdate()
                     ->first(['cs.id']) !== null;
+                // A booking that exists only in `schedules` (not yet materialized) is the same clash; mirror the
+                // canonical student-slot guard: live `scheduled` rows, no history anchors/orphans/trial, no stale exceptions.
+                $clash = $clash || app(\App\Services\StaleScheduleExceptionFilter::class)->rejectStale(
+                    DB::table('schedules as s')->leftJoin('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+                        ->where('s.student_id', $studentId)->whereDate('s.schedule_date', $row['date'])
+                        ->where('s.status', 'scheduled')->whereNull('s.original_schedule_id')
+                        ->where(fn ($q) => $q->whereNull('s.student_course_id')->orWhereNotNull('sc.ID'))
+                        ->where(fn ($q) => $q->whereNull('sc.ClassType')->orWhereRaw('LOWER(sc.ClassType) <> ?', ['trial']))
+                        ->where('s.start_time', '<', substr($end, 0, 5))->where('s.end_time', '>', substr($start, 0, 5))
+                        ->get(['s.id', 's.status', 's.student_course_id', 's.start_time']),
+                    (string) $row['date']
+                ) !== [];
                 if ($clash) {
                     return response()->json([
                         'message' => '已確認的上課日期與學生既有課程同一時段重疊，續報不能重複建立這堂課。',

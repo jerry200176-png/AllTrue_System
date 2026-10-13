@@ -182,6 +182,21 @@ class OverlappingCourseGuardTest extends TestCase
         }
     }
 
+    /** #3738 review: a booking that exists only in `schedules` (not yet a ClassSession) is the same clash. */
+    public function test_renewal_confirmed_row_is_refused_on_a_schedule_only_booking(): void
+    {
+        $fx = $this->renewalFixture('renew-sched@example.com');
+        $past = Carbon::now()->subWeeks(2)->toDateString();
+        \App\Models\Schedule::create(['student_id' => $fx[1], 'teacher_id' => $fx[2], 'subject' => 'Math', 'day_of_week' => Carbon::parse($past)->dayOfWeekIso,
+            'start_time' => '16:00', 'end_time' => '18:00', 'duration_hours' => 2, 'class_type' => 'one_on_one', 'status' => 'scheduled',
+            'type' => 'normal', 'deduction' => 1, 'branch_id' => 1, 'schedule_date' => $past]);
+        $before = $this->counts();
+        $plan = [['session_date' => $past, 'start_time' => '16:00', 'kind' => 'confirmed', 'subject' => 'Math']];
+
+        $this->assertSame('renewal_confirmed_slot_overlap', $this->renew($fx, [$past], ['session_plan' => $plan])->json('code'));
+        $this->assertSame($before, $this->counts());
+    }
+
     /** #3738 review: an existing TRIAL session is add-on, not a clash (canonical guard excludes trial). */
     public function test_confirmed_overlap_guard_ignores_trial_sessions(): void
     {
@@ -241,6 +256,9 @@ class OverlappingCourseGuardTest extends TestCase
         $thu = Carbon::parse($wed)->addDay()->toDateString();
 
         $this->renew($fx, [$thu], ['days_of_week' => [4]])->assertStatus(422)->assertJson(['code' => 'renewal_range_overlap']);
+        DB::table('StudentClass')->where('ID', $fx[3])->update(['TeacherID' => $fx[2] + 999]); // same class type, other teacher
+        $this->renew($fx, [$thu], ['days_of_week' => [4]])->assertStatus(422)->assertJson(['code' => 'renewal_range_overlap']);
+        DB::table('StudentClass')->where('ID', $fx[3])->update(['TeacherID' => $fx[2]]);
         $manual = $this->renew($fx, [$wed], ['scheduling_policy' => 'manual_occurrence', 'session_plan' => [],
             'course_start_date' => $thu, 'end_date' => Carbon::parse($wed)->addMonth()->toDateString()]);
         $this->assertSame('renewal_range_overlap', $manual->json('code'), $manual->getContent());
