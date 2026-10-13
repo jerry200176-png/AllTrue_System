@@ -69,7 +69,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertNull($this->ledgerMinutes($sc));
     }
 
-    /** Swap the allowlist: the campus that was out is now in, and vice versa. */
     public function test_deduction_follows_a_changed_allowlist(): void
     {
         config(['perfflags.actual_duration_campus_ids' => (string) $this->otherCampusId]);
@@ -140,7 +139,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertTrue($sc->fresh()->isActualDurationBasis());
     }
 
-    /** An off-pilot course that is ALREADY actual_duration stays editable. */
     public function test_edit_of_an_existing_actual_duration_course_is_not_blocked(): void
     {
         [$sc] = $this->course($this->otherCampusId);
@@ -153,7 +151,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame(90, $sc->fresh()->resolvedStandardLessonMinutes());
     }
 
-    /** #3948: rollback counts whole lessons; superseded extras cannot retag new attendance. */
     public function test_removing_the_campus_recounts_history_as_whole_lessons(): void
     {
         foreach ([\App\Models\Schedule::STATUS_SUPERSEDED, 'cancelled'] as $staleStatus) {
@@ -183,7 +180,6 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         }
     }
 
-    /** Codex P1 on #3948: gated off, a makeup keeps the fixed_session proration (90 of 120 minutes = 0.75 lesson). */
     public function test_a_gated_off_course_still_prorates_a_makeup(): void
     {
         foreach ([[$this->otherCampusId, 120, 90, '15:30'], [$this->pilotCampusId, 180, 120, '16:00']] as [$campusId, $duration, $minutes, $endTime]) {
@@ -225,6 +221,10 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         [$sc, $studentId] = $this->course($this->pilotCampusId);
         $this->attend($sc, $studentId, '14:00:00', '15:30:00', 10);
         SessionDeductionLedger::where('student_class_id', $sc->ID)->update(['source' => 'attendance']);
+        \App\Models\Schedule::create([
+            'student_id' => $studentId, 'student_course_id' => $sc->ID, 'teacher_id' => $this->teacherId, 'branch_id' => $this->pilotCampusId, 'subject' => 'Math', 'day_of_week' => Carbon::now()->subDays(10)->dayOfWeekIso,
+            'schedule_date' => Carbon::now()->subDays(10)->toDateString(), 'start_time' => '14:00', 'end_time' => '15:30', 'duration_hours' => 1.5, 'class_type' => 'one_on_one', 'status' => 'cancelled', 'type' => 'extra', 'deduction' => 1,
+        ]);
         $before = $sc->fresh()->getAttributes();
         config(['perfflags.actual_duration_deduction_enabled' => false]);
         SessionDeductionService::recomputeCounters($sc->ID);
