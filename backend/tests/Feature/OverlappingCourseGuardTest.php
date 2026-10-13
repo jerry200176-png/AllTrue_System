@@ -315,6 +315,10 @@ class OverlappingCourseGuardTest extends TestCase
         $res = \Illuminate\Testing\TestResponse::fromBaseResponse(app(\App\Services\EnrollmentService::class)->store($request, $payload));
 
         $this->assertSame('renewal_use_monthly_flow', $res->json('code'), $res->getContent());
+        // No target-campus member yet: the source campus's monthly contract must not block it (Codex r4259069343).
+        DB::table('student_identity_members')->where('student_id', $target->id)->delete();
+        DB::table('StudentClass')->where('ID', $sourceCourse)->update(['ScheduleMode' => 'date']);
+        $this->assertNotSame('renewal_use_monthly_flow', \Illuminate\Testing\TestResponse::fromBaseResponse(app(\App\Services\EnrollmentService::class)->store($request, $payload))->json('code'));
     }
 
     /**

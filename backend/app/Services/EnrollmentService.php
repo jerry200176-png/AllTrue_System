@@ -672,7 +672,7 @@ class EnrollmentService
             $forceGate = $this->validateForceOverride($request, $data, array_values(array_unique(array_map(
                 fn ($m) => (int) $m['id'],
                 $subjectMeta
-            ))), $studentId);
+            ))), $studentCampusId === $targetCampusId ? $studentId : 0); // no target-campus row yet: the in-transaction gate rechecks
             if ($forceGate !== null) {
                 return $forceGate;
             }
@@ -1275,7 +1275,7 @@ class EnrollmentService
             $gate = $this->renewalTargetGate(
                 $data,
                 $subjectIds,
-                $resolvedStudentId > 0 ? $resolvedStudentId : (int) ($data['student_id'] ?? 0)
+                $resolvedStudentId
             );
             if ($gate !== null) {
                 return $gate;
