@@ -77,7 +77,6 @@ class EntryValidationTest(unittest.TestCase):
         self.assertEqual(wb.plan("", doc(entry(disposition="bug")), REPO)[0]["env"]["DISPOSITION"], "bug")
     def test_logged_close_kinds_are_read_from_the_service(self):
         import tempfile
-
         with tempfile.TemporaryDirectory() as tmp:
             php = Path(tmp) / "Svc.php"
             php.write_text("public const LOGGED_CLOSE_KINDS = ['wont_do', 'dupe'];", encoding="utf-8")
@@ -121,7 +120,6 @@ class EntryValidationTest(unittest.TestCase):
     def test_hung_remote_call_kills_its_whole_process_group(self):
         import tempfile
         import time
-
         with tempfile.TemporaryDirectory() as tmp:
             marker = Path(tmp) / "late-write"
             script = Path(tmp) / "remote.sh"
@@ -159,7 +157,6 @@ class IdempotencyTest(unittest.TestCase):
         import contextlib
         import io
         import tempfile
-
         with tempfile.TemporaryDirectory() as tmp:
             after = Path(tmp) / "after.yml"
             after.write_text(doc(entry()), encoding="utf-8")
@@ -176,6 +173,10 @@ class IdempotencyTest(unittest.TestCase):
         many = [entry(request_id=f"req-{i:04d}", bug_id=500 + i) for i in range(wb.MAX_NEW_PER_PUSH + 3)]
         self.assertEqual(len(wb.validate_all(doc(*many), REPO)), len(many))
         self.assertEqual(len(wb.plan(doc(*many[:-1]), doc(*many), REPO)), 1)
+        with mock.patch.object(wb, "logged_close_kinds", return_value={"bug"}):
+            self.assertEqual(len(wb.validate_all(doc(*many), REPO)), len(many))
+            with self.assertRaises(wb.RequestError):
+                wb.plan(doc(*many[:-1]), doc(*many), REPO)
     def test_cursor_uses_the_real_progress_marker_and_frozen_continuation(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/bug-writeback-request.yml").read_text())
         steps = workflow["jobs"]["writeback"]["steps"]
@@ -302,11 +303,13 @@ printf '%s' "$3" > "$TRACE"
     def test_checked_in_request_file_is_append_only_vs_base(self):
         # Required CI has full history: removing or editing an entry already on the base branch fails here.
         import subprocess
-
         rel = "operations/closeout/bug-writeback.request.yml"
         ref = f"origin/{os.environ.get('GITHUB_BASE_REF') or 'main'}"
         got = subprocess.run(["git", "show", f"{ref}:{rel}"], cwd=ROOT, capture_output=True, text=True)
         if got.returncode != 0:
+            if re.search(r"does not exist|exists on disk, but not in", got.stderr):
+                wb.plan("", (ROOT / rel).read_text(encoding="utf-8"), REPO)
+                return
             if os.environ.get("GITHUB_ACTIONS") and not re.search(r"does not exist|exists on disk, but not in", got.stderr):
                 self.fail(f"cannot read {ref}:{rel}")
             self.skipTest(f"{rel} is not on {ref} yet")

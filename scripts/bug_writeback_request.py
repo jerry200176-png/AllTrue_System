@@ -88,7 +88,6 @@ def load_requests(text: str | None) -> list[dict]:
     if not text or not text.strip():
         return []
     import yaml
-
     class Loader(yaml.SafeLoader):
         def construct_mapping(self, node, deep=False):
             # SafeLoader keeps the last of two equal keys; a duplicated bug_id/action/public_reply
@@ -103,14 +102,12 @@ def load_requests(text: str | None) -> list[dict]:
                         raise RequestError(f"duplicate mapping key {label}")
                     seen.append(key)
             return super().construct_mapping(node, deep=deep)
-
     def strict_int(loader, node):
         # YAML 1.1 reads 0512 as octal 330: only plain decimal integers may name a bug.
         value = loader.construct_scalar(node)
         if not re.fullmatch(r"-?(?:0|[1-9][0-9]*)", value):
             raise RequestError("integers must be plain decimal (no leading zero, 0x, 0o, _ or :)")
         return int(value)
-
     Loader.add_constructor("tag:yaml.org,2002:int", strict_int)
     try:
         doc = yaml.load(text, Loader=Loader)  # noqa: S506 - SafeLoader subclass
@@ -174,8 +171,8 @@ def validate_entry(entry: dict, repo: str) -> dict:
 
 
 def validate_all(text: str | None, repo: str) -> list[dict]:
-    """Validate every entry of a file (CI); the per-push batch limit does not apply to history."""
-    return [validate_entry(e, repo) for e in load_requests(text)]
+    """Validate stable history structure/IDs; current semantics apply only to newly added entries."""
+    return load_requests(text)
 
 
 def plan(before_text: str | None, after_text: str | None, repo: str, *, per_push: bool = True) -> list[dict]:
@@ -199,7 +196,6 @@ Runner = Callable[[str, dict], int]
 
 def run_remote(mode: str, env: dict, timeout: float | None = None) -> int:
     """Call the shared write-back script; its output may hold reply text, so it is discarded.
-
     The script runs in its own process group: on timeout the whole group (bash and its ssh
     child) is killed before the next request starts, so no orphaned sender can finish later.
     """
