@@ -191,7 +191,7 @@ function resolve(words) { // skip assignments and wrapper commands; `dump` marks
       return { k, name, dump: !names.length || names.some((n) => isSecretName(n.replace(/^\$\{?|\}$/g, ''))) };
     }
     const opts = args.every((a) => a.startsWith('-'));
-    const dump = (name === 'export' && args.every((a) => a === '-p'))
+    const dump = (name === 'export' && opts)
       || (name === 'readonly' && args.every((a) => /^-[aAfp]+$/.test(a))) || (name === 'set' && !args.length)
       || (/^(?:declare|typeset)$/.test(name) && (opts || (args.some((a) => /^-[a-zA-Z]*p/.test(a)) && args.some((a) => !a.startsWith('-') && isSecretName(a)))));
     return { k, name, dump };
@@ -283,7 +283,9 @@ function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns tr
       || (info.name === 'grep' && args.some((a) => /^-[a-zA-Z]*q|^--(?:quiet|silent)$/.test(a))));
     const pure = c.redirs.length === 0 && (info.k >= c.words.length || (/^(?:export|local|readonly|declare|typeset)$/.test(info.name)
       && c.words.slice(info.k + 1).every((w) => assignRe.test(w.text) || /^-/.test(w.text))));
-    const viaSink = (cred) => (STDOUT_ONLY.has(info.name) && (!cred || printer) ? sink(P, s, ctx, cred) : 'unsafe');
+    const printfFormat = args[0] === '--' ? args[1] : args[0];
+    const stringPrintf = typeof printfFormat === 'string' && !/%(?!%|[0-9.-]*[sq])/.test(printfFormat) && !/\x01|\x03|\$/.test(printfFormat);
+    const viaSink = (cred) => (STDOUT_ONLY.has(info.name) && (!cred || printer) && (!cred || info.name !== 'printf' || stringPrintf) ? sink(P, s, ctx, cred) : 'unsafe');
     if (info.dump) rec(c.words[info.k]?.off ?? c.redirs[0]?.off, viaSink(false));
     if (info.name === 'eval') {
       const body = c.words.slice(info.k + 1).map((w) => w.text).join(' ');
@@ -314,7 +316,7 @@ function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns tr
       for (const at of [...credHits(w, exprs, sensitive), ...subHits]) {
         const before = w.text.slice(0, at);
         if (normalized.some((n) => w.pos[at] >= n.start && w.pos[at] < n.end)) rec(w.pos[at], 'safe');
-        else if (!NO_ARG_TRUST.has(info.name) && !pure && (/^(?:-p|--password=)$/.test(before) && varOrSub(w.text.slice(at))
+        else if (!NO_ARG_TRUST.has(info.name) && !pure && (/^(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)$/.test(info.name) && /^(?:-p|--password=)$/.test(before) && varOrSub(w.text.slice(at))
           || /IDENTIFIED\s+BY\s*\\?['"]?$/i.test(before))) rec(w.pos[at], 'safe');
         else if (/^(?:test|\[|\[\[)$/.test(info.name)
           && /^-(?:n|z)$/.test(args[0] ?? '') && c.words[info.k + 2] === w
@@ -537,6 +539,9 @@ export const trip = {
   'later command allowance cannot excuse earlier echo': blk('echo "$DB_PASSWORD"; echo hi # secret-echo-allow: harmless later command'),
 
   'nice long operand env dump': blk('nice --adjustment 5 env'),
+  'printf numeric stderr leak': blk('printf \'%d\\n\' "$DB_PASSWORD" > credentials.txt'),
+  'arbitrary password option stderr leak': blk('date --password="$DB_PASSWORD"'),
+  'option-only export dump': blk('export -n', 'export --'),
   'function body env dump': blk('function f { env; }; f'),
   'function body secret print': blk('f() { echo "$DB_PASSWORD"; }; f'),
   'powershell secret print': 'jobs:\n  j:\n    steps:\n      - shell: pwsh\n        run: Write-Output $env:DB_PASSWORD',
