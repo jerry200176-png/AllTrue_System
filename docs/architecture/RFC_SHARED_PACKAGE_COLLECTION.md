@@ -1,16 +1,16 @@
 ---
 owner: jerry (CEO)
-status: Accepted — Founder decisions 2026-10-13 (§5a); Phase 2 in implementation
+status: Accepted decisions (§5a); Phase 2 readiness HOLD — §5b OPEN
 review_cycle: as-needed
 last_reviewed: 2026-10-13
 ---
 
 # RFC: 共用方案（CoursePackage）待收規則 — 整包一列、部分已繳、待核對
 
-> **Status:** Accepted（Founder 2026-10-13 拍板 Q1–Q5，見 §5a）。Phase 2 實作：讀取端（待收列＋不催繳）與 confirm 寫入修正（Q5）分兩個 PR。  
+> **Status:** Accepted（Founder 2026-10-13 拍板 Q1–Q5，見 §5a）。Phase 2 分讀取端（待收列＋不催繳）與 confirm 寫入修正（Q5）兩個 PR；完整 implementation readiness 為 HOLD，§5b OPEN 尚待 owner 決定。
 > **Date:** 2026-10-13  
 > **Issue:** Refs [#3785](https://github.com/jerry200176-png/AllTrue_System/issues/3785)（hold）；相關 PR #3891（`Invoice::mayOweSql`，package member 保持 stored Status）、#3892（一個方案一個收款動作）  
-> **Founder 決策（2026-10-13）：** 共用方案核對後**真的**還欠錢 → 重新列入「待收」，顯示「部分已繳」與**真實差額**；整包**一列**，不按科目算、不重複算、不重收全額。先定義整包應收、付款歸屬、去重；無法判定者列「待核對」。**不自動催繳**（不發提醒、不推 LINE），**不改 production 資料**。  
+> **Founder 決策（2026-10-13）：** 共用方案核對後**真的**還欠錢 → 重新列入「待收」，顯示「部分已繳」與**真實差額**；整包**一列**，不按科目算、不重複算、不重收全額。先定義整包應收、付款歸屬、去重；無法判定者列「待核對」。**不自動催繳**（count 方案不發自動繳費提醒或 LINE；教職員 in-app 通知依 R2-5 維持每成員一則），**不改 production 資料**。
 > 前置閱讀：`CLAUDE.md` G-009 / G-011、`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`、`docs/plans/F7_PAID_STATUS_DECISION_PACKET_20261002.md`（S1 決策：package member 無帳單 → `paid package => paid, else review_required until S3 defines package amounts`）。
 
 ---
@@ -52,47 +52,62 @@ last_reviewed: 2026-10-13
 
 ---
 
-## 2. 規則規格（只有 §5 標註的地方未定）
+## 2. 規則規格（已決金額語意依 §5a；實作 OPEN 邊界見 §5b）
 
-以 `CoursePackage.id` 為鍵，**一個方案恰好一列**；成員 `StudentClass`（`PackageID = id`）在任何待收佇列／提醒都不得再以單科身分出現（D2、D3）。
+以 `CoursePackage.id` 為鍵，在 `GET alerts/tuition` 及其待收畫面中**一個方案至多一列**；符合列入條件時恰好一列，成員不得再以單科身分出現（D2、D3）。此 invariant 不涵蓋 D7 帳齡／銀行對帳明細；教職員 `NotificationSyncService` in-app 通知依 R2-5 維持每成員一則。
+
+- **R0 既有免費排除優先**：`ClassType=tutoring` 一律不是學費待收、催繳或繳費通知候選；既有 payable resolver 判定 `free` 的合約亦不產生付款義務。先沿用上述已決政策，再進 R4–R8；不得把刻意免費的方案因零金額送進待核對。歷史異常保持原帳務畫面唯讀呈現。
 
 - **R1 成員集合** `M = { StudentClass.ID | PackageID = pkg.id }`（含 `Stop=1` 成員，避免 D3）。
 - **R2 帳單集合** `I = { 非作廢 Invoice | Invoice.StudentClassID ∈ M }`，以 `Invoice.id` 去重。同一張帳單只算一次，不論掛幾個成員明細。
-- **R3 已收** `paid = Σ_{inv ∈ I} min(TotalAmount_inv, netApplied_inv)`；超付另記 `overpaid = Σ max(0, netApplied − TotalAmount)`。netApplied 用既有 `InvoiceAmountReconciliationService` 規則（Payment rows；不讀 stored `PaidAmount`／`Status`）。
-- **R4 應收** `X = ` **§5 Q1 待定**（A：`rate × total_sessions`；B：`Σ TotalAmount_inv`；C：混合）。
+- **R3 已收** `paid = Σ_{inv ∈ I} min(TotalAmount_inv, netApplied_inv)`；超付另記 `overpaid = Σ max(0, netApplied − TotalAmount)`。netApplied 用既有 `InvoiceAmountReconciliationService` 規則（Payment rows；不讀 stored `PaidAmount`／`Status`）。先保存 `signed_net = positiveTotal − voidedTotal`，負值依 R8.5 待核對，再 clamp 為 `max(0, signed_net)` 計算已收。現行 service 的 `net_applied` 已 clamp，不可直接拿它偵測負 net。
+- **R4 應收**（§5a Q1=C）：`I` 非空時 `X = Σ TotalAmount_inv`；與 `round(rate × total_sessions)` 比對，不一致或無法比對即待核對（R8.4）。`I` 為空時採同一 rate-based X，無法算出則待核對；R7 無帳單 legacy 已繳例外優先。Q5 新 confirm 在 X 可判定時依已決 R2-1 使用 full X，Payment 只記實收；X 不可判定時保留 R2-1「依實收開單但不因此標已繳」例外，不得把該例外當成可靠 X。
 - **R5 差額** `remaining = max(0, X − paid)`。
-- **R6 狀態**（無 pending 回報時）：`paid ≥ X` → 已繳（不進待收）；`0 < paid < X` → **部分已繳**，顯示 `remaining`；`paid = 0` → 未繳，顯示 `X`；有 pending `PaymentReport`（任一成員）→ 既有 `pending_report`（#3892 已保證一個方案一張）。
-- **R7 Legacy 旗標**（沿用 F7 S1 已決規則）：`I` 為空且 `pkg.paid = true` → 已繳（legacy_flag）。`I` 為空且 `pkg.paid = false` → 依 Q1 (B 則待核對)。`I` 非空時旗標不得蓋過 Payment rows（Founder Q2）。
-- **R8 待核對**（`needs_review`；不顯示差額、**排除於任何催繳／提醒／LINE**、只給主任人工核對）任一成立即是：
-  1. 任一張帳單以 `InvoiceItem.StudentClassID` 連到成員、但表頭不在 `M`（含表頭 null）——付款無法確定歸屬（#3785 item 1）。
+- **R6 狀態**：先處理 R0 排除與 R8 待核對；可靠 X 下，`paid ≥ X` → 已繳（不作待收款項）；`0 < paid < X` → **部分已繳**，顯示 `remaining`；`paid = 0` → 未繳，顯示 `X`。依 R135，結清事實優先：已繳方案有 pending 回報仍保持 `payment_status=paid`，另保留 `latest_payment_report_id`／回報摘要供顯式審核；不得隱藏非 anchor 成員回報。未結清且只有一筆 pending 回報時沿用既有 `pending_report`，不把回報金額視為已收。歷史多筆 pending 依 R8.8 處理；#3892 的新寫入去重不能證明歷史資料只有一張。已停止無帳單的 pending 回報可達性依 §5b OPEN-2，尚不能宣告驗收完成。
+- **R7 Legacy 旗標**（沿用 F7 S1 已決規則）：`I` 為空且 `pkg.paid = true` → 已繳（legacy_flag）。`I` 為空且 `pkg.paid = false` → 依已決 Q1=C 的 rate-based X。R8.7 只在 `I` 非空時適用。`I` 非空時旗標不得蓋過 Payment rows（Founder Q2）。
+- **R8 待核對**（`needs_review`；不顯示差額、**排除於對外自動催繳／提醒／LINE**（staff in-app 例外依 R2-5）、只給主任人工核對）任一成立即是：
+  1. 任一張非作廢帳單以 `InvoiceItem.StudentClassID` 連到成員、但表頭不在 `M`（含表頭 null）——付款無法確定歸屬（#3785 item 1）。
   2. `I` 中有帳單的明細同時指到 `M` 以外的課程（一張帳單混方案與非方案）。
-  3. 任一成員 `StudentID ≠ pkg.student_id`，或學生 `CampusID ≠ pkg.campus_id`（跨分校）。
-  4. `X` 無法算出：`rate ≤ 0`、`total_sessions ≤ 0`、`rate_unit ≠ 'session'`（A 方案時），或 `I` 為空且旗標未繳（B 方案時）。
-  5. `overpaid > 0`，或任一帳單 `amount_discrepancy = true`，或任一帳單 net 為負。
+  3. 任一成員 `StudentID ≠ pkg.student_id`，或學生 `CampusID ≠ pkg.campus_id`（跨分校）；候選非作廢帳單的 `Invoice.StudentID` 必須等於 `pkg.student_id`，該學生 campus 亦須等於 `pkg.campus_id`。表頭／明細引用課程仍須符合相同 student/campus 邊界，不能因同 campus 就挪用另一學生付款。
+  4. R0 免費排除後，Q1=C 的 X 或 rate-based 比對值無法算出：`rate ≤ 0`、`total_sessions ≤ 0`、`rate_unit ≠ 'session'`；或 `I` 非空且 `Σ TotalAmount ≠ round(rate × total_sessions)`。R7 無帳單 legacy 已繳例外仍保留。
+  5. `overpaid > 0`，或任一帳單 `amount_discrepancy = true`，或任一帳單 `signed_net < 0`（clamp 前，見 R3）。
   6. 成員 `ScheduleMode` 與 `pkg.billing_mode` 不一致（count 方案裡有 date 成員或反之）。
-  7. A／C 方案下，`pkg.paid = true` 但 `paid < X`（無法分辨是折扣還是欠款，見 Q1）。
-- **R9 不寫入**：Phase 2 全為讀取端（alert／佇列 JSON），不新增 migration、不改 `CoursePackage.paid`、不補帳單、不動既有紀錄。
-- **R10 不催繳**：本規則產生的方案「部分已繳」列與「待核對」列都**不**進 `DunningService`／`SendTuitionReminders`／LINE（見 Q4）。單科課程路徑不變。
+  7. `I` 非空且 `pkg.paid = true` 但 `paid < X`（無法分辨是折扣還是欠款，見 Q1）；不得套用到 R7 legacy 無帳單已繳。
+  8. 同一方案成員存在多筆 pending `PaymentReport`：回傳所有相關 report IDs 與 `duplicate_pending_reports` reason，不任選一筆隱藏其餘回報；核對前不提供單筆／批次 confirm 收款動作。這是無法確定回報歸屬的人工核對要求，不新增付款狀態或自動修復。
+- **R9 不寫入**：Phase 2-read 為 alert／佇列 JSON 與自動提醒候選排除，不新增 migration、不改 `CoursePackage.paid`、不補帳單、不動既有帳務紀錄。Q5 的 Phase 2-write 是獨立寫入 PR；不能把「Phase 2 全無寫入」套用到它。
+- **R10 不催繳**：所有 count 方案成員（unpaid、partial、paid、pending_report、needs_review，及未被選入 alert 的成員）皆排除 `DunningService`／`SendTuitionReminders` 及其對外 LINE 發送；不得只按 partial／needs_review 列過濾。單科與月結方案路徑依既有政策不變。教職員 in-app 通知依 R2-5 維持，不屬本條對外自動催繳範圍。
 
 ---
 
 ## 3. 範圍
 
 - 涵蓋：count 方案（`billing_mode='count'`）在 `GET alerts/tuition`（帳務中心待收、主任首頁、學生列表 chips）的列。
-- 不涵蓋：月結方案（D4，見 Q3）；帳齡／銀行對帳明細（D7）；寫入路徑（confirm 時開單金額、`markPackagePaid`）——這些若要改屬 R3 寫入變更，另案。
+- 不涵蓋：月結方案（D4，見 Q3）；帳齡／銀行對帳明細（D7）；Phase 2-read 不涵蓋寫入路徑（confirm 時開單金額、`markPackagePaid`）；已決 Q5/R2-1 由獨立 Phase 2-write PR 處理。§5b 未定事項不能用本文件作已批准實作的依據。
+
+### 3a. API／client 與既有隔離邊界
+
+- `GET alerts/tuition` 及 package/invoice/Payment aggregates 必須先限制在 authenticated campus scope。非 super_admin 的空 `auth_campus_ids` 回空或 403；`branch_id` 不得擴大 scope。只保留既有文件化 super_admin 例外。
+- Q5 single／batch confirm 在任何帳務 write 前驗證 report、student、course、package 的身份與 campus 一致，且屬 authenticated campus scope；空 scope fail closed。batch 不能繞過 single 的同一驗證。
+- `TuitionCollectionPage.vue` 卡片、tabs、counts、action filters 與 `StudentsList.vue` chips（及主任首頁同 payload consumers）明確支持 `needs_review`：顯示待核對與 reasons、保留 null 金額，不轉成 0／全額或未繳 label；人工核對佇列可見，但不加入可收總額，不提供登錄／批次 confirm／催繳。
 
 ## 4. Phase 2 驗收（實作時）
 
 1. 兩成員各付一部分 → 一列，`paid` 為兩者合計，`remaining = X − 合計`（無重算）。
 2. 付了一部分後永遠不顯示全額 `X`。
-3. 待核對列 `payment_status = 'needs_review'`，不在 dunning／reminder 候選內。
+3. 待核對列 `payment_status = 'needs_review'`，各 client 明確可見、金額 null、不可作一般登錄／批次 confirm，不在 dunning／reminder 候選內。
 4. 方案 `paid=1` 且成員帳單仍開 → 不出現單科列（D2），停課成員不出現 `pending_reconciliation` 單科列（D3）。
 5. 單科課程（`PackageID` null）所有既有測試（`TuitionAlerts*`、`ContractMoneyCallersAgreeTest`）不變。
 6. 與 #3891 的關係：若 #3891 先合，package member 在 `mayOweSql` 的排除條款保留（方案改由本規則的方案列處理）；Phase 2 在 #3891 合併後從 main 開分支，不堆疊。
 
+7. 每種 count 付款狀態與未被 alert 選中的成員都在實際 sender 層驗證零自動提醒／LINE；月結、單科及 R2-5 staff in-app 例外保持既有政策。
+8. 已結清且非 anchor 有 pending 回報維持 paid 並可顯式審核；歷史多筆 pending 回傳全部 IDs 且不可任選 confirm。保留 R135 的 paid-package regression。
+9. signed negative net、另一學生帳單、跨 campus header/items、nonvoid item-only 帳單 → 待核對；void item-only 不觸發此歸屬 anomaly；免費／輔導課先排除。
+10. 非 super_admin 空 scope、越權 branch_id 與跨 campus package 讀取不漏資料；single／batch confirm 越權時零帳務寫入。
+11. Q5 full-X 自動開單的部分／結清回歸依 R2-1；§5b OPEN 未完成前，不能以其餘測試通過宣稱完整 Phase 2-ready。
+
 ---
 
-## 5. 需要 Founder 決定的事（code 無法決定）
+## 5. Founder 問題記錄（歷史選項；定案以 §5a 為準）
 
 **Q1 整包應收 `X` 以什麼為準？**
 
@@ -144,6 +159,17 @@ Founder 2026-10-13 對 Phase 2 實作時浮現的五個歧義一律採建議選�
 | R2-4 | 已停止、沒有任何帳單的 count 方案 | **(a)** 不列入待收。 |
 | R2-5 | 教職員 in-app 通知（`NotificationSyncService`） | **(a)** 維持現狀（每成員一則），本 RFC 不改。 |
 
+## 5b. OPEN implementation hold（不是新 Founder 決定）
+
+§5a 原始決策原文保留。以下發現尚未被該決策完整定義；owner 需明確選擇、批准具體邊界或確認延後。完整 Phase 2 implementation readiness 為 **HOLD**，不能把 docs merge 或 read-side 綠燈當作這些寫入行為已批准。
+
+| ID | 未定邊界／驗證提案 | owner 決定前的限制 |
+|---|---|---|
+| OPEN-1 | 多張仍欠成員帳單：package remaining 為總和，但 PaymentReport／Payment 只指向一張 Invoice。需選擇一列內明確選一張 invoice、顯示其可收額並逐張收，或另定跨 invoice allocation／atomicity／idempotency／receipt 契約。 | 不發明分攤／先後順序，不把 aggregate remaining 直接送入單張 confirm；現有可算金額仍可讀取，但該 package 收款 action 合約尚未 ready。 |
+| OPEN-2 | 已停止、無帳單但有 pending 回報：R2-4 明定不列待收，R135 要求回報可達。提案是保留待收排除並提供獨立 report-review projection／入口；另一選項為批准 R2-4 的窄 pending 例外。 | 不默改 R2-4；確認／拒絕入口可達性是驗收 blocker，具體 UI/API 邊界仍待 owner 決定。 |
+| OPEN-3 | inverse void 驗證提案：新 confirm 結清後合法 void/reversal，是否在同 transaction／locks 重算 package 與全部 member settlement flags，避免 sibling 仍 paid、合法 reversal 被讀成 legacy anomaly；需涵蓋每個 reversal producer。 | Q5 尚未明文定義逆向 flags 行為；若改動既有 void 行為，需 owner 對具體 write scope 決定及 settle→void 回歸／rollback 證據。不自動修既有資料。 |
+| OPEN-4 | receipt 驗證提案：partial／final package 款項的收據是否採 package-aware snapshot，列整包名稱、covered subjects/session 範圍與實收，不只顯示 anchor 科目；不引入科目價款分攤。 | 收據內容與 snapshot 範圍需 owner 確認；multi-subject partial/final／重印回歸必備，不將提案寫成既有 Founder 決策。 |
+
 ## 6. 回滾
 
-本檔為文件。Phase 2 為讀取端程式，回滾＝revert PR；無資料寫入、無 migration。
+本檔為文件，回滾＝revert 本 PR。Phase 2-read 回滾＝revert 該讀取／提醒候選 PR，無帳務寫入、無 migration。Phase 2-write 必須另附具體 rollback boundary、ledger／audit 與驗證證據；revert 程式不會刪除已產生的 Invoice／Payment／reversal，既有帳務資料不得以本 RFC 自動修復。
