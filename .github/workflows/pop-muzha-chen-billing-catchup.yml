@@ -1,4 +1,4 @@
-name: Founder POP Muzha Chen billing catch-up
+name: Founder POP Muzha student 164 billing catch-up
 # Case adapter for POP operation muzha-chen-billing-catchup-20261005 (Founder decision 2026-10-05, this PR).
 # Execution stays on the Pi scheduler; the super_admin Bearer session is read on the Pi and never leaves it.
 # The case is campus 16 only, but draft/dry-run reuse the same Pi super_admin session as the other Founder-exact cases. dry-run is read-only; approve waits for Pi-local execute + verify.
@@ -12,7 +12,7 @@ on:
         options: [dry-run, approve]
         default: dry-run
       confirm:
-        description: "DRY_RUN_MUZHA_CHEN_BILLING_CATCHUP_20261005 or APPROVE_MUZHA_CHEN_BILLING_CATCHUP_20261005"
+        description: "DRY_RUN_MUZHA_STUDENT_164_BILLING_CATCHUP_20261005 or APPROVE_MUZHA_STUDENT_164_BILLING_CATCHUP_20261005"
         required: true
         type: string
       deployed_backend_sha:
@@ -24,9 +24,10 @@ permissions:
 concurrency:
   group: alltrue-production-side-effects-v2
   cancel-in-progress: false
+  queue: max
 jobs:
   guard:
-    name: Validate exact muzha-chen-billing-catchup gate
+    name: Validate exact Muzha student 164 billing catch-up gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -40,13 +41,13 @@ jobs:
           [[ "$MODE" == dry-run || "$MODE" == approve ]] || exit 1
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::deployed_backend_sha must be a full commit SHA'; exit 1; }
           if [[ "$MODE" == dry-run ]]; then
-            [[ "$CONFIRM" == DRY_RUN_MUZHA_CHEN_BILLING_CATCHUP_20261005 ]] || exit 1
+            [[ "$CONFIRM" == DRY_RUN_MUZHA_STUDENT_164_BILLING_CATCHUP_20261005 ]] || exit 1
           else
-            [[ "$CONFIRM" == APPROVE_MUZHA_CHEN_BILLING_CATCHUP_20261005 ]] || exit 1
+            [[ "$CONFIRM" == APPROVE_MUZHA_STUDENT_164_BILLING_CATCHUP_20261005 ]] || exit 1
           fi
           echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA scope=student164_catchup_invoices_and_void_invoice1053"
   repair:
-    name: Pi-local short-lived POP repair (Muzha Chen billing catch-up)
+    name: Pi-local short-lived POP repair (Muzha student 164 billing catch-up)
     needs: guard
     if: ${{ needs.guard.result == 'success' }}
     runs-on: ubuntu-latest
@@ -79,7 +80,7 @@ jobs:
           test -n "$PI_SSH_KEY" && test -n "$PI_HOST_KEY"
           # Both values were allowlisted by the guard job (mode choice, 40-hex SHA) before reaching the remote shell.
           [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
-          SSH_DIR="$RUNNER_TEMP/pop-muzha-chen-catchup-ssh"
+          SSH_DIR="$RUNNER_TEMP/pop-muzha-student164-catchup-ssh"
           install -d -m 700 "$SSH_DIR"
           printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
           chmod 600 "$SSH_DIR/deploy_key"
@@ -94,11 +95,11 @@ jobs:
           BASE_URL=https://daan.lifenet.com.tw
           OPERATION=muzha-chen-billing-catchup-20261005
           APPROVAL_REF=founder-go-muzha-chen-billing-catchup-20261005
-          WORK_DIR="$(mktemp -d /tmp/pop-muzha-chen-catchup.XXXXXX)"
+          WORK_DIR="$(mktemp -d /tmp/pop-muzha-student164-catchup.XXXXXX)"
           TOKEN=''
           cleanup() {
             unset TOKEN
-            case "$WORK_DIR" in /tmp/pop-muzha-chen-catchup.*) find "$WORK_DIR" -mindepth 1 -delete; rmdir "$WORK_DIR" ;; esac
+            case "$WORK_DIR" in /tmp/pop-muzha-student164-catchup.*) find "$WORK_DIR" -mindepth 1 -delete; rmdir "$WORK_DIR" ;; esac
           }
           trap cleanup EXIT
           manifest="$WORK_DIR/manifest.json"

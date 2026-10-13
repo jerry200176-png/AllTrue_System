@@ -891,37 +891,7 @@ class CoursePackageController extends Controller
 
         foreach ($courses as $sc) {
             $currentPackage = $sc->PackageID;
-            $studentCampusId = (int) (Student::where('id', (int) $sc->StudentID)->value('CampusID') ?? 0);
-            $reasons = [];
-
-            if ((int) $sc->StudentID !== (int) $pkg->student_id) {
-                $reasons[] = 'different_student';
-            }
-            if ($studentCampusId !== (int) $pkg->campus_id) {
-                $reasons[] = 'different_campus';
-            }
-            if ((string) ($sc->ScheduleMode ?? 'count') !== 'count') {
-                $reasons[] = 'not_count_mode';
-            }
-            if ((int) ($sc->Stop ?? 0) !== 0) {
-                $reasons[] = 'course_inactive';
-            }
-            if (!empty($currentPackage) && (int) $currentPackage > 0 && (int) $currentPackage !== (int) $pkg->id) {
-                $reasons[] = 'different_package';
-            }
-
-            // The legacy migration endpoint must share the conversion safety
-            // gate.  It may only bind a genuinely unused, unbilled course;
-            // existing history is never made safe by calling dry_run=false.
-            // Do not inspect another student's/campus's history after the
-            // identity gate has already failed.
-            if (empty($reasons)) {
-                $conversionInspection = $this->inspectPackageConversion($sc, false);
-                foreach ($conversionInspection['blocking_reasons'] as $reason) {
-                    $reasons[] = $reason['code'];
-                }
-            }
-            $reasons = array_values(array_unique($reasons));
+            $reasons = $this->bindBlockReasons($sc, $pkg);
 
             $report[] = [
                 'student_class_id'    => $sc->ID,
@@ -964,14 +934,46 @@ class CoursePackageController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($courses, $pkg) {
-            foreach ($courses as $sc) {
-                $sc->PackageID = $pkg->id;
-                $sc->PackageTotalSessions = $pkg->total_sessions;
-                $sc->PackageName = $pkg->name;
+        // #3908: the checks above ran without locks. Lock in the same order as PaymentReportController::directorRecord
+        // (courses, then package) and re-run the same gate on the locked rows, so a payment report recorded in between
+        // is seen here instead of being bound into the package.
+        // Rows already bound to this package are a no-op and are not locked: package writers (confirm, deduction
+        // recompute) lock the package and then its members, so holding a member before the package could deadlock.
+        $toBind = $courses->filter(fn ($sc) => (int) ($sc->PackageID ?? 0) !== (int) $pkg->id)
+            ->pluck('ID')->map(fn ($v) => (int) $v)->values()->all();
+        $changed = $toBind === [] ? [] : DB::transaction(function () use ($toBind, $pkg) {
+            $locked = StudentClass::query()->whereIn('ID', $toBind)->orderBy('ID')->lockForUpdate()->get();
+            $lockedPkg = CoursePackage::query()->whereKey($pkg->id)->lockForUpdate()->first();
+            $changed = [];
+            foreach (array_diff($toBind, $locked->pluck('ID')->map(fn ($v) => (int) $v)->all()) as $goneId) {
+                $changed[] = ['student_class_id' => (int) $goneId, 'reasons' => ['course_not_found']];
+            }
+            foreach ($locked as $sc) {
+                $reasons = $lockedPkg ? $this->bindBlockReasons($sc, $lockedPkg) : ['package_not_found'];
+                if ($reasons !== []) {
+                    $changed[] = ['student_class_id' => (int) $sc->ID, 'subject' => $sc->displaySubjectName(), 'reasons' => $reasons];
+                }
+            }
+            if ($changed !== []) {
+                return $changed;
+            }
+            foreach ($locked as $sc) {
+                $sc->PackageID = $lockedPkg->id;
+                $sc->PackageTotalSessions = $lockedPkg->total_sessions;
+                $sc->PackageName = $lockedPkg->name;
                 $sc->save();
             }
+
+            return [];
         });
+        if ($changed !== []) {
+            return response()->json([
+                'message' => '課程狀態剛剛有變動（例如已有繳費回報），沒有綁定任何課程，請重新檢查。',
+                'code' => 'bind_state_changed',
+                'dry_run' => false,
+                'blocked' => $changed,
+            ], 422);
+        }
 
         Log::info('CoursePackage bind-courses', [
             'package_id'        => $id,
@@ -983,6 +985,44 @@ class CoursePackageController extends Controller
             'message' => '已綁定',
             'report'  => $report,
         ]);
+    }
+
+    /** The bind gate for one course: identity, mode and the shared conversion safety check (empty = may bind). */
+    private function bindBlockReasons(StudentClass $sc, CoursePackage $pkg): array
+    {
+        $currentPackage = $sc->PackageID;
+        $studentCampusId = (int) (Student::where('id', (int) $sc->StudentID)->value('CampusID') ?? 0);
+        $reasons = [];
+
+        if ((int) $sc->StudentID !== (int) $pkg->student_id) {
+            $reasons[] = 'different_student';
+        }
+        if ($studentCampusId !== (int) $pkg->campus_id) {
+            $reasons[] = 'different_campus';
+        }
+        if ((string) ($sc->ScheduleMode ?? 'count') !== 'count') {
+            $reasons[] = 'not_count_mode';
+        }
+        if ((int) ($sc->Stop ?? 0) !== 0) {
+            $reasons[] = 'course_inactive';
+        }
+        if (!empty($currentPackage) && (int) $currentPackage > 0 && (int) $currentPackage !== (int) $pkg->id) {
+            $reasons[] = 'different_package';
+        }
+
+        // The legacy migration endpoint must share the conversion safety
+        // gate.  It may only bind a genuinely unused, unbilled course;
+        // existing history is never made safe by calling dry_run=false.
+        // Do not inspect another student's/campus's history after the
+        // identity gate has already failed.
+        if (empty($reasons)) {
+            $conversionInspection = $this->inspectPackageConversion($sc, false);
+            foreach ($conversionInspection['blocking_reasons'] as $reason) {
+                $reasons[] = $reason['code'];
+            }
+        }
+
+        return array_values(array_unique($reasons));
     }
 
     /** Build the shared safety evidence used by both preview and legacy binding. */
