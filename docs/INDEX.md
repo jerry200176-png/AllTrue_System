@@ -30,6 +30,8 @@
 **Worktree ban:** never edit `/home/jerry/alltrue` — [`governance/WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md).  
 **Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3 classify risk). **Operator:** fleet [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) — T0–T2 follow their required checks and review; T3/protected actions require a concrete Founder decision at the protected boundary.
 
+**九大工程面向執行計畫（2026-10-13 量測版，Refs #3115）：** [`plans/2026-10-13-nine-area-engineering-plan.md`](plans/2026-10-13-nine-area-engineering-plan.md)（現況數字、工作包排序、Anti-AI-slop UI 規則）。
+
 **PR 自動審核與 CI 追蹤：** [`plans/2026-10-02-codex-pr-review-automation.md`](plans/2026-10-02-codex-pr-review-automation.md)（設定、去重、停用與回復）。
 
 **CI governance / preflight:** [`governance/CI_GOVERNANCE.md`](governance/CI_GOVERNANCE.md) · `npm run ci:preflight`  
