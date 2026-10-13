@@ -8,6 +8,7 @@ use App\Models\StudentLineBinding;
 use App\Models\PaymentReport;
 use App\Models\SecurityAuditEvent;
 use App\Models\UserCampus;
+use App\Services\ParentBinding\BindingService;
 use App\Services\ParentBinding\GuardianSyncService;
 use App\Support\Utf8mb3SearchSanitizer;
 use Illuminate\Http\Request;
@@ -653,7 +654,11 @@ class StudentController extends Controller
         }
 
         $lineUserId = $binding->line_user_id;
-        $binding->delete();
+        // #3933: unbinding also revokes guardian access (same path as the binding list).
+        DB::transaction(function () use ($binding, $student, $lineUserId) {
+            app(BindingService::class)->revokeGuardianAccess((int) $student->id, (string) $lineUserId);
+            $binding->delete();
+        });
 
         SecurityAuditEvent::append('line.binding.revoked', 'success', [
             'campus_id' => (int) $student->getAttribute('CampusID'),

@@ -63,35 +63,30 @@ Dump request PRs are read-only and need no Founder approval (Founder decision 8,
 
 ## Write-backs from a cloud session
 
-Founder 2026-10-13: Phase-A triage and follow-up comments get a governed cloud path.
-`bug-writeback-request.yml` runs `scripts/bug-writeback/run-remote.sh`, the same script
-that `bug-phase-a-triage.yml` and `bug-followup-comment.yml` call, so the input checks and
-`BugReportService` calls are identical.
+Founder 2026-10-13: governed Phase-A triage and open-status follow-up use the shared
+`scripts/bug-writeback/run-remote.sh`. Activation requires the protected executor's
+Founder approval and prerequisite freshness/cursor deployment; an empty file writes nothing.
 
-1. Triage first (freshness gate above, GitHub issue opened). Branch `chore/…` from `origin/main`.
-2. Append an entry to `operations/closeout/bug-writeback.request.yml` (fields and an example
-   are in the file header): a new `request_id`, `bug_id`, `action` (`triage` = `new`→`triaged`
-   plus the public reply; `followup` = public comment only, with `expected_status`
-   `triaged` or `in_progress`), `github_issue_url` (an issue in this repository) and
-   `public_reply` (§3.8 plain language, includes the issue URL, 20–1500 characters, no
-   field/class names, SQL, tooling or internal codes; no names, `@`, phone numbers or any
-   run of 6+ digits — the file is public git history). A `disposition` that must close as
-   logged (`BugReportService::LOGGED_CLOSE_KINDS`) is refused; use the dispatch workflow.
-3. PR → CI green. A PR that edits this file is a production write, so `autonomy_gate.py`
-   rates it **T2 at minimum**: it lands only with an independent review (Codex or a reviewer
-   agent) and no open P1, never T0 auto-merge. Then add `queue`.
-4. CI validates the whole checked-in file, so an invalid entry cannot merge. The merge to
-   `main` runs the workflow, which validates every new entry again before any production
-   access and fails closed on any problem; the server re-checks that the bug exists and
-   is in an allowed status (`new`/`triaged` for triage, exactly `expected_status` for follow-up).
-   The log prints request IDs, bug IDs, actions and counts only; that log is the
-   processed-ID record.
+1. Complete the freshness gate and open the GitHub issue. Capture `writeback_evidence`
+   from authorized report detail: `captured_at` and `proof`; never edit the timestamp.
+2. Append an immutable unique `request_id` to `operations/closeout/bug-writeback.request.yml`,
+   with `bug_id`, `action`, repo issue URL, §3.8 public reply, `captured_at`, `writeback_proof`.
+   Triage allows `new`/`triaged`; follow-up requires `expected_status=triaged|in_progress`.
+   No names, phone/email identifiers or internal jargon in this public Git history.
+   `resolved`, `closed` and logged-close dispositions remain on existing dispatch/Phase-C.
+3. Request PRs are T2 minimum: green CI plus independent review, no unresolved P1.
+   Executor/cursor changes are T3. Validate additions against immutable history before merge.
+4. The main-only workflow drains at most five IDs per run from one frozen reviewed snapshot.
+   A pinned permanent state comment in #3998 binds the prefix and request content hashes;
+   missing/invalid state fails closed, never replays history. Frozen continuations finish backlog.
+5. Before SSH, persist an unknown reservation. Under the report/child transaction locks,
+   the server verifies the timestamp-bound proof is at most 15 minutes old and unchanged.
+   Only confirmed success clears unknown. Logs show IDs/outcomes, not reply text.
 
-Only `request_id`s absent from the previous version of the file run, so re-pushing the same
-file does nothing. Each new request is attempted even if an earlier one fails; the run then
-fails and lists the failed `request_id`s. A failed request is not retried automatically: fix
-the cause and append a new entry with a new `request_id`. `resolved`, `closed` and `close_as_logged` are not
-accepted here; they stay on Phase-C and the dispatch workflows.
+Timeouts, interrupted jobs and uncertain API/SSH results require coordinator reconciliation
+of the pinned unknown outcome before an explicit approved new request ID with fresh proof.
+An unknown reservation may mean no write occurred; never infer product success or auto-retry.
+Keep the pinned comment; recovery/reset needs reviewed evidence rather than empty replay.
 
 ## Deployment evidence gate (merge ≠ production)
 

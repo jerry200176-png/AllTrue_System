@@ -2,7 +2,7 @@
   <div class="nightly-reconcile" role="region" aria-label="夜間堂數對帳異常面板">
     <AtPageHeader
       title="夜間堂數對帳"
-      description="每天 02:00 比對已用堂數與出勤／扣堂帳本；本頁只診斷，不直接改數字。"
+      description="每天 02:00 核對每門課的已用堂數。本頁只顯示結果，不改數字。"
       icon="receipt_long"
       data-guide="nightly-reconcile-header"
     >
@@ -34,62 +34,44 @@
 
     <!-- 有報告 -->
     <template v-else>
-      <!-- 頂部摘要卡片 -->
-      <div class="nr-summary" v-if="summary">
-        <div class="nr-card">
-          <span class="nr-card-num">{{ formatDateTime(summary.checked_at) }}</span>
-          <span class="nr-card-label">最近檢查</span>
-        </div>
-        <div class="nr-card">
-          <span class="nr-card-num">{{ summary.total_checked }}</span>
-          <span class="nr-card-label">檢查課程數</span>
-        </div>
-        <div :class="['nr-card', summary.mismatch_count > 0 ? 'nr-card--danger' : 'nr-card--ok']">
-          <span class="nr-card-num">{{ summary.mismatch_count }}</span>
-          <span class="nr-card-label">需要人工確認</span>
+      <!-- 摘要：昨晚核對了什麼、幾筆對不上 -->
+      <div
+        :class="['nr-verdict', summary.mismatch_count > 0 ? 'nr-verdict--danger' : 'nr-verdict--ok']"
+        role="status"
+        data-testid="nr-verdict"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">{{ summary.mismatch_count > 0 ? 'error' : 'check_circle' }}</span>
+        <div>
+          <strong class="nr-verdict-title">{{ verdictTitle }}</strong>
+          <p class="nr-verdict-desc">{{ formatDateTime(summary.checked_at) }} 核對 {{ summary.total_checked }} 門上課中的課程：已用堂數、扣堂紀錄、點名與評量紀錄。</p>
         </div>
       </div>
 
-      <details class="nr-explainer" open>
-        <summary>
-          <span class="material-symbols-outlined" aria-hidden="true">help_outline</span>
-          這份報告檢查什麼？
-        </summary>
-        <div class="nr-explainer-grid">
-          <div>
-            <strong>1．課程已用堂數</strong>
-            <p>課程目前記錄為已使用的堂數。</p>
-          </div>
-          <div>
-            <strong>2．權威扣堂計算</strong>
-            <p>由系統扣堂服務依分鐘制與合約上限計算應使用堂數。</p>
-          </div>
-          <div>
-            <strong>3．實際出席證據</strong>
-            <p>查看堂次是否有已到班、完成或遲到的出席紀錄。</p>
-          </div>
-        </div>
-        <p class="nr-explainer-foot">有差異時只產生報告並通知主任，不會自動改寫堂數；這也不是銀行或學費入帳對帳。</p>
+      <AtInlineAlert v-if="isStale" tone="warning" title="報告超過一天沒更新" data-testid="nr-stale">
+        <p>每天 02:00 的核對可能沒跑，請通知工程團隊。</p>
+      </AtInlineAlert>
+
+      <details class="nr-explainer">
+        <summary>怎麼核對</summary>
+        <ul>
+          <li><strong>課程上的已用堂數</strong>：課程目前記錄用掉幾堂。</li>
+          <li><strong>系統應為</strong>：依點名、已上課的課堂、評量與扣堂紀錄算出應用掉幾堂。堂數制的課不超過買的堂數；月結（依上課日收費）的課沒有這個上限。</li>
+          <li><strong>課堂狀態已上</strong>：課堂狀態為已到、遲到或完成的堂數，只供參考。</li>
+        </ul>
+        <p>這不是學費或銀行對帳。</p>
       </details>
 
-      <div v-if="causeCounts.length" class="nr-cause-summary" aria-label="異常原因摘要">
-        <span v-for="item in causeCounts" :key="item.category" class="nr-cause-chip">
-          {{ categoryLabel(item.category) }}：{{ item.count }} 筆
-        </span>
-      </div>
-
-      <!-- 零異常狀態 -->
-      <div v-if="summary.mismatch_count === 0" class="nr-all-clear" role="status">
-        <span class="material-symbols-outlined" aria-hidden="true" style="font-size:48px;color:var(--success)">check_circle</span>
-        <p>已用堂數與權威扣堂口徑一致，沒有需要處理的課程</p>
-      </div>
-
       <!-- 異常列表區 -->
-      <template v-else>
-        <div class="nr-readonly-note" role="note">
-          <span class="material-symbols-outlined" aria-hidden="true">policy</span>
-          <span>此頁只提供診斷，不會直接改寫堂數。請先檢查課程與出席紀錄；確認原因後，資料修復另走備份、核准與回滾流程。</span>
-        </div>
+      <template v-if="summary.mismatch_count > 0">
+        <section class="nr-guide" aria-label="各類差異的處理方式" data-testid="nr-guide">
+          <h2 class="nr-guide-title">怎麼處理</h2>
+          <article v-for="item in guideItems" :key="item.category" class="nr-guide-item" :data-category="item.category">
+            <h3>{{ categoryLabel(item.category) }}<span class="nr-guide-count">{{ item.count }} 門</span></h3>
+            <p><span class="nr-guide-key">意思</span>{{ categoryGuide(item.category).meaning }}</p>
+            <p><span class="nr-guide-key">下一步</span>{{ categoryGuide(item.category).next }}</p>
+          </article>
+          <p class="nr-guide-foot">本頁不會改數字。修正堂數由工程團隊處理，需先備份並經核准。</p>
+        </section>
 
         <!-- 篩選列 -->
         <div class="nr-filters" role="toolbar" aria-label="篩選與排序工具列">
@@ -167,14 +149,15 @@
                       <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'campus_name' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
                     </button>
                   </th>
+                  <th scope="col">課程編號</th>
                   <th scope="col">總堂數</th>
                   <th
                     class="nr-th--sortable"
                     :aria-sort="sortKey === 'recorded_used' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
                     scope="col"
                   >
-                    <button type="button" class="nr-sort-button" @click="toggleSort('recorded_used')" :aria-label="`依課程記錄已用堂數${sortKey === 'recorded_used' && sortDir === 'desc' ? '升冪' : '降冪'}排序`">
-                      已用（課程記錄）
+                    <button type="button" class="nr-sort-button" @click="toggleSort('recorded_used')" :aria-label="`依課程已用堂數${sortKey === 'recorded_used' && sortDir === 'desc' ? '升冪' : '降冪'}排序`">
+                      課程已用
                       <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'recorded_used' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
                     </button>
                   </th>
@@ -183,12 +166,12 @@
                     :aria-sort="sortKey === 'expected_used' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
                     scope="col"
                   >
-                    <button type="button" class="nr-sort-button" @click="toggleSort('expected_used')" :aria-label="`依權威計算已用堂數${sortKey === 'expected_used' && sortDir === 'desc' ? '升冪' : '降冪'}排序`">
-                      權威應為
+                    <button type="button" class="nr-sort-button" @click="toggleSort('expected_used')" :aria-label="`依系統應為堂數${sortKey === 'expected_used' && sortDir === 'desc' ? '升冪' : '降冪'}排序`">
+                      系統應為
                       <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'expected_used' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
                     </button>
                   </th>
-                  <th scope="col">實際出席</th>
+                  <th scope="col">課堂狀態已上</th>
                   <th
                     class="nr-th--sortable"
                     :aria-sort="sortKey === 'diff' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
@@ -211,6 +194,7 @@
                   <td class="nr-cell-name">{{ row.student_name }}</td>
                   <td>{{ row.subject_name }}</td>
                   <td>{{ row.campus_name }}</td>
+                  <td class="nr-cell-num">{{ row.student_class_id }}</td>
                   <td class="nr-cell-num">{{ row.session_count }}</td>
                   <td class="nr-cell-num">{{ row.recorded_used }}</td>
                   <td class="nr-cell-num">{{ row.expected_used }}</td>
@@ -247,9 +231,10 @@
 </template>
 
 <script setup>
-import { onMounted, computed } from 'vue';
+import { onMounted, onBeforeUnmount, computed, ref } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import { useNightlyReconcile } from '../composables/useNightlyReconcile';
 
 const props = defineProps({
@@ -277,7 +262,50 @@ const {
   sortDir,
   diffColorClass,
   categoryLabel,
+  categoryGuide,
 } = useNightlyReconcile(tokenRef);
+
+// The job runs daily at 02:00; a report older than ~36h means it did not run.
+const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
+
+// The backend writes checked_at as "YYYY-MM-DD HH:mm:ss" in app time (Asia/Taipei, UTC+8)
+// with no offset; parse it as such so the threshold does not depend on the viewer's timezone.
+function parseServerTime(value) {
+  const text = String(value || '');
+  const m = text.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/);
+  return new Date(m ? `${m[1]}T${m[2]}+08:00` : text);
+}
+
+// Date.now() is not reactive: tick a clock so a tab left open still turns stale.
+const now = ref(Date.now());
+let clockTimer = null;
+onMounted(() => {
+  clockTimer = setInterval(() => { now.value = Date.now(); }, 60 * 1000);
+});
+onBeforeUnmount(() => clearInterval(clockTimer));
+
+const isStale = computed(() => {
+  const checkedAt = parseServerTime(summary.value?.checked_at);
+  if (Number.isNaN(checkedAt.getTime())) return false;
+  return now.value - checkedAt.getTime() > STALE_AFTER_MS;
+});
+
+const verdictTitle = computed(() => {
+  const count = summary.value?.mismatch_count || 0;
+  if (count > 0) return `${count} 門課程需要確認`;
+  return isStale.value ? '最近一次核對無異常' : '昨晚核對無異常';
+});
+
+// Older reports may lack cause_counts; fall back to the detail rows.
+const guideItems = computed(() => {
+  if (causeCounts.value.length) return causeCounts.value;
+  const counts = {};
+  for (const row of mismatches.value) {
+    const category = row.category || 'unknown';
+    counts[category] = (counts[category] || 0) + 1;
+  }
+  return Object.entries(counts).map(([category, count]) => ({ category, count }));
+});
 
 function clearFilters() {
   setFilter('campus', '');
@@ -447,125 +475,52 @@ onMounted(() => {
 }
 
 /* === Summary Cards === */
-.nr-summary {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-
-.nr-card {
-  flex: 1;
-  min-width: 140px;
-  padding: 14px 16px;
-  border-radius: 10px;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.nr-card--danger {
-  border-color: #fecaca;
-  background: #fef2f2;
-}
-
-.nr-card--ok {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-}
-
-.nr-card-num {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.nr-card--danger .nr-card-num {
-  color: #dc2626;
-}
-
-.nr-card--ok .nr-card-num {
-  color: #16a34a;
-}
-
-.nr-card-label {
-  font-size: 12px;
-  color: var(--text-light);
-}
-
-.nr-explainer {
-  margin: -6px 0 18px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card-bg);
-}
-
-.nr-explainer summary {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  cursor: pointer;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 700;
-  list-style: none;
-}
-
-.nr-explainer summary::-webkit-details-marker { display: none; }
-.nr-explainer summary::after { content: '展開'; margin-left: auto; color: var(--text-light); font-size: 12px; font-weight: 500; }
-.nr-explainer[open] summary::after { content: '收合'; }
-.nr-explainer summary .material-symbols-outlined { color: var(--ds-primary-text); font-size: 19px; }
-.nr-explainer-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 12px;
-}
-.nr-explainer-grid > div { padding: 10px; border-radius: 8px; background: var(--bg-light, rgba(148, 163, 184, 0.1)); }
-.nr-explainer-grid strong { display: block; color: var(--text); font-size: 12px; }
-.nr-explainer-grid p { margin: 4px 0 0; color: var(--text-light); font-size: 12px; line-height: 1.45; }
-.nr-explainer-foot { margin: 12px 0 0; color: var(--text-light); font-size: 12px; line-height: 1.5; }
-
-.nr-cause-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: -8px 0 18px;
-}
-
-.nr-cause-chip {
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: var(--bg-light, rgba(148, 163, 184, 0.12));
-  color: var(--text-light);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-/* === All Clear === */
-.nr-all-clear {
-  text-align: center;
-  padding: 56px 20px;
-  color: var(--text-light);
-  font-size: 15px;
-}
-
-.nr-readonly-note {
+.nr-verdict {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card-bg);
-  color: var(--text-light);
-  font-size: 13px;
-  line-height: 1.5;
+  padding: 14px 16px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface);
 }
+.nr-verdict--ok { background: var(--ds-success-wash); }
+.nr-verdict--ok > .material-symbols-outlined { color: var(--ds-success); }
+.nr-verdict--danger { border-color: var(--ds-danger-border); background: var(--ds-danger-wash); }
+.nr-verdict--danger > .material-symbols-outlined { color: var(--ds-danger); }
+.nr-verdict-title { display: block; font-size: var(--ds-font-size-lg); color: var(--ds-text-primary); }
+.nr-verdict-desc { margin: 4px 0 0; font-size: var(--ds-font-size-sm); color: var(--ds-text-secondary); line-height: 1.5; }
+
+.nightly-reconcile :deep(.at-inline-alert) { margin-bottom: 14px; }
+
+.nr-explainer {
+  margin-bottom: 18px;
+  font-size: var(--ds-font-size-sm);
+  color: var(--ds-text-secondary);
+}
+.nr-explainer summary { cursor: pointer; font-weight: 600; color: var(--ds-text-primary); }
+.nr-explainer ul { margin: 8px 0 0; padding-left: 20px; line-height: 1.6; }
+.nr-explainer p { margin: 6px 0 0; }
+
+.nr-guide {
+  margin-bottom: 18px;
+  border-top: 1px solid var(--ds-border);
+}
+.nr-guide-title { margin: 14px 0 4px; font-size: var(--ds-font-size-md); color: var(--ds-text-primary); }
+.nr-guide-item { padding: 10px 0; border-bottom: 1px solid var(--ds-border); }
+.nr-guide-item h3 {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: var(--ds-font-size-base);
+  color: var(--ds-text-primary);
+}
+.nr-guide-count { flex: 0 0 auto; font-weight: 600; color: var(--ds-danger); }
+.nr-guide-item p { margin: 2px 0 0; font-size: var(--ds-font-size-sm); line-height: 1.5; color: var(--ds-text-secondary); }
+.nr-guide-key { display: inline-block; min-width: 3.5em; margin-right: 6px; font-weight: 600; color: var(--ds-text-primary); }
+.nr-guide-foot { margin: 10px 0 0; font-size: var(--ds-font-size-sm); color: var(--ds-text-secondary); }
 
 /* === Filters === */
 .nr-filters {
@@ -760,21 +715,9 @@ onMounted(() => {
     flex-direction: column;
   }
 
-  .nr-summary {
-    flex-direction: column;
-  }
-
-  .nr-card {
-    min-width: unset;
-  }
-
   .nr-filters {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .nr-explainer-grid {
-    grid-template-columns: 1fr;
   }
 
   .nr-select {

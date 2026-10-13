@@ -157,6 +157,8 @@ last_reviewed: 2026-08-23
 
 **上線留言範本（公開）**：#___ 已於 YYYY-MM-DD 上線（PR #___）。請您更新頁面後按「確認已修好」；若仍有問題請按「問題仍存在」並簡述，我們會再追。
 
+**API 強制（#3750）**：從 Bug 回報頁／`POST /api/v1/bugs/{id}/status` 標記 `resolved` 時，**最新一則公開留言**必須同時含「確認已修好」與「問題仍存在」，否則回 422 `missing_both_outcomes_reply`；選「已解決」時留言框會預填範本。字串來源：`BugReportService::RESOLVE_REPLY_REQUIRED_PHRASES`。
+
 #### 系統回覆（寫入 `bug_report_comments`／`bug_report_status_logs`）
 
 優先順序：

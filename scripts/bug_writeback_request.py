@@ -4,8 +4,7 @@
 Entries are immutable, ordered and uniquely identified. Current policy validates new
 entries; at most five additions per push and five attempts per run. Remote calls use
 180-second limits and durable prefixes; continuations drain a frozen reviewed main snapshot.
-Failed IDs require
-an explicit new request_id for retry. Logs contain IDs/counts only, never reply text.
+Unknown outcomes require reconciliation before an explicit new request_id. Logs contain IDs/counts only, never reply text.
 """
 from __future__ import annotations
 
@@ -23,10 +22,9 @@ FOLLOWUP_STATUSES = {"triaged", "in_progress"}
 REPLY_MIN_CHARS = 20
 REPLY_MAX_CHARS = 1500
 REQUEST_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
-FIELDS = {"request_id", "bug_id", "action", "github_issue_url", "public_reply", "disposition", "expected_status"}
+FIELDS = {"request_id", "bug_id", "action", "github_issue_url", "public_reply", "disposition", "expected_status", "captured_at", "writeback_proof"}
 REMOTE_SCRIPT = Path(__file__).resolve().parent / "bug-writeback" / "run-remote.sh"
-# Bound each push and remote call. A cursor gap may contain several pushes; a partial job
-# never advances the checkpoint, so unfinished requests remain eligible on the next run.
+# Bound each push/run; reserve unknown durably before each remote attempt.
 REMOTE_TIMEOUT_S = 180
 MAX_NEW_PER_PUSH = 5
 MAX_NEW_PER_RUN = 5
@@ -150,7 +148,14 @@ def validate_entry(entry: dict, repo: str) -> dict:
     problems = reply_problems(reply, url)
     if problems:
         raise RequestError(f"{rid}: public_reply fails §3.8: {', '.join(problems)}")
-    env = {"BUG_ID": str(bug_id), "GITHUB_ISSUE_URL": url, "PUBLIC_REPLY": reply}
+    captured = entry.get("captured_at")
+    proof = entry.get("writeback_proof")
+    if not isinstance(captured, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z", captured):
+        raise RequestError(f"{rid}: captured_at must be canonical UTC evidence time")
+    if not isinstance(proof, str) or not re.fullmatch(r"[0-9a-f]{64}", proof):
+        raise RequestError(f"{rid}: writeback_proof is required")
+    env = {"WRITEBACK_EVIDENCE_REQUIRED": "true", "WRITEBACK_CAPTURED_AT": captured,
+           "WRITEBACK_PROOF": proof, "BUG_ID": str(bug_id), "GITHUB_ISSUE_URL": url, "PUBLIC_REPLY": reply}
     if action == "triage":
         if "expected_status" in entry:
             raise RequestError(f"{rid}: expected_status is only for followup")
@@ -234,13 +239,21 @@ def apply(items: Iterable[dict], runner: Runner = run_remote, log: Callable[[str
     return done
 
 
+def durable_plan(after: str, snapshot_sha: str, minimum: int = 0):
+    sys.path.insert(0, str(REMOTE_SCRIPT.parent))
+    import writeback_cursor as cursor
+    return cursor.plan_snapshot(after, snapshot_sha, load_requests, validate_entry,
+                                os.environ.get("GITHUB_REPOSITORY", ""), minimum)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--before", type=Path, help="previous version of the request file (absent = empty)")
     ap.add_argument("--after", type=Path, required=True)
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
     ap.add_argument("--push-before", type=Path, help="actual push parent snapshot; cap it separately from the cursor gap")
-    ap.add_argument("--checkpoint-count", type=int, help="durable attempted prefix length from trusted workflow history")
+    ap.add_argument("--snapshot-sha", help="use permanent pinned cursor, never Actions history")
+    ap.add_argument("--minimum-prefix", type=int, default=0)
     ap.add_argument("--apply", action="store_true", help="write to production (workflow only)")
     args = ap.parse_args(argv)
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repo):
@@ -253,33 +266,41 @@ def main(argv: list[str] | None = None) -> int:
                 raise RequestError("push-before snapshot is missing")
             plan(read(args.push_before), read(args.after), args.repo)  # per-push cap before any write
         after = read(args.after)
-        prefix = 0
-        before = read(args.before)
-        if args.checkpoint_count is not None:
-            if args.checkpoint_count < 0 or not args.push_before:
-                raise RequestError("checkpoint count requires a push snapshot and cannot be negative")
-            entries = load_requests(after)
-            prefix = min(args.checkpoint_count, len(entries))
-            import json
-            before = json.dumps({"requests": entries[:prefix]}, ensure_ascii=False)
+        if args.snapshot_sha:
+            store, state, entries, pending = durable_plan(after, args.snapshot_sha, args.minimum_prefix)
+            prefix = state["prefix"]
         else:
+            prefix = 0
+            before = read(args.before)
             prefix = len(load_requests(before))
-        pending = plan(before, after, args.repo, per_push=not bool(args.push_before))
+            pending = plan(before, after, args.repo, per_push=not bool(args.push_before))
         items = pending[:MAX_NEW_PER_RUN]
         print(f"new requests: {len(items)} ({', '.join(i['request_id'] for i in items) or 'none'})")
         if os.environ.get("GITHUB_OUTPUT") and not args.apply:
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
                 out.write(f"count={len(items)}\nremaining={len(pending)}\n")
-        if args.apply:
-            def attempted(item):
-                nonlocal prefix
-                prefix += 1
+        if args.apply and args.snapshot_sha:
+            import writeback_cursor as cursor
+            failures = 0
+            for item in items:
+                state = cursor.reserve(state, entries, args.snapshot_sha)
+                store.write(state)  # confirmed durable unknown reservation BEFORE any SSH
+                prefix = state["prefix"]
                 if os.environ.get("GITHUB_OUTPUT"):
                     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-                        out.write(f"checkpoint_count={prefix}\nlast_attempted_id={item['request_id']}\n")
-                        out.write(f"remaining={len(load_requests(after)) - prefix}\n")
-            print(f"processed: {apply(items, attempted=attempted)}")
-    except RequestError as exc:
+                        out.write(f"checkpoint_count={prefix}\nremaining={len(entries) - prefix}\n")
+                code = run_remote(item["mode"], item["env"])
+                if code == 0:
+                    state = cursor.succeed(state, entries, item["request_id"])
+                    store.write(state)
+                else:
+                    failures += 1
+                print(f"request_id={item['request_id']} outcome={'succeeded' if code == 0 else 'unknown; reconcile before new ID'}")
+            if failures:
+                raise RequestError(f"{failures} uncertain outcomes; reconcile before explicit new ID")
+        elif args.apply:
+            raise RequestError("production apply requires permanent cursor snapshot")
+    except (RequestError, ValueError, subprocess.SubprocessError) as exc:
         print(f"refused: {exc}")
         return 1
     return 0
@@ -287,3 +308,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

@@ -1363,6 +1363,7 @@ class LearningRecordController extends Controller
         }
 
         return DB::transaction(function () use ($request, $learningRecord, $newTeacherId, $oldTeacherId, $data, $updateClass, $targetCampusId) {
+            LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $learningRecord->ClassSessionID); // #3824
             // TD-076 B2 (flag on): pin taught occurrences while the old contract/LR evidence is still intact.
             $occurrenceV2 = OccurrenceAssignmentService::enabledFor($targetCampusId);
             if ($occurrenceV2 && $updateClass) {
@@ -1426,6 +1427,10 @@ class LearningRecordController extends Controller
         $role = $request->attributes->get('auth_role');
         if (!in_array($role, ['director', 'super_admin', 'admin'], true)) {
             return response()->json(['message' => 'Forbidden'], 403);
+        }
+        if (LearningRecordMutableOwnership::isFilledAndApproved($learningRecord)) {
+            // #3824: deleting would unprotect the occurrence without rolling back the teacher's count or audit.
+            return response()->json(['message' => '這堂評量已填寫並核准，不能刪除。請先退回核准再處理。', 'code' => 'approved_assessment_teacher_locked'], 409);
         }
         $learningRecord->delete();
         return response()->json(['message' => 'Deleted']);
@@ -1747,7 +1752,7 @@ class LearningRecordController extends Controller
                     $this->syncRecordWithClassSession($existing, $classSession, (int) ($data['TeacherID'] ?? 0));
                     $existing->save();
                     app(UserEngagementXpAwardService::class)->awardOnLearningRecordApprovedIfEligible($existing->fresh());
-                } else {
+                } elseif (!LearningRecordMutableOwnership::isFilledAndApproved($existing)) { // #3824
                     $this->syncRecordWithClassSession($existing, $classSession, (int) ($data['TeacherID'] ?? 0));
                 }
 
@@ -1987,6 +1992,17 @@ class LearningRecordController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
+        // #3824: the atomic reschedule writes teacher_id onto the live row; a protected occurrence keeps its teacher.
+        // An omitted teacher_id would fall back to the target/contract teacher, so pin the protected record's teacher.
+        // Same source as RescheduleSessionService::findSession(): without old_start_time it moves the first session of old_date.
+        $sourceStart = $data['old_start_time'] ?? (empty($data['old_date']) ? null : ClassSession::query()->where('StudentClassID', (int) $studentClass->ID)->whereDate('SessionDate', $data['old_date'])->orderBy('id')->value('StartTime'));
+        if ($locked = LearningRecordMutableOwnership::protectedRecordForSlot((int) $studentClass->ID, $data['old_date'] ?? null, $sourceStart)) {
+            if (isset($data['teacher_id']) && (int) $locked->TeacherID !== (int) $data['teacher_id']) {
+                return LearningRecordMutableOwnership::lockedResponse();
+            }
+            $data['teacher_id'] = (int) $locked->TeacherID;
+        }
+
         $authUser = $request->attributes->get('auth_user');
         try {
             return response()->json(
@@ -2174,7 +2190,8 @@ class LearningRecordController extends Controller
         );
         $contractTid = (int) ($fallbackTeacherId ?? 0);
         $effectiveTeacherId = $subTid !== null ? $subTid : max(0, $contractTid);
-        if ($effectiveTeacherId > 0 && (int) $record->TeacherID !== $effectiveTeacherId) {
+        // #3824: a filled+approved assessment keeps its recorded teacher; only the session mirrors heal here.
+        if ($effectiveTeacherId > 0 && (int) $record->TeacherID !== $effectiveTeacherId && !LearningRecordMutableOwnership::isFilledAndApproved($record)) {
             $record->TeacherID = $effectiveTeacherId;
             $dirty = true;
         }

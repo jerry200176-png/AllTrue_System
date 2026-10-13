@@ -3,7 +3,7 @@ name: Bug write-back request (Phase-A triage / follow-up)
 
 # Governed cloud path for the in-app write-backs that otherwise need workflow_dispatch
 # (Founder 2026-10-13). A merged PR appends entries to the request file; the request_ids added
-# since the durable attempted prefix use the shared Phase-A/followup script in file order.
+# since the durable reservation prefix use the shared Phase-A/followup script in file order.
 # Never resolved/closed (Phase-C keeps those). Public repo: the log
 # carries request IDs, bug IDs, actions and counts only; remote output is discarded.
 on:
@@ -18,7 +18,7 @@ on:
         required: true
         type: string
       expected_prefix:
-        description: Minimum visible checkpoint for internal continuation
+        description: Minimum visible permanent reservation prefix for internal continuation
         required: false
         default: '0'
         type: string
@@ -28,8 +28,8 @@ on:
         type: string
 
 # One run at a time; queue:max retains pending runs. Queue order is not push order.
-# Each run attempts at most five IDs, recording an absolute prefix in its checkpoint step.
-# History takes the maximum prefix so out-of-order runs cannot move it backwards. An internal
+# Each run reserves at most five IDs in the pinned durable state comment before SSH.
+# Unknown outcomes stay visible for reconciliation and are never replayed. An internal
 # main-only continuation drains the same frozen reviewed request SHA; failed IDs count as
 # attempted (retry requires a new ID), so failures never create an infinite write loop.
 concurrency:
@@ -39,6 +39,7 @@ concurrency:
 
 permissions:
   contents: read
+  issues: write # only the reviewed pinned state comment
   actions: write # only to continue the same frozen main request snapshot
 
 jobs:
@@ -49,14 +50,14 @@ jobs:
       - name: Checkout request file, shared write-back scripts and SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # ancestry against the last successful run
+          fetch-depth: 0 # frozen main snapshot ancestry
           filter: blob:none
           sparse-checkout: |
             .github/actions/production-ssh-trust
             operations/closeout/bug-writeback.request.yml
             backend/app/Services/BugReportService.php
             scripts/bug_writeback_request.py
-            scripts/bug-writeback/run-remote.sh
+            scripts/bug-writeback/
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Validate new requests (before any production access)
@@ -82,16 +83,8 @@ jobs:
           else
             : > "$RUNNER_TEMP/push-before.yml"
           fi
-          prefix=0
-          runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/bug-writeback-request.yml/runs?branch=main&status=completed&per_page=100" --jq '.workflow_runs[] | select(.conclusion != "cancelled") | .id')
-          for rid in $runs; do
-            attempted=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$rid/jobs" --jq '[.jobs[].steps[] | select(.conclusion == "success" and (.name | startswith("Checkpoint attempted prefix "))) | .name | capture("^Checkpoint attempted prefix (?<count>[0-9]+) (?<rid>[a-z0-9][a-z0-9-]{2,63})$") | .count | tonumber] | max // 0')
-            [[ "$attempted" =~ ^[0-9]+$ ]] || { echo "invalid checkpoint; refusing"; exit 1; }
-            if (( attempted > prefix )); then prefix="$attempted"; fi
-          done
-          [[ "$EXPECTED_PREFIX" =~ ^[0-9]+$ ]] && (( prefix >= EXPECTED_PREFIX )) || { echo "checkpoint not visible yet; retry"; exit 1; }
-          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
-          python3 scripts/bug_writeback_request.py --checkpoint-count "$prefix" --push-before "$RUNNER_TEMP/push-before.yml" --after "$RUNNER_TEMP/after.yml"
+          timeout 30 git -c credential.helper= -c 'credential.helper=!f() { printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' fetch origin main:refs/remotes/writeback/main
+          python3 scripts/bug_writeback_request.py --snapshot-sha "$REQUEST_SHA" --minimum-prefix "$EXPECTED_PREFIX" --push-before "$RUNNER_TEMP/push-before.yml" --after "$RUNNER_TEMP/after.yml"
       - name: Configure pinned production SSH trust
         if: steps.plan.outputs.count != '0'
         uses: ./.github/actions/production-ssh-trust
@@ -116,14 +109,12 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          PREFIX: ${{ steps.plan.outputs.prefix }}
-        run: python3 scripts/bug_writeback_request.py --checkpoint-count "$PREFIX" --push-before "$RUNNER_TEMP/push-before.yml" --after "$RUNNER_TEMP/after.yml" --apply
-      - name: Checkpoint attempted prefix ${{ steps.apply.outputs.checkpoint_count }} ${{ steps.apply.outputs.last_attempted_id }}
-        id: checkpoint
-        if: ${{ always() && steps.apply.outputs.last_attempted_id != '' }}
-        run: echo "Attempted prefix recorded; failed IDs require a new request_id."
+          GH_TOKEN: ${{ github.token }}
+          REQUEST_SHA: ${{ inputs.request_sha || github.sha }}
+          EXPECTED_PREFIX: ${{ inputs.expected_prefix || '0' }}
+        run: python3 scripts/bug_writeback_request.py --snapshot-sha "$REQUEST_SHA" --minimum-prefix "$EXPECTED_PREFIX" --push-before "$RUNNER_TEMP/push-before.yml" --after "$RUNNER_TEMP/after.yml" --apply
       - name: Continue remaining frozen requests
-        if: ${{ always() && steps.checkpoint.outcome == 'success' && steps.apply.outputs.remaining != '0' }}
+        if: ${{ always() && steps.apply.outputs.checkpoint_count != '' && steps.apply.outputs.remaining != '0' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REQUEST_SHA: ${{ inputs.request_sha || github.sha }}
@@ -132,4 +123,5 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" == refs/heads/main ]] || exit 1
-          gh workflow run bug-writeback-request.yml --ref main -f "request_sha=$REQUEST_SHA" -f "push_before=$PUSH_BEFORE" -f "expected_prefix=$EXPECTED_PREFIX"
+          timeout 15 gh workflow run bug-writeback-request.yml --ref main -f "request_sha=$REQUEST_SHA" -f "push_before=$PUSH_BEFORE" -f "expected_prefix=$EXPECTED_PREFIX"
+

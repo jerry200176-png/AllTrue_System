@@ -69,7 +69,7 @@ describe('navigation registry', () => {
     const hubs = role => getNavigationGroups(role).flatMap(g => g.items).filter(i => i.tabs);
     expect(hubs('director').map(h => [h.label, h.tabs.map(t => t.label)])).toEqual([
       ['報表與薪資', ['當月學收', '科目數統計', '兼職薪資', '正職薪資要件']],
-      ['設定', ['老師管理', '教室', '科目', '家長 LINE 通知', 'LINE 綁定管理', '綁定衝突審查', '綁定健康度']],
+      ['設定', ['老師管理', '教室', '科目', '家長 LINE 通知', '家長 LINE 綁定', '綁定衝突審查', '綁定健康度']],
     ]);
     expect(hubs('super_admin').map(h => h.label)).toEqual(['報表與薪資', '設定', '系統管理']);
     expect(hubs('super_admin')[2].tabs.map(t => t.page)).toEqual([
@@ -103,7 +103,7 @@ describe('navigation registry', () => {
       classroom: ['設定', '教室'],
       'subject-settings': ['設定', '科目'],
       'line-integration': ['設定', '家長 LINE 通知'],
-      'binding-management': ['設定', 'LINE 綁定管理'],
+      'binding-management': ['設定', '家長 LINE 綁定'],
       'binding-conflicts': ['設定', '綁定衝突審查'],
       'binding-health': ['設定', '綁定健康度'],
     },

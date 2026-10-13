@@ -7,6 +7,12 @@
 set -euo pipefail
 MODE="${1:-}"
 : "${GITHUB_REPOSITORY:?}" "${PI_SSH_USER:?}" "${PI_SSH_HOST:?}"
+WRITEBACK_EVIDENCE_REQUIRED="${WRITEBACK_EVIDENCE_REQUIRED:-false}"
+WRITEBACK_CAPTURED_AT="${WRITEBACK_CAPTURED_AT:-}"
+WRITEBACK_PROOF="${WRITEBACK_PROOF:-}"
+if [[ "$WRITEBACK_EVIDENCE_REQUIRED" == true ]]; then
+  [[ "$WRITEBACK_CAPTURED_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z$ && "$WRITEBACK_PROOF" =~ ^[0-9a-f]{64}$ ]] || exit 1
+fi
 [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
 [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
 [[ "$GITHUB_ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
@@ -25,13 +31,14 @@ pi_ssh() {
 case "$MODE" in
 phase-a)
 # DISPOSITION, CLOSE_AS_LOGGED (true|false). Never resolves a bug.
+[[ "$WRITEBACK_EVIDENCE_REQUIRED" != true || "$CLOSE_AS_LOGGED" == false ]] || { echo "governed path cannot close as logged"; exit 1; }
 [[ "$DISPOSITION" =~ ^[a-z_]+$ ]] || { echo "invalid disposition syntax"; exit 1; }
 [[ "$CLOSE_AS_LOGGED" =~ ^(true|false)$ ]] || { echo "invalid close_as_logged"; exit 1; }
-pi_ssh "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' CLOSE_AS_LOGGED='$CLOSE_AS_LOGGED' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
+pi_ssh "WRITEBACK_EVIDENCE_REQUIRED='$WRITEBACK_EVIDENCE_REQUIRED' WRITEBACK_CAPTURED_AT='$WRITEBACK_CAPTURED_AT' WRITEBACK_PROOF='$WRITEBACK_PROOF' BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' CLOSE_AS_LOGGED='$CLOSE_AS_LOGGED' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
 set -euo pipefail
 cd /home/admin/backend
 PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
-export BUG_ID GITHUB_ISSUE_URL DISPOSITION PUBLIC_REPLY CLOSE_AS_LOGGED
+export WRITEBACK_EVIDENCE_REQUIRED WRITEBACK_CAPTURED_AT WRITEBACK_PROOF BUG_ID GITHUB_ISSUE_URL DISPOSITION PUBLIC_REPLY CLOSE_AS_LOGGED
 php artisan tinker --execute='
 $bugId = (int)getenv("BUG_ID");
 $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
@@ -59,6 +66,13 @@ if (getenv("CLOSE_AS_LOGGED") === "true") {
 // first commits, so a report is never moved new->triaged twice or answered twice concurrently.
 \Illuminate\Support\Facades\DB::transaction(function () use ($bugId, $issueUrl, $disposition, $reply, $actor, $svc) {
 $locked = \App\Models\BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
+if (getenv("WRITEBACK_EVIDENCE_REQUIRED") === "true") {
+    if (!$locked || !class_exists(\App\Services\BugReportWritebackEvidence::class)
+        || !\App\Services\BugReportWritebackEvidence::verify($locked, (string)getenv("WRITEBACK_CAPTURED_AT"), (string)getenv("WRITEBACK_PROOF"))) {
+        throw new \RuntimeException("write-back evidence expired or report changed; reconcile and recapture");
+    }
+}
+
 $status = (string)$locked->status;
 if (!in_array($status, ["new", "triaged"], true)) { throw new \RuntimeException("refusing status: ".$status); }
 $validatedDisposition = $svc::normalizeDispositionOptions([
@@ -113,11 +127,11 @@ if [[ "$EXPECTED_STATUS" == closed ]]; then
   [[ "$PRODUCTION_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "closed follow-up needs the full 40-char production_revision"; exit 1; }
   [[ "$DEPLOY_RUN_ID" =~ ^[0-9]+$ ]] || { echo "closed follow-up needs deploy_run_id"; exit 1; }
 fi
-pi_ssh "BUG_ID='$BUG_ID' EXPECTED_STATUS='$EXPECTED_STATUS' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' PRODUCTION_REVISION='$PRODUCTION_REVISION' DEPLOY_RUN_ID='$DEPLOY_RUN_ID' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
+pi_ssh "WRITEBACK_EVIDENCE_REQUIRED='$WRITEBACK_EVIDENCE_REQUIRED' WRITEBACK_CAPTURED_AT='$WRITEBACK_CAPTURED_AT' WRITEBACK_PROOF='$WRITEBACK_PROOF' BUG_ID='$BUG_ID' EXPECTED_STATUS='$EXPECTED_STATUS' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' PRODUCTION_REVISION='$PRODUCTION_REVISION' DEPLOY_RUN_ID='$DEPLOY_RUN_ID' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
 set -euo pipefail
 cd /home/admin/backend
 PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
-export BUG_ID EXPECTED_STATUS GITHUB_ISSUE_URL PUBLIC_REPLY PRODUCTION_REVISION DEPLOY_RUN_ID
+export WRITEBACK_EVIDENCE_REQUIRED WRITEBACK_CAPTURED_AT WRITEBACK_PROOF BUG_ID EXPECTED_STATUS GITHUB_ISSUE_URL PUBLIC_REPLY PRODUCTION_REVISION DEPLOY_RUN_ID
 if [[ "$EXPECTED_STATUS" == closed ]]; then
   # Same gate as Phase-C: never announce a revision that is not in production.
   PROD_HEAD=$(git rev-parse HEAD)
@@ -151,6 +165,13 @@ if ($expected === "closed") {
 // so two producers cannot both miss the exact-payload check and post the comment twice.
 \Illuminate\Support\Facades\DB::transaction(function () use ($bugId, $expected, $reply, $actor, $issueUrl) {
 $locked = \App\Models\BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
+if (getenv("WRITEBACK_EVIDENCE_REQUIRED") === "true") {
+    if (!$locked || !class_exists(\App\Services\BugReportWritebackEvidence::class)
+        || !\App\Services\BugReportWritebackEvidence::verify($locked, (string)getenv("WRITEBACK_CAPTURED_AT"), (string)getenv("WRITEBACK_PROOF"))) {
+        throw new \RuntimeException("write-back evidence expired or report changed; reconcile and recapture");
+    }
+}
+
 if ((string)$locked->status !== $expected) { throw new \RuntimeException("status changed: ".$locked->status); }
 $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)->where("is_internal_note", false)
     ->where("body", $reply)->exists();
@@ -167,3 +188,4 @@ REMOTE
 echo "usage: run-remote.sh phase-a|followup"; exit 2
 ;;
 esac
+

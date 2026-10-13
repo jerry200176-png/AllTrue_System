@@ -154,7 +154,7 @@ class FinanceSubjectUnitsTest extends TestCase
             'StudentClassID' => $studentClass->ID,
             'ClassSessionID' => $classSession->id,
             'TeacherID' => $teacherA,
-            'Content' => '已核准評量',
+            'Content' => '（系統補登/扣除堂數）', // #3824: a filled+approved body is locked; this legitimate correction has none
             'Subject' => 'Math',
             'Status' => 'approved',
             'ApprovedBy' => $directorId,

@@ -83,6 +83,7 @@ jobs:
           python3 -m unittest scripts.tests.test_ui_smoke_gate
           python3 -m unittest scripts.tests.test_autonomous_convergence
           python3 scripts/tests/test_required_php_checks.py
+          python3 scripts/tests/test_evidence_contract_timeouts.py
           bash scripts/tests/production-acceptance-stage-contract.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
           bash scripts/tests/synthetic-director-workflow-contract.test.sh
@@ -104,6 +105,9 @@ jobs:
 
       - name: Test bug write-back request path (validator, idempotency)
         run: python3 scripts/tests/test_bug_writeback_request.py
+
+      - name: Test permanent write-back cursor
+        run: python3 -m unittest discover -s scripts/bug-writeback -p 'test_writeback_cursor.py'
 
       - name: Test in-app weekly one-pager
         run: python3 scripts/tests/test_inapp_weekly_onepager.py

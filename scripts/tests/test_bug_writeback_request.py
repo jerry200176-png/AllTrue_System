@@ -18,7 +18,7 @@ REPLY = f"已看過您的截圖，換週時月曆沒有重新整理，我們正�
 
 
 def entry(**overrides):
-    base = {"request_id": "req-0001", "bug_id": 512, "action": "triage", "github_issue_url": URL, "public_reply": REPLY}
+    base = {"request_id": "req-0001", "bug_id": 512, "action": "triage", "github_issue_url": URL, "public_reply": REPLY, "captured_at": "2026-10-13T10:00:00.000000Z", "writeback_proof": "a" * 64}
     base.update(overrides)
     return {k: v for k, v in base.items() if v is not None}
 
@@ -177,19 +177,19 @@ class IdempotencyTest(unittest.TestCase):
             self.assertEqual(len(wb.validate_all(doc(*many), REPO)), len(many))
             with self.assertRaises(wb.RequestError):
                 wb.plan(doc(*many[:-1]), doc(*many), REPO)
-    def test_cursor_uses_the_real_progress_marker_and_frozen_continuation(self):
+    def test_cursor_uses_permanent_state_and_frozen_continuation(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/bug-writeback-request.yml").read_text())
         steps = workflow["jobs"]["writeback"]["steps"]
-        checkpoint = next(s for s in steps if s.get("id") == "checkpoint")
         plan = next(s for s in steps if s.get("id") == "plan")["run"]
-        self.assertIn("Checkpoint attempted prefix ", checkpoint["name"])
-        self.assertIn('startswith("Checkpoint attempted prefix ")', plan)
-        self.assertIn("last_attempted_id != ''", checkpoint["if"])
+        self.assertNotIn("/actions/runs", plan)
+        self.assertIn('--snapshot-sha "$REQUEST_SHA"', plan)
+        self.assertIn("refs/remotes/writeback/main", plan)
         continuation = next(s for s in steps if s["name"] == "Continue remaining frozen requests")
-        self.assertIn("steps.checkpoint.outcome == 'success'", continuation["if"])
+        self.assertIn("steps.apply.outputs.checkpoint_count != ''", continuation["if"])
         self.assertIn("--ref main", continuation["run"])
         self.assertIn('request_sha=$REQUEST_SHA', continuation["run"])
         self.assertIn('expected_prefix=$EXPECTED_PREFIX', continuation["run"])
+        self.assertIn("timeout 15", continuation["run"])
     def test_out_of_order_pushes_cap_only_the_new_push(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
@@ -204,102 +204,67 @@ class IdempotencyTest(unittest.TestCase):
                 push.write_text(doc())
                 self.assertEqual(wb.main(["--before", str(before), "--push-before", str(push),
                                           "--after", str(after), "--repo", REPO]), 1)
-    def test_checkpoint_requires_every_request_to_be_attempted(self):
-        items = wb.plan("", doc(entry(), entry(request_id="req-0002", bug_id=513)), REPO)
-        for partial in (False, True):
-            calls, checkpoints = [], []
-            def runner(mode, env):
-                calls.append(env["BUG_ID"])
-                if partial and env["BUG_ID"] == "513":
-                    raise RuntimeError("interrupted batch")
-                return 1  # completed failures still need a checkpoint to avoid blocking later IDs
-            with self.assertRaises(RuntimeError if partial else wb.RequestError):
-                wb.apply(items, runner, log=lambda _: None, completed=lambda: checkpoints.append(True))
-            self.assertEqual(checkpoints, [] if partial else [True])
-    def test_cursor_finds_checkpoint_after_twenty_setup_failures(self):
-        import subprocess
+    def test_durable_drain_and_uncertain_partial_restart(self):
         import tempfile
-        import textwrap
-        workflow = yaml.safe_load((ROOT / ".github/workflows/bug-writeback-request.yml").read_text())
-        script = next(s["run"] for s in workflow["jobs"]["writeback"]["steps"] if s.get("id") == "plan")
+        sys.path.insert(0, str(ROOT / "scripts/bug-writeback"))
+        import writeback_cursor as cursor
+        entries = [entry(request_id=f"req-{i:04d}", bug_id=500+i) for i in range(6)]
+        state = dict(schema=cursor.SCHEMA, prefix=0, prefix_hash=cursor.digest([]), snapshot_sha=None,
+                     last_request_id=None, unknown=[], recent_outcomes=[])
+        class Store:
+            def write(self, value):
+                state.clear(); state.update(value)
+        def planning(after, sha, minimum):
+            target = wb.load_requests(after)
+            return Store(), dict(state), target, [wb.validate_entry(e, REPO) for e in target[state['prefix']:]]
+        calls = []
+        def runner(mode, env):
+            # Reservation MUST be durable before a remote call.
+            self.assertEqual(state['prefix'] - 1, len(calls))
+            calls.append(env['BUG_ID'])
+            return 124
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            fixtures = {
-                "gh": """#!/bin/bash
-if [[ "$*" == *workflow* ]]; then
-  n=20; [[ "$*" == *--paginate* ]] && n=25
-  for i in $(seq 1 "$n"); do echo "$i"; done
-  [[ "$*" == *--paginate* ]] && echo 99
-else
-  [[ "$*" == *runs/99/jobs* ]] && echo 5 || echo 0
-fi
-""",
-                "git": """#!/bin/bash
-if [[ "$*" == *"$GITHUB_SHA"*"$CHECKPOINT"* ]]; then exit 1; fi
-if [[ "$1" == show ]]; then
-  [[ "$2" == "$CHECKPOINT:"* ]] && echo 'checkpoint' || echo 'parent'
-fi
-exit 0
-""",
-                "python3": """#!/bin/bash
-[[ "$1" == -c ]] && exit 0
-printf '%s' "$3" > "$TRACE"
-""",
-            }
-            for name, content in fixtures.items():
-                p = root / name; p.write_text(content); p.chmod(0o755)
-            trace = root / "trace"
-            result = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
-                env={**os.environ, "PATH": f"{root}:" + os.environ["PATH"], "RUNNER_TEMP": tmp,
-                     "GITHUB_SHA": "c" * 40, "REQUEST_SHA": "c" * 40, "PUSH_BEFORE": "d" * 40,
-                     "GITHUB_REF": "refs/heads/main", "EXPECTED_PREFIX": "0", "CHECKPOINT": "b" * 40,
-                     "GITHUB_REPOSITORY": REPO, "GITHUB_OUTPUT": str(root / "output"),
-                     "REQUEST": "request.yml", "TRACE": str(trace)})
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(trace.read_text().strip(), "5")
-
-    def test_bounded_prefix_drain_finishes_six_out_of_order_requests(self):
+            root = Path(tmp); push=root/'push'; after=root/'after'; output=root/'output'
+            push.write_text(doc(*entries[:3])); after.write_text(doc(*entries))
+            args=['--snapshot-sha', 'a'*40, '--push-before', str(push), '--after', str(after), '--repo', REPO, '--apply']
+            with mock.patch.object(wb, 'durable_plan', planning), mock.patch.object(wb, 'run_remote', runner), mock.patch.dict(os.environ, {'GITHUB_OUTPUT':str(output)}):
+                self.assertEqual(1, wb.main(args))
+                self.assertEqual(5, state['prefix'])
+                self.assertIn('remaining=1', output.read_text())
+                self.assertEqual(1, wb.main(args))
+                self.assertEqual(6, state['prefix'])
+                self.assertEqual(6, len(state['unknown']))
+                self.assertEqual(0, wb.main(args))
+                self.assertEqual(6, len(calls))
+                state.update(prefix=0,prefix_hash=cursor.digest([]),snapshot_sha=None,last_request_id=None,unknown=[],recent_outcomes=[]); calls.clear()
+                def interrupted(mode, env):
+                    calls.append(env['BUG_ID'])
+                    if len(calls)==3: raise RuntimeError('job interrupted after durable reservation')
+                    return 0
+                with mock.patch.object(wb,'run_remote',interrupted):
+                    with self.assertRaises(RuntimeError): wb.main(args)
+                self.assertEqual(3,state['prefix'])
+                self.assertEqual(['req-0002'],[r['id'] for r in state['unknown']])
+                with mock.patch.object(wb,'run_remote',lambda mode,env:calls.append(env['BUG_ID']) or 0):
+                    self.assertEqual(0,wb.main(args))
+                self.assertEqual([str(i) for i in range(500,506)],calls)
+            self.assertLess(wb.MAX_NEW_PER_RUN * wb.REMOTE_TIMEOUT_S + 12 * 15 + 70 + 15, 20*60)
+    def test_persistence_failure_prevents_remote_write(self):
         import tempfile
-        real_apply = wb.apply
+        sys.path.insert(0, str(ROOT / "scripts/bug-writeback"))
+        import writeback_cursor as cursor
+        state=dict(schema=cursor.SCHEMA, prefix=0, prefix_hash=cursor.digest([]), snapshot_sha=None,
+                   last_request_id=None, unknown=[], recent_outcomes=[])
+        store=mock.Mock(); store.write.side_effect=ValueError('persistence unconfirmed')
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp); push = root / "push"; after = root / "after"; output = root / "output"
-            entries = [entry(request_id=f"req-{i:04d}", bug_id=500 + i) for i in range(6)]
-            push.write_text(doc(*entries[:3])); after.write_text(doc(*entries)); calls = []
-            def apply(items, **kwargs):
-                return real_apply(items, lambda mode, env: calls.append(env["BUG_ID"]) or 124,
-                                  log=lambda _: None, **kwargs)
-            with mock.patch.object(wb, "apply", apply), mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(output)}):
-                args = ["--push-before", str(push), "--after", str(after), "--repo", REPO, "--apply"]
-                self.assertEqual(wb.main(args + ["--checkpoint-count", "0"]), 1)
-                self.assertEqual(calls, ["500", "501", "502", "503", "504"])
-                self.assertIn("checkpoint_count=5", output.read_text())
-                self.assertIn("remaining=1", output.read_text())
-                self.assertEqual(wb.main(args + ["--checkpoint-count", "5"]), 1)
-                self.assertEqual(calls, [str(i) for i in range(500, 506)])
-                self.assertIn("remaining=0", output.read_text())
-                after.write_text(doc(*entries[:3])); push.write_text(doc())
-                self.assertEqual(wb.main(args + ["--checkpoint-count", "6"]), 0)
-                self.assertEqual(len(calls), 6)
-            self.assertLess(wb.MAX_NEW_PER_RUN * wb.REMOTE_TIMEOUT_S, 20 * 60)
-    def test_partial_drain_preserves_only_completed_attempts(self):
-        import tempfile
-        real_apply = wb.apply
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp); push = root / "push"; after = root / "after"; output = root / "output"
-            entries = [entry(request_id=f"req-{i:04d}", bug_id=500 + i) for i in range(4)]
-            push.write_text(doc()); after.write_text(doc(*entries))
-            def runner(mode, env):
-                if env["BUG_ID"] == "502":
-                    raise RuntimeError("interrupted")
-                return 0
-            def apply(items, **kwargs):
-                return real_apply(items, runner, log=lambda _: None, **kwargs)
-            with mock.patch.object(wb, "apply", apply), mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(output)}):
-                with self.assertRaises(RuntimeError):
-                    wb.main(["--checkpoint-count", "0", "--push-before", str(push),
-                             "--after", str(after), "--repo", REPO, "--apply"])
-            self.assertIn("checkpoint_count=2", output.read_text())
-            self.assertNotIn("checkpoint_count=3", output.read_text())
+            after=Path(tmp)/'after'; after.write_text(doc(entry()))
+            with mock.patch.object(wb, 'durable_plan', return_value=(store,state,[entry()],[wb.validate_entry(entry(),REPO)])), mock.patch.object(wb,'run_remote') as remote:
+                self.assertEqual(1,wb.main(['--snapshot-sha','a'*40,'--after',str(after),'--repo',REPO,'--apply']))
+                remote.assert_not_called()
+    def test_new_request_requires_timestamp_bound_proof(self):
+        for overrides in ({'writeback_proof':None}, {'captured_at':None}, {'captured_at':"2026-10-13"}, {'writeback_proof':'bad'}):
+            with self.assertRaises(wb.RequestError):
+                wb.validate_entry(entry(**overrides), REPO)
     def test_checked_in_request_file_is_append_only_vs_base(self):
         # Required CI has full history: removing or editing an entry already on the base branch fails here.
         import subprocess
@@ -318,3 +283,4 @@ printf '%s' "$3" > "$TRACE"
 
 if __name__ == "__main__":
     unittest.main()
+
