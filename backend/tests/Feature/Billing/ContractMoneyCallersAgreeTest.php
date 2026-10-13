@@ -190,6 +190,79 @@ class ContractMoneyCallersAgreeTest extends TestCase
         $this->fail($msg);
     }
 
+    /**
+     * #3781: a bill whose stored Status/PaidAmount went stale as "paid" while its Payment rows still owe. Payment rows are
+     * the truth (Founder Q2, R28), so every receivable listing must still show it, not pre-filter on the stored columns.
+     */
+    public function test_stale_paid_invoice_still_owes_on_every_receivable_list(): void
+    {
+        $course = $this->course([['2026-08', 10000, 'paid', 10000, [[4000, 'cash']]]], ['Paid' => 1, 'Rate' => 1000]);
+        $id = (int) $course->ID;
+        $v = app(ContractMoneyVerdict::class)->forCourse($course);
+        $this->assertSame(['partial', 6000], [$v->status, $v->outstanding]);
+        $headers = $this->directorHeaders();
+        $answers = [];
+
+        $row = collect($this->withHeaders($headers)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $id);
+        if (!$row) {
+            $answers['alerts_listing'] = 'not listed';
+        } elseif ($row['payment_status'] !== 'partial' || (int) $row['outstanding'] !== $v->outstanding) {
+            $answers['alerts'] = "status {$row['payment_status']} outstanding {$row['outstanding']}";
+        }
+        $aging = $this->withHeaders($headers)->getJson('/api/v1/finance/ar-aging?branch_id=1')->assertOk()->json('totals.grand_total');
+        if ((int) $aging !== $v->outstanding) {
+            $answers['ar_aging'] = "grand_total $aging";
+        }
+        $txn = \App\Models\BankTransaction::create(['campus_id' => 1, 'transaction_date' => '2026-08-20', 'amount' => $v->outstanding, 'reference' => 'stale', 'status' => 'unmatched']);
+        $suggested = collect($this->withHeaders($headers)->getJson("/api/v1/bank-reconciliation/{$txn->id}/suggest")->assertOk()->json('suggestions'))->pluck('student_class_id')->all();
+        if ($suggested !== [$id]) {
+            $answers['bank_suggest'] = 'suggests ' . json_encode($suggested);
+        }
+
+        $this->assertSame([], $answers, "verdict {$v->status}/{$v->outstanding}");
+    }
+
+    /**
+     * #3891 review (P2): bank suggestions compare the course's summed debt, not one invoice at a time. A stale-paid
+     * bill owing 6,000 plus an unpaid bill owing 2,000 is one 8,000 course balance (the resolver's outstanding). The
+     * suggested date is the oldest bill that still owes, not an older stored-unpaid bill its Payment rows cover.
+     */
+    public function test_bank_suggest_matches_the_course_balance_across_invoices(): void
+    {
+        $course = $this->course([['2026-06', 3000, 'unpaid', 0, [[3000, 'cash']]], ['2026-07', 10000, 'paid', 10000, [[4000, 'cash']]],
+            ['2026-08', 2000, 'unpaid', 0, []]], ['Paid' => 1, 'Rate' => 1000]);
+        $v = app(ContractMoneyVerdict::class)->forCourse($course);
+        $this->assertSame(['partial', 8000], [$v->status, $v->outstanding]);
+        $txn = \App\Models\BankTransaction::create(['campus_id' => 1, 'transaction_date' => '2026-08-20', 'amount' => 8000, 'reference' => 'sum', 'status' => 'unmatched']);
+        $suggested = collect($this->withHeaders($this->directorHeaders())->getJson("/api/v1/bank-reconciliation/{$txn->id}/suggest")->assertOk()->json('suggestions'));
+        $this->assertSame([(int) $course->ID], $suggested->pluck('student_class_id')->all());
+        $this->assertSame('2026-07-01', $suggested->first()['payment_date']);
+    }
+
+    /**
+     * #3891 review: a paid shared package is listed by package (DIRECTOR_PAYMENT_ALERT_RULES), never member by member.
+     * Whether a member's stale-paid bill reopens the package is a package money rule not decided yet (#3785 hold), so
+     * the stale-paid widening must not emit a lone member row for it.
+     */
+    public function test_stale_paid_member_of_a_paid_package_is_not_listed_as_a_lone_course(): void
+    {
+        $course = $this->course([['2026-08', 10000, 'paid', 10000, [[4000, 'cash']]]], ['Paid' => 1, 'Rate' => 1000]);
+        $pkg = \App\Models\CoursePackage::create([
+            'student_id' => $course->StudentID, 'campus_id' => 1, 'name' => 'Shared', 'billing_mode' => 'session',
+            'total_sessions' => 16, 'remaining_sessions' => 16, 'used_sessions' => 0, 'rate' => 1500, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'paid_at' => '2026-08-05', 'stop' => false, 'enabled' => true,
+        ]);
+        $course->update(['PackageID' => $pkg->id]);
+
+        $h = $this->directorHeaders();
+        $rows = collect($this->withHeaders($h)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+        $this->assertNull($rows->first(fn ($r) => (int) ($r['id'] ?? 0) === (int) $course->ID && empty($r['package_id'])));
+        // Same hold for the class-level finance lists (#3891 review): no member-level AR or bank match either.
+        $this->assertSame(0, (int) $this->withHeaders($h)->getJson('/api/v1/finance/ar-aging?branch_id=1')->assertOk()->json('totals.grand_total'));
+        $txn = \App\Models\BankTransaction::create(['campus_id' => 1, 'transaction_date' => '2026-08-20', 'amount' => 6000, 'reference' => 'pkg', 'status' => 'unmatched']);
+        $this->assertSame([], $this->withHeaders($h)->getJson("/api/v1/bank-reconciliation/{$txn->id}/suggest")->assertOk()->json('suggestions'));
+    }
+
     /** @return array<string, string> */
     private function directorHeaders(): array
     {

@@ -87,7 +87,7 @@ class AlertController extends Controller
                   // Founder Q2: invoices + payments are the truth; Paid=1 never hides a contract whose bill is still open.
                   ->orWhereExists(fn ($inv) => $inv->select(DB::raw(1))->from('Invoice')
                       ->whereColumn('Invoice.StudentClassID', 'StudentClass.ID')
-                      ->where(fn ($st) => $st->whereNull('Invoice.Status')->orWhereNotIn('Invoice.Status', ['paid', 'void'])));
+                      ->whereRaw(Invoice::mayOweSql()));
                 if (!empty($pendingReportClassIds)) {
                     $q->orWhereIn('ID', $pendingReportClassIds);
                 }
