@@ -14,10 +14,11 @@ on:
       - 'operations/closeout/bug-writeback.request.yml'
 
 # One run at a time; `queue: max` keeps every pending run. Queue order is not push order, so each
-# run diffs against the last *completed, not cancelled* run (durable, from the Actions API), not
-# its own `before`: a later push that starts first applies the earlier push's entries too, in file
-# order, and the earlier run then finds nothing new. The cursor advances past failed requests (a
-# failed entry is retried by appending a new request_id), so one bad entry never blocks later ones.
+# run diffs against the last run that *reached the apply step* or succeeded (durable, from the
+# Actions API), not its own `before`: a later push that starts first applies the earlier push's
+# entries too, in file order, and the earlier run then finds nothing new. A run that failed before
+# applying (e.g. SSH setup) is not a checkpoint, so its entries run next time; the cursor does
+# advance past failed requests (retry = append a new request_id), so one bad entry never blocks.
 concurrency:
   group: bug-writeback-request
   cancel-in-progress: false
@@ -54,7 +55,15 @@ jobs:
         run: |
           set -euo pipefail
           python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet 'pyyaml==6.0.2'
-          last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/bug-writeback-request.yml/runs?branch=main&event=push&status=completed&per_page=20" --jq '[.workflow_runs[] | select(.conclusion != "cancelled")][0].head_sha // ""')
+          last=""
+          for run in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/bug-writeback-request.yml/runs?branch=main&event=push&status=completed&per_page=20" --jq '.workflow_runs[] | select(.conclusion != "cancelled") | "\(.id):\(.head_sha):\(.conclusion)"'); do
+            IFS=: read -r rid sha concl <<< "$run"
+            # a checkpoint is a run that succeeded or reached the apply step (attempted its requests)
+            if [[ "$concl" == success ]] || [[ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$rid/jobs" --jq '[.jobs[].steps[] | select(.name == "Apply new requests (IDs-only log)") | .conclusion] | any(. == "success" or . == "failure")')" == true ]]; then
+              last="$sha"
+              break
+            fi
+          done
           if [[ -n "$last" ]] && git merge-base --is-ancestor "$GITHUB_SHA" "$last"; then
             echo "already applied by the run for $last (queued runs can start out of push order)"
             echo "count=0" >> "$GITHUB_OUTPUT"

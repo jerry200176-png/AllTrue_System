@@ -81,7 +81,7 @@ if ($status === "new") {
     ], "phase-a verified intake; GitHub issue=".$issueUrl);
     if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
 }
-$already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
+$already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)->where("is_internal_note", false)
     ->where("body", "like", "%".$issueUrl."%")->exists();
 $comment = $already ? ["ok" => true, "skipped" => true] : $svc::addComment($bugId, $actor, $reply, false);
 // addComment() returns the persisted BugReportComment model, while
@@ -150,7 +150,7 @@ if ($expected === "closed") {
 \Illuminate\Support\Facades\DB::transaction(function () use ($bugId, $expected, $reply, $actor, $issueUrl) {
 $locked = \App\Models\BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
 if ((string)$locked->status !== $expected) { throw new \RuntimeException("status changed: ".$locked->status); }
-$already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
+$already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)->where("is_internal_note", false)
     ->where("body", $reply)->exists();
 $comment = $already ? ["ok" => true, "skipped" => true] : \App\Services\BugReportService::addComment($bugId, $actor, $reply, false);
 $commentSucceeded = ($comment["ok"] ?? false) || isset($comment["id"]) || ($comment["skipped"] ?? false);

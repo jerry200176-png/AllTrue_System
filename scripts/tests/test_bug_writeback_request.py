@@ -197,6 +197,18 @@ class IdempotencyTest(unittest.TestCase):
         self.assertEqual(len(wb.validate_all(doc(*many), REPO)), len(many))
         self.assertEqual(len(wb.plan(doc(*many[:-1]), doc(*many), REPO)), 1)
 
+    def test_cursor_names_the_real_apply_step(self):
+        # The durable cursor only counts runs that reached this step; a renamed step would
+        # silently stop matching, so the name in the query must be a real step name.
+        workflow = yaml.safe_load((ROOT / ".github/workflows/bug-writeback-request.yml").read_text(encoding="utf-8"))
+        steps = workflow["jobs"]["writeback"]["steps"]
+        names = [s.get("name") for s in steps]
+        plan = next(s for s in steps if s.get("id") == "plan")["run"]
+        match = re.search(r'select\(\.name == "([^"]+)"\)', plan)
+        self.assertIsNotNone(match)
+        self.assertIn(match.group(1), names)
+        self.assertLess(names.index(next(n for n in names if n and n.startswith("Validate"))), names.index(match.group(1)))
+
     def test_checked_in_request_file_is_append_only_vs_base(self):
         # Required CI has full history: removing or editing an entry already on the base branch fails here.
         import subprocess
