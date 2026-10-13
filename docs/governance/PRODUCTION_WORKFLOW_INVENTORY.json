@@ -166,7 +166,7 @@
       "production_mutation": "confirmed",
       "trigger": "push to main of operations/closeout/bug-writeback.request.yml; internal frozen main-only bounded continuation",
       "production_command_or_path": "scripts/bug-writeback/run-remote.sh (shared with bug-phase-a-triage.yml and bug-followup-comment.yml): changeStatus(new→triaged) and addComment, or addComment only",
-      "authorization": "Founder 2026-10-13: cloud path for Phase-A/follow-up. Merged PR editing the request file (autonomy_gate T2 minimum: green CI + independent review); immutable request IDs; §3.8 reply, same-repo issue URL; timestamp-bound full-state proof under report/child locks; resolved/closed refused",
+      "authorization": "Founder 2026-10-13: cloud path for Phase-A/follow-up. Merged PR editing the request file (autonomy_gate T3: target/effect-specific Founder GO + green CI + independent review); immutable request IDs; §3.8 reply, same-repo issue URL; timestamp-bound full-state proof under report/child locks; resolved/closed refused",
       "concurrency": "bug-writeback-request; cancel-in-progress=false; queue=max (pending retained; order may differ); permanent prefix/comment with unknown reservations before SSH; report/child locks; append-only IDs; max 5 per push/run and 180 s per call",
       "rollback": "Coordinator reconcile unknown outcomes before new ID/fresh proof; no automatic replay/rollback",
       "canonical": true,

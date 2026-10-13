@@ -13,6 +13,7 @@ bug-phase-c-allowlist.yml
 bug-queue-dump.yml
 bug-reporter-timeout.yml
 bug-sla-weekly-report.yml
+bug-writeback-request.yml
 bug207-diagnose-push.yml
 calendar-course-acceptance.yml
 classsession-duplicate-diagnose-push.yml
