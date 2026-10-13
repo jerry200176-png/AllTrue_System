@@ -2111,8 +2111,9 @@ class ClassSessionController extends Controller
                 $error = '確認不收的合約不能改派堂次。';
             } elseif ((int) $new->getAttribute('StudentID') !== (int) $old->getAttribute('StudentID') || (int) $new->getAttribute('SubjectID') !== (int) $old->getAttribute('SubjectID')) {
                 $error = '新舊課程合約的學生或科目不一致，拒絕改派。';
-            } elseif ((int) $old->getAttribute('TeacherID') !== (int) $new->getAttribute('TeacherID')
-                && LearningRecordMutableOwnership::protectedRecordForSession((int) $session->id, true)) {
+            } elseif (($lockedLr = LearningRecordMutableOwnership::protectedRecordForSession((int) $session->id, true))
+                && (int) $lockedLr->TeacherID !== (int) $new->getAttribute('TeacherID')) {
+                // #3824: compare the assessment's recorded teacher, not the two contract defaults (review r4247040032).
                 DB::rollBack();
 
                 return LearningRecordMutableOwnership::lockedResponse(); // #3824

@@ -25,12 +25,13 @@ final class LearningRecordMutableOwnership
     private const PLACEHOLDER_CONTENT = ['', '（評量表）'];
 
     /**
-     * #3824: protected = real assessment body AND approved (Status + ApprovedAt). Blank / placeholder / system
+     * #3824: protected = real assessment body AND Status=approved. Blank / placeholder / system
      * back-fill rows (e.g. 「（系統補登/扣除堂數）」) and unapproved rows stay correctable.
      */
     public static function isFilledAndApproved(LearningRecord $record): bool
     {
-        if (strtolower(trim((string) $record->getAttribute('Status'))) !== 'approved' || $record->getAttribute('ApprovedAt') === null) {
+        // Approved status alone is enough: legacy/imported approved rows may lack ApprovedAt (review r4247040043).
+        if (strtolower(trim((string) $record->getAttribute('Status'))) !== 'approved') {
             return false;
         }
         if (self::isSystemFillContent((string) $record->getAttribute('Content'))) {
@@ -46,7 +47,7 @@ final class LearningRecordMutableOwnership
     {
         $content = trim($content);
 
-        return str_starts_with($content, '（系統補登') || $content === '（系統自動核准）';
+        return str_starts_with($content, '（系統補登') || in_array($content, ['（系統自動核准）', '補登／納入科目數'], true);
     }
 
     /** The live protected LR of a session (row-locked when asked, inside a transaction). */
@@ -99,7 +100,7 @@ final class LearningRecordMutableOwnership
     public static function protectedSlots(int $courseId, string $from): array
     {
         return LearningRecord::query()->where('StudentClassID', $courseId)->whereNull('VoidedAt')
-            ->whereDate('SessionDate', '>=', $from)->where('Status', 'approved')->whereNotNull('ApprovedAt')->get()
+            ->whereDate('SessionDate', '>=', $from)->where('Status', 'approved')->get()
             ->filter(fn ($lr) => self::isFilledAndApproved($lr))
             ->map(fn ($lr) => substr((string) $lr->getAttribute('SessionDate'), 0, 10) . ' ' . substr((string) $lr->getAttribute('StartTime'), 0, 5))
             ->unique()->values()->all();

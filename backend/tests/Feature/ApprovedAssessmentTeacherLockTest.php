@@ -223,6 +223,55 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute/undo")->assertStatus(409);
     }
 
+    // ---- Codex review r4247039986 / 997 / 4247040009 / 020 / 032 / 043 / 049 ----------------------------------
+
+    public function test_legacy_schedule_writers_without_teacher_id_or_deleting_the_pin_are_refused(): void
+    {
+        $s = $this->mkSession('attended');
+        $lr = $this->lr($s, 'approved', true);
+        $row = $this->schedule(self::DATE, '16:00', '18:00', $this->aId);
+        DB::table('StudentClass')->where('ID', $this->sc->ID)->update(['TeacherID' => $this->bId]); // contract moved to B, pin keeps A
+        $this->assertLocked($lr, fn () => $this->api()->postJson('/api/v1/schedules', [ // teacher inferred from the contract (B)
+            'student_id' => $this->sc->StudentID, 'day_of_week' => 5, 'start_time' => '16:00', 'end_time' => '18:00',
+            'branch_id' => 1, 'schedule_date' => self::DATE, 'student_course_id' => $this->sc->ID, 'status' => 'scheduled', 'original_schedule_id' => $row->id,
+        ]));
+        $this->assertLocked($lr, fn () => $this->api()->putJson("/api/v1/schedules/{$row->id}", ['status' => 'cancelled']));
+        $this->assertLocked($lr, fn () => $this->api()->putJson("/api/v1/schedules/{$row->id}", ['start_time' => '19:00', 'end_time' => '21:00']));
+        $this->assertLocked($lr, fn () => $this->api()->deleteJson("/api/v1/schedules/{$row->id}"));
+        $this->api()->putJson("/api/v1/schedules/{$row->id}", ['end_time' => '18:00'])->assertOk(); // non-moving edit still allowed
+    }
+
+    public function test_foreign_campus_course_is_rejected_before_the_assessment_is_read(): void
+    {
+        $other = Student::create(['name' => 'Y student', 'CampusID' => 2, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $foreign = $this->sc->replicate();
+        $foreign->StudentID = $other->id;
+        $foreign->save();
+        $fs = ClassSession::create(['StudentClassID' => $foreign->ID, 'SessionDate' => self::DATE, 'StartTime' => '16:00:00', 'EndTime' => '18:00:00', 'Status' => 'attended']);
+        $this->lr($fs, 'approved', true);
+        $this->api()->postJson('/api/v1/schedules', [
+            'student_id' => $this->sc->StudentID, 'teacher_id' => $this->bId, 'day_of_week' => 5, 'start_time' => '16:00', 'end_time' => '18:00',
+            'branch_id' => 1, 'schedule_date' => self::DATE, 'student_course_id' => $foreign->ID, 'status' => 'scheduled',
+        ])->assertStatus(422); // not the 409 that would reveal the foreign assessment
+    }
+
+    public function test_reassign_between_same_teacher_contracts_is_refused_when_the_assessment_names_another_teacher(): void
+    {
+        $s = $this->mkSession('attended');
+        $lr = $this->lr($s, 'approved', true);
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['TeacherID' => $this->bId]); // substitute B wrote it
+        $this->scB->update(['TeacherID' => $this->aId]);
+        $this->assertLocked($lr, fn () => $this->api()->postJson("/api/v1/class-sessions/{$s->id}/reassign-contract", ['new_student_class_id' => $this->scB->ID, 'reason' => 'synthetic']), $this->bId);
+    }
+
+    public function test_approved_row_without_approved_at_is_still_protected(): void
+    {
+        $s = $this->mkSession('attended');
+        $lr = $this->lr($s, 'approved', true);
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['ApprovedAt' => null]);
+        $this->assertLocked($lr, fn () => $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId]));
+    }
+
     private function schedule(string $date, string $start, string $end, int $teacherId): Schedule
     {
         return Schedule::create([
@@ -236,7 +285,7 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
 
     public function test_blank_or_system_filled_approved_row_can_still_be_corrected(): void
     {
-        foreach (['', '（系統補登/扣除堂數）', '（評量表）'] as $i => $content) {
+        foreach (['', '（系統補登/扣除堂數）', '（評量表）', '補登／納入科目數'] as $i => $content) {
             $s = $this->mkSession('attended', '2026-04-0' . ($i + 1));
             $lr = $this->lr($s, 'approved', false, '2026-04-0' . ($i + 1), $content);
             $tscA = (int) User::find($this->aId)->TeachingSessionCount;

@@ -169,13 +169,6 @@ class ScheduleController extends Controller
             }
         }
 
-        // #3824: a filled+approved occurrence keeps its teacher (legacy writers share the same invariant).
-        if (!empty($data['teacher_id'])
-            && ($locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) ($data['student_course_id'] ?? 0), $data['schedule_date'] ?? null, $data['start_time']))
-            && (int) $locked->TeacherID !== (int) $data['teacher_id']) {
-            return \App\Support\LearningRecordMutableOwnership::lockedResponse();
-        }
-
         $studentCampusId = (int) (Student::where('id', (int) $data['student_id'])->value('CampusID') ?? 0);
         if ($studentCampusId > 0 && $studentCampusId !== $branchId) {
             return response()->json(['message' => '學生不屬於該分校，無法建立調課紀錄'], 422);
@@ -216,6 +209,13 @@ class ScheduleController extends Controller
 
         if ($effectiveTeacherId > 0) {
             $data['teacher_id'] = $effectiveTeacherId;
+        }
+        // #3824: a filled+approved occurrence keeps its teacher. Checked after the course/campus check and after
+        // the teacher fallback, so the teacher actually written is compared (review r4247039986 / r4247040020).
+        if ($effectiveTeacherId > 0
+            && ($locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot($courseId, $data['schedule_date'] ?? null, $data['start_time']))
+            && (int) $locked->TeacherID !== $effectiveTeacherId) {
+            return \App\Support\LearningRecordMutableOwnership::lockedResponse();
         }
         if (empty($data['class_type'])) {
             $data['class_type'] = $effectiveClassType;
@@ -1108,9 +1108,14 @@ class ScheduleController extends Controller
             'class_type'    => 'nullable|string|max:32',
         ]);
 
-        if (!empty($data['teacher_id']) && (int) $data['teacher_id'] !== (int) $schedule->teacher_id
-            && \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, (string) $schedule->schedule_date, (string) $schedule->start_time)) {
-            return \App\Support\LearningRecordMutableOwnership::lockedResponse(); // #3824
+        // #3824: on a protected occurrence, only a teacher change back to the assessment's teacher is allowed;
+        // moving / re-statusing the row would detach its pin too (review r4247039997).
+        if ($locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, (string) $schedule->schedule_date, (string) $schedule->start_time)) {
+            $moves = fn (string $k, int $len) => isset($data[$k]) && strtolower(substr((string) $data[$k], 0, $len)) !== strtolower(substr((string) $schedule->{$k}, 0, $len));
+            if ($moves('schedule_date', 10) || $moves('start_time', 5) || $moves('status', 32)
+                || (!empty($data['teacher_id']) && (int) $data['teacher_id'] !== (int) $schedule->teacher_id && (int) $data['teacher_id'] !== (int) $locked->TeacherID)) {
+                return \App\Support\LearningRecordMutableOwnership::lockedResponse();
+            }
         }
 
         $merged = array_merge($schedule->toArray(), array_filter($data, fn ($v) => $v !== null));
@@ -1344,6 +1349,11 @@ class ScheduleController extends Controller
 
     public function destroy(Schedule $schedule)
     {
+        // #3824: the pin row of a protected occurrence cannot be deleted (review r4247040009).
+        $locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, (string) $schedule->schedule_date, (string) $schedule->start_time);
+        if ($locked && (int) $locked->TeacherID === (int) $schedule->teacher_id) {
+            return \App\Support\LearningRecordMutableOwnership::lockedResponse();
+        }
         $schedule->delete();
         return response()->json(['message' => 'Deleted']);
     }
