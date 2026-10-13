@@ -76,7 +76,7 @@ function lex(src, base = 0, heredocBody = false) {
     while (i < src.length && !/[ \t\r\n;&|<>()]/.test(src[i])) {
       const c = src[i];
       if (c === '\\') { if (src[i + 1] !== '\n') add('\\', src[i + 1] ?? '', i + 1); i += 2; }
-      else if (c === "'") { const j = src.indexOf("'", i + 1); if (j < 0) { bad = true; return w; } for (let k = i + 1; k < j; k++) add("'", src[k], k); i = j + 1; }
+      else if (c === "'") { const j = src.indexOf("'", i + 1); if (j < 0) { bad = true; i = src.length; return w; } for (let k = i + 1; k < j; k++) add("'", src[k], k); i = j + 1; }
       else if (c === '"') {
         for (i++; i < src.length && src[i] !== '"';) {
           if (src[i] === '\\' && /[$`"\\\n]/.test(src[i + 1] ?? '')) { if (src[i + 1] !== '\n') add('"', src[i + 1], i + 1); i += 2; }
@@ -510,6 +510,7 @@ const formatBaseline = (b) => `{\n  "//": "#1387 shrink-only: existing findings 
 const wf = (run) => `jobs:\n  j:\n    steps:\n      - run: ${run}`;
 const blk = (...l) => wf(`|\n${l.map((x) => `          ${x}`).join('\n')}`);
 export const trip = {
+  'unterminated single quote stops and rejects protected text': blk("echo '$DB_PASSWORD"),
   'multiline nested marker cannot excuse outer echo': blk('echo "$DB_PASSWORD" "$(printf hi # secret-echo-allow: harmless nested output', ')"'),
 
   'captured secret filename stderr remains unsafe': blk('X="$(cat "$DB_PASSWORD")"'),
@@ -784,7 +785,7 @@ for (const [k, y] of Object.entries(ok)) { const r = scan('ok', y); if (r.length
 // A future public print, verbose/trace option, changed helper, or new callsite invalidates the proof.
 {
   const contracts = {
-    'deploy.yml': '6f1f1c88ed5a10a65852d787c93fc6e8d32dac2b7e906cf2814bbbe2fb7f69bc',
+    'deploy.yml': '105eb99f9ad54f83c0af75e5ed3e897eff61c91e863f09790f966d36558e6957',
     'actual-duration-acceptance.yml': '063c896ae2603651b362654af106e74fcdc2ce6a67e10707a063c0950835bf97',
     'multi-guardian-activation.yml': 'e9e59d11428058b3f8eb355859fa0b1b21ffee841d4826a98fe676108011713f',
   };

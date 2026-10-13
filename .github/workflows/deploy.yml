@@ -1328,6 +1328,7 @@ jobs:
       # production side-effect workflow and non-cancelling.
       group: alltrue-production-side-effects-v2
       cancel-in-progress: false
+      queue: max
 
     steps:
       # Founder 1A: without a reviewer, re-verify the GO evidence right before any
@@ -1444,7 +1445,6 @@ jobs:
 
           PREV_COMMIT=$(git rev-parse HEAD)
           MIGRATION_RAN=0
-          MIGRATION_FAILED=0
           TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"
           RELEASE_TRAIN="${{ needs.resolve-target.outputs.release_train }}"
           ADMISSIONS_FLAG_MODE="${{ inputs.admissions_funnel_v1 }}"
@@ -1539,6 +1539,18 @@ jobs:
                 rollback_failed=1
               fi
             fi
+
+            # Abort after target checkout (e.g. failed migration): refresh FPM like [5/7].
+            (cd /home/admin/backend && php artisan opcache:reset 2>/dev/null) || echo "⚠️ rollback CLI opcache reset 失敗"
+            local rb_secret rb_response
+            rb_secret="$(grep '^DEPLOY_SECRET=' /home/admin/backend/.env | cut -d= -f2-)"
+            for _ in $(seq 1 16); do
+              if [ -z "$rb_secret" ] || ! rb_response=$(curl -skf --connect-timeout 10 --max-time 30 -X POST -H "X-Deploy-Secret: ${rb_secret}" -H "Connection: close" -H "Content-Type: application/json" https://daan.lifenet.com.tw/api/internal/opcache-reset # secret-echo-allow: quiet rollback curl header captured privately; no trace or verbose mode
+              ) || ! echo "$rb_response" | grep -q '"opcache_cleared":true'; then
+                echo "❌ rollback FPM refresh failed"; rollback_failed=1; break
+              fi
+            done
+            unset rb_secret rb_response
 
             echo "Rollback health check..."
             health2=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
@@ -1661,7 +1673,11 @@ jobs:
 
           echo "=== [3/7] Migration 備份 + 執行 ==="
           # Laravel 8 用 "| No" (Ran? 欄)；Laravel 9+ 用 "Pending"。兩者都偵測。
-          PENDING=$(cd /home/admin/backend && php artisan migrate:status 2>/dev/null | grep -cE "\| No|Pending" || true)
+          # D1：migrate:status 本身失敗（DB 連不上等）不得被當成「0 筆 pending」靜默略過。
+          if ! MIGRATE_STATUS=$(cd /home/admin/backend && php artisan migrate:status); then
+            abort_deploy "php artisan migrate:status 失敗 — 無法判斷 pending migration，中止部署並回滾"
+          fi
+          PENDING=$(printf '%s\n' "$MIGRATE_STATUS" | grep -cE "\| No|Pending" || true)
           if [ "$PENDING" -gt 0 ]; then
             echo "有 $PENDING 筆 pending migration，先備份再執行..."
             TS=$(date '+%Y-%m-%d_%H%M%S')
@@ -1673,15 +1689,18 @@ jobs:
               abort_deploy "migration 前 DB backup 失敗"
             fi
             echo "✅ 備份完成：$BACKUP_FILE"
-            # R67：migration 失敗絕不可被吞（無 -e 的 SSH script 會照走並印成功）
-            # 失敗時繼續部署已驗證 code（migration 皆須 expand/contract 前向相容），
-            # 但 run 於結尾標紅，禁止綠燈掩蓋 pending migration。
+            # R67 + D1（Founder 2026-10-13）：migration 失敗絕不可被吞，且必須立即中止部署。
+            # abort_deploy 走既有 rollback_deploy：還原 PREV_COMMIT 原始碼與 Composer 依賴，
+            # 不再執行前端 build／opcache reset／health／smoke；run 以 exit 1 標紅，
+            # 後續「deployed / production-verified」步驟不會執行。
+            # MIGRATION_RAN 維持 0：不呼叫 migrate:rollback（--step=1 可能退掉上一次部署的
+            # migration）；同批已成功的 migration 依 expand/contract 規則對舊 code 相容，
+            # 上方 $BACKUP_FILE 為人工復原依據（restore 屬 Founder-only）。
             if (cd /home/admin/backend && php artisan migrate --force); then
               MIGRATION_RAN=1
               echo "✅ Migration 完成"
             else
-              MIGRATION_FAILED=1
-              echo "❌ Migration 失敗（exit != 0）— code 部署繼續，run 將於結尾標紅"
+              abort_deploy "Migration 失敗（php artisan migrate exit != 0）— 中止部署並回滾 code；DB 備份：$BACKUP_FILE"
             fi
           else
             echo "✅ 無 pending migration，略過"
@@ -1854,11 +1873,6 @@ jobs:
             fi
             if bash /home/admin/scripts/post-merge-smoke.sh; then
               echo ""
-              if [ "$MIGRATION_FAILED" -eq 1 ]; then
-                echo "❌ Code 部署成功（Health + Smoke 通過），但 migration 失敗 — 不得綠燈掩蓋（R67）"
-                echo "   處理：查 Sentry / 對應 GitHub issue；資料閘門滿足後 migration 於下次 deploy 自動重試"
-                exit 1
-              fi
               echo "🚀 部署完成 — Health + Smoke test 全通過"
               exit 0
             else
@@ -1887,6 +1901,7 @@ jobs:
     concurrency:
       group: alltrue-production-side-effects-v2
       cancel-in-progress: false
+      queue: max
     steps:
       - name: Checkout exact smoke revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2102,6 +2117,7 @@ jobs:
     concurrency:
       group: alltrue-production-side-effects-v2
       cancel-in-progress: false
+      queue: max
     steps:
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2242,6 +2258,7 @@ jobs:
     concurrency:
       group: alltrue-production-side-effects-v2
       cancel-in-progress: false
+      queue: max
     environment:
       name: production-activation
     steps:
