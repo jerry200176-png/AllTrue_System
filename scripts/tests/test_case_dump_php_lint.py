@@ -23,7 +23,8 @@ def render(case):
     run = next(s for s in WORKFLOW["jobs"]["dump"]["steps"] if s.get("name", "").startswith("Run bounded"))["run"]
     py = re.search(r"python3 - <<'PY' > /tmp/production_case_probe\.php\n(.*?)\nPY\n", run, re.S).group(1)
     return subprocess.run(["python3", "-"], input=py, capture_output=True, text=True,
-                          env={**os.environ, "CASE_KEY": case, "TARGET_STUDENT_ID": "1", "TARGET_STUDENT_CLASS_ID": ""})
+                          env={**os.environ, "CASE_KEY": case, "TARGET_STUDENT_ID": "1", "TARGET_STUDENT_CLASS_ID": "",
+                               "EXPECTED_TEACHER_IDS": "7,42" if case == "contract_muzha_student" else ""})
 
 
 class CaseDumpPhpLint(unittest.TestCase):
@@ -51,3 +52,4 @@ class CaseDumpPhpLint(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

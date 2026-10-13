@@ -1,4 +1,4 @@
-name: Founder POP Huang contract repair
+name: Founder POP student 30 contract repair
 # One-case control-plane adapter. Execution stays on the Pi scheduler and the
 # human Bearer session never leaves the Pi.
 on:
@@ -24,9 +24,10 @@ permissions:
 concurrency:
   group: alltrue-production-side-effects-v2
   cancel-in-progress: false
+  queue: max
 jobs:
   guard:
-    name: Validate exact Huang repair gate
+    name: Validate exact student 30 repair gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -44,9 +45,9 @@ jobs:
             exit 1
           }
           if [[ "$MODE" == dry-run ]]; then
-            [[ "$CONFIRM" == DRY_RUN_HUANG_YIKUI_MATH_20260902 ]] || exit 1
+            [[ "$CONFIRM" == DRY_RUN_STUDENT_30_MATH_20260902 ]] || exit 1
           else
-            [[ "$CONFIRM" == APPROVE_HUANG_YIKUI_MATH_20260902 ]] || exit 1
+            [[ "$CONFIRM" == APPROVE_STUDENT_30_MATH_20260902 ]] || exit 1
           fi
           echo "Founder gate passed: mode=$MODE backend_sha=$EXPECTED_SHA scope=single_student_contract"
   repair:
@@ -92,7 +93,7 @@ jobs:
           BASE_URL=https://daan.lifenet.com.tw
           TARGET_SHA=98aadbbb380712fa389bce9f5a5806cbf14fa0f8
           MODE='${{ inputs.mode }}'
-          WORK_DIR="$(mktemp -d /tmp/pop-founder-huang.XXXXXX)"
+          WORK_DIR="$(mktemp -d /tmp/pop-founder-student30.XXXXXX)"
           TOKEN='' MACHINE_KEY=''
           cleanup() {
             unset TOKEN MACHINE_KEY PARAMETERS_JSON
