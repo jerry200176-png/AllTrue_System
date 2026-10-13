@@ -130,3 +130,9 @@ Pilot 已驗證：`AtPageHeader` `AtSection` `AtToolbar` `AtFilterBar` `AtBadge`
 頁首規範（2026-09-29）：`AtPageHeader` = 標題 + 一句說明 + `actions`；流程／SOP 說明放 `help` slot 的 `AtHelpDisclosure`（ⓘ，預設收合）；重新整理一律 `AtButton variant="secondary" icon="refresh"`「重新整理」；頁面層級分頁一律 `styles.css` 的 `.at-tabs` / `.at-tab`（底線式）；頁首不放進卡片，頁面根節點用 `.at-page`；圖示需與 `navigationRegistry.js` 側欄一致。
 
 未在 pilot 真實接入的抽象（如 `AtModal` / `AtDataTableShell`）**不進本 PR**；等有使用頁面再建立。
+
+---
+
+## AtIcon
+
+`<AtIcon name="calendar" />`、`<AtIcon name="warning" size="lg" label="注意" />`。`name` 見 `atIcons.js`（15 個，改自 Lucide，ISC）；`size` = `sm`/`md`/`lg`/`inherit`；預設 `aria-hidden`，給 `label` 才是 `role="img"`。顏色走 `currentColor`。模板不要放 emoji（`docs/design/ALLTRUE_UI_FOUNDATION.md` §11）。
