@@ -47,7 +47,7 @@
               </td>
               <td v-if="showActions">
                 <button
-                  v-if="needsFirstManualLesson(c)"
+                  v-if="canManualSession && needsFirstManualLesson(c)"
                   class="small btn-renew-warn"
                   type="button"
                   :disabled="submitting"
@@ -72,7 +72,7 @@
         <p class="enrollment-conflict-options-title">請選擇下一步</p>
         <ul class="enrollment-conflict-option-list">
           <li><strong>從既有課程延續</strong>：選上方對應課程。付費課依原加購規則；輔導課建立不收費的下一期並保留關聯。</li>
-          <li v-if="!isTutoring"><strong>建立下一期續報</strong>：使用這次填寫的設定另建課程，不自動延續原課程或建立前後期關聯。</li>
+          <li v-if="canRenewHere"><strong>建立下一期續報</strong>：使用這次填寫的設定另建課程，不自動延續原課程或建立前後期關聯。</li>
           <li><strong>建立獨立課程</strong>：與既有合約平行，需填寫原因（會留下操作紀錄）。</li>
           <li><strong>取消</strong>：不建立。</li>
         </ul>
@@ -97,6 +97,7 @@
         </button>
         <template v-if="isTrial">
           <button
+            v-if="!blockCreate"
             class="primary"
             type="button"
             :disabled="submitting"
@@ -107,7 +108,7 @@
         </template>
         <template v-else>
           <button
-            v-if="!isTutoring"
+            v-if="canRenewHere"
             class="ghost"
             type="button"
             :disabled="submitting"
@@ -141,6 +142,12 @@ const props = defineProps({
   classType: { type: String, default: '' },
   submitting: { type: Boolean, default: false },
   subjectLabelFn: { type: Function, default: null },
+  // #3738 review: a same-subject trial duplicate must route to the existing trial, never create a second one.
+  blockCreate: { type: Boolean, default: false },
+  // Payment type of the course being attempted; a monthly attempt can never be a generic renewal.
+  attemptedPaymentType: { type: String, default: '' },
+  // 新增下一堂 is director/admin only on the server (403 for teachers), so callers can hide it.
+  canManualSession: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['cancel', 'purchase', 'decision', 'manual-session']);
@@ -150,8 +157,12 @@ const headingId = 'enrollment-conflict-heading';
 const independentReason = ref('');
 
 const isTrial = computed(() => String(props.classType || '').toLowerCase() === 'trial');
+// Monthly (non-count) contracts renew through their own 續約 flow, never through generic enrollment.
+const canRenewHere = computed(() => !isTutoring.value
+  && (!props.attemptedPaymentType || props.attemptedPaymentType === 'session')
+  && !(props.conflicts || []).some((c) => c?.schedule_mode && c.schedule_mode !== 'count'));
 // #3745: a trial has no 加購, but an empty manual trial still needs 新增下一堂.
-const showActions = computed(() => !isTrial.value || (props.conflicts || []).some(needsFirstManualLesson));
+const showActions = computed(() => !isTrial.value || (props.canManualSession && (props.conflicts || []).some(needsFirstManualLesson)));
 const isTutoring = computed(() => String(props.classType || '').toLowerCase() === 'tutoring');
 
 watch(
@@ -187,7 +198,7 @@ function emitCancel() {
 }
 
 function emitDecision(kind) {
-  if (props.submitting) return;
+  if (props.submitting || (props.blockCreate && kind === 'create_trial')) return;
   const existingIds = (props.conflicts || [])
     .map((c) => c.existing_course_id ?? c.id)
     .filter((id) => id != null);
