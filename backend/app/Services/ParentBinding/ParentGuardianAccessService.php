@@ -148,6 +148,17 @@ final class ParentGuardianAccessService
         $studentId = (int) $link->student_id;
         $guardian = $link->relationLoaded('guardian') ? $link->guardian : $link->guardian()->first();
         $lineUserId = $guardian !== null ? trim((string) ($guardian->line_user_id ?? '')) : '';
+
+        return $this->invalidateSessionsForLineUser($studentId, $lineUserId);
+    }
+
+    /**
+     * Expire this LINE subject's live ParentSessions for one student only.
+     * Empty LINE id is a no-op so phoneless sessions are never touched.
+     */
+    public function invalidateSessionsForLineUser(int $studentId, string $lineUserId): int
+    {
+        $lineUserId = trim($lineUserId);
         if ($lineUserId === '') {
             return 0;
         }
