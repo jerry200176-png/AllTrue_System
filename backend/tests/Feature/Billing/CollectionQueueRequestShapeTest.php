@@ -252,6 +252,54 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->assertSame(0, PaymentReport::count());
     }
 
+    /** Founder 2026-10-13: a listed bill already settled by Payment rows is refused (422) at record, batch and confirm; the
+     * money is never moved to the other bill that still owes, and no Payment row is written. */
+    public function test_settled_target_bill_is_refused_and_never_redirected(): void
+    {
+        [$sc, $older, $newer] = $this->newerCoveredOlderOwing();
+        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $newer->id, ...self::D, 'amount' => 3000])
+            ->assertStatus(422)->assertJsonPath('code', 'course_already_paid')->assertJsonPath('invoice_id', $newer->id);
+        $this->report('director-record-batch', [...self::D, 'entries' => [['student_class_id' => $sc->ID, 'invoice_id' => $newer->id, 'amount' => 3000]]])
+            ->assertStatus(207)->assertJsonPath('results.0.http_status', 422)->assertJsonPath('results.0.code', 'course_already_paid');
+        $this->assertSame(0, PaymentReport::count(), 'no report at intake');
+
+        $report = $this->pendingReport($sc, $newer, 3000); // e.g. recorded before the bill was settled
+        $this->confirm($report->id)->assertStatus(422)->assertJsonPath('code', 'course_already_paid')->assertJsonPath('invoice_id', $newer->id);
+        $this->assertSame('pending', $report->fresh()->status);
+        $this->assertSame(1, Payment::count(), 'only the original 5,000 row on the settled bill');
+        $this->assertLedger($older, 0, 'unpaid');
+    }
+
+    /** Founder 2026-10-13: a request that names no bill lands on the bill the list shows, never a different one. */
+    public function test_record_without_invoice_id_targets_the_bill_the_list_shows(): void
+    {
+        [$sc, $older, $newer] = $this->twoHistoricalOpen(olderOwes: 1000, newerOwes: 800);
+        $listed = app(\App\Services\BillingPayableResolver::class)->byStudentClassIds([$sc->ID], [$sc])[$sc->ID]['payable_invoice_id'];
+        $this->assertSame($newer->id, $listed);
+
+        $res = $this->report('director-record', ['student_class_id' => $sc->ID, ...self::D, 'amount' => 800])
+            ->assertOk()->assertJsonPath('invoice_id', $listed);
+        $this->confirm($res->json('report_id'))->assertOk();
+        $this->assertLedger($newer, 800, 'paid');
+        $this->assertLedger($older, 0, 'unpaid');
+    }
+
+    /** Founder 2026-10-13: monthly targets the oldest period not settled by Payment rows, also when the caller names no
+     * bill and a current-period bill exists (replaces FR-006's current-period preference). */
+    public function test_monthly_record_without_invoice_id_targets_the_oldest_owing_period(): void
+    {
+        $sc = $this->course(['ScheduleMode' => 'date', 'Charge' => 6000]);
+        $feb = $this->monthly($sc, '2026-02', 6000, 1000, ['Status' => 'paid', 'PaidAmount' => 6000]); // stale paid, owes 5,000
+        $apr = $this->invoice($sc, '2026-04-01', 6000, 'unpaid', ['billing_period' => '2026-04']);
+        $this->assertSame($feb->id, app(\App\Services\BillingPayableResolver::class)->byStudentClassIds([$sc->ID], [$sc])[$sc->ID]['payable_invoice_id']);
+
+        $res = $this->report('director-record', ['student_class_id' => $sc->ID, ...self::D, 'amount' => 5000])
+            ->assertOk()->assertJsonPath('invoice_id', $feb->id);
+        $this->confirm($res->json('report_id'))->assertOk();
+        $this->assertLedger($feb, 6000, 'paid');
+        $this->assertSame(0, Payment::where('InvoiceID', $apr->id)->count(), 'current period untouched');
+    }
+
     /** One fixture case with id placeholders mapped; asserts its row equals the live alerts/tuition row the UI would get. */
     private function fixtureCase(string $name, array $ids): array
     {

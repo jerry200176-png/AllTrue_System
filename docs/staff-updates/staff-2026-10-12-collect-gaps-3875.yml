@@ -4,11 +4,13 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 收款會收到真正欠款的帳單
-    summary: 登記收款與批次回報，會收到名單上那張還欠錢的帳單。
+    title: 收款對應名單上的待收帳單
+    summary: 登記收款與批次回報，會對應名單上顯示的待收帳單；欠款以實際收款紀錄判斷。
     items:
       - category: fixed
-        text: 帳單其實已收齊或狀態寫已繳但還欠錢時，會改收真正還欠的那張；月結收最早還沒繳清的那期。
+        text: 欠款以實際收款紀錄判斷；月結優先處理最早還沒繳清的那一期。
+      - category: fixed
+        text: 名單上的帳單若已依收款紀錄繳清，會提示並擋下，不會改記到其他帳單。
       - category: fixed
         text: 要收費的課不能登記零元或小數金額；帳單金額是零元時，會提示先更正帳單。
     source_refs:
