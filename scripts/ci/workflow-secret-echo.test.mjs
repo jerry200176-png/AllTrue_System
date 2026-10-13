@@ -54,6 +54,7 @@ function lex(src, base = 0, heredocBody = false) {
   const push = (sep) => { if (cur.words.length || cur.redirs.length) cmds.push({ ...cur, sep, scope: cur }); cur = { words: [], redirs: [] }; };
   const sub = (w, kind, from, to, q) => {
     const script = lex(src.slice(from, to), base + from);
+    for (const c of script.cmds) c.scope.parent = cur;
     comments.push(...script.comments);
     w.subs.push({ kind, at: w.text.length, script });
     w.text += '\x03'; w.pos.push(base + from); w.q.push(q);
@@ -139,7 +140,7 @@ function lex(src, base = 0, heredocBody = false) {
     }
   }
   push('');
-  return { cmds, comments, bad, src };
+  return { cmds, comments, bad, src, base };
 }
 
 // --- analysis ---------------------------------------------------------------------------------------------------
@@ -225,6 +226,16 @@ function passwordConsumer(c) {
   }
   return stdin;
 }
+// Counts reveal no environment values; only exact grep -c/wc -l consumers qualify.
+const countsOnly = (c) => {
+  const r = resolve(c.words), a = c.words.slice(r.k + 1).map((w) => w.text);
+  return (r.name === 'grep' && a.some((x) => x === '-c' || x === '--count')
+    && a.every((x) => !x.startsWith('-') || /^-(?:c|m[0-9]+)$|^--count$/.test(x)))
+    || (r.name === 'wc' && a.length === 1 && (a[0] === '-l' || a[0] === '--lines'));
+};
+const publicEnvField = (name, args) => name === 'grep'
+  && args.some((a) => /^\^DB_(?:USER(?:NAME)?|HOST|PORT|DATABASE)=$/.test(a))
+  && args.every((a) => !a.startsWith('-') || /^-m[0-9]+$/.test(a));
 // where does sensitive output of stage s of pipeline P end up? 'safe' | 'unsafe' | 'taint' (captured by $(...))
 function sink(P, s, ctx, cred) {
   const c = P[s];
@@ -234,6 +245,7 @@ function sink(P, s, ctx, cred) {
   if (fd1 === 'capture') return 'taint';
   if (fd1 !== 'pipe') return 'unsafe';
   const next = P[s + 1], nr = resolve(next.words);
+  if (ctx === 'sub' && countsOnly(next)) return 'safe';
   if (isHash(next)) return hasAlias(next) || stdoutTarget(next, 'x') === 'log' ? 'unsafe' : 'safe';
   if (cred && s === 0 && P.length === 2 && /^(?:echo|printf)$/.test(resolve(c.words).name) && !c.redirs.length
     && passwordConsumer(next) && !hasAlias(next)
@@ -244,21 +256,26 @@ function sink(P, s, ctx, cred) {
 // a capture whose inner text cannot reach the log: no redirect other than to /dev/null or from a file, no log alias
 const cleanCapture = (inner) => !ALIAS.test(inner) && !/>/.test(inner.replace(/(?:\d+|&)?>>?\s*\/dev\/null\b/g, '').replace(/<<?<?-?/g, ''));
 const credExpr = (expr) => expr.replace(/\bsecrets\.\w+/g, '').split(/[^\w]+/).some(isSecretName); // secrets.* are masked
-function credHits(w, exprs) {
+function credHits(w, exprs, sensitive = new Set()) {
   const hits = [];
   for (const m of w.text.matchAll(CRED)) {
-    if (m[2] !== undefined ? credExpr(exprs[+m[2]]) : isSecretName(m[1])) hits.push(m.index); // '$X' too: fail closed
+    if (m[2] !== undefined ? credExpr(exprs[+m[2]]) : isSecretName(m[1]) || sensitive.has(m[1])) hits.push(m.index); // '$X' too: fail closed
   }
   return hits;
 }
 
-function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sensitive data reaches the captured stdout
+function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns true when (ctx 'sub') sensitive data reaches the captured stdout
   let taint = false, scope;
   const rec = (off, verdict) => { if (verdict === 'taint') taint = true; out.push({ off, safe: verdict !== 'unsafe', scope }); };
+  const normalized = [...script.src.matchAll(/case\s+"\$([A-Za-z_][A-Za-z0-9_]*)"\s+in\s+true\|false\)\s*;;\s*\*\)\s*\1=false\s*;;\s*esac/g)]
+    .map((m) => ({ name: m[1], start: script.base + m.index, end: script.base + m.index + m[0].length }))
+    .filter((n) => script.cmds.some((c) => c.words[0]?.text === 'case' && c.words[0].off === n.start && !c.words[0].q.some(Boolean)));
   const pipes = [[]];
   for (const c of script.cmds) { pipes[pipes.length - 1].push(c); if (c.sep !== '|' && c.sep !== '|&') pipes.push([]); }
   for (const P of pipes) P.forEach((c, s) => {
     scope = c.scope;
+    const at = c.words[0]?.off ?? c.redirs[0]?.off ?? 0;
+    for (const n of normalized) if (at >= n.end) sensitive.delete(n.name);
     const info = resolve(c.words);
     const args = c.words.slice(info.k + 1).map((w) => w.text);
     const printer = /^(?:echo|printf)$/.test(info.name);
@@ -272,40 +289,49 @@ function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sen
     if (info.name === 'eval') {
       const body = c.words.slice(info.k + 1).map((w) => w.text).join(' ');
       const inner = lex(body, c.words[info.k + 1]?.off ?? c.words[info.k].off);
+      for (const nested of inner.cmds) nested.scope.parent = c.scope;
       out.comments?.push(...inner.comments);
       if (inner.bad) rec(c.words[info.k].off, 'unsafe');
-      else analyze(inner, 'top', out, exprs);
+      else analyze(inner, 'top', out, exprs, new Set(sensitive));
     }
     if (/^(?:ba|da|z|k)?sh$/.test(info.name)) { // `bash -c '<script>'` runs a nested shell program: analyze it too
       const opts = c.words.slice(info.k + 1), ci = opts.findIndex((w) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(w.text));
       const body = ci >= 0 ? opts[ci + 1] : null;
       if (body) {
         const inner = lex(body.text, body.pos[0] ?? body.off);
+        for (const nested of inner.cmds) nested.scope.parent = c.scope;
         out.comments?.push(...inner.comments);
         if (inner.bad) rec(body.off, 'unsafe');
-        else analyze(inner, 'top', out, exprs);
+        else analyze(inner, 'top', out, exprs, new Set(sensitive));
       }
     }
     for (const w of c.words) {
       const capture = pure && assignRe.test(w.text) && /^[^=]*=\x03$/.test(w.text) && w.subs.length === 1;
-      if (capture && cleanCapture(w.subs[0].script.src)) { collectRaw(w.subs[0].script, out); continue; } // NAME="$(...)"
-      const subHits = w.subs.filter((sb) => analyze(sb.script, sb.kind === '>(' ? 'top' : 'sub', out, exprs) && sb.kind !== '>(').map((sb) => sb.at);
-      for (const at of [...credHits(w, exprs), ...subHits]) {
+      if (capture && cleanCapture(w.subs[0].script.src)) {
+        if (analyze(w.subs[0].script, 'sub', Object.assign([], { comments: [] }), exprs, new Set(sensitive))) sensitive.add(w.text.split('=')[0]);
+        collectRaw(w.subs[0].script, out); continue;
+      } // NAME="$(...)"
+      const subHits = w.subs.filter((sb) => analyze(sb.script, sb.kind === '>(' ? 'top' : 'sub', out, exprs, new Set(sensitive)) && sb.kind !== '>(').map((sb) => sb.at);
+      for (const at of [...credHits(w, exprs, sensitive), ...subHits]) {
         const before = w.text.slice(0, at);
-        if (!NO_ARG_TRUST.has(info.name) && !pure && (/^(?:-p|--password=)$/.test(before) && varOrSub(w.text.slice(at))
+        if (normalized.some((n) => w.pos[at] >= n.start && w.pos[at] < n.end)) rec(w.pos[at], 'safe');
+        else if (!NO_ARG_TRUST.has(info.name) && !pure && (/^(?:-p|--password=)$/.test(before) && varOrSub(w.text.slice(at))
           || /IDENTIFIED\s+BY\s*\\?['"]?$/i.test(before))) rec(w.pos[at], 'safe');
+        else if (/^(?:test|\[|\[\[)$/.test(info.name)
+          && /^-(?:n|z)$/.test(args[0] ?? '') && c.words[info.k + 2] === w
+          && (args.length === 2 || (args.length === 3 && /^\]\]?$/.test(args[2])))) rec(w.pos[at], 'safe');
         else if (printer && /^::add-mask::/.test(w.text) && startsOutput(info, c.words, w)) rec(w.pos[at], 'safe');
         else rec(w.pos[at], pure ? 'unsafe' : viaSink(true));
       }
       for (const m of w.text.matchAll(ENV_FILE)) {
-        if ((printer && w.q[m.index]) || nonRead) rec(w.pos[m.index], 'safe');
+        if ((printer && w.q[m.index]) || nonRead || (ctx === 'sub' && (countsOnly(c) || publicEnvField(info.name, args)))) rec(w.pos[m.index], 'safe');
         else rec(w.pos[m.index], viaSink(false));
       }
     }
     for (const r of c.redirs) {
       if (!r.target) continue;
-      for (const sb of r.target.subs) if (analyze(sb.script, 'sub', out, exprs)) rec(r.off, 'unsafe');
-      for (const at of credHits(r.target, exprs)) rec(r.target.pos[at] ?? r.off, 'unsafe');
+      for (const sb of r.target.subs) if (analyze(sb.script, 'sub', out, exprs, new Set(sensitive))) rec(r.off, 'unsafe');
+      for (const at of credHits(r.target, exprs, sensitive)) rec(r.target.pos[at] ?? r.off, 'unsafe');
       for (const m of r.target.text.matchAll(ENV_FILE)) {
         const pos = r.target.pos[m.index] ?? r.off;
         if (!/^</.test(r.op) || r.op === '<<' || r.op === '<<-') rec(pos, 'safe'); // write target / heredoc word
@@ -321,8 +347,8 @@ function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sen
         rec(off + m.index, expression ? sink(P, s, ctx, true) : 'safe');
       } // printed/executed literally
       for (const m of body.matchAll(ENV_FILE)) rec(off + m.index, 'safe');
-      const sh = bw.subs.filter((sb) => analyze(sb.script, 'sub', out, exprs)).map((sb) => sb.at);
-      for (const at of [...credHits(bw, exprs), ...sh]) {
+      const sh = bw.subs.filter((sb) => analyze(sb.script, 'sub', out, exprs, new Set(sensitive))).map((sb) => sb.at);
+      for (const at of [...credHits(bw, exprs, sensitive), ...sh]) {
         const sql = info.name !== 'cat' && /IDENTIFIED\s+BY\s*\\?['"]?$/i.test(bw.text.slice(0, at).split('\n').pop());
         rec(bw.pos[at] ?? off, sql ? 'safe' : info.name === 'cat' ? sink(P, s, ctx, true) : 'unsafe');
       }
@@ -397,7 +423,8 @@ function scanScript(where, script0) {
     const owner = allow ? parsed.comments.find(([a, b]) => starts[i] + allow.index >= a && starts[i] + allow.index < b)?.[2] : null;
     const unsafe = occ.filter((o) => !o.safe && lineOf(o.off) === i);
     const commands = parsed.cmds.filter((c) => lineOf(c.words[0]?.off ?? c.redirs[0]?.off ?? -1) === i);
-    const scoped = owner && unsafe.every((o) => o.scope === owner) && commands.every((c) => c.scope === owner);
+    const belongs = (scope) => { for (; scope; scope = scope.parent) if (scope === owner) return true; return false; };
+    const scoped = owner && unsafe.every((o) => belongs(o.scope)) && commands.every((c) => c.scope === owner);
     if (allow && allow[1].trim().length >= 10 && scoped) return;
     if (allow && allow[1].trim().length < 10) why[i].add('secret-echo-allow reason must be at least 10 characters');
     if (why[i].size) bad.push({ where: `${where} line ${i + 1}`, text: raw, why: [...why[i]].join(', ') });
@@ -476,6 +503,16 @@ const formatBaseline = (b) => `{\n  "//": "#1387 shrink-only: existing findings 
 const wf = (run) => `jobs:\n  j:\n    steps:\n      - run: ${run}`;
 const blk = (...l) => wf(`|\n${l.map((x) => `          ${x}`).join('\n')}`);
 export const trip = {
+  'metadata selector prefix cannot excuse password key': blk('X="$(grep \'^DB_USERNAME\' backend/.env)"; echo "$X"'),
+  'quoted normalization text cannot remove taint': blk('value="$(cat backend/.env)"; printf \'case "$value" in true|false) ;; *) value=false ;; esac\'', 'echo "$value"'),
+  'comment normalization text cannot remove taint': blk('value="$(cat backend/.env)" # case "$value" in true|false) ;; *) value=false ;; esac', 'echo "$value"'),
+  'predicate extra output command not safe': blk('X="$(cat backend/.env)"; [ -n "$X" ]; echo "$X"'),
+
+  'captured filtered password alias printed': blk('X="$(grep \'^DB_PASSWORD=\' backend/.env | cut -d= -f2-)"; echo "$X"'),
+  'inverted metadata selector still taints': blk('X="$(grep -v \'^DB_USERNAME=\' backend/.env)"; echo "$X"'),
+
+  'captured environment alias printed': blk('X="$(cat backend/.env)"; echo "$X"'),
+  'captured environment dump alias printed': blk('X="$(env)"; echo "$X"'),
   'static eval env dump': blk('eval env'),
   'static eval printenv dump': blk('eval printenv'),
   'quoted heredoc GitHub expansion': blk("cat <<'EOF'", '${{ env.DB_PASSWORD }}', 'EOF'),
@@ -618,6 +655,13 @@ export const trip = {
   'composite action run step': 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo "$DB_PASSWORD"',
 };
 export const ok = {
+  'outer scoped annotation covers eval assignment': blk('backup="$(cat backend/.env)"', 'eval \'result=$backup\' # secret-echo-allow: assign captured backup; no output'),
+
+  'captured count metadata': blk('X="$(grep -c \'^FLAG=\' backend/.env)"; echo "$X"'),
+  'captured public username field': blk('X="$(grep -m1 \'^DB_USERNAME=\' backend/.env | cut -d= -f2-)"; echo "$X"'),
+  'captured secret unary predicate': blk('X="$(cat backend/.env)"; if [[ -n "$X" ]]; then echo present; fi'),
+  'literal boolean normalization': blk('value="$(grep \'^FLAG=\' backend/.env | cut -d= -f2-)"; case "$value" in true|false) ;; *) value=false ;; esac', 'echo "$value"'),
+
   'sensitive capture hashed': blk('X="$(cat backend/.env)"; echo "$X" | sha256sum'),
   'ordinary capture printed': blk('X="$(date)"; echo "$X"'),
   'static harmless eval': blk("eval 'echo hi'"),
@@ -695,6 +739,25 @@ for (const [k, y] of Object.entries(ok)) { const r = scan('ok', y); if (r.length
     if (a.error || b.error || a.status !== status || b.status !== status || a.stdout !== b.stdout || a.stderr !== b.stderr)
       fail('staged credential environment transport must preserve bytes and exit status');
   }
+}
+
+
+// The annotation covers saved flag-line assignment, never printing it.
+{
+  const d = readFileSync('.github/workflows/deploy.yml', 'utf8');
+  const calls = d.match(/^\s*apply_bool_feature_flag .+$/gm)?.map((s) => s.trim()) ?? [];
+  const expected = ['ADMISSIONS', 'CALENDAR', 'MANAGER'].map((prefix, i) =>
+    'apply_bool_feature_flag "$' + prefix + '_FLAG_MODE" ' + ['ADMISSIONS_FUNNEL_V1 VITE_ADMISSIONS_FUNNEL_V1', 'COURSE_SESSION_CALENDAR_V1 VITE_COURSE_SESSION_CALENDAR_V1', 'COURSE_MANAGER_V1 VITE_COURSE_MANAGER_V1'][i]
+    + ' ' + prefix + '_FLAG_CHANGED ' + prefix + '_FLAG_WAS_PRESENT ' + prefix + '_FLAG_BACKUP');
+  if (JSON.stringify(calls) !== JSON.stringify(expected)) fail('flag-backup annotation requires exactly the three reviewed constant-variable callers');
+  const normal = 'DB_USERNAME=fixture_user\nDB_PASSWORD=fixture_password\n';
+  const select = (pattern, input) => execFileSync('grep', [pattern], { input, encoding: 'utf8', env: {} });
+  if (select('DB_USERNAME', normal) !== select('^DB_USERNAME=', normal))
+    fail('anchored username selector must preserve normal output');
+  const adversarial = normal + 'DB_PASSWORD=fixture_DB_USERNAME_marker\n';
+  if (select('^DB_USERNAME=', adversarial) !== 'DB_USERNAME=fixture_user\n'
+    || select('DB_USERNAME', adversarial) === select('^DB_USERNAME=', adversarial))
+    fail('anchored username selector must reject a matching password value');
 }
 
 // --- repository check ---------------------------------------------------------------------------------------------

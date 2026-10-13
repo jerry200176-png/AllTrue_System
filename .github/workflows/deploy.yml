@@ -1730,7 +1730,7 @@ jobs:
             echo "✅ ${key} prepared (mode=${mode:-unchanged}, value=$value)"
             eval "$4=$changed"
             eval "$5=$present"
-            eval "$6=\"\$backup\""
+            eval "$6=\"\$backup\"" # secret-echo-allow: copy saved flag line into constant caller variable; no output
           }
           apply_bool_feature_flag "$ADMISSIONS_FLAG_MODE" ADMISSIONS_FUNNEL_V1 VITE_ADMISSIONS_FUNNEL_V1 ADMISSIONS_FLAG_CHANGED ADMISSIONS_FLAG_WAS_PRESENT ADMISSIONS_FLAG_BACKUP
           apply_bool_feature_flag "$CALENDAR_FLAG_MODE" COURSE_SESSION_CALENDAR_V1 VITE_COURSE_SESSION_CALENDAR_V1 CALENDAR_FLAG_CHANGED CALENDAR_FLAG_WAS_PRESENT CALENDAR_FLAG_BACKUP

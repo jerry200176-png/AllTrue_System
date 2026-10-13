@@ -66,7 +66,7 @@ jobs:
           set -e
 
           DB_PASS=$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)
-          DB_USER=$(grep DB_USERNAME /home/admin/backend/.env | cut -d= -f2)
+          DB_USER=$(grep '^DB_USERNAME=' /home/admin/backend/.env | cut -d= -f2)
           BACKUP_DIR="/home/admin/backups/sixhour"
           TEST_DB="AllTrue_restore_test_$$"
 
