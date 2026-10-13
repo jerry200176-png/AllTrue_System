@@ -1162,6 +1162,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('candidate_pr.get("merged_at")', block)
         self.assertLess(block.index("merged_matches.append("), block.index("reconcile_preexisting_pr_provenance("))
         self.assertIn("if not recovered and len(merged_matches) == 1:", block)
+        # A message that yields both kinds (merged PR + reconciled closed PR) is ambiguous: fail closed (#4023 review).
+        self.assertIn("if len(recovered) == 1 and not merged_matches:", block)
         self.assertIn("candidates = merged_matches", block)
         self.assertIn("provenance_complete = False", block[block.index("candidates = merged_matches"):])
 

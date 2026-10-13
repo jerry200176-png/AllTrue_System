@@ -854,7 +854,7 @@ jobs:
                                   print(f"PR #{pr_number} reconciliation rejected: {reconciliation.get('reason')}")
                           except (OSError, ValueError, subprocess.CalledProcessError) as error:
                               print(f"PR #{pr_number} reconciliation evidence unavailable: {error}")
-                      if len(recovered) == 1:
+                      if len(recovered) == 1 and not merged_matches:
                           attributed.append(recovered[0])
                           seen_reconciled_prs.add(recovered[0]["number"])
                           attributed_commits.add(commit_sha)
