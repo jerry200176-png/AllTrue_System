@@ -90,5 +90,20 @@ class DumpIdsOnlyTest(unittest.TestCase):
         self.assertIn("$targetStudentId = 12;", r.stdout)
 
 
+    def test_contract_probe_requires_an_independent_teacher_id_oracle(self):
+        run = run_step("production-case-dump.yml", "Run bounded")
+        py = textwrap.dedent(re.search(r"python3 - <<'PY' > /tmp/production_case_probe.php\n(.*?)\n\s*PY\n", run, re.S).group(1))
+        env = {**os.environ, "CASE_KEY": "contract_muzha_student", "TARGET_STUDENT_ID": "12", "TARGET_STUDENT_CLASS_ID": ""}
+        for value in ("", "name", "0", "1;echo x", "1," , ",".join(map(str, range(1, 22)))):
+            r = subprocess.run(["python3", "-W", "ignore", "-"], input=py, env={**env, "EXPECTED_TEACHER_IDS": value}, capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0, value)
+        r = subprocess.run(["python3", "-W", "ignore", "-"], input=py, env={**env, "EXPECTED_TEACHER_IDS": "42,7,42"}, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("$expectedTeacherIds = [7, 42];", r.stdout)
+        self.assertIn("$out['teachers'] = $expectedTeacherIds;", r.stdout)
+        self.assertNotIn("$out['teachers'] = collect($classes)", r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
+
