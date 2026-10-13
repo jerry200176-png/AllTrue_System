@@ -348,10 +348,10 @@
               <p>開發者已標記修復完成，請確認後讓此問題正式關閉。</p>
               <div class="verify-prompt__btns">
                 <button class="btn-verify-reopen" :disabled="verifying" @click="doReporterVerify('reopened')">
-                  ❌ 問題仍存在
+                  ❌ {{ RESOLVE_REPLY_OUTCOMES.reopen }}
                 </button>
                 <button class="btn-verify-confirm" :disabled="verifying" @click="doReporterVerify('confirmed')">
-                  ✅ 確認已修好
+                  ✅ {{ RESOLVE_REPLY_OUTCOMES.confirm }}
                 </button>
               </div>
             </div>
@@ -497,6 +497,7 @@
             </div>
             <div v-if="newStatus === 'resolved'" class="evidence-hint">
               已解決必須附上正式站版本 SHA；這會寫入狀態歷程與證據列，供回報者驗收與稽核。僅合併 PR 不算上線。
+              留言框已預填回覆範本：補上修了什麼後先按「送出」，最新一則公開留言要同時寫出「{{ RESOLVE_REPLY_OUTCOMES.confirm }}」與「{{ RESOLVE_REPLY_OUTCOMES.reopen }}」，才能標記已解決。
             </div>
             <div v-else-if="showDispositionFields" class="evidence-hint">
               建議填寫定性與工程連結，讓閉環摘要可追溯，不依賴聊天記憶。
@@ -539,6 +540,7 @@ import {
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
   getToken,
 } from '../lib/bugReportsApi';
+import { RESOLVE_REPLY_OUTCOMES, buildResolveReplyTemplate, shouldPrefillResolveReply } from '../lib/bugResolveReply';
 import { bugListDisplay, parseBugReportClientInfo, PRODUCT_DISPOSITION_OPTIONS, dispositionLabel, productLoopPhaseLabel, statusLogDisplayNote } from '../lib/bugReportContext';
 import { getNavigationGroups, getTodoPages, getToolbarItems } from '../lib/navigationRegistry';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
@@ -734,6 +736,13 @@ const resolutionNote = computed(() => {
 
 const triageContext = computed(() => parseBugReportClientInfo(detail.value?.client_info));
 const productLoop = computed(() => detail.value?.product_loop || null);
+// GitHub #3750: choosing 已解決 pre-fills a public reply that names both reporter outcomes.
+watch(newStatus, (next) => {
+  if (!shouldPrefillResolveReply(next, newComment.value)) return;
+  newComment.value = buildResolveReplyTemplate();
+  commentIsInternal.value = false;
+});
+
 const showDispositionFields = computed(() => {
   return ['triaged', 'in_progress', 'closed', 'resolved'].includes(newStatus.value);
 });

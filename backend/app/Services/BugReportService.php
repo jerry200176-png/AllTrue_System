@@ -48,6 +48,13 @@ class BugReportService
     /** Machine marker line on the close log; stripped from note_display like the other markers. */
     public const CLOSED_AS_LOGGED_NOTE = '[closed_as_logged]';
 
+    /**
+     * Both reporter-verify outcomes (GitHub #3750). Resolving through the staff API requires the
+     * latest public reply to name both, so the reporter knows how to accept or reopen the fix.
+     * Labels match the reporter-verify buttons; the frontend template is checked against this list.
+     */
+    public const RESOLVE_REPLY_REQUIRED_PHRASES = ['確認已修好', '問題仍存在'];
+
     public const AWAITING_REPORTER_TIMEOUT_DAYS = 14;
     public const AWAITING_REPORTER_QUESTION_PATTERN = '/(?<![申邀聲])(?:請(?![求款假])|麻煩).{0,60}?(?:回覆|回答|確認|提供|告訴|告知|說明|補|上傳)|[？?]/u';
 
@@ -295,6 +302,7 @@ class BugReportService
      *   deploy_run_id?: ?string,
      *   evidence_exception_reason?: ?string,
      *   allow_exception?: bool,
+     *   require_both_outcomes_reply?: bool,
      *   reopen_by_timeout?: bool,
      *   disposition?: ?string,
      *   github_issue_url?: ?string,
@@ -472,11 +480,15 @@ class BugReportService
      * Evidence Contract: public reply + production revision (or approved exception).
      * Does not parse free-form "done" claims as evidence.
      *
+     * When `require_both_outcomes_reply` is set (staff API path only, GitHub #3750), the latest
+     * public comment must also contain every RESOLVE_REPLY_REQUIRED_PHRASES entry.
+     *
      * @param  array{
      *   production_revision?: ?string,
      *   deploy_run_id?: ?string,
      *   evidence_exception_reason?: ?string,
-     *   allow_exception?: bool
+     *   allow_exception?: bool,
+     *   require_both_outcomes_reply?: bool
      * }  $options
      * @return array{ok: bool, code?: string, message?: string, production_revision?: ?string, deploy_run_id?: ?string, evidence_exception_reason?: ?string}
      */
@@ -492,6 +504,27 @@ class BugReportService
                 'code' => 'missing_public_reply',
                 'message' => 'resolved requires a public (non-internal) comment visible to the reporter',
             ];
+        }
+
+        if (!empty($options['require_both_outcomes_reply'])) {
+            $latestPublicBody = (string) BugReportComment::query()
+                ->where('bug_report_id', $bugId)
+                ->where('is_internal_note', false)
+                ->orderByDesc('id')
+                ->value('body');
+            $missing = array_values(array_filter(
+                self::RESOLVE_REPLY_REQUIRED_PHRASES,
+                static fn (string $phrase): bool => mb_strpos($latestPublicBody, $phrase) === false
+            ));
+            if ($missing !== []) {
+                $quoted = implode('與', array_map(static fn (string $p): string => '「' . $p . '」', self::RESOLVE_REPLY_REQUIRED_PHRASES));
+                return [
+                    'ok' => false,
+                    'code' => 'missing_both_outcomes_reply',
+                    'message' => '標記已解決前，最新一則公開留言必須同時寫出' . $quoted
+                        . '，讓回報者知道怎麼驗收或退回（缺少：' . implode('、', $missing) . '）。',
+                ];
+            }
         }
 
         $revision = isset($options['production_revision']) ? trim((string) $options['production_revision']) : '';

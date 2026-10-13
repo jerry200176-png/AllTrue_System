@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-10-13-resolve-reply-both-outcomes
+    published_at: "2026-10-13"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 回報修好時會告訴你怎麼驗收
+    summary: 意見與建議標記已解決時，回覆一定會說明「確認已修好」和「問題仍存在」兩個按鈕。
+    items:
+      - category: improved
+        text: 回報被標記已解決時，回覆一定會告訴你：正常請按「確認已修好」，還不對請按「問題仍存在」。
+    source_refs:
+      - "changelog:2026-10-13:resolve-reply-both-outcomes"
