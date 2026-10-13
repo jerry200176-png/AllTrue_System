@@ -240,9 +240,10 @@ class AlertController extends Controller
                 $memberMoney = $members->map(fn (StudentClass $m) => $this->courseAlertMoney($m, $today,
                     $memberOpenInvoices[(int) $m->ID] ?? null, $memberStatuses, (int) $m->ID, $memberInvoiceAgg[(int) $m->ID] ?? null,
                     (int) round(($memberSessionCounts[(int) $m->ID] ?? 0) * $rate)));
-                // Paid = the manual toggle, or every member row owes nothing (invoices + Payment rows beat the Paid flag).
-                $pkgPaid = $manualPaid || ($members->isNotEmpty() && $memberMoney->every(fn ($row) => $row['outstanding'] <= 0));
                 $settlement = ['outstanding' => (int) $memberMoney->sum('outstanding'), 'applied' => (int) $memberMoney->sum('paid_amount')];
+                // Paid = the manual toggle, or some member paid and every member row owes nothing (invoices + Payment rows beat
+                // the Paid flag). Nothing billed and nothing paid yet is not "paid" (MX-004).
+                $pkgPaid = $manualPaid || ($settlement['applied'] > 0 && $memberMoney->every(fn ($row) => $row['outstanding'] <= 0));
 
                 $fakeSc = $this->makeFakeSCForPackage($pkg);
                 $fakeSc->Paid = $pkgPaid ? 1 : 0;
