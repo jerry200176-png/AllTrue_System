@@ -137,6 +137,8 @@ B1 是「排課時長與該課程自己的契約時長不符」的規模，並�
 - 扣堂：`SessionDeductionService::isActualDurationActive()` = 旗標 **且** 課程是 `actual_duration` **且** 學生所屬分校（`Student.CampusID`）在名單內。任一不成立 → 完全等同 `fixed_session`（fail-safe）。
 - 建課：`POST class-sessions/batch` 對名單外分校的 `actual_duration` 回 422「此分校尚未開放依實際時長扣堂」。
 - 修改課程：`PUT student-classes/{id}` 把名單外分校的課**改成** `actual_duration` 回 422；已經是 `actual_duration` 的課照常可編輯（其餘仍受 `BillingContractLockGuard` 管）。
+- 續課／家教複製：名單外分校複製出來的新課一律是 `fixed_session`，不會在名單外產生新的 `actual_duration` 課。
+- 已知邊角：判斷用的是學生**目前**的 `CampusID`。學生若中途轉到名單外分校，他的 `actual_duration` 課之後會改成整堂扣（與關旗標相同的 fail-safe 方向）；試辦期間轉校請先找 Founder。
 - 前端建課表單仍對所有分校顯示這個選項；名單外分校送出時會看到上述 422 訊息（不會建出半套的課）。
 
 **分校 ID 從哪來（未查正式 DB）。** `frontend/src/lib/useBranches.js`：11＝新莊分校（`xinzhuang`）、13＝新莊中平分校（`xinzhuang_zhongping`）；`docs/LINE_LIFF_CHECKLIST.md` 亦記載「新莊(11)與新莊中平(13)」已實證。下方步驟 3 的驗收建課會再確認一次：ID 若不對，那一校建課會被 422 擋下，不會誤開別校。
@@ -166,6 +168,7 @@ B1 是「排課時長與該課程自己的契約時長不符」的規模，並�
 ### 回滾
 
 - **全部回滾（主要路徑）**：§4 的 `disable_backend`。旗標一關，所有分校（含新莊兩校）立即回到整堂扣，沒有資料要清。
+- 注意：不論關旗標或縮名單，已有分鐘制扣堂紀錄的課，下次重算時會改用整堂口徑換算剩餘堂數（ledger 原始分鐘不會被改寫）。這是「回到整堂扣」的預期結果，但家長看到的剩餘堂數可能改變，回滾前先跑 `verify_backend` 看受影響課數。
 - **只收回某一校**：開 PR 修改 `config/perfflags.php` 的預設名單（或改成空白），經 CI → `deploy.yml`。目前沒有改 `PERF_ACTUAL_DURATION_CAMPUS_IDS` 這一行 `.env` 的 workflow，**不得** SSH 手動改 `.env`。
 - **擴大到全部分校**：試辦結束、Founder 核准後，同樣以 PR 把預設改成 `*`。
 

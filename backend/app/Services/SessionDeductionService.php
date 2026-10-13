@@ -636,11 +636,30 @@ class SessionDeductionService
      */
     public static function isActualDurationCampusAllowedForCourse(StudentClass $sc): bool
     {
-        $campusId = $sc->relationLoaded('student') && $sc->student !== null
-            ? (int) $sc->student->CampusID
-            : (int) (\App\Models\Student::withoutGlobalScopes()->whereKey($sc->StudentID)->value('CampusID') ?? 0);
+        // One lookup per model instance: a single attendance asks several times.
+        self::$courseCampusCache ??= new \WeakMap();
+        if (!isset(self::$courseCampusCache[$sc])) {
+            self::$courseCampusCache[$sc] = $sc->relationLoaded('student') && $sc->student !== null
+                ? (int) $sc->student->CampusID
+                : (int) (\App\Models\Student::withoutGlobalScopes()->whereKey($sc->StudentID)->value('CampusID') ?? 0);
+        }
 
-        return self::isActualDurationCampusAllowed($campusId);
+        return self::isActualDurationCampusAllowed(self::$courseCampusCache[$sc]);
+    }
+
+    /** @var \WeakMap<StudentClass, int>|null */
+    private static ?\WeakMap $courseCampusCache = null;
+
+    /**
+     * #3834 — the deduction_basis a NEW contract copied from $source may carry
+     * (renewal, tutoring copy). Outside the pilot campuses a copy never becomes
+     * actual_duration, so no new actual-duration contract appears off-pilot.
+     */
+    public static function pilotSafeCopiedBasis(StudentClass $source): string
+    {
+        return $source->isActualDurationBasis() && !self::isActualDurationCampusAllowedForCourse($source)
+            ? \App\Services\Scheduling\DeductionBasis::FIXED_SESSION
+            : $source->deduction_basis;
     }
 
     /**

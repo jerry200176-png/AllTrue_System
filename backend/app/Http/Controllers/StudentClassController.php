@@ -3033,6 +3033,7 @@ class StudentClassController extends Controller
                 'SessionDuration', 'Rate', 'rate_unit', 'LearnTimeID', 'room_id', 'Memo',
                 'standard_lesson_minutes', 'deduction_basis',
             ]);
+            $payload['deduction_basis'] = SessionDeductionService::pilotSafeCopiedBasis($source);
             $duration = max(30, (int) ($source->getAttribute('SessionDuration') ?: 120));
             $payload = array_merge($payload, [
                 'ClassType' => 'tutoring', 'ScheduleMode' => $mode, 'StartDate' => $start,
@@ -5136,7 +5137,7 @@ class StudentClassController extends Controller
             'ClassType' => $source->getAttribute('ClassType') ?: 'one_on_one',
             'UsedSessions' => 0,
             'standard_lesson_minutes' => $source->standard_lesson_minutes,
-            'deduction_basis' => $source->deduction_basis,
+            'deduction_basis' => SessionDeductionService::pilotSafeCopiedBasis($source),
         ];
     }
     /**

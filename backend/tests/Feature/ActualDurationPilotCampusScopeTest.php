@@ -153,6 +153,50 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame(DeductionBasis::FIXED_SESSION, $sc->fresh()->deduction_basis);
     }
 
+    public function test_edit_can_opt_a_course_in_at_an_allowlisted_campus(): void
+    {
+        [$sc] = $this->course($this->pilotCampusId, ['deduction_basis' => DeductionBasis::FIXED_SESSION]);
+
+        $this->withHeaders($this->headers())
+            ->putJson('/api/v1/student-classes/' . $sc->ID, [
+                'deduction_basis' => DeductionBasis::ACTUAL_DURATION,
+                'standard_lesson_minutes' => 120,
+            ])
+            ->assertOk();
+
+        $this->assertTrue($sc->fresh()->isActualDurationBasis());
+    }
+
+    /** An off-pilot course that is ALREADY actual_duration stays editable. */
+    public function test_edit_of_an_existing_actual_duration_course_is_not_blocked(): void
+    {
+        [$sc] = $this->course($this->otherCampusId);
+
+        $this->withHeaders($this->headers())
+            ->putJson('/api/v1/student-classes/' . $sc->ID, [
+                'deduction_basis' => DeductionBasis::ACTUAL_DURATION,
+                'standard_lesson_minutes' => 90,
+            ])
+            ->assertOk();
+
+        $this->assertSame(90, $sc->fresh()->resolvedStandardLessonMinutes());
+    }
+
+    /** Renewal / tutoring copies never mint a new actual_duration contract off-pilot. */
+    public function test_copied_basis_follows_the_allowlist(): void
+    {
+        [$pilot] = $this->course($this->pilotCampusId);
+        [$other] = $this->course($this->otherCampusId);
+        [$fixed] = $this->course($this->pilotCampusId, ['deduction_basis' => DeductionBasis::FIXED_SESSION]);
+
+        $this->assertSame(DeductionBasis::ACTUAL_DURATION, SessionDeductionService::pilotSafeCopiedBasis($pilot));
+        $this->assertSame(DeductionBasis::FIXED_SESSION, SessionDeductionService::pilotSafeCopiedBasis($other));
+        $this->assertSame(DeductionBasis::FIXED_SESSION, SessionDeductionService::pilotSafeCopiedBasis($fixed));
+
+        config(['perfflags.actual_duration_campus_ids' => '*']);
+        $this->assertSame(DeductionBasis::ACTUAL_DURATION, SessionDeductionService::pilotSafeCopiedBasis($other));
+    }
+
     // ── helpers ───────────────────────────────────────────────────────
 
     /** @return array<string, string> */

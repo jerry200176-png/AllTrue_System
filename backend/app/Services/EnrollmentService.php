@@ -471,15 +471,6 @@ class EnrollmentService
             return response()->json(['message' => 'branch_id 與學生所屬分校不一致'], 422);
         }
 
-        // #3834 pilot scope: refuse rather than mint a course whose contract says
-        // "bill by clock time" at a campus where the engine treats it as fixed_session.
-        if ($actualDurationOptIn && !SessionDeductionService::isActualDurationCampusAllowed($targetCampusId)) {
-            return response()->json([
-                'message' => '依實際時長扣堂目前僅在試辦分校開放',
-                'errors' => ['deduction_basis' => ['此分校尚未開放依實際時長扣堂，請改用「每次上課扣一堂」。']],
-            ], 422);
-        }
-
         if ($identityGroupId > 0) {
             if (!in_array($role, ['director', 'super_admin'], true)) {
                 return response()->json(['message' => '只有主任或 super_admin 可使用跨分校身份報名'], 403);
@@ -498,6 +489,15 @@ class EnrollmentService
 
         if (!empty($campusIds) && !in_array($targetCampusId, $campusIds, true)) {
             return response()->json(['message' => 'Forbidden: branch not accessible'], 403);
+        }
+
+        // #3834 pilot scope: refuse rather than mint a course whose contract says
+        // "bill by clock time" at a campus where the engine treats it as fixed_session.
+        if ($actualDurationOptIn && !SessionDeductionService::isActualDurationCampusAllowed($targetCampusId)) {
+            return response()->json([
+                'message' => '依實際時長扣堂目前僅在試辦分校開放',
+                'errors' => ['deduction_basis' => ['此分校尚未開放依實際時長扣堂，請改用「每次上課扣一堂」。']],
+            ], 422);
         }
 
         $teacherHasCampus = UserCampus::where('UserID', (int) $data['teacher_id'])
