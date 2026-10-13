@@ -15,6 +15,14 @@ final class TriageTokenService
         return (string) config('triage_tokens.ability');
     }
 
+    /** Audit rows for unresolved bearers: 10/min per IP and 120/min overall, across routes; the refusal never changes. */
+    public static function mayAuditUnresolved(?string $ip): bool
+    {
+        $keys = ['triage-unresolved-audit:' . hash('sha256', (string) $ip) => 10, 'triage-unresolved-audit:all' => 120];
+        $open = array_filter($keys, fn (int $max, string $key) => \Illuminate\Support\Facades\RateLimiter::tooManyAttempts($key, $max), ARRAY_FILTER_USE_BOTH) === [];
+        return $open && array_map(fn (string $key) => \Illuminate\Support\Facades\RateLimiter::hit($key, 60), array_keys($keys)) !== [];
+    }
+
     public static function looksLikeTriageToken(string $bearer): bool
     {
         $prefix = (string) config('triage_tokens.secret_prefix');

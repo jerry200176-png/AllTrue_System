@@ -141,6 +141,15 @@ final class TriageTokenTest extends TestCase
         $this->assertGreaterThan(0, $this->auditCount('triage_token.scope_denied'));
     }
 
+    public function test_forged_prefixed_bearers_are_refused_but_their_audit_rows_are_capped(): void
+    {
+        $this->withoutMiddleware(ThrottleRequestsByIp::class);
+        $forged = ['Authorization' => 'Bearer 1|' . config('triage_tokens.secret_prefix') . 'forged'];
+        foreach (array_merge(...array_fill(0, 15, ['/api/v1/me', '/api/v1/invoices', '/api/v1/triage/bug-reports'])) as $uri) { $this->getJson($uri, $forged)->assertStatus(str_contains($uri, 'triage') ? 401 : 403); }
+        $this->getJson('/api/v1/me', $this->bearer($this->createToken($this->user('S'))))->assertForbidden();
+        $this->assertSame(11, $this->auditCount('triage_token.scope_denied') + $this->auditCount('triage_token.read')); // 10 forged rows per IP and minute; a real token's denial is never capped
+    }
+
     public function test_expiry_follows_config_and_expired_token_is_rejected(): void
     {
         config(['triage_tokens.ttl_days' => 42]);

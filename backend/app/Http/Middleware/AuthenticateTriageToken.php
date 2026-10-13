@@ -19,7 +19,9 @@ final class AuthenticateTriageToken
     {
         $pat = TriageTokenService::resolve($request->bearerToken());
         if ($pat === null) {
-            $this->audit($request, null, 'failure', 401, 'invalid_token');
+            if (TriageTokenService::mayAuditUnresolved($request->ip())) {
+                $this->audit($request, null, 'failure', 401, 'invalid_token');
+            }
             return response()->json(['message' => 'Unauthorized'], 401);
         }
         if (TriageTokenService::isExpired($pat)) {

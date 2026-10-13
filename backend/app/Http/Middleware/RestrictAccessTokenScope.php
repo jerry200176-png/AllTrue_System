@@ -35,6 +35,9 @@ final class RestrictAccessTokenScope
             return $next($request);
         }
 
+        if ($pat === null && !TriageTokenService::mayAuditUnresolved($request->ip())) {
+            return response()->json(['message' => 'Forbidden', 'code' => 'token_scope_denied'], 403);
+        }
         SecurityAuditEvent::append('triage_token.scope_denied', 'denied', [
             'actor_type' => 'triage_token',
             'actor_id' => $pat?->getKey(),
