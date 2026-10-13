@@ -488,6 +488,9 @@ Route::prefix('v1')->group(function () {
 
         // ── Payment Reports (學收核銷) ──────────────────────────────
         Route::get('accounting/ledger', [AccountingController::class, 'ledger']);
+        // #3836: append-only billing notes. GET and POST only; there is deliberately no PUT/PATCH/DELETE.
+        Route::get('accounting/notes', [\App\Http\Controllers\BillingNoteController::class, 'index']);
+        Route::post('accounting/notes', [\App\Http\Controllers\BillingNoteController::class, 'store']);
         Route::get('accounting/contracts/{studentClass}/sessions', [\App\Http\Controllers\ContractSessionCoverageController::class, 'show']);
         // 帳務中心（tuition-collect）前端不掛 PIN 覆蓋層，避免整頁空白。
         // 收據流水／已結清與催繳、ledger 同頁，不可單獨 require_pin，否則 423 卻沒輸入框。

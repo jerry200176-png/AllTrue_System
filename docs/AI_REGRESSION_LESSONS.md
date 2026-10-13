@@ -921,8 +921,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 - **觸發情境**：#957 D1 unique index migration 在 production 依設計 fail-closed 拋錯（#1118），但 `deploy.yml` SSH 區塊無 `set -e`，`php artisan migrate --force` 失敗後照印「✅ Migration 完成」、deploy run 綠燈——與 R62「綠燈 ≠ 已出貨」同族。
 - **根因**：heredoc SSH script 預設不因中途指令失敗而中止；成功訊息寫在指令後面而非以 exit code 分支。
-- **強制規則**：deploy SSH script 內任何關鍵步驟（fetch/reset、composer、migrate、build）必須以 exit code 分支處理；失敗要嘛立即 `exit 1`，要嘛記 flag 並於結尾標紅。禁止在指令之後無條件印「✅ 完成」。migration 失敗時 code 部署可繼續（migration 一律 expand/contract 前向相容），但 run 必須紅。
-- **測試必補**：`scripts/control-plane-lint.mjs` 或 deploy contract 檢查 migrate 呼叫必須在 `if` 分支內。
+- **強制規則**：deploy SSH script 內任何關鍵步驟（fetch/reset、composer、migrate、build）必須以 exit code 分支處理；失敗要嘛立即 `exit 1`，要嘛記 flag 並於結尾標紅。禁止在指令之後無條件印「✅ 完成」。**D1（Founder 2026-10-13）起：migration 或 `migrate:status` 失敗一律 `abort_deploy`**（走既有 `rollback_deploy` 還原舊 code，不跑 build／health／smoke／success 標記）；不得再「code 繼續上線、run 結尾才紅」。
+- **測試必補**：`scripts/tests/test_deploy_activation_state.py`（`_execute_isolated_migration` 實際執行 migration 區塊：失敗即中止、status 失敗不得當成 0 筆 pending；success 標記步驟不得有 `if:`／`continue-on-error`）。
 
 ---
 
