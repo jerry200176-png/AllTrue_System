@@ -15,7 +15,7 @@
 //   node scripts/design-style-ratchet.mjs                    check vs baseline
 //   node scripts/design-style-ratchet.mjs --update-baseline  rewrite baseline
 //   node scripts/design-style-ratchet.mjs --json             print current counts
-// From frontend/: npm run lint:design-style (also chained by npm run lint:design).
+// CI: chained at the end of scripts/check-no-raw-hex.sh (npm run lint:design).
 //
 // Exit 1 only when some file's count in some category is ABOVE its baseline.
 
@@ -27,17 +27,17 @@ import { stripVueComments } from './design-hex-counter.mjs';
 
 export const CATEGORIES = ['font_size', 'border_radius', 'box_shadow', 'emoji', 'native_dialog'];
 
-// CSS-wide keywords and zero never need a token.
+// CSS-wide keywords and zero never need a design variable.
 const NEUTRAL_VALUE = /^(?:0|0px|none|inherit|initial|unset|revert|revert-layer)$/i;
 
-function countDeclarations(source, propertyPattern, isTokenized) {
+function countDeclarations(source, propertyPattern, usesDesignVar) {
   const re = new RegExp(`(?<![-\\w])(?:${propertyPattern})\\s*:\\s*([^;}{"\`\\n]+)`, 'gi');
   let count = 0;
   for (const match of source.matchAll(re)) {
     const value = match[1].replace(/!important/i, '').trim().replace(/['",]+$/, '').trim();
     if (!value || NEUTRAL_VALUE.test(value)) continue;
     if (value.startsWith('{{') || value.startsWith('$')) continue; // template/JS interpolation
-    if (!isTokenized(value)) count += 1;
+    if (!usesDesignVar(value)) count += 1;
   }
   return count;
 }

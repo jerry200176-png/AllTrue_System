@@ -43,6 +43,6 @@ export const AT_ICON_PATHS = Object.freeze({
 
 export const AT_ICON_NAMES = Object.freeze(Object.keys(AT_ICON_PATHS));
 
-// Size names map to --ds-font-size-* tokens; the SVG is 1em square, so
+// Size names map to --ds-font-size-* variables; the SVG is 1em square, so
 // `inherit` follows the surrounding text size.
 export const AT_ICON_SIZES = Object.freeze(['sm', 'md', 'lg', 'inherit']);

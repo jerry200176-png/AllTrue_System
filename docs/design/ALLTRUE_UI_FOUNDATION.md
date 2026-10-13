@@ -178,6 +178,6 @@ Rules 2–6 of the anti-AI-slop plan (`docs/plans/2026-10-13-nine-area-engineeri
 
 `0`, `none` and CSS-wide keywords are neutral. Comments, tests (`__tests__`, `*.test.*`, `*.spec.*`) and `*.generated.js` are not counted.
 
-- Check: `npm run lint:design-style` (from `frontend/`; also chained by `npm run lint:design`, which CI runs as a blocking step).
+- Check: `node scripts/design-style-ratchet.mjs` (repo root). It runs at the end of `scripts/check-no-raw-hex.sh`, so `npm run lint:design` (blocking CI step "Design raw-hex guard") enforces it.
 - Baseline: `docs/design-style-baseline.json`, one line per file under `frontend/src`.
 - After a cleanup lowers counts (the check prints a hint), lock it in: `node scripts/design-style-ratchet.mjs --update-baseline`. Never raise the baseline to pass a new usage; moving or renaming a file also needs a baseline refresh in the same PR.

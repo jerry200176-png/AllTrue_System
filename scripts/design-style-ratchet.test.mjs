@@ -16,7 +16,7 @@ import {
   countTemplateEmoji,
 } from './design-style-ratchet.mjs';
 
-test('font-size: raw values count, tokens / keywords / custom properties do not', () => {
+test('font-size: raw values count, design vars / keywords / custom properties do not', () => {
   const css = `
     .a { font-size: 13px; }
     .b { font-size: var(--ds-font-size-sm); }
@@ -38,7 +38,7 @@ test('border-radius: longhands count; var(--ds-radius-*) and 0 pass', () => {
   assert.equal(countBorderRadius(css), 3);
 });
 
-test('box-shadow: tokens and focus-ring pass, literals count', () => {
+test('box-shadow: design vars and focus-ring pass, literals count', () => {
   const css = `
     .a { box-shadow: 0 2px 4px rgba(0,0,0,.2); }
     .b { box-shadow: var(--ds-shadow-1); }
