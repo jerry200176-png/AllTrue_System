@@ -192,7 +192,7 @@ class OverlappingCourseGuardTest extends TestCase
             $before = $this->counts();
             $guard = new \ReflectionMethod(\App\Services\EnrollmentService::class, 'guardRenewalConfirmedOverlap');
             $guard->setAccessible(true); $result = $guard->invoke(app(\App\Services\EnrollmentService::class), $fx[1], ['Math' => [
-                ['date' => $today, 'start_time' => '16:00', 'duration_minutes' => 120, 'kind' => 'future'],
+                ['date' => $today, 'start_time' => '16:00:00', 'duration_minutes' => 120, 'kind' => 'future'],
             ]], $decisionNow);
             $this->assertNull($result, 'Snapshot-future rows must reach the scheduled overlap guard, not become completed.');
             $this->assertSame($before, $this->counts());
