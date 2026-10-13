@@ -75,6 +75,7 @@ last_reviewed: 2026-08-23
 ### 3.6 ⛔ AI 處理 in-app bug 回報的 SOP（2026-05-17 起，違反 = 重複問使用者）
 
 > 分診先讀 `client_info.recentApiFailures`（最近 5 筆失敗請求，含 `requestId` 可對 log 的 `request_id`）與 `client_info.buildSha`、`route`，再問使用者。
+> 下列 SQL／附件是**要看的內容**；取得管道走 `bug-queue-dump`／`bug-detail-dump`（各階段 workflow、觸發方式與 cloud 能否自行完成，見 [`sop/BUG_INTAKE_TO_PRODUCTION.md`](sop/BUG_INTAKE_TO_PRODUCTION.md) 開頭的對照表）。
 
 ```
 1. 一定要先撈 attachments：
@@ -118,7 +119,7 @@ last_reviewed: 2026-08-23
 | `resolved` | `in_progress`, `closed` |
 | `closed` | `in_progress` |
 
-- **回報者驗收**（2026-05-16 起）：`resolved` → `closed` 需回報者呼叫 `POST /api/v1/bugs/{id}/reporter-verify`。AI 標 `resolved` 後要請老師在 App 按「確認已修好／問題仍存在」。
+- **回報者驗收**（2026-05-16 起）：in-app `resolved` → `closed` 由回報者 `POST /api/v1/bugs/{id}/reporter-verify` 或逾時流程完成，Agent 不代按。這**不**擋 GitHub issue 關閉（Founder 2026-10-12 ③，見 SOP 對照表）。
 - **內部備註**（`is_internal_note=1`）：不驅動回報者未讀紅點；分診給工程師用，不要當成給老師的回覆。
 - **產品閉環投影**（2026-09-18 起，無 schema migration）：`GET /bugs/{id}` 回傳 `product_loop`（語意階段／定性／GitHub 連結／production SHA／shipped）。定性與工程連結寫入 status_log 標記 `[product_disposition]`；`resolved` 且具 SHA 時同步 append-only `bug_report_evidence`。合併 PR **不算** shipped；需 production SHA 證據。
 
@@ -129,7 +130,7 @@ last_reviewed: 2026-08-23
 | A1 | 讀 §3.6：附件、reporter 歷史、跨分校、comments／status_logs |
 | A2 | 必要時查業務表驗證假設（`StudentClass`、`ClassSession`…）；高風險帳務先對 `DIRECTOR_PAYMENT_ALERT_RULES.md` |
 | A3 | `gh issue create`：title 含現象；body 必含 **in-app #**、**附件 id**、分校、B1 發現、預期 vs 實際 |
-| A4 | **回寫 in-app**：`new` → `triaged`；**公開留言**（非 internal）含 GitHub URL；建議帶 `disposition` + `github_issue_url` 寫入 `product_loop` |
+| A4 | **回寫 in-app**：`new` → `triaged`；**公開留言**（非 internal）含 GitHub URL；建議帶 `disposition` + `github_issue_url` 寫入 `product_loop`（`bug-auto-intake.yml` 已先自動開 issue＋留「收到」回覆，但狀態仍是 `new`；本步走 `bug-phase-a-triage.yml`，dispatch-only） |
 | A5 | 回報 CEO：in-app # ↔ GitHub # 對照表（亦可直接讀 `product_loop`） |
 | A5b | **先查、不問（F15）**：回報者通常不會回覆。分診先看後台分診卡的「最近按過／畫面訊息／最近失敗請求／版本」（只在 app 內，不進公開 log）、正式站唯讀 probe、程式碼與同校同時段的其他回報自己重現。公開回覆寫「我們查到的原因＋會怎麼修／已修」，**不要**列問題請回報者回答；只有查完仍無法判斷、且答案會改變修法時，才問**一個**是非題。 |
 | A6 | **建議類（feature／ux／不做／重複）不留 `triaged`**（F12）：開／找到 GitHub issue → `bug-phase-a-triage.yml` 帶 `close_as_logged=true` + `disposition`（`suggestion`／`ux_friction`／`not_planned`／`duplicate`）。回覆範本：「已收進產品清單 <issue URL>。上線時會在這裡通知你；想補充直接回覆就會重開。」上線後用 `bug-followup-comment.yml`（`expected_status=closed` + `production_revision` + `deploy_run_id`）回「已上線＋怎麼用」；只對 `closed_as_logged` 且同一 issue 的單有效，會寫入 production evidence |
@@ -149,9 +150,9 @@ last_reviewed: 2026-08-23
 
 | 步驟 | 動作 |
 |------|------|
-| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`） |
-| C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」 |
-| C3 | 回報者 `reporter-verify` 通過後系統才會 `closed`；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
+| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）；cloud 可走 `bug-phase-c-allowlist.yml` allowlist PR（merge 後 autodispatch） |
+| C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」；GitHub issue 此時即可關（Phase-C 自動關，例外見 SOP 對照表），不等回報者 |
+| C3 | in-app `closed` 由回報者 `reporter-verify` 或逾時流程完成；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
 | C4 | `docs/CHANGELOG.md` 一行（有 deployable 修復時） |
 
 **上線留言範本（公開）**：#___ 已於 YYYY-MM-DD 上線（PR #___）。請您更新頁面後按「確認已修好」；若仍有問題請按「問題仍存在」並簡述，我們會再追。
@@ -172,7 +173,7 @@ last_reviewed: 2026-08-23
 - [ ] 根因深度與同類 recurrence 已檢查；regression test／共用 authority／防再犯文件或明確 debt/defer 與剩餘風險已記錄
 - [ ]（若修 code）head/PR、focused tests、review、required CI 與 merge SHA 可核對
 - [ ]（若宣稱上線）deploy run、deployed SHA、health/runtime identity 與原使用者路徑證據可核對；UI 修復另有可讀性／互動驗收
-- [ ]（若修 code）in-app 已 `resolved` + 公開回覆請回報者驗收；`reporter-verify` 只能由回報者或既有 timeout policy 完成
+- [ ]（若修 code）in-app 已 `resolved` + 公開回覆請回報者驗收；`reporter-verify` 只能由回報者或既有 timeout policy 完成（不擋 GitHub issue 關閉）
 - [ ] `SourceRef → issue → Plan/not-required → PR → merge → deploy → runtime → acceptance → writeback` 未知階段明標，沒有從 merge 推定 production 完成
 - [ ] 有 deployable 修復時 CHANGELOG／staff update 決策與適用的防再犯記憶已寫回
 
@@ -181,15 +182,9 @@ last_reviewed: 2026-08-23
 | 軌道 | 分診後 | 修完上線後 |
 |------|--------|------------|
 | GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Refs #nnn`；上線後 Phase-C 自動關 issue（F14） |
-| In-app | `triaged` + 公開回覆 | `resolved` + 公開回覆 → 等驗收 → `closed` |
+| In-app | `triaged` + 公開回覆 | `resolved` + 公開回覆 → 回報者驗收或逾時 → `closed` |
 
-**GitHub issue 自動關閉（F14）**：`bug-phase-c-allowlist.yml` 回寫成功後，會用回覆裡的 issue 連結自動關 issue（`type:epic` 除外）。`bug-queue-dump.yml` 每次都附「in-app ↔ issue 不一致」報表（`scripts/inapp-issue-reconcile.py`），分診前先看。
-
-**同類型提醒（2A）**：`bug-auto-intake.yml` 依 `backend/config/bug_families.php` 為每張新 issue 加 `area:<類別>`，並在同類別最新開啟的 issue 留連結提醒，方便一起修；只提醒，不自動關重複單。
-**逾時自動結案（2A）**：`bug-reporter-timeout.yml` 每日排程跑 `bugs:close-stale-resolved --auto`，只關「已修好」且回報者 14 天沒回覆的單並留白話回覆；單次上限 20 筆，超過整批不動。回報者留言或按「問題仍存在」會重開。
-**每週一頁（2A）**：`bug-sla-weekly-report.yml` 每週一 09:00（台北）開／更新「in-app 週報 YYYY-Www」issue（只列編號；本週新進／修好／結案／仍開著依年齡／超時／三大類別／重開），創辦人只需看這一張。
-
-**Reporter-verify timeout**：見 [`docs/governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md)（預設 7 日無回覆且無回歸訊號，可 `closed` 並註明 `closed_by_timeout`）。
+**自動化（收件建單、Phase-C 自動關 issue F14、reconcile 報表、同類提醒、每日逾時結案、週報）**：哪個 workflow、何時跑、cloud 能否自行完成，一律見 [`sop/BUG_INTAKE_TO_PRODUCTION.md`](sop/BUG_INTAKE_TO_PRODUCTION.md) 開頭對照表（含每日 14 天自動逾時；`governance/EVIDENCE_CONTRACT.md` 的 7 日／不排程描述是人工 `--days` 路徑，待更新）。分診前先看 queue dump 的「in-app ↔ issue 不一致」報表。
 
 **相關防再犯**：`docs/AI_REGRESSION_LESSONS.md` §R51（分診前必查附件）、§R53（上線後必回 in-app）。
 
