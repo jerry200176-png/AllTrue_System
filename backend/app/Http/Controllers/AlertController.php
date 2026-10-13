@@ -46,7 +46,7 @@ class AlertController extends Controller
 
         if ($request->filled('branch_id')) {
             $bid = (int) $request->input('branch_id');
-            if ($role !== 'super_admin' && !empty($campusIds) && !in_array($bid, $campusIds, true)) {
+            if ($role !== 'super_admin' && !in_array($bid, $campusIds, true)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
             $campusIds = [$bid];
