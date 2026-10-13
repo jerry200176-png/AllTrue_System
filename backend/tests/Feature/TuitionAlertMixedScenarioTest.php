@@ -304,7 +304,7 @@ class TuitionAlertMixedScenarioTest extends TestCase
         $pkg = CoursePackage::create(['student_id' => $student->id, 'campus_id' => 1, 'name' => '共用方案 16 堂', 'billing_mode' => CoursePackage::BILLING_MODE_SESSION,
             'total_sessions' => 16, 'remaining_sessions' => 12, 'used_sessions' => 4, 'rate' => 1500, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
             'paid' => false, 'stop' => false, 'enabled' => true]);
-        $this->makeCountModeClass($student->id, ['SubjectID' => 1, 'PackageID' => $pkg->id]);
+        $math = $this->makeCountModeClass($student->id, ['SubjectID' => 1, 'PackageID' => $pkg->id]);
         $english = $this->makeCountModeClass($student->id, ['SubjectID' => 2, 'PackageID' => $pkg->id]);
         $invoice = \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $english->ID, 'IssueDate' => '2026-09-01', 'DueDate' => '2026-09-15',
             'TotalAmount' => 24000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-09']);
@@ -312,6 +312,13 @@ class TuitionAlertMixedScenarioTest extends TestCase
         $report = PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $english->ID, 'InvoiceID' => $invoice->id, 'reported_by_name' => $student->name,
             'payment_date' => '2026-09-02', 'payment_method' => 'transfer', 'reported_amount' => 10000, 'status' => 'confirmed',
             'report_token_hash' => hash('sha256', 'pkg-non-anchor-confirmed'), 'token_expires_at' => now()->addDay()]);
+
+        // An OLDER confirmed report on the anchor's own bill must not win over the newer one (Codex r4261799669).
+        $mathBill = \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $math->ID, 'IssueDate' => '2026-09-01', 'DueDate' => '2026-09-15',
+            'TotalAmount' => 24000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-09']);
+        $older = $report->replicate()->fill(['StudentClassID' => $math->ID, 'InvoiceID' => $mathBill->id, 'report_token_hash' => hash('sha256', 'pkg-anchor-older')]);
+        $older->save();
+        $report->forceFill(['id' => $older->id + 1])->save(); // the non-anchor report is the newer one
 
         $match = collect($this->getAlerts($token)->assertOk()->json())->firstWhere('package_id', $pkg->id);
         $this->assertNotNull($match);

@@ -473,7 +473,7 @@ class AlertController extends Controller
             ->whereIn('InvoiceID', $rows->flatMap(fn ($r) => $r['receipt_invoice_ids'] ?? [$r['payable_invoice_id'] ?? null])->filter()->all())
             ->groupBy('InvoiceID')->selectRaw('InvoiceID, MAX(id) AS report_id')->pluck('report_id', 'InvoiceID');
         $rows = $rows->map(function ($row) use ($receiptByInvoice) {
-            $reportId = collect($row['receipt_invoice_ids'] ?? [$row['payable_invoice_id'] ?? 0])->map(fn ($id) => $receiptByInvoice[$id] ?? null)->filter()->first();
+            $reportId = collect($row['receipt_invoice_ids'] ?? [$row['payable_invoice_id'] ?? 0])->map(fn ($id) => $receiptByInvoice[$id] ?? null)->filter()->max(); // newest across member bills
             unset($row['receipt_invoice_ids']);
 
             return $row + ['has_confirmed_receipt' => $reportId !== null, 'receipt_report_id' => $reportId !== null ? (int) $reportId : null];
