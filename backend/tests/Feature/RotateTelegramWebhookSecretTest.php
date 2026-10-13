@@ -274,6 +274,56 @@ class RotateTelegramWebhookSecretTest extends TestCase
         $this->assertStringContainsString('Telegram was NOT reverted', $output);
     }
 
+    public function test_restore_committed_but_save_threw_reverts_telegram_to_previous(): void
+    {
+        $this->campus15(['code' => 'rotatelostack', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => 'old-secret']);
+        Http::fake([
+            '*setWebhook' => Http::response(['ok' => true], 200),
+            '*getWebhookInfo' => Http::response(['ok' => true, 'result' => ['url' => 'https://elsewhere']], 200),
+        ]);
+        $saves = 0;
+        // `saved` fires after the UPDATE ran: simulates a committed write whose acknowledgement was lost.
+        Campus::saved(function () use (&$saves) {
+            if (++$saves > 1) {
+                throw new \RuntimeException('connection lost');
+            }
+        });
+
+        $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15']));
+
+        $this->assertSame('old-secret', DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
+        $sets = Http::recorded()->filter(fn ($p) => str_contains($p[0]->url(), 'setWebhook'))->values();
+        $this->assertCount(2, $sets, 'Telegram must follow the persisted previous secret');
+        $this->assertSame('old-secret', $sets[1][0]['secret_token']);
+    }
+
+    public function test_rollback_ambiguous_delete_reregisters_previous_secret(): void
+    {
+        $this->campus15(['code' => 'rotaterb5xx', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => 'live-secret']);
+        Http::fake([
+            '*deleteWebhook' => Http::response('<html>502</html>', 502),
+            '*setWebhook' => Http::response(['ok' => true], 200),
+        ]);
+
+        $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15', '--rollback' => true]));
+
+        $sets = Http::recorded()->filter(fn ($p) => str_contains($p[0]->url(), 'setWebhook'))->values();
+        $this->assertCount(1, $sets);
+        $this->assertSame('live-secret', $sets[0][0]['secret_token']);
+        $this->assertSame('live-secret', DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
+    }
+
+    public function test_rollback_explicit_rejection_changes_nothing(): void
+    {
+        $this->campus15(['code' => 'rotaterbrej', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => 'live-secret']);
+        Http::fake(['*deleteWebhook' => Http::response(['ok' => false, 'description' => 'Unauthorized'], 401)]);
+
+        $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15', '--rollback' => true]));
+
+        Http::assertSentCount(1);
+        $this->assertSame('live-secret', DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
+    }
+
     public function test_rollback_db_failure_reregisters_previous_secret_without_leaking_it(): void
     {
         $this->campus15(['code' => 'rotaterbdb', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => 'live-secret']);
