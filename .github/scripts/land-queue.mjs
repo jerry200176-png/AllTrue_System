@@ -276,6 +276,10 @@ function landBatch(name, base, members) {
   let expect = base;
   for (const m of members) {
     if (mainTip() !== expect) { console.log('main moved while landing; remaining members re-batch next run'); break; }
+    // Thread counts were read when the batch was assessed; a reviewer may have opened one since. Re-read right
+    // before each squash and stop (remaining members re-batch next run) unless it is still a known 0.
+    const open = unresolvedThreads(m.n);
+    if (open !== 0) { console.log(`#${m.n}: review threads ${open === null ? 'unknown' : open + ' open'} before squash; stopping batch`); break; }
     squash(m.n, m.sha);
     expect = api(`pulls/${m.n}`).merge_commit_sha;
     console.log(`batch landed #${m.n} -> ${expect}`);

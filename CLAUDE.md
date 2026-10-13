@@ -160,7 +160,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 - Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
 - Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.
 - A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
-- Codex review: fix P1s and regressions; P2s get one fix round, later P2s become follow-up issues (see `docs/governance/FOUNDER_STANDING_DECISIONS.md` ④). Reply to and resolve every thread.
+- Codex review: fix P1s and regressions; P2s get one fix round, later P2s become follow-up issues (AGENTS.md §PR review; Founder standing decisions 2026-10-12). Reply to and resolve every thread.
 - New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
 - Anything that needs Jerry: collect it into one list and send it to the coordinating session, not one message per item.
 
