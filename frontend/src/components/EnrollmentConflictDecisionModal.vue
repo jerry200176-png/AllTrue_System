@@ -161,9 +161,8 @@ const isTrial = computed(() => String(props.classType || '').toLowerCase() === '
 const canRenewHere = computed(() => !isTutoring.value
   && (!props.attemptedPaymentType || props.attemptedPaymentType === 'session')
   && !(props.conflicts || []).some((c) => c?.schedule_mode && c.schedule_mode !== 'count'));
-// #3745: a trial has no 加購, but an empty manual trial still needs 新增下一堂 (when the caller may add one).
-const showActions = computed(() => !isTrial.value
-  || (props.canManualSession && (props.conflicts || []).some(needsFirstManualLesson)));
+// #3745: a trial has no 加購, but an empty manual trial still needs 新增下一堂.
+const showActions = computed(() => !isTrial.value || (props.canManualSession && (props.conflicts || []).some(needsFirstManualLesson)));
 const isTutoring = computed(() => String(props.classType || '').toLowerCase() === 'tutoring');
 
 watch(

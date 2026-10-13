@@ -105,10 +105,15 @@ describe('calendar trial duplicate must not create a second trial (#3738 review)
   });
 });
 
-describe('calendar conflict 去加購 enters the purchase flow (#3738 review)', () => {
+describe('calendar conflict 去加購 and force-create reason (#3738)', () => {
   it('navigates to students with intent purchase, not a bare course-mgmt open', () => {
     expect(calendar).toMatch(/buildStudentsCommercialNav\(\{ id: conflict\.existing_course_id[^)]*\}, \{ intent: 'purchase' \}\)/);
     expect(calendar).not.toMatch(/function interceptGoToPurchase[\s\S]{0,300}buildCourseMgmtOpsNav/);
+  });
+  it('uses the shared decision modal and buildForceOverrideFields, never a bare force: true', () => {
+    expect(calendar).toContain('<EnrollmentConflictDecisionModal');
+    expect(calendar).toContain('buildForceOverrideFields(decision)');
+    expect(calendar).not.toMatch(/force:\s*true/);
   });
 });
 
@@ -120,9 +125,6 @@ describe('monthly contracts do not offer generic renewal (#3738 review)', () => 
     expect(renewalBtn('date')).toBe(false);
     expect(renewalBtn('count')).toBe(true);
   });
-});
-
-describe('monthly attempt never offers generic renewal (#3738 review)', () => {
   it('hides 建立下一期續報 when the attempted payload is monthly, even if the existing course is count-mode', () => {
     const btn = (attempted) => mount(EnrollmentConflictDecisionModal, {
       props: { show: true, conflicts: [conflict({ class_type: 'one_on_one', schedule_mode: 'count' })], classType: 'one_on_one', attemptedPaymentType: attempted },
@@ -144,13 +146,5 @@ describe('teachers are not offered 新增下一堂 (#3738 review)', () => {
     expect(has({})).toBe(true);
     expect(has({ canManualSession: false })).toBe(false);
     expect(calendar).toContain(':can-manual-session="!isTeacher"');
-  });
-});
-
-describe('calendar force-create sends an audited reason (#3738)', () => {
-  it('uses the shared decision modal and buildForceOverrideFields, never a bare force: true', () => {
-    expect(calendar).toContain('<EnrollmentConflictDecisionModal');
-    expect(calendar).toContain('buildForceOverrideFields(decision)');
-    expect(calendar).not.toMatch(/force:\s*true/);
   });
 });
