@@ -348,10 +348,10 @@
               <p>開發者已標記修復完成，請確認後讓此問題正式關閉。</p>
               <div class="verify-prompt__btns">
                 <button class="btn-verify-reopen" :disabled="verifying" @click="doReporterVerify('reopened')">
-                  ❌ {{ RESOLVE_REPLY_OUTCOMES.reopen }}
+                  ❌ {{ outcomeLabels.reopen }}
                 </button>
                 <button class="btn-verify-confirm" :disabled="verifying" @click="doReporterVerify('confirmed')">
-                  ✅ {{ RESOLVE_REPLY_OUTCOMES.confirm }}
+                  ✅ {{ outcomeLabels.confirm }}
                 </button>
               </div>
             </div>
@@ -497,7 +497,7 @@
             </div>
             <div v-if="newStatus === 'resolved'" class="evidence-hint">
               已解決必須附上正式站版本 SHA；這會寫入狀態歷程與證據列，供回報者驗收與稽核。僅合併 PR 不算上線。
-              留言框已預填回覆範本：補上修了什麼後先按「送出」，最新一則公開留言要同時寫出「{{ RESOLVE_REPLY_OUTCOMES.confirm }}」與「{{ RESOLVE_REPLY_OUTCOMES.reopen }}」，才能標記已解決。
+              留言框已預填回覆範本：補上修了什麼後先按「送出」，最新一則公開留言要同時寫出「{{ outcomeLabels.confirm }}」與「{{ outcomeLabels.reopen }}」，才能標記已解決。
             </div>
             <div v-else-if="showDispositionFields" class="evidence-hint">
               建議填寫定性與工程連結，讓閉環摘要可追溯，不依賴聊天記憶。
@@ -540,7 +540,7 @@ import {
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
   getToken,
 } from '../lib/bugReportsApi';
-import { RESOLVE_REPLY_OUTCOMES, buildResolveReplyTemplate, shouldPrefillResolveReply } from '../lib/bugResolveReply';
+import { buildResolveReplyTemplate, resolveOutcomeLabels, shouldPrefillResolveReply } from '../lib/bugResolveReply';
 import { bugListDisplay, parseBugReportClientInfo, PRODUCT_DISPOSITION_OPTIONS, dispositionLabel, productLoopPhaseLabel, statusLogDisplayNote } from '../lib/bugReportContext';
 import { getNavigationGroups, getTodoPages, getToolbarItems } from '../lib/navigationRegistry';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
@@ -737,9 +737,12 @@ const resolutionNote = computed(() => {
 const triageContext = computed(() => parseBugReportClientInfo(detail.value?.client_info));
 const productLoop = computed(() => detail.value?.product_loop || null);
 // GitHub #3750: choosing 已解決 pre-fills a public reply that names both reporter outcomes.
+// The phrases come from the running backend (detail.resolve_reply_outcomes), never a local copy.
+const outcomeLabels = computed(() => resolveOutcomeLabels(detail.value?.resolve_reply_outcomes));
 watch(newStatus, (next) => {
-  if (!shouldPrefillResolveReply(next, newComment.value)) return;
-  newComment.value = buildResolveReplyTemplate();
+  const serverOutcomes = detail.value?.resolve_reply_outcomes;
+  if (!shouldPrefillResolveReply(next, newComment.value, serverOutcomes)) return;
+  newComment.value = buildResolveReplyTemplate(serverOutcomes);
   commentIsInternal.value = false;
 });
 
@@ -929,7 +932,7 @@ function closeDetail() {
   detailError.value = '';
 }
 
-async function selectBug(bug, event = null) {
+async function selectBug(bug, event = null, { keepActionForm = false } = {}) {
   if (!bug) return;
   // Keyboard activation should move the screen-reader cursor into the loaded
   // detail; mouse users keep their pointer context in the list.
@@ -937,13 +940,17 @@ async function selectBug(bug, event = null) {
   activeBug.value = bug;
   loadingDetail.value = true;
   detailError.value = '';
-  newStatus.value = '';
-  statusNote.value = '';
-  productionRevision.value = '';
-  deployRunId.value = '';
-  disposition.value = '';
-  githubIssueUrl.value = '';
-  githubPrUrl.value = '';
+  // Refreshing after a reply keeps the pending status form (e.g. the resolve SHA) so staff can
+  // send the reply and then resolve without re-entering evidence (GitHub #3750).
+  if (!keepActionForm) {
+    newStatus.value = '';
+    statusNote.value = '';
+    productionRevision.value = '';
+    deployRunId.value = '';
+    disposition.value = '';
+    githubIssueUrl.value = '';
+    githubPrUrl.value = '';
+  }
   newComment.value = '';
   actionFeedback.value = null;
   // 手機單欄時 detail 排在長列表之後，選取後要滑過整個列表才看到詳情（in-app 166）。
@@ -994,7 +1001,7 @@ async function doAddComment() {
     await addBugComment(activeBug.value.id, newComment.value.trim(), commentIsInternal.value);
     newComment.value = '';
     commentIsInternal.value = false;
-    await selectBug(activeBug.value);
+    await selectBug(activeBug.value, null, { keepActionForm: true });
     loadBugs();
   } catch (e) {
     actionFeedback.value = { tone: 'error', text: '留言失敗：' + e.message };

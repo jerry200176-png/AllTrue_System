@@ -53,7 +53,12 @@ class BugReportService
      * latest public reply to name both, so the reporter knows how to accept or reopen the fix.
      * Labels match the reporter-verify buttons; the frontend template is checked against this list.
      */
-    public const RESOLVE_REPLY_REQUIRED_PHRASES = ['確認已修好', '問題仍存在'];
+    public const RESOLVE_REPLY_OUTCOMES = ['confirm' => '確認已修好', 'reopen' => '問題仍存在'];
+
+    public const RESOLVE_REPLY_REQUIRED_PHRASES = [
+        self::RESOLVE_REPLY_OUTCOMES['confirm'],
+        self::RESOLVE_REPLY_OUTCOMES['reopen'],
+    ];
 
     public const AWAITING_REPORTER_TIMEOUT_DAYS = 14;
     public const AWAITING_REPORTER_QUESTION_PATTERN = '/(?<![申邀聲])(?:請(?![求款假])|麻煩).{0,60}?(?:回覆|回答|確認|提供|告訴|告知|說明|補|上傳)|[？?]/u';
@@ -235,6 +240,8 @@ class BugReportService
             'attachments' => $attachments,
             'evidence' => $evidenceRows,
             'product_loop' => $productLoop,
+            // GitHub #3750: the staff UI builds its resolve reply from the running backend's list.
+            'resolve_reply_outcomes' => self::RESOLVE_REPLY_OUTCOMES,
         ];
     }
 
@@ -386,7 +393,10 @@ class BugReportService
         $statusNote = $note;
         $resolutionPayload = null;
         if ($newStatus === 'resolved') {
-            $evidence = self::assertResolvedEvidence($bugId, $options);
+            $evidence = self::assertResolvedEvidence($bugId, array_merge($options, [
+                'resolver_user_id' => $changedBy,
+                'reporter_user_id' => (int) $bug->reporter_user_id,
+            ]));
             if (!$evidence['ok']) {
                 Log::info('bug_resolve_rejected', [
                     'bug_id' => $bugId,
@@ -481,14 +491,18 @@ class BugReportService
      * Does not parse free-form "done" claims as evidence.
      *
      * When `require_both_outcomes_reply` is set (staff API path only, GitHub #3750), the latest
-     * public comment must also contain every RESOLVE_REPLY_REQUIRED_PHRASES entry.
+     * qualifying public comment must also contain every RESOLVE_REPLY_REQUIRED_PHRASES entry.
+     * Qualifying = posted after the latest reopen (transition out of resolved/closed), and not
+     * authored by the reporter unless the reporter is the resolver.
      *
      * @param  array{
      *   production_revision?: ?string,
      *   deploy_run_id?: ?string,
      *   evidence_exception_reason?: ?string,
      *   allow_exception?: bool,
-     *   require_both_outcomes_reply?: bool
+     *   require_both_outcomes_reply?: bool,
+     *   resolver_user_id?: int,
+     *   reporter_user_id?: int
      * }  $options
      * @return array{ok: bool, code?: string, message?: string, production_revision?: ?string, deploy_run_id?: ?string, evidence_exception_reason?: ?string}
      */
@@ -507,9 +521,19 @@ class BugReportService
         }
 
         if (!empty($options['require_both_outcomes_reply'])) {
+            // A previous cycle's reply does not count once the reporter reopened (same rule as Phase-C).
+            $reopenedAt = BugReportStatusLog::query()
+                ->where('bug_report_id', $bugId)
+                ->whereIn('from_status', ['resolved', 'closed'])
+                ->max('created_at');
+            $reporterId = (int) ($options['reporter_user_id'] ?? 0);
+            $resolverId = (int) ($options['resolver_user_id'] ?? 0);
             $latestPublicBody = (string) BugReportComment::query()
                 ->where('bug_report_id', $bugId)
                 ->where('is_internal_note', false)
+                ->when($reopenedAt, fn ($q) => $q->where('created_at', '>', $reopenedAt))
+                // The reporter's own question quoting the button labels is not a staff reply.
+                ->when($reporterId > 0 && $reporterId !== $resolverId, fn ($q) => $q->where('author_user_id', '!=', $reporterId))
                 ->orderByDesc('id')
                 ->value('body');
             $missing = array_values(array_filter(

@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\BugReport;
+use App\Models\BugReportComment;
+use App\Models\BugReportStatusLog;
 use App\Models\User;
 use App\Services\BugReportService;
 use App\Models\UserCampus;
@@ -1842,6 +1844,81 @@ class BugReportApiTest extends TestCase
             'production_revision' => '662960e5',
         ])->assertOk()->assertJson(['ok' => true]);
         $this->assertSame('resolved', $bug->fresh()->status);
+    }
+
+    public function test_resolve_ignores_reporter_authored_comment_quoting_both_outcomes(): void
+    {
+        [$tokenAdmin] = $this->createUserToken([1], 'resStaff@test.com', 'S');
+        [, $reporter] = $this->createUserToken([1], 'resReporter@test.com', 'A');
+        $headers = ['Authorization' => "Bearer {$tokenAdmin}", 'Accept' => 'application/json'];
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $reporter->id,
+            'title' => 'Reporter quote', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+        $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => '已收到，處理中。', 'is_internal_note' => false,
+        ])->assertStatus(201);
+        BugReportComment::create([
+            'bug_report_id' => $bug->id, 'author_user_id' => $reporter->id,
+            'body' => '請問要按' . $this->bothOutcomesReply(), 'is_internal_note' => false,
+            'created_at' => now(),
+        ]);
+
+        $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'resolved', 'production_revision' => '662960e5',
+        ])->assertStatus(422)->assertJson(['code' => 'missing_both_outcomes_reply']);
+        $this->assertSame('in_progress', $bug->fresh()->status);
+    }
+
+    public function test_resolve_ignores_reply_from_before_the_latest_reopen(): void
+    {
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'resCycle@test.com', 'S');
+        $headers = ['Authorization' => "Bearer {$tokenAdmin}", 'Accept' => 'application/json'];
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $admin->id,
+            'title' => 'Second cycle', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+        BugReportComment::create([
+            'bug_report_id' => $bug->id, 'author_user_id' => $admin->id,
+            'body' => $this->bothOutcomesReply(), 'is_internal_note' => false,
+            'created_at' => now()->subHours(2),
+        ]);
+        BugReportStatusLog::create([
+            'bug_report_id' => $bug->id, 'changed_by' => $admin->id,
+            'from_status' => 'resolved', 'to_status' => 'in_progress',
+            'note' => '回報者反映問題仍存在', 'created_at' => now()->subHour(),
+        ]);
+
+        $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'resolved', 'production_revision' => '662960e5',
+        ])->assertStatus(422)->assertJson(['code' => 'missing_both_outcomes_reply']);
+
+        $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => $this->bothOutcomesReply(), 'is_internal_note' => false,
+        ])->assertStatus(201);
+        $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'resolved', 'production_revision' => '662960e5',
+        ])->assertOk()->assertJson(['ok' => true]);
+    }
+
+    public function test_detail_exposes_resolve_reply_outcomes_from_the_service(): void
+    {
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'resPayload@test.com', 'S');
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $admin->id,
+            'title' => 'Payload', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+        $detail = $this->withHeaders(['Authorization' => "Bearer {$tokenAdmin}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/bugs/{$bug->id}")
+            ->assertOk();
+        $this->assertSame(BugReportService::RESOLVE_REPLY_OUTCOMES, $detail->json('resolve_reply_outcomes'));
+        $this->assertSame(
+            array_values(BugReportService::RESOLVE_REPLY_OUTCOMES),
+            BugReportService::RESOLVE_REPLY_REQUIRED_PHRASES
+        );
     }
 
     private function bothOutcomesReply(): string
