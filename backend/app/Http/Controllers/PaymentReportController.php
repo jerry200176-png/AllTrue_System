@@ -928,7 +928,7 @@ class PaymentReportController extends Controller
     /** As Invoice::mayOweSql (#3891): a package member's stored-paid bill stays settled; stale shared-package bills are 待核對, never charged here. */
     private function packagePaidHold(Invoice $invoice): bool
     {
-        return (string) $invoice->Status === 'paid' && (int) StudentClass::whereKey($invoice->StudentClassID)->value('PackageID') > 0;
+        return (string) $invoice->Status === 'paid' && (int) StudentClass::query()->whereKey($invoice->StudentClassID)->value('PackageID') > 0;
     }
 
     /**
