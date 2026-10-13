@@ -3,6 +3,7 @@
 1387-db-password-rotation.yml  # credential rotation, prints fingerprints only
 actual-duration-activation.yml  # flag activation, no row data
 backup-restore-test.yml  # restore drill, counts only
+bug-writeback-request.yml  # request/bug IDs and counts only; remote output discarded (the run log is the processed-ID record)
 ci.yml  # test data only
 credential-fingerprint-audit.yml  # fingerprints only
 deploy.yml  # deploy/smoke output, no row data

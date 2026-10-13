@@ -1,0 +1,14 @@
+# Governed cloud path for in-app bug write-backs (Phase-A triage, follow-up comment).
+# Rules: scripts/bug_writeback_request.py and docs/sop/BUG_INTAKE_TO_PRODUCTION.md.
+# Append entries; never edit, remove-and-re-add or reuse a request_id. On merge to main only
+# request_ids absent from the previous version of this file run. The file is public: the reply
+# is the only free text, and it must follow §3.8 (plain language, no names/phones/e-mails).
+# A PR that edits this file is a production write: T2 at minimum (autonomy_gate.py).
+#
+# Example entry:
+#   - request_id: 2026-10-13-triage-512
+#     bug_id: 512
+#     action: triage   # or followup, which needs expected_status: triaged | in_progress
+#     github_issue_url: https://github.com/jerry200176-png/AllTrue_System/issues/3900
+#     public_reply: 已看過您的截圖，換週時月曆沒有重新整理，我們正在修，進度在 https://github.com/jerry200176-png/AllTrue_System/issues/3900
+requests: []

@@ -1,0 +1,78 @@
+# governance-capability: in-app-lifecycle-writeback
+name: Bug write-back request (Phase-A triage / follow-up)
+
+# Governed cloud path for the in-app write-backs that otherwise need workflow_dispatch
+# (Founder 2026-10-13). A merged PR appends entries to the request file; only request_ids
+# absent from the previous version run, through the same script as bug-phase-a-triage.yml and
+# bug-followup-comment.yml. Never resolved/closed (Phase-C keeps those). Public repo: the log
+# carries request IDs, bug IDs, actions and counts only; remote output is discarded.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/bug-writeback.request.yml'
+
+concurrency:
+  group: bug-writeback-request
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  writeback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout request file, shared write-back scripts and SSH trust helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+            operations/closeout/bug-writeback.request.yml
+            scripts/bug_writeback_request.py
+            scripts/bug-writeback/run-remote.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Validate new requests (before any production access)
+        id: plan
+        env:
+          BEFORE: ${{ github.event.before }}
+          REQUEST: operations/closeout/bug-writeback.request.yml
+        run: |
+          set -euo pipefail
+          python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet 'pyyaml==6.0.2'
+          [[ "$BEFORE" =~ ^[0-9a-f]{40}$ && "$BEFORE" != 0000000000000000000000000000000000000000 ]] || { echo "no previous commit; refusing"; exit 1; }
+          git cat-file -e "${BEFORE}^{commit}" 2>/dev/null || git fetch --quiet --no-tags --depth=1 origin "$BEFORE"
+          if git cat-file -e "${BEFORE}:${REQUEST}" 2>/dev/null; then
+            git show "${BEFORE}:${REQUEST}" > "$RUNNER_TEMP/before.yml"
+          else
+            : > "$RUNNER_TEMP/before.yml"
+          fi
+          python3 scripts/bug_writeback_request.py --before "$RUNNER_TEMP/before.yml" --after "$REQUEST"
+      - name: Configure pinned production SSH trust
+        if: steps.plan.outputs.count != '0'
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        if: steps.plan.outputs.count != '0'
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          test -n "$PI_SSH_HOST"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: Apply new requests (IDs-only log)
+        if: steps.plan.outputs.count != '0'
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          REQUEST: operations/closeout/bug-writeback.request.yml
+        run: python3 scripts/bug_writeback_request.py --before "$RUNNER_TEMP/before.yml" --after "$REQUEST" --apply

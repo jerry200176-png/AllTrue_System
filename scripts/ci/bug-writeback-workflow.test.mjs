@@ -5,37 +5,46 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const workflows = [
-  '.github/workflows/bug-phase-a-triage.yml',
-  '.github/workflows/bug-followup-comment.yml',
-];
-
-for (const workflow of workflows) {
+// One implementation of the Phase-A / follow-up write-back, called by every path that writes.
+const sharedScript = 'scripts/bug-writeback/run-remote.sh';
+const shared = fs.readFileSync(sharedScript, 'utf8');
+const callers = {
+  '.github/workflows/bug-phase-a-triage.yml': 'run: bash scripts/bug-writeback/run-remote.sh phase-a',
+  '.github/workflows/bug-followup-comment.yml': 'run: bash scripts/bug-writeback/run-remote.sh followup',
+};
+for (const [workflow, call] of Object.entries(callers)) {
   const source = fs.readFileSync(workflow, 'utf8');
-  assert.match(source, /PUBLIC_REPLY_B64="\$\(printf '%s' "\$PUBLIC_REPLY" \| base64 \| tr -d '\\n'\)"/);
-  assert.match(source, /PUBLIC_REPLY_B64='\$PUBLIC_REPLY_B64' bash -s/);
-  assert.match(source, /PUBLIC_REPLY="\$\(printf '%s' "\$PUBLIC_REPLY_B64" \| base64 -d\)"/);
-  assert.ok(
-    source.includes('[[ "$GITHUB_ISSUE_URL" =~ ^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]]'),
-    `${workflow} must strictly validate issue URLs`,
-  );
-  assert.ok(!source.includes('== https://github.com/*/issues/*'), `${workflow} must not use wildcard URL validation`);
-  assert.ok(!source.includes('PUBLIC_REPLY=\\$(printf %q'), `${workflow} must not interpolate raw reply text`);
+  assert.ok(source.includes(call), `${workflow} must call the shared write-back script`);
+  assert.ok(source.includes(`            ${sharedScript}\n`), `${workflow} must check out the shared script`);
+  assert.ok(!source.includes('php artisan tinker'), `${workflow} must not carry its own copy of the write-back`);
 }
+assert.ok(fs.readFileSync('scripts/bug_writeback_request.py', 'utf8').includes('"bug-writeback" / "run-remote.sh"'),
+  'the request-file path must call the same shared script');
+assert.equal(shared.match(/PUBLIC_REPLY_B64='\$PUBLIC_REPLY_B64' bash -s/g)?.length, 2, 'both modes pass the reply as base64');
+assert.match(shared, /PUBLIC_REPLY_B64="\$\(printf '%s' "\$PUBLIC_REPLY" \| base64 \| tr -d '\\n'\)"/);
+assert.equal(shared.match(/PUBLIC_REPLY="\$\(printf '%s' "\$PUBLIC_REPLY_B64" \| base64 -d\)"/g)?.length, 2);
+assert.ok(
+  shared.includes('[[ "$GITHUB_ISSUE_URL" =~ ^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]]'),
+  'the shared write-back must strictly validate issue URLs',
+);
+assert.ok(!shared.includes('== https://github.com/*/issues/*'), 'no wildcard URL validation');
+assert.ok(!shared.includes('PUBLIC_REPLY=\\$(printf %q'), 'no interpolation of raw reply text');
+assert.match(shared, /set -euo pipefail\nMODE="\$\{1:-\}"/, 'the shared script fails closed');
 
 const phaseASource = fs.readFileSync('.github/workflows/bug-phase-a-triage.yml', 'utf8');
+const phaseARemote = shared.split('\nphase-a)\n')[1].split('\nfollowup)\n')[0];
 assert.ok(
   phaseASource.includes('DISPOSITION: ${{ inputs.disposition }}')
-    && phaseASource.includes('"disposition" => $disposition')
-    && phaseASource.includes('"github_issue_url" => $issueUrl'),
+    && phaseARemote.includes('"disposition" => $disposition')
+    && phaseARemote.includes('"github_issue_url" => $issueUrl'),
   'Phase-A must pass the selected disposition and GitHub issue to the existing service',
 );
-assert.match(phaseASource, /\[\[ "\$DISPOSITION" =~ \^\[a-z_\]\+\$ \]\]/,
+assert.match(phaseARemote, /\[\[ "\$DISPOSITION" =~ \^\[a-z_\]\+\$ \]\]/,
   'Phase-A must constrain the disposition before passing it through SSH');
-assert.ok(!phaseASource.includes('"disposition" => "bug"'), 'Phase-A must not force every report to bug');
-assert.ok(!phaseASource.includes('"engineering_required" => true'),
+assert.ok(!phaseARemote.includes('"disposition" => "bug"'), 'Phase-A must not force every report to bug');
+assert.ok(!phaseARemote.includes('"engineering_required" => true'),
   'Phase-A must use the service-owned engineering requirement default');
-assert.ok(phaseASource.includes('$svc::normalizeDispositionOptions(['),
+assert.ok(phaseARemote.includes('$svc::normalizeDispositionOptions(['),
   'Phase-A must validate disposition against the deployed service even on an idempotent rerun');
 
 const phaseCSource = fs.readFileSync('.github/workflows/bug-phase-c-allowlist.yml', 'utf8');
@@ -904,7 +913,7 @@ assert.match(phaseCSource,
     'a shipped logged suggestion closes its backlog issue after the notice succeeds');
   assert.ok(/type:epic/.test(shipJob) && /lifecycle:frozen/.test(shipJob) && /also maps in-app/.test(shipJob),
     'the logged ship path uses the same never-close guards as Phase-C');
-  assert.match(phaseASource, /must be in this repository/, 'issue URLs from other repositories are rejected before any write');
+  assert.match(shared, /must be in this repository/, 'issue URLs from other repositories are rejected before any write');
   assert.match(phaseCSource, /"action" => \$ok \? "resolved" : "failed"/);
   assert.match(phaseCSource, /r\.get\("action"\) in \("resolved", "skip_already"\)/, 'resolved and already-resolved (retry) targets close issues; failed ones never');
   // in-app #389 (2026-10-11): the reply linked a follow-up issue (#3847) before the canonical one, and the

@@ -12,7 +12,8 @@ import unittest
 
 WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "deploy.yml"
 AUTOMERGE_WORKFLOW = WORKFLOW.parent / "auto-merge-safe.yml"
-BUG_TRIAGE_WORKFLOW = WORKFLOW.parent / "bug-phase-a-triage.yml"
+# bug-phase-a-triage.yml runs the write-back from this shared script.
+BUG_TRIAGE_WORKFLOW = WORKFLOW.parents[2] / "scripts" / "bug-writeback" / "run-remote.sh"
 TIER_VALUES = {"T0": 0, "T1": 1, "T2": 2, "T3": 3}
 RISK_VALUES = {"R0": 0, "R1": 1, "R2": 2, "R3": 3}
 ROOT = Path(__file__).parents[2]

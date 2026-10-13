@@ -187,5 +187,27 @@ class ReadOnlyProbeTierTest(unittest.TestCase):
         self.assertEqual(classify_scope([WF], "")["tier_name"], "T3")
 
 
+class RequestFileTierTest(unittest.TestCase):
+    WRITE = "operations/closeout/bug-writeback.request.yml"
+
+    def test_bug_writeback_request_is_at_least_t2(self):
+        scope = classify_scope([self.WRITE], "")
+        self.assertEqual(scope["tier_name"], "T2")
+        self.assertIn(f"production-write request file: {self.WRITE}", scope["reasons"])
+        rejected = validate_declaration("Risk-Class: R0\nAutonomy-Tier: T0", [self.WRITE])
+        self.assertFalse(rejected["valid"])
+        self.assertEqual(validate_declaration("Risk-Class: R2\nAutonomy-Tier: T2", [self.WRITE])["effective_tier"], "T2")
+
+    def test_write_request_raises_a_docs_only_pr(self):
+        self.assertEqual(classify_scope(["docs/sop/BUG_INTAKE_TO_PRODUCTION.md", self.WRITE], "")["tier_name"], "T2")
+
+    def test_read_only_dump_requests_stay_non_blocking(self):
+        # Founder decision 8 (2026-10-13, #3911): read-only dumps need no Founder approval.
+        dumps = ["operations/closeout/bug-queue-dump.request.md", "operations/closeout/bug-detail-dump.request.md"]
+        for path in dumps:
+            self.assertEqual(classify_scope([path], "")["tier_name"], "T0", path)
+        self.assertEqual(classify_scope(dumps, "")["tier_name"], "T0")
+
+
 if __name__ == "__main__":
     unittest.main()

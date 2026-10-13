@@ -37,11 +37,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout pinned SSH trust helper
+      - name: Checkout pinned SSH trust helper and shared write-back script
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            scripts/bug-writeback/run-remote.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Configure pinned production SSH trust
@@ -71,95 +72,8 @@ jobs:
           DISPOSITION: ${{ inputs.disposition }}
           PUBLIC_REPLY: ${{ inputs.public_reply }}
           CLOSE_AS_LOGGED: ${{ inputs.close_as_logged }}
-        run: |
-          set -euo pipefail
-          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
-          [[ "$DISPOSITION" =~ ^[a-z_]+$ ]] || { echo "invalid disposition syntax"; exit 1; }
-          [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
-          [[ "$CLOSE_AS_LOGGED" =~ ^(true|false)$ ]] || { echo "invalid close_as_logged"; exit 1; }
-          PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
-          ssh -i ~/.ssh/deploy_key \
-            -o IdentitiesOnly=yes \
-            -o BatchMode=yes \
-            -o ConnectTimeout=20 \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' CLOSE_AS_LOGGED='$CLOSE_AS_LOGGED' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
-          set -euo pipefail
-          cd /home/admin/backend
-          PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
-          export BUG_ID GITHUB_ISSUE_URL DISPOSITION PUBLIC_REPLY CLOSE_AS_LOGGED
-          php artisan tinker --execute='
-          $bugId = (int)getenv("BUG_ID");
-          $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
-          $disposition = (string)getenv("DISPOSITION");
-          $reply = (string)getenv("PUBLIC_REPLY");
-          $bug = \App\Models\BugReport::find($bugId);
-          if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
-          $status = (string)$bug->status;
-          // close_as_logged reruns may find the report already closed; closeAsLogged decides idempotently.
-          $allowedStatuses = getenv("CLOSE_AS_LOGGED") === "true" ? ["new", "triaged", "closed"] : ["new", "triaged"];
-          if (!in_array($status, $allowedStatuses, true)) {
-              throw new \RuntimeException("refusing status: ".$status);
-          }
-          $admin = \Illuminate\Support\Facades\DB::table("UserCampus")
-              ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
-          $actor = $admin ? (int)$admin : 1;
-          $svc = \App\Services\BugReportService::class;
-          if (getenv("CLOSE_AS_LOGGED") === "true") {
-              $closed = $svc::closeAsLogged($bugId, $actor, $disposition, $issueUrl, $reply);
-              if (!($closed["ok"] ?? false)) { throw new \RuntimeException(json_encode($closed)); }
-              echo json_encode(["bug_id" => $bugId, "from" => $status, "close_as_logged" => $closed, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
-          } else {
-          // Same row lock as bugs:auto-intake --ack: whoever runs second re-reads the status after the
-          // first commits, so a report is never moved new->triaged twice or answered twice concurrently.
-          \Illuminate\Support\Facades\DB::transaction(function () use ($bugId, $issueUrl, $disposition, $reply, $actor, $svc) {
-          $locked = \App\Models\BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
-          $status = (string)$locked->status;
-          if (!in_array($status, ["new", "triaged"], true)) { throw new \RuntimeException("refusing status: ".$status); }
-          $validatedDisposition = $svc::normalizeDispositionOptions([
-              "disposition" => $disposition,
-              "github_issue_url" => $issueUrl,
-          ]);
-          if (!($validatedDisposition["ok"] ?? false)) { throw new \RuntimeException(json_encode($validatedDisposition)); }
-          $transition = null;
-          if ($status === "new") {
-              $transition = $svc::changeStatus($bugId, $actor, "triaged", "phase-a verified intake; GitHub issue=".$issueUrl, [
-                  "disposition" => $disposition,
-                  "github_issue_url" => $issueUrl,
-              ]);
-              if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
-          } else {
-              // Already triaged (e.g. hourly auto-intake): record the verified disposition without a transition.
-              $transition = $svc::restateDisposition($bugId, $actor, [
-                  "disposition" => $disposition,
-                  "github_issue_url" => $issueUrl,
-              ], "phase-a verified intake; GitHub issue=".$issueUrl);
-              if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
-          }
-          $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
-              ->where("body", "like", "%".$issueUrl."%")->exists();
-          $comment = $already ? ["ok" => true, "skipped" => true] : $svc::addComment($bugId, $actor, $reply, false);
-          // addComment() returns the persisted BugReportComment model, while
-          // an idempotent skip returns the small {ok, skipped} shape.
-          $commentSucceeded = ($comment["ok"] ?? false) || isset($comment["id"]) || ($comment["skipped"] ?? false);
-          if (!$commentSucceeded) { throw new \RuntimeException(json_encode($comment)); }
-          $fresh = \App\Models\BugReport::find($bugId);
-          echo json_encode([
-              "bug_id" => $bugId,
-              "from" => $status,
-              "final" => $fresh ? (string)$fresh->status : "missing",
-              "transition" => $transition,
-              "comment_id" => is_array($comment) ? ($comment["skipped"] ?? false) : $comment->id,
-              "issue" => $issueUrl,
-          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
-          });
-          }
-          '
-          REMOTE
+        # Shared with bug-writeback-request.yml: same validation, same BugReportService calls.
+        run: bash scripts/bug-writeback/run-remote.sh phase-a
 
   # F12/F14: a logged suggestion's issue is the backlog; label it so reconcile keeps it open.
   label-logged:

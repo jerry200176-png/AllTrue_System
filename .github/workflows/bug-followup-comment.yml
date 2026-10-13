@@ -41,11 +41,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout pinned SSH trust helper
+      - name: Checkout pinned SSH trust helper and shared write-back script
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            scripts/bug-writeback/run-remote.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Configure pinned production SSH trust
@@ -76,67 +77,8 @@ jobs:
           PUBLIC_REPLY: ${{ inputs.public_reply }}
           PRODUCTION_REVISION: ${{ inputs.production_revision }}
           DEPLOY_RUN_ID: ${{ inputs.deploy_run_id }}
-        run: |
-          set -euo pipefail
-          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
-          [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved|closed)$ ]] || { echo "invalid expected_status"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
-          [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
-          if [[ "$EXPECTED_STATUS" == closed ]]; then
-            [[ "$PRODUCTION_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "closed follow-up needs the full 40-char production_revision"; exit 1; }
-            [[ "$DEPLOY_RUN_ID" =~ ^[0-9]+$ ]] || { echo "closed follow-up needs deploy_run_id"; exit 1; }
-          fi
-          PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
-          ssh -i ~/.ssh/deploy_key \
-            -o IdentitiesOnly=yes \
-            -o BatchMode=yes \
-            -o ConnectTimeout=20 \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "BUG_ID='$BUG_ID' EXPECTED_STATUS='$EXPECTED_STATUS' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' PRODUCTION_REVISION='$PRODUCTION_REVISION' DEPLOY_RUN_ID='$DEPLOY_RUN_ID' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
-          set -euo pipefail
-          cd /home/admin/backend
-          PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
-          export BUG_ID EXPECTED_STATUS GITHUB_ISSUE_URL PUBLIC_REPLY PRODUCTION_REVISION DEPLOY_RUN_ID
-          if [[ "$EXPECTED_STATUS" == closed ]]; then
-            # Same gate as Phase-C: never announce a revision that is not in production.
-            PROD_HEAD=$(git rev-parse HEAD)
-            echo "prod_head=$PROD_HEAD"
-            git merge-base --is-ancestor "$PRODUCTION_REVISION" "$PROD_HEAD" || { echo "production_revision is not in production"; exit 1; }
-          fi
-          php artisan tinker --execute='
-          $bugId = (int)getenv("BUG_ID");
-          $expected = (string)getenv("EXPECTED_STATUS");
-          $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
-          $reply = (string)getenv("PUBLIC_REPLY");
-          $bug = \App\Models\BugReport::find($bugId);
-          if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
-          if ((string)$bug->status !== $expected) { throw new \RuntimeException("status changed: ".$bug->status); }
-          $admin = \Illuminate\Support\Facades\DB::table("UserCampus")
-              ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
-          $actor = $admin ? (int)$admin : 1;
-          if ($expected === "closed") {
-              $shipped = \App\Services\BugReportService::notifyLoggedSuggestionShipped(
-                  $bugId, $actor, $issueUrl, (string)getenv("PRODUCTION_REVISION"), (string)getenv("DEPLOY_RUN_ID"), $reply
-              );
-              if (!($shipped["ok"] ?? false)) { throw new \RuntimeException(json_encode($shipped)); }
-              echo json_encode(["bug_id" => $bugId, "status" => "closed", "logged_ship" => $shipped, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
-          } else {
-          // The Phase-A acknowledgement already contains the same GitHub URL.
-          // Idempotency must therefore match this exact follow-up payload,
-          // not merely the shared issue link, or the requested post-deploy
-          // verification message is silently skipped.
-          $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
-              ->where("body", $reply)->exists();
-          $comment = $already ? ["ok" => true, "skipped" => true] : \App\Services\BugReportService::addComment($bugId, $actor, $reply, false);
-          $commentSucceeded = ($comment["ok"] ?? false) || isset($comment["id"]) || ($comment["skipped"] ?? false);
-          if (!$commentSucceeded) { throw new \RuntimeException(json_encode($comment)); }
-          echo json_encode(["bug_id" => $bugId, "status" => (string)$bug->status, "comment_id" => is_array($comment) ? ($comment["skipped"] ?? false) : $comment->id, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
-          }
-          '
-          REMOTE
+        # Shared with bug-writeback-request.yml: same validation, same BugReportService calls.
+        run: bash scripts/bug-writeback/run-remote.sh followup
 
   # F14: a logged suggestion that shipped closes its backlog issue (Phase-C never runs for it).
   close-shipped-issue:

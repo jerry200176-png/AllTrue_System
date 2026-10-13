@@ -9,8 +9,8 @@
 | 收件建單 + 收到回覆 | `bug-auto-intake.yml`：每筆 `new` 開／重用 IDs-only GitHub issue（SourceRef 去重）、加 `area:<類別>`、同類提醒、留固定「收到，我們正在查」回覆（Founder 6A）。狀態**維持 `new`**，等 Phase A | schedule 每小時 :23；人工 dispatch 預設 dry-run，`dry_run=false` 會真的建單並寫 production | 自動，不需動作 |
 | 撈佇列 | `bug-queue-dump.yml`：log 只有 ID／數量；明文 artifact 另含 metadata（嚴重度、分校 ID、page key、時間、回報者 user ID／角色、回饋類型），標題／描述／留言不在其中；文字在加密 `*.full.tar.gz.enc`（#3605；queue 不含描述／留言）；附 in-app ↔ issue reconcile step summary | push request-file `operations/closeout/bug-queue-dump.request.md`；或 dispatch | 可觸發；看得到 log 的 ID／數量；artifact 與全文要本機下載並解密 |
 | 撈單筆 | `bug-detail-dump.yml`（`summary.json` 明文含分校／page／回報者 metadata；加密 JSON 會截斷：描述 4000、留言 1500、狀態備註 1000 字，超過要標 coverage gap；附件只有 metadata、沒有圖檔） | push request-file `operations/closeout/bug-detail-dump.request.md`（改檔內 `bug_id:` 行）；或 dispatch | 同上 |
-| Phase A 分診回寫 | `bug-phase-a-triage.yml`：`new`→`triaged` + 公開回覆；建議類 `close_as_logged` | **dispatch-only** | 不行：交出 `bug_id`、`github_issue_url`、含 issue URL 的 §3.8 `public_reply`；建議類另加 `disposition` 與 `close_as_logged=true`（預設是 `bug`／`false`） |
-| 進度補充／建議上線通知 | `bug-followup-comment.yml`：只留言、不改狀態；`expected_status=closed`（已上線的建議）會記 production evidence 並關 GitHub issue（守門同 Phase C） | **dispatch-only** | 不行：交出 `bug_id`、`expected_status`、`github_issue_url`、`public_reply`；`expected_status=closed`（已上線的建議）另需 40 字元 `production_revision` 與 `deploy_run_id` |
+| Phase A 分診回寫 | `bug-phase-a-triage.yml`：`new`→`triaged` + 公開回覆；建議類 `close_as_logged` | dispatch；或 push request-file `operations/closeout/bug-writeback.request.yml`（`action: triage`，經 `bug-writeback-request.yml`） | 可以（`action: triage`，見下方 [Write-backs from a cloud session](#write-backs-from-a-cloud-session)）；`close_as_logged`（建議類）仍是 dispatch-only：交出 `bug_id`、`github_issue_url`、§3.8 `public_reply`、`disposition` 與 `close_as_logged=true` |
+| 進度補充／建議上線通知 | `bug-followup-comment.yml`：只留言、不改狀態；`expected_status=closed`（已上線的建議）會記 production evidence 並關 GitHub issue（守門同 Phase C） | dispatch；或同一 request-file（`action: followup`） | 可以（`action: followup`，只限 `expected_status` = `triaged`／`in_progress`）；`resolved`／`closed` 仍是 dispatch-only：交出 `bug_id`、`expected_status`、`github_issue_url`、`public_reply`，`closed` 另需 40 字元 `production_revision` 與 `deploy_run_id` |
 | Phase C 上線後回寫 | `bug-phase-c-allowlist.yml`：已上線修復 → `resolved` + 公開回覆，並自動關對應 issue（F14；`type:epic`、`lifecycle:frozen` 不關，issue 標題或 SourceRef 對到的任何 in-app 回報不在本次已檢查清單內就不關）。`bug-phase-c-autodispatch.yml` 在 allowlist 有新增 ID 合併進 main 後逐筆 dispatch 並驗證 | push：PR 在 allowlist 新增條目（`reply`／`rev`／`deploy`）→ merge；或 push request-file `operations/closeout/bug-phase-c-allowlist.request.md`；已在 allowlist 的 ID 可直接 dispatch（`bug_id`） | 可以（開 PR → CI → merge）；只限 `rev` 已在 production 的修復，不可拿來做 Phase A |
 | `resolved`→`closed` 逾時 | `bug-reporter-timeout.yml` `auto`（排程）：只看 `resolved`，14 天無回報者回覆即結案並白話回覆；回報者回覆會重開（Founder 2A）。符合者超過 20 筆時整批拒絕、**一筆都不關**，要先人工 dry-run 處理。人工 `dry-run`／`apply` 是另一條路：`days` 預設 **7**（只作用於 `resolved`），另外也檢查固定 14 天的 `triaged` 等回報者佇列；`apply` 必填 `confirmation=CLOSE_STALE_RESOLVED` 與逐筆審過的 `reviewed_ids` | `auto`：schedule 每日 10:40 台北（亦可 dispatch `auto-dry-run`／`auto`）；`dry-run`／`apply`：只限人工 dispatch | `auto` 自動；人工 `apply` 不行：交出 dry-run 審過的 `reviewed_ids` 與 `days` |
 | 週報 | `bug-sla-weekly-report.yml`：「in-app 週報 YYYY-Www」issue | schedule 週一 09:00 台北；可人工 dispatch 重產 | 自動 |
@@ -57,6 +57,37 @@ openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass file:$HOME/.alltrue-dump-
 
 Decrypted files stay local; never paste them into issues, PRs or comments. Do not
 shortcut any of this with SSH, guessed IDs or stale artifacts.
+
+Dump request PRs are read-only and need no Founder approval (Founder decision 8,
+2026-10-13; #3911 closed as not planned). `autonomy_gate.py` keeps them T0.
+
+## Write-backs from a cloud session
+
+Founder 2026-10-13: Phase-A triage and follow-up comments get a governed cloud path.
+`bug-writeback-request.yml` runs `scripts/bug-writeback/run-remote.sh`, the same script
+that `bug-phase-a-triage.yml` and `bug-followup-comment.yml` call, so the input checks and
+`BugReportService` calls are identical.
+
+1. Triage first (freshness gate above, GitHub issue opened). Branch `chore/…` from `origin/main`.
+2. Append an entry to `operations/closeout/bug-writeback.request.yml` (fields and an example
+   are in the file header): a new `request_id`, `bug_id`, `action` (`triage` = `new`→`triaged`
+   plus the public reply; `followup` = public comment only, with `expected_status`
+   `triaged` or `in_progress`), `github_issue_url` (an issue in this repository) and
+   `public_reply` (§3.8 plain language, includes the issue URL, 20–1500 characters, no
+   field/class names, SQL, tooling or internal codes, no names, phone numbers or e-mails).
+3. PR → CI green. A PR that edits this file is a production write, so `autonomy_gate.py`
+   rates it **T2 at minimum**: it lands only with an independent review (Codex or a reviewer
+   agent) and no open P1, never T0 auto-merge. Then add `queue`.
+4. The merge to `main` runs the workflow. It validates every new entry before any production
+   access and fails closed on the first problem; the server re-checks that the bug exists and
+   is in an allowed status (`new`/`triaged` for triage, exactly `expected_status` for follow-up).
+   The log prints request IDs, bug IDs, actions and counts only; that log is the
+   processed-ID record.
+
+Only `request_id`s absent from the previous version of the file run, so re-pushing the same
+file does nothing. A failed request is not retried automatically: fix the cause and append a
+new entry with a new `request_id`. `resolved`, `closed` and `close_as_logged` are not
+accepted here; they stay on Phase-C and the dispatch workflows.
 
 ## Deployment evidence gate (merge ≠ production)
 
