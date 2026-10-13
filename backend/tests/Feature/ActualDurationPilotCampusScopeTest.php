@@ -204,6 +204,11 @@ class ActualDurationPilotCampusScopeTest extends TestCase
         $this->assertSame(6, (int) $fresh->RemainingSessions, 'two attendances = two whole lessons');
         $this->assertSame(2, (int) $fresh->UsedSessions);
         $this->assertSame(6 * 180, (int) $fresh->RemainingMinutes, 'no fractional balance');
+        $diag = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $sc->ID])[(int) $sc->ID];
+        $this->assertSame(2, $diag['expected_used'], 'the batch diagnostic agrees with the persisted counters');
+        $row = collect($this->withHeaders($this->headers())->getJson('/api/v1/student-classes?per_page=200')->assertOk()->json('data'))
+            ->firstWhere('ID', $sc->ID);
+        $this->assertSame(['6.00', '2.00'], [$row['remaining_lesson_equivalent'] ?? null, $row['used_lesson_equivalent'] ?? null]);
 
         config(['perfflags.actual_duration_campus_ids' => (string) $this->pilotCampusId]);
         SessionDeductionService::recomputeCounters($sc->ID);

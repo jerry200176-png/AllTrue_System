@@ -157,7 +157,7 @@ class SessionDeductionService
         $today = Carbon::today()->toDateString();
         $courses = StudentClass::query()
             ->whereIn('ID', $ids)
-            ->get(['ID', 'ScheduleMode', 'SessionCount', 'SessionDuration'])
+            ->get(['ID', 'StudentID', 'ScheduleMode', 'SessionCount', 'SessionDuration', 'deduction_basis', 'standard_lesson_minutes'])
             ->keyBy('ID');
         $observed = self::batchObservedUsedSessions($ids);
 
@@ -252,7 +252,9 @@ class SessionDeductionService
             $usedByAttendance = max($observedUsed, $ledgerUsed);
             $sessionCount = max(0, (int) ($course->SessionCount ?? 0));
             $isSessionMode = (string) ($course->ScheduleMode ?? 'count') === 'count';
-            $hasPartial = (int) ($ledgerRow->has_partial ?? 0) === 1;
+            // #3834: same rule as recomputeCounters(): a gated-off opted-in course counts whole lessons.
+            $hasPartial = (int) ($ledgerRow->has_partial ?? 0) === 1
+                && !($course->isActualDurationBasis() && !self::isActualDurationActive($course));
             $netMinutes = (int) ($ledgerRow->net_minutes ?? 0);
             $expectedUsed = $usedByAttendance;
 
@@ -647,7 +649,7 @@ class SessionDeductionService
         if (!isset(self::$courseCampusCache[$sc])) {
             self::$courseCampusCache[$sc] = $sc->relationLoaded('student') && $sc->student !== null
                 ? (int) $sc->student->CampusID
-                : (int) (\App\Models\Student::withoutGlobalScopes()->whereKey($sc->StudentID)->value('CampusID') ?? 0);
+                : (int) (\App\Models\Student::query()->withoutGlobalScopes()->whereKey($sc->StudentID)->value('CampusID') ?? 0);
         }
 
         return self::isActualDurationCampusAllowed(self::$courseCampusCache[$sc]);
@@ -686,7 +688,7 @@ class SessionDeductionService
             return true;
         }
 
-        $allowed = array_map('intval', array_filter(array_map('trim', explode(',', $raw)), 'strlen'));
+        $allowed = array_map('intval', array_filter(array_map('trim', explode(',', $raw)), fn (string $v): bool => $v !== ''));
 
         return in_array($campusId, $allowed, true);
     }
