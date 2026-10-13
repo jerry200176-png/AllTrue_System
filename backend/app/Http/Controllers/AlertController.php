@@ -234,7 +234,8 @@ class AlertController extends Controller
                 $monthlySessions = $members->sum(fn ($m) => $memberSessionCounts[(int) $m->ID] ?? 0);
                 $rate = (float) $pkg->rate;
                 $charge = round($monthlySessions * $rate, 2);
-                $settlement = self::monthlyPackageSettlement($members->pluck('ID')->all(), $memberStatuses, $memberSessionCounts, $rate, (bool) $pkg->paid);
+                $manualPaid = (bool) $pkg->paid;
+                $settlement = self::monthlyPackageSettlement($members->pluck('ID')->all(), $memberStatuses, $memberSessionCounts, $rate, $manualPaid);
                 $pkgPaid = $settlement['paid'];
 
                 $fakeSc = $this->makeFakeSCForPackage($pkg);
@@ -267,7 +268,7 @@ class AlertController extends Controller
                     'paid'             => $pkgPaid,
                     'paid_at'          => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
                     'last_paid_at'     => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
-                    'paid_amount'      => $pkgPaid && (bool) $pkg->paid ? (int) round($charge) : $settlement['applied'],
+                    'paid_amount'      => $manualPaid ? (int) round($charge) : $settlement['applied'],
                     'payment_status'   => $pkgPaid ? 'monthly_due_soon' : 'unpaid',
                     'latest_payment_report_id' => null,
                     'has_newer_course'         => false,
