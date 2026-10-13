@@ -383,8 +383,10 @@ class ParentPortalController extends Controller
         $result['students'] = $this->parentStudentSwitcherRows($students);
         // Do not expose group members until this login has passed the same
         // cross-campus phone verification used by dashboard aggregation.
+        // Only members this LINE account can still reach (#3944 follow-up):
+        // an unbound member must not reappear through the group listing.
         $result['identity_groups'] = !empty($result['identity_group_id'])
-            ? $this->identityGroupRows($students)
+            ? $this->identityGroupRows($students, $students->map(fn ($s) => (int) $s->id)->all())
             : [];
         return response()->json($result);
     }
@@ -1994,14 +1996,26 @@ class ParentPortalController extends Controller
         ])->values()->all();
     }
 
-    private function identityGroupRows($students): array
+    /**
+     * @param array<int, int>|null $reachableStudentIds when given, members outside
+     *        this set are dropped, and so is a group left with fewer than two members
+     */
+    private function identityGroupRows($students, ?array $reachableStudentIds = null): array
     {
+        $reachable = $reachableStudentIds === null ? null : array_flip($reachableStudentIds);
+
         return collect($students)
             ->map(fn ($student) => $this->identityService()->groupForStudent((int) $student->id))
             ->filter()
             ->unique('id')
-            ->map(function ($group) {
+            ->map(function ($group) use ($reachable) {
                 $members = $this->identityService()->activeMembers((int) $group->id);
+                if ($reachable !== null) {
+                    $members = $members->filter(fn ($m) => isset($reachable[(int) $m->student_id]))->values();
+                    if ($members->count() < 2) {
+                        return null;
+                    }
+                }
                 return [
                     'id' => (int) $group->id,
                     'name' => (string) ($group->display_name ?: ($members->first()?->student?->getAttribute('name') ?? '學生')),
@@ -2014,7 +2028,7 @@ class ParentPortalController extends Controller
                         ];
                     })->values()->all(),
                 ];
-            })->values()->all();
+            })->filter()->values()->all();
     }
 
     public function billingHistory(Request $request)
@@ -2031,16 +2045,18 @@ class ParentPortalController extends Controller
 
         [$identityGroup, $accessMode, $identityMembers] = $this->sessionParentContext($session, $student);
         $studentIds = $identityMembers->pluck('student_id')->map(fn ($id) => (int) $id)->values()->all() ?: [(int) $student->id];
-        $billingCampusMap = $this->portalCampuses()->whereIn('id', $this->portalStudents()->whereIn('id', $studentIds)->pluck('CampusID')->unique()->all())->get()->keyBy('id');
+        // One read for every member's campus; the course rows never lazy-load their student.
+        $studentCampusIds = $this->portalStudents()->whereIn('id', $studentIds)->pluck('CampusID', 'id');
+        $billingCampusMap = $this->portalCampuses()->whereIn('id', $studentCampusIds->unique()->values()->all())->get()->keyBy('id');
         $classes = StudentClass::query()->whereIn('StudentID', $studentIds)
             ->where('Charge', '>', 0)
             ->orderByDesc('StartDate')
             ->get();
 
-        $records = $classes->map(function ($course) use ($billingCampusMap) {
+        $records = $classes->map(function ($course) use ($billingCampusMap, $studentCampusIds) {
             $charge = (int) ($course->Charge ?? 0);
             $paid = (int) ($course->Pay ?? 0);
-            $campusId = (int) ($course->student->CampusID ?? 0);
+            $campusId = (int) ($studentCampusIds->get((int) $course->StudentID) ?? 0);
 
             return [
                 'student_class_id' => (int) $course->ID,

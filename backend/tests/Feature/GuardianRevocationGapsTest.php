@@ -19,6 +19,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -117,6 +118,32 @@ class GuardianRevocationGapsTest extends TestCase
         $this->putJson("/api/v1/parent/learning-records/{$recordA}/feedback", ['content' => '測試'], $this->bearer($token))
             ->assertForbidden();
         $this->assertSame(0, DB::table('learning_record_feedbacks')->where('learning_record_id', $recordA)->count());
+    }
+
+    /** @dataProvider flagModes */
+    public function test_line_login_lists_only_group_members_still_bound_after_an_unbind(bool $flag): void
+    {
+        config(['perfflags.multi_guardian_enabled' => $flag]);
+        $line = $this->lineId('d');
+        [$a, $b, $group] = $this->groupedPair(StudentIdentityService::MODE_ACTIONS);
+        $bindingA = $this->bindLine($a, $line, $this->campusA);
+        $this->bindLine($b, $line, $this->campusB);
+        Http::fake(['https://api.line.me/v2/profile' => Http::response(['userId' => $line], 200)]);
+
+        $before = $this->postJson('/api/v1/parent/login-line', ['access_token' => 'valid-token'])->assertOk();
+        $this->assertEqualsCanonicalizing(
+            [$a->id, $b->id],
+            collect($before->json('identity_groups.0.members'))->pluck('student_id')->all()
+        );
+
+        $this->deleteJson('/api/v1/bindings/' . $bindingA->id, [], ['X-User-Id' => (string) $this->director->id])
+            ->assertOk();
+
+        $after = $this->postJson('/api/v1/parent/login-line', ['access_token' => 'valid-token'])->assertOk();
+        $after->assertJsonPath('student.id', $b->id);
+        $this->assertSame([$b->id], collect($after->json('students'))->pluck('id')->all());
+        // A group with one reachable member is not listed, so A's id, campus and name never leave.
+        $this->assertSame([], $after->json('identity_groups'));
     }
 
     public function test_phone_login_group_session_is_unaffected_by_a_line_unbind(): void
