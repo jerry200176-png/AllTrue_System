@@ -492,14 +492,16 @@ class MonthlyBillingSlipTest extends TestCase
     public function test_tuition_slip_with_two_owing_periods_uses_the_payable_period(): void
     {
         // #3888 review (Codex P1 r4254441859): the slip asks for the payable bill's amount, so its period
-        // and deadline are that bill's (the oldest owing period), never the newest open invoice's.
+        // and deadline are that bill's (the oldest owing period), never the newest open invoice's. The deadline is the
+        // bill's stored DueDate (08-30, not settlement_day 17), Codex P1 r4254523790.
         Carbon::setTestNow(Carbon::parse('2026-09-20 09:00:00', 'Asia/Taipei'));
         $token = $this->createDirectorToken('director-monthly-two-periods@example.com');
         [$student, $course] = $this->makeMonthlyCourse('月結兩期未繳測試', '2026-08-01', '2026-09-30');
         $ids = [];
-        foreach (['2026-08', '2026-09'] as $period) {
+        $due = ['2026-08' => '2026-08-30', '2026-09' => '2026-09-17'];
+        foreach ($due as $period => $dueDate) {
             $ids[$period] = Invoice::create([
-                'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => $period . '-01', 'DueDate' => $period . '-17',
+                'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => $period . '-01', 'DueDate' => $dueDate,
                 'TotalAmount' => 6000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => $period,
             ])->id;
         }
@@ -508,7 +510,7 @@ class MonthlyBillingSlipTest extends TestCase
             ->getJson("/api/v1/alerts/tuition-slip/{$course->ID}")->assertOk()->json();
         $period = $slip['payable_billing_period'];
         $this->assertSame($ids[$period] ?? null, $slip['payable_invoice_id']);
-        $this->assertSame([$period, $period . '-17'], [$slip['billing_period'], $slip['due_date']]);
+        $this->assertSame([$period, $due[$period] ?? null], [$slip['billing_period'], $slip['due_date']]);
     }
 
     public function test_monthly_split_cross_month_and_missing_rate_invoices_keep_their_amount(): void

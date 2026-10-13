@@ -790,7 +790,13 @@ class AlertController extends Controller
         $dueDate = null;
         $daysUntilSettlement = null;
 
-        if ($mode === 'date') {
+        $storedDue = $payableInvoice?->getAttribute('DueDate');
+        if ($mode === 'date' && $storedDue) {
+            // The payable bill's own deadline wins over today's settlement_day (Codex P1 r4254523790).
+            $thisDue = Carbon::parse($storedDue)->startOfDay();
+            $dueDate = $thisDue->toDateString();
+            $daysUntilSettlement = $today->lte($thisDue) ? (int) $today->diffInDays($thisDue, false) : -(int) $thisDue->diffInDays($today, false);
+        } elseif ($mode === 'date') {
             $sd = (int) ($sc->settlement_day ?? 0);
             if ($sd >= 1 && $sd <= 31) {
                 // An older owing period is due on its own month's settlement day.
