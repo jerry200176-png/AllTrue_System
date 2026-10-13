@@ -2529,6 +2529,7 @@ jobs:
             { print }
             END { if (users != 1 || passwords != 1) exit 42 }
           ' .env > "$ENV_TMP"
+          unset STAGED_DB_PASSWORD
           chmod --reference=.env "$ENV_TMP"
           mv "$ENV_TMP" .env
 

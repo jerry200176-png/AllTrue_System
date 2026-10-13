@@ -785,7 +785,7 @@ for (const [k, y] of Object.entries(ok)) { const r = scan('ok', y); if (r.length
 // A future public print, verbose/trace option, changed helper, or new callsite invalidates the proof.
 {
   const contracts = {
-    'deploy.yml': '105eb99f9ad54f83c0af75e5ed3e897eff61c91e863f09790f966d36558e6957',
+    'deploy.yml': 'd7fff2cee58a84d0774f33234949e20853018799d9333a9011734f94d21700fd',
     'actual-duration-acceptance.yml': '063c896ae2603651b362654af106e74fcdc2ce6a67e10707a063c0950835bf97',
     'multi-guardian-activation.yml': 'e9e59d11428058b3f8eb355859fa0b1b21ffee841d4826a98fe676108011713f',
   };
