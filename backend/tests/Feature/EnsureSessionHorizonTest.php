@@ -241,6 +241,291 @@ class EnsureSessionHorizonTest extends TestCase
         $this->assertFalse(DB::table('ClassSession')->where('StudentClassID', $sc)->whereDate('SessionDate', $first)->exists());
     }
 
+    public function test_dry_run_would_create_excludes_slots_execute_will_skip(): void
+    {
+        // #3727: dry-run used to count cross-contract overlaps that execute skips.
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $baseline = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+        $first = $baseline['candidates'][0]['date'];
+        $other = $this->course(['StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID')]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $other, 'SessionDate' => $first, 'StartTime' => '17:00:00',
+            'EndTime' => '18:00:00', 'Status' => 'scheduled', 'Note' => '',
+        ]);
+
+        $dry = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+
+        $this->assertSame(1, $dry['would_skip']);
+        $this->assertSame($baseline['would_create'] - 1, $dry['would_create']);
+    }
+
+    /** Course with remaining sessions plus one overlapping session of another course on the first candidate date. */
+    private function courseWithOverlap(): array
+    {
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $first = app(EnsureSessionHorizonService::class)->ensure(
+            $sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN
+        )['ensure']['candidates'][0]['date'];
+        $other = $this->course(['StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID')]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $other, 'SessionDate' => $first, 'StartTime' => '17:00:00',
+            'EndTime' => '18:00:00', 'Status' => 'scheduled', 'Note' => '',
+        ]);
+
+        return [$sc, $first];
+    }
+
+    public function test_dry_run_counts_same_course_cancelled_slot_as_skip_and_matches_execute(): void
+    {
+        // #3727 review r4242402698: upsertSlot() reuses a cancelled same-course row, so execute skips it.
+        putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
+        $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $first = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure']['candidates'][0];
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $sc, 'SessionDate' => $first['date'], 'StartTime' => $first['start_hm'].':00',
+            'EndTime' => '18:00:00', 'Status' => 'cancelled', 'Note' => '',
+        ]);
+
+        $dry = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+        $exec = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE)['ensure'];
+
+        $this->assertSame(1, $dry['would_skip']);
+        $this->assertSame($exec['created_count'], $dry['would_create']);
+        $this->assertSame($exec['skipped_count'], $dry['would_skip']);
+    }
+
+    public function test_summary_command_reports_net_would_create_and_would_skip(): void
+    {
+        // #3727 review r4242402693
+        [$sc] = $this->courseWithOverlap();
+        $net = app(EnsureSessionHorizonService::class)->ensure(
+            $sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN
+        )['ensure']['would_create'];
+        $this->assertSame(0, Artisan::call('sessions:ensure-horizon', [
+            'student_class_id' => $sc, '--as-of' => '2026-07-13', '--summary' => true,
+        ]));
+        $this->assertStringContainsString("candidates={$net} created=0 skipped=1", Artisan::output());
+    }
+
+    public function test_dry_run_conflict_lookup_does_not_scale_with_candidates(): void
+    {
+        // #3727 review r4242374860: batched, date-bounded lookups instead of per-candidate queries.
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $this->assertGreaterThanOrEqual(3, count($svc->ensure($sc, null, $this->today, null)['ensure']['candidates']));
+        $schedulesQueries = 0;
+        DB::listen(function ($q) use (&$schedulesQueries) {
+            if (stripos($q->sql, 'schedules') !== false && stripos($q->sql, 'student_id') !== false) {
+                $schedulesQueries++;
+            }
+        });
+
+        $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN);
+
+        $this->assertLessThanOrEqual(1, $schedulesQueries);
+    }
+
+    /** @return array{0:int,1:int,2:int} [candidates, would_skip, total SQL statements] for a dry-run through $weeks. */
+    private function dryRunCostWithSameDayNonOverlappingRows(int $weeks): array
+    {
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 40);
+        $studentId = (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID');
+        $other = $this->course(['StudentID' => $studentId]);
+        $svc = app(EnsureSessionHorizonService::class);
+        $through = $this->today->copy()->addWeeks($weeks);
+        $cands = $svc->ensure($sc, $through, $this->today, null)['ensure']['candidates'];
+        foreach ($cands as $o) {
+            // Same day, 10:00-11:00 - does not overlap the 16:00 slot, but makes the date "busy".
+            DB::table('ClassSession')->insert([
+                'StudentClassID' => $other, 'SessionDate' => $o['date'], 'StartTime' => '10:00:00',
+                'EndTime' => '11:00:00', 'Status' => 'scheduled', 'Note' => '',
+            ]);
+            DB::table('schedules')->insert([
+                'student_id' => $studentId, 'teacher_id' => 0, 'subject' => 'Math',
+                'day_of_week' => Carbon::parse($o['date'])->dayOfWeekIso, 'start_time' => '10:00:00',
+                'end_time' => '11:00:00', 'class_type' => 'one_on_one', 'status' => 'scheduled',
+                'type' => 'extra', 'deduction' => 1, 'branch_id' => 1, 'schedule_date' => $o['date'],
+                'student_course_id' => null, 'original_schedule_id' => null,
+            ]);
+        }
+        $n = 0;
+        DB::listen(function () use (&$n) { $n++; });
+        $dry = $svc->ensure($sc, $through, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+
+        return [count($cands), $dry['would_skip'], $n];
+    }
+
+    public function test_dry_run_total_sql_does_not_grow_with_candidates_on_busy_non_overlapping_dates(): void
+    {
+        // #3727 latest-head review: busy-but-non-overlapping dates must not trigger per-candidate exact checks.
+        [$few, $skipFew, $sqlFew] = $this->dryRunCostWithSameDayNonOverlappingRows(5);
+        DB::flushQueryLog();
+        [$many, $skipMany, $sqlMany] = $this->dryRunCostWithSameDayNonOverlappingRows(20);
+
+        $this->assertGreaterThan($few, $many);
+        $this->assertSame(0, $skipFew + $skipMany);
+        $this->assertSame($sqlFew, $sqlMany, "SQL grew with candidates: {$few} cands={$sqlFew}, {$many} cands={$sqlMany}");
+    }
+
+    public function test_dry_run_counts_same_start_conflict_even_when_other_row_end_is_not_after_start(): void
+    {
+        // #3727 latest-head review: R20 same-start skip ignores the other row's EndTime (00:00 when omitted).
+        putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
+        $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $first = $svc->ensure($sc, null, $this->today, null)['ensure']['candidates'][0];
+        $other = $this->course(['StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID')]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $other, 'SessionDate' => $first['date'], 'StartTime' => $first['start_hm'].':00',
+            'EndTime' => '00:00:00', 'Status' => 'scheduled', 'Note' => '',
+        ]);
+
+        $dry = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+        $exec = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE)['ensure'];
+
+        $this->assertSame(1, $exec['skipped_count']);
+        $this->assertSame($exec['skipped_count'], $dry['would_skip']);
+        $this->assertSame($exec['created_count'], $dry['would_create']);
+    }
+
+    public function test_dry_run_matches_execute_at_seconds_precision_boundaries(): void
+    {
+        // #3727 parity: 15:00-16:00:30 overlaps a 16:00 slot (execute skips); 15:00-16:00:00 is merely adjacent.
+        putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
+        $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $cands = $svc->ensure($sc, null, $this->today, null)['ensure']['candidates'];
+        $other = $this->course(['StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID')]);
+        foreach ([[$cands[0]['date'], '16:00:30'], [$cands[1]['date'], '16:00:00']] as [$date, $end]) {
+            DB::table('ClassSession')->insert([
+                'StudentClassID' => $other, 'SessionDate' => $date, 'StartTime' => '15:00:00',
+                'EndTime' => $end, 'Status' => 'scheduled', 'Note' => '',
+            ]);
+        }
+
+        $dry = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+        $exec = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE)['ensure'];
+
+        $this->assertSame(1, $exec['skipped_count']);
+        $this->assertSame($exec['skipped_count'], $dry['would_skip']);
+        $this->assertSame($exec['created_count'], $dry['would_create']);
+    }
+
+    public function test_dry_run_sql_does_not_grow_for_time_overlapping_semantically_exempt_rows(): void
+    {
+        // #3727 review r4244112659: a same-shared-package course overlapping in time is exempt from the write guard,
+        // so it must be filtered in memory, not re-checked per candidate.
+        $cost = function (int $weeks): array {
+            Carbon::setTestNow($this->today);
+            $owner = 98900 + $weeks;
+            DB::table('Student')->insert(['id' => $owner, 'name' => 'Pkg', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1]);
+            $pkg = (int) DB::table('course_packages')->insertGetId([
+                'student_id' => $owner, 'campus_id' => 1, 'name' => 'exempt pool', 'total_sessions' => 99,
+                'remaining_sessions' => 99, 'used_sessions' => 0, 'stop' => 0, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $sc = $this->explicitCourse(remaining: 40, packageId: $pkg);
+            $studentId = (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID');
+            $other = $this->course(['StudentID' => $studentId, 'PackageID' => $pkg]);
+            $svc = app(EnsureSessionHorizonService::class);
+            $through = $this->today->copy()->addWeeks($weeks);
+            $cands = $svc->ensure($sc, $through, $this->today, null)['ensure']['candidates'];
+            foreach ($cands as $o) {
+                DB::table('ClassSession')->insert([ // overlaps 16:00-18:00 in time, different start, same package
+                    'StudentClassID' => $other, 'SessionDate' => $o['date'], 'StartTime' => '15:00:00',
+                    'EndTime' => '17:00:00', 'Status' => 'scheduled', 'Note' => '',
+                ]);
+            }
+            $n = 0;
+            DB::listen(function () use (&$n) { $n++; });
+            $dry = $svc->ensure($sc, $through, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+
+            return [count($cands), $dry['would_skip'], $n];
+        };
+        [$few, $skipFew, $sqlFew] = $cost(5);
+        [$many, $skipMany, $sqlMany] = $cost(20);
+
+        $this->assertGreaterThan($few, $many);
+        $this->assertSame(0, $skipFew + $skipMany);
+        $this->assertSame($sqlFew, $sqlMany, "SQL grew: {$few} cands={$sqlFew}, {$many} cands={$sqlMany}");
+    }
+
+    private function scheduleRow(int $studentId, string $date, string $start, string $end, ?int $courseId): void
+    {
+        DB::table('schedules')->insert([
+            'student_id' => $studentId, 'teacher_id' => 0, 'subject' => 'Math', 'day_of_week' => Carbon::parse($date)->dayOfWeekIso,
+            'start_time' => $start, 'end_time' => $end, 'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'extra',
+            'deduction' => 1, 'branch_id' => 1, 'schedule_date' => $date, 'student_course_id' => $courseId, 'original_schedule_id' => null,
+        ]);
+    }
+
+    public function test_dry_run_sql_does_not_grow_for_stale_schedule_exceptions(): void
+    {
+        // #3727 review r4245762586: overlapping scheduled rows whose ClassSessions are all cancelled are stale.
+        $cost = function (int $weeks): array {
+            Carbon::setTestNow($this->today);
+            $sc = $this->explicitCourse(remaining: 40);
+            $studentId = (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID');
+            $other = $this->course(['StudentID' => $studentId]);
+            $svc = app(EnsureSessionHorizonService::class);
+            $through = $this->today->copy()->addWeeks($weeks);
+            $cands = $svc->ensure($sc, $through, $this->today, null)['ensure']['candidates'];
+            foreach ($cands as $o) {
+                DB::table('ClassSession')->insert(['StudentClassID' => $other, 'SessionDate' => $o['date'], 'StartTime' => '15:00:00',
+                    'EndTime' => '17:00:00', 'Status' => 'cancelled', 'Note' => '']);
+                $this->scheduleRow($studentId, $o['date'], '15:00:00', '17:00:00', $other);
+            }
+            $n = 0;
+            DB::listen(function () use (&$n) { $n++; });
+            $dry = $svc->ensure($sc, $through, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+
+            return [count($cands), $dry['would_skip'], $n];
+        };
+        [$few, $skipFew, $sqlFew] = $cost(5);
+        [$many, $skipMany, $sqlMany] = $cost(20);
+
+        $this->assertGreaterThan($few, $many);
+        $this->assertSame(0, $skipFew + $skipMany);
+        $this->assertSame($sqlFew, $sqlMany, "SQL grew: {$few} cands={$sqlFew}, {$many} cands={$sqlMany}");
+    }
+
+    public function test_dry_run_matches_execute_for_schedule_only_row_ending_exactly_at_the_start(): void
+    {
+        // #3727 review r4245762590: execute compares VARCHAR '16:00:00' > '16:00' (true), so it skips this slot.
+        putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
+        $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
+        Carbon::setTestNow($this->today);
+        $sc = $this->explicitCourse(remaining: 8);
+        $svc = app(EnsureSessionHorizonService::class);
+        $first = $svc->ensure($sc, null, $this->today, null)['ensure']['candidates'][0]['date'];
+        $this->scheduleRow((int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID'), $first, '15:00:00', '16:00:00', null);
+
+        $dry = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN)['ensure'];
+        $exec = $svc->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE)['ensure'];
+
+        $this->assertSame($exec['skipped_count'], $dry['would_skip']);
+        $this->assertSame($exec['created_count'], $dry['would_create']);
+    }
+
     public function test_shared_pool_shortage_warns_but_does_not_block_planned_sessions(): void
     {
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
