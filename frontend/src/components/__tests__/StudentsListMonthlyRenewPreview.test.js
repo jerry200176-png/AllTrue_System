@@ -27,6 +27,15 @@ describe('StudentsList monthly renewal preview', () => {
     expect(canSubmitMonthlyRenewal(form, '2026-10-31')).toBe(true);
   });
 
+  it('#2567: a prior-fee blocker keeps submit disabled and its message reaches staff', () => {
+    const message = 'server prior-fee blocker message';
+    const form = {};
+    invalidateMonthlyRenewalPreview(form, '2026-10-31');
+    applyMonthlyRenewalPreview(form, { severity: 'blocked', proposed_course: { start_date: '2026-10-01' }, blockers: [{ code: 'prior_fee_missing', message }] });
+    expect(canSubmitMonthlyRenewal(form, '2026-10-31')).toBe(false);
+    expect(renewalErrorMessage({ code: 'prior_fee_missing', message, errors: { prior_fee: [message] } }, '續約失敗')).toBe(message);
+  });
+
   it('wires preview state, warnings, submitting and the old end date', () => {
     const composable = readFileSync(resolve(__dirname, '../../composables/course-management/useMonthlyRenewal.js'), 'utf8');
     expect(composable).toContain('invalidateMonthlyRenewalPreview(form.value, endDate)');
