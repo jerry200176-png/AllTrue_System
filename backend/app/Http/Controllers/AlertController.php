@@ -225,17 +225,21 @@ class AlertController extends Controller
                 ->select('ID', 'PackageID')
                 ->get()
                 ->groupBy('PackageID');
+            // #3892 review P1 (Founder Q3=A): monthly members are confirmed one at a time and never set the package paid
+            // flag, so the package row reads each member's authoritative ledger verdict, not only $pkg->paid.
+            $memberStatuses = $this->payableResolver->courseStatusesByStudentClassIds($allMemberScIds->all());
 
             foreach ($monthlyPkgs as $pkg) {
                 $members = $membersByPkg->get($pkg->id, collect());
                 $monthlySessions = $members->sum(fn ($m) => $memberSessionCounts[(int) $m->ID] ?? 0);
                 $rate = (float) $pkg->rate;
                 $charge = round($monthlySessions * $rate, 2);
+                $settlement = self::monthlyPackageSettlement($members->pluck('ID')->all(), $memberStatuses, $memberSessionCounts, $rate, (bool) $pkg->paid);
+                $pkgPaid = $settlement['paid'];
 
-                $alertRow = $this->mapMonthlyAlert(
-                    $this->makeFakeSCForPackage($pkg),
-                    $today
-                );
+                $fakeSc = $this->makeFakeSCForPackage($pkg);
+                $fakeSc->Paid = $pkgPaid ? 1 : 0;
+                $alertRow = $this->mapMonthlyAlert($fakeSc, $today);
                 if ($alertRow === null) {
                     continue;
                 }
@@ -259,12 +263,12 @@ class AlertController extends Controller
                     'payable_source'    => null,
                     'payable_invoice_id' => null,
                     'billing_period'    => null,
-                    'outstanding'      => (bool) $pkg->paid ? 0 : $charge,
-                    'paid'             => (bool) $pkg->paid,
+                    'outstanding'      => $settlement['outstanding'],
+                    'paid'             => $pkgPaid,
                     'paid_at'          => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
                     'last_paid_at'     => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
-                    'paid_amount'      => (bool) $pkg->paid ? (int) round($charge) : 0,
-                    'payment_status'   => (bool) $pkg->paid ? 'monthly_due_soon' : 'unpaid',
+                    'paid_amount'      => $pkgPaid && (bool) $pkg->paid ? (int) round($charge) : $settlement['applied'],
+                    'payment_status'   => $pkgPaid ? 'monthly_due_soon' : 'unpaid',
                     'latest_payment_report_id' => null,
                     'has_newer_course'         => false,
                     'newer_course_id'          => null,
@@ -689,6 +693,42 @@ class AlertController extends Controller
         }
 
         return $map;
+    }
+
+    /**
+     * #3892 review P1 (Founder Q3=A): a monthly package is settled when its manual paid flag is set or when every member's
+     * authoritative ledger verdict is paid. Otherwise it owes, per member: nothing once paid, the invoice balance when the
+     * member is invoiced, else this month's attended sessions x rate (the FR-006 estimate).
+     *
+     * @param list<int|string> $memberIds
+     * @param array<int, array<string, mixed>> $statuses BillingPayableResolver::courseStatusesByStudentClassIds()
+     * @param array<int, int> $sessionCounts
+     * @return array{paid: bool, outstanding: float|int, applied: int}
+     */
+    public static function monthlyPackageSettlement(array $memberIds, array $statuses, array $sessionCounts, float $rate, bool $manualPaid): array
+    {
+        $ids = array_map('intval', $memberIds);
+        $allPaid = $ids !== [] && collect($ids)->every(fn (int $id) => ($statuses[$id]['status'] ?? null) === 'paid');
+        if ($manualPaid || $allPaid) {
+            return ['paid' => true, 'outstanding' => 0, 'applied' => (int) collect($ids)->sum(fn (int $id) => (int) ($statuses[$id]['applied'] ?? 0))];
+        }
+        $outstanding = 0;
+        $applied = 0;
+        foreach ($ids as $id) {
+            $verdict = $statuses[$id] ?? null;
+            if (($verdict['status'] ?? null) === 'paid') {
+                $applied += (int) ($verdict['applied'] ?? 0);
+                continue;
+            }
+            if (($verdict['source'] ?? null) === 'invoice') {
+                $outstanding += (int) ($verdict['outstanding'] ?? 0);
+                $applied += (int) ($verdict['applied'] ?? 0);
+                continue;
+            }
+            $outstanding += ($sessionCounts[$id] ?? 0) * $rate;
+        }
+
+        return ['paid' => false, 'outstanding' => round($outstanding, 2), 'applied' => $applied];
     }
 
     /**

@@ -138,27 +138,79 @@ class SharedPackageOnePaymentActionTest extends TestCase
      */
     public function test_confirming_one_monthly_member_does_not_mark_the_package_or_sibling_paid(): void
     {
-        [$a, $b, $pkg] = $this->sharedPackage();
-        $pkg->update(['billing_mode' => 'monthly']);
-        $student = Student::findOrFail($a->StudentID);
+        [$a, $b, $pkg, $reports] = $this->monthlyPackageWithPendingReports();
         $h = $this->directorHeaders();
-        $reports = [];
-        foreach ([$a, $b] as $c) {
-            $c->update(['ScheduleMode' => 'date', 'Charge' => 8800, 'StartDate' => '2026-07-01', 'EndDate' => '2026-08-31', 'SessionCount' => 0]);
-            $inv = $this->invoice($c, $student, '2026-08', 8800, 'unpaid', 0, []);
-            $reports[] = PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $c->ID, 'InvoiceID' => $inv->id,
-                'reported_by_name' => 'x', 'payment_date' => '2026-08-20', 'payment_method' => 'cash', 'reported_amount' => 8800,
-                'status' => 'pending', 'report_token_hash' => hash('sha256', uniqid('r', true)), 'token_expires_at' => now()->addDay()]);
-        }
 
         $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$reports[0]->id}/confirm")->assertOk();
         $this->assertSame(1, (int) $a->fresh()->Paid);
         $this->assertSame(0, (int) $b->fresh()->Paid, 'a monthly sibling stays unpaid');
         $this->assertFalse((bool) $pkg->fresh()->paid, 'a monthly package is not settled by one member');
 
+        // #3892 review P1 (r4254422195): the package alert row reads the member ledgers, so after A only B's amount is owed.
+        $row = $this->packageAlertRow($h, $pkg);
+        $this->assertFalse($row['paid']);
+        $this->assertSame(8800, (int) $row['outstanding'], 'only B is still owed');
+
         $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$reports[1]->id}/confirm")->assertOk();
         $this->assertSame('confirmed', $reports[1]->fresh()->status);
         $this->assertSame(1, (int) $b->fresh()->Paid);
+
+        $row = $this->packageAlertRow($h, $pkg);
+        $this->assertTrue($row['paid'], 'every member confirmed: the package row is paid');
+        $this->assertSame(0, (int) $row['outstanding']);
+        $this->assertSame('monthly_due_soon', $row['payment_status']);
+        $this->assertFalse((bool) $pkg->fresh()->paid, 'the package flag itself is still never set by member confirmations');
+    }
+
+    /** #3892 review P1: the manual package paid toggle (FR-006) still settles the package row even with open member invoices. */
+    public function test_manual_paid_toggle_still_settles_a_monthly_package_row(): void
+    {
+        [, , $pkg] = $this->monthlyPackageWithPendingReports();
+        $h = $this->directorHeaders();
+        $this->assertFalse($this->packageAlertRow($h, $pkg)['paid']);
+
+        $this->withHeaders($h)->putJson("/api/v1/course-packages/{$pkg->id}", ['paid' => true, 'paid_at' => '2026-09-01'])->assertOk();
+
+        $row = $this->packageAlertRow($h, $pkg);
+        $this->assertTrue($row['paid']);
+        $this->assertSame(0, (int) $row['outstanding']);
+    }
+
+    /**
+     * Monthly ('date') package with two members, each with an unpaid 2026-08 invoice of 8800 and a pending report.
+     * Today is 2026-09-02, three days before the package's settlement day, so its alert row is always listed.
+     *
+     * @return array{0: \App\Models\StudentClass, 1: \App\Models\StudentClass, 2: CoursePackage, 3: list<PaymentReport>}
+     */
+    private function monthlyPackageWithPendingReports(): array
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-09-02 10:00:00');
+        [$a, $b, $pkg] = $this->sharedPackage();
+        $pkg->update(['billing_mode' => CoursePackage::BILLING_MODE_MONTHLY, 'settlement_day' => 5]);
+        $student = Student::findOrFail($a->StudentID);
+        $reports = [];
+        foreach ([$a, $b] as $c) {
+            $c->update(['ScheduleMode' => 'date', 'Charge' => 8800, 'StartDate' => '2026-07-01', 'EndDate' => '2026-08-31', 'SessionCount' => 0, 'settlement_day' => 5]);
+            $inv = $this->invoice($c, $student, '2026-08', 8800, 'unpaid', 0, []);
+            $reports[] = PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $c->ID, 'InvoiceID' => $inv->id,
+                'reported_by_name' => 'x', 'payment_date' => '2026-08-20', 'payment_method' => 'cash', 'reported_amount' => 8800,
+                'status' => 'pending', 'report_token_hash' => hash('sha256', uniqid('r', true)), 'token_expires_at' => now()->addDay()]);
+        }
+
+        return [$a->fresh(), $b->fresh(), $pkg->fresh(), $reports];
+    }
+
+    /**
+     * @param array<string, string> $h
+     * @return array<string, mixed>
+     */
+    private function packageAlertRow(array $h, CoursePackage $pkg): array
+    {
+        $row = collect($this->withHeaders($h)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())
+            ->firstWhere('package_id', (int) $pkg->id);
+        $this->assertIsArray($row, 'the monthly package has its alert row');
+
+        return $row;
     }
 
     /** @return array<string, string> */
