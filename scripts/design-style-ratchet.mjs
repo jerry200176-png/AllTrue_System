@@ -66,9 +66,9 @@ export function countBoxShadow(source) {
   );
 }
 
-// Extended_Pictographic plus common dingbat check/cross/star glyphs used as
-// icons; (c) (r) TM are typographic, not pictographs.
-const PICTOGRAPH = /[\p{Extended_Pictographic}✓✕✗★☆]/u;
+// Extended_Pictographic, flags, plus dingbat check/cross/star/pencil/arrow glyphs
+// used as icons; (c) (r) TM are typographic, not pictographs.
+const PICTOGRAPH = /[\p{Extended_Pictographic}\p{Regional_Indicator}✓✕✗★☆✎✏×▲▼◀▶]/u;
 const TYPOGRAPHIC = new Set(['©', '®', '™']);
 
 /** [start, end) of the Vue <template> block: last </template> before the next <script>/<style>. */
@@ -95,7 +95,7 @@ export function countTemplateEmoji(source) {
 }
 
 export function countNativeDialogs(source) {
-  const re = /(?<![\w$.])(?:window\.)?(?:alert|confirm)\s*\(/g;
+  const re = /(?<![\w$.])(?:(?:window|globalThis|self)\??\.)?(?:alert|confirm)\s*\(/g;
   let count = 0;
   for (const match of source.matchAll(re)) {
     const before = source.slice(Math.max(0, match.index - 16), match.index);

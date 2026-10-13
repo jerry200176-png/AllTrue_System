@@ -67,11 +67,12 @@ test('emoji are counted only inside the Vue <template> block', () => {
       <!-- \u{1F6A7} comment emoji is ignored -->
       <template v-if="x"><b>⚠️</b></template>
       <small>© AllTrue</small>
+      <button>✎ 編輯</button>
       <i>\u{1F468}\u200D\u{1F469}\u200D\u{1F467}</i>
     </template>
     <script setup>const label = '\u{1F389} </template>';</script>
   `;
-  assert.equal(countTemplateEmoji(vue), 4);
+  assert.equal(countTemplateEmoji(vue), 5);
   assert.equal(countStyleViolations(vue, { isVue: false }).emoji, 0);
 });
 
@@ -84,9 +85,10 @@ test('native dialogs: calls count, definitions and member calls do not', () => {
     const api = { confirm(id) { return id; } };
     dialog.confirm('ok');
     this.alert('ok');
+    globalThis.confirm('a'); window?.alert('b'); self.alert('c');
     class A { confirm(a: string): void { } }
   `;
-  assert.equal(countNativeDialogs(js), 3);
+  assert.equal(countNativeDialogs(js), 6);
   const vue = '<template><button @click="confirm(item)">x</button></template><script>alert(1)</script>';
   assert.equal(countStyleViolations(vue, { isVue: true }).native_dialog, 1);
 });

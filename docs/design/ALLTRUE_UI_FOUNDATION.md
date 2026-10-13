@@ -166,7 +166,7 @@ Rollback: revert the stacked PR; page-scoped + additive primitives. See audit ta
 
 ## 11. Style ratchet (only-down guards)
 
-Rules 2–6 of the anti-AI-slop plan (`docs/plans/2026-10-13-nine-area-engineering-plan.md` §10) are enforced like the raw-hex guard: existing pages keep their current counts, and no file may add more.
+Rules 2–6 of the anti-AI-slop UI plan (nine-area engineering plan §10, work package U1, Refs #3115) are enforced like the raw-hex guard: existing pages keep their current counts, and no file may add more.
 
 | Rule | Allowed | Counted as off-system |
 |---|---|---|
