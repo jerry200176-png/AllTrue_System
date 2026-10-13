@@ -81,6 +81,7 @@ class NonstandardDurationInventoryReportTest extends TestCase
         $csId = $this->sess($sc, '2026-06-01', '16:00:00', '19:00:00');
         $this->makeupSchedule($sc, '2026-06-01', '16:00:00', '19:00:00');
         $this->ledger($sc, $csId, 'deduct', 180);
+        DB::table('session_deduction_ledger')->where('student_class_id', $sc)->update(['source' => 'attendance_makeup']);
 
         $report = $this->report();
 
@@ -100,6 +101,7 @@ class NonstandardDurationInventoryReportTest extends TestCase
         $balanced = $this->course(['SessionDuration' => 120], $this->campusA);
         $this->ledger($balanced, 101, 'deduct', 180);
         $this->ledger($balanced, 101, 'reverse', 180);
+        DB::table('session_deduction_ledger')->where('student_class_id', $balanced)->update(['source' => 'attendance_regular']);
 
         $drifting = $this->course(['SessionDuration' => 120], $this->campusA);
         $this->ledger($drifting, 202, 'deduct', 180);
