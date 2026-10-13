@@ -64,10 +64,11 @@ class AccountingController extends Controller
             if ($svc->findDuplicate($course, $review['start_date'], $end) !== null) {
                 continue;
             }
-            $blocker = $review['blockers'][0] ?? null;
+            $preview = $svc->previewPeriod($course, $review['start_date'], $end);
+            // #3991: renewing an unpriced term opens no bill, so it is not offered as 「確認開立」.
+            $blocker = $review['blockers'][0] ?? ((int) $preview['charge'] <= 0 ? ['code' => 'renewal_unpriced', 'message' => '新一期沒有費用：請先設定月費；免費課程請續約後在登記收款勾選「免費／贈送」。'] : null);
             $oldEnd = Carbon::parse($course->getAttribute('EndDate'))->toDateString();
             $status = $blocker ? 'blocked' : ($oldEnd < $monthStart->toDateString() ? 'lapsed_no_lessons' : 'ready');
-            $preview = $svc->previewPeriod($course, $review['start_date'], $end);
             $totals[$status]++;
             $rows[] = [
                 'student_class_id' => (int) $course->getKey(),

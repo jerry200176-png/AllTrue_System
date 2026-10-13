@@ -60,6 +60,7 @@ class FreeGiftZeroBillTest extends TestCase
         $this->assertSame(Invoice::ZERO_REASON_FREE_GIFT, $row['zero_amount_reason'] ?? null);
         // The contract row is settled too, so the panel stops offering 登記這筆 (#3991 review).
         $this->assertTrue(collect($ledger->json('courses'))->firstWhere('id', $course->ID)['paid']);
+        $this->withToken($token)->postJson("/api/v1/invoices/{$invoice->id}/payments", ['Amount' => 100, 'PaidAt' => '2026-10-13', 'Method' => 'cash'])->assertStatus(422)->assertJsonPath('message', '免費／贈送帳單不能登記收款');
     }
 
     /** #3991 review: a zero-fee count course the resolver already calls `free` can still record its marked bill. */
@@ -81,6 +82,18 @@ class FreeGiftZeroBillTest extends TestCase
         $this->withToken($this->directorToken(2))->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))
             ->assertForbidden();
         $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
+        $admin = \Database\Factories\UserFactory::new()->superAdmin()->create(); // the super_admin exemption stays executable (round 4)
+        AuthToken::create(['user_id' => $admin->id, 'token' => $raw = bin2hex(random_bytes(16)), 'expires_at' => Carbon::now()->addDay()]);
+        $this->withToken($raw)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))->assertOk();
+    }
+
+    /** #3991 review round 4: a marked earlier term does not settle the course's current term in the ledger. */
+    public function test_a_marked_earlier_term_does_not_settle_the_current_one(): void
+    {
+        $course = $this->monthlyCourse($this->student());
+        Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-01', 'Note' => '', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid', 'billing_period' => '2026-09', 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+        $courses = $this->withToken($this->directorToken())->getJson('/api/v1/accounting/ledger?student_id=' . $course->StudentID)->assertOk()->json('courses');
+        $this->assertFalse(collect($courses)->firstWhere('id', $course->ID)['paid']);
     }
 
     /** #3991 review: an existing bill of another student is never relabeled. */
@@ -122,28 +135,15 @@ class FreeGiftZeroBillTest extends TestCase
         $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
     }
 
-    public function test_a_missing_fee_is_rejected_on_the_invoice_endpoint_without_the_marker(): void
+    /** #3991 review: POST /invoices never creates a NT$0 bill, marked or not; only director-record records a 免費／贈送 term. */
+    public function test_the_invoice_endpoint_refuses_any_nt0_bill(): void
     {
-        $token = $this->directorToken();
         $student = $this->student();
-        $course = $this->monthlyCourse($student);
-        $body = ['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01',
-            'TotalAmount' => 0, 'billing_period' => '2026-10'];
-
-        $this->withToken($token)->postJson('/api/v1/invoices', $body)
-            ->assertStatus(422)->assertJsonPath('code', 'zero_amount_unmarked');
-        $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
-
-        $created = $this->withToken($token)->postJson('/api/v1/invoices', $body + ['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT])
-            ->assertCreated();
-        $bill = Invoice::query()->findOrFail((int) $created->json('id'));
-        $this->assertSame(Invoice::ZERO_REASON_FREE_GIFT, $bill->zero_amount_reason);
-        $this->assertSame('paid', (string) $bill->Status); // settled at issue, never an open NT$0 bill
-
-        // A course with a fee cannot carry the mark on this endpoint either.
-        $priced = $this->monthlyCourse($student, ['Rate' => 750]);
-        $this->withToken($token)->postJson('/api/v1/invoices', ['StudentClassID' => $priced->ID] + $body + ['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT])
-            ->assertStatus(422)->assertJsonPath('code', 'free_gift_course_has_fee');
+        $body = ['StudentID' => $student->id, 'StudentClassID' => $this->monthlyCourse($student)->ID, 'IssueDate' => '2026-10-01', 'TotalAmount' => 0, 'billing_period' => '2026-10'];
+        foreach ([[], ['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]] as $extra) {
+            $this->withToken($this->directorToken())->postJson('/api/v1/invoices', $body + $extra)->assertStatus(422)->assertJsonPath('code', 'zero_amount_unmarked');
+        }
+        $this->assertSame(0, Invoice::query()->where('StudentID', $student->id)->count());
     }
 
     public function test_an_invoice_for_another_students_course_is_rejected(): void

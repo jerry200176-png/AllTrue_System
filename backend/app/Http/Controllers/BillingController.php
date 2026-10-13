@@ -18,7 +18,6 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\Rule;
 
 class BillingController extends Controller
 {
@@ -106,20 +105,13 @@ class BillingController extends Controller
             'MonthlySplit' => 'nullable|boolean',
             'SplitStart' => 'nullable|date',
             'SplitEnd' => 'nullable|date|after_or_equal:SplitStart',
-            'zero_amount_reason' => ['nullable', 'string', Rule::in([Invoice::ZERO_REASON_FREE_GIFT])],
         ]);
-        // #3991 (Founder 2026-10-13): a NT$0 bill must be marked 免費／贈送; a missing or 0 fee is never free by itself.
-        $markedFree = ($data['zero_amount_reason'] ?? null) === Invoice::ZERO_REASON_FREE_GIFT;
-        if ((int) $data['TotalAmount'] === 0 && !$markedFree) {
+        // #3991 (Founder 2026-10-13): a missing or 0 fee is never free by itself. The only NT$0 bill is the single-course,
+        // single-term 免費／贈送 bill recorded from 登記收款 (director-record), which checks the course's fee evidence.
+        if ((int) $data['TotalAmount'] === 0) {
             return response()->json([
-                'message' => 'NT$0 帳單必須標記為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」；沒填費用的課程請先設定費用。沒有建立任何帳單。',
+                'message' => 'NT$0 帳單請從「登記收款」勾選「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」登錄；沒填費用的課程請先設定費用。沒有建立任何帳單。',
                 'code' => 'zero_amount_unmarked',
-            ], 422);
-        }
-        if ($markedFree && ((int) $data['TotalAmount'] !== 0 || collect($data['Items'] ?? [])->contains(fn ($i) => (int) ($i['Amount'] ?? 0) !== 0))) {
-            return response()->json([
-                'message' => '標記為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」的帳單金額必須是 NT$0。沒有建立任何帳單。',
-                'code' => 'free_gift_requires_zero',
             ], 422);
         }
 
@@ -131,7 +123,7 @@ class BillingController extends Controller
             $this->assertInvoiceStudentCampusAllowed($request, (int) $itemCourse->student?->CampusID);
         }
 
-        return DB::transaction(function () use ($data, $issuer, $markedFree) {
+        return DB::transaction(function () use ($data, $issuer) {
             // Lock order everywhere: student, then courses, then invoices. Purge locks the student
             // first too, so an invoice can never be written for a student deleted concurrently (#3593).
             if (!Student::query()->whereKey($data['StudentID'])->lockForUpdate()->first(['id'])) {
@@ -141,7 +133,7 @@ class BillingController extends Controller
             $courseIds = collect([$data['StudentClassID'] ?? null])->merge(array_column($data['Items'] ?? [], 'StudentClassID'))
                 ->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
             if ($courseIds !== []) {
-                $found = StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID', 'StudentID', 'Rate', 'Charge', 'PackageID']);
+                $found = StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID', 'StudentID']);
                 if ($found->count() !== count($courseIds)) {
                     return response()->json(['message' => '找不到部分課程，可能已被刪除'], 404); // never bill a deleted contract
                 }
@@ -150,13 +142,6 @@ class BillingController extends Controller
                     return response()->json([
                         'message' => '帳單上的課程不屬於這位學生，不能建立帳單。沒有建立任何帳單。',
                         'code' => 'invoice_course_student_mismatch',
-                    ], 422);
-                }
-                // #3991 review: same rule as director-record — only a course with no fee may carry the 免費／贈送 mark.
-                if ($markedFree && $found->contains(fn (StudentClass $c) => Invoice::courseHasFee($c))) {
-                    return response()->json([
-                        'message' => '這門課有設定費用（或費用在套裝上），不能標記為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。沒有建立任何帳單。',
-                        'code' => 'free_gift_course_has_fee',
                     ], 422);
                 }
             }
@@ -203,8 +188,7 @@ class BillingController extends Controller
                     'ScheduleModeAtIssue' => $scheduleModeAtIssue,
                     'Note' => $data['Note'] ?? '',
                     'billing_period' => $data['billing_period'] ?? null,
-                    'zero_amount_reason' => $markedFree ? Invoice::ZERO_REASON_FREE_GIFT : null,
-                ] + ($markedFree ? ['Status' => 'paid'] : []), $items, true); // a marked NT$0 bill is settled at issue
+                ], $items, true);
             } catch (BillingPeriodInvoiceExists) {
                 return response()->json([
                     'message' => '此課程該月份已有有效帳單，請勿重複建立。',
@@ -240,8 +224,8 @@ class BillingController extends Controller
             }
             // 先鎖帳單再判斷，避免與確認不收（void）競爭。
             $fresh = Invoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
-            if (!$fresh || (string) $fresh->getAttribute('Status') === 'void') {
-                return response()->json(['message' => '作廢帳單不可登記收款'], 422);
+            if (!$fresh || (string) $fresh->getAttribute('Status') === 'void' || $fresh->isMarkedFreeGift()) { // #3991: a 免費／贈送 bill takes no payment
+                return response()->json(['message' => $fresh?->isMarkedFreeGift() ? '免費／贈送帳單不能登記收款' : '作廢帳單不可登記收款'], 422);
             }
             $invoice = $fresh;
             // R28 (#3873 item 4), same rule as payment-report confirm: what is paid comes from Payment rows, never
