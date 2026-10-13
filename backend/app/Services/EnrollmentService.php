@@ -1238,6 +1238,7 @@ class EnrollmentService
                         ->where('s.status', 'scheduled')->whereNull('s.original_schedule_id')
                         ->where(fn ($q) => $q->whereNull('s.student_course_id')->orWhereNotNull('sc.ID'))
                         ->where(fn ($q) => $q->whereNull('sc.ClassType')->orWhereRaw('LOWER(sc.ClassType) <> ?', ['trial']))
+                        ->where(fn ($q) => $q->whereNull('sc.ID')->orWhereRaw('COALESCE(sc.Stop, 0) = 0 AND (sc.StartDate IS NULL OR sc.StartDate <= ?) AND (sc.EndDate IS NULL OR sc.EndDate >= ?)', [$row['date'], $row['date']]))
                         ->where('s.start_time', '<', substr($end, 0, 5))->where('s.end_time', '>', substr($start, 0, 5))
                         ->get(['s.id', 's.status', 's.student_course_id', 's.start_time']),
                     (string) $row['date']

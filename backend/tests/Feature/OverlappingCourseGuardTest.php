@@ -195,6 +195,9 @@ class OverlappingCourseGuardTest extends TestCase
 
         $this->assertSame('renewal_confirmed_slot_overlap', $this->renew($fx, [$past], ['session_plan' => $plan])->json('code'));
         $this->assertSame($before, $this->counts());
+        \App\Models\Schedule::query()->update(['student_course_id' => $fx[3]]);
+        DB::table('StudentClass')->where('ID', $fx[3])->update(['Stop' => 1]); // a stopped contract's schedule-only row is not live occupancy
+        $this->assertNotSame('renewal_confirmed_slot_overlap', $this->renew($fx, [$past], ['session_plan' => $plan])->json('code'));
     }
 
     /** #3738 review: an existing TRIAL session is add-on, not a clash (canonical guard excludes trial). */
