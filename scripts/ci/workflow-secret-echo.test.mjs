@@ -117,7 +117,7 @@ function lex(src, base = 0, heredocBody = false) {
     else if (c === '\n') { push('\n'); i++; heredocs(); }
     else if (c === '#') { const e = src.indexOf('\n', i); comments.push([base + i, base + (e < 0 ? src.length : e), cur]); i = e < 0 ? src.length : e; }
     else if (two === '&&' || two === '||' || two === '|&' || two === ';;') { push(two === ';;' ? ';' : two); i += 2; }
-    else if (c === ';' || c === '(' || c === ')' || c === '|' || (c === '&' && src[i + 1] !== '>')) { push(c === '|' || c === '&' ? c : ';'); i++; }
+    else if (c === ';' || c === '(' || c === ')' || c === '{' || c === '}' || c === '|' || (c === '&' && src[i + 1] !== '>')) { push(c === '|' || c === '&' ? c : ';'); i++; }
     else if ((c === '<' || c === '>') && src[i + 1] === '(') { // process substitution word
       const j = matchClose(src, i + 1, '(', ')'); if (j < 0) { bad = true; break; }
       const w = { text: '\x03', pos: [base + i], q: [''], subs: [], off: base + i, procOut: c === '>' };
@@ -474,6 +474,7 @@ function scanAll(items) {
     ...runs.flatMap(([p, s]) => scanScript(`${name}${p}`, s).map((f) => ({ ...f, context: createHash('sha256').update(s).digest('hex').slice(0, 16) }))),
     // `shell: bash -x {0}` traces every command; an expression shell may pull a traced value from anywhere in the file
     ...shells.filter(([, v]) => TRACE.test(v)).map(([p, v]) => ({ where: `${name}${p}`, text: `shell: ${v}`, why: 'shell tracing' })),
+    ...shells.filter(([, v]) => /^(?:pwsh|powershell|cmd|python|node|ruby)(?:\s|$)/i.test(v.trim())).map(([p, v]) => ({ where: `${name}${p}`, text: `shell: ${v}`, why: 'unsupported shell; use a reviewed Bash transport' })),
     ...(shells.some(([, v]) => v.includes('${{')) ? all.filter((v) => TRACE.test(v)).map((v) => ({ where: name, text: `expression shell: ${v}`, why: 'shell tracing' })) : []),
     ...kvs.filter(([, k, v]) => /^SHELLOPTS$/i.test(k) && /xtrace/.test(v)).map(([p, k, v]) => ({ where: `${name}${p}`, text: `${k}: ${v}`, why: 'shell tracing' })),
     ...kvs.filter(([, k, v]) => isSecretName(k) && v.trim() !== '' && !FIXTURES.has(v) && !v.includes('${{'))
@@ -536,6 +537,9 @@ export const trip = {
   'later command allowance cannot excuse earlier echo': blk('echo "$DB_PASSWORD"; echo hi # secret-echo-allow: harmless later command'),
 
   'nice long operand env dump': blk('nice --adjustment 5 env'),
+  'function body env dump': blk('function f { env; }; f'),
+  'function body secret print': blk('f() { echo "$DB_PASSWORD"; }; f'),
+  'powershell secret print': 'jobs:\n  j:\n    steps:\n      - shell: pwsh\n        run: Write-Output $env:DB_PASSWORD',
   'sudo long operand env dump': blk('sudo --user root env'),
   'secret filename stderr diagnostic': blk('cat "$DB_PASSWORD" > credentials.txt'),
   'secret head argument stderr diagnostic': blk('head "$DB_PASSWORD" > credentials.txt'),
