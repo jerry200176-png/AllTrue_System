@@ -103,6 +103,9 @@ jobs:
       - name: Test bug detail dump contract
         run: python3 scripts/tests/test_bug_detail_dump.py
 
+      - name: Test permanent write-back cursor
+        run: python3 -m unittest discover -s scripts/bug-writeback -p 'test_writeback_cursor.py'
+
       - name: Test in-app weekly one-pager
         run: python3 scripts/tests/test_inapp_weekly_onepager.py
       - name: Test diagnose scripts print ids only (#3605)
