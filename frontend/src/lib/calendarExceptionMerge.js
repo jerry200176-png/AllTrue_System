@@ -12,18 +12,22 @@ function sameCourseDate(exception, targetDate, courseId) {
     && toExceptionYmd(exception.schedule_date) === toExceptionYmd(targetDate);
 }
 
-export function hasLeaveExceptionForCourseDate(exceptions = [], targetDate, courseId) {
+// #3914: a leave marker with a start time names one lesson (a date can hold two); one without a time covers the course/date.
+function leaveCoversStart(exception, startTime) {
+  const at = normalizeExceptionStartTime(exception?.start_time);
+  const want = normalizeExceptionStartTime(startTime);
+  return !at || !want || at === want;
+}
+
+export function hasLeaveExceptionForCourseDate(exceptions = [], targetDate, courseId, startTime = null) {
   return (exceptions || []).some((exception) =>
     String(exception?.status || '').toLowerCase() === 'leave'
       && sameCourseDate(exception, targetDate, courseId)
+      && leaveCoversStart(exception, startTime)
   );
 }
 
 export function scheduledExceptionStartSetForCourseDate(exceptions = [], targetDate, courseId) {
-  if (hasLeaveExceptionForCourseDate(exceptions, targetDate, courseId)) {
-    return new Set();
-  }
-
   return new Set(
     (exceptions || [])
       .filter((exception) =>
@@ -31,7 +35,7 @@ export function scheduledExceptionStartSetForCourseDate(exceptions = [], targetD
           && sameCourseDate(exception, targetDate, courseId)
       )
       .map((exception) => normalizeExceptionStartTime(exception.start_time))
-      .filter(Boolean)
+      .filter((start) => start && !hasLeaveExceptionForCourseDate(exceptions, targetDate, courseId, start))
   );
 }
 
@@ -39,7 +43,7 @@ export function shouldRenderScheduledException(exception, exceptions = [], targe
   if (String(exception?.status || '').toLowerCase() !== 'scheduled') return false;
   const courseId = exception?.student_course_id;
   if (courseId == null) return true;
-  if (hasLeaveExceptionForCourseDate(exceptions, targetDate, courseId)) return false;
+  if (hasLeaveExceptionForCourseDate(exceptions, targetDate, courseId, exception?.start_time)) return false;
   // A 'scheduled' marker represents one specific (course, date, start_time) slot. If
   // that exact slot was itself later rescheduled again — a same-slot 'rescheduled'
   // marker created after this one — this entry is stale/superseded and must not
