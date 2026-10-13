@@ -52,6 +52,7 @@
   --ds-ink: #0d253d;
   --ds-ink-secondary: #273951;
   --ds-ink-mute: #5b6b84; /* 4.81:1 on surface-2, 5.12 on canvas-soft, 5.4 on white (WCAG AA) */
+  --ds-ink-faint: #94a3b8; /* disabled / decorative meta only (below AA): never body text */
 
   --ds-canvas: #ffffff;
   --ds-canvas-soft: #f6f9fc;
@@ -59,10 +60,13 @@
   --ds-hairline-input: #a8c3de;
   --ds-success: #1a8245;
   --ds-success-wash: #e7f4ec;
+  --ds-success-line: #86efac; /* soft border on --ds-success-wash */
   --ds-warning: #b54708;
   --ds-warning-wash: #fdf0e6;
+  --ds-warning-line: #fcd34d; /* soft border on --ds-warning-wash */
   --ds-danger: #e11d48;
   --ds-danger-wash: #fdeaef;
+  --ds-danger-line: #fca5a5; /* soft border on --ds-danger-wash */
   --ds-info: #C2410C; /* also used as text: AA 4.87:1 on --ds-info-wash, 5.18:1 on white */
   --ds-info-wash: #FFF8E1;
   --ds-focus-ring: rgba(245, 124, 0, 0.22);
@@ -235,14 +239,18 @@
   --ds-ink: #e2e8f0;
   --ds-ink-secondary: #cbd5e1;
   --ds-ink-mute: #94a3b8;
+  --ds-ink-faint: #94a3b8; /* same as dark ink-mute: CourseManagement meta counts stay >= 4.5:1 on dark surfaces */
   --ds-canvas: #1e293b;
   --ds-canvas-soft: #0f172a;
   --ds-surface-2: #0f172a;
   --ds-hairline: #334155;
   --ds-hairline-input: #475569;
   --ds-success-wash: #052e16;
+  --ds-success-line: #166534;
   --ds-warning-wash: #431407;
+  --ds-warning-line: #92400e;
   --ds-danger-wash: #450a0a;
+  --ds-danger-line: #991b1b;
   --ds-info: #FFB74D;
   --ds-info-wash: rgba(255, 167, 38, 0.16);
   --ds-focus-ring: rgba(255, 183, 77, 0.30);
