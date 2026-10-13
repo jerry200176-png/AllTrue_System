@@ -54,6 +54,11 @@ describe('BindingManagementPage responsive presentation contract', () => {
       expect(row).toContain('回報超級管理員');
     }
     expect(source).not.toContain('解除錯誤或舊的綁定');
+    // The sidebar/onboarding copy must not advertise unbinding either (#3915 review, #3933).
+    const featureMap = readFileSync(resolve(__dirname, '../../lib/roleFeatureMap.js'), 'utf8');
+    const entry = featureMap.split('\n').find((l) => l.includes("'binding-management':"));
+    expect(entry).toBeTruthy();
+    expect(entry).not.toContain('解除');
   });
 
   it('keeps destructive unbinding on the existing confirmation and API path', () => {

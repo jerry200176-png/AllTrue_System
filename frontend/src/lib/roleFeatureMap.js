@@ -26,7 +26,7 @@ const FEATURE_USAGES = {
     'classroom': '設定分校各間教室名稱、容納人數與可用設備，利於排課防衝堂。',
     'subject-settings': '新增或維護分校開設之科目名稱、年級分類與課綱設定。',
     'line-integration': '設定 LINE 官方帳號推播、訊息範本與學生到離班即時推播狀態。',
-    'binding-management': '家長綁不上 LINE 時，查綁定狀態、對照處理方式，解除舊綁定。',
+    'binding-management': '家長綁不上 LINE 時，查綁定狀態、對照處理方式。',
     'binding-conflicts': '當多位家長綁定同一電話或資料衝突時，核對身分並排除衝突。',
     'binding-health': '查看全校學生家長 LINE 綁定覆蓋率與推播送達成效指標。',
     'director-accounts': '總部專用：審核各分校新註冊之主任帳號權限。',
