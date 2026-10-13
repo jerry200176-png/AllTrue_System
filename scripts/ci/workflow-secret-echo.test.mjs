@@ -30,6 +30,9 @@ const FILTERS = new Set(['grep', 'sed', 'awk', 'cut', 'tr', 'sort', 'uniq', 'hea
 // never trusted to keep an argument quiet (they print or execute it)
 const NO_ARG_TRUST = new Set(['', 'echo', 'printf', 'print', 'cat', 'tee', 'logger', 'eval', 'bash', 'sh', 'zsh', 'dash', 'ksh', 'xargs', 'timeout', 'nohup', 'stdbuf', 'watch']);
 const ALIAS = /\/dev\/(?!null\b)|\/proc\//;
+// GitHub renders the job summary and shows GITHUB_OUTPUT / GITHUB_ENV values in later steps: a file
+// redirect to one of them is a public sink, not a safe file
+const PUBLIC_FILE = /^\$\{?GITHUB_(?:STEP_SUMMARY|OUTPUT|ENV)\}?$/;
 const RESERVED = /^(?:\{|\}|if|then|elif|else|fi|do|done|while|until|!|time|esac)$/;
 
 // --- shell lexer: commands with words (char text + source offset + quote per char), redirects, heredocs, nested substitutions
@@ -174,7 +177,8 @@ function resolve(words) { // skip assignments and wrapper commands; `dump` marks
       return { k, name, dump: !names.length || names.some((n) => isSecretName(n.replace(/^\$\{?|\}$/g, ''))) };
     }
     const opts = args.every((a) => a.startsWith('-'));
-    const dump = (/^(?:export|readonly)$/.test(name) && args.every((a) => a === '-p')) || (name === 'set' && !args.length)
+    const dump = (name === 'export' && args.every((a) => a === '-p'))
+      || (name === 'readonly' && args.every((a) => /^-[aAfp]+$/.test(a))) || (name === 'set' && !args.length)
       || (/^(?:declare|typeset)$/.test(name) && (opts || (args.some((a) => /^-[a-zA-Z]*p/.test(a)) && args.some((a) => !a.startsWith('-') && isSecretName(a)))));
     return { k, name, dump };
   }
@@ -187,7 +191,7 @@ function stdoutTarget(c, initial) { // final destination of fd 1 after the comma
     if (/^</.test(r.op) || (r.fd !== '' && r.fd !== '1' && r.fd !== '&')) continue;
     const t = r.target?.text ?? '';
     if (r.op === '>&') fd1 = t === '1' ? fd1 : t === '-' ? 'null' : 'log';
-    else fd1 = isAlias(r.target ?? { text: '' }) ? 'log' : t === '/dev/null' ? 'null' : 'file';
+    else fd1 = isAlias(r.target ?? { text: '' }) || PUBLIC_FILE.test(t) ? 'log' : t === '/dev/null' ? 'null' : 'file';
   }
   return fd1;
 }
@@ -236,6 +240,16 @@ function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sen
       && c.words.slice(info.k + 1).every((w) => assignRe.test(w.text) || /^-/.test(w.text))));
     const viaSink = (cred) => (STDOUT_ONLY.has(info.name) ? sink(P, s, ctx, cred) : 'unsafe');
     if (info.dump) rec(c.words[info.k]?.off ?? c.redirs[0]?.off, viaSink(false));
+    if (/^(?:ba|da|z|k)?sh$/.test(info.name)) { // `bash -c '<script>'` runs a nested shell program: analyze it too
+      const opts = c.words.slice(info.k + 1), ci = opts.findIndex((w) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(w.text));
+      const body = ci >= 0 ? opts[ci + 1] : null;
+      if (body) {
+        const inner = lex(body.text, body.pos[0] ?? body.off);
+        out.comments?.push(...inner.comments);
+        if (inner.bad) rec(body.off, 'unsafe');
+        else analyze(inner, 'top', out, exprs);
+      }
+    }
     for (const w of c.words) {
       const capture = pure && assignRe.test(w.text) && /^[^=]*=\x03$/.test(w.text) && w.subs.length === 1;
       if (capture && cleanCapture(w.subs[0].script.src)) { collectRaw(w.subs[0].script, out); continue; } // NAME="$(...)"
@@ -510,6 +524,16 @@ export const trip = {
   'set -e -x': blk('set -e -x'),
   'set -o pipefail -x': blk('set -o pipefail -x'),
   'set -e continued -x': blk('set -e \\', '  -x'),
+  // round 9 (Codex review of 6a56617)
+  'cat .env >> $GITHUB_STEP_SUMMARY': blk('cat backend/.env >> "$GITHUB_STEP_SUMMARY"'),
+  'echo secret >> $GITHUB_STEP_SUMMARY': blk('echo "$DB_PASSWORD" >> $GITHUB_STEP_SUMMARY'),
+  'env >> ${GITHUB_OUTPUT}': blk('env >> "${GITHUB_OUTPUT}"'),
+  'echo secret >> $GITHUB_ENV': blk('echo "X=$DB_PASSWORD" >> "$GITHUB_ENV"'),
+  'readonly -ap': blk('readonly -ap'),
+  'readonly -Ap': blk('readonly -Ap'),
+  "bash -c 'env'": blk("bash -c 'env'"),
+  "sh -c 'printenv'": blk("sh -c 'printenv'"),
+  "bash -ec 'export -p'": blk("bash -ec 'export -p'"),
   'composite action run step': 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo "$DB_PASSWORD"',
 };
 export const ok = {
@@ -534,7 +558,7 @@ export const ok = {
   'annotated line': blk('curl -u "u:$DB_PASSWORD" https://x # secret-echo-allow: basic auth argument, curl never prints it',
     'curl -u "u:$DB_PASSWORD" "https://x/#a" # secret-echo-allow: basic auth argument, curl never prints it'),
   'declare -p non-secret / .envrc / .env.example*': blk('declare -p HOME', 'cat .envrc', 'cp .env.example* /tmp/'),
-  'non-credential names, fixtures, untraced set': blk('echo "$BYPASS_REASON"', 'echo "$PWD"', 'set +x', 'set -euo pipefail', 'set -e -o pipefail', 'command -v env', 'readonly X=1') + '\nenv:\n  BYPASS_REASON: approved\n  COMPASS_MODE: north\n  DB_PASSWORD: ci-ephemeral',
+  'non-credential names, fixtures, untraced set': blk('echo "$BYPASS_REASON"', 'echo "$PWD"', 'set +x', 'set -euo pipefail', 'set -e -o pipefail', 'command -v env', 'readonly X=1', 'echo "count=3" >> "$GITHUB_OUTPUT"', "bash -c 'echo hi'") + '\nenv:\n  BYPASS_REASON: approved\n  COMPASS_MODE: north\n  DB_PASSWORD: ci-ephemeral',
   'empty credential value': "env:\n  DB_PASSWORD: ''\njobs:\n  j:\n    steps:\n      - uses: x/y@v1\n        with: { password: '' }",
   'step name mentions xtrace / untraced shells': 'jobs:\n  j:\n    steps:\n      - name: Diagnose xtrace\n        shell: bash -eo pipefail {0}\n        run: echo hi',
   'github-script reading process.env': "jobs:\n  j:\n    steps:\n      - uses: actions/github-script@v7\n        with:\n          script: |\n            const n = process.env.ISSUE_NUMBER",
