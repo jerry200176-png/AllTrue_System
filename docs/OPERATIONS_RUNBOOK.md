@@ -152,7 +152,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 4. **Backend-only 不跑前端 build**：只改 `backend/**` 或 Composer 依賴時跑 PHPUnit/MySQL 與 PHPStan，不跑 Vite build。
 5. **Workflow 改動保守全跑**：修改 `.github/workflows/**` 時，CI 必須保守跑完整前後端檢查，避免 path filter 失手。
 6. **Docs-only merge 不部署**：`deploy.yml` 必須先偵測 main 最新 commit 是否含 `backend/**`、`frontend/**`、Composer 或 deploy workflow 變動；沒有 deployable diff 就跳過 production deploy。
-7. **Production deploy 不取消、前置檢查不佔鎖**：`deploy.yml` 的 production-side-effect jobs 共用 `alltrue-production-side-effects-v2` 且 `cancel-in-progress: false`；前置 contract/classification job 不持有 production lock，避免 queue 被 pending gate 或重複 preflight 卡死。Legacy case-specific repair workflows 不屬於 release executor，仍依 Control Plane contract 管理。
+7. **Production deploy 不取消、前置檢查不佔鎖**：`deploy.yml` 的 production-side-effect jobs 共用 `alltrue-production-side-effects-v2`、`cancel-in-progress: false` 且 `queue: max`（排隊，不會互相取消 pending run）；前置 contract/classification job 不持有 production lock，避免 queue 被 pending gate 或重複 preflight 卡死。Legacy case-specific repair workflows 不屬於 release executor，仍依 Control Plane contract 管理。
 8. **禁止用 production Pi 省 CI minutes**：不得把 `/home/admin` production Pi 註冊為 PHPUnit/self-hosted test runner；也不得為省 minutes 在 Pi 上跑 `php artisan test` / `phpunit`。
 9. **低風險 docs 小修先累積**：README footer 日期、錯字、單一連結、排版等不影響系統行為的小修，先保留在本地 docs batch；不要單獨開 PR 觸發 Actions。
 10. **同類 docs 一次送出**：README 展示、FAQ、INDEX、Runbook、角色手冊等同日低風險文件修正，合併成一個 `chore/*` docs PR。
