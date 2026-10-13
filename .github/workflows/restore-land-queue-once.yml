@@ -1,0 +1,47 @@
+name: One-time restore of authorized Land queue
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restore-land-queue-20261013
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    if: >-
+      github.repository == 'jerry200176-png/AllTrue_System' &&
+      github.actor == 'jerry200176-png' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ci/restore-land-queue-20261013' &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Enable only the verified existing queue and dispatch main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: jerry200176-png/AllTrue_System
+          WORKFLOW_ID: '375934525'
+        shell: bash
+        run: |
+          set -euo pipefail
+          path="$(gh api "repos/$REPO/actions/workflows/$WORKFLOW_ID" --jq '.path')"
+          name="$(gh api "repos/$REPO/actions/workflows/$WORKFLOW_ID" --jq '.name')"
+          [[ "$path" == '.github/workflows/land-queue.yml' && "$name" == 'Land queue' ]] || {
+            echo 'Unexpected workflow identity; refused.' >&2
+            exit 1
+          }
+          gh api --method PUT "repos/$REPO/actions/workflows/$WORKFLOW_ID/enable"
+          state="$(gh api "repos/$REPO/actions/workflows/$WORKFLOW_ID" --jq '.state')"
+          [[ "$state" == active ]] || { echo 'Workflow was not enabled.' >&2; exit 1; }
+          echo 'Verified original Land queue is active.'
+          gh api --method POST "repos/$REPO/actions/workflows/$WORKFLOW_ID/dispatches" -f ref=main
+          echo 'Dispatched original queue from main; existing merge gates remain in force.'
