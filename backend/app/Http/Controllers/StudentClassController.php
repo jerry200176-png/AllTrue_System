@@ -4328,6 +4328,7 @@ class StudentClassController extends Controller
                     ],
                 ], 422);
             }
+            \App\Support\LearningRecordMutableOwnership::assertTransferAllowed($sessions->pluck('id'), (int) $target->TeacherID); // #3824
 
             // A transfer consumes entitlement in the target contract. Do this
             // preflight before moving any row so a count-based target cannot

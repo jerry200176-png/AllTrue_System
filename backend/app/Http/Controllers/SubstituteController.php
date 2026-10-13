@@ -235,12 +235,17 @@ class SubstituteController extends Controller
             && $origDate !== '' && $origStart !== '' && $origEnd !== ''
             && ($origDate !== $sessionDate || $origStart !== $startTime || $origEnd !== $this->hhmm($session->EndTime));
 
+        if (\App\Support\LearningRecordMutableOwnership::protectedRecordForSession((int) $session->id)) {
+            return \App\Support\LearningRecordMutableOwnership::lockedResponse(); // #3824
+        }
+
         try {
             $result = DB::transaction(function () use (
                 $session, $courseId, $sessionDate, $startTime, $oldTeacherId, $newTeacherId,
                 $lastNotification, $currentOperatorId, $payload,
                 $shouldRestoreTime, $origDate, $origStart, $origEnd, $campusId
             ) {
+                \App\Support\LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $session->id); // #3824
                 // TD-076 B1: one writer restores the live row (and slot); none at the slot = legacy delete path below.
                 $rescheduled = null;
                 $scheduledRow = OccurrenceAssignmentService::handles($session, $campusId)
@@ -358,6 +363,8 @@ class SubstituteController extends Controller
         } catch (\App\Exceptions\SlotOccupiedException $e) {
             // #1161: reverting onto an occupied slot is an expected domain outcome.
             return response()->json($e->toResponseArray(), 422);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            return $e->getResponse(); // #3824 transactional recheck: keep the 409
         } catch (\Throwable $e) {
             Log::error('[substitute_undo] failed', [
                 'class_session_id' => $classSessionId,
