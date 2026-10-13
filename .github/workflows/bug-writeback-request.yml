@@ -3,7 +3,7 @@ name: Bug write-back request (Phase-A triage / follow-up)
 
 # Governed cloud path for the in-app write-backs that otherwise need workflow_dispatch
 # (Founder 2026-10-13). A merged PR appends entries to the request file; the request_ids added
-# since the last successful run of this workflow run, in file order, through the same script as
+# since the last fully attempted run, in file order, through the same script as
 # bug-phase-a-triage.yml and
 # bug-followup-comment.yml. Never resolved/closed (Phase-C keeps those). Public repo: the log
 # carries request IDs, bug IDs, actions and counts only; remote output is discarded.
@@ -14,10 +14,10 @@ on:
       - 'operations/closeout/bug-writeback.request.yml'
 
 # One run at a time; `queue: max` keeps every pending run. Queue order is not push order, so each
-# run diffs against the last run that *reached the apply step* or succeeded (durable, from the
+# run diffs against the last run that *completed all attempts* or succeeded (durable, from the
 # Actions API), not its own `before`: a later push that starts first applies the earlier push's
 # entries too, in file order, and the earlier run then finds nothing new. A run that failed before
-# applying (e.g. SSH setup) is not a checkpoint, so its entries run next time; the cursor does
+# applying or during a partial batch is not a checkpoint, so its entries run next time; the cursor does
 # advance past failed requests (retry = append a new request_id), so one bad entry never blocks.
 concurrency:
   group: bug-writeback-request
@@ -56,10 +56,11 @@ jobs:
           set -euo pipefail
           python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet 'pyyaml==6.0.2'
           last=""
-          for run in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/bug-writeback-request.yml/runs?branch=main&event=push&status=completed&per_page=20" --jq '.workflow_runs[] | select(.conclusion != "cancelled") | "\(.id):\(.head_sha):\(.conclusion)"'); do
+          runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/bug-writeback-request.yml/runs?branch=main&event=push&status=completed&per_page=100" --jq '.workflow_runs[] | select(.conclusion != "cancelled") | "\(.id):\(.head_sha):\(.conclusion)"')
+          for run in $runs; do
             IFS=: read -r rid sha concl <<< "$run"
-            # a checkpoint is a run that succeeded or reached the apply step (attempted its requests)
-            if [[ "$concl" == success ]] || [[ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$rid/jobs" --jq '[.jobs[].steps[] | select(.name == "Apply new requests (IDs-only log)") | .conclusion] | any(. == "success" or . == "failure")')" == true ]]; then
+            attempted=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$rid/jobs" --jq '[.jobs[].steps[] | select(.name == "Checkpoint fully attempted requests") | .conclusion] | any(. == "success")')
+            if [[ "$concl" == success || "$attempted" == true ]]; then
               last="$sha"
               break
             fi
@@ -69,15 +70,20 @@ jobs:
             echo "count=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          BEFORE="${last:-$EVENT_BEFORE}"
-          [[ "$BEFORE" =~ ^[0-9a-f]{40}$ && "$BEFORE" != 0000000000000000000000000000000000000000 ]] || { echo "no previous commit; refusing"; exit 1; }
-          git merge-base --is-ancestor "$BEFORE" "$GITHUB_SHA" || { echo "last applied commit is not an ancestor; refusing"; exit 1; }
-          if git cat-file -e "${BEFORE}:${REQUEST}" 2>/dev/null; then
-            git show "${BEFORE}:${REQUEST}" > "$RUNNER_TEMP/before.yml"
+          [[ "$EVENT_BEFORE" =~ ^[0-9a-f]{40}$ && "$EVENT_BEFORE" != 0000000000000000000000000000000000000000 ]] || { echo "no push parent; refusing"; exit 1; }
+          git merge-base --is-ancestor "$EVENT_BEFORE" "$GITHUB_SHA" || { echo "push parent is not an ancestor; refusing"; exit 1; }
+          if git cat-file -e "${EVENT_BEFORE}:${REQUEST}" 2>/dev/null; then
+            git show "${EVENT_BEFORE}:${REQUEST}" > "$RUNNER_TEMP/push-before.yml"
           else
-            : > "$RUNNER_TEMP/before.yml"
+            : > "$RUNNER_TEMP/push-before.yml"
           fi
-          python3 scripts/bug_writeback_request.py --before "$RUNNER_TEMP/before.yml" --after "$REQUEST"
+          : > "$RUNNER_TEMP/before.yml"
+          if [[ -n "$last" ]]; then
+            git merge-base --is-ancestor "$last" "$GITHUB_SHA" || { echo "last applied commit is not an ancestor; refusing"; exit 1; }
+            git show "${last}:${REQUEST}" > "$RUNNER_TEMP/before.yml"
+          fi
+          # No checkpoint anywhere in paginated history: no request has fully applied yet.
+          python3 scripts/bug_writeback_request.py --before "$RUNNER_TEMP/before.yml" --push-before "$RUNNER_TEMP/push-before.yml" --after "$REQUEST"
       - name: Configure pinned production SSH trust
         if: steps.plan.outputs.count != '0'
         uses: ./.github/actions/production-ssh-trust
@@ -97,9 +103,13 @@ jobs:
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
       - name: Apply new requests (IDs-only log)
+        id: apply
         if: steps.plan.outputs.count != '0'
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           REQUEST: operations/closeout/bug-writeback.request.yml
-        run: python3 scripts/bug_writeback_request.py --before "$RUNNER_TEMP/before.yml" --after "$REQUEST" --apply
+        run: python3 scripts/bug_writeback_request.py --before "$RUNNER_TEMP/before.yml" --push-before "$RUNNER_TEMP/push-before.yml" --after "$REQUEST" --apply
+      - name: Checkpoint fully attempted requests
+        if: ${{ always() && steps.apply.outputs.attempted_all == 'true' }}
+        run: echo "All request IDs were attempted; failed IDs require an explicit new request_id."

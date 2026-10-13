@@ -208,6 +208,79 @@ class IdempotencyTest(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertIn(match.group(1), names)
         self.assertLess(names.index(next(n for n in names if n and n.startswith("Validate"))), names.index(match.group(1)))
+        checkpoint = next(s for s in steps if s.get("name") == match.group(1))
+        self.assertIn("steps.apply.outputs.attempted_all == 'true'", checkpoint["if"])
+        self.assertEqual(next(s for s in steps if s.get("name", "").startswith("Apply"))["id"], "apply")
+
+
+    def test_out_of_order_pushes_cap_only_the_new_push(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = [entry(request_id=f"req-{i:04d}", bug_id=500 + i) for i in range(3)]
+            all_entries = first + [entry(request_id=f"req-{i:04d}", bug_id=500 + i) for i in range(3, 6)]
+            before, push, after = [root / name for name in ("before", "push", "after")]
+            before.write_text(doc()); push.write_text(doc(*first)); after.write_text(doc(*all_entries))
+            with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": ""}):
+                self.assertEqual(wb.main(["--before", str(before), "--push-before", str(push),
+                                          "--after", str(after), "--repo", REPO]), 0)
+                push.write_text(doc())
+                self.assertEqual(wb.main(["--before", str(before), "--push-before", str(push),
+                                          "--after", str(after), "--repo", REPO]), 1)
+
+    def test_checkpoint_requires_every_request_to_be_attempted(self):
+        items = wb.plan("", doc(entry(), entry(request_id="req-0002", bug_id=513)), REPO)
+        for partial in (False, True):
+            calls, checkpoints = [], []
+            def runner(mode, env):
+                calls.append(env["BUG_ID"])
+                if partial and env["BUG_ID"] == "513":
+                    raise RuntimeError("interrupted batch")
+                return 1  # completed failures still need a checkpoint to avoid blocking later IDs
+            with self.assertRaises(RuntimeError if partial else wb.RequestError):
+                wb.apply(items, runner, log=lambda _: None, completed=lambda: checkpoints.append(True))
+            self.assertEqual(checkpoints, [] if partial else [True])
+
+    def test_cursor_finds_checkpoint_after_twenty_setup_failures(self):
+        import subprocess
+        import tempfile
+        import textwrap
+        workflow = yaml.safe_load((ROOT / ".github/workflows/bug-writeback-request.yml").read_text())
+        script = next(s["run"] for s in workflow["jobs"]["writeback"]["steps"] if s.get("id") == "plan")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixtures = {
+                "gh": """#!/bin/bash
+if [[ "$*" == *workflow* ]]; then
+  n=20; [[ "$*" == *--paginate* ]] && n=25
+  for i in $(seq 1 "$n"); do echo "$i:$(printf 'a%.0s' {1..40}):failure"; done
+  [[ "$*" == *--paginate* ]] && echo "99:$(printf 'b%.0s' {1..40}):failure"
+else
+  [[ "$*" == *runs/99/jobs* ]] && echo true || echo false
+fi
+""",
+                "git": """#!/bin/bash
+if [[ "$*" == *"$GITHUB_SHA"*"$CHECKPOINT"* ]]; then exit 1; fi
+if [[ "$1" == show ]]; then
+  [[ "$2" == "$CHECKPOINT:"* ]] && echo 'checkpoint' || echo 'parent'
+fi
+exit 0
+""",
+                "python3": """#!/bin/bash
+[[ "$1" == -c ]] && exit 0
+cat "$RUNNER_TEMP/before.yml" > "$TRACE"
+""",
+            }
+            for name, content in fixtures.items():
+                p = root / name; p.write_text(content); p.chmod(0o755)
+            trace = root / "trace"
+            result = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                env={**os.environ, "PATH": f"{root}:" + os.environ["PATH"], "RUNNER_TEMP": tmp,
+                     "GITHUB_SHA": "c" * 40, "EVENT_BEFORE": "d" * 40, "CHECKPOINT": "b" * 40,
+                     "GITHUB_REPOSITORY": REPO, "GITHUB_OUTPUT": str(root / "output"),
+                     "REQUEST": "request.yml", "TRACE": str(trace)})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(trace.read_text().strip(), "checkpoint")
 
     def test_checked_in_request_file_is_append_only_vs_base(self):
         # Required CI has full history: removing or editing an entry already on the base branch fails here.
