@@ -39,7 +39,8 @@ class ReplyValidatorTest(unittest.TestCase):
 
     def test_personal_data_and_length_and_url_are_rejected(self):
         self.assertIn("personal data: phone number", wb.reply_problems(f"請打 0912-345-678 給我們 {URL}", URL))
-        self.assertIn("personal data: email address", wb.reply_problems(f"請寄信到 a.b@example.com 謝謝 {URL}", URL))
+        self.assertIn("personal data: email address or handle", wb.reply_problems(f"請寄信到 a.b@example.com 謝謝 {URL}", URL))
+        self.assertIn("personal data: long number (ID, phone, account)", wb.reply_problems(f"學號 1234567 的課已經修好了 {URL}", URL))
         self.assertTrue(wb.reply_problems(URL, URL)[0].startswith("length"))
         self.assertTrue(wb.reply_problems(REPLY + "很" * wb.REPLY_MAX_CHARS, URL)[0].startswith("length"))
         self.assertIn("does not contain github_issue_url", wb.reply_problems("已看過您的截圖，我們正在修，謝謝您的回報。", URL))
@@ -77,6 +78,22 @@ class EntryValidationTest(unittest.TestCase):
             self.refuse(entry(action=action), "action must be")
         self.refuse(entry(close_as_logged=True), "unknown fields")
 
+    def test_logged_close_dispositions_are_refused(self):
+        for kind in wb.logged_close_kinds():
+            self.refuse(entry(disposition=kind), "close as logged")
+        self.assertEqual(wb.plan("", doc(entry(disposition="bug")), REPO)[0]["env"]["DISPOSITION"], "bug")
+
+    def test_logged_close_kinds_are_read_from_the_service(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            php = Path(tmp) / "Svc.php"
+            php.write_text("public const LOGGED_CLOSE_KINDS = ['wont_do', 'dupe'];", encoding="utf-8")
+            self.assertEqual(wb.logged_close_kinds(php), {"wont_do", "dupe"})
+            php.write_text("no constant", encoding="utf-8")
+            with self.assertRaises(wb.RequestError):
+                wb.logged_close_kinds(php)
+
     def test_issue_url_must_be_this_repository(self):
         self.refuse(entry(github_issue_url="https://github.com/other/repo/issues/1"), "github_issue_url")
         self.refuse(entry(github_issue_url=f"https://github.com/{REPO}/pull/1"), "github_issue_url")
@@ -109,12 +126,14 @@ class IdempotencyTest(unittest.TestCase):
         self.assertEqual(wb.apply(wb.plan(first, second, REPO), runner, log=lambda _: None), 1)
         self.assertEqual(calls, [("phase-a", "512"), ("phase-a", "513")])
 
-    def test_failure_stops_and_log_has_ids_only(self):
+    def test_failure_does_not_drop_later_requests_and_log_has_ids_only(self):
         lines = []
         items = wb.plan("", doc(entry(), entry(request_id="req-0002", bug_id=513)), REPO)
-        with self.assertRaises(wb.RequestError):
-            wb.apply(items, lambda mode, env: 1, log=lines.append)
-        self.assertEqual(lines, ["request_id=req-0001 bug_id=512 action=triage failed exit=1"])
+        with self.assertRaises(wb.RequestError) as ctx:
+            wb.apply(items, lambda mode, env: 1 if env["BUG_ID"] == "512" else 0, log=lines.append)
+        self.assertEqual(lines, ["request_id=req-0001 bug_id=512 action=triage failed exit=1",
+                                 "request_id=req-0002 bug_id=513 action=triage ok"])
+        self.assertIn("1 failed (req-0001); 1 succeeded", str(ctx.exception))
 
     def test_main_prints_counts_not_reply(self):
         import contextlib
@@ -130,9 +149,10 @@ class IdempotencyTest(unittest.TestCase):
         self.assertIn("new requests: 1 (req-0001)", out.getvalue())
         self.assertNotIn(REPLY, out.getvalue())
 
-    def test_checked_in_request_file_parses(self):
+    def test_checked_in_request_file_is_fully_valid(self):
+        # Runs in required CI, so an invalid entry fails before it can merge, not after.
         text = (ROOT / "operations/closeout/bug-writeback.request.yml").read_text(encoding="utf-8")
-        wb.load_requests(text)
+        wb.plan("", text, REPO)
 
 
 if __name__ == "__main__":

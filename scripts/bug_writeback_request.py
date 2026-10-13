@@ -42,10 +42,26 @@ JARGON = [
     ("SQL/tooling", re.compile(r"\b(?:SELECT|INSERT|UPDATE|DELETE|CI)\b|(?i:\b(?:Laravel|migration|tinker|artisan|deploy\.yml)\b)", re.A)),
     ("internal shorthand", re.compile(r"\bPhase\s*[ABC]\b|\bR\d{2,}\b|\bB1\b|\bP[0-3]\b|\bPR\s*#?\d+", re.A)),
 ]
+# The request file is public git history. These catch identifiers; names cannot be detected,
+# so a reply addresses the reporter as 您 and the T2 review of the request PR is the control.
 PII = [
-    ("email address", re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+", re.A)),
+    ("email address or handle", re.compile(r"@", re.A)),
     ("phone number", re.compile(r"(?<!\d)09\d{2}[- ]?\d{3}[- ]?\d{3}(?!\d)")),
+    ("long number (ID, phone, account)", re.compile(r"\d{6,}", re.A)),
 ]
+SERVICE_PHP = Path(__file__).resolve().parents[1] / "backend/app/Services/BugReportService.php"
+
+
+def logged_close_kinds(source: Path = SERVICE_PHP) -> set[str]:
+    """Dispositions that must close as logged (F12); read from the service, never copied."""
+    try:
+        match = re.search(r"LOGGED_CLOSE_KINDS\s*=\s*\[([^\]]*)\]", source.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise RequestError("cannot read BugReportService::LOGGED_CLOSE_KINDS") from exc
+    kinds = set(re.findall(r"'([a-z_]+)'", match.group(1))) if match else set()
+    if not kinds:
+        raise RequestError("cannot read BugReportService::LOGGED_CLOSE_KINDS")
+    return kinds
 
 
 class RequestError(ValueError):
@@ -135,6 +151,8 @@ def validate_entry(entry: dict, repo: str) -> dict:
         disposition = entry.get("disposition", "bug")
         if not isinstance(disposition, str) or not re.fullmatch(r"[a-z_]+", disposition):
             raise RequestError(f"{rid}: invalid disposition")
+        if disposition in logged_close_kinds():
+            raise RequestError(f"{rid}: disposition {disposition} must close as logged (dispatch-only)")
         env.update(DISPOSITION=disposition, CLOSE_AS_LOGGED="false")
     else:
         if "disposition" in entry:
@@ -169,14 +187,18 @@ def run_remote(mode: str, env: dict) -> int:
 
 
 def apply(items: Iterable[dict], runner: Runner = run_remote, log: Callable[[str], None] = print) -> int:
-    done = 0
+    """Attempt every request (each is independent), then fail if any failed."""
+    done, failed = 0, []
     for item in items:
         code = runner(item["mode"], item["env"])
         status = "ok" if code == 0 else f"failed exit={code}"
         log(f"request_id={item['request_id']} bug_id={item['bug_id']} action={item['action']} {status}")
-        if code != 0:
-            raise RequestError(f"{item['request_id']}: write-back failed; later requests not attempted")
-        done += 1
+        if code == 0:
+            done += 1
+        else:
+            failed.append(item["request_id"])
+    if failed:
+        raise RequestError(f"{len(failed)} failed ({', '.join(failed)}); {done} succeeded")
     return done
 
 

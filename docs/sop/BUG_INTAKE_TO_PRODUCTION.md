@@ -74,19 +74,23 @@ that `bug-phase-a-triage.yml` and `bug-followup-comment.yml` call, so the input 
    plus the public reply; `followup` = public comment only, with `expected_status`
    `triaged` or `in_progress`), `github_issue_url` (an issue in this repository) and
    `public_reply` (§3.8 plain language, includes the issue URL, 20–1500 characters, no
-   field/class names, SQL, tooling or internal codes, no names, phone numbers or e-mails).
+   field/class names, SQL, tooling or internal codes; no names, `@`, phone numbers or any
+   run of 6+ digits — the file is public git history). A `disposition` that must close as
+   logged (`BugReportService::LOGGED_CLOSE_KINDS`) is refused; use the dispatch workflow.
 3. PR → CI green. A PR that edits this file is a production write, so `autonomy_gate.py`
    rates it **T2 at minimum**: it lands only with an independent review (Codex or a reviewer
    agent) and no open P1, never T0 auto-merge. Then add `queue`.
-4. The merge to `main` runs the workflow. It validates every new entry before any production
-   access and fails closed on the first problem; the server re-checks that the bug exists and
+4. CI validates the whole checked-in file, so an invalid entry cannot merge. The merge to
+   `main` runs the workflow, which validates every new entry again before any production
+   access and fails closed on any problem; the server re-checks that the bug exists and
    is in an allowed status (`new`/`triaged` for triage, exactly `expected_status` for follow-up).
    The log prints request IDs, bug IDs, actions and counts only; that log is the
    processed-ID record.
 
 Only `request_id`s absent from the previous version of the file run, so re-pushing the same
-file does nothing. A failed request is not retried automatically: fix the cause and append a
-new entry with a new `request_id`. `resolved`, `closed` and `close_as_logged` are not
+file does nothing. Each new request is attempted even if an earlier one fails; the run then
+fails and lists the failed `request_id`s. A failed request is not retried automatically: fix
+the cause and append a new entry with a new `request_id`. `resolved`, `closed` and `close_as_logged` are not
 accepted here; they stay on Phase-C and the dispatch workflows.
 
 ## Deployment evidence gate (merge ≠ production)
