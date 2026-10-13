@@ -20,9 +20,7 @@ use Tests\TestCase;
 class CollectionQueueRequestShapeTest extends TestCase
 {
     use RefreshDatabase;
-
     private const D = ['payment_date' => '2026-04-28', 'payment_method' => 'cash'];
-
     private array $headers;
 
     protected function setUp(): void
@@ -110,8 +108,7 @@ class CollectionQueueRequestShapeTest extends TestCase
     public function test_item1_zero_report_against_a_bill_that_owes_is_refused_at_intake_and_confirm(): void
     {
         [$sc, $older] = $this->newerCoveredOlderOwing();
-        $this->report('director-record', ['student_class_id' => $sc->ID, ...self::D, 'amount' => 0])
-            ->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance')->assertJsonPath('invoice_id', $older->id);
+        $this->report('director-record', ['student_class_id' => $sc->ID, ...self::D, 'amount' => 0])->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance')->assertJsonPath('invoice_id', $older->id);
         $this->assertSame(0, PaymentReport::count());
         $report = $this->pendingReport($sc, null, 0); // recorded before this fix
         $this->confirm($report->id)->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
@@ -125,10 +122,8 @@ class CollectionQueueRequestShapeTest extends TestCase
     {
         [$sc, $older] = $this->newerCoveredOlderOwing();
         foreach ([0.5, 0.99, 1.5] as $amount) { // intake, batch, and a pending report recorded before this fix
-            $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $older->id, ...self::D, 'amount' => $amount])
-                ->assertStatus(422)->assertJsonValidationErrors('amount');
-            $this->report('director-record-batch', [...self::D, 'entries' => [['student_class_id' => $sc->ID, 'invoice_id' => $older->id, 'amount' => $amount]]])
-                ->assertStatus(422)->assertJsonValidationErrors('entries.0.amount');
+            $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $older->id, ...self::D, 'amount' => $amount])->assertStatus(422)->assertJsonValidationErrors('amount');
+            $this->report('director-record-batch', [...self::D, 'entries' => [['student_class_id' => $sc->ID, 'invoice_id' => $older->id, 'amount' => $amount]]])->assertStatus(422)->assertJsonValidationErrors('entries.0.amount');
             $report = $this->pendingReport($sc, $older, $amount);
             $this->confirm($report->id)->assertStatus(422)->assertJsonPath('code', 'fractional_amount');
             $this->assertSame('pending', $report->fresh()->status);
@@ -151,8 +146,7 @@ class CollectionQueueRequestShapeTest extends TestCase
     public function test_review_zero_report_on_an_erroneous_zero_bill_is_refused(): void
     {
         [$sc, $zero] = $this->zeroTotalInvoice();
-        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $zero->id, ...self::D, 'amount' => 0])
-            ->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
+        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $zero->id, ...self::D, 'amount' => 0])->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
         $this->confirm($this->pendingReport($sc, $zero, 0)->id)->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
         $this->assertSame(0, Payment::count());
         $free = $this->course(['Charge' => 0, 'Rate' => 0]);
@@ -164,8 +158,7 @@ class CollectionQueueRequestShapeTest extends TestCase
     {
         $sc = $this->course(['Charge' => 6000]);
         $this->report('director-record', ['student_class_id' => $sc->ID, ...self::D, 'amount' => 0])->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
-        $this->report('director-record-batch', [...self::D, 'entries' => [['student_class_id' => $sc->ID, 'amount' => 0]]])
-            ->assertStatus(207)->assertJsonPath('results.0.code', 'zero_amount_with_balance');
+        $this->report('director-record-batch', [...self::D, 'entries' => [['student_class_id' => $sc->ID, 'amount' => 0]]])->assertStatus(207)->assertJsonPath('results.0.code', 'zero_amount_with_balance');
         $this->confirm($this->pendingReport($sc, null, 0)->id)->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
         $this->assertSame([0, 0], [Invoice::count(), Payment::count()]);
     }
@@ -191,8 +184,7 @@ class CollectionQueueRequestShapeTest extends TestCase
     {
         [$sc, $inv] = $this->storedPaidLedgerPartial();
         $inv->update(['Status' => 'void']);
-        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, ...self::D, 'amount' => 100])
-            ->assertStatus(422)->assertJsonPath('code', 'void_invoice_cannot_record');
+        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, ...self::D, 'amount' => 100])->assertStatus(422)->assertJsonPath('code', 'void_invoice_cannot_record');
         [$other, $otherInv] = $this->storedPaidLedgerPartial();
         $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $otherInv->id, ...self::D, 'amount' => 100])->assertStatus(404);
         $this->assertSame(0, PaymentReport::count());
@@ -227,6 +219,18 @@ class CollectionQueueRequestShapeTest extends TestCase
         $this->confirm($res->json('report_id'))->assertOk();
         $this->assertLedger($feb, 6000, 'paid');
         $this->assertSame(0, Payment::where('InvoiceID', $apr->id)->count(), 'current period untouched');
+    }
+
+    /** #3923 P1: a paid package member's stale stored-paid bill (rows 2,000/6,000) is not charged here (as Invoice::mayOweSql). */
+    public function test_paid_package_member_stale_paid_bill_is_refused_at_record_and_confirm(): void
+    {
+        [$sc, $inv] = $this->storedPaidLedgerPartial();
+        $pkg = \App\Models\CoursePackage::create(['student_id' => $sc->StudentID, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8, 'used_sessions' => 0, 'rate' => 750, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true, 'paid_at' => '2026-04-10']);
+        $sc->update(['PackageID' => $pkg->id]);
+        $this->report('director-record', ['student_class_id' => $sc->ID, 'invoice_id' => $inv->id, ...self::D, 'amount' => 4000])->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        $this->report('director-record', ['student_class_id' => $sc->ID, ...self::D, 'amount' => 4000])->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        $this->confirm($this->pendingReport($sc, $inv, 4000)->id)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+        $this->assertSame([1, 2000], [Payment::count(), (int) Payment::sum('Amount')], 'only the original 2,000 row');
     }
 
     /** One fixture case with id placeholders mapped; asserts its row equals the live alerts/tuition row the UI would get. */
@@ -284,8 +288,7 @@ class CollectionQueueRequestShapeTest extends TestCase
 
     private function invoice(StudentClass $sc, string $issueDate, int $total, string $status, array $over = []): Invoice
     {
-        return Invoice::create(array_merge(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => $issueDate,
-            'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => $status], $over));
+        return Invoice::create(array_merge(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => $issueDate, 'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => $status], $over));
     }
 
     private function queueRow(StudentClass $sc): array
@@ -304,8 +307,7 @@ class CollectionQueueRequestShapeTest extends TestCase
     {
         $res = $this->withHeaders($this->headers)->putJson("/api/v1/payment-reports/$reportId/confirm");
         if ($res->status() === 200) {
-            $this->withHeaders($this->headers)->getJson("/api/v1/payment-reports/$reportId/receipt")->assertOk()
-                ->assertJsonPath('amount', (int) PaymentReport::findOrFail($reportId)->reported_amount);
+            $this->withHeaders($this->headers)->getJson("/api/v1/payment-reports/$reportId/receipt")->assertOk()->assertJsonPath('amount', (int) PaymentReport::findOrFail($reportId)->reported_amount);
         }
         return $res;
     }
@@ -324,20 +326,15 @@ class CollectionQueueRequestShapeTest extends TestCase
 
     private function pendingReport(StudentClass $sc, ?Invoice $invoice, int|float $amount): PaymentReport
     {
-        return PaymentReport::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice?->id,
-            'reported_by_name' => 'x', ...self::D, 'reported_amount' => $amount,
+        return PaymentReport::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice?->id, 'reported_by_name' => 'x', ...self::D, 'reported_amount' => $amount,
             'status' => 'pending', 'report_token_hash' => hash('sha256', uniqid('r', true)), 'token_expires_at' => now()->addDay()]);
     }
 
     private function course(array $overrides): StudentClass
     {
-        $student = Student::create(['name' => 's' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0912345678',
-            'MDT' => now(), 'Notify_Token' => '']);
-        return StudentClass::create(array_merge([
-            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
-            'StartDate' => now(), 'TotalHours' => 20, 'Charge' => 8800, 'Paid' => 0, 'MDate' => now(), 'Stop' => 0,
-            'ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 120, 'RemainingSessions' => 5,
-            'ClassType' => 'one_on_one', 'UsedSessions' => 0,
-        ], $overrides));
+        $student = Student::create(['name' => 's' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0912345678', 'MDT' => now(), 'Notify_Token' => '']);
+        return StudentClass::create(array_merge(['StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
+            'StartDate' => now(), 'TotalHours' => 20, 'Charge' => 8800, 'Paid' => 0, 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 120, 'RemainingSessions' => 5,
+            'ClassType' => 'one_on_one', 'UsedSessions' => 0], $overrides));
     }
 }

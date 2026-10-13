@@ -922,7 +922,13 @@ class PaymentReportController extends Controller
     {
         $projection = $this->invoiceProjection($invoice, $sc);
 
-        return (int) $projection['total_amount'] > 0 && (int) $projection['outstanding_amount'] <= 0;
+        return $this->packagePaidHold($invoice) || ((int) $projection['total_amount'] > 0 && (int) $projection['outstanding_amount'] <= 0);
+    }
+
+    /** As Invoice::mayOweSql (#3891): a package member's stored-paid bill stays settled; stale shared-package bills are 待核對, never charged here. */
+    private function packagePaidHold(Invoice $invoice): bool
+    {
+        return (string) $invoice->Status === 'paid' && (int) StudentClass::whereKey($invoice->StudentClassID)->value('PackageID') > 0;
     }
 
     /**
@@ -949,7 +955,7 @@ class PaymentReportController extends Controller
             ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
             ->orderBy('id')->lockForUpdate()->get(), $sc);
 
-        return $live->first(fn (Invoice $i) => (int) $this->invoiceProjection($i, $sc)['outstanding_amount'] > 0)
+        return $live->first(fn (Invoice $i) => !$this->packagePaidHold($i) && (int) $this->invoiceProjection($i, $sc)['outstanding_amount'] > 0)
             ?? $live->first(fn (Invoice $i) => (string) $i->Status !== 'paid');
     }
 
@@ -1001,7 +1007,8 @@ class PaymentReportController extends Controller
     private function invoiceAlreadyCoveredResponse(Invoice $invoice)
     {
         return response()->json([
-            'message' => '這張帳單依收款紀錄已繳清，不能再登記，也不會改記到其他帳單。請重新整理名單；若帳單狀態對不上，請在學生帳務核對收款紀錄，作廢重複或錯誤的帳單。沒有登記任何款項。',
+            'message' => $this->packagePaidHold($invoice) ? '這張套餐帳單已標記繳清，收款紀錄待核對，不能在這裡登記；請在學生帳務核對套餐收款。沒有登記任何款項。'
+                : '這張帳單依收款紀錄已繳清，不能再登記，也不會改記到其他帳單。請重新整理名單；若帳單狀態對不上，請在學生帳務核對收款紀錄，作廢重複或錯誤的帳單。沒有登記任何款項。',
             'code' => 'course_already_paid',
             'invoice_id' => (int) $invoice->id,
         ], 422);
@@ -1217,8 +1224,8 @@ class PaymentReportController extends Controller
             ));
         } elseif ($sc) {
             $reportedDate = $sc->ScheduleMode === 'date' ? Carbon::make($report->payment_date) : null;
-            // No snapshot: the bill's own service period (item periods, else billing_period), not the payment month (#3888).
-            $items = $invoice && $reportedDate ? $invoice->items()->whereNotNull('PeriodStart')->whereNotNull('PeriodEnd')->get() : collect();
+            // No snapshot: the bill's own service period (this course's or unowned item periods, else billing_period), not the payment month (#3888).
+            $items = $invoice && $reportedDate ? $invoice->items()->where(fn ($q) => $q->where('StudentClassID', $sc->ID)->orWhereNull('StudentClassID'))->whereNotNull('PeriodStart')->whereNotNull('PeriodEnd')->get() : collect();
             $anchor = preg_match('/^\d{4}-\d{2}$/', (string) $invoiceBillingPeriod) ? Carbon::createFromFormat('!Y-m', (string) $invoiceBillingPeriod) : $reportedDate;
             [$from, $to] = $items->isNotEmpty() ? [Carbon::parse($items->min('PeriodStart')), Carbon::parse($items->max('PeriodEnd'))]
                 : [$anchor?->copy()->startOfMonth(), $anchor?->copy()->endOfMonth()];
