@@ -115,13 +115,35 @@ class ShadowSessionHorizonTest extends TestCase
         $this->assertStringContainsString('READ-ONLY', Artisan::output());
     }
 
+    /** #3947: reusing a student must not insert an unused student or risk a random primary-key collision. */
+    public function test_course_fixture_reuses_students_and_allocates_new_ids(): void
+    {
+        $existing = (int) DB::table('Student')->insertGetId([
+            'name' => 'Existing', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        ]);
+        $before = DB::table('Student')->count();
+
+        $shared = $this->course(['StudentID' => $existing]);
+        $this->assertSame($before, DB::table('Student')->count());
+        $this->assertSame($existing, (int) DB::table('StudentClass')->where('ID', $shared)->value('StudentID'));
+
+        $first = $this->course([]);
+        $second = $this->course([]);
+        $this->assertSame($before + 2, DB::table('Student')->count());
+        $this->assertNotSame(
+            DB::table('StudentClass')->where('ID', $first)->value('StudentID'),
+            DB::table('StudentClass')->where('ID', $second)->value('StudentID')
+        );
+    }
+
     /** @param array<string,mixed> $over */
     private function course(array $over): int
     {
-        $studentId = 98400 + random_int(1, 8999);
-        DB::table('Student')->insert([
-            'id' => $studentId, 'name' => 'P2 Test', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
-        ]);
+        $studentId = array_key_exists('StudentID', $over)
+            ? (int) $over['StudentID']
+            : (int) DB::table('Student')->insertGetId([
+                'name' => 'P2 Test', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+            ]);
         $base = [
             'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
             'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0,
