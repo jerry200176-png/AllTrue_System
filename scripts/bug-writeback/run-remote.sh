@@ -81,8 +81,10 @@ if ($status === "new") {
     ], "phase-a verified intake; GitHub issue=".$issueUrl);
     if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
 }
+$issueUrlPattern = "~(?<![A-Za-z0-9_/-])" . preg_quote($issueUrl, "~") . "(?![A-Za-z0-9_/-])~u";
 $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)->where("is_internal_note", false)
-    ->where("body", "like", "%".$issueUrl."%")->exists();
+    ->where("body", "like", "%".$issueUrl."%")->get(["body"])
+    ->contains(static fn ($existing) => preg_match($issueUrlPattern, (string)$existing->body) === 1);
 $comment = $already ? ["ok" => true, "skipped" => true] : $svc::addComment($bugId, $actor, $reply, false);
 // addComment() returns the persisted BugReportComment model, while
 // an idempotent skip returns the small {ok, skipped} shape.
