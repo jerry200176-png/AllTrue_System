@@ -52,3 +52,8 @@ node -e '
   }
   console.log(`[design-hex-guard] OK：無新增 raw hex（總計 ${curTotal}，baseline ${baseTotal}）。`);
 ' "$BASELINE" "$CURRENT"
+
+# Style ratchet (UI U1, Refs #3115): same only-down rule for font-size,
+# border-radius, box-shadow, template emoji and native alert/confirm.
+node --test "$ROOT/scripts/design-style-ratchet.test.mjs"
+node "$ROOT/scripts/design-style-ratchet.mjs"
