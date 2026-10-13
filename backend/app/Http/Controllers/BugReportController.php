@@ -280,6 +280,8 @@ class BugReportController extends Controller
                 'deploy_run_id' => $request->input('deploy_run_id'),
                 'evidence_exception_reason' => $request->input('evidence_exception_reason'),
                 'allow_exception' => $isSuperAdmin,
+                // GitHub #3750: staff resolves must name both reporter-verify outcomes.
+                'require_both_outcomes_reply' => true,
                 'disposition' => $request->input('disposition'),
                 'github_issue_url' => $request->input('github_issue_url'),
                 'github_pr_url' => $request->input('github_pr_url'),
