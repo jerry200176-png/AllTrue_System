@@ -6,23 +6,26 @@
 // Regenerate (only to shrink it) with: node scripts/ci/workflow-secret-echo.test.mjs --write-baseline
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const dir = '.github/workflows';
+const ACTIONS = '.github/actions'; // local composite actions run inside the workflows that use them
 const BASELINE = 'scripts/ci/workflow-secret-echo.baseline.json';
 const FIXTURES = new Set(['ci-ephemeral', 'alltruepw', 'rootpw', 'root']); // non-sensitive CI-only DB fixtures
-// credential-like: PASS/PASSWD/PASSWORD/SECRET(S) is one of its `_`-separated tokens, or it contains PASSWORD
-const isSecretName = (n) => /PASSWORD/i.test(n) || n.split('_').some((t) => /^(?:PASS|PASSWD|PASSWORD|SECRETS?)$/i.test(t));
+// credential-like: PASS/PASSWD/PASSWORD/SECRET(S) is one of its `_`-separated tokens, it contains PASSWORD,
+// or it is MYSQL_PWD (the MySQL client's password variable; the shell's own PWD stays non-secret)
+const isSecretName = (n) => /PASSWORD/i.test(n) || /^MYSQL_PWD$/i.test(n) || n.split('_').some((t) => /^(?:PASS|PASSWD|PASSWORD|SECRETS?)$/i.test(t));
 const ALLOW_ALL = /#(?=\s*secret-echo-allow:(.*)$)/gm; // every candidate `#`, reason captured in the lookahead
 // a trailing glob / brace (`.env*`, `.env{,.local}`) can expand to any .env variant
 const ENV_FILE = /(?<=^|[\s"'`=<>(|;&,:{])(?:[^\s"'`<>|;&()=,{]*\/)?\.env(?!\.(?:example|sample|dist|template)\b)(?:\.[\w-]+)*(?:[*?[{][^\s;&|)"'`<>]*)?(?=[\s;&|)"'`<>,}]|$)/g;
 const CRED = /\$\{?!?([A-Za-z_][A-Za-z0-9_]*)|\x01(\d+)\x01/g; // $NAME ${NAME ${!NAME, or a ${{ }} placeholder
-const TRACE = /(?:^|[;&\s])set\s+-[a-z]*x|\bset\s+-o\s+xtrace\b|\b(?:ba|da|z|k|a)?sh\s+(?:-\S+\s+)*-[a-z]*x|-[a-z]*o\s*xtrace\b|SHELLOPTS\W+\S*xtrace/;
+// `set` traces when any of its option groups holds x (`set -x`, `set -e -x`, `set -o pipefail -x`)
+const TRACE = /(?:^|[;&\s(])set(?:[ \t]+[^\s;&|#]+)*?[ \t]+-[a-zA-Z]*x|\bset\s+-o\s+xtrace\b|\b(?:ba|da|z|k|a)?sh\s+(?:-\S+\s+)*-[a-z]*x|-[a-z]*o\s*xtrace\b|SHELLOPTS\W+\S*xtrace/;
 const LITERAL = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*(['"]?)([^\s'"$`]+)\2\s*$/;
 const HASHES = new Set(['sha1sum', 'sha224sum', 'sha256sum', 'sha384sum', 'sha512sum', 'shasum', 'md5sum', 'b2sum']);
 // commands whose only output is their stdout: a redirect/hash of that stdout is a safe sink
-const STDOUT_ONLY = new Set(['echo', 'printf', 'cat', 'head', 'tail', 'grep', 'sed', 'awk', 'cut', 'tr', 'sort', 'uniq', 'base64', 'jq', 'envsubst', 'env', 'printenv', 'export', 'set', 'declare', 'typeset']);
+const STDOUT_ONLY = new Set(['echo', 'printf', 'cat', 'head', 'tail', 'grep', 'sed', 'awk', 'cut', 'tr', 'sort', 'uniq', 'base64', 'jq', 'envsubst', 'env', 'printenv', 'export', 'readonly', 'set', 'declare', 'typeset']);
 const FILTERS = new Set(['grep', 'sed', 'awk', 'cut', 'tr', 'sort', 'uniq', 'head', 'tail', 'base64', 'jq']);
 // never trusted to keep an argument quiet (they print or execute it)
 const NO_ARG_TRUST = new Set(['', 'echo', 'printf', 'print', 'cat', 'tee', 'logger', 'eval', 'bash', 'sh', 'zsh', 'dash', 'ksh', 'xargs', 'timeout', 'nohup', 'stdbuf', 'watch']);
@@ -143,7 +146,15 @@ function resolve(words) { // skip assignments and wrapper commands; `dump` marks
   while (k < words.length && assignRe.test(words[k].text)) k++;
   for (;;) {
     const name = (words[k]?.text ?? '').replace(/^.*\//, ''), args = words.slice(k + 1).map((w) => w.text);
-    if (/^(?:command|exec|nohup|builtin)$/.test(name)) { k++; continue; }
+    if (/^(?:command|exec|nohup|builtin|nice)$/.test(name)) { // consume the wrapper's own options before the wrapped command
+      for (k++; words[k] && /^-/.test(words[k].text); k++) {
+        const o = words[k].text;
+        if (o === '--') { k++; break; }
+        if (name === 'command' && /[vV]/.test(o)) return { k, name }; // command -v / -V only describes the command
+        if ((name === 'exec' && o === '-a') || (name === 'nice' && o === '-n')) k++; // option with an operand
+      }
+      continue;
+    }
     if (name === 'sudo') { k++; while (words[k] && /^-/.test(words[k].text)) k += /^-[ugCh]$/.test(words[k].text) ? 2 : 1; continue; }
     if (name === 'env') {
       if (args.length === 1 && /^--(?:help|version)$/.test(args[0])) return { k, name, help: true };
@@ -163,7 +174,7 @@ function resolve(words) { // skip assignments and wrapper commands; `dump` marks
       return { k, name, dump: !names.length || names.some((n) => isSecretName(n.replace(/^\$\{?|\}$/g, ''))) };
     }
     const opts = args.every((a) => a.startsWith('-'));
-    const dump = (name === 'export' && args.every((a) => a === '-p')) || (name === 'set' && !args.length)
+    const dump = (/^(?:export|readonly)$/.test(name) && args.every((a) => a === '-p')) || (name === 'set' && !args.length)
       || (/^(?:declare|typeset)$/.test(name) && (opts || (args.some((a) => /^-[a-zA-Z]*p/.test(a)) && args.some((a) => !a.startsWith('-') && isSecretName(a)))));
     return { k, name, dump };
   }
@@ -298,6 +309,12 @@ function scanScript(where, script0) {
   for (const re of [CRED, ENV_FILE]) for (const m of script.matchAll(re)) {
     const hit = m[0].startsWith('$') ? isSecretName(m[1]) : m[2] !== undefined ? credExpr(exprs[+m[2]]) : true;
     if (hit && !inComment(m.index) && (parsed.bad || !covered.has(m.index))) why[lineOf(m.index)].add('unparsed occurrence');
+  }
+  // tracing split by a line continuation: join continuations (same length keeps offsets) and flag the starting line
+  const TRACE_ALL = new RegExp(TRACE.source, 'g');
+  for (const m of script0.replace(/\\\r?\n/g, (x) => ' '.repeat(x.length)).matchAll(TRACE_ALL)) {
+    const at = m.index + (/^[;&\s(]/.test(m[0]) ? 1 : 0);
+    if (!inComment(at)) why[lineOf(at)].add('shell tracing');
   }
   const bad = [];
   lines.forEach((raw, i) => {
@@ -483,6 +500,17 @@ export const trip = {
   'cat .env*': blk('cat backend/.env*'),
   'cat .env{,.local}': blk('cat backend/.env{,.local}'),
   'cat {.env,.env.local}': blk('cat backend/{.env,.env.local}'),
+  // round 8 (Codex review of 6039f32)
+  'readonly -p': blk('readonly DB_PASSWORD', 'readonly -p'),
+  'echo MYSQL_PWD': blk('echo "$MYSQL_PWD"'),
+  'printenv MYSQL_PWD': blk('printenv MYSQL_PWD'),
+  'command -p env': blk('command -p env'),
+  'exec -a name env': blk('exec -a name env'),
+  'nice -n 5 env': blk('nice -n 5 env'),
+  'set -e -x': blk('set -e -x'),
+  'set -o pipefail -x': blk('set -o pipefail -x'),
+  'set -e continued -x': blk('set -e \\', '  -x'),
+  'composite action run step': 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo "$DB_PASSWORD"',
 };
 export const ok = {
   'echo > file': blk('echo "$DB_PASSWORD" > credentials.txt'),
@@ -506,7 +534,7 @@ export const ok = {
   'annotated line': blk('curl -u "u:$DB_PASSWORD" https://x # secret-echo-allow: basic auth argument, curl never prints it',
     'curl -u "u:$DB_PASSWORD" "https://x/#a" # secret-echo-allow: basic auth argument, curl never prints it'),
   'declare -p non-secret / .envrc / .env.example*': blk('declare -p HOME', 'cat .envrc', 'cp .env.example* /tmp/'),
-  'non-credential names, fixtures, untraced set': blk('echo "$BYPASS_REASON"', 'set +x', 'set -euo pipefail') + '\nenv:\n  BYPASS_REASON: approved\n  COMPASS_MODE: north\n  DB_PASSWORD: ci-ephemeral',
+  'non-credential names, fixtures, untraced set': blk('echo "$BYPASS_REASON"', 'echo "$PWD"', 'set +x', 'set -euo pipefail', 'set -e -o pipefail', 'command -v env', 'readonly X=1') + '\nenv:\n  BYPASS_REASON: approved\n  COMPASS_MODE: north\n  DB_PASSWORD: ci-ephemeral',
   'empty credential value': "env:\n  DB_PASSWORD: ''\njobs:\n  j:\n    steps:\n      - uses: x/y@v1\n        with: { password: '' }",
   'step name mentions xtrace / untraced shells': 'jobs:\n  j:\n    steps:\n      - name: Diagnose xtrace\n        shell: bash -eo pipefail {0}\n        run: echo hi',
   'github-script reading process.env': "jobs:\n  j:\n    steps:\n      - uses: actions/github-script@v7\n        with:\n          script: |\n            const n = process.env.ISSUE_NUMBER",
@@ -531,8 +559,16 @@ for (const [k, y] of Object.entries(ok)) { const r = scan('ok', y); if (r.length
 }
 
 // --- repository check ---------------------------------------------------------------------------------------------
-const files = readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).sort();
-const findings = scanAll(files.map((f) => ({ name: f, text: readFileSync(join(dir, f), 'utf8') })));
+// workflows keep their bare file name (baseline key); composite action manifests use their repository path
+export const inputs = () => [
+  ...readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).sort().map((f) => ({ name: f, path: join(dir, f) })),
+  ...(existsSync(ACTIONS) ? readdirSync(ACTIONS, { recursive: true }).map(String).filter((f) => /(?:^|\/)action\.ya?ml$/.test(f)).sort()
+    .map((f) => ({ name: join(ACTIONS, f), path: join(ACTIONS, f) })) : []),
+];
+const files = inputs();
+if (existsSync(ACTIONS) && readdirSync(ACTIONS, { recursive: true }).map(String).some((f) => /(?:^|\/)action\.ya?ml$/.test(f))
+  && !files.some((f) => f.name.startsWith(`${ACTIONS}/`))) fail('local composite action manifests must be scanned');
+const findings = scanAll(files.map((f) => ({ name: f.name, text: readFileSync(f.path, 'utf8') })));
 if (process.argv.includes('--write-baseline')) {
   writeFileSync(BASELINE, formatBaseline(toBaseline(findings)));
   console.log(`wrote ${BASELINE} (${findings.length} entries); CI rejects it if it grew`);
