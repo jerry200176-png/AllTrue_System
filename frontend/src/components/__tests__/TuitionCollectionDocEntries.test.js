@@ -48,6 +48,15 @@ describe('帳務中心 學生列：繳費單／收據入口', () => {
     expect(writes()).toEqual([]);
     w.unmount();
   });
+  it('#3942: the direct receipt open keeps the double-click guard (click, render, backdrop press stays open)', async () => {
+    const w = await mountPage();
+    await tid(w, 106, 'tc-doc-receipt').trigger('click');
+    await flushPromises();
+    document.querySelector('.modal-overlay').click();
+    await flushPromises();
+    expect(document.querySelectorAll('.modal-overlay')).toHaveLength(1);
+    w.unmount();
+  });
   it('legacy row: 撤銷 stays available (a confirmed receipt without invoice is voidable); the ledger link only reads', async () => {
     const w = await mountPage();
     expect(tid(w, 105, 'tc-void').element.disabled).toBe(false);

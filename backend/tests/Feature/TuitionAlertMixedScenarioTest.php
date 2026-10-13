@@ -296,6 +296,30 @@ class TuitionAlertMixedScenarioTest extends TestCase
         $this->assertContains((int) $english->ID, $match['member_class_ids']);
     }
 
+    /** #3942: a confirmed partial report on a NON-anchor member's current bill enables the package row's receipt. */
+    public function test_package_receipt_follows_a_confirmed_partial_report_on_a_non_anchor_member(): void
+    {
+        $token = $this->makeDirectorToken('dir-pkg-receipt@test.com');
+        $student = $this->makeStudent();
+        $pkg = CoursePackage::create(['student_id' => $student->id, 'campus_id' => 1, 'name' => '共用方案 16 堂', 'billing_mode' => CoursePackage::BILLING_MODE_SESSION,
+            'total_sessions' => 16, 'remaining_sessions' => 12, 'used_sessions' => 4, 'rate' => 1500, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => false, 'stop' => false, 'enabled' => true]);
+        $this->makeCountModeClass($student->id, ['SubjectID' => 1, 'PackageID' => $pkg->id]);
+        $english = $this->makeCountModeClass($student->id, ['SubjectID' => 2, 'PackageID' => $pkg->id]);
+        $invoice = \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $english->ID, 'IssueDate' => '2026-09-01', 'DueDate' => '2026-09-15',
+            'TotalAmount' => 24000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-09']);
+        \App\Models\Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 10000, 'PaidAt' => '2026-09-02', 'Method' => 'transfer']);
+        $report = PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $english->ID, 'InvoiceID' => $invoice->id, 'reported_by_name' => $student->name,
+            'payment_date' => '2026-09-02', 'payment_method' => 'transfer', 'reported_amount' => 10000, 'status' => 'confirmed',
+            'report_token_hash' => hash('sha256', 'pkg-non-anchor-confirmed'), 'token_expires_at' => now()->addDay()]);
+
+        $match = collect($this->getAlerts($token)->assertOk()->json())->firstWhere('package_id', $pkg->id);
+        $this->assertNotNull($match);
+        $this->assertTrue($match['has_confirmed_receipt']);
+        $this->assertSame($report->id, $match['receipt_report_id']);
+        $this->assertArrayNotHasKey('receipt_invoice_ids', $match);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private function getAlerts(string $token)

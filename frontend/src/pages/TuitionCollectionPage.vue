@@ -908,6 +908,7 @@
     <ReceiptModal
       :show="receiptOpen"
       :report-id="receiptReportId"
+      @click.capture="onSlipBackdropClick"
       @close="receiptOpen = false"
     />
 
@@ -2339,7 +2340,9 @@ const receiptLoading = ref(null);
 
 async function viewReceiptForClass(row) {
   if (receiptLoading.value !== null) return; // one lookup at a time: a late reply can never replace a newer row's receipt
-  if (row.receipt_report_id) { // #3942: the row names the confirmed report of its current bill; open exactly that one
+  if (row.receipt_report_id) { // issue 3942: the row names the confirmed report of its current bill; open exactly that one
+    if (receiptOpen.value) return;
+    slipOpenedAt = Date.now(); // same 400ms backdrop guard as the slip: a double-click's second press must not close it
     receiptReportId.value = row.receipt_report_id;
     receiptOpen.value = true;
     return;
