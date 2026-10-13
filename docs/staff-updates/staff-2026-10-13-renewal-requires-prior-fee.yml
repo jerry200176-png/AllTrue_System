@@ -8,6 +8,6 @@ updates:
     summary: 前一期沒有費用紀錄時，續約和加購會先被擋下。
     items:
       - category: improved
-        text: 前一期的單堂費用和應收金額都是 0、也沒有帳單時，續約或加購會提示先登錄前一期費用，避免舊期被結算後補不了帳。
+        text: 前一期單堂費用、應收金額皆 0，且沒有未作廢的正金額帳單或帳單明細時，續約或加購會先提示登錄費用；0 元帳單不算。
     source_refs:
       - "changelog:2026-10-13:renewal-requires-prior-fee"

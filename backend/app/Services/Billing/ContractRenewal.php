@@ -4,6 +4,7 @@ namespace App\Services\Billing;
 
 use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\ClassSessionMaterializationService;
@@ -42,10 +43,13 @@ final class ContractRenewal
             return null;
         }
         $id = (int) $source->getAttribute('ID');
-        $billed = Invoice::query()->scopes('notVoided')
-            ->where(fn ($q) => $q->where(fn ($own) => $own->where('StudentClassID', $id)->where('TotalAmount', '>', 0))
-                ->orWhereHas('items', fn ($item) => $item->where('StudentClassID', $id)->where('Amount', '>', 0)))
-            ->exists();
+        $candidates = Invoice::query()->where('StudentClassID', $id)->where('TotalAmount', '>', 0)->pluck('id')
+            ->merge(InvoiceItem::query()->where('StudentClassID', $id)->where('Amount', '>', 0)->pluck('InvoiceID'))
+            ->map(fn ($v) => (int) $v)->unique()->values()->all();
+        // Lock the evidence rows by primary key: voidInvoice() locks the same invoice row, so a concurrent void either
+        // commits first (and is seen here) or waits until this renewal commits. Never accept evidence being voided.
+        $billed = $candidates !== []
+            && Invoice::query()->whereKey($candidates)->scopes('notVoided')->lockForUpdate()->pluck('id')->isNotEmpty();
 
         return $billed ? null : ['code' => 'prior_fee_missing', 'message' => self::PRIOR_FEE_MISSING_MESSAGE];
     }

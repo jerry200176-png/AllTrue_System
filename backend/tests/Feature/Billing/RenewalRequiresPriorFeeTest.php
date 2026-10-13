@@ -4,6 +4,7 @@ namespace Tests\Feature\Billing;
 
 use App\Models\AuthToken;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -11,6 +12,7 @@ use App\Models\UserCampus;
 use App\Services\Billing\ContractRenewal;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -108,6 +110,32 @@ class RenewalRequiresPriorFeeTest extends TestCase
         $count = $this->countCourse(['Rate' => 500, 'Charge' => 4000]);
         $this->postAuthenticatedJson("/api/v1/student-classes/{$count->ID}/purchase-batch", ['sessions' => 4, 'start_date' => '2026-05-05', 'mode' => 'new_purchase'])
             ->assertCreated();
+    }
+
+    /** #3947 review: fee evidence is a line item on another invoice; it counts until that invoice is voided. */
+    public function test_a_line_item_on_another_invoice_counts_until_that_invoice_is_voided(): void
+    {
+        $source = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
+        $bill = Invoice::create(['StudentID' => $source->StudentID, 'IssueDate' => '2026-04-01', 'DueDate' => '2026-04-15', 'Note' => '',
+            'TotalAmount' => 4800, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        InvoiceItem::create(['InvoiceID' => $bill->id, 'StudentClassID' => $source->ID, 'Description' => '四月', 'Amount' => 4800]);
+        $gate = app(ContractRenewal::class);
+
+        $this->assertNull($gate->priorFeeBlocker($source));
+        $bill->update(['Status' => 'void']);
+        $this->assertSame('prior_fee_missing', $gate->priorFeeBlocker($source)['code'] ?? null);
+    }
+
+    /** #3947 review (P2): the evidence rows are read with a row lock, so a concurrent voidInvoice() serializes with renewal. */
+    public function test_fee_evidence_is_read_with_a_row_lock(): void
+    {
+        $source = $this->monthlyCourse(['Rate' => 0, 'Charge' => 0]);
+        $this->invoice($source, 4800, 'unpaid');
+        $sql = [];
+        DB::listen(function ($q) use (&$sql) { $sql[] = strtolower($q->sql); });
+
+        $this->assertNull(app(ContractRenewal::class)->priorFeeBlocker($source));
+        $this->assertNotEmpty(array_filter($sql, fn ($s) => str_contains($s, '`invoice`') && str_contains($s, 'for update')), implode("\n", $sql));
     }
 
     public function test_package_member_fee_lives_on_the_package_and_is_not_blocked(): void
