@@ -212,7 +212,7 @@ class PaymentReportController extends Controller
             // Same target confirm() will pick; cap against that bill, not the course total (#3864 hotfix P1-a).
             $target = $this->pickOpenInvoice((int) $locked->getKey(), $locked);
             $refusal = $target && $this->invoiceCoveredByPayments($target, $locked)
-                ? $this->invoiceAlreadyCoveredResponse()
+                ? $this->invoiceAlreadyCoveredResponse($target)
                 : $this->amountExceedsInvoiceResponse($target, $locked, (float) $data['reported_amount']);
             if ($refusal) {
                 return null;
@@ -414,7 +414,7 @@ class PaymentReportController extends Controller
             }
 
             if ($invoice && $this->invoiceCoveredByPayments($invoice, $sc instanceof StudentClass ? $sc : null)) {
-                return $this->invoiceAlreadyCoveredResponse();
+                return $this->invoiceAlreadyCoveredResponse($invoice);
             }
             if ($over = $this->amountExceedsInvoiceResponse($invoice, $sc, (float) $report->reported_amount)) {
                 return $over;
@@ -638,14 +638,13 @@ class PaymentReportController extends Controller
                 }
             }
 
-            // FR-006：月結制優先找當月 billing_period 的未繳帳單；否則任何未繳帳單（legacy 課程或堂數制）
+            // 沒指定帳單：用名單上顯示的那張（月結＝最早未繳清的一期；Founder 2026-10-13，取代 FR-006 當月優先）
             if (! $invoice) {
-                $invoice = $this->pickOpenInvoice((int) $sc->ID, $lockedCourse,
-                    $this->monthlyBilling->defaultPeriodFor($sc, Carbon::now('Asia/Taipei')));
+                $invoice = $this->pickOpenInvoice((int) $sc->ID, $lockedCourse);
             }
 
             if ($invoice && $this->invoiceCoveredByPayments($invoice, $lockedCourse)) {
-                return $this->invoiceAlreadyCoveredResponse();
+                return $this->invoiceAlreadyCoveredResponse($invoice);
             }
             if ($over = $this->amountExceedsInvoiceResponse($invoice, $lockedCourse, (float) $data['amount'])) {
                 return $over;
@@ -939,16 +938,16 @@ class PaymentReportController extends Controller
     }
 
     /**
-     * Invoice to collect against when the caller named none: the preferred period first, then oldest id. Every non-void
-     * bill is a candidate and its Payment-row projection decides whether it still owes, whatever its stored Status
-     * (#3875: stored paid can still owe). None owes → the first not-stored-paid one, so the caller refuses it as covered.
+     * Invoice to collect against when the caller named none: the bill the collection list shows (Founder 2026-10-13),
+     * i.e. the resolver's collection order (monthly: oldest period first). Every non-void bill is a candidate and its
+     * Payment-row projection decides whether it still owes, whatever its stored Status (#3875: stored paid can still
+     * owe). None owes → the first not-stored-paid one, so the caller refuses it as covered; never another bill.
      */
-    private function pickOpenInvoice(int $studentClassId, ?StudentClass $sc, ?string $preferPeriod = null): ?Invoice
+    private function pickOpenInvoice(int $studentClassId, ?StudentClass $sc): ?Invoice
     {
-        $live = Invoice::where('StudentClassID', $studentClassId)
+        $live = app(BillingPayableResolver::class)->collectionOrder(Invoice::where('StudentClassID', $studentClassId)
             ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
-            ->orderBy('id')->lockForUpdate()->get()
-            ->sortBy(fn (Invoice $i) => $preferPeriod !== null && (string) $i->billing_period === $preferPeriod ? 0 : 1);
+            ->orderBy('id')->lockForUpdate()->get(), $sc);
 
         return $live->first(fn (Invoice $i) => (int) $this->invoiceProjection($i, $sc)['outstanding_amount'] > 0)
             ?? $live->first(fn (Invoice $i) => (string) $i->Status !== 'paid');
@@ -998,11 +997,13 @@ class PaymentReportController extends Controller
         ], 422);
     }
 
-    private function invoiceAlreadyCoveredResponse()
+    /** The target bill is settled by its Payment rows: warn and block; the money is never moved to another bill. */
+    private function invoiceAlreadyCoveredResponse(Invoice $invoice)
     {
         return response()->json([
-            'message' => '這張帳單已有確認的收款，不能再登記；若帳單狀態對不上，請在學生帳務核對收款紀錄，作廢重複或錯誤的帳單。沒有登記任何款項。',
+            'message' => '這張帳單依收款紀錄已繳清，不能再登記，也不會改記到其他帳單。請重新整理名單；若帳單狀態對不上，請在學生帳務核對收款紀錄，作廢重複或錯誤的帳單。沒有登記任何款項。',
             'code' => 'course_already_paid',
+            'invoice_id' => (int) $invoice->id,
         ], 422);
     }
 

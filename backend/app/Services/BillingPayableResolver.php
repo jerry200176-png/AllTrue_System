@@ -372,6 +372,17 @@ class BillingPayableResolver
         return $fallback ? [$fallback, $this->invoiceAmounts->resolve($fallback, $course)] : [null, null];
     }
 
+    /**
+     * The order the queue walks a course's non-void bills to pick its payable bill (selectRelevantInvoice). A collect
+     * request that names no bill walks the same order, so it lands on the bill the list shows (Founder 2026-10-13).
+     * @param Collection<int, Invoice> $invoices
+     * @return Collection<int, Invoice>
+     */
+    public function collectionOrder(Collection $invoices, ?StudentClass $course): Collection
+    {
+        return $this->sortRelevant($invoices, (string) ($course->ScheduleMode ?? '') === 'date')->values();
+    }
+
     /** Cheap superset of "projection still owes" from the loaded payments (see InvoiceAmountReconciliationService). */
     private function mayOwe(Invoice $invoice): bool
     {

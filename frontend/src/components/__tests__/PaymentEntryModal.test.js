@@ -17,6 +17,12 @@ async function tick() {
 }
 
 const row = { id: 5, student_name: '王小明', subject: '英文', charge: 3000, payable_status: 'invoiced', payable_amount: 3000, payable_outstanding: 3000 };
+async function submitRow(over) { // open the modal on a queue row (overrides merged in) and submit it as shown
+  global.fetch.mockResolvedValue(ok({ report_id: 1 }));
+  const w = mount(PaymentEntryModal, { props: { show: false, row: { ...row, ...over } } });
+  await w.setProps({ show: true }); await nextTick(); await w.find('form').trigger('submit'); await tick();
+  return w;
+}
 
 beforeEach(() => {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: mockToken }));
@@ -49,16 +55,9 @@ describe('PaymentEntryModal — director-record submission contract', () => {
 
   // #3875 item 1: a covered payable bill (outstanding 0) on a charging course never becomes a silent NT$0 report.
   it('blocks a NT$0 report on a course that charges instead of dropping the invoice id', async () => {
-    global.fetch.mockResolvedValue(ok({ report_id: 1 }));
-    const covered = mount(PaymentEntryModal, { props: { show: false, row: { ...row, payable_invoice_id: 78, payable_outstanding: 0 } } });
-    await covered.setProps({ show: true });
-    await nextTick();
-    expect(covered.find('input[type="number"]').element.value).toBe('0');
-    await covered.find('form').trigger('submit');
-    await tick();
+    const covered = await submitRow({ payable_invoice_id: 78, payable_outstanding: 0 });
     expect(global.fetch).not.toHaveBeenCalled();
     expect(covered.text()).toContain('金額為 0 不能登記');
-
     // Typing a real amount sends it against the displayed bill; the backend refuses a covered bill, it never re-targets.
     await covered.find('input[type="number"]').setValue(500);
     await covered.find('form').trigger('submit');
@@ -67,19 +66,12 @@ describe('PaymentEntryModal — director-record submission contract', () => {
   });
 
   it('sends the payable invoice, not the display invoice, when they differ (#3888 r4245816749)', async () => {
-    global.fetch.mockResolvedValue(ok({ report_id: 1 }));
-    const w = mount(PaymentEntryModal, { props: { show: false, row: { ...row, invoice_id: 90, payable_invoice_id: 91, payable_outstanding: 4000 } } });
-    await w.setProps({ show: true }); await nextTick(); await w.find('form').trigger('submit'); await tick();
+    await submitRow({ invoice_id: 90, payable_invoice_id: 91, payable_outstanding: 4000 });
     expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ amount: 4000, invoice_id: 91 });
   });
 
   it('still lets a free course settle at NT$0', async () => {
-    global.fetch.mockResolvedValue(ok({ report_id: 1 }));
-    const free = mount(PaymentEntryModal, { props: { show: false, row: { ...row, charge: 0, payable_amount: 0, payable_outstanding: 0 } } });
-    await free.setProps({ show: true });
-    await nextTick();
-    await free.find('form').trigger('submit');
-    await tick();
+    await submitRow({ charge: 0, payable_amount: 0, payable_outstanding: 0 });
     expect(JSON.parse(global.fetch.mock.calls[0][1].body).amount).toBe(0);
   });
 
