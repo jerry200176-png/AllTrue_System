@@ -16,6 +16,12 @@ name: UI Smoke (Playwright)
 # 缺少任一項時在安裝依賴前明確失敗，不能以 spec skip 產生綠燈。
 # 家長入口 smoke（SMOKE_PARENT_*）尚無 repo secrets，不在本 gate 宣稱的驗證範圍；補上 secrets 後再納入必要項。
 # 見 OPERATIONS_RUNBOOK §B2 節流原則。
+#
+# #3767：所有 run 共用同一組 production 登入帳號（SMOKE_DIRECTOR_* / SMOKE_TEACHER_*）。
+# 兩個 run 同時登入會互踢 token／觸發登入節流。因此真正跑 Playwright 的 job 用
+# job 層 concurrency `ui-smoke-production-accounts`（全 repo 共用、不取消執行中者）序列化；
+# 偵測 job 不在佇列裡，沒動 UI 的 PR 不會排隊。GitHub 同一 group 最多 1 個執行中＋1 個等待中，
+# 更新的等待者會取代較舊的等待者（被取代者顯示 cancelled，需要時 re-run）。不新增任何正式帳號。
 
 on:
   pull_request:
@@ -36,11 +42,13 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  ui-smoke:
-    name: UI Smoke (Playwright)
+  detect:
+    name: UI Smoke — detect relevant diff
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -75,10 +83,24 @@ jobs:
 
       - name: No smoke-relevant diff — skipping E2E
         if: steps.detect.outputs.run != 'true'
-        run: echo "✅ 無 UI smoke 相關 diff，Playwright 略過；本 job 未驗證正式站。"
+        run: echo "✅ 無 UI smoke 相關 diff，Playwright 略過；本 run 未驗證正式站。"
+
+  ui-smoke:
+    name: UI Smoke (Playwright)
+    needs: detect
+    if: ${{ needs.detect.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # #3767: one production-account session at a time across every PR, schedule and dispatch.
+    concurrency:
+      group: ui-smoke-production-accounts
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Require production smoke secrets (TD-070)
-        if: steps.detect.outputs.run == 'true'
         env:
           SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
           SMOKE_DIRECTOR_USER: ${{ secrets.SMOKE_DIRECTOR_USER }}
@@ -98,19 +120,16 @@ jobs:
           echo "Required smoke inputs are present; Playwright must execute."
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        if: steps.detect.outputs.run == 'true'
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install deps
-        if: steps.detect.outputs.run == 'true'
         working-directory: frontend
         run: npm ci
 
       - name: Install Playwright browser (chromium)
-        if: steps.detect.outputs.run == 'true'
         working-directory: frontend
         run: |
           # Avoid Google Chrome apt hash-mismatch flakes on apt-get update inside --with-deps.
@@ -121,7 +140,6 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Run UI smoke
-        if: steps.detect.outputs.run == 'true'
         working-directory: frontend
         env:
           CI: 'true'
@@ -133,7 +151,7 @@ jobs:
         run: npm run test:e2e
 
       - name: Upload Playwright report
-        if: ${{ steps.detect.outputs.run == 'true' && !cancelled() }}
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report

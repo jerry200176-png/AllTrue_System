@@ -9,6 +9,8 @@ import tempfile
 import textwrap
 import unittest
 
+import yaml
+
 
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github/workflows/ui-smoke.yml"
 
@@ -36,6 +38,30 @@ class UiSmokeWorkflowGateTest(unittest.TestCase):
         self.assertIn("GITHUB_RUN_ID", config)
         self.assertIn("GITHUB_RUN_ATTEMPT", config)
         self.assertIn("userAgent: smokeUserAgent", config)
+
+    def test_production_account_runs_are_serialized(self):
+        # #3767: every run that logs in with the shared production smoke accounts
+        # must hold one repo-wide concurrency group and never cancel a running login.
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        account_jobs = [
+            job_id
+            for job_id, job in jobs.items()
+            if any("SMOKE_DIRECTOR_" in str(step.get("env", {})) or "SMOKE_TEACHER_" in str(step.get("env", {}))
+                   for step in job.get("steps", []))
+        ]
+        self.assertEqual(account_jobs, ["ui-smoke"])
+        for job_id in account_jobs:
+            concurrency = jobs[job_id].get("concurrency")
+            self.assertIsInstance(concurrency, dict, f"{job_id} needs job-level concurrency")
+            group = concurrency.get("group", "")
+            self.assertEqual(group, "ui-smoke-production-accounts")
+            self.assertNotIn("${{", group, "the group must be shared by all runs, not per PR/run")
+            self.assertIs(concurrency.get("cancel-in-progress"), False)
+        # Skipped (non-UI) PRs must not queue behind the production session.
+        self.assertEqual(jobs["ui-smoke"]["needs"], "detect")
+        self.assertIn("needs.detect.outputs.run == 'true'", jobs["ui-smoke"]["if"])
+        self.assertNotIn("concurrency", jobs["detect"])
 
     def test_git_diff_error_fails_instead_of_skipping_playwright(self):
         script = workflow_run_script("Detect frontend diff (PR only)")
