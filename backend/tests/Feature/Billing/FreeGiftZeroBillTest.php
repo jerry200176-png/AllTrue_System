@@ -60,7 +60,9 @@ class FreeGiftZeroBillTest extends TestCase
         $this->assertSame(Invoice::ZERO_REASON_FREE_GIFT, $row['zero_amount_reason'] ?? null);
         // The contract row is settled too, so the panel stops offering 登記這筆 (#3991 review).
         $this->assertTrue(collect($ledger->json('courses'))->firstWhere('id', $course->ID)['paid']);
-        $this->withToken($token)->postJson("/api/v1/invoices/{$invoice->id}/payments", ['Amount' => 100, 'PaidAt' => '2026-10-13', 'Method' => 'cash'])->assertStatus(422)->assertJsonPath('message', '免費／贈送帳單不能登記收款');
+        $this->withToken($token)->postJson("/api/v1/invoices/{$invoice->id}/payments", ['Amount' => 100, 'PaidAt' => '2026-10-13', 'Method' => 'cash'])->assertStatus(422)->assertJsonPath('message', '免費／贈送帳單不能登記收款；這門課要收費的話，請先作廢這張帳單再開立新帳單');
+        $course->update(['Rate' => 750]); // #3991 review: a fee added later by any path, so the mark no longer settles the term
+        $this->assertFalse(collect($this->withToken($token)->getJson('/api/v1/accounting/ledger?student_id=' . $course->StudentID)->json('courses'))->firstWhere('id', $course->ID)['paid']);
     }
 
     /** #3991 review: a zero-fee count course the resolver already calls `free` can still record its marked bill. */
@@ -180,6 +182,9 @@ class FreeGiftZeroBillTest extends TestCase
         InvoiceItem::create(['InvoiceID' => Invoice::create(['StudentID' => $itemOnly->StudentID, 'StudentClassID' => $amended->ID, 'IssueDate' => '2026-10-01', 'Note' => '', 'TotalAmount' => 900, 'PaidAmount' => 0, 'Status' => 'unpaid'])->id, 'StudentClassID' => $itemOnly->ID, 'Description' => 't', 'Amount' => 900]);
         $this->withToken($token)->postJson(self::RECORD, $this->payload($itemOnly, ['free_gift' => true]))->assertStatus(422)->assertJsonPath('code', 'free_gift_course_has_fee');
         $this->withToken($token)->postJson(self::RECORD, $this->payload($this->monthlyCourse($this->student(), ['ScheduleMode' => 'count', 'SessionCount' => 4, 'RemainingSessions' => 4, 'Rate' => 750])))->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
+        $legacy = $this->monthlyCourse($this->student()); // #3991 review: a monthly bill without a month is never relabeled
+        $legacyBill = Invoice::create(['StudentID' => $legacy->StudentID, 'StudentClassID' => $legacy->ID, 'IssueDate' => '2026-10-01', 'Note' => '', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $this->withToken($token)->postJson(self::RECORD, $this->payload($legacy, ['free_gift' => true, 'invoice_id' => $legacyBill->id]))->assertStatus(422)->assertJsonPath('code', 'free_gift_invoice_unperiodized');
         $course = $this->monthlyCourse($this->student());
         $bill = fn () => Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01', 'Note' => 'auto', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-10']);
         [$first, $second] = [$bill(), $bill()];
@@ -203,20 +208,12 @@ class FreeGiftZeroBillTest extends TestCase
     /** @param array<string, mixed> $over @return array<string, mixed> */
     private function payload(StudentClass $course, array $over = []): array
     {
-        return array_merge([
-            'student_class_id' => $course->ID,
-            'payment_date' => '2026-10-13',
-            'payment_method' => 'cash',
-            'amount' => 0,
-        ], $over);
+        return array_merge(['student_class_id' => $course->ID, 'payment_date' => '2026-10-13', 'payment_method' => 'cash', 'amount' => 0], $over);
     }
 
     private function directorToken(int $campusId = 1): string
     {
-        $user = User::create([
-            'LoginName' => 'director_' . uniqid() . '@test.com', 'Name' => 'TestDirector', 'PSW' => 'secret',
-            'type' => 'A', 'phone' => 912345678,
-        ]);
+        $user = User::create(['LoginName' => 'director_' . uniqid() . '@test.com', 'Name' => 'TestDirector', 'PSW' => 'secret', 'type' => 'A', 'phone' => 912345678]);
         UserCampus::create(['CampusID' => $campusId, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
         $raw = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => Carbon::now()->addDay()]);
@@ -226,10 +223,7 @@ class FreeGiftZeroBillTest extends TestCase
 
     private function student(): Student
     {
-        return Student::create([
-            'name' => 'Student ' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
-            'Phone' => '0900000000', 'MDT' => now(), 'Notify_Token' => '',
-        ]);
+        return Student::create(['name' => 'Student ' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0900000000', 'MDT' => now(), 'Notify_Token' => '']);
     }
 
     /** @param array<string, mixed> $over */

@@ -796,6 +796,9 @@ class PaymentReportController extends Controller
                     'invoice_id' => (int) $invoice->id,
                 ], 422);
             }
+            if ($invoice && $invoice->billing_period === null && $course->getAttribute('ScheduleMode') === 'date') { // #3991 review: never guess the month
+                return response()->json(['message' => '這張月結帳單沒有月份，請先在學生帳務更正帳單月份。沒有登記任何款項。', 'code' => 'free_gift_invoice_unperiodized'], 422);
+            }
             if ($invoice) {
                 $projection = $this->invoiceProjection($invoice, $course);
                 if ((int) $projection['total_amount'] > 0 || (int) $projection['net_applied'] > 0 || (int) $invoice->TotalAmount !== 0

@@ -719,7 +719,7 @@ class AccountingController extends Controller
                 'schedule_mode' => (string) ($class->ScheduleMode ?? ''),
                 'charge' => (int) ($class->Charge ?? 0),
                 'paid' => (int) ($class->Paid ?? 0) === 1 || $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
-                    && (string) $i->Status !== 'void' && $i->isMarkedFreeGift() && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class))), // #3991: current term
+                    && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class))), // #3991: current term
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
                 'first_session_date' => $firstSessionDates->get((int) $class->getAttribute('ID')),

@@ -70,7 +70,7 @@ final class ContractMoneyVerdict
         $paymentBySession = [];
         foreach ($invoices as $invoice) {
             $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
-            $state = ($projection['outstanding_amount'] <= 0 && $projection['total_amount'] > 0) || $invoice->isMarkedFreeGift()
+            $state = ($projection['outstanding_amount'] <= 0 && $projection['total_amount'] > 0) || $invoice->freeGiftHolds($invoice->getRelationValue('studentClass'))
                 ? 'paid' // #3991: a marked 免費／贈送 term is settled
                 : ($projection['net_applied'] > 0 ? 'partial' : 'unpaid');
             foreach ($this->monthlyBilling->invoiceCoveredSessions($invoice, $projection) as $row) {

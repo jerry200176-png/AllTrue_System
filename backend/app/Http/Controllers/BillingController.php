@@ -225,7 +225,7 @@ class BillingController extends Controller
             // 先鎖帳單再判斷，避免與確認不收（void）競爭。
             $fresh = Invoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
             if (!$fresh || (string) $fresh->getAttribute('Status') === 'void' || $fresh->isMarkedFreeGift()) { // #3991: a 免費／贈送 bill takes no payment
-                return response()->json(['message' => $fresh?->isMarkedFreeGift() ? '免費／贈送帳單不能登記收款' : '作廢帳單不可登記收款'], 422);
+                return response()->json(['message' => $fresh?->isMarkedFreeGift() ? '免費／贈送帳單不能登記收款；這門課要收費的話，請先作廢這張帳單再開立新帳單' : '作廢帳單不可登記收款'], 422);
             }
             $invoice = $fresh;
             // R28 (#3873 item 4), same rule as payment-report confirm: what is paid comes from Payment rows, never
