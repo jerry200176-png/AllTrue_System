@@ -118,10 +118,12 @@ class ShadowSessionHorizonTest extends TestCase
     /** @param array<string,mixed> $over */
     private function course(array $over): int
     {
-        $studentId = 98400 + random_int(1, 8999);
-        DB::table('Student')->insert([
-            'id' => $studentId, 'name' => 'P2 Test', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
-        ]);
+        // Reuse the caller's student; otherwise let the DB assign the PK (a random one collided, PR #3947).
+        $studentId = array_key_exists('StudentID', $over)
+            ? (int) $over['StudentID']
+            : (int) DB::table('Student')->insertGetId([
+                'name' => 'P2 Test', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+            ]);
         $base = [
             'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
             'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0,
