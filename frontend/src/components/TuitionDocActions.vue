@@ -67,11 +67,11 @@ const actions = computed(() => [
 .tc-doc-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; flex: 1 1 100%; width: 100%; min-width: min(14rem, 100%); }
 .tc-doc-act { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; max-width: 100%; }
 /* 頁面的 scoped .tc-btn 樣式進不到子元件，這裡複製必要部分 */
-.tc-doc-act .tc-btn { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; min-height: 44px; padding: 5px 10px; border: 1px solid var(--border); background: var(--card-bg); border-radius: 7px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; }
-.tc-doc-act .tc-btn .material-symbols-outlined { font-size: 15px; }
+.tc-doc-act .tc-btn { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; min-height: 44px; padding: 5px 10px; border: 1px solid var(--border); background: var(--card-bg); border-radius: var(--ds-radius-md); cursor: pointer; font: inherit; font-size: var(--ds-font-size-sm); font-weight: 500; white-space: nowrap; }
+.tc-doc-act .tc-btn .material-symbols-outlined { font-size: var(--ds-font-size-base); }
 .tc-doc-act .tc-btn--slip { color: var(--ds-primary-text); }
 .tc-doc-act .tc-btn--receipt { color: var(--ds-success); }
 .tc-doc-act .tc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.tc-doc-link { flex: 1 1 100%; min-height: 32px; padding: 0; border: 0; background: none; font-size: 12px; text-align: left; text-decoration: underline; color: var(--ds-primary-text); cursor: pointer; }
-.tc-doc-reason { flex: 1 1 6rem; min-width: 0; font-size: 12px; line-height: 1.3; color: var(--ds-ink-mute); white-space: normal; }
+.tc-doc-link { flex: 1 1 100%; min-height: 32px; padding: 0; border: 0; background: none; font-size: var(--ds-font-size-sm); text-align: left; text-decoration: underline; color: var(--ds-primary-text); cursor: pointer; }
+.tc-doc-reason { flex: 1 1 6rem; min-width: 0; font-size: var(--ds-font-size-sm); line-height: 1.3; color: var(--ds-ink-mute); white-space: normal; }
 </style>
