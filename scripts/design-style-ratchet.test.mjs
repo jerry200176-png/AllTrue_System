@@ -22,9 +22,10 @@ test('font-size: raw values count, design vars / keywords / custom properties do
     .b { font-size: var(--ds-font-size-sm); }
     .c { font-size: 1.2rem !important; }
     .d { font-size: inherit; }
+    .e { font-size: calc(var(--ds-font-size-sm) + 10px); }
     :root { --ds-font-size-xs: 11px; --my-font-size: 9px; }
   `;
-  assert.equal(countFontSize(css), 2);
+  assert.equal(countFontSize(css), 3);
 });
 
 test('border-radius: longhands count; var(--ds-radius-*) and 0 pass', () => {
@@ -34,8 +35,10 @@ test('border-radius: longhands count; var(--ds-radius-*) and 0 pass', () => {
     .c { border-radius: var(--ds-radius-md); }
     .d { border-radius: 0; }
     .e { border-radius: 50%; }
+    .f { border-radius: var(--ds-radius-md) var(--ds-radius-md) 0 0; }
+    .g { border-radius: var(--ds-radius-md) 12px; }
   `;
-  assert.equal(countBorderRadius(css), 3);
+  assert.equal(countBorderRadius(css), 4);
 });
 
 test('box-shadow: design vars and focus-ring pass, literals count', () => {
@@ -44,8 +47,9 @@ test('box-shadow: design vars and focus-ring pass, literals count', () => {
     .b { box-shadow: var(--ds-shadow-1); }
     .c { box-shadow: 0 0 0 3px var(--ds-focus-ring); }
     .d { box-shadow: none; }
+    .e { box-shadow: var(--ds-shadow-1), 0 30px 60px rgba(0, 0, 0, .5); }
   `;
-  assert.equal(countBoxShadow(css), 1);
+  assert.equal(countBoxShadow(css), 2);
 });
 
 test('inline style attributes are counted like CSS', () => {
@@ -63,10 +67,11 @@ test('emoji are counted only inside the Vue <template> block', () => {
       <!-- \u{1F6A7} comment emoji is ignored -->
       <template v-if="x"><b>⚠️</b></template>
       <small>© AllTrue</small>
+      <i>\u{1F468}\u200D\u{1F469}\u200D\u{1F467}</i>
     </template>
-    <script setup>const label = '\u{1F389}';</script>
+    <script setup>const label = '\u{1F389} </template>';</script>
   `;
-  assert.equal(countTemplateEmoji(vue), 3);
+  assert.equal(countTemplateEmoji(vue), 4);
   assert.equal(countStyleViolations(vue, { isVue: false }).emoji, 0);
 });
 
@@ -79,8 +84,11 @@ test('native dialogs: calls count, definitions and member calls do not', () => {
     const api = { confirm(id) { return id; } };
     dialog.confirm('ok');
     this.alert('ok');
+    class A { confirm(a: string): void { } }
   `;
   assert.equal(countNativeDialogs(js), 3);
+  const vue = '<template><button @click="confirm(item)">x</button></template><script>alert(1)</script>';
+  assert.equal(countStyleViolations(vue, { isVue: true }).native_dialog, 1);
 });
 
 test('commented-out code is ignored', () => {

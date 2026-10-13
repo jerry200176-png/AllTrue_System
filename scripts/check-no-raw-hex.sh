@@ -12,10 +12,6 @@
 #   bash scripts/design-hex-count.sh > docs/design-hex-baseline.json
 #
 # 退出碼：有新增違規 → 1（CI 首期以 advisory / continue-on-error 呈現，不擋 merge）。
-#
-# 本腳本結尾也會跑 style ratchet（scripts/design-style-ratchet.mjs，UI U1）：
-# 字級／圓角／陰影／模板 emoji／原生 alert、confirm 只降不升，見
-# docs/design/ALLTRUE_UI_FOUNDATION.md §11。
 
 set -euo pipefail
 

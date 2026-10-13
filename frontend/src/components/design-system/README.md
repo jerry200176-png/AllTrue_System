@@ -135,16 +135,4 @@ Pilot 已驗證：`AtPageHeader` `AtSection` `AtToolbar` `AtFilterBar` `AtBadge`
 
 ## AtIcon
 
-```vue
-<AtIcon name="calendar" />
-<AtIcon name="warning" size="lg" label="注意" />
-<AtIconButton ... /> <!-- 純圖示按鈕：aria-label 放在按鈕上 -->
-```
-
-| prop | 值 | 預設 |
-|---|---|---|
-| `name` | `close` `check` `warning` `info` `search` `user` `bell` `calendar` `clipboard` `edit` `package` `chevron-left` `chevron-right` `plus` `more` | 必填 |
-| `size` | `sm` / `md` / `lg`（對應 `--ds-font-size-*`）/ `inherit`（跟隨文字） | `md` |
-| `label` | 有值時 `role="img"` + `aria-label`；沒值時 `aria-hidden` | — |
-
-顏色走 `currentColor`。路徑在 `atIcons.js`（改自 Lucide，ISC）。模板不要放 emoji，見 `docs/design/ALLTRUE_UI_FOUNDATION.md` §11。
+`<AtIcon name="calendar" />`、`<AtIcon name="warning" size="lg" label="注意" />`。`name` 見 `atIcons.js`（15 個，改自 Lucide，ISC）；`size` = `sm`/`md`/`lg`/`inherit`；預設 `aria-hidden`，給 `label` 才是 `role="img"`。顏色走 `currentColor`。模板不要放 emoji（`docs/design/ALLTRUE_UI_FOUNDATION.md` §11）。

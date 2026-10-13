@@ -1,23 +1,10 @@
 #!/usr/bin/env node
-// Design style ratchet (UI/UX U1, Refs #3115): per-file counts may only go DOWN.
-//
-// Sibling of the raw-hex guard (scripts/check-no-raw-hex.sh). It counts, per
-// file under frontend/src (.vue/.js/.ts/.css, tests and generated files
-// excluded), five categories of off-system styling:
-//   font_size     `font-size:` values that do not use var(--ds-font-size-*)
-//   border_radius `border-*radius:` values that do not use var(--ds-radius-*)
-//   box_shadow    `box-shadow:` values that do not use var(--ds-shadow-*)
-//                 (focus rings built on var(--ds-focus-ring) are allowed)
-//   emoji         emoji / pictograph glyphs inside a Vue <template> block
-//   native_dialog alert( / confirm( / window.alert( / window.confirm( calls
-//
-// Usage (from repo root):
-//   node scripts/design-style-ratchet.mjs                    check vs baseline
-//   node scripts/design-style-ratchet.mjs --update-baseline  rewrite baseline
-//   node scripts/design-style-ratchet.mjs --json             print current counts
-// CI: chained at the end of scripts/check-no-raw-hex.sh (npm run lint:design).
-//
-// Exit 1 only when some file's count in some category is ABOVE its baseline.
+// Design style ratchet (UI U1, Refs #3115), sibling of scripts/check-no-raw-hex.sh.
+// Per file under frontend/src counts off-system font-size / border-radius /
+// box-shadow values, emoji in Vue <template>, and native alert/confirm calls.
+// Rules and categories: docs/design/ALLTRUE_UI_FOUNDATION.md section 11.
+// Usage: node scripts/design-style-ratchet.mjs [--update-baseline | --json]
+// Exit 1 only when a file's count in a category is ABOVE the baseline.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,20 +24,36 @@ function countDeclarations(source, propertyPattern, usesDesignVar) {
     const value = match[1].replace(/!important/i, '').trim().replace(/['",]+$/, '').trim();
     if (!value || NEUTRAL_VALUE.test(value)) continue;
     if (value.startsWith('{{') || value.startsWith('$')) continue; // template/JS interpolation
-    if (!usesDesignVar(value)) count += 1;
+    if (!usesDesignVar(value.toLowerCase())) count += 1;
   }
   return count;
 }
 
+// Split on top-level commas / spaces only, so rgba(a, b) and calc() stay whole.
+function splitTop(value, sep) {
+  const parts = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of value) {
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth -= 1;
+    if (depth === 0 && sep.test(ch)) { if (cur.trim()) parts.push(cur.trim()); cur = ''; } else cur += ch;
+  }
+  if (cur.trim()) parts.push(cur.trim());
+  return parts;
+}
+
+// The whole value must be the design variable: mixing it with literals
+// (calc(var(--ds-font-size-sm) + 10px), `var(--ds-shadow-1), 0 30px red`) counts.
 export function countFontSize(source) {
-  return countDeclarations(source, 'font-size', (v) => /var\(--ds-font-size-/.test(v));
+  return countDeclarations(source, 'font-size', (v) => /^var\(--ds-font-size-[\w-]+\)$/.test(v));
 }
 
 export function countBorderRadius(source) {
   return countDeclarations(
     source,
     'border(?:-(?:top|bottom|start|end)-(?:left|right|start|end))?-radius',
-    (v) => /var\(--ds-radius-/.test(v),
+    (v) => splitTop(v, /\s/).every((p) => p === '0' || /^var\(--ds-radius-[\w-]+\)$/.test(p)),
   );
 }
 
@@ -58,28 +61,35 @@ export function countBoxShadow(source) {
   return countDeclarations(
     source,
     'box-shadow',
-    (v) => /var\(--ds-shadow-/.test(v) || /var\(--ds-focus-ring\)/.test(v),
+    (v) => splitTop(v, /,/).every((layer) => /^var\(--ds-shadow-[\w-]+\)$/.test(layer)
+      || /^(?:inset\s+)?(?:-?[\d.]+(?:px)?\s+){2,4}var\(--ds-focus-ring\)$/.test(layer)),
   );
 }
 
 // Extended_Pictographic plus common dingbat check/cross/star glyphs used as
 // icons; (c) (r) TM are typographic, not pictographs.
-const PICTOGRAPH = /[\p{Extended_Pictographic}✓✕✗★☆]/gu;
+const PICTOGRAPH = /[\p{Extended_Pictographic}✓✕✗★☆]/u;
 const TYPOGRAPHIC = new Set(['©', '®', '™']);
 
-/** Text of the outermost Vue <template> block (nested templates included). */
-export function extractTemplate(source) {
+/** [start, end) of the Vue <template> block: last </template> before the next <script>/<style>. */
+function templateRange(source) {
   const start = source.search(/<template[\s>]/);
-  const end = source.lastIndexOf('</template>');
-  if (start < 0 || end < start) return '';
-  return source.slice(start, end);
+  if (start < 0) return null;
+  const next = source.slice(start).search(/<(?:script|style)[\s>]/);
+  const end = source.lastIndexOf('</template>', next < 0 ? source.length : start + next);
+  return end > start ? [start, end] : null;
+}
+
+export function extractTemplate(source) {
+  const range = templateRange(source);
+  return range ? source.slice(...range) : '';
 }
 
 export function countTemplateEmoji(source) {
   const template = extractTemplate(source).replace(/<!--[\s\S]*?-->/g, ' ');
-  let count = 0;
-  for (const [glyph] of template.matchAll(PICTOGRAPH)) {
-    if (!TYPOGRAPHIC.has(glyph)) count += 1;
+  let count = 0; // one per visible glyph: a ZWJ family or emoji+VS16 counts once
+  for (const { segment } of new Intl.Segmenter().segment(template)) {
+    if (PICTOGRAPH.test(segment) && !TYPOGRAPHIC.has(segment)) count += 1;
   }
   return count;
 }
@@ -90,7 +100,7 @@ export function countNativeDialogs(source) {
   for (const match of source.matchAll(re)) {
     const before = source.slice(Math.max(0, match.index - 16), match.index);
     if (/function\s+$/.test(before)) continue; // local `function confirm(` definition
-    // Method shorthand definition `confirm(args) {` is not a call.
+    // Method shorthand definition `confirm(args) {` / `confirm(a): void {` is not a call.
     let depth = 0;
     let i = match.index + match[0].length - 1;
     for (; i < source.length; i += 1) {
@@ -100,7 +110,7 @@ export function countNativeDialogs(source) {
         if (depth === 0) break;
       }
     }
-    if (/^\s*\{/.test(source.slice(i + 1, i + 40))) continue;
+    if (/^\s*(?::[^{;=]*)?\{/.test(source.slice(i + 1, i + 60))) continue;
     count += 1;
   }
   return count;
@@ -108,12 +118,15 @@ export function countNativeDialogs(source) {
 
 export function countStyleViolations(source, { isVue = false } = {}) {
   const code = stripVueComments(source);
+  // Vue templates cannot reach window.alert/confirm; a bare `confirm(x)` there is a component method.
+  const range = isVue ? templateRange(code) : null;
+  const scriptCode = range ? code.slice(0, range[0]) + code.slice(range[1]) : code;
   return {
     font_size: countFontSize(code),
     border_radius: countBorderRadius(code),
     box_shadow: countBoxShadow(code),
     emoji: isVue ? countTemplateEmoji(source) : 0,
-    native_dialog: countNativeDialogs(code),
+    native_dialog: countNativeDialogs(scriptCode),
   };
 }
 
@@ -178,7 +191,6 @@ function main() {
     const doc = [
       '{',
       '  "_comment": "Generated by node scripts/design-style-ratchet.mjs --update-baseline. Per-file counts may only go down.",',
-      `  "categories": ${JSON.stringify(CATEGORIES)},`,
       `  "totals": ${JSON.stringify(current.totals)},`,
       '  "files": {',
       fileLines.join(',\n'),
@@ -214,7 +226,8 @@ function main() {
   return 0;
 }
 
-const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
+// realpath: a symlinked checkout must not skip main() and silently exit 0.
+const invokedPath = process.argv[1] ? pathToFileURL(fs.realpathSync(process.argv[1])).href : '';
 if (invokedPath === import.meta.url) {
   process.exitCode = main();
 }
