@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\ClassSession;
+use App\Models\LearningRecord;
 use App\Models\StudentClass;
 use App\Models\AuthToken;
 use App\Models\Invoice;
@@ -491,6 +493,73 @@ class StudentClassTransactionDiscountTest extends TestCase
         $this->assertSame('NONE', $new->pricing_snapshot['type']);
         $this->assertSame(0, (int) $new->pricing_snapshot['discount_amount']);
         $this->assertSame(1000, (int) $new->Charge);
+    }
+
+    // Founder 2026-10-14「不要有折扣功能了」: with the default (flag off) every discount path refuses before any write.
+    public function test_disabled_discount_class_session_batch_is_refused_and_writes_nothing(): void
+    {
+        config(['billing.transaction_discounts_enabled' => false]);
+        [, $directorToken] = $this->staffToken('A', true);
+        [$teacher] = $this->staffToken('T', true);
+        $this->grantTeacherSubjects($teacher->id, ['Math']);
+        $student = $this->student();
+        $before = [StudentClass::count(), ClassSession::count(), LearningRecord::count(), Invoice::count()];
+
+        $this->withToken($directorToken)->postJson('/api/v1/class-sessions/batch', [
+            'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacher->id,
+            'subject' => 'Math', 'class_type' => 'one_on_one', 'total_classes' => 1,
+            'confirmed_dates' => [], 'future_dates' => ['2031-10-06'],
+            'session_plan' => [['session_date' => '2031-10-06', 'start_time' => '11:00', 'kind' => 'future', 'subject' => 'Math']],
+            'days_of_week' => [1], 'day_time_slots' => [['day' => 1, 'start_time' => '11:00', 'duration_minutes' => 120, 'subject' => 'Math']],
+            'start_time' => '11:00', 'duration_minutes' => 120,
+            'price_per_session' => 101, 'payment_type' => 'session', 'course_start_date' => '2031-10-06',
+            'discount' => ['type' => 'PERCENTAGE', 'value' => '100', 'reason' => 'waiver'],
+        ])->assertStatus(422)->assertJsonValidationErrors('discount');
+
+        $this->assertSame($before, [StudentClass::count(), ClassSession::count(), LearningRecord::count(), Invoice::count()]);
+    }
+
+    public function test_disabled_discount_renewal_preview_and_a_stale_discounted_preview_confirm_are_refused(): void
+    {
+        $student = $this->student();
+        [$director, $token] = $this->staffToken('A', true);
+        $course = $this->course($student->id, $director->id);
+        $payload = ['mode' => 'purchase_batch', 'sessions' => 2, 'start_date' => '2030-12-01',
+            'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'approved before removal']];
+        // A preview made while discounts still existed, confirmed after they were switched off.
+        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", $payload)->assertOk()->json();
+        config(['billing.transaction_discounts_enabled' => false]);
+        $before = [StudentClass::count(), Invoice::count()];
+
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", $payload)
+            ->assertStatus(422)->assertJsonValidationErrors('discount');
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+            'preview_id' => $preview['preview_id'], 'state_hash' => $preview['state_hash'],
+            'mode' => 'purchase_batch', 'payload' => $payload,
+        ])->assertStatus(422)->assertJsonValidationErrors('discount');
+
+        $this->assertSame($before, [StudentClass::count(), Invoice::count()]);
+    }
+
+    public function test_disabled_discount_monthly_renewal_is_refused_and_writes_nothing(): void
+    {
+        config(['billing.transaction_discounts_enabled' => false]);
+        $student = $this->student();
+        [$director, $token] = $this->staffToken('A', true);
+        $course = $this->course($student->id, $director->id);
+        $course->forceFill(['ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'monthly_sessions' => 8,
+            'settlement_day' => 15, 'StartDate' => '2026-09-01', 'EndDate' => '2026-09-30', 'Paid' => 1])->save();
+        Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-01',
+            'TotalAmount' => 4000, 'PaidAmount' => 4000, 'Status' => 'paid', 'billing_period' => '2026-09']);
+        $before = [StudentClass::count(), Invoice::count(), InvoiceItem::count()];
+
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+            'end_date' => '2026-10-31',
+            'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '4000', 'reason' => 'waiver'],
+        ])->assertStatus(422)->assertJsonValidationErrors('discount');
+
+        $this->assertSame($before, [StudentClass::count(), Invoice::count(), InvoiceItem::count()]);
+        $this->assertSame('2026-09-30', substr((string) $course->fresh()->EndDate, 0, 10));
     }
 
     /** @return array{0: User, 1: string} */
