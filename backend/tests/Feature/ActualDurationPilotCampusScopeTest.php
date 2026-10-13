@@ -184,6 +184,32 @@ class ActualDurationPilotCampusScopeTest extends TestCase
     }
 
     /** Renewal / tutoring copies never mint a new actual_duration contract off-pilot. */
+    /**
+     * Codex P1 on #3948: a course that recorded a minute event while piloting must,
+     * once its campus leaves the allowlist, count every attendance as one whole lesson.
+     * SessionDuration (180) differs from the standard (120) so the old 90-minute row
+     * would otherwise be re-read as a partial lesson against 180.
+     */
+    public function test_removing_the_campus_recounts_history_as_whole_lessons(): void
+    {
+        [$sc, $studentId] = $this->course($this->pilotCampusId, ['SessionDuration' => 180]);
+        $this->attend($sc, $studentId, '14:00:00', '15:30:00', 12);
+        $this->assertSame(90, (int) $this->ledgerMinutes($sc), 'live pilot records actual minutes');
+
+        config(['perfflags.actual_duration_campus_ids' => (string) $this->otherCampusId]);
+        $this->attend($sc, $studentId, '14:00:00', '17:00:00', 10);
+        SessionDeductionService::recomputeCounters($sc->ID);
+
+        $fresh = $sc->fresh();
+        $this->assertSame(6, (int) $fresh->RemainingSessions, 'two attendances = two whole lessons');
+        $this->assertSame(2, (int) $fresh->UsedSessions);
+        $this->assertSame(6 * 180, (int) $fresh->RemainingMinutes, 'no fractional balance');
+
+        config(['perfflags.actual_duration_campus_ids' => (string) $this->pilotCampusId]);
+        SessionDeductionService::recomputeCounters($sc->ID);
+        $this->assertSame(8 * 120 - 90 - 120, (int) $sc->fresh()->RemainingMinutes, 'back in the pilot: minutes again');
+    }
+
     public function test_copied_basis_follows_the_allowlist(): void
     {
         [$pilot] = $this->course($this->pilotCampusId);
@@ -208,9 +234,14 @@ class ActualDurationPilotCampusScopeTest extends TestCase
 
     private function attend180(StudentClass $sc, int $studentId): void
     {
+        $this->attend($sc, $studentId, '14:00:00', '17:00:00', 10);
+    }
+
+    private function attend(StudentClass $sc, int $studentId, string $start, string $end, int $daysAgo): void
+    {
         $cs = ClassSession::create([
-            'StudentClassID' => $sc->ID, 'SessionDate' => Carbon::now()->subDays(10)->toDateString(),
-            'StartTime' => '14:00:00', 'EndTime' => '17:00:00', 'Status' => 'scheduled',
+            'StudentClassID' => $sc->ID, 'SessionDate' => Carbon::now()->subDays($daysAgo)->toDateString(),
+            'StartTime' => $start, 'EndTime' => $end, 'Status' => 'scheduled',
         ]);
 
         $this->withHeaders($this->headers())->postJson('/api/v1/attendance', [

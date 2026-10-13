@@ -466,7 +466,13 @@ class SessionDeductionService
                 // #613 A1：是否存在「部分時數」事件（minutes 已記錄且 ≠ 整堂）。
                 // 否 → 完全沿用既有 count-based 邏輯（行為 byte-identical），僅補寫衍生分鐘欄。
                 // 是 → 分鐘為權威，RemainingSessions 改為 ROUND_HALF_UP 衍生顯示值。
-                $hasPartial = SessionDeductionLedger::query()
+                // #3834 — an opted-in course whose minute billing is gated off (flag off,
+                // campus removed from the pilot, or student moved off-pilot) counts every
+                // attendance as one whole lesson, including events recorded in minutes
+                // while it was live. Re-reading those rows against SessionDuration would
+                // leave a fractional balance and mix minute and whole-lesson semantics.
+                $gatedOffActualDuration = $sc->isActualDurationBasis() && !self::isActualDurationActive($sc);
+                $hasPartial = !$gatedOffActualDuration && SessionDeductionLedger::query()
                     ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                     ->where('student_class_id', $studentClassId)
                     ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
