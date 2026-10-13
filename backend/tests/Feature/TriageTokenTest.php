@@ -59,6 +59,10 @@ final class TriageTokenTest extends TestCase
             $this->getJson('/api/v1/admin/triage-tokens', $this->as($user))->assertForbidden();
             $this->deleteJson("/api/v1/admin/triage-tokens/{$id}", [], $this->as($user))->assertForbidden();
         }
+        $suspended = $this->user('S');
+        $suspended->forceFill(['status' => 'suspended'])->save();
+        $this->getJson('/api/v1/admin/triage-tokens', $this->as($suspended))->assertForbidden();
+        $this->postJson('/api/v1/admin/triage-tokens', ['name' => 'x'], $this->as($suspended))->assertForbidden();
         // The token cannot mint or revoke tokens either.
         $this->postJson('/api/v1/admin/triage-tokens', ['name' => 'x'], $this->bearer($token))->assertForbidden();
         $this->deleteJson("/api/v1/admin/triage-tokens/{$id}", [], $this->bearer($token))->assertForbidden();
