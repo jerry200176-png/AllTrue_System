@@ -147,13 +147,13 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
   ? '月結：每個月依當月上課日收費'
   : '堂數制：先買堂數，上一堂扣一堂'));
 
-const legacyPaid = computed(() => !!props.course.paid && !props.amounts && !props.pendingReport && !props.lastPayment?.receipt);
-const paymentLabel = (p) => (p === 'no_invoice' && legacyPaid.value ? LEGACY_PAID_LABEL : PAYMENT_LABELS[p]);
+const legacyPaid = computed(() => !noObligation.value && !!props.course.paid && !props.amounts && !props.pendingReport && !props.lastPayment?.receipt);
+const paymentLabel = (p) => (p === 'no_invoice' && noObligation.value ? '不用繳費' : (p === 'no_invoice' && legacyPaid.value ? LEGACY_PAID_LABEL : PAYMENT_LABELS[p]));
 const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
 const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p.length === 2 ? `${Number(p[0])}/${Number(p[1])}` : ''; };
 // Same source as the printed receipt (receipts first, PayDate only as the parent's fallback; never "fixed" here).
 const payLineText = computed(() => {
-  const p = props.lastPayment;
+  const p = props.lastPayment; if (noObligation.value) return '輔導課不用繳費';
   if (!p?.date && legacyPaid.value) return LEGACY_PAID_LABEL;
   return p?.date ? `繳費日 ${dateOnly(p.date)}　${money(p.amount)}` : '還沒繳費';
 });
@@ -167,7 +167,7 @@ const monthLineText = (key) => {
 function monthPayState(list) {
   const pays = list.map((s) => s.payment);
   if (pays.every((p) => p === 'paid')) return '已收';
-  if (pays.every((p) => p === 'no_invoice')) return legacyPaid.value ? '舊制已繳' : '還沒開帳單';
+  if (pays.every((p) => p === 'no_invoice')) return noObligation.value ? '不用繳費' : (legacyPaid.value ? '舊制已繳' : '還沒開帳單');
   if (pays.every((p) => p === 'unpaid' || p === 'no_invoice')) return '未繳';
   return '部分已收';
 }
