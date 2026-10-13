@@ -83,6 +83,20 @@ describe('NightlyReconcilePanel plain-language summary (#3900)', () => {
     expect(wrapper.get('[data-testid="nr-verdict"]').text()).not.toContain('昨晚');
   });
 
+  it('turns stale while the tab stays open, without a reload', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date('2026-10-13T13:59:00+08:00'));
+    const wrapper = await mountWith({
+      checked_at: '2026-10-12 02:00:00', threshold: 0, total_checked: 5, mismatch_count: 0, cause_counts: {}, mismatches: [],
+    });
+    expect(wrapper.find('[data-testid="nr-stale"]').exists()).toBe(false);
+    vi.advanceTimersByTime(2 * 60 * 1000);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="nr-stale"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="nr-verdict"]').text()).not.toContain('昨晚');
+    wrapper.unmount();
+  });
+
   it('reads the offset-less server timestamp as Taipei time, not viewer-local time', async () => {
     // 2026-10-12 02:00 +08:00 is 31h before 2026-10-13 09:00 +08:00: not stale anywhere.
     vi.setSystemTime(new Date('2026-10-13T09:00:00+08:00'));
@@ -95,6 +109,22 @@ describe('NightlyReconcilePanel plain-language summary (#3900)', () => {
       checked_at: '2026-10-12 02:00:00', threshold: 0, total_checked: 5, mismatch_count: 0, cause_counts: {}, mismatches: [],
     });
     expect(stale.find('[data-testid="nr-stale"]').exists()).toBe(true);
+  });
+
+  it('names every source the backend counts as used, and limits the purchase cap to count-mode courses', () => {
+    const service = readFileSync(resolve(__dirname, '../../../../backend/app/Services/SessionDeductionService.php'), 'utf8');
+    // observed_used = max(deducted sign-ins, completed ClassSession statuses, orphan approved LearningRecords).
+    expect(service).toContain("->whereIn('Status', ['completed', 'attended', 'late'])");
+    expect(service).toContain("->where('Status', 'approved')");
+    expect(service).toContain("$isSessionMode = (string) ($course->ScheduleMode ?? 'count') === 'count';");
+    for (const category of ['ledger_ahead', 'contract_cap']) {
+      const text = CATEGORY_GUIDE[category].meaning + CATEGORY_GUIDE[category].next;
+      for (const source of ['點名', '課堂', '評量', '扣堂']) expect(text, `${category} ${source}`).toContain(source);
+    }
+    expect(CATEGORY_GUIDE.ledger_ahead.next).toContain('退回');
+    expect(CATEGORY_GUIDE.contract_cap.meaning).toContain('只檢查堂數制');
+    const panel = readFileSync(resolve(__dirname, '../../pages/NightlyReconcilePanel.vue'), 'utf8');
+    expect(panel).toContain('月結（依上課日收費）的課沒有這個上限');
   });
 
   it('has a meaning and a next step for every category the nightly command can emit', () => {

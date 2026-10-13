@@ -12,15 +12,15 @@ import { getReconcileLatest } from '../api';
 // Repairs never happen on this page: the report is read-only.
 export const CATEGORY_GUIDE = Object.freeze({
   attendance_ahead: {
-    meaning: '點名或評量紀錄比課程上的已用堂數多。',
+    meaning: '點名、已上課的課堂或評量紀錄，比課程上的已用堂數多。',
     next: '到「出缺勤」確認這幾堂是否真的有上，再把課程編號交給工程團隊修正。',
   },
   ledger_ahead: {
-    meaning: '扣堂紀錄比課程上的已用堂數多，也比點名和評量紀錄多。',
-    next: '逐筆比對扣堂紀錄與該堂點名，找出沒有對應點名的扣堂，再把課程編號交給工程團隊。',
+    meaning: '扣堂紀錄比課程上的已用堂數多，也比點名、已上課的課堂和評量紀錄多。',
+    next: '逐筆比對扣堂與退回紀錄，和這門課的點名、課堂狀態、評量；找出哪一項都對不上的扣堂，再把課程編號交給工程團隊。',
   },
   counter_overstated: {
-    meaning: '課程上的已用堂數，比點名和扣堂紀錄都多。',
+    meaning: '課程上的已用堂數，比依點名、已上課的課堂、評量和扣堂紀錄算出的還多。',
     next: '到「課程查找」看這門課是否漏點名，再把課程編號交給工程團隊。',
   },
   partial_minutes: {
@@ -28,8 +28,8 @@ export const CATEGORY_GUIDE = Object.freeze({
     next: '核對扣堂紀錄裡每次扣的分鐘數，與「課程查找」裡這門課一堂幾分鐘。',
   },
   contract_cap: {
-    meaning: '點名或扣堂紀錄超過這門課買的堂數。',
-    next: '先到「出缺勤」查是否重複扣堂；確實上滿再請分校主任確認續課。',
+    meaning: '依點名、已上課的課堂、評量或扣堂紀錄算出的已用堂數，超過這門課買的堂數（只檢查堂數制的課）。',
+    next: '先比對這門課的點名、課堂狀態、評量與扣堂紀錄，找出重複或多算的一項（例如同一堂扣兩次、課堂狀態誤標已上）；每一項都對、確實上滿，再請分校主任確認續課。',
   },
   source_conflict: {
     meaning: '已取消的課堂仍留有點名、評量或扣堂紀錄。',

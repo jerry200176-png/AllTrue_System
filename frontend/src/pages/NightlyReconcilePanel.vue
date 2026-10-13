@@ -55,7 +55,7 @@
         <summary>怎麼核對</summary>
         <ul>
           <li><strong>課程上的已用堂數</strong>：課程目前記錄用掉幾堂。</li>
-          <li><strong>系統應為</strong>：依點名、評量與扣堂紀錄算出應用掉幾堂，不超過買的堂數。</li>
+          <li><strong>系統應為</strong>：依點名、已上課的課堂、評量與扣堂紀錄算出應用掉幾堂。堂數制的課不超過買的堂數；月結（依上課日收費）的課沒有這個上限。</li>
           <li><strong>課堂狀態已上</strong>：課堂狀態為已到、遲到或完成的堂數，只供參考。</li>
         </ul>
         <p>這不是學費或銀行對帳。</p>
@@ -231,7 +231,7 @@
 </template>
 
 <script setup>
-import { onMounted, computed } from 'vue';
+import { onMounted, onBeforeUnmount, computed, ref } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
@@ -276,10 +276,18 @@ function parseServerTime(value) {
   return new Date(m ? `${m[1]}T${m[2]}+08:00` : text);
 }
 
+// Date.now() is not reactive: tick a clock so a tab left open still turns stale.
+const now = ref(Date.now());
+let clockTimer = null;
+onMounted(() => {
+  clockTimer = setInterval(() => { now.value = Date.now(); }, 60 * 1000);
+});
+onBeforeUnmount(() => clearInterval(clockTimer));
+
 const isStale = computed(() => {
   const checkedAt = parseServerTime(summary.value?.checked_at);
   if (Number.isNaN(checkedAt.getTime())) return false;
-  return Date.now() - checkedAt.getTime() > STALE_AFTER_MS;
+  return now.value - checkedAt.getTime() > STALE_AFTER_MS;
 });
 
 const verdictTitle = computed(() => {

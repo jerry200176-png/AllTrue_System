@@ -34,6 +34,12 @@ describe('BindingManagementPage responsive presentation contract', () => {
     expect(webhook).toContain('綁定 王小明 0912345678');
     expect(source).toContain('綁定 王小明 0912345678');
     expect(source).toContain('到「綁定衝突審查」');
+    // The cross-campus reply only proves a same-name/phone match elsewhere: verify the campus first.
+    expect(source).toContain('先確認學生現在在哪個分校上課');
+    // A phone-only change keeps the binding but still needs the new number on file.
+    expect(source).toContain('到「學生管理」改成新的家長手機');
+    expect(source).toContain('不用解除或重綁');
+    expect(source).not.toContain('則不用處理');
   });
 
   it('keeps destructive unbinding on the existing confirmation and API path', () => {
