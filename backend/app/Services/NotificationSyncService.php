@@ -148,12 +148,7 @@ class NotificationSyncService
         ];
     }
 
-    /**
-     * #3877: a student transfer moves a debt to another campus, and a campus-scoped sync never reads the
-     * old campus, so its open tuition notice (student name and debt) would stay visible there. System path
-     * only (tuition:send-reminders), never a user-scoped sync: retire every open tuition notice whose course
-     * or invoice student now belongs to another campus, whether or not the debt still qualifies anywhere.
-     */
+    /** System-only: retire tuition notices left in a student's former campus after transfer. */
     public static function retireTransferredTuition(): int
     {
         $open = Notification::query()->where('Type', 'tuition')->whereNull('ResolvedAt')
@@ -302,6 +297,27 @@ class NotificationSyncService
         return $today->gt($due) || (int) $today->diffInDays($due) < 5;
     }
 
+    /**
+     * @param \Illuminate\Database\Eloquent\Collection<int, StudentClass> $classes
+     * @return \Illuminate\Database\Eloquent\Collection<int, StudentClass>
+     */
+    public static function withinTuitionReminderWindow(\Illuminate\Database\Eloquent\Collection $classes): \Illuminate\Database\Eloquent\Collection
+    {
+        $dateModeIds = $classes->filter(fn (StudentClass $c) => ($c->ScheduleMode ?? null) !== 'count')
+            ->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        $openInvoiceDue = empty($dateModeIds) ? [] : Invoice::query()
+            ->whereIn('StudentClassID', $dateModeIds)
+            ->whereIn('Status', ['unpaid', 'partial'])
+            ->whereNotNull('DueDate')
+            ->groupBy('StudentClassID')
+            ->selectRaw('StudentClassID, MIN(DueDate) as earliest_due')
+            ->pluck('earliest_due', 'StudentClassID')
+            ->map(fn ($d) => substr((string) $d, 0, 10))
+            ->all();
+        return $classes->filter(fn (StudentClass $class) => ($class->ScheduleMode ?? null) === 'count'
+            || self::monthlyInWindow((int) ($class->settlement_day ?? 0), $openInvoiceDue[(int) $class->ID] ?? null))->values();
+    }
+
     private static function isSourceKeyDuplicate(QueryException $exception): bool
     {
         $driverCode = (int) ($exception->errorInfo[1] ?? 0);
@@ -332,7 +348,7 @@ class NotificationSyncService
         }
 
         $rows = [];
-        $classes = $query->get();
+        $classes = self::withinTuitionReminderWindow($query->get());
         // F7 S5: the resolver decides who still owes; flag off = legacy predicate only (plus shadow comparison).
         $statuses = [];
         $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
@@ -344,17 +360,6 @@ class NotificationSyncService
                 Log::warning('notification_tuition_resolver_failed', ['error' => $e::class]); // fall back to the legacy decision
             }
         }
-        $dateModeIds = $classes->filter(fn (StudentClass $c) => ($c->ScheduleMode ?? null) !== 'count')
-            ->pluck('ID')->map(fn ($id) => (int) $id)->all();
-        $openInvoiceDue = empty($dateModeIds) ? [] : Invoice::query()
-            ->whereIn('StudentClassID', $dateModeIds)
-            ->whereIn('Status', ['unpaid', 'partial'])
-            ->whereNotNull('DueDate')
-            ->groupBy('StudentClassID')
-            ->selectRaw('StudentClassID, MIN(DueDate) as earliest_due')
-            ->pluck('earliest_due', 'StudentClassID')
-            ->map(fn ($d) => substr((string) $d, 0, 10))
-            ->all();
         foreach ($classes->keyBy(fn (StudentClass $c) => (int) $c->getAttribute('ID')) as $classId => $class) {
             $student = $class->student;
             if (!$student) {
@@ -363,13 +368,6 @@ class NotificationSyncService
             $resolved = $statuses[$classId] ?? null;
             // paid / free: nothing owed. review_required / unknown: keep the legacy decision (it is in the query).
             if ($resolved && in_array($resolved['status'], ['paid', 'free'], true)) {
-                continue;
-            }
-
-            // Monthly (date) courses follow docs/DIRECTOR_PAYMENT_ALERT_RULES.md: the earliest open invoice's
-            // DueDate, else a valid settlement_day; past due => always; otherwise only 0-4 days before it.
-            if (($class->ScheduleMode ?? null) !== 'count'
-                && !self::monthlyInWindow((int) ($class->settlement_day ?? 0), $openInvoiceDue[$classId] ?? null)) {
                 continue;
             }
 

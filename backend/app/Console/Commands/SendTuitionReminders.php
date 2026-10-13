@@ -43,7 +43,7 @@ class SendTuitionReminders extends Command
         // F7 S5: the resolver can only remove courses (paid/free); review_required/unknown keep the legacy decision.
         $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
         $settled = app(\App\Services\BillingPayableResolver::class)->settledCourseIds($unpaidCourses, 'tuition_reminders');
-        $unpaidCourses = $unpaidCourses->reject(fn (StudentClass $c) => isset($settled[(int) $c->ID]))->values();
+        $unpaidCourses = NotificationSyncService::withinTuitionReminderWindow($unpaidCourses->reject(fn (StudentClass $c) => isset($settled[(int) $c->ID]))->values());
 
         // #3877: per-campus syncs never read a transferred student's old campus; retire those notices here.
         if (!$dryRun) {

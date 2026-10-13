@@ -168,12 +168,7 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         ];
     }
 
-    /**
-     * Isolated read-reset: the per-course notice and its read row are pre-created directly (no command).
-     * Exactly one stored field differs from what sync derives.
-     *
-     * @dataProvider tamperedFields
-     */
+    /** @dataProvider tamperedFields */
     public function test_sync_resets_read_when_one_stored_field_differs(string $field, string $value): void
     {
         [$campus, $director, $course] = $this->fixture();
@@ -231,11 +226,7 @@ class TuitionReminderDirectorNotificationTest extends TestCase
         return ['date-mode, past cutoff, no invoice' => ['date'], 'count-mode, no invoice' => ['count']];
     }
 
-    /**
-     * The command reminds parents of every effectively-unpaid course; the director must have exactly one alert for it.
-     *
-     * @dataProvider scheduleModes
-     */
+    /** @dataProvider scheduleModes */
     public function test_every_course_the_command_reminds_has_a_single_director_alert(string $mode): void
     {
         [$campus, , $course] = $this->fixture();
