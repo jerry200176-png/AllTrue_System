@@ -2563,7 +2563,7 @@ class FinanceController extends Controller
         // non-void, not-fully-paid invoice IssueDate. Unbilled lessons are not AR (see monthly drafts).
         $openInvoices = DB::table('Invoice')
             ->whereNotNull('StudentClassID')
-            ->where(fn ($q) => $q->whereNull('Status')->orWhereNotIn('Status', ['void', 'paid']))
+            ->whereRaw(\App\Models\Invoice::mayOweSql())
             ->groupBy('StudentClassID')
             ->selectRaw('StudentClassID, MIN(IssueDate) AS oldest_issue')
             ->pluck('oldest_issue', 'StudentClassID');
