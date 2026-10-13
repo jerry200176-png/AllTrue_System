@@ -86,7 +86,7 @@ jobs:
         run: echo "✅ 無 UI smoke 相關 diff，Playwright 略過；本 run 未驗證正式站。"
 
   ui-smoke:
-    name: UI Smoke (Playwright)
+    name: UI Smoke — Playwright run
     needs: detect
     if: ${{ needs.detect.outputs.run == 'true' }}
     runs-on: ubuntu-latest
@@ -158,3 +158,27 @@ jobs:
           path: frontend/playwright-report/
           retention-days: 7
           if-no-files-found: ignore
+
+  # Stable required-check name. A skipped job can satisfy a required check, so this job always
+  # runs (except on drafts, like detect) and fails unless detection succeeded and, when the diff
+  # is smoke-relevant, Playwright succeeded.
+  ui-smoke-gate:
+    name: UI Smoke (Playwright)
+    needs: [detect, ui-smoke]
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require detection and (when relevant) Playwright to succeed
+        env:
+          DETECT: ${{ needs.detect.result }}
+          RUN: ${{ needs.detect.outputs.run }}
+          SMOKE: ${{ needs.ui-smoke.result }}
+        run: |
+          set -euo pipefail
+          [[ "$DETECT" == success ]] || { echo "::error::changed-path detection did not succeed ($DETECT)"; exit 1; }
+          if [[ "$RUN" == true ]]; then
+            [[ "$SMOKE" == success ]] || { echo "::error::Playwright smoke did not succeed ($SMOKE)"; exit 1; }
+          else
+            echo "No smoke-relevant diff; Playwright skipped."
+          fi

@@ -63,6 +63,22 @@ class UiSmokeWorkflowGateTest(unittest.TestCase):
         self.assertIn("needs.detect.outputs.run == 'true'", jobs["ui-smoke"]["if"])
         self.assertNotIn("concurrency", jobs["detect"])
 
+    def test_required_check_fails_when_detection_or_smoke_fails(self):
+        # A skipped job can satisfy a required check: the stable check name must always run
+        # and fail unless detection succeeded (and Playwright, when the diff is relevant).
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        gates = [job_id for job_id, job in jobs.items() if job.get("name") == "UI Smoke (Playwright)"]
+        self.assertEqual(gates, ["ui-smoke-gate"])
+        gate = jobs["ui-smoke-gate"]
+        self.assertEqual(gate["needs"], ["detect", "ui-smoke"])
+        self.assertIn("always()", gate["if"])
+        self.assertNotIn("concurrency", gate)
+        script = gate["steps"][0]["run"]
+        self.assertIn('[[ "$DETECT" == success ]]', script)
+        self.assertIn('[[ "$SMOKE" == success ]]', script)
+        self.assertEqual(gate["steps"][0]["env"]["DETECT"], "${{ needs.detect.result }}")
+
     def test_git_diff_error_fails_instead_of_skipping_playwright(self):
         script = workflow_run_script("Detect frontend diff (PR only)")
         with tempfile.TemporaryDirectory() as temp:
