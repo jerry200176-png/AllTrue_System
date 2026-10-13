@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $Note
  * @property string|null $billing_period
  * @property array<string, mixed>|null $billing_snapshot
+ * @property string|null $zero_amount_reason
  * @property string|null $reconciled_at
  * @property int|null $reconciled_by
  * @property \Carbon\CarbonInterface|null $created_at
@@ -27,6 +28,11 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Invoice extends Model
 {
+    /** #3991 (Founder 2026-10-13): a NT$0 bill exists only when marked 免費／贈送; a missing or 0 fee is never free. */
+    public const ZERO_REASON_FREE_GIFT = 'free_gift';
+
+    public const ZERO_REASON_FREE_GIFT_LABEL = '免費／贈送';
+
     protected static function booted(): void
     {
         // A waived (確認不收) contract is terminal: no new billing line may point at it.
@@ -53,11 +59,32 @@ class Invoice extends Model
         'reconciled_by',
         'billing_period',
         'billing_snapshot',
+        'zero_amount_reason',
     ];
 
     protected $casts = [
         'billing_snapshot' => 'array',
     ];
+
+    public function isMarkedFreeGift(): bool
+    {
+        return (string) $this->getAttribute('zero_amount_reason') === self::ZERO_REASON_FREE_GIFT;
+    }
+
+    /** #3991 review: the mark settles a term only while its course still has no fee on record (a fee added by any path voids its effect). */
+    public function freeGiftHolds(?StudentClass $course): bool
+    {
+        return $this->isMarkedFreeGift() && $course !== null && !self::courseHasFee($course);
+    }
+
+    /** #3991: a fee or money on record (rate, charge, package, legacy Paid/Pay/PayDate, live priced amendment, positive live bill line) rules out 免費／贈送. */
+    public static function courseHasFee(StudentClass $course): bool
+    {
+        return (int) ($course->Paid ?? 0) === 1 || (int) ($course->Pay ?? 0) > 0 || !empty($course->PayDate) || (float) ($course->Rate ?? 0) > 0 || (int) ($course->Charge ?? 0) > 0 || (int) ($course->PackageID ?? 0) > 0
+            || StudentClassPricingAmendment::query()->where('student_class_id', $course->ID)->whereNull('voided_at')->where('rate', '>', 0)->exists()
+            || self::query()->scopes('notVoided')->where(fn ($q) => $q->where(fn ($a) => $a->where('StudentClassID', $course->ID)->where('TotalAmount', '>', 0)) // a positive bill on the course itself
+                ->orWhereIn('id', InvoiceItem::query()->where('StudentClassID', $course->ID)->where('Amount', '>', 0)->select('InvoiceID')))->exists();
+    }
 
     public function scopeNotVoided($query)
     {

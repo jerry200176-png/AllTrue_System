@@ -106,6 +106,14 @@ class BillingController extends Controller
             'SplitStart' => 'nullable|date',
             'SplitEnd' => 'nullable|date|after_or_equal:SplitStart',
         ]);
+        // #3991 (Founder 2026-10-13): a missing or 0 fee is never free by itself. The only NT$0 bill is the single-course,
+        // single-term 免費／贈送 bill recorded from 登記收款 (director-record), which checks the course's fee evidence.
+        if ((int) $data['TotalAmount'] === 0) {
+            return response()->json([
+                'message' => 'NT$0 帳單請從「登記收款」勾選「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」登錄；沒填費用的課程請先設定費用。沒有建立任何帳單。',
+                'code' => 'zero_amount_unmarked',
+            ], 422);
+        }
 
         // Campus scope: the invoice student, the anchor contract and every item contract.
         $this->assertInvoiceStudentCampusAllowed($request, (int) (Student::query()->whereKey($data['StudentID'])->value('CampusID') ?? 0));
@@ -125,9 +133,16 @@ class BillingController extends Controller
             $courseIds = collect([$data['StudentClassID'] ?? null])->merge(array_column($data['Items'] ?? [], 'StudentClassID'))
                 ->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
             if ($courseIds !== []) {
-                $found = StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+                $found = StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID', 'StudentID']);
                 if ($found->count() !== count($courseIds)) {
                     return response()->json(['message' => '找不到部分課程，可能已被刪除'], 404); // never bill a deleted contract
+                }
+                // #3991: a bill is fee evidence for its courses, so every course on it must belong to the billed student.
+                if ($found->contains(fn (StudentClass $c) => (int) $c->getAttribute('StudentID') !== (int) $data['StudentID'])) {
+                    return response()->json([
+                        'message' => '帳單上的課程不屬於這位學生，不能建立帳單。沒有建立任何帳單。',
+                        'code' => 'invoice_course_student_mismatch',
+                    ], 422);
                 }
             }
             if (!empty($data['StudentClassID'])) {
@@ -209,8 +224,8 @@ class BillingController extends Controller
             }
             // 先鎖帳單再判斷，避免與確認不收（void）競爭。
             $fresh = Invoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
-            if (!$fresh || (string) $fresh->getAttribute('Status') === 'void') {
-                return response()->json(['message' => '作廢帳單不可登記收款'], 422);
+            if (!$fresh || (string) $fresh->getAttribute('Status') === 'void' || $fresh->isMarkedFreeGift()) { // #3991: a 免費／贈送 bill takes no payment
+                return response()->json(['message' => $fresh?->isMarkedFreeGift() ? '免費／贈送帳單不能登記收款；這門課要收費的話，請先作廢這張帳單再開立新帳單' : '作廢帳單不可登記收款'], 422);
             }
             $invoice = $fresh;
             // R28 (#3873 item 4), same rule as payment-report confirm: what is paid comes from Payment rows, never
@@ -319,7 +334,8 @@ class BillingController extends Controller
 
             $netApplied = $this->invoiceNetAppliedAmount((int) $invoice->id);
 
-            if (in_array($status, ['paid', 'partial'], true) || (int) ($invoice->PaidAmount ?? 0) > 0 || $netApplied > 0) {
+            $freeGiftOnly = $invoice->isMarkedFreeGift() && (int) $invoice->TotalAmount === 0 && !$invoice->payments()->exists(); // #3991: wrong-period mark is correctable
+            if ((in_array($status, ['paid', 'partial'], true) && !$freeGiftOnly) || (int) ($invoice->PaidAmount ?? 0) > 0 || $netApplied > 0) {
                 return response()->json([
                     'message' => '此帳單已有收款紀錄，請先走收款撤銷/沖銷流程，不可直接作廢帳單。',
                 ], 422);
@@ -336,7 +352,7 @@ class BillingController extends Controller
 
             $note = trim((string) ($invoice->Note ?? ''));
             $invoice->Status = 'void';
-            $invoice->Note = trim($note . ' ' . $audit);
+            $invoice->Note = trim(mb_substr($note, 0, max(0, 254 - mb_strlen($audit))) . ' ' . $audit); // VARCHAR(255): keep the whole audit tag
             $invoice->save();
 
             Log::info('[InvoiceVoid] invoice voided', [
