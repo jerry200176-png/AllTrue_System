@@ -57,17 +57,28 @@ export function checkStates(rollup, required) {
   }));
 }
 
-// pr: {mergeStateStatus, behindBy, rollup}. Spec order: BEHIND, DIRTY, failed, merge, wait. Review threads do not gate (Founder 2026-10-07).
+// Unresolved review threads from a reviewThreads(first:100) connection, or null when unknown
+// (missing, a failed query, or more than one page). Unknown never merges (fail closed).
+export function unresolvedCount(conn) {
+  if (!conn || !Array.isArray(conn.nodes) || conn.pageInfo?.hasNextPage !== false) return null;
+  return conn.nodes.filter((t) => !t?.isResolved).length;
+}
+
+// pr: {mergeStateStatus, behindBy, rollup, unresolvedThreads}. Spec order: BEHIND, DIRTY, threads, failed, merge, wait.
+// Every review thread must be replied to and resolved before merge (AGENTS.md; FOUNDER_STANDING_DECISIONS ④):
+// unresolvedThreads > 0 rejects; anything but a known 0 (null/undefined = unknown) never merges.
 // behindBy keeps "head contains main" enforced here once the ruleset's strict policy is off
 // (GitHub then stops reporting BEHIND). Batch eligibility passes behindBy: 0 on purpose.
 export function decide(pr, required) {
   if (pr.mergeStateStatus === 'BEHIND' || (pr.behindBy > 0 && pr.mergeStateStatus !== 'DIRTY')) return { action: 'update' };
   if (pr.mergeStateStatus === 'DIRTY') return { action: 'reject', reason: 'conflict', text: 'conflict with main, please merge main and re-add `queue`' };
+  const open = pr.unresolvedThreads;
+  if (Number.isInteger(open) && open > 0) return { action: 'reject', reason: 'threads', text: `${open} unresolved review thread(s); reply to and resolve them, then re-add \`queue\`` };
   const states = checkStates(pr.rollup, required);
   const failed = Object.keys(states).filter((n) => states[n] === 'fail');
   if (failed.length) return { action: 'reject', reason: 'checks', text: `required checks failed: ${failed.join(', ')}. Fix and re-add \`queue\`` };
   const allGreen = Object.values(states).every((s) => s === 'pass');
-  if (pr.mergeStateStatus === 'CLEAN' && allGreen) return { action: 'merge' };
+  if (pr.mergeStateStatus === 'CLEAN' && allGreen) return open === 0 ? { action: 'merge' } : { action: 'wait', reason: 'threads-unknown' };
   return { action: 'wait' };
 }
 
@@ -151,6 +162,17 @@ function rollupFor(sha) {
   return fromPinned(c?.statusCheckRollup?.contexts.nodes, PINS, REPO);
 }
 
+// Separate query so a failure yields "unknown" (no merge) instead of aborting the whole queue run.
+const QT = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
+  reviewThreads(first:100){nodes{isResolved} pageInfo{hasNextPage}}}}}`;
+function unresolvedThreads(n) {
+  const [o, r] = REPO.split('/');
+  try {
+    const t = JSON.parse(gh('api', 'graphql', '-f', `query=${QT}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `n=${n}`)).data?.repository?.pullRequest?.reviewThreads;
+    return unresolvedCount(t);
+  } catch (e) { console.log(`#${n}: review threads unknown (${e.message}); not merging`); return null; }
+}
+
 function load(n) {
   const [o, r] = REPO.split('/');
   const p = JSON.parse(gh('api', 'graphql', '-f', `query=${Q}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `n=${n}`)).data.repository.pullRequest;
@@ -162,6 +184,7 @@ function load(n) {
     rollup: fromPinned(p.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes, PINS, REPO),
     authorAssociation: p.authorAssociation,
     labels: (p.labels?.nodes || []).map((l) => l.name),
+    unresolvedThreads: unresolvedThreads(n),
   };
 }
 
@@ -210,7 +233,7 @@ const mainTip = () => api('git/ref/heads/main').object.sha;
 const squash = (n, sha) => { gh('pr', 'merge', String(n), '--repo', REPO, '--squash', '--delete-branch', '--match-head-commit', sha); merged = true; };
 const dropBranch = (name) => { try { gh('api', '-X', 'DELETE', `/repos/${REPO}/git/refs/heads/${name}`); } catch (e) { console.log(`branch delete: ${e.message}`); } };
 // Batch eligibility = what decide() calls "merge", ignoring how far behind main the head is.
-const neutral = (pr) => ({ ...pr, behindBy: 0, mergeStateStatus: pr.mergeStateStatus === 'BEHIND' ? 'CLEAN' : pr.mergeStateStatus });
+export const neutral = (pr) => ({ ...pr, behindBy: 0, mergeStateStatus: pr.mergeStateStatus === 'BEHIND' ? 'CLEAN' : pr.mergeStateStatus });
 
 // A batch that went red is not retried as a group: members go serial (update-branch, wait, merge).
 // Comment is unconditional on purpose: its time vs the latest `queue` label scopes the serial-only flag.

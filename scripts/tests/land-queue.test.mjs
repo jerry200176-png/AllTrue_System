@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, isBatchBase, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, orderQueue, parseMember, planBatch } from '../../.github/scripts/land-queue.mjs';
+import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, isBatchBase, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
 
 const req = ['A', 'B'];
 const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
-const pr = (o = {}) => ({ mergeStateStatus: 'CLEAN', rollup: ok, ...o });
+const pr = (o = {}) => ({ mergeStateStatus: 'CLEAN', rollup: ok, unresolvedThreads: 0, ...o });
 
 test('orderQueue: oldest label first, skips drafts and non-main', () => {
   const q = orderQueue([
@@ -29,8 +29,54 @@ test('decide: failed check names it; latest rerun wins', () => {
   assert.equal(decide(pr({ rollup: rerun }), req).action, 'merge');
 });
 
-test('decide: unresolved review threads do not gate; pending or missing checks wait', () => {
-  assert.equal(decide(pr({ unresolvedThreads: 2 }), req).action, 'merge');
+test('decide: unresolved review threads reject; known zero keeps merge behavior', () => {
+  const d = decide(pr({ unresolvedThreads: 2 }), req);
+  assert.equal(d.action, 'reject');
+  assert.equal(d.reason, 'threads');
+  assert.match(d.text, /^2 unresolved review thread\(s\); reply to and resolve them, then re-add `queue`$/);
+  assert.match(decide(pr({ unresolvedThreads: 7 }), req).text, /^7 unresolved/);
+  // Threads reject even while checks are still pending (early feedback, label removed).
+  assert.equal(decide(pr({ unresolvedThreads: 1, rollup: [ok[0]] }), req).reason, 'threads');
+  // BEHIND / DIRTY are handled first.
+  assert.equal(decide(pr({ unresolvedThreads: 1, behindBy: 2 }), req).action, 'update');
+  assert.equal(decide(pr({ unresolvedThreads: 1, mergeStateStatus: 'DIRTY' }), req).reason, 'conflict');
+  assert.equal(decide(pr({ unresolvedThreads: 0 }), req).action, 'merge');
+});
+
+test('decide: unknown thread count never merges (fail closed)', () => {
+  for (const unresolvedThreads of [null, undefined, NaN, -1, 1.5, '0']) {
+    const d = decide(pr({ unresolvedThreads }), req);
+    assert.notEqual(d.action, 'merge', String(unresolvedThreads));
+    assert.equal(d.action, 'wait');
+  }
+  // Failed checks still reject with their own reason when the thread count is unknown.
+  assert.equal(decide(pr({ unresolvedThreads: null, rollup: [{ name: 'A', conclusion: 'FAILURE' }, ok[1]] }), req).reason, 'checks');
+});
+
+test('unresolvedCount: counts unresolved on one complete page, otherwise unknown', () => {
+  const page = (nodes, hasNextPage = false) => ({ nodes, pageInfo: { hasNextPage } });
+  assert.equal(unresolvedCount(page([])), 0);
+  assert.equal(unresolvedCount(page([{ isResolved: true }, { isResolved: false }, { isResolved: false }])), 2);
+  assert.equal(unresolvedCount(page([{ isResolved: true }])), 0);
+  assert.equal(unresolvedCount(page(Array(100).fill({ isResolved: true }), true)), null); // >100 threads
+  assert.equal(unresolvedCount({ nodes: [] }), null); // no pageInfo
+  assert.equal(unresolvedCount(null), null);
+  assert.equal(unresolvedCount(undefined), null);
+});
+
+test('batch eligibility honors the thread gate (neutral keeps unresolvedThreads)', () => {
+  const behind = (o) => pr({ mergeStateStatus: 'BEHIND', behindBy: 3, ...o });
+  assert.equal(decide(neutral(behind({ unresolvedThreads: 0 })), req).action, 'merge');
+  assert.equal(decide(neutral(behind({ unresolvedThreads: 1 })), req).reason, 'threads');
+  assert.equal(decide(neutral(behind({ unresolvedThreads: null })), req).action, 'wait');
+  // A member whose thread opened after the batch was cut is no longer ready -> batch dropped.
+  const ready = (h) => decide(neutral(h), req).action === 'merge';
+  const members = [{ n: 1, sha: 'a' }, { n: 2, sha: 'b' }];
+  const current = new Map([[1, { sha: 'a', ready: ready(pr({ unresolvedThreads: 0 })) }], [2, { sha: 'b', ready: ready(pr({ unresolvedThreads: 1 })) }]]);
+  assert.equal(staleReason(members, 'm', 'm', current), '#2 no longer ready');
+});
+
+test('decide: pending or missing checks wait', () => {
   assert.equal(decide(pr({ rollup: [ok[0], { name: 'B', status: 'IN_PROGRESS', conclusion: null }] }), req).action, 'wait');
   assert.equal(decide(pr({ rollup: [ok[0]] }), req).action, 'wait');
   assert.equal(decide(pr({ mergeStateStatus: 'BLOCKED' }), req).action, 'wait');
