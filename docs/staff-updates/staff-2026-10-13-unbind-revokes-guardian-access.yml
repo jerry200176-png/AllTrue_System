@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-13-unbind-revokes-guardian-access
+    published_at: "2026-10-13"
+    audiences:
+      - director
+    importance: major
+    title: 解除綁定會同時登出家長
+    summary: 解除 LINE 綁定後，該 LINE 帳號會同時失去查看學生資料的權限並被登出。
+    items:
+      - category: fixed
+        text: 解除 LINE 綁定後，該 LINE 帳號會同時失去查看學生資料的權限並被登出。
+      - category: improved
+        text: 同一位學生的其他家長照常可以查看；這個 LINE 帳號綁定的其他學生也不受影響。
+    source_refs:
+      - "changelog:2026-10-13:unbind-revokes-guardian-access"

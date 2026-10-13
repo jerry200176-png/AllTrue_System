@@ -5,6 +5,7 @@ namespace App\Services\ParentBinding;
 use App\Models\Campus;
 use App\Models\StudentLineBinding;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Cross-campus LINE binding conflict detection + resolution (Phase 2).
@@ -18,6 +19,8 @@ use Illuminate\Support\Collection;
  */
 final class BindingConflictService
 {
+    public function __construct(private readonly BindingService $bindings) {}
+
     /**
      * List cross-campus binding conflicts.
      *
@@ -106,8 +109,15 @@ final class BindingConflictService
             ->where('student_id', $studentId)
             ->where('id', '!=', $bindingId)
             ->whereNotNull('campus_id')
-            ->get()
-            ->each(fn (StudentLineBinding $b) => $b->delete());
+            ->get();
+
+        DB::transaction(function () use ($studentId, $removed) {
+            // #3933: unbinding also revokes guardian access (revoke first, then delete).
+            foreach ($removed->pluck('line_user_id')->unique() as $lineUserId) {
+                $this->bindings->revokeGuardianAccess($studentId, (string) $lineUserId);
+            }
+            $removed->each(fn (StudentLineBinding $b) => $b->delete());
+        });
 
         return [
             'kept_binding_id'   => $keep->id,
@@ -126,7 +136,11 @@ final class BindingConflictService
     public function resolveDelete(int $studentId, int $bindingId, ?array $allowedCampusIds = null): array
     {
         $binding = $this->bindingOf($studentId, $bindingId, $allowedCampusIds);
-        $binding->delete();
+        DB::transaction(function () use ($studentId, $binding) {
+            // #3933: unbinding also revokes guardian access (revoke first, then delete).
+            $this->bindings->revokeGuardianAccess($studentId, (string) $binding->getAttribute('line_user_id'));
+            $binding->delete();
+        });
 
         return ['removed_binding_id' => $binding->id];
     }
@@ -146,6 +160,13 @@ final class BindingConflictService
         }
         if ($allowedCampusIds !== null && !in_array((int) $binding->campus_id, $allowedCampusIds, true)) {
             throw new \DomainException('Binding is outside the operator campus scope');
+        }
+        // #3933: removal also revokes the student's guardian access, so the
+        // operator must also cover the student's current campus.
+        $studentCampusId = DB::table('Student')->where('id', $studentId)->value('CampusID');
+        if ($allowedCampusIds !== null && $studentCampusId !== null
+            && !in_array((int) $studentCampusId, $allowedCampusIds, true)) {
+            throw new \DomainException('Student is outside the operator campus scope');
         }
 
         return $binding;
