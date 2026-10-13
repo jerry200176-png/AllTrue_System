@@ -79,7 +79,7 @@ class RotateTelegramWebhookSecret extends Command
             return self::FAILURE;
         }
 
-        $webhookUrl = rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/' . ($campus->code ?: $campus->getKey());
+        $webhookUrl = self::webhookUrl($campus);
 
         $previous = trim((string) ($campus->TelegramWebhookSecret ?? ''));
 
@@ -139,7 +139,7 @@ class RotateTelegramWebhookSecret extends Command
     private function rollback(Campus $campus, string $botToken): int
     {
         $previous = trim((string) ($campus->TelegramWebhookSecret ?? ''));
-        $url = rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/' . ($campus->code ?: $campus->getKey());
+        $url = self::webhookUrl($campus);
         try {
             $response = Http::timeout(15)->asJson()->post("https://api.telegram.org/bot{$botToken}/deleteWebhook");
             $result = $response->successful() && $response->json('ok') === true ? 'ok'
@@ -232,6 +232,11 @@ class RotateTelegramWebhookSecret extends Command
             return false;
         }
         return true;
+    }
+
+    private static function webhookUrl(Campus $campus): string
+    {
+        return rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/' . ($campus->code ?: $campus->getKey());
     }
 
     private function dbStateUnknown(Campus $campus, string $msg): int
