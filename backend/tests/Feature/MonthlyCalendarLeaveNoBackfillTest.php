@@ -146,10 +146,58 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         $this->assertSame([], $this->startsOn($course));
     }
 
-    /** @param array<string, mixed> $identity */
-    private function extraSchedule(StudentClass $course, int $teacherId, string $start, string $status, string $type, array $identity = []): void
+    public function test_a_legacy_session_borrows_the_frozen_identity_of_its_leave_marker(): void
     {
-        Schedule::create($identity + [
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-h@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // Mixed-version shape: the session (no identity) and its leave marker (identity 13:00) both sit at 17:30.
+        $this->createSession($course, '2026-10-13', '17:30', '19:30', 'leave');
+        $this->extraSchedule($course, $teacherId, '17:30', 'leave', 'normal', ['original_schedule_date' => '2026-10-13', 'original_start_time' => '13:00']);
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['17:30 leave', '18:00 scheduled'], $this->startsOn($course), 'No ghost 13:00; the 18:00 lesson is still filled.');
+    }
+
+    public function test_a_move_of_a_move_counts_as_one_lesson_from_its_first_slot(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-i@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // 13:00 -> 14:00 -> 15:00 through the reschedule chain; the live session at 15:00 has no identity.
+        $this->createSession($course, '2026-10-13', '15:00', '17:00', 'scheduled');
+        $first = $this->extraSchedule($course, $teacherId, '13:00', 'rescheduled', 'normal');
+        $hop = $this->extraSchedule($course, $teacherId, '14:00', 'rescheduled', 'normal', ['original_schedule_id' => $first->id]);
+        $this->extraSchedule($course, $teacherId, '15:00', 'scheduled', 'normal', ['original_schedule_id' => $hop->id]);
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['15:00 scheduled', '18:00 scheduled'], $this->startsOn($course));
+    }
+
+    public function test_a_cancelled_makeup_does_not_hide_a_regular_lesson_moved_to_its_time(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-j@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // A cancelled makeup at 14:00 (extra Schedule + its session) ...
+        $this->createSession($course, '2026-10-13', '14:00', '16:00', 'cancelled');
+        $this->extraSchedule($course, $teacherId, '14:00', 'cancelled', 'extra');
+        // ... and the regular 13:00 lesson moved to 14:00 and put on leave.
+        $moved = $this->createSession($course, '2026-10-13', '14:00', '16:00', 'leave');
+        $moved->forceFill(['OriginalSessionDate' => '2026-10-13', 'OriginalStartTimeHM' => '13:00'])->save();
+        $this->extraSchedule($course, $teacherId, '14:00', 'leave', 'normal');
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['14:00 cancelled', '14:00 leave', '18:00 scheduled'], $this->startsOn($course));
+    }
+
+    /** @param array<string, mixed> $identity */
+    private function extraSchedule(StudentClass $course, int $teacherId, string $start, string $status, string $type, array $identity = []): Schedule
+    {
+        return Schedule::create($identity + [
             'student_id' => $course->StudentID, 'teacher_id' => $teacherId, 'subject' => 'Math', 'day_of_week' => 2,
             'start_time' => $start, 'end_time' => '20:00', 'duration_hours' => 2, 'class_type' => 'one_on_one',
             'status' => $status, 'type' => $type, 'deduction' => 0, 'branch_id' => 1,
@@ -168,7 +216,7 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
     private function startsOn(StudentClass $course): array
     {
         return ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-10-13')
-            ->orderBy('StartTime')->get()
+            ->orderBy('StartTime')->orderBy('Status')->get()
             ->map(fn ($s) => substr((string) $s->StartTime, 0, 5).' '.strtolower((string) $s->Status))->all();
     }
 

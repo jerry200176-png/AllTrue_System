@@ -616,45 +616,8 @@ class ClassSessionController extends Controller
         // 取代原本逐 slot 兩次 exists()（N+1，會隨老師當日課數線性增長）。
         // 以 classId|HH:MM 為鍵；TIME 欄位比較本就忽略秒，與原 SQL 語意一致。
         $classIds = $classes->pluck('ID')->map(fn ($v) => (int) $v)->all();
-        // #3901 (R136/R155): a lesson on this date that was moved (then put on leave / cancelled) still
-        // stands for the contract slot it came from; a read must not add a replacement for it.
-        // Per class: rows carrying occurrence identity (OriginalStartTimeHM) name their slot exactly;
-        // legacy rows (NULL identity) at a non-contract time are matched to the nearest still-unclaimed
-        // contract slot, so one moved lesson never hides an unrelated slot of the same day.
-        $rowsByClass = [];
-        if (!empty($classIds)) {
-            $hm = fn ($t) => substr((string) $t, 0, 5);
-            $ymd = fn ($d) => $d ? Carbon::parse($d)->toDateString() : null;
-            $schedules = Schedule::whereIn('student_course_id', $classIds)->whereDate('schedule_date', $targetDate)
-                ->get(['student_course_id', 'start_time', 'status', 'type', 'original_schedule_date', 'original_start_time']);
-            // Makeup (type=extra) lessons, and the ClassSession they own, never stand for a contract slot.
-            $extraTimes = [];
-            foreach ($schedules as $r) {
-                if (strtolower((string) $r->type) === 'extra') {
-                    $extraTimes[(int) $r->student_course_id . '|' . $hm($r->start_time)] = true;
-                }
-            }
-            $sessionTimes = [];
-            ClassSession::whereIn('StudentClassID', $classIds)->whereDate('SessionDate', $targetDate)
-                ->get(['StudentClassID', 'StartTime', 'OriginalSessionDate', 'OriginalStartTimeHM'])
-                ->each(function ($r) use (&$rowsByClass, &$sessionTimes, $extraTimes, $hm, $ymd) {
-                    $key = (int) $r->StudentClassID . '|' . $hm($r->StartTime);
-                    if (isset($extraTimes[$key])) {
-                        return;
-                    }
-                    $sessionTimes[$key] = true;
-                    $rowsByClass[(int) $r->StudentClassID][] = [$hm($r->StartTime), $ymd($r->OriginalSessionDate), $r->OriginalStartTimeHM ? $hm($r->OriginalStartTimeHM) : null];
-                });
-            foreach ($schedules as $r) {
-                $key = (int) $r->student_course_id . '|' . $hm($r->start_time);
-                // A leave/cancel marker is the same lesson as its ClassSession (which is authoritative): count it once.
-                if (!in_array(strtolower((string) $r->status), ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'], true)
-                    || isset($extraTimes[$key]) || isset($sessionTimes[$key])) {
-                    continue;
-                }
-                $rowsByClass[(int) $r->student_course_id][] = [$hm($r->start_time), $ymd($r->original_schedule_date), $r->original_start_time ? $hm($r->original_start_time) : null];
-            }
-        }
+        // #3901 (R136/R155): one row per lesson already on this date; see monthlyLessonRowsByClass().
+        $rowsByClass = !empty($classIds) ? $this->monthlyLessonRowsByClass($classIds, $targetDate) : [];
 
         foreach ($classes as $studentClass) {
             $startDate = $studentClass->StartDate ? Carbon::parse($studentClass->StartDate)->toDateString() : null;
@@ -698,6 +661,104 @@ class ClassSessionController extends Controller
                 }
             }
         }
+    }
+
+    /**
+     * #3901 (R136/R155): the lessons each monthly course already has on the date, one row per lesson:
+     * [current HH:MM, frozen original date, frozen original HH:MM]. A lesson that was moved (then put on
+     * leave / cancelled) still stands for the contract slot it came from, so a read adds no replacement.
+     * - A ClassSession is authoritative; a Schedule marker at its time is the same lesson (counted once).
+     * - Frozen identity comes from the session, else from a Schedule row of the same lesson: its TD-076
+     *   columns, else the original_schedule_id reschedule chain back to the slot it left. A chain that
+     *   starts on another date is a moved-in lesson and stands for no slot of this date.
+     * - A makeup (type=extra) has no series slot: each extra Schedule absorbs one identity-less session
+     *   at its time. A session with frozen identity is never a makeup.
+     * - A rescheduled marker that was itself a move target is an intermediate hop, not a lesson.
+     *
+     * @param  list<int>  $classIds
+     * @return array<int, list<array{0:string,1:?string,2:?string}>>
+     */
+    private function monthlyLessonRowsByClass(array $classIds, string $targetDate): array
+    {
+        $hm = fn ($t): string => substr((string) $t, 0, 5);
+        $ymd = fn ($d): ?string => $d ? Carbon::parse($d)->toDateString() : null;
+        $isExtra = fn (Schedule $r): bool => strtolower((string) $r->type) === 'extra';
+        $schedules = Schedule::whereIn('student_course_id', $classIds)->whereDate('schedule_date', $targetDate)
+            ->get(['id', 'student_course_id', 'start_time', 'status', 'type', 'original_schedule_id', 'original_schedule_date', 'original_start_time'])
+            ->keyBy('id');
+        $origin = function (Schedule $row) use ($schedules, $hm, $ymd, $targetDate): array {
+            $cur = $row;
+            for ($hops = 0; $hops < 20; $hops++) {
+                if ($cur->original_start_time) {
+                    return [$ymd($cur->original_schedule_date), $hm($cur->original_start_time)];
+                }
+                $parentId = (int) ($cur->original_schedule_id ?? 0);
+                if ($parentId <= 0) {
+                    return $cur === $row ? [null, null] : [$targetDate, $hm($cur->start_time)];
+                }
+                $parent = $schedules->get($parentId);
+                if (!$parent instanceof Schedule) {
+                    return ['', '--:--']; // moved in from another date: stands for no slot of this date
+                }
+                $cur = $parent;
+            }
+
+            return [null, null];
+        };
+        $scheduleKey = fn (Schedule $r): string => (int) $r->student_course_id . '|' . $hm($r->start_time);
+        $extraBudget = [];
+        $sameLesson = [];
+        foreach ($schedules as $r) {
+            if ($isExtra($r)) {
+                $extraBudget[$scheduleKey($r)] = ($extraBudget[$scheduleKey($r)] ?? 0) + 1;
+            } else {
+                $sameLesson[$scheduleKey($r)][] = $r;
+            }
+        }
+        $bestOrigin = function (string $key) use ($sameLesson, $origin): array {
+            $found = [null, null];
+            foreach ($sameLesson[$key] ?? [] as $r) {
+                $found = $origin($r);
+                if ($found[1] !== null) {
+                    break;
+                }
+            }
+
+            return $found;
+        };
+
+        $rows = [];
+        $taken = [];
+        $sessions = ClassSession::whereIn('StudentClassID', $classIds)->whereDate('SessionDate', $targetDate)
+            ->orderBy('id')->get(['id', 'StudentClassID', 'StartTime', 'OriginalSessionDate', 'OriginalStartTimeHM']);
+        foreach ($sessions as $s) {
+            $classId = (int) $s->StudentClassID;
+            $key = $classId . '|' . $hm($s->StartTime);
+            if ($s->OriginalStartTimeHM) {
+                $rows[$classId][] = [$hm($s->StartTime), $ymd($s->OriginalSessionDate), $hm($s->OriginalStartTimeHM)];
+            } elseif (($extraBudget[$key] ?? 0) > 0) {
+                $extraBudget[$key]--; // the makeup's own session
+
+                continue;
+            } else {
+                $rows[$classId][] = [$hm($s->StartTime), ...$bestOrigin($key)];
+            }
+            $taken[$key] = true;
+        }
+
+        foreach ($sameLesson as $key => $markers) {
+            if (isset($taken[$key])) {
+                continue;
+            }
+            $markers = array_values(array_filter($markers, fn (Schedule $r) => in_array(strtolower((string) $r->status), ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'], true)
+                && !(strtolower((string) $r->status) === 'rescheduled' && (int) ($r->original_schedule_id ?? 0) > 0)));
+            if ($markers === []) {
+                continue;
+            }
+            $rows[(int) $markers[0]->student_course_id][] = [$hm($markers[0]->start_time), ...$bestOrigin($key)];
+        }
+
+        return $rows;
     }
 
     /**
