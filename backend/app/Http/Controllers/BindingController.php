@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\ParentBinding\BindingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -100,6 +101,13 @@ class BindingController extends Controller
             return response()->json(['error' => 'Binding not found'], 404);
         }
         if (!$this->campusIsAllowed($request, (int) $binding->campus_id)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        // #3933: unbinding also revokes the student's guardian access, so the
+        // caller must also cover the student's current campus (a transferred
+        // student's stale binding keeps its old campus_id).
+        $studentCampusId = DB::table('Student')->where('id', (int) $binding->student_id)->value('CampusID');
+        if ($studentCampusId !== null && !$this->campusIsAllowed($request, (int) $studentCampusId)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
