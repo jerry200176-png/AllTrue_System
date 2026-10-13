@@ -1,22 +1,11 @@
 #!/usr/bin/env python3
-"""Governed request-file path for in-app bug write-backs (cloud agents, no workflow_dispatch).
+"""Governed cloud request-file write-back: triage or open-status followup only.
 
-`operations/closeout/bug-writeback.request.yml` holds `requests:`, a list of entries:
-  request_id        unique slug, never reused (lowercase letters, digits, dashes)
-  bug_id            in-app bug ID
-  action            triage   -> new/triaged becomes triaged + public reply (Phase-A, never close_as_logged)
-                    followup -> public comment only; expected_status must be triaged or in_progress
-  github_issue_url  an issue in this repository; must appear in public_reply
-  public_reply      §3.8 plain-language reply (docs/CHAT_BUG_SYSTEM.md)
-  disposition       triage only, optional (default bug)
-  expected_status   followup only, required
-
-Entries are append-only: removing or changing an existing entry is refused, here and in CI.
-Only request_ids absent from the last applied version of the file run (the workflow diffs against
-its last fully attempted run; a failed entry is retried with a new request_id);
-the server-side script also skips a reply that is already posted. `resolved`/`closed` never
-pass through here: those stay on the evidence-gated Phase-C paths. The log carries request IDs,
-bug IDs, actions and counts only: the repository is public.
+Entries are immutable, ordered and uniquely identified. Current policy validates new
+entries; at most five additions per push and five attempts per run. Remote calls use
+180-second limits and durable prefixes; continuations drain a frozen reviewed main snapshot.
+Failed IDs require
+an explicit new request_id for retry. Logs contain IDs/counts only, never reply text.
 """
 from __future__ import annotations
 
@@ -40,6 +29,7 @@ REMOTE_SCRIPT = Path(__file__).resolve().parent / "bug-writeback" / "run-remote.
 # never advances the checkpoint, so unfinished requests remain eligible on the next run.
 REMOTE_TIMEOUT_S = 180
 MAX_NEW_PER_PUSH = 5
+MAX_NEW_PER_RUN = 5
 
 # §3.8 forbidden in a public reply: field/table names, code paths, SQL/tooling, internal shorthand.
 # re.A: CJK text is not a word character, so "看StudentClass表" still matches.
@@ -195,6 +185,8 @@ def plan(before_text: str | None, after_text: str | None, repo: str, *, per_push
     for e in before:  # append-only: a removed and later re-added ID would otherwise run again
         if after_by_id.get(e["request_id"]) != e:
             raise RequestError(f"{e['request_id']}: request entries are append-only (removed or changed)")
+    if after[:len(before)] != before:
+        raise RequestError("request entries are append-only (history reordered)")
     before_ids = {e["request_id"] for e in before}
     new = [e for e in after if e["request_id"] not in before_ids]
     if per_push and len(new) > MAX_NEW_PER_PUSH:
@@ -227,18 +219,20 @@ def run_remote(mode: str, env: dict, timeout: float | None = None) -> int:
 
 
 def apply(items: Iterable[dict], runner: Runner = run_remote, log: Callable[[str], None] = print,
-          completed: Callable[[], None] = lambda: None) -> int:
+          completed: Callable[[], None] = lambda: None,
+          attempted: Callable[[dict], None] = lambda _: None) -> int:
     """Attempt every request (each is independent), then fail if any failed."""
     done, failed = 0, []
     for item in items:
         code = runner(item["mode"], item["env"])
         status = "ok" if code == 0 else f"failed exit={code}"
         log(f"request_id={item['request_id']} bug_id={item['bug_id']} action={item['action']} {status}")
+        attempted(item)  # persist progress for every completed attempt, including visible failure
         if code == 0:
             done += 1
         else:
             failed.append(item["request_id"])
-    completed()  # only after every request was attempted; a killed/partial loop never checkpoints
+    completed()
     if failed:
         raise RequestError(f"{len(failed)} failed ({', '.join(failed)}); {done} succeeded")
     return done
@@ -250,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--after", type=Path, required=True)
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
     ap.add_argument("--push-before", type=Path, help="actual push parent snapshot; cap it separately from the cursor gap")
+    ap.add_argument("--checkpoint-count", type=int, help="durable attempted prefix length from trusted workflow history")
     ap.add_argument("--apply", action="store_true", help="write to production (workflow only)")
     args = ap.parse_args(argv)
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repo):
@@ -261,17 +256,33 @@ def main(argv: list[str] | None = None) -> int:
             if not args.push_before.is_file():
                 raise RequestError("push-before snapshot is missing")
             plan(read(args.push_before), read(args.after), args.repo)  # per-push cap before any write
-        items = plan(read(args.before), read(args.after), args.repo, per_push=not bool(args.push_before))
+        after = read(args.after)
+        prefix = 0
+        before = read(args.before)
+        if args.checkpoint_count is not None:
+            if args.checkpoint_count < 0 or not args.push_before:
+                raise RequestError("checkpoint count requires a push snapshot and cannot be negative")
+            entries = load_requests(after)
+            prefix = min(args.checkpoint_count, len(entries))
+            import json
+            before = json.dumps({"requests": entries[:prefix]}, ensure_ascii=False)
+        else:
+            prefix = len(load_requests(before))
+        pending = plan(before, after, args.repo, per_push=not bool(args.push_before))
+        items = pending[:MAX_NEW_PER_RUN]
         print(f"new requests: {len(items)} ({', '.join(i['request_id'] for i in items) or 'none'})")
         if os.environ.get("GITHUB_OUTPUT") and not args.apply:
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-                out.write(f"count={len(items)}\n")
+                out.write(f"count={len(items)}\nremaining={len(pending)}\n")
         if args.apply:
-            def completed():
+            def attempted(item):
+                nonlocal prefix
+                prefix += 1
                 if os.environ.get("GITHUB_OUTPUT"):
                     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-                        out.write("attempted_all=true\n")
-            print(f"processed: {apply(items, completed=completed)}")
+                        out.write(f"checkpoint_count={prefix}\nlast_attempted_id={item['request_id']}\n")
+                        out.write(f"remaining={len(load_requests(after)) - prefix}\n")
+            print(f"processed: {apply(items, attempted=attempted)}")
     except RequestError as exc:
         print(f"refused: {exc}")
         return 1

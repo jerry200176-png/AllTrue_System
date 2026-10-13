@@ -3,22 +3,35 @@ name: Bug write-back request (Phase-A triage / follow-up)
 
 # Governed cloud path for the in-app write-backs that otherwise need workflow_dispatch
 # (Founder 2026-10-13). A merged PR appends entries to the request file; the request_ids added
-# since the last fully attempted run, in file order, through the same script as
-# bug-phase-a-triage.yml and
-# bug-followup-comment.yml. Never resolved/closed (Phase-C keeps those). Public repo: the log
+# since the durable attempted prefix use the shared Phase-A/followup script in file order.
+# Never resolved/closed (Phase-C keeps those). Public repo: the log
 # carries request IDs, bug IDs, actions and counts only; remote output is discarded.
 on:
   push:
     branches: [main]
     paths:
       - 'operations/closeout/bug-writeback.request.yml'
+  workflow_dispatch:
+    inputs:
+      request_sha:
+        description: Frozen reviewed main request snapshot (internal bounded drain)
+        required: true
+        type: string
+      expected_prefix:
+        description: Minimum visible checkpoint for internal continuation
+        required: false
+        default: '0'
+        type: string
+      push_before:
+        description: Original push parent for per-push validation
+        required: true
+        type: string
 
-# One run at a time; `queue: max` keeps every pending run. Queue order is not push order, so each
-# run diffs against the last run that *completed all attempts* or succeeded (durable, from the
-# Actions API), not its own `before`: a later push that starts first applies the earlier push's
-# entries too, in file order, and the earlier run then finds nothing new. A run that failed before
-# applying or during a partial batch is not a checkpoint, so its entries run next time; the cursor does
-# advance past failed requests (retry = append a new request_id), so one bad entry never blocks.
+# One run at a time; queue:max retains pending runs. Queue order is not push order.
+# Each run attempts at most five IDs, recording an absolute prefix in its checkpoint step.
+# History takes the maximum prefix so out-of-order runs cannot move it backwards. An internal
+# main-only continuation drains the same frozen reviewed request SHA; failed IDs count as
+# attempted (retry requires a new ID), so failures never create an infinite write loop.
 concurrency:
   group: bug-writeback-request
   cancel-in-progress: false
@@ -26,7 +39,7 @@ concurrency:
 
 permissions:
   contents: read
-  actions: read
+  actions: write # only to continue the same frozen main request snapshot
 
 jobs:
   writeback:
@@ -50,40 +63,35 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-          EVENT_BEFORE: ${{ github.event.before }}
+          REQUEST_SHA: ${{ inputs.request_sha || github.sha }}
+          PUSH_BEFORE: ${{ inputs.push_before || github.event.before }}
+          EXPECTED_PREFIX: ${{ inputs.expected_prefix || '0' }}
           REQUEST: operations/closeout/bug-writeback.request.yml
         run: |
           set -euo pipefail
           python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet 'pyyaml==6.0.2'
-          last=""
-          runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/bug-writeback-request.yml/runs?branch=main&event=push&status=completed&per_page=100" --jq '.workflow_runs[] | select(.conclusion != "cancelled") | "\(.id):\(.head_sha):\(.conclusion)"')
-          for run in $runs; do
-            IFS=: read -r rid sha concl <<< "$run"
-            attempted=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$rid/jobs" --jq '[.jobs[].steps[] | select(.name == "Checkpoint fully attempted requests") | .conclusion] | any(. == "success")')
-            if [[ "$concl" == success || "$attempted" == true ]]; then
-              last="$sha"
-              break
-            fi
+          [[ "$GITHUB_REF" == refs/heads/main ]] || { echo "main only; refusing"; exit 1; }
+          for sha in "$REQUEST_SHA" "$PUSH_BEFORE"; do
+            [[ "$sha" =~ ^[0-9a-f]{40}$ && "$sha" != 0000000000000000000000000000000000000000 ]] || { echo "invalid snapshot; refusing"; exit 1; }
+            git merge-base --is-ancestor "$sha" "$GITHUB_SHA" || { echo "snapshot outside main; refusing"; exit 1; }
           done
-          if [[ -n "$last" ]] && git merge-base --is-ancestor "$GITHUB_SHA" "$last"; then
-            echo "already applied by the run for $last (queued runs can start out of push order)"
-            echo "count=0" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          [[ "$EVENT_BEFORE" =~ ^[0-9a-f]{40}$ && "$EVENT_BEFORE" != 0000000000000000000000000000000000000000 ]] || { echo "no push parent; refusing"; exit 1; }
-          git merge-base --is-ancestor "$EVENT_BEFORE" "$GITHUB_SHA" || { echo "push parent is not an ancestor; refusing"; exit 1; }
-          if git cat-file -e "${EVENT_BEFORE}:${REQUEST}" 2>/dev/null; then
-            git show "${EVENT_BEFORE}:${REQUEST}" > "$RUNNER_TEMP/push-before.yml"
+          git merge-base --is-ancestor "$PUSH_BEFORE" "$REQUEST_SHA" || { echo "invalid push parent; refusing"; exit 1; }
+          git show "${REQUEST_SHA}:${REQUEST}" > "$RUNNER_TEMP/after.yml"
+          if git cat-file -e "${PUSH_BEFORE}:${REQUEST}" 2>/dev/null; then
+            git show "${PUSH_BEFORE}:${REQUEST}" > "$RUNNER_TEMP/push-before.yml"
           else
             : > "$RUNNER_TEMP/push-before.yml"
           fi
-          : > "$RUNNER_TEMP/before.yml"
-          if [[ -n "$last" ]]; then
-            git merge-base --is-ancestor "$last" "$GITHUB_SHA" || { echo "last applied commit is not an ancestor; refusing"; exit 1; }
-            git show "${last}:${REQUEST}" > "$RUNNER_TEMP/before.yml"
-          fi
-          # No checkpoint anywhere in paginated history: no request has fully applied yet.
-          python3 scripts/bug_writeback_request.py --before "$RUNNER_TEMP/before.yml" --push-before "$RUNNER_TEMP/push-before.yml" --after "$REQUEST"
+          prefix=0
+          runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/bug-writeback-request.yml/runs?branch=main&status=completed&per_page=100" --jq '.workflow_runs[] | select(.conclusion != "cancelled") | .id')
+          for rid in $runs; do
+            attempted=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$rid/jobs" --jq '[.jobs[].steps[] | select(.conclusion == "success" and (.name | startswith("Checkpoint attempted prefix "))) | .name | capture("^Checkpoint attempted prefix (?<count>[0-9]+) (?<rid>[a-z0-9][a-z0-9-]{2,63})$") | .count | tonumber] | max // 0')
+            [[ "$attempted" =~ ^[0-9]+$ ]] || { echo "invalid checkpoint; refusing"; exit 1; }
+            if (( attempted > prefix )); then prefix="$attempted"; fi
+          done
+          [[ "$EXPECTED_PREFIX" =~ ^[0-9]+$ ]] && (( prefix >= EXPECTED_PREFIX )) || { echo "checkpoint not visible yet; retry"; exit 1; }
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          python3 scripts/bug_writeback_request.py --checkpoint-count "$prefix" --push-before "$RUNNER_TEMP/push-before.yml" --after "$RUNNER_TEMP/after.yml"
       - name: Configure pinned production SSH trust
         if: steps.plan.outputs.count != '0'
         uses: ./.github/actions/production-ssh-trust
@@ -108,8 +116,20 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          REQUEST: operations/closeout/bug-writeback.request.yml
-        run: python3 scripts/bug_writeback_request.py --before "$RUNNER_TEMP/before.yml" --push-before "$RUNNER_TEMP/push-before.yml" --after "$REQUEST" --apply
-      - name: Checkpoint fully attempted requests
-        if: ${{ always() && steps.apply.outputs.attempted_all == 'true' }}
-        run: echo "All request IDs were attempted; failed IDs require an explicit new request_id."
+          PREFIX: ${{ steps.plan.outputs.prefix }}
+        run: python3 scripts/bug_writeback_request.py --checkpoint-count "$PREFIX" --push-before "$RUNNER_TEMP/push-before.yml" --after "$RUNNER_TEMP/after.yml" --apply
+      - name: Checkpoint attempted prefix ${{ steps.apply.outputs.checkpoint_count }} ${{ steps.apply.outputs.last_attempted_id }}
+        id: checkpoint
+        if: ${{ always() && steps.apply.outputs.last_attempted_id != '' }}
+        run: echo "Attempted prefix recorded; failed IDs require a new request_id."
+      - name: Continue remaining frozen requests
+        if: ${{ always() && steps.checkpoint.outcome == 'success' && steps.apply.outputs.remaining != '0' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUEST_SHA: ${{ inputs.request_sha || github.sha }}
+          PUSH_BEFORE: ${{ inputs.push_before || github.event.before }}
+          EXPECTED_PREFIX: ${{ steps.apply.outputs.checkpoint_count }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]] || exit 1
+          gh workflow run bug-writeback-request.yml --ref main -f "request_sha=$REQUEST_SHA" -f "push_before=$PUSH_BEFORE" -f "expected_prefix=$EXPECTED_PREFIX"
