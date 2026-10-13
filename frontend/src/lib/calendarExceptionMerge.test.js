@@ -115,3 +115,15 @@ assert.equal(
   true,
   '木柵陳宥翰 SC#1249: the final destination (7423, scheduled, 8/8 10:00) must still render',
 );
+
+// #3914: two lessons of one course on one date — a leave marker at 17:00 must not hide or free the 19:30 lesson.
+const twoLessonDate = [
+  { id: 9101, status: 'leave', schedule_date: '2026-12-02', student_course_id: 4016, start_time: '17:00:00' },
+  { id: 9102, status: 'scheduled', schedule_date: '2026-12-02', student_course_id: 4016, start_time: '19:30' },
+];
+assert.equal(hasLeaveExceptionForCourseDate(twoLessonDate, '2026-12-02', 4016, '19:30'), false, '#3914: the 19:30 lesson is not on leave');
+assert.equal(hasLeaveExceptionForCourseDate(twoLessonDate, '2026-12-02', 4016, '17:00'), true, '#3914: the 17:00 lesson is on leave');
+assert.equal(hasLeaveExceptionForCourseDate(twoLessonDate, '2026-12-02', 4016), true, '#3914: a date-level question still sees the leave');
+assert.deepEqual([...scheduledExceptionStartSetForCourseDate(twoLessonDate, '2026-12-02', 4016)], ['19:30'], '#3914: the 19:30 slot stays scheduled');
+assert.equal(shouldRenderScheduledException(twoLessonDate[1], twoLessonDate, '2026-12-02'), true, '#3914: the 19:30 card still renders');
+assert.equal(hasLeaveExceptionForCourseDate([{ ...twoLessonDate[0], start_time: null }], '2026-12-02', 4016, '19:30'), true, 'a marker without a time still covers the whole date');

@@ -34,6 +34,9 @@ class LeaveCascadeSameDateLessonsTest extends TestCase
         DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $first));
         $this->assertSame(['leave', 'leave'], $this->statuses($first, $second));
         $this->assertNotNull($this->tailFor($courseId, $first));
+        // #3914 review: both tails share the next contract date, each in its own slot (no extra week)
+        $this->assertSame((string) $secondTail->SessionDate, (string) $this->tailFor($courseId, $first)->SessionDate);
+        $this->assertSame('17:00', substr((string) $this->tailFor($courseId, $first)->StartTime, 0, 5));
 
         // Undo the second lesson only: its own tail goes, the first lesson and its tail stay.
         DB::transaction(fn () => CourseLeaveCascadeService::undoLeaveCascade($courseId, '2026-07-01', $second));

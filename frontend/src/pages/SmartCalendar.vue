@@ -559,6 +559,7 @@ import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { dedupeCalendarRowsByStudentSlot, mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
+import { hasLeaveExceptionForCourseDate } from '../lib/calendarExceptionMerge.js';
 import { hasCrossCampusBusySlot, normalizeCrossCampusBusySlots } from '../lib/crossCampusBusySlots.js';
 import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
 import { buildAttendanceNav, buildCourseMgmtOpsNav, buildManualSessionNav, buildStudentsCommercialNav } from '../lib/authoritativeMutationRoutes.js';
@@ -1384,6 +1385,10 @@ const isSessionOnLeaveOnDate = (course, ymd) => {
   const rows = sessionDatesByCourseId.value[courseKey];
   if (Array.isArray(rows) && rows.length) {
     const sameDate = rows.filter(r => String(r.session_date || '').slice(0, 10) === ymd);
+    // #3914: a date can hold two lessons of one course; this card's own lesson (same start time) decides.
+    const cardStart = String(course.start_time || '').slice(0, 5);
+    const ownLesson = cardStart ? sameDate.find(r => String(r.start_time || r.StartTime || '').slice(0, 5) === cardStart) : null;
+    if (ownLesson) return LEAVE_STATUSES.has(String(ownLesson.status || '').toLowerCase());
     if (sameDate.length > 0) {
       const allLeave = sameDate.every(r => LEAVE_STATUSES.has(String(r.status || '').toLowerCase()));
       if (allLeave) return true;
@@ -1391,11 +1396,7 @@ const isSessionOnLeaveOnDate = (course, ymd) => {
   }
   const leaveCourseId = course.is_exception ? (course.student_course_id ?? course.id) : course.id;
   if (leaveCourseId == null) return false;
-  return exceptions.value.some(ex =>
-    String(ex.status || '').toLowerCase() === 'leave' &&
-    toYmd(ex.schedule_date) === ymd &&
-    String(ex.student_course_id) === String(leaveCourseId)
-  );
+  return hasLeaveExceptionForCourseDate(exceptions.value, ymd, leaveCourseId, course.start_time);
 };
 
 const courseOccupiesHourOnDate = (course, ymd, hour) => {

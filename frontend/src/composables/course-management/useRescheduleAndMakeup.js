@@ -240,7 +240,8 @@ export function useRescheduleAndMakeup({
     for (const ex of schedExceptions) {
       const d = ex.schedule_date ? String(ex.schedule_date).slice(0, 10) : '';
       const cid = String(ex.student_course_id || '');
-      if (ex.status === 'leave' || ex.status === 'leave_adjusted' || ex.status === 'excused') leaveSet.add(`${cid}_${d}`);
+      // #3914: a leave marker with a time frees only that lesson's slot (a date can hold two lessons of one course)
+      if (ex.status === 'leave' || ex.status === 'leave_adjusted' || ex.status === 'excused') leaveSet.add(ex.start_time ? `${cid}_${d}_${String(ex.start_time).slice(0, 5)}` : `${cid}_${d}`);
       else if (ex.status === 'rescheduled') reschFromSet.add(`${cid}_${d}`);
       else if (ex.status === 'scheduled' && ex.original_schedule_id) reschToList.push(ex);
     }
@@ -273,10 +274,10 @@ export function useRescheduleAndMakeup({
           ? c.days_of_week.map(Number) : (c.day_of_week ? [Number(c.day_of_week)] : []);
         if (!cDays.includes(dow)) continue;
         const cid = String(c.id || '');
-        if (leaveSet.has(`${cid}_${ymd}`) || reschFromSet.has(`${cid}_${ymd}`)) continue;
+        const st = c.start_time || '16:00';
+        if (leaveSet.has(`${cid}_${ymd}`) || leaveSet.has(`${cid}_${ymd}_${String(st).slice(0, 5)}`) || reschFromSet.has(`${cid}_${ymd}`)) continue;
         const fcd = c.first_class_date ? String(c.first_class_date).slice(0, 10) : null;
         if (fcd && ymd < fcd) continue;
-        const st = c.start_time || '16:00';
         markOcc(ymd, st, c.end_time || computeEndTime(st, c.duration_hours || 2), c.student_name || '');
       }
       cursor.setDate(cursor.getDate() + 1);
