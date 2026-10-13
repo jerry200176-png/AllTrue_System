@@ -1812,7 +1812,8 @@ const executeGradePromotion = async () => {
         branchId: props.branchId,
         seasonYear: gradePromotionSeasonYear.value,
         idempotencyKey: gradePromotionIdempotencyKey.value,
-        excludeStudentIds: gradePromotionEffectiveExcluded.value,
+        // Manual unticks only: the server re-applies onlyGrades to a fresh preview (#3758).
+        excludeStudentIds: gradePromotionExcluded.value,
         onlyGrades: gradePromotionGrades.value,
       })),
     }, token);
