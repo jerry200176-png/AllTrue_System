@@ -1417,6 +1417,83 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertEqual(["git", "composer", "manifest", "php"], calls)
         self.assertIn("Rollback 成功", result.stdout)
 
+    # D1 (Founder 2026-10-13): a failed migration aborts the deploy through the
+    # shared rollback path; it must never fall through to build/health/success.
+    MIGRATION_START = 'echo "=== [3/7] Migration'
+    MIGRATION_END = 'echo "=== [3b/7]'
+
+    def _migration_block(self):
+        self.assertEqual(1, self.workflow.count(self.MIGRATION_START))
+        return self.MIGRATION_START + self.workflow.split(self.MIGRATION_START, 1)[1].split(self.MIGRATION_END, 1)[0]
+
+    def _execute_isolated_migration(self, status_output, status_exit=0, migrate_exit=0):
+        with tempfile.TemporaryDirectory(prefix="alltrue-migration-contract-") as sandbox:
+            (Path(sandbox) / "backend").mkdir()
+            (Path(sandbox) / "backend" / ".env").write_text("DB_USERNAME=u\nDB_PASSWORD=p\n")
+            trace = Path(sandbox) / "trace"
+            block = self._migration_block().replace("/home/admin", sandbox)
+            harness = textwrap.dedent(r"""
+                set -uo pipefail
+                MIGRATION_RAN=0
+                abort_deploy() { echo "abort" >> "$TRACE"; exit 1; }
+                mysqldump() { echo dump; }
+                php() {
+                    case "$2" in
+                        migrate:status) printf '%s\n' "$STATUS_OUTPUT"; return "$STATUS_EXIT" ;;
+                        migrate) echo migrate >> "$TRACE"; return "$MIGRATE_EXIT" ;;
+                    esac
+                    return 99
+                }
+            """)
+            tail = '\necho "ran=$MIGRATION_RAN" >> "$TRACE"\necho continued >> "$TRACE"\n'
+            result = subprocess.run(
+                ["bash", "-c", harness + block + tail],
+                cwd=sandbox, text=True, capture_output=True,
+                env={"PATH": os.environ["PATH"], "TRACE": str(trace), "STATUS_OUTPUT": status_output,
+                     "STATUS_EXIT": str(status_exit), "MIGRATE_EXIT": str(migrate_exit)},
+            )
+            calls = trace.read_text().splitlines() if trace.exists() else []
+            return result, calls
+
+    def test_failed_migration_aborts_before_any_later_deploy_step(self):
+        result, calls = self._execute_isolated_migration("| No | 2026_10_13_x |", migrate_exit=1)
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["migrate", "abort"], calls)
+
+    def test_failed_migration_status_aborts_instead_of_skipping(self):
+        result, calls = self._execute_isolated_migration("", status_exit=1)
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["abort"], calls)
+
+    def test_successful_migration_marks_ran_and_continues(self):
+        result, calls = self._execute_isolated_migration("2026_10_13_x .... Pending", migrate_exit=0)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["migrate", "ran=1", "continued"], calls)
+
+    def test_no_pending_migration_skips_and_continues(self):
+        result, calls = self._execute_isolated_migration("| Yes | 2026_10_13_x | 1 |")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["ran=0", "continued"], calls)
+
+    def test_migration_step_has_no_failure_swallowing_construct(self):
+        block = self._migration_block()
+        for construct in ("set +e", "MIGRATION_FAILED", "--force ||", "--force) ||", "migrate:status 2>/dev/null"):
+            self.assertNotIn(construct, block)
+        self.assertNotIn("MIGRATION_FAILED", self.workflow)
+        self.assertIn("abort_deploy \"Migration 失敗", block)
+
+    def test_success_markers_depend_on_the_deploy_step(self):
+        deploy = self.workflow.split("      - name: Deploy\n", 1)[1].split("      - name: ", 1)[0]
+        self.assertIn(self.MIGRATION_START, deploy)
+        self.assertNotIn("continue-on-error", deploy)
+        self.assertNotIn("set +e", deploy)
+        marker = self.workflow.split("      - name: Deploy\n", 1)[1].split("      - name: ", 1)[1]
+        self.assertTrue(marker.startswith("Record deployed and production-verified state\n"))
+        marker_step = marker.split("\n      - name: ", 1)[0].split("\n  parent-portal-smoke:", 1)[0]
+        # No `if:` override: the success marker runs only when Deploy (and so migration) succeeded.
+        self.assertNotRegex(marker_step, r"(?m)^        if:")
+        self.assertNotIn("continue-on-error", marker_step)
+
 
 class FounderGoAutoActivationTest(unittest.TestCase):
     """Founder 1A (2026-10-07): no manual approve when every merged PR is R0-R2 or GO'd."""
