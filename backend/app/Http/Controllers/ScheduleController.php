@@ -406,7 +406,8 @@ class ScheduleController extends Controller
                         CourseLeaveCascadeService::sessionIdAt((int) $courseId, (string) $data['schedule_date'], $data['start_time'] ?? null));
                     $course = StudentClass::where('ID', $courseId)->first();
 
-                    $leaveSession = ClassSession::find($leaveSessionId);
+                    /** @var ClassSession|null $leaveSession */
+                    $leaveSession = ClassSession::query()->whereKey($leaveSessionId)->first();
                     if ($leaveSession) {
                         if ($course && !StudentSignIn::where('ClassSessionID', $leaveSession->id)->whereNull('VoidedAt')->exists()) {
                             $campusId = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
@@ -1325,7 +1326,8 @@ class ScheduleController extends Controller
                 CourseLeaveCascadeService::sessionIdAt($courseId, $leaveDate, $merged['start_time'] ?? $schedule->getAttribute('start_time')) // #3914
             );
             $course = StudentClass::query()->where('ID', $courseId)->first();
-            $leaveSession = ClassSession::query()->find($leaveSessionId);
+            /** @var ClassSession|null $leaveSession */
+            $leaveSession = ClassSession::query()->whereKey($leaveSessionId)->first();
             if ($course && $leaveSession
                 && !StudentSignIn::query()->where('ClassSessionID', $leaveSession->id)->whereNull('VoidedAt')->exists()) {
                 $campusId = (int) (Student::query()->where('id', (int) $course->StudentID)->value('CampusID') ?? 0);

@@ -2820,7 +2820,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 6
+			count: 5
 			path: app/Http/Controllers/ScheduleController.php
 
 		-
