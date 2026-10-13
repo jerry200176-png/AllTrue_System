@@ -83,6 +83,7 @@ jobs:
           python3 -m unittest scripts.tests.test_ui_smoke_gate
           python3 -m unittest scripts.tests.test_autonomous_convergence
           python3 scripts/tests/test_required_php_checks.py
+          python3 scripts/tests/test_evidence_contract_timeouts.py
           bash scripts/tests/production-acceptance-stage-contract.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
           bash scripts/tests/synthetic-director-workflow-contract.test.sh
