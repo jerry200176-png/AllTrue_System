@@ -223,6 +223,21 @@ class ContractMoneyCallersAgreeTest extends TestCase
     }
 
     /**
+     * #3891 review (P2): bank suggestions compare the course's summed debt, not one invoice at a time. A stale-paid
+     * bill owing 6,000 plus an unpaid bill owing 2,000 is one 8,000 course balance (the resolver's outstanding).
+     */
+    public function test_bank_suggest_matches_the_course_balance_across_invoices(): void
+    {
+        $course = $this->course([['2026-07', 10000, 'paid', 10000, [[4000, 'cash']]], ['2026-08', 2000, 'unpaid', 0, []]], ['Paid' => 1, 'Rate' => 1000]);
+        $v = app(ContractMoneyVerdict::class)->forCourse($course);
+        $this->assertSame(['partial', 8000], [$v->status, $v->outstanding]);
+        $txn = \App\Models\BankTransaction::create(['campus_id' => 1, 'transaction_date' => '2026-08-20', 'amount' => 8000, 'reference' => 'sum', 'status' => 'unmatched']);
+        $suggested = collect($this->withHeaders($this->directorHeaders())->getJson("/api/v1/bank-reconciliation/{$txn->id}/suggest")->assertOk()->json('suggestions'));
+        $this->assertSame([(int) $course->ID], $suggested->pluck('student_class_id')->all());
+        $this->assertSame('2026-07-01', $suggested->first()['payment_date']);
+    }
+
+    /**
      * #3891 review: a paid shared package is listed by package (DIRECTOR_PAYMENT_ALERT_RULES), never member by member.
      * Whether a member's stale-paid bill reopens the package is a package money rule not decided yet (#3785 hold), so
      * the stale-paid widening must not emit a lone member row for it.
