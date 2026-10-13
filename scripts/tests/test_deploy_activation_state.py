@@ -1276,6 +1276,22 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             self.assertNotIn("group: production-deploy", workflow)
             self.assertIn("cancel-in-progress: false", workflow)
 
+    def test_every_shared_production_lock_queues_instead_of_replacing_pending_runs(self):
+        # Default `queue: single` cancels an already-pending run when another workflow joins the
+        # shared group; every member must opt into the same FIFO queue (GitHub: up to 100 pending).
+        block = re.compile(r"^(\s*)group: alltrue-production-side-effects-v2\n((?:\1\S.*\n)*)", re.M)
+        members = 0
+        for path in sorted(WORKFLOW.parent.glob("*.y*ml")):
+            for match in block.finditer(path.read_text(encoding="utf-8")):
+                members += 1
+                keys = match.group(2)
+                with self.subTest(workflow=path.name):
+                    self.assertIn(match.group(1) + "cancel-in-progress: false\n", keys)
+                    self.assertIn(match.group(1) + "queue: max\n", keys)
+        self.assertGreaterEqual(members, 2)
+        lint = (ROOT / "scripts" / "ci" / "actionlint.sh").read_text(encoding="utf-8")
+        self.assertIn("'-ignore' 'unexpected key \"queue\" for \"concurrency\" section'", lint)
+
     def test_test_only_changes_are_not_deployable(self):
         self.assertIn("is_deployable_path", self.workflow)
         classifier = (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8")
