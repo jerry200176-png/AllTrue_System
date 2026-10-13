@@ -21,6 +21,14 @@ class StudentClassTransactionDiscountTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Discounts are switched off in production (Founder 2026-10-14); these cases pin the dormant machinery
+        // that still reads earlier terms' snapshots. TransactionDiscountDisabledTest covers the default.
+        config(['billing.transaction_discounts_enabled' => true]);
+    }
+
     public function test_none_and_zero_are_normalized_without_reason(): void
     {
         $calculator = new TransactionDiscountCalculator();

@@ -69,12 +69,8 @@
         <input v-model="form.end_date" type="date" :min="minDate" @change="$emit('preview-change', form.end_date)" />
       </div>
 
-      <div v-if="props.form?.discount" class="form-group" data-testid="renew-transaction-discount">
-        <label>交易折扣</label>
-        <select v-model="props.form.discount.type"><option value="NONE">無折扣</option><option value="FIXED_AMOUNT">固定金額</option><option value="PERCENTAGE">百分比</option></select>
-        <input v-if="props.form.discount.type !== 'NONE'" v-model="props.form.discount.value" type="text" inputmode="decimal" placeholder="折扣值" />
-        <input v-if="props.form.discount.type !== 'NONE'" v-model="props.form.discount.reason" type="text" maxlength="500" placeholder="折扣原因（必填）" />
-        <span class="hint">預估 {{ discountPreview.originalAmount.toLocaleString() }} · 折扣 {{ discountPreview.discountAmount.toLocaleString() }} · 折扣後估算 {{ discountPreview.finalAmount.toLocaleString() }}</span>
+      <div v-if="Number.isFinite(Number(props.form?.original_amount))" class="form-group" data-testid="renew-estimated-amount">
+        <span class="hint">預估金額 NT$ {{ Number(props.form.original_amount).toLocaleString() }}（依確認已上堂次計算）</span>
       </div>
 
       <div class="actions">
@@ -90,7 +86,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
-import { calculateTransactionDiscountPreview } from '../../lib/coursePricing';
 import { addMonthsToPeriodEnd, canSubmitMonthlyRenewal, nextPeriodEnd } from '../../lib/monthlyRenewalPreview';
 
 const props = defineProps({
@@ -104,7 +99,6 @@ const emit = defineEmits(['close', 'submit', 'preview-change']);
 const mode = ref('months');
 
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
-const discountPreview = computed(() => calculateTransactionDiscountPreview(props.form?.original_amount, props.form?.discount));
 
 const minDate = computed(() => {
   const d = new Date();
