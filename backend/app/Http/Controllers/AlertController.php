@@ -221,13 +221,15 @@ class AlertController extends Controller
                 ->map(fn ($v) => (int) $v)
                 ->toArray();
 
-            $membersByPkg = StudentClass::whereIn('PackageID', $monthlyPkgs->pluck('id'))
-                ->select('ID', 'PackageID')
-                ->get()
-                ->groupBy('PackageID');
-            // #3892 review P1 (Founder Q3=A): monthly members are confirmed one at a time and never set the package paid
-            // flag, so the package row reads each member's authoritative ledger verdict, not only $pkg->paid.
-            $memberStatuses = $this->payableResolver->courseStatusesByStudentClassIds($allMemberScIds->all());
+            $memberCourses = StudentClass::whereIn('PackageID', $monthlyPkgs->pluck('id'))->with('coursePackage')->get();
+            $membersByPkg = $memberCourses->groupBy('PackageID');
+            // #3892 review (Founder Q3=A): members are confirmed one at a time and never set the package paid flag, so each
+            // date-mode member is priced exactly as its own single-course alert row would be (courseAlertMoney), and the
+            // package row is their sum. Only the un-invoiced estimate differs: the package rate x this month's sessions.
+            $memberIds = $memberCourses->pluck('ID')->all();
+            $memberStatuses = $this->payableResolver->courseStatusesByStudentClassIds($memberIds, $memberCourses);
+            $memberOpenInvoices = $this->openInvoiceByStudentClassIds($memberIds);
+            $memberInvoiceAgg = $this->payableResolver->invoiceAggregateByStudentClassIds($memberIds);
 
             foreach ($monthlyPkgs as $pkg) {
                 $members = $membersByPkg->get($pkg->id, collect());
@@ -235,8 +237,12 @@ class AlertController extends Controller
                 $rate = (float) $pkg->rate;
                 $charge = round($monthlySessions * $rate, 2);
                 $manualPaid = (bool) $pkg->paid;
-                $settlement = self::monthlyPackageSettlement($members->pluck('ID')->all(), $memberStatuses, $memberSessionCounts, $rate, $manualPaid, $today->format('Y-m'));
-                $pkgPaid = $settlement['paid'];
+                $memberMoney = $members->map(fn (StudentClass $m) => $this->courseAlertMoney($m, $today,
+                    $memberOpenInvoices[(int) $m->ID] ?? null, $memberStatuses[(int) $m->ID] ?? null, $memberInvoiceAgg[(int) $m->ID] ?? null,
+                    (int) round(($memberSessionCounts[(int) $m->ID] ?? 0) * $rate)));
+                // Paid = the manual toggle, or every member row owes nothing (invoices + Payment rows beat the Paid flag).
+                $pkgPaid = $manualPaid || ($members->isNotEmpty() && $memberMoney->every(fn ($row) => $row['outstanding'] <= 0));
+                $settlement = ['outstanding' => (int) $memberMoney->sum('outstanding'), 'applied' => (int) $memberMoney->sum('paid_amount')];
 
                 $fakeSc = $this->makeFakeSCForPackage($pkg);
                 $fakeSc->Paid = $pkgPaid ? 1 : 0;
@@ -370,26 +376,10 @@ class AlertController extends Controller
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
                 $invoicePaidAt = $paidAtMap[$classId] ?? null;
 
-                $openInvoice = $openMonthlyInvoiceMap[$classId] ?? null;
-                $invoiceProjection = $openInvoice && isset($openInvoice['invoice'])
-                    ? $this->invoiceAmounts->resolve($openInvoice['invoice'], $sc)
-                    : null;
-                $charge = $sc && ($sc->ScheduleMode ?? 'count') === 'date'
-                    ? ($invoiceProjection
-                        ? (int) $invoiceProjection['total_amount']
-                        : (int) $this->monthlyBilling->summarize($sc, $today)['charge'])
-                    : $this->countModeCharge($sc);
-                $invoiceAgg = $invoiceAggMap[$classId] ?? null;
                 $payable = $payableMap[$classId] ?? $this->payableResolver->unbilled();
-                // ARCH2: what is paid / what status = the Verdict (invoices + Payment rows), not the stored PaidAmount sum.
                 $verdict = $courseStatuses[$classId] ?? null;
-                $paidAmount = ($verdict['source'] ?? null) === 'invoice'
-                    ? (int) $verdict['applied']
-                    : ($invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0);
-                $rawPaid = (int) ($sc->Paid ?? 0) === 1;
-                $scIsPaid = $this->isFullyPaid($rawPaid || ($sc ? $sc->isEffectivelyPaid() : false), $paidAmount, $charge);
-                // F7 S3b: one outstanding answer = the resolver's course-level value; no invoice => estimate.
-                $outstanding = $this->courseOutstanding($courseStatuses[$classId] ?? null) ?? ($scIsPaid ? 0 : max(0, $charge - $paidAmount));
+                $money = $this->courseAlertMoney($sc, $today, $openMonthlyInvoiceMap[$classId] ?? null, $verdict, $invoiceAggMap[$classId] ?? null);
+                ['charge' => $charge, 'paid_amount' => $paidAmount, 'outstanding' => $outstanding, 'invoice_projection' => $invoiceProjection] = $money;
 
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
 
@@ -697,37 +687,37 @@ class AlertController extends Controller
     }
 
     /**
-     * #3892 review P1 (Founder Q3=A): a monthly package is settled for the billing period the alert computes ($period, the
-     * current month) when its manual paid flag is set, or when every member has an invoice for that period fully covered by
-     * payments. Otherwise it owes, per member: every invoiced period's open balance, plus this month's attended sessions x
-     * rate when the member has no invoice for $period yet (the FR-006 estimate). A paid earlier month never settles a later
-     * one (the resolver's course-level `paid` spans all invoices, and B15 skips package members).
+     * The money a single-course alert row shows for one contract: charge (open invoice total, else the period estimate),
+     * paid_amount (resolver `applied` when invoiced), paid (TD-083 B0 predicate) and outstanding (F7 S3b: the resolver's
+     * course-level value over every open period; no invoice => estimate). The tuition row closure and the monthly package
+     * aggregate (#3892, once per member) both call this, so a package never prices a member differently from its own row.
+     * $estimate replaces MonthlyBillingService only for a date-mode contract without an open invoice (package members).
      *
-     * @param list<int|string> $memberIds
-     * @param array<int, array<string, mixed>> $statuses BillingPayableResolver::courseStatusesByStudentClassIds()
-     * @param array<int, int> $sessionCounts
-     * @return array{paid: bool, outstanding: float|int, applied: int}
+     * @param array<string, mixed>|null $openInvoice openInvoiceByStudentClassIds() row
+     * @param array<string, mixed>|null $verdict BillingPayableResolver::courseStatusesByStudentClassIds() row
+     * @param array<string, int>|null $invoiceAgg BillingPayableResolver::invoiceAggregateByStudentClassIds() row
+     * @return array{charge: int, paid_amount: int, paid: bool, outstanding: int, invoice_projection: array<string, mixed>|null}
      */
-    public static function monthlyPackageSettlement(array $memberIds, array $statuses, array $sessionCounts, float $rate, bool $manualPaid, string $period): array
+    private function courseAlertMoney(?StudentClass $sc, Carbon $today, ?array $openInvoice, ?array $verdict, ?array $invoiceAgg, ?int $estimate = null): array
     {
-        $outstanding = 0;
-        $applied = 0;
-        $allPaid = $memberIds !== [];
-        foreach (array_map('intval', $memberIds) as $id) {
-            $invoiced = collect($statuses[$id]['periods'] ?? [])->filter(fn ($row) => !empty($row['invoice_ids']));
-            $current = $invoiced->firstWhere('billing_period', $period);
-            $outstanding += (int) $invoiced->sum(fn ($row) => max(0, (int) ($row['outstanding'] ?? 0)));
-            $applied += (int) ($current['applied'] ?? 0);
-            if ($current === null) {
-                $outstanding += ($sessionCounts[$id] ?? 0) * $rate;
-            }
-            $allPaid = $allPaid && $current !== null && (int) ($current['outstanding'] ?? 1) <= 0;
-        }
-        if ($manualPaid || $allPaid) {
-            return ['paid' => true, 'outstanding' => 0, 'applied' => $applied];
-        }
+        $invoiceProjection = $openInvoice && isset($openInvoice['invoice'])
+            ? $this->invoiceAmounts->resolve($openInvoice['invoice'], $sc)
+            : null;
+        $charge = $sc && ($sc->ScheduleMode ?? 'count') === 'date'
+            ? ($invoiceProjection
+                ? (int) $invoiceProjection['total_amount']
+                : ($estimate ?? (int) $this->monthlyBilling->summarize($sc, $today)['charge']))
+            : $this->countModeCharge($sc);
+        // ARCH2: what is paid / what status = the Verdict (invoices + Payment rows), not the stored PaidAmount sum.
+        $paidAmount = ($verdict['source'] ?? null) === 'invoice'
+            ? (int) $verdict['applied']
+            : ($invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0);
+        $rawPaid = (int) ($sc->Paid ?? 0) === 1;
+        $isPaid = $this->isFullyPaid($rawPaid || ($sc ? $sc->isEffectivelyPaid() : false), $paidAmount, $charge);
+        // F7 S3b: one outstanding answer = the resolver's course-level value; no invoice => estimate.
+        $outstanding = $this->courseOutstanding($verdict) ?? ($isPaid ? 0 : max(0, $charge - $paidAmount));
 
-        return ['paid' => false, 'outstanding' => round($outstanding, 2), 'applied' => $applied];
+        return ['charge' => $charge, 'paid_amount' => $paidAmount, 'paid' => $isPaid, 'outstanding' => $outstanding, 'invoice_projection' => $invoiceProjection];
     }
 
     /**

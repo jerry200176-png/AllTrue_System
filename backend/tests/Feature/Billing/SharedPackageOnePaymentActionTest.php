@@ -162,8 +162,11 @@ class SharedPackageOnePaymentActionTest extends TestCase
         $this->assertFalse((bool) $pkg->fresh()->paid, 'the package flag itself is still never set by member confirmations');
     }
 
-    /** #3892 review P1: the manual package paid toggle (FR-006) still settles the package row even with open member invoices. */
-    public function test_manual_paid_toggle_still_settles_a_monthly_package_row(): void
+    /**
+     * #3892 review: the manual package paid toggle (FR-006) marks the package row paid, but like a single course's Paid flag it
+     * never hides what the member invoices still owe (Founder Q2: invoices + Payment rows beat the flag).
+     */
+    public function test_manual_paid_toggle_marks_the_row_paid_without_hiding_open_invoices(): void
     {
         [, , $pkg] = $this->monthlyPackageWithPendingReports();
         $h = $this->directorHeaders();
@@ -173,17 +176,18 @@ class SharedPackageOnePaymentActionTest extends TestCase
 
         $row = $this->packageAlertRow($h, $pkg);
         $this->assertTrue($row['paid']);
-        $this->assertSame(0, (int) $row['outstanding']);
+        $this->assertSame('monthly_due_soon', $row['payment_status']);
+        $this->assertSame(2 * 8800, (int) $row['outstanding'], 'both member invoices are still unpaid');
     }
 
     /**
-     * #3892 review P1 (r4254497307): a paid earlier month never settles the current one. August is invoiced and paid for both
-     * members; September has attended sessions and no invoice yet, so the package row owes September's sessions x rate.
+     * #3892 review (r4254497307 -> single-course parity): August is invoiced and paid for both members; September has attended
+     * sessions and no invoice yet. Each member's own row owes nothing (its invoices are the truth), so the package row does
+     * too; September's sessions stay visible as the estimate (`charge`) until September is invoiced, as for a single course.
      */
-    public function test_paid_prior_month_does_not_settle_the_current_month(): void
+    public function test_paid_prior_month_with_current_sessions_follows_the_member_rows(): void
     {
         [$a, $b, $pkg] = $this->monthlyPackageWithPendingReports();
-        $h = $this->directorHeaders();
         foreach ([$a, $b] as $c) {
             \App\Models\Invoice::where('StudentClassID', $c->ID)->update(['Status' => 'paid', 'PaidAmount' => 8800]);
             \App\Models\Payment::create(['InvoiceID' => \App\Models\Invoice::where('StudentClassID', $c->ID)->value('id'), 'Amount' => 8800, 'PaidAt' => '2026-08-01', 'Method' => 'cash']);
@@ -196,9 +200,73 @@ class SharedPackageOnePaymentActionTest extends TestCase
             \App\Models\ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => '2026-09-01', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
         }
 
-        $row = $this->packageAlertRow($h, $pkg);
-        $this->assertFalse($row['paid'], 'August being paid does not settle September');
-        $this->assertSame(2 * 1500, (int) $row['outstanding'], 'September owes its attended sessions x rate');
+        $row = $this->packageAlertRow($this->directorHeaders(), $pkg);
+        $this->assertSame(0, (int) $row['outstanding']);
+        $this->assertTrue($row['paid']);
+        $this->assertSame(2, (int) $row['monthly_sessions']);
+        $this->assertEquals(2 * 1500, $row['charge'], 'September is still shown as the estimate');
+    }
+
+    /** #3892 review P1 (r4254553676): every member's current month is paid, but A still owes July; the package row owes July. */
+    public function test_older_open_period_keeps_the_package_unpaid_when_the_current_month_is_paid(): void
+    {
+        [$a, $b, $pkg, $student] = $this->monthlyPackage('2026-08-02 10:00:00');
+        foreach ([$a, $b] as $c) {
+            $this->invoice($c, $student, '2026-08', 8800, 'paid', 8800, [[8800, 'cash']]);
+        }
+        $this->invoice($a, $student, '2026-07', 5000, 'unpaid', 0, []);
+
+        $row = $this->packageAlertRow($this->directorHeaders(), $pkg);
+        $this->assertFalse($row['paid']);
+        $this->assertSame(5000, (int) $row['outstanding']);
+        $this->assertSame('unpaid', $row['payment_status']);
+    }
+
+    /**
+     * #3892 review P1 (r4254553679): A's open invoice is labelled September but covers 9/28-10/27, and A attended twice in
+     * October. The invoice is A's answer (single-course rule), so October's sessions are not priced again on top of it.
+     */
+    public function test_cross_month_invoice_is_not_double_counted_with_the_session_estimate(): void
+    {
+        [$a, , $pkg, $student] = $this->monthlyPackage('2026-10-03 10:00:00');
+        $this->invoice($a, $student, '2026-09', 3000, 'unpaid', 0, []);
+        foreach (['2026-10-01', '2026-10-02'] as $d) {
+            \App\Models\ClassSession::create(['StudentClassID' => $a->ID, 'SessionDate' => $d, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        }
+
+        $row = $this->packageAlertRow($this->directorHeaders(), $pkg);
+        $this->assertFalse($row['paid']);
+        $this->assertSame(3000, (int) $row['outstanding'], 'the invoice balance only, not + 2 x 1500');
+        $this->assertSame(2, (int) $row['monthly_sessions']);
+    }
+
+    /** #3892 review P2 (r4254553678): B attended nothing and has no invoice, so it owes nothing and does not block A's paid month. */
+    public function test_zero_session_member_does_not_block_the_paid_status(): void
+    {
+        [$a, , $pkg, $student] = $this->monthlyPackage('2026-08-02 10:00:00');
+        $this->invoice($a, $student, '2026-08', 8800, 'paid', 8800, [[8800, 'cash']]);
+
+        $row = $this->packageAlertRow($this->directorHeaders(), $pkg);
+        $this->assertTrue($row['paid']);
+        $this->assertSame(0, (int) $row['outstanding']);
+        $this->assertSame('monthly_due_soon', $row['payment_status']);
+    }
+
+    /**
+     * Monthly package (settlement day 5, rate 1500) with two date-mode members, no invoices and no sessions, at $now.
+     *
+     * @return array{0: \App\Models\StudentClass, 1: \App\Models\StudentClass, 2: CoursePackage, 3: Student}
+     */
+    private function monthlyPackage(string $now): array
+    {
+        \Illuminate\Support\Carbon::setTestNow($now);
+        [$a, $b, $pkg] = $this->sharedPackage();
+        $pkg->update(['billing_mode' => CoursePackage::BILLING_MODE_MONTHLY, 'settlement_day' => 5]);
+        foreach ([$a, $b] as $c) {
+            $c->update(['ScheduleMode' => 'date', 'StartDate' => '2026-06-01', 'EndDate' => '2026-12-31', 'SessionCount' => 0, 'settlement_day' => 5]);
+        }
+
+        return [$a->fresh(), $b->fresh(), $pkg->fresh(), Student::findOrFail($a->StudentID)];
     }
 
     /**
