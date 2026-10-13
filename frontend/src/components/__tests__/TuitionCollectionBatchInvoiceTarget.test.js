@@ -29,8 +29,7 @@ async function captureModal({ row: r, typed }) {
   const sent = [];
   global.fetch = vi.fn((url, init = {}) => { sent.push(JSON.parse(init.body)); return Promise.resolve(json(200, { report_id: 1 })); });
   const wrapper = mount(PaymentEntryModal, { props: { show: false, row: r } });
-  await wrapper.setProps({ show: true });
-  await nextTick();
+  await wrapper.setProps({ show: true }); await nextTick();
   await wrapper.find('input[type="radio"][value="cash"]').setValue(true);
   if (typed !== undefined) await wrapper.find('input[type="number"]').setValue(typed);
   await wrapper.find('form').trigger('submit');
@@ -50,16 +49,12 @@ async function captureBatch({ row: r }) {
   });
   const wrapper = mount(TuitionCollectionPage, {
     props: { branchId: 1, initialTab: 'unpaid' },
-    global: { stubs: { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true,
-      AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true } },
+    global: { stubs: { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true, AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true } },
   });
   await flushPromises();
   for (const box of wrapper.findAll('input[type="checkbox"][aria-label^="選取"]')) await box.setValue(true);
   await wrapper.find('select').setValue('cash');
-  await wrapper.findAll('button').find((b) => b.text().includes('送出已回報')).trigger('click');
-  await flushPromises();
-  await wrapper.findAll('button').find((b) => b.text().includes('確認送出回報')).trigger('click');
-  await flushPromises();
+  for (const label of ['送出已回報', '確認送出回報']) { await wrapper.findAll('button').find((b) => b.text().includes(label)).trigger('click'); await flushPromises(); }
   wrapper.unmount();
   return { endpoint: 'director-record-batch', request: sent[0] ?? null, blocked_message: null };
 }
