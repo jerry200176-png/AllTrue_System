@@ -184,7 +184,7 @@ last_reviewed: 2026-08-23
 | GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Refs #nnn`；上線後 Phase-C 自動關 issue（F14） |
 | In-app | `triaged` + 公開回覆 | `resolved` + 公開回覆 → 回報者驗收或逾時 → `closed` |
 
-**自動化（收件建單、Phase-C 自動關 issue F14、reconcile 報表、同類提醒、每日逾時結案、週報）**：哪個 workflow、何時跑、cloud 能否自行完成，一律見 [`sop/BUG_INTAKE_TO_PRODUCTION.md`](sop/BUG_INTAKE_TO_PRODUCTION.md) 開頭對照表；逾時規則細節見 [`governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md) §Reporter-verify timeout。分診前先看 queue dump 的「in-app ↔ issue 不一致」報表。
+**自動化（收件建單、Phase-C 自動關 issue F14、reconcile 報表、同類提醒、每日逾時結案、週報）**：哪個 workflow、何時跑、cloud 能否自行完成，一律見 [`sop/BUG_INTAKE_TO_PRODUCTION.md`](sop/BUG_INTAKE_TO_PRODUCTION.md) 開頭對照表（含每日 14 天自動逾時；`governance/EVIDENCE_CONTRACT.md` 的 7 日／不排程描述是人工 `--days` 路徑，待更新）。分診前先看 queue dump 的「in-app ↔ issue 不一致」報表。
 
 **相關防再犯**：`docs/AI_REGRESSION_LESSONS.md` §R51（分診前必查附件）、§R53（上線後必回 in-app）。
 
