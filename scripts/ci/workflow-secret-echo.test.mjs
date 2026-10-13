@@ -496,7 +496,7 @@ export const growth = (cur, base) => applyBaseline(Object.entries(cur).filter(([
 export const problems = (fresh, stale, grown, baseRef) => [
   ...stale.map((s) => `workflow-secret-echo: stale baseline entry (line fixed or changed), remove it from ${BASELINE}: ${s}`),
   ...grown.map((g) => `workflow-secret-echo: ${BASELINE} grew vs ${baseRef} (shrink-only; fix or annotate the line instead): ${g}`),
-  ...fresh.map((f) => `${f.where} ${f.why} (fix, or add "# secret-echo-allow: <reason>"): ${f.text.trim()}`),
+  ...fresh.map((f) => `${f.where} ${f.why}${f.why.includes("literal credential") ? " (" + (f.text.match(LITERAL)?.[1] ?? "credential") + "=<redacted>)" : ""} (fix, or add "# secret-echo-allow: <reason>"); source text redacted`),
 ];
 const toBaseline = (findings) => {
   const by = {};
@@ -814,6 +814,13 @@ for (const [k, y] of Object.entries(ok)) { const r = scan('ok', y); if (r.length
         fail('reviewed formatter must emit only normalized booleans in every mode');
     }
   } finally { rmSync(sandbox, { recursive: true, force: true }); }
+}
+
+{
+  const sentinel = 'synthetic_private_value_for_redaction';
+  const messages = problems(scan('literal.yml', 'jobs:\n  j:\n    steps:\n      - run: DB_PASSWORD=' + sentinel), [], [], 'origin/main');
+  if (!messages.length || messages.join(' ').includes(sentinel) || !messages.join(' ').includes('DB_PASSWORD=<redacted>'))
+    fail('literal failure diagnostics must retain key/location but redact source values');
 }
 
 // --- repository check ---------------------------------------------------------------------------------------------
