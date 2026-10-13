@@ -134,17 +134,20 @@ class BankReconciliationController extends Controller
         // outstanding of unpaid/partial courses), not the legacy StudentClass.Pay / Paid=1 pair.
         // No date window any more (an unsettled invoice has no payment date): payment_date is the oldest
         // open invoice IssueDate and confidence is high only when exactly one course matches.
-        // Bounded: only the transaction's campus, and only invoices whose stored remaining or total equals
-        // the bank amount (cheap SQL pre-filter); the resolver then confirms the real outstanding.
-        $open = DB::table('Invoice')
+        // Bounded: only the transaction's campus, and only courses where one invoice's total or Payment-row remaining,
+        // or the course's summed remaining (the resolver's course-level outstanding, #3891 review), equals the bank
+        // amount (SQL pre-filter); the resolver then confirms the real outstanding.
+        $perInvoice = DB::table('Invoice')
             ->join('Student', 'Student.id', '=', 'Invoice.StudentID')
             ->where('Student.CampusID', (int) $txn->campus_id)
             ->whereNotNull('Invoice.StudentClassID')
-            ->where(fn ($q) => $q->where('Invoice.TotalAmount', $amount)
-                ->orWhereRaw('Invoice.TotalAmount - COALESCE(Invoice.PaidAmount, 0) = ?', [$amount]))
-            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhereNotIn('Invoice.Status', ['void', 'paid']))
-            ->groupBy('Invoice.StudentClassID')
-            ->selectRaw('Invoice.StudentClassID AS StudentClassID, MIN(Invoice.IssueDate) AS oldest_issue')
+            ->whereRaw(\App\Models\Invoice::mayOweSql())
+            ->selectRaw('Invoice.StudentClassID AS StudentClassID, Invoice.IssueDate AS IssueDate, Invoice.TotalAmount AS TotalAmount, '
+                . 'GREATEST(0, Invoice.TotalAmount - ' . \App\Models\Invoice::netPaidSql() . ') AS remaining');
+        $open = $perInvoice->newQuery()->fromSub($perInvoice, 'oi')
+            ->groupBy('oi.StudentClassID')
+            ->havingRaw('SUM(oi.TotalAmount = ?) > 0 OR SUM(oi.remaining = ?) > 0 OR SUM(oi.remaining) = ?', [$amount, $amount, $amount])
+            ->selectRaw('oi.StudentClassID AS StudentClassID, MIN(CASE WHEN oi.remaining > 0 THEN oi.IssueDate END) AS oldest_issue')
             ->limit(200)
             ->pluck('oldest_issue', 'StudentClassID');
         $matches = [];
