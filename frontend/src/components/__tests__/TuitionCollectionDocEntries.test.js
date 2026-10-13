@@ -49,7 +49,6 @@ describe('帳務中心 學生列：繳費單／收據入口', () => {
     expect(writes()).toEqual([]);
     w.unmount();
   });
-
   it('double-click opens ONE existing preview (slip, receipt), a backdrop click right after is swallowed, X closes at once, disabled entries call nothing, only GETs', async () => {
     const w = await mountPage();
     for (const [id, k] of [[101, 'slip'], [103, 'receipt']]) {
