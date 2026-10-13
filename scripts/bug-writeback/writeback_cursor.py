@@ -64,7 +64,7 @@ def validate(state, snapshot):
 
 def reserve(state, snapshot, sha):
     validate(state, snapshot)
-    if not re.fullmatch('[0-9a-f]{40}', sha) or len(state['unknown']) >= MAX_UNKNOWN:
+    if not isinstance(sha, str) or not re.fullmatch('[0-9a-f]{40}', sha) or len(state['unknown']) >= MAX_UNKNOWN:
         raise ValueError('cannot reserve cursor')
     count = state['prefix']
     if count == len(snapshot):
@@ -103,14 +103,14 @@ class CommentStore:
         response = self.runner(args, input=json.dumps(payload) if payload else None,
                                text=True, capture_output=True, timeout=15, check=True)
         data = json.loads(response.stdout)
-        if (data.get('id') != COMMENT or data.get('issue_url') !=
+        if (not isinstance(data, dict) or data.get('id') != COMMENT or data.get('issue_url') !=
                 f'https://api.github.com/repos/{REPOSITORY}/issues/{ISSUE}'):
             raise ValueError('wrong pinned cursor comment')
         return data
 
     def read(self):
         body = self.api('GET').get('body', '')
-        if not body.startswith(MARKER + '\n'):
+        if not isinstance(body, str) or not body.startswith(MARKER + '\n'):
             raise ValueError('missing cursor marker')
         return json.loads(body[len(MARKER) + 1:])
 
@@ -120,3 +120,55 @@ class CommentStore:
             raise ValueError('cursor comment too large')
         if self.api('PATCH', {'body': body}).get('body') != body:
             raise ValueError('cursor persistence unconfirmed')
+
+
+def plan_snapshot(after, snapshot_sha, load_requests, validate_entry, repo, minimum=0):
+    """Validate the pinned cursor against reviewed immutable main request contents."""
+    if not isinstance(snapshot_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", snapshot_sha):
+        raise ValueError("invalid request snapshot")
+    subprocess.run(["git", "merge-base", "--is-ancestor", snapshot_sha, "refs/remotes/writeback/main"], check=True, timeout=5, capture_output=True)
+    frozen = subprocess.run(["git", "show", f"{snapshot_sha}:operations/closeout/bug-writeback.request.yml"], check=True, timeout=5, capture_output=True, text=True).stdout
+    if load_requests(frozen) != load_requests(after):
+        raise ValueError("request input differs from frozen snapshot")
+    store = CommentStore()
+    state = store.read()
+    entries = load_requests(after)
+    if not isinstance(state, dict):
+        raise ValueError("invalid cursor state")
+    stored_sha = state.get("snapshot_sha")
+    if stored_sha:
+        if not isinstance(stored_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", stored_sha):
+            raise ValueError("invalid cursor snapshot")
+        subprocess.run(["git", "merge-base", "--is-ancestor", stored_sha, "refs/remotes/writeback/main"], check=True, timeout=5, capture_output=True)
+        old = subprocess.run(["git", "show", f"{stored_sha}:operations/closeout/bug-writeback.request.yml"], check=True, timeout=5, capture_output=True, text=True).stdout
+        previous = load_requests(old)
+    else:
+        previous = []
+    older_snapshot = False
+    if stored_sha:
+        newer = subprocess.run(["git", "merge-base", "--is-ancestor", stored_sha, snapshot_sha], timeout=5, capture_output=True).returncode
+        if newer == 0:
+            if entries[:len(previous)] != previous:
+                raise ValueError("newer snapshot removed or edited historical requests")
+        elif newer == 1:
+            older_snapshot = True
+            subprocess.run(["git", "merge-base", "--is-ancestor", snapshot_sha, stored_sha], check=True, timeout=5, capture_output=True)
+            if len(entries) > len(previous) or entries != previous[:len(entries)]:
+                raise ValueError("older snapshot reintroduces removed requests")
+        else:
+            raise ValueError("cannot establish frozen snapshot order")
+    validate(state, previous)
+    if older_snapshot:
+        return store, state, entries, []  # never reserve from a stale main snapshot
+    prefix = state["prefix"]
+    if prefix < minimum:
+        raise ValueError("cursor reservation not visible")
+    if entries[:min(prefix, len(entries))] != previous[:min(prefix, len(entries))]:
+        raise ValueError("cursor history is not immutable")
+    if prefix > len(entries):
+        if entries != previous[:len(entries)]:
+            raise ValueError("older target is not an immutable prefix")
+        return store, state, entries, []
+    validate(state, entries)
+    return store, state, entries, [validate_entry(e, repo) for e in entries[prefix:]]
+
