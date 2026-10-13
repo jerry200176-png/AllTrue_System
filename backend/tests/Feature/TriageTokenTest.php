@@ -144,15 +144,17 @@ final class TriageTokenTest extends TestCase
         $this->assertGreaterThan(0, $this->auditCount('triage_token.scope_denied'));
     }
 
-    public function test_forged_prefixed_bearers_are_refused_but_their_audit_rows_are_capped(): void
+    public function test_refused_token_requests_are_answered_but_their_audit_rows_are_capped(): void
     {
         $this->withoutMiddleware(ThrottleRequestsByIp::class);
         $forged = ['Authorization' => 'Bearer 1|' . config('triage_tokens.secret_prefix') . 'forged'];
         $expired = $this->bearer($this->createToken($this->user('S')));
         $this->travel(100)->days(); // past ttl_days: resolve() still finds it, so it shares the cap with forged bearers
         foreach (array_merge(...array_fill(0, 15, ['/api/v1/me', '/api/v1/invoices', '/api/v1/triage/bug-reports'])) as $uri) { $this->getJson($uri, $forged)->assertStatus(str_contains($uri, 'triage') ? 401 : 403); $this->getJson('/api/v1/bugs', $expired)->assertForbidden(); $this->getJson('/api/v1/triage/bug-reports', $expired)->assertUnauthorized(); }
-        $this->getJson('/api/v1/me', $this->bearer($this->createToken($this->user('S'))))->assertForbidden();
-        $this->assertSame(11, $this->auditCount('triage_token.scope_denied') + $this->auditCount('triage_token.read')); // 10 forged rows per IP and minute; a real token's denial is never capped
+        $valid = $this->bearer($this->createToken($this->user('S')));
+        foreach (range(1, 15) as $i) { $this->getJson('/api/v1/me', $valid)->assertForbidden(); } // a valid token's scope denials share the cap too
+        $this->getJson('/api/v1/triage/bug-reports', $valid)->assertOk(); // successful reads are always audited
+        $this->assertSame(11, $this->auditCount('triage_token.scope_denied') + $this->auditCount('triage_token.read'));
     }
 
     public function test_expiry_follows_config_and_expired_token_is_rejected(): void

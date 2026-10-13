@@ -43,7 +43,7 @@ final class AuthenticateTriageToken
 
     private function audit(Request $request, ?int $tokenId, string $outcome, int $status, string $reason): void
     {
-        if ($status >= 400 && $reason !== 'read_failed' && !TriageTokenService::mayAuditUnresolved($request->ip())) { return; } // unusable credentials share the cross-route cap
+        if ($status >= 400 && !TriageTokenService::mayAuditDenial($request->ip())) { return; } // every refusal or failure shares the cross-route cap
         $route = $request->route();
         $bugId = $request->route('id');
         $attachmentId = $request->route('attachmentId');

@@ -16,8 +16,8 @@ final class TriageTokenService
         return (string) config('triage_tokens.ability');
     }
 
-    /** Audit rows for unresolved bearers: 10/min per IP and 120/min overall, across routes; the refusal never changes. */
-    public static function mayAuditUnresolved(?string $ip): bool
+    /** Audit rows for refused or failed token requests (any token): 10/min per IP and 120/min overall, across routes; the response never changes. */
+    public static function mayAuditDenial(?string $ip): bool
     {
         $keys = ['triage-unresolved-audit:' . hash('sha256', (string) $ip) => 10, 'triage-unresolved-audit:all' => 120];
         if (array_filter($keys, fn (int $max, string $key) => RateLimiter::tooManyAttempts($key, $max), ARRAY_FILTER_USE_BOTH) !== []) {

@@ -35,8 +35,7 @@ final class RestrictAccessTokenScope
             return $next($request);
         }
 
-        $unusable = $pat === null || TriageTokenService::isExpired($pat) || !TriageTokenService::ownerIsSuperAdmin($pat);
-        if ($unusable && !TriageTokenService::mayAuditUnresolved($request->ip())) {
+        if (!TriageTokenService::mayAuditDenial($request->ip())) {
             return response()->json(['message' => 'Forbidden', 'code' => 'token_scope_denied'], 403);
         }
         SecurityAuditEvent::append('triage_token.scope_denied', 'denied', [
