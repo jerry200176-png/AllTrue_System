@@ -20,10 +20,11 @@ final class BugReportWritebackEvidence
         return ['captured_at' => $capturedAt, 'proof' => self::proof($bug, $capturedAt)];
     }
 
-    /** The caller must pass the current report row under its write transaction's row lock. */
+    /** Current report row must be locked; child locking reads stay protected through the caller's commit. */
     public static function verify(BugReport $bug, string $capturedAt, string $proof): bool
     {
-        if (!is_string(config('app.key')) || config('app.key') === ''
+        if ($bug->getConnection()->transactionLevel() < 1
+            || !is_string(config('app.key')) || config('app.key') === ''
             || !preg_match('/^[0-9a-f]{64}$/D', $proof)
             || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/D', $capturedAt)) {
             return false;
@@ -41,16 +42,22 @@ final class BugReportWritebackEvidence
             return false;
         }
 
-        return hash_equals(self::proof($bug, $capturedAt), $proof);
+        return hash_equals(self::proof($bug, $capturedAt, true), $proof);
     }
 
-    private static function proof(BugReport $bug, string $capturedAt): string
+    private static function proof(BugReport $bug, string $capturedAt, bool $lockChildren = false): string
     {
         $report = $bug->getRawOriginal();
         ksort($report);
         $children = [];
         foreach (['comments', 'attachments', 'statusLogs', 'evidence'] as $relation) {
-            $children[$relation] = $bug->{$relation}()->orderBy('id')->get()->map(static function (Model $row): array {
+            // Locking reads see current committed children, not an earlier REPEATABLE READ snapshot.
+            // MySQL next-key locks on the indexed parent range also protect concurrent inserts.
+            $query = $bug->{$relation}()->orderBy('id');
+            if ($lockChildren) {
+                $query->lockForUpdate();
+            }
+            $children[$relation] = $query->get()->map(static function (Model $row): array {
                 $attributes = $row->getRawOriginal();
                 ksort($attributes);
 

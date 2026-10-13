@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Services\BugReportService;
 use App\Services\BugReportWritebackEvidence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class BugReportWritebackEvidenceTest extends TestCase
@@ -66,6 +68,56 @@ final class BugReportWritebackEvidenceTest extends TestCase
         config(['app.key' => '']);
         $this->assertNull(BugReportWritebackEvidence::capture($bug));
         $this->assertFalse(BugReportWritebackEvidence::verify($bug, $evidence['captured_at'], $evidence['proof']));
+    }
+
+
+    public function test_visibility_writer_cannot_commit_between_verification_and_protected_write(): void
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            $this->markTestSkipped('Requires independent InnoDB connections for the real visibility race.');
+        }
+        $default = DB::getDefaultConnection();
+        $config = config('database.connections.' . $default);
+        config(['database.connections.evidence_race_a' => $config, 'database.connections.evidence_race_b' => $config]);
+        $a = DB::connection('evidence_race_a');
+        $b = DB::connection('evidence_race_b');
+        $b->statement('SET SESSION innodb_lock_wait_timeout = 1');
+        // Committed fixture on B: the default RefreshDatabase transaction cannot create a false lock conflict.
+        $user = User::on('evidence_race_b')->create(['LoginName' => uniqid('proof-race-'), 'Name' => 'Race reader',
+            'PSW' => 'fixture', 'type' => 'S', 'phone' => (string) random_int(900000000, 999999999)]);
+        $bug = BugReport::on('evidence_race_b')->create(['CampusID' => 1, 'reporter_user_id' => $user->id,
+            'title' => 'Race', 'description' => 'Race fixture', 'severity' => 'medium', 'status' => 'new']);
+        $comment = BugReportComment::on('evidence_race_b')->create(['bug_report_id' => $bug->id,
+            'author_user_id' => $user->id, 'body' => 'Reply', 'is_internal_note' => false]);
+        try {
+            $read = BugReport::on('evidence_race_a')->findOrFail($bug->id);
+            $proof = BugReportWritebackEvidence::capture($read);
+            $this->assertFalse(BugReportWritebackEvidence::verify($read, $proof['captured_at'], $proof['proof']),
+                'verification outside a write transaction must fail closed');
+            $a->beginTransaction();
+            $locked = BugReport::on('evidence_race_a')->whereKey($bug->id)->lockForUpdate()->firstOrFail();
+            $this->assertTrue(BugReportWritebackEvidence::verify($locked, $proof['captured_at'], $proof['proof']));
+            DB::setDefaultConnection('evidence_race_b');
+            try {
+                BugReportService::updateCommentVisibility($bug->id, $comment->id, true);
+                $this->fail('Visibility edit committed while verified child evidence was still in use.');
+            } catch (QueryException $e) {
+                $this->assertSame(1205, (int) ($e->errorInfo[1] ?? 0), 'only an InnoDB lock wait proves serialization');
+            }
+            $this->assertFalse((bool) $b->table('bug_report_comments')->where('id', $comment->id)->value('is_internal_note'));
+            $a->rollBack();
+            $this->assertTrue((bool) BugReportService::updateCommentVisibility($bug->id, $comment->id, true)->is_internal_note);
+            $a->beginTransaction();
+            $changed = BugReport::on('evidence_race_a')->whereKey($bug->id)->lockForUpdate()->firstOrFail();
+            $this->assertFalse(BugReportWritebackEvidence::verify($changed, $proof['captured_at'], $proof['proof']));
+        } finally {
+            if ($a->transactionLevel() > 0) $a->rollBack();
+            DB::setDefaultConnection($default);
+            $b->table('bug_reports')->where('id', $bug->id)->delete();
+            $b->table('User')->where('id', $user->id)->delete();
+            DB::purge('evidence_race_a');
+            DB::purge('evidence_race_b');
+        }
     }
 
     private function bug(): BugReport
