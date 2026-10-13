@@ -8258,6 +8258,17 @@ button.danger:disabled {
   font-weight: 600 !important;
 }
 
+/* ── Dark mode: status text on dark *-wash fills (base tokens are light-only; lift to AA) ── */
+[data-theme="dark"] .course-page {
+  --ds-success: #4ade80;
+  --ds-warning: #fbbf24;
+  --ds-danger: #f87171;
+}
+[data-theme="dark"] button.danger,
+[data-theme="dark"] .date-chip.over-quota .chip-state {
+  color: var(--ds-canvas-soft);
+}
+
 /* ── Dark mode: history section ── */
 [data-theme="dark"] .history-section {
   border-top-color: var(--ds-hairline);
