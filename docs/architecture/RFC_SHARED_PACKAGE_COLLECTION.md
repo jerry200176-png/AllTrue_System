@@ -104,6 +104,14 @@ last_reviewed: 2026-10-13
 - **正向結清共用邊界**：所有 package Payment producer 共用同一 package settlement routine，不限 `PaymentReportController::confirm`；已註冊 `POST invoices/{invoice}/payments`（`BillingController::recordPayment`）亦在相同 transaction／locks 下依 package ledger 重算 `CoursePackage.paid/paid_at` 與全部 member `Paid/PayDate`。部分實收不得標整包已繳，aggregate 達到可靠 X 才結清；既有 direct invoice action 仍每次只支付明確選中的 invoice。不得只同步該 invoice header/items 的 member；R8 歸屬 anomaly 不可藉此自動修復。direct package invoice Payment 也必須經同一 receipt issuance boundary：一個 financial event 的實際 Payment、可供既有 receipt API 查詢的 confirmed report reference、C4 package receipt snapshot 與 settlement 原子完成，partial／final 皆可重印；adapter 必須引用該同一 Payment，不能為了 receipt 再建第二筆 Payment 或再確認收款。producer 尚不能滿足 receipt／reprint invariant 時 server 拒絕 package direct-payment，不允許先成功入帳卻沒有收據入口；single-course receipt 規則不改。這是已決 aggregate-settlement 的 producer 完整性要求，屬 future write PR，非本文件 PR runtime 變更。
 - **逆向結清與收據**：§5c C3/C4 分別在獨立 future write PR 完成，所有合法 package void/reversal producer 先通過 §3a authorization 再原子重算 package/member flags；收據以 package snapshot 呈現整包科目、covered session 範圍及本筆實收，不創造科目價款分攤。不修歷史資料。
 
+
+- **所有 direct paid flag 入口**：C3 的 ledger-backed settlement 是唯一 prospective 結清入口；除 `CoursePackageController::update`，`createMultiSubject` 的 `paid_at`、`StudentClassController::update` 的 `paid_at/payment_status` 與其他等價欄位都不得直接寫 package/member paid flags。producer 未接共用 routine 前 server 明確拒絕這類 package 成員／方案 flag 變更，不能默默製造新的 R7 legacy 結清；歷史讀取及明確免費排除不變。
+- **invoice reversal 與 receipt reference**：合法 invoice-level void/reversal（含 `recordPayment` 建立的 receipt reference）必須在同一 transaction 對每個被沖銷 Payment 的 linked confirmed PaymentReport 與 receipt snapshot 原子標作廢，使所有重印 API 拒絕有效收據。不得只重算 flags；partial/final direct payment→exception void→receipt reprint 的回歸必須證明無漏失 report 或第二筆 Payment。
+- **package-wide 收據／沖銷查找**：方案 projection 或 package-scoped lookup 必須回傳所有可用 confirmed report IDs 與其 Payment/Invoice 身份，涵蓋非 anchor member 與 direct-payment receipt references；`viewReceiptForClass`／`confirmVoid` 不得再以 anchor `student_class_id=row.id` 單科查找。明確選擇一筆 financial event，再套用 §3a 的整包身份/campus驗證；多筆不能任選或重收，partial/final 非 anchor 重印與 reversal 皆可達。
+- **狀態 enum 與 consumers**：僅 count package projection 對既有六態 `payment_status` 契約新增 `needs_review`；此窄範圍以本 RFC R8 supersede `DIRECTOR_PAYMENT_ALERT_RULES.md`／`RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md` 的六態清單，single-course/monthly 六態不改。future read PR 同步 canonical enum 文件、`TUITION_STATUS_CONFIG` 與全部 course/card/queue/clipboard consumers，明確保留 review 狀態與 null 金額；unknown/review 不能 coerced 為 unpaid 或恢復可付款 action，尚未支援的 consumer 顯示不可收款核對狀態。
+- **C5 加購取消保守邊界**：本決策沒有定義已排／已用加購堂數的取消、沒收或退款語意，不由 adapter 推測。C5 差額 invoice 的 `voidInvoice`／`exceptionVoidInvoice` 舊路徑在 server 拒絕並保留 receivable 與 entitlement，直到獨立 future cancellation command 的原子、冪等、排課/已用堂數處理、rollback contract 經具體 Founder 決定與獨立 review。不能先移除 invoice 再留加購堂數；非 C5 合法 reversal 仍依 C3，不新增一般禁止。
+- **方案結束保守邊界**：package row 不得用 anchor `POST student-classes/{id}/pause` 冒充整包 close/no-renew。server adapter 對此 package anchor 舊 action 明確拒絕，UI 顯示待核對與人工流程入口；保留 package/member lifecycle、排程、receivable 與 pooled entitlement。真正整包 lifecycle command 須獨立 future reviewed workflow，明確定義全部成員、future schedules 與 entitlement 的保留/取消；任何 forfeiture/退款新語意在 Founder 具體決定前不執行。已繳低堂數提示可保留，但不提供會單獨停止 anchor 的假整包成功動作。
+
 ## 4. Phase 2 驗收（實作時）
 
 1. 兩成員各付一部分 → 一列，`paid` 為兩者合計，`remaining = X − 合計`（無重算）。
@@ -141,6 +149,14 @@ last_reviewed: 2026-10-13
 32. 每項 R8 金額／歸屬 anomaly 對 single report confirm、batch confirm、direct invoice payment 以 server API 確認拒絕、零 ledger／confirmed-report／snapshot／flags 變更；paid＋duplicate report 保持 money paid 但不可 confirm。
 33. direct package invoice partial／final 支付的同一 Payment 只有一次：同交易 receipt reference／package snapshot 與 settlement 可達既有 receipt API；重印／重送不重收、不重建 Payment。receipt adapter 未就緒時 package producer server 拒絕；單科既有路徑不改。
 34. §5c 決策已定不等於完成實作；各 future PR 所屬回歸、獨立 review、required CI 與 rollback 證據通過前，不宣稱 Phase 2 runtime-ready／已部署。
+
+
+35. `createMultiSubject.paid_at`、package/member update 的 `paid_at/payment_status` 與全部同類 flag producer 無 ledger 拒絕；通過共用 routine 的正向結清例外、歷史 R7 讀取與免費排除保持。
+36. direct package Payment 的 linked confirmed receipt report 在每個 invoice void/reversal 後同交易作廢，所有 reprint endpoints 拒絕，無 Payment/receipt orphan 或重收。
+37. 非 anchor 的 partial/final report 與 direct-payment receipt reference 從 package row 可查、可明確選擇重印／合法 reversal；wrong student/campus/InvoiceID/report ID 拒絕，多筆不任選。
+38. canonical enum 與全部 `TUITION_STATUS_CONFIG` consumers 對 count-package needs_review 保留原狀態/null 金額，不能回退 unpaid，single/monthly 既有六態不變。
+39. C5 加購後舊兩種 void endpoint 在 reviewed cancellation command 未交付前拒絕且 invoice/receivable/堂數/排課/已用數全部不變；新 command 待批准的已用/已排/取消語意不可由測試 fixture自行定義。
+40. paid-low-session package 的舊 anchor pause/close 被拒絕且 sibling/package.stop/future schedules/pooled entitlement 不變；future package lifecycle command 的全部效果須先有具體決策，不能假稱整包已結束。
 
 ---
 
@@ -198,7 +214,7 @@ Founder 2026-10-13 對 Phase 2 實作時浮現的五個歧義一律採建議選�
 
 ## 5b. Closeout 決策追蹤（原 OPEN 已關閉）
 
-OPEN-1 多帳單 action、OPEN-2 停止方案 pending 可達性、OPEN-3 合法逆向結清、OPEN-4 收據範圍，已由 §5c 的 Founder 2026-10-13 決策定案。這裡關閉的是產品／合約歧義；runtime 實作、測試及上線另由 future PR 交付。§5a 原始決策原文不變。
+OPEN-1 多帳單 action、OPEN-2 停止方案 pending 可達性、OPEN-3 合法逆向結清、OPEN-4 收據範圍，已由 §5c 的 Founder 2026-10-13 決策定案。這裡關閉的是產品／合約歧義；runtime 實作、測試及上線另由 future PR 交付。§5a 原始決策原文不變。C5 加購取消與整包結束涉及已用／已排堂數、退款／沒收的 lifecycle 語意仍待獨立具體決策；上述保守拒絕 adapter 不代表這些新語意已定案。
 
 ## 5c. Founder decisions 2026-10-13 closeout（定案）
 
@@ -221,3 +237,4 @@ Founder 對研究後的具體加購提案在本 chat 明確回覆：「如果這
 ## 6. 回滾
 
 本檔為文件，回滾＝revert 本 PR。Phase 2-read 回滾＝revert 該讀取／提醒候選 PR，無帳務寫入、無 migration。Phase 2-write 必須另附具體 rollback boundary、ledger／audit 與驗證證據；revert 程式不會刪除已產生的 Invoice／Payment／reversal，既有帳務資料不得以本 RFC 自動修復。
+
