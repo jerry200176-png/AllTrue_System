@@ -36,6 +36,7 @@ describe('TuitionDocActions', () => {
     expect(new Set([...attrs(), ...attrs()]).size).toBe(4);
     expect(mk({ id: null, payment_status: 'monthly_due_soon', payable_status: 'unbilled' }).find('[data-testid="tc-doc-ledger"]').exists()).toBe(false); // no class to scope a ledger
     expect([t(mk({ id: null, payment_status: 'monthly_due_soon' }), 'receipt'), why(mk({ id: null, payment_status: 'paid' }), 'receipt')]).toEqual([true, '共用方案收據請至成員課程查看']); // no class to look a receipt up by
+    expect([why(mk({ id: null, payment_status: 'unpaid', payable_status: 'unbilled' }), 'slip'), t(mk({ id: null, invoice_id: 9, payment_status: 'unpaid' }), 'slip')]).toEqual(['共用方案繳費單請至成員課程開立', false]); // no class or invoice to load a slip from
   });
   it.each([{ legacy_paid_without_invoice: true }, { payable_status: 'unbilled' }])('legacy paid %j: slip reason, receipt left to the lookup, ledger link', async (extra) => {
     const w = mk({ payment_status: 'paid', ...extra });
