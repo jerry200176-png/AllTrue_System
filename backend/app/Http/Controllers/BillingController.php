@@ -195,7 +195,8 @@ class BillingController extends Controller
         $data = $request->validate([
             'Amount' => 'required|integer|min:1',
             'PaidAt' => 'nullable|date',
-            'Method' => 'nullable|string|max:32',
+            // `void` marks a reversal in the Payment-row projection; reversals go through the audited void flows only.
+            'Method' => 'nullable|string|max:32|not_in:void',
             'Note' => 'nullable|string|max:255',
         ]);
 

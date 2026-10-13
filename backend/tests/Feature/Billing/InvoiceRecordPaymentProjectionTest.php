@@ -179,6 +179,18 @@ class InvoiceRecordPaymentProjectionTest extends TestCase
         $this->assertNull($invoice->billing_snapshot);
     }
 
+    /** Method=void is a reversal in the projection: this endpoint must not let it erase applied money. */
+    public function test_void_method_is_refused(): void
+    {
+        $invoice = $this->countInvoice(1000, 'partial', 600, [[600, 'cash']]);
+
+        $this->postJson("/api/v1/invoices/{$invoice->id}/payments", ['Amount' => 400, 'Method' => 'void'], $this->headers)
+            ->assertStatus(422)->assertJsonValidationErrors('Method');
+
+        $this->assertSame(1, Payment::where('InvoiceID', $invoice->id)->count());
+        $this->assertSame(600, (int) $invoice->fresh()->PaidAmount);
+    }
+
     private function countInvoice(int $total, string $status, int $storedPaid, array $payments): Invoice
     {
         $course = $this->course([['2026-08', $total, $status, $storedPaid, $payments]], ['Charge' => $total]);
