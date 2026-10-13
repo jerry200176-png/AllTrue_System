@@ -709,13 +709,15 @@ class AccountingController extends Controller
                 'receipt_count' => $reportRows->where('status', 'confirmed')->count(),
                 'anomaly_count' => $uniqueAnomalies->count(),
             ],
+            // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
             'courses' => $classes->map(fn (StudentClass $class) => [
                 'id' => (int) $class->ID,
                 'course_ref' => $this->courseRef((int) $class->ID),
                 'subject' => $class->displaySubjectName($subjectNames),
                 'schedule_mode' => (string) ($class->ScheduleMode ?? ''),
                 'charge' => (int) ($class->Charge ?? 0),
-                'paid' => (int) ($class->Paid ?? 0) === 1,
+                'paid' => (int) ($class->Paid ?? 0) === 1 || $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
+                    && (string) $i->Status !== 'void' && $i->isMarkedFreeGift()),
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
                 'first_session_date' => $firstSessionDates->get((int) $class->getAttribute('ID')),

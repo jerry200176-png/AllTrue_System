@@ -74,6 +74,23 @@ class OutboundRemindersResolverTest extends TestCase
         $this->assertTrue($this->reminded());
     }
 
+    /** #3991 review: a no-fee monthly course whose bill staff marked 免費／贈送 is settled even when the period engine wants review. */
+    public function test_marked_free_gift_monthly_course_is_not_reminded_despite_period_review(): void
+    {
+        $course = $this->course(0, 0);
+        $course->update(['ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'EndDate' => '2026-09-30']);
+        Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-01', 'DueDate' => '2026-08-15',
+            'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid', 'billing_period' => '2026-08', 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+        $resolver = app(\App\Services\BillingPayableResolver::class);
+        $this->assertSame('free', $resolver->courseStatusesByStudentClassIds([$course->ID])[$course->ID]['status']);
+        $this->assertSame(0, $this->dunned());
+        $this->assertFalse($this->reminded());
+
+        // Without the mark the same shape stays under review (never silently free).
+        Invoice::query()->where('StudentClassID', $course->ID)->update(['zero_amount_reason' => null]);
+        $this->assertSame('review_required', $resolver->courseStatusesByStudentClassIds([$course->ID])[$course->ID]['status']);
+    }
+
     public function test_partial_invoice_is_still_reminded(): void
     {
         $this->invoice($this->course(10000), 10000, 4000);

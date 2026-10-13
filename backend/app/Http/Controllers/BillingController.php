@@ -141,7 +141,7 @@ class BillingController extends Controller
             $courseIds = collect([$data['StudentClassID'] ?? null])->merge(array_column($data['Items'] ?? [], 'StudentClassID'))
                 ->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
             if ($courseIds !== []) {
-                $found = StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID', 'StudentID']);
+                $found = StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID', 'StudentID', 'Rate', 'Charge', 'PackageID']);
                 if ($found->count() !== count($courseIds)) {
                     return response()->json(['message' => '找不到部分課程，可能已被刪除'], 404); // never bill a deleted contract
                 }
@@ -150,6 +150,13 @@ class BillingController extends Controller
                     return response()->json([
                         'message' => '帳單上的課程不屬於這位學生，不能建立帳單。沒有建立任何帳單。',
                         'code' => 'invoice_course_student_mismatch',
+                    ], 422);
+                }
+                // #3991 review: same rule as director-record — only a course with no fee may carry the 免費／贈送 mark.
+                if ($markedFree && $found->contains(fn (StudentClass $c) => (float) ($c->Rate ?? 0) > 0 || (int) ($c->Charge ?? 0) > 0 || (int) ($c->PackageID ?? 0) > 0)) {
+                    return response()->json([
+                        'message' => '這門課有設定費用（或費用在套裝上），不能標記為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。沒有建立任何帳單。',
+                        'code' => 'free_gift_course_has_fee',
                     ], 422);
                 }
             }
@@ -197,7 +204,7 @@ class BillingController extends Controller
                     'Note' => $data['Note'] ?? '',
                     'billing_period' => $data['billing_period'] ?? null,
                     'zero_amount_reason' => $markedFree ? Invoice::ZERO_REASON_FREE_GIFT : null,
-                ], $items, true);
+                ] + ($markedFree ? ['Status' => 'paid'] : []), $items, true); // a marked NT$0 bill is settled at issue
             } catch (BillingPeriodInvoiceExists) {
                 return response()->json([
                     'message' => '此課程該月份已有有效帳單，請勿重複建立。',

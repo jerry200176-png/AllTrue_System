@@ -77,6 +77,9 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     expect(global.fetch).not.toHaveBeenCalled();
     expect(w.text()).toContain(FREE_GIFT_LABEL);
     await w.find('[data-testid="pe-free-gift"]').setValue(true);
+    // Free/gift mode is a bill, not a payment: no 等你確認 step is promised.
+    expect(w.find('[data-testid="pe-workflow-hint"]').text()).toContain(FREE_GIFT_LABEL);
+    expect(w.find('button[type="submit"]').text()).toContain(FREE_GIFT_LABEL);
     await w.find('form').trigger('submit');
     await tick();
     expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ amount: 0, free_gift: true });

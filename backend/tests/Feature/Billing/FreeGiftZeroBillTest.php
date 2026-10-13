@@ -56,6 +56,42 @@ class FreeGiftZeroBillTest extends TestCase
         $ledger = $this->withToken($token)->getJson('/api/v1/accounting/ledger?student_id=' . $course->StudentID)->assertOk();
         $row = collect($ledger->json('invoices'))->firstWhere('id', $invoice->id);
         $this->assertSame(Invoice::ZERO_REASON_FREE_GIFT, $row['zero_amount_reason'] ?? null);
+        // The contract row is settled too, so the panel stops offering 登記這筆 (#3991 review).
+        $this->assertTrue(collect($ledger->json('courses'))->firstWhere('id', $course->ID)['paid']);
+    }
+
+    /** #3991 review: a zero-fee count course the resolver already calls `free` can still record its marked bill. */
+    public function test_a_zero_fee_count_course_reaches_the_free_gift_path(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->monthlyCourse($this->student(), ['ScheduleMode' => 'count', 'SessionCount' => 4, 'RemainingSessions' => 4]);
+
+        $this->withToken($token)->postJson(self::RECORD, $this->payload($course))
+            ->assertStatus(422)->assertJsonPath('code', 'zero_fee_no_payment_obligation');
+        $res = $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))->assertOk();
+        $this->assertSame(Invoice::ZERO_REASON_FREE_GIFT, Invoice::query()->findOrFail((int) $res->json('invoice_id'))->zero_amount_reason);
+    }
+
+    /** #3991 review: a director of another campus cannot write a free/gift bill. */
+    public function test_a_foreign_campus_director_cannot_record_a_free_gift_bill(): void
+    {
+        $course = $this->monthlyCourse($this->student());
+
+        $this->withToken($this->directorToken(2))->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))
+            ->assertForbidden();
+        $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
+    }
+
+    /** #3991 review: an existing bill of another student is never relabeled. */
+    public function test_an_existing_bill_of_another_student_is_not_relabeled(): void
+    {
+        $course = $this->monthlyCourse($this->student());
+        $foreign = Invoice::create(['StudentID' => $this->student()->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01',
+            'Note' => '', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+
+        $this->withToken($this->directorToken())->postJson(self::RECORD, $this->payload($course, ['free_gift' => true, 'invoice_id' => $foreign->id]))
+            ->assertStatus(422)->assertJsonPath('code', 'free_gift_invoice_owner_mismatch');
+        $this->assertNull($foreign->fresh()->zero_amount_reason);
     }
 
     public function test_zero_without_the_free_gift_marker_is_rejected(): void
@@ -99,7 +135,14 @@ class FreeGiftZeroBillTest extends TestCase
 
         $created = $this->withToken($token)->postJson('/api/v1/invoices', $body + ['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT])
             ->assertCreated();
-        $this->assertSame(Invoice::ZERO_REASON_FREE_GIFT, Invoice::query()->findOrFail((int) $created->json('id'))->zero_amount_reason);
+        $bill = Invoice::query()->findOrFail((int) $created->json('id'));
+        $this->assertSame(Invoice::ZERO_REASON_FREE_GIFT, $bill->zero_amount_reason);
+        $this->assertSame('paid', (string) $bill->Status); // settled at issue, never an open NT$0 bill
+
+        // A course with a fee cannot carry the mark on this endpoint either.
+        $priced = $this->monthlyCourse($student, ['Rate' => 750]);
+        $this->withToken($token)->postJson('/api/v1/invoices', ['StudentClassID' => $priced->ID] + $body + ['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT])
+            ->assertStatus(422)->assertJsonPath('code', 'free_gift_course_has_fee');
     }
 
     public function test_an_invoice_for_another_students_course_is_rejected(): void
@@ -132,13 +175,13 @@ class FreeGiftZeroBillTest extends TestCase
         ], $over);
     }
 
-    private function directorToken(): string
+    private function directorToken(int $campusId = 1): string
     {
         $user = User::create([
             'LoginName' => 'director_' . uniqid() . '@test.com', 'Name' => 'TestDirector', 'PSW' => 'secret',
             'type' => 'A', 'phone' => 912345678,
         ]);
-        UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
         $raw = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => Carbon::now()->addDay()]);
 

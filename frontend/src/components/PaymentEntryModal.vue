@@ -73,9 +73,10 @@
           <p v-if="isZeroCharge" class="pe-hint">課程沒填費用不會自動當免費；確定免費才勾選，否則請先到課程管理設定費用。</p>
         </div>
 
-        <div class="pe-workflow-hint" role="note">
+        <div class="pe-workflow-hint" role="note" data-testid="pe-workflow-hint">
           <span class="material-symbols-outlined" aria-hidden="true">info</span>
-          <span>送出後會顯示「{{ TUITION_STATUS_CONFIG.pending_report.label }}」，你在這裡按「確認入帳」才算收到。</span>
+          <span v-if="form.free_gift">送出後直接留下一張 NT$ 0「{{ FREE_GIFT_LABEL }}」帳單，不是收款，不需要確認入帳。</span>
+          <span v-else>送出後會顯示「{{ TUITION_STATUS_CONFIG.pending_report.label }}」，你在這裡按「確認入帳」才算收到。</span>
         </div>
 
         <div class="pe-field">
@@ -89,7 +90,7 @@
           <button type="button" class="ghost" @click="$emit('close')">取消</button>
           <button type="submit" class="primary" :disabled="submitting">
             <span v-if="submitting" class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
-            {{ submitting ? '處理中…' : '登記收款' }}
+            {{ submitting ? '處理中…' : (form.free_gift ? `登錄${FREE_GIFT_LABEL}帳單` : '登記收款') }}
           </button>
         </div>
       </form>

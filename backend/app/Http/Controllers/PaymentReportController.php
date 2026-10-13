@@ -588,7 +588,8 @@ class PaymentReportController extends Controller
         if (!$sc->student) {
             return response()->json(['message' => '課程資料不存在'], 404);
         }
-        if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc)) {
+        // #3991: an explicit 免費／贈送 mark skips the generic zero-fee guard (it is not a payment); tutoring stays refused.
+        if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc, $freeGift)) {
             return $blockedTutoringPayment;
         }
 
@@ -613,6 +614,13 @@ class PaymentReportController extends Controller
 
         $userId = $request->attributes->get('auth_user_id');
         if ($freeGift) {
+            // #3991 review: a bill is a campus-scoped write; the course's campus must be one the caller holds.
+            $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+            $campusId = (int) Student::query()->whereKey((int) StudentClass::query()->whereKey((int) $data['student_class_id'])->value('StudentID'))->value('CampusID');
+            if ($request->attributes->get('auth_role') !== 'super_admin' && !in_array($campusId, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+
             return $this->recordFreeGiftBill((int) $data['student_class_id'], $data, $userId);
         }
 
@@ -761,20 +769,30 @@ class PaymentReportController extends Controller
                     'code' => 'free_gift_course_has_fee',
                 ], 422);
             }
-            $monthly = $course->getAttribute('ScheduleMode') === 'date';
-            $live = Invoice::query()->where('StudentClassID', $course->ID)
-                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->orderBy('id')->lockForUpdate();
-            $period = null;
-            if (!empty($data['invoice_id'])) {
-                $invoice = (clone $live)->whereKey((int) $data['invoice_id'])->first();
-                if (!$invoice) {
-                    return response()->json(['message' => '指定帳單不存在、已作廢或不屬於此課程'], 404);
-                }
-            } else {
-                $period = $monthly ? $this->monthlyBilling->defaultPeriodFor($course, $data['payment_date']) : null;
-                $invoice = $monthly ? (clone $live)->where('billing_period', $period)->first() : (clone $live)->first();
+            $named = !empty($data['invoice_id']);
+            $period = !$named && $course->getAttribute('ScheduleMode') === 'date'
+                ? $this->monthlyBilling->defaultPeriodFor($course, $data['payment_date']) : null;
+            $query = Invoice::query();
+            if ($named) {
+                $query->whereKey((int) $data['invoice_id']);
+            }
+            if ($period !== null) {
+                $query->where('billing_period', $period);
+            }
+            $invoice = $query->where('StudentClassID', $course->ID)
+                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->orderBy('id')->lockForUpdate()->first();
+            if (!$invoice && $named) {
+                return response()->json(['message' => '指定帳單不存在、已作廢或不屬於此課程'], 404);
             }
 
+            if ($invoice && (int) $invoice->StudentID !== (int) $course->StudentID) {
+                // #3991 review: never relabel a bill that belongs to another student.
+                return response()->json([
+                    'message' => '這張帳單不屬於這門課的學生，不能改成「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。請先在學生帳務更正帳單。沒有登記任何款項。',
+                    'code' => 'free_gift_invoice_owner_mismatch',
+                    'invoice_id' => (int) $invoice->id,
+                ], 422);
+            }
             if ($invoice) {
                 $projection = $this->invoiceProjection($invoice, $course);
                 if ((int) $projection['total_amount'] > 0 || (int) $projection['net_applied'] > 0) {
@@ -1456,7 +1474,7 @@ class PaymentReportController extends Controller
         ]);
     }
 
-    private function tutoringPaymentBlocked($course)
+    private function tutoringPaymentBlocked($course, bool $explicitFreeGift = false)
     {
         if (!$course instanceof StudentClass) {
             return null;
@@ -1470,7 +1488,7 @@ class PaymentReportController extends Controller
         }
         // #3203: any course the resolver calls `free` (e.g. a 0-total trial) has no payment obligation either.
         // Only 0-charge courses can be free; paid courses skip this and keep the later fail-closed guards.
-        if ((int) ($course->Charge ?? 0) > 0) {
+        if ((int) ($course->Charge ?? 0) > 0 || $explicitFreeGift) {
             return null;
         }
         $id = (int) $course->getKey();
