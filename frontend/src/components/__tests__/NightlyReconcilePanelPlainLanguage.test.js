@@ -78,6 +78,9 @@ describe('NightlyReconcilePanel plain-language summary (#3900)', () => {
       checked_at: '2026-10-10 02:00:05', threshold: 0, total_checked: 5, mismatch_count: 0, cause_counts: {}, mismatches: [],
     });
     expect(wrapper.get('[data-testid="nr-stale"]').text()).toContain('通知工程團隊');
+    // A stale report must not claim to be last night's.
+    expect(wrapper.get('[data-testid="nr-verdict"]').text()).toContain('最近一次核對無異常');
+    expect(wrapper.get('[data-testid="nr-verdict"]').text()).not.toContain('昨晚');
   });
 
   it('has a meaning and a next step for every category the nightly command can emit', () => {

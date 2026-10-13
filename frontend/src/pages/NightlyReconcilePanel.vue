@@ -268,15 +268,16 @@ const {
 // The job runs daily at 02:00; a report older than ~36h means it did not run.
 const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
 
-const verdictTitle = computed(() => {
-  const count = summary.value?.mismatch_count || 0;
-  return count > 0 ? `${count} 門課程的堂數對不上` : '昨晚核對無異常';
-});
-
 const isStale = computed(() => {
   const checkedAt = new Date(summary.value?.checked_at || '');
   if (Number.isNaN(checkedAt.getTime())) return false;
   return Date.now() - checkedAt.getTime() > STALE_AFTER_MS;
+});
+
+const verdictTitle = computed(() => {
+  const count = summary.value?.mismatch_count || 0;
+  if (count > 0) return `${count} 門課程的堂數對不上`;
+  return isStale.value ? '最近一次核對無異常' : '昨晚核對無異常';
 });
 
 // Older reports may lack cause_counts; fall back to the detail rows.
