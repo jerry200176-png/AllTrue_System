@@ -618,10 +618,9 @@ class ClassSessionController extends Controller
         $classIds = $classes->pluck('ID')->map(fn ($v) => (int) $v)->all();
         $suppressedSet = [];
         $existingSet = [];
-        // #3901: same rule as the monthly projection (SessionProjectionReadService::
-        // buildProjectedFromEffectiveDates skips a date that already has any real row).
-        // A leave/moved lesson on this date must not get a replacement at the contract time.
-        $classHasRowOnDate = [];
+        // #3901 (R136/R155): a lesson on this date at a non-contract time (moved, then
+        // leave/cancel) already stands for a contract slot; never add a replacement for it.
+        $timesOnDateByClass = [];
         if (!empty($classIds)) {
             Schedule::whereIn('student_course_id', $classIds)
                 ->whereDate('schedule_date', $targetDate)
@@ -633,16 +632,13 @@ class ClassSessionController extends Controller
             ClassSession::whereIn('StudentClassID', $classIds)
                 ->whereDate('SessionDate', $targetDate)
                 ->get(['StudentClassID', 'StartTime'])
-                ->each(function ($r) use (&$existingSet, &$classHasRowOnDate) {
+                ->each(function ($r) use (&$existingSet, &$timesOnDateByClass) {
                     $existingSet[(int) $r->StudentClassID . '|' . substr((string) $r->StartTime, 0, 5)] = true;
-                    $classHasRowOnDate[(int) $r->StudentClassID] = true;
+                    $timesOnDateByClass[(int) $r->StudentClassID][] = substr((string) $r->StartTime, 0, 5);
                 });
         }
 
         foreach ($classes as $studentClass) {
-            if (isset($classHasRowOnDate[(int) $studentClass->ID])) {
-                continue;
-            }
             $startDate = $studentClass->StartDate ? Carbon::parse($studentClass->StartDate)->toDateString() : null;
             $endDate = $studentClass->EndDate ? Carbon::parse($studentClass->EndDate)->toDateString() : null;
             if ($startDate && $targetDate < $startDate) {
@@ -654,6 +650,10 @@ class ClassSessionController extends Controller
 
             $slots = $this->resolveProjectedMonthlySlotsForWeekday($studentClass, $isoWeekday);
             if (empty($slots)) {
+                continue;
+            }
+            $slotStarts = array_map(fn ($slot) => substr((string) ($slot['start_time'] ?? ''), 0, 5), $slots);
+            if (array_diff($timesOnDateByClass[(int) $studentClass->ID] ?? [], $slotStarts) !== []) {
                 continue;
             }
 

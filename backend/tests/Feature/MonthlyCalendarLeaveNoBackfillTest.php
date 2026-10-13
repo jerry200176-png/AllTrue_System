@@ -14,8 +14,7 @@ use Tests\TestCase;
 
 /**
  * #3901 / in-app #393: a monthly (ScheduleMode=date) leave must stick (R136).
- * A same-day read may not bring back a "replacement" lesson on the leave date,
- * and a calendar leave must land on the lesson the director clicked.
+ * A same-day read may not bring back a "replacement" lesson on the leave date.
  */
 class MonthlyCalendarLeaveNoBackfillTest extends TestCase
 {
@@ -46,38 +45,32 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         $this->assertSame('leave', strtolower((string) $onDate->first()->Status));
     }
 
-    public function test_calendar_leave_marks_the_clicked_lesson_when_another_lesson_that_day_is_already_on_leave(): void
+    public function test_same_day_teacher_read_still_fills_the_missing_slot_of_a_two_slot_day(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-10-05 09:00:00', 'Asia/Taipei'));
-        [, $directorToken] = $this->createUserWithToken('A', 'director-3901@example.com', 1);
-        $course = $this->createMonthlyCourse(99);
-        $first = $this->createSession($course, '2026-10-13', '13:00', '15:00', 'leave');
-        $second = $this->createSession($course, '2026-10-13', '18:00', '20:00', 'scheduled');
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-b@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // Only the 13:00 contract slot exists (cancelled); the 18:00 slot is still unmaterialized.
+        $this->createSession($course, '2026-10-13', '13:00', '15:00', 'cancelled');
 
-        $this->withHeaders(['Authorization' => "Bearer {$directorToken}", 'Accept' => 'application/json'])
-            ->postJson('/api/v1/schedules', [
-                'student_id' => (int) $course->StudentID, 'teacher_id' => 99, 'subject' => 'Math',
-                'day_of_week' => 2, 'start_time' => '18:00', 'end_time' => '20:00', 'duration_hours' => 2,
-                'class_type' => 'one_on_one', 'status' => 'leave', 'type' => 'normal', 'deduction' => 0,
-                'branch_id' => 1, 'schedule_date' => '2026-10-13', 'student_course_id' => (int) $course->ID,
-            ])
-            ->assertCreated()
-            ->assertJsonPath('leave_mode', 'monthly_bounded');
+        $this->withHeaders(['Authorization' => "Bearer {$teacherToken}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/class-sessions?start=2026-10-13&end=2026-10-13')
+            ->assertOk();
 
-        $this->assertSame('leave', strtolower((string) $second->fresh()->Status));
-        $this->assertSame('leave', strtolower((string) $first->fresh()->Status));
-        $this->assertSame(2, ClassSession::where('StudentClassID', $course->ID)->count());
-        $this->assertSame('2026-10-31', substr((string) $course->fresh()->EndDate, 0, 10));
+        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-10-13')
+            ->orderBy('StartTime')->get()->map(fn ($s) => substr((string) $s->StartTime, 0, 5).' '.strtolower((string) $s->Status))->all();
+        $this->assertSame(['13:00 cancelled', '18:00 scheduled'], $starts);
     }
 
-    private function createMonthlyCourse(int $teacherId): StudentClass
+    /** @param array<string, mixed> $extra */
+    private function createMonthlyCourse(int $teacherId, array $extra = []): StudentClass
     {
         $student = Student::create([
             'name' => '月結請假不遞補', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
             'MDT' => now(), 'Notify_Token' => '',
         ]);
 
-        return StudentClass::create([
+        return StudentClass::create($extra + [
             'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => $teacherId,
             'by1' => 1, 'Period' => 4, 'StartDate' => '2026-10-01', 'EndDate' => '2026-10-31',
             'TotalHours' => 8, 'Charge' => 4000, 'Paid' => 0, 'Rate' => 1000, 'MDate' => now(), 'Stop' => 0,

@@ -190,7 +190,7 @@ class CourseLeaveCascadeService
      * @return array{0:array,1:?string,2:string}  [session_rows, extended_end_date, leave_session_date]
      * @throws \InvalidArgumentException
      */
-    public static function applyLeaveCascade(int $courseId, string $leaveDate, ?string $startTime = null): array
+    public static function applyLeaveCascade(int $courseId, string $leaveDate): array
     {
         $course = StudentClass::where('ID', $courseId)->lockForUpdate()->first();
         if (!$course) {
@@ -209,17 +209,11 @@ class CourseLeaveCascadeService
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
 
         // Find the target session: accept scheduled/leave (but not cancelled/leave_adjusted)
-        $candidates = $sessions->filter(function ($session) use ($normalizedLeaveDate) {
+        $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate) {
             $status = strtolower((string) ($session->Status ?? ''));
             return Carbon::parse($session->SessionDate)->toDateString() === $normalizedLeaveDate
                 && !in_array($status, ['cancelled', 'leave_adjusted'], true);
         });
-        // #3901: with two lessons on one date, the clicked start time decides the target.
-        // Matching by date alone re-hit the lesson already on leave and never reached the other one.
-        $startHm = $startTime !== null ? substr(trim($startTime), 0, 5) : '';
-        $leaveSession = ($startHm !== ''
-            ? $candidates->first(fn ($s) => substr((string) ($s->StartTime ?? ''), 0, 5) === $startHm)
-            : null) ?? $candidates->first();
         if (!$leaveSession) {
             throw new \InvalidArgumentException('找不到可請假的堂次');
         }
