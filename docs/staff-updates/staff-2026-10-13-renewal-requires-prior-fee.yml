@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-13-renewal-requires-prior-fee
+    published_at: "2026-10-13"
+    audiences:
+      - director
+    importance: digest
+    title: 續約前要先登錄前一期費用
+    summary: 前一期沒有費用紀錄時，續約和加購會先被擋下。
+    items:
+      - category: improved
+        text: 前一期的單堂費用和應收金額都是 0、也沒有帳單時，續約或加購會提示先登錄前一期費用，避免舊期被結算後補不了帳。
+    source_refs:
+      - "changelog:2026-10-13:renewal-requires-prior-fee"

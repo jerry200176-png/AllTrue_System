@@ -22,6 +22,35 @@ use Illuminate\Support\Facades\Schema;
  */
 final class ContractRenewal
 {
+    /** #2567 (Founder 2026-10-13): renewing settles the prior term, so its fee must be on record first. */
+    public const PRIOR_FEE_MISSING_MESSAGE = '前一期費用尚未登錄（單堂費用與應收金額都是 0）。請先在課程編輯填寫「單堂費用」，或在帳務登錄前一期帳單金額，再續約或加購。';
+
+    /**
+     * Blocker when the source course has no fee on record: no per-session price, no charge and no
+     * non-void billable invoice (its own or a line item on another invoice). Trial (converted, not
+     * renewed), tutoring (no payment obligation) and package members (fee lives on the package) are exempt.
+     *
+     * @return array{code: string, message: string}|null
+     */
+    public function priorFeeBlocker(StudentClass $source): ?array
+    {
+        $type = strtolower(trim((string) ($source->getAttribute('ClassType') ?? '')));
+        if (in_array($type, ['trial', 'tutoring'], true) || (int) ($source->getAttribute('PackageID') ?? 0) > 0) {
+            return null;
+        }
+        if ((float) ($source->getAttribute('Rate') ?? 0) > 0 || (int) ($source->getAttribute('Charge') ?? 0) > 0) {
+            return null;
+        }
+        $id = (int) $source->getAttribute('ID');
+        $billed = Invoice::query()
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+            ->where(fn ($q) => $q->where(fn ($own) => $own->where('StudentClassID', $id)->where('TotalAmount', '>', 0))
+                ->orWhereHas('items', fn ($item) => $item->where('StudentClassID', $id)->where('Amount', '>', 0)))
+            ->exists();
+
+        return $billed ? null : ['code' => 'prior_fee_missing', 'message' => self::PRIOR_FEE_MISSING_MESSAGE];
+    }
+
     public function findDuplicatePurchaseBatch(StudentClass $studentClass, string $startDate, int $sessions): ?StudentClass
     {
         return StudentClass::query()->where('ID', '<>', $studentClass->ID)
@@ -229,6 +258,10 @@ final class ContractRenewal
                 'code' => 'mode_required',
                 'message' => '請選擇續報類型。',
             ];
+        }
+
+        if ($priorFee = $this->priorFeeBlocker($studentClass)) {
+            $blockers[] = $priorFee;
         }
 
         if (!empty($blockers)) {
@@ -524,6 +557,10 @@ final class ContractRenewal
                         'paid' => (int) ($duplicate->Paid ?? 0),
                     ],
                 ], 409);
+            }
+
+            if ($priorFee = $this->priorFeeBlocker($studentClass)) {
+                return $this->reply($this->priorFeeRefusal($priorFee), 422);
             }
 
             $rate = (float) ($studentClass->Rate ?? 0);
@@ -914,6 +951,10 @@ final class ContractRenewal
                 ], 409);
             }
 
+            if ($priorFee = $this->priorFeeBlocker($studentClass)) {
+                return $this->reply($this->priorFeeRefusal($priorFee), 422);
+            }
+
             $preview = app(MonthlyRenewalPeriodService::class)->previewPeriod($studentClass, $newStartDate, $newEndDate);
             $rate = $preview['rate'];
             $rateUnit = $preview['rate_unit'];
@@ -1048,6 +1089,12 @@ final class ContractRenewal
                 ],
             ], 201);
         });
+    }
+
+    /** @param array{code: string, message: string} $blocker @return array<string, mixed> */
+    private function priorFeeRefusal(array $blocker): array
+    {
+        return $blocker + ['errors' => ['prior_fee' => [$blocker['message']]]];
     }
 
     /** @param array<string, mixed> $body @return array{status: int, body: array<string, mixed>} */

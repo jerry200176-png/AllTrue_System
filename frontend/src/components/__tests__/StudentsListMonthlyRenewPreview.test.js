@@ -27,6 +27,15 @@ describe('StudentsList monthly renewal preview', () => {
     expect(canSubmitMonthlyRenewal(form, '2026-10-31')).toBe(true);
   });
 
+  it('#2567: a prior-fee blocker keeps submit disabled and its message reaches staff', () => {
+    const message = '前一期費用尚未登錄（單堂費用與應收金額都是 0）。請先在課程編輯填寫「單堂費用」，或在帳務登錄前一期帳單金額，再續約或加購。';
+    const form = {};
+    invalidateMonthlyRenewalPreview(form, '2026-10-31');
+    applyMonthlyRenewalPreview(form, { severity: 'blocked', proposed_course: { start_date: '2026-10-01' }, blockers: [{ code: 'prior_fee_missing', message }] });
+    expect(canSubmitMonthlyRenewal(form, '2026-10-31')).toBe(false);
+    expect(renewalErrorMessage({ code: 'prior_fee_missing', message, errors: { prior_fee: [message] } }, '續約失敗')).toBe(message);
+  });
+
   it('wires preview state, warnings, submitting and the old end date', () => {
     const composable = readFileSync(resolve(__dirname, '../../composables/course-management/useMonthlyRenewal.js'), 'utf8');
     expect(composable).toContain('invalidateMonthlyRenewalPreview(form.value, endDate)');
