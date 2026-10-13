@@ -8,6 +8,8 @@ updates:
     summary: 同一共用方案的幾門課，帳務面板只有一個收款入口，不會重複登記。
     items:
       - category: fixed
-        text: 共用方案的課只在一張卡登記收款，其他課的卡會寫出要到哪一門課處理；已有一筆等你確認時，同方案其他課不能再登記第二筆。月結方案的課照舊各自收款。
+        text: 共用方案的課只在一張卡登記收款，其他課的卡會寫出要到哪一門課處理。
+      - category: fixed
+        text: 已有一筆等你確認時，同方案其他課不能再登記第二筆；月結方案的課照舊各自收款。
     source_refs:
       - "changelog:2026-10-12:package-one-payment-action"
