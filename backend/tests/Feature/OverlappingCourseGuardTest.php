@@ -182,6 +182,25 @@ class OverlappingCourseGuardTest extends TestCase
         }
     }
 
+
+    public function test_renewal_guard_uses_the_materialization_timestamp_when_the_clock_crosses_slot_end(): void
+    {
+        $fx = $this->renewalFixture('renew-clock@example.com'); $decisionNow = Carbon::now()->setTime(17, 59, 59);
+        Carbon::setTestNow($decisionNow->copy()->addSeconds(2));
+        try {
+            $today = $decisionNow->toDateString(); $this->completed($fx[3], $today);
+            $before = $this->counts();
+            $guard = new \ReflectionMethod(\App\Services\EnrollmentService::class, 'guardRenewalConfirmedOverlap');
+            $guard->setAccessible(true); $result = $guard->invoke(app(\App\Services\EnrollmentService::class), $fx[1], ['Math' => [
+                ['date' => $today, 'start_time' => '16:00', 'duration_minutes' => 120, 'kind' => 'future'],
+            ]], $decisionNow);
+            $this->assertNull($result, 'Snapshot-future rows must reach the scheduled overlap guard, not become completed.');
+            $this->assertSame($before, $this->counts());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     /** #3738 review: a booking that exists only in `schedules` (not yet a ClassSession) is the same clash. */
     public function test_renewal_confirmed_row_is_refused_on_a_schedule_only_booking(): void
     {
@@ -395,3 +414,4 @@ class OverlappingCourseGuardTest extends TestCase
         ]);
     }
 }
+
