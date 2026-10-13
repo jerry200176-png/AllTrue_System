@@ -1,7 +1,7 @@
 # GUIDE — Bug 關閉閘門（Closure Gate）
 
 > **角色**：Reliability / QA / AI Agent 在宣告 bug「完成」前的強制檢查清單  
-> **權威流程**：[`CHAT_BUG_SYSTEM.md`](CHAT_BUG_SYSTEM.md) §3.6–§3.7（in-app 狀態機）  
+> **權威流程**：[`CHAT_BUG_SYSTEM.md`](CHAT_BUG_SYSTEM.md) §3.6–§3.7（in-app 狀態機）；各階段 workflow／觸發／cloud 可否自行完成 → [`sop/BUG_INTAKE_TO_PRODUCTION.md`](sop/BUG_INTAKE_TO_PRODUCTION.md) 對照表  
 > **衝突時**：P0 規則（`.cursorrules`）> 本指南 > 一般工程習慣
 
 ---
@@ -29,7 +29,7 @@
 ## 與 in-app 狀態機整合
 
 ```
-new → triaged → in_progress → resolved → (reporter-verify) → closed
+new → triaged → in_progress → resolved → (reporter-verify 或逾時) → closed
          ↑                           ↑
     Phase A 分診              Closure Gate 1–5 完成後才可 resolved
                               Gate 6 在資料修復/高風險變更時必填
@@ -41,7 +41,7 @@ new → triaged → in_progress → resolved → (reporter-verify) → closed
 |------|------|--------------|
 | `triaged` | `in_progress` | Gate 1 完成（根因假設或確認） |
 | `in_progress` | `resolved` | **Gate 1–5 全部完成** |
-| `resolved` | `closed` | 回報者 `reporter-verify`（Gate 4 延伸） |
+| `resolved` | `closed` | 回報者 `reporter-verify` 或逾時流程（Gate 4 延伸；Agent 不代按） |
 
 ⛔ `triaged` **不可**直接 → `resolved`（`BugReportService::VALID_TRANSITIONS` 會拒絕）。
 
@@ -51,8 +51,8 @@ new → triaged → in_progress → resolved → (reporter-verify) → closed
 |-------|------|--------------|
 | **A 分診** | 開 GitHub issue + in-app `triaged` + 公開回覆 | — |
 | **B 修復** | branch → 測試 RED → code → CI 綠 → PR merge → deploy | Gate 2 在 merge 前 |
-| **C 上線回寫** | `resolved` + 公開留言 + 等驗收 | Gate 3–5 在 `resolved` 前 |
-| **D 關閉** | 回報者確認 → `closed` | Gate 4 驗收延伸 |
+| **C 上線回寫** | `resolved` + 公開留言；GitHub issue 此時可關（Founder 2026-10-12 ③：merge＋上線驗證＋已回覆 in-app，不等回報者） | Gate 3–5 在 `resolved` 前 |
+| **D in-app 關閉** | 回報者確認或逾時 → `closed` | Gate 4 驗收延伸 |
 
 ---
 
@@ -77,14 +77,20 @@ new → triaged → in_progress → resolved → (reporter-verify) → closed
 最低限度：
 
 ```bash
-# 1. 版本
-ssh admin@pi.lifenet.com.tw 'cd /home/admin/backend && git rev-parse --short HEAD'
+# 1. 版本（公開 HTTPS，不 SSH、不用 -k）
+curl -fsS https://daan.lifenet.com.tw/version.json
+curl -fsS https://daan.lifenet.com.tw/deployment.json
+#   backend_sha == 核准 SHA；frontend_build_sha 只有在本次有重建前端時才需等於核准 SHA
+#   （backend-only 部署會沿用舊前端 build，version.json 不變屬正常）
+#   並對照成功的 deploy.yml run：run 結論 success、job log 列出同一 SHA。
+#   只看 endpoint 不夠——部署失敗回滾時 manifest 可能沒被改回。
 
 # 2. Health
-curl -sk https://daan.lifenet.com.tw/api/v1/health
+curl -fsS https://daan.lifenet.com.tw/api/v1/health
 
 # 3. 業務抽樣（依 bug 類型）
-# 例：tinker 唯讀查詢、特定 API smoke、前端 bundle grep
+# 例：唯讀 `production-case-dump.yml` case、bug-detail-dump、特定 API smoke、前端 bundle grep
+# 不直接 SSH／tinker／raw SQL；需要新唯讀查詢時新增 case-dump case（見 AGENTS.md）
 ```
 
 記錄格式：
@@ -115,9 +121,9 @@ curl -sk https://daan.lifenet.com.tw/api/v1/health
 
 | 變更類型 | 回滾方式 |
 |----------|----------|
-| Code deploy | `git revert <merge-commit>` + 等 deploy.yml |
-| Migration | `migrate:rollback`（僅在有 down() 且已評估風險時） |
-| 資料修復 | 修復前 `mysqldump` + snapshot JSON + `--rollback` 指令 |
+| Code deploy | 只用現行 workflow 已證明可執行的路徑（見 `alltrue-release` SKILL）；通常為 revert PR → land queue → deploy.yml |
+| Migration | 只走 `deploy.yml`（`docs/CONTROL_PLANE_CONTRACT.md`：code／migration／前端 build 僅由 deploy.yml 執行）＋Founder GO；POP 不是 schema migration 的執行器；不在 Pi 手動 `migrate:rollback` |
+| 資料修復 | POP `dry-run` → `approve`（含 snapshot JSON 與 `--rollback`）。⚠ `approve` **就會**交給 Pi 本機排程器執行並驗證，之後沒有另一道 apply 關卡——approve 前必須已取得 Founder 對該範圍的核准；不手動 SSH `mysqldump` |
 
 高風險（帳務/堂數/auth）：**Gate 6 必填**才能執行 production 寫入。
 
