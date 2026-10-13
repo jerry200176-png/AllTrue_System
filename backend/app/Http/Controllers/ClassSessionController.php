@@ -623,27 +623,37 @@ class ClassSessionController extends Controller
         // contract slot, so one moved lesson never hides an unrelated slot of the same day.
         $rowsByClass = [];
         if (!empty($classIds)) {
-            Schedule::whereIn('student_course_id', $classIds)
-                ->whereDate('schedule_date', $targetDate)
-                ->whereIn('status', ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'])
-                ->get(['student_course_id', 'start_time', 'type'])
-                ->each(function ($r) use (&$rowsByClass) {
-                    // An explicitly added extra (makeup) lesson never stands for a contract slot.
-                    if (strtolower((string) $r->type) === 'extra') {
+            $hm = fn ($t) => substr((string) $t, 0, 5);
+            $ymd = fn ($d) => $d ? Carbon::parse($d)->toDateString() : null;
+            $schedules = Schedule::whereIn('student_course_id', $classIds)->whereDate('schedule_date', $targetDate)
+                ->get(['student_course_id', 'start_time', 'status', 'type', 'original_schedule_date', 'original_start_time']);
+            // Makeup (type=extra) lessons, and the ClassSession they own, never stand for a contract slot.
+            $extraTimes = [];
+            foreach ($schedules as $r) {
+                if (strtolower((string) $r->type) === 'extra') {
+                    $extraTimes[(int) $r->student_course_id . '|' . $hm($r->start_time)] = true;
+                }
+            }
+            $sessionTimes = [];
+            ClassSession::whereIn('StudentClassID', $classIds)->whereDate('SessionDate', $targetDate)
+                ->get(['StudentClassID', 'StartTime', 'OriginalSessionDate', 'OriginalStartTimeHM'])
+                ->each(function ($r) use (&$rowsByClass, &$sessionTimes, $extraTimes, $hm, $ymd) {
+                    $key = (int) $r->StudentClassID . '|' . $hm($r->StartTime);
+                    if (isset($extraTimes[$key])) {
                         return;
                     }
-                    $rowsByClass[(int) $r->student_course_id][] = [substr((string) $r->start_time, 0, 5), null];
+                    $sessionTimes[$key] = true;
+                    $rowsByClass[(int) $r->StudentClassID][] = [$hm($r->StartTime), $ymd($r->OriginalSessionDate), $r->OriginalStartTimeHM ? $hm($r->OriginalStartTimeHM) : null];
                 });
-            ClassSession::whereIn('StudentClassID', $classIds)
-                ->whereDate('SessionDate', $targetDate)
-                ->get(['StudentClassID', 'StartTime', 'OriginalSessionDate', 'OriginalStartTimeHM'])
-                ->each(function ($r) use (&$rowsByClass, $targetDate) {
-                    $origin = $r->OriginalStartTimeHM !== null
-                        && $r->OriginalSessionDate !== null
-                        && Carbon::parse($r->OriginalSessionDate)->toDateString() === $targetDate
-                        ? substr((string) $r->OriginalStartTimeHM, 0, 5) : null;
-                    $rowsByClass[(int) $r->StudentClassID][] = [substr((string) $r->StartTime, 0, 5), $origin];
-                });
+            foreach ($schedules as $r) {
+                $key = (int) $r->student_course_id . '|' . $hm($r->start_time);
+                // A leave/cancel marker is the same lesson as its ClassSession (which is authoritative): count it once.
+                if (!in_array(strtolower((string) $r->status), ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'], true)
+                    || isset($extraTimes[$key]) || isset($sessionTimes[$key])) {
+                    continue;
+                }
+                $rowsByClass[(int) $r->student_course_id][] = [$hm($r->start_time), $ymd($r->original_schedule_date), $r->original_start_time ? $hm($r->original_start_time) : null];
+            }
         }
 
         foreach ($classes as $studentClass) {
@@ -661,7 +671,7 @@ class ClassSessionController extends Controller
                 continue;
             }
             $slotStarts = array_values(array_unique(array_map(fn ($slot) => substr((string) $slot['start_time'], 0, 5), $slots)));
-            $covered = $this->monthlyCoveredSlotStarts($slotStarts, $rowsByClass[(int) $studentClass->ID] ?? []);
+            $covered = $this->monthlyCoveredSlotStarts($slotStarts, $rowsByClass[(int) $studentClass->ID] ?? [], $targetDate);
 
             foreach ($slots as $slot) {
                 $startHm = substr((string) ($slot['start_time'] ?? ''), 0, 5);
@@ -694,22 +704,22 @@ class ClassSessionController extends Controller
      * #3901: which contract slots of a monthly course already have a lesson on the date.
      *
      * @param  list<string>  $slotStarts  contract slot start times (HH:MM) of the weekday
-     * @param  list<array{0:string,1:?string}>  $rows  [current HH:MM, frozen original HH:MM|null] per existing lesson
+     * @param  list<array{0:string,1:?string,2:?string}>  $rows  [current HH:MM, frozen original date, frozen original HH:MM] per lesson
      * @return array<string, true>
      */
-    private function monthlyCoveredSlotStarts(array $slotStarts, array $rows): array
+    private function monthlyCoveredSlotStarts(array $slotStarts, array $rows, string $targetDate): array
     {
         $covered = [];
         $legacy = [];
-        foreach ($rows as [$current, $origin]) {
-            if ($origin !== null) {
-                $covered[$origin] = true; // the slot this lesson came from
+        foreach ($rows as [$current, $originDate, $originHm]) {
+            if ($originHm !== null && $originDate === $targetDate) {
+                $covered[$originHm] = true; // the slot this lesson came from
             }
             if (in_array($current, $slotStarts, true)) {
                 $covered[$current] = true; // the time is physically taken
-            } elseif ($origin === null) {
+            } elseif ($originHm === null) {
                 $legacy[] = $current; // moved lesson with no identity: guess by proximity below
-            }
+            } // a lesson moved in from another date (identity known) stands for no slot of this date
         }
         $minutes = fn (string $hm): int => ((int) substr($hm, 0, 2)) * 60 + (int) substr($hm, 3, 2);
         foreach ($legacy as $current) {

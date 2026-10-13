@@ -107,6 +107,56 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         $this->assertSame(['18:00 scheduled'], $this->startsOn($course));
     }
 
+    public function test_a_leave_marker_and_its_session_count_as_one_lesson_and_a_moved_in_lesson_covers_nothing(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-f@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // 13:00 moved to 14:00 and put on leave: the normal flow leaves a Schedule marker AND the ClassSession (identity 13:00).
+        $moved = $this->createSession($course, '2026-10-13', '14:00', '16:00', 'leave');
+        $moved->forceFill(['OriginalSessionDate' => '2026-10-13', 'OriginalStartTimeHM' => '13:00'])->save();
+        $this->extraSchedule($course, $teacherId, '14:00', 'leave', 'normal');
+        // A lesson moved IN from Monday sits at 10:00 and stands for no slot of this Tuesday.
+        $in = $this->createSession($course, '2026-10-13', '10:00', '12:00', 'scheduled');
+        $in->forceFill(['OriginalSessionDate' => '2026-10-12', 'OriginalStartTimeHM' => '17:00'])->save();
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['10:00 scheduled', '14:00 leave', '18:00 scheduled'], $this->startsOn($course));
+    }
+
+    public function test_a_makeup_session_and_a_schedule_only_moved_leave_use_the_right_slot(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-g@example.com');
+        $course = $this->createMonthlyCourse($teacherId);
+        // A makeup (extra Schedule + its ClassSession, no identity) at 10:00 must not hide the 18:00 contract slot.
+        $this->createSession($course, '2026-10-13', '10:00', '12:00', 'cancelled');
+        $this->extraSchedule($course, $teacherId, '10:00', 'cancelled', 'extra');
+
+        $this->readTeacherDay($teacherToken);
+        $this->assertSame(['10:00 cancelled', '18:00 scheduled'], $this->startsOn($course));
+
+        // Schedule-only moved leave with frozen identity 18:00 (now 17:30): the 18:00 slot is covered.
+        ClassSession::where('StudentClassID', $course->ID)->delete();
+        Schedule::where('student_course_id', $course->ID)->delete();
+        $this->extraSchedule($course, $teacherId, '17:30', 'leave', 'normal', ['original_schedule_date' => '2026-10-13', 'original_start_time' => '18:00']);
+
+        $this->readTeacherDay($teacherToken);
+        $this->assertSame([], $this->startsOn($course));
+    }
+
+    /** @param array<string, mixed> $identity */
+    private function extraSchedule(StudentClass $course, int $teacherId, string $start, string $status, string $type, array $identity = []): void
+    {
+        Schedule::create($identity + [
+            'student_id' => $course->StudentID, 'teacher_id' => $teacherId, 'subject' => 'Math', 'day_of_week' => 2,
+            'start_time' => $start, 'end_time' => '20:00', 'duration_hours' => 2, 'class_type' => 'one_on_one',
+            'status' => $status, 'type' => $type, 'deduction' => 0, 'branch_id' => 1,
+            'schedule_date' => '2026-10-13', 'student_course_id' => $course->ID,
+        ]);
+    }
+
     private function readTeacherDay(string $token): void
     {
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
