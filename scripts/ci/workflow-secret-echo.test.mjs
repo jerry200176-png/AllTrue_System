@@ -51,7 +51,7 @@ function matchClose(src, i, open, close) {
 function lex(src, base = 0, heredocBody = false) {
   const cmds = [], comments = [], pending = [];
   let i = 0, bad = false, cur = { words: [], redirs: [] };
-  const push = (sep) => { if (cur.words.length || cur.redirs.length) cmds.push({ ...cur, sep }); cur = { words: [], redirs: [] }; };
+  const push = (sep) => { if (cur.words.length || cur.redirs.length) cmds.push({ ...cur, sep, scope: cur }); cur = { words: [], redirs: [] }; };
   const sub = (w, kind, from, to, q) => {
     const script = lex(src.slice(from, to), base + from);
     comments.push(...script.comments);
@@ -113,7 +113,7 @@ function lex(src, base = 0, heredocBody = false) {
     const c = src[i], two = src.slice(i, i + 2);
     if (c === ' ' || c === '\t' || c === '\r' || two === '\\\n') i += c === '\\' ? 2 : 1;
     else if (c === '\n') { push('\n'); i++; heredocs(); }
-    else if (c === '#') { const e = src.indexOf('\n', i); comments.push([base + i, base + (e < 0 ? src.length : e)]); i = e < 0 ? src.length : e; }
+    else if (c === '#') { const e = src.indexOf('\n', i); comments.push([base + i, base + (e < 0 ? src.length : e), cur]); i = e < 0 ? src.length : e; }
     else if (two === '&&' || two === '||' || two === '|&' || two === ';;') { push(two === ';;' ? ';' : two); i += 2; }
     else if (c === ';' || c === '(' || c === ')' || c === '|' || (c === '&' && src[i + 1] !== '>')) { push(c === '|' || c === '&' ? c : ';'); i++; }
     else if ((c === '<' || c === '>') && src[i + 1] === '(') { // process substitution word
@@ -253,11 +253,12 @@ function credHits(w, exprs) {
 }
 
 function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sensitive data reaches the captured stdout
-  let taint = false;
-  const rec = (off, verdict) => { if (verdict === 'taint') taint = true; out.push({ off, safe: verdict !== 'unsafe' }); };
+  let taint = false, scope;
+  const rec = (off, verdict) => { if (verdict === 'taint') taint = true; out.push({ off, safe: verdict !== 'unsafe', scope }); };
   const pipes = [[]];
   for (const c of script.cmds) { pipes[pipes.length - 1].push(c); if (c.sep !== '|' && c.sep !== '|&') pipes.push([]); }
   for (const P of pipes) P.forEach((c, s) => {
+    scope = c.scope;
     const info = resolve(c.words);
     const args = c.words.slice(info.k + 1).map((w) => w.text);
     const printer = /^(?:echo|printf)$/.test(info.name);
@@ -268,6 +269,13 @@ function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sen
       && c.words.slice(info.k + 1).every((w) => assignRe.test(w.text) || /^-/.test(w.text))));
     const viaSink = (cred) => (STDOUT_ONLY.has(info.name) && (!cred || printer) ? sink(P, s, ctx, cred) : 'unsafe');
     if (info.dump) rec(c.words[info.k]?.off ?? c.redirs[0]?.off, viaSink(false));
+    if (info.name === 'eval') {
+      const body = c.words.slice(info.k + 1).map((w) => w.text).join(' ');
+      const inner = lex(body, c.words[info.k + 1]?.off ?? c.words[info.k].off);
+      out.comments?.push(...inner.comments);
+      if (inner.bad) rec(c.words[info.k].off, 'unsafe');
+      else analyze(inner, 'top', out, exprs);
+    }
     if (/^(?:ba|da|z|k)?sh$/.test(info.name)) { // `bash -c '<script>'` runs a nested shell program: analyze it too
       const opts = c.words.slice(info.k + 1), ci = opts.findIndex((w) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(w.text));
       const body = ci >= 0 ? opts[ci + 1] : null;
@@ -308,7 +316,10 @@ function analyze(script, ctx, out, exprs) { // returns true when (ctx 'sub') sen
       if (!/^(?:cat|mysql|mariadb|psql)$/.test(info.name)) { const hs = lex(body, off); out.comments?.push(...hs.comments); analyze(hs, 'top', out, exprs); continue; } // a shell runs it
       // data heredoc: .env text is data; expansions (unquoted delimiter) are printed by cat or executed as SQL
       const bw = r.quoted ? { text: '', pos: [], q: [], subs: [] } : lex(body, off, true).word;
-      if (r.quoted) for (const m of body.matchAll(CRED)) rec(off + m.index, 'safe'); // printed/executed literally
+      if (r.quoted) for (const m of body.matchAll(CRED)) {
+        const expression = m[2] !== undefined && credExpr(exprs[+m[2]]);
+        rec(off + m.index, expression ? sink(P, s, ctx, true) : 'safe');
+      } // printed/executed literally
       for (const m of body.matchAll(ENV_FILE)) rec(off + m.index, 'safe');
       const sh = bw.subs.filter((sb) => analyze(sb.script, 'sub', out, exprs)).map((sb) => sb.at);
       for (const at of [...credHits(bw, exprs), ...sh]) {
@@ -383,8 +394,12 @@ function scanScript(where, script0) {
     if (TRACE.test(line)) why[i].add('shell tracing');
     const m = line.match(LITERAL);
     if (m && isSecretName(m[1]) && !FIXTURES.has(m[3])) why[i].add('literal credential');
-    if (allow && allow[1].trim().length >= 10) return;
-    if (allow) why[i].add('secret-echo-allow reason must be at least 10 characters');
+    const owner = allow ? parsed.comments.find(([a, b]) => starts[i] + allow.index >= a && starts[i] + allow.index < b)?.[2] : null;
+    const unsafe = occ.filter((o) => !o.safe && lineOf(o.off) === i);
+    const commands = parsed.cmds.filter((c) => lineOf(c.words[0]?.off ?? c.redirs[0]?.off ?? -1) === i);
+    const scoped = owner && unsafe.every((o) => o.scope === owner) && commands.every((c) => c.scope === owner);
+    if (allow && allow[1].trim().length >= 10 && scoped) return;
+    if (allow && allow[1].trim().length < 10) why[i].add('secret-echo-allow reason must be at least 10 characters');
     if (why[i].size) bad.push({ where: `${where} line ${i + 1}`, text: raw, why: [...why[i]].join(', ') });
   });
   return bad;
@@ -461,6 +476,12 @@ const formatBaseline = (b) => `{\n  "//": "#1387 shrink-only: existing findings 
 const wf = (run) => `jobs:\n  j:\n    steps:\n      - run: ${run}`;
 const blk = (...l) => wf(`|\n${l.map((x) => `          ${x}`).join('\n')}`);
 export const trip = {
+  'static eval env dump': blk('eval env'),
+  'static eval printenv dump': blk('eval printenv'),
+  'quoted heredoc GitHub expansion': blk("cat <<'EOF'", '${{ env.DB_PASSWORD }}', 'EOF'),
+  'nested allowance cannot excuse outer echo': blk('echo "$DB_PASSWORD" "$(printf hi # secret-echo-allow: nested harmless comment', ')"'),
+  'later command allowance cannot excuse earlier echo': blk('echo "$DB_PASSWORD"; echo hi # secret-echo-allow: harmless later command'),
+
   'nice long operand env dump': blk('nice --adjustment 5 env'),
   'sudo long operand env dump': blk('sudo --user root env'),
   'secret filename stderr diagnostic': blk('cat "$DB_PASSWORD" > credentials.txt'),
@@ -597,6 +618,12 @@ export const trip = {
   'composite action run step': 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo "$DB_PASSWORD"',
 };
 export const ok = {
+  'sensitive capture hashed': blk('X="$(cat backend/.env)"; echo "$X" | sha256sum'),
+  'ordinary capture printed': blk('X="$(date)"; echo "$X"'),
+  'static harmless eval': blk("eval 'echo hi'"),
+  'quoted heredoc shell variable remains literal': blk("cat <<'EOF'", '$DB_PASSWORD', 'EOF'),
+  'quoted heredoc GitHub expression to file': blk("cat > credentials.txt <<'EOF'", '${{ env.DB_PASSWORD }}', 'EOF'),
+
   'wrapped nonsecret command': blk('timeout --kill-after=2s 5s echo hi', 'stdbuf --output=L echo hi'),
   'wrapped Docker password consumer': blk('echo "$DB_PASSWORD" | timeout 5 docker login --username=user --password-stdin ghcr.io'),
 
