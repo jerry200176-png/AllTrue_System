@@ -14,21 +14,27 @@ const viewports = [
 ];
 const rows = [
   {
-    id: 101, student_name: '林宥辰', subject: '國中數學', schedule_mode: 'date', payment_status: 'unpaid',
+    id: 101, student_id: 9101, student_name: '林宥辰', subject: '國中數學', schedule_mode: 'date', payment_status: 'unpaid',
     charge: 4200, paid_amount: 0, outstanding: 4200, payable_amount: 4200, payable_outstanding: 4200, due_date: '2026-09-12', days_until_settlement: 2,
     course_start_date: '2026-09-01', course_end_date: '2026-09-30', invoice_id: 501, payable_status: 'invoiced',
   },
   {
-    id: 102, student_name: '陳品妤', subject: '高中英文', schedule_mode: 'count', payment_status: 'pending_report',
+    id: 102, student_id: 9102, student_name: '陳品妤', subject: '高中英文', schedule_mode: 'count', payment_status: 'pending_report',
     charge: 5600, paid_amount: 5600, outstanding: 0, payable_amount: 5600, payable_outstanding: 0, last_paid_at: '2026-09-08',
     remaining_sessions: 4, sessions_purchased: 16, latest_payment_report_id: 601, invoice_id: 502, payable_status: 'invoiced',
   },
   {
-    id: 103, student_name: '王子謙', subject: '國小自然', schedule_mode: 'date', payment_status: 'renew_needed',
+    id: 103, student_id: 9103, student_name: '王子謙', subject: '國小自然', schedule_mode: 'date', payment_status: 'renew_needed',
     charge: 3800, paid_amount: 3800, outstanding: 0, payable_amount: 3800, payable_outstanding: 0, last_paid_at: '2026-09-02', due_date: '2026-09-01',
     days_until_settlement: -9, course_start_date: '2026-09-01', course_end_date: '2026-09-30', invoice_id: 503, payable_status: 'invoiced',
   },
 ];
+
+// 預設先開「學生」清單；逐課程佇列要從「待處理清單」進入。
+async function goQueue(page, url) {
+  await page.goto(url);
+  await page.getByRole('button', { name: /^待處理清單/ }).click();
+}
 
 test('In-App #339: dense receivable actions leave readable space for amounts without removing controls', async ({ page }) => {
   await installMock(page);
@@ -40,12 +46,12 @@ test('In-App #339: dense receivable actions leave readable space for amounts wit
   }));
   for (const width of [900, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+    await goQueue(page, '/tuition-collection-pilot-mount.html?mode=normal');
     const row = page.locator('.tc-table:not(.acct-table):visible tbody tr').first();
     const actions = row.locator('td:last-child');
     await expect(row.locator('td').nth(6)).toContainText('4,200');
     await expect(row.locator('td').nth(8)).toContainText('4,200');
-    await expect(actions.locator('button')).toHaveText(['account_balance 繳費明細', 'receipt_long 繳費單', 'check_circle 登記已回報']);
+    await expect(actions.locator('button')).toHaveText(['account_balance 繳費明細', 'receipt_long 繳費單', 'receipt 收據', 'check_circle 登記已回報']);
     const box = await actions.boundingBox();
     expect(box.width).toBeLessThanOrEqual(width * 0.35);
     await expect(actions).toHaveCSS('position', 'sticky');
@@ -60,7 +66,7 @@ test('In-App #339: dense receivable actions leave readable space for amounts wit
     await page.keyboard.press('Tab');
     await expect(actions.locator('button').nth(1)).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(actions.locator('button').nth(2)).toBeFocused();
+    await expect(actions.locator('button').nth(3)).toBeFocused();
     // Amounts may require table scrolling, but the sticky action region must
     // leave enough visible width to read each amount in full.
     for (const index of [6, 7, 8]) {
@@ -185,6 +191,7 @@ async function installMock(page) {
       body: JSON.stringify({ data, summary: { course_count: data.length, legacy_count: 0, exception_count: 0, paid_total: data.length ? 9800 : 0, overpaid_total: 0, pending_reconciliation_count: data.length ? 1 : 0 } }),
     });
   });
+  await page.route('**/api/v1/students**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: new URL(page.url()).searchParams.get('mode') === 'empty' ? [] : rows.map((row) => ({ id: row.student_id, name: row.student_name, enable: 1 })) }) })); // 預設「學生」清單讀本校區學生名單
   await page.route('**/api/v1/branches**', (route) => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 1, name: '內湖分校', code: 'neihu' }]),
   }));
@@ -215,7 +222,7 @@ test.describe('Tuition Collection clarity browser verification', () => {
     page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
     for (const viewport of viewports) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+      await goQueue(page, '/tuition-collection-pilot-mount.html?mode=normal');
       await expect(page.getByText('帳務中心', { exact: true })).toBeVisible();
       await expect(page.getByText('林宥辰', { exact: true })).toBeVisible();
       await expectNoOverflowAndReachableControls(page);
@@ -228,7 +235,7 @@ test.describe('Tuition Collection clarity browser verification', () => {
   test('keeps dense accounting actions reachable at tablet width', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 900, height: 800 });
-    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+    await goQueue(page, '/tuition-collection-pilot-mount.html?mode=normal');
 
     const receivableAction = page.locator('.tc-table:not(.acct-table):visible tbody tr').first().locator('td:last-child button').first();
     await expect(receivableAction).toBeVisible();
@@ -252,7 +259,7 @@ test.describe('Tuition Collection clarity browser verification', () => {
   test('keeps existing sorting and bulk selection reachable on mobile cards', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+    await goQueue(page, '/tuition-collection-pilot-mount.html?mode=normal');
 
     await page.getByLabel('待處理排序').selectOption('due_date');
     await expect(page.locator('.tc-table tbody tr').first().locator('.tc-cell-name')).toHaveText(/陳品妤/);
@@ -269,21 +276,22 @@ test.describe('Tuition Collection clarity browser verification', () => {
   test('uses clear loading, empty, error, and retry feedback', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
+    // 預設「學生」清單的載入／錯誤／重試；
     await page.goto('/tuition-collection-pilot-mount.html?mode=loading');
-    await expect(page.locator('.tc-skeleton-area')).toBeVisible();
+    await expect(page.getByTestId('sbl-loading')).toBeVisible();
     await page.goto('/tuition-collection-pilot-mount.html?mode=empty');
-    await expect(page.getByText('本分校目前無待催繳課程', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sbl-empty')).toBeVisible();
     await page.goto('/tuition-collection-pilot-mount.html?mode=error');
-    await expect(page.getByText('帳務待處理資料載入失敗', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sbl-error')).toContainText('帳務資料載入失敗');
     await page.evaluate(() => { window.__tuitionCollectionRetryAllowed = true; });
-    await page.getByRole('button', { name: '重新載入' }).click();
+    await page.getByTestId('sbl-retry').click();
     await expect(page.getByText('林宥辰', { exact: true })).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
   });
   test('keeps long Chinese content and keyboard disclosure usable', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/tuition-collection-pilot-mount.html?mode=long');
+    await goQueue(page, '/tuition-collection-pilot-mount.html?mode=long');
     await expect(page.getByText(/很長的學生姓名/).first()).toBeVisible();
     const process = page.locator('.at-help > summary');
     await process.focus();
@@ -294,7 +302,7 @@ test.describe('Tuition Collection clarity browser verification', () => {
   test('keeps the existing session detail dialog within the usable viewport', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+    await goQueue(page, '/tuition-collection-pilot-mount.html?mode=normal');
     await page.getByRole('button', { name: /剩 4 堂/ }).click();
     const dialog = page.locator('.tc-session-dialog');
     await expect(dialog).toBeVisible();

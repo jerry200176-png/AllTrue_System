@@ -41,7 +41,7 @@ describe('director payment shortcuts', () => {
   it('exposes notification and payment-detail actions from each alert', () => {
     expect(dashboard).toContain('PaymentSlipModal');
     expect(dashboard).not.toContain('AccountingLedgerModal');
-    expect(dashboard).toContain('繳費通知');
+    expect(dashboard).toContain('openPaymentSlip(student)">繳費單<');
     expect(dashboard).toContain('前往帳務中心');
     expect(dashboard).toContain('openPaymentSlip(student)');
     expect(dashboard).toContain('openPaymentCenter(student)');
