@@ -670,7 +670,7 @@ class EnrollmentService
 
         if (!empty($data['force'])) {
             $forceGate = $this->validateForceOverride($request, $data, array_values(array_unique(array_map(
-                fn ($m) => (int) ($m['id'] ?? 0),
+                fn ($m) => (int) $m['id'],
                 $subjectMeta
             ))), $studentId);
             if ($forceGate !== null) {
@@ -747,7 +747,7 @@ class EnrollmentService
             // REPEATABLE READ any earlier plain read would pin a snapshot that predates a concurrent commit.
             $lockRenewal = !empty($data['force']) && ($data['force_reason'] ?? '') === 'renewal_next_term';
             $student = $studentId > 0
-                ? ($lockRenewal ? Student::whereKey($studentId)->lockForUpdate()->first() : Student::find($studentId))
+                ? ($lockRenewal ? Student::query()->whereKey($studentId)->lockForUpdate()->first() : Student::find($studentId))
                 : $this->createStudentInline((array) ($data['student'] ?? []), $targetCampusId);
 
             if ($identityGroupId > 0 && $student && (int) $student->CampusID !== $targetCampusId) {
@@ -769,7 +769,7 @@ class EnrollmentService
             if (!empty($data['force']) && ($data['force_reason'] ?? '') === 'renewal_next_term') {
                 DB::table('Student')->where('id', $student->id)->lockForUpdate()->value('id');
                 $confirmedGate = $this->renewalTargetGate($data, array_values(array_unique(array_map(
-                    fn ($m) => (int) ($m['id'] ?? 0),
+                    fn ($m) => (int) $m['id'],
                     $subjectMeta
                 ))), (int) $student->id)
                     ?? $this->guardRenewalConfirmedOverlap((int) $student->id, $subjectGroups);
@@ -1309,8 +1309,8 @@ class EnrollmentService
         $actorId = null;
         try {
             $actorId = $request->attributes->get('auth_user_id')
-                ?? $request->attributes->get('auth_user')?->id
-                ?? $request->user()?->id;
+                ?? $request->attributes->get('auth_user')->id
+                ?? optional($request->user())->id;
         } catch (\Throwable $e) {
             $actorId = null;
         }
