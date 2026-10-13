@@ -721,8 +721,10 @@ class ClassSessionController extends Controller
             }
         }
         // Distinct slot identities the markers at one time stand for. Same-time sessions consume them
-        // one-for-one (two cancelled lessons from different slots cover both); once one is left, it repeats.
+        // one-for-one (two cancelled lessons from different slots cover both); a further session repeats the
+        // last one. Identities no session consumed stay in $pending for their own marker rows below.
         $pending = [];
+        $last = [];
         $hasOrigin = function (string $key) use (&$pending, $sameLesson, $origin): bool {
             if (!isset($pending[$key])) {
                 $pending[$key] = [];
@@ -734,14 +736,17 @@ class ClassSessionController extends Controller
                 }
             }
 
-            return $pending[$key] !== [];
+            return $pending[$key] !== [] || isset($last[$key]);
         };
-        $nextOrigin = function (string $key) use (&$pending, $hasOrigin): array {
+        $nextOrigin = function (string $key) use (&$pending, &$last, $hasOrigin): array {
             if (!$hasOrigin($key)) {
                 return [null, null];
             }
+            if ($pending[$key] !== []) {
+                $last[$key] = array_shift($pending[$key]);
+            }
 
-            return count($pending[$key]) > 1 ? array_shift($pending[$key]) : $pending[$key][0];
+            return $last[$key];
         };
 
         $rows = [];
@@ -768,15 +773,28 @@ class ClassSessionController extends Controller
         }
 
         foreach ($sameLesson as $key => $markers) {
-            if (isset($taken[$key])) {
-                continue;
-            }
             $markers = array_values(array_filter($markers, fn (Schedule $r) => in_array(strtolower((string) $r->status), ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'], true)
                 && !(strtolower((string) $r->status) === 'rescheduled' && (int) ($r->original_schedule_id ?? 0) > 0)));
             if ($markers === []) {
                 continue;
             }
-            $rows[(int) $markers[0]->student_course_id][] = [$hm($markers[0]->start_time), ...$nextOrigin($key)];
+            $classId = (int) $markers[0]->student_course_id;
+            $hasOrigin($key);
+            $emitted = false;
+            // Each lesson marker whose identity no session at this time took still stands for its own slot
+            // (a partially materialized same-time group keeps every lesson it records).
+            foreach ($markers as $r) {
+                $found = $origin($r);
+                $at = array_search($found, $pending[$key], true);
+                if ($found[1] !== null && $at !== false) {
+                    array_splice($pending[$key], (int) $at, 1);
+                    $rows[$classId][] = [$hm($r->start_time), ...$found];
+                    $emitted = true;
+                }
+            }
+            if (!$emitted && !isset($taken[$key])) {
+                $rows[$classId][] = [$hm($markers[0]->start_time), ...$nextOrigin($key)];
+            }
         }
 
         return $rows;

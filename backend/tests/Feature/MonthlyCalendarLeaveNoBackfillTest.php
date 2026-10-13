@@ -210,6 +210,21 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         $this->assertSame(['15:00 cancelled', '15:00 cancelled'], $this->startsOn($course));
     }
 
+    public function test_a_partially_materialized_same_time_group_keeps_the_unmatched_marker(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-p@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // Two cancelled lessons (13:00 and 18:00) moved to 15:00, but only one legacy session exists.
+        $this->createSession($course, '2026-10-13', '15:00', '17:00', 'cancelled');
+        $this->extraSchedule($course, $teacherId, '15:00', 'cancelled', 'normal', ['original_schedule_date' => '2026-10-13', 'original_start_time' => '13:00']);
+        $this->extraSchedule($course, $teacherId, '15:00', 'cancelled', 'normal', ['original_schedule_date' => '2026-10-13', 'original_start_time' => '18:00']);
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['15:00 cancelled'], $this->startsOn($course), 'Neither cancelled lesson is replaced.');
+    }
+
     public function test_a_marker_identity_wins_over_a_schedule_only_makeup_at_the_same_time(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
