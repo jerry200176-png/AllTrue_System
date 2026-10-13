@@ -611,7 +611,8 @@ class PaymentReportController extends Controller
             if ($refusal = ContractMoneyState::waivedRefusal($lockedCourse, '此合約已確認不收，不能登記收款')) {
                 return $refusal;
             }
-            $package = $this->lockPackageForCourse($sc);
+            // #3892: package membership from the locked row, so a concurrent convertToPackage is never missed.
+            $package = $this->lockPackageForCourse($lockedCourse);
 
             if ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0))) {
                 return $this->duplicateCoursePaymentResponse($blockReason);
@@ -682,13 +683,19 @@ class PaymentReportController extends Controller
                 }
             }
 
-            $existingPending = PaymentReport::where('StudentClassID', $sc->ID)
-                ->where('status', 'pending')
-                ->lockForUpdate()
-                ->first();
+            // #3753: a shared CoursePackage is one obligation, so one pending report covers every member. The package row
+            // lock (held above) serializes member records; locking the sibling's report after it would invert confirm()'s
+            // report -> package order and deadlock (#3892 review), so package members read without a row lock.
+            // Monthly ('date') package members are recorded per member against their own period subtotal, so they keep
+            // the per-course pending check (#3892 review); only count-mode packages share one obligation.
+            $existingPending = $this->isSharedPackageObligation($package, $lockedCourse)
+                ? PaymentReport::query()->whereIn('StudentClassID', StudentClass::query()->where('PackageID', $package->getKey())->pluck('ID')->all())
+                    ->where('status', 'pending')->first()
+                : PaymentReport::where('StudentClassID', $sc->ID)->where('status', 'pending')->lockForUpdate()->first();
             if ($existingPending) {
                 return response()->json([
-                    'message' => '此課程已有「等你確認」的繳費回報，請先到帳務中心確認收款或退回後再登錄。',
+                    'message' => ((int) $existingPending->StudentClassID === (int) $lockedCourse->getKey() ? '此課程' : '同一共用方案')
+                        . '已有「等你確認」的繳費回報，請先到帳務中心確認收款或退回後再登錄。',
                     'code' => 'pending_report_exists',
                     'report_id' => $existingPending->id,
                 ], 422);
@@ -900,6 +907,17 @@ class PaymentReportController extends Controller
         }
 
         return CoursePackage::where('id', $packageId)->lockForUpdate()->first();
+    }
+
+    /**
+     * #3753 / #3892: a CoursePackage is one shared payment obligation only for count-mode members. Monthly ('date')
+     * members are billed and settled per member against their own period subtotal.
+     *
+     * @phpstan-assert-if-true CoursePackage $package
+     */
+    private function isSharedPackageObligation(?CoursePackage $package, StudentClass $course): bool
+    {
+        return $package !== null && strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) !== 'date';
     }
 
     private function markPackagePaid(CoursePackage $package, string $paidAt): void

@@ -2632,12 +2632,6 @@ parameters:
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
-			message: '#^Parameter \#1 \$studentClass of method App\\Http\\Controllers\\PaymentReportController\:\:lockPackageForCourse\(\) expects App\\Models\\StudentClass, Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Http/Controllers/PaymentReportController.php
-
-		-
 			message: '#^Using nullsafe property access "\?\-\>CampusID" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 1
@@ -4195,7 +4189,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 6
+			count: 3
 			path: app/Services/NotificationSyncService.php
 
 		-
@@ -4237,7 +4231,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\:\:\$student\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 1
 			path: app/Services/NotificationSyncService.php
 
 		-
@@ -4267,7 +4261,7 @@ parameters:
 		-
 			message: '#^Parameter \#1 \$class of static method App\\Services\\NotificationSyncService\:\:displaySubjectForClass\(\) expects App\\Models\\StudentClass, Illuminate\\Database\\Eloquent\\Builder given\.$#'
 			identifier: argument.type
-			count: 2
+			count: 1
 			path: app/Services/NotificationSyncService.php
 
 		-
