@@ -937,11 +937,15 @@ class CoursePackageController extends Controller
         // #3908: the checks above ran without locks. Lock in the same order as PaymentReportController::directorRecord
         // (courses, then package) and re-run the same gate on the locked rows, so a payment report recorded in between
         // is seen here instead of being bound into the package.
-        $changed = DB::transaction(function () use ($ids, $pkg) {
-            $locked = StudentClass::query()->whereIn('ID', $ids)->orderBy('ID')->lockForUpdate()->get();
+        // Rows already bound to this package are a no-op and are not locked: package writers (confirm, deduction
+        // recompute) lock the package and then its members, so holding a member before the package could deadlock.
+        $toBind = $courses->filter(fn ($sc) => (int) ($sc->PackageID ?? 0) !== (int) $pkg->id)
+            ->pluck('ID')->map(fn ($v) => (int) $v)->values()->all();
+        $changed = $toBind === [] ? [] : DB::transaction(function () use ($toBind, $pkg) {
+            $locked = StudentClass::query()->whereIn('ID', $toBind)->orderBy('ID')->lockForUpdate()->get();
             $lockedPkg = CoursePackage::query()->whereKey($pkg->id)->lockForUpdate()->first();
             $changed = [];
-            foreach (array_diff($ids, $locked->pluck('ID')->map(fn ($v) => (int) $v)->all()) as $goneId) {
+            foreach (array_diff($toBind, $locked->pluck('ID')->map(fn ($v) => (int) $v)->all()) as $goneId) {
                 $changed[] = ['student_class_id' => (int) $goneId, 'reasons' => ['course_not_found']];
             }
             foreach ($locked as $sc) {

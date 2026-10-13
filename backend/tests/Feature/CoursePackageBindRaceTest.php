@@ -82,6 +82,25 @@ class CoursePackageBindRaceTest extends TestCase
         $this->assertLessThan($write, $recheck, 'the gate is re-read before PackageID is written');
     }
 
+    /** Codex P2 on #3939: a retry with a course already in the package must not lock it (package writers lock package, then members). */
+    public function test_course_already_in_the_package_is_not_locked_on_retry(): void
+    {
+        [$pkg, $course] = $this->packageAndCourse();
+        $this->bind($pkg, [$course->ID])->assertOk();
+
+        $sql = [];
+        DB::listen(function (QueryExecuted $q) use (&$sql) {
+            $sql[] = strtolower($q->sql);
+        });
+
+        $this->bind($pkg, [$course->ID])->assertOk();
+        $this->assertSame((int) $pkg->id, (int) $course->fresh()->PackageID);
+        $this->assertNull(
+            $this->firstIndex($sql, fn ($s) => str_contains($s, 'for update')),
+            'an already-bound course is a no-op: no member or package lock is taken'
+        );
+    }
+
     private function packageAndCourse(): array
     {
         $student = Student::create(['name' => 's' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
