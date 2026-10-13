@@ -73,7 +73,7 @@ test('queue never uses --admin and lands a batch only from the green verdict', (
 test('script never checks out or runs PR code, and each squash is pinned to the tested head', () => {
   assert.doesNotMatch(queue, /\bcheckout\b|execFileSync\('(?:node|bash|sh|npm)'/);
   assert.match(queue, /'--match-head-commit', sha/);
-  assert.match(queue, /squash\(m\.n, m\.sha\)/); // sha pinned at batch creation, never re-read from the PR
+  assert.match(queue, /guardedSquash\(m\.n, m\.sha, /); // sha pinned at batch creation, never re-read from the PR
   assert.match(queue, /TRUSTED_AUTHORS\.has\(pr\.authorAssociation\)/);
 });
 
@@ -123,4 +123,10 @@ test('presubmit skips only the per-PR gates on dispatched land-queue batch branc
   const steps = y.split(/\n      - name: /).slice(1);
   const skipped = steps.filter((s) => s.includes("env.LQ_BATCH != 'true'")).map((s) => s.split('\n')[0]);
   assert.deepEqual(skipped.map((n) => /\[CHECK (\w+)\]/.exec(n)?.[1]).sort(), ['0d', '2', '4B']);
+});
+
+test('every squash goes through guardedSquash (fresh thread re-read right before merging)', () => {
+  assert.equal([...queue.matchAll(/\bsquash\(/g)].length, 0, 'call squash only via guardedSquash(n, sha, unresolvedThreads, squash)');
+  const guarded = [...queue.matchAll(/guardedSquash\([^)]*unresolvedThreads, squash\)/g)].length;
+  assert.equal(guarded, 2, 'serial path (processQueue) and batch path (landBatch) both re-check threads');
 });
