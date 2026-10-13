@@ -8259,12 +8259,13 @@ button.danger:disabled {
 }
 
 /* ── Dark mode: status text on dark *-wash fills (base tokens are light-only; lift to AA) ── */
-[data-theme="dark"] .course-page {
+/* button.danger also lives in AtDialog, which teleports to body (outside .course-page) */
+[data-theme="dark"] .course-page,
+[data-theme="dark"] button.danger {
   --ds-success: #4ade80;
   --ds-warning: #fbbf24;
   --ds-danger: #f87171;
 }
-[data-theme="dark"] button.danger,
 [data-theme="dark"] .date-chip.over-quota .chip-state {
   color: var(--ds-canvas-soft);
 }
