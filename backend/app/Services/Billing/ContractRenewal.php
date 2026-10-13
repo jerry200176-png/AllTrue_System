@@ -54,7 +54,8 @@ final class ContractRenewal
         // commits first (and is seen here) or waits until this renewal commits. Never accept evidence being voided.
         // #3991: evidence must be a bill of the course's own student.
         $billed = $candidates !== [] && Invoice::query()->whereKey($candidates)
-            ->where('StudentID', (int) $source->getAttribute('StudentID'))->scopes('notVoided')->lockForUpdate()->get()
+            ->where('StudentID', (int) $source->getAttribute('StudentID'))
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->lockForUpdate()->get()
             ->contains(fn (Invoice $bill) => $bill->isMarkedFreeGift()
                 || ((int) $bill->getAttribute('StudentClassID') === $id && (int) $bill->getAttribute('TotalAmount') > 0)
                 || (int) ($itemAmounts[(int) $bill->getKey()] ?? 0) > 0);

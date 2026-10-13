@@ -613,7 +613,7 @@ class PaymentReportController extends Controller
 
         $userId = $request->attributes->get('auth_user_id');
         if ($freeGift) {
-            return $this->recordFreeGiftBill($sc, $data, $userId);
+            return $this->recordFreeGiftBill((int) $data['student_class_id'], $data, $userId);
         }
 
         return DB::transaction(function () use ($data, $sc, $userId) {
@@ -744,10 +744,11 @@ class PaymentReportController extends Controller
      * bill, not a payment: no PaymentReport, nothing to confirm. Only a course with no fee (no Rate, no Charge, not a
      * package member) qualifies; an existing bill of the same term is marked only while it is NT$0 with no payments.
      */
-    private function recordFreeGiftBill(StudentClass $sc, array $data, mixed $userId)
+    /** @param array<string, mixed> $data */
+    private function recordFreeGiftBill(int $studentClassId, array $data, mixed $userId)
     {
-        return DB::transaction(function () use ($sc, $data, $userId) {
-            $course = StudentClass::query()->whereKey($sc->getKey())->lockForUpdate()->first();
+        return DB::transaction(function () use ($studentClassId, $data, $userId) {
+            $course = StudentClass::query()->whereKey($studentClassId)->lockForUpdate()->first();
             if (!$course) {
                 return response()->json(['message' => '找不到此課程'], 404);
             }
@@ -761,7 +762,8 @@ class PaymentReportController extends Controller
                 ], 422);
             }
             $monthly = $course->getAttribute('ScheduleMode') === 'date';
-            $live = Invoice::query()->where('StudentClassID', $course->ID)->notVoided()->orderBy('id')->lockForUpdate();
+            $live = Invoice::query()->where('StudentClassID', $course->ID)
+                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->orderBy('id')->lockForUpdate();
             $period = null;
             if (!empty($data['invoice_id'])) {
                 $invoice = (clone $live)->whereKey((int) $data['invoice_id'])->first();
