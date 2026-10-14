@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import PaymentEntryModal from '../PaymentEntryModal.vue';
+import { FREE_GIFT_LABEL } from '../../lib/courseMoneyState.js';
 
 const mockToken = 'test-token';
 
@@ -70,9 +71,33 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ amount: 4000, invoice_id: 91 });
   });
 
-  it('still lets a free course settle at NT$0', async () => {
-    await submitRow({ charge: 0, payable_amount: 0, payable_outstanding: 0 });
-    expect(JSON.parse(global.fetch.mock.calls[0][1].body).amount).toBe(0);
+  // #3991 (Founder 2026-10-13): a missing or 0 fee is never free by itself; NT$0 needs the explicit 免費／贈送 mark.
+  it('blocks NT$0 on a no-fee course until it is marked free/gift', async () => {
+    const w = await submitRow({ charge: 0, payable_amount: 0, payable_outstanding: 0 });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(w.text()).toContain(FREE_GIFT_LABEL);
+    await w.find('[data-testid="pe-free-gift"]').setValue(true);
+    // Free/gift mode is a bill, not a payment: no 等你確認 step is promised.
+    expect(w.find('[data-testid="pe-workflow-hint"]').text()).toContain(FREE_GIFT_LABEL);
+    expect(w.find('button[type="submit"]').text()).toContain(FREE_GIFT_LABEL);
+    await w.find('form').trigger('submit');
+    await tick();
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ amount: 0, free_gift: true });
+  });
+
+  it('never sends the free/gift mark with a positive amount', async () => {
+    const w = await submitRow({ charge: 0, payable_amount: 0, payable_outstanding: 0 });
+    await w.find('[data-testid="pe-free-gift"]').setValue(true);
+    await w.find('input[type="number"]').setValue(500);
+    await w.find('form').trigger('submit');
+    await tick();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('offers no free/gift mark on a course that charges', async () => {
+    const w = mount(PaymentEntryModal, { props: { show: false, row } });
+    await w.setProps({ show: true }); await nextTick();
+    expect(w.find('[data-testid="pe-free-gift"]').exists()).toBe(false);
   });
 
   // ── Blocker 5 precondition: a failed payment API call must never emit

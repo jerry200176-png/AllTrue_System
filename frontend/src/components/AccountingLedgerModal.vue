@@ -36,7 +36,7 @@
           <div v-show="!allocating">
           <!-- PRD v2 D8: owed-by-today first, same rule as the student list. -->
           <div class="ledger-owed" data-testid="ledger-owed">
-            <p class="ledger-owed__label">到今天未繳</p>
+            <p class="ledger-owed__label">{{ owedLabel }}</p>
             <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
             <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
             <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}。下面「需先處理」會寫是哪一筆，可以撤銷多出來的那一筆。</p>
@@ -72,13 +72,16 @@
 
           <section v-if="contractCourses.length" class="ledger-section">
             <h4>合約（每一堂課與付款）</h4>
+            <p v-if="contractCourses.some(hasMultiplePackageBills)" class="ledger-empty" data-testid="ledger-package-batch-note">共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p>
             <div class="ledger-contracts">
               <ContractCard
                 v-for="c in contractCourses"
                 :key="c.id"
                 :course="c"
                 :outstanding="owedFor(c.id)"
-                :pending-report="pendingReportFor(c.id)"
+                :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
+                :shared-follower="!packageLead(c)"
+                :shared-lead-subject="packageLead(c) ? '' : (packageLeadOf(c)?.subject || '')"
                 :last-payment="payLineFor(c)"
                 :amounts="amountsFor(c.id)"
                 :month-lines="monthLinesFor(c.id)"
@@ -93,6 +96,7 @@
           <section class="ledger-section">
             <h4>帳單</h4>
             <div v-if="ledgerBothEmpty && payload.scope?.no_payment_obligation" class="ledger-empty">輔導課不需繳費，所以這裡不會有帳單或收據。</div>
+            <div v-else-if="ledgerBothEmpty && payload.invoices?.length" class="ledger-empty" data-testid="ledger-target-empty">這門課目前沒有帳單和收款（舊制已繳，或尚未開立）。下面列的是此學生「其他課程」的帳單。</div>
             <div v-else-if="ledgerBothEmpty" class="ledger-empty">目前只有繳費單（依課程估算），還沒有帳單和收款。登記收款並確認入帳後，才會出現在這裡。</div>
             <div v-if="!payload.invoices?.length && !ledgerBothEmpty" class="ledger-empty">此學生尚無帳單。</div>
             <div v-else-if="payload.invoices?.length" class="ledger-table-wrap">
@@ -128,6 +132,7 @@
                       </td>
                       <td class="ledger-cell-title">
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
+                        <small v-if="isOtherCourseInvoice(inv)" class="ledger-other-course" data-testid="ledger-other-course">其他課程</small>
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
@@ -137,6 +142,7 @@
                       <td class="num" data-label="未結清" :class="{ due: (inv.outstanding_amount || 0) > 0 }">{{ formatCurrency(inv.outstanding_amount) }}</td>
                       <td data-label="狀態">
                         <span :class="['ledger-chip', invoiceStatusClass(inv.status)]">{{ invoiceStatusLabel(inv.status) }}</span>
+                        <span v-if="inv.zero_amount_reason === ZERO_REASON_FREE_GIFT" class="ledger-chip chip--muted" :data-testid="`ledger-free-gift-${inv.id}`">{{ FREE_GIFT_LABEL }}</span>
                       </td>
                       <td class="ledger-cell-actions">
                         <div class="ledger-actions">
@@ -188,10 +194,12 @@
                                   <span v-if="p.unapplied_amount">多收 {{ formatCurrency(p.unapplied_amount) }}</span>
                                   <span v-if="p.note">備註：{{ p.note }}</span>
                                 </div>
+                                <BillingNotesPanel subject-type="payment" :subject-id="p.id" />
                               </div>
                             </li>
                           </ol>
                         </div>
+                        <BillingNotesPanel subject-type="invoice" :subject-id="inv.id" />
                       </td>
                     </tr>
                   </template>
@@ -223,6 +231,7 @@
                   <template v-if="r.account_last5 && r.note"> · </template>
                   <template v-if="r.note">備註：{{ r.note }}</template>
                 </small>
+                <BillingNotesPanel subject-type="payment_report" :subject-id="r.report_id" />
                 <LedgerCoverageDates
                   v-if="isReceiptExpanded(r.report_id)"
                   class="ledger-receipt-coverage"
@@ -279,8 +288,9 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
-import { INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
+import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
+import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
@@ -432,7 +442,11 @@ async function loadCoverage(kind, id) {
   if (payload.value === ledgerAtStart) coverage.value = { ...coverage.value, [key]: next };
 }
 
+let ledgerRequestVersion = 0;
 async function loadLedger() {
+  const requestVersion = ++ledgerRequestVersion;
+  loading.value = false;
+  payload.value = null;
   if (!props.show) return;
   const studentClassId = Number(props.studentClassId || 0);
   const reportId = Number(props.reportId || 0);
@@ -444,7 +458,6 @@ async function loadLedger() {
 
   loading.value = true;
   error.value = '';
-  payload.value = null;
   showAllExceptions.value = false;
   coverage.value = {};
   expandedReceiptIds.value = new Set();
@@ -461,19 +474,26 @@ async function loadLedger() {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     });
     const json = await resp.json().catch(() => ({}));
+    if (requestVersion !== ledgerRequestVersion) return;
     if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `載入失敗（${resp.status}）`));
     payload.value = json;
     autoExpandAttention();
     loadDrafts();
   } catch (e) {
+    if (requestVersion !== ledgerRequestVersion) return;
     error.value = humanizeApiErrorMessage(e.message || '載入學生帳務失敗');
   } finally {
-    loading.value = false;
+    if (requestVersion === ledgerRequestVersion) loading.value = false;
   }
 }
 
 watch(() => [props.show, props.studentClassId, props.reportId, props.studentId, props.branchId], loadLedger, { immediate: true });
 
+// 開啟的是單一課程時，列表裡別的課程的帳單要標「其他課程」（#3894）。
+const isOtherCourseInvoice = (inv) => {
+  const scopeId = Number(payload.value?.scope?.student_class_id || 0);
+  return !!scopeId && Number(inv.student_class_id) !== scopeId;
+};
 // Empty-state is judged for the opened course when the API reports one, else student-wide.
 const ledgerBothEmpty = computed(() => {
   const scopeId = Number(payload.value?.scope?.student_class_id || 0);
@@ -521,6 +541,13 @@ const panelTitle = computed(() => (payload.value?.student?.name ? `${payload.val
 const owedSplit = computed(() => splitOwed((payload.value?.invoices || [])
   .filter((inv) => inv.status !== 'void')
   .map((inv) => ({ amount: inv.outstanding_amount, due_date: inv.due_date }))));
+// 開啟單一課程、但未繳來自其他課程時，標題要說清楚是整個學生的金額。
+const owedLabel = computed(() => {
+  const scopeId = Number(payload.value?.scope?.student_class_id || 0);
+  const others = (payload.value?.invoices || []).filter((inv) => inv.status !== 'void' && Number(inv.student_class_id) !== scopeId);
+  const dueNow = splitOwed(others.map((inv) => ({ amount: inv.outstanding_amount, due_date: inv.due_date }))).now > 0; // 只算到今天已到期的，同 owedSplit
+  return scopeId && dueNow ? '此學生到今天未繳（含其他課程）' : '到今天未繳';
+});
 const overpaidTotal = computed(() => Number(payload.value?.summary?.overpaid_total || 0));
 
 const owedFor = (id) => (payload.value?.invoices || [])
@@ -555,12 +582,33 @@ const monthLinesFor = (id) => Object.fromEntries(courseInvoices(id).map((inv) =>
     .sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)))[0];
   return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? String(paid.paid_at).slice(0, 10) : '', paidAmount: Number(inv.calculated_applied_amount || 0) }];
 }).filter(([k]) => k));
+// #3753 (D18): members of one shared CoursePackage are one obligation; one pending report covers them all.
+const packageMemberIds = (id) => {
+  const pkg = (payload.value?.courses || []).find((c) => Number(c.id) === Number(id))?.package_id;
+  return pkg ? (payload.value?.courses || []).filter((c) => c.package_id === pkg).map((c) => Number(c.id)) : [Number(id)];
+};
 const pendingReportFor = (id) => {
-  const r = (payload.value?.receipts || []).find((x) => Number(x.student_class_id) === Number(id) && x.status === 'pending');
+  const ids = packageMemberIds(id);
+  const r = (payload.value?.receipts || []).find((x) => ids.includes(Number(x.student_class_id)) && x.status === 'pending');
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
+// One card of a shared package carries its single payment action; the other members point to it. Lead = the member
+// holding a pending report, else the first one that still needs payment (mixed states), else the first member.
+// #3892 review: a legacy package whose bills are already open on several members stays actionable per member (each
+// card records against its own bills) until reconciled; package-wide allocation is a follow-up.
+const packageLeadOf = (c) => {
+  if (!c.package_id) return c;
+  const members = contractCourses.value.filter((x) => x.package_id === c.package_id);
+  const pending = (payload.value?.receipts || []).find((r) => r.status === 'pending' && members.some((m) => Number(m.id) === Number(r.student_class_id)));
+  if (!pending && members.filter((m) => owedFor(m.id) > 0).length > 1) return c;
+  return (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
+    || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];
+};
+const packageLead = (c) => packageLeadOf(c).id === c.id;
+// Multiple existing member bills cannot share one batch: the first report blocks siblings. Keep explicit card actions.
+const hasMultiplePackageBills = (c) => !!c.package_id && contractCourses.value.filter((m) => m.package_id === c.package_id && owedFor(m.id) > 0).length > 1;
 
 // D18: every contract the card would offer 登記收款 for (no pending report, money due or not yet billed),
 // oldest open invoice first; the allocation step fills the oldest and never exceeds what is owed.
@@ -570,7 +618,7 @@ const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
   .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
     || Number(a.id) - Number(b.id))[0];
 const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
-  .filter((c) => c.class_type !== 'tutoring' && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid))
+  .filter((c) => c.class_type !== 'tutoring' && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid))
   .map((c) => {
     const inv = oldestOpenInvoice(c.id);
     return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };
@@ -784,6 +832,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-row--open td{background:var(--ds-canvas-soft)}
 .ledger-row--attention td:nth-child(2) strong{color:var(--ds-ink)}
 .ledger-overpay-hint{display:block;color:var(--ds-danger);font-weight:600}
+.ledger-other-course{display:inline-block;color:var(--ds-ink-mute);font-weight:600}
 .due{color:var(--ds-danger);font-weight:700}
 
 .ledger-chip{display:inline-flex;border-radius:6px;padding:2px 7px;background:var(--ds-canvas-soft);color:var(--ds-ink-mute);font-size:12px;font-weight:700}
@@ -841,3 +890,4 @@ const anomalyLabel = (code) => labelMap({
   .ledger-sticky-pay{bottom:-16px;margin:16px -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
 }
 </style>
+

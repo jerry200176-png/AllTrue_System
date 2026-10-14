@@ -35,13 +35,16 @@ last_reviewed: 2026-08-16
 
 `alert_type`：`unpaid` 或 `low_sessions`（若同時符合，以前者優先欄位展示時前端以堂數／未繳狀態區分）。
 
-### 多科共用堂數方案（2026-05-16 補充）
+### 多科共用堂數方案（2026-10-13 accepted contract；future Phase 2 待實作驗證）
+
+本節原 2026-05-16「一律 rate × total_sessions」與「任何核帳成功即整包已繳」規則，由 Founder 2026-10-13 已決 [RFC_SHARED_PACKAGE_COLLECTION](architecture/RFC_SHARED_PACKAGE_COLLECTION.md) §2／§5a／§5c 取代；count package 的金額、部分收款、待核對、停止方案與通知例外以該 RFC 為單一合約來源。單科與月結規則不受此 supersession 影響。本次只同步文件，尚未宣稱 Phase 2 runtime 已實作／部署。
 
 若堂數制課程屬於 `CoursePackage.billing_mode = count`：
 - 主任提醒必須以 **方案層** 顯示一筆合併提醒，不可拆成單一科目提醒。
-- `charge/outstanding` 以 `CoursePackage.total_sessions × CoursePackage.rate` 計算；`remaining_sessions` 以 `CoursePackage.remaining_sessions` 顯示。
-- `id` 使用方案內第一筆 `StudentClass.ID` 作為既有核帳 API 的錨點，並同時回傳 `package_id` 讓前端可辨識這是方案合繳。
-- 主任核帳成功後，必須同步 `CoursePackage.paid/paid_at` 與所有方案成員 `StudentClass.Paid/PayDate`，避免同一個共用方案繼續以其他科目出現在未繳提醒。
+- `charge/outstanding` 依 RFC R4 已決 hybrid X 與 Payment-row aggregate remaining；不可一律收方案估算全額。無法判定者依 R8 待核對、金額 null；`remaining_sessions` 仍以 `CoursePackage.remaining_sessions` 顯示，已結清低堂數續課提示保留。
+- 回傳 `package_id` 辨識一列整包；既有 member `id` 不得作為金額權威或自動選帳單的依據。多帳單收款依 RFC C1 每次明確選一張 invoice，所選可收餘額與整包總餘額分開。
+- 正向收款／合法 reversal 依整包 ledger 結清結果同步 `CoursePackage.paid/paid_at` 與所有 member `Paid/PayDate`；部分實收不標整包已繳。所有 producer（含 report confirm、direct invoice payment、各 void 路徑）依 RFC §3a/§3b 共用 settlement 與 campus authorization，不是「核帳一次成功就標已繳」。
+- count member 自動對外提醒／LINE 全部排除，staff in-app 例外依 R2-5；停止無帳單 pending 回報由 C2 獨立審核入口處理，不把它當作新待收。
 
 ### 續課抑制（2026-04-16 新增）
 
@@ -93,7 +96,7 @@ last_reviewed: 2026-08-16
 ## 回歸時請測
 
 - 堂數制：已繳但剩 1～2 堂（或 0 堂）仍應出現。
-- 堂數制多科共用方案：只出現一筆 `package_id` 合繳提醒，金額使用方案總堂數 × 方案費率，核帳後方案與所有成員都標記已繳。
+- 堂數制多科共用方案：依上述 RFC 驗收一列／hybrid X／真實部分差額、明確單張 invoice、全 producer aggregate settlement、合法 reversal／campus fail-closed 與續課／通知例外；部分確認不標整包已繳，無法判定金額不催收。
 - 加購後：舊約自動 `Stop=1`，`alerts/tuition` 僅列新約。
 - 結案 UI：已繳 + 0 堂 → 結案後不再列。
 - 月結：未繳、繳費日前第 4 天出現、第 5 天不出現；未繳且過繳費日仍出現。

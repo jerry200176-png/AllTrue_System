@@ -77,6 +77,14 @@ class MonthlyDraftsTest extends TestCase
         $this->drafts()->assertOk()->assertJsonCount(0, 'data');
     }
 
+    /** #3991 review: a free (marked) course renews into an unpriced term, which opens no bill, so it is not offered as 確認開立. */
+    public function test_unpriced_renewal_is_blocked_not_offered_for_confirm(): void
+    {
+        $course = $this->course(['Rate' => 0]);
+        Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-01', 'Note' => '', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid', 'billing_period' => '2026-08', 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+        $this->drafts()->assertOk()->assertJsonPath('data.0.status', 'blocked')->assertJsonPath('data.0.blocker_code', 'renewal_unpriced');
+    }
+
     public function test_attended_session_after_end_date_is_blocked(): void
     {
         $course = $this->course();

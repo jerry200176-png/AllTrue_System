@@ -401,7 +401,7 @@ export default {
           <section v-if="paymentNoticeAvailable" class="cmw__card">
             <h3>收款</h3>
             <div class="cmw__row">
-              <button type="button" class="small ghost" @click="act('payment-slip')">產生繳費通知</button>
+              <button type="button" class="small ghost" @click="act('payment-slip')">產生繳費單</button>
             </div>
           </section>
         </div>

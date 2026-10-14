@@ -36,9 +36,24 @@ describe('AccountingLedgerModal empty state, 後5碼 and 備註', () => {
   it('judges emptiness for the scoped course, not the whole student', async () => {
     const other = { id: 9, student_class_id: 2, total_amount: 100, status: 'unpaid', payments: [] };
     const w = await mountWith({ summary: {}, scope: { student_class_id: 1 }, invoices: [other], receipts: [], anomalies: [] });
-    expect(w.text()).toContain('目前只有繳費單');
+    // #3894: no contradictory "no invoices" copy while another course's invoice is listed.
+    expect(w.text()).not.toContain('目前只有繳費單');
+    expect(w.get('[data-testid="ledger-target-empty"]').text()).toContain('這門課目前沒有帳單和收款');
+    expect(w.get('[data-testid="ledger-other-course"]').text()).toBe('其他課程');
     const w2 = await mountWith({ summary: {}, scope: { student_class_id: 2 }, invoices: [other], receipts: [], anomalies: [] });
     expect(w2.text()).not.toContain('目前只有繳費單');
+    expect(w2.find('[data-testid="ledger-target-empty"]').exists()).toBe(false);
+    expect(w2.find('[data-testid="ledger-other-course"]').exists()).toBe(false);
+  });
+
+  it('#3894 owed header: legacy-only course is not red; other-course debt is labelled as the whole student', async () => {
+    const legacyOnly = await mountWith({ summary: {}, scope: { student_class_id: 1 }, courses: [{ id: 1, paid: true }], invoices: [], receipts: [], anomalies: [] });
+    expect(legacyOnly.get('[data-testid="ledger-owed-now"]').classes()).not.toContain('due');
+    const other = { id: 9, student_class_id: 2, total_amount: 100, outstanding_amount: 100, due_date: '2020-01-01', status: 'unpaid', payments: [] };
+    const w = await mountWith({ summary: {}, scope: { student_class_id: 1 }, courses: [{ id: 1, paid: true }], invoices: [other], receipts: [], anomalies: [] });
+    expect(w.get('.ledger-owed__label').text()).toBe('此學生到今天未繳（含其他課程）');
+    const later = await mountWith({ summary: {}, scope: { student_class_id: 1 }, courses: [{ id: 1, paid: true }], invoices: [{ ...other, due_date: '2999-01-01' }], receipts: [], anomalies: [] });
+    expect(later.get('.ledger-owed__label').text()).toBe('到今天未繳'); // future-dated other-course balance is not today's debt
   });
 
   it('shows 已退回 without a receipt number', async () => {

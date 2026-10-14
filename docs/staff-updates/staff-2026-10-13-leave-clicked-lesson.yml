@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-13-leave-clicked-lesson
+    published_at: "2026-10-13"
+    audiences:
+      - director
+    importance: digest
+    title: 同一天兩堂課，請假只動點的那一堂
+    summary: 同一門課同一天有兩堂時，請假和取消請假只作用在你點的那一堂。
+    items:
+      - category: fixed
+        text: 同一天有兩堂的課，請假、補請假、點名請假和取消請假不再一律改到第一堂。
+    source_refs:
+      - "changelog:2026-10-13:leave-targets-clicked-lesson"

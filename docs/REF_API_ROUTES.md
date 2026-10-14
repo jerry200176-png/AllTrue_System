@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 496 api/* routes · generated 2026-10-07
+> Source: `php artisan route:list --json` · 504 api/* routes · generated 2026-10-13
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -21,7 +21,7 @@
 |--------|-----|--------|------|
 | POST | `api/internal/opcache-reset` | `Closure` | public |
 
-## /api/v1/accounting (7)
+## /api/v1/accounting (9)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -29,6 +29,8 @@
 | POST | `api/v1/accounting/courses/{id}/waive` | `AccountingController@waiveCourse` | role+campus |
 | GET | `api/v1/accounting/ledger` | `AccountingController@ledger` | role+campus |
 | GET | `api/v1/accounting/monthly-drafts` | `AccountingController@monthlyDrafts` | role+campus |
+| GET | `api/v1/accounting/notes` | `BillingNoteController@index` | role+campus |
+| POST | `api/v1/accounting/notes` | `BillingNoteController@store` | role+campus |
 | GET | `api/v1/accounting/payments` | `AccountingController@payments` | role+campus |
 | GET | `api/v1/accounting/payments/export` | `AccountingController@paymentsExport` | role+campus |
 | GET | `api/v1/accounting/settled-courses` | `AccountingController@settledCourses` | role+campus |
@@ -41,7 +43,7 @@
 | GET | `api/v1/action-inbox/cases/{id}` | `ActionInboxController@showCase` | role+campus |
 | GET | `api/v1/action-inbox/count` | `ActionInboxController@count` | role+campus |
 
-## /api/v1/admin (21)
+## /api/v1/admin (24)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -66,6 +68,9 @@
 | GET | `api/v1/admin/teachers/duplicates` | `TeacherDuplicateController@index` | role |
 | POST | `api/v1/admin/teachers/merge` | `TeacherDuplicateController@merge` | role |
 | POST | `api/v1/admin/teachers/merge-preview` | `TeacherDuplicateController@preview` | role |
+| GET | `api/v1/admin/triage-tokens` | `TriageTokenController@index` | role |
+| POST | `api/v1/admin/triage-tokens` | `TriageTokenController@store` | role |
+| DELETE | `api/v1/admin/triage-tokens/{id}` | `TriageTokenController@destroy` | role |
 
 ## /api/v1/admission-inquiries (10)
 
@@ -882,6 +887,14 @@
 |--------|-----|--------|------|
 | GET | `api/v1/temp-rfid` | `TempRfidController@show` | role+campus |
 | POST | `api/v1/temp-rfid/consume` | `TempRfidController@consume` | role+campus |
+
+## /api/v1/triage (3)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/triage/bug-reports` | `TriageBugReportController@index` | auth |
+| GET | `api/v1/triage/bug-reports/{id}` | `TriageBugReportController@show` | auth |
+| GET | `api/v1/triage/bug-reports/{id}/attachments/{attachmentId}` | `TriageBugReportController@attachment` | auth |
 
 ## /api/v1/truefit (12)
 
