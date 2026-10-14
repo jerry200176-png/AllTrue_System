@@ -3,6 +3,18 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+## 2026-10-14（三）（全面搬到 cloud；對話中 Q1–Q24 逐條確認，最後「對」；本 repo PR #4078）
+
+方向：所有開發移到 Claude Desktop cloud session，Founder 電腦關機也要能繼續運作。**不在舊的本機機制上加 cloud 例外，而是淘汰本機機制**（#4071、portfolio-ops#135、sunrise-cafe#440 因此關閉）。本節只記決定；各項實作 PR 依 2026-10-14（二）第 5 條（#4069）治理變更規則提供 diff 由 Founder 批准後合併。
+
+1. **工作地點**：cloud session。規則放在各 repo 的 `AGENTS.md`／`CLAUDE.md`，共用規則放 portfolio-ops；本機記憶中仍有效的規則搬進 repo 文件，過時的刪除。
+2. **密碼**：cloud 環境變數只放低風險 token（GitHub、測試用 API、Cloudflare Browser Run）。GitHub token 一律 fine-grained、只列出需要的 repo、設到期日、最小權限；不得給 admin、secrets、organization 權限。正式環境密碼只放 GitHub Environment secrets，Agent 不持有。
+3. **全自動（目標狀態）**：CI 綠＋完整 review gate（2026-10-12 ④：無 P0／P1、本 PR 引入的回歸不論嚴重度一律修正、P2 修正輪、每個 thread 回覆並 resolve）→ 自動合併 → 自動部署 → 自動 health check → 失敗自動 rollback。只新增（additive）的 migration 自動執行（expand/contract），但須等實作 PR 合併、且 `governance/PORTFOLIO_AGENT_CONTRACT.md`（本 repo 與 portfolio-ops）移除 migration 停止點後才生效；在那之前所有 migration 照舊由 Founder 批准。
+4. **仍需 Founder 在 GitHub 按 Approve**：會刪除或改變既有結構的 migration（CI 自動偵測 `DROP`、欄位型別變更等並改走 environment 審核）、修改真實正式資料、新增或更換正式密碼、其他不可回復的操作。
+5. **通知與卡關**：通知用 GitHub 手機 app。Agent 需要決定時開 issue、標 `needs-founder`，寫「選項＋推薦」，然後先做其他工作，不停在對話等待。
+6. **淘汰**：`agent-start` 及本機 worktree／preflight 路徑檢查、Agent Session Provenance、`local-heavy-gate`、Exo、**Founder 工作站**的舊 crontab。Pi 上驅動 Laravel scheduler 與 `pop:execute-approved` 的 `schedule:run` cron **保留**。每小時清 PII（`pii-log-purge.yml`）與既有的 `bug-auto-intake.yml` 都在 GitHub Actions，保留；不另加 Claude routine 收 bug。
+7. **順序與資料**：AllTrue 先跑順，再改 portfolio-ops、sunrise-cafe；其他專案之後再搬。「舊資料不丟」：完整備份驗證完成前不刪本機工具，文件可先改。
+8. 本節第 3、4 條是目標狀態；在對應實作 PR 合併前，現行 `deploy.yml`／release train 的審核仍照舊生效。
 ## 2026-10-14（二）（Cloud-only 作業；對話中逐條確認；本 repo PR #4069）
 
 1. **T0–T2**：Agent 依既有政策（`RISK_BASED_MERGE_POLICY.md`、本檔 2026-10-12 各條）自主開發、審查、合併與交付，不逐項請示。範圍不明或超出本檔授權時仍須提出。

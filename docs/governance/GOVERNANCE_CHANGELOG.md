@@ -1,5 +1,10 @@
 # Governance changelog
 
+## 2026-10-14 — Full move to cloud sessions; retire local agent machinery
+
+- Founder decision (Jerry, Q1–Q24 in session): all work moves to Claude cloud sessions. Local mechanisms (agent-start worktrees, preflight path allowlist, Agent Session Provenance, local-heavy-gate, Exo, local crontab) are retired rather than given cloud exceptions.
+- Target: auto merge → deploy → health check → auto rollback; additive migrations automatic. Destructive migrations, prod data changes, prod credentials and irreversible operations keep a GitHub Environment approval. Stuck decisions go to a `needs-founder` issue.
+- Recorded only; current `deploy.yml` / release-train gates stay in force until each implementation PR merges with Founder approval of its diff.
 ## 2026-10-14 — Cloud-only autonomy and pre-approved in-app write-backs
 
 - Founder decision (Jerry, in session): T0–T2 work proceeds autonomously under existing policy; scope doubts are still raised.
