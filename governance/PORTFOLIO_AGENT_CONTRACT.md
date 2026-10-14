@@ -24,7 +24,7 @@ minimum that travels with each governed repository.
   prepared as an evidence package. Stop for Founder approval before production
   activation, production data mutation or repair, a destructive
   migration/schema cutover (additive-only migrations are T2, Founder
-  2026-10-14),
+  2026-10-14, once the deploy path can roll code back after them),
   billing or entitlement semantics, identity/authentication/authorization,
   destructive or irreversible actions, backup restore, security-sensitive
   credential changes, or major product/brand direction.

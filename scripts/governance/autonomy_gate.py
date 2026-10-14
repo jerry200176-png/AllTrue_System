@@ -415,6 +415,13 @@ def _migration_body_is_additive(source: str) -> bool:
     return bool(_MIGRATION_SKELETON_RE.fullmatch(code))
 
 
+# Merge classification treats additive migrations as T2 now. Activation stays
+# Founder-gated until deploy.yml can roll code back after an additive
+# migration (today any migration in range holds with exit 12/13); the PR that
+# adds that rollback flips this flag.
+ADDITIVE_MIGRATION_AUTO_ACTIVATION = False
+
+
 def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
     """Return newly added migration files that only add structure.
 
@@ -794,7 +801,7 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     """
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
-    additive = additive_migration_paths(normalized, patch)
+    additive = additive_migration_paths(normalized, patch) if ADDITIVE_MIGRATION_AUTO_ACTIVATION else set()
     runtime_paths = [path for path in normalized if is_deployable_path(path)]
     sensitive_paths = [
         path for path in normalized

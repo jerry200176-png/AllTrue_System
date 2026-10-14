@@ -4,6 +4,9 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from unittest import mock  # noqa: E402
+
+import scripts.governance.autonomy_gate as gate  # noqa: E402
 from scripts.governance.autonomy_gate import (  # noqa: E402
     additive_migration_paths, classify_activation_scope, classify_scope,
 )
@@ -39,7 +42,14 @@ class AdditiveMigrationGate(unittest.TestCase):
         for body in (ADD, CREATE):
             patch = new_file(MIG, body)
             self.assertEqual(additive_migration_paths([MIG], patch), {MIG})
-            self.assertEqual(self.tiers(patch), (2, 2))
+            # Merge is T2 now; activation stays Founder-gated until deploy.yml can roll code
+            # back after an additive migration (the follow-up PR flips the flag).
+            self.assertEqual(self.tiers(patch), (2, 3))
+            with mock.patch.object(gate, "ADDITIVE_MIGRATION_AUTO_ACTIVATION", True):
+                self.assertEqual(self.tiers(patch), (2, 2))
+
+    def test_activation_flag_is_off_until_deploy_rollback_lands(self):
+        self.assertIs(gate.ADDITIVE_MIGRATION_AUTO_ACTIVATION, False)
 
     def test_destructive_or_data_up_stays_t3(self):
         for up in (
