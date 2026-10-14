@@ -70,11 +70,19 @@ does not apply to it; the dumps above stay the fallback when no token is set.
 
 ```bash
 H="Authorization: Bearer $ALLTRUE_TRIAGE_TOKEN"; B=https://daan.lifenet.com.tw/api/v1/triage
-curl -sf -H "$H" "$B/bug-reports?status=new,triaged,in_progress&since_id=0&limit=100"  # next page: since_id=<next_since_id>
+# Full live snapshot = open AND resolved (reporter-confirmation queue). Page each until data is empty.
+for S in new,triaged,in_progress resolved; do N=0; while :; do
+  P=$(curl -sf -H "$H" "$B/bug-reports?status=$S&since_id=$N&limit=100") || { echo "INCOMPLETE: fetch failed" >&2; break 2; }
+  [ "$(echo "$P" | jq '.data|length')" = 0 ] && break
+  echo "$P" | jq -c '.data[]'; N=$(echo "$P" | jq '.next_since_id'); done; done > /tmp/live-queue.jsonl
+jq -r .status /tmp/live-queue.jsonl | sort | uniq -c   # per-status counts (resolved may legitimately be 0)
 curl -sf -H "$H" "$B/bug-reports/<id>"          # description, comments (incl. internal notes), status logs, attachments[].download_path
 curl -sf -H "$H" -o /tmp/a.png "$B/bug-reports/<id>/attachments/<attachment_id>"
 ```
 
+- **Completeness.** Only a run that pages both status groups to an empty page is a
+  full snapshot. A single page, or the open statuses alone, is partial: say so, or
+  fall back to the queue dump.
 - **Read-only.** Any other route answers 403 to this token, and there is no write
   endpoint. Write-back (`new`→`triaged`, public replies, Phase C) still goes
   through the dispatch workflows in the table above.

@@ -29,44 +29,53 @@
       <AtButton shape="rect" variant="primary" type="submit" :disabled="creating || !name.trim()" :loading="creating">建立金鑰</AtButton>
     </form>
 
-    <table v-if="tokens.length > 0" class="token-table">
-      <thead>
-        <tr><th>名稱</th><th>建立時間</th><th>最後使用</th><th>到期日</th><th>狀態</th><th><span class="sr-only">操作</span></th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="item in tokens" :key="item.id" data-testid="triage-token-row">
-          <td>{{ item.name }}</td>
-          <td>{{ formatDateTime(item.created_at) }}</td>
-          <td>{{ item.last_used_at ? formatDateTime(item.last_used_at) : '尚未使用' }}</td>
-          <td>{{ formatDateTime(item.expires_at) }}</td>
-          <td>{{ item.expired ? '已過期' : '有效' }}</td>
-          <td class="actions-cell">
-            <template v-if="confirmingId === item.id">
-              <span class="confirm-text">撤銷後 AI 立刻無法讀取，確定？</span>
-              <AtButton shape="rect" size="sm" variant="danger" :disabled="revokingId === item.id" data-testid="triage-token-confirm" @click="revoke(item.id)">確定撤銷</AtButton>
-              <AtButton shape="rect" size="sm" variant="ghost" @click="confirmingId = null">取消</AtButton>
-            </template>
-            <AtButton v-else shape="rect" size="sm" variant="ghost" data-testid="triage-token-revoke" @click="confirmingId = item.id">撤銷</AtButton>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <div v-else-if="!loading" class="empty-text">目前沒有任何金鑰。</div>
+    <div v-if="tokens.length > 0" class="token-table-wrap" data-testid="triage-token-table-wrap">
+      <table class="token-table">
+        <thead>
+          <tr><th>名稱</th><th>建立時間</th><th>最後使用</th><th>到期日</th><th>狀態</th><th><span class="sr-only">操作</span></th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in tokens" :key="item.id" data-testid="triage-token-row">
+            <td>{{ item.name }}</td>
+            <td>{{ formatDateTime(item.created_at) }}</td>
+            <td>{{ item.last_used_at ? formatDateTime(item.last_used_at) : '尚未使用' }}</td>
+            <td>{{ formatDateTime(item.expires_at) }}</td>
+            <td>{{ item.expired ? '已過期' : '有效' }}</td>
+            <td class="actions-cell">
+              <template v-if="confirmingId === item.id">
+                <span class="confirm-text">撤銷後 AI 立刻無法讀取，確定？</span>
+                <AtButton shape="rect" size="sm" variant="danger" :disabled="revokingId === item.id" data-testid="triage-token-confirm" @click="revoke(item.id)">確定撤銷</AtButton>
+                <AtButton shape="rect" size="sm" variant="ghost" @click="confirmingId = null">取消</AtButton>
+              </template>
+              <AtButton v-else shape="rect" size="sm" variant="ghost" data-testid="triage-token-revoke" @click="confirmingId = item.id">撤銷</AtButton>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div v-else-if="listLoaded && !loading" class="empty-text" data-testid="triage-token-empty">目前沒有任何金鑰。</div>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import AtButton from './design-system/AtButton.vue';
 import AtInlineAlert from './design-system/AtInlineAlert.vue';
 import { createTriageToken, listTriageTokens, revokeTriageToken } from '../lib/triageTokenService';
 
-const props = defineProps({ token: { type: String, default: '' } });
+// The one-time secret and the pending flag live in the parent (v-model:secret / v-model:pending)
+// so a tab switch cannot drop the secret; the parent also blocks tab switches while pending.
+const props = defineProps({
+  token: { type: String, default: '' },
+  secret: { type: String, default: '' },
+});
+const emit = defineEmits(['update:secret', 'update:pending']);
 
 const tokens = ref([]);
 const ttlDays = ref(90);
 const name = ref('');
-const plaintext = ref('');
+const plaintext = computed(() => props.secret);
+const listLoaded = ref(false);
 const copied = ref(false);
 const loading = ref(false);
 const creating = ref(false);
@@ -86,8 +95,11 @@ async function load() {
   try {
     const res = await listTriageTokens(props.token);
     tokens.value = Array.isArray(res?.data) ? res.data : [];
+    listLoaded.value = true;
     if (res?.ttl_days) ttlDays.value = res.ttl_days;
   } catch (e) {
+    listLoaded.value = false;
+    tokens.value = [];
     errorMsg.value = e.message || '讀取金鑰失敗';
   } finally {
     loading.value = false;
@@ -97,10 +109,11 @@ async function load() {
 async function create() {
   if (!name.value.trim()) return;
   creating.value = true;
+  emit('update:pending', true);
   errorMsg.value = '';
   try {
     const res = await createTriageToken(props.token, name.value.trim());
-    plaintext.value = res?.token || '';
+    emit('update:secret', res?.token || '');
     copied.value = false;
     name.value = '';
     await load();
@@ -108,6 +121,7 @@ async function create() {
     errorMsg.value = e.message || '建立金鑰失敗';
   } finally {
     creating.value = false;
+    emit('update:pending', false);
   }
 }
 
@@ -121,7 +135,7 @@ async function copy() {
 }
 
 function dismiss() {
-  plaintext.value = '';
+  emit('update:secret', '');
   copied.value = false;
 }
 
@@ -140,7 +154,6 @@ async function revoke(id) {
 }
 
 onMounted(load);
-onBeforeUnmount(dismiss);
 </script>
 
 <style scoped>
@@ -172,8 +185,13 @@ onBeforeUnmount(dismiss);
 .create-row input {
   flex: 1 1 200px;
 }
+.token-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
 .token-table {
   width: 100%;
+  min-width: 640px;
   border-collapse: collapse;
 }
 .token-table th,

@@ -26,10 +26,22 @@ function stubApi() {
 
 afterEach(() => vi.unstubAllGlobals());
 
+// Mirrors ProfileCenterPage: the parent owns v-model:secret / v-model:pending.
+function mountPanel() {
+  const w = mount(TriageTokenPanel, {
+    props: {
+      token: 'session',
+      secret: '',
+      'onUpdate:secret': (v) => w.setProps({ secret: v }),
+    },
+  });
+  return w;
+}
+
 describe('TriageTokenPanel', () => {
   it('shows the new token once, then only metadata stays on screen', async () => {
     const calls = stubApi();
-    const w = mount(TriageTokenPanel, { props: { token: 'session' } });
+    const w = mountPanel();
     await flushPromises();
     expect(w.text()).toContain('目前沒有任何金鑰');
 
@@ -52,7 +64,7 @@ describe('TriageTokenPanel', () => {
     const calls = stubApi();
     const writeText = vi.fn(async () => {});
     vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const w = mount(TriageTokenPanel, { props: { token: 'session' } });
+    const w = mountPanel();
     await flushPromises();
     await w.get('[data-testid="triage-token-name"]').setValue('x');
     await w.get('form').trigger('submit');
@@ -69,5 +81,35 @@ describe('TriageTokenPanel', () => {
     await flushPromises();
     expect(calls).toContain('DELETE /api/v1/admin/triage-tokens/7');
     expect(w.findAll('[data-testid="triage-token-row"]')).toHaveLength(0);
+  });
+
+  it('emits pending around the POST and hands the secret to the parent', async () => {
+    stubApi();
+    const w = mountPanel();
+    await flushPromises();
+    await w.get('[data-testid="triage-token-name"]').setValue('x');
+    await w.get('form').trigger('submit');
+    expect(w.emitted('update:pending')[0]).toEqual([true]);
+    await flushPromises();
+    expect(w.emitted('update:pending').at(-1)).toEqual([false]);
+    expect(w.emitted('update:secret').at(-1)).toEqual(['7|alltrue_triage_SECRET']);
+  });
+
+  it('shows the error without the empty state when listing fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, json: async () => ({ message: 'boom' }) })));
+    const w = mountPanel();
+    await flushPromises();
+    expect(w.text()).toContain('boom');
+    expect(w.find('[data-testid="triage-token-empty"]').exists()).toBe(false);
+  });
+
+  it('wraps the table in a horizontally scrollable container', async () => {
+    stubApi();
+    const w = mountPanel();
+    await flushPromises();
+    await w.get('[data-testid="triage-token-name"]').setValue('x');
+    await w.get('form').trigger('submit');
+    await flushPromises();
+    expect(w.get('[data-testid="triage-token-table-wrap"]').find('table').exists()).toBe(true);
   });
 });

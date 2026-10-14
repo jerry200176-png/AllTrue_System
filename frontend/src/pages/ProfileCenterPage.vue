@@ -289,7 +289,7 @@
           <div v-else class="empty-text">目前沒有可用的登入裝置資訊。</div>
         </div>
 
-        <TriageTokenPanel v-if="isSuperAdmin" :token="token" />
+        <TriageTokenPanel v-if="isSuperAdmin" v-model:secret="triageSecret" v-model:pending="triagePending" :token="token" />
       </section>
 
       <section v-if="activeTab === 'notifications'" id="profile-panel-notifications" class="card" data-guide="profile-active-panel" role="tabpanel" aria-labelledby="profile-tab-notifications" tabindex="0">
@@ -406,6 +406,9 @@ const activeTab = ref(props.forcePasswordChange ? 'security' : props.initialTab 
 const forcePasswordChange = computed(() => props.forcePasswordChange);
 const isTeacher = ref(false);
 const isSuperAdmin = ref(false);
+// Owned here so the one-time triage token survives a tab switch (TriageTokenPanel unmounts with the tab).
+const triageSecret = ref('');
+const triagePending = ref(false);
 const teacherUiSfxEnabled = ref(false);
 const teacherStreakDisplayEnabled = ref(false);
 const hasEngagementRankOption = ref(false);
@@ -486,6 +489,7 @@ function defaultPrefs() {
 }
 
 function setActiveTab(tab) {
+  if (triagePending.value && tab !== 'security') return;
   if (props.forcePasswordChange && tab !== 'security') {
     activeTab.value = 'security';
     return;
