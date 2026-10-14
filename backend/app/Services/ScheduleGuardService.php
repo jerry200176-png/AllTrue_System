@@ -1248,7 +1248,8 @@ class ScheduleGuardService
             $occupant = $sid > 0
                 ? $sid . '|' . $studentLabel
                 : 'anon:' . $source . ':' . (string) ($row['source_id'] ?? '') . '|' . $studentLabel;
-            $variant = $courseLabel . '|' . $start . '|' . $end;
+            // The course id keeps two duplicate contracts apart; a contract and its own sessions share it.
+            $variant = (string) ($row['course_id'] ?? '') . '|' . $courseLabel . '|' . $start . '|' . $end;
             if (!isset($groups[$occupant])) {
                 $groups[$occupant] = ['student' => $studentLabel, 'variants' => []];
             }

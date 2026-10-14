@@ -117,6 +117,16 @@ class ScheduleGuardSummaryTest extends TestCase
         );
     }
 
+    public function test_duplicate_contracts_with_identical_labels_both_show(): void
+    {
+        $first = $this->detail('student_class');
+        $first['course_id'] = 101;
+        $duplicate = $first;
+        $duplicate['course_id'] = 102;
+
+        self::assertSame(2, substr_count($this->invoke('buildOverlapSummary', [$first, $duplicate]), '固定課程'));
+    }
+
     public function test_rows_without_a_student_stay_distinct_per_source(): void
     {
         $rows = [];
