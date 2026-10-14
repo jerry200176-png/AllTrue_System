@@ -281,13 +281,13 @@ _BLUEPRINT_METHODS = (
     "softdeletestz|json|jsonb|enum|set|uuid|ulid|year|binary|ipaddress|macaddress|remembertoken|"
     "nullable|default|after|first|comment|unsigned|usecurrent|usecurrentonupdate|index"
 )
-_LITERAL_ARGS = r"(?:S|-?\d+(?:\.\d+)?|true|false|null|\[|\]|,|\s)*"
+_LITERAL_ARGS = r"(?:S\d+|-?\d+(?:\.\d+)?|true|false|null|\[|\]|,|\s)*"
 _COLUMN_CHAIN = (
     rf"\$\w+\s*->\s*(?:{_BLUEPRINT_METHODS})\s*\({_LITERAL_ARGS}\)"
     rf"(?:\s*->\s*(?:{_BLUEPRINT_METHODS})\s*\({_LITERAL_ARGS}\))*"
 )
 _SCHEMA_BLOCK_RE = re.compile(
-    r"Schema\s*::\s*(?P<kind>create|table)\s*\(\s*S\s*,\s*(?:static\s+)?(?:"
+    r"Schema\s*::\s*(?P<kind>create|table)\s*\(\s*S(?P<table>\d+)\s*,\s*(?:static\s+)?(?:"
     r"function\s*\(\s*Blueprint\s+\$\w+\s*\)\s*(?::\s*void\s*)?\{(?P<body>[^{}]*)\}"
     r"|fn\s*\(\s*Blueprint\s+\$\w+\s*\)\s*=>(?P<arrow>[^;{}]*)"
     r")\s*\)\s*;",
@@ -295,8 +295,10 @@ _SCHEMA_BLOCK_RE = re.compile(
 )
 _CHAIN_RE = re.compile(rf"\s*{_COLUMN_CHAIN}\s*", re.IGNORECASE)
 _METHOD_CALL_RE = re.compile(r"->\s*(\w+)\s*\(([^()]*)\)")
-# On an existing table only nullable/defaulted columns are expand-safe: the
-# previous release must keep inserting rows after a code rollback.
+# On an existing table only nullable columns without a default are
+# expand-safe: the previous release must keep inserting rows after a code
+# rollback, and a default would silently fill every historical row (the
+# module-migration rule M2 then requires a backfill, i.e. a data write).
 _KEY_METHODS = {"id", "increments", "bigincrements"}
 _INTEGER_HELPERS = {
     f"{prefix}{size}integer" for prefix in ("", "unsigned") for size in ("", "tiny", "small", "medium", "big")
@@ -306,7 +308,7 @@ _NULLABLE_HELPERS = {"timestamps", "timestampstz", "nullabletimestamps", "softde
 
 
 def _table_column_is_expand_safe(calls: list[tuple[str, str]]) -> bool:
-    """A column added to an existing table: no new key, nullable or defaulted."""
+    """A column added to an existing table: no new key, nullable, no default."""
 
     first, first_args = calls[0]
     if first in _KEY_METHODS or re.search(r"\btrue\b", first_args, re.IGNORECASE):
@@ -326,7 +328,7 @@ def _table_column_is_expand_safe(calls: list[tuple[str, str]]) -> bool:
             nullable = value in {"", "true"}
         elif name == "default":
             defaulted = value not in {"", "null"}
-    return nullable or defaulted
+    return nullable and not defaulted
 
 
 def _schema_block_is_additive(kind: str, statements: list[str]) -> bool:
@@ -340,14 +342,11 @@ def _schema_block_is_additive(kind: str, statements: list[str]) -> bool:
 
 
 def _reduce_schema_block(match: re.Match) -> str:
-    if match.group("arrow") is not None:
-        statements = [match.group("arrow")]
-    else:
-        statements = [part for part in match.group("body").split(";") if part.strip()]
+    statements = _block_statements(match)
     return " " if statements and _schema_block_is_additive(match.group("kind").lower(), statements) else match.group(0)
 
 
-_SCHEMA_COND = r"!?\s*Schema\s*::\s*has(?:table|column)\s*\(\s*S\s*(?:,\s*S\s*)?\)"
+_SCHEMA_COND = r"!?\s*Schema\s*::\s*has(?:table|column)\s*\(\s*S\d+\s*(?:,\s*S\d+\s*)?\)"
 _SCHEMA_GUARD_RE = re.compile(
     rf"if\s*\(\s*{_SCHEMA_COND}(?:\s*(?:&&|\|\|)\s*{_SCHEMA_COND})*\s*\)\s*"
     r"(?:\{\s*(?:return\s*;\s*)?\}|return\s*;)",
@@ -362,11 +361,15 @@ _MIGRATION_SKELETON_RE = re.compile(
 _DOWN_HEAD_RE = re.compile(r"public\s+function\s+down\s*\(\s*\)\s*(?::\s*void\s*)?\{", re.IGNORECASE)
 
 
-def _lex_php(source: str) -> str | None:
-    """Replace string literals with S and drop comments; None if unsure."""
+def _lex_php(source: str, literals: list[str] | None = None) -> str | None:
+    """Replace string literals with S<n> and drop comments; None if unsure.
+
+    ``literals`` receives the n-th literal's text (a literal with a backslash
+    gets a value no table or column name can equal).
+    """
 
     out: list[str] = []
-    i, n = 0, len(source)
+    i, n, count = 0, len(source), 0
     while i < n:
         c = source[i]
         if c in "'\"":
@@ -377,7 +380,11 @@ def _lex_php(source: str) -> str | None:
                 j += 2 if source[j] == "\\" else 1
             if j >= n:
                 return None
-            out.append(" S ")
+            if literals is not None:
+                text = source[i + 1:j]
+                literals.append("\0" if "\\" in text else text)
+            out.append(f" S{count} ")
+            count += 1
             i = j + 1
         elif source.startswith("#[", i):
             return None  # PHP 8 attribute, not a comment
@@ -403,13 +410,107 @@ def _lex_php(source: str) -> str | None:
     return "".join(out)
 
 
+_HELPER_DROPS = {
+    "droptimestamps": {"timestamps", "nullabletimestamps"},
+    "droptimestampstz": {"timestampstz"},
+    "dropsoftdeletes": {"softdeletes"},
+    "dropsoftdeletestz": {"softdeletestz"},
+    "dropremembertoken": {"remembertoken"},
+}
+_DROP_TABLE_RE = re.compile(r"Schema\s*::\s*(?:dropIfExists|drop)\s*\(\s*S(\d+)\s*\)\s*;", re.IGNORECASE)
+_DROP_ARGS_RE = re.compile(r"(?:S\d+|\[|\]|,|\s)*")
+
+
+def _block_statements(match: re.Match) -> list[str]:
+    if match.group("arrow") is not None:
+        return [match.group("arrow")]
+    return [part for part in match.group("body").split(";") if part.strip()]
+
+
+def _index_name(table: str, columns: list[str]) -> str:
+    return re.sub(r"[-.]", "_", f"{table}_{'_'.join(columns)}_index".lower())
+
+
+def _up_additions(code: str, literals: list[str]) -> dict[str, dict[str, set]]:
+    """Tables created and, per table, the columns, helpers and indexes up() adds."""
+
+    added: dict[str, dict[str, set]] = {}
+    for match in _SCHEMA_BLOCK_RE.finditer(code):
+        table = literals[int(match.group("table"))]
+        entry = added.setdefault(table, {"created": set(), "columns": set(), "helpers": set(),
+                                         "index_names": set(), "index_columns": set()})
+        if match.group("kind").lower() == "create":
+            entry["created"].add(table)
+        for statement in _block_statements(match):
+            calls = [(name.lower(), args) for name, args in _METHOD_CALL_RE.findall(statement)]
+            if not calls:
+                continue
+            first, args = calls[0]
+            names = [literals[int(i)] for i in re.findall(r"S(\d+)", args)]
+            if first == "index":
+                inside = re.search(r"\[(.*?)\]", args)
+                columns = [literals[int(i)] for i in re.findall(r"S(\d+)", inside.group(1))] if inside else names[:1]
+                rest = [literals[int(i)] for i in re.findall(r"S(\d+)", args[inside.end():] if inside else "")]
+                explicit = rest[:1] if inside else names[1:2]
+                entry["index_columns"].add(frozenset(columns))
+                entry["index_names"].update(explicit or [_index_name(table, columns)])
+            elif first in _NULLABLE_HELPERS:
+                entry["helpers"].add(first)
+            elif names:
+                entry["columns"].add(names[0])
+                for name, chained in calls[1:]:
+                    if name == "index":
+                        explicit = [literals[int(i)] for i in re.findall(r"S(\d+)", chained)]
+                        entry["index_columns"].add(frozenset(names[:1]))
+                        entry["index_names"].update(explicit[:1] or [_index_name(table, names[:1])])
+    return added
+
+
+def _down_is_inverse(down: str, literals: list[str], added: dict[str, dict[str, set]]) -> bool:
+    """down() may only drop what up() added: its tables, columns, indexes and helpers."""
+
+    def drop_table(match: re.Match) -> str:
+        table = literals[int(match.group(1))]
+        return " " if table in added.get(table, {}).get("created", set()) else match.group(0)
+
+    def drop_block(match: re.Match) -> str:
+        entry = added.get(literals[int(match.group("table"))])
+        if match.group("kind").lower() != "table" or entry is None:
+            return match.group(0)
+        for statement in _block_statements(match):
+            call = re.fullmatch(r"\s*\$\w+\s*->\s*(\w+)\s*\(([^()]*)\)\s*", statement)
+            if not call or not _DROP_ARGS_RE.fullmatch(call.group(2)):
+                return match.group(0)
+            name, args = call.group(1).lower(), call.group(2)
+            values = {literals[int(i)] for i in re.findall(r"S(\d+)", args)}
+            if name == "dropcolumn":
+                ok = bool(values) and values <= entry["columns"]
+            elif name == "dropindex":
+                ok = (frozenset(values) in entry["index_columns"]) if "[" in args else (
+                    len(values) == 1 and values <= entry["index_names"])
+            else:
+                ok = not values and bool(_HELPER_DROPS.get(name, set()) & entry["helpers"])
+            if not ok:
+                return match.group(0)
+        return " "
+
+    for _ in range(4):
+        down = _SCHEMA_GUARD_RE.sub(" ", _SCHEMA_BLOCK_RE.sub(drop_block, _DROP_TABLE_RE.sub(drop_table, down)))
+    return not down.strip()
+
+
 def _migration_body_is_additive(source: str) -> bool:
-    code = _lex_php(source)
+    literals: list[str] = []
+    code = _lex_php(source, literals)
     if code is None:
+        return False
+    # A bare identifier such as S3 would shadow a literal token: fail closed.
+    if re.findall(r"\bS(\d+)\b", code) != [str(i) for i in range(len(literals))]:
         return False
     downs = list(_DOWN_HEAD_RE.finditer(code))
     if len(downs) > 1 or len(re.findall(r"\bfunction\s+down\b", code, re.IGNORECASE)) != len(downs):
         return False
+    down = ""
     if downs:
         depth, i = 1, downs[0].end()
         while i < len(code) and depth:
@@ -417,7 +518,10 @@ def _migration_body_is_additive(source: str) -> bool:
             i += 1
         if depth:
             return False
+        down = code[downs[0].end():i - 1]
         code = code[:downs[0].start()] + " DOWN " + code[i:]
+    if not _down_is_inverse(down, literals, _up_additions(code, literals)):
+        return False
     for _ in range(4):  # guards may wrap blocks; a few passes cover real nesting
         code = _SCHEMA_GUARD_RE.sub(" ", _SCHEMA_BLOCK_RE.sub(_reduce_schema_block, code))
     return bool(_MIGRATION_SKELETON_RE.fullmatch(code))

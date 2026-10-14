@@ -19,7 +19,7 @@ def new_file(path, body):
     return f"diff --git a/{path} b/{path}\n@@ -0,0 +1,{len(lines)} @@\n" + "".join(f"+{l}\n" for l in lines)
 
 
-def migration(up, down="Schema::table('t', fn (Blueprint $t) => $t->dropColumn('c'));"):
+def migration(up, down=""):
     return f"""<?php
 use Illuminate\\Database\\Migrations\\Migration;
 return new class extends Migration {{
@@ -123,14 +123,18 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::table('t', fn (Blueprint $t) => $t->string('c')->nullable(false));",
             "Schema::table('t', fn (Blueprint $t) => $t->string('c')->default(null));",
             "Schema::table('t', fn (Blueprint $t) => $t->string('c')->nullable()->nullable(false));",
+            # A default fills every historical row (module-migration M2 needs a backfill).
+            "Schema::table('t', fn (Blueprint $t) => $t->string('s')->default('pending_review'));",
+            "Schema::table('t', fn (Blueprint $t) => $t->boolean('b')->nullable()->default(false));",
+            "Schema::table('t', fn (Blueprint $t) => $t->integer('n')->default(0));",
         )
         for up in bad:
             self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set(), up)
         good = (
-            "Schema::table('t', function (Blueprint $t) { $t->string('c')->nullable(); $t->integer('n')->default(0); $t->index('c'); $t->timestamps(); });",
+            "Schema::table('t', function (Blueprint $t) { $t->string('c')->nullable(); $t->integer('n')->nullable(); $t->index('c'); $t->timestamps(); });",
             "Schema::create('n', function (Blueprint $t) { $t->id(); $t->string('code'); });",
             "Schema::table('t', fn (Blueprint $t) => $t->boolean('b')->nullable(true));",
-            "Schema::table('t', fn (Blueprint $t) => $t->boolean('b')->default(false));",
+            "Schema::table('t', fn (Blueprint $t) => $t->boolean('b')->nullable()->default(null));",
             "Schema::table('t', fn (Blueprint $t) => $t->unsignedBigInteger('k', false)->nullable());",
             "Schema::table('t', fn (Blueprint $t) => $t->decimal('d', 8, 2)->nullable());",
         )
@@ -146,8 +150,42 @@ class AdditiveMigrationGate(unittest.TestCase):
         padded = new_file(MIG, migration(add)).replace("@@ -0,0 +1,", "@@ -0,0 +1,9", 1)
         self.assertEqual(additive_migration_paths([MIG], padded), set())
 
+    def test_down_may_only_drop_what_up_added(self):
+        add = ("Schema::table('t', function (Blueprint $t) { $t->string('a')->nullable()->index('t_a_idx'); "
+               "$t->string('b')->nullable(); $t->index(['b']); $t->timestamps(); });")
+        create = "Schema::create('n', function (Blueprint $t) { $t->id(); $t->string('x'); });"
+        good = (
+            (add, "if (Schema::hasColumn('t', 'a')) { Schema::table('t', function (Blueprint $t) { "
+                  "$t->dropIndex('t_a_idx'); $t->dropIndex(['b']); $t->dropColumn(['a', 'b']); $t->dropTimestamps(); }); }"),
+            (add, "if (!Schema::hasTable('t')) { return; } Schema::table('t', fn (Blueprint $t) => $t->dropColumn('a'));"),
+            (create, "Schema::dropIfExists('n');"),
+            (create, ""),
+        )
+        for up, down in good:
+            self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up, down))), {MIG}, down)
+        bad = (
+            (add, "Schema::drop('t');"),
+            (add, "Schema::dropIfExists('Student');"),
+            (add, "Schema::table('t', fn (Blueprint $t) => $t->dropColumn('legacy'));"),
+            (add, "Schema::table('Student', fn (Blueprint $t) => $t->dropColumn('a'));"),
+            (add, "Schema::table('t', fn (Blueprint $t) => $t->dropIndex('other_idx'));"),
+            (add, "Schema::table('t', fn (Blueprint $t) => $t->dropSoftDeletes());"),
+            (add, "Schema::table('t', fn (Blueprint $t) => $t->dropColumn('a')->change());"),
+            (add, "DB::table('Student')->delete();"),
+            (add, "Schema::table('t', fn (Blueprint $t) => $t->renameColumn('a', 'z'));"),
+            (create, "Schema::dropIfExists('n'); Schema::dropIfExists('Student');"),
+        )
+        for up, down in bad:
+            patch = new_file(MIG, migration(up, down))
+            self.assertEqual(additive_migration_paths([MIG], patch), set(), down)
+            self.assertEqual(self.tiers(patch), (3, 3), down)
+
+    def test_bare_identifier_shadowing_a_literal_token_stays_t3(self):
+        up = "Schema::table('t', fn (Blueprint $t) => $t->string(S0)->nullable());"
+        self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set())
+
     def test_braceless_guard_return_is_t2(self):
-        up = "if (!Schema::hasTable('c')) return; Schema::table('c', fn (Blueprint $t) => $t->boolean('a')->default(true));"
+        up = "if (!Schema::hasTable('c')) return; Schema::table('c', fn (Blueprint $t) => $t->boolean('a')->nullable());"
         self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), {MIG})
 
     def test_context_lines_mean_not_a_new_file(self):
