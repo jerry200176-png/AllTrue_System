@@ -140,6 +140,41 @@ describe('AccountingLedgerModal contract cards', () => {
   });
 });
 
+describe('AccountingLedgerModal receipt after 確認入帳 (#398/#405)', () => {
+  async function mountLedger() {
+    const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
+    authedFetch.mockResolvedValue(respond({ sessions: [], unscheduled_count: 0 }));
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't' }));
+    vi.stubGlobal('fetch', vi.fn(async () => respond({
+      summary: {}, scope: {}, receipts: [], anomalies: [], invoices: [], courses: [{ id: 2, subject: '數學' }],
+    })));
+    const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 2 }, global: { stubs: { Transition: false, ReceiptModal: true } } });
+    await flushPromises();
+    return w;
+  }
+
+  it('opens the receipt for the confirmed report, with 稍後再開', async () => {
+    const w = await mountLedger();
+    const receipt = () => w.findComponent({ name: 'ReceiptModal' });
+    expect(receipt().props('show')).toBe(false);
+    w.findComponent(ContractCard).vm.$emit('confirmed', 77);
+    await flushPromises();
+    expect(receipt().props()).toMatchObject({ show: true, reportId: 77, laterLabel: '稍後再開' });
+    receipt().vm.$emit('close');
+    await flushPromises();
+    expect(receipt().props('show')).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('does not open the receipt on a plain change (退回 / 改備註)', async () => {
+    const w = await mountLedger();
+    w.findComponent(ContractCard).vm.$emit('changed');
+    await flushPromises();
+    expect(w.findComponent({ name: 'ReceiptModal' }).props('show')).toBe(false);
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
   it('offers 登記收款 when money is due and emits record', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
@@ -173,6 +208,8 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
     expect(url).toBe('/api/v1/payment-reports/77/confirm');
     expect(init.method).toBe('PUT');
     expect(w.emitted('changed')).toHaveLength(1);
+    // #398/#405: a confirmed report is handed on so the receipt step opens right away
+    expect(w.emitted('confirmed')).toEqual([[77]]);
     w.unmount();
   });
 
@@ -201,6 +238,7 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
     await flushPromises();
     expect(authedFetch.mock.calls[1][0]).toBe('/api/v1/payment-reports/77/reject');
     expect(JSON.parse(authedFetch.mock.calls[1][1].body)).toEqual({ rejection_note: '金額不對' });
+    expect(w.emitted('confirmed')).toBeUndefined();
     expect(w.text()).toContain('已處理過');
     expect(w.emitted('changed')).toBeUndefined();
     w.unmount();
