@@ -94,6 +94,17 @@ class NightlyReconcile extends Command
         $reportPath = storage_path('logs/' . ($dryRun ? 'nightly-reconcile-dryrun-' : 'nightly-reconcile-') . now()->format('Ymd') . '.json');
         @file_put_contents($reportPath, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
+        // Every mismatch row (IDs, counts and category only, no names) goes to a
+        // compact per-day sibling file so the panel can page past the 200 rows
+        // kept in the summary report (#4044). checked_at ties it to the report.
+        $rowsPath = storage_path('logs/' . ($dryRun ? 'nightly-reconcile-rows-dryrun-' : 'nightly-reconcile-rows-') . now()->format('Ymd') . '.json');
+        @file_put_contents($rowsPath, json_encode([
+            'checked_at'     => $checkedAt,
+            'mode'           => $dryRun ? 'dry-run' : 'live',
+            'mismatch_count' => $total,
+            'mismatches'     => $mismatches,
+        ], JSON_UNESCAPED_UNICODE));
+
         Log::info('nightly_reconcile', [
             'checked_at'     => $checkedAt,
             'total_checked'  => $courses->count(),
