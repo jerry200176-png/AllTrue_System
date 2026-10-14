@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\StudentGuardian;
 use App\Models\Campus;
 use App\Support\ParentBinding\ParentBindingCodes as C;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -67,31 +68,88 @@ final class BindingService
     }
 
     /**
-     * Binding-page stat cards: enabled students in scope, how many have a binding,
-     * and how many of those bindings are still unverified (in-app #400).
+     * The binding page's list (in-app #400): paged, filtered by student name and
+     * verification status, and with the LINE user ID masked (never sent raw).
+     */
+    public function pageBindings(?int $campusId, ?array $allowedCampusIds, ?string $studentName, ?string $status, int $page, int $perPage): LengthAwarePaginator
+    {
+        $q = DB::table('student_line_bindings')
+            ->join('Student', 'student_line_bindings.student_id', '=', 'Student.id')
+            ->leftJoin('Campus', 'student_line_bindings.campus_id', '=', 'Campus.id')
+            ->select([
+                'student_line_bindings.id',
+                'student_line_bindings.student_id',
+                'student_line_bindings.line_user_id',
+                'student_line_bindings.campus_id',
+                'student_line_bindings.bound_at',
+                'student_line_bindings.verified_at',
+                'Student.name as student_name',
+                'Campus.name as campus_name',
+            ]);
+        if ($campusId !== null) {
+            $q->where('student_line_bindings.campus_id', $campusId);
+        }
+        if ($allowedCampusIds !== null) {
+            $q->whereIn('student_line_bindings.campus_id', $allowedCampusIds);
+        }
+        if ($studentName !== null && trim($studentName) !== '') {
+            $q->where('Student.name', 'like', '%' . addcslashes(trim($studentName), '%_\\') . '%');
+        }
+        if ($status === 'verified') {
+            $q->whereNotNull('student_line_bindings.verified_at');
+        } elseif ($status === 'unverified') {
+            $q->whereNull('student_line_bindings.verified_at');
+        }
+
+        $paginator = $q->orderBy('student_line_bindings.bound_at', 'desc')
+            ->orderBy('student_line_bindings.id', 'desc')
+            ->paginate($perPage, ['*'], 'page', $page);
+        $paginator->setCollection($paginator->getCollection()->map(function (\stdClass $row): \stdClass {
+            $row->line_user_id_masked = self::maskLineUserId((string) $row->line_user_id);
+            unset($row->line_user_id);
+
+            return $row;
+        }));
+
+        return $paginator;
+    }
+
+    /**
+     * Binding-page stat cards (in-app #400), all scoped by the student's current
+     * campus: enabled students, those with a verified binding (bound), and those
+     * whose bindings are all still unverified.
      *
      * @return array{bound_count:int, unverified_bound_count:int, student_total:int}
      */
     public function stats(?int $campusId = null, ?array $allowedCampusIds = null): array
     {
-        $scope = function ($q, string $column) use ($campusId, $allowedCampusIds) {
+        $students = function () use ($campusId, $allowedCampusIds) {
+            $q = DB::table('Student')->where('Student.enable', 1);
             if ($campusId !== null) {
-                $q->where($column, $campusId);
+                $q->where('Student.CampusID', $campusId);
             }
             if ($allowedCampusIds !== null) {
-                $q->whereIn($column, $allowedCampusIds);
+                $q->whereIn('Student.CampusID', $allowedCampusIds);
             }
+
             return $q;
         };
-        $bindings = fn () => $scope(DB::table('student_line_bindings')
-            ->join('Student', 'student_line_bindings.student_id', '=', 'Student.id')
-            ->where('Student.enable', 1), 'student_line_bindings.campus_id');
+        $hasBinding = fn (bool $verified) => function ($sub) use ($verified) {
+            $sub->select(DB::raw(1))->from('student_line_bindings as slb')
+                ->whereColumn('slb.student_id', 'Student.id')
+                ->when($verified, fn ($w) => $w->whereNotNull('slb.verified_at'));
+        };
 
         return [
-            'bound_count' => (int) $bindings()->distinct()->count('student_line_bindings.student_id'),
-            'unverified_bound_count' => (int) $bindings()->whereNull('student_line_bindings.verified_at')->count(),
-            'student_total' => (int) $scope(DB::table('Student')->where('enable', 1), 'CampusID')->count(),
+            'bound_count' => (int) $students()->whereExists($hasBinding(true))->count(),
+            'unverified_bound_count' => (int) $students()->whereExists($hasBinding(false))->whereNotExists($hasBinding(true))->count(),
+            'student_total' => (int) $students()->count(),
         ];
+    }
+
+    private static function maskLineUserId(string $uid): string
+    {
+        return strlen($uid) <= 12 ? $uid : substr($uid, 0, 8) . '…' . substr($uid, -4);
     }
 
     public function findBinding(int $bindingId): ?object

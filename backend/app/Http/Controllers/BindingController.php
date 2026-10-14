@@ -31,7 +31,10 @@ class BindingController extends Controller
             'student_id'  => ['sometimes', 'integer', 'min:1'],
             'line_user_id' => ['sometimes', 'string', 'max:64'],
             'student_name' => ['sometimes', 'string', 'max:64'],
+            'status'      => ['sometimes', 'in:verified,unverified'],
             'limit'       => ['sometimes', 'integer', 'min:1', 'max:500'],
+            'page'        => ['sometimes', 'integer', 'min:1'],
+            'per_page'    => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
 
         $allowedCampusIds = $this->allowedCampusIds($request);
@@ -39,6 +42,23 @@ class BindingController extends Controller
             && isset($validated['campus_id'])
             && !in_array((int) $validated['campus_id'], $allowedCampusIds, true)) {
             return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        // The binding page sends `page` and gets the paged, masked contract (in-app #400).
+        if (isset($validated['page'])) {
+            $paged = $this->bindingService->pageBindings(
+                campusId: isset($validated['campus_id']) ? (int) $validated['campus_id'] : null,
+                allowedCampusIds: $allowedCampusIds,
+                studentName: $validated['student_name'] ?? null,
+                status: $validated['status'] ?? null,
+                page: (int) $validated['page'],
+                perPage: (int) ($validated['per_page'] ?? 20),
+            );
+
+            return response()->json([
+                'data' => $paged->items(),
+                'meta' => ['current_page' => $paged->currentPage(), 'last_page' => $paged->lastPage(), 'total' => $paged->total()],
+            ]);
         }
 
         $bindings = $this->bindingService->listBindings(
@@ -50,8 +70,7 @@ class BindingController extends Controller
             studentName: $validated['student_name'] ?? null,
         );
 
-        // `data` is what the binding page reads (in-app #400); `bindings` stays for existing callers.
-        return response()->json(['bindings' => $bindings, 'data' => $bindings, 'count' => $bindings->count()]);
+        return response()->json(['bindings' => $bindings, 'count' => $bindings->count()]);
     }
 
     public function stats(Request $request): JsonResponse

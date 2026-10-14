@@ -73,7 +73,7 @@ class BindingManagementApiTest extends TestCase
         $this->assertDatabaseHas('student_line_bindings', ['id' => $bindingB->id]);
     }
 
-    /** In-app #400: the binding page reads `data` and `/bindings/stats`; both must answer. */
+    /** In-app #400: the binding page's paged list and stat cards. */
     public function test_binding_page_list_and_stats_contract(): void
     {
         $campus = CampusFactory::new()->create();
@@ -86,18 +86,33 @@ class BindingManagementApiTest extends TestCase
         $this->bindingFor($bob, $campus, 'U' . str_repeat('f', 32))->update(['verified_at' => null]);
         $this->bindingFor(StudentFactory::new()->create(['CampusID' => $other->id, 'enable' => 1]), $other, 'U' . str_repeat('g', 32));
 
-        $this->getJson('/api/v1/bindings?campus_id=' . $campus->id, $this->authHeaders($director))
-            ->assertOk()->assertJsonCount(2, 'data')->assertJsonCount(2, 'bindings');
-        $this->getJson('/api/v1/bindings?student_name=' . urlencode('甲'), $this->authHeaders($director))
-            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.student_id', $alice->id);
+        $this->getJson('/api/v1/bindings?page=1&per_page=1&campus_id=' . $campus->id, $this->authHeaders($director))
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.total', 2)->assertJsonPath('meta.last_page', 2);
+        $byName = $this->getJson('/api/v1/bindings?page=1&student_name=' . urlencode('甲'), $this->authHeaders($director))
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.student_id', $alice->id)
+            ->assertJsonPath('data.0.line_user_id_masked', 'Ueeeeeee…eeee');
+        $this->assertArrayNotHasKey('line_user_id', $byName->json('data.0'));
+        $this->getJson('/api/v1/bindings?page=1&status=unverified', $this->authHeaders($director))
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.student_id', $bob->id);
+        $this->getJson('/api/v1/bindings', $this->authHeaders($director))
+            ->assertOk()->assertJsonCount(2, 'bindings')->assertJsonMissingPath('data');
 
+        // Bound = verified only; unverified = has bindings, none verified.
         $this->getJson('/api/v1/bindings/stats?campus_id=' . $campus->id, $this->authHeaders($director))
             ->assertOk()
-            ->assertJsonPath('bound_count', 2)
+            ->assertJsonPath('bound_count', 1)
             ->assertJsonPath('unverified_bound_count', 1)
             ->assertJsonPath('student_total', 3);
         $this->getJson('/api/v1/bindings/stats?campus_id=' . $other->id, $this->authHeaders($director))
             ->assertForbidden();
+
+        // A transferred student counts at their current campus, whatever the binding's campus_id says.
+        \Illuminate\Support\Facades\DB::table('Student')->where('id', $alice->id)->update(['CampusID' => $other->id]);
+        $this->getJson('/api/v1/bindings/stats?campus_id=' . $campus->id, $this->authHeaders($director))
+            ->assertOk()
+            ->assertJsonPath('bound_count', 0)
+            ->assertJsonPath('student_total', 2);
     }
 
     public function test_authorized_director_can_create_binding_in_own_campus(): void

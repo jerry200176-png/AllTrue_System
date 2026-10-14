@@ -45,10 +45,11 @@ async function parse(res) {
  * @param {object} opts { campusId, studentName, dateRange, page, perPage }
  * @returns {Promise<{ data: Array, meta?: object }>}
  */
-export async function fetchBindings({ campusId, studentName, dateRange, page = 1, perPage = 20 } = {}) {
+export async function fetchBindings({ campusId, studentName, status, dateRange, page = 1, perPage = 20 } = {}) {
   const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
   if (campusId) params.set('campus_id', String(campusId));
   if (studentName) params.set('student_name', studentName);
+  if (status) params.set('status', status);
   if (dateRange) params.set('date_range', dateRange);
   const res = await fetch(`${API}/bindings?${params}`, { headers: headers() });
   return parse(res);

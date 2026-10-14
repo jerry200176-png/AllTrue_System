@@ -78,7 +78,7 @@
           id="bmp-campus"
           v-model="filters.campusId"
           :disabled="!isSuperAdmin && branchId != null"
-          @change="load"
+          @change="refresh"
         >
           <option value="">全部（限權限）</option>
           <option v-for="b in allBranches" :key="b.id" :value="b.id">{{ b.name }}</option>
@@ -309,6 +309,7 @@ async function load() {
     const data = await fetchBindings({
       campusId: activeCampusId.value,
       studentName: filters.value.studentName || undefined,
+      status: filters.value.status || undefined,
       page: page.value,
       perPage,
     });
