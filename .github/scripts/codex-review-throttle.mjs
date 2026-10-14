@@ -61,7 +61,8 @@ export function decide(s, ledger, now = Date.now()) {
   if (!Array.isArray(s.required) || !s.required.length || s.ciHead !== s.head) return hold('ci-unknown');
   const checks = fromPinned(s.checks, new Map(s.pins), s.repo);
   // Reuse pinned producer selection and latest-attempt reduction, but neutral/skipped are NOT green here.
-  const strict = checks.map((c) => ({ ...c, conclusion: c.status === 'COMPLETED' && c.conclusion === 'SUCCESS' ? 'SUCCESS' : 'UNKNOWN' }));
+  if (checks.some((c) => !Number.isFinite(Date.parse(c.createdAt || c.startedAt)))) return hold('ci-time-unknown');
+  const strict = checks.map((c) => ({ ...c, startedAt: c.createdAt || c.startedAt, conclusion: c.status === 'COMPLETED' && c.conclusion === 'SUCCESS' ? 'SUCCESS' : 'UNKNOWN' }));
   if (Object.values(checkStates(strict, s.required)).some((v) => v !== 'pass')) return hold('ci-not-green');
   if (!Number.isInteger(s.risk?.machine_minimum_tier)) return hold('risk-unknown');
   const full = !last || s.risk.machine_minimum_tier >= 3 || s.base !== last.base || s.baseDependenciesChanged !== false

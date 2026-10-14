@@ -177,3 +177,9 @@ console.log(args.includes('--paginate')?out.map(v=>JSON.stringify(v)).join('\\n'
     assert.equal(JSON.parse(again.stdout).reason, 'settling');
   } finally { fs.rmSync(dir, { recursive: true }); }
 });
+
+test('queued rerun with null start uses creation time; missing attempt time holds', () => {
+  const s = snapshot(); s.checks.push({ ...check(), startedAt: null, createdAt: '2026-10-14T11:55:00Z', status: 'QUEUED', conclusion: null });
+  assert.equal(plan(s).reason, 'ci-not-green'); delete s.checks[1].createdAt;
+  assert.equal(plan(s).reason, 'ci-time-unknown');
+});
