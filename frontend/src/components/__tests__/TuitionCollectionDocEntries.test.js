@@ -7,7 +7,8 @@ const mkRow = (id, payment_status, payable_status) => ({
   id, student_id: 9000 + id, student_name: `測試${id}`, subject: '數學', schedule_mode: 'date', payment_status, payable_status,
   charge: 4000, outstanding: 4000, payable_amount: 4000, payable_outstanding: 4000,
 });
-const rows = [mkRow(101, 'unpaid', 'invoiced'), mkRow(103, 'paid', 'invoiced'), mkRow(104, 'none', 'unbilled'), mkRow(105, 'paid', 'unbilled')];
+const rows = [mkRow(101, 'unpaid', 'invoiced'), mkRow(103, 'paid', 'invoiced'), mkRow(104, 'none', 'unbilled'), mkRow(105, 'paid', 'unbilled'),
+  { ...mkRow(106, 'partial', 'invoiced'), has_confirmed_receipt: true, receipt_report_id: 9 }]; // #3942: confirmed partial payment
 const slipJson = { student_name: '測試', student_class_id: 101, subject: '數學', amount: 4000, items: [] };
 let calls;
 
@@ -38,6 +39,24 @@ beforeEach(() => { installFetch(); session('director'); });
 afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ''; localStorage.clear(); });
 const tid = (w, id, k) => rowOf(w, id).get(`[data-testid="${k}"]`);
 describe('帳務中心 學生列：繳費單／收據入口', () => {
+  it('#3942: a confirmed partial payment opens the receipt the row names, with no course-wide lookup', async () => {
+    const w = await mountPage();
+    await tid(w, 106, 'tc-doc-receipt').trigger('click');
+    await flushPromises();
+    expect(calls.some((c) => c.url.includes('/api/v1/payment-reports/9/receipt'))).toBe(true);
+    expect(calls.filter((c) => c.url.includes('/api/v1/payment-reports?'))).toHaveLength(0);
+    expect(writes()).toEqual([]);
+    w.unmount();
+  });
+  it('#3942: the direct receipt open keeps the double-click guard (click, render, backdrop press stays open)', async () => {
+    const w = await mountPage();
+    await tid(w, 106, 'tc-doc-receipt').trigger('click');
+    await flushPromises();
+    document.querySelector('.modal-overlay').click();
+    await flushPromises();
+    expect(document.querySelectorAll('.modal-overlay')).toHaveLength(1);
+    w.unmount();
+  });
   it('legacy row: 撤銷 stays available (a confirmed receipt without invoice is voidable); the ledger link only reads', async () => {
     const w = await mountPage();
     expect(tid(w, 105, 'tc-void').element.disabled).toBe(false);

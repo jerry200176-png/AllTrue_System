@@ -908,6 +908,7 @@
     <ReceiptModal
       :show="receiptOpen"
       :report-id="receiptReportId"
+      @click.capture="onSlipBackdropClick"
       @close="receiptOpen = false"
     />
 
@@ -1123,7 +1124,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { normalizeNavigationId, resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
-import { TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL } from '../lib/courseMoneyState.js';
+import { TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL, FREE_GIFT_LABEL, ZERO_REASON_FREE_GIFT } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -2166,8 +2167,13 @@ function formatCourseRef(id) {
     : '課程';
 }
 
-async function onEntryConfirmed(_result) {
+async function onEntryConfirmed(result) {
   entryOpen.value = false;
+  if (result?.status === ZERO_REASON_FREE_GIFT) { // issue 3991: a NT$0 free/gift bill, not a payment to confirm
+    showToast(result.message || `已登錄「${FREE_GIFT_LABEL}」帳單`);
+    await loadAlerts();
+    return;
+  }
   activeTab.value = 'pending_report';
   showToast(`已送出，畫面已切到「${REPORT_STATUS_LABELS.pending}」；請按確認入帳後才會變成${TUITION_STATUS_CONFIG.paid.label}並開收據`);
   await loadAlerts();
@@ -2339,6 +2345,13 @@ const receiptLoading = ref(null);
 
 async function viewReceiptForClass(row) {
   if (receiptLoading.value !== null) return; // one lookup at a time: a late reply can never replace a newer row's receipt
+  if (row.receipt_report_id) { // issue 3942: the row names the confirmed report of its current bill; open exactly that one
+    if (receiptOpen.value) return;
+    slipOpenedAt = Date.now(); // same 400ms backdrop guard as the slip: a double-click's second press must not close it
+    receiptReportId.value = row.receipt_report_id;
+    receiptOpen.value = true;
+    return;
+  }
   receiptLoading.value = row.id ?? 0;
   try {
     const token = getToken();

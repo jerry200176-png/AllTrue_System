@@ -55,6 +55,8 @@ const slip = computed(() => {
 const receipt = computed(() => {
   if (!props.canView) return { ok: false, reason: NO_PERMISSION };
   if (props.row.id == null) return { ok: false, reason: '共用方案收據請至成員課程查看' }; // 月結包列沒有課程 id 可查收據
+  if (props.row.has_confirmed_receipt === true) return { ok: true }; // #3942: the row's current bill has a confirmed receipt (e.g. a confirmed partial payment)
+  if (props.row.payable_status === 'invoiced' && props.row.has_confirmed_receipt === false) return { ok: false, reason: '收款確認後才有收據' }; // #3942 review: the API's current-bill flag decides for a billed row, never an older term's receipt
   if (RECEIPT_STATUSES.includes(props.row.payment_status)) return { ok: true };
   return { ok: false, reason: '收款確認後才有收據' };
 });

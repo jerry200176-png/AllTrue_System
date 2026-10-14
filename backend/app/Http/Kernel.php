@@ -20,6 +20,8 @@ class Kernel extends HttpKernel
         'api' => [
             \App\Http\Middleware\AssignRequestId::class,
             'throttle:200,1,global-api',
+            // Read-only triage tokens: 403 outside config('triage_tokens.allowed_routes').
+            \App\Http\Middleware\RestrictAccessTokenScope::class,
             \App\Http\Middleware\LogSlowRequests::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\AttachAuthUser::class,
@@ -31,6 +33,7 @@ class Kernel extends HttpKernel
         'super_admin'    => \App\Http\Middleware\RequireSuperAdmin::class,
         'api_key'        => \App\Http\Middleware\ApiKeyAuth::class,
         'pop_machine'    => \App\Http\Middleware\PopMachineAuth::class,
+        'triage_token'   => \App\Http\Middleware\AuthenticateTriageToken::class,
         'require_auth'   => \App\Http\Middleware\RequireAuthUser::class,
         'require_campus' => \App\Http\Middleware\RequireCampus::class,
         'require_password_change' => \App\Http\Middleware\RequirePasswordChange::class,

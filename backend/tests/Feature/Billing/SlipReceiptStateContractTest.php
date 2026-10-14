@@ -61,7 +61,7 @@ class SlipReceiptStateContractTest extends TestCase
         foreach ($courses as $name => $course) {
             $data = $this->getJson("/api/v1/payment-reports?student_class_id={$course->ID}&status=confirmed&branch_id=1", $this->director)
                 ->assertOk()->json('data');
-            if (in_array($name, ['paid_with_invoice', 'paid_confirmed_report_no_invoice'], true)) {
+            if (in_array($name, ['paid_with_invoice', 'paid_confirmed_report_no_invoice', 'partial_confirmed', 'partial_after_old_receipt', 'paid_after_old_receipt', 'partial_confirmed_report_payment_link'], true)) {
                 $this->assertNotEmpty($data, 'receipt button has a confirmed report to open');
                 $this->assertArrayHasKey('id', $data[0]);
                 $this->getJson("/api/v1/payment-reports/{$data[0]['id']}/receipt", $this->director)->assertOk();
@@ -107,7 +107,8 @@ class SlipReceiptStateContractTest extends TestCase
     private function seedStates(): array
     {
         $c = ['unpaid' => $this->course([]), 'partial' => $this->course([]), 'reported_pending' => $this->course([]), 'no_invoice_unpaid' => $this->course([]),
-            'paid_with_invoice' => $this->course(['Paid' => 1, 'RemainingSessions' => 0]), 'paid_confirmed_report_no_invoice' => $this->course(['Paid' => 1, 'RemainingSessions' => 0]), 'legacy_paid_no_invoice' => $this->course(['Paid' => 1, 'RemainingSessions' => 0])];
+            'paid_with_invoice' => $this->course(['Paid' => 1, 'RemainingSessions' => 0]), 'paid_confirmed_report_no_invoice' => $this->course(['Paid' => 1, 'RemainingSessions' => 0]), 'legacy_paid_no_invoice' => $this->course(['Paid' => 1, 'RemainingSessions' => 0]), 'partial_confirmed' => $this->course([]), 'partial_after_old_receipt' => $this->course([]),
+            'paid_after_old_receipt' => $this->course(['Paid' => 1, 'RemainingSessions' => 0]), 'partial_confirmed_report_payment_link' => $this->course([])];
         $this->invoice($c['unpaid'], 0, 'unpaid');
         $partial = $this->invoice($c['partial'], 2000, 'partial');
         Payment::create(['InvoiceID' => $partial->id, 'Amount' => 2000, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
@@ -115,6 +116,20 @@ class SlipReceiptStateContractTest extends TestCase
         $paid = $this->invoice($c['paid_with_invoice'], 5000, 'paid');
         $payment = Payment::create(['InvoiceID' => $paid->id, 'Amount' => 5000, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
         $this->report($c['paid_with_invoice'], $paid, 'confirmed', $payment->id);
+        // #3942: a confirmed report that covers only part of the bill leaves the invoice `partial` but has a receipt
+        $partialConfirmed = $this->invoice($c['partial_confirmed'], 2000, 'partial');
+        $this->report($c['partial_confirmed'], $partialConfirmed, 'confirmed', Payment::create(['InvoiceID' => $partialConfirmed->id, 'Amount' => 2000, 'PaidAt' => '2026-04-10', 'Method' => 'cash'])->id);
+        // #3942 review: an older term's confirmed receipt does not enable 收據 for the current, unconfirmed partial bill
+        $old = $this->invoice($c['partial_after_old_receipt'], 5000, 'paid');
+        $this->report($c['partial_after_old_receipt'], $old, 'confirmed', Payment::create(['InvoiceID' => $old->id, 'Amount' => 5000, 'PaidAt' => '2026-03-10', 'Method' => 'cash'])->id);
+        Payment::create(['InvoiceID' => $this->invoice($c['partial_after_old_receipt'], 2000, 'partial')->id, 'Amount' => 2000, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
+        // #3942 review: the current bill was paid directly (no report); the older term's receipt must not open for it
+        $oldPaid = tap($this->invoice($c['paid_after_old_receipt'], 5000, 'paid'))->update(['IssueDate' => '2026-03-01']);
+        $this->report($c['paid_after_old_receipt'], $oldPaid, 'confirmed', Payment::create(['InvoiceID' => $oldPaid->id, 'Amount' => 5000, 'PaidAt' => '2026-03-10', 'Method' => 'cash'])->id);
+        Payment::create(['InvoiceID' => $this->invoice($c['paid_after_old_receipt'], 5000, 'paid')->id, 'Amount' => 5000, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
+        // #3942 review: a confirmed report without InvoiceID whose Payment sits on the current bill still names that bill
+        $linked = $this->invoice($c['partial_confirmed_report_payment_link'], 2000, 'partial');
+        $this->report($c['partial_confirmed_report_payment_link'], $linked, 'confirmed', Payment::create(['InvoiceID' => $linked->id, 'Amount' => 2000, 'PaidAt' => '2026-04-10', 'Method' => 'cash'])->id)->update(['InvoiceID' => null]);
         // P1: a confirmed receipt whose invoice is missing (ledger anomaly receipt_without_invoice) must stay openable
         $this->report($c['paid_confirmed_report_no_invoice'], $paid, 'confirmed', null)->update(['InvoiceID' => null]);
 
@@ -144,6 +159,16 @@ class SlipReceiptStateContractTest extends TestCase
         return PaymentReport::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id, 'reported_by_name' => '合成',
             'payment_date' => '2026-04-10', 'payment_method' => 'cash', 'reported_amount' => 5000, 'status' => $status, 'payment_id' => $paymentId,
             'report_token_hash' => hash('sha256', "3894-$status-{$sc->ID}"), 'token_expires_at' => Carbon::now()->addDay()]);
+    }
+
+    public function test_a_staff_user_without_campus_scope_gets_no_rows(): void // #3942 review: empty scope is never "all campuses"
+    {
+        $user = User::create(['LoginName' => 'no-campus-3942@example.com', 'Name' => '合成', 'PSW' => 'secret', 'type' => 'A', 'phone' => 912000001]);
+        AuthToken::create(['user_id' => $user->id, 'token' => $token = bin2hex(random_bytes(16)), 'expires_at' => now()->addDay()]);
+        $this->seedStates();
+        foreach (['', '?branch_id=1'] as $q) {
+            $this->getJson("/api/v1/alerts/tuition$q", ['Authorization' => "Bearer $token", 'Accept' => 'application/json'])->assertForbidden();
+        }
     }
 
     private function headersFor(string $login, string $type): array

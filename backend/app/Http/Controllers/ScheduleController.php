@@ -401,12 +401,13 @@ class ScheduleController extends Controller
             try {
                 return DB::transaction(function () use ($data, $courseId, $recordedByUserId) {
                     $schedule = Schedule::create($data);
-                    [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade((int) $courseId, (string) $data['schedule_date']);
+                    // #3914: the calendar row's start time names the lesson when the date holds two.
+                    [$rows, $extendedEndDate, $leaveSessionDate, $leaveSessionId] = CourseLeaveCascadeService::applyLeaveCascade((int) $courseId, (string) $data['schedule_date'],
+                        CourseLeaveCascadeService::sessionIdAt((int) $courseId, (string) $data['schedule_date'], $data['start_time'] ?? null));
                     $course = StudentClass::where('ID', $courseId)->first();
 
-                    $leaveSession = ClassSession::where('StudentClassID', $courseId)
-                        ->whereDate('SessionDate', $leaveSessionDate)
-                        ->first();
+                    /** @var ClassSession|null $leaveSession */
+                    $leaveSession = ClassSession::query()->whereKey($leaveSessionId)->first();
                     if ($leaveSession) {
                         if ($course && !StudentSignIn::where('ClassSessionID', $leaveSession->id)->whereNull('VoidedAt')->exists()) {
                             $campusId = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
@@ -566,7 +567,8 @@ class ScheduleController extends Controller
         // 與請假建立時間無關，主任因此可隨時取消尚未產生後續上課記錄的請假。
         try {
             return DB::transaction(function () use ($schedule, $courseId, $scheduleDate) {
-                [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $scheduleDate);
+                [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $scheduleDate,
+                    CourseLeaveCascadeService::sessionIdAt($courseId, $scheduleDate, $schedule->start_time ?? null)); // #3914
                 $schedule->delete();
 
                 return response()->json([
@@ -641,7 +643,7 @@ class ScheduleController extends Controller
 
                 if ($csStatus === 'leave') {
                     // 正常請假：走 cascade 反轉（含下游已上課護欄、回復順延尾堂）。
-                    [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $sessionDate);
+                    [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $sessionDate, (int) $session->id);
                 } else {
                     // Desync：請假只記在簽到、ClassSession 仍非 leave、未產生順延。
                     // 作廢請假簽到並確保堂次回到 scheduled 即完成撤銷（無 cascade 需反轉）。
@@ -661,10 +663,7 @@ class ScheduleController extends Controller
                     $leaveSessionDate = $sessionDate;
                 }
 
-                Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
-                    ->where('status', 'leave')
-                    ->delete();
+                $this->deleteLeaveMarkers($courseId, $sessionDate, (string) $session->StartTime); // #3914 review: only this lesson's marker
 
                 return response()->json([
                     'message' => ($recoveryWarning ?? null) === 'tail_missing'
@@ -718,6 +717,9 @@ class ScheduleController extends Controller
                     return response()->json(['message' => 'Forbidden'], 403);
                 }
 
+                if ($classSessionId <= 0 && $this->dateHasTwoLessons($courseId, $sessionDate)) { // #3914 review: never pick the first
+                    return response()->json(['message' => '這門課這天有兩堂以上，請從要請假的那一堂操作。', 'code' => 'lesson_required'], 422);
+                }
                 $sessionQuery = ClassSession::where('StudentClassID', $courseId)
                     ->whereRaw("DATE(SessionDate) = ?", [$sessionDate]);
                 if ($classSessionId > 0) {
@@ -739,7 +741,7 @@ class ScheduleController extends Controller
                 $isAttended = in_array($status, ['attended', 'completed', 'late', 'present', 'absent'], true);
 
                 if (!$isAttended && $status === 'scheduled') {
-                    [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate);
+                    [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate, (int) $session->id);
                     return response()->json([
                         'message'             => strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date'
                             ? '請假登記完成：本堂已標記請假，月結課程維持原合約日期區間，不補課、不延長到期日'
@@ -912,7 +914,7 @@ class ScheduleController extends Controller
 
                 // Run cascade (accepts leave sessions where cascade hasn't run)
                 [$rows, $extendedEndDate, $leaveSessionDate] =
-                    CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate);
+                    CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate, (int) $session->id);
 
                 $hasSignIn = StudentSignIn::where('ClassSessionID', (int) $session->id)
                     ->whereNull('VoidedAt')
@@ -930,13 +932,15 @@ class ScheduleController extends Controller
 
                 // Record schedules leave entry (created after cascade so the "already cascaded"
                 // detection in applyLeaveCascade doesn't fire on retries)
+                $markerKey = ['student_course_id' => $courseId, 'schedule_date' => $sessionDate, 'status' => 'leave']
+                    + ($this->dateHasTwoLessons($courseId, $sessionDate) ? ['start_time' => substr((string) $session->StartTime, 0, 5)] : []); // HH:MM like other producers // #3914 review
                 Schedule::firstOrCreate(
-                    ['student_course_id' => $courseId, 'schedule_date' => $sessionDate, 'status' => 'leave'],
+                    $markerKey,
                     [
                         'student_id'  => (int) $course->StudentID,
                         'day_of_week' => Carbon::parse($sessionDate)->dayOfWeekIso,
-                        'start_time'  => $session->StartTime,
-                        'end_time'    => $session->EndTime,
+                        'start_time'  => substr((string) $session->StartTime, 0, 5),
+                        'end_time'    => substr((string) $session->EndTime, 0, 5),
                         'class_type'  => $course->ClassType ?? 'one_on_one',
                         'type'        => 'normal',
                         'deduction'   => 0,
@@ -994,7 +998,7 @@ class ScheduleController extends Controller
             ->where('st.CampusID', $branchId)
             ->whereBetween('cs.SessionDate', [$startDate, $endDate])
             ->whereNotIn(DB::raw('LOWER(cs.Status)'), ['completed', 'attended', 'cancelled', 'leave'])
-            ->select(['cs.id as session_id', 'cs.StudentClassID as course_id', 'cs.SessionDate'])
+            ->select(['cs.id as session_id', 'cs.StudentClassID as course_id', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime'])
             ->orderBy('cs.SessionDate')
             ->orderBy('cs.StudentClassID')
             ->get();
@@ -1007,7 +1011,7 @@ class ScheduleController extends Controller
         foreach ($eligibleSessions as $row) {
             $courseId = (int) $row->course_id;
             $sessionDate = Carbon::parse($row->SessionDate)->toDateString();
-            $key = "{$courseId}_{$sessionDate}";
+            $key = "{$courseId}_{$row->session_id}"; // #3914: per lesson, so a date with two lessons gets both
             if (isset($seen[$key])) {
                 continue;
             }
@@ -1026,8 +1030,10 @@ class ScheduleController extends Controller
             }
 
             try {
-                DB::transaction(function () use ($courseId, $sessionDate, $branchId) {
-                    CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate);
+                $leaveSessionId = (int) $row->session_id;
+                $lessonTimes = [substr((string) ($row->StartTime ?? ''), 0, 5), substr((string) ($row->EndTime ?? ''), 0, 5)];
+                DB::transaction(function () use ($courseId, $sessionDate, $branchId, $leaveSessionId, $lessonTimes) {
+                    CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate, $leaveSessionId);
 
                     $course = StudentClass::where('ID', $courseId)->first();
                     if ($course) {
@@ -1035,8 +1041,9 @@ class ScheduleController extends Controller
                         $teacherId = (int) ($course->TeacherID ?? 0);
                         $subject = (string) ($course->SubjectID ?? '');
                         $classType = (string) ($course->ClassType ?? 'one_on_one');
-                        $startTime = $course->time ? substr((string) $course->time, 0, 5) : '16:00';
-                        $endTime = $course->time2 ? substr((string) $course->time2, 0, 5) : '18:00';
+                        // #3914 review: the marker carries the lesson's own time, so two lessons on one date stay distinct
+                        $startTime = $lessonTimes[0] !== '' ? $lessonTimes[0] : ($course->time ? substr((string) $course->time, 0, 5) : '16:00');
+                        $endTime = $lessonTimes[1] !== '' ? $lessonTimes[1] : ($course->time2 ? substr((string) $course->time2, 0, 5) : '18:00');
                         $dayOfWeek = Carbon::parse($sessionDate)->dayOfWeekIso;
 
                         Schedule::create([
@@ -1160,6 +1167,13 @@ class ScheduleController extends Controller
             return $boundaryResponse;
         }
 
+        // #3914 review: a saved leave row is never moved to another lesson in place, whatever the new status
+        // (the old lesson would stay on leave with its tail); cancel the leave first, then act on the intended lesson.
+        $movesLesson = (!empty($data['schedule_date']) && Carbon::parse($data['schedule_date'])->toDateString() !== Carbon::parse($schedule->getAttribute('schedule_date'))->toDateString())
+            || (!empty($data['start_time']) && substr((string) $data['start_time'], 0, 5) !== substr((string) $schedule->getAttribute('start_time'), 0, 5));
+        if (strtolower((string) $schedule->getOriginal('status')) === 'leave' && $movesLesson) {
+            return response()->json(['message' => '已請假的課表不能直接改到另一堂；請先取消這次請假，再到要請假的那一堂請假。', 'code' => 'leave_row_retarget_forbidden'], 422);
+        }
         if (strtolower((string) ($merged['status'] ?? 'scheduled')) === 'leave' && $courseId > 0) {
             return $this->applyLeaveScheduleUpdate($schedule, $data, $courseId, $merged, $request);
         }
@@ -1305,6 +1319,24 @@ class ScheduleController extends Controller
         }
     }
 
+    /** #3914 review: does this course hold two or more (non-cancelled) lessons on the date? */
+    private function dateHasTwoLessons(int $courseId, string $date): bool
+    {
+        return ClassSession::query()->where('StudentClassID', $courseId)->whereDate('SessionDate', $date)
+            ->whereRaw('LOWER(COALESCE(Status, \'\')) <> ?', ['cancelled'])->count() > 1;
+    }
+
+    /** #3914 review: delete the calendar's leave markers for one course/date; with two lessons that date, only this lesson's. */
+    private function deleteLeaveMarkers(int $courseId, string $date, string $startTime): int
+    {
+        $query = Schedule::query()->where('student_course_id', $courseId)->whereDate('schedule_date', $date)->where('status', 'leave');
+        if ($this->dateHasTwoLessons($courseId, $date)) {
+            $query->where('start_time', 'like', substr($startTime, 0, 5) . '%');
+        }
+
+        return (int) $query->delete();
+    }
+
     private function applyLeaveScheduleUpdate(
         Schedule $schedule,
         array $data,
@@ -1316,15 +1348,15 @@ class ScheduleController extends Controller
         try {
             $schedule->fill(array_filter($data, fn ($v) => $v !== null));
             $schedule->save();
-            [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade(
+            $leaveDate = (string) ($merged['schedule_date'] ?? $schedule->getAttribute('schedule_date'));
+            [$rows, $extendedEndDate, $leaveSessionDate, $leaveSessionId] = CourseLeaveCascadeService::applyLeaveCascade(
                 $courseId,
-                (string) ($merged['schedule_date'] ?? $schedule->getAttribute('schedule_date'))
+                $leaveDate,
+                CourseLeaveCascadeService::sessionIdAt($courseId, $leaveDate, $merged['start_time'] ?? $schedule->getAttribute('start_time')) // #3914
             );
             $course = StudentClass::query()->where('ID', $courseId)->first();
-            $leaveSession = ClassSession::query()
-                ->where('StudentClassID', $courseId)
-                ->whereDate('SessionDate', $leaveSessionDate)
-                ->first();
+            /** @var ClassSession|null $leaveSession */
+            $leaveSession = ClassSession::query()->whereKey($leaveSessionId)->first();
             if ($course && $leaveSession
                 && !StudentSignIn::query()->where('ClassSessionID', $leaveSession->id)->whereNull('VoidedAt')->exists()) {
                 $campusId = (int) (Student::query()->where('id', (int) $course->StudentID)->value('CampusID') ?? 0);

@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 498 api/* routes · generated 2026-10-13
+> Source: `php artisan route:list --json` · 504 api/* routes · generated 2026-10-13
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -43,7 +43,7 @@
 | GET | `api/v1/action-inbox/cases/{id}` | `ActionInboxController@showCase` | role+campus |
 | GET | `api/v1/action-inbox/count` | `ActionInboxController@count` | role+campus |
 
-## /api/v1/admin (21)
+## /api/v1/admin (24)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -68,6 +68,9 @@
 | GET | `api/v1/admin/teachers/duplicates` | `TeacherDuplicateController@index` | role |
 | POST | `api/v1/admin/teachers/merge` | `TeacherDuplicateController@merge` | role |
 | POST | `api/v1/admin/teachers/merge-preview` | `TeacherDuplicateController@preview` | role |
+| GET | `api/v1/admin/triage-tokens` | `TriageTokenController@index` | role |
+| POST | `api/v1/admin/triage-tokens` | `TriageTokenController@store` | role |
+| DELETE | `api/v1/admin/triage-tokens/{id}` | `TriageTokenController@destroy` | role |
 
 ## /api/v1/admission-inquiries (10)
 
@@ -884,6 +887,14 @@
 |--------|-----|--------|------|
 | GET | `api/v1/temp-rfid` | `TempRfidController@show` | role+campus |
 | POST | `api/v1/temp-rfid/consume` | `TempRfidController@consume` | role+campus |
+
+## /api/v1/triage (3)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/triage/bug-reports` | `TriageBugReportController@index` | auth |
+| GET | `api/v1/triage/bug-reports/{id}` | `TriageBugReportController@show` | auth |
+| GET | `api/v1/triage/bug-reports/{id}/attachments/{attachmentId}` | `TriageBugReportController@attachment` | auth |
 
 ## /api/v1/truefit (12)
 

@@ -772,7 +772,6 @@
       :initial-teacher-id="schedulerInitialTeacherId"
       :allow-package-mode="true"
       mode="backfill"
-      :allow-financial-discount="allowFinancialDiscount"
       @cancel="showBackfillModal = false"
       @success="handleUniversalBackfillSuccess"
       @duplicate-course="handleSchedulerDuplicateCM"
@@ -1372,7 +1371,6 @@
 <script setup>
 // Autonomous delivery canary: no runtime behavior change.
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { isDirectorRole } from '../lib/roleCapabilities.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
@@ -1539,7 +1537,6 @@ const props = defineProps({
   initialStudentName: { type: String, default: '' },
   initialCourseIntent: { type: String, default: '' },
 });
-const allowFinancialDiscount = computed(() => isDirectorRole(props.userRole));
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
 
 // 課程查找 C-PR5 (PRD D2): the student's billing opens in place (the ledger panel), not on another page: paying, confirming
@@ -2844,7 +2841,6 @@ function openPurchaseModal(course) {
       current_end_date: course?.end_date || course?.EndDate || null,
       months: 1,
       end_date: '',
-      discount: { type: 'NONE', value: '0', reason: '' },
       original_amount: estimateMonthlyRenewalCharge(course),
       preview_end_date: '',
     };
