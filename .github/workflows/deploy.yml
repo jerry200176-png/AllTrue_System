@@ -733,7 +733,26 @@ jobs:
                   is_production_activation_sensitive_path,
                   parse_declaration,
                   reconcile_preexisting_pr_provenance,
+                  codex_confirms_head,
+                  declares_additive_migration,
               )
+
+              def additive_confirmed(pr, paths):
+                  # Founder 2026-10-14（三）補充 #1: declared, and Codex's 👍 on the final head.
+                  if not declares_additive_migration(pr.get("body") or "") or not any(
+                      p.startswith("backend/database/migrations/") for p in paths
+                  ):
+                      return False
+                  n, flags = pr.get("number"), ("--paginate", "--slurp")
+                  try:
+                      return codex_confirms_head(
+                          (pr.get("head") or {}).get("sha"),
+                          pages(gh_api(f"/repos/{repo}/issues/{n}/comments?per_page=100", *flags)),
+                          pages(gh_api(f"/repos/{repo}/pulls/{n}/reviews?per_page=100", *flags)),
+                          pages(gh_api(f"/repos/{repo}/issues/{n}/reactions?per_page=100", *flags)),
+                      )
+                  except (RuntimeError, ValueError):
+                      return False
 
               base = os.environ["RUNTIME_BASE_SHA"]
               required_status_checks = active_main_required_status_checks(repo)
@@ -893,6 +912,7 @@ jobs:
                           **actual_effect,
                           "declared_risk": declared_risk,
                           "declared_tier": declared_tier,
+                          "additive_confirmed": additive_confirmed(pr, actual_paths),
                       })
                       attributed_commits.add(commit_sha)
               attributed.extend(aggregate_landed_pr_effects(landed_effects))
@@ -1658,7 +1678,7 @@ jobs:
 
           abort_deploy() {
             echo "❌ $1"
-            [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
+            [ "${MIGRATION_RAN:-0}" -eq 0 ] || [ "$(python3 -I "${PDV:-x}" range-additive "$PREV_COMMIT" "$TARGET_SHA")" = 1 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
             if ! rollback_deploy; then
               echo "❌ 自動 rollback 也失敗 — deploy run 必須標紅"
               exit 11
@@ -1960,7 +1980,8 @@ jobs:
       # Post-deploy safety net (Founder 2026-10-14). The executor above already
       # verified health + deployment.json identity with bounded retries and, on
       # failure, rolled back through its reviewed rollback_deploy (exit 10/11) or,
-      # when the range has a migration, held without any rollback (exit 12).
+      # when the range has a migration that is not additive-only, held without
+      # any rollback (exit 12/13).
       # These steps add an independent read-only check from outside the Pi and a
       # loud summary; they open no new path into production.
       - name: Checkout post-deploy verifier

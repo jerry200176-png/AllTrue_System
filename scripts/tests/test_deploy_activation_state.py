@@ -2119,7 +2119,8 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
 
     # --- gate: verify -> smoke -> rollback decision (the executor's final stage) ---
 
-    def _gate(self, verify_rc=0, smoke_rc=0, migrations="0", migration_ran="0", frontend_changed="0"):
+    def _gate(self, verify_rc=0, smoke_rc=0, migrations="0", migration_ran="0", frontend_changed="0",
+              migrations_additive="0"):
         seen = {}
 
         def verify_fn(args):
@@ -2135,7 +2136,8 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             target_sha=self.TARGET, previous_sha=self.PREV, frontend_changed=frontend_changed,
             migration_ran=migration_ran, smoke="/x/post-merge-smoke.sh", deadline=150,
         )
-        rc = self.pdv.gate(args, verify_fn=verify_fn, run=run, migrations_fn=lambda prev, target: migrations)
+        rc = self.pdv.gate(args, verify_fn=verify_fn, run=run, migrations_fn=lambda prev, target: migrations,
+                           additive_fn=lambda prev, target: migrations_additive)
         return rc, seen
 
     def test_gate_passes_only_after_verify_and_smoke(self):
@@ -2162,6 +2164,82 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         for kwargs in ({"migrations": "2"}, {"migration_ran": "1"}, {"migrations": "unknown"}):
             for failure in ({"verify_rc": 1}, {"smoke_rc": 1}):
                 self.assertEqual(self.pdv.RC_HELD_MIGRATION, self._gate(**kwargs, **failure)[0], (kwargs, failure))
+
+    def test_gate_rolls_back_when_every_range_migration_is_additive(self):
+        for failure in ({"verify_rc": 1}, {"smoke_rc": 1}):
+            rc = self._gate(migrations="2", migration_ran="1", migrations_additive="1", **failure)[0]
+            self.assertEqual(self.pdv.RC_GATE_ROLLBACK, rc, failure)
+        self.assertEqual("rollback", self.pdv.decide("2", "1", "1"))
+        for additive in ("0", "", "unknown", "true"):
+            self.assertEqual("hold", self.pdv.decide("2", "1", additive), additive)
+
+    def _range_repo(self, repo, prev_classifier, migration, target_classifier=None, edit_existing=False):
+        def git(*args):
+            return subprocess.run(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                                  check=True, capture_output=True, text=True).stdout.strip()
+
+        root = Path(repo)
+        (root / "backend" / "database" / "migrations").mkdir(parents=True)
+        (root / "scripts" / "governance").mkdir(parents=True)
+        old = root / "backend" / "database" / "migrations" / "2026_01_01_000000_old.php"
+        old.write_text("<?php\n")
+        if prev_classifier is not None:
+            (root / "scripts" / "governance" / "autonomy_gate.py").write_text(prev_classifier)
+        git("init", "-q")
+        git("add", ".")
+        git("commit", "-qm", "base")
+        prev = git("rev-parse", "HEAD")
+        if migration is not None:
+            target = old if edit_existing else root / "backend" / "database" / "migrations" / "2026_10_14_000000_x.php"
+            target.write_text(migration)
+        (root / "a.txt").write_text("code")
+        if target_classifier is not None:
+            (root / "scripts" / "governance" / "autonomy_gate.py").write_text(target_classifier)
+        git("add", ".")
+        git("commit", "-qm", "target")
+        return prev, git("rev-parse", "HEAD")
+
+    def test_range_additive_uses_the_previous_commits_classifier_and_fails_closed(self):
+        real = (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text()
+        additive = textwrap.dedent("""\
+            <?php
+            use Illuminate\\Database\\Migrations\\Migration;
+            use Illuminate\\Database\\Schema\\Blueprint;
+            use Illuminate\\Support\\Facades\\Schema;
+            return new class extends Migration {
+                public function up(): void {
+                    Schema::table('t', function (Blueprint $t) { $t->string('c')->nullable(); });
+                }
+                public function down(): void { Schema::table('t', fn (Blueprint $t) => $t->dropColumn('c')); }
+            };
+            """)
+        destructive = additive.replace("$t->string('c')->nullable();", "$t->dropColumn('c');")
+        always = "def additive_migration_paths(paths, patch):\n    return set(paths)\n"
+        cases = (
+            ("additive, trusted classifier", dict(prev_classifier=real, migration=additive), "1"),
+            ("destructive", dict(prev_classifier=real, migration=destructive), "0"),
+            ("edits an existing migration", dict(prev_classifier=real, migration=additive, edit_existing=True), "0"),
+            ("no migration in range", dict(prev_classifier=real, migration=None), "0"),
+            ("previous commit has no classifier", dict(prev_classifier=None, migration=additive), "0"),
+            ("classifier without the function", dict(prev_classifier="X = 1\n", migration=additive), "0"),
+            ("classifier crashes", dict(prev_classifier="raise SystemExit(3)\n", migration=additive), "0"),
+            # A range must not judge itself: only the previous commit's classifier counts.
+            ("target swaps in a permissive classifier", dict(prev_classifier=None, migration=destructive,
+                                                             target_classifier=always), "0"),
+        )
+        for name, kwargs, expected in cases:
+            with tempfile.TemporaryDirectory(prefix="alltrue-range-additive-") as repo:
+                prev, target = self._range_repo(repo, **kwargs)
+                run = lambda cmd, **kw: subprocess.run(cmd, cwd=Path(repo) / "backend", **kw)  # noqa: E731
+                self.assertEqual(expected, self.pdv.range_additive(prev, target, run=run), name)
+                if name == "additive, trusted classifier":
+                    self.assertEqual("0", self.pdv.range_additive(prev, "f" * 40, run=run))
+
+    def test_abort_asks_the_captured_verifier_whether_the_range_is_additive(self):
+        abort = self.workflow.split("abort_deploy() {", 1)[1].split("\n          }", 1)[0]
+        self.assertIn('[ "${MIGRATION_RAN:-0}" -eq 0 ] || [ "$(python3 -I "${PDV:-x}" range-additive '
+                      '"$PREV_COMMIT" "$TARGET_SHA")" = 1 ] || {', abort)
+        self.assertNotIn("--migrations-additive", self.workflow)
 
     def test_range_migrations_counts_from_any_repo_subdirectory_and_fails_closed(self):
         with tempfile.TemporaryDirectory(prefix="alltrue-range-migrations-") as repo:
@@ -2248,9 +2326,14 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         self.assertNotIn("php artisan migrate:rollback", self.workflow)
         abort = "abort_deploy() {" + self.workflow.split("abort_deploy() {", 1)[1].split("\n          }", 1)[0] + "\n}\n"
         harness = 'rollback_deploy() { echo ROLLBACK_CALLED; return 0; }\n'
-        for migration_ran, expected_rc, rolled_back in (("0", 10, True), ("1", 13, False)):
+        harness += 'python3() { [ "$3" = range-additive ] && [ "$4$5" = pt ] && printf "$ADDITIVE"; }\n'
+        for migration_ran, additive, expected_rc, rolled_back in (
+            ("0", "0", 10, True), ("1", "0", 13, False), ("1", "1", 10, True), ("1", "", 13, False),
+            ("1", "1\\n1", 13, False),
+        ):
             result = subprocess.run(
-                ["bash", "-c", harness + abort + "MIGRATION_RAN=" + migration_ran + "\nabort_deploy x\n"],
+                ["bash", "-c", harness + abort + "set -u\nPREV_COMMIT=p\nTARGET_SHA=t\nMIGRATION_RAN=" + migration_ran
+                 + "\nADDITIVE='" + additive + "'\nabort_deploy x\n"],
                 text=True, capture_output=True, env={"PATH": os.environ["PATH"]},
             )
             self.assertEqual(expected_rc, result.returncode, result.stdout + result.stderr)

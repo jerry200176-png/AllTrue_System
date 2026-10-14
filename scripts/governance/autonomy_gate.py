@@ -12,7 +12,7 @@ import fnmatch
 import json
 import re
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Callable, Iterable, Mapping
 
 
@@ -592,6 +592,55 @@ def _migration_body_is_additive(source: str) -> bool:
 ADDITIVE_MIGRATION_AUTO_ACTIVATION = False
 
 
+CODEX_REVIEWER = "chatgpt-codex-connector[bot]"
+_CODEX_SUMMARY_MARKER = "<!-- codex-pull-request-review-summary -->"
+_CODEX_SUMMARY_ROW_RE = re.compile(
+    r"✅ \*\*Completed\*\*\s*<relative-time datetime=\"([^\"]+)\">[^|]*\|\s*`([0-9a-f]{7,40})`"
+)
+
+
+def _iso(value: object) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def codex_confirms_head(
+    head_sha: str, comments: object, reviews: object, reactions: object
+) -> bool:
+    """Codex's explicit "no findings" on the exact final head (Founder 2026-10-14（三）補充 #1).
+
+    All of: Codex's review summary marks a review of ``head_sha`` completed; Codex
+    posted no review on that commit (a review means findings); and Codex reacted 👍
+    on the PR after that completion. Anything missing or malformed is False.
+    """
+
+    if not re.fullmatch(r"[0-9a-f]{40}", str(head_sha or "")):
+        return False
+    if not all(isinstance(value, list) for value in (comments, reviews, reactions)):
+        return False
+
+    def by_codex(item: object) -> bool:
+        return isinstance(item, Mapping) and (item.get("user") or {}).get("login") == CODEX_REVIEWER
+
+    completed = [
+        when for item in comments if by_codex(item) and _CODEX_SUMMARY_MARKER in str(item.get("body") or "")
+        for raw, sha in _CODEX_SUMMARY_ROW_RE.findall(str(item.get("body") or ""))
+        if head_sha.startswith(sha) and (when := _iso(raw)) is not None
+    ]
+    if not completed:
+        return False
+    if any(by_codex(item) and item.get("commit_id") == head_sha for item in reviews):
+        return False
+    done = max(completed) - timedelta(minutes=2)
+    return any(
+        by_codex(item) and item.get("content") == "+1" and (_iso(item.get("created_at")) or done) > done
+        for item in reactions
+    )
+
+
 def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
     """Return newly added migration files that only add structure.
 
@@ -1132,6 +1181,7 @@ def aggregate_landed_pr_effects(
                 "merged_at": effect.get("merged_at"),
                 "declared_risk": effect.get("declared_risk"),
                 "declared_tier": effect.get("declared_tier"),
+                "additive_confirmed": effect.get("additive_confirmed") is True,
                 "paths": [],
                 "patch_parts": [],
                 "patch_complete": True,
@@ -1141,6 +1191,8 @@ def aggregate_landed_pr_effects(
         for key in ("merged_at", "declared_risk", "declared_tier"):
             if group[key] != effect.get(key):
                 group["metadata_consistent"] = False
+        if effect.get("additive_confirmed") is not True:
+            group["additive_confirmed"] = False
         paths = effect.get("paths")
         if not isinstance(paths, list):
             group["patch_complete"] = False
@@ -1166,6 +1218,7 @@ def aggregate_landed_pr_effects(
             "patch_complete": bool(group["patch_complete"] and group["metadata_consistent"]),
             "declared_risk": group["declared_risk"] if group["metadata_consistent"] else None,
             "declared_tier": group["declared_tier"] if group["metadata_consistent"] else None,
+            "additive_confirmed": bool(group["additive_confirmed"] and group["metadata_consistent"]),
         })
     return aggregated
 
@@ -1451,7 +1504,7 @@ def classify_activation_provenance(records: Iterable[dict[str, object]]) -> dict
             blocked_reasons.append(f"PR #{number}: application patch evidence is incomplete")
             continue
 
-        scope = classify_activation_scope(paths, patch)
+        scope = classify_activation_scope(paths, patch, record.get("additive_confirmed") is True)
         application_prs.append({
             "number": str(number),
             "provenance_state": provenance_state,
@@ -1992,6 +2045,7 @@ def validate_declaration(
 
 __all__ = [
     "classify_activation_scope",
+    "codex_confirms_head",
     "classify_activation_provenance",
     "aggregate_landed_pr_effects",
     "reconcile_preexisting_pr_provenance",
