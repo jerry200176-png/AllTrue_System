@@ -24,7 +24,7 @@ bash scripts/mempalace-ingest.sh
 ~/.local/bin/mempalace search "關鍵字" --wing alltrue-docs
 ```
 
-Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdown；MemPalace 僅供召回。
+Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即可）。權威文件仍在 git markdown；MemPalace 僅供召回。
 
 ---
 
@@ -81,8 +81,9 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 
 | 環境 | 說明 |
 |---|---|
-| **本地開發** | WSL2 task worktree — **never** `/home/jerry/alltrue` / `~/alltrue` if it resolves there. Canonical policy: [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md) |
-| **多 agent 並行** | ⛔ 禁止共用 forbidden dirty tree。用 `agent-start alltrue <task-id>` 建立 `/home/jerry/workspace/tasks/alltrue/<task-id>/` 並通過 preflight。見 WORKTREE_POLICY + `AI_REGRESSION_LESSONS` §Y6 |
+| **開發（2026-10-14 起）** | Claude cloud session：從 `origin/main` 開新 branch → PR → CI。不跑 `agent-start`／本機 preflight。見 [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md) |
+| **本機 WSL（淘汰中）** | 只在必要時用；要用就 `agent-start alltrue <task-id>`，**never** `/home/jerry/alltrue` / `~/alltrue`。見 WORKTREE_POLICY + `AI_REGRESSION_LESSONS` §Y6 |
+| **多 agent 並行** | 每個 session 自己的 branch，不共編同一分支 |
 | **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼；唯讀查資料見 R6 例外 |
 | **部署方式** | `deploy.yml` 是正式應用部署控制面；CI 通過不等於已有正式啟用授權，依實際 environment gate 與完整 production→candidate 風險執行 |
 
@@ -159,7 +160,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 - Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
 - Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add label `intentional-revert` + reason in the PR body, then re-run presubmit.
 - Deploys: only `deploy.yml`. A range whose every PR is R0-R2 or carries a Founder GO deploys on its own CI; otherwise it waits for the release train (Founder 1A/3A, 2026-10-07).
-- Helpers (subagents) start from fresh `origin/main` in their own `agent-start` worktree; never copy files from another worktree.
+- Helpers (subagents) start from fresh `origin/main` in their own branch/session; never copy files from another worktree or session.
 - Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
 - Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.
 - A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
