@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-14-inapp-400-binding-page
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 家長 LINE 綁定頁恢復顯示
+    summary: 綁定清單、統計數字與學生姓名搜尋都能正常使用。
+    items:
+      - category: fixed
+        text: 家長 LINE 綁定頁會列出綁定清單，統計卡會顯示已綁定、綁定率、未驗證與總活躍學生數。
+      - category: fixed
+        text: 可以用學生姓名搜尋綁定。
+    source_refs:
+      - "changelog:2026-10-14:inapp-400-binding-page"

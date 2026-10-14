@@ -30,7 +30,7 @@ final class BindingService
     // ── Query ──────────────────────────────────────────────
 
     /** @return Collection<int, \stdClass> */
-    public function listBindings(?int $campusId = null, ?int $studentId = null, ?string $lineUserId = null, int $limit = 100, ?array $allowedCampusIds = null): Collection
+    public function listBindings(?int $campusId = null, ?int $studentId = null, ?string $lineUserId = null, int $limit = 100, ?array $allowedCampusIds = null, ?string $studentName = null): Collection
     {
         $q = DB::table('student_line_bindings')
             ->join('Student', 'student_line_bindings.student_id', '=', 'Student.id')
@@ -41,6 +41,7 @@ final class BindingService
                 'student_line_bindings.line_user_id',
                 'student_line_bindings.campus_id',
                 'student_line_bindings.bound_at',
+                'student_line_bindings.verified_at',
                 'Student.name as student_name',
                 'Student.enable as student_enable',
                 'Campus.name as campus_name',
@@ -58,8 +59,39 @@ final class BindingService
         if ($lineUserId !== null) {
             $q->where('student_line_bindings.line_user_id', $lineUserId);
         }
+        if ($studentName !== null && trim($studentName) !== '') {
+            $q->where('Student.name', 'like', '%' . addcslashes(trim($studentName), '%_\\') . '%');
+        }
 
         return $q->orderBy('student_line_bindings.bound_at', 'desc')->limit($limit)->get();
+    }
+
+    /**
+     * Binding-page stat cards: enabled students in scope, how many have a binding,
+     * and how many of those bindings are still unverified (in-app #400).
+     *
+     * @return array{bound_count:int, unverified_bound_count:int, student_total:int}
+     */
+    public function stats(?int $campusId = null, ?array $allowedCampusIds = null): array
+    {
+        $scope = function ($q, string $column) use ($campusId, $allowedCampusIds) {
+            if ($campusId !== null) {
+                $q->where($column, $campusId);
+            }
+            if ($allowedCampusIds !== null) {
+                $q->whereIn($column, $allowedCampusIds);
+            }
+            return $q;
+        };
+        $bindings = fn () => $scope(DB::table('student_line_bindings')
+            ->join('Student', 'student_line_bindings.student_id', '=', 'Student.id')
+            ->where('Student.enable', 1), 'student_line_bindings.campus_id');
+
+        return [
+            'bound_count' => (int) $bindings()->distinct()->count('student_line_bindings.student_id'),
+            'unverified_bound_count' => (int) $bindings()->whereNull('student_line_bindings.verified_at')->count(),
+            'student_total' => (int) $scope(DB::table('Student')->where('enable', 1), 'CampusID')->count(),
+        ];
     }
 
     public function findBinding(int $bindingId): ?object
