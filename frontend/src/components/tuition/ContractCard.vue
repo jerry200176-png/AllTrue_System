@@ -297,8 +297,8 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
 .contract__head h5{margin:0;font-size:15px}
 .contract__mode{font-size:12px;color:var(--ds-ink-mute)}
-.contract--focused{border-color:var(--ds-cta);box-shadow:0 0 0 1px var(--ds-cta)}
-.contract__focused{font-size:12px;font-weight:600;color:var(--ds-cta)}
+.contract--focused{border-color:var(--ds-cta);border-width:2px}
+.contract__focused{font-size:var(--ds-font-size-sm);font-weight:600;color:var(--ds-cta)}
 .contract__money{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:14px}
 .contract__money .due{color:var(--ds-danger)}
 .contract__confirm-text{margin:0;font-size:14px;line-height:1.6}
