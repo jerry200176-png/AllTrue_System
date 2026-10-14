@@ -307,16 +307,16 @@ function inlinePrograms(words, info) { // the words holding inline program text
 }
 // a Python program reading stdin (`python3 - <<'PY'`, `python <<PY`): its heredoc is Python, not shell
 const pythonStdin = (info, args) => /^python[0-9.]*$/.test(info.name) && !args.some((x) => /^-[A-Za-z]*[cm]$/.test(x)) && [undefined, '-'].includes(args.find((x) => !/^-./.test(x)));
-function shellCalls(py) { // calls that run a command string: os.system/popen/exec*/spawn*, subprocess.*, commands.*, also via import aliases
-  const os = ['os'], mods = ['subprocess', 'commands'], names = [];
-  for (const m of py.matchAll(/^[ \t]*from[ \t]+(os|subprocess|commands)[ \t]+import[ \t]+\(?([^)\n]+)/gm)) for (const part of m[2].split(',')) {
+// Any call whose final name runs a command, whatever its prefix (bare, `x.`, `__import__('os').`, `getattr(..., 'system')`),
+// plus names bound by `from os|subprocess|commands import x as y`. Harmless commands pass the shell check that follows.
+const RUNNERS = 'system|popen|run|call|check_call|check_output|Popen|getoutput|getstatusoutput|exec\\w*|spawn\\w*';
+function shellCalls(py) {
+  const names = [];
+  for (const m of py.matchAll(/^[ \t]*from[ \t]+(?:os|subprocess|commands)[ \t]+import[ \t]+\(?([^)\n]+)/gm)) for (const part of m[1].split(',')) {
     const n = /^\s*(\w+)(?:\s+as\s+(\w+))?/.exec(part); if (n) names.push(n[2] ?? n[1]);
   }
-  for (const m of py.matchAll(/^[ \t]*import[ \t]+([^\n#]+)/gm)) for (const part of m[1].split(',')) {
-    const n = /^\s*(os|subprocess|commands)\s+as\s+(\w+)/.exec(part); if (n) (n[1] === 'os' ? os : mods).push(n[2]);
-  }
-  const alt = [`(?:${os.join('|')})\\s*\\.\\s*(?:system|popen|exec\\w*|spawn\\w*)`, `(?:${mods.join('|')})\\s*\\.\\s*\\w+`, ...(names.length ? [`(?<![\\w.])(?:${names.join('|')})`] : [])];
-  return py.matchAll(new RegExp(`\\b(?:${alt.join('|')})\\s*\\(`, 'g'));
+  const viaGetattr = `\\bgetattr\\s*\\((?:[^()'"]|'[^']*'|"[^"]*"|\\([^()]*\\))*?,\\s*['"](?:${RUNNERS})['"]\\s*\\)`;
+  return py.matchAll(new RegExp(`(?:${viaGetattr}|(?<!\\w)(?:${[RUNNERS, ...names].join('|')}))\\s*\\(`, 'g'));
 }
 const pyClose = (py, open) => { // index of the bracket closing py[open], skipping simple string literals
   let d = 0, e = open;
@@ -352,7 +352,7 @@ function pythonOutputs(py, sensitive) { // password-like env reads (or names ass
     hits.push({ at: m.index, to: m[2] || m[1] === 'stderr' || /stderr|\/dev\//.test(file) ? 'log' : file && !/stdout/.test(file) ? 'file' : 'stdout' });
   }
   for (const m of shellCalls(py)) { // command strings run by a shell / exec: apply the shell checks
-    const cmd = [...py.slice(m.index, pyClose(py, m.index + m[0].length - 1) + 1).matchAll(/(['"])((?:\\.|(?!\1).)*)\1/g)].map((x) => x[2]).join(' ');
+    const open = m.index + m[0].length - 1, cmd = [...py.slice(open, pyClose(py, open) + 1).matchAll(/(['"])((?:\\.|(?!\1).)*)\1/g)].map((x) => x[2]).join(' ');
     const shell = lex(cmd), found = [];
     if (!shell.bad) analyze(shell, 'top', found, []);
     if (found.some((o) => !o.safe) || [...cmd.matchAll(PROC_ENV)].length) hits.push({ at: m.index, to: 'log' });
@@ -878,7 +878,10 @@ export const trip = {
     ["python3 - <<'PY'", 'import os', 'e = os.environ; print(e["DB_PASSWORD"])'],
     ["python3 - <<'PY'", 'from os import system', 'system("printenv")'], ["python3 - <<'PY'", 'from os import popen', 'print(popen("printenv").read())'],
     ["python3 - <<'PY'", 'from subprocess import run', 'run(["printenv"])'], ["python3 - <<'PY'", 'import subprocess as sp', 'sp.run(["env"])'],
-    ["python3 - <<'PY'", 'from os import (system as sh)', 'sh("env")'], ["python3 - <<'PY'", 'import json, os as o', 'o.system("cat /home/admin/backend/.env")'],
+    ["python3 - <<'PY'", 'from os import (system as sh)', 'sh("env")'],
+    ["python3 - <<'PY'", 'from os import *', 'system("printenv")'], ["python3 - <<'PY'", "__import__('os').system('env')"],
+    ["python3 - <<'PY'", 'from subprocess import *', 'run(["env"])'], ["python3 - <<'PY'", "getattr(__import__('os'), 'system')('printenv')"],
+    ["python3 - <<'PY'", 'import importlib', "importlib.import_module('subprocess').check_output(['printenv'])"], ["python3 - <<'PY'", 'import json, os as o', 'o.system("cat /home/admin/backend/.env")'],
   ].map((l) => [`Python heredoc ${l.join(' / ')}`, blk(...l, 'PY')])),
 };
 export const ok = {
@@ -944,6 +947,9 @@ export const ok = {
     'subprocess.run(["git", "rev-parse", "HEAD"], env=env, check=True)', 'os.system("date")', 'raise SystemExit("unexpected shape")', 'PY'),
   'Python heredoc imported command runner with a harmless command': blk("python3 - <<'PY'", 'from subprocess import run, PIPE', 'import os as o',
     'from os import system', 'run(["git", "rev-parse", "HEAD"], stdout=PIPE, check=True)', 'system("date")', 'o.system("true")', 'PY'),
+  'Python heredoc runner-named calls with harmless commands': blk("python3 - <<'PY'", 'import re, subprocess, asyncio', 'from os import *',
+    'subprocess.run(["git", "rev-parse", "HEAD"], check=True)', 're.compile("x").run("text")', 'system("date")', "getattr(subprocess, 'call')(['true'])",
+    'asyncio.run(main())', 'cursor.execute("SELECT id FROM users WHERE id = %s", (1,))', 'PY'),
   'Python heredoc regex is not shell': blk("python3 - <<'PY'", 'import re', 'refs = sorted(set(re.findall(r"(?<![A-Za-z0-9])#([1-9][0-9]*)\\b", "x #1 > $(y)")))', 'print(refs)', 'PY'),
   'Python heredoc prints password only to a file or a capture': blk("python3 - > secret.txt <<'PY'", 'import os', 'print(os.environ["DB_PASSWORD"])', 'PY',
     'X="$(python3 - <<\'PY\'', 'import os, json', 'print(json.dumps({"password": os.environ["DB_PASSWORD"]}))', 'PY', ')"'),
