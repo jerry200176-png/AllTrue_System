@@ -94,15 +94,26 @@ class ScheduleGuardSummaryTest extends TestCase
         );
     }
 
-    public function test_same_student_at_drifted_times_reads_as_one_entry(): void
+    public function test_same_student_at_drifted_times_is_one_entry_listing_both_times(): void
     {
         $drifted = $this->detail('class_session');
         $drifted['start_time'] = '16:30';
         $drifted['end_time'] = '18:30';
 
         self::assertSame(
-            '測試學生（數學・9/1期）(16:00-18:00,固定課程＋課堂紀錄)',
+            '測試學生（數學・9/1期）(16:00-18:00,固定課程)、（數學・9/1期）(16:30-18:30,課堂紀錄)',
             $this->invoke('buildOverlapSummary', [$this->detail('student_class'), $drifted])
+        );
+    }
+
+    public function test_same_student_with_two_contracts_lists_both(): void
+    {
+        $renewal = $this->detail('student_class');
+        $renewal['course_period'] = '12/1期';
+
+        self::assertSame(
+            '測試學生（數學・9/1期）(16:00-18:00,固定課程)、（數學・12/1期）(16:00-18:00,固定課程)',
+            $this->invoke('buildOverlapSummary', [$this->detail('student_class'), $renewal])
         );
     }
 

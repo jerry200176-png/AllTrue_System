@@ -1803,8 +1803,8 @@ class StudentClassController extends Controller
                 }
                 // An edit that keeps the teacher, class type, room and weekly slots and only
                 // narrows (or keeps) the active window adds no seat, so it cannot create an
-                // over-capacity state. Re-checking it would block billing-only edits such as
-                // switching to 月結 on a slot that is already full (in-app #406).
+                // over-capacity state; capacity conflicts from existing occupancy must not block
+                // billing-only edits such as switching to 月結 on a full slot (in-app #406).
                 $oldRoomId = $studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null;
                 $oldClassType = (string) ($studentClass->getAttribute('ClassType') ?: 'one_on_one');
                 // The stored course must already hold its seat (same rule as
@@ -1820,7 +1820,7 @@ class StudentClassController extends Controller
                     && $newRoomId === $oldRoomId
                     && $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass) === $recurringSlots
                     && $this->activeWindowWithin($studentClass, $candidate);
-                $recurringConflicts = $addsNoLoad ? [] : $this->scheduleGuardService->validateRecurringCourse([
+                $recurringConflicts = $this->scheduleGuardService->validateRecurringCourse([
                     'teacher_id' => $newTeacherId,
                     'class_type' => $newClassType,
                     'room_id' => $newRoomId,
@@ -1835,6 +1835,14 @@ class StudentClassController extends Controller
                     // Same inputs syncFutureScheduledSessionTimes() gets, so the guard predicts its remap (#3502).
                     'contract_sync' => ['slots' => $slots, 'duration' => max(30, (int) ($candidate->getAttribute('SessionDuration') ?? 120))],
                 ]);
+                if ($addsNoLoad) {
+                    // No new seat: keep the course's own self-overlap check (a save can still
+                    // materialize sessions), but don't block on occupancy that already exists.
+                    $recurringConflicts = array_values(array_filter(
+                        $recurringConflicts,
+                        static fn ($c) => !in_array($c['type'] ?? '', ['teacher_capacity', 'room_capacity'], true)
+                    ));
+                }
                 if (!empty($recurringConflicts)) {
                     return response()->json([
                         'message' => $recurringConflicts[0]['message'] ?? '新排課時段與老師既有課程衝突或已達人數上限',

@@ -1223,8 +1223,10 @@ class ScheduleGuardService
             return '';
         }
 
-        // One segment per student/course/time: the same student often appears as both the
-        // fixed contract and its materialized session, which read as two students (in-app #406).
+        // One segment per occupant, counted the way countDistinctStudents() counts them, so
+        // a contract and its materialized session no longer read as two students (in-app #406).
+        // Each segment keeps every distinct course/time variant (a stale renewal shows both
+        // contracts); anonymous rows stay distinct per source.
         $groups = [];
         foreach ($details as $row) {
             $name = (string) ($row['student_name'] ?? '');
@@ -1243,18 +1245,18 @@ class ScheduleGuardService
                 'schedule' => '排課紀錄',
                 default => $source,
             };
-            // Rows without a student stay distinct per source, as countDistinctStudents() counts them.
-            $occupant = $sid > 0 ? (string) $sid : 'anon:' . $source . ':' . (string) ($row['source_id'] ?? '');
-            // A known student is one entry, as countDistinctStudents() counts them (variant
-            // times stay in overlap_details); anonymous rows keep course and time.
-            $key = $sid > 0
-                ? $occupant . '|' . $studentLabel
-                : $occupant . '|' . $studentLabel . '|' . $courseLabel . '|' . $start . '|' . $end;
-            if (!isset($groups[$key])) {
-                $groups[$key] = ['student' => $studentLabel, 'course' => $courseLabel, 'start' => $start, 'end' => $end, 'sources' => []];
+            $occupant = $sid > 0
+                ? $sid . '|' . $studentLabel
+                : 'anon:' . $source . ':' . (string) ($row['source_id'] ?? '') . '|' . $studentLabel;
+            $variant = $courseLabel . '|' . $start . '|' . $end;
+            if (!isset($groups[$occupant])) {
+                $groups[$occupant] = ['student' => $studentLabel, 'variants' => []];
             }
-            if ($sourceLabel !== '' && !in_array($sourceLabel, $groups[$key]['sources'], true)) {
-                $groups[$key]['sources'][] = $sourceLabel;
+            if (!isset($groups[$occupant]['variants'][$variant])) {
+                $groups[$occupant]['variants'][$variant] = ['course' => $courseLabel, 'start' => $start, 'end' => $end, 'sources' => []];
+            }
+            if ($sourceLabel !== '' && !in_array($sourceLabel, $groups[$occupant]['variants'][$variant]['sources'], true)) {
+                $groups[$occupant]['variants'][$variant]['sources'][] = $sourceLabel;
             }
         }
 
@@ -1262,15 +1264,17 @@ class ScheduleGuardService
         $segments = [];
         $max = min(5, count($groups));
         for ($i = 0; $i < $max; $i++) {
-            $group = $groups[$i];
-            $segments[] = sprintf(
-                '%s%s(%s-%s,%s)',
-                $group['student'],
-                $group['course'] !== '' ? "（{$group['course']}）" : '',
-                $group['start'],
-                $group['end'],
-                implode('＋', $group['sources'])
-            );
+            $parts = [];
+            foreach ($groups[$i]['variants'] as $v) {
+                $parts[] = sprintf(
+                    '%s(%s-%s,%s)',
+                    $v['course'] !== '' ? "（{$v['course']}）" : '',
+                    $v['start'],
+                    $v['end'],
+                    implode('＋', $v['sources'])
+                );
+            }
+            $segments[] = $groups[$i]['student'] . implode('、', $parts);
         }
 
         if (count($groups) > $max) {
