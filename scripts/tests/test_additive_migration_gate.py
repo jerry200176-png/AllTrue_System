@@ -244,6 +244,12 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::table('payroll_runs', fn (Blueprint $t) => $t->string('x')->nullable());",
             "Schema::table('session_deduction_ledger', fn (Blueprint $t) => $t->string('x')->nullable());",
             "if (Schema::hasTable('Payment')) { return; } Schema::create('notes', function (Blueprint $t) { $t->id(); });",
+            "Schema::table('pop_approval_events', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('Student', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('TempRfid', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('StudentSingIn', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('system_settings', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('chat_thread_members', fn (Blueprint $t) => $t->string('x')->nullable());",
         ):
             patch = new_file(MIG, migration(up))
             self.assertEqual(additive_migration_paths([MIG], patch), set(), up)
@@ -263,6 +269,23 @@ class AdditiveMigrationGate(unittest.TestCase):
         body = "Risk-Class: R2\nAutonomy-Tier: T2\n"
         self.assertFalse(validate_declaration(body, [MIG], patch)["valid"])
         self.assertTrue(validate_declaration(body + "Additive-Migration: yes\n", [MIG], patch)["valid"])
+
+    def test_hidden_or_indented_declaration_does_not_count(self):
+        for body in ("<!--\nAdditive-Migration: yes\n-->", "```\nAdditive-Migration: yes\n```",
+                     "~~~text\nAdditive-Migration: yes\n~~~", "    Additive-Migration: yes",
+                     "<!-- unterminated\nAdditive-Migration: yes"):
+            self.assertFalse(declares_additive_migration(body), body)
+        self.assertTrue(declares_additive_migration("<!-- note -->\nAdditive-Migration: yes\r\n"))
+
+    def test_release_evidence_ignores_the_opt_in(self):
+        files = [{"filename": MIG, "patch": new_file(MIG, ADD).split("\n", 1)[1]}]
+        body = "Risk-Class: R2\nAutonomy-Tier: T2\nAdditive-Migration: yes\n"
+        self.assertIsNone(gate.commit_effective_class(body, files))
+        self.assertEqual(gate.commit_effective_class("Risk-Class: R3\nAutonomy-Tier: T3\n", files), 3)
+
+    def test_lowercase_bare_placeholder_stays_t3(self):
+        up = "Schema::table('rooms', fn (Blueprint $t) => $t->string(s0)->nullable());"
+        self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set())
 
     def test_declaration_must_be_its_own_line(self):
         self.assertTrue(declares_additive_migration("x\nAdditive-Migration: yes\ny"))

@@ -270,17 +270,19 @@ _ADDITIVE_EXCLUDED_TABLE_RE = re.compile(
     r"apiclient|api_client|security|grant|teacher|"
     r"invoice|payment|payroll|salary|billing|ledger|charge|pric|deduct|entitlement|refund|bank|"
     r"accounting|dunning|rate_card|package|contract|tuition|fee|cash|allowance|coverage|correction|"
-    r"studentclass|student_class",
+    r"studentclass|student_class|^student$|singin|rfid|swipe|pop_|system_setting|_members",
     re.IGNORECASE,
 )
 _SCHEMA_TABLE_ARG_RE = re.compile(r"Schema\s*::\s*\w+\s*\(\s*S(\d+)", re.IGNORECASE)
-_ADDITIVE_DECLARATION_RE = re.compile(r"^\s*Additive-Migration:\s*yes\s*$", re.IGNORECASE | re.MULTILINE)
+_ADDITIVE_DECLARATION_RE = re.compile(r"^Additive-Migration:[ \t]*yes[ \t]*\r?$", re.IGNORECASE | re.MULTILINE)
+# Markup that hides a line from the rendered PR body does not carry a declaration.
+_HIDDEN_MARKUP_RE = re.compile(r"<!--.*?(?:-->|\Z)|^[ \t]*(```|~~~).*?(?:^[ \t]*\1|\Z)", re.DOTALL | re.MULTILINE)
 
 
 def declares_additive_migration(body: str) -> bool:
     """The PR author's explicit opt-in (Founder 2026-10-14（三）補充 #1)."""
 
-    return bool(_ADDITIVE_DECLARATION_RE.search(body or ""))
+    return bool(_ADDITIVE_DECLARATION_RE.search(_HIDDEN_MARKUP_RE.sub("", body or "")))
 
 
 # Founder 2026-10-14 (三)④: a migration that only adds tables/columns/plain
@@ -549,7 +551,8 @@ def _migration_body_is_additive(source: str) -> bool:
     if code is None:
         return False
     # A bare identifier such as S3 would shadow a literal token: fail closed.
-    if re.findall(r"\bS(\d+)\b", code) != [str(i) for i in range(len(literals))]:
+    # Case-insensitive, like the block regexes: a bare s0 must not pass as a literal.
+    if re.findall(r"\bS(\d+)\b", code, re.IGNORECASE) != [str(i) for i in range(len(literals))]:
         return False
     downs = list(_DOWN_HEAD_RE.finditer(code))
     if len(downs) > 1 or len(re.findall(r"\bfunction\s+down\b", code, re.IGNORECASE)) != len(downs):
@@ -1619,7 +1622,8 @@ def commit_effective_class(body: str, files: object) -> int | None:
     paths = [str(item["filename"]) for item in files]
     patch = "\n".join(f"diff --git a/{path} b/{path}\n{item['patch']}" for path, item in zip(paths, files))
     paths += [str(item["previous_filename"]) for item in files if item.get("previous_filename")]
-    result = validate_declaration(body, paths, patch)
+    # Release evidence never trusts the additive opt-in: it is not paired with Codex confirmation here.
+    result = validate_declaration(body, paths, patch, allow_additive=False)
     if not result["valid"] or result["effective_tier"] not in TIER_VALUES:
         return None
     return TIER_VALUES[result["effective_tier"]]
@@ -1961,11 +1965,16 @@ def machine_declaration(
 
 
 def validate_declaration(
-    body: str, paths: Iterable[str], patch: str = ""
+    body: str, paths: Iterable[str], patch: str = "", *, allow_additive: bool = True
 ) -> dict[str, object]:
-    """Validate a PR declaration against an independently classified scope."""
+    """Validate a PR declaration against an independently classified scope.
 
-    generated = machine_declaration(paths, patch, declares_additive_migration(body))
+    ``allow_additive=False`` ignores an ``Additive-Migration: yes`` line, for callers
+    that cannot also check the Codex confirmation the opt-in requires.
+    """
+
+    additive = allow_additive and declares_additive_migration(body)
+    generated = machine_declaration(paths, patch, additive)
     declared_risk, declared_tier = parse_declaration(body)
     effective, error = effective_tier(
         int(generated["machine_minimum_tier"]), declared_risk, declared_tier
