@@ -28,7 +28,7 @@ return new class extends Migration {{
 }};"""
 
 
-ADD = migration("Schema::table('invoice', function (Blueprint $t) { $t->string('zero_reason')->nullable(); });")
+ADD = migration("Schema::table('lesson_notes', function (Blueprint $t) { $t->string('zero_reason')->nullable(); });")
 CREATE = migration("Schema::create('notes', function (Blueprint $t) { $t->id(); $t->text('body'); $t->index('id'); });",
                    "Schema::dropIfExists('notes');")
 
@@ -198,6 +198,42 @@ class AdditiveMigrationGate(unittest.TestCase):
             patch = new_file(MIG, migration(up, down))
             self.assertEqual(additive_migration_paths([MIG], patch), set(), down)
             self.assertEqual(self.tiers(patch), (3, 3), down)
+
+    def test_helper_modifiers_are_evaluated(self):
+        for up in (
+            "Schema::table('t', fn (Blueprint $t) => $t->softDeletes('gone')->nullable(false));",
+            "Schema::table('t', fn (Blueprint $t) => $t->rememberToken()->default('known'));",
+            "Schema::table('t', fn (Blueprint $t) => $t->timestamps()->useCurrent());",
+            "Schema::table('t', fn (Blueprint $t) => $t->index('a')->nullable());",
+        ):
+            self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set(), up)
+
+    def test_guarded_names_cannot_be_dropped_on_rollback(self):
+        cases = (
+            ("if (Schema::hasTable('n')) { return; } Schema::create('n', function (Blueprint $t) { $t->id(); });",
+             "Schema::dropIfExists('n');"),
+            ("if (!Schema::hasColumn('t', 'a')) { Schema::table('t', fn (Blueprint $t) => $t->string('a')->nullable()); }",
+             "Schema::table('t', fn (Blueprint $t) => $t->dropColumn('a'));"),
+        )
+        for up, down in cases:
+            self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up, down))), set(), down)
+            # Without the rollback drop the guarded up() is still additive.
+            self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), {MIG}, up)
+        # A guard on the existing table does not stop dropping the column up() added unconditionally.
+        up = "if (Schema::hasTable('t')) { Schema::table('t', fn (Blueprint $t) => $t->string('a')->nullable()); }"
+        down = "Schema::table('t', fn (Blueprint $t) => $t->dropColumn('a'));"
+        self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up, down))), {MIG})
+
+    def test_protected_domain_schema_stays_t3(self):
+        for up in (
+            "Schema::create('auth_tokens', function (Blueprint $t) { $t->id(); });",
+            "Schema::table('permissions', fn (Blueprint $t) => $t->string('scope')->nullable());",
+            "Schema::table('invoices', fn (Blueprint $t) => $t->string('ledger_ref')->nullable());",
+            "Schema::table('t', fn (Blueprint $t) => $t->string('payment_note')->nullable());",
+        ):
+            patch = new_file(MIG, migration(up))
+            self.assertEqual(additive_migration_paths([MIG], patch), set(), up)
+            self.assertEqual(self.tiers(patch), (3, 3), up)
 
     def test_bare_identifier_shadowing_a_literal_token_stays_t3(self):
         up = "Schema::table('t', fn (Blueprint $t) => $t->string(S0)->nullable());"

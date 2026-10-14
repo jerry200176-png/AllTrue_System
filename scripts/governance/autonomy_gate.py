@@ -319,9 +319,11 @@ def _table_column_is_expand_safe(calls: list[tuple[str, str]]) -> bool:
         arg.strip().lower() != "false" for arg in first_args.split(",")[1:]
     ):
         return False
-    if first in _NULLABLE_HELPERS:
-        return True
-    nullable = defaulted = False
+    if first == "index":
+        return len(calls) == 1
+    # timestamps()/softDeletes()/rememberToken() start nullable but return a
+    # mutable definition: their chained modifiers are evaluated like any column.
+    nullable, defaulted = first in _NULLABLE_HELPERS, False
     for name, args in calls[1:]:  # the last call of each modifier wins
         value = args.strip().lower()
         if name == "nullable":
@@ -483,12 +485,18 @@ def _up_additions(code: str, literals: list[str]) -> dict[str, dict[str, set]]:
     return added
 
 
-def _down_is_inverse(down: str, literals: list[str], added: dict[str, dict[str, set]]) -> bool:
-    """down() may only drop what up() added: its tables, columns, indexes and helpers."""
+def _down_is_inverse(down: str, literals: list[str], added: dict[str, dict[str, set]],
+                     guarded: set[str]) -> bool:
+    """down() may only drop what up() added: its tables, columns, indexes and helpers.
+
+    A name that up() guards with hasTable/hasColumn may have existed before the
+    migration, so dropping it on rollback could delete pre-existing data.
+    """
 
     def drop_table(match: re.Match) -> str:
         table = literals[int(match.group(1))]
-        return " " if table in added.get(table, {}).get("created", set()) else match.group(0)
+        ok = table in added.get(table, {}).get("created", set()) and table not in guarded
+        return " " if ok else match.group(0)
 
     def drop_block(match: re.Match) -> str:
         entry = added.get(literals[int(match.group("table"))])
@@ -502,7 +510,7 @@ def _down_is_inverse(down: str, literals: list[str], added: dict[str, dict[str, 
             ordered = [literals[int(i)] for i in re.findall(r"S(\d+)", args)]
             values = set(ordered)
             if name == "dropcolumn":
-                ok = bool(values) and values <= entry["columns"]
+                ok = bool(values) and values <= entry["columns"] and not values & guarded
             elif name == "dropindex":
                 ok = (tuple(ordered) in entry["index_columns"]) if "[" in args else (
                     len(values) == 1 and values <= entry["index_names"])
@@ -539,7 +547,9 @@ def _migration_body_is_additive(source: str) -> bool:
             return False
         down = code[downs[0].end():i - 1]
         code = code[:downs[0].start()] + " DOWN " + code[i:]
-    if not _down_is_inverse(down, literals, _up_additions(code, literals)):
+    guarded = {literals[int(i)] for cond in re.finditer(_SCHEMA_COND, code, re.IGNORECASE)
+               for i in re.findall(r"S(\d+)", cond.group(0))}
+    if not _down_is_inverse(down, literals, _up_additions(code, literals), guarded):
         return False
     for _ in range(4):  # guards may wrap blocks; a few passes cover real nesting
         code = _SCHEMA_GUARD_RE.sub(" ", _SCHEMA_BLOCK_RE.sub(_reduce_schema_block, code))
@@ -593,7 +603,14 @@ def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
         # tail of the file: the received lines must match the declared count.
         if len(content) != int(header.group(1) or 1):
             return set()
-        if not _migration_body_is_additive("\n".join(line[1:] for line in content)):
+        source = "\n".join(line[1:] for line in content)
+        if not _migration_body_is_additive(source):
+            return set()
+        # Auth/billing/identity schema stays behind its protected boundary: the
+        # generic "migration" marker is the only one an additive file may carry.
+        # Raw source, so table/column names count (a comment hit fails closed).
+        haystack = (path + "\n" + source).lower()
+        if any(marker in haystack for marker in _T3_MARKERS if marker != "migration"):
             return set()
         additive.add(path)
     return additive if additive == candidates else set()
