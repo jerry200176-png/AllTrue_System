@@ -55,6 +55,24 @@
             </span>
             <span class="sbl__last">{{ r.last_paid_at ? formatDate(r.last_paid_at) : '—' }}</span>
           </button>
+          <template v-if="r.contracts.length">
+            <button
+              type="button"
+              class="sbl__toggle"
+              :aria-expanded="isOpen(r.student_id)"
+              :aria-controls="`sbl-contracts-${r.student_id}`"
+              :data-testid="`sbl-expand-${r.student_id}`"
+              @click="toggle(r.student_id)"
+            >{{ isOpen(r.student_id) ? '收合合約' : `展開 ${r.contracts.length} 份合約` }}</button>
+            <ul v-if="isOpen(r.student_id)" :id="`sbl-contracts-${r.student_id}`" class="sbl__contracts" :data-testid="`sbl-contracts-${r.student_id}`">
+              <li v-for="(c, i) in r.contracts" :key="`${c.id}-${i}`" class="sbl__contract">
+                <strong>{{ c.ref }}</strong>
+                <span>{{ c.period }}</span>
+                <span>未繳 {{ money(c.owed) }}</span>
+                <span>已繳 {{ money(c.paid) }}</span>
+              </li>
+            </ul>
+          </template>
         </li>
       </ul>
     </template>
@@ -83,6 +101,13 @@ defineEmits(['open', 'retry']);
 // No alert data yet: zeros would read as "all paid".
 const pending = computed(() => props.loading && !props.alertRows.length && !props.error);
 
+const expanded = ref(new Set());
+const isOpen = (id) => expanded.value.has(id);
+const toggle = (id) => {
+  const next = new Set(expanded.value);
+  if (!next.delete(id)) next.add(id);
+  expanded.value = next;
+};
 const query = ref('');
 const filter = ref('all');
 const rows = computed(() => buildStudentBillingRows(props.alertRows, props.students, props.today));
@@ -147,7 +172,11 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__status{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .sbl__last,.sbl__overdue{font-size:13px;font-variant-numeric:tabular-nums}
 .sbl__muted{font-size:12px;color:var(--ds-ink-mute)}
+.sbl__toggle{background:none;border:0;padding:4px 12px;min-height:32px;font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);cursor:pointer;text-decoration:underline}
+.sbl__contracts{list-style:none;margin:0;padding:0 12px 8px}
+.sbl__contract{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:var(--ds-font-size-md);padding:4px 0;font-variant-numeric:tabular-nums}
 @media (max-width:760px){
+  .sbl__toggle{min-height:44px}
   .sbl__head{display:none}
   .sbl__chips{flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:2px}
   .sbl__chip{flex:0 0 auto;min-height:44px}

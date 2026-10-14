@@ -94,6 +94,14 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}');
   });
 
+  it('shows the contract ref and period column on the course billing table (in-app #396 #404)', () => {
+    expect(source).toContain('<th>合約／期間</th>');
+    expect(source).toContain('data-testid="billing-contract-period"');
+    expect(source).toContain('formatCourseRef(row.course.id)');
+    expect(source).toContain('formatCoursePeriod(');
+    expect(source).toContain('colspan="6" class="student-billing-state"');
+  });
+
   it('receipt column says a confirmed report can issue a receipt (in-app #395-#404)', () => {
     expect(source).toContain(`r.status === 'confirmed')" class="hint">可開收據</span>`);
     expect(source).toContain('<span v-else class="hint">核對入帳後才能開收據</span>');

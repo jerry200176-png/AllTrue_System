@@ -679,6 +679,7 @@
               <thead>
                 <tr>
                   <th>科目</th>
+                  <th>合約／期間</th>
                   <th>繳費</th>
                   <th>最近回報</th>
                   <th>收據</th>
@@ -687,7 +688,7 @@
               </thead>
               <tbody>
                 <tr v-if="!(studentBillingState[group.key]?.rows || []).length">
-                  <td colspan="5" class="student-billing-state">此學生目前沒有課程可對帳</td>
+                  <td colspan="6" class="student-billing-state">此學生目前沒有課程可對帳</td>
                 </tr>
                 <tr v-for="row in (studentBillingState[group.key]?.rows || [])" :key="row.course.id">
                   <td>
@@ -697,6 +698,10 @@
                     <div v-if="currentInvoiceForBillingRow(row)" class="price-line">應繳 ${{ formatMoney(currentInvoiceForBillingRow(row).total_amount ?? 0) }}</div>
                     <div v-else class="price-line price-line--pending">應繳：待開單</div>
                     <div v-if="!currentInvoiceForBillingRow(row) && (row.course.Charge ?? row.course.charge) != null" class="price-line price-line--estimate">估算 ${{ formatMoney(row.course.Charge ?? row.course.charge) }}</div>
+                  </td>
+                  <td data-testid="billing-contract-period">
+                    <div>{{ formatCourseRef(row.course.id) }}</div>
+                    <div class="hint">{{ formatCoursePeriod(row.course.first_class_date || row.course.StartDate, row.course.end_date || row.course.EndDate) }}</div>
                   </td>
                   <td>
                     <span
@@ -1375,6 +1380,7 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
+import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
 import { isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';

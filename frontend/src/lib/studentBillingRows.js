@@ -35,6 +35,15 @@ export function owedItems(r) {
 /** Total a row still owes (all open bills); the campus-wide totals use the same number as the student list. */
 export const rowOwedTotal = (r) => owedItems(r).reduce((sum, it) => sum + Math.max(0, it.amount), 0);
 
+/** 「課程 000123」: the one contract reference the queue, the student list and the course page all show. */
+export function formatCourseRef(id) {
+  const n = Number(id);
+  return Number.isInteger(n) && n > 0 ? `課程 ${String(n).padStart(6, '0')}` : '課程';
+}
+
+/** "2026-09-01 ~ 2026-12-31"; a missing end shows as an em dash (same as the queue table). */
+export const formatCoursePeriod = (start, end) => (start || end ? `${start ? String(start).slice(0, 10) : '—'} ~ ${end ? String(end).slice(0, 10) : '—'}` : '—');
+
 /**
  * @param {Array} alertRows rows from GET /alerts/tuition
  * @param {Array} students  [{ id, name }] of the campus (may be empty)
@@ -46,7 +55,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (!byStudent.has(id)) {
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
-        waiting_confirm: 0, overdue_days: 0, last_paid_at: null, first_class_id: null,
+        waiting_confirm: 0, overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [],
       });
     }
     return byStudent.get(id);
@@ -59,6 +68,12 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     const row = ensure(id, r.student_name);
     row.first_class_id ??= r.id != null ? Number(r.id) : null;
     if (r.last_paid_at && (!row.last_paid_at || r.last_paid_at > row.last_paid_at)) row.last_paid_at = r.last_paid_at;
+    if (r.id != null) {
+      row.contracts.push({
+        id: Number(r.id), ref: formatCourseRef(r.id), period: formatCoursePeriod(r.course_start_date, r.course_end_date),
+        owed: OWING.has(r.payment_status) ? rowOwedTotal(r) : 0, paid: Number(r.paid_amount ?? 0),
+      });
+    }
     if (r.payment_status === 'pending_report') row.waiting_confirm += 1;
     if (!OWING.has(r.payment_status)) continue;
     const items = owedItems(r);

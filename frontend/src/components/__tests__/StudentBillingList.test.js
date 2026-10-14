@@ -34,6 +34,15 @@ describe('buildStudentBillingRows with open_periods (same bills as the student p
     expect(rowOwedTotal({ open_periods: [{ outstanding: 3000 }, { outstanding: 5000 }], payable_outstanding: 3000 })).toBe(8000);
     expect(rowOwedTotal({ payable_outstanding: 3000 })).toBe(3000);
   });
+
+  it('counts contract owed only for owing statuses, so the expansion sums to the student total', () => {
+    const [a] = buildStudentBillingRows([
+      { id: 11, student_id: 1, student_name: '甲', payment_status: 'unpaid', payable_outstanding: 3000, due_date: '2026-10-01' },
+      { id: 12, student_id: 1, student_name: '甲', payment_status: 'pending_report', payable_outstanding: 900, due_date: '2026-10-01' },
+    ], [], '2026-10-07');
+    expect(a.contracts.map((c) => c.owed)).toEqual([3000, 0]);
+    expect(a.contracts.reduce((s, c) => s + c.owed, 0)).toBe(a.owed_now + a.owed_later);
+  });
 });
 
 describe('StudentBillingList', () => {
@@ -113,5 +122,29 @@ describe('StudentBillingList', () => {
     const w = mount(StudentBillingList, { props: { alertRows: ROWS, today: '2026-10-07' } });
     await w.find('[data-testid="sbl-search"]').setValue('不存在');
     expect(w.find('[data-testid="sbl-empty"]').text()).toContain('找不到符合「不存在」的學生。請調整搜尋或篩選。');
+  });
+});
+
+describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
+  const rows = [
+    { id: 11, student_id: 1, student_name: '甲', payment_status: 'unpaid', payable_outstanding: 3000, paid_amount: 500, due_date: '2026-10-01', course_start_date: '2026-09-01', course_end_date: '2026-12-31' },
+    { id: 12, student_id: 1, student_name: '甲', payment_status: 'paid', payable_outstanding: 0, paid_amount: 2000, course_start_date: '2026-01-05', course_end_date: null },
+  ];
+
+  it('is collapsed by default and lists each contract ref and period when expanded', async () => {
+    const w = mount(StudentBillingList, { props: { alertRows: rows, today: '2026-10-07' } });
+    const btn = w.find('[data-testid="sbl-expand-1"]');
+    expect(btn.attributes('aria-expanded')).toBe('false');
+    expect(w.find('[data-testid="sbl-contracts-1"]').exists()).toBe(false);
+    await btn.trigger('click');
+    expect(btn.attributes('aria-expanded')).toBe('true');
+    const list = w.find('[data-testid="sbl-contracts-1"]');
+    expect(list.text()).toContain('課程 000011');
+    expect(list.text()).toContain('2026-09-01 ~ 2026-12-31');
+    expect(list.text()).toContain('NT$ 3,000');
+    expect(list.text()).toContain('課程 000012');
+    expect(list.text()).toContain('2026-01-05 ~ —');
+    await btn.trigger('click');
+    expect(w.find('[data-testid="sbl-contracts-1"]').exists()).toBe(false);
   });
 });
