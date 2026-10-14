@@ -263,24 +263,65 @@ _MIGRATION_PREFIX = "backend/database/migrations/"
 # Founder 2026-10-14 (三)④: a migration that only adds tables/columns/indexes
 # deploys like other reversible T2 work (expand/contract). Anything that can
 # drop, rename, alter or rewrite existing structure or rows keeps the Founder
-# gate. down() is ignored: deploy.yml never runs migrate:rollback.
+# gate. Only the body of down() is exempt (deploy.yml never runs
+# migrate:rollback); everything else in the file, including top-level code,
+# must pass. This is a fail-closed denylist plus an import allowlist: a false
+# positive only costs a Founder approval.
+_MIGRATION_ALLOWED_USES = {
+    "illuminate\\database\\migrations\\migration",
+    "illuminate\\database\\schema\\blueprint",
+    "illuminate\\support\\facades\\schema",
+}
 _MIGRATION_UNSAFE_RE = re.compile(
-    r"\bdrop|\brename|->\s*change\s*\(|\btruncate|\bdb\s*::|->\s*(?:update|delete|insert|upsert|"
-    r"statement|unprepared)\s*\(|\braw\b|->\s*(?:unique|primary|foreign)\s*\(|\bforeignid\b|"
-    r"->\s*constrained\s*\(|\bsql\b|\bexec\b|\bartisan\b|(?<!schema)::\s*(?:query|where|all|find|create|"
-    r"updateorcreate|firstorcreate|insert|call)\s*\(|\bsave\s*\(|->\s*(?:each|chunk\w*|fill|forcefill|"
-    r"increment|decrement)\s*\(|\b(?:foreach|while|for|include|require|eval)\b|\bnew\s+\\?[a-z]|"
-    r"\$this\s*->|\bfile_",
+    r"\bdrop|\brename|\bchange\s*\(|\btruncate|\bdb\b|\bstatement|\bunprepared|\braw\b|\bsql\b|"
+    r"\bunique\s*\(|\bprimary\s*\(|\bforeign|\bconstrained\s*\(|\bexec\b|\bartisan\b|\bseed|"
+    r"(?<!schema)::|->\s*(?:update|delete|insert|upsert|save|each|chunk\w*|fill|forcefill|increment|"
+    r"decrement|getconnection|connection)\b|\b(?:foreach|while|for|do|goto|include|require|eval|static|"
+    r"self|parent|new|app|resolve|call_user_func\w*|file_\w+|shell_exec|system|passthru|proc_open|popen|"
+    r"__construct|__destruct|__get|__call\w*|extract|compact|getenv|env)\b|\$this\b|\$\w+\s*\(|\$\$|`|"
+    r"<<<|\?>|<\?(?!php)",
     re.IGNORECASE,
 )
+_PHP_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*|#[^\n]*", re.DOTALL)
+_DOWN_RE = re.compile(r"\bfunction\s+down\s*\(\s*\)\s*(?::\s*void\s*)?\{", re.IGNORECASE)
+
+
+def _migration_body_is_additive(source: str) -> bool:
+    # Comments must not end or hide a section: strip them before splitting.
+    # A comment opener inside a string literal makes this strip lossy, but
+    # then the remaining text still has to pass the denylist.
+    code = _PHP_COMMENT_RE.sub(" ", source)
+    if len(re.findall(r"\bfunction\s+up\s*\(", code, re.IGNORECASE)) != 1:
+        return False
+    downs = list(_DOWN_RE.finditer(code))
+    if len(re.findall(r"\bfunction\s+down\b", code, re.IGNORECASE)) != len(downs) or len(downs) > 1:
+        return False
+    if downs:
+        # down() must be the last member: its body runs to the class end.
+        start = downs[0].end()
+        depth, i = 1, start
+        while i < len(code) and depth:
+            depth += {"{": 1, "}": -1}.get(code[i], 0)
+            i += 1
+        if depth or not re.fullmatch(r"\s*\}\s*;?\s*", code[i:]):
+            return False
+        code = code[:downs[0].start()] + code[i - 1:]
+    for use in re.findall(r"^\s*use\s+([^;]+);", code, re.MULTILINE | re.IGNORECASE):
+        if use.strip().lstrip("\\").lower() not in _MIGRATION_ALLOWED_USES:
+            return False
+    without_uses = re.sub(r"^\s*use\s+[^;]+;", " ", code, flags=re.MULTILINE | re.IGNORECASE)
+    # The one allowed `new`: Laravel's anonymous migration class.
+    without_uses = re.sub(r"\breturn\s+new\s+class\s+extends\s+migration\b", " ", without_uses,
+                          count=1, flags=re.IGNORECASE)
+    return "schema::" in without_uses.lower() and not _MIGRATION_UNSAFE_RE.search(without_uses)
 
 
 def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
-    """Return newly added migration files whose up() only adds structure.
+    """Return newly added migration files that only add structure.
 
     Fail closed: if any changed migration is not in the diff, is edited rather
-    than added, has a removed line, or has an unsafe marker in up(), none of
-    them count as additive.
+    than added, has a removed line, or fails ``_migration_body_is_additive``,
+    none of them count as additive.
     """
 
     candidates = {
@@ -301,14 +342,12 @@ def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
         # GitHub API patches; anything else edits an existing migration.
         if len(hunks) != 1 or not hunks[0].startswith("@@ -0,0 +"):
             continue
-        if any(line.startswith("-") and not line.startswith("---") for line in lines):
+        if any(line.startswith((" ", "-")) and not line.startswith("---") for line in lines):
             continue
-        added = "\n".join(line[1:] for line in lines if line.startswith("+") and not line.startswith("+++"))
-        up = re.search(r"function\s+up\s*\((.*?)(?:function\s+down\s*\(|\Z)", added, re.DOTALL)
-        if up and "schema::" in up.group(1).lower() and not _MIGRATION_UNSAFE_RE.search(up.group(1)):
+        source = "\n".join(line[1:] for line in lines if line.startswith("+") and not line.startswith("+++"))
+        if _migration_body_is_additive(source):
             additive.add(path)
     return additive if additive == candidates else set()
-
 
 def _path_matches(path: str, pattern: str) -> bool:
     return fnmatch.fnmatchcase(path, pattern)

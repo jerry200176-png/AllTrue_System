@@ -59,6 +59,28 @@ class AdditiveMigrationGate(unittest.TestCase):
             self.assertEqual(additive_migration_paths([MIG], patch), set(), up)
             self.assertEqual(self.tiers(patch), (3, 3), up)
 
+    def test_parser_and_import_bypasses_stay_t3(self):
+        add = "Schema::table('t', fn ($t) => $t->string('a'));"
+        for src in (
+            migration(add + " /* function down( */ X::statement('x');"),
+            migration(add + " // function down(\n X::statement('x');"),
+            "<?php\nuse Illuminate\\Support\\Facades\\DB as Q;\n" + migration(add + " Q::statement('x');")[6:],
+            "<?php\nQ::statement('x');\n" + migration(add)[6:],
+            migration(add + " $f = 'statement'; $f('x');"),
+            migration(add + " $s = <<<SQL\nx\nSQL;"),
+            migration(add + " $x = 'function down() {';"),
+            migration(add, "Schema::dropIfExists('t'); } public function boot(): void { Q::statement('x');"),
+            migration(add + " app('db')->statement('x');"),
+            migration(add + " Schema::getConnection()->statement('x');"),
+        ):
+            patch = new_file(MIG, src)
+            self.assertEqual(additive_migration_paths([MIG], patch), set(), src)
+            self.assertEqual(self.tiers(patch), (3, 3), src)
+
+    def test_context_lines_mean_not_a_new_file(self):
+        patch = new_file(MIG, ADD).replace("+<?php", " <?php", 1)
+        self.assertEqual(additive_migration_paths([MIG], patch), set())
+
     def test_editing_existing_migration_stays_t3(self):
         patch = f"diff --git a/{MIG} b/{MIG}\n@@ -3,1 +3,1 @@\n-old\n+Schema::table('t', fn ($t) => $t->string('a'));\n"
         self.assertEqual(additive_migration_paths([MIG], patch), set())
