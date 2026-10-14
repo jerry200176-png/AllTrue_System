@@ -30,7 +30,11 @@ class BindingController extends Controller
             'campus_id'   => ['sometimes', 'integer', 'min:1'],
             'student_id'  => ['sometimes', 'integer', 'min:1'],
             'line_user_id' => ['sometimes', 'string', 'max:64'],
+            'student_name' => ['sometimes', 'string', 'max:64'],
+            'status'      => ['sometimes', 'in:verified,unverified'],
             'limit'       => ['sometimes', 'integer', 'min:1', 'max:500'],
+            'page'        => ['sometimes', 'integer', 'min:1'],
+            'per_page'    => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
 
         $allowedCampusIds = $this->allowedCampusIds($request);
@@ -40,15 +44,54 @@ class BindingController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
+        // The binding page sends `page` and gets the paged, masked contract (in-app #400).
+        if (isset($validated['page'])) {
+            $paged = $this->bindingService->pageBindings(
+                campusId: isset($validated['campus_id']) ? (int) $validated['campus_id'] : null,
+                allowedCampusIds: $allowedCampusIds,
+                studentName: $validated['student_name'] ?? null,
+                status: $validated['status'] ?? null,
+                page: (int) $validated['page'],
+                perPage: (int) ($validated['per_page'] ?? 20),
+                studentId: isset($validated['student_id']) ? (int) $validated['student_id'] : null,
+                lineUserId: $validated['line_user_id'] ?? null,
+            );
+
+            return response()->json([
+                'data' => $paged['data'],
+                'meta' => ['current_page' => $paged['current_page'], 'last_page' => $paged['last_page'], 'total' => $paged['total']],
+            ]);
+        }
+
         $bindings = $this->bindingService->listBindings(
             campusId: $validated['campus_id'] ?? null,
             studentId: $validated['student_id'] ?? null,
             lineUserId: $validated['line_user_id'] ?? null,
             limit: (int) ($validated['limit'] ?? 100),
             allowedCampusIds: $allowedCampusIds,
+            studentName: $validated['student_name'] ?? null,
         );
 
         return response()->json(['bindings' => $bindings, 'count' => $bindings->count()]);
+    }
+
+    public function stats(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campus_id' => ['sometimes', 'integer', 'min:1'],
+        ]);
+
+        $allowedCampusIds = $this->allowedCampusIds($request);
+        if ($allowedCampusIds !== null
+            && isset($validated['campus_id'])
+            && !in_array((int) $validated['campus_id'], $allowedCampusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        return response()->json($this->bindingService->stats(
+            campusId: isset($validated['campus_id']) ? (int) $validated['campus_id'] : null,
+            allowedCampusIds: $allowedCampusIds,
+        ));
     }
 
     public function show(Request $request, int $id): JsonResponse

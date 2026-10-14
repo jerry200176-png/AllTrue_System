@@ -601,3 +601,17 @@ export async function getReconcileLatest(token) {
   if (!res.ok) throw new Error(data?.message || '無法取得對帳報告');
   return data?.data ?? null;
 }
+
+/** One page of every mismatch row in the latest live report (#4044). */
+export async function getReconcileRows(token, page = 1, perPage = 200) {
+  const query = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+  const res = await fetch(`/api/v1/admin/reconcile/latest/rows?${query}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '無法取得對帳明細');
+  return { rows: Array.isArray(data?.data) ? data.data : [], meta: data?.meta || {} };
+}

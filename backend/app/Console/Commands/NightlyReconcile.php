@@ -94,6 +94,29 @@ class NightlyReconcile extends Command
         $reportPath = storage_path('logs/' . ($dryRun ? 'nightly-reconcile-dryrun-' : 'nightly-reconcile-') . now()->format('Ymd') . '.json');
         @file_put_contents($reportPath, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
+        // Every mismatch row (IDs, counts and category only, no names) goes to a
+        // compact per-day sibling file so the panel can page past the 200 rows
+        // kept in the summary report (#4044). checked_at ties it to the report.
+        $rowsPath = storage_path('logs/' . ($dryRun ? 'nightly-reconcile-rows-dryrun-' : 'nightly-reconcile-rows-') . now()->format('Ymd') . '.json');
+        $rowsJson = json_encode([
+            'checked_at'     => $checkedAt,
+            'mode'           => $dryRun ? 'dry-run' : 'live',
+            'mismatch_count' => $total,
+            'mismatches'     => $mismatches,
+        ], JSON_UNESCAPED_UNICODE);
+        // Do not claim success when the complete row list could not be written:
+        // rows past the first 200 would be unreachable (#4063 review). The panel
+        // already falls back to the summary rows with complete=false.
+        $rowsWritten = $rowsJson !== false && @file_put_contents($rowsPath, $rowsJson) !== false;
+        if (!$rowsWritten) {
+            Log::error('nightly_reconcile_rows_write_failed', [
+                'checked_at' => $checkedAt,
+                'rows_path'  => $rowsPath,
+                'json_error' => $rowsJson === false ? json_last_error_msg() : null,
+            ]);
+            $this->error("Could not write the complete mismatch rows file: {$rowsPath}");
+        }
+
         Log::info('nightly_reconcile', [
             'checked_at'     => $checkedAt,
             'total_checked'  => $courses->count(),
@@ -107,7 +130,7 @@ class NightlyReconcile extends Command
 
         if ($total === 0) {
             $this->info('All UsedSessions match canonical expected_used.');
-            return self::SUCCESS;
+            return $rowsWritten ? self::SUCCESS : self::FAILURE;
         }
 
         $this->warn("{$total} mismatch(es) found.");
@@ -116,7 +139,7 @@ class NightlyReconcile extends Command
             $this->alertSuperAdmin($total, $causeCounts);
         }
 
-        return self::SUCCESS;
+        return $rowsWritten ? self::SUCCESS : self::FAILURE;
     }
 
     /** @param array<string,mixed> $diagnostic */

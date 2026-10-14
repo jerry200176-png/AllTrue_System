@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\DB;
 
 class AdminReconcileController extends Controller
 {
+    private const ROWS_MAX_PER_PAGE = 200;
+
     /**
      * GET /api/v1/admin/reconcile/latest
      * Return the most recent nightly reconcile report.
@@ -31,6 +33,60 @@ class AdminReconcileController extends Controller
         }
 
         return response()->json(['data' => $this->enrichReport($report)]);
+    }
+
+    /**
+     * GET /api/v1/admin/reconcile/latest/rows?page=1&per_page=200
+     * Every mismatch row of the latest live report, one page at a time. The
+     * summary report keeps only the first 200 rows; the command writes all of
+     * them (IDs only) to nightly-reconcile-rows-Ymd.json (#4044). A report from
+     * before that file existed falls back to its stored rows, and meta.complete
+     * then tells the panel that rows past them cannot be reached.
+     */
+    public function rows(Request $request)
+    {
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:' . self::ROWS_MAX_PER_PAGE],
+        ]);
+        $page = (int) ($validated['page'] ?? 1);
+        $perPage = (int) ($validated['per_page'] ?? self::ROWS_MAX_PER_PAGE);
+
+        $files = $this->liveReportFiles();
+        $report = $files === [] ? null : json_decode((string) file_get_contents($files[0]), true);
+        if (!is_array($report)) {
+            return response()->json([
+                'data' => [],
+                'message' => '尚無對帳報告，請等待夜間排程執行。',
+            ], 404);
+        }
+
+        $rows = is_array($report['mismatches'] ?? null) ? $report['mismatches'] : [];
+        $rowsFile = dirname($files[0]) . '/' . str_replace('nightly-reconcile-', 'nightly-reconcile-rows-', basename($files[0]));
+        $stored = is_file($rowsFile) ? json_decode((string) file_get_contents($rowsFile), true) : null;
+        if (
+            is_array($stored)
+            && is_array($stored['mismatches'] ?? null)
+            && ($stored['checked_at'] ?? null) === ($report['checked_at'] ?? null)
+        ) {
+            $rows = $stored['mismatches'];
+        }
+
+        $total = count($rows);
+        $mismatchCount = (int) ($report['mismatch_count'] ?? $total);
+
+        return response()->json([
+            'data' => $this->enrichRows(array_values(array_slice($rows, ($page - 1) * $perPage, $perPage))),
+            'meta' => [
+                'checked_at' => $report['checked_at'] ?? null,
+                'page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => max(1, (int) ceil($total / $perPage)),
+                'mismatch_count' => $mismatchCount,
+                'complete' => $total >= $mismatchCount,
+            ],
+        ]);
     }
 
     /**
@@ -86,10 +142,20 @@ class AdminReconcileController extends Controller
      */
     private function enrichReport(array $report): array
     {
-        $mismatches = is_array($report['mismatches'] ?? null) ? $report['mismatches'] : [];
+        $report['mismatches'] = $this->enrichRows(is_array($report['mismatches'] ?? null) ? $report['mismatches'] : []);
+
+        return $report;
+    }
+
+    /**
+     * @param array<int,mixed> $mismatches
+     * @return list<array<string,mixed>>
+     */
+    private function enrichRows(array $mismatches): array
+    {
+        $mismatches = array_values(array_filter($mismatches, 'is_array'));
         if ($mismatches === []) {
-            $report['mismatches'] = [];
-            return $report;
+            return [];
         }
 
         $studentIds = collect($mismatches)->pluck('student_id')->filter()->map(fn ($id) => (int) $id)->unique()->values();
@@ -111,7 +177,7 @@ class AdminReconcileController extends Controller
             ->whereIn('id', $subjectIds)
             ->pluck('Subject_Name', 'id');
 
-        $report['mismatches'] = array_map(static function (array $mismatch) use ($students, $subjects): array {
+        return array_map(static function (array $mismatch) use ($students, $subjects): array {
             $student = $students->get((int) ($mismatch['student_id'] ?? 0));
             $subjectId = (int) ($mismatch['subject_id'] ?? 0);
             $campusId = data_get($student, 'campus_id');
@@ -124,7 +190,5 @@ class AdminReconcileController extends Controller
                 'category' => $mismatch['category'] ?? 'unknown',
             ];
         }, $mismatches);
-
-        return $report;
     }
 }

@@ -291,6 +291,54 @@ class NightlyReconcileTest extends TestCase
         $this->assertSame('ledger_ahead', $report['mismatches'][0]['category']);
     }
 
+    public function test_every_mismatch_beyond_the_200_row_summary_is_stored_without_names(): void
+    {
+        // Counter says 2 used, no evidence exists -> one mismatch per course.
+        $ids = [];
+        for ($i = 0; $i < 205; $i++) {
+            $ids[] = $this->bootstrapCourse(4, 2);
+        }
+        $rowsPath = storage_path('logs/nightly-reconcile-rows-dryrun-' . now()->format('Ymd') . '.json');
+        @unlink($rowsPath);
+
+        $this->artisan('reconcile:nightly', ['--dry-run' => true])->assertExitCode(0);
+
+        $report = $this->readReport();
+        $this->assertSame(205, $report['mismatch_count']);
+        $this->assertCount(200, $report['mismatches']);
+
+        $raw = (string) file_get_contents($rowsPath);
+        $rows = json_decode($raw, true);
+        $this->assertSame($report['checked_at'], $rows['checked_at']);
+        $this->assertSame(205, $rows['mismatch_count']);
+        $stored = array_column($rows['mismatches'], 'student_class_id');
+        sort($stored);
+        $this->assertSame($ids, $stored);
+        // The summary's 200 rows are the head of the full list, in order.
+        $this->assertSame($report['mismatches'], array_slice($rows['mismatches'], 0, 200));
+        $this->assertStringNotContainsString('對帳測試', $raw);
+        $this->assertStringNotContainsString('student_name', $raw);
+        @unlink($rowsPath);
+    }
+
+    public function test_failed_rows_file_write_fails_the_run(): void
+    {
+        $this->bootstrapCourse(4, 2);
+        $rowsPath = storage_path('logs/nightly-reconcile-rows-dryrun-' . now()->format('Ymd') . '.json');
+        @unlink($rowsPath);
+        // A directory at the target path makes file_put_contents fail.
+        mkdir($rowsPath);
+
+        try {
+            $this->artisan('reconcile:nightly', ['--dry-run' => true])->assertExitCode(1);
+        } finally {
+            @rmdir($rowsPath);
+        }
+
+        // The summary report is still written for the panel's fallback.
+        $this->assertSame(1, $this->readReport()['mismatch_count']);
+    }
+
     // ── Helpers ──
 
     /** Most tests run --dry-run, which writes its own preview file (#3945). */

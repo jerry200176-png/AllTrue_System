@@ -119,7 +119,7 @@ const props = defineProps({
   // Subject of the member card that actually carries the package's 確認入帳 / 登記這筆 action.
   sharedLeadSubject: { type: String, default: '' },
 });
-const emit = defineEmits(['changed', 'record', 'issue']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };
@@ -272,8 +272,10 @@ async function decide(action, note = '') {
   const reportId = props.pendingReport.report_id;
   const res = action === 'reject' ? await rejectReport(reportId, note) : await confirmReport(reportId);
   busy.value = false;
-  if (res.ok) emit('changed');
-  else actionError.value = res.message;
+  if (!res.ok) { actionError.value = res.message; return; }
+  // #398/#405: a receipt exists only after confirmation (#1827), so only 確認入帳 hands the report on for the receipt step.
+  if (action === 'confirm') emit('confirmed', reportId);
+  emit('changed');
 }
 
 watch(() => props.course.id, load, { immediate: true });

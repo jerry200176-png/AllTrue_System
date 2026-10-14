@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-14-inapp-406-edit-without-added-load
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 只改帳務設定的課程可以直接儲存
+    summary: 沒改老師、班型或時段時，就算該時段已滿班也能儲存課程設定。
+    items:
+      - category: fixed
+        text: 只改月結等帳務設定時，不會再被「老師此時段已達人數上限」擋下；改時段或換老師仍照原本的人數上限檢查。
+      - category: fixed
+        text: 衝突提示裡同一位學生只列一次，不再因為「固定課程」和「課堂紀錄」各列一筆而看起來多一位學生。
+    source_refs:
+      - "changelog:2026-10-14:inapp-406-edit-without-added-load"

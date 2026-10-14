@@ -1,6 +1,16 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal receipt-modal">
+    <div
+      ref="panelRef"
+      class="modal receipt-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="電子收據"
+      tabindex="-1"
+      data-testid="receipt-modal-panel"
+      @keydown.esc.stop.prevent="$emit('close')"
+      @keydown.tab="onTab"
+    >
       <div class="receipt-header">
         <h3>電子收據</h3>
         <button class="ghost icon-btn" @click="$emit('close')" title="關閉">
@@ -72,6 +82,7 @@
             <span class="material-symbols-outlined">print</span>
             列印
           </button>
+          <button v-if="laterLabel" data-testid="receipt-later" class="ghost" type="button" @click="$emit('close')">{{ laterLabel }}</button>
           <span v-if="copyState === 'error'" class="receipt-copy-error" role="status">{{ copyError }}</span>
         </div>
       </template>
@@ -82,7 +93,8 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
+import { trapTab } from '../lib/focusTrap';
 import {
   adaptPaymentReportReceipt,
   buildReceiptCopyText,
@@ -95,7 +107,12 @@ import BillingDocument from './BillingDocument.vue';
 
 const props = defineProps({
   show: Boolean,
+  // Where focus goes on close when the element that opened the receipt is gone
+  // (the ledger reloads its cards right after 確認入帳, #398/#405).
+  returnFocusTo: { type: Object, default: null },
   reportId: { type: Number, default: null },
+  // Optional dismiss label for a receipt opened right after 確認入帳 (e.g. 稍後再開); the receipt stays in 收款紀錄.
+  laterLabel: { type: String, default: '' },
 });
 defineEmits(['close']);
 
@@ -225,6 +242,26 @@ async function downloadReceiptImage() {
     copyError.value = '下載圖片失敗，請改用列印或手動截圖。';
   }
 }
+
+// The receipt can open on top of another overlay (the ledger, #398/#405): take focus,
+// keep Tab inside, close on Escape without closing the overlay underneath, and give
+// focus back when it closes.
+const panelRef = ref(null);
+let returnFocusEl = null;
+function onTab(event) {
+  trapTab(event, panelRef.value);
+}
+watch(() => props.show, (visible) => {
+  if (visible) {
+    returnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    nextTick(() => panelRef.value?.focus());
+    return;
+  }
+  const opener = returnFocusEl;
+  returnFocusEl = null;
+  const target = opener && opener.isConnected ? opener : props.returnFocusTo;
+  if (target && target.isConnected && typeof target.focus === 'function') target.focus();
+}, { immediate: true });
 
 watch(() => [props.show, props.reportId], async ([visible]) => {
   if (!visible) return;
