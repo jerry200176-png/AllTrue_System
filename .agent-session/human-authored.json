@@ -1,7 +1,0 @@
-{
-  "schema_version": "1.0",
-  "provenance_type": "human-authored",
-  "declared_at": "2026-08-19T02:30:53Z",
-  "author": "jerry-claude-code-session",
-  "note": "In-app bug Phase A triage kickoff: trigger read-only bug-queue-dump.yml via request-file push (cloud session, no local agent-gateway worktree)."
-}
