@@ -19,7 +19,8 @@ last_reviewed: 2026-06-07
 
 | 情境 | 最快動作 | 章節 |
 |---|---|---|
-| deploy 後 health/smoke 自己失敗 | **不用動**——`deploy.yml` 已自動回滾到上一 commit | §2 |
+| deploy 後 health/identity/smoke 失敗，summary 寫「Automatic rollback ran」（exit 10） | **不用動**——`deploy.yml` 已自動回滾到上一 commit 並重驗 | §2 |
+| summary 寫 exit 11／12／13 或 SSH 斷線 | **要動**——沒有自動回滾（或回滾沒驗過），壞版可能仍在線上；立刻查 `/api/health`、`deployment.json`，照 §3 | §2、§3 |
 | 自動回滾沒救起來 / 已過一陣子才發現 | 開 **revert PR**（`git revert <hash>` → PR → merge → 自動重佈） | §3a |
 | 站全掛、等不及 CI | 走 §3b **緊急部署判斷**（仍只用 current-main target SHA） | §3b |
 | 資料被寫壞 / migration 有破壞性 | §3c **DB 回滾 + 還原備份**（先備份再動） | §3c |
@@ -46,8 +47,10 @@ last_reviewed: 2026-06-07
 
 1. 部署前記錄 `PREV_COMMIT=$(git rev-parse HEAD)`（回滾錨點）
 2. migration 前先 `mysqldump` 到 `/home/admin/backups/emergency/`
-3. 部署後跑 health check + `post-merge-smoke.sh`
-4. **任一失敗 → 自動回滾**：`git reset --hard $PREV_COMMIT` → 前端重 build → `php artisan optimize` → 若本次跑過 migration 則 `migrate:rollback --step=1 --force` → 二次 health check
+3. 部署後由 `scripts/post-deploy-verify.py gate` 做**有上限的重試驗證**（約 1 分鐘）：`/api/health`、`/api/v1/health` 回 200，且 `deployment.json` 的 `backend_sha` = 目標 SHA（前端有變動時 `frontend_sha` 也要相符），通過後才跑 `post-merge-smoke.sh`
+4. **驗證或 smoke 失敗 → 自動回滾**（exit 10）：`git reset --hard $PREV_COMMIT` → 前端重 build → `php artisan optimize` → FPM refresh → health check + 以重試驗證 `deployment.json` = `PREV_COMMIT`（前端有變動時含 frontend SHA），若是驗證/smoke 觸發的回滾再對舊版重跑同一份 smoke；回滾本身沒驗過 → exit 11，需人工
+5. **部署範圍含 migration、本次跑過 migration、或驗證器自己出錯無法判斷時，不自動回滾**（exit 12）：run 標紅並發 `::error::`，production 留在目標版，**`deploy.yml` 已不再自動執行 `migrate:rollback`**（任何階段）；照 §3 人工處理（migration 前的 `mysqldump` 在 `/home/admin/backups/emergency/`）。migration 步驟之後、驗證之前的步驟（前端 build、manifest、optimize、DB probe、FPM）失敗時，只要部署範圍含 migration（或 git 無法判斷）也一樣不回滾（exit 13，runtime 狀態未知）。migration 本身失敗（D1）仍照舊回滾 code
+6. Runner 另外從 GitHub 端重查 `/api/health`、`/api/v1/health` 與 `deployment.json`（唯讀）；失敗時 step summary 寫明是哪一種結果（10/11/12/SSH 斷線）
 
 → 多數情況**你什麼都不用做**。到 Actions 看該 deploy run log 確認「✅ Rollback 成功」即可。
 若 log 出現「Rollback 後 health check 仍失敗 — 需要人工介入」→ 進 §3。

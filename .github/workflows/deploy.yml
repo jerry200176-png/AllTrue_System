@@ -1450,14 +1450,16 @@ jobs:
           ssh-keygen -l -f ~/.ssh/deploy_key
 
       - name: Deploy
+        id: deploy
         run: |
+          rc=0
           ssh -i ~/.ssh/deploy_key \
             -o BatchMode=yes \
             -o ConnectTimeout=20 \
             -o ServerAliveInterval=15 \
             -o ServerAliveCountMax=4 \
             -o IdentitiesOnly=yes \
-            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH'
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH' || rc=$?
           set -uo pipefail
           cd /home/admin
 
@@ -1550,14 +1552,6 @@ jobs:
               rollback_failed=1
             fi
 
-            if [ "${MIGRATION_RAN:-0}" -eq 1 ]; then
-              echo "回滾 migration..."
-              if ! (cd /home/admin/backend && php artisan migrate:rollback --step=1 --force); then
-                echo "⚠️ migrate:rollback 失敗"
-                rollback_failed=1
-              fi
-            fi
-
             # Abort after target checkout (e.g. failed migration): refresh FPM like [5/7].
             (cd /home/admin/backend && php artisan opcache:reset 2>/dev/null) || echo "⚠️ rollback CLI opcache reset 失敗"
             local rb_secret rb_response
@@ -1573,6 +1567,8 @@ jobs:
             health2=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
               | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
               2>/dev/null || echo "error")
+            python3 -I "${PDV:-/missing}" verify -k --expect-backend-sha "$PREV_COMMIT" $([ "${FRONTEND_CHANGED:-0}" -gt 0 ] && echo --expect-frontend-sha "$PREV_COMMIT") || rollback_failed=1
+            [ -z "${SMOKE_ON_PI:-}" ] || SMOKE_EXPECTED_BACKEND_SHA="$PREV_COMMIT" SMOKE_STRICT_VERSION= bash scripts/post-merge-smoke.sh || rollback_failed=1
             if [ "$rollback_failed" -ne 0 ] || [ "$health2" != "ok" ]; then
               echo "❌ Rollback 未完成：health=$health2 rollback_failed=$rollback_failed — 需要人工介入"
               return 1
@@ -1582,10 +1578,12 @@ jobs:
 
           abort_deploy() {
             echo "❌ $1"
+            [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
             if ! rollback_deploy; then
               echo "❌ 自動 rollback 也失敗 — deploy run 必須標紅"
+              exit 11
             fi
-            exit 1
+            exit 10
           }
 
           echo "=== [0b/7] Backup storage/app/public（#1124 防呆） ==="
@@ -1639,15 +1637,10 @@ jobs:
             abort_deploy "部署目標 SHA 驗證失敗"
           fi
           echo "✅ production HEAD == CI 驗證版本（$TARGET_SHA）"
+          PDV=$(mktemp -d)/v.py && cp scripts/post-deploy-verify.py "$PDV" || PDV=""
 
-          # The DB credential rotation authenticated over TCP and updated the
-          # TCP-matched principal, while Laravel was still allowed to connect
-          # through the Unix socket. MySQL treats that as a separate
-          # User@Host match (the incident presented as user@localhost).
-          # Normalize both settings so the effective connection is the same
-          # TCP tuple that rotation verified. Handle quoted/CRLF env values and
-          # an existing DB_SOCKET entry; changing only DB_HOST is insufficient
-          # when the socket setting is populated.
+          # Credential rotation verified the TCP principal; a Unix socket is a separate
+          # MySQL User@Host (user@localhost). Force TCP: set DB_HOST, clear DB_SOCKET.
           if grep -qE '^[[:space:]]*DB_HOST[[:space:]]*=' /home/admin/backend/.env; then
             sed -i -E 's/^[[:space:]]*DB_HOST[[:space:]]*=.*/DB_HOST=127.0.0.1/' /home/admin/backend/.env
           else
@@ -1724,6 +1717,8 @@ jobs:
           fi
 
           echo "=== [3b/7] 注入 Sentry DSN ==="
+          # Past [3/7] a range with a migration (or unknown) holds instead of rolling back.
+          git diff --quiet "$PREV_COMMIT" "$TARGET_SHA" -- ':(top)backend/database/migrations' || MIGRATION_RAN=1
           # 後端 .env：寫入或更新 SENTRY_LARAVEL_DSN
           if ! grep -q "^SENTRY_LARAVEL_DSN=" /home/admin/backend/.env; then
             echo "SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}" >> /home/admin/backend/.env
@@ -1867,36 +1862,46 @@ jobs:
           unset DEPLOY_SECRET OPCACHE_RESPONSE
           echo "✅ FPM OPcache/config and DB connection refresh completed across 16 worker requests"
 
-          echo "=== [6/7] Health check + Smoke test ==="
-          HEALTH=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
-            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
-            2>/dev/null || echo "error")
-          if [ "$HEALTH" != "ok" ]; then
-            echo "❌ Health check 失敗：$HEALTH"
-          else
-            echo "✅ Health check passed"
-
-            # Smoke test（唯讀）：post-merge 完整驗收（bundle + auth API）
-            export SMOKE_BASE_URL="https://daan.lifenet.com.tw"
-            export SMOKE_ON_PI=1
-            export SMOKE_TEACHER_LOGIN="${{ secrets.SMOKE_TEACHER_LOGIN }}"
-            export SMOKE_TEACHER_PASSWORD="${{ secrets.SMOKE_TEACHER_PASSWORD }}"
-            export SMOKE_BRANCH_ID="${{ secrets.SMOKE_BRANCH_ID }}"
-            export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
-            export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
-            if [ "$FRONTEND_CHANGED" -gt 0 ]; then
-              export SMOKE_STRICT_VERSION=1
-            fi
-            if bash /home/admin/scripts/post-merge-smoke.sh; then
-              echo ""
-              echo "🚀 部署完成 — Health + Smoke test 全通過"
-              exit 0
-            else
-              echo "❌ Smoke test 失敗，啟動 Rollback"
-            fi
-          fi
+          echo "=== [6/7] Health + identity (bounded retries) + Smoke ==="
+          export SMOKE_BASE_URL="https://daan.lifenet.com.tw"
+          export SMOKE_ON_PI=1
+          export SMOKE_TEACHER_LOGIN="${{ secrets.SMOKE_TEACHER_LOGIN }}"
+          export SMOKE_TEACHER_PASSWORD="${{ secrets.SMOKE_TEACHER_PASSWORD }}"
+          export SMOKE_BRANCH_ID="${{ secrets.SMOKE_BRANCH_ID }}"
+          export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
+          export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
+          python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIGRATION_RAN"
+          case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac
           abort_deploy "health check 或 smoke test 失敗"
           ENDSSH
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit "$rc"
+
+      # Post-deploy safety net (Founder 2026-10-14). The executor above already
+      # verified health + deployment.json identity with bounded retries and, on
+      # failure, rolled back through its reviewed rollback_deploy (exit 10/11) or,
+      # when the range has a migration, held without any rollback (exit 12).
+      # These steps add an independent read-only check from outside the Pi and a
+      # loud summary; they open no new path into production.
+      - name: Checkout post-deploy verifier
+        if: ${{ !cancelled() && steps.deploy.outcome != 'skipped' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve-target.outputs.target_sha }}
+          path: post-deploy-verify
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/post-deploy-verify.py
+          sparse-checkout-cone-mode: false
+
+      - name: Verify production independently from the runner
+        id: runner_verify
+        env:
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+        run: |
+          python3 post-deploy-verify/scripts/post-deploy-verify.py verify \
+            --health-path /api/health --health-path /api/v1/health \
+            --expect-backend-sha "$TARGET_SHA" --attempts 12 --interval 5
 
       - name: Record deployed and production-verified state
         run: |
@@ -1905,8 +1910,27 @@ jobs:
             echo "Exact target SHA was activated by the sole production executor."
             echo ""
             echo "## state=production-verified"
-            echo "The executor returned success only after deployment identity, health, and post-merge smoke verification passed."
+            echo "The executor returned success only after deployment identity, health, and post-merge smoke verification passed,"
+            echo "and the runner re-checked /api/health, /api/v1/health and the deployment.json manifest (backend_sha) from outside the Pi."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarize production verification failure
+        if: ${{ failure() && steps.deploy.outcome != 'skipped' }}
+        env:
+          RC: ${{ steps.deploy.outputs.rc }}
+          RUNNER_VERIFY: ${{ steps.runner_verify.outcome }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          PREVIOUS_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+        run: |
+          set -euo pipefail
+          if [ ! -f post-deploy-verify/scripts/post-deploy-verify.py ]; then
+            echo "::error title=Production deploy not verified::executor rc=${RC:-unknown}, runner verify=${RUNNER_VERIFY}; verifier checkout failed. Check /api/health and deployment.json now."
+            exit 1
+          fi
+          summary="$(python3 post-deploy-verify/scripts/post-deploy-verify.py summarize \
+            --rc "${RC:-1}" --target-sha "$TARGET_SHA" --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY")"
+          printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=Production deploy not verified::$(printf '%s' "$summary" | tail -n 1)"
 
   parent-portal-smoke:
     name: Authenticated Parent Portal production smoke
