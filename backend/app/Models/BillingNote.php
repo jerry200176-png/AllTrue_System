@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -23,6 +24,9 @@ class BillingNote extends Model
 
     public const MAX_BODY = 1000;
 
+    /** #4041: shown next to notes of an invoice voided because its course was deleted. */
+    public const VOIDED_INVOICE_LABEL = '（帳單已作廢）';
+
     public const UPDATED_AT = null;
 
     protected $table = 'billing_notes';
@@ -35,6 +39,27 @@ class BillingNote extends Model
         'author_user_id' => 'integer',
         'created_at' => 'datetime',
     ];
+
+    /**
+     * #4041 — void invoices whose course no longer exists (StudentClassController::destroy() voids the
+     * unpaid invoices and then deletes the course). Their notes stay staff-visible, read-only.
+     *
+     * @return Builder
+     */
+    public static function deletedCourseVoidInvoices(): Builder
+    {
+        $query = Invoice::query();
+        $query->where('Invoice.Status', 'void')
+            ->where('Invoice.StudentID', '>', 0)
+            ->where('Invoice.StudentClassID', '>', 0)
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('StudentClass')->whereColumn('StudentClass.ID', 'Invoice.StudentClassID'))
+            // A line that still points at a live course means a consolidated bill: that is not a deleted contract.
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('InvoiceItem')
+                ->join('StudentClass', 'StudentClass.ID', '=', 'InvoiceItem.StudentClassID')
+                ->whereColumn('InvoiceItem.InvoiceID', 'Invoice.id'));
+
+        return $query;
+    }
 
     protected static function booted(): void
     {
