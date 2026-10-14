@@ -609,7 +609,7 @@ diff --git a/frontend/playwright.ui-foundation.config.js b/frontend/playwright.u
                 "frontend/src/pages/AttendancePage.vue",
                 "frontend/src/pages/SmartCalendar.vue",
                 "frontend/src/pages/__tests__/AttendancePageAccessibility.test.js",
-                ".exo/memory/reflection.yaml",
+                "docs/agents/handoff-notes.md",
             ]
         )
         self.assertEqual(scope["tier_name"], "T1")
@@ -662,7 +662,7 @@ diff --git a/frontend/playwright.ui-foundation.config.js b/frontend/playwright.u
         paths = [
             "frontend/src/pages/Badge.vue",
             "frontend/src/pages/__tests__/Badge.test.js",
-            ".exo/memory/notes.md",
+            "docs/agents/notes.md",
         ]
         patch = """diff --git a/frontend/src/pages/Badge.vue b/frontend/src/pages/Badge.vue
 +++ b/frontend/src/pages/Badge.vue

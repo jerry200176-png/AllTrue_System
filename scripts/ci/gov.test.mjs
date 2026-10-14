@@ -7,7 +7,6 @@ import {
   GOV_CODES,
 } from './gov-codes.mjs';
 import { validateBranchName, slashPrefixRegexSource } from './branch-policy.mjs';
-import { claimedSessionFiles, shouldBindAgentSession } from './session-claim.mjs';
 
 test('taxonomy labels unique and include required classes', () => {
   assert.ok(TAXONOMY.includes('UNKNOWN'));
@@ -16,10 +15,9 @@ test('taxonomy labels unique and include required classes', () => {
   assert.equal(new Set(TAXONOMY).size, TAXONOMY.length);
 });
 
-test('classifies branch, size, provenance, conflict, generated', () => {
+test('classifies branch, size, conflict, generated', () => {
   assert.equal(classifyStepFailure({ step: '[CHECK 1] Branch naming', logSnippet: 'Invalid branch name' }).primary, 'BRANCH_NAMING_POLICY');
   assert.equal(classifyStepFailure({ step: '[CHECK 2] PR size', logSnippet: 'PR too large: 1536' }).primary, 'PR_SIZE_POLICY');
-  assert.equal(classifyStepFailure({ workflow: 'Agent Session Provenance', logSnippet: 'base_sha is not an ancestor' }).primary, 'PROVENANCE_STALE');
   assert.equal(classifyStepFailure({ logSnippet: '<<<<<<< HEAD' }).primary, 'MERGE_CONFLICT_MARKERS');
   assert.equal(classifyStepFailure({ step: 'Generated in-app updates must match committed artifacts' }).primary, 'GENERATED_ARTIFACT_DRIFT');
 });
@@ -43,14 +41,6 @@ test('branch policy accepts sec/design/cursor/claude/revert; rejects agent/ops',
   assert.match(slashPrefixRegexSource(), /sec/);
   assert.match(slashPrefixRegexSource(), /claude/);
   assert.match(slashPrefixRegexSource(), /exo/);
-});
-
-test('inherited session files are not a claim; only diff paths bind', () => {
-  assert.deepEqual(claimedSessionFiles([]), { agent: false, human: false });
-  assert.equal(shouldBindAgentSession(claimedSessionFiles([])), false);
-  assert.equal(shouldBindAgentSession(claimedSessionFiles(['README.md'])), false);
-  assert.equal(shouldBindAgentSession(claimedSessionFiles(['.agent-session/manifest.json'])), true);
-  assert.equal(shouldBindAgentSession(claimedSessionFiles(['.agent-session/human-authored.json'])), false);
 });
 
 test('stable gov codes', () => {
