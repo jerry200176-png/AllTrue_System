@@ -727,6 +727,7 @@ jobs:
                   classify_activation_provenance,
                   aggregate_landed_pr_effects,
                   decide_activation,
+                  has_independent_review,
                   has_rollback_evidence,
                   is_founder_approval_eligible,
                   is_deployable_path,
@@ -750,6 +751,21 @@ jobs:
               # All provenance evidence is read-only GitHub API metadata.
               # Each application record still uses classify_activation_scope
               # so its complete effect remains subject to the existing boundary.
+              review_evidence = {}
+
+              def independent_review(pr):
+                  # Founder 2026-10-14 (三): billing/login standing exception evidence.
+                  number = int(pr["number"])
+                  if number not in review_evidence:
+                      owner, name = repo.split("/", 1)
+                      reviews = pages(gh_api(f"/repos/{repo}/pulls/{number}/reviews?per_page=100", "--paginate", "--slurp"))
+                      threads = gh_api("graphql", "-f", "query={repository(owner:\"%s\",name:\"%s\"){pullRequest(number:%d){reviewThreads(first:100){nodes{isResolved} pageInfo{hasNextPage}}}}}" % (owner, name, number))
+                      review_evidence[number] = has_independent_review(
+                          reviews, threads["data"]["repository"]["pullRequest"]["reviewThreads"],
+                          (pr.get("head") or {}).get("sha") or "", (pr.get("user") or {}).get("login") or "",
+                      )
+                  return review_evidence[number]
+
               attributed = []
               landed_effects = []
               seen_reconciled_prs = set()
@@ -893,6 +909,7 @@ jobs:
                           **actual_effect,
                           "declared_risk": declared_risk,
                           "declared_tier": declared_tier,
+                          "independent_review": independent_review(pr),
                       })
                       attributed_commits.add(commit_sha)
               attributed.extend(aggregate_landed_pr_effects(landed_effects))

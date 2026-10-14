@@ -1181,7 +1181,10 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
     def test_validated_t2_does_not_reference_founder_environment(self):
         self.assertIn("rollback_evidence", self.workflow)
         self.assertIn("ci_success=True", self.workflow)
-        self.assertNotIn("has_independent_review", self.workflow)
+        # Review evidence is read only for the billing/login standing exception
+        # (Founder 2026-10-14 (三)); routine T2 never depends on it.
+        self.assertEqual(2, self.workflow.count("has_independent_review"))
+        self.assertIn('"independent_review": independent_review(pr),', self.workflow)
         self.assertNotIn("has_trusted_verifier_evidence", self.workflow)
         self.assertNotIn("/pulls/{pr_number}/reviews", self.workflow)
         self.assertIn("/check-runs?per_page=100", self.workflow)

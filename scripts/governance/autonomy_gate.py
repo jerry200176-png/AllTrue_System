@@ -259,6 +259,114 @@ _MAX_GUARDED_SENSITIVE_FILES = 3
 _MAX_GUARDED_SENSITIVE_LINES = 240
 
 
+# Founder 2026-10-14 (三): billing and login code that implements an existing
+# rule may activate as T2 when (a) the diff is narrow: only billing/login paths
+# and effects, no migration, no data/irreversible/privacy effect, no
+# identity/credential/token/permission/middleware/route boundary, bounded
+# size; (b) every changed billing/login file has a changed backend test that
+# names it; and (c) at activation, an independent reviewer reviewed the PR's
+# final head and every review thread is resolved (deploy.yml supplies this as
+# ``independent_review``). CI workflows and governance stay Founder-only.
+_STANDING_EXCEPTION_PREFIXES = (
+    "backend/app/Services/SessionDeduction",
+    "backend/app/Http/Controllers/PaymentReport",
+    "backend/app/Http/Controllers/Billing",
+    "backend/app/Http/Controllers/Auth",
+)
+_STANDING_EXCEPTION_PATH_TERMS = ("auth", "billing", "payment")
+_STANDING_EXCEPTION_MARKERS = {"billing", "payment", "invoice", "session deduction", "auth", "authorization"}
+_STANDING_EXCEPTION_EFFECTS = {"billing/ledger semantics", "authentication/privilege boundary", "runtime write"}
+INDEPENDENT_REVIEWERS = frozenset({"chatgpt-codex-connector[bot]"})
+# Founder 2026-10-12 ① excludes authorization/identity boundary changes: login
+# code qualifies, but any of these in the changed code keeps the gate.
+_STANDING_EXCEPTION_AUTHZ_RE = re.compile(
+    r"grant|revoke|role|permission|privilege|polic(?:y|ies)|scope|admin|guardian|identity|"
+    r"impersonat|superuser|gate::|can\(|ability|middleware",
+    re.IGNORECASE,
+)
+
+
+def _changed_test_lines(paths: list[str], patch: str) -> str:
+    tests = [path for path in paths if path.startswith("backend/tests/") and path.endswith(".php")]
+    return "\n".join(
+        line[1:] for line in _runtime_patch(tests, patch).split("\n")
+        if line.startswith("+") and not line.startswith("+++")
+    )
+
+
+def standing_exception_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
+    """Whether a diff qualifies for the billing/login T2 standing exception (diff side only)."""
+
+    normalized = [str(path).replace("\\", "/") for path in paths if path]
+    sensitive = [path for path in normalized if is_production_activation_sensitive_path(path)]
+
+    def no(reason: str) -> dict[str, object]:
+        return {"eligible": False, "sensitive_paths": sensitive, "reason": reason}
+
+    if not sensitive:
+        return no("no billing/login path")
+    if any(path.startswith("backend/database/migrations/") for path in normalized):
+        return no("migration in diff")
+    for path in sensitive:
+        under_prefix = path.startswith(_STANDING_EXCEPTION_PREFIXES)
+        other_prefix = any(path.startswith(prefix) for prefix in _ACTIVATION_T3_PREFIXES)
+        terms = {
+            term for part in re.split(r"[/_.-]+", path.lower()) if part
+            for term in _ACTIVATION_T3_PATH_TERMS if part.startswith(term)
+        }
+        if not path.startswith("backend/app/") or not path.endswith(".php"):
+            return no(f"not backend application code: {path}")
+        if (other_prefix and not under_prefix) or not terms <= set(_STANDING_EXCEPTION_PATH_TERMS):
+            return no(f"outside billing/login: {path}")
+    if len(sensitive) > _MAX_GUARDED_SENSITIVE_FILES:
+        return no(f"more than {_MAX_GUARDED_SENSITIVE_FILES} billing/login files")
+    if not _patch_is_inspectable(sensitive, patch):
+        return no("billing/login diff is not inspectable")
+    runtime = [path for path in normalized if is_deployable_path(path)]
+    changed = _semantic_changed_code_lines(_semantic_runtime_patch(runtime, patch))
+    if len(changed.splitlines()) > _MAX_GUARDED_SENSITIVE_LINES:
+        return no(f"more than {_MAX_GUARDED_SENSITIVE_LINES} changed lines")
+    if _STANDING_EXCEPTION_AUTHZ_RE.search(changed):
+        return no("authorization/identity boundary in changed code")
+    effects = set(_founder_effects(changed))
+    if effects - _STANDING_EXCEPTION_EFFECTS:
+        return no("effect outside billing/login: " + ", ".join(sorted(effects - _STANDING_EXCEPTION_EFFECTS)))
+    haystack = ("\n".join(runtime) + "\n" + changed).lower()
+    markers = {marker for marker in _T3_MARKERS if marker in haystack}
+    if markers - _STANDING_EXCEPTION_MARKERS:
+        return no("protected marker outside billing/login: " + ", ".join(sorted(markers - _STANDING_EXCEPTION_MARKERS)))
+    tests = _changed_test_lines(normalized, patch)
+    uncovered = [
+        path for path in sensitive
+        if not re.search(rf"\b{re.escape(path.rsplit('/', 1)[-1][:-4])}\b", tests)
+    ]
+    if uncovered:
+        return no("no changed backend test names: " + ", ".join(uncovered))
+    return {"eligible": True, "sensitive_paths": sensitive, "reason": "billing/login standing exception"}
+
+
+def has_independent_review(reviews: object, threads: object, head_sha: str, author: str) -> bool:
+    """An allowlisted independent reviewer reviewed ``head_sha`` and every review thread is resolved.
+
+    ``threads`` is the GraphQL ``reviewThreads`` connection; an incomplete page fails closed.
+    """
+
+    if not _FULL_SHA_RE.fullmatch(head_sha or "") or not isinstance(reviews, list) or not isinstance(threads, Mapping):
+        return False
+    nodes = threads.get("nodes")
+    if (threads.get("pageInfo") or {}).get("hasNextPage") is not False or not isinstance(nodes, list):
+        return False
+    if any(not isinstance(node, Mapping) or node.get("isResolved") is not True for node in nodes):
+        return False
+    return any(
+        isinstance(review, Mapping)
+        and review.get("commit_id") == head_sha
+        and (review.get("user") or {}).get("login") in INDEPENDENT_REVIEWERS - {author}
+        and review.get("state") in {"COMMENTED", "APPROVED"}
+        for review in reviews
+    )
+
+
 def _path_matches(path: str, pattern: str) -> bool:
     return fnmatch.fnmatchcase(path, pattern)
 
@@ -536,9 +644,14 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     haystack = ("\n".join(marker_paths) + "\n" + semantic_effect).lower()
     minimum = 0
     reasons: list[str] = []
+    exception = standing_exception_scope(normalized, patch)
+    exception_paths = set(exception["sensitive_paths"]) if exception["eligible"] else set()
 
     for path in normalized:
-        if path in _PRODUCTION_SMOKE_CONTROL_EXACT or (
+        if path in exception_paths:
+            minimum = max(minimum, 2)
+            reasons.append(f"billing/login standing exception (needs independent review at activation): {path}")
+        elif path in _PRODUCTION_SMOKE_CONTROL_EXACT or (
             path.startswith("frontend/e2e/")
             and path not in _LOCAL_ONLY_E2E_SPECS
             and not path.startswith("frontend/e2e/fixtures/ui-foundation/")
@@ -558,7 +671,10 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
 
     if not non_runtime_only:
         matched_t3 = [marker for marker in _T3_MARKERS if marker in haystack]
-        if matched_t3:
+        if exception_paths and matched_t3 and set(matched_t3) <= _STANDING_EXCEPTION_MARKERS:
+            minimum = max(minimum, 2)
+            reasons.append("billing/login marker under standing exception: " + ", ".join(sorted(set(matched_t3))))
+        elif matched_t3:
             minimum = max(minimum, 3)
             reasons.append("protected semantic marker: " + ", ".join(sorted(set(matched_t3))))
         else:
@@ -651,6 +767,10 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
         minimum = 1
         reasons.extend(f"reversible runtime path: {path}" for path in runtime_paths)
 
+    if activation_class == "founder-required" and standing_exception_scope(normalized, patch)["eligible"]:
+        minimum = 2
+        activation_class = "standing-exception"
+        reasons = ["billing/login standing exception: needs independent review on the final head"]
     if not sensitive_paths and founder_effects:
         minimum = max(minimum, 3)
         activation_class = "founder-required"
@@ -666,6 +786,7 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
         "tier_name": f"T{minimum}",
         "activation_class": activation_class,
         "guarded_sensitive": activation_class == "guarded-sensitive",
+        "requires_independent_review": activation_class == "standing-exception",
         "founder_required": activation_class == "founder-required",
         "protected_activation": activation_class == "founder-required",
         "runtime_paths": runtime_paths,
@@ -729,13 +850,14 @@ def aggregate_landed_pr_effects(
                 "merged_at": effect.get("merged_at"),
                 "declared_risk": effect.get("declared_risk"),
                 "declared_tier": effect.get("declared_tier"),
+                "independent_review": effect.get("independent_review"),
                 "paths": [],
                 "patch_parts": [],
                 "patch_complete": True,
                 "metadata_consistent": True,
             },
         )
-        for key in ("merged_at", "declared_risk", "declared_tier"):
+        for key in ("merged_at", "declared_risk", "declared_tier", "independent_review"):
             if group[key] != effect.get(key):
                 group["metadata_consistent"] = False
         paths = effect.get("paths")
@@ -763,6 +885,7 @@ def aggregate_landed_pr_effects(
             "patch_complete": bool(group["patch_complete"] and group["metadata_consistent"]),
             "declared_risk": group["declared_risk"] if group["metadata_consistent"] else None,
             "declared_tier": group["declared_tier"] if group["metadata_consistent"] else None,
+            "independent_review": group["independent_review"] is True and group["metadata_consistent"],
         })
     return aggregated
 
@@ -1049,6 +1172,9 @@ def classify_activation_provenance(records: Iterable[dict[str, object]]) -> dict
             continue
 
         scope = classify_activation_scope(paths, patch)
+        if scope.get("requires_independent_review") and record.get("independent_review") is not True:
+            blocked_reasons.append(f"PR #{number}: billing/login standing exception has no independent review evidence")
+            continue
         application_prs.append({
             "number": str(number),
             "provenance_state": provenance_state,
