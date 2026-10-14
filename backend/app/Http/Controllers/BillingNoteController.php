@@ -50,7 +50,11 @@ class BillingNoteController extends Controller
             $entries[] = $this->entry($note);
         }
 
-        return response()->json(['notes' => $entries] + ($readOnly ? ['read_only' => true, 'read_only_label' => BillingNote::VOIDED_INVOICE_LABEL] : []));
+        if ($readOnly) {
+            return response()->json(['notes' => $entries, 'read_only' => true, 'read_only_label' => BillingNote::VOIDED_INVOICE_LABEL]);
+        }
+
+        return response()->json(['notes' => $entries]);
     }
 
     public function store(Request $request): JsonResponse

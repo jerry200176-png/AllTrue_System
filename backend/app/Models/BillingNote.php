@@ -44,12 +44,12 @@ class BillingNote extends Model
      * #4041 — void invoices whose course no longer exists (StudentClassController::destroy() voids the
      * unpaid invoices and then deletes the course). Their notes stay staff-visible, read-only.
      *
-     * @return Builder<Invoice>
+     * @return Builder
      */
     public static function deletedCourseVoidInvoices(): Builder
     {
-        return Invoice::query()
-            ->where('Invoice.Status', 'void')
+        $query = Invoice::query();
+        $query->where('Invoice.Status', 'void')
             ->where('Invoice.StudentID', '>', 0)
             ->where('Invoice.StudentClassID', '>', 0)
             ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('StudentClass')->whereColumn('StudentClass.ID', 'Invoice.StudentClassID'))
@@ -57,6 +57,8 @@ class BillingNote extends Model
             ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('InvoiceItem')
                 ->join('StudentClass', 'StudentClass.ID', '=', 'InvoiceItem.StudentClassID')
                 ->whereColumn('InvoiceItem.InvoiceID', 'Invoice.id'));
+
+        return $query;
     }
 
     protected static function booted(): void

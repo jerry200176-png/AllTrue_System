@@ -875,7 +875,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-receipts--compact .ledger-receipt{padding:8px 10px}
 .ledger-muted,.ledger-receipt small,.ledger-table small{color:var(--text-light,var(--ds-ink-mute))}
 .ledger-table small{display:block;margin-top:2px}
-.ledger-voided-notes{padding:8px 10px;border:1px dashed var(--ds-border);border-radius:10px;margin-bottom:8px}
+.ledger-voided-notes{padding:8px 10px;border:1px dashed var(--ds-border);border-radius:var(--ds-radius-lg);margin-bottom:8px}
 .ledger-voided-notes__list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
 .ledger-voided-notes__list p{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .ledger-actions{display:flex;gap:6px;flex-wrap:wrap}
