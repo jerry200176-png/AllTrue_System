@@ -22,7 +22,6 @@ final class PopInappStandingPolicyTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const OP = 'inapp-report-reporter-timeout';
     private string $dir;
     private PopOperationService $service;
     private InappStandingPolicy $policy;
@@ -60,11 +59,8 @@ final class PopInappStandingPolicyTest extends TestCase
 
         self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
         $event = DB::table('pop_approval_events')->where('operation_id', $id)->sole();
-        self::assertSame(['approved', 'policy', 'policy:founder-standing-inapp-lifecycle@1', 'FSD-2026-10-14-II:#4069:#4073', null],
-            [$event->event_type, $event->approver_role, $event->approver, $event->approval_reference, $event->approver_id]);
-        self::assertSame(str_repeat('a', 40), $event->commit_sha);
-        self::assertNotNull($event->token_hash);
-        self::assertSame('approved', $this->status($id));
+        self::assertSame(['approved', 'policy', 'policy:founder-standing-inapp-lifecycle@1', 'FSD-2026-10-14-II:#4069:#4073', null, str_repeat('a', 40), true, 'approved'],
+            [$event->event_type, $event->approver_role, $event->approver, $event->approval_reference, $event->approver_id, $event->commit_sha, $event->token_hash !== null, $this->status($id)]);
 
         self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
         self::assertSame(['closed', 'closed'], BugReport::query()->whereKey($bugs)->pluck('status')->all());
@@ -94,9 +90,7 @@ final class PopInappStandingPolicyTest extends TestCase
         $id = $this->drafted($ids, $check === 'replay' ? 'req-dup' : 'req-001');
 
         $out = $this->policy->approvePending($this->service);
-        self::assertNotContains($id, $out['approved']);
-        self::assertSame('awaiting_approval', $this->status($id));
-        self::assertSame('resolved', BugReport::query()->whereKey($bug)->value('status'));
+        self::assertSame([false, 'awaiting_approval', 'resolved'], [in_array($id, $out['approved'], true), $this->status($id), BugReport::query()->whereKey($bug)->value('status')]);
         // An inactive (flag off / frozen) policy decides nothing; every other failure records one denial.
         self::assertSame(!in_array($check, ['flag_off', 'frozen'], true), DB::table('pop_approval_events')->where('operation_id', $id)->where('event_type', 'policy_denied')->exists());
         $human = $this->service->approve($id, 'inapp-human-review', 'user:' . $this->admin, 'super_admin', str_repeat('a', 40), $this->admin);
@@ -131,15 +125,28 @@ final class PopInappStandingPolicyTest extends TestCase
             $this->service->runApprovedLocally($id);
             self::fail('a tripped kill switch must stop execution');
         } catch (RuntimeException) {} // fail closed
-        self::assertSame('revoked', $this->status($id));
+        self::assertSame('cancelled', $this->status($id));
+        self::assertTrue(DB::table('pop_approval_events')->where('operation_id', $id)->where('event_type', 'policy_revoked')->exists());
         self::assertSame('resolved', BugReport::query()->whereKey($bug)->value('status'));
+        // Kill switches apply to policy approvals only: a super_admin-approved request still executes.
+        $human = $this->drafted([$other = $this->eligibleBug()], 'req-human');
+        $this->service->approve($human, 'inapp-human-review', 'user:' . $this->admin, 'super_admin', str_repeat('a', 40), $this->admin);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($human)['status']);
+        self::assertSame('closed', BugReport::query()->whereKey($other)->value('status'));
+    }
+
+    public function test_policy_approver_role_is_rejected_for_every_other_operation(): void
+    {
+        $quorum = new \ReflectionMethod($this->service, 'quorumRoles');
+        $quorum->setAccessible(true);
+        $this->expectException(RuntimeException::class);
+        $quorum->invoke($this->service, $this->app->make(PopOperationCatalog::class)->operation('muzha-fixed-schedule-20261001'),
+            collect([(object) ['approver_role' => 'policy', 'approver' => 'policy:founder-standing-inapp-lifecycle@1']]), 'none');
     }
 
     public function test_execute_rechecks_each_id_under_lock_and_skips_ineligible_without_closing(): void
     {
-        $keep = $this->eligibleBug();
-        $replied = $this->eligibleBug();
-        $moved = $this->eligibleBug();
+        [$keep, $replied, $moved] = [$this->eligibleBug(), $this->eligibleBug(), $this->eligibleBug()];
         $id = $this->drafted([$keep, $replied, $moved]);
         $this->policy->approvePending($this->service);
         BugReportComment::create(['bug_report_id' => $replied, 'author_user_id' => $this->reporter, 'body' => '問題仍存在', 'is_internal_note' => false, 'created_at' => now()]);
@@ -153,7 +160,7 @@ final class PopInappStandingPolicyTest extends TestCase
 
     private function drafted(array $bugIds, string $rid = 'req-001', ?string $key = null, int $campus = 1): string
     {
-        $draft = $this->service->createDraft(self::OP, ['bug_ids' => $bugIds, 'campus_id' => $campus, 'request_id' => $rid],
+        $draft = $this->service->createDraft('inapp-report-reporter-timeout', ['bug_ids' => $bugIds, 'campus_id' => $campus, 'request_id' => $rid],
             $key ?? 'idem-' . $rid, 'api-client:7', 'super_admin');
         $this->service->runDryRun((string) $draft['id'], 'api-client:7', null, 'super_admin');
 
@@ -192,11 +199,8 @@ final class PopInappStandingPolicyTest extends TestCase
     {
         $this->app->instance(InappRequesterGuard::class, new class ($allow) extends InappRequesterGuard {
             public function __construct(private readonly bool $allow) {}
-
-            public function allows(object $request): bool
-            {
-                return $this->allow;
-            }
+            public function allows(object $request): bool { return $this->allow; }
+            public function attributionUserId(object $request): ?int { return $this->allow ? (int) User::query()->where('type', 'S')->value('id') : null; }
         });
     }
 }

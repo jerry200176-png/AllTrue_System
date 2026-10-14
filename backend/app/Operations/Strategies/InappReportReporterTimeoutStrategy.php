@@ -10,11 +10,7 @@ use App\Services\BugReportService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
-/**
- * ADR-POP-015 (c): the 14-day reporter-verify timeout close. Each ID is checked on its own
- * (existing listEligibleForReporterTimeout rule, rechecked under the row lock); ineligible IDs
- * are skipped and reported, never closed, and never block the rest.
- */
+/** ADR-POP-015 (c): 14-day reporter-timeout close; each ID rechecked under its row lock, ineligible IDs skipped, never closed. */
 final class InappReportReporterTimeoutStrategy
 {
     public const OPERATION = 'inapp-report-reporter-timeout';
@@ -51,8 +47,9 @@ final class InappReportReporterTimeoutStrategy
     public function execute(array $plan, array $context): array
     {
         if (!($plan['ok'] ?? false)) throw new RuntimeException('inapp_timeout_plan_not_ready');
-        $p = InappReportSupport::requestParameters($context);
-        $actor = InappReportSupport::actorUserId();
+        $request = InappReportSupport::request($context);
+        $p = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
+        $actor = InappReportSupport::attributionUserId($request);
         $closed = [];
         $skipped = [];
         foreach ((array) $p['bug_ids'] as $bugId) {
@@ -65,7 +62,7 @@ final class InappReportReporterTimeoutStrategy
                 }
                 $res = BugReportService::closeByReporterTimeout((int) $bugId, $actor, false, self::DAYS);
 
-                return ($res['action'] ?? null) === 'closed';
+                return $res['action'] === 'closed';
             });
             if ($done) $closed[] = (int) $bugId;
             else $skipped[] = (int) $bugId;

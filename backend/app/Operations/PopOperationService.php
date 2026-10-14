@@ -110,12 +110,8 @@ final class PopOperationService
     }
 
     /**
-     * ADR-POP-015: the standing policy's single decision. An approval takes the same recordApproval()
-     * path as a human (approved event with approver_role=policy, atomic `approved` transition, token
-     * bound to request, strategy, parameter digest, phase and the locally deployed SHA). A denial
-     * leaves the request to the catalog's human quorum.
-     *
-     * @param array<int,string> $denialReasons
+     * ADR-POP-015 standing-policy decision. Approval = the human recordApproval() path (approver_role=policy,
+     * atomic `approved`, token bound to the deployed SHA); a denial leaves the human quorum. @param array<int,string> $denialReasons
      */
     public function recordPolicyDecision(string $requestId, InappStandingPolicy $policy, array $denialReasons): array
     {
@@ -185,6 +181,9 @@ final class PopOperationService
             $locked = DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
             if (!$locked || ($byStandingPolicy && (string) $locked->status !== 'awaiting_approval')) {
                 throw new RuntimeException('POP request not found; fail closed.');
+            }
+            if ($byStandingPolicy && !(new InappStandingPolicy($this->catalog))->capAvailable($locked)) {
+                throw new RuntimeException('POP standing-policy daily cap is exhausted; fail closed.');
             }
             $lockedParameters = json_decode((string) $locked->parameters, true, 512, JSON_THROW_ON_ERROR);
             $this->assertRequestIntegrity($locked, $entry, $lockedParameters, null, false);
@@ -757,10 +756,8 @@ final class PopOperationService
     }
 
     /**
-     * A policy approval counts only while every ADR-POP-015 kill switch is open; a tripped switch
-     * retires the request (`revoked`) so it can neither execute nor block the executor queue.
-     *
-     * @param array<string,mixed> $entry @param \Illuminate\Support\Collection<int,object> $approvals @return array<int,string>
+     * approver_role=policy counts only for governed operations with every ADR-POP-015 kill switch open; a tripped
+     * switch cancels the unexecuted request (policy_revoked event). @param \Illuminate\Support\Collection<int,object> $approvals
      */
     private function quorumRoles(array $entry, \Illuminate\Support\Collection $approvals, string $requestId): array
     {
@@ -771,8 +768,14 @@ final class PopOperationService
             if (!InappStandingPolicy::governs($entry)) throw new RuntimeException('POP standing-policy approval is not valid here.');
             InappStandingPolicy::assertKillSwitchesOpen($requestId);
         } catch (Throwable $exception) {
-            DB::table('pop_operation_requests')->where('id', $requestId)->where('status', 'approved')
-                ->update(['status' => 'revoked', 'updated_at' => now()]);
+            DB::transaction(function () use ($requestId, $approvals): void {
+                if (DB::table('pop_operation_requests')->where('id', $requestId)->where('status', 'approved')
+                    ->update(['status' => 'cancelled', 'updated_at' => now()]) === 1) {
+                    $event = (array) $approvals->first(fn (object $row): bool => (string) $row->approver_role === 'policy');
+                    DB::table('pop_approval_events')->insert(array_merge(array_diff_key($event, ['id' => 1]),
+                        ['event_type' => 'policy_revoked', 'token_hash' => null, 'expires_at' => now(), 'created_at' => now()]));
+                }
+            });
             throw $exception;
         }
 

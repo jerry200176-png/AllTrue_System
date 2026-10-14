@@ -21,9 +21,7 @@ final class InappStandingPolicy
         InappReportReporterTimeoutStrategy::OPERATION => InappReportReporterTimeoutStrategy::class,
     ];
 
-    public function __construct(private readonly PopOperationCatalog $catalog)
-    {
-    }
+    public function __construct(private readonly PopOperationCatalog $catalog) {}
 
     /** The exact catalog shape this policy may approve. */
     public static function governs(array $entry): bool
@@ -91,9 +89,7 @@ final class InappStandingPolicy
         if (!is_string($dryDigest)) $reasons[] = 'dry_run_missing';
         $rid = $params['request_id'] ?? null;
         if (!is_string($rid) || InappReportSupport::requestIdReplayed($rid, (string) $request->id)) $reasons[] = 'request_id_replayed';
-        if ($this->unitsApprovedToday((string) $request->operation_id) + self::units($params) > (int) config('pop_inapp.daily_cap', 20)) {
-            $reasons[] = 'daily_cap_exceeded';
-        }
+        if (!$this->capAvailable($request)) $reasons[] = 'daily_cap_exceeded';
         if ($reasons !== []) return $reasons;
         try {
             $plan = app(self::OPERATIONS[$entry['id']])->plan($params);
@@ -128,6 +124,8 @@ final class InappStandingPolicy
     public function approvePending(PopOperationService $service, int $limit = 5): array
     {
         if (!$this->active()) return ['status' => 'disabled', 'approved' => [], 'denied' => []];
+        // One lock for every policy decision (a superset of a per-operation/day lock): the daily cap is
+        // counted and reserved by recordApproval()'s transaction while it is held.
         $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', ['alltrue:pop:standing-policy']);
         if ((int) ($lock->acquired ?? 0) !== 1) return ['status' => 'busy', 'approved' => [], 'denied' => []];
         $out = ['status' => 'ok', 'approved' => [], 'denied' => []];
@@ -151,16 +149,14 @@ final class InappStandingPolicy
         return $out;
     }
 
-    private static function units(array $params): int
+    /** Daily cap in target reports per operation per Asia/Taipei day. Inside recordApproval() the inserted event is the reservation. */
+    public function capAvailable(object $request): bool
     {
-        return is_array($params['bug_ids'] ?? null) ? count($params['bug_ids']) : 1;
-    }
+        $units = fn ($p): int => count((array) (json_decode((string) $p, true)['bug_ids'] ?? [1]));
+        $used = DB::table('pop_approval_events as e')->join('pop_operation_requests as r', 'r.id', '=', 'e.operation_id')
+            ->where('e.event_type', 'approved')->where('e.approver_role', 'policy')->where('r.operation_id', $request->operation_id)
+            ->where('e.created_at', '>=', now('Asia/Taipei')->startOfDay()->setTimezone(config('app.timezone')))->pluck('r.parameters')->sum($units);
 
-    private function unitsApprovedToday(string $operationId): int
-    {
-        return DB::table('pop_approval_events as e')->join('pop_operation_requests as r', 'r.id', '=', 'e.operation_id')
-            ->where('e.event_type', 'approved')->where('e.approver_role', 'policy')->where('r.operation_id', $operationId)
-            ->where('e.created_at', '>=', now()->startOfDay())->pluck('r.parameters')
-            ->sum(fn ($p) => self::units((array) json_decode((string) $p, true)));
+        return $used + $units($request->parameters) <= (int) config('pop_inapp.daily_cap', 20);
     }
 }
