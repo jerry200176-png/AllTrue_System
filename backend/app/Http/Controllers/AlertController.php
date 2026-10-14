@@ -131,9 +131,17 @@ class AlertController extends Controller
         $stoppedResults = $stoppedResults->get();
         $stoppedStatuses = $this->payableResolver
             ->courseStatusesByStudentClassIds($stoppedResults->pluck('ID')->all(), $stoppedResults);
+        // In-app #394: a review_required verdict built from issued invoices still owes their open balance.
+        // Dropping it hid the student from the list (shown 已收) while the drawer showed 未繳 for the same bill.
+        // Review without an issued invoice is an estimate only and stays in 已結清 → 待核對.
         $pendingSettlementResults = $stoppedResults
-            ->filter(fn ($c) => in_array($stoppedStatuses[(int) $c->ID]['status'] ?? null, ['unpaid', 'partial', 'unbilled'], true)
-                && (int) $stoppedStatuses[(int) $c->ID]['outstanding'] > 0)
+            ->filter(function ($c) use ($stoppedStatuses) {
+                $s = $stoppedStatuses[(int) $c->ID] ?? [];
+                $owing = in_array($s['status'] ?? null, ['unpaid', 'partial', 'unbilled'], true)
+                    || (($s['status'] ?? null) === 'review_required' && ($s['source'] ?? null) === 'invoice');
+
+                return $owing && (int) ($s['outstanding'] ?? 0) > 0;
+            })
             ->values();
 
         $countPkgQuery = CoursePackage::query()

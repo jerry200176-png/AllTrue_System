@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-15-inapp-394-ended-monthly-open-bill
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 結束的月結課，未繳帳單不再消失
+    summary: 已結束的月結合約還有未繳帳單時，會留在「課已結束，尚未收款」，學生清單不再寫已收。
+    items:
+      - category: fixed
+        text: 已開出但還沒收到錢的月結帳單，即使合約已結束、期間需要核對，也會算進帳務中心的未收。
+    source_refs:
+      - "changelog:2026-10-15:inapp-394-ended-monthly-open-bill"

@@ -128,6 +128,47 @@ class AccountingPendingQueueTest extends TestCase
         $this->assertSame('付款期間待確認', $row['reconciliation_label']);
     }
 
+    public function test_review_required_stopped_monthly_with_open_invoice_stays_in_tuition_queue(): void
+    {
+        // In-app #394: a monthly contract starting 8/30 billed by a calendar-month 2026-09 invoice leaves 8/30–8/31
+        // uncovered, so the period engine says review_required. The issued NT$4,400 is still open and the student
+        // drawer shows it as owed, so the queue (and the student list built from it) must too, not "已收".
+        $c = $this->course([
+            'closed_reason' => 'settled', 'ScheduleMode' => 'date', 'settlement_day' => 30,
+            'StartDate' => '2026-08-30', 'EndDate' => '2026-09-30', 'Charge' => 4400, 'Rate' => 1100,
+            'SessionCount' => 4, 'RemainingSessions' => 0,
+        ]);
+        $invoice = $this->invoice($c, 4400);
+        $invoice->forceFill(['billing_period' => '2026-09'])->save();
+
+        $verdict = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $c->ID])[(int) $c->ID];
+        $this->assertSame('review_required', $verdict['status'], 'fixture must reproduce the review verdict');
+
+        $alert = $this->tuitionRow($c);
+        $this->assertNotNull($alert, 'an issued, open invoice must not vanish from 帳務中心');
+        $this->assertSame('pending_reconciliation', $alert['payment_status']);
+        $this->assertSame(4400, $alert['outstanding']);
+        $this->assertSame([4400], array_column($alert['open_periods'], 'outstanding'));
+    }
+
+    public function test_review_required_stopped_without_invoice_stays_out_of_tuition_queue(): void
+    {
+        // Review with no issued bill is an estimate only: it stays in 已結清 → 待核對, never a queue amount.
+        $c = $this->course([
+            'closed_reason' => 'settled', 'ScheduleMode' => 'date', 'settlement_day' => 30,
+            'StartDate' => '2026-08-30', 'EndDate' => '2026-09-30', 'Charge' => 4400, 'Rate' => 1100,
+            'SessionCount' => 4, 'RemainingSessions' => 0,
+        ]);
+        \App\Models\ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => '2026-08-30', 'StartTime' => '10:00',
+            'EndTime' => '11:00', 'Status' => 'attended']);
+        \App\Models\ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => '2026-09-05', 'StartTime' => '10:00',
+            'EndTime' => '11:00', 'Status' => 'attended']);
+
+        $verdict = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $c->ID])[(int) $c->ID];
+        $this->assertSame('review_required', $verdict['status']);
+        $this->assertNull($this->tuitionRow($c));
+    }
+
     public function test_unbilled_stopped_alert_carries_resolver_amounts_not_null(): void
     {
         $c = $this->course(['closed_reason' => null]); // no invoice, Charge 8800 => resolver unbilled
