@@ -26,6 +26,9 @@ class BillingNoteController extends Controller
             'subject_id' => 'required|integer|min:1',
         ]);
         $subject = $this->resolveSubject((string) $data['subject_type'], (int) $data['subject_id']);
+        // #4041: deleting a course voids its invoice; that invoice's notes stay readable (never appendable).
+        $readOnly = $subject === null && $data['subject_type'] === 'invoice'
+            && ($subject = $this->resolveDeletedCourseInvoice((int) $data['subject_id'])) !== null;
         if ($subject === null) {
             return response()->json(['message' => '找不到這筆帳務資料'], 404);
         }
@@ -45,6 +48,10 @@ class BillingNoteController extends Controller
         }
         foreach ($notes as $note) {
             $entries[] = $this->entry($note);
+        }
+
+        if ($readOnly) {
+            return response()->json(['notes' => $entries, 'read_only' => true, 'read_only_label' => BillingNote::VOIDED_INVOICE_LABEL]);
         }
 
         return response()->json(['notes' => $entries]);
@@ -110,6 +117,15 @@ class BillingNoteController extends Controller
         $campusId = $studentId > 0 ? (int) Student::query()->whereKey($studentId)->value('CampusID') : 0;
 
         return $campusId > 0 ? ['campus_id' => $campusId, 'legacy_note' => trim($legacy)] : null;
+    }
+
+    /** @return array{campus_id:int, legacy_note:string}|null */
+    private function resolveDeletedCourseInvoice(int $id): ?array
+    {
+        $invoice = BillingNote::deletedCourseVoidInvoices()->whereKey($id)->first();
+        $campusId = $invoice ? (int) Student::query()->whereKey((int) $invoice->StudentID)->value('CampusID') : 0;
+
+        return $invoice && $campusId > 0 ? ['campus_id' => $campusId, 'legacy_note' => trim((string) ($invoice->Note ?? ''))] : null;
     }
 
     /** #3978 review: a linked payment outside the report's student never lends its note (another campus's text). */
