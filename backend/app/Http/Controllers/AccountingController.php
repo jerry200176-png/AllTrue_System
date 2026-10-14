@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BillingNote;
 use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\PaymentReport;
@@ -711,6 +712,8 @@ class AccountingController extends Controller
                 'receipt_count' => $reportRows->where('status', 'confirmed')->count(),
                 'anomaly_count' => $uniqueAnomalies->count(),
             ],
+            // #4041: notes of invoices voided when their course was deleted; read-only, outside the invoice table.
+            'voided_invoice_notes' => $this->deletedCourseInvoiceNotes($request, $student),
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
             'courses' => $classes->map(fn (StudentClass $class) => [
                 'id' => (int) $class->ID,
@@ -995,6 +998,41 @@ class AccountingController extends Controller
     {
         $period = preg_replace('/[^0-9]/', '', (string) $paidPeriod);
         return 'PAY-' . ($period ?: 'LEGACY') . '-' . str_pad((string) $paymentId, 6, '0', STR_PAD_LEFT);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function deletedCourseInvoiceNotes(Request $request, Student $student): array
+    {
+        $invoices = BillingNote::deletedCourseVoidInvoices()->where('Invoice.StudentID', (int) $student->id)->orderByDesc('Invoice.id')->get();
+        if ($invoices->isEmpty()) {
+            return [];
+        }
+        $campusIds = $request->attributes->get('auth_role') === 'super_admin'
+            ? null
+            : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        $notes = BillingNote::query()
+            ->where('subject_type', 'invoice')
+            ->whereIn('subject_id', $invoices->pluck('id')->map(fn ($id) => (int) $id)->all())
+            ->where('campus_id', (int) $student->CampusID)
+            ->when($campusIds !== null, fn ($q) => $q->whereIn('campus_id', $campusIds))
+            ->orderBy('created_at')->orderBy('id')
+            ->get()
+            ->groupBy('subject_id');
+
+        return $invoices->filter(fn (Invoice $invoice) => $notes->has((int) $invoice->id))
+            ->map(fn (Invoice $invoice) => [
+                'invoice_id' => (int) $invoice->id,
+                'invoice_no' => $this->invoiceNo($invoice),
+                'course_ref' => $this->courseRef((int) $invoice->StudentClassID),
+                'read_only' => true,
+                'label' => BillingNote::VOIDED_INVOICE_LABEL,
+                'notes' => $notes->get((int) $invoice->id, collect())->map(fn (BillingNote $note) => [
+                    'id' => (int) $note->id,
+                    'body' => $note->body,
+                    'author_name' => (string) $note->author_name,
+                    'created_at' => $note->created_at?->toIso8601String(),
+                ])->values()->all(),
+            ])->values()->all();
     }
 
     private function courseRef(int $studentClassId): string

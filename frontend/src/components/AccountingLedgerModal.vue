@@ -208,6 +208,21 @@
             </div>
           </section>
 
+          <!-- #4041: deleting a course voids its bill; that bill's notes stay readable here, never editable. -->
+          <section v-if="payload.voided_invoice_notes?.length" class="ledger-section" data-testid="ledger-voided-invoice-notes">
+            <h4>已刪除課程的帳單備註</h4>
+            <div v-for="g in payload.voided_invoice_notes" :key="g.invoice_id" class="ledger-voided-notes">
+              <strong>{{ g.invoice_no }}</strong> <small>{{ g.course_ref }}{{ g.label }}</small>
+              <ol class="ledger-voided-notes__list">
+                <li v-for="n in g.notes" :key="n.id">
+                  <small>{{ n.author_name || '未知' }}・{{ fmtDate(n.created_at) }}</small>
+                  <p>{{ n.body }}</p>
+                </li>
+              </ol>
+            </div>
+            <p class="ledger-muted">帳單已作廢，這些備註只能查看，不能新增或修改。</p>
+          </section>
+
           <section v-if="payload.receipts?.length || !ledgerBothEmpty" class="ledger-section">
             <h4>收款紀錄</h4>
             <div v-if="!payload.receipts?.length" class="ledger-empty">此學生尚無收款紀錄。</div>
@@ -860,6 +875,9 @@ const anomalyLabel = (code) => labelMap({
 .ledger-receipts--compact .ledger-receipt{padding:8px 10px}
 .ledger-muted,.ledger-receipt small,.ledger-table small{color:var(--text-light,var(--ds-ink-mute))}
 .ledger-table small{display:block;margin-top:2px}
+.ledger-voided-notes{padding:8px 10px;border:1px dashed var(--ds-border);border-radius:10px;margin-bottom:8px}
+.ledger-voided-notes__list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
+.ledger-voided-notes__list p{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .ledger-actions{display:flex;gap:6px;flex-wrap:wrap}
 .ledger-action{border:1px solid var(--ds-border);background:var(--ds-canvas);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px}
 .ledger-action--danger{border-color:var(--ds-danger-wash);color:var(--ds-danger)}
