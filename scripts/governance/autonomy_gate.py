@@ -281,17 +281,65 @@ INDEPENDENT_REVIEWERS = frozenset({"chatgpt-codex-connector[bot]"})
 # code qualifies, but any of these in the changed code keeps the gate.
 _STANDING_EXCEPTION_AUTHZ_RE = re.compile(
     r"grant|revoke|role|permission|privilege|polic(?:y|ies)|scope|admin|guardian|identity|"
-    r"impersonat|superuser|gate::|can\(|ability|middleware",
+    r"impersonat|superuser|gate::|can\(|ability|middleware|authoriz|authz",
     re.IGNORECASE,
 )
+# Deleting billing records is irreversible even though _founder_effects only
+# reports it as a generic runtime write.
+_STANDING_EXCEPTION_DESTRUCTIVE_RE = re.compile(
+    r"(?:->|::)\s*(?:delete|forcedelete|destroy|truncate)\s*\(", re.IGNORECASE
+)
+_HUNK_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+_TEST_METHOD_RE = re.compile(r"function\s+test\w*\s*\(|@test\b|#\[Test\]", re.IGNORECASE)
 
 
-def _changed_test_lines(paths: list[str], patch: str) -> str:
+def _patch_hunks_complete(paths: list[str], patch: str) -> bool:
+    """Every hunk of these files carries exactly the lines its header declares (no truncated API patch)."""
+
+    for chunk in re.split(r"(?=^diff --git )", patch or "", flags=re.MULTILINE):
+        head = chunk.split("\n", 1)[0]
+        if not any(f"diff --git a/{path} b/{path}" in head for path in paths):
+            continue
+        old = new = None
+        for line in chunk.split("\n")[1:]:
+            match = _HUNK_RE.match(line)
+            if match:
+                if old or new:
+                    return False
+                old, new = int(match.group(1) or 1), int(match.group(2) or 1)
+            elif old is not None and line and not line.startswith("\\ "):
+                kind = line[0]
+                if kind not in " +-":
+                    return False
+                old -= kind in " -"
+                new -= kind in " +"
+                if old < 0 or new < 0:
+                    return False
+        if old or new:
+            return False
+    return True
+
+
+def _changed_test_chunks(paths: list[str], patch: str) -> list[list[str]]:
+    """Added lines of each changed backend test file."""
+
     tests = [path for path in paths if path.startswith("backend/tests/") and path.endswith(".php")]
-    return "\n".join(
-        line[1:] for line in _runtime_patch(tests, patch).split("\n")
-        if line.startswith("+") and not line.startswith("+++")
-    )
+    return [
+        [line[1:] for line in chunk.split("\n") if line.startswith("+") and not line.startswith("+++")]
+        for chunk in re.split(r"(?=^diff --git )", _runtime_patch(tests, patch), flags=re.MULTILINE)
+        if chunk.strip()
+    ]
+
+
+def _test_exercises(chunks: list[list[str]], name: str) -> bool:
+    """A changed test adds a test method and uses ``name`` in code (not an import or a comment)."""
+
+    word = re.compile(rf"\b{re.escape(name)}\b")
+    for added in chunks:
+        code = [line for line in added if not re.match(r"\s*(?:use\s|//|#|\*|/\*)", line)]
+        if any(_TEST_METHOD_RE.search(line) for line in added) and any(word.search(line) for line in code):
+            return True
+    return False
 
 
 def standing_exception_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
@@ -320,14 +368,16 @@ def standing_exception_scope(paths: Iterable[str], patch: str = "") -> dict[str,
             return no(f"outside billing/login: {path}")
     if len(sensitive) > _MAX_GUARDED_SENSITIVE_FILES:
         return no(f"more than {_MAX_GUARDED_SENSITIVE_FILES} billing/login files")
-    if not _patch_is_inspectable(sensitive, patch):
-        return no("billing/login diff is not inspectable")
+    if not _patch_is_inspectable(sensitive, patch) or not _patch_hunks_complete(normalized, patch):
+        return no("billing/login diff is not inspectable or is truncated")
     runtime = [path for path in normalized if is_deployable_path(path)]
     changed = _semantic_changed_code_lines(_semantic_runtime_patch(runtime, patch))
     if len(changed.splitlines()) > _MAX_GUARDED_SENSITIVE_LINES:
         return no(f"more than {_MAX_GUARDED_SENSITIVE_LINES} changed lines")
     if _STANDING_EXCEPTION_AUTHZ_RE.search(changed):
         return no("authorization/identity boundary in changed code")
+    if _STANDING_EXCEPTION_DESTRUCTIVE_RE.search(changed):
+        return no("destructive write in changed code")
     effects = set(_founder_effects(changed))
     if effects - _STANDING_EXCEPTION_EFFECTS:
         return no("effect outside billing/login: " + ", ".join(sorted(effects - _STANDING_EXCEPTION_EFFECTS)))
@@ -335,13 +385,10 @@ def standing_exception_scope(paths: Iterable[str], patch: str = "") -> dict[str,
     markers = {marker for marker in _T3_MARKERS if marker in haystack}
     if markers - _STANDING_EXCEPTION_MARKERS:
         return no("protected marker outside billing/login: " + ", ".join(sorted(markers - _STANDING_EXCEPTION_MARKERS)))
-    tests = _changed_test_lines(normalized, patch)
-    uncovered = [
-        path for path in sensitive
-        if not re.search(rf"\b{re.escape(path.rsplit('/', 1)[-1][:-4])}\b", tests)
-    ]
+    tests = _changed_test_chunks(normalized, patch)
+    uncovered = [path for path in sensitive if not _test_exercises(tests, path.rsplit("/", 1)[-1][:-4])]
     if uncovered:
-        return no("no changed backend test names: " + ", ".join(uncovered))
+        return no("no changed backend test method exercises: " + ", ".join(uncovered))
     return {"eligible": True, "sensitive_paths": sensitive, "reason": "billing/login standing exception"}
 
 
@@ -767,7 +814,10 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
         minimum = 1
         reasons.extend(f"reversible runtime path: {path}" for path in runtime_paths)
 
-    if activation_class == "founder-required" and standing_exception_scope(normalized, patch)["eligible"]:
+    # Guarded-sensitive billing paths also need the review evidence once they qualify.
+    if activation_class in {"founder-required", "guarded-sensitive"} and standing_exception_scope(
+        normalized, patch
+    )["eligible"]:
         minimum = 2
         activation_class = "standing-exception"
         reasons = ["billing/login standing exception: needs independent review on the final head"]

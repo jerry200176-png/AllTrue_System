@@ -1184,7 +1184,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         # Review evidence is read only for the billing/login standing exception
         # (Founder 2026-10-14 (三)); routine T2 never depends on it.
         self.assertEqual(2, self.workflow.count("has_independent_review"))
-        self.assertIn('"independent_review": independent_review(pr),', self.workflow)
+        self.assertIn('if standing_exception_scope(actual_paths, actual_effect["patch"])["eligible"]', self.workflow)
         self.assertNotIn("has_trusted_verifier_evidence", self.workflow)
         self.assertNotIn("/pulls/{pr_number}/reviews", self.workflow)
         self.assertIn("/check-runs?per_page=100", self.workflow)

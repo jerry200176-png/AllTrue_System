@@ -729,6 +729,7 @@ jobs:
                   decide_activation,
                   has_independent_review,
                   has_rollback_evidence,
+                  standing_exception_scope,
                   is_founder_approval_eligible,
                   is_deployable_path,
                   is_production_activation_sensitive_path,
@@ -909,7 +910,12 @@ jobs:
                           **actual_effect,
                           "declared_risk": declared_risk,
                           "declared_tier": declared_tier,
-                          "independent_review": independent_review(pr),
+                          # Only billing/login exception candidates need (and fetch) review evidence.
+                          "independent_review": (
+                              independent_review(pr)
+                              if standing_exception_scope(actual_paths, actual_effect["patch"])["eligible"]
+                              else None
+                          ),
                       })
                       attributed_commits.add(commit_sha)
               attributed.extend(aggregate_landed_pr_effects(landed_effects))

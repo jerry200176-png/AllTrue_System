@@ -21,7 +21,8 @@ def chunk(path, added, removed=("old();",)):
 
 
 BILLING = chunk(SVC, ["$deducted = $this->calculateCharge($session);", "$invoice->save();"])
-COVER = chunk(TEST, ["use App\\Services\\SessionDeduction\\SessionDeductionService;", "public function test_x() {}"], ())
+COVER = chunk(TEST, ["use App\\Services\\SessionDeduction\\SessionDeductionService;",
+                    "public function test_deducts_once() { $svc = new SessionDeductionService(); }"], ())
 
 
 def scope(paths, patch):
@@ -89,6 +90,35 @@ class StandingExceptionDiff(unittest.TestCase):
         mig = "backend/database/migrations/2026_10_14_000000_x.php"
         paths, patch = [SVC, TEST, mig], BILLING + COVER + chunk(mig, ["<?php"], ())
         self.assertFalse(scope(paths, patch)["eligible"])
+
+    def test_name_only_or_import_only_tests_do_not_count(self):
+        for added in (
+            ["use App\\Services\\SessionDeduction\\SessionDeductionService;", "public function test_x() {}"],
+            ["// SessionDeductionService", "public function test_x() {}"],
+            ["$svc = new SessionDeductionService();"],  # no test method
+        ):
+            self.assertFalse(scope([SVC, TEST], BILLING + chunk(TEST, added, ()))["eligible"], added)
+
+    def test_destructive_writes_and_authorize_stay_t3(self):
+        for added in (["$invoice->delete();"], ["$invoice->forceDelete();"], ["Invoice::destroy($id);"],
+                      ["$this->authorize('update', $invoice); $invoice->save();"]):
+            paths, patch = [SVC, TEST], chunk(SVC, added) + COVER
+            self.assertFalse(scope(paths, patch)["eligible"], added)
+            self.assertEqual(3, classify_activation_scope(paths, patch)["machine_minimum_tier"], added)
+
+    def test_truncated_patch_stays_t3(self):
+        truncated = BILLING.replace("@@ -1,1 +1,2 @@", "@@ -1,1 +1,5 @@")
+        self.assertFalse(scope([SVC, TEST], truncated + COVER)["eligible"])
+
+    def test_guarded_sensitive_billing_path_also_needs_review(self):
+        path = "backend/app/Services/Billing/BillingPeriodInvoiceExists.php"
+        test = chunk(TEST, ["public function test_exists() { BillingPeriodInvoiceExists::check(); }"], ())
+        patch = chunk(path, ["return $invoice !== null;"], ("return false;",)) + test
+        activation = classify_activation_scope([path, TEST], patch)
+        self.assertTrue(activation["requires_independent_review"], activation)
+        record = {"number": 3, "merged_at": "2026-10-14T00:00:00Z", "paths": [path, TEST], "patch": patch,
+                  "patch_complete": True, "declared_risk": 2, "declared_tier": 2, "independent_review": False}
+        self.assertTrue(classify_activation_provenance([record])["blocked"])
 
     def test_size_bounds_stay_t3(self):
         big = chunk(SVC, [f"$invoice->total{i} = $this->calculateCharge($s{i});" for i in range(260)])
