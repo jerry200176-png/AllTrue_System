@@ -701,6 +701,72 @@ class ScheduleGuardrailsTest extends TestCase
     }
 
     /**
+     * In-app #401/#402: a date-mode contract that already ended (the student moved
+     * to another teacher on a new contract) must not hold the old teacher's seat.
+     */
+    public function test_ended_date_mode_contract_does_not_hold_recurring_seat(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-guard-ended@example.com');
+        $addCourse = function (string $name, ?string $endDate, ?string $mode = 'date') use ($teacherId): void {
+            $student = $this->createStudent(1, $name);
+            StudentClass::query()->insert([
+                'StudentID' => $student->id, 'TeacherID' => $teacherId, 'ClassType' => 'one_on_two',
+                'GradeID' => 1, 'SubjectID' => 1, 'by1' => 1, 'Period' => 4,
+                'StartDate' => Carbon::today()->subMonths(6)->toDateString(), 'EndDate' => $endDate,
+                'TotalHours' => 16, 'SessionCount' => 8, 'SessionDuration' => 120,
+                'RemainingSessions' => 8, 'UsedSessions' => 0,
+                'Charge' => 1600, 'Pay' => 1600, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
+                'MDate' => now(), 'week' => 5, 'time' => '19:00', 'ScheduleMode' => $mode,
+            ]);
+        };
+        $guard = app(\App\Services\ScheduleGuardService::class);
+        $payload = [
+            'teacher_id' => $teacherId,
+            'class_type' => 'one_on_two',
+            'branch_id' => 1,
+            'slots' => [['day_of_week' => 5, 'start_time' => '19:00', 'end_time' => '21:00']],
+        ];
+
+        $addCourse('已結束甲', Carbon::today()->subMonth()->toDateString());
+        $addCourse('在讀甲', null);
+        $this->assertSame([], $guard->validateRecurringCourse($payload), 'Ended contract must not occupy the slot');
+
+        $addCourse('在讀乙', Carbon::today()->addMonth()->toDateString());
+        $blocked = $guard->validateRecurringCourse($payload);
+        $this->assertNotEmpty($blocked);
+        $this->assertSame('teacher_capacity', $blocked[0]['type'] ?? null);
+        $this->assertSame(2, $blocked[0]['current_students'] ?? null);
+    }
+
+    /** A legacy blank/null-mode contract is count mode: an estimated past EndDate must not free its seat. */
+    public function test_legacy_null_mode_contract_keeps_recurring_seat_past_end_date(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-guard-null-mode@example.com');
+        foreach (['舊制甲', '舊制乙'] as $name) {
+            $student = $this->createStudent(1, $name);
+            StudentClass::query()->insert([
+                'StudentID' => $student->id, 'TeacherID' => $teacherId, 'ClassType' => 'one_on_two',
+                'GradeID' => 1, 'SubjectID' => 1, 'by1' => 1, 'Period' => 4,
+                'StartDate' => Carbon::today()->subMonths(6)->toDateString(),
+                'EndDate' => Carbon::today()->subMonth()->toDateString(),
+                'TotalHours' => 16, 'SessionCount' => 8, 'SessionDuration' => 120,
+                'RemainingSessions' => 4, 'UsedSessions' => 4,
+                'Charge' => 1600, 'Pay' => 1600, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
+                'MDate' => now(), 'week' => 5, 'time' => '19:00', 'ScheduleMode' => '',
+            ]);
+        }
+
+        $blocked = app(\App\Services\ScheduleGuardService::class)->validateRecurringCourse([
+            'teacher_id' => $teacherId,
+            'class_type' => 'one_on_two',
+            'branch_id' => 1,
+            'slots' => [['day_of_week' => 5, 'start_time' => '19:00', 'end_time' => '21:00']],
+        ]);
+        $this->assertNotEmpty($blocked);
+        $this->assertSame('teacher_capacity', $blocked[0]['type'] ?? null);
+    }
+
+    /**
      * F8: the model scope and the guard's recurring-seat loader share one rule.
      * One used-up count 1:3 + two active 1:3 on the same weekly slot -> 2 occupants.
      * (Substitute/ExceptionWorkflow occupancy is ClassSession-based, so not template-governed.)
