@@ -47,7 +47,7 @@
         </div>
       </div>
 
-      <AtInlineAlert v-if="isStale" tone="warning" title="報告超過一天沒更新" data-testid="nr-stale">
+      <AtInlineAlert v-if="isStale" tone="warning" title="最近一次 02:00 核對沒有新報告" data-testid="nr-stale">
         <p>每天 02:00 的核對可能沒跑，請通知工程團隊。</p>
       </AtInlineAlert>
 
@@ -70,6 +70,9 @@
             <p><span class="nr-guide-key">意思</span>{{ categoryGuide(item.category).meaning }}</p>
             <p><span class="nr-guide-key">下一步</span>{{ categoryGuide(item.category).next }}</p>
           </article>
+          <p v-if="detailTruncated" class="nr-guide-foot nr-truncated" data-testid="nr-truncated">
+            明細只列出前 {{ storedRowCount }} 筆，共 {{ report.mismatch_count }} 筆差異；上面的分類數字包含全部。未列出的課程編號請洽工程團隊。
+          </p>
           <p class="nr-guide-foot">本頁不會改數字。修正堂數由工程團隊處理，需先備份並經核准。</p>
         </section>
 
@@ -224,6 +227,7 @@
         <div class="nr-info" v-if="filteredMismatches.length > 0">
           顯示 {{ filteredMismatches.length }} / {{ mismatches.length }} 筆異常
           <template v-if="filters.campus || filters.subject || filters.category">（已篩選）</template>
+          <template v-if="detailTruncated">（只列出前 {{ storedRowCount }} 筆）</template>
         </div>
       </template>
     </template>
@@ -235,7 +239,7 @@ import { onMounted, onBeforeUnmount, computed, ref } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
-import { useNightlyReconcile } from '../composables/useNightlyReconcile';
+import { useNightlyReconcile, isReportStale } from '../composables/useNightlyReconcile';
 
 const props = defineProps({
   token: { type: String, required: true },
@@ -255,6 +259,8 @@ const {
   categoryOptions,
   summary,
   causeCounts,
+  storedRowCount,
+  detailTruncated,
   loadReport,
   setFilter,
   toggleSort,
@@ -265,17 +271,6 @@ const {
   categoryGuide,
 } = useNightlyReconcile(tokenRef);
 
-// The job runs daily at 02:00; a report older than ~36h means it did not run.
-const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
-
-// The backend writes checked_at as "YYYY-MM-DD HH:mm:ss" in app time (Asia/Taipei, UTC+8)
-// with no offset; parse it as such so the threshold does not depend on the viewer's timezone.
-function parseServerTime(value) {
-  const text = String(value || '');
-  const m = text.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/);
-  return new Date(m ? `${m[1]}T${m[2]}+08:00` : text);
-}
-
 // Date.now() is not reactive: tick a clock so a tab left open still turns stale.
 const now = ref(Date.now());
 let clockTimer = null;
@@ -284,11 +279,9 @@ onMounted(() => {
 });
 onBeforeUnmount(() => clearInterval(clockTimer));
 
-const isStale = computed(() => {
-  const checkedAt = parseServerTime(summary.value?.checked_at);
-  if (Number.isNaN(checkedAt.getTime())) return false;
-  return now.value - checkedAt.getTime() > STALE_AFTER_MS;
-});
+// Stale = no live report since the latest expected 02:00 run (plus grace);
+// a dry-run preview never counts as the scheduled run (#3945).
+const isStale = computed(() => isReportStale(report.value, now.value));
 
 const verdictTitle = computed(() => {
   const count = summary.value?.mismatch_count || 0;
