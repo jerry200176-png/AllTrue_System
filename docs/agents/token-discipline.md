@@ -13,17 +13,17 @@ Applies to every Claude/Codex session in this repo, cloud or local. These rules 
 
 - GitHub lists: `perPage` 5–20, `minimal_output: true`. Page review threads with the `after` cursor instead of re-reading from the start.
 - Never print a whole workflow-run list or check-run list. Pin the query to the current head SHA, or filter it (`python3 -c` / `jq`) keeping head SHA, run ID, name, status and conclusion, so a green run on a superseded head is never mistaken for exact-head CI.
-- CI failures: read the failing job's log tail only (`get_job_logs` with `failed_only` / `tail_lines`), not the full log.
+- CI failures: read the failing job's log tail first (`get_job_logs` with `failed_only` / `tail_lines`); widen the range step by step, up to the full failing-job log, only when the tail does not show the cause.
 - Files: grep for the symbol, then read the line range you need.
 
 ## 3. Review rounds
 
 - Address every finding of a round at once: put all required fixes in one push, give each other finding its disposition in the reply, then reply to and resolve every thread in one batch.
-- P2 handling follows `FOUNDER_STANDING_DECISIONS.md` 2026-10-12 ④ unchanged: one remediation round; later P2s go to one follow-up issue per PR (append to it rather than opening a new one each round), **except** a regression this PR introduced, which is fixed before merge whatever its severity or round.
+- Which findings must be fixed, and when P2s may be deferred, is defined only in `FOUNDER_STANDING_DECISIONS.md` 2026-10-12 ④. When deferring, append to one follow-up issue per PR instead of opening a new one each round.
 
 ## 4. Helpers (subagents)
 
-- One helper per PR, with an exact file scope, a changed-line budget below the 700-line presubmit limit, and a final report of at most ~200 words.
+- One implementation helper per PR, with an exact file scope, a changed-line budget taken from what is left of the PR's 700-line presubmit limit (minus a reserve for your own integration work), and a final report of at most ~200 words. A reviewer agent that a gate requires (for example when Codex is unavailable) does not count against this limit.
 - Do the fact lookup yourself when you already know the file; delegate only multi-file work.
 - Mechanical tasks (rebases, route-count fixes, release-note fragments) are done inline, not delegated.
 
