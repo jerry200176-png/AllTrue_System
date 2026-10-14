@@ -3,11 +3,11 @@
     <!-- Header -->
     <AtPageHeader
       title="家長 LINE 綁定"
-      description="查家長是否已綁定。只顯示所選分校。"
+      :description="headerDescription"
       icon="link"
     >
       <template #meta>
-        <span>本分校 <strong>{{ statsLabel }}</strong></span>
+        <span>{{ scopeLabel }} <strong>{{ statsLabel }}</strong></span>
         <span>列表 {{ list.length }} 筆</span>
       </template>
       <template #actions>
@@ -255,6 +255,13 @@ const activeCampusId = computed(() => {
   if (!isSuperAdmin.value && props.branchId != null && props.branchId !== '') return Number(props.branchId);
   return null;
 });
+
+// No campus selected (a super admin on 「全部（限權限）」) means no campus_id
+// is sent and the list and stats cover every permitted campus (#3945).
+const headerDescription = computed(() => (activeCampusId.value == null
+  ? '查家長是否已綁定。顯示你有權限的所有分校。'
+  : '查家長是否已綁定。只顯示所選分校。'));
+const scopeLabel = computed(() => (activeCampusId.value == null ? '權限內分校' : '本分校'));
 
 /* ── 統計卡顯示 ── */
 const statsLabel = computed(() => {
