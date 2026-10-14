@@ -33,21 +33,16 @@ Only for a task that genuinely needs the local machine.
 ## Machine gates
 
 ```bash
-agent-start alltrue <task-id> --dry-run
-make agent-preflight
-bash scripts/check-agent-provenance.sh
+make agent-preflight        # any clone: clean tree, branch policy, base == origin/main
 make production-identity
 ```
 
-`.agent-session/manifest.json` is written locally by `agent-start` and is
-git-ignored. Never force-add it: `scripts/check-agent-provenance.sh` rejects
-any tracked copy, including one added by the current PR. The local manifest
-and agent-control session record identify the task worktree; the PR's diff,
-risk declaration, review, and required CI provide delivery evidence. Do not
-rewrite an inherited singleton from `main` or update
-`.agent-session/human-authored.json` to represent agent work. A genuine human
-authorship claim in the PR diff is checked by CI, but self-authored JSON does
-not replace git or platform evidence.
+The local task-path allowlist, `scripts/check-agent-provenance.sh` and the
+"Agent Session Provenance" check were retired by Founder 2026-10-14（三）#6.
+The main ruleset still lists that context, so `agent-provenance.yml` stays as a
+pass-through job with the same name until the ruleset drops it. `.agent-session/manifest.json` (still written by a legacy
+local `agent-start`) stays git-ignored and is not delivery evidence; the PR's
+diff, risk declaration, review, and required CI are.
 
 ## WIP protection
 
