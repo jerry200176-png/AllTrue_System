@@ -9,7 +9,7 @@ cd "$ROOT"
 # This radar writes tracked files: refuse before writing anything on main, a
 # detached HEAD or a dirty tree (cloud clones have no task-worktree path).
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [[ "$BRANCH" == main || "$BRANCH" == HEAD ]] || ! git diff --quiet || ! git diff --cached --quiet; then
+if [[ "$BRANCH" == main || "$BRANCH" == HEAD || -n "$(git status --porcelain --untracked-files=all)" ]]; then
   echo "governance-health: refusing to write on '$BRANCH' or a dirty tree; run it on a clean task branch" >&2
   exit 1
 fi
