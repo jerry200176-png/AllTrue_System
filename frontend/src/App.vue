@@ -134,11 +134,11 @@
             :class="{ active: activeInSidebarMore || showSidebarMore }"
             :aria-expanded="String(showSidebarMore)"
             aria-controls="sidebar-more-panel"
-            :aria-label="sidebarCollapsed ? '開啟更多功能' : undefined"
+            :aria-label="sidebarMoreTriggerInfo.label === '搜尋' ? '搜尋' : (sidebarCollapsed ? '開啟更多功能' : undefined)"
             @click="toggleSidebarMore"
           >
-            <span class="material-symbols-outlined nav-icon" aria-hidden="true">apps</span>
-            <span class="nav-label" v-show="!sidebarCollapsed">更多功能</span>
+            <span class="material-symbols-outlined nav-icon" aria-hidden="true">{{ sidebarMoreTriggerInfo.icon }}</span>
+            <span class="nav-label" v-show="!sidebarCollapsed">{{ sidebarMoreTriggerInfo.label }}</span>
             <span
               v-if="sidebarMoreBadgeCount > 0"
               class="nav-badge"
@@ -217,12 +217,12 @@
         <div class="sidebar-more-header">
           <div>
             <span class="sidebar-more-kicker">全域搜尋 · {{ globalSearchShortcutLabel }}</span>
-            <h2 id="sidebar-more-title">更多功能</h2>
+            <h2 id="sidebar-more-title">{{ sidebarMoreTriggerInfo.label }}</h2>
           </div>
           <button
             type="button"
             class="sidebar-more-close"
-            aria-label="關閉更多功能"
+            :aria-label="`關閉${sidebarMoreTriggerInfo.label}`"
             title="關閉"
             @click="closeSidebarMore()"
           >
@@ -937,7 +937,7 @@ import {
   PIN_UNLOCK_TTL_MS,
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
-import { findNavItem, getMobileTabItems, getNavigationGroups, getTodoPages, getToolbarItems, navigationPages, requiredContextForPage } from './lib/navigationRegistry';
+import { findNavItem, getMobileTabItems, getNavigationGroups, getTodoPages, getToolbarItems, navigationPages, requiredContextForPage, sidebarMoreTrigger } from './lib/navigationRegistry';
 import HubTabBar from './components/HubTabBar.vue';
 import ActingContextChip from './components/ActingContextChip.vue';
 import { buildAppPageUrl, parseAppPage } from './lib/appNavigationHistory.js';
@@ -2274,6 +2274,7 @@ const activeHub = computed(() => (activeNavItem.value?.tabs ? activeNavItem.valu
 const isNavItemActive = (item) => item.page === active.value || Boolean(item.tabs?.some(tab => tab.page === active.value));
 const sidebarPrimaryGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary !== false));
 const sidebarMoreGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary === false));
+const sidebarMoreTriggerInfo = computed(() => sidebarMoreTrigger(sidebarNavGroups.value));
 const sidebarMoreSearchQuery = ref('');
 const sidebarMoreSearchInput = ref(null);
 const sidebarMoreFilteredGroups = computed(() => {
