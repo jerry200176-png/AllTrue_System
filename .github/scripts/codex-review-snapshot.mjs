@@ -11,7 +11,7 @@ const [owner, name] = repo.split('/');
 const query = `query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){pullRequest(number:$n){
 headRefOid baseRefOid reviewThreads(first:100){nodes{id isResolved comments{totalCount}} pageInfo{hasNextPage}}
 commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{
-__typename ... on CheckRun{name status conclusion createdAt startedAt checkSuite{app{databaseId} repository{nameWithOwner}}}
+__typename ... on CheckRun{name status conclusion startedAt checkSuite{app{databaseId} repository{nameWithOwner}}}
 }}}}}}}}}`;
 const prArg = process.env.REVIEW_PR;
 if (prArg && !/^[1-9]\d*$/.test(prArg)) throw new Error('invalid PR');
