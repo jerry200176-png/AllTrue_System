@@ -208,21 +208,27 @@ class AdditiveMigrationGate(unittest.TestCase):
         ):
             self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set(), up)
 
-    def test_guarded_names_cannot_be_dropped_on_rollback(self):
+    def test_guarded_up_cannot_be_rolled_back_by_a_drop(self):
+        drop_a = "Schema::table('t', fn (Blueprint $t) => $t->dropColumn('a'));"
         cases = (
             ("if (Schema::hasTable('n')) { return; } Schema::create('n', function (Blueprint $t) { $t->id(); });",
              "Schema::dropIfExists('n');"),
             ("if (!Schema::hasColumn('t', 'a')) { Schema::table('t', fn (Blueprint $t) => $t->string('a')->nullable()); }",
-             "Schema::table('t', fn (Blueprint $t) => $t->dropColumn('a'));"),
+             drop_a),
+            # The guard names other things but still controls whether a is added.
+            ("if (Schema::hasColumn('t', 'legacy')) { Schema::table('t', fn (Blueprint $t) => $t->string('a')->nullable()); }",
+             drop_a),
+            ("if (Schema::hasTable('t')) { Schema::table('t', fn (Blueprint $t) => $t->string('a')->nullable()); }",
+             drop_a),
         )
         for up, down in cases:
             self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up, down))), set(), down)
             # Without the rollback drop the guarded up() is still additive.
             self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), {MIG}, up)
-        # A guard on the existing table does not stop dropping the column up() added unconditionally.
-        up = "if (Schema::hasTable('t')) { Schema::table('t', fn (Blueprint $t) => $t->string('a')->nullable()); }"
-        down = "Schema::table('t', fn (Blueprint $t) => $t->dropColumn('a'));"
-        self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up, down))), {MIG})
+
+    def test_escaped_literals_fail_closed(self):
+        up = 'Schema::table(\'t\', fn (Blueprint $t) => $t->string("\\x61")->nullable());'
+        self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set())
 
     def test_protected_domain_schema_stays_t3(self):
         for up in (
@@ -230,6 +236,9 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::table('permissions', fn (Blueprint $t) => $t->string('scope')->nullable());",
             "Schema::table('invoices', fn (Blueprint $t) => $t->string('ledger_ref')->nullable());",
             "Schema::table('t', fn (Blueprint $t) => $t->string('payment_note')->nullable());",
+            "Schema::create('roles', function (Blueprint $t) { $t->id(); });",
+            "Schema::table('users', fn (Blueprint $t) => $t->boolean('is_super_admin')->nullable());",
+            "Schema::create('student_guardians', function (Blueprint $t) { $t->id(); });",
         ):
             patch = new_file(MIG, migration(up))
             self.assertEqual(additive_migration_paths([MIG], patch), set(), up)

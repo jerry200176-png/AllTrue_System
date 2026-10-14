@@ -260,6 +260,15 @@ _MAX_GUARDED_SENSITIVE_LINES = 240
 
 
 _MIGRATION_PREFIX = "backend/database/migrations/"
+# A denylist can never be complete, so it errs wide: any of these substrings in
+# an additive migration (names included) keeps the Founder gate. Activation of
+# additive migrations additionally stays off (ADDITIVE_MIGRATION_AUTO_ACTIVATION).
+_ADDITIVE_PROTECTED_MARKERS = (
+    "role", "admin", "guardian", "parent", "user", "account", "login", "session", "oauth",
+    "scope", "grant", "acl", "policy", "privilege", "access", "consent", "ledger", "refund",
+    "charge", "pric", "amount", "fee", "tuition", "salary", "payroll", "deduct", "contract", "personal", "phone",
+    "email", "address", "birth", "line_user",
+)
 # Founder 2026-10-14 (三)④: a migration that only adds tables/columns/plain
 # indexes deploys like other reversible T2 work (expand/contract). This is an
 # allowlist: the file is lexed (strings become S, comments vanish), down() is
@@ -485,18 +494,12 @@ def _up_additions(code: str, literals: list[str]) -> dict[str, dict[str, set]]:
     return added
 
 
-def _down_is_inverse(down: str, literals: list[str], added: dict[str, dict[str, set]],
-                     guarded: set[str]) -> bool:
-    """down() may only drop what up() added: its tables, columns, indexes and helpers.
-
-    A name that up() guards with hasTable/hasColumn may have existed before the
-    migration, so dropping it on rollback could delete pre-existing data.
-    """
+def _down_is_inverse(down: str, literals: list[str], added: dict[str, dict[str, set]]) -> bool:
+    """down() may only drop what up() added: its tables, columns, indexes and helpers."""
 
     def drop_table(match: re.Match) -> str:
         table = literals[int(match.group(1))]
-        ok = table in added.get(table, {}).get("created", set()) and table not in guarded
-        return " " if ok else match.group(0)
+        return " " if table in added.get(table, {}).get("created", set()) else match.group(0)
 
     def drop_block(match: re.Match) -> str:
         entry = added.get(literals[int(match.group("table"))])
@@ -510,7 +513,7 @@ def _down_is_inverse(down: str, literals: list[str], added: dict[str, dict[str, 
             ordered = [literals[int(i)] for i in re.findall(r"S(\d+)", args)]
             values = set(ordered)
             if name == "dropcolumn":
-                ok = bool(values) and values <= entry["columns"] and not values & guarded
+                ok = bool(values) and values <= entry["columns"]
             elif name == "dropindex":
                 ok = (tuple(ordered) in entry["index_columns"]) if "[" in args else (
                     len(values) == 1 and values <= entry["index_names"])
@@ -547,9 +550,14 @@ def _migration_body_is_additive(source: str) -> bool:
             return False
         down = code[downs[0].end():i - 1]
         code = code[:downs[0].start()] + " DOWN " + code[i:]
-    guarded = {literals[int(i)] for cond in re.finditer(_SCHEMA_COND, code, re.IGNORECASE)
-               for i in re.findall(r"S(\d+)", cond.group(0))}
-    if not _down_is_inverse(down, literals, _up_additions(code, literals), guarded):
+    # An escaped literal may decode to any name: refuse instead of guessing.
+    if "\0" in literals:
+        return False
+    # Any guard in up() can skip an addition it does not name, so a guarded
+    # up() may not be rolled back by dropping anything (down() must be empty).
+    guarded = re.search(_SCHEMA_COND, code, re.IGNORECASE) is not None
+    added = {} if guarded else _up_additions(code, literals)
+    if not _down_is_inverse(down, literals, added):
         return False
     for _ in range(4):  # guards may wrap blocks; a few passes cover real nesting
         code = _SCHEMA_GUARD_RE.sub(" ", _SCHEMA_BLOCK_RE.sub(_reduce_schema_block, code))
@@ -610,7 +618,9 @@ def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
         # generic "migration" marker is the only one an additive file may carry.
         # Raw source, so table/column names count (a comment hit fails closed).
         haystack = (path + "\n" + source).lower()
-        if any(marker in haystack for marker in _T3_MARKERS if marker != "migration"):
+        if any(marker in haystack for marker in _T3_MARKERS if marker != "migration") or any(
+            marker in haystack for marker in _ADDITIVE_PROTECTED_MARKERS
+        ):
             return set()
         additive.add(path)
     return additive if additive == candidates else set()
