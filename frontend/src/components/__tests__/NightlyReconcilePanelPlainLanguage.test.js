@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-vi.mock('../../api', () => ({ getReconcileLatest: vi.fn() }));
+vi.mock('../../api', () => ({ getReconcileLatest: vi.fn(), getReconcileRows: vi.fn() }));
 
 import * as api from '../../api';
 import NightlyReconcilePanel from '../../pages/NightlyReconcilePanel.vue';
@@ -127,9 +127,47 @@ describe('NightlyReconcilePanel plain-language summary (#3900)', () => {
       cause_counts: { contract_cap: 250 },
       mismatches: [row(31, 'contract_cap', 1), row(32, 'contract_cap', 2)],
     });
-    expect(wrapper.get('[data-testid="nr-truncated"]').text()).toContain('只列出前 2 筆');
+    expect(wrapper.get('[data-testid="nr-truncated"]').text()).toContain('列出前 2 筆');
     expect(wrapper.get('[data-testid="nr-truncated"]').text()).toContain('共 250 筆');
     expect(wrapper.get('.nr-info').text()).toContain('只列出前 2 筆');
+  });
+
+  it('loads every mismatch row past the stored 200 when asked (#4044)', async () => {
+    const all = Array.from({ length: 250 }, (_, i) => row(100 + i, 'contract_cap', 1));
+    api.getReconcileRows.mockImplementation(async (_token, page) => ({
+      rows: all.slice((page - 1) * 200, page * 200),
+      meta: { checked_at: '2026-10-13 02:00:05', page, last_page: 2, total: 250, complete: true },
+    }));
+    const wrapper = await mountWith({
+      checked_at: '2026-10-13 02:00:05', mode: 'live', threshold: 0, total_checked: 900, mismatch_count: 250,
+      cause_counts: { contract_cap: 250 }, mismatches: all.slice(0, 200),
+    });
+    expect(wrapper.get('.nr-info').text()).toContain('200 / 200');
+
+    await wrapper.get('[data-testid="nr-load-all"]').trigger('click');
+    await flushPromises();
+
+    expect(api.getReconcileRows.mock.calls.map((call) => call[1])).toEqual([1, 2]);
+    expect(wrapper.find('[data-testid="nr-truncated"]').exists()).toBe(false);
+    expect(wrapper.get('.nr-info').text()).toContain('250 / 250');
+    expect(wrapper.get('.nr-info').text()).not.toContain('只列出');
+    expect(wrapper.text()).toContain('學生349');
+  });
+
+  it('says the rest cannot be loaded when the report has no full row list', async () => {
+    api.getReconcileRows.mockResolvedValue({
+      rows: [row(31, 'contract_cap', 1), row(32, 'contract_cap', 2)],
+      meta: { checked_at: '2026-10-13 02:00:05', page: 1, last_page: 1, total: 2, complete: false },
+    });
+    const wrapper = await mountWith({
+      checked_at: '2026-10-13 02:00:05', mode: 'live', threshold: 0, total_checked: 900, mismatch_count: 250,
+      cause_counts: { contract_cap: 250 }, mismatches: [row(31, 'contract_cap', 1), row(32, 'contract_cap', 2)],
+    });
+    await wrapper.get('[data-testid="nr-load-all"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="nr-truncated"]').text()).toContain('沒有保存其餘明細');
+    expect(wrapper.find('[data-testid="nr-load-all"]').exists()).toBe(false);
   });
 
   it('shows no truncation notice when every row is stored', async () => {
