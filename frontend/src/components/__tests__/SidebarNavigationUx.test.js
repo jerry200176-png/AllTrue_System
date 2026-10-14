@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { getNavigationGroups } from '../../lib/navigationRegistry';
+import { getNavigationGroups, sidebarMoreTrigger } from '../../lib/navigationRegistry';
 
 const appSource = readFileSync(resolve(__dirname, '../../App.vue'), 'utf8');
 const registrySource = readFileSync(resolve(__dirname, '../../lib/navigationRegistry.js'), 'utf8');
@@ -90,6 +90,22 @@ describe('sidebar navigation UX contract', () => {
     expect(attendance).toContain('placeholder="搜尋學生姓名…"');
     expect(attendance).not.toContain('placeholder="搜尋課程（學生/科目）..."');
     expect(attendance).not.toContain('placeholder="搜尋學生姓名..."');
+  });
+
+  it('labels the desktop trigger 搜尋 when the role has no low-frequency groups (in-app #390)', () => {
+    const director = sidebarMoreTrigger(getNavigationGroups('director'));
+    expect(director).toEqual({ label: '搜尋', icon: 'search' });
+
+    const teacherGroups = getNavigationGroups('teacher');
+    expect(sidebarMoreTrigger(teacherGroups)).toEqual({ label: '更多功能', icon: 'apps' });
+    const teacherMoreLabels = teacherGroups
+      .filter(group => group.primary === false)
+      .flatMap(group => group.items.map(item => item.label));
+    expect(teacherMoreLabels).toContain('科目數統計');
+
+    expect(appSource).toContain('{{ sidebarMoreTriggerInfo.label }}</span>');
+    expect(appSource).toContain("sidebarMoreTriggerInfo.label === '搜尋' ? '搜尋'");
+    expect(appSource).toContain('<h2 id="sidebar-more-title">{{ sidebarMoreTriggerInfo.label }}</h2>');
   });
 
   it('keeps the sidebar footer compact: branch dropdown, no duplicate user card', () => {

@@ -147,6 +147,15 @@ export const navigationPages = (groups) => groups.flatMap(g => g.items.flatMap(i
 /** The sidebar item that owns `page` (the hub for a tab, the item itself otherwise). */
 export const findNavItem = (groups, page) => groups.flatMap(g => g.items)
   .find(i => i.page === page || i.tabs?.some(t => t.page === page)) || null;
+/**
+ * Desktop sidebar trigger: 更多功能 only when some group is non-primary; otherwise the panel
+ * holds nothing but global search, so the trigger is labelled 搜尋 (in-app #390).
+ */
+export function sidebarMoreTrigger(groups) {
+  return groups.some(group => group.primary === false)
+    ? { label: '更多功能', icon: 'apps' }
+    : { label: '搜尋', icon: 'search' };
+}
 /** Return a fresh role-scoped model for every renderer. */
 export function getNavigationGroups(role, options = {}) {
   if (isDirectorRole(role)) return cloneGroups(directorGroups(role, options));
