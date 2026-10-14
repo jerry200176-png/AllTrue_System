@@ -3,6 +3,19 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+## 2026-10-14（三）（全面搬到 cloud；對話中 Q1–Q24 逐條確認，最後「對」；本 repo PR #CLOUDPR）
+
+方向：所有開發移到 Claude Desktop cloud session，Founder 電腦關機也要能繼續運作。**不在舊的本機機制上加 cloud 例外，而是淘汰本機機制**（#4071、portfolio-ops#135、sunrise-cafe#440 因此關閉）。本節只記決定；各項實作 PR 依 2026-10-14（二）第 5 條治理變更規則提供 diff 由 Founder 批准後合併。
+
+1. **工作地點**：cloud session。規則放在各 repo 的 `AGENTS.md`／`CLAUDE.md`，共用規則放 portfolio-ops；本機記憶中仍有效的規則搬進 repo 文件，過時的刪除。
+2. **密碼**：cloud 環境變數只放低風險 token（測試用 API、Cloudflare Browser Run；GitHub 只限 **fine-grained、綁定單一 repo、最小權限、有到期日** 的 token，不得含 admin、secrets、organization 或不受限的 workflow 權限）。正式環境密碼只放 GitHub Environment secrets，Agent 不持有。
+3. **全自動（目標狀態）**：CI 綠＋符合 2026-10-12 ④ 完整 review 規則（無 P0／P1、本 PR 引入的回歸不論嚴重度皆修、所有 thread 回覆並 resolve）→ 自動合併 → 自動部署 → 自動 health check → 失敗自動 rollback。只新增（additive）的 migration 自動執行（expand/contract）——**須先修改艦隊層 `governance/PORTFOLIO_AGENT_CONTRACT.md`（portfolio-ops）移除 migration 的 Founder stop；修改合併前，所有 migration 仍照現行規則等 Founder 核准**。
+4. **仍需 Founder 在 GitHub 按 Approve**：會刪除或改變既有結構的 migration（CI 自動偵測 `DROP`、欄位型別變更等並改走 environment 審核）、修改真實正式資料、新增或更換正式密碼、其他不可回復的操作。
+5. **通知與卡關**：通知用 GitHub 手機 app。Agent 需要決定時開 issue、標 `needs-founder`，寫「選項＋推薦」，然後先做其他工作，不停在對話等待。
+6. **淘汰**：`agent-start` 及本機 worktree／preflight 路徑檢查、Agent Session Provenance、`local-heavy-gate`、Exo、**Founder 工作站上的舊 crontab**（**不含** Pi 上驅動 Laravel scheduler 與 `pop:execute-approved` 的 `schedule:run` cron，該 cron 保留）。每小時清 PII 已由 `pii-log-purge.yml` 在 GitHub Actions 執行，保留。每小時收 bug 已由 `bug-auto-intake.yml` 在 GitHub Actions 執行，保留；不另建本機版本。
+7. **順序與資料**：AllTrue 先跑順，再改 portfolio-ops、sunrise-cafe；其他專案之後再搬。「舊資料不丟」：完整備份驗證完成前不刪本機工具，文件可先改。
+8. 本節第 3、4 條是目標狀態；在對應實作 PR 合併前，現行 `deploy.yml`／release train 的審核仍照舊生效。
+
 ## 2026-10-14（對話中「好，照你建議做 go」；批准「批次核准：一天集中 1–2 班」）
 
 1. **發車班表（release train）改為一天兩班**：台北 12:17、18:17（UTC 04:17、10:17），取代 2026-10-07 的每小時一班（3A）。每班最多要 Founder 核准一次，收齊上一班之後合併的所有 Founder 級改動。全部 R0–R2（或已有 Founder GO）的範圍照舊隨自己的 CI 自動上線，不等車。

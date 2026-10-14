@@ -1,5 +1,11 @@
 # Governance changelog
 
+## 2026-10-14 — Full move to cloud sessions; retire local agent machinery
+
+- Founder decision (Jerry, Q1–Q24 in session): all work moves to Claude cloud sessions. Local mechanisms (agent-start worktrees, preflight path allowlist, Agent Session Provenance, local-heavy-gate, Exo, the Founder workstation's legacy crontab) are retired rather than given cloud exceptions. The Pi `schedule:run` cron, `pii-log-purge.yml` and `bug-auto-intake.yml` stay.
+- Target: auto merge (full 2026-10-12 ④ review gate) → deploy → health check → auto rollback; additive migrations automatic only after the fleet contract drops its migration stop. Destructive migrations, prod data changes, prod credentials and irreversible operations keep a GitHub Environment approval. Cloud GitHub tokens are fine-grained, repo-bound, least-privilege and expiring. Stuck decisions go to a `needs-founder` issue.
+- Recorded only; current `deploy.yml` / release-train gates stay in force until each implementation PR merges with Founder approval of its diff.
+
 ## 2026-10-07 — Evidence-gated production activation (Founder 1A)
 
 - Founder decision (Jerry, "1A 2A 3A"): remove the manual production approve when every merged PR in the undeployed range is machine R0-R2 or has a Founder GO. The GO is PR body line 1 exactly `Founder GO: Jerry YYYY-MM-DD approves #N at <head SHA>` and line 2 `Rollback: revert this PR` (the only rollback mention; free text never counts), bound to that head's exact diff (patches, blob OIDs, modes), in a body last edited by the owner before merge. R1/R2 PRs in such a range need `Rollback: revert this PR` as line 1; migrations and gate-policy changes always keep the reviewer.
