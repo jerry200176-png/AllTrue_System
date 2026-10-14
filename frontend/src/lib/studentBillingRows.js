@@ -71,7 +71,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (r.id != null) {
       row.contracts.push({
         id: Number(r.id), ref: formatCourseRef(r.id), period: formatCoursePeriod(r.course_start_date, r.course_end_date),
-        owed: rowOwedTotal(r), paid: Number(r.paid_amount ?? 0),
+        owed: OWING.has(r.payment_status) ? rowOwedTotal(r) : 0, paid: Number(r.paid_amount ?? 0),
       });
     }
     if (r.payment_status === 'pending_report') row.waiting_confirm += 1;

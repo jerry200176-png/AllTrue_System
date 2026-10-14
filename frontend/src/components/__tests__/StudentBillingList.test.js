@@ -34,6 +34,15 @@ describe('buildStudentBillingRows with open_periods (same bills as the student p
     expect(rowOwedTotal({ open_periods: [{ outstanding: 3000 }, { outstanding: 5000 }], payable_outstanding: 3000 })).toBe(8000);
     expect(rowOwedTotal({ payable_outstanding: 3000 })).toBe(3000);
   });
+
+  it('counts contract owed only for owing statuses, so the expansion sums to the student total', () => {
+    const [a] = buildStudentBillingRows([
+      { id: 11, student_id: 1, student_name: '甲', payment_status: 'unpaid', payable_outstanding: 3000, due_date: '2026-10-01' },
+      { id: 12, student_id: 1, student_name: '甲', payment_status: 'pending_report', payable_outstanding: 900, due_date: '2026-10-01' },
+    ], [], '2026-10-07');
+    expect(a.contracts.map((c) => c.owed)).toEqual([3000, 0]);
+    expect(a.contracts.reduce((s, c) => s + c.owed, 0)).toBe(a.owed_now + a.owed_later);
+  });
 });
 
 describe('StudentBillingList', () => {

@@ -65,7 +65,7 @@
               @click="toggle(r.student_id)"
             >{{ isOpen(r.student_id) ? '收合合約' : `展開 ${r.contracts.length} 份合約` }}</button>
             <ul v-if="isOpen(r.student_id)" :id="`sbl-contracts-${r.student_id}`" class="sbl__contracts" :data-testid="`sbl-contracts-${r.student_id}`">
-              <li v-for="c in r.contracts" :key="c.id" class="sbl__contract">
+              <li v-for="(c, i) in r.contracts" :key="`${c.id}-${i}`" class="sbl__contract">
                 <strong>{{ c.ref }}</strong>
                 <span>{{ c.period }}</span>
                 <span>未繳 {{ money(c.owed) }}</span>
