@@ -252,18 +252,63 @@ class NightlyReconcileTest extends TestCase
         $this->assertStringNotContainsString('Course #', $notification->Body);
     }
 
+    public function test_dry_run_does_not_replace_the_live_report(): void
+    {
+        $courseId = $this->bootstrapCourse(4, 2);
+        $this->attendedSession($courseId, Carbon::now()->subDays(2)->toDateString());
+        @unlink($this->reportPath(false));
+        @unlink($this->reportPath(true));
+
+        $this->artisan('reconcile:nightly')->assertExitCode(0);
+        $live = (string) file_get_contents($this->reportPath(false));
+
+        $this->artisan('reconcile:nightly', ['--dry-run' => true])->assertExitCode(0);
+
+        $this->assertSame($live, (string) file_get_contents($this->reportPath(false)));
+        $this->assertSame('live', $this->readReport(false)['mode']);
+        $this->assertSame('dry-run', $this->readReport(true)['mode']);
+    }
+
+    public function test_partial_minutes_applies_only_to_count_mode_courses(): void
+    {
+        // A date-mode course never converts minutes to sessions, so a
+        // nonstandard-minute ledger row cannot explain its counter gap.
+        $courseId = $this->bootstrapCourse(6, 0, 'date');
+
+        SessionDeductionLedger::create([
+            'student_class_id' => $courseId,
+            'event_type' => 'deduct',
+            'source' => 'attendance',
+            'minutes' => 90,
+        ]);
+
+        $this->artisan('reconcile:nightly', ['--dry-run' => true])
+            ->assertExitCode(0);
+
+        $report = $this->readReport();
+        $this->assertSame($courseId, $report['mismatches'][0]['student_class_id']);
+        $this->assertNotSame('partial_minutes', $report['mismatches'][0]['category']);
+        $this->assertSame('ledger_ahead', $report['mismatches'][0]['category']);
+    }
+
     // ── Helpers ──
 
-    private function readReport(): ?array
+    /** Most tests run --dry-run, which writes its own preview file (#3945). */
+    private function readReport(bool $dryRun = true): ?array
     {
-        $path = storage_path('logs/nightly-reconcile-' . now()->format('Ymd') . '.json');
+        $path = $this->reportPath($dryRun);
         if (!is_file($path)) {
             return null;
         }
         return json_decode((string) file_get_contents($path), true);
     }
 
-    private function bootstrapCourse(int $sessionCount, int $usedSessions): int
+    private function reportPath(bool $dryRun): string
+    {
+        return storage_path('logs/' . ($dryRun ? 'nightly-reconcile-dryrun-' : 'nightly-reconcile-') . now()->format('Ymd') . '.json');
+    }
+
+    private function bootstrapCourse(int $sessionCount, int $usedSessions, string $scheduleMode = 'count'): int
     {
         $teacher = User::create([
             'LoginName' => 'nr-teacher-' . uniqid(), 'Name' => '老師', 'PSW' => 'secret',
@@ -277,7 +322,7 @@ class NightlyReconcileTest extends TestCase
             'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
             'TeacherID' => $teacher->id, 'by1' => 1, 'Period' => 4,
             'StartDate' => '2026-03-01', 'TotalHours' => 40, 'Memo' => 'nr-test',
-            'Paid' => 0, 'Stop' => 0, 'ScheduleMode' => 'count',
+            'Paid' => 0, 'Stop' => 0, 'ScheduleMode' => $scheduleMode,
             'SessionCount' => $sessionCount, 'RemainingSessions' => max(0, $sessionCount - $usedSessions),
             'UsedSessions' => $usedSessions,
             'SessionDuration' => 120, 'ClassType' => 'one_on_one',
