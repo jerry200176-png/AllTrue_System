@@ -1,0 +1,1 @@
+- Governance: a PR whose migrations are all new files that only add tables, columns or plain indexes now classifies as T2 and deploys automatically after green CI. Drop/rename/change/data-writing migrations still need Founder approval (Founder 2026-10-14 (三)④).

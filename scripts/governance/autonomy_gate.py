@@ -259,6 +259,57 @@ _MAX_GUARDED_SENSITIVE_FILES = 3
 _MAX_GUARDED_SENSITIVE_LINES = 240
 
 
+_MIGRATION_PREFIX = "backend/database/migrations/"
+# Founder 2026-10-14 (三)④: a migration that only adds tables/columns/indexes
+# deploys like other reversible T2 work (expand/contract). Anything that can
+# drop, rename, alter or rewrite existing structure or rows keeps the Founder
+# gate. down() is ignored: deploy.yml never runs migrate:rollback.
+_MIGRATION_UNSAFE_RE = re.compile(
+    r"\bdrop|\brename|->\s*change\s*\(|\btruncate|\bdb\s*::|->\s*(?:update|delete|insert|upsert|"
+    r"statement|unprepared)\s*\(|\braw\b|->\s*(?:unique|primary|foreign)\s*\(|\bforeignid\b|"
+    r"->\s*constrained\s*\(|\bsql\b|\bexec\b|\bartisan\b|(?<!schema)::\s*(?:query|where|all|find|create|"
+    r"updateorcreate|firstorcreate|insert|call)\s*\(|\bsave\s*\(|->\s*(?:each|chunk\w*|fill|forcefill|"
+    r"increment|decrement)\s*\(|\b(?:foreach|while|for|include|require|eval)\b|\bnew\s+\\?[a-z]|"
+    r"\$this\s*->|\bfile_",
+    re.IGNORECASE,
+)
+
+
+def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
+    """Return newly added migration files whose up() only adds structure.
+
+    Fail closed: if any changed migration is not in the diff, is edited rather
+    than added, has a removed line, or has an unsafe marker in up(), none of
+    them count as additive.
+    """
+
+    candidates = {
+        str(path).replace("\\", "/") for path in paths
+        if str(path).replace("\\", "/").startswith(_MIGRATION_PREFIX) and str(path).endswith(".php")
+    }
+    if not candidates or "diff --git " not in (patch or ""):
+        return set()
+    additive: set[str] = set()
+    for chunk in re.split(r"(?=^diff --git )", patch, flags=re.MULTILINE):
+        head, _, body = chunk.partition("\n")
+        path = next((c for c in candidates if head.strip() == f"diff --git a/{c} b/{c}"), None)
+        if path is None:
+            continue
+        lines = body.splitlines()
+        hunks = [line for line in lines if line.startswith("@@")]
+        # A new file has exactly one "@@ -0,0 +1,N @@" hunk in both git and
+        # GitHub API patches; anything else edits an existing migration.
+        if len(hunks) != 1 or not hunks[0].startswith("@@ -0,0 +"):
+            continue
+        if any(line.startswith("-") and not line.startswith("---") for line in lines):
+            continue
+        added = "\n".join(line[1:] for line in lines if line.startswith("+") and not line.startswith("+++"))
+        up = re.search(r"function\s+up\s*\((.*?)(?:function\s+down\s*\(|\Z)", added, re.DOTALL)
+        if up and "schema::" in up.group(1).lower() and not _MIGRATION_UNSAFE_RE.search(up.group(1)):
+            additive.add(path)
+    return additive if additive == candidates else set()
+
+
 def _path_matches(path: str, pattern: str) -> bool:
     return fnmatch.fnmatchcase(path, pattern)
 
@@ -506,6 +557,7 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     """Derive the minimum safe tier from paths and diff text, including production UI smoke controls."""
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
+    additive = additive_migration_paths(normalized, patch)
     if is_readonly_probe_only(normalized, patch):
         return {
             "machine_minimum_tier": 2,
@@ -516,8 +568,8 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     # Keep them eligible for the lightest path even when their assertions
     # mention a protected domain such as auth or billing.
     non_runtime_only = normalized and not any(is_deployable_path(path) for path in normalized)
-    runtime_paths = [path for path in normalized if is_deployable_path(path)]
-    marker_paths = runtime_paths or normalized
+    runtime_paths = [path for path in normalized if is_deployable_path(path) and path not in additive]
+    marker_paths = runtime_paths or [path for path in normalized if path not in additive]
     # Release-note bundles are deployable assets, but their historical copy is
     # not evidence of the current change's runtime effect. Use the same
     # narrowed semantic input as activation classification; paths themselves
@@ -538,7 +590,10 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     reasons: list[str] = []
 
     for path in normalized:
-        if path in _PRODUCTION_SMOKE_CONTROL_EXACT or (
+        if path in additive:
+            minimum = max(minimum, 2)
+            reasons.append(f"additive-only migration: {path}")
+        elif path in _PRODUCTION_SMOKE_CONTROL_EXACT or (
             path.startswith("frontend/e2e/")
             and path not in _LOCAL_ONLY_E2E_SPECS
             and not path.startswith("frontend/e2e/fixtures/ui-foundation/")
@@ -556,7 +611,7 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
             minimum = max(minimum, 2)
             reasons.append(f"product/runtime path: {path}")
 
-    if not non_runtime_only:
+    if not non_runtime_only and marker_paths:
         matched_t3 = [marker for marker in _T3_MARKERS if marker in haystack]
         if matched_t3:
             minimum = max(minimum, 3)
@@ -589,8 +644,12 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     """
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
+    additive = additive_migration_paths(normalized, patch)
     runtime_paths = [path for path in normalized if is_deployable_path(path)]
-    sensitive_paths = [path for path in normalized if is_production_activation_sensitive_path(path)]
+    sensitive_paths = [
+        path for path in normalized
+        if is_production_activation_sensitive_path(path) and path not in additive
+    ]
     always_founder_paths = [
         path for path in sensitive_paths
         if any(path.startswith(prefix) for prefix in _ALWAYS_FOUNDER_ACTIVATION_PREFIXES)
@@ -605,7 +664,7 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     reasons: list[str] = []
     activation_class = "routine"
 
-    semantic_patch = _semantic_runtime_patch(runtime_paths, patch)
+    semantic_patch = _semantic_runtime_patch([path for path in runtime_paths if path not in additive], patch)
     changed_code = _semantic_changed_code_lines(semantic_patch)
     founder_effects = _founder_effects(
         changed_code, include_runtime_write=bool(sensitive_paths)
@@ -650,6 +709,9 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     elif runtime_paths:
         minimum = 1
         reasons.extend(f"reversible runtime path: {path}" for path in runtime_paths)
+    if additive and activation_class != "founder-required":
+        minimum = max(minimum, 2)
+        reasons.extend(f"additive-only migration (expand/contract): {path}" for path in sorted(additive))
 
     if not sensitive_paths and founder_effects:
         minimum = max(minimum, 3)

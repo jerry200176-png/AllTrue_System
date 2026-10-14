@@ -50,7 +50,7 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 | R2 | 要在 Pi 執行任何含 `test` / `phpunit` / `config:clear` 的指令 | ❌ 停。測試只走 GitHub Actions |
 | R3 | 要執行 `git push --force` / `-f` / 直接 push main | ❌ 停。一律推 feature branch，等 PR merge |
 | R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` **完整**還原，禁止部分還原 |
-| R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；正式 migration 須先有 Founder 對確切範圍的批准，再由既有授權的 `deploy.yml` 執行器處理 |
+| R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；一律由 `deploy.yml` 執行。**只新增**表／欄位／索引的新 migration 依 T2 自動上線（`additive_migration_paths()`，Founder 2026-10-14（三）④）；會 drop／rename／change／寫資料的 migration 仍須 Founder 對確切範圍批准 |
 | R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動走隔離 task worktree → PR → CI → 依現行授權由 `deploy.yml` 控制部署。**唯讀例外（Founder 2026-10-07）**：只為查 bug 可 SSH/SCP 讀附件、`tinker --execute` 跑 SELECT；禁止任何寫入、`artisan` 寫入指令、R2 指令；每次在對應 issue 留言記錄讀了什麼（只寫 ID，不寫姓名）；讀回的檔案看完即刪 |
 
 ## ⚠️ 4 條黃線（違反 = CI 反覆失敗）
