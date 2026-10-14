@@ -1157,12 +1157,14 @@ jobs:
           SINCE="$(date -u -d "@${WINDOW}" +%Y-%m-%dT%H:%M:%SZ)"
           # Debounce: no train while one is queued or running, or any deploy run waits for approval.
           # Merge runs (workflow_run) are not counted: two finishing together would each skip.
+          # Other dispatches (smoke, manual deploy) are not counted either: nothing kicks again when
+          # they finish, so the window would be lost. A waiting run counts whatever started it.
           # Filter by status on the server: an old waiting run can sit beyond the newest 100 runs.
           PENDING=0
           for q in "status=waiting" "event=workflow_dispatch&status=queued" "event=workflow_dispatch&status=in_progress" \
             "event=workflow_dispatch&status=requested" "event=workflow_dispatch&status=pending"; do
             n="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?${q}&per_page=100" \
-              --jq "[.workflow_runs[] | select(.id != ${RUN_ID})] | length")"
+              --jq "[.workflow_runs[] | select(.id != ${RUN_ID} and (.status == \"waiting\" or .display_title == \"Release train\"))] | length")"
             PENDING=$((PENDING + n))
           done
           if [[ "$PENDING" -ge 1 ]]; then
@@ -1186,7 +1188,7 @@ jobs:
           # Wait until the new run is listed so a queued kick behind this one sees it and stands down.
           for _ in $(seq 1 12); do
             SEEN="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?event=workflow_dispatch&per_page=5" \
-              --jq '[.workflow_runs[] | select(.status != "completed")] | length')"
+              --jq '[.workflow_runs[] | select(.status != "completed" and .display_title == "Release train")] | length')"
             if [[ "$SEEN" -ge 1 ]]; then break; fi
             sleep 5
           done

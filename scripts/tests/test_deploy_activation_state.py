@@ -1067,7 +1067,10 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                   '"event=workflow_dispatch&status=requested"', '"event=workflow_dispatch&status=pending"'):
             self.assertIn(q, job)
         self.assertIn('runs?${q}&per_page=100', job)
-        self.assertIn('select(.id != ${RUN_ID})] | length', job)
+        # Only trains count as queued/running; any waiting run counts. A smoke or manual deploy
+        # dispatch must not make the window's kick stand down (nothing re-kicks after it ends).
+        self.assertIn('select(.id != ${RUN_ID} and (.status == \\"waiting\\" or .display_title == \\"Release train\\"))] | length', job)
+        self.assertIn('select(.status != "completed" and .display_title == "Release train")] | length', job)
         self.assertIn("PENDING=$((PENDING + n))", job)
         self.assertLess(job.index('if [[ "$PENDING" -ge 1 ]]'), dispatch)
         # One train per window: a train since the window that reached approval or deploy used it.
