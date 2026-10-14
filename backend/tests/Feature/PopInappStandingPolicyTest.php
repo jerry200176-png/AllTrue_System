@@ -89,7 +89,7 @@ final class PopInappStandingPolicyTest extends TestCase
         }
         $id = $this->drafted($ids, $check === 'replay' ? 'req-dup' : 'req-001');
 
-        $out = $this->policy->approvePending($this->service);
+        $out = $this->policy->approvePending($this->service, 5);
         self::assertSame([false, 'awaiting_approval', 'resolved'], [in_array($id, $out['approved'], true), $this->status($id), BugReport::query()->whereKey($bug)->value('status')]);
         // An inactive (flag off / frozen) policy decides nothing; every other failure records one denial.
         self::assertSame(!in_array($check, ['flag_off', 'frozen'], true), DB::table('pop_approval_events')->where('operation_id', $id)->where('event_type', 'policy_denied')->exists());
@@ -133,6 +133,15 @@ final class PopInappStandingPolicyTest extends TestCase
         $this->service->approve($human, 'inapp-human-review', 'user:' . $this->admin, 'super_admin', str_repeat('a', 40), $this->admin);
         self::assertSame('succeeded', $this->service->runApprovedLocally($human)['status']);
         self::assertSame('closed', BugReport::query()->whereKey($other)->value('status'));
+    }
+
+    public function test_policy_run_changes_nothing_when_the_queue_grows_past_auto_max_after_approval(): void
+    {
+        $id = $this->drafted([$bug = $this->eligibleBug()]);
+        $this->policy->approvePending($this->service);
+        array_map(fn () => $this->eligibleBug(), range(1, 20));
+        $this->service->runApprovedLocally($id);
+        self::assertSame(['failed', 'resolved'], [$this->status($id), BugReport::query()->whereKey($bug)->value('status')]);
     }
 
     public function test_policy_approver_role_is_rejected_for_every_other_operation(): void

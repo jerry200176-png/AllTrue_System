@@ -4,7 +4,6 @@ namespace App\Operations\Strategies;
 
 use App\Models\BugReport;
 use App\Console\Commands\CloseStaleResolvedBugsCommand;
-use App\Operations\Inapp\InappReportSupport;
 use App\Operations\Inapp\InappStandingPolicy;
 use App\Services\BugReportService;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +20,7 @@ final class InappReportReporterTimeoutStrategy
     {
         $ids = $p['bug_ids'] ?? null;
         $errors = [];
-        if (!is_string($p['request_id'] ?? null) || preg_match(InappReportSupport::REQUEST_ID, $p['request_id']) !== 1) $errors[] = 'request_id_invalid';
+        if (!is_string($p['request_id'] ?? null) || preg_match('/^[a-z0-9][a-z0-9-]{2,63}$/', $p['request_id']) !== 1) $errors[] = 'request_id_invalid';
         if (!is_array($ids) || !array_is_list($ids) || $ids === [] || count($ids) > self::MAX_IDS
             || count(array_unique($ids)) !== count($ids) || array_filter($ids, fn ($id) => !is_int($id) || $id <= 0) !== []) {
             $errors[] = 'bug_ids_invalid';
@@ -29,7 +28,7 @@ final class InappReportReporterTimeoutStrategy
         }
         $campuses = BugReport::query()->whereKey($ids)->pluck('CampusID')->map(fn ($c) => (int) $c)->all();
         if (count($campuses) !== count($ids)) $errors[] = 'report_missing';
-        if (InappReportSupport::campusMismatch($p, $campuses)) $errors[] = 'report_outside_campus';
+        if (!is_int($p['campus_id'] ?? null) || $campuses === [] || array_diff($campuses, [$p['campus_id']]) !== []) $errors[] = 'report_outside_campus';
         $queue = $this->eligibleIds();
         $eligible = array_values(array_intersect($ids, $queue));
         sort($eligible);
@@ -47,23 +46,31 @@ final class InappReportReporterTimeoutStrategy
     public function execute(array $plan, array $context): array
     {
         if (!($plan['ok'] ?? false)) throw new RuntimeException('inapp_timeout_plan_not_ready');
-        $request = InappReportSupport::request($context);
-        $p = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
-        $actor = InappReportSupport::attributionUserId($request);
+        // An unattended (policy) run changes nothing once the whole queue exceeds AUTO_MAX_PER_RUN.
+        if (in_array('eligible_queue_over_auto_max', (array) ($plan['policy_blockers'] ?? []), true)
+            && InappStandingPolicy::policyApprovers((string) $context['operation_id'])->isNotEmpty()) {
+            throw new RuntimeException('inapp_timeout_queue_over_auto_max');
+        }
+        $request = DB::table('pop_operation_requests')->where('id', (string) $context['operation_id'])->first();
+        $p = json_decode((string) $request?->parameters, true, 512, JSON_THROW_ON_ERROR);
+        $actor = InappStandingPolicy::attributionUserId($request);
         $closed = [];
         $skipped = [];
         foreach ((array) $p['bug_ids'] as $bugId) {
-            $done = DB::transaction(function () use ($bugId, $actor, $p, $context): bool {
-                // Hold the row lock across the recheck so only a still-resolved, still-eligible report closes.
-                $bug = BugReport::query()->whereKey((int) $bugId)->lockForUpdate()->first();
-                InappStandingPolicy::assertKillSwitchesOpen((string) $context['operation_id']);
-                if (!$bug || (int) $bug->getAttribute('CampusID') !== (int) $p['campus_id'] || $bug->getAttribute('status') !== 'resolved' || !in_array((int) $bugId, $this->eligibleIds(), true)) {
-                    return false;
-                }
-                $res = BugReportService::closeByReporterTimeout((int) $bugId, $actor, false, self::DAYS);
+            try {
+                $done = DB::transaction(function () use ($bugId, $actor, $p, $context): bool {
+                    // Row lock held across the recheck; closeByReporterTimeout() re-runs the eligibility rule under it.
+                    $bug = BugReport::query()->whereKey((int) $bugId)->lockForUpdate()->first();
+                    InappStandingPolicy::assertKillSwitchesOpen((string) $context['operation_id']);
+                    if (!$bug || (int) $bug->getAttribute('CampusID') !== (int) $p['campus_id'] || $bug->getAttribute('status') !== 'resolved') {
+                        return false;
+                    }
 
-                return $res['action'] === 'closed';
-            });
+                    return BugReportService::closeByReporterTimeout((int) $bugId, $actor, false, self::DAYS)['action'] === 'closed';
+                });
+            } catch (RuntimeException $e) { // a kill switch tripped mid-batch: stop, and record what already closed
+                return ['ok' => false, 'errors' => [$e->getMessage()], 'closed_ids' => $closed, 'skipped_ids' => $skipped];
+            }
             if ($done) $closed[] = (int) $bugId;
             else $skipped[] = (int) $bugId;
         }

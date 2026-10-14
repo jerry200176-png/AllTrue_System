@@ -3,6 +3,7 @@
 namespace App\Operations\Inapp;
 
 use App\Models\SecurityAuditEvent;
+use App\Models\User;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use App\Operations\Strategies\InappReportReporterTimeoutStrategy;
@@ -55,12 +56,9 @@ final class InappStandingPolicy
     /** Off unless the env flag is on and the policy file is the expected, active version. */
     public function active(): bool
     {
-        if (config('pop_inapp.standing_policy_enabled') !== true) return false;
-        try {
-            $d = $this->definition();
-        } catch (Throwable) {
-            return false;
-        }
+        if (config('pop_inapp.standing_policy_enabled') !== true || !is_file($this->catalog->policyFile(self::FILE))) return false;
+        $d = $this->definition();
+
         return ($d['id'] ?? null) === self::ID && ($d['lifecycle'] ?? null) === 'active'
             && ctype_digit((string) ($d['version'] ?? '')) && (int) $d['version'] > 0
             && ($d['operations'] ?? null) === array_keys(self::OPERATIONS);
@@ -88,7 +86,8 @@ final class InappStandingPolicy
         $dryDigest = $dryRun ? data_get(json_decode((string) $dryRun->payload, true), 'plan.digest') : null;
         if (!is_string($dryDigest)) $reasons[] = 'dry_run_missing';
         $rid = $params['request_id'] ?? null;
-        if (!is_string($rid) || InappReportSupport::requestIdReplayed($rid, (string) $request->id)) $reasons[] = 'request_id_replayed';
+        if (!is_string($rid) || DB::table('pop_operation_requests')->whereIn('operation_id', array_keys(self::OPERATIONS))
+            ->where('id', '!=', $request->id)->where('parameters->request_id', $rid)->exists()) $reasons[] = 'request_id_replayed';
         if (!$this->capAvailable($request)) $reasons[] = 'daily_cap_exceeded';
         if ($reasons !== []) return $reasons;
         try {
@@ -109,8 +108,7 @@ final class InappStandingPolicy
     /** ADR-POP-015 §4 kill switches for a policy-approved request (flag, frozen/re-versioned policy, requester client). */
     public static function assertKillSwitchesOpen(string $popRequestId): void
     {
-        $approvers = DB::table('pop_approval_events')->where('operation_id', $popRequestId)
-            ->where('event_type', 'approved')->where('approver_role', 'policy')->pluck('approver');
+        $approvers = self::policyApprovers($popRequestId);
         if ($approvers->isEmpty()) return;
         $policy = app(self::class);
         $request = DB::table('pop_operation_requests')->where('id', $popRequestId)->first();
@@ -120,10 +118,33 @@ final class InappStandingPolicy
         }
     }
 
+    /** Write-back author: the issuing super admin (policy approval, part-2 seam) or the approving super admin (human). */
+    public static function attributionUserId(?object $request): int
+    {
+        $human = DB::table('pop_approval_events')->where('operation_id', $request?->id)->where('event_type', 'approved')
+            ->where('approver_role', 'super_admin')->value('approver_id');
+        $id = $human !== null ? (int) $human : ($request ? app(InappRequesterGuard::class)->attributionUserId($request) : null);
+        if (!$id || !User::query()->whereKey($id)->where('type', 'S')->exists()) throw new \RuntimeException('inapp_attribution_unresolved');
+
+        return $id;
+    }
+
+    public static function policyApprovers(string $popRequestId): \Illuminate\Support\Collection
+    {
+        return DB::table('pop_approval_events')->where('operation_id', $popRequestId)
+            ->where('event_type', 'approved')->where('approver_role', 'policy')->pluck('approver');
+    }
+
     /** Decide each undecided request of a governed operation once. Output is IDs and counts only. */
-    public function approvePending(PopOperationService $service, int $limit = 5): array
+    public function approvePending(PopOperationService $service, int $limit = 1): array
     {
         if (!$this->active()) return ['status' => 'disabled', 'approved' => [], 'denied' => []];
+        // The executor runs one request a minute and tokens live 15 minutes: approve only when none waits.
+        if (DB::table('pop_operation_requests')->whereIn('operation_id', array_keys(self::OPERATIONS))->where('status', 'approved')
+            ->whereExists(fn ($q) => $q->select(DB::raw(1))->from('pop_approval_events')->whereColumn('operation_id', 'pop_operation_requests.id')
+                ->where('approver_role', 'policy')->where('event_type', 'approved')->where('expires_at', '>', now()))->exists()) {
+            return ['status' => 'waiting_for_executor', 'approved' => [], 'denied' => []];
+        }
         // One lock for every policy decision (a superset of a per-operation/day lock): the daily cap is
         // counted and reserved by recordApproval()'s transaction while it is held.
         $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', ['alltrue:pop:standing-policy']);
