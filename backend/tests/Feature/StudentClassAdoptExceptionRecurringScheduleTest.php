@@ -265,10 +265,11 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $courseC = $this->createCourseRecord($studentC->id, $teacherId, ['week' => 5]);
         $this->createSessionRecord($courseC->ID, '2026-04-22', '17:00:00', '18:00:00');
 
-        // In-app #406: an unchanged save no longer re-checks, so this save widens the window
-        // (still before courseB's 5/13 session) to exercise the bounded-horizon check again.
+        // In-app #406: an unchanged save no longer re-checks, so this save moves the slot to
+        // 17:15 (still overlapping courseC's 4/22 session, inside the same 4/30 window).
+        $moved = ['start_time' => '17:15', 'day_time_slots' => [['day' => 3, 'start_time' => '17:15', 'duration_minutes' => 60]]] + $payload;
         $conflictResponse = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
-            ->putJson("/api/v1/student-classes/{$courseA->ID}", ['end_date' => '2026-05-06'] + $payload);
+            ->putJson("/api/v1/student-classes/{$courseA->ID}", $moved);
         $conflictResponse->assertStatus(409);
         $this->assertSame('teacher_schedule_conflict', $conflictResponse->json('code'));
     }
