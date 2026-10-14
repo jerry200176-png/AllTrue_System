@@ -43,12 +43,15 @@ final class AuthenticateTriageToken
 
     private function audit(Request $request, ?int $tokenId, string $outcome, int $status, string $reason): void
     {
-        if ($status >= 400 && !TriageTokenService::mayAuditDenial($request->ip())) { return; } // every refusal or failure shares the cross-route cap
         $route = $request->route();
-        $routeId = $request->route('id');
-        $attachmentId = $request->route('attachmentId');
         // #4100: on the billing snapshot the path id is a contract; the report it was read for is the query param.
         $isBilling = $route instanceof Route && $route->getName() === 'triage.student-classes.billing-snapshot';
+        // Every query a resolved token makes on the billing snapshot is logged, refusals included (Founder: 留下查詢紀錄);
+        // the route's own throttle bounds that volume. Every other refusal or failure shares the cross-route cap.
+        $alwaysAudit = $isBilling && $tokenId !== null && in_array($status, [404, 422], true);
+        if ($status >= 400 && !$alwaysAudit && !TriageTokenService::mayAuditDenial($request->ip())) { return; }
+        $routeId = $request->route('id');
+        $attachmentId = $request->route('attachmentId');
         $queryBugId = $request->query('bug_report_id');
         SecurityAuditEvent::append('triage_token.read', $outcome, [
             'actor_type' => 'triage_token',

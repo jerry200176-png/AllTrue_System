@@ -85,15 +85,55 @@ final class TriageBillingSnapshotTest extends TestCase
         $this->getJson("/api/v1/triage/student-classes/999999/billing-snapshot?bug_report_id={$bug->id}", $this->bearer())->assertNotFound();
         $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot?bug_report_id=999999", $this->bearer())->assertNotFound();
 
-        $bug->forceFill(['status' => 'closed'])->save(); // report closed after linking: lapses at once
+        $bug->forceFill(['status' => 'closed'])->save(); // report closed after linking: link revoked for good
         $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']);
-        $bug->forceFill(['status' => 'triaged'])->save();
-        $this->getJson($this->url($course, $bug), $this->bearer())->assertOk();
-
-        $this->deleteJson("/api/v1/admin/triage-contract-links/{$linkId}", [], $this->as($this->admin))->assertOk();
+        $this->assertNotNull(DB::table('bug_report_contract_links')->where('id', $linkId)->value('revoked_at'));
+        $bug->forceFill(['status' => 'triaged'])->save(); // reopening does NOT bring access back
         $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']);
         $this->deleteJson("/api/v1/admin/triage-contract-links/{$linkId}", [], $this->as($this->admin))->assertNotFound();
-        $this->assertNotNull(DB::table('bug_report_contract_links')->where('id', $linkId)->value('revoked_at')); // soft revoke keeps history
+
+        $relinkId = (int) $this->link($bug, $course)->assertCreated()->json('id'); // a super admin must re-link
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertOk();
+        $this->deleteJson("/api/v1/admin/triage-contract-links/{$relinkId}", [], $this->as($this->admin))->assertOk();
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']);
+        $this->deleteJson("/api/v1/admin/triage-contract-links/{$relinkId}", [], $this->as($this->admin))->assertNotFound(); // second revoke: no-op
+        $this->assertSame((int) $this->admin->id, (int) DB::table('bug_report_contract_links')->where('id', $relinkId)->value('revoked_by'));
+        $this->assertSame(2, DB::table('bug_report_contract_links')->count()); // soft revoke keeps history
+        $this->assertSame(2, DB::table('security_audit_events')->where('event_type', 'triage_contract_link.revoked')->count()); // one per real revoke
+    }
+
+    public function test_resolving_a_report_revokes_its_link(): void
+    {
+        $course = $this->course($this->campus);
+        $bug = $this->bug($this->campus, 'in_progress');
+        $linkId = (int) $this->link($bug, $course)->assertCreated()->json('id');
+
+        $bug->forceFill(['status' => 'resolved'])->save();
+        $bug->forceFill(['status' => 'in_progress'])->save();
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound();
+        $row = DB::table('security_audit_events')->where('event_type', 'triage_contract_link.revoked')->first();
+        $this->assertSame('report_closed', json_decode($row->metadata, true)['reason_code']);
+        $this->assertNull(DB::table('bug_report_contract_links')->where('id', $linkId)->value('active'));
+    }
+
+    public function test_every_refused_snapshot_query_is_audited_past_the_denial_cap(): void
+    {
+        $course = $this->course($this->campus);
+        $other = $this->course($this->campus);
+        $bug = $this->bug($this->campus, 'new');
+        $this->link($bug, $course)->assertCreated();
+
+        foreach (range(1, 12) as $i) { // more than the 10/min per-IP cap that applies to other refusals
+            $this->getJson("/api/v1/triage/student-classes/" . (900000 + $i) . "/billing-snapshot?bug_report_id={$bug->id}", $this->bearer())->assertNotFound();
+        }
+        $this->getJson($this->url($other, $bug), $this->bearer())->assertNotFound(); // cross-contract
+        $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot", $this->bearer())->assertStatus(422);
+
+        $rows = DB::table('security_audit_events')->where('event_type', 'triage_token.read')->where('outcome', 'failure')->orderBy('id')->get();
+        $this->assertCount(14, $rows);
+        $this->assertSame(SecurityAuditEvent::ref('student_class', $other->ID), $rows[12]->subject_ref);
+        $this->assertSame(404, json_decode($rows[12]->metadata, true)['http_status']);
+        $this->assertSame(422, json_decode($rows[13]->metadata, true)['http_status']);
     }
 
     public function test_student_moved_to_another_campus_after_linking_is_404(): void

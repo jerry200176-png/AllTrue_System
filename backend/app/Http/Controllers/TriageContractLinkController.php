@@ -58,8 +58,11 @@ class TriageContractLinkController extends Controller
                 'created_at' => now(),
                 'active' => true,
             ]));
-        } catch (QueryException) {
-            // uniq_bug_contract_link_active: a report has at most one live contract link.
+        } catch (QueryException $e) {
+            // Only uniq_bug_contract_link_active (one live contract per report) is a 409; anything else is a real error.
+            if ((int) ($e->errorInfo[1] ?? 0) !== 1062 || stripos($e->getMessage(), 'uniq_bug_contract_link_active') === false) {
+                throw $e;
+            }
             return response()->json(['message' => 'This report already has an active contract link', 'code' => 'link_exists'], 409);
         }
         $this->audit('triage_contract_link.created', $user, $link);
@@ -70,14 +73,12 @@ class TriageContractLinkController extends Controller
     public function destroy(Request $request, int $id)
     {
         $user = $request->attributes->get('auth_user');
-        $link = BugReportContractLink::query()->active()->whereKey($id)->first();
-        if (!$user instanceof User || !$link instanceof BugReportContractLink) {
+        // Conditional update inside revoke(): a second (concurrent) revoke gets 404 and writes no audit row.
+        if (!$user instanceof User || !BugReportContractLink::revoke($id, (int) $user->getKey(), 'manual_revoke')) {
             return response()->json(['message' => 'Not found'], 404);
         }
-        $link->forceFill(['revoked_at' => now(), 'revoked_by' => (int) $user->getKey(), 'active' => null])->save();
-        $this->audit('triage_contract_link.revoked', $user, $link);
 
-        return response()->json(['revoked' => true, 'id' => (int) $link->id]);
+        return response()->json(['revoked' => true, 'id' => $id]);
     }
 
     private function reject(string $code)

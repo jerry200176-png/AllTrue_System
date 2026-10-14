@@ -40,6 +40,44 @@ class BugReportContractLink extends Model
         return $campusId !== null && (int) $campusId > 0 ? (int) $campusId : null;
     }
 
+    /**
+     * Conditional soft revoke: only a still-live row is touched, so two concurrent revokes cannot both
+     * succeed and the loser writes no audit row. Returns true when THIS call revoked it.
+     */
+    public static function revoke(int $linkId, ?int $actorId, string $reason): bool
+    {
+        $link = self::query()->whereKey($linkId)->first(['id', 'bug_report_id', 'student_class_id']);
+        $affected = $link === null ? 0 : self::query()->whereKey($linkId)->whereNull('revoked_at')->where('active', true)
+            ->update(['revoked_at' => now(), 'revoked_by' => $actorId, 'active' => null]);
+        if ($affected !== 1 || $link === null) {
+            return false;
+        }
+        SecurityAuditEvent::append('triage_contract_link.revoked', 'success', [
+            'actor_type' => $actorId === null ? 'system' : 'user',
+            'actor_id' => $actorId,
+            'subject_type' => 'student_class',
+            'subject_id' => (int) $link->student_class_id,
+        ], [
+            'bug_report_ref' => SecurityAuditEvent::ref('bug_report', (int) $link->bug_report_id),
+            'reason_code' => $reason,
+            'client_ip_ref' => SecurityAuditEvent::ref('ip', app()->bound('request') ? request()->ip() : null),
+        ]);
+
+        return true;
+    }
+
+    /** #4100: a resolved/closed report loses its links for good; reopening does NOT restore access (re-link needed). */
+    public static function revokeAllForReport(int $bugReportId, ?int $actorId): void
+    {
+        // Rolling deploy: before the migration runs there can be no links, and closing a report must not 500.
+        if (!\Illuminate\Support\Facades\Schema::hasTable('bug_report_contract_links')) {
+            return;
+        }
+        foreach (self::query()->active()->where('bug_report_id', $bugReportId)->pluck('id') as $id) {
+            self::revoke((int) $id, $actorId, 'report_closed');
+        }
+    }
+
     /** @param Builder<BugReportContractLink> $query */
     public function scopeActive(Builder $query): void
     {
