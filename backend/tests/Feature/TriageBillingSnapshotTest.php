@@ -144,6 +144,74 @@ final class TriageBillingSnapshotTest extends TestCase
         $this->assertSame(8800, (int) StudentClass::query()->whereKey($course->ID)->value('Charge'));
     }
 
+    /** Documents the CURRENT reach (Founder decision A/B/C on #4118): any open report unlocks every contract in its campus. */
+    public function test_any_open_report_in_a_campus_unlocks_an_unrelated_contract_in_that_campus(): void
+    {
+        $campus = Campus::factory()->create();
+        $token = $this->createToken($this->user('S'));
+        $unrelatedReport = $this->bug($campus, 'new'); // about something else; no link to the contract exists
+        $unrelatedContract = $this->course($campus, ['Charge' => 4000, 'Rate' => 500, 'SessionCount' => 8]);
+
+        $this->getJson($this->url($unrelatedContract, $unrelatedReport), $this->bearer($token))->assertOk()
+            ->assertJsonPath('student_class_id', $unrelatedContract->ID)
+            ->assertJsonPath('charge', 4000);
+    }
+
+    public function test_contract_without_a_student_row_or_with_an_unset_campus_is_404(): void
+    {
+        $campus = Campus::factory()->create();
+        $token = $this->createToken($this->user('S'));
+        $open = $this->bug($campus, 'new');
+        $orphan = $this->course($campus);
+        DB::table('Student')->where('id', $orphan->StudentID)->delete();
+        $this->getJson($this->url($orphan, $open), $this->bearer($token))->assertNotFound()->assertExactJson(['message' => 'Not found']);
+
+        // Student.CampusID is NOT NULL in the schema; 0 is the legacy "unset" value and must not match a report with campus 0.
+        $unset = $this->course($campus);
+        DB::table('Student')->where('id', $unset->StudentID)->update(['CampusID' => 0]);
+        $zeroReport = BugReport::create(['CampusID' => 0, 'reporter_user_id' => $this->user('T')->id, 'title' => 'billing', 'description' => 'desc', 'severity' => 'medium', 'status' => 'new']);
+        $this->getJson($this->url($unset, $zeroReport), $this->bearer($token))->assertNotFound();
+        $this->getJson($this->url($unset, $open), $this->bearer($token))->assertNotFound();
+    }
+
+    public function test_write_methods_on_the_snapshot_route_are_rejected_and_change_nothing(): void
+    {
+        $campus = Campus::factory()->create();
+        $token = $this->createToken($this->user('S'));
+        $course = $this->course($campus);
+        $url = $this->url($course, $this->bug($campus, 'new'));
+
+        // Only GET is registered, so the router answers 405 before any controller runs (same as TriageTokenTest for bug-reports).
+        foreach (['POST', 'PUT', 'PATCH', 'DELETE'] as $method) {
+            $this->json($method, $url, ['Charge' => 1], $this->bearer($token))->assertStatus(405);
+        }
+        $this->assertSame(8800, (int) StudentClass::query()->whereKey($course->ID)->value('Charge'));
+        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'triage_token.read')->where('outcome', 'success')->count());
+    }
+
+    public function test_audit_rows_for_existing_bug_report_routes_are_unchanged(): void
+    {
+        $campus = Campus::factory()->create();
+        $token = $this->createToken($this->user('S'));
+        $bug = $this->bug($campus, 'new');
+        $other = $this->bug($campus, 'new');
+
+        // A stray bug_report_id query param must not leak into bug-report route audit rows.
+        $this->getJson("/api/v1/triage/bug-reports/{$bug->id}?bug_report_id={$other->id}", $this->bearer($token))->assertOk();
+        $this->getJson('/api/v1/triage/bug-reports', $this->bearer($token))->assertOk();
+
+        $rows = DB::table('security_audit_events')->where('event_type', 'triage_token.read')->orderBy('id')->get();
+        $this->assertCount(2, $rows);
+        $show = json_decode($rows[0]->metadata, true);
+        $this->assertSame(SecurityAuditEvent::ref('bug_report', $bug->id), $rows[0]->subject_ref);
+        $this->assertSame('triage.bug-reports.show', $show['route']);
+        $this->assertArrayNotHasKey('bug_report_ref', $show);
+        $list = json_decode($rows[1]->metadata, true);
+        $this->assertNull($rows[1]->subject_ref);
+        $this->assertSame('triage.bug-reports.index', $list['route']);
+        $this->assertArrayNotHasKey('bug_report_ref', $list);
+    }
+
     private function url(StudentClass $course, BugReport $bug): string
     {
         return "/api/v1/triage/student-classes/{$course->ID}/billing-snapshot?bug_report_id={$bug->id}";

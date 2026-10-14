@@ -956,7 +956,7 @@ Route::prefix('v1')->group(function () {
             ->whereNumber('id')->name('triage.bug-reports.show');
         Route::get('bug-reports/{id}/attachments/{attachmentId}', [TriageBugReportController::class, 'attachment'])
             ->whereNumber(['id', 'attachmentId'])->name('triage.bug-reports.attachment');
-        // #4100: IDs + numbers of one contract; scoped to the campus of an open bug report (Founder decision pending).
+        // #4100: IDs + numbers of one contract; scoped to the campus of an open bug report (待 Founder 核准; Founder decision pending: reach A/B/C on #4118).
         Route::get('student-classes/{id}/billing-snapshot', [TriageBillingSnapshotController::class, 'show'])
             ->whereNumber('id')->name('triage.student-classes.billing-snapshot');
     });

@@ -37,7 +37,8 @@ class TriageBillingSnapshotController extends Controller
         $courseCampusId = $course instanceof StudentClass
             ? DB::table('Student')->where('id', (int) $course->StudentID)->value('CampusID')
             : null;
-        if (!$bug instanceof BugReport || $courseCampusId === null
+        // Fail closed on a missing Student row or an unset (null/0) campus: never match "no campus" to "no campus".
+        if (!$bug instanceof BugReport || $courseCampusId === null || (int) $courseCampusId <= 0
             || (int) $courseCampusId !== (int) $bug->getAttribute('CampusID')) {
             return response()->json(['message' => 'Not found'], 404);
         }
