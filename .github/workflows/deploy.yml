@@ -1568,6 +1568,7 @@ jobs:
               | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
               2>/dev/null || echo "error")
             python3 -I "${PDV:-/missing}" verify -k --expect-backend-sha "$PREV_COMMIT" $([ "${FRONTEND_CHANGED:-0}" -gt 0 ] && echo --expect-frontend-sha "$PREV_COMMIT") || rollback_failed=1
+            [ -z "${SMOKE_ON_PI:-}" ] || SMOKE_EXPECTED_BACKEND_SHA="$PREV_COMMIT" SMOKE_STRICT_VERSION= bash scripts/post-merge-smoke.sh || rollback_failed=1
             if [ "$rollback_failed" -ne 0 ] || [ "$health2" != "ok" ]; then
               echo "❌ Rollback 未完成：health=$health2 rollback_failed=$rollback_failed — 需要人工介入"
               return 1

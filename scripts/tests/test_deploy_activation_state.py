@@ -2175,6 +2175,14 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         result = subprocess.run(["bash", "-c", frontend + function + "\nrollback_deploy\n"], text=True,
                                 capture_output=True, env={"PATH": os.environ["PATH"], "VERIFY_RC": "0"})
         self.assertIn("--expect-backend-sha old --expect-frontend-sha old", result.stdout)
+        # After a gate-requested rollback (smoke context exported), the same smoke must pass on the old commit.
+        smoke = harness + 'SMOKE_ON_PI=1\nbash() { echo "smoke $1 expect=$SMOKE_EXPECTED_BACKEND_SHA strict=${SMOKE_STRICT_VERSION:-}"; return "$SMOKE_RC"; }\n'
+        for smoke_rc, expected in ((0, 0), (1, 1)):
+            result = subprocess.run(["bash", "-c", smoke + function + "\nrollback_deploy\n"], text=True, capture_output=True,
+                                    env={"PATH": os.environ["PATH"], "VERIFY_RC": "0", "SMOKE_RC": str(smoke_rc),
+                                         "SMOKE_STRICT_VERSION": "1"})
+            self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
+            self.assertIn("smoke scripts/post-merge-smoke.sh expect=old strict=", result.stdout)
 
     def test_runner_step_records_rc_and_summarizes_failures(self):
         self.assertIn("<< 'ENDSSH' || rc=$?", self.workflow)
