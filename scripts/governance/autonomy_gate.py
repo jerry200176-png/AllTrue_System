@@ -260,60 +260,107 @@ _MAX_GUARDED_SENSITIVE_LINES = 240
 
 
 _MIGRATION_PREFIX = "backend/database/migrations/"
-# Founder 2026-10-14 (三)④: a migration that only adds tables/columns/indexes
-# deploys like other reversible T2 work (expand/contract). Anything that can
-# drop, rename, alter or rewrite existing structure or rows keeps the Founder
-# gate. Only the body of down() is exempt (deploy.yml never runs
-# migrate:rollback); everything else in the file, including top-level code,
-# must pass. This is a fail-closed denylist plus an import allowlist: a false
-# positive only costs a Founder approval.
-_MIGRATION_ALLOWED_USES = {
-    "illuminate\\database\\migrations\\migration",
-    "illuminate\\database\\schema\\blueprint",
-    "illuminate\\support\\facades\\schema",
-}
-_MIGRATION_UNSAFE_RE = re.compile(
-    r"\bdrop|\brename|\bchange\s*\(|\btruncate|\bdb\b|\bstatement|\bunprepared|\braw\b|\bsql\b|"
-    r"\bunique\s*\(|\bprimary\s*\(|\bforeign|\bconstrained\s*\(|\bexec\b|\bartisan\b|\bseed|"
-    r"(?<!schema)::|->\s*(?:update|delete|insert|upsert|save|each|chunk\w*|fill|forcefill|increment|"
-    r"decrement|getconnection|connection)\b|\b(?:foreach|while|for|do|goto|include|require|eval|static|"
-    r"self|parent|new|app|resolve|call_user_func\w*|file_\w+|shell_exec|system|passthru|proc_open|popen|"
-    r"__construct|__destruct|__get|__call\w*|extract|compact|getenv|env)\b|\$this\b|\$\w+\s*\(|\$\$|`|"
-    r"<<<|\?>|<\?(?!php)",
+# Founder 2026-10-14 (三)④: a migration that only adds tables/columns/plain
+# indexes deploys like other reversible T2 work (expand/contract). This is an
+# allowlist: the file is lexed (strings become S, comments vanish), down() is
+# cut out (deploy.yml never runs migrate:rollback), and what is left must
+# reduce to the bare Laravel skeleton using only the statements below.
+# Anything else (raw SQL, facades, data writes, unique/foreign keys, change(),
+# drop/rename, loops, dynamic calls) keeps the Founder gate. A false negative
+# only costs a Founder approval.
+_MIGRATION_ALLOWED_USES = (
+    r"use\s+\\?Illuminate\\Database\\Migrations\\Migration\s*;",
+    r"use\s+\\?Illuminate\\Database\\Schema\\Blueprint\s*;",
+    r"use\s+\\?Illuminate\\Support\\Facades\\Schema\s*;",
+)
+_BLUEPRINT_METHODS = (
+    "id|increments|bigincrements|string|char|text|tinytext|mediumtext|longtext|integer|tinyinteger|"
+    "smallinteger|mediuminteger|biginteger|unsignedinteger|unsignedtinyinteger|unsignedsmallinteger|"
+    "unsignedmediuminteger|unsignedbiginteger|decimal|unsigneddecimal|float|double|boolean|date|datetime|"
+    "datetimetz|time|timetz|timestamp|timestamptz|timestamps|timestampstz|nullabletimestamps|softdeletes|"
+    "softdeletestz|json|jsonb|enum|set|uuid|ulid|year|binary|ipaddress|macaddress|remembertoken|"
+    "nullable|default|after|first|comment|unsigned|usecurrent|usecurrentonupdate|index"
+)
+_LITERAL_ARGS = r"(?:S|-?\d+(?:\.\d+)?|true|false|null|\[|\]|,|\s)*"
+_COLUMN_CHAIN = (
+    rf"\$\w+\s*->\s*(?:{_BLUEPRINT_METHODS})\s*\({_LITERAL_ARGS}\)"
+    rf"(?:\s*->\s*(?:{_BLUEPRINT_METHODS})\s*\({_LITERAL_ARGS}\))*"
+)
+_COLUMN_STMT_RE = re.compile(_COLUMN_CHAIN + r"\s*;", re.IGNORECASE)
+_SCHEMA_BLOCK_RE = re.compile(
+    r"Schema\s*::\s*(?:create|table)\s*\(\s*S\s*,\s*(?:static\s+)?(?:"
+    r"function\s*\(\s*Blueprint\s+\$\w+\s*\)\s*(?::\s*void\s*)?\{\s*\}"
+    rf"|fn\s*\(\s*Blueprint\s+\$\w+\s*\)\s*=>\s*{_COLUMN_CHAIN}"
+    r")\s*\)\s*;",
     re.IGNORECASE,
 )
-_PHP_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*|#[^\n]*", re.DOTALL)
-_DOWN_RE = re.compile(r"\bfunction\s+down\s*\(\s*\)\s*(?::\s*void\s*)?\{", re.IGNORECASE)
+_SCHEMA_COND = r"!?\s*Schema\s*::\s*has(?:table|column)\s*\(\s*S\s*(?:,\s*S\s*)?\)"
+_SCHEMA_GUARD_RE = re.compile(
+    rf"if\s*\(\s*{_SCHEMA_COND}(?:\s*(?:&&|\|\|)\s*{_SCHEMA_COND})*\s*\)\s*\{{\s*(?:return\s*;\s*)?\}}",
+    re.IGNORECASE,
+)
+_MIGRATION_SKELETON_RE = re.compile(
+    r"<\?php\s*(?:(?:" + "|".join(_MIGRATION_ALLOWED_USES) + r")\s*)*"
+    r"(?:return\s+new\s+class\s+extends\s+Migration|class\s+\w+\s+extends\s+Migration)\s*\{\s*"
+    r"public\s+function\s+up\s*\(\s*\)\s*(?::\s*void\s*)?\{\s*\}\s*(?:DOWN\s*)?\}\s*;?\s*",
+    re.IGNORECASE,
+)
+_DOWN_HEAD_RE = re.compile(r"public\s+function\s+down\s*\(\s*\)\s*(?::\s*void\s*)?\{", re.IGNORECASE)
+
+
+def _lex_php(source: str) -> str | None:
+    """Replace string literals with S and drop comments; None if unsure."""
+
+    out: list[str] = []
+    i, n = 0, len(source)
+    while i < n:
+        c = source[i]
+        if c in "'\"":
+            j = i + 1
+            while j < n and source[j] != c:
+                if c == '"' and source[j] in "${":
+                    return None  # interpolation can run code
+                j += 2 if source[j] == "\\" else 1
+            if j >= n:
+                return None
+            out.append(" S ")
+            i = j + 1
+        elif source.startswith(("//", "#"), i):
+            j = source.find("\n", i)
+            i = n if j < 0 else j
+        elif source.startswith("/*", i):
+            j = source.find("*/", i + 2)
+            if j < 0:
+                return None
+            out.append(" ")
+            i = j + 2
+        elif c == "`" or source.startswith(("<<<", "?>"), i):
+            return None
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
 
 
 def _migration_body_is_additive(source: str) -> bool:
-    # Comments must not end or hide a section: strip them before splitting.
-    # A comment opener inside a string literal makes this strip lossy, but
-    # then the remaining text still has to pass the denylist.
-    code = _PHP_COMMENT_RE.sub(" ", source)
-    if len(re.findall(r"\bfunction\s+up\s*\(", code, re.IGNORECASE)) != 1:
+    code = _lex_php(source)
+    if code is None:
         return False
-    downs = list(_DOWN_RE.finditer(code))
-    if len(re.findall(r"\bfunction\s+down\b", code, re.IGNORECASE)) != len(downs) or len(downs) > 1:
+    downs = list(_DOWN_HEAD_RE.finditer(code))
+    if len(downs) > 1 or len(re.findall(r"\bfunction\s+down\b", code, re.IGNORECASE)) != len(downs):
         return False
     if downs:
-        # down() must be the last member: its body runs to the class end.
-        start = downs[0].end()
-        depth, i = 1, start
+        depth, i = 1, downs[0].end()
         while i < len(code) and depth:
             depth += {"{": 1, "}": -1}.get(code[i], 0)
             i += 1
-        if depth or not re.fullmatch(r"\s*\}\s*;?\s*", code[i:]):
+        if depth:
             return False
-        code = code[:downs[0].start()] + code[i - 1:]
-    for use in re.findall(r"^\s*use\s+([^;]+);", code, re.MULTILINE | re.IGNORECASE):
-        if use.strip().lstrip("\\").lower() not in _MIGRATION_ALLOWED_USES:
-            return False
-    without_uses = re.sub(r"^\s*use\s+[^;]+;", " ", code, flags=re.MULTILINE | re.IGNORECASE)
-    # The one allowed `new`: Laravel's anonymous migration class.
-    without_uses = re.sub(r"\breturn\s+new\s+class\s+extends\s+migration\b", " ", without_uses,
-                          count=1, flags=re.IGNORECASE)
-    return "schema::" in without_uses.lower() and not _MIGRATION_UNSAFE_RE.search(without_uses)
+        code = code[:downs[0].start()] + " DOWN " + code[i:]
+    code = _COLUMN_STMT_RE.sub(" ", code)
+    for _ in range(4):  # guards may wrap blocks; a few passes cover real nesting
+        code = _SCHEMA_GUARD_RE.sub(" ", _SCHEMA_BLOCK_RE.sub(" ", code))
+    return bool(_MIGRATION_SKELETON_RE.fullmatch(code))
 
 
 def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:

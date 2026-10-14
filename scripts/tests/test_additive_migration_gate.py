@@ -72,6 +72,12 @@ class AdditiveMigrationGate(unittest.TestCase):
             migration(add, "Schema::dropIfExists('t'); } public function boot(): void { Q::statement('x');"),
             migration(add + " app('db')->statement('x');"),
             migration(add + " Schema::getConnection()->statement('x');"),
+            migration(add + " $x = 'a // '; Q::statement('x');"),
+            migration(add + " $x = 'a /* '; Q::statement('x'); $y = ' */';"),
+            migration(add + ' $x = "{$f()}";'),
+            migration(add + " $t->string('a')->charset('x');"),
+            migration("Schema::table('t', fn ($t) => $t->string('a')->change());"),
+            migration("if (Schema::hasTable('t')) { Q::statement('x'); }"),
         ):
             patch = new_file(MIG, src)
             self.assertEqual(additive_migration_paths([MIG], patch), set(), src)
@@ -80,6 +86,14 @@ class AdditiveMigrationGate(unittest.TestCase):
     def test_context_lines_mean_not_a_new_file(self):
         patch = new_file(MIG, ADD).replace("+<?php", " <?php", 1)
         self.assertEqual(additive_migration_paths([MIG], patch), set())
+
+    def test_real_world_guard_and_arrow_shapes_are_t2(self):
+        for up in (
+            "if (Schema::hasTable('t') && !Schema::hasColumn('t', 'a')) { Schema::table('t', fn (Blueprint $t) => $t->string('a', 32)->nullable()); }",
+            "if (Schema::hasTable('n')) { return; } Schema::create('n', function (Blueprint $t) { $t->id(); $t->timestamps(); });",
+        ):
+            patch = new_file(MIG, migration(up))
+            self.assertEqual(additive_migration_paths([MIG], patch), {MIG}, up)
 
     def test_editing_existing_migration_stays_t3(self):
         patch = f"diff --git a/{MIG} b/{MIG}\n@@ -3,1 +3,1 @@\n-old\n+Schema::table('t', fn ($t) => $t->string('a'));\n"
