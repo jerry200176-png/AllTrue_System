@@ -151,6 +151,39 @@ class AccountingPendingQueueTest extends TestCase
         $this->assertSame([4400], array_column($alert['open_periods'], 'outstanding'));
     }
 
+    private function reviewMonthlyCourse(): StudentClass
+    {
+        return $this->course([
+            'closed_reason' => 'settled', 'ScheduleMode' => 'date', 'settlement_day' => 30,
+            'StartDate' => '2026-08-30', 'EndDate' => '2026-09-30', 'Charge' => 4400, 'Rate' => 1100,
+            'SessionCount' => 4, 'RemainingSessions' => 0,
+        ]);
+    }
+
+    public function test_review_required_stopped_with_fully_paid_bill_stays_out_of_tuition_queue(): void
+    {
+        $c = $this->reviewMonthlyCourse();
+        $invoice = $this->invoice($c, 4400, 'paid', 4400);
+        $invoice->forceFill(['billing_period' => '2026-09'])->save();
+
+        $verdict = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $c->ID])[(int) $c->ID];
+        $this->assertSame('review_required', $verdict['status'], 'fixture must reproduce the review verdict');
+        $this->assertSame(0, (int) $verdict['outstanding']);
+        $this->assertNull($this->tuitionRow($c));
+    }
+
+    public function test_review_required_stopped_with_only_voided_bill_stays_out_of_tuition_queue(): void
+    {
+        $c = $this->reviewMonthlyCourse();
+        $invoice = $this->invoice($c, 4400);
+        $invoice->forceFill(['billing_period' => '2026-09', 'Status' => 'void'])->save();
+
+        $verdict = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $c->ID])[(int) $c->ID];
+        $this->assertSame('review_required', $verdict['status'], 'fixture must reproduce the review verdict');
+        $this->assertNotSame('invoice', $verdict['source']);
+        $this->assertNull($this->tuitionRow($c));
+    }
+
     public function test_review_required_stopped_without_invoice_stays_out_of_tuition_queue(): void
     {
         // Review with no issued bill is an estimate only: it stays in 已結清 → 待核對, never a queue amount.
