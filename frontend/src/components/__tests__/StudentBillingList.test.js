@@ -171,4 +171,28 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
     ], [{ id: 7, name: '庚' }], '2026-10-07');
     expect(rows.filter(STUDENT_FILTERS.clear.test).map((r) => r.student_id)).toEqual([7]);
   });
+
+  it('never treats a stale payment date alone as 已收 (#4123)', () => {
+    const alertRows = [
+      // unpaid, no bill yet, but an old payment date (legacy PayDate / earlier term)
+      { id: 101, student_id: 10, student_name: '癸', paid: false, payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null, last_paid_at: '2025-01-15' },
+      // raw paid flag but the server's verdict still says unpaid: not 已收 either
+      { id: 111, student_id: 11, student_name: '子', paid: true, payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null, last_paid_at: '2025-02-01' },
+      // truly paid contract
+      { id: 121, student_id: 12, student_name: '丑', paid: true, payment_status: 'paid', payable_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03' },
+      // paid monthly plan (server hard-codes unbilled payable for monthly packages)
+      { id: null, student_id: 13, student_name: '寅', paid: true, payment_status: 'monthly_due_soon', payable_status: 'unbilled', payable_outstanding: null, last_paid_at: '2026-10-01' },
+      // valid paid status, no pay date
+      { id: 141, student_id: 14, student_name: '卯', paid: true, payment_status: 'paid', payable_outstanding: 0, last_paid_at: null },
+    ];
+    const rows = buildStudentBillingRows(alertRows, [], '2026-10-07');
+    expect(rows.filter(STUDENT_FILTERS.clear.test).map((r) => r.student_id).sort()).toEqual([12, 13, 14]);
+    const w = mount(StudentBillingList, { props: { alertRows, today: '2026-10-07' } });
+    const badge = (id) => w.find(`[data-testid="sbl-row-${id}"]`).find('[data-testid="at-badge"]').text();
+    expect(badge(10)).toBe('還沒開帳單');
+    expect(badge(11)).toBe('還沒開帳單');
+    expect(badge(12)).toBe('已收');
+    expect(badge(13)).toBe('已收');
+    expect(badge(14)).toBe('已收');
+  });
 });

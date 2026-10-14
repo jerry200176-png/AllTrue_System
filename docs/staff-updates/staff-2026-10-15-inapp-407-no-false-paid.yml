@@ -8,7 +8,7 @@ updates:
     summary: 沒收過款的學生不會再被標成「已收」；還沒開帳單的合約會直接標出來。
     items:
       - category: fixed
-        text: 帳務中心學生清單只有收過款才標「已收」；還沒開帳單的標「還沒開帳單」。
+        text: 帳務中心學生清單只有確認已繳費才標「已收」；還沒開帳單的標「還沒開帳單」。
       - category: improved
         text: 篩選鈕「已繳清」改名「沒有未繳」。
     source_refs:

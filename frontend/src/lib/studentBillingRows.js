@@ -3,6 +3,9 @@
 // student of the campus so a fully paid student is still findable.
 
 const OWING = new Set(['unpaid', 'partial', 'pending_reconciliation', 'monthly_due_soon', 'renew_needed']);
+// Statuses the server only sends for a contract it judges fully paid (ContractMoneyState::alertStatus /
+// computePackageCountPaymentStatus: Paid flag OR valid invoice payments, invoices that still owe win).
+const PAID = new Set(['paid', 'renew_needed', 'monthly_due_soon']);
 
 const dayStart = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`);
 const todayYmd = () => new Date().toISOString().slice(0, 10);
@@ -74,14 +77,16 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
         owed: OWING.has(r.payment_status) ? rowOwedTotal(r) : 0, paid: Number(r.paid_amount ?? 0),
       });
     }
-    // in-app #407: any sign of money received (paid flag, paid status, a payment date) counts as 已收.
-    const paidSignal = r.paid === true || r.payment_status === 'paid' || Boolean(r.last_paid_at);
+    // in-app #407 / #4123: 已收 follows the server's authoritative paid status only. A payment date alone
+    // (legacy PayDate, an earlier term's payment) is not proof the contract is paid, nor is the raw `paid` flag
+    // when the invoices say it still owes.
+    const paidSignal = PAID.has(r.payment_status);
     if (paidSignal) row.has_paid = true;
     if (r.payment_status === 'pending_report') row.waiting_confirm += 1;
     if (!OWING.has(r.payment_status)) continue;
     const items = owedItems(r);
     // in-app #407: an owing contract with no bill yet must not read as 已收.
-    if (!items.some((it) => it.amount > 0)) { if (r.payable_status === 'unbilled' && !paidSignal && r.payment_status !== 'monthly_due_soon') row.unbilled += 1; continue; }
+    if (!items.some((it) => it.amount > 0)) { if (r.payable_status === 'unbilled' && !paidSignal) row.unbilled += 1; continue; }
     row.open_contracts += 1;
     for (const it of items) {
       if (it.amount <= 0) continue;
