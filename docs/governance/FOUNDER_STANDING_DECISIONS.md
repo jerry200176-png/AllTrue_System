@@ -3,6 +3,13 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+## 2026-10-14（三）補充（#4097 決定 1–4；對話中「都照你推薦」）
+
+1. **新增型 migration（#4093 選 B）**：不再用關鍵字清單判定。作者在 PR 內文宣告 `Additive-Migration: yes`；檢查只驗結構（只新增 migration 檔；只建新表、在既有表加 nullable 欄位或索引；`down()` 只撤掉 `up()` 新加的東西；有「已存在就跳過」guard 時 `down()` 必須為空）；並須 Codex 在**最終 head** 給 👍「無問題」且無未解 thread。Codex 額度用完時不以其他審查代替，退回 Founder 批准。**身分／權限表與帳務表一律排除**，照舊由 Founder 批准。
+2. **帳務／登入程式自動上線（決定 4 選 A）**：不做。照 2026-10-14 release train 每天兩班由 Founder 核准；#4096 關閉，#3961 保持開啟。之後若要做，須以 Founder 核發的範圍證據＋受影響路徑 production 檢查為基礎重新設計。
+3. **`ALLTRUE_TRIAGE_TOKEN`（#4087 選 A）**：為 2026-10-14（三）第 2 條的具名例外，可放在 cloud 環境，條件全部成立：唯讀、只限 `/api/v1/triage/` 路徑、由 proxy 注入（Agent 看不到金鑰值）、預設 90 天到期。回報內容（姓名、電話、描述、留言、截圖）照舊不得貼到 GitHub。
+4. **`.exo/` 刪除（決定 3）**：先在含有全部 `.exo/` 檔的最後一個 main commit 打 tag `archive/exo-20261014` 並確認內容，視為 2026-10-14（三）第 7 條的備份驗證；之後以小型刪除 PR 移除。main ruleset 不改，`Agent Session Provenance` 保留同名直接通過的 job（#4083、#4103）。
+
 ## 2026-10-14（三）（全面搬到 cloud；對話中 Q1–Q24 逐條確認，最後「對」；本 repo PR #4078）
 
 方向：所有開發移到 Claude Desktop cloud session，Founder 電腦關機也要能繼續運作。**不在舊的本機機制上加 cloud 例外，而是淘汰本機機制**（#4071、portfolio-ops#135、sunrise-cafe#440 因此關閉）。本節只記決定；各項實作 PR 依 2026-10-14（二）第 5 條（#4069）治理變更規則提供 diff 由 Founder 批准後合併。
