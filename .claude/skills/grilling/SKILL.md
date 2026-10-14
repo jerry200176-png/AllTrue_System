@@ -31,4 +31,4 @@ The session is done when the frontier is empty: every branch of the design tree 
 
 ## AllTrue (local addition)
 
-Fact-finding helpers are read-only: use a search-only subagent (for example `Explore`) or look it up yourself. A helper that writes files follows `AGENTS.md` (its own isolated workspace from fresh `origin/main`), never the main conversation's checkout.
+Look facts up yourself in the main agent (read, search, read-only API calls). Only if a helper is truly needed, launch it in its own isolated workspace from fresh `origin/main` as `AGENTS.md` requires, never in the main conversation's checkout. This replaces "dispatch a sub-agent" above.
