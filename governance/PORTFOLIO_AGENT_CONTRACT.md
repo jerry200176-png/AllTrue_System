@@ -22,7 +22,10 @@ minimum that travels with each governed repository.
   autonomous merge.
 - T3/protected work may be researched, implemented, tested, reviewed, and
   prepared as an evidence package. Stop for Founder approval before production
-  activation, production data mutation or repair, migration/schema cutover,
+  activation, production data mutation or repair, a destructive
+  migration/schema cutover (a declared additive-only migration may merge as
+  T2, Founder 2026-10-14; its production activation stays Founder-approved
+  until the deploy path can roll code back after it),
   billing or entitlement semantics, identity/authentication/authorization,
   destructive or irreversible actions, backup restore, security-sensitive
   credential changes, or major product/brand direction.
