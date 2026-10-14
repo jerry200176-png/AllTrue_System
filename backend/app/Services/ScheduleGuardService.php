@@ -1223,16 +1223,18 @@ class ScheduleGuardService
             return '';
         }
 
-        $segments = [];
-        $max = min(5, count($details));
-        for ($i = 0; $i < $max; $i++) {
-            $row = $details[$i];
+        // One segment per student/course/time: the same student often appears as both the
+        // fixed contract and its materialized session, which read as two students (in-app #406).
+        $groups = [];
+        foreach ($details as $row) {
             $name = (string) ($row['student_name'] ?? '');
             $sid = (int) ($row['student_id'] ?? 0);
             $studentLabel = $name !== '' ? $name : ($sid > 0 ? ('#' . $sid) : '未綁定學生');
             $subjectName = (string) ($row['subject_name'] ?? '');
             $coursePeriod = (string) ($row['course_period'] ?? '');
             $courseLabel = trim($subjectName . ($coursePeriod !== '' ? '・' . $coursePeriod : ''));
+            $start = (string) ($row['start_time'] ?? '');
+            $end = (string) ($row['end_time'] ?? '');
             // Human summary only; overlap_details retains the diagnostic source enum.
             $source = (string) ($row['source'] ?? '');
             $sourceLabel = match ($source) {
@@ -1241,18 +1243,32 @@ class ScheduleGuardService
                 'schedule' => '排課紀錄',
                 default => $source,
             };
+            $key = $sid . '|' . $studentLabel . '|' . $courseLabel . '|' . $start . '|' . $end;
+            if (!isset($groups[$key])) {
+                $groups[$key] = ['student' => $studentLabel, 'course' => $courseLabel, 'start' => $start, 'end' => $end, 'sources' => []];
+            }
+            if ($sourceLabel !== '' && !in_array($sourceLabel, $groups[$key]['sources'], true)) {
+                $groups[$key]['sources'][] = $sourceLabel;
+            }
+        }
+
+        $groups = array_values($groups);
+        $segments = [];
+        $max = min(5, count($groups));
+        for ($i = 0; $i < $max; $i++) {
+            $group = $groups[$i];
             $segments[] = sprintf(
                 '%s%s(%s-%s,%s)',
-                $studentLabel,
-                $courseLabel !== '' ? "（{$courseLabel}）" : '',
-                (string) ($row['start_time'] ?? ''),
-                (string) ($row['end_time'] ?? ''),
-                $sourceLabel
+                $group['student'],
+                $group['course'] !== '' ? "（{$group['course']}）" : '',
+                $group['start'],
+                $group['end'],
+                implode('＋', $group['sources'])
             );
         }
 
-        if (count($details) > $max) {
-            $segments[] = sprintf('...其餘 %d 筆', count($details) - $max);
+        if (count($groups) > $max) {
+            $segments[] = sprintf('...其餘 %d 筆', count($groups) - $max);
         }
 
         return implode('；', $segments);

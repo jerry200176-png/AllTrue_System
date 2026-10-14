@@ -81,6 +81,19 @@ class ScheduleGuardSummaryTest extends TestCase
         self::assertSame($result, $this->invoke('finalizeCapacityConflict', $result));
     }
 
+    public function test_inapp_406_same_student_from_contract_and_session_reads_as_one_entry(): void
+    {
+        $other = $this->detail('student_class');
+        $other['student_id'] = 8;
+        $other['student_name'] = '另一位';
+        $rows = [$this->detail('student_class'), $other, $this->detail('class_session')];
+
+        self::assertSame(
+            '測試學生（數學・9/1期）(16:00-18:00,固定課程＋課堂紀錄)；另一位（數學・9/1期）(16:00-18:00,固定課程)',
+            $this->invoke('buildOverlapSummary', $rows)
+        );
+    }
+
     private function detail(string $source): array
     {
         return ['source' => $source, 'source_id' => 12, 'student_id' => 7,

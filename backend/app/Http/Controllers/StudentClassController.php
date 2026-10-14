@@ -1801,7 +1801,18 @@ class StudentClassController extends Controller
                         'end_time' => $end,
                     ];
                 }
-                $recurringConflicts = $this->scheduleGuardService->validateRecurringCourse([
+                // An edit that keeps the teacher, class type, room and weekly slots and only
+                // narrows (or keeps) the active window adds no seat, so it cannot create an
+                // over-capacity state. Re-checking it would block billing-only edits such as
+                // switching to 月結 on a slot that is already full (in-app #406).
+                $oldRoomId = $studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null;
+                $oldClassType = (string) ($studentClass->getAttribute('ClassType') ?: 'one_on_one');
+                $addsNoLoad = $newTeacherId === $oldTeacherSnapshot
+                    && $newClassType === $oldClassType
+                    && $newRoomId === $oldRoomId
+                    && $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass) === $recurringSlots
+                    && $this->activeWindowWithin($studentClass, $candidate);
+                $recurringConflicts = $addsNoLoad ? [] : $this->scheduleGuardService->validateRecurringCourse([
                     'teacher_id' => $newTeacherId,
                     'class_type' => $newClassType,
                     'room_id' => $newRoomId,
@@ -5042,6 +5053,47 @@ class StudentClassController extends Controller
             'future_session_count' => $futureSessionCount,
         ];
     }
+    /**
+     * Weekly slots in the same shape update() hands the recurring guard.
+     *
+     * @param  array<int, mixed>  $slots
+     * @return array<int, array{day_of_week: int, start_time: string, end_time: string}>
+     */
+    private function recurringSlotsFor(array $slots, StudentClass $course): array
+    {
+        $recurring = [];
+        foreach ($slots as $slot) {
+            $weekday = (int) data_get($slot, 'weekday', 0);
+            $start = substr((string) data_get($slot, 'time', ''), 0, 5);
+            $duration = max(30, (int) data_get($slot, 'duration_minutes', $course->getAttribute('SessionDuration') ?: 120));
+            if ($weekday < 1 || $weekday > 7 || $start === '') {
+                continue;
+            }
+            $recurring[] = [
+                'day_of_week' => $weekday,
+                'start_time' => $start,
+                'end_time' => Carbon::createFromFormat('H:i', $start)->addMinutes($duration)->format('H:i'),
+            ];
+        }
+
+        return $recurring;
+    }
+
+    /** True when the candidate's active window starts no earlier and ends no later than the stored one. */
+    private function activeWindowWithin(StudentClass $old, StudentClass $candidate): bool
+    {
+        $endOf = static fn (StudentClass $c): ?string => $c->getAttribute('ScheduleMode') === 'date'
+            ? ContractSessionSchedule::normalizeDateString($c->getAttribute('EndDate'))
+            : null;
+        $oldStart = ContractSessionSchedule::normalizeDateString($old->getAttribute('StartDate'));
+        $newStart = ContractSessionSchedule::normalizeDateString($candidate->getAttribute('StartDate'));
+        $oldEnd = $endOf($old);
+        $newEnd = $endOf($candidate);
+
+        return ($oldStart === null || ($newStart !== null && $newStart >= $oldStart))
+            && ($oldEnd === null || ($newEnd !== null && $newEnd <= $oldEnd));
+    }
+
     /** 轉課 slot/teacher conflicts for the new contract (source's own slots excluded). */
     private function transferScheduleConflicts(StudentClass $source, array $plan): array
     {
