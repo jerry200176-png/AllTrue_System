@@ -94,7 +94,7 @@ describe('ContractCard', () => {
     authedFetch.mockResolvedValue(respond(COVERAGE));
     const w = mount(ContractCard, { props: { course: { id: 9 }, pendingReport: { report_id: 7, amount: 8000, date: '2026-10-05' } } });
     await flushPromises();
-    expect(w.text()).toContain('家長說 10/5 繳了 NT$ 8,000，等你確認');
+    expect(w.text()).toContain('家長回報 10/5 已付 NT$ 8,000，待你核對入帳');
   });
 
   it('saves a memo-only PUT and shows the new memo', async () => {
@@ -190,7 +190,7 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
     const w = mount(ContractCard, { props: { course: { id: 9 }, outstanding: 3000, pendingReport: { report_id: 77, amount: 1000 } }, attachTo: document.body });
     await flushPromises();
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
-    expect(w.text()).toContain('家長說繳了 NT$ 1,000，等你確認');
+    expect(w.text()).toContain('家長回報已付 NT$ 1,000，待你核對入帳');
     await w.find('[data-testid="contract-confirm"]').trigger('click');
     await flushPromises();
     // nothing is booked until the dialog is accepted; 取消 holds the focus
@@ -482,7 +482,7 @@ describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
     w.unmount(); vi.unstubAllGlobals();
   });
 
-  it('shows 已收 / 等你確認 receipts by default and folds rejected, voided and 0 元 under 其他紀錄', async () => {
+  it('shows 已收 / 待核對入帳 receipts by default and folds rejected, voided and 0 元 under 其他紀錄', async () => {
     const r = (id, status, amount) => ({ report_id: id, student_class_id: 2, status, amount, payment_date: '2026-10-01', payment_method: 'cash', receipt_no: `RCPT-${id}` });
     const { w } = await mountLedger({
       student: { id: 1, name: '王小明' }, summary: {}, scope: {}, anomalies: [], courses: [], invoices: [],

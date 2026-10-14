@@ -104,7 +104,7 @@ const visible = computed(() => {
 // Status lozenges use the one §0.2 wording; text is always shown, never colour alone.
 const badges = (r) => {
   const out = [];
-  if (r.waiting_confirm > 0) out.push({ tone: 'warning', label: '家長說繳了，等你確認' });
+  if (r.waiting_confirm > 0) out.push({ tone: 'warning', label: '已回報付款，待你核對入帳' });
   if (r.owed_now > 0) out.push({ tone: 'danger', label: '未繳' });
   else if (r.owed_later > 0 && !out.length) out.push({ tone: 'neutral', label: '還沒到期' });
   else if (!out.length) out.push({ tone: 'success', label: '已收' });

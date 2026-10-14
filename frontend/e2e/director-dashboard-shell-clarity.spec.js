@@ -209,8 +209,8 @@ for (const viewport of [VIEWPORTS[0], VIEWPORTS[4]]) {
     const navigationCases = [
       { student: '合成應收學生', tab: '未繳／繳了一部分' },
       { student: '合成部分入帳學生', tab: '未繳／繳了一部分' },
-      { student: '合成已回報學生', tab: '等你確認' },
-      { student: '合成結案待查學生', tab: '等你確認收款' },
+      { student: '合成已回報學生', tab: '待核對入帳' },
+      { student: '合成結案待查學生', tab: '課已結束，尚未收款' },
       { student: '合成續課學生', tab: '續課/將到期' },
     ];
 
