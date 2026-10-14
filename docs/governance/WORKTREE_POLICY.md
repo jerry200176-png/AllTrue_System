@@ -38,8 +38,9 @@ make production-identity
 ```
 
 The local task-path allowlist, `scripts/check-agent-provenance.sh` and the
-"Agent Session Provenance" required check were retired by Founder
-2026-10-14（三）#6. `.agent-session/manifest.json` (still written by a legacy
+"Agent Session Provenance" check were retired by Founder 2026-10-14（三）#6.
+The main ruleset still lists that context, so `agent-provenance.yml` stays as a
+pass-through job with the same name until the ruleset drops it. `.agent-session/manifest.json` (still written by a legacy
 local `agent-start`) stays git-ignored and is not delivery evidence; the PR's
 diff, risk declaration, review, and required CI are.
 

@@ -1,0 +1,41 @@
+name: Agent Session Provenance
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "land-queue: PR number whose head this run checks (guarded: head must equal github.sha, base main)"
+        required: false
+        default: ""
+
+concurrency:
+  group: agent-provenance-${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  provenance:
+    # Retired (Founder 2026-10-14（三）#6): the manifest check is gone. This job keeps
+    # the context name only because the main ruleset still requires it; delete the
+    # workflow once the ruleset drops "Agent Session Provenance" (see #4083).
+    name: Agent Session Provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: PR dispatch guard (fail closed)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          read -r head base state < <(gh api "/repos/$REPO/pulls/$PR_NUMBER" --jq '[.head.sha,.base.ref,.state]|join(" ")')
+          [ "$head" = "$GITHUB_SHA" ] && [ "$base" = main ] && [ "$state" = open ] \
+            || { echo "::error::pr_number $PR_NUMBER is not an open PR to main with head $GITHUB_SHA"; exit 1; }
+      - name: Retired check
+        run: echo "Agent Session Provenance is retired; nothing to verify."

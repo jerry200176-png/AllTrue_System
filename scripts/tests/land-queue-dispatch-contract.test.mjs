@@ -17,6 +17,7 @@ const jobNames = {
   'ci.yml': ['Control Plane Contract Lint', 'Golden scenarios report', 'PHPUnit Feature & Unit Tests', 'Vite Frontend Build'],
   'docs-integrity.yml': ['Docs Integrity Check'],
   'secret-scan.yml': ['gitleaks scan'],
+  'agent-provenance.yml': ['Agent Session Provenance'],
 };
 
 test('queue dispatches exactly the workflows covered here and passes pr_number', () => {
@@ -58,18 +59,9 @@ test('batch-only workflows keep their required job name and are dispatchable wit
 test('every context the batch must prove is produced by a dispatched workflow', () => {
   const produced = new Set([...Object.values(jobNames).flat(), ...Object.values(batchOnly)]);
   // the live main ruleset's required contexts at the time of writing
-  // (Agent Session Provenance dropped 2026-10-14)
-  for (const c of ['Presubmit Checks', 'PHPStan Advisory (php)', 'PHPUnit Feature & Unit Tests', 'Vite Frontend Build', 'Docs Integrity Check', 'gitleaks scan', 'Golden scenarios report', 'Control Plane Contract Lint']) {
+  for (const c of ['Presubmit Checks', 'PHPStan Advisory (php)', 'PHPUnit Feature & Unit Tests', 'Vite Frontend Build', 'Docs Integrity Check', 'gitleaks scan', 'Golden scenarios report', 'Control Plane Contract Lint', 'Agent Session Provenance']) {
     assert.ok(produced.has(c), `no dispatched workflow produces ${c}`);
   }
-});
-
-test('retired Agent Session Provenance is neither dispatched nor awaited', () => {
-  // Founder 2026-10-14（三）#6: the workflow is deleted; the main ruleset must drop the
-  // context before this lands, or every PR waits on a check nobody produces.
-  assert.ok(!fs.existsSync(path.join(root, '.github/workflows/agent-provenance.yml')));
-  assert.doesNotMatch(queue, /agent-provenance/);
-  assert.doesNotMatch(read('.github/workflows/land-queue.yml'), /Agent Session Provenance/);
 });
 
 test('queue never uses --admin and lands a batch only from the green verdict', () => {
@@ -137,4 +129,12 @@ test('every squash goes through guardedSquash (fresh thread re-read right before
   assert.equal([...queue.matchAll(/\bsquash\(/g)].length, 0, 'call squash only via guardedSquash(n, sha, unresolvedThreads, squash)');
   const guarded = [...queue.matchAll(/guardedSquash\([^)]*unresolvedThreads, squash\)/g)].length;
   assert.equal(guarded, 2, 'serial path (processQueue) and batch path (landBatch) both re-check threads');
+});
+
+test('retired Agent Session Provenance stays a pass-through until the ruleset drops it', () => {
+  // Founder 2026-10-14（三）#6 retired the manifest check, but the main ruleset still
+  // requires the context, so the job must keep its name and must not run the deleted script.
+  const wf = read('.github/workflows/agent-provenance.yml');
+  assert.match(wf, /name: Agent Session Provenance/);
+  assert.doesNotMatch(wf, /check-agent-provenance|\bif: github\.event\.pull_request\.user/);
 });

@@ -221,7 +221,7 @@ function reject(n, sha, d) {
 // GITHUB_TOKEN pushes (update-branch) do not fire pull_request workflows, so a fresh
 // head has no checks. Dispatch the required-check workflows on the PR branch once;
 // each guards that pr_number's head equals the dispatched SHA and its base is main.
-const CHECK_WORKFLOWS = ['ci.yml', 'presubmit.yml', 'docs-integrity.yml', 'secret-scan.yml'];
+const CHECK_WORKFLOWS = ['ci.yml', 'presubmit.yml', 'docs-integrity.yml', 'secret-scan.yml', 'agent-provenance.yml'];
 // Required check "PHPStan Advisory (php)" comes from Security Scan, which takes no pr_number
 // (PRs run it natively), so only batch branches dispatch it.
 const BATCH_ONLY_WORKFLOWS = ['codeql.yml'];
