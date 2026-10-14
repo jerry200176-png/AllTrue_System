@@ -68,16 +68,36 @@ plaintext is shown once and expires after `config/triage_tokens.php` `ttl_days`
 production host. The token reads live data, so the 15-minute dump freshness gate
 does not apply to it; the dumps above stay the fallback when no token is set.
 
+Run each block as one shell call. It keeps the token out of argv and `ps`
+(`printf` is a bash builtin; curl reads the header from a 0600 config via `-K`),
+writes report data only inside a private `mktemp -d` directory, and exits
+non-zero when any page fetch fails.
+
 ```bash
-H="Authorization: Bearer $ALLTRUE_TRIAGE_TOKEN"; B=https://daan.lifenet.com.tw/api/v1/triage
-# Full live snapshot = open AND resolved (reporter-confirmation queue). Page each until data is empty.
-for S in new,triaged,in_progress resolved; do N=0; while :; do
-  P=$(curl -sf -H "$H" "$B/bug-reports?status=$S&since_id=$N&limit=100") || { echo "INCOMPLETE: fetch failed" >&2; break 2; }
-  [ "$(echo "$P" | jq '.data|length')" = 0 ] && break
-  echo "$P" | jq -c '.data[]'; N=$(echo "$P" | jq '.next_since_id'); done; done > /tmp/live-queue.jsonl
-jq -r .status /tmp/live-queue.jsonl | sort | uniq -c   # per-status counts (resolved may legitimately be 0)
-curl -sf -H "$H" "$B/bug-reports/<id>"          # description, comments (incl. internal notes), status logs, attachments[].download_path
-curl -sf -H "$H" -o /tmp/a.png "$B/bug-reports/<id>/attachments/<attachment_id>"
+( set -euo pipefail; umask 077
+  T=$(mktemp -d); trap 'rm -rf "$T"' EXIT   # 0700 dir, deleted when the block ends
+  printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"
+  B=https://daan.lifenet.com.tw/api/v1/triage
+  # Full live snapshot = open AND resolved (reporter-confirmation queue). Page each until data is empty.
+  for S in new,triaged,in_progress resolved; do N=0; while :; do
+    P=$(curl -sf -K "$T/auth.cfg" "$B/bug-reports?status=$S&since_id=$N&limit=100") || { echo "INCOMPLETE: fetch failed ($S since_id=$N)" >&2; exit 1; }
+    L=$(jq -e '.data|length' <<<"$P") || { echo "INCOMPLETE: malformed page ($S since_id=$N)" >&2; exit 1; }
+    [ "$L" = 0 ] && break
+    jq -c '.data[]' <<<"$P"; N=$(jq '.next_since_id' <<<"$P"); done; done > "$T/live-queue.jsonl"
+  jq -r .status "$T/live-queue.jsonl" | sort | uniq -c   # per-status counts, only after both groups paged to empty (resolved may legitimately be 0)
+  # description, comments (incl. internal notes), status logs, attachments[].download_path:
+  curl -sf -K "$T/auth.cfg" "$B/bug-reports/<id>"
+)
+```
+
+An attachment has to outlive the shell call so you can open it, so it gets its
+own private directory that you delete yourself after viewing:
+
+```bash
+umask 077; D=$(mktemp -d)
+printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$D/auth.cfg"
+curl -sf -K "$D/auth.cfg" -o "$D/a.png" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/<id>/attachments/<attachment_id>"; rm -f "$D/auth.cfg"; echo "$D"
+# view "$D/a.png", then: rm -rf "$D"
 ```
 
 - **Completeness.** Only a run that pages both status groups to an empty page is a

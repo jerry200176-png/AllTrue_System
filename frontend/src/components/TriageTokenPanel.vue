@@ -25,9 +25,10 @@
 
     <form class="create-row" @submit.prevent="create">
       <label for="triage-token-name">金鑰名稱</label>
-      <input id="triage-token-name" v-model="name" type="text" maxlength="100" placeholder="例：Claude 雲端分診" data-testid="triage-token-name" />
-      <AtButton shape="rect" variant="primary" type="submit" :disabled="creating || !name.trim()" :loading="creating">建立金鑰</AtButton>
+      <input id="triage-token-name" v-model="name" type="text" maxlength="100" placeholder="例：Claude 雲端分診" :disabled="!!plaintext" data-testid="triage-token-name" />
+      <AtButton shape="rect" variant="primary" type="submit" :disabled="creating || !!plaintext || !name.trim()" :loading="creating" data-testid="triage-token-create">建立金鑰</AtButton>
     </form>
+    <p v-if="plaintext" class="muted" data-testid="triage-token-create-blocked">請先存好並關閉上面的金鑰，才能再建立新的。</p>
 
     <div v-if="tokens.length > 0" class="token-table-wrap" data-testid="triage-token-table-wrap">
       <table class="token-table">
@@ -82,6 +83,10 @@ const creating = ref(false);
 const confirmingId = ref(null);
 const revokingId = ref(null);
 const errorMsg = ref('');
+// Id of the token whose plaintext is on screen, so revoking it also clears the secret.
+const createdId = ref(null);
+// Only the newest list request may write `tokens` (a stale GET must not undo a post-mutation refresh).
+let loadSeq = 0;
 
 function formatDateTime(value) {
   if (!value) return '-';
@@ -90,30 +95,34 @@ function formatDateTime(value) {
 }
 
 async function load() {
+  const seq = ++loadSeq;
   loading.value = true;
   errorMsg.value = '';
   try {
     const res = await listTriageTokens(props.token);
-    tokens.value = Array.isArray(res?.data) ? res.data : [];
+    if (seq !== loadSeq) return;
+    tokens.value = res.data;
     listLoaded.value = true;
-    if (res?.ttl_days) ttlDays.value = res.ttl_days;
+    if (res.ttl_days != null) ttlDays.value = res.ttl_days;
   } catch (e) {
+    if (seq !== loadSeq) return;
     listLoaded.value = false;
     tokens.value = [];
     errorMsg.value = e.message || '讀取金鑰失敗';
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
 async function create() {
-  if (!name.value.trim()) return;
+  if (!name.value.trim() || plaintext.value) return;
   creating.value = true;
   emit('update:pending', true);
   errorMsg.value = '';
   try {
     const res = await createTriageToken(props.token, name.value.trim());
-    emit('update:secret', res?.token || '');
+    emit('update:secret', res.token);
+    createdId.value = res.record?.id ?? null;
     copied.value = false;
     name.value = '';
     await load();
@@ -136,6 +145,7 @@ async function copy() {
 
 function dismiss() {
   emit('update:secret', '');
+  createdId.value = null;
   copied.value = false;
 }
 
@@ -145,6 +155,7 @@ async function revoke(id) {
   try {
     await revokeTriageToken(props.token, id);
     confirmingId.value = null;
+    if (createdId.value != null && createdId.value === id) dismiss();
     await load();
   } catch (e) {
     errorMsg.value = e.message || '撤銷失敗';

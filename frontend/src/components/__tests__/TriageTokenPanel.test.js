@@ -112,4 +112,92 @@ describe('TriageTokenPanel', () => {
     await flushPromises();
     expect(w.get('[data-testid="triage-token-table-wrap"]').find('table').exists()).toBe(true);
   });
+  it('shows a ttl_days of 0 from the server instead of the 90-day default', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [], ttl_days: 0 }) })));
+    const w = mountPanel();
+    await flushPromises();
+    expect(w.text()).toContain('建立後 0 天自動失效');
+  });
+
+  it('blocks a second create until the shown secret is dismissed', async () => {
+    const calls = stubApi();
+    const w = mountPanel();
+    await flushPromises();
+    await w.get('[data-testid="triage-token-name"]').setValue('x');
+    await w.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(w.get('[data-testid="triage-token-create"]').attributes('disabled')).toBeDefined();
+    expect(w.get('[data-testid="triage-token-name"]').attributes('disabled')).toBeDefined();
+    expect(w.find('[data-testid="triage-token-create-blocked"]').exists()).toBe(true);
+    await w.get('form').trigger('submit');
+    await flushPromises();
+    expect(calls.filter((c) => c.startsWith('POST'))).toHaveLength(1);
+
+    await w.get('[data-testid="triage-token-dismiss"]').trigger('click');
+    await w.get('[data-testid="triage-token-name"]').setValue('y');
+    expect(w.get('[data-testid="triage-token-create"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('clears the on-screen secret when that same token is revoked', async () => {
+    stubApi();
+    const w = mountPanel();
+    await flushPromises();
+    await w.get('[data-testid="triage-token-name"]').setValue('x');
+    await w.get('form').trigger('submit');
+    await flushPromises();
+    expect(w.find('[data-testid="triage-token-secret"]').exists()).toBe(true);
+
+    await w.get('[data-testid="triage-token-revoke"]').trigger('click');
+    await w.get('[data-testid="triage-token-confirm"]').trigger('click');
+    await flushPromises();
+    expect(w.emitted('update:secret').at(-1)).toEqual(['']);
+    expect(w.html()).not.toContain('alltrue_triage_SECRET');
+  });
+
+  it('drops a stale list response that finishes after the post-create refresh', async () => {
+    let releaseFirst;
+    let getCount = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url, init = {}) => {
+      const method = init.method || 'GET';
+      if (method === 'POST') return { ok: true, status: 201, json: async () => ({ token: '7|alltrue_triage_SECRET', record: row }) };
+      getCount += 1;
+      if (getCount === 1) {
+        await new Promise((r) => { releaseFirst = r; });
+        return { ok: true, status: 200, json: async () => ({ data: [], ttl_days: 90 }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ data: [row], ttl_days: 90 }) };
+    }));
+    const w = mountPanel();
+    await flushPromises();
+    await w.get('[data-testid="triage-token-name"]').setValue('x');
+    await w.get('form').trigger('submit');
+    await flushPromises();
+    expect(w.findAll('[data-testid="triage-token-row"]')).toHaveLength(1);
+
+    releaseFirst();
+    await flushPromises();
+    expect(w.findAll('[data-testid="triage-token-row"]')).toHaveLength(1);
+  });
+
+  it('treats a 2xx create without a token as an error and emits no secret', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url, init = {}) => (init.method === 'POST'
+      ? { ok: true, status: 201, json: async () => { throw new SyntaxError('bad json'); } }
+      : { ok: true, status: 200, json: async () => ({ data: [], ttl_days: 90 }) })));
+    const w = mountPanel();
+    await flushPromises();
+    await w.get('[data-testid="triage-token-name"]').setValue('x');
+    await w.get('form').trigger('submit');
+    await flushPromises();
+    expect(w.emitted('update:secret')).toBeUndefined();
+    expect(w.text()).toContain('伺服器回應格式錯誤');
+  });
+
+  it('treats a 2xx list without a data array as an error, not an empty inventory', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ttl_days: 90 }) })));
+    const w = mountPanel();
+    await flushPromises();
+    expect(w.text()).toContain('伺服器回應格式錯誤');
+    expect(w.find('[data-testid="triage-token-empty"]').exists()).toBe(false);
+  });
 });
