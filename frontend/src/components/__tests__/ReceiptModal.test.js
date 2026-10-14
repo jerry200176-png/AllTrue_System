@@ -203,6 +203,25 @@ describe('ReceiptModal payment-reports contract', () => {
     opener.remove();
   });
 
+  it('falls back to returnFocusTo when the opener was removed while the receipt was open', async () => {
+    global.fetch.mockResolvedValue(ok(SAMPLE));
+    const ledger = document.createElement('div');
+    ledger.tabIndex = -1;
+    const card = document.createElement('button');
+    document.body.append(ledger, card);
+    card.focus();
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 456, returnFocusTo: ledger }, attachTo: document.body });
+    await tick();
+    card.remove(); // the ledger reloads and redraws its cards after 確認入帳
+    await wrapper.setProps({ show: false });
+    await nextTick();
+    expect(document.activeElement).toBe(ledger);
+
+    wrapper.unmount();
+    ledger.remove();
+  });
+
   it('loads only GET /api/v1/payment-reports/{id}/receipt', async () => {
     global.fetch.mockResolvedValueOnce(ok(SAMPLE));
     mount(ReceiptModal, { props: { show: true, reportId: 456 } });

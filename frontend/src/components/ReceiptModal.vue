@@ -107,6 +107,9 @@ import BillingDocument from './BillingDocument.vue';
 
 const props = defineProps({
   show: Boolean,
+  // Where focus goes on close when the element that opened the receipt is gone
+  // (the ledger reloads its cards right after 確認入帳, #398/#405).
+  returnFocusTo: { type: Object, default: null },
   reportId: { type: Number, default: null },
   // Optional dismiss label for a receipt opened right after 確認入帳 (e.g. 稍後再開); the receipt stays in 收款紀錄.
   laterLabel: { type: String, default: '' },
@@ -254,8 +257,9 @@ watch(() => props.show, (visible) => {
     nextTick(() => panelRef.value?.focus());
     return;
   }
-  const target = returnFocusEl;
+  const opener = returnFocusEl;
   returnFocusEl = null;
+  const target = opener && opener.isConnected ? opener : props.returnFocusTo;
   if (target && target.isConnected && typeof target.focus === 'function') target.focus();
 }, { immediate: true });
 

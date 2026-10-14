@@ -288,7 +288,7 @@
         </template>
       </AtDialog>
       <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" />
-      <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" later-label="稍後再開" @close="receiptOpen = false" />
+      <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" later-label="稍後再開" :return-focus-to="modalEl" @close="receiptOpen = false" />
     </div>
   </Transition>
 </template>
