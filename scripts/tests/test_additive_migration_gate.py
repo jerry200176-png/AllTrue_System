@@ -1,4 +1,4 @@
-"""Founder 2026-10-14 (三)④: additive-only migrations deploy as T2; destructive ones stay T3."""
+"""Founder 2026-10-14 (三)④ + 補充 #1: declared additive-only migrations merge as T2; others stay T3."""
 import sys
 import unittest
 from pathlib import Path
@@ -8,7 +8,8 @@ from unittest import mock  # noqa: E402
 
 import scripts.governance.autonomy_gate as gate  # noqa: E402
 from scripts.governance.autonomy_gate import (  # noqa: E402
-    additive_migration_paths, classify_activation_scope, classify_scope,
+    additive_migration_paths, classify_activation_scope, classify_scope, declares_additive_migration,
+    validate_declaration,
 )
 
 MIG = "backend/database/migrations/2026_10_14_000000_x.php"
@@ -35,8 +36,8 @@ CREATE = migration("Schema::create('notes', function (Blueprint $t) { $t->id(); 
 
 class AdditiveMigrationGate(unittest.TestCase):
     def tiers(self, patch, paths=(MIG,)):
-        return classify_scope(list(paths), patch)["machine_minimum_tier"], \
-            classify_activation_scope(list(paths), patch)["machine_minimum_tier"]
+        return classify_scope(list(paths), patch, True)["machine_minimum_tier"], \
+            classify_activation_scope(list(paths), patch, True)["machine_minimum_tier"]
 
     def test_add_column_and_create_table_are_t2(self):
         for body in (ADD, CREATE):
@@ -231,22 +232,44 @@ class AdditiveMigrationGate(unittest.TestCase):
         up = 'Schema::table(\'t\', fn (Blueprint $t) => $t->string("\\x61")->nullable());'
         self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set())
 
-    def test_protected_domain_schema_stays_t3(self):
+    def test_identity_and_billing_tables_stay_t3(self):
         for up in (
             "Schema::create('auth_tokens', function (Blueprint $t) { $t->id(); });",
             "Schema::table('permissions', fn (Blueprint $t) => $t->string('scope')->nullable());",
-            "Schema::table('invoices', fn (Blueprint $t) => $t->string('ledger_ref')->nullable());",
-            "Schema::table('t', fn (Blueprint $t) => $t->string('payment_note')->nullable());",
+            "Schema::table('Invoice', fn (Blueprint $t) => $t->string('note')->nullable());",
+            "Schema::table('StudentClass', fn (Blueprint $t) => $t->string('memo')->nullable());",
             "Schema::create('roles', function (Blueprint $t) { $t->id(); });",
-            "Schema::table('users', fn (Blueprint $t) => $t->boolean('is_super_admin')->nullable());",
+            "Schema::table('User', fn (Blueprint $t) => $t->boolean('is_super_admin')->nullable());",
             "Schema::create('student_guardians', function (Blueprint $t) { $t->id(); });",
-            "Schema::table('rfid_cards', fn (Blueprint $t) => $t->string('tag')->nullable());",
-            "Schema::table('line_webhook_events', fn (Blueprint $t) => $t->text('payload')->nullable());",
-            "Schema::table('medical_records', fn (Blueprint $t) => $t->string('national_id')->nullable());",
+            "Schema::table('payroll_runs', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('session_deduction_ledger', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "if (Schema::hasTable('Payment')) { return; } Schema::create('notes', function (Blueprint $t) { $t->id(); });",
         ):
             patch = new_file(MIG, migration(up))
             self.assertEqual(additive_migration_paths([MIG], patch), set(), up)
             self.assertEqual(self.tiers(patch), (3, 3), up)
+
+    def test_column_vocabulary_on_a_neutral_table_is_left_to_review(self):
+        up = "Schema::table('rooms', fn (Blueprint $t) => $t->string('payment_note')->nullable());"
+        self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), {MIG})
+
+    def test_declaration_is_required(self):
+        patch = new_file(MIG, ADD)
+        self.assertEqual(classify_scope([MIG], patch)["machine_minimum_tier"], 3)
+        self.assertEqual(classify_activation_scope([MIG], patch)["machine_minimum_tier"], 3)
+        with mock.patch.object(gate, "ADDITIVE_MIGRATION_AUTO_ACTIVATION", True):
+            # Activation also needs the caller's Codex confirmation, not only the declaration.
+            self.assertEqual(classify_activation_scope([MIG], patch)["machine_minimum_tier"], 3)
+        body = "Risk-Class: R2\nAutonomy-Tier: T2\n"
+        self.assertFalse(validate_declaration(body, [MIG], patch)["valid"])
+        self.assertTrue(validate_declaration(body + "Additive-Migration: yes\n", [MIG], patch)["valid"])
+
+    def test_declaration_must_be_its_own_line(self):
+        self.assertTrue(declares_additive_migration("x\nAdditive-Migration: yes\ny"))
+        self.assertTrue(declares_additive_migration("additive-migration: YES"))
+        for body in ("", "Additive-Migration: no", "Additive-Migration: yes please",
+                     "<!-- Additive-Migration: yes -->", "`Additive-Migration: yes`"):
+            self.assertFalse(declares_additive_migration(body), body)
 
     def test_bare_identifier_shadowing_a_literal_token_stays_t3(self):
         up = "Schema::table('t', fn (Blueprint $t) => $t->string(S0)->nullable());"

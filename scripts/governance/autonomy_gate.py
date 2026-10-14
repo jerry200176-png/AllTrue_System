@@ -260,17 +260,29 @@ _MAX_GUARDED_SENSITIVE_LINES = 240
 
 
 _MIGRATION_PREFIX = "backend/database/migrations/"
-# A denylist can never be complete, so it errs wide: any of these substrings in
-# an additive migration (names included) keeps the Founder gate. Activation of
-# additive migrations additionally stays off (ADDITIVE_MIGRATION_AUTO_ACTIVATION).
-_ADDITIVE_PROTECTED_MARKERS = (
-    "role", "admin", "guardian", "parent", "user", "account", "login", "session", "oauth",
-    "scope", "grant", "acl", "policy", "privilege", "access", "consent", "ledger", "refund",
-    "charge", "pric", "amount", "fee", "tuition", "salary", "payroll", "deduct", "contract", "personal", "phone",
-    "email", "address", "birth", "line_user", "national", "identity", "id_number", "passport", "medical",
-    "health", "bank", "card", "rfid", "swipe", "alert", "repair", "webhook", "cron", "schedule",
-    "attendance", "classsession", "class_session",
+# Founder 2026-10-14（三）補充 #1: identity/authz and billing tables never take the
+# additive path, whatever the change (matched on every table the file names).
+# The author's `Additive-Migration: yes` declaration and Codex's confirmation on
+# the final head carry the rest of the judgement; this list is not meant to be
+# a complete vocabulary of sensitive data.
+_ADDITIVE_EXCLUDED_TABLE_RE = re.compile(
+    r"user|role|permission|capabilit|auth|token|password|login|guardian|identity|parent|binding|"
+    r"apiclient|api_client|security|grant|teacher|"
+    r"invoice|payment|payroll|salary|billing|ledger|charge|pric|deduct|entitlement|refund|bank|"
+    r"accounting|dunning|rate_card|package|contract|tuition|fee|cash|allowance|coverage|correction|"
+    r"studentclass|student_class",
+    re.IGNORECASE,
 )
+_SCHEMA_TABLE_ARG_RE = re.compile(r"Schema\s*::\s*\w+\s*\(\s*S(\d+)", re.IGNORECASE)
+_ADDITIVE_DECLARATION_RE = re.compile(r"^\s*Additive-Migration:\s*yes\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def declares_additive_migration(body: str) -> bool:
+    """The PR author's explicit opt-in (Founder 2026-10-14（三）補充 #1)."""
+
+    return bool(_ADDITIVE_DECLARATION_RE.search(body or ""))
+
+
 # Founder 2026-10-14 (三)④: a migration that only adds tables/columns/plain
 # indexes deploys like other reversible T2 work (expand/contract). This is an
 # allowlist: the file is lexed (strings become S, comments vanish), down() is
@@ -555,6 +567,9 @@ def _migration_body_is_additive(source: str) -> bool:
     # An escaped literal may decode to any name: refuse instead of guessing.
     if "\0" in literals:
         return False
+    tables = [literals[int(i)] for i in _SCHEMA_TABLE_ARG_RE.findall(code)]
+    if any(_ADDITIVE_EXCLUDED_TABLE_RE.search(table) for table in tables):
+        return False
     # Any guard in up() can skip an addition it does not name, so a guarded
     # up() may not be rolled back by dropping anything (down() must be empty).
     guarded = re.search(_SCHEMA_COND, code, re.IGNORECASE) is not None
@@ -615,16 +630,6 @@ def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
             return set()
         source = "\n".join(line[1:] for line in content)
         if not _migration_body_is_additive(source):
-            return set()
-        # Auth/billing/identity schema stays behind its protected boundary: the
-        # generic "migration" marker is the only one an additive file may carry.
-        # Raw source, so table/column names count (a comment hit fails closed).
-        haystack = (path + "\n" + source).lower()
-        # Every vocabulary the classifier already protects, plus the list above.
-        protected = [m for m in _T3_MARKERS if m != "migration"] + list(_T2_MARKERS) + list(
-            _ADDITIVE_PROTECTED_MARKERS
-        ) + list(_ACTIVATION_T3_PATH_TERMS)
-        if any(marker in haystack for marker in protected):
             return set()
         additive.add(path)
     return additive if additive == candidates else set()
@@ -872,11 +877,17 @@ def has_rollback_evidence(body: str) -> bool:
     return value not in {"", "n/a", "na", "none", "tbd", "todo", "___", "..."}
 
 
-def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
-    """Derive the minimum safe tier from paths and diff text, including production UI smoke controls."""
+def classify_scope(
+    paths: Iterable[str], patch: str = "", additive_declared: bool = False
+) -> dict[str, object]:
+    """Derive the minimum safe tier from paths and diff text, including production UI smoke controls.
+
+    New migrations count as additive only when the PR body opts in
+    (``declares_additive_migration``); otherwise they stay T3.
+    """
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
-    additive = additive_migration_paths(normalized, patch)
+    additive = additive_migration_paths(normalized, patch) if additive_declared else set()
     if is_readonly_probe_only(normalized, patch):
         return {
             "machine_minimum_tier": 2,
@@ -952,7 +963,9 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     }
 
 
-def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
+def classify_activation_scope(
+    paths: Iterable[str], patch: str = "", additive_confirmed: bool = False
+) -> dict[str, object]:
     """Classify activation by effect, boundedness, and reversible evidence.
 
     ``classify_scope`` remains the conservative merge classifier. This
@@ -963,7 +976,12 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     """
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
-    additive = additive_migration_paths(normalized, patch) if ADDITIVE_MIGRATION_AUTO_ACTIVATION else set()
+    # additive_confirmed: the PR declared Additive-Migration: yes and Codex
+    # confirmed the final head (checked by the caller, Founder 2026-10-14（三）補充 #1).
+    additive = (
+        additive_migration_paths(normalized, patch)
+        if ADDITIVE_MIGRATION_AUTO_ACTIVATION and additive_confirmed else set()
+    )
     runtime_paths = [path for path in normalized if is_deployable_path(path)]
     sensitive_paths = [
         path for path in normalized
@@ -1923,14 +1941,16 @@ def effective_tier(
     return max(machine_minimum_tier, declared_tier), None
 
 
-def machine_declaration(paths: Iterable[str], patch: str = "") -> dict[str, object]:
+def machine_declaration(
+    paths: Iterable[str], patch: str = "", additive_declared: bool = False
+) -> dict[str, object]:
     """Return the declaration generated from the actual changed scope.
 
     This is an authoring aid, not an authority override: callers must still
     validate the submitted declaration with :func:`validate_declaration`.
     """
 
-    scope = classify_scope(paths, patch)
+    scope = classify_scope(paths, patch, additive_declared)
     minimum = int(scope["machine_minimum_tier"])
     return {
         "risk_class": f"R{minimum}",
@@ -1945,7 +1965,7 @@ def validate_declaration(
 ) -> dict[str, object]:
     """Validate a PR declaration against an independently classified scope."""
 
-    generated = machine_declaration(paths, patch)
+    generated = machine_declaration(paths, patch, declares_additive_migration(body))
     declared_risk, declared_tier = parse_declaration(body)
     effective, error = effective_tier(
         int(generated["machine_minimum_tier"]), declared_risk, declared_tier
@@ -1966,6 +1986,7 @@ __all__ = [
     "aggregate_landed_pr_effects",
     "reconcile_preexisting_pr_provenance",
     "classify_scope",
+    "declares_additive_migration",
     "decide_activation",
     "decide_manual_activation",
     "is_founder_approval_eligible",
