@@ -528,12 +528,16 @@ class CourseLeaveCascadeService
             $weekdays = [(int) Carbon::parse($normalizedLeaveDate)->dayOfWeekIso];
         }
         $occupiedDates = [];
+        $liveDates = [$normalizedLeaveDate => true];
         $billable = 0;
         foreach ($sessionRows as $row) {
             $id = isset($row['id']) ? (int) $row['id'] : 0;
             $date = Carbon::parse((string) $row['date'])->toDateString();
             $status = strtolower((string) ($row['status'] ?? ''));
             $occupiedDates[$date] = true;
+            if ($status !== 'cancelled') {
+                $liveDates[$date] = true;
+            }
             $isLeaveTarget = ($leaveSessionId && $id === $leaveSessionId)
                 || (!$leaveSessionId && $date === $normalizedLeaveDate);
             if ($isLeaveTarget) {
@@ -550,9 +554,13 @@ class CourseLeaveCascadeService
         if ($needsAppend) {
             $appendCount = 1;
             $latest = self::maxDateKey($occupiedDates) ?: $normalizedLeaveDate;
-            $append = self::sharedTailDate($sessionRows, $normalizedLeaveDate, $weekdays, $leaveSessionId, $contractSlots)
-                ?? self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $weekdays, $occupiedDates);
+            $shared = self::sharedTailDate($sessionRows, $normalizedLeaveDate, $weekdays, $leaveSessionId, $contractSlots);
+            $append = $shared ?? self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $weekdays, $occupiedDates);
             $occupiedDates[$append] = true;
+            if ($shared !== null) {
+                // #4052 review: sharedTailDate() ignores cancelled rows, so EndDate does too (never past the last live lesson).
+                $occupiedDates = $liveDates + [$append => true];
+            }
         }
         return [
             'moves' => [],

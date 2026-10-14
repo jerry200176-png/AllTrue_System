@@ -238,6 +238,15 @@ class LeaveCascadeSameDateLessonsTest extends TestCase
         }));
     }
 
+    /** #4052 review: a cancelled row after the last live lesson neither moves the tails nor pushes EndDate past them. */
+    public function test_a_later_cancelled_row_does_not_push_end_date(): void
+    {
+        $this->assertSame([['2026-07-22', '17:00'], ['2026-07-22', '19:30'], '2026-07-22'], $this->leaveInBothOrders(function (int $courseId): void {
+            DB::table('ClassSession')->insert(['StudentClassID' => $courseId, 'SessionDate' => '2026-07-29', 'StartTime' => '17:00:00',
+                'EndTime' => '19:00:00', 'Status' => 'cancelled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+        }));
+    }
+
     /** #4047: a confirmed makeup (exception workflow) at a contract time is not a contract lesson, so it never anchors a tail. */
     public function test_a_lone_makeup_at_a_contract_time_is_not_reused(): void
     {
