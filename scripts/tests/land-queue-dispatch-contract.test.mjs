@@ -57,7 +57,8 @@ test('batch-only workflows keep their required job name and are dispatchable wit
 
 test('every context the batch must prove is produced by a dispatched workflow', () => {
   const produced = new Set([...Object.values(jobNames).flat(), ...Object.values(batchOnly)]);
-  // the live main ruleset's required contexts (after Agent Session Provenance was dropped, 2026-10-14)
+  // the live main ruleset's required contexts at the time of writing
+  // (Agent Session Provenance dropped 2026-10-14)
   for (const c of ['Presubmit Checks', 'PHPStan Advisory (php)', 'PHPUnit Feature & Unit Tests', 'Vite Frontend Build', 'Docs Integrity Check', 'gitleaks scan', 'Golden scenarios report', 'Control Plane Contract Lint']) {
     assert.ok(produced.has(c), `no dispatched workflow produces ${c}`);
   }
