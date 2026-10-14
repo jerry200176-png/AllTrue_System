@@ -4153,7 +4153,8 @@ class StudentClassController extends Controller
                 $activeSessionCount = (int) ClassSession::where('StudentClassID', $classId)
                     ->where('Status', '!=', 'cancelled')
                     ->count();
-                if (!$packageHasCapacity && $studentClass && $packageId > 0) {
+                // Only set false above when the course belongs to a package.
+                if (!$packageHasCapacity) {
                     return [
                     'conflict_type' => 'full_capacity',
                         'error_code' => 'SESSIONS_FULL',
