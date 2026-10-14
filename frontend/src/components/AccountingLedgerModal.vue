@@ -88,6 +88,7 @@
                 :bill-draft="draftFor(c.id)"
                 @record="openEntry"
                 @issue="openIssue"
+                @confirmed="openReceipt"
                 @changed="onPanelChanged"
               />
             </div>
@@ -287,6 +288,7 @@
         </template>
       </AtDialog>
       <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" />
+      <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" later-label="稍後再開" @close="receiptOpen = false" />
     </div>
   </Transition>
 </template>
@@ -307,6 +309,7 @@ import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REAS
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
+import ReceiptModal from './ReceiptModal.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
 import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
@@ -710,6 +713,15 @@ function openEntry(course) {
   };
   entryOpen.value = true;
 }
+// #398/#405: same step as the 待處理 queue — after 確認入帳 the receipt opens here; 稍後再開 keeps it in 收款紀錄.
+const receiptOpen = ref(false);
+const receiptReportId = ref(null);
+function openReceipt(reportId) {
+  receiptReportId.value = Number(reportId);
+  receiptOpen.value = true;
+}
+watch(() => [props.show, props.studentClassId, props.studentId], () => { receiptOpen.value = false; });
+
 async function onPanelChanged() {
   entryOpen.value = false;
   await loadLedger();

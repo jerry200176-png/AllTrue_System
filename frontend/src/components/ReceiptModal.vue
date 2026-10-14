@@ -72,6 +72,7 @@
             <span class="material-symbols-outlined">print</span>
             列印
           </button>
+          <button v-if="laterLabel" data-testid="receipt-later" class="ghost" type="button" @click="$emit('close')">{{ laterLabel }}</button>
           <span v-if="copyState === 'error'" class="receipt-copy-error" role="status">{{ copyError }}</span>
         </div>
       </template>
@@ -96,6 +97,8 @@ import BillingDocument from './BillingDocument.vue';
 const props = defineProps({
   show: Boolean,
   reportId: { type: Number, default: null },
+  // Optional dismiss label for a receipt opened right after 確認入帳 (e.g. 稍後再開); the receipt stays in 收款紀錄.
+  laterLabel: { type: String, default: '' },
 });
 defineEmits(['close']);
 

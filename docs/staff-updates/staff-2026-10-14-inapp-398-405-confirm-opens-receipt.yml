@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-14-inapp-398-405-confirm-opens-receipt
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 確認入帳後直接開收據
+    summary: 在學生帳務的合約卡確認入帳後，電子收據會直接打開。
+    items:
+      - category: improved
+        text: 合約卡按「確認入帳」後，電子收據直接在同一個畫面打開；按「稍後再開」也可以之後到「收款紀錄」再開。
+    source_refs:
+      - "changelog:2026-10-14:inapp-398-405-confirm-opens-receipt"
