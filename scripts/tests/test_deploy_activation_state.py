@@ -49,6 +49,16 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
 )
 
 
+def _run_block_expression_sizes(workflow_text):
+    # The same measurement the PR-time guard (Control Plane Contract Lint) runs over every workflow.
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("workflow_expression_size", ROOT / "scripts" / "ci" / "workflow_expression_size.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.run_block_expression_sizes(workflow_text)
+
+
 class DeployActivationPolicyTest(unittest.TestCase):
     @staticmethod
     def _landed_effect(number, commit_sha, paths, patch, risk=1, tier=1):
@@ -1223,7 +1233,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs: [resolve-target, detect-deployable, classify-activation, production-activation, production-auto]", self.workflow)
         self.assertIn("needs.classify-activation.outputs.mode == 'auto'", self.workflow)
         self.assertIn("needs.production-activation.result == 'success'", self.workflow)
-        self.assertIn('TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"', self.workflow)
+        self.assertIn('TARGET_SHA="$DEPLOY_TARGET_SHA"', self.workflow)
+        self.assertIn('DEPLOY_TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}', self.workflow)
 
     def test_protected_deploy_has_no_production_side_effect_before_same_run_approval(self):
         gate_start = self.workflow.index("  production-activation:\n")
@@ -1349,7 +1360,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
     def test_admissions_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
         self.assertIn("admissions_funnel_v1:", self.workflow)
         self.assertIn("default: unchanged", self.workflow)
-        self.assertIn('ADMISSIONS_FLAG_MODE="${{ inputs.admissions_funnel_v1 }}"', self.workflow)
+        self.assertIn('ADMISSIONS_FLAG_MODE="$DEPLOY_ADMISSIONS_FLAG_MODE"', self.workflow)
+        self.assertIn('DEPLOY_ADMISSIONS_FLAG_MODE: ${{ inputs.admissions_funnel_v1 }}', self.workflow)
         self.assertIn('apply_bool_feature_flag "$ADMISSIONS_FLAG_MODE" ADMISSIONS_FUNNEL_V1', self.workflow)
         self.assertIn("ADMISSIONS_FUNNEL_V1", self.workflow)
         self.assertIn("VITE_ADMISSIONS_FUNNEL_V1", self.workflow)
@@ -1361,7 +1373,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
     def test_course_session_calendar_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
         self.assertIn("course_session_calendar_v1:", self.workflow)
-        self.assertIn('CALENDAR_FLAG_MODE="${{ inputs.course_session_calendar_v1 }}"', self.workflow)
+        self.assertIn('CALENDAR_FLAG_MODE="$DEPLOY_CALENDAR_FLAG_MODE"', self.workflow)
+        self.assertIn('DEPLOY_CALENDAR_FLAG_MODE: ${{ inputs.course_session_calendar_v1 }}', self.workflow)
         self.assertIn('apply_bool_feature_flag "$CALENDAR_FLAG_MODE" COURSE_SESSION_CALENDAR_V1', self.workflow)
         self.assertIn("COURSE_SESSION_CALENDAR_V1=", self.workflow)
         self.assertIn("VITE_COURSE_SESSION_CALENDAR_V1", self.workflow)
@@ -1375,7 +1388,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
     def test_course_manager_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
         self.assertIn("course_manager_v1:", self.workflow)
-        self.assertIn('MANAGER_FLAG_MODE="${{ inputs.course_manager_v1 }}"', self.workflow)
+        self.assertIn('MANAGER_FLAG_MODE="$DEPLOY_MANAGER_FLAG_MODE"', self.workflow)
+        self.assertIn('DEPLOY_MANAGER_FLAG_MODE: ${{ inputs.course_manager_v1 }}', self.workflow)
         self.assertIn('apply_bool_feature_flag "$MANAGER_FLAG_MODE" COURSE_MANAGER_V1', self.workflow)
         self.assertIn("COURSE_MANAGER_V1=", self.workflow)
         self.assertIn("VITE_COURSE_MANAGER_V1", self.workflow)
@@ -1461,35 +1475,54 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
     def test_expression_bearing_run_scripts_stay_under_the_github_limit(self):
         # GitHub evaluates a run script that contains ${{ }} as one expression and rejects the whole
-        # workflow (a 0-job failed run) when it exceeds 21,000 UTF-8 bytes. Stdlib only: this test
-        # gates every deployment (contract-test job), which installs no Python packages.
-        lines = self.workflow.split("\n")
+        # workflow (a 0-job failed run) when it exceeds 21,000 UTF-8 bytes (#4051). Stdlib only: this
+        # test gates every deployment (contract-test job), which installs no Python packages.
+        # Every workflow is checked, not only deploy.yml: any of them can stop parsing this way.
         checked = 0
-        for i, line in enumerate(lines):
-            m = re.match(r"^(\s*)(?:- )?run: [|>][-+]?\s*$", line)
-            if not m:
-                continue
-            key_indent, body = len(m.group(1)), []
-            for nxt in lines[i + 1:]:
-                if nxt.strip() and len(nxt) - len(nxt.lstrip(" ")) <= key_indent:
-                    break
-                body.append(nxt)
-            indents = [len(x) - len(x.lstrip(" ")) for x in body if x.strip()]
-            script = "\n".join(x[min(indents):] for x in body) if indents else ""
-            if "${{" in script:
+        for path in sorted((ROOT / ".github" / "workflows").glob("*.y*ml")):
+            for line_no, size in _run_block_expression_sizes(path.read_text(encoding="utf-8")):
                 checked += 1
-                # Measure what GitHub evaluates: format('<template>', expr, ...), where the
-                # template doubles every ' { } and each ${{ }} becomes a {N} placeholder.
-                exprs = re.findall(r"\$\{\{(.*?)\}\}", script, re.S)
-                template = re.sub(r"\$\{\{.*?\}\}", "\0", script, flags=re.S)
-                template = template.replace("'", "''").replace("{", "{{").replace("}", "}}")
-                parts = template.split("\0")
-                template = "".join(p + (f"{{{n}}}" if n < len(exprs) else "") for n, p in enumerate(parts))
-                expression = f"format('{template}', " + ", ".join(e.strip() for e in exprs) + ")"
-                # Hard limit 21,000; keep >=200 bytes of margin so an edit cannot silently
-                # stop GitHub parsing deploy.yml (a 0-job run on every push).
-                self.assertLess(len(expression.encode("utf-8")), 20_800, f"run block at line {i + 1}")
+                # Hard limit 21,000; fail at 20,000 so the next edit has room to land a fix.
+                self.assertLess(size, 20_000, f"{path.name} run block at line {line_no}: {size} bytes")
         self.assertGreater(checked, 0)
+        # The measured string is the format() call GitHub builds (block keeps its final newline).
+        block = "      - run: |\n" + "          echo '${{ github.sha }}'\n" + "          # {x}\n" * 2_000
+        [(_, size)] = _run_block_expression_sizes(block)
+        self.assertEqual(len("format('echo ''{0}''\n" + "# {{x}}\n" * 2_000 + "', github.sha)"), size)
+        self.assertEqual([], _run_block_expression_sizes("      - run: |\n          echo plain\n"))
+
+    def test_deploy_step_run_block_is_not_an_expression(self):
+        # The Deploy step is the largest run block in the repo. Keep every ${{ }} in its env:, so the
+        # block is plain text and the 21,000-byte expression limit cannot apply to it at all (#4051).
+        step = self.workflow.split("      - name: Deploy\n", 1)[1].split("      - name: ", 1)[0]
+        run = step.split("        run: |\n", 1)[1]
+        self.assertNotIn("${{", run)
+        self.assertIn("        env:\n", step.split("        run: |\n", 1)[0])
+        self.assertEqual([], [n for n, _ in _run_block_expression_sizes(step)])
+        # Each value the remote script used to receive inline is now a %q-quoted assignment.
+        names = ("DEPLOY_TARGET_SHA", "DEPLOY_RELEASE_TRAIN", "DEPLOY_ADMISSIONS_FLAG_MODE", "DEPLOY_CALENDAR_FLAG_MODE",
+                 "DEPLOY_MANAGER_FLAG_MODE", "DEPLOY_SENTRY_DSN", "DEPLOY_SMOKE_TEACHER_LOGIN",
+                 "DEPLOY_SMOKE_TEACHER_PASSWORD", "DEPLOY_SMOKE_BRANCH_ID")
+        preamble = run.split("for v in ", 1)[1].split("; do", 1)[0]
+        self.assertEqual(sorted(names), sorted(preamble.replace("\\", " ").split()))
+        for name in names:
+            self.assertIn(f"          {name}: ${{{{ ", step)
+        self.assertIn("printf '%s=%q\\n' \"$v\" \"${!v}\"", run)
+        # Assignments go ahead of the remote script, so `set -u` in it sees every value.
+        self.assertLess(run.index("printf '%s=%q"), run.index("set -uo pipefail"))
+
+    def test_deploy_preamble_round_trips_values_through_bash(self):
+        # The remote shell must see exactly the value the runner had, including quotes and $.
+        step = self.workflow.split("      - name: Deploy\n", 1)[1].split("      - name: ", 1)[0]
+        run = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        loop = run[run.index("for v in "):run.index("done\n") + len("done\n")]
+        values = {"DEPLOY_TARGET_SHA": "a" * 40, "DEPLOY_RELEASE_TRAIN": "", "DEPLOY_SENTRY_DSN": "https://k@o.io/1?a=b&c='d'",
+                  "DEPLOY_SMOKE_TEACHER_PASSWORD": 'p"$x`y\\z', "DEPLOY_ADMISSIONS_FLAG_MODE": "unchanged"}
+        env = {"PATH": os.environ["PATH"], **values}
+        script = subprocess.run(["bash", "-c", loop], text=True, capture_output=True, env=env, check=True).stdout
+        check = script + "set -u\n" + "".join(f'printf "%s\\0" "${k}"\n' for k in values)
+        out = subprocess.run(["bash", "-c", check], capture_output=True, env={"PATH": os.environ["PATH"]}, check=True).stdout
+        self.assertEqual(list(values.values()), out.decode().split("\0")[:-1])
 
     def test_rollback_refreshes_fpm_workers_before_health(self):
         function = self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
@@ -2216,7 +2249,8 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             self.assertIn("smoke scripts/post-merge-smoke.sh expect=old strict=", result.stdout)
 
     def test_runner_step_records_rc_and_summarizes_failures(self):
-        self.assertIn("<< 'ENDSSH' || rc=$?", self.workflow)
+        self.assertIn("} > \"$REMOTE_SCRIPT\" << 'ENDSSH'\n", self.workflow)
+        self.assertIn('"${PI_SSH_USER}@${PI_SSH_HOST}" < "$REMOTE_SCRIPT" || rc=$?\n          rm -f "$REMOTE_SCRIPT"\n', self.workflow)
         self.assertIn('echo "rc=$rc" >> "$GITHUB_OUTPUT"\n          exit "$rc"', self.workflow)
         self.assertIn("RC: ${{ steps.deploy.outputs.rc }}", self.workflow)
         self.assertIn('--rc "${RC:-1}"', self.workflow)

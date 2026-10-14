@@ -1451,31 +1451,47 @@ jobs:
 
       - name: Deploy
         id: deploy
+        # No ${{ }} inside run: GitHub turns such a block into one format() expression capped at
+        # 21,000 bytes and stops parsing deploy.yml above it (#4051). Values reach the remote
+        # script as %q-quoted assignments written ahead of it; the remote shell sees the same text.
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DEPLOY_TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          DEPLOY_RELEASE_TRAIN: ${{ needs.resolve-target.outputs.release_train }}
+          DEPLOY_ADMISSIONS_FLAG_MODE: ${{ inputs.admissions_funnel_v1 }}
+          DEPLOY_CALENDAR_FLAG_MODE: ${{ inputs.course_session_calendar_v1 }}
+          DEPLOY_MANAGER_FLAG_MODE: ${{ inputs.course_manager_v1 }}
+          DEPLOY_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          DEPLOY_SMOKE_TEACHER_LOGIN: ${{ secrets.SMOKE_TEACHER_LOGIN }}
+          DEPLOY_SMOKE_TEACHER_PASSWORD: ${{ secrets.SMOKE_TEACHER_PASSWORD }}
+          DEPLOY_SMOKE_BRANCH_ID: ${{ secrets.SMOKE_BRANCH_ID }}
         run: |
           rc=0
-          ssh -i ~/.ssh/deploy_key \
-            -o BatchMode=yes \
-            -o ConnectTimeout=20 \
-            -o ServerAliveInterval=15 \
-            -o ServerAliveCountMax=4 \
-            -o IdentitiesOnly=yes \
-            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH' || rc=$?
+          REMOTE_SCRIPT="$(umask 077 && mktemp "$RUNNER_TEMP/deploy-remote.XXXXXX")"
+          {
+            for v in DEPLOY_TARGET_SHA DEPLOY_RELEASE_TRAIN DEPLOY_ADMISSIONS_FLAG_MODE DEPLOY_CALENDAR_FLAG_MODE \
+              DEPLOY_MANAGER_FLAG_MODE DEPLOY_SENTRY_DSN DEPLOY_SMOKE_TEACHER_LOGIN DEPLOY_SMOKE_TEACHER_PASSWORD DEPLOY_SMOKE_BRANCH_ID; do
+              printf '%s=%q\n' "$v" "${!v}"
+            done
+            cat
+          } > "$REMOTE_SCRIPT" << 'ENDSSH'
           set -uo pipefail
           cd /home/admin
 
           PREV_COMMIT=$(git rev-parse HEAD)
           MIGRATION_RAN=0
-          TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"
-          RELEASE_TRAIN="${{ needs.resolve-target.outputs.release_train }}"
-          ADMISSIONS_FLAG_MODE="${{ inputs.admissions_funnel_v1 }}"
+          TARGET_SHA="$DEPLOY_TARGET_SHA"
+          RELEASE_TRAIN="$DEPLOY_RELEASE_TRAIN"
+          ADMISSIONS_FLAG_MODE="$DEPLOY_ADMISSIONS_FLAG_MODE"
           ADMISSIONS_FLAG_CHANGED=0
           ADMISSIONS_FLAG_WAS_PRESENT=0
           ADMISSIONS_FLAG_BACKUP=""
-          CALENDAR_FLAG_MODE="${{ inputs.course_session_calendar_v1 }}"
+          CALENDAR_FLAG_MODE="$DEPLOY_CALENDAR_FLAG_MODE"
           CALENDAR_FLAG_CHANGED=0
           CALENDAR_FLAG_WAS_PRESENT=0
           CALENDAR_FLAG_BACKUP=""
-          MANAGER_FLAG_MODE="${{ inputs.course_manager_v1 }}"
+          MANAGER_FLAG_MODE="$DEPLOY_MANAGER_FLAG_MODE"
           MANAGER_FLAG_CHANGED=0
           MANAGER_FLAG_WAS_PRESENT=0
           MANAGER_FLAG_BACKUP=""
@@ -1721,10 +1737,10 @@ jobs:
           git diff --quiet "$PREV_COMMIT" "$TARGET_SHA" -- ':(top)backend/database/migrations' || MIGRATION_RAN=1
           # 後端 .env：寫入或更新 SENTRY_LARAVEL_DSN
           if ! grep -q "^SENTRY_LARAVEL_DSN=" /home/admin/backend/.env; then
-            echo "SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}" >> /home/admin/backend/.env
+            echo "SENTRY_LARAVEL_DSN=${DEPLOY_SENTRY_DSN}" >> /home/admin/backend/.env
             echo "✅ SENTRY_LARAVEL_DSN 已寫入 .env"
           else
-            sed -i "s|^SENTRY_LARAVEL_DSN=.*|SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}|" /home/admin/backend/.env
+            sed -i "s|^SENTRY_LARAVEL_DSN=.*|SENTRY_LARAVEL_DSN=${DEPLOY_SENTRY_DSN}|" /home/admin/backend/.env
             echo "✅ SENTRY_LARAVEL_DSN 已更新"
           fi
 
@@ -1734,7 +1750,7 @@ jobs:
           fi
 
           # 前端：Vite 只從 .env 檔讀取，寫入暫時的 .env.production.local 再 build
-          if ! echo "VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN }}" > /home/admin/frontend/.env.production.local; then
+          if ! echo "VITE_SENTRY_DSN=${DEPLOY_SENTRY_DSN}" > /home/admin/frontend/.env.production.local; then
             abort_deploy "frontend temporary environment 寫入失敗"
           fi
           apply_bool_feature_flag() {
@@ -1865,15 +1881,23 @@ jobs:
           echo "=== [6/7] Health + identity (bounded retries) + Smoke ==="
           export SMOKE_BASE_URL="https://daan.lifenet.com.tw"
           export SMOKE_ON_PI=1
-          export SMOKE_TEACHER_LOGIN="${{ secrets.SMOKE_TEACHER_LOGIN }}"
-          export SMOKE_TEACHER_PASSWORD="${{ secrets.SMOKE_TEACHER_PASSWORD }}"
-          export SMOKE_BRANCH_ID="${{ secrets.SMOKE_BRANCH_ID }}"
+          export SMOKE_TEACHER_LOGIN="$DEPLOY_SMOKE_TEACHER_LOGIN"
+          export SMOKE_TEACHER_PASSWORD="$DEPLOY_SMOKE_TEACHER_PASSWORD"
+          export SMOKE_BRANCH_ID="$DEPLOY_SMOKE_BRANCH_ID"
           export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
           export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
           python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIGRATION_RAN"
           case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac
           abort_deploy "health check 或 smoke test 失敗"
           ENDSSH
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            -o IdentitiesOnly=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" < "$REMOTE_SCRIPT" || rc=$?
+          rm -f "$REMOTE_SCRIPT"
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           exit "$rc"
 

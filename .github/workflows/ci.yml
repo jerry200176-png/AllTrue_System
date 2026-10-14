@@ -66,6 +66,7 @@ jobs:
           CONTRACT_CHANGE: ${{ contains(github.event.pull_request.title, '[contract-change]') && '1' || '' }}
         run: |
           node scripts/control-plane-lint.mjs
+          python3 scripts/ci/workflow_expression_size.py
           node scripts/ci-cost-guard.mjs
           node scripts/ci-cost-guard.mjs --self-test
           node scripts/ci/bug-writeback-workflow.test.mjs
