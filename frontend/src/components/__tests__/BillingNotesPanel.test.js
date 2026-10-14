@@ -198,4 +198,32 @@ describe('BillingNotesPanel (#3836 append-only billing notes)', () => {
     await w.get('textarea').setValue('更正');
     expect(w.get('form button[type="submit"]').attributes('disabled')).toBeDefined();
   });
+
+  it('hides the add form and shows the label when the notes are read-only (#4055)', async () => {
+    const fetchMock = vi.fn().mockReturnValueOnce(ok({
+      notes: [{ id: 4, body: '已退費', author_name: 'A', created_at: null, legacy: false }],
+      read_only: true,
+      read_only_label: '（帳單已作廢）',
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mount(BillingNotesPanel, { props: { subjectType: 'invoice', subjectId: 12 } });
+    await w.get('.billing-notes__toggle').trigger('click');
+    await flushPromises();
+    expect(w.text()).toContain('已退費');
+    expect(w.get('.billing-notes__readonly').text()).toContain('（帳單已作廢）');
+    expect(w.find('form').exists()).toBe(false);
+    expect(w.find('textarea').exists()).toBe(false);
+    // The "add another note to correct it" hint would be impossible advice here (#4062 review).
+    expect(w.text()).not.toContain('再新增一則更正');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the add form for a response without read_only (#4055)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockReturnValueOnce(ok({ notes: [] })));
+    const w = mount(BillingNotesPanel, { props: { subjectType: 'invoice', subjectId: 13 } });
+    await w.get('.billing-notes__toggle').trigger('click');
+    await flushPromises();
+    expect(w.find('.billing-notes__readonly').exists()).toBe(false);
+    expect(w.find('form').exists()).toBe(true);
+  });
 });
