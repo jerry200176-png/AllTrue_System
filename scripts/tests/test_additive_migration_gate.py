@@ -12,7 +12,7 @@ MIG = "backend/database/migrations/2026_10_14_000000_x.php"
 
 
 def new_file(path, body):
-    lines = body.strip("\n").splitlines()
+    lines = body.strip("\n").split("\n")
     return f"diff --git a/{path} b/{path}\n@@ -0,0 +1,{len(lines)} @@\n" + "".join(f"+{l}\n" for l in lines)
 
 
@@ -85,6 +85,23 @@ class AdditiveMigrationGate(unittest.TestCase):
             patch = new_file(MIG, src)
             self.assertEqual(additive_migration_paths([MIG], patch), set(), src)
             self.assertEqual(self.tiers(patch), (3, 3), src)
+
+    def test_line_and_chunk_tricks_stay_t3(self):
+        add = "Schema::table('t', fn ($t) => $t->string('a'));"
+        drop = "Schema::dropIfExists('students');"
+        cases = [
+            new_file(MIG, migration(add + "\r" + drop)),
+            new_file(MIG, migration(add) .replace("{ " + add, "{ " + add + "\n++$n; " + drop, 1)),
+            new_file(MIG, migration(add)) + f"diff --git a/{MIG} b/{MIG}\n@@ -5,1 +5,1 @@\n-x\n+{drop}\n",
+            new_file(MIG, migration(add).replace("<?php", "<?php\n#[A] class Z { function __construct() { " + drop + " } }", 1)),
+        ]
+        for patch in cases:
+            self.assertEqual(additive_migration_paths([MIG], patch), set(), patch)
+            self.assertEqual(self.tiers(patch), (3, 3), patch)
+
+    def test_braceless_guard_return_is_t2(self):
+        up = "if (!Schema::hasTable('c')) return; Schema::table('c', fn (Blueprint $t) => $t->boolean('a')->default(true));"
+        self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), {MIG})
 
     def test_context_lines_mean_not_a_new_file(self):
         patch = new_file(MIG, ADD).replace("+<?php", " <?php", 1)

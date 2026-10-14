@@ -296,7 +296,8 @@ _SCHEMA_BLOCK_RE = re.compile(
 )
 _SCHEMA_COND = r"!?\s*Schema\s*::\s*has(?:table|column)\s*\(\s*S\s*(?:,\s*S\s*)?\)"
 _SCHEMA_GUARD_RE = re.compile(
-    rf"if\s*\(\s*{_SCHEMA_COND}(?:\s*(?:&&|\|\|)\s*{_SCHEMA_COND})*\s*\)\s*\{{\s*(?:return\s*;\s*)?\}}",
+    rf"if\s*\(\s*{_SCHEMA_COND}(?:\s*(?:&&|\|\|)\s*{_SCHEMA_COND})*\s*\)\s*"
+    r"(?:\{\s*(?:return\s*;\s*)?\}|return\s*;)",
     re.IGNORECASE,
 )
 _MIGRATION_SKELETON_RE = re.compile(
@@ -390,17 +391,24 @@ def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
         path = next((c for c in candidates if head.strip() == f"diff --git a/{c} b/{c}"), None)
         if path is None:
             continue
-        lines = body.splitlines()
-        hunks = [line for line in lines if line.startswith("@@")]
+        # A second chunk for the same path (e.g. committed + working-tree
+        # diffs) means the classifier can't see one final file: fail closed.
+        if path in additive:
+            return set()
+        # Split on \n only: str.splitlines() also splits on \r, \x0b, \u2028...
+        # which PHP treats as whitespace inside one line.
+        lines = [line[:-1] if line.endswith("\r") else line for line in body.split("\n")]
+        hunks = [index for index, line in enumerate(lines) if line.startswith("@@")]
         # A new file has exactly one "@@ -0,0 +1,N @@" hunk in both git and
         # GitHub API patches; anything else edits an existing migration.
-        if len(hunks) != 1 or not hunks[0].startswith("@@ -0,0 +"):
-            continue
-        if any(line.startswith((" ", "-")) and not line.startswith("---") for line in lines):
-            continue
-        source = "\n".join(line[1:] for line in lines if line.startswith("+") and not line.startswith("+++"))
-        if _migration_body_is_additive(source):
-            additive.add(path)
+        if len(hunks) != 1 or not lines[hunks[0]].startswith("@@ -0,0 +"):
+            return set()
+        content = [line for line in lines[hunks[0] + 1:] if line and not line.startswith("\\ ")]
+        if any(not line.startswith("+") for line in content):
+            return set()
+        if not _migration_body_is_additive("\n".join(line[1:] for line in content)):
+            return set()
+        additive.add(path)
     return additive if additive == candidates else set()
 
 def _path_matches(path: str, pattern: str) -> bool:
