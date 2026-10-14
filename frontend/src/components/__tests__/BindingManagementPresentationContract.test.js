@@ -71,4 +71,12 @@ describe('BindingManagementPage responsive presentation contract', () => {
     expect(source).toContain('studentName: filters.value.studentName || undefined');
     expect(source).toContain('perPage,');
   });
+
+  it('describes the all-permitted-campus scope when no campus is selected (#3945)', () => {
+    expect(source).not.toContain('description="查家長是否已綁定。只顯示所選分校。"');
+    expect(source).toContain(':description="headerDescription"');
+    expect(source).toContain("activeCampusId.value == null\n  ? '查家長是否已綁定。顯示你有權限的所有分校。'");
+    expect(source).toContain("const scopeLabel = computed(() => (activeCampusId.value == null ? '權限內分校' : '本分校'));");
+    expect(source).toContain('<span>{{ scopeLabel }} <strong>{{ statsLabel }}</strong></span>');
+  });
 });

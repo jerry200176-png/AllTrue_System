@@ -129,6 +129,180 @@ class LeaveCascadeSameDateLessonsTest extends TestCase
         $this->assertNull($this->tailFor($courseId, $first));
     }
 
+    /** #4019: both lessons of a date left in two steps share the next contract date, each in its own slot; preview agrees. */
+    public function test_both_lessons_left_share_one_next_contract_date(): void
+    {
+        [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'count');
+
+        $this->assertSame('2026-07-22', $this->previewAppend($courseId, $second));
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $second));
+        $this->assertSame(['2026-07-22', '19:30'], $this->tailSlot($courseId, $second));
+
+        $this->assertSame('2026-07-22', $this->previewAppend($courseId, $first), 'the preview shows the shared date that is written');
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $first));
+        $this->assertSame(['2026-07-22', '17:00'], $this->tailSlot($courseId, $first));
+        $this->assertSame('2026-07-22', $this->endDate($courseId), 'two leaves on one date extend the course by one week');
+
+        DB::transaction(fn () => CourseLeaveCascadeService::undoLeaveCascade($courseId, '2026-07-01', $second));
+        $this->assertNull($this->tailFor($courseId, $second));
+        $this->assertSame(['2026-07-22', '17:00'], $this->tailSlot($courseId, $first));
+        $this->assertSame('2026-07-22', $this->endDate($courseId));
+
+        DB::transaction(fn () => CourseLeaveCascadeService::undoLeaveCascade($courseId, '2026-07-01', $first));
+        $this->assertNull($this->tailFor($courseId, $first));
+        $this->assertSame('2026-07-15', $this->endDate($courseId));
+    }
+
+    /** #4019: a cancelled row in the shared slot is not handed back as the tail; a live scheduled tail is created. */
+    public function test_shared_tail_over_a_cancelled_row_is_scheduled(): void
+    {
+        [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'count');
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $second));
+        $cancelled = (int) DB::table('ClassSession')->insertGetId(['StudentClassID' => $courseId, 'SessionDate' => '2026-07-22',
+            'StartTime' => '17:00:00', 'EndTime' => '19:00:00', 'Status' => 'cancelled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $first));
+
+        $tail = $this->tailFor($courseId, $first);
+        $this->assertNotNull($tail);
+        $this->assertNotSame($cancelled, (int) $tail->id);
+        $this->assertSame(['2026-07-22', '17:00'], $this->tailSlot($courseId, $first));
+        $this->assertSame(['cancelled'], $this->statuses($cancelled));
+    }
+
+    /** #4019: monthly courses never append, so neither leave moves EndDate and the preview has no tail. */
+    public function test_monthly_two_lesson_leaves_append_nothing(): void
+    {
+        [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'date');
+        foreach ([$second, $first] as $id) {
+            $this->assertNull($this->previewAppend($courseId, $id));
+            DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $id));
+        }
+        $this->assertSame(['leave', 'leave'], $this->statuses($first, $second));
+        $this->assertNull($this->tailFor($courseId, $first));
+        $this->assertNull($this->tailFor($courseId, $second));
+        $this->assertSame('2026-07-31', $this->endDate($courseId));
+    }
+
+    /** #4019: a latest date that holds only a makeup at a non-contract time is never reused for a tail. */
+    public function test_a_lone_makeup_date_is_not_reused(): void
+    {
+        [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'count');
+        DB::table('StudentClass')->where('ID', $courseId)->update(['SessionCount' => 7, 'RemainingSessions' => 7]);
+        DB::table('ClassSession')->insert(['StudentClassID' => $courseId, 'SessionDate' => '2026-07-22', 'StartTime' => '10:00:00',
+            'EndTime' => '11:00:00', 'Status' => 'scheduled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+
+        $this->assertSame('2026-07-29', $this->previewAppend($courseId, $second));
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $second));
+        $this->assertSame(['2026-07-29', '19:30'], $this->tailSlot($courseId, $second));
+
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $first));
+        $this->assertSame(['2026-07-29', '17:00'], $this->tailSlot($courseId, $first), 'the sibling tail\'s date is shared');
+        $this->assertSame('2026-07-29', $this->endDate($courseId));
+    }
+
+    /** #4043 review: on a Wed 17:00/19:30 + Sat 10:00 course ending on Saturday, a Wednesday lesson's tail goes to the next Wednesday. */
+    public function test_multi_weekday_tail_never_takes_another_weekdays_date(): void
+    {
+        [$courseId, , $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'count');
+        DB::table('StudentClass')->where('ID', $courseId)->update(['SessionCount' => 7, 'RemainingSessions' => 7, 'week2' => 6, 'time2' => '10:00:00']);
+        DB::table('ClassSession')->insert(['StudentClassID' => $courseId, 'SessionDate' => '2026-07-18', 'StartTime' => '10:00:00',
+            'EndTime' => '12:00:00', 'Status' => 'scheduled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+
+        $this->assertSame('2026-07-22', $this->previewAppend($courseId, $second));
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $second));
+        $this->assertSame(['2026-07-22', '19:30'], $this->tailSlot($courseId, $second), 'the Wednesday 19:30 tail is not written onto Saturday 07-18');
+    }
+
+    /** #4047: with only 17:00 on the final Wednesday, both leave orders give the same tails: 19:30 fills 07-15, 17:00 takes 07-22. */
+    public function test_partial_final_date_gives_the_same_tails_in_either_leave_order(): void
+    {
+        $partial = function (int $courseId, bool $oneOffEdit = false): void {
+            DB::table('StudentClass')->where('ID', $courseId)->update(['SessionCount' => 5, 'RemainingSessions' => 5]);
+            $final = DB::table('ClassSession')->where('StudentClassID', $courseId)->where('SessionDate', '2026-07-15');
+            (clone $final)->where('StartTime', '19:30:00')->delete();
+            // a one-off edit (IsContractException) of a contract lesson is not a makeup and still anchors (#4052 review)
+            (clone $final)->update(['IsContractException' => $oneOffEdit]);
+        };
+        $this->assertSame([['2026-07-22', '17:00'], ['2026-07-15', '19:30'], '2026-07-22'], $this->leaveInBothOrders($partial));
+        $this->assertSame([['2026-07-22', '17:00'], ['2026-07-15', '19:30'], '2026-07-22'], $this->leaveInBothOrders(fn ($c) => $partial($c, true)));
+    }
+
+    /** #4052 review: on a Wed 17:00/19:30 + Sat 10:00 course whose base ends on a full Wednesday, both tails take the next Wednesday. */
+    public function test_multi_weekday_full_final_date_tails_stay_on_the_lessons_weekday(): void
+    {
+        $this->assertSame([['2026-07-22', '17:00'], ['2026-07-22', '19:30'], '2026-07-22'], $this->leaveInBothOrders(function (int $courseId): void {
+            DB::table('StudentClass')->where('ID', $courseId)->update(['SessionCount' => 7, 'RemainingSessions' => 7, 'week2' => 6, 'time2' => '10:00:00']);
+            DB::table('ClassSession')->insert(['StudentClassID' => $courseId, 'SessionDate' => '2026-07-11', 'StartTime' => '10:00:00',
+                'EndTime' => '12:00:00', 'Status' => 'scheduled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+        }));
+    }
+
+    /** #4052 review: a cancelled row after the last live lesson neither moves the tails nor pushes EndDate past them. */
+    public function test_a_later_cancelled_row_does_not_push_end_date(): void
+    {
+        $this->assertSame([['2026-07-22', '17:00'], ['2026-07-22', '19:30'], '2026-07-22'], $this->leaveInBothOrders(function (int $courseId): void {
+            DB::table('ClassSession')->insert(['StudentClassID' => $courseId, 'SessionDate' => '2026-07-29', 'StartTime' => '17:00:00',
+                'EndTime' => '19:00:00', 'Status' => 'cancelled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+        }));
+    }
+
+    /** #4047: a confirmed makeup (exception workflow) at a contract time is not a contract lesson, so it never anchors a tail. */
+    public function test_a_lone_makeup_at_a_contract_time_is_not_reused(): void
+    {
+        $this->assertSame([['2026-07-29', '17:00'], ['2026-07-29', '19:30'], '2026-07-29'], $this->leaveInBothOrders(function (int $courseId): void {
+            DB::table('StudentClass')->where('ID', $courseId)->update(['SessionCount' => 7, 'RemainingSessions' => 7]);
+            DB::table('ClassSession')->insert(['StudentClassID' => $courseId, 'SessionDate' => '2026-07-22', 'StartTime' => '17:00:00', 'EndTime' => '19:00:00',
+                'Status' => 'scheduled', 'Note' => 'exception_workflow:1', 'IsContractException' => true, 'created_at' => now(), 'updated_at' => now()]);
+        }));
+    }
+
+    /**
+     * Leaves both 07-01 lessons of a fresh course in each order, asserting each preview equals the written date and that
+     * both orders end the same.
+     *
+     * @return array{0:?array,1:?array,2:?string} [17:00 tail slot, 19:30 tail slot, EndDate]
+     */
+    private function leaveInBothOrders(callable $setup): array
+    {
+        $results = [];
+        foreach (['17:00 first' => [0, 1], '19:30 first' => [1, 0]] as $label => $order) {
+            [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'count');
+            $setup($courseId);
+            foreach ($order as $i) {
+                $id = [$first, $second][$i];
+                $preview = $this->previewAppend($courseId, $id);
+                DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $id));
+                $this->assertSame($preview, $this->tailSlot($courseId, $id)[0] ?? null, "$label: the preview shows the date that is written");
+            }
+            $results[$label] = [$this->tailSlot($courseId, $first), $this->tailSlot($courseId, $second), $this->endDate($courseId)];
+        }
+        $this->assertSame($results['17:00 first'], $results['19:30 first'], 'the leave order does not change the tails');
+
+        return $results['17:00 first'];
+    }
+
+    private function previewAppend(int $courseId, int $sessionId): ?string
+    {
+        return $this->postJson('/api/v1/schedules/leave-cascade-preview', ['student_course_id' => $courseId, 'schedule_date' => '2026-07-01', 'class_session_id' => $sessionId],
+            ['Authorization' => 'Bearer ' . $this->directorToken(), 'Accept' => 'application/json'])->assertOk()->json('append');
+    }
+
+    /** @return array{0:string,1:string}|null */
+    private function tailSlot(int $courseId, int $leaveSessionId): ?array
+    {
+        $tail = $this->tailFor($courseId, $leaveSessionId);
+
+        return $tail ? [substr((string) $tail->SessionDate, 0, 10), substr((string) $tail->StartTime, 0, 5)] : null;
+    }
+
+    private function endDate(int $courseId): ?string
+    {
+        $end = DB::table('StudentClass')->where('ID', $courseId)->value('EndDate');
+
+        return $end ? substr((string) $end, 0, 10) : null;
+    }
+
     private function directorToken(): string
     {
         $user = User::create(['LoginName' => 'leave-3914-' . uniqid() . '@example.com', 'Name' => '主任', 'PSW' => 'secret', 'type' => 'A', 'phone' => '0912345678', 'MustChangePassword' => false]);

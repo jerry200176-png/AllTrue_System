@@ -383,8 +383,10 @@ class ParentPortalController extends Controller
         $result['students'] = $this->parentStudentSwitcherRows($students);
         // Do not expose group members until this login has passed the same
         // cross-campus phone verification used by dashboard aggregation.
+        // Only members this LINE account can still reach (#3944 follow-up):
+        // an unbound member must not reappear through the group listing.
         $result['identity_groups'] = !empty($result['identity_group_id'])
-            ? $this->identityGroupRows($students)
+            ? $this->identityGroupRows($students, $students->map(fn ($s) => (int) $s->id)->all())
             : [];
         return response()->json($result);
     }
@@ -419,7 +421,8 @@ class ParentPortalController extends Controller
         if ($session->getAttribute('identity_group_id')
             && $targetGroup
             && (int) $targetGroup->id === (int) $session->getAttribute('identity_group_id')
-            && $this->identityService()->accessMode((int) $session->getAttribute('identity_group_id')) !== StudentIdentityService::MODE_OFF) {
+            && $this->identityService()->accessMode((int) $session->getAttribute('identity_group_id')) !== StudentIdentityService::MODE_OFF
+            && app(ParentGuardianAccessService::class)->sessionMayReachStudent($session, (int) $targetStudent->id)) {
             $allowed = true;
         }
 
@@ -487,9 +490,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Student not found'], 404);
         }
 
-        [$identityGroup, $accessMode, $identityMembers] = $session->getAttribute('identity_group_id')
-            ? $this->identityService()->parentContext((int) $student->id)
-            : [null, StudentIdentityService::MODE_OFF, collect()];
+        [$identityGroup, $accessMode, $identityMembers] = $this->sessionParentContext($session, $student);
         $crossCampusEnabled = $identityGroup
             && $accessMode !== StudentIdentityService::MODE_OFF
             && $identityMembers->count() > 1;
@@ -1039,14 +1040,20 @@ class ParentPortalController extends Controller
             ->verified()
             ->pluck('line_user_id')
             ->filter(fn ($id) => $this->isValidLineUserId($id));
-        $siblingIdsByLine = $lineUserIds->isNotEmpty()
+        // #3944 follow-up: a LINE session lists only students its own subject may still reach, never siblings
+        // reached through another guardian's binding on this student (or through a binding it has lost).
+        $sessionLine = $this->sessionLineUserId($session);
+        $siblingIdsByLine = $sessionLine !== null
+            ? app(ParentGuardianAccessService::class)->studentsForLineUser($sessionLine)->pluck('id')
+                ->map(fn ($id) => (int) $id)->reject(fn ($id) => $id === (int) $student->id)->values()
+            : ($lineUserIds->isNotEmpty()
             ? StudentLineBinding::query()
                 ->whereNotNull('verified_at')
                 ->whereIn('line_user_id', $lineUserIds)
                 ->where('student_id', '!=', $student->id)
                 ->pluck('student_id')
                 ->unique()
-            : collect();
+            : collect());
 
         $siblingStudents = $siblingIdsByLine->isNotEmpty()
             ? $this->portalStudents()->whereIn('id', $siblingIdsByLine)->get()
@@ -1763,7 +1770,8 @@ class ParentPortalController extends Controller
         $sessionGroupId = (int) ($session->getAttribute('identity_group_id') ?: 0);
         $ownsClass = (int) $studentClass->StudentID === (int) $session->StudentID;
         if (!$ownsClass && $sessionGroupId > 0 && $targetGroup && (int) $targetGroup->id === $sessionGroupId) {
-            $ownsClass = $this->identityService()->accessMode($sessionGroupId) === StudentIdentityService::MODE_ACTIONS;
+            $ownsClass = $this->identityService()->accessMode($sessionGroupId) === StudentIdentityService::MODE_ACTIONS
+                && app(ParentGuardianAccessService::class)->sessionMayReachStudent($session, (int) $studentClass->StudentID);
         }
 
         if (!$ownsClass) {
@@ -1994,17 +2002,31 @@ class ParentPortalController extends Controller
         ])->values()->all();
     }
 
-    private function identityGroupRows($students): array
+    /**
+     * @param array<int, int>|null $reachableStudentIds when given, members outside
+     *        this set are dropped, and so is a group left with fewer than two members
+     */
+    private function identityGroupRows($students, ?array $reachableStudentIds = null): array
     {
+        $reachable = $reachableStudentIds === null ? null : array_flip($reachableStudentIds);
+
         return collect($students)
             ->map(fn ($student) => $this->identityService()->groupForStudent((int) $student->id))
             ->filter()
             ->unique('id')
-            ->map(function ($group) {
+            ->map(function ($group) use ($reachable) {
                 $members = $this->identityService()->activeMembers((int) $group->id);
+                if ($reachable !== null) {
+                    $members = $members->filter(fn ($m) => isset($reachable[(int) $m->student_id]))->values();
+                    if ($members->count() < 2) {
+                        return null;
+                    }
+                }
                 return [
                     'id' => (int) $group->id,
-                    'name' => (string) ($group->display_name ?: ($members->first()?->student?->getAttribute('name') ?? '學生')),
+                    // A filtered group never shows display_name: it was copied from whichever record was linked first,
+                    // which may be the unreachable one (#3944 follow-up). Use a reachable member's own name instead.
+                    'name' => (string) (($reachable === null ? $group->display_name : null) ?: ($members->first()?->student?->getAttribute('name') ?? '學生')),
                     'members' => $members->map(function ($member) {
                         $campus = $this->portalCampuses()->find($member->campus_id);
                         return [
@@ -2014,7 +2036,7 @@ class ParentPortalController extends Controller
                         ];
                     })->values()->all(),
                 ];
-            })->values()->all();
+            })->filter()->values()->all();
     }
 
     public function billingHistory(Request $request)
@@ -2029,20 +2051,20 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Student not found'], 404);
         }
 
-        [$identityGroup, $accessMode, $identityMembers] = $session->getAttribute('identity_group_id')
-            ? $this->identityService()->parentContext((int) $student->id)
-            : [null, StudentIdentityService::MODE_OFF, collect()];
+        [$identityGroup, $accessMode, $identityMembers] = $this->sessionParentContext($session, $student);
         $studentIds = $identityMembers->pluck('student_id')->map(fn ($id) => (int) $id)->values()->all() ?: [(int) $student->id];
-        $billingCampusMap = $this->portalCampuses()->whereIn('id', $this->portalStudents()->whereIn('id', $studentIds)->pluck('CampusID')->unique()->all())->get()->keyBy('id');
+        // One read for every member's campus; the course rows never lazy-load their student.
+        $studentCampusIds = $this->portalStudents()->whereIn('id', $studentIds)->pluck('CampusID', 'id');
+        $billingCampusMap = $this->portalCampuses()->whereIn('id', $studentCampusIds->unique()->values()->all())->get()->keyBy('id');
         $classes = StudentClass::query()->whereIn('StudentID', $studentIds)
             ->where('Charge', '>', 0)
             ->orderByDesc('StartDate')
             ->get();
 
-        $records = $classes->map(function ($course) use ($billingCampusMap) {
+        $records = $classes->map(function ($course) use ($billingCampusMap, $studentCampusIds) {
             $charge = (int) ($course->Charge ?? 0);
             $paid = (int) ($course->Pay ?? 0);
-            $campusId = (int) ($course->student->CampusID ?? 0);
+            $campusId = (int) ($studentCampusIds->get((int) $course->StudentID) ?? 0);
 
             return [
                 'student_class_id' => (int) $course->ID,
@@ -2058,9 +2080,26 @@ class ParentPortalController extends Controller
 
         return response()->json([
             'records' => $records,
-            'identity_group_id' => $identityGroup?->id,
-            'active_scope' => $identityGroup && $accessMode !== StudentIdentityService::MODE_OFF ? 'all' : 'campus',
+            // Same rule as dashboard(): the group scope survives only while more than one member is still reachable.
+            'identity_group_id' => $identityMembers->count() > 1 ? $identityGroup?->id : null,
+            'active_scope' => $identityGroup && $accessMode !== StudentIdentityService::MODE_OFF && $identityMembers->count() > 1 ? 'all' : 'campus',
         ]);
+    }
+
+    /**
+     * Identity-group context for this session, minus members whose guardian
+     * relationship was revoked for the session's LINE subject (#3944 follow-up).
+     *
+     * @return array{0: mixed, 1: string, 2: \Illuminate\Support\Collection<int, mixed>}
+     */
+    private function sessionParentContext(ParentSession $session, Student $student): array
+    {
+        if (!$session->getAttribute('identity_group_id')) {
+            return [null, StudentIdentityService::MODE_OFF, collect()];
+        }
+        [$group, $mode, $members] = $this->identityService()->parentContext((int) $student->id);
+
+        return [$group, $mode, app(ParentGuardianAccessService::class)->reachableGroupMembers($session, $members)];
     }
 
     private function resolveSession(Request $request): ?ParentSession
@@ -2094,14 +2133,7 @@ class ParentPortalController extends Controller
 
         // When portal dual-read is on, a revoked guardian link must fail closed
         // even if ExpiresAt has not been swept yet.
-        $lineUserId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
-        if ($lineUserId !== ''
-            && $this->isValidLineUserId($lineUserId)
-            && ParentGuardianAccessService::portalDualReadEnabled()
-            && !app(ParentGuardianAccessService::class)->lineMayAccessStudent($lineUserId, (int) $session->StudentID)
-        ) {
-            $session->ExpiresAt = Carbon::now();
-            $session->save();
+        if (app(ParentGuardianAccessService::class)->anchorRevoked($session)) {
             return null;
         }
 
