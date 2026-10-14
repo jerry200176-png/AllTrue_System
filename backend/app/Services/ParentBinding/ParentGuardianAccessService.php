@@ -3,6 +3,7 @@
 namespace App\Services\ParentBinding;
 
 use App\Models\Guardian;
+use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentGuardian;
 use App\Models\StudentLineBinding;
@@ -81,6 +82,71 @@ final class ParentGuardianAccessService
     {
         return $this->studentsForLineUser($lineUserId)
             ->contains(fn ($s) => (int) $s->id === $studentId);
+    }
+
+    /**
+     * #3944 follow-up: the one parent-token lookup for every parent endpoint. An unexpired session is live only while
+     * its LINE subject (if any) may still reach the anchor student; a revoked or suspended link expires it at once.
+     */
+    public function liveSession(?string $token): ?ParentSession
+    {
+        $token = trim((string) $token);
+        if ($token === '') {
+            return null;
+        }
+        $session = ParentSession::query()->where('TokenHash', hash('sha256', $token))->where('ExpiresAt', '>', now())->first();
+
+        return $session && !$this->anchorRevoked($session) ? $session : null;
+    }
+
+    /** True (and the session is expired now) when portal dual-read is on and the LINE subject lost its anchor link. */
+    public function anchorRevoked(ParentSession $session): bool
+    {
+        $line = trim((string) ($session->getAttribute('line_user_id') ?? ''));
+        if (!preg_match('/^U[0-9a-f]{32}$/i', $line) || !self::portalDualReadEnabled()
+            || $this->lineMayAccessStudent($line, (int) $session->getAttribute('StudentID'))) {
+            return false;
+        }
+        $session->setAttribute('ExpiresAt', now());
+        $session->save();
+
+        return true;
+    }
+
+    /**
+     * #3944 follow-up: a session reaches its anchor (revalidated by anchorRevoked()); a LINE session reaches any other
+     * student, group members included, only while its subject may access that student. Phone sessions keep the group rule.
+     */
+    public function sessionMayReachStudent(ParentSession $session, int $studentId): bool
+    {
+        if ((int) $session->getAttribute('StudentID') === $studentId) {
+            return true;
+        }
+        $lineUserId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
+        if ($lineUserId === '') {
+            return true;
+        }
+
+        return $this->lineMayAccessStudent($lineUserId, $studentId);
+    }
+
+    /**
+     * sessionMayReachStudent() for a whole member list, in one access lookup.
+     *
+     * @param Collection<int, mixed> $members rows exposing student_id
+     * @return Collection<int, mixed>
+     */
+    public function reachableGroupMembers(ParentSession $session, Collection $members): Collection
+    {
+        $lineUserId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
+        if ($lineUserId === '' || $members->isEmpty()) {
+            return $members;
+        }
+
+        $anchorId = (int) $session->getAttribute('StudentID');
+        $reachable = $this->studentsForLineUser($lineUserId)->map(fn ($s) => (int) $s->id)->push($anchorId)->flip();
+
+        return $members->filter(fn ($m) => $reachable->has((int) $m->student_id))->values();
     }
 
     /**
