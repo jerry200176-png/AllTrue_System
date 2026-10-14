@@ -13,8 +13,9 @@ final class PopInappPolicyContractTest extends TestCase
     {
         $root = dirname(__DIR__, 3) . '/operations';
         $catalog = new PopOperationCatalog($root . '/catalog.yaml');
-        preg_match_all('/^  ([a-z0-9-]+):\s*$/m', (string) file_get_contents($root . '/catalog.yaml'), $m);
-        $referencing = array_values(array_filter($m[1], fn (string $id): bool => ($catalog->operation($id)['approval_policy'] ?? null) === InappStandingPolicy::ID));
+        // Raw text, not operation(): some planned entries are deliberately not executable yet.
+        preg_match_all('/^  ([a-z0-9-]+):\s*$((?:\n    .*)*)/m', (string) file_get_contents($root . '/catalog.yaml'), $m, PREG_SET_ORDER);
+        $referencing = array_values(array_map(fn (array $e): string => $e[1], array_filter($m, fn (array $e): bool => str_contains($e[2], InappStandingPolicy::ID))));
         self::assertSame(array_keys(InappStandingPolicy::OPERATIONS), $referencing);
 
         foreach (array_keys(InappStandingPolicy::OPERATIONS) as $id) {
