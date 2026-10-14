@@ -99,6 +99,22 @@ class AdditiveMigrationGate(unittest.TestCase):
             self.assertEqual(additive_migration_paths([MIG], patch), set(), patch)
             self.assertEqual(self.tiers(patch), (3, 3), patch)
 
+    def test_existing_table_needs_nullable_or_default_and_no_new_key(self):
+        bad = (
+            "Schema::table('t', function (Blueprint $t) { $t->id(); });",
+            "Schema::table('t', function (Blueprint $t) { $t->bigIncrements('k'); });",
+            "Schema::table('t', function (Blueprint $t) { $t->string('code'); });",
+            "Schema::table('t', fn (Blueprint $t) => $t->integer('n')->after('id'));",
+        )
+        for up in bad:
+            self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set(), up)
+        good = (
+            "Schema::table('t', function (Blueprint $t) { $t->string('c')->nullable(); $t->integer('n')->default(0); $t->index('c'); $t->timestamps(); });",
+            "Schema::create('n', function (Blueprint $t) { $t->id(); $t->string('code'); });",
+        )
+        for up in good:
+            self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), {MIG}, up)
+
     def test_braceless_guard_return_is_t2(self):
         up = "if (!Schema::hasTable('c')) return; Schema::table('c', fn (Blueprint $t) => $t->boolean('a')->default(true));"
         self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), {MIG})

@@ -286,14 +286,43 @@ _COLUMN_CHAIN = (
     rf"\$\w+\s*->\s*(?:{_BLUEPRINT_METHODS})\s*\({_LITERAL_ARGS}\)"
     rf"(?:\s*->\s*(?:{_BLUEPRINT_METHODS})\s*\({_LITERAL_ARGS}\))*"
 )
-_COLUMN_STMT_RE = re.compile(_COLUMN_CHAIN + r"\s*;", re.IGNORECASE)
 _SCHEMA_BLOCK_RE = re.compile(
-    r"Schema\s*::\s*(?:create|table)\s*\(\s*S\s*,\s*(?:static\s+)?(?:"
-    r"function\s*\(\s*Blueprint\s+\$\w+\s*\)\s*(?::\s*void\s*)?\{\s*\}"
-    rf"|fn\s*\(\s*Blueprint\s+\$\w+\s*\)\s*=>\s*{_COLUMN_CHAIN}"
+    r"Schema\s*::\s*(?P<kind>create|table)\s*\(\s*S\s*,\s*(?:static\s+)?(?:"
+    r"function\s*\(\s*Blueprint\s+\$\w+\s*\)\s*(?::\s*void\s*)?\{(?P<body>[^{}]*)\}"
+    r"|fn\s*\(\s*Blueprint\s+\$\w+\s*\)\s*=>(?P<arrow>[^;{}]*)"
     r")\s*\)\s*;",
     re.IGNORECASE,
 )
+_CHAIN_RE = re.compile(rf"\s*{_COLUMN_CHAIN}\s*", re.IGNORECASE)
+_METHOD_NAME_RE = re.compile(r"->\s*(\w+)\s*\(")
+# On an existing table only nullable/defaulted columns are expand-safe: the
+# previous release must keep inserting rows after a code rollback.
+_KEY_METHODS = {"id", "increments", "bigincrements"}
+_NULLABLE_HELPERS = {"timestamps", "timestampstz", "nullabletimestamps", "softdeletes", "softdeletestz",
+                     "remembertoken", "index"}
+
+
+def _schema_block_is_additive(kind: str, statements: list[str]) -> bool:
+    for statement in statements:
+        if not _CHAIN_RE.fullmatch(statement):
+            return False
+        methods = [name.lower() for name in _METHOD_NAME_RE.findall(statement)]
+        if kind == "table" and (
+            methods[0] in _KEY_METHODS
+            or (methods[0] not in _NULLABLE_HELPERS and not {"nullable", "default"} & set(methods[1:]))
+        ):
+            return False
+    return True
+
+
+def _reduce_schema_block(match: re.Match) -> str:
+    if match.group("arrow") is not None:
+        statements = [match.group("arrow")]
+    else:
+        statements = [part for part in match.group("body").split(";") if part.strip()]
+    return " " if statements and _schema_block_is_additive(match.group("kind").lower(), statements) else match.group(0)
+
+
 _SCHEMA_COND = r"!?\s*Schema\s*::\s*has(?:table|column)\s*\(\s*S\s*(?:,\s*S\s*)?\)"
 _SCHEMA_GUARD_RE = re.compile(
     rf"if\s*\(\s*{_SCHEMA_COND}(?:\s*(?:&&|\|\|)\s*{_SCHEMA_COND})*\s*\)\s*"
@@ -365,9 +394,8 @@ def _migration_body_is_additive(source: str) -> bool:
         if depth:
             return False
         code = code[:downs[0].start()] + " DOWN " + code[i:]
-    code = _COLUMN_STMT_RE.sub(" ", code)
     for _ in range(4):  # guards may wrap blocks; a few passes cover real nesting
-        code = _SCHEMA_GUARD_RE.sub(" ", _SCHEMA_BLOCK_RE.sub(" ", code))
+        code = _SCHEMA_GUARD_RE.sub(" ", _SCHEMA_BLOCK_RE.sub(_reduce_schema_block, code))
     return bool(_MIGRATION_SKELETON_RE.fullmatch(code))
 
 
