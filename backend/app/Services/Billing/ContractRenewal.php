@@ -4,6 +4,7 @@ namespace App\Services\Billing;
 
 use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\ClassSessionMaterializationService;
@@ -22,6 +23,46 @@ use Illuminate\Support\Facades\Schema;
  */
 final class ContractRenewal
 {
+    /** #2567 (Founder 2026-10-13): renewing settles the prior term, so its fee must be on record first. */
+    public const PRIOR_FEE_MISSING_MESSAGE = '前一期費用尚未登錄（單堂費用與應收金額都是 0，也沒有帳單）。請先在課程編輯填寫「單堂費用」，或在帳務登錄前一期帳單（免費課程請在登記收款勾選「免費／贈送」，登錄 NT$0 帳單），再續約或加購。';
+
+    /**
+     * Blocker when the source course has no fee on record: no per-session price, no charge and no
+     * non-void bill of the course's own student (its own invoice or a line item on another invoice). A NT$0 bill
+     * counts only when explicitly marked 免費／贈送 (#3991, Founder 2026-10-13: a missing or 0 fee is never free by
+     * itself). Trial (converted, not renewed), tutoring (no payment obligation) and package members (fee lives on
+     * the package) are exempt.
+     *
+     * @return array{code: string, message: string}|null
+     */
+    public function priorFeeBlocker(StudentClass $source): ?array
+    {
+        $type = strtolower(trim((string) ($source->getAttribute('ClassType') ?? '')));
+        if (in_array($type, ['trial', 'tutoring'], true) || (int) ($source->getAttribute('PackageID') ?? 0) > 0) {
+            return null;
+        }
+        if ((float) ($source->getAttribute('Rate') ?? 0) > 0 || (int) ($source->getAttribute('Charge') ?? 0) > 0) {
+            return null;
+        }
+        $id = (int) $source->getAttribute('ID');
+        // This course's own amount on each bill that lists it as a line item (#3991: a 0 item is not a fee).
+        $itemAmounts = InvoiceItem::query()->where('StudentClassID', $id)->selectRaw('InvoiceID, SUM(Amount) AS amount')
+            ->groupBy('InvoiceID')->pluck('amount', 'InvoiceID');
+        $candidates = Invoice::query()->where('StudentClassID', $id)->pluck('id')->merge($itemAmounts->keys())
+            ->map(fn ($v) => (int) $v)->unique()->values()->all();
+        // Lock the evidence rows by primary key: voidInvoice() locks the same invoice row, so a concurrent void either
+        // commits first (and is seen here) or waits until this renewal commits. Never accept evidence being voided.
+        // #3991: evidence must be a bill of the course's own student.
+        $billed = $candidates !== [] && Invoice::query()->whereKey($candidates)
+            ->where('StudentID', (int) $source->getAttribute('StudentID'))
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->lockForUpdate()->get()
+            ->contains(fn (Invoice $bill) => $bill->isMarkedFreeGift()
+                || ((int) $bill->getAttribute('StudentClassID') === $id && (int) $bill->getAttribute('TotalAmount') > 0)
+                || (int) ($itemAmounts[(int) $bill->getKey()] ?? 0) > 0);
+
+        return $billed ? null : ['code' => 'prior_fee_missing', 'message' => self::PRIOR_FEE_MISSING_MESSAGE];
+    }
+
     public function findDuplicatePurchaseBatch(StudentClass $studentClass, string $startDate, int $sessions): ?StudentClass
     {
         return StudentClass::query()->where('ID', '<>', $studentClass->ID)
@@ -229,6 +270,10 @@ final class ContractRenewal
                 'code' => 'mode_required',
                 'message' => '請選擇續報類型。',
             ];
+        }
+
+        if ($priorFee = $this->priorFeeBlocker($studentClass)) {
+            $blockers[] = $priorFee;
         }
 
         if (!empty($blockers)) {
@@ -524,6 +569,10 @@ final class ContractRenewal
                         'paid' => (int) ($duplicate->Paid ?? 0),
                     ],
                 ], 409);
+            }
+
+            if ($priorFee = $this->priorFeeBlocker($studentClass)) {
+                return $this->reply($this->priorFeeRefusal($priorFee), 422);
             }
 
             $rate = (float) ($studentClass->Rate ?? 0);
@@ -914,6 +963,10 @@ final class ContractRenewal
                 ], 409);
             }
 
+            if ($priorFee = $this->priorFeeBlocker($studentClass)) {
+                return $this->reply($this->priorFeeRefusal($priorFee), 422);
+            }
+
             $preview = app(MonthlyRenewalPeriodService::class)->previewPeriod($studentClass, $newStartDate, $newEndDate);
             $rate = $preview['rate'];
             $rateUnit = $preview['rate_unit'];
@@ -1000,7 +1053,8 @@ final class ContractRenewal
             $dueDate = $periodReview['due_date'];
 
             $periodLabel = Carbon::parse($newStartDate)->locale('zh_TW')->isoFormat('YYYY年M月');
-            $invoice = app(InvoiceIssuer::class)->issue([
+            // #3991: an unpriced term gets no bill; staff record a price or mark the term 免費／贈送 (never an unmarked NT$0 bill).
+            $invoice = $totalAmount <= 0 && (int) ($discountSnapshot['original_amount'] ?? 0) <= 0 ? null : app(InvoiceIssuer::class)->issue([ // a fully discounted term keeps its NT$0 bill as discount evidence
                 'StudentID'      => (int) $newCourse->StudentID,
                 'StudentClassID' => (int) $newCourse->ID,
                 'IssueDate'      => Carbon::today()->toDateString(),
@@ -1039,7 +1093,7 @@ final class ContractRenewal
                     'schedule_mode' => $newCourse->ScheduleMode,
                     'paid' => (int) ($newCourse->Paid ?? 0),
                 ],
-                'invoice' => [
+                'invoice' => $invoice === null ? null : [
                     'id' => (int) $invoice->id,
                     'billing_period' => $invoice->billing_period,
                     'status' => $invoice->Status,
@@ -1048,6 +1102,12 @@ final class ContractRenewal
                 ],
             ], 201);
         });
+    }
+
+    /** @param array{code: string, message: string} $blocker @return array<string, mixed> */
+    private function priorFeeRefusal(array $blocker): array
+    {
+        return $blocker + ['errors' => ['prior_fee' => [$blocker['message']]]];
     }
 
     /** @param array<string, mixed> $body @return array{status: int, body: array<string, mixed>} */

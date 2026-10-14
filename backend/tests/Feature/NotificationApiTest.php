@@ -106,14 +106,19 @@ class NotificationApiTest extends TestCase
         ]);
 
         $first->assertOk();
-        // tuition (classA unpaid) + low_sessions (paidLowSessionsClass) + overdue invoice + learning_review + pending_swipe
-        $this->assertSame(5, (int) $first->json('active_count'));
-        $this->assertDatabaseCount('Notifications', 5);
+        // overdue invoice (classA; one notice per debt, so classA's per-course notice adds none)
+        // + low_sessions (paidLowSessionsClass) + learning_review + pending_swipe
+        $this->assertSame(4, (int) $first->json('active_count'));
+        $this->assertDatabaseCount('Notifications', 4);
         $this->assertDatabaseHas('Notifications', [
             'SourceType' => 'Invoice',
             'SourceID' => (string) $invoiceA->id,
             'Severity' => 'low',
             'Title' => '學生A 學費提醒（逾期 2 天）',
+        ]);
+        $this->assertDatabaseMissing('Notifications', [
+            'SourceType' => 'StudentClass',
+            'SourceID' => (string) $classA->ID,
         ]);
         $this->assertDatabaseMissing('Notifications', [
             'SourceType' => 'StudentClass',
@@ -135,7 +140,7 @@ class NotificationApiTest extends TestCase
 
         $second->assertOk();
         $this->assertSame(0, (int) $second->json('created'));
-        $this->assertDatabaseCount('Notifications', 5);
+        $this->assertDatabaseCount('Notifications', 4);
     }
 
     public function test_read_status_is_isolated_per_user(): void
@@ -336,19 +341,9 @@ class NotificationApiTest extends TestCase
         ]);
         $class = $this->createStudentClass($student->id, 0, 1, 5);
 
-        $notification = Notification::create([
-            'CampusID' => 1,
-            'Type' => 'tuition',
-            'Severity' => 'high',
-            'Title' => '核帳學生 學費提醒',
-            'Body' => '尚未繳費',
-            'SourceType' => 'StudentClass',
-            'SourceID' => (string) $class->ID,
-            'SourceKey' => "tuition:1:{$class->ID}",
-            'Payload' => ['class_id' => (int) $class->ID, 'student_id' => $student->id],
-            'OccurredAt' => now(),
-            'ResolvedAt' => null,
-        ]);
+        // Seed with the real sync output so the paid-report's re-sync is a no-op for content (read state kept).
+        \App\Services\NotificationSyncService::sync([1]);
+        $notification = Notification::where('SourceKey', "tuition:1:{$class->ID}")->firstOrFail();
 
         $response = $this->withHeaders([
             'Authorization' => "Bearer {$token}",

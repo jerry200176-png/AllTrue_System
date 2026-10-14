@@ -40,10 +40,13 @@ class AlertController extends Controller
     {
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        if ($role !== 'super_admin' && empty($campusIds)) { // #3942 review: an empty campus scope never means "every campus"
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
 
         if ($request->filled('branch_id')) {
             $bid = (int) $request->input('branch_id');
-            if ($role !== 'super_admin' && !empty($campusIds) && !in_array($bid, $campusIds, true)) {
+            if ($role !== 'super_admin' && !in_array($bid, $campusIds, true)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
             $campusIds = [$bid];
@@ -87,7 +90,7 @@ class AlertController extends Controller
                   // Founder Q2: invoices + payments are the truth; Paid=1 never hides a contract whose bill is still open.
                   ->orWhereExists(fn ($inv) => $inv->select(DB::raw(1))->from('Invoice')
                       ->whereColumn('Invoice.StudentClassID', 'StudentClass.ID')
-                      ->where(fn ($st) => $st->whereNull('Invoice.Status')->orWhereNotIn('Invoice.Status', ['paid', 'void'])));
+                      ->whereRaw(Invoice::mayOweSql()));
                 if (!empty($pendingReportClassIds)) {
                     $q->orWhereIn('ID', $pendingReportClassIds);
                 }
@@ -464,6 +467,20 @@ class AlertController extends Controller
         // Merge package-level alerts after individual rows are normalized.
         $rows = $rows->merge($countPkgAlerts)->merge($monthlyPkgAlerts)->values();
 
+        // #3942: the 收據 entry opens a confirmed report. A confirmed partial payment keeps the bill `partial` but already has
+        // a receipt, so the row carries the confirmed report of ITS CURRENT BILL, never an older term's receipt. A package row
+        // reads its anchor's bill, the same bill its amounts come from (member-wide package money + receipts: follow-up).
+        // A report filed without InvoiceID but linked to a Payment on the bill (receipt_without_invoice) counts for that bill.
+        $billOf = DB::raw('COALESCE(pr.InvoiceID, p.InvoiceID)');
+        $receiptByInvoice = DB::table('payment_reports as pr')->leftJoin('Payment as p', 'p.id', '=', 'pr.payment_id')->where('pr.status', 'confirmed')
+            ->whereIn($billOf, $rows->pluck('payable_invoice_id')->filter()->all())
+            ->groupBy($billOf)->selectRaw('COALESCE(pr.InvoiceID, p.InvoiceID) AS bill_id, MAX(pr.id) AS report_id')->pluck('report_id', 'bill_id');
+        $rows = $rows->map(function ($row) use ($receiptByInvoice) {
+            $reportId = $receiptByInvoice[$row['payable_invoice_id'] ?? 0] ?? null;
+
+            return $row + ['has_confirmed_receipt' => $reportId !== null, 'receipt_report_id' => $reportId !== null ? (int) $reportId : null];
+        })->values();
+
         return response()->json($rows);
     }
 
@@ -746,15 +763,26 @@ class AlertController extends Controller
         $mode = $sc->ScheduleMode ?? 'count';
         $today = Carbon::today();
         $studentClassId = (int) $sc->getAttribute('ID');
+        // The slip asks for the bill the queue shows (monthly = oldest owing period), so its period,
+        // lessons and deadline come from that same bill, not the newest stored-open one.
+        $payable = $this->payableResolver->byStudentClassIds([$studentClassId], [$sc])[$studentClassId]
+            ?? $this->payableResolver->unbilled();
+        $payablePeriod = (string) ($payable['payable_billing_period'] ?? '');
+        // The payable bill itself (its item service range drives the lesson list); else the newest open one.
+        $payableInvoice = $mode === 'date' && (int) ($payable['payable_invoice_id'] ?? 0) > 0
+            ? Invoice::query()->where('StudentClassID', $studentClassId)->whereKey((int) $payable['payable_invoice_id'])->first()
+            : null;
         $openInvoice = $mode === 'date'
-            ? Invoice::query()
+            ? ($payableInvoice ?? Invoice::query()
                 ->where('StudentClassID', $studentClassId)
                 ->whereIn('Status', ['unpaid', 'partial'])
                 ->orderByDesc('billing_period')
                 ->orderByDesc('id')
-                ->first(['id', 'billing_period'])
+                ->first())
             : null;
-        $openBillingPeriod = $openInvoice ? $openInvoice->getAttribute('billing_period') : null;
+        $openBillingPeriod = preg_match('/^\d{4}-\d{2}$/', $payablePeriod)
+            ? $payablePeriod
+            : ($openInvoice ? $openInvoice->getAttribute('billing_period') : null);
         $billingPeriod = $mode === 'date'
             ? (preg_match('/^\d{4}-\d{2}$/', (string) ($openBillingPeriod ?? ''))
                 ? (string) $openBillingPeriod
@@ -775,16 +803,24 @@ class AlertController extends Controller
                 'source' => 'stored_charge_count_mode',
             ];
         $charge = (int) $billing['charge'];
-        $payable = $this->payableResolver->byStudentClassIds([$studentClassId], [$sc])[$studentClassId]
-            ?? $this->payableResolver->unbilled();
 
         $dueDate = null;
         $daysUntilSettlement = null;
 
-        if ($mode === 'date') {
+        $storedDue = $payableInvoice?->getAttribute('DueDate');
+        if ($mode === 'date' && $storedDue) {
+            // The payable bill's own deadline wins over today's settlement_day (Codex P1 r4254523790).
+            $thisDue = Carbon::parse($storedDue)->startOfDay();
+            $dueDate = $thisDue->toDateString();
+            $daysUntilSettlement = $today->lte($thisDue) ? (int) $today->diffInDays($thisDue, false) : -(int) $thisDue->diffInDays($today, false);
+        } elseif ($mode === 'date') {
             $sd = (int) ($sc->settlement_day ?? 0);
             if ($sd >= 1 && $sd <= 31) {
-                $thisDue = $this->settlementDateInMonth((int) $today->year, (int) $today->month, $sd);
+                // An older owing period is due on its own month's settlement day.
+                $dueMonth = $billingPeriod !== null && $billingPeriod < $today->format('Y-m')
+                    ? Carbon::createFromFormat('Y-m-d', $billingPeriod . '-01')
+                    : $today;
+                $thisDue = $this->settlementDateInMonth((int) $dueMonth->year, (int) $dueMonth->month, $sd);
                 if ($today->lte($thisDue)) {
                     $dueDate = $thisDue->toDateString();
                     $daysUntilSettlement = (int) $today->diffInDays($thisDue, false);

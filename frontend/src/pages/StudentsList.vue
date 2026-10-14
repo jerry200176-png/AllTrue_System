@@ -649,7 +649,7 @@
             </div>
           </div>
           <button type="button" class="small ghost" style="margin-top:8px;" @click="goToBindingManagement(students.find((s) => s.id === editingStudentId))">
-            前往 LINE 綁定管理
+            前往家長 LINE 綁定
           </button>
         </div>
 
@@ -773,7 +773,6 @@
       :rooms="rooms"
       :initial-student-id="selectedStudentSchedulerId"
       :allow-package-mode="true"
-      :allow-financial-discount="props.allowFinancialDiscount"
       mode="create"
       @cancel="closeCourseModal"
       @success="handleUniversalSchedulerSuccess"
@@ -833,13 +832,6 @@
           <label>下一期結束日期</label>
           <input v-model="tutoringEndDate" type="date" :min="addSessionStartDate" />
         </div>
-        <div v-if="selectedCourse && !isTutoringCourse(selectedCourse) && !isPackageMember(selectedCourse)" class="form-group" data-testid="purchase-transaction-discount">
-          <label>交易折扣</label>
-          <select v-model="purchaseDiscount.type"><option value="NONE">無折扣</option><option value="FIXED_AMOUNT">固定金額</option><option value="PERCENTAGE">百分比</option></select>
-          <input v-if="purchaseDiscount.type !== 'NONE'" v-model="purchaseDiscount.value" type="text" inputmode="decimal" placeholder="折扣值" />
-          <input v-if="purchaseDiscount.type !== 'NONE'" v-model="purchaseDiscount.reason" type="text" maxlength="500" placeholder="折扣原因（必填）" />
-          <span class="hint">原始 {{ purchaseDiscountPreview.originalAmount.toLocaleString() }} · 折扣 {{ purchaseDiscountPreview.discountAmount.toLocaleString() }} · 實收 {{ purchaseDiscountPreview.finalAmount.toLocaleString() }}</span>
-        </div>
         <p class="hint" v-if="addSessionCount > 0">
           <template v-if="isTutoringCourse(selectedCourse)">下一期費用：<strong>0 元，無須繳費</strong></template>
           <template v-else-if="isPackageMember(selectedCourse)">
@@ -862,6 +854,7 @@
     </div>
     <EnrollmentConflictDecisionModal
       :show="showDuplicateInterceptModal"
+      :attempted-payment-type="String(interceptOriginalPayload?.payment_type || '')"
       :conflicts="duplicateConflicts"
       :student-name="interceptPendingStudent?.name || ''"
       :class-type="interceptPendingClassType"
@@ -1008,7 +1001,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick, reactive } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled } from '../lib/paymentStatus.js';
@@ -1023,9 +1016,7 @@ import { guardianRoleLabel, lineBindingDisplay } from '../lib/guardianDisplay.js
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { useMonthlyRenewal, RENEW_NEED_PREVIEW_ALERT } from '../composables/course-management/useMonthlyRenewal';
 import {
-  calculateTransactionDiscountPreview,
   estimateMonthlyRenewalCharge,
-  estimatePurchaseBatchCharge,
   getPerSessionFee,
 } from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
@@ -1081,7 +1072,6 @@ import SchoolNameInput from '../components/SchoolNameInput.vue';
 
 const props = defineProps({
   branchId: [String, Number],
-  allowFinancialDiscount: { type: Boolean, default: false },
   initialStudentId: [String, Number],
   initialCourseId: [String, Number],
   initialStudentIntent: String,
@@ -1272,10 +1262,6 @@ const addSessionsSubmitting = ref(false);
 const addSessionsError = ref('');
 const addSessionCount = ref(8);
 const selectedCourse = ref(null);
-const purchaseDiscount = reactive({ type: 'NONE', value: '0', reason: '' });
-const purchaseDiscountPreview = computed(() => calculateTransactionDiscountPreview(
-  estimatePurchaseBatchCharge(selectedCourse.value, addSessionCount.value), purchaseDiscount,
-));
 const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
 const showRenewMonthlyModal = ref(false);
 const renewMonthlyTargetCourse = ref(null);
@@ -3373,7 +3359,6 @@ const openAddSessionsForCourse = (course) => {
       current_end_date: course?.end_date || course?.EndDate || null,
       months: 1,
       end_date: '',
-      discount: { type: 'NONE', value: '0', reason: '' },
       original_amount: estimateMonthlyRenewalCharge(course),
       preview_end_date: '',
     };
@@ -3386,9 +3371,6 @@ const openAddSessionsForCourse = (course) => {
   selectedCourse.value = course;
   addSessionsError.value = '';
     addSessionCount.value = 8;
-    purchaseDiscount.type = 'NONE';
-    purchaseDiscount.value = '0';
-    purchaseDiscount.reason = '';
   addSessionStartDate.value = new Date().toISOString().slice(0, 10);
   tutoringEndDate.value = '';
   if (isTutoringCourse(course)) {
@@ -3483,11 +3465,6 @@ const submitAddSessions = async () => {
           ? (course.payment_type === 'monthly' ? { end_date: submittedEnd } : {})
           : {
             mode: 'new_purchase',
-            ...(typeof purchaseDiscount !== 'undefined'
-              && purchaseDiscount?.type
-              && purchaseDiscount.type !== 'NONE'
-              ? { discount: { ...purchaseDiscount } }
-              : {}),
           })
       })
     }, token);

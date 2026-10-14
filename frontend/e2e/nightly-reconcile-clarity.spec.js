@@ -7,7 +7,8 @@ function report({ long = false } = {}) {
     ? ['王小明的長期英文與數學複合課程學生', '李小華家長指定的跨校追蹤課程']
     : ['王小明', '李小華'];
   return {
-    checked_at: '2026-09-09 03:00:12', threshold: 0, total_checked: 1428, mismatch_count: 3,
+    // A fresh report: the stale-report warning is covered by the vitest suite.
+    checked_at: new Date().toISOString(), threshold: 0, total_checked: 1428, mismatch_count: 3,
     cause_counts: { attendance_ahead: 1, ledger_ahead: 1, counter_overstated: 1 },
     mismatches: [
       { student_class_id: 101, student_name: names[0], subject_name: '數學', campus_name: '東湖分校', session_count: 24, recorded_used: 10, expected_used: 12, actual_attended: 12, diff: 2, category: 'attendance_ahead' },
@@ -135,7 +136,7 @@ for (const width of [390, 1440]) {
 
 test('new sort labels describe the existing next direction',async ({page})=>{
   await openPage(page);
-  for (const label of ['學生','科目','分校','課程記錄已用堂數','權威計算已用堂數']) {
+  for (const label of ['學生','科目','分校','課程已用堂數','系統應為堂數']) {
     const button=page.getByRole('button',{name:new RegExp(`^依${label}`)});
     await expect(button).toHaveAttribute('aria-label',`依${label}降冪排序`);
     await button.focus();await page.keyboard.press('Enter');

@@ -6,6 +6,20 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R156. 不再提供交易折扣；任何會產生折扣的入口一律在寫入前擋下（#4018／#4020，2026-10-14）
+
+- **現象**：100% 或等於原價的固定折扣讓續約產生 NT$0 帳單，但沒有任何流程能把它記成已結清：帳單維持未繳、課程卡一直提示「登記這筆」；而且這筆課有費用，所以「免費／贈送」也被拒絕（#4018）。
+- **根因**：折扣是可選功能，卻沒有定義「全額折扣」在帳務上的意義。每加一個邊界情況（0 元、套裝、續約預覽），就多一種沒人能結清的狀態。
+- **強制規則**：Founder 2026-10-14「不要有折扣功能了」。`TransactionDiscountCalculator::calculate()` 是所有定價路徑共用的唯一入口（建課 batch、加購、續約預覽／確認、月結續約）。只要 `billing.transaction_discounts_enabled` 為 false（預設，不讀 env），非零折扣一律回 422 `discount`，而且要在任何寫入之前。任何畫面都不可再出現折扣欄位。舊課程已存的 `pricing_snapshot` 只供查詢，不可重算。要讓 NT$0 成立，唯一的路是明確標記「免費／贈送」（#3999）。
+- **測試必補**：`TransactionDiscountDisabledTest`（預設關閉；計算器拒絕固定／百分比／100%；不帶折扣時原價不變；加購 422 且不寫入）、`StudentClassTransactionDiscountTest` 的 `test_disabled_discount_*`（建課 batch、續約預覽、已存舊預覽的確認、月結續約都回 422，課程／堂次／學習紀錄／帳單數量都不變），以及前端 `TransactionDiscount.test.js`（各入口原始碼都不得有「交易折扣」或 `allow-financial-discount`）。
+
+### R155. 月結「當日自動物化」不可替已改時段的堂再補一堂（in-app #393／#3901，2026-10-13）
+
+- **現象**：月結課某堂改到別的時段後請假，老師當日課表讀取時依合約時段又補出一堂「預排」，主任看到請假後又冒出一堂，只好改用取消。
+- **根因**：`autoMaterializeTeacherMonthlySessionsForRange` 只用「課程｜開始時間」判斷該時段有沒有堂次；改過時間的堂（請假／取消）不在合約時間上，被當成空缺。
+- **強制規則**：改過時間的堂仍代表它原本的合約時段：有出生時段（`OriginalStartTimeHM`）或可追溯調課 marker 就用獨立識別；舊資料兩者都沒有時仍只佔用實際同時段，不猜測最近合約時段；只補真正沒有對應堂次的時段，額外加的補課（`type=extra`）不代表任何合約時段。月結請假仍只改該堂（R136）。
+- **測試必補**：`MonthlyCalendarLeaveNoBackfillTest`（含兩時段只物化一段仍會補、有獨立識別的調課不遮蔽另一時段、改到另一合約時段仍保留原時段、預設／自訂備註的舊加課不遮蔽固定課）。
+
 ### R154. 「學生在此時段已有其他課程」要說是哪一科，主任才知道打開哪一堂（課程查找 C-PR6 同族，2026-10-11）
 
 - **現象**：#3846 讓「新增單堂」的衝堂提示點名了學生／科目／時間；但同一個 `SlotOccupiedException`（`student_slot_conflict`）從行事曆改時間、轉移堂次、重排、補尾等入口丟出時，訊息只有一句「已有其他課程」，主任得自己去翻學生的每一門課。
@@ -914,8 +928,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 - **觸發情境**：#957 D1 unique index migration 在 production 依設計 fail-closed 拋錯（#1118），但 `deploy.yml` SSH 區塊無 `set -e`，`php artisan migrate --force` 失敗後照印「✅ Migration 完成」、deploy run 綠燈——與 R62「綠燈 ≠ 已出貨」同族。
 - **根因**：heredoc SSH script 預設不因中途指令失敗而中止；成功訊息寫在指令後面而非以 exit code 分支。
-- **強制規則**：deploy SSH script 內任何關鍵步驟（fetch/reset、composer、migrate、build）必須以 exit code 分支處理；失敗要嘛立即 `exit 1`，要嘛記 flag 並於結尾標紅。禁止在指令之後無條件印「✅ 完成」。migration 失敗時 code 部署可繼續（migration 一律 expand/contract 前向相容），但 run 必須紅。
-- **測試必補**：`scripts/control-plane-lint.mjs` 或 deploy contract 檢查 migrate 呼叫必須在 `if` 分支內。
+- **強制規則**：deploy SSH script 內任何關鍵步驟（fetch/reset、composer、migrate、build）必須以 exit code 分支處理；失敗要嘛立即 `exit 1`，要嘛記 flag 並於結尾標紅。禁止在指令之後無條件印「✅ 完成」。**D1（Founder 2026-10-13）起：migration 或 `migrate:status` 失敗一律 `abort_deploy`**（走既有 `rollback_deploy` 還原舊 code，不跑 build／health／smoke／success 標記）；不得再「code 繼續上線、run 結尾才紅」。
+- **測試必補**：`scripts/tests/test_deploy_activation_state.py`（`_execute_isolated_migration` 實際執行 migration 區塊：失敗即中止、status 失敗不得當成 0 筆 pending；success 標記步驟不得有 `if:`／`continue-on-error`）。
 
 ---
 

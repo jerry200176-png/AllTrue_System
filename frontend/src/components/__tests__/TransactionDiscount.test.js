@@ -1,4 +1,4 @@
-import { flushPromises, mount, shallowMount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 
 const { createUniversalClassSchedule } = vi.hoisted(() => ({ createUniversalClassSchedule: vi.fn() }));
@@ -23,7 +23,11 @@ import {
   normalizeTransactionDiscount,
 } from '../../lib/coursePricing.js';
 import UniversalClassScheduler from '../UniversalClassScheduler.vue';
-import SmartCalendar from '../../pages/SmartCalendar.vue';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('transaction discount preview', () => {
   const mountScheduler = (props = {}) => mount(UniversalClassScheduler, {
@@ -41,43 +45,33 @@ describe('transaction discount preview', () => {
     } },
   });
 
-  it('renders the financial panel only for an explicitly enabled mount', async () => {
-    const hidden = mountScheduler();
+  // Founder 2026-10-14「不要有折扣功能了」: no screen offers a transaction discount, for any role.
+  it('never renders a discount panel or sends a discount, even for a director mount', async () => {
+    const director = mountScheduler({ allowFinancialDiscount: true });
     await flushPromises();
-    expect(hidden.find('[data-testid="transaction-discount-panel"]').exists()).toBe(false);
-    hidden.unmount();
-
-    const enabled = mountScheduler({ allowFinancialDiscount: true });
-    await flushPromises();
-    expect(enabled.find('[data-testid="transaction-discount-panel"]').exists()).toBe(true);
-    expect(enabled.vm.form.discount).toEqual({ type: 'NONE', value: '0', reason: '' });
-    enabled.unmount();
+    expect(director.find('[data-testid="transaction-discount-panel"]').exists()).toBe(false);
+    expect(director.text()).not.toContain('交易折扣');
+    expect(director.vm.form.discount).toBeUndefined();
+    director.unmount();
   });
 
-  it('passes the finance gate through a mounted Smart Calendar scheduler', async () => {
-    const mountCalendar = (userRole) => shallowMount(SmartCalendar, {
-      props: { branchId: 0, userRole, userId: 1, initialIntent: 'quick-add' },
-      global: {
-        stubs: {
-          UniversalClassScheduler: {
-            props: { allowFinancialDiscount: Boolean },
-            template: '<div data-testid="mounted-calendar-scheduler" :data-financial-discount="allowFinancialDiscount ? \'enabled\' : \'disabled\'" />',
-          },
-        },
-      },
-    });
-
-    const director = mountCalendar('director');
-    await flushPromises();
-    expect(director.find('[data-testid="mounted-calendar-scheduler"]').exists()).toBe(true);
-    expect(director.find('[data-testid="mounted-calendar-scheduler"]').attributes('data-financial-discount')).toBe('enabled');
-    director.unmount();
-
-    const teacher = mountCalendar('teacher');
-    await flushPromises();
-    expect(teacher.find('[data-testid="mounted-calendar-scheduler"]').exists()).toBe(true);
-    expect(teacher.find('[data-testid="mounted-calendar-scheduler"]').attributes('data-financial-discount')).toBe('disabled');
-    teacher.unmount();
+  it('leaves no discount entry in course creation, purchase or monthly renewal', () => {
+    const read = (rel) => readFileSync(resolve(__dirname, rel), 'utf8');
+    for (const rel of [
+      '../UniversalClassScheduler.vue',
+      '../course-management/RenewMonthlyModal.vue',
+      '../course-management/MonthlyBatchRenewModal.vue',
+      '../../pages/StudentsList.vue',
+      '../../pages/SmartCalendar.vue',
+      '../../pages/CourseManagement.vue',
+      '../../App.vue',
+    ]) {
+      const source = read(rel);
+      expect(source, rel).not.toContain('交易折扣');
+      expect(source, rel).not.toContain('打折');
+      expect(source, rel).not.toContain('allow-financial-discount');
+      expect(source, rel).not.toMatch(/discount: \{ type: 'NONE'/);
+    }
   });
 
   it('defaults to NONE and preserves the original total', () => {

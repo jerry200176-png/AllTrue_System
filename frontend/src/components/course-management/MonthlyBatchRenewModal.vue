@@ -29,7 +29,7 @@
         </li>
       </ul>
       <p v-if="!rows.length" class="hint">這位學生沒有進行中的月結課程。</p>
-      <p class="hint">金額為預排估算；實際收費依確認已上堂次計算。要打折請改用單科「結算 / 續約下月」。</p>
+      <p class="hint">金額為預排估算；實際收費依確認已上堂次計算。</p>
 
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">{{ finished ? '關閉' : '取消' }}</button>

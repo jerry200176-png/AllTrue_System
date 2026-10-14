@@ -608,6 +608,7 @@ class EnrollmentService
                                 'existing_course_id' => $sc->ID,
                                 'subject' => $subjectOnly,
                                 'class_type' => $sc->ClassType ?? '',
+                                'schedule_mode' => strtolower((string) ($sc->ScheduleMode ?: 'count')),
                                 'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
                                 // in-app #382: a manual course with no upcoming lesson needs 「新增下一堂」, not a second course.
                                 'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
@@ -639,6 +640,7 @@ class EnrollmentService
                                 'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
                                 // Same facts as duplicate conflicts, so the shared modal can still offer 新增下一堂 (#382).
                                 'class_type' => $sc->ClassType ?? '',
+                                'schedule_mode' => strtolower((string) ($sc->ScheduleMode ?: 'count')),
                                 'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
                                 'future_session_count' => $sc->scheduling_policy === 'manual_occurrence'
                                     ? app(ManualSessionBookingService::class)->reservedSessionCount($sc, Carbon::today()->toDateString())
@@ -667,7 +669,10 @@ class EnrollmentService
         }
 
         if (!empty($data['force'])) {
-            $forceGate = $this->validateForceOverride($request, $data);
+            $forceGate = $this->validateForceOverride($request, $data, array_values(array_unique(array_map(
+                fn ($m) => (int) $m['id'],
+                $subjectMeta
+            ))), $studentCampusId === $targetCampusId ? $studentId : 0); // no target-campus row yet: the in-transaction gate rechecks
             if ($forceGate !== null) {
                 return $forceGate;
             }
@@ -738,8 +743,10 @@ class EnrollmentService
             $campusIds,
             $isTutoring
         ) {
+            // Lock student before any REPEATABLE READ snapshot.
+            $lockRenewal = !empty($data['force']) && ($data['force_reason'] ?? '') === 'renewal_next_term';
             $student = $studentId > 0
-                ? Student::find($studentId)
+                ? ($lockRenewal ? Student::query()->whereKey($studentId)->lockForUpdate()->first() : Student::find($studentId))
                 : $this->createStudentInline((array) ($data['student'] ?? []), $targetCampusId);
 
             if ($identityGroupId > 0 && $student && (int) $student->CampusID !== $targetCampusId) {
@@ -757,6 +764,19 @@ class EnrollmentService
                 return response()->json(['message' => '無法建立學生'], 422);
             }
 
+            $decisionNow = Carbon::now();
+            if (!empty($data['force']) && ($data['force_reason'] ?? '') === 'renewal_next_term') {
+                DB::table('Student')->where('id', $student->id)->lockForUpdate()->value('id');
+                $confirmedGate = $this->renewalTargetGate($data, array_values(array_unique(array_map(
+                    fn ($m) => (int) $m['id'],
+                    $subjectMeta
+                ))), (int) $student->id)
+                    ?? $this->guardRenewalConfirmedOverlap((int) $student->id, $subjectGroups, $decisionNow);
+                if ($confirmedGate !== null) {
+                    return $confirmedGate;
+                }
+            }
+
             $by1Map = ['one_on_one' => 1, 'one_on_two' => 2, 'one_on_three' => 3, 'tutoring' => 4, 'trial' => 1];
             $rateUnit = (!empty($data['rate_unit']) && $data['rate_unit'] === 'hour')
                 ? 'hour'
@@ -771,8 +791,6 @@ class EnrollmentService
             if ($approvedByUserId <= 0) {
                 $approvedByUserId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
             }
-            $decisionNow = Carbon::now();
-
             $createdConfirmedSessions = 0;
             $createdFutureSessions = 0;
             $createdLearningRecords = 0;
@@ -962,6 +980,8 @@ class EnrollmentService
                     }
                 }
 
+                $allowStudentOverlap = !empty($data['force'])
+                    && in_array((string) ($data['force_reason'] ?? ''), ['independent_parallel', 'create_trial'], true);
                 foreach ($rowsForSubject as $row) {
                     $date = $row['date'];
                     $slotStartTime = $row['start_time'];
@@ -971,7 +991,7 @@ class EnrollmentService
                     if ($row['kind'] === 'confirmed') {
                         $upsert = app(ClassSessionMaterializationService::class)->upsertSlot([
                             '_student_class' => $studentClass,
-                            '_allow_student_overlap' => !empty($data['force']),
+                            '_allow_student_overlap' => $allowStudentOverlap,
                             'StudentClassID' => $studentClass->ID,
                             'SessionDate' => $date,
                             'StartTime' => $slotStartTime,
@@ -1013,7 +1033,7 @@ class EnrollmentService
                     $isEndedAtCreateTime = $this->sessionEndedByEndTime($date, $slotEndTime, $decisionNow);
                     $upsert = app(ClassSessionMaterializationService::class)->upsertSlot([
                         '_student_class' => $studentClass,
-                        '_allow_student_overlap' => !empty($data['force']),
+                        '_allow_student_overlap' => $allowStudentOverlap,
                         'StudentClassID' => $studentClass->ID,
                         'SessionDate' => $date,
                         'StartTime' => $slotStartTime,
@@ -1116,7 +1136,103 @@ class EnrollmentService
      *
      * @param  array<string, mixed>  $data
      */
-    private function validateForceOverride(Request $request, array $data): ?JsonResponse
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, int>  $subjectIds
+     */
+    private function renewalTargetGate(array $data, array $subjectIds, int $studentId): ?JsonResponse
+    {
+        $classType = (string) ($data['class_type'] ?? '');
+        $teacher = (int) ($data['teacher_id'] ?? 0);
+        $dates = array_filter(array_merge(
+            $data['confirmed_dates'] ?? [],
+            $data['future_dates'] ?? [],
+            array_map(fn ($p) => is_array($p) ? ($p['session_date'] ?? null) : null, $data['session_plan'] ?? [])
+        ));
+        sort($dates);
+        $start = substr((string) ($dates[0] ?? $data['course_start_date'] ?? now()->toDateString()), 0, 10);
+        $end = substr((string) ($dates !== [] ? end($dates) : ($data['end_date'] ?? '')), 0, 10) ?: null;
+        $monthly = false;
+        if ($studentId > 0 && $subjectIds !== []) {
+            $base = fn () => DB::table('StudentClass')->where('StudentID', $studentId)->where('Stop', 0)
+                ->whereIn('SubjectID', $subjectIds);
+            $overlap = $classType !== 'trial' && $teacher > 0;
+            $overlapping = fn ($q) => $q->where(fn ($t) => $t->where('TeacherID', $teacher)->when($classType !== '', fn ($w) => $w->orWhere('ClassType', $classType)))
+                ->when($end, fn ($w) => $w->whereDate('StartDate', '<=', $end))
+                ->where(fn ($w) => $w->whereNull('EndDate')->orWhereDate('EndDate', '>=', $start));
+            $monthly = $base()->where(function ($q) use ($classType, $overlap, $overlapping) {
+                $q->where('ClassType', $classType);
+                if ($overlap) {
+                    $q->orWhere($overlapping);
+                }
+            })->whereRaw("LOWER(COALESCE(NULLIF(ScheduleMode, ''), 'count')) = ?", ['date'])->exists();
+            if ($overlap && $base()->where($overlapping)->exists()) {
+                return response()->json([
+                    'message' => '續報的新課起始日必須在原課程結束之後，請調整起始日或改用「加購堂數」。',
+                    'code' => 'renewal_range_overlap',
+                ], 422);
+            }
+        }
+        if ($monthly || ($data['payment_type'] ?? 'session') !== 'session') {
+            return response()->json([
+                'message' => '月繳課程的續報請從該課程的「續約」進行，不能用強制建立代替。',
+                'code' => 'renewal_use_monthly_flow',
+            ], 422);
+        }
+
+        return null;
+    }
+    /**
+     * @param array<string, array<int, array<string, mixed>>> $subjectGroups
+     */
+    private function guardRenewalConfirmedOverlap(int $studentId, array $subjectGroups, Carbon $decisionNow): ?JsonResponse
+    {
+        if ($studentId <= 0) {
+            return null;
+        }
+        foreach ($subjectGroups as $rows) {
+            foreach ($rows as $row) {
+                if (empty($row['date']) || empty($row['start_time'])) {
+                    continue;
+                }
+                $start = (string) $row['start_time'];
+                $end = $this->computeEndTime($start, max(30, (int) $row['duration_minutes']));
+                if (($row['kind'] ?? '') !== 'confirmed' && !$this->sessionEndedByEndTime((string) $row['date'], $end, $decisionNow)) {
+                    continue;
+                }
+                $clash = DB::table('ClassSession as cs')
+                    ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                    ->where('sc.StudentID', $studentId)
+                    ->whereDate('cs.SessionDate', $row['date'])
+                    ->whereRaw("LOWER(COALESCE(sc.ClassType, '')) <> ?", ['trial'])
+                    ->whereNotIn('cs.Status', \App\Support\SessionStatus::futureReservationExclusionStatuses())
+                    ->where('cs.StartTime', '<', $end)->where('cs.EndTime', '>', $start)
+                    ->lockForUpdate()
+                    ->first(['cs.id']) !== null;
+                $clash = $clash || app(\App\Services\StaleScheduleExceptionFilter::class)->rejectStale(
+                    DB::table('schedules as s')->leftJoin('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+                        ->where('s.student_id', $studentId)->whereDate('s.schedule_date', $row['date'])
+                        ->where('s.status', 'scheduled')->whereNull('s.original_schedule_id')
+                        ->where(fn ($q) => $q->whereNull('s.student_course_id')->orWhereNotNull('sc.ID'))
+                        ->where(fn ($q) => $q->whereNull('sc.ClassType')->orWhereRaw('LOWER(sc.ClassType) <> ?', ['trial']))
+                        ->where(fn ($q) => $q->whereNull('sc.ID')->orWhereRaw('COALESCE(sc.Stop, 0) = 0 AND (sc.StartDate IS NULL OR sc.StartDate <= ?) AND (sc.EndDate IS NULL OR sc.EndDate >= ?)', [$row['date'], $row['date']]))
+                        ->where('s.start_time', '<', substr($end, 0, 5))->where('s.end_time', '>', substr($start, 0, 5))
+                        ->get(['s.id', 's.status', 's.student_course_id', 's.start_time']),
+                    (string) $row['date']
+                ) !== [];
+                if ($clash) {
+                    return response()->json([
+                        'message' => '已確認的上課日期與學生既有課程同一時段重疊，續報不能重複建立這堂課。',
+                        'code' => 'renewal_confirmed_slot_overlap',
+                    ], 422);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function validateForceOverride(Request $request, array $data, array $subjectIds = [], int $resolvedStudentId = 0): ?JsonResponse
     {
         $allowed = ['create_trial', 'renewal_next_term', 'independent_parallel'];
         $reason = trim((string) ($data['force_reason'] ?? ''));
@@ -1155,11 +1271,22 @@ class EnrollmentService
         }
         $existingIds = array_values(array_unique($existingIds));
 
+        if ($reason === 'renewal_next_term') {
+            $gate = $this->renewalTargetGate(
+                $data,
+                $subjectIds,
+                $resolvedStudentId
+            );
+            if ($gate !== null) {
+                return $gate;
+            }
+        }
+
         $actorId = null;
         try {
             $actorId = $request->attributes->get('auth_user_id')
-                ?? $request->user()->id
-                ?? null;
+                ?? $request->attributes->get('auth_user')->id
+                ?? optional($request->user())->id;
         } catch (\Throwable $e) {
             $actorId = null;
         }
@@ -1947,3 +2074,4 @@ class EnrollmentService
         }
     }
 }
+
