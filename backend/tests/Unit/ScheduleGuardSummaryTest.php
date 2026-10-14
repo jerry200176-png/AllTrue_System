@@ -94,6 +94,18 @@ class ScheduleGuardSummaryTest extends TestCase
         );
     }
 
+    public function test_same_student_at_drifted_times_reads_as_one_entry(): void
+    {
+        $drifted = $this->detail('class_session');
+        $drifted['start_time'] = '16:30';
+        $drifted['end_time'] = '18:30';
+
+        self::assertSame(
+            '測試學生（數學・9/1期）(16:00-18:00,固定課程＋課堂紀錄)',
+            $this->invoke('buildOverlapSummary', [$this->detail('student_class'), $drifted])
+        );
+    }
+
     public function test_rows_without_a_student_stay_distinct_per_source(): void
     {
         $rows = [];

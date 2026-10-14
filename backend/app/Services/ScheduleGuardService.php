@@ -1245,7 +1245,11 @@ class ScheduleGuardService
             };
             // Rows without a student stay distinct per source, as countDistinctStudents() counts them.
             $occupant = $sid > 0 ? (string) $sid : 'anon:' . $source . ':' . (string) ($row['source_id'] ?? '');
-            $key = $occupant . '|' . $studentLabel . '|' . $courseLabel . '|' . $start . '|' . $end;
+            // A known student is one entry, as countDistinctStudents() counts them (variant
+            // times stay in overlap_details); anonymous rows keep course and time.
+            $key = $sid > 0
+                ? $occupant . '|' . $studentLabel
+                : $occupant . '|' . $studentLabel . '|' . $courseLabel . '|' . $start . '|' . $end;
             if (!isset($groups[$key])) {
                 $groups[$key] = ['student' => $studentLabel, 'course' => $courseLabel, 'start' => $start, 'end' => $end, 'sources' => []];
             }
