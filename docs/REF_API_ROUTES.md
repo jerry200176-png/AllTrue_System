@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 504 api/* routes · generated 2026-10-13
+> Source: `php artisan route:list --json` · 505 api/* routes · generated 2026-10-14
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -43,7 +43,7 @@
 | GET | `api/v1/action-inbox/cases/{id}` | `ActionInboxController@showCase` | role+campus |
 | GET | `api/v1/action-inbox/count` | `ActionInboxController@count` | role+campus |
 
-## /api/v1/admin (24)
+## /api/v1/admin (25)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -60,6 +60,7 @@
 | POST | `api/v1/admin/qa/parent-fixture/session` | `ParentPortalTestFixtureController@session` | role |
 | GET | `api/v1/admin/reconcile` | `AdminReconcileController@index` | role |
 | GET | `api/v1/admin/reconcile/latest` | `AdminReconcileController@latest` | role |
+| GET | `api/v1/admin/reconcile/latest/rows` | `AdminReconcileController@rows` | role |
 | POST | `api/v1/admin/reset-data` | `ResetDataController` | role |
 | GET | `api/v1/admin/routing-rules` | `AdminRoutingRuleController@index` | role |
 | GET | `api/v1/admin/routing-rules/check` | `AdminRoutingRuleController@check` | role |

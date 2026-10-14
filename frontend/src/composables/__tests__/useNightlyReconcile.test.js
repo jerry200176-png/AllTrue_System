@@ -5,6 +5,7 @@ import { useNightlyReconcile, isReportStale, latestExpectedRunMs } from '../useN
 // Mock api module
 vi.mock('../../api', () => ({
   getReconcileLatest: vi.fn(),
+  getReconcileRows: vi.fn(),
 }));
 
 import * as api from '../../api';
@@ -281,6 +282,40 @@ describe('useNightlyReconcile', () => {
     const { detailTruncated, storedRowCount, loadReport } = setup();
     await loadReport();
     expect(storedRowCount.value).toBe(3);
+    expect(detailTruncated.value).toBe(true);
+  });
+
+  it('pages in every row from the rows endpoint and clears truncation (#4044)', async () => {
+    const base = makeReport({ mismatch_count: 5 });
+    const extra = [104, 105].map((id) => ({ ...base.mismatches[0], student_class_id: id }));
+    const all = [...base.mismatches, ...extra];
+    api.getReconcileLatest.mockResolvedValue(base);
+    api.getReconcileRows.mockImplementation(async (_token, page) => ({
+      rows: all.slice((page - 1) * 3, page * 3),
+      meta: { checked_at: base.checked_at, page, last_page: 2, total: 5, complete: true },
+    }));
+    const { detailTruncated, mismatches, loadReport, loadAllRows, allRowsError } = setup();
+    await loadReport();
+    expect(detailTruncated.value).toBe(true);
+
+    await loadAllRows();
+
+    expect(api.getReconcileRows).toHaveBeenCalledTimes(2);
+    expect(allRowsError.value).toBe('');
+    expect(detailTruncated.value).toBe(false);
+    expect(mismatches.value.map((r) => r.student_class_id)).toEqual([101, 102, 103, 104, 105]);
+  });
+
+  it('refuses rows from a newer report than the one on screen', async () => {
+    const base = makeReport({ mismatch_count: 5 });
+    api.getReconcileLatest.mockResolvedValue(base);
+    api.getReconcileRows.mockResolvedValue({
+      rows: [], meta: { checked_at: '2026-07-13 02:00:00', page: 1, last_page: 1, total: 0, complete: true },
+    });
+    const { detailTruncated, loadReport, loadAllRows, allRowsError } = setup();
+    await loadReport();
+    await loadAllRows();
+    expect(allRowsError.value).toContain('重新載入');
     expect(detailTruncated.value).toBe(true);
   });
 
