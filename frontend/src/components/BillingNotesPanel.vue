@@ -14,12 +14,15 @@
           <p>{{ n.body }}</p>
         </li>
       </ol>
-      <form class="billing-notes__form" @submit.prevent="add">
+      <p v-if="!loading && loaded && readOnly" class="billing-notes__muted billing-notes__readonly">
+        {{ readOnlyLabel || '（唯讀）' }}這筆帳單已不能再新增備註，只能查看。
+      </p>
+      <form v-if="!readOnly" class="billing-notes__form" @submit.prevent="add">
         <label :for="inputId">新增備註</label>
         <textarea :id="inputId" v-model="draft" rows="2" :maxlength="MAX_BODY" />
         <button type="submit" :disabled="saving || loading || !loaded || !draft.trim()">{{ saving ? '儲存中…' : '新增' }}</button>
       </form>
-      <p class="billing-notes__muted">備註送出後不能修改或刪除；寫錯了請再新增一則更正。</p>
+      <p v-if="!readOnly" class="billing-notes__muted">備註送出後不能修改或刪除；寫錯了請再新增一則更正。</p>
     </div>
   </div>
 </template>
@@ -44,6 +47,10 @@ const notes = ref([]);
 // True only after the latest history load succeeded. The add form stays disabled until then,
 // so a failed GET or a POST with an unknown outcome cannot lead to a blind (duplicate) submit.
 const loaded = ref(false);
+// The server marks some histories read-only (an invoice voided because its course was deleted, #4050)
+// and refuses a POST there, so the add form is hidden instead of inviting an append that must fail.
+const readOnly = ref(false);
+const readOnlyLabel = ref('');
 // Only the newest load() may apply its result; older responses are dropped (#3990).
 let loadSeq = 0;
 const draft = ref('');
@@ -73,6 +80,8 @@ async function load() {
     // An unreadable body must not count as a confirmed history: it could hide an uncertain save.
     if (!json || !Array.isArray(json.notes)) throw new Error('紀錄讀取失敗，請重新載入');
     notes.value = json.notes;
+    readOnly.value = json.read_only === true;
+    readOnlyLabel.value = readOnly.value && typeof json.read_only_label === 'string' ? json.read_only_label : '';
     loaded.value = true;
   } catch (e) {
     if (seq === loadSeq) error.value = humanizeApiErrorMessage(e.message || '載入備註失敗');
@@ -89,7 +98,7 @@ function toggle() {
 async function add() {
   const body = draft.value.trim();
   // While a load is in flight its older result would overwrite the saved note, so wait for it.
-  if (!body || saving.value || loading.value || !loaded.value) return;
+  if (!body || saving.value || loading.value || !loaded.value || readOnly.value) return;
   saving.value = true;
   error.value = '';
   // A note may be saved even when its response never arrives (network error, 5xx, unreadable body).
