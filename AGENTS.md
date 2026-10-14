@@ -3,7 +3,7 @@
 > **Cursor 使用者**：`.cursorrules` 已自動載入，這裡補充必讀順序與 Commit SOP。
 >
 > **AllTrue AI 公司 slogan：前人種樹，後人乘涼。**
-> 所有 Agent 做事前先查 `docs/INDEX.md` 與 MemPalace；做完把決策寫回文件，讓下一個 AI 不靠猜測。
+> 所有 Agent 做事前先查 `docs/INDEX.md`（本機另可查 MemPalace；cloud session 沒有，跳過）；做完把決策寫回文件，讓下一個 AI 不靠猜測。
 
 ## Worktree & path safety (canonical)
 
