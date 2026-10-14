@@ -282,8 +282,8 @@ function credHits(w, exprs, sensitive = new Set(), transformed = false) {
 }
 
 // --- interpreter programs (inline -c/-e/-r/awk text, Python heredocs): environment reads and whole-environment dumps
-const ENV_ACCESS = /\b(?:os\s*\.\s*)?environ\s*(?:\[|\.\s*get\s*\()|\b(?:os\s*\.\s*)?getenv\s*\(|\bprocess\s*\.\s*env\s*(?:\.|\[)|\$ENV\s*\{|(?:\bENVIRON|\bENV|\$_ENV|\$_SERVER)\s*\[/g;
-const ENV_DUMP = /\b(?:print|pprint|repr|str|dict|dumps)\s*\(\s*(?:dict\s*\(\s*)?os\s*\.\s*environ\s*\)|\{\s*os\s*\.\s*environ\s*[}!:]|\bos\s*\.\s*environ\s*\.\s*(?:items|values)\s*\(|\b(?:JSON\s*\.\s*stringify|console\s*\.\s*\w+|Object\s*\.\s*(?:entries|values))\s*\(\s*process\s*\.\s*env\s*[,)]|\b(?:print_r|var_dump|var_export|json_encode)\s*\(\s*(?:getenv\s*\(\s*\)|\$_ENV\b|\$_SERVER\b)|\bin\s+ENVIRON\b|%ENV\b|\bENV\s*\.\s*(?:to_h|to_a|each|inspect|map)\b|\b(?:p|pp|puts|print)\s*\(?\s*ENV\b(?!\s*[[.])/g;
+const ENV_ACCESS = /\b(?:os\s*\.\s*)?environ\s*(?:\[|\.\s*get\s*\()|\b(?:os\s*\.\s*)?getenv\s*\(|\bprocess\s*\.\s*env\s*(?:\.|\[)|\$ENV\s*\{|(?:\bENVIRON|\bENV|\$_ENV|\$_SERVER)\s*\[|\bENV\s*\.\s*fetch\s*\(\s*/g;
+const ENV_DUMP = /\b(?:print|pprint|repr|str|dict|dumps)\s*\(\s*(?:dict\s*\(\s*)?os\s*\.\s*environ\s*(?:\.\s*copy\s*\(\s*\)\s*)?\)|\bin\s+os\s*\.\s*environ\b(?!\s*[[.])|\bin\s+process\s*\.\s*env\b|\.\.\.\s*process\s*\.\s*env\b|\{\s*os\s*\.\s*environ\s*[}!:]|\bos\s*\.\s*environ\s*\.\s*(?:items|values)\s*\(|\b(?:JSON\s*\.\s*stringify|console\s*\.\s*\w+|Object\s*\.\s*(?:entries|values|keys))\s*\(\s*process\s*\.\s*env\s*[,)]|\b(?:print_r|var_dump|var_export|json_encode)\s*\(\s*(?:getenv\s*\(\s*\)|\$_ENV\b|\$_SERVER\b)|\bin\s+ENVIRON\b|%ENV\b|\bENV\s*\.\s*(?:to_h|to_a|each|inspect|map)\b|\b(?:p|pp|puts|print)\s*\(?\s*ENV\b(?!\s*[[.])/g;
 const secretRead = (t, sensitive) => [...t.matchAll(ENV_ACCESS)].filter((m) => {
   const name = /^\s*(['"`]?)([A-Za-z_]\w*)\1/.exec(t.slice(m.index + m[0].length))?.[2];
   return name && (isSecretName(name) || sensitive.has(name));
@@ -307,25 +307,45 @@ function inlinePrograms(words, info) { // the words holding inline program text
 }
 // a Python program reading stdin (`python3 - <<'PY'`, `python <<PY`): its heredoc is Python, not shell
 const pythonStdin = (info, args) => /^python[0-9.]*$/.test(info.name) && !args.some((x) => /^-[A-Za-z]*[cm]$/.test(x)) && [undefined, '-'].includes(args.find((x) => !/^-./.test(x)));
+const SHELL_STRING = /\b(?:os\s*\.\s*(?:system|popen|exec\w*|spawn\w*)|subprocess\s*\.\s*\w+|commands\s*\.\s*\w+)\s*\(/g;
+const pyClose = (py, open) => { // index of the bracket closing py[open], skipping simple string literals
+  let d = 0, e = open;
+  for (; e < py.length; e++) {
+    const c = py[e];
+    if (c === '"' || c === "'") { for (e++; e < py.length && py[e] !== c && py[e] !== '\n'; e++) if (py[e] === '\\') e++; }
+    else if ('([{'.includes(c)) d++;
+    else if (')]}'.includes(c) && --d === 0) break;
+  }
+  return e;
+};
 function pythonOutputs(py, sensitive) { // password-like env reads (or names assigned from them) that reach print/log; env dumps
-  const tainted = new Set();
-  for (const line of py.split('\n')) {
-    const m = /^\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*=(?!=)(.*)$/.exec(line);
-    if (m && (secretRead(m[2], sensitive).length || [...tainted].some((n) => new RegExp(`\\b${n}\\b`).test(m[2])))) m[1].split(',').forEach((n) => tainted.add(n.trim()));
+  const tainted = new Set(), aliases = [];
+  const reads = (t) => secretRead(t, sensitive).length || aliases.some((a) => [...t.matchAll(new RegExp(`\\b${a}\\s*(?:\\[|\\.\\s*get\\s*\\()\\s*(['"])(\\w+)\\1`, 'g'))].some((m) => isSecretName(m[2]) || sensitive.has(m[2])))
+    || [...tainted].some((n) => new RegExp(`\\b${n}\\b`).test(t));
+  const statements = []; // logical lines: bracketed continuations joined, `;` splits
+  for (let i = 0, from = 0; i <= py.length; i++) {
+    if (i < py.length && '([{'.includes(py[i])) { i = pyClose(py, i); continue; }
+    if (i < py.length && (py[i] === '"' || py[i] === "'")) { const q = py[i]; for (i++; i < py.length && py[i] !== q && py[i] !== '\n'; i++) if (py[i] === '\\') i++; continue; }
+    if (i === py.length || py[i] === '\n' || py[i] === ';') { statements.push([from, py.slice(from, i)]); from = i + 1; }
   }
   const hits = [...py.matchAll(ENV_DUMP)].map((m) => ({ at: m.index, to: 'log' }));
+  for (const [at, st] of statements) {
+    const m = /^\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*=(?!=)([\s\S]*)$/.exec(st);
+    if (m && /^\s*(?:os\s*\.\s*)?environ(?:\s*\.\s*copy\s*\(\s*\))?\s*$/.test(m[2])) aliases.push(m[1].trim());
+    else if (m && reads(m[2])) m[1].split(',').forEach((n) => tainted.add(n.trim()));
+    if (/^\s*(?:assert\b[\s\S]*,|raise\b)/.test(st) && reads(st)) hits.push({ at, to: 'log' }); // assertion / exception message reaches stderr
+  }
   for (const m of py.matchAll(/\b(?:print|pprint|sys\s*\.\s*(std(?:out|err))\s*\.\s*write|(logging|logger|log|warnings|SystemExit|sys\s*\.\s*exit|exit)\b(?:\s*\.\s*\w+)?)\s*\(/g)) {
-    let d = 0, e = m.index + m[0].length - 1;
-    for (; e < py.length; e++) {
-      const c = py[e];
-      if (c === '"' || c === "'") { for (e++; e < py.length && py[e] !== c; e++) if (py[e] === '\\') e++; }
-      else if (c === '(') d++;
-      else if (c === ')' && --d === 0) break;
-    }
-    const args = py.slice(m.index, e + 1);
-    if (!secretRead(args, sensitive).length && ![...tainted].some((n) => new RegExp(`\\b${n}\\b`).test(args))) continue;
+    const args = py.slice(m.index, pyClose(py, m.index + m[0].length - 1) + 1);
+    if (!reads(args) && !/\bos\s*\.\s*environ\b(?!\s*(?:\[|\.\s*get\b))|\benviron\s*\.\s*copy\b/.test(args) && !aliases.some((a) => new RegExp(`\\b${a}\\b(?!\\s*(?:\\[|\\.\\s*get\\b))`).test(args))) continue;
     const file = /\bfile\s*=\s*([^,)]+)/.exec(args)?.[1] ?? '';
     hits.push({ at: m.index, to: m[2] || m[1] === 'stderr' || /stderr|\/dev\//.test(file) ? 'log' : file && !/stdout/.test(file) ? 'file' : 'stdout' });
+  }
+  for (const m of py.matchAll(SHELL_STRING)) { // command strings run by a shell / exec: apply the shell checks
+    const cmd = [...py.slice(m.index, pyClose(py, m.index + m[0].length - 1) + 1).matchAll(/(['"])((?:\\.|(?!\1).)*)\1/g)].map((x) => x[2]).join(' ');
+    const shell = lex(cmd), found = [];
+    if (!shell.bad) analyze(shell, 'top', found, []);
+    if (found.some((o) => !o.safe) || [...cmd.matchAll(PROC_ENV)].length) hits.push({ at: m.index, to: 'log' });
   }
   return hits;
 }
@@ -419,7 +439,7 @@ function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns tr
         const expression = m[2] !== undefined && credExpr(exprs[+m[2]]);
         rec(off + m.index, expression ? sink(P, s, ctx, true) : 'safe');
       } // printed/executed literally
-      for (const m of body.matchAll(ENV_FILE)) rec(off + m.index, 'safe');
+      for (const m of body.matchAll(ENV_FILE)) rec(off + m.index, py ? 'unsafe' : 'safe'); // Python opens it; cat/SQL text is data
       const sh = bw.subs.filter((sb) => analyze(sb.script, 'sub', out, exprs, new Set(sensitive))).map((sb) => sb.at);
       for (const at of [...credHits(bw, exprs, sensitive), ...sh]) {
         const sql = info.name !== 'cat' && /IDENTIFIED\s+BY\s*\\?['"]?$/i.test(bw.text.slice(0, at).split('\n').pop());
@@ -819,6 +839,9 @@ export const trip = {
     `python3 -c 'import os; print(os.environ)'`, `python3 -c 'import os, json; json.dumps(dict(os.environ))'`, `python3 -c 'import os; [print(k) for k, v in os.environ.items()]'`,
     `node -e 'console.log(JSON.stringify(process.env))'`, `node -e 'console.log(process.env)'`, `php -r 'print_r(getenv());'`, `awk 'BEGIN { for (k in ENVIRON) print k }'`,
     `sudo -u app env X=1 python3 -c 'import os; os.environ["DB_PASSWORD"]'`,
+    `ruby -e 'puts ENV.fetch("DB_PASSWORD")'`, `ruby -e 'ENV.each { |k, v| puts v }'`, `ruby -e 'p ENV.to_h'`,
+    `node -e 'for (const k in process.env) console.log(k)'`, `node -e 'console.log({...process.env})'`, `node -e 'console.log(Object.keys(process.env))'`,
+    `python3 -c 'import os; [print(k) for k in os.environ]'`,
   ].map((c) => [`inline interpreter ${c}`, blk(c)])),
   'inline program reads YAML credential alias': 'jobs:\n  j:\n    env:\n      VALUE: ${{ steps.generate.outputs.password }}\n    steps:\n      - run: node -e \'console.log(process.env.VALUE)\'',
   'github-script environment dump': 'jobs:\n  j:\n    steps:\n      - uses: actions/github-script@v7\n        with:\n          script: console.log(JSON.stringify(process.env))',
@@ -831,6 +854,18 @@ export const trip = {
     ["python3 - > out.txt <<'PY'", 'import os', 'print(os.environ)'], ["python3 - > out.txt <<'PY'", 'import os, json', 'snapshot = json.dumps(dict(os.environ))'],
     ["python3 - > out.txt <<'PY'", 'import os', 'for key, value in os.environ.items():', '    pass'],
     ['python3 - <<PY', 'pw = "$DB_PASSWORD"'],
+    // review of a785d7b: .env reads, shell-string commands, and further sinks inside Python heredocs
+    ["python3 - <<'PY'", "print(open('/home/admin/backend/.env').read())"], ['python3 - <<PY', "print(open('/home/admin/backend/.env').read())"],
+    ["python3 - <<'PY'", "for l in open('/home/admin/backend/.env'):", '    print(l)'],
+    ["python3 - <<'PY'", 'from dotenv import dotenv_values', "print(dotenv_values('/home/admin/backend/.env'))"],
+    ["python3 - <<'PY'", 'import os', "os.system('cat /home/admin/backend/.env')"], ["python3 - <<'PY'", 'import os', "os.system('printenv')"],
+    ["python3 - <<'PY'", 'import subprocess', "subprocess.run(['env'])"], ["python3 - <<'PY'", 'import os', "os.popen('export -p').read()"],
+    ["python3 - <<'PY'", 'import subprocess', "subprocess.call('declare -p', shell=True)"], ["python3 - <<'PY'", 'import subprocess', "subprocess.run(['cat', '/proc/self/environ'])"],
+    ["python3 - <<'PY'", 'import os', 'for k in os.environ:', '    print(k, os.environ[k])'], ["python3 - <<'PY'", 'import os', 'print(os.environ.copy())'],
+    ["python3 - > out.txt <<'PY'", 'import os', 'raise RuntimeError("bad " + os.environ["DB_PASSWORD"])'],
+    ["python3 - > out.txt <<'PY'", 'import os', 'assert False, os.environ["DB_PASSWORD"]'],
+    ["python3 - <<'PY'", 'import os', 'cfg = {', '    "p": os.environ["DB_PASSWORD"],', '}', 'print(cfg)'],
+    ["python3 - <<'PY'", 'import os', 'e = os.environ; print(e["DB_PASSWORD"])'],
   ].map((l) => [`Python heredoc ${l.join(' / ')}`, blk(...l, 'PY')])),
 };
 export const ok = {
@@ -892,6 +927,8 @@ export const ok = {
   'Python heredoc reads password for private use': blk("python3 - <<'PY'", 'import os, subprocess', 'pw = os.environ["STAGED_DB_PASSWORD"]',
     'subprocess.run(["mysql", "--defaults-extra-file=/dev/stdin"], input=f"[client]\\npassword={pw}\\n", text=True, env=os.environ.copy(), check=True)',
     'print("rotation staged")', 'PY'),
+  'Python heredoc environment copy and quiet subprocess': blk("python3 - <<'PY'", 'import os, subprocess', 'env = os.environ.copy()',
+    'subprocess.run(["git", "rev-parse", "HEAD"], env=env, check=True)', 'os.system("date")', 'raise SystemExit("unexpected shape")', 'PY'),
   'Python heredoc regex is not shell': blk("python3 - <<'PY'", 'import re', 'refs = sorted(set(re.findall(r"(?<![A-Za-z0-9])#([1-9][0-9]*)\\b", "x #1 > $(y)")))', 'print(refs)', 'PY'),
   'Python heredoc prints password only to a file or a capture': blk("python3 - > secret.txt <<'PY'", 'import os', 'print(os.environ["DB_PASSWORD"])', 'PY',
     'X="$(python3 - <<\'PY\'', 'import os, json', 'print(json.dumps({"password": os.environ["DB_PASSWORD"]}))', 'PY', ')"'),
@@ -968,7 +1005,7 @@ export const PINS = [
   ['.github/workflows/deploy.yml', 'local rb_secret rb_response', 'unset rb_secret rb_response', '7e2d2b81296f5eee7b8c6deddb98f4b8d32ba73ca984dc6544e37bff9deba404'],
   ['.github/workflows/deploy.yml', 'apply_bool_feature_flag() {', 'apply_bool_feature_flag "$MANAGER_FLAG_MODE"', 'cb60a657304f52d325b9aae414fad8eb29c0564fb814ba63431a593bfb52ef24'],
   ['.github/workflows/deploy.yml', `DEPLOY_SECRET="$(grep '^DEPLOY_SECRET='`, 'unset DEPLOY_SECRET OPCACHE_RESPONSE', '196db6c36d545b0257094b3cdeaf69d9a51da76af04903cd467457bc08ca5a63'],
-  ['.github/workflows/deploy.yml', 'export STAGED_DB_PASSWORD', 'unset STAGED_DB_PASSWORD', '9c47de6cc7409cc2c2bae03f3c5b3d004bea5b0800d709bfe1239c95fc7bb22a'],
+  ['.github/workflows/deploy.yml', 'ENV_TMP="$(mktemp .env.1387-staged.XXXXXX)"', 'unset STAGED_DB_PASSWORD', '7d38b47826a6235eb10a483197e8bf2097c0c150e63078b6020cabf3aa38c07f'],
   ['.github/workflows/actual-duration-acceptance.yml', '/tmp/token.txt', null, '4b5b10a214d41bdb14db55673bcce8f653536940500df2a5b50e7734518d5291'],
   ['.github/workflows/multi-guardian-activation.yml', 'try_login() {', null, 'c414720923e7b7b3a7321eac36afcec7117139c01b5ed03faef7c38ae59d2ed6'],
   ['scripts/smoke-auth-lib.sh', 'smoke_extract_access_token() {', 'login failed after $max_attempts attempts (last HTTP status', 'e597ee2d43d0d882e0d20b67c066c7a538b76cb06619754e5d16e4d6e325c75d'],
@@ -981,16 +1018,19 @@ export function snippetRanges(text, from, to) { // [[first, last], ...] line ran
     const end = lines.findIndex((l, i) => i >= hits[0] && l.includes(to));
     return hits.length === 1 && end >= 0 ? [[hits[0], end]] : null;
   }
-  const ranges = hits.map((i) => {
-    let h = i;
-    while (h >= 0 && !/^\s*(?:-\s+)?run:\s*[|>]/.test(lines[h])) h--;
-    let e = h + 1;
-    while (e + 1 < lines.length && (!lines[e + 1].trim() || indent(lines[e + 1]) >= indent(lines[h + 1]))) e++;
-    while (e > h && !lines[e].trim()) e--;
-    return h >= 0 && i <= e ? [h, e] : null;
-  });
+  const ranges = hits.map((i) => runBlock(lines, i));
   return hits.length && ranges.every(Boolean) ? [...new Map(ranges.map((r) => [r[0], r])).values()] : null;
 }
+function runBlock(lines, i) { // [header, last] of the YAML `run:` block holding line i, or null
+  let h = i;
+  while (h >= 0 && !/^\s*(?:-\s+)?run:\s*[|>]/.test(lines[h])) h--;
+  let e = h + 1;
+  while (e + 1 < lines.length && (!lines[e + 1].trim() || indent(lines[e + 1]) >= indent(lines[h + 1]))) e++;
+  while (e > h && !lines[e].trim()) e--;
+  return h >= 0 && i <= e ? [h, e] : null;
+}
+// Reviewed helpers defined (exactly once) outside the pins of the same run block and called from a pinned snippet.
+const PIN_HELPERS = new Set(['abort_deploy']);
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 export function pinProblems(read) {
   const problems = [], byFile = new Map();
@@ -1002,9 +1042,27 @@ export function pinProblems(read) {
     if (sha256(ranges.map(([a, b]) => lines.slice(a, b + 1).join('\n')).join('\n--\n')) !== expected)
       problems.push(`capture annotation producer/consumer changed; re-review exact quiet transport: ${file} ${from}`);
   }
-  for (const [file, ranges] of byFile) read(file).split('\n').forEach((l, i) => {
-    if (/secret-echo-allow:/.test(l) && !ranges.some(([a, b]) => i >= a && i <= b)) problems.push(`annotation outside every reviewed snippet: ${file} line ${i + 1}`);
-  });
+  for (const [file, ranges] of byFile) {
+    const lines = read(file).split('\n'), pinned = (i) => ranges.some(([a, b]) => i >= a && i <= b);
+    lines.forEach((l, i) => { if (/secret-echo-allow:/.test(l) && !pinned(i)) problems.push(`annotation outside every reviewed snippet: ${file} line ${i + 1}`); });
+    // an edit outside the pins of the same run block must not redirect a pinned command: no shadowing function,
+    // builtin override, alias, or DEBUG / $BASH_COMMAND trap anywhere in that block
+    const blocks = new Map(ranges.map((r) => [file.endsWith('.sh') ? [0, lines.length - 1] : runBlock(lines, r[0]), r]).map(([b, r]) => [b[0], [b, []]]));
+    for (const r of ranges) [...blocks.values()].find(([b]) => r[0] >= b[0] && r[1] <= b[1])[1].push(r);
+    for (const [[a, b], inside] of blocks.values()) {
+      const used = new Set(['command', 'builtin', 'echo', 'printf', 'eval', 'source', 'exec', 'set', 'shopt', 'trap', 'enable']);
+      for (const [x, y] of inside) for (const w of lines.slice(x, y + 1).join('\n').matchAll(/[A-Za-z_][\w-]*/g)) used.add(w[0]);
+      const defs = [];
+      for (let i = a; i <= b; i++) {
+        const m = /^\s*(?:function\s+([A-Za-z_][\w-]*)|([A-Za-z_][\w-]*)\s*\(\s*\))\s*([{(]?)/.exec(lines[i]);
+        if (m && (m[1] || m[3] || /^\s*[{(]/.test(lines.slice(i + 1).find((x) => x.trim()) ?? ''))) defs.push([i, m[1] ?? m[2]]);
+        if (!pinned(i) && (/^\s*alias\s|expand_aliases/.test(lines[i]) || (/\btrap\b/.test(lines[i]) && (/\bDEBUG\b/.test(lines[i]) || /BASH_COMMAND/.test(lines[i])))))
+          problems.push(`alias or command trap in a pinned run block: ${file} line ${i + 1}`);
+      }
+      for (const [i, name] of defs) if (!pinned(i) && used.has(name) && !(PIN_HELPERS.has(name) && defs.filter(([, n]) => n === name).length === 1))
+        problems.push(`function ${name} shadows a command of a pinned snippet: ${file} line ${i + 1}`);
+    }
+  }
   return problems;
 }
 {
@@ -1015,7 +1073,13 @@ export function pinProblems(read) {
   if (edited('=== [6/7] Health check + Smoke test ===', '=== [6/7] unrelated edit ===').length || edited('jobs:\n', 'jobs:\n  # unrelated\n').length)
     fail('an unrelated deploy.yml edit must not fail the snippet pins');
   for (const [from, to] of [['curl -skf -X POST \\', 'curl -vskf -X POST \\'], ['\' .env > "$ENV_TMP"', '\' .env | tee "$ENV_TMP"'],
-    ['unset rb_secret rb_response', 'true'], ['jobs:\n', 'jobs:\n  # x # secret-echo-allow: new unpinned capture annotation\n']])
+    ['unset rb_secret rb_response', 'true'], ['jobs:\n', 'jobs:\n  # x # secret-echo-allow: new unpinned capture annotation\n'],
+    ['ENV_TMP="$(mktemp .env.1387-staged.XXXXXX)"', 'ENV_TMP=/dev/stderr'],
+    ['          DEPLOY_SECRET="$(grep', '          curl() { echo "$*" >&2; command curl "$@"; }\n          DEPLOY_SECRET="$(grep'],
+    ['            local rb_secret rb_response', '            trap \'echo "$BASH_COMMAND" >&2\' DEBUG\n            local rb_secret rb_response'],
+    ['          ENV_TMP="$(mktemp', '          awk() { command awk "$@" | tee /dev/stderr; }\n          ENV_TMP="$(mktemp'],
+    ['          ENV_TMP="$(mktemp', '          alias awk=\'tee /dev/stderr\'\n          ENV_TMP="$(mktemp'],
+    ['          abort_deploy() {', '          abort_deploy() { echo "$@" >&2; }\n          abort_deploy() {']])
     if (!edited(from, to).length) fail('editing a pinned producer/consumer snippet must fail:', to);
   const localPinScript = readFileSync('.github/actions/production-ssh-trust/setup.sh', 'utf8');
   if (scan('local-action-script', blk(...localPinScript.split('\n'), 'echo "$INPUT_HOST_KEY"')).length === 0) fail('local action script append must not publish its host-pin input');
