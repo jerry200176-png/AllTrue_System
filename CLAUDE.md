@@ -125,7 +125,7 @@ Claude Code on the web／其他雲端 session 的 container 是全新隔離環�
 **log 只有 ID／數量（公開 repo，#3605）**：完整 JSON（標題／描述／留言）只在以 `DUMP_ARTIFACT_KEY` 加密的 artifact（`*.full.tar.gz.enc`）；缺 secret 時 workflow fail closed。雲端 session 沒有金鑰也抓不到 artifact（`blob.core.windows.net` 403 是真的 egress 政策、不要繞過），所以報告內容只能由本機 agent 用 `gh run download` + `openssl` 解密讀取，解密步驟見 SOP 第 5 步。
 **兩者有 15 分鐘新鮮度限制**（`scripts/validate-bug-intake-evidence.py --max-age-minutes 15`）：queue-dump 與 detail-dump 必須在同一輪 15 分鐘內連續觸發並互相對得上，否則視為 stale、禁止拿舊 dump 直接分診。
 **回寫（new→triaged + 公開留言）沒有雲端路徑**：`bug-phase-a-triage.yml`／`bug-followup-comment.yml` 只有 `workflow_dispatch`、**沒有** push fallback（這是刻意的——會寫production，不像唯讀 dump 給雲端 agent 開後門）。雲端 session 能做到開 GitHub issue 為止；`bug_id` + `github_issue_url` + 符合 §3.8 白話規則的 `public_reply`（必須含 issue URL）要交給有 `workflow_dispatch` 權限的人類手動跑。`bug-phase-c-allowlist.yml` 雖有 push trigger，但限定「修復已上線」的 Phase C，不可拿來做未驗證的 Phase A。
-**即時唯讀（2026-10-13 起）**：若環境有 `ALLTRUE_TRIAGE_TOKEN`（超級管理員在「個人資料 → 安全性 → AI 分診唯讀金鑰」建立，預設 90 天到期），可直接 HTTPS 讀 `GET /api/v1/triage/bug-reports`（列表／單筆含留言／附件），不必走 dump。這把金鑰只能讀，其他 API 一律 403；回寫仍走上述 dispatch workflow。**repo 是公開的：絕不可把回報內容（姓名、電話、描述、留言、截圖）貼到 GitHub issue／PR／commit**，只寫 ID 與自己的技術判斷。
+**即時唯讀（2026-10-13 起；cloud 環境的具名例外見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-14（三）補充第 3 條）**：若環境有 `ALLTRUE_TRIAGE_TOKEN`（超級管理員在「個人資料 → 安全性 → AI 分診唯讀金鑰」建立，預設 90 天到期），可直接 HTTPS 讀 `GET /api/v1/triage/bug-reports`（列表／單筆含留言／附件），不必走 dump。這把金鑰只能讀，其他 API 一律 403；回寫仍走上述 dispatch workflow。**repo 是公開的：絕不可把回報內容（姓名、電話、描述、留言、截圖）貼到 GitHub issue／PR／commit**，只寫 ID 與自己的技術判斷。
 完整程序見 [`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`](docs/sop/BUG_INTAKE_TO_PRODUCTION.md)。
 
 完整 Gotchas G-001 ~ G-012：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
