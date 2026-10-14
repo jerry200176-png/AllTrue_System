@@ -67,10 +67,12 @@ async function load() {
   try {
     const qs = new URLSearchParams({ subject_type: props.subjectType, subject_id: String(props.subjectId) });
     const resp = await fetch(`/api/v1/accounting/notes?${qs}`, { headers: headers() });
-    const json = await resp.json().catch(() => ({}));
+    const json = await resp.json().catch(() => null);
     if (seq !== loadSeq) return;
-    if (!resp.ok) throw new Error(json.message || `載入失敗（${resp.status}）`);
-    notes.value = json.notes || [];
+    if (!resp.ok) throw new Error(json?.message || `載入失敗（${resp.status}）`);
+    // An unreadable body must not count as a confirmed history: it could hide an uncertain save.
+    if (!json || !Array.isArray(json.notes)) throw new Error('紀錄讀取失敗，請重新載入');
+    notes.value = json.notes;
     loaded.value = true;
   } catch (e) {
     if (seq === loadSeq) error.value = humanizeApiErrorMessage(e.message || '載入備註失敗');
@@ -110,11 +112,15 @@ async function add() {
     if (loading.value) {
       // The panel was reopened during the save: that GET may predate this note, so fetch again.
       load();
-    } else {
+    } else if (!notes.value.some((n) => n.id === json.id)) {
+      // A load that finished during the save may already include this note.
       notes.value = [...notes.value, json];
     }
   } catch (e) {
     if (uncertain) {
+      // Any load started before this point may predate the save; drop it and require a fresh one.
+      loadSeq++;
+      loading.value = false;
       loaded.value = false;
       error.value = '不確定這則備註有沒有存到。請先重新載入紀錄，確認沒有再送出。';
     } else {

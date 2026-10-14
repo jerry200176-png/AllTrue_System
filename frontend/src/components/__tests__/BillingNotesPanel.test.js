@@ -135,4 +135,67 @@ describe('BillingNotesPanel (#3836 append-only billing notes)', () => {
     expect(w.findAll('.billing-notes__list li').map((li) => li.text()).join()).toContain('已收現金');
     expect(w.get('form button[type="submit"]').attributes('disabled')).toBeUndefined();
   });
+
+  it('ignores a GET started during a save whose outcome is uncertain, and needs a fresh reload (#4040 review)', async () => {
+    const pending = [];
+    const deferred = () => new Promise((r) => pending.push(r));
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(ok({ notes: [] }))
+      .mockImplementationOnce(deferred) // POST
+      .mockImplementationOnce(deferred) // GET from reopening during the POST
+      .mockReturnValueOnce(ok({ notes: [{ id: 3, body: '補差額', author_name: 'A', created_at: null, legacy: false }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mount(BillingNotesPanel, { props: { subjectType: 'invoice', subjectId: 6 } });
+    await w.get('.billing-notes__toggle').trigger('click');
+    await flushPromises();
+    await w.get('textarea').setValue('補差額');
+    await w.get('form').trigger('submit');
+    await w.get('.billing-notes__toggle').trigger('click');
+    await w.get('.billing-notes__toggle').trigger('click');
+    const [resolvePost, resolveEarlyGet] = pending;
+    resolvePost({ ok: false, status: 502, json: async () => null });
+    await flushPromises();
+    resolveEarlyGet({ ok: true, status: 200, json: async () => ({ notes: [] }) });
+    await flushPromises();
+    expect(w.get('form button[type="submit"]').attributes('disabled')).toBeDefined();
+    await w.get('.billing-notes__reload').trigger('click');
+    await flushPromises();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(w.findAll('.billing-notes__list li').map((li) => li.text()).join()).toContain('補差額');
+  });
+
+  it('does not duplicate a note that a concurrent load already returned (#4040 review)', async () => {
+    const pending = [];
+    const deferred = () => new Promise((r) => pending.push(r));
+    const note = { id: 4, body: '新備註', author_name: 'A', created_at: null, legacy: false };
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(ok({ notes: [] }))
+      .mockImplementationOnce(deferred) // POST
+      .mockReturnValueOnce(ok({ notes: [note] })); // GET from reopening, after the insert committed
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mount(BillingNotesPanel, { props: { subjectType: 'invoice', subjectId: 7 } });
+    await w.get('.billing-notes__toggle').trigger('click');
+    await flushPromises();
+    await w.get('textarea').setValue('新備註');
+    await w.get('form').trigger('submit');
+    await w.get('.billing-notes__toggle').trigger('click');
+    await w.get('.billing-notes__toggle').trigger('click');
+    await flushPromises();
+    pending[0]({ ok: true, status: 201, json: async () => note });
+    await flushPromises();
+    expect(w.findAll('.billing-notes__list li')).toHaveLength(1);
+  });
+
+  it('treats an unreadable history body as a failed load (#4040 review)', async () => {
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(Promise.resolve({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad'); } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mount(BillingNotesPanel, { props: { subjectType: 'invoice', subjectId: 8 } });
+    await w.get('.billing-notes__toggle').trigger('click');
+    await flushPromises();
+    expect(w.find('[role="alert"]').exists()).toBe(true);
+    expect(w.find('.billing-notes__reload').exists()).toBe(true);
+    await w.get('textarea').setValue('更正');
+    expect(w.get('form button[type="submit"]').attributes('disabled')).toBeDefined();
+  });
 });
