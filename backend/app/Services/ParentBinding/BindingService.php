@@ -74,8 +74,9 @@ final class BindingService
      */
     public function pageBindings(?int $campusId, ?array $allowedCampusIds, ?string $studentName, ?string $status, int $page, int $perPage, ?int $studentId = null, ?string $lineUserId = null): array
     {
-        // Scoped by the student's current campus, like destroy() and stats(): a transferred
-        // student's binding belongs to the new campus whatever its stored campus_id says.
+        // A director sees a binding only when both its campus_id and the student's current
+        // campus are in scope: the same pair destroy() authorizes and ParentLinePush sends to.
+        // A transferred student's stale binding is left to super admins (null scope).
         $q = DB::table('student_line_bindings')
             ->join('Student', 'student_line_bindings.student_id', '=', 'Student.id')
             ->leftJoin('Campus', 'Student.CampusID', '=', 'Campus.id')
@@ -90,10 +91,10 @@ final class BindingService
                 'Campus.name as campus_name',
             ]);
         if ($campusId !== null) {
-            $q->where('Student.CampusID', $campusId);
+            $q->where('Student.CampusID', $campusId)->where('student_line_bindings.campus_id', $campusId);
         }
         if ($allowedCampusIds !== null) {
-            $q->whereIn('Student.CampusID', $allowedCampusIds);
+            $q->whereIn('Student.CampusID', $allowedCampusIds)->whereIn('student_line_bindings.campus_id', $allowedCampusIds);
         }
         if ($studentId !== null) {
             $q->where('student_line_bindings.student_id', $studentId);
@@ -130,8 +131,8 @@ final class BindingService
 
     /**
      * Binding-page stat cards (in-app #400), all scoped by the student's current
-     * campus: enabled students, those with a verified binding (bound), and those
-     * whose bindings are all still unverified.
+     * campus: enabled students, those with a verified same-campus binding (bound),
+     * and those whose same-campus bindings are all still unverified.
      *
      * @return array{bound_count:int, unverified_bound_count:int, student_total:int}
      */
@@ -149,8 +150,11 @@ final class BindingService
             return $q;
         };
         $hasBinding = fn (bool $verified) => function ($sub) use ($verified) {
+            // Same-campus only, like ParentLinePush: a stale binding left at another campus
+            // reaches no parent, so it is not counted as bound here.
             $sub->select(DB::raw(1))->from('student_line_bindings as slb')
                 ->whereColumn('slb.student_id', 'Student.id')
+                ->whereColumn('slb.campus_id', 'Student.CampusID')
                 ->when($verified, fn ($w) => $w->whereNotNull('slb.verified_at'));
         };
 

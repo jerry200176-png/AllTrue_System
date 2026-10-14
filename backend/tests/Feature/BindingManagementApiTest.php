@@ -118,6 +118,12 @@ class BindingManagementApiTest extends TestCase
             ->assertJsonPath('student_total', 2);
         $this->getJson('/api/v1/bindings?page=1&campus_id=' . $campus->id, $this->authHeaders($director))
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.student_id', $bob->id);
+        // The stale binding (still campus A, student now at B) is not a director row or a bound student at B.
+        $directorB = $this->directorFor($other);
+        $this->getJson('/api/v1/bindings?page=1&campus_id=' . $other->id, $this->authHeaders($directorB))
+            ->assertOk()->assertJsonCount(1, 'data');
+        $this->getJson('/api/v1/bindings/stats?campus_id=' . $other->id, $this->authHeaders($directorB))
+            ->assertOk()->assertJsonPath('bound_count', 1)->assertJsonPath('student_total', 2);
     }
 
     public function test_authorized_director_can_create_binding_in_own_campus(): void
