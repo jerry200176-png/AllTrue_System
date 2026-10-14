@@ -2238,7 +2238,9 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
     def test_abort_asks_the_captured_verifier_whether_the_range_is_additive(self):
         abort = self.workflow.split("abort_deploy() {", 1)[1].split("\n          }", 1)[0]
         self.assertIn('[ "${MIGRATION_RAN:-0}" -eq 0 ] || [ "$(python3 -I "${PDV:-x}" range-additive '
-                      '"$PREV_COMMIT" "$TARGET_SHA")" = 1 ] || {', abort)
+                      '"$PREV_COMMIT" "$TARGET_SHA")" != 1 ] || MIGRATION_RAN=0\n', abort)
+        # The #4053 hold line stays verbatim right after it.
+        self.assertIn('MIGRATION_RAN=0\n            [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::', abort)
         self.assertNotIn("--migrations-additive", self.workflow)
 
     def test_range_migrations_counts_from_any_repo_subdirectory_and_fails_closed(self):
