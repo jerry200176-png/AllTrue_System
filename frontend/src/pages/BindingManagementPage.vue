@@ -78,7 +78,7 @@
           id="bmp-campus"
           v-model="filters.campusId"
           :disabled="!isSuperAdmin && branchId != null"
-          @change="load"
+          @change="page = 1; refresh()"
         >
           <option value="">全部（限權限）</option>
           <option v-for="b in allBranches" :key="b.id" :value="b.id">{{ b.name }}</option>
@@ -86,7 +86,7 @@
       </div>
       <div>
         <label for="bmp-status">狀態</label>
-        <select id="bmp-status" v-model="filters.status" @change="load">
+        <select id="bmp-status" v-model="filters.status" @change="page = 1; load()">
           <option value="">全部</option>
           <option value="verified">已驗證</option>
           <option value="unverified">未驗證</option>
@@ -297,6 +297,7 @@ function formatDateTime(s) {
 
 /* ── 資料載入 ── */
 async function loadStats() {
+  stats.value = null; // never show another scope's numbers if this load fails
   try {
     stats.value = await fetchBindingStats({ campusId: activeCampusId.value });
   } catch { /* 統計卡失敗不阻擋列表 */ }
@@ -309,6 +310,7 @@ async function load() {
     const data = await fetchBindings({
       campusId: activeCampusId.value,
       studentName: filters.value.studentName || undefined,
+      status: filters.value.status || undefined,
       page: page.value,
       perPage,
     });
