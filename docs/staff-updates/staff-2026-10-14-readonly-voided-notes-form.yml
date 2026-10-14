@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-14-readonly-voided-notes-form
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 已作廢帳單的備註只能查看
+    summary: 課程刪除後被作廢的帳單，備註面板不再顯示新增欄位。
+    items:
+      - category: fixed
+        text: 打開已作廢帳單的備註時，會標示（帳單已作廢）並收起「新增備註」，避免送出後才失敗。
+    source_refs:
+      - "changelog:2026-10-14:readonly-voided-notes-form"
