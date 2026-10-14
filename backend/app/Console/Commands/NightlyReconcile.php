@@ -89,7 +89,9 @@ class NightlyReconcile extends Command
             'mismatches'  => array_slice($mismatches, 0, 200),
         ];
 
-        $reportPath = storage_path('logs/nightly-reconcile-' . now()->format('Ymd') . '.json');
+        // A dry-run preview gets its own file so it never replaces the scheduled
+        // live report the admin panel reads (#3945).
+        $reportPath = storage_path('logs/' . ($dryRun ? 'nightly-reconcile-dryrun-' : 'nightly-reconcile-') . now()->format('Ymd') . '.json');
         @file_put_contents($reportPath, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
         Log::info('nightly_reconcile', [
@@ -127,7 +129,13 @@ class NightlyReconcile extends Command
             return 'source_conflict';
         }
 
-        if ((bool) ($diagnostic['has_partial'] ?? false)) {
+        // SessionDeductionService only converts minutes for count-mode courses
+        // with a purchase cap, so the minute check cannot explain any other row.
+        if (
+            (bool) ($diagnostic['has_partial'] ?? false)
+            && (bool) ($diagnostic['is_session_mode'] ?? false)
+            && $sessionCount > 0
+        ) {
             return 'partial_minutes';
         }
 
@@ -154,7 +162,7 @@ class NightlyReconcile extends Command
     {
         return [
             'partial_minutes' => '部分時數換算',
-            'contract_cap' => '出勤超出合約堂數',
+            'contract_cap' => '使用紀錄超出合約堂數',
             'counter_overstated' => '已用堂數高於現有證據',
             'ledger_ahead' => '扣堂帳本領先計數器',
             'attendance_ahead' => '出勤或評量證據領先計數器',
