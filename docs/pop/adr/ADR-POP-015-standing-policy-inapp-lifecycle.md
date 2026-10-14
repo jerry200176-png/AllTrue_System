@@ -2,8 +2,8 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Proposed (Founder design review) |
-| Lifecycle | draft |
+| Status | Accepted (Founder 2026-10-14, #4073) |
+| Lifecycle | active |
 | Date | 2026-10-14 |
 | Confidence | 75% |
 | Risk | Medium |
