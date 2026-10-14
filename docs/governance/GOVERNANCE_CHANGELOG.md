@@ -5,6 +5,12 @@
 - Founder decision (Jerry, Q1–Q24 in session): all work moves to Claude cloud sessions. Local mechanisms (agent-start worktrees, preflight path allowlist, Agent Session Provenance, local-heavy-gate, Exo, local crontab) are retired rather than given cloud exceptions.
 - Target: auto merge → deploy → health check → auto rollback; additive migrations automatic. Destructive migrations, prod data changes, prod credentials and irreversible operations keep a GitHub Environment approval. Stuck decisions go to a `needs-founder` issue.
 - Recorded only; current `deploy.yml` / release-train gates stay in force until each implementation PR merges with Founder approval of its diff.
+## 2026-10-14 — Cloud-only autonomy and pre-approved in-app write-backs
+
+- Founder decision (Jerry, in session): T0–T2 work proceeds autonomously under existing policy; scope doubts are still raised.
+- Pre-approved production writes are limited to in-app report status and public replies (Phase A triage, Phase C after verified deploy, 14-day timeout under existing eligibility). Data repair, migration, credentials, new data access and boundary changes stay per-case Founder decisions.
+- #3943/#3955 must move to the ADR-POP-008 Pi-local executor; no runner→SSH write exception is kept. Per ADR-POP-015 they are closed and their successor implementation PRs carry the self-merge gate; each use is recorded with the POP request/execution ID (plus the deploy run for Phase C). T3 deploys and governance changes that grant or alter authority, approval or protected boundaries remain Founder-approved each time; editorial, evidence and inventory changes follow their normal tier (no blanket Founder approval, per the constitution). Read-only diagnostics need a design review first.
+- No GitHub Environment reviewer, POP approval quorum, production executor, permission or security control is changed by this entry.
 
 ## 2026-10-07 — Evidence-gated production activation (Founder 1A)
 

@@ -15,6 +15,20 @@
 6. **淘汰**：`agent-start` 及本機 worktree／preflight 路徑檢查、Agent Session Provenance、`local-heavy-gate`、Exo、**Founder 工作站**的舊 crontab。Pi 上驅動 Laravel scheduler 與 `pop:execute-approved` 的 `schedule:run` cron **保留**。每小時清 PII（`pii-log-purge.yml`）與既有的 `bug-auto-intake.yml` 都在 GitHub Actions，保留；不另加 Claude routine 收 bug。
 7. **順序與資料**：AllTrue 先跑順，再改 portfolio-ops、sunrise-cafe；其他專案之後再搬。「舊資料不丟」：完整備份驗證完成前不刪本機工具，文件可先改。
 8. 本節第 3、4 條是目標狀態；在對應實作 PR 合併前，現行 `deploy.yml`／release train 的審核仍照舊生效。
+## 2026-10-14（二）（Cloud-only 作業；對話中逐條確認；本 repo PR #4069）
+
+1. **T0–T2**：Agent 依既有政策（`RISK_BASED_MERGE_POLICY.md`、本檔 2026-10-12 各條）自主開發、審查、合併與交付，不逐項請示。範圍不明或超出本檔授權時仍須提出。
+2. **預先批准的正式寫入（allowlist，只授權不放寬）**：只限下列 in-app 回報狀態與公開回覆，且各項須其執行路徑已依第 3 條合併後才生效：
+   - (a) Phase A：in-app 回報 `new`→`triaged`＋符合 `CHAT_BUG_SYSTEM.md` §3.8 的公開回覆（必含 GitHub issue URL）。
+   - (b) Phase C：**確實已修復且部署驗證通過**（版本＋health＋受影響路徑 smoke，見 `docs/sop/BUG_INTAKE_TO_PRODUCTION.md` Deployment evidence gate）的回報 → `resolved`＋公開回覆。
+   - (c) 14 天逾時結案：只限符合既有等待確認規則的回報，**等待天數固定為 14 天**（`--auto`／`AUTO_DAYS = 14`），不得使用手動路徑的 7 天預設或任何少於 14 天的值；**仍有問題的案件不得關閉**。
+   其他一律不在此列：資料修復、migration、credential、新增資料存取、權限／安全邊界變更，仍逐案問 Founder。
+3. **#3943／#3955 執行路徑**：必須改走既定的正式授權執行器（ADR-POP-008：Pi 本機 `pop:execute-approved`），**不得保留 GitHub runner → SSH 的寫入例外**。依 `docs/pop/adr/ADR-POP-015-standing-policy-inapp-lifecycle.md`，#3943／#3955 本身關閉不合併，可重用部分移植到 ADR-POP-015 的後繼實作 PR；本條的自行合併授權適用於這些後繼實作 PR（`RISK_BASED_MERGE_POLICY.md` §Founder standing exception 的第二條預先批准路徑）。後繼實作 PR 須為每條受影響的權限／寫入路徑（含跨校區與空 scope 必須 fail closed）新增或更新聚焦回歸測試並在 exact head CI 執行，且完成獨立審查、最新 head CI 全綠、無未處理 P0／P1、**本 PR 引入的回歸不論嚴重度一律修正**、所有 review thread 皆回覆並 resolve（即 2026-10-12 第 4 條完整 review 規則）後，Agent 可自行合併，不必再取得同一個 GO。
+4. **部署**：範圍內每個 PR 皆 T0–T2 者依既有規則自動上線；**含 T3 的部署每次由 Founder 批准**。
+5. **治理變更**：會**授予、擴大或改變權限、核准方式或受保護邊界**的治理變更（含 `docs/governance/`、`AGENTS.md`、`CLAUDE.md` 及控制面規則），Agent 先完成並提供具體 diff，**由 Founder 批准後才合併**。純文字修正、證據紀錄、清單／inventory 更新等不改變權限或邊界的治理文件變更，依一般風險分級處理（`COMPANY_CONSTITUTION.md` §3：不另加 Founder 全面核准）。
+6. **唯讀診斷**：先提交設計審查；本清單不授予任何新的資料存取權限。
+7. **期限與紀錄**：本節授權無固定期限，Founder 可隨時撤銷。每次使用第 2 條授權須在對應 issue 留下案件 ID、執行紀錄（POP request／execution ID；Phase C 另附 deploy workflow run 連結）與驗證結果；公開紀錄（GitHub issue／PR／commit／log）不得含個資。
+8. **多 Agent 分工**：Claude 與 Codex 在共用協調紀錄（GitHub issue）登記各自負責的 PR／branch 與實作／審查角色，不共編同一分支。
 
 ## 2026-10-14（對話中「好，照你建議做 go」；批准「批次核准：一天集中 1–2 班」）
 
