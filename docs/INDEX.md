@@ -117,6 +117,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |------|------|-----------|
 | `.cursorrules` §P0 | 5 條紅線 + 3 條黃線 + 6 次事故摘要 | 已自動載入 |
 | `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引 | 按需讀 |
+| `docs/agents/token-discipline.md` | 省 token 作業規則（PR 事件只在決策點動作、小輸出、批次 review、helper 限範圍） | 約 1 分鐘 |
 
 ---
 
