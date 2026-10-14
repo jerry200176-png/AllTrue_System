@@ -1678,7 +1678,9 @@ jobs:
 
           abort_deploy() {
             echo "❌ $1"
-            [ "${MIGRATION_RAN:-0}" -eq 0 ] || [ "$(python3 -I "${PDV:-x}" range-additive "$PREV_COMMIT" "$TARGET_SHA")" = 1 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
+            # Founder 2026-10-14: every range migration additive-only (deployed classifier) → code rollback is safe.
+            [ "${MIGRATION_RAN:-0}" -eq 0 ] || [ "$(python3 -I "${PDV:-x}" range-additive "$PREV_COMMIT" "$TARGET_SHA")" != 1 ] || MIGRATION_RAN=0
+            [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
             if ! rollback_deploy; then
               echo "❌ 自動 rollback 也失敗 — deploy run 必須標紅"
               exit 11
