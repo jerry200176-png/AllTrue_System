@@ -81,6 +81,11 @@ final class PopOperationCatalog
         return $policy;
     }
 
+    public function policyFile(string $name): string
+    {
+        return dirname($this->catalogPath ?: dirname(base_path()) . '/operations/catalog.yaml') . '/policies/' . $name;
+    }
+
     public function policyVersion(): int
     {
         $catalogPath = $this->catalogPath ?: dirname(base_path()) . '/operations/catalog.yaml';
