@@ -270,7 +270,8 @@ _ADDITIVE_EXCLUDED_TABLE_RE = re.compile(
     r"apiclient|api_client|security|grant|teacher|"
     r"invoice|payment|payroll|salary|billing|ledger|charge|pric|deduct|entitlement|refund|bank|"
     r"accounting|dunning|rate_card|package|contract|tuition|fee|cash|allowance|coverage|correction|"
-    r"studentclass|student_class|^student$|singin|rfid|swipe|pop_|system_setting|_members",
+    r"studentclass|student_class|^student$|singin|rfid|swipe|pop_|system_setting|_members|"
+    r"pii|legal|medical|national|personal|consent|export",
     re.IGNORECASE,
 )
 _SCHEMA_TABLE_ARG_RE = re.compile(r"Schema\s*::\s*\w+\s*\(\s*S(\d+)", re.IGNORECASE)

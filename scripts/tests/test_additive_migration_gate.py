@@ -250,6 +250,8 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::table('StudentSingIn', fn (Blueprint $t) => $t->string('x')->nullable());",
             "Schema::table('system_settings', fn (Blueprint $t) => $t->string('x')->nullable());",
             "Schema::table('chat_thread_members', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::create('pii_exports', function (Blueprint $t) { $t->id(); });",
+            "Schema::create('legal_records', function (Blueprint $t) { $t->id(); });",
         ):
             patch = new_file(MIG, migration(up))
             self.assertEqual(additive_migration_paths([MIG], patch), set(), up)
