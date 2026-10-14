@@ -127,6 +127,8 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::table('t', fn (Blueprint $t) => $t->string('s')->default('pending_review'));",
             "Schema::table('t', fn (Blueprint $t) => $t->boolean('b')->nullable()->default(false));",
             "Schema::table('t', fn (Blueprint $t) => $t->integer('n')->default(0));",
+            "Schema::table('t', fn (Blueprint $t) => $t->timestamp('c')->nullable()->useCurrent());",
+            "Schema::table('t', fn (Blueprint $t) => $t->timestamp('c')->nullable()->useCurrentOnUpdate());",
         )
         for up in bad:
             self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set(), up)
@@ -160,6 +162,14 @@ class AdditiveMigrationGate(unittest.TestCase):
             (add, "if (!Schema::hasTable('t')) { return; } Schema::table('t', fn (Blueprint $t) => $t->dropColumn('a'));"),
             (create, "Schema::dropIfExists('n');"),
             (create, ""),
+            ("Schema::table('t', fn (Blueprint $t) => $t->softDeletes('archived_at'));",
+             "Schema::table('t', fn (Blueprint $t) => $t->dropSoftDeletes('archived_at'));"),
+            ("Schema::table('t', fn (Blueprint $t) => $t->softDeletes('archived_at'));",
+             "Schema::table('t', fn (Blueprint $t) => $t->dropColumn('archived_at'));"),
+            ("Schema::table('t', fn (Blueprint $t) => $t->string('a')->nullable()->index('custom_idx'));",
+             "Schema::table('t', fn (Blueprint $t) => $t->dropIndex('custom_idx'));"),
+            ("Schema::table('t', fn (Blueprint $t) => $t->string('a')->nullable()->index());",
+             "Schema::table('t', fn (Blueprint $t) => $t->dropIndex('t_a_index'));"),
         )
         for up, down in good:
             self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up, down))), {MIG}, down)
@@ -174,6 +184,15 @@ class AdditiveMigrationGate(unittest.TestCase):
             (add, "DB::table('Student')->delete();"),
             (add, "Schema::table('t', fn (Blueprint $t) => $t->renameColumn('a', 'z'));"),
             (create, "Schema::dropIfExists('n'); Schema::dropIfExists('Student');"),
+            # dropSoftDeletes() drops deleted_at, not the archived_at that up() added.
+            ("Schema::table('t', fn (Blueprint $t) => $t->softDeletes('archived_at'));",
+             "Schema::table('t', fn (Blueprint $t) => $t->dropSoftDeletes());"),
+            # The column form derives t_a_index and cannot drop custom_idx.
+            ("Schema::table('t', fn (Blueprint $t) => $t->string('a')->nullable()->index('custom_idx'));",
+             "Schema::table('t', fn (Blueprint $t) => $t->dropIndex(['a']));"),
+            # Column order matters for the derived name.
+            ("Schema::table('t', function (Blueprint $t) { $t->string('a')->nullable(); $t->string('b')->nullable(); $t->index(['a', 'b']); });",
+             "Schema::table('t', fn (Blueprint $t) => $t->dropIndex(['b', 'a']));"),
         )
         for up, down in bad:
             patch = new_file(MIG, migration(up, down))

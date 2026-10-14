@@ -328,6 +328,8 @@ def _table_column_is_expand_safe(calls: list[tuple[str, str]]) -> bool:
             nullable = value in {"", "true"}
         elif name == "default":
             defaulted = value not in {"", "null"}
+        elif name in {"usecurrent", "usecurrentonupdate"}:
+            defaulted = True  # DEFAULT CURRENT_TIMESTAMP also fills historical rows
     return nullable and not defaulted
 
 
@@ -417,6 +419,12 @@ _HELPER_DROPS = {
     "dropsoftdeletestz": {"softdeletestz"},
     "dropremembertoken": {"remembertoken"},
 }
+# Columns each helper adds; a string argument (softDeletes('archived_at')) replaces the default.
+_HELPER_COLUMNS = {
+    "timestamps": ["created_at", "updated_at"], "timestampstz": ["created_at", "updated_at"],
+    "nullabletimestamps": ["created_at", "updated_at"], "softdeletes": ["deleted_at"],
+    "softdeletestz": ["deleted_at"], "remembertoken": ["remember_token"],
+}
 _DROP_TABLE_RE = re.compile(r"Schema\s*::\s*(?:dropIfExists|drop)\s*\(\s*S(\d+)\s*\)\s*;", re.IGNORECASE)
 _DROP_ARGS_RE = re.compile(r"(?:S\d+|\[|\]|,|\s)*")
 
@@ -429,6 +437,16 @@ def _block_statements(match: re.Match) -> list[str]:
 
 def _index_name(table: str, columns: list[str]) -> str:
     return re.sub(r"[-.]", "_", f"{table}_{'_'.join(columns)}_index".lower())
+
+
+def _add_index(entry: dict[str, set], table: str, columns: list[str], explicit: list[str]) -> None:
+    # dropIndex(['a', 'b']) derives the conventional name, so the column form
+    # only drops an implicitly named index on exactly those columns, in order.
+    if explicit:
+        entry["index_names"].add(explicit[0])
+    else:
+        entry["index_names"].add(_index_name(table, columns))
+        entry["index_columns"].add(tuple(columns))
 
 
 def _up_additions(code: str, literals: list[str]) -> dict[str, dict[str, set]]:
@@ -451,18 +469,17 @@ def _up_additions(code: str, literals: list[str]) -> dict[str, dict[str, set]]:
                 inside = re.search(r"\[(.*?)\]", args)
                 columns = [literals[int(i)] for i in re.findall(r"S(\d+)", inside.group(1))] if inside else names[:1]
                 rest = [literals[int(i)] for i in re.findall(r"S(\d+)", args[inside.end():] if inside else "")]
-                explicit = rest[:1] if inside else names[1:2]
-                entry["index_columns"].add(frozenset(columns))
-                entry["index_names"].update(explicit or [_index_name(table, columns)])
+                _add_index(entry, table, columns, rest[:1] if inside else names[1:2])
             elif first in _NULLABLE_HELPERS:
-                entry["helpers"].add(first)
+                # helper name + its column arguments, so the drop must name the same columns
+                entry["helpers"].add((first, tuple(names)))
+                entry["columns"].update(names or _HELPER_COLUMNS.get(first, []))
             elif names:
                 entry["columns"].add(names[0])
                 for name, chained in calls[1:]:
                     if name == "index":
                         explicit = [literals[int(i)] for i in re.findall(r"S(\d+)", chained)]
-                        entry["index_columns"].add(frozenset(names[:1]))
-                        entry["index_names"].update(explicit[:1] or [_index_name(table, names[:1])])
+                        _add_index(entry, table, names[:1], explicit[:1])
     return added
 
 
@@ -482,14 +499,16 @@ def _down_is_inverse(down: str, literals: list[str], added: dict[str, dict[str, 
             if not call or not _DROP_ARGS_RE.fullmatch(call.group(2)):
                 return match.group(0)
             name, args = call.group(1).lower(), call.group(2)
-            values = {literals[int(i)] for i in re.findall(r"S(\d+)", args)}
+            ordered = [literals[int(i)] for i in re.findall(r"S(\d+)", args)]
+            values = set(ordered)
             if name == "dropcolumn":
                 ok = bool(values) and values <= entry["columns"]
             elif name == "dropindex":
-                ok = (frozenset(values) in entry["index_columns"]) if "[" in args else (
+                ok = (tuple(ordered) in entry["index_columns"]) if "[" in args else (
                     len(values) == 1 and values <= entry["index_names"])
             else:
-                ok = not values and bool(_HELPER_DROPS.get(name, set()) & entry["helpers"])
+                ok = any(helper in _HELPER_DROPS.get(name, set()) and tuple(ordered) == helper_args
+                         for helper, helper_args in entry["helpers"])
             if not ok:
                 return match.group(0)
         return " "
