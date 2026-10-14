@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-14-two-lesson-leave-one-week
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 同天兩堂請假只延一週
+    summary: 同一天兩堂都請假時，兩個補堂排在同一個下次上課日，結束日只延後一週。
+    items:
+      - category: fixed
+        text: 同一天兩堂都請假，兩個補堂排在同一天、各自原時段，不再多延一週。
+    source_refs:
+      - "changelog:2026-10-14:two-lesson-leave-one-week"
