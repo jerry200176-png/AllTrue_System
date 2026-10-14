@@ -7,7 +7,7 @@
 
 ## Worktree & path safety (canonical)
 
-**Default (Founder 2026-10-14):** work in a Claude cloud session. Clone fresh from `origin/main`, branch `chore|ci|fix/<slug>`, open a PR. No `agent-start`, no local preflight, no `.agent-session/manifest.json`. The PR diff, risk declaration, review and required checks are the delivery evidence.
+**Default (Founder 2026-10-14（三）, [`FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)):** work in a Claude cloud session. Clone fresh from `origin/main`, branch with an accepted `scripts/ci/branch-policy.mjs` prefix, open a PR. No `agent-start`, no local preflight, no `.agent-session/manifest.json`. The PR diff, risk declaration, review and required checks are the delivery evidence.
 **Local WSL (legacy, being retired):** only if a task truly needs it; then `agent-start alltrue <task-id>` and never the forbidden checkouts. Do not update `human-authored.json` to represent agent work.
 **Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
 

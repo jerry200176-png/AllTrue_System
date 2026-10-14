@@ -12,9 +12,10 @@ is off. A cloud session starts from a fresh clone; it has no `/home/jerry`.
 | Step | Rule |
 |------|------|
 | Baseline | `origin/main` |
-| Branch | `chore\|ci\|fix/<slug>` (`branch-policy.mjs`); one session per branch |
+| Branch | `<prefix>/<slug>` with an accepted prefix from `scripts/ci/branch-policy.mjs` (e.g. `feat`, `fix`, `chore`, `ci`, `docs`); one session per branch |
 | Evidence | PR diff, risk declaration, review, exact-head required checks |
-| Not used | `agent-start`, `make agent-preflight`, `.agent-session/manifest.json`, Exo |
+| Not used | `agent-start`, `make agent-preflight`, `.agent-session/manifest.json`, Exo (retired; ignore `.exo/`) |
+| Test accounts | `.cursor/.local/test-credentials.md` is local-only. If the cloud environment has no test accounts, skip the browser test, say so in the PR, and open a `needs-founder` issue |
 
 ## Legacy local model (Phase 0.5, being retired)
 
