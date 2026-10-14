@@ -78,6 +78,16 @@ class StudentClassRateEditSyncsOpenInvoiceTest extends TestCase
         $this->assertSame(8800, (int) $invoice->fresh()->TotalAmount);
     }
 
+    public function test_course_marked_paid_by_hand_keeps_its_bill(): void
+    {
+        [$token, $sc, $invoice] = $this->billedCourse();
+        $sc->update(['Paid' => 1]);
+
+        $this->rerate($token, $sc, 900)->assertOk();
+
+        $this->assertSame(8800, (int) $invoice->fresh()->TotalAmount);
+    }
+
     public function test_bill_that_never_matched_the_old_charge_keeps_its_amount(): void
     {
         [$token, $sc, $invoice] = $this->billedCourse(4400);

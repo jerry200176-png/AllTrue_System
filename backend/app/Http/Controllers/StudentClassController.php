@@ -5074,14 +5074,18 @@ class StudentClassController extends Controller
      * In-app #408: a rate edit re-prices Charge, but the count-mode bill issued at the
      * old price kept its TotalAmount, so the 繳費通知 asked for the old total.
      *
-     * Only a bill nobody has acted on follows the new price: count mode, not void,
+     * Only a bill nobody has acted on follows the new price: count mode, status unpaid,
      * its stored total still equals the old Charge, every line belongs to this course,
      * nothing applied (a voided payment nets to 0), no pending parent report, and not
-     * a 免費／贈送 bill. Any other bill keeps its amount (audit value) as before.
+     * a 免費／贈送 bill, and the course is not marked Paid. Any other bill keeps its
+     * amount (audit value) as before.
      */
     private function syncUntouchedCountInvoicesToCharge(StudentClass $course, int $oldCharge, int $newCharge): void
     {
-        if ($newCharge === $oldCharge || (string) ($course->ScheduleMode ?? 'count') !== 'count') {
+        // Paid=1 is the other half of the dual payment truth (G-009): a course marked
+        // paid by hand keeps its bill as it was.
+        if ($newCharge === $oldCharge || (string) ($course->ScheduleMode ?? 'count') !== 'count'
+            || (int) ($course->Paid ?? 0) === 1) {
             return;
         }
         $classId = (int) $course->getKey();
@@ -5090,7 +5094,7 @@ class StudentClassController extends Controller
         }
         $invoices = Invoice::query()
             ->where('StudentClassID', $classId)
-            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', 'unpaid'))
             ->lockForUpdate()
             ->get();
         foreach ($invoices as $invoice) {
