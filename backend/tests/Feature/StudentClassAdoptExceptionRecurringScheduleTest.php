@@ -265,8 +265,10 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $courseC = $this->createCourseRecord($studentC->id, $teacherId, ['week' => 5]);
         $this->createSessionRecord($courseC->ID, '2026-04-22', '17:00:00', '18:00:00');
 
+        // In-app #406: an unchanged save no longer re-checks, so this save widens the window
+        // (still before courseB's 5/13 session) to exercise the bounded-horizon check again.
         $conflictResponse = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
-            ->putJson("/api/v1/student-classes/{$courseA->ID}", $payload);
+            ->putJson("/api/v1/student-classes/{$courseA->ID}", ['end_date' => '2026-05-06'] + $payload);
         $conflictResponse->assertStatus(409);
         $this->assertSame('teacher_schedule_conflict', $conflictResponse->json('code'));
     }
@@ -284,7 +286,10 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $other = Student::create(['name' => '真衝突', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
         $otherCourse = $this->createCourseRecord($other->id, $teacherId, ['week' => 5]);
         $this->createSessionRecord($otherCourse->ID, '2026-04-27', '17:30:00', '18:30:00');
-        $this->updateFixedSlots($token, $course->fresh(), [1], $slots)->assertStatus(409);
+        // In-app #406: an unchanged save no longer re-checks, so move again (17:15, still
+        // overlapping the other student's 17:30 session and our own regular ones).
+        $moved = [['day' => 1, 'start_time' => '17:15', 'duration_minutes' => 60]];
+        $this->updateFixedSlots($token, $course->fresh(), [1], $moved)->assertStatus(409);
     }
 
     /**
