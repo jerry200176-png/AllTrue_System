@@ -45,15 +45,19 @@ final class AuthenticateTriageToken
     {
         if ($status >= 400 && !TriageTokenService::mayAuditDenial($request->ip())) { return; } // every refusal or failure shares the cross-route cap
         $route = $request->route();
-        $bugId = $request->route('id');
+        $routeId = $request->route('id');
         $attachmentId = $request->route('attachmentId');
+        // #4100: on the billing snapshot the path id is a contract; the report it was read for is the query param.
+        $isBilling = $route instanceof Route && $route->getName() === 'triage.student-classes.billing-snapshot';
+        $queryBugId = $request->query('bug_report_id');
         SecurityAuditEvent::append('triage_token.read', $outcome, [
             'actor_type' => 'triage_token',
             'actor_id' => $tokenId,
-            'subject_type' => 'bug_report',
-            'subject_id' => is_numeric($bugId) ? (int) $bugId : null,
+            'subject_type' => $isBilling ? 'student_class' : 'bug_report',
+            'subject_id' => is_numeric($routeId) ? (int) $routeId : null,
         ], [
             'attachment_ref' => SecurityAuditEvent::ref('bug_report_attachment', is_numeric($attachmentId) ? (int) $attachmentId : null),
+            'bug_report_ref' => $isBilling && is_numeric($queryBugId) ? SecurityAuditEvent::ref('bug_report', (int) $queryBugId) : null,
             'route' => $route instanceof Route ? (string) $route->getName() : '',
             'method' => $request->method(),
             'client_ip_ref' => SecurityAuditEvent::ref('ip', $request->ip()),

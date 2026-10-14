@@ -8,6 +8,10 @@ return [
     // Recognizable secret prefix (like ghp_ / lin_api_) for logs and secret scanners.
     'secret_prefix' => 'alltrue_triage_',
     // The ONLY routes a triage token may reach; every other API route answers 403.
-    'allowed_routes' => ['triage.bug-reports.index', 'triage.bug-reports.show', 'triage.bug-reports.attachment'],
+    // #4100 adds the billing snapshot (IDs + numbers, open-report campus only); remove it here to switch it off.
+    'allowed_routes' => [
+        'triage.bug-reports.index', 'triage.bug-reports.show', 'triage.bug-reports.attachment',
+        'triage.student-classes.billing-snapshot',
+    ],
     'list_max_limit' => 100,
 ];

@@ -46,6 +46,7 @@ use App\Http\Controllers\TeacherLeaveController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
+use App\Http\Controllers\TriageBillingSnapshotController;
 use App\Http\Controllers\TriageBugReportController;
 use App\Http\Controllers\TriageTokenController;
 use App\Http\Controllers\TeacherDuplicateController;
@@ -955,6 +956,9 @@ Route::prefix('v1')->group(function () {
             ->whereNumber('id')->name('triage.bug-reports.show');
         Route::get('bug-reports/{id}/attachments/{attachmentId}', [TriageBugReportController::class, 'attachment'])
             ->whereNumber(['id', 'attachmentId'])->name('triage.bug-reports.attachment');
+        // #4100: IDs + numbers of one contract; scoped to the campus of an open bug report (Founder decision pending).
+        Route::get('student-classes/{id}/billing-snapshot', [TriageBillingSnapshotController::class, 'show'])
+            ->whereNumber('id')->name('triage.student-classes.billing-snapshot');
     });
     Route::middleware(['super_admin', 'require_password_change'])->group(function () {
         Route::get('admin/triage-tokens', [TriageTokenController::class, 'index']);
