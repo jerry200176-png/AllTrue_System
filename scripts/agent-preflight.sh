@@ -142,8 +142,10 @@ MUT_VAL="${!MUT_ENV:-0}"
 ok "production_mutation=disabled"
 
 command -v gh >/dev/null || fail "gh CLI not installed"
-gh auth status >/dev/null 2>&1 || fail "gh not authenticated"
-ok "gh authenticated"
+# Repo-scoped probe: cloud sessions reach GitHub through a proxy where
+# `gh auth status` reports the token invalid although repo API calls work.
+gh api repos/jerry200176-png/AllTrue_System --jq .full_name >/dev/null 2>&1 || fail "gh cannot read the repository"
+ok "gh can read the repository"
 
 ok "project=$PROJECT path=$TARGET branch=$BRANCH"
 ok "head=${HEAD_SHA:0:12} origin/main=${ORIGIN_MAIN:0:12}"
