@@ -267,7 +267,9 @@ _ADDITIVE_PROTECTED_MARKERS = (
     "role", "admin", "guardian", "parent", "user", "account", "login", "session", "oauth",
     "scope", "grant", "acl", "policy", "privilege", "access", "consent", "ledger", "refund",
     "charge", "pric", "amount", "fee", "tuition", "salary", "payroll", "deduct", "contract", "personal", "phone",
-    "email", "address", "birth", "line_user",
+    "email", "address", "birth", "line_user", "national", "identity", "id_number", "passport", "medical",
+    "health", "bank", "card", "rfid", "swipe", "alert", "repair", "webhook", "cron", "schedule",
+    "attendance", "classsession", "class_session",
 )
 # Founder 2026-10-14 (三)④: a migration that only adds tables/columns/plain
 # indexes deploys like other reversible T2 work (expand/contract). This is an
@@ -618,9 +620,11 @@ def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
         # generic "migration" marker is the only one an additive file may carry.
         # Raw source, so table/column names count (a comment hit fails closed).
         haystack = (path + "\n" + source).lower()
-        if any(marker in haystack for marker in _T3_MARKERS if marker != "migration") or any(
-            marker in haystack for marker in _ADDITIVE_PROTECTED_MARKERS
-        ):
+        # Every vocabulary the classifier already protects, plus the list above.
+        protected = [m for m in _T3_MARKERS if m != "migration"] + list(_T2_MARKERS) + list(
+            _ADDITIVE_PROTECTED_MARKERS
+        ) + list(_ACTIVATION_T3_PATH_TERMS)
+        if any(marker in haystack for marker in protected):
             return set()
         additive.add(path)
     return additive if additive == candidates else set()

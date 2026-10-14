@@ -240,6 +240,9 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::create('roles', function (Blueprint $t) { $t->id(); });",
             "Schema::table('users', fn (Blueprint $t) => $t->boolean('is_super_admin')->nullable());",
             "Schema::create('student_guardians', function (Blueprint $t) { $t->id(); });",
+            "Schema::table('rfid_cards', fn (Blueprint $t) => $t->string('tag')->nullable());",
+            "Schema::table('line_webhook_events', fn (Blueprint $t) => $t->text('payload')->nullable());",
+            "Schema::table('medical_records', fn (Blueprint $t) => $t->string('national_id')->nullable());",
         ):
             patch = new_file(MIG, migration(up))
             self.assertEqual(additive_migration_paths([MIG], patch), set(), up)
