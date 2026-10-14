@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-14-leave-order-independent-tails
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 同天兩堂請假，先請哪堂都一樣
+    summary: 同一天兩堂請假，不論先請哪一堂，補堂日期和結束日都相同。
+    items:
+      - category: fixed
+        text: 同一天兩堂請假，先請早的或晚的那堂，排出的補堂日期與結束日都相同，預覽和實際一致。
+      - category: fixed
+        text: 最後一個上課日只排一堂時，空著的時段先補進那一天，另一堂的補堂排到下一個上課日。
+      - category: fixed
+        text: 補課剛好在合約時段時，補堂不會排到只有補課的那天；每週多天上課的課程，補堂只排在原本那堂的上課星期。
+    source_refs:
+      - "changelog:2026-10-14:leave-order-independent-tails"

@@ -568,9 +568,10 @@ class CourseLeaveCascadeService
      * next recurring date after the course's latest date). It is a pure function of the course state without this
      * leave date's own auto-tails (the "base"), so either leave order gives the same dates and the preview equals the write:
      * - the base's latest date, when it is after the leave date, is on a contract weekday where the left lesson's start
-     *   time is a contract slot (#4043 r4266126936), holds a billable contract lesson (never a makeup, which carries
-     *   IsContractException), and has fewer live lessons than the leave date;
-     * - otherwise the next recurring date after the base's latest date, which is where the sibling tails go too.
+     *   time is a contract slot (#4043 r4266126936), holds a billable contract lesson (never a confirmed makeup, whose
+     *   Note carries `exception_workflow:`), and has fewer live lessons than the leave date;
+     * - otherwise the next date after the base's latest date on a weekday where the left lesson's start time is a
+     *   contract slot (any course weekday when none is), which is where the sibling tails go too.
      * Either date is refused (null) when a live row there, sibling tails included, takes or overlaps the left slot.
      *
      * @param  list<array<string,mixed>>  $rows
@@ -616,7 +617,7 @@ class CourseLeaveCascadeService
         $onLatest = $on($base, $latest);
         $anchored = false;
         foreach ($onLatest as $r) {
-            $anchored = $anchored || (empty($r['exception'])
+            $anchored = $anchored || (empty($r['makeup'])
                 && !in_array(strtolower((string) ($r['status'] ?? '')), self::NON_BILLABLE_STATUSES, true)
                 && in_array($dow . '|' . $hm($r['start'] ?? null), $contractSlots, true));
         }
@@ -624,7 +625,8 @@ class CourseLeaveCascadeService
             && in_array($dow . '|' . $start, $contractSlots, true) && $free($latest)) {
             return $latest;
         }
-        $next = self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $weekdays, $baseDates);
+        $slotDays = array_values(array_filter($weekdays, fn ($d) => in_array($d . '|' . $start, $contractSlots, true)));
+        $next = self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $slotDays ?: $weekdays, $baseDates);
 
         return $free($next) ? $next : null;
     }
@@ -632,7 +634,7 @@ class CourseLeaveCascadeService
     /**
      * Planner rows (id, date, status, slot, note, makeup flag) for computeAppendOnlyPlan(); shared by preview and write.
      *
-     * @return list<array{id:int,date:string,status:string,start:?string,end:?string,note:string,exception:bool}>
+     * @return list<array{id:int,date:string,status:string,start:?string,end:?string,note:string,makeup:bool}>
      */
     private static function planRows(\Illuminate\Support\Collection $sessions): array
     {
@@ -643,7 +645,8 @@ class CourseLeaveCascadeService
             'start' => $s->StartTime !== null ? (string) $s->StartTime : null,
             'end' => $s->EndTime !== null ? (string) $s->EndTime : null,
             'note' => (string) ($s->Note ?? ''),
-            'exception' => !empty($s->IsContractException), // #4047: a confirmed makeup never anchors a tail
+            // #4047: a confirmed makeup (ExceptionWorkflowController) never anchors a tail; other one-off edits still can.
+            'makeup' => str_contains((string) ($s->Note ?? ''), 'exception_workflow:'),
         ])->values()->all();
     }
 
