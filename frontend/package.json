@@ -83,7 +83,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@sentry/vue": "^10.75.3",
+    "@sentry/vue": "^10.76.1",
     "@supabase/supabase-js": "^2.117.2",
     "modern-screenshot": "4.7.0",
     "vue": "^3.5.43"
@@ -102,11 +102,11 @@
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "lint-staged": "^16.4.0",
-    "vite": "^6.4.3",
+    "vite": "^6.4.4",
     "vitest": "^4.1.8",
     "vue-eslint-parser": "^10.4.0"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm64-gnu": "^4.63.5"
+    "@rollup/rollup-linux-arm64-gnu": "^4.64.0"
   }
 }
