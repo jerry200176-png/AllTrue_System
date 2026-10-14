@@ -1005,18 +1005,23 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
 
     def test_release_train_schedule_and_dispatch_are_wired(self):
-        # Founder 3A: a train every hour 08-22 Taipei (00-14 UTC), off minute zero, and a
-        # retry after the last train. Check the schedule's properties, not one literal.
+        # Founder 2026-10-14 (batch approvals, 1-2 trains a day): windows at 12:17 and 18:17
+        # Asia/Taipei = 04:17 and 10:17 UTC, off minute zero.
         crons = re.findall(r"^    - cron: '([^']+)'$", self.workflow, re.M)
-        trains = [c.split() for c in crons if "-" in c.split()[1]]
-        retries = [c.split() for c in crons if "-" not in c.split()[1]]
-        self.assertEqual(len(trains), 1, crons)
-        minute, hours = trains[0][:2]
-        self.assertNotEqual(minute, "0", "train runs at minute zero")
-        lo, hi = (int(h) for h in hours.split("-"))
-        self.assertEqual((lo, hi), (0, 14))
-        # The final train (hour 14) has a later retry in the same hour.
-        self.assertTrue(any(int(h) == hi and int(m) > int(minute) for m, h, *_ in retries), crons)
+        self.assertEqual(crons, ["17 4 * * *", "17 10 * * *"])
+        self.assertIn("「好，照你建議做 go」", self.workflow)
+        self.assertIn("「批次核准：一天集中 1–2 班」", self.workflow)
+        # The kick's window list is the same set of times as the crons.
+        windows = re.search(r'TRAIN_WINDOWS_UTC: "([^"]+)"', self.workflow).group(1).split()
+        self.assertEqual(
+            windows, [f"{int(c.split()[1]):02d}:{int(c.split()[0]):02d}" for c in crons]
+        )
+        # A schedule run never deploys by itself; only the dispatched train resolves a target.
+        resolve_if = self.workflow[self.workflow.index("  resolve-target:\n"):].split("\n")[3]
+        self.assertTrue(resolve_if.lstrip().startswith("if:"), resolve_if)
+        self.assertNotIn("schedule", resolve_if)
+        self.assertIn('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "release-train" ]]; then', self.workflow)
+        self.assertIn("run-name: ${{ inputs.phase == 'release-train' && 'Release train' || 'Deploy to Pi' }}", self.workflow)
         # A run never cancels a train already awaiting approval.
         self.assertIn("another deploy run is already waiting for approval; standing down", self.workflow)
         self.assertIn("- release-train", self.workflow)
@@ -1037,6 +1042,78 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         # A dispatched train is classified like a scheduled one (no manual shortcut).
         self.assertIn('classify_event = "schedule" if os.environ.get("PHASE") == "release-train"', self.workflow)
         self.assertIn("target_in_main=os.environ.get(\"IN_MAIN\") in {\"ahead\", \"identical\"}", self.workflow)
+
+    def _kick_job(self):
+        start = self.workflow.index("  release-train-kick:\n")
+        return self.workflow[start:self.workflow.index("  production-activation:\n")]
+
+    def test_release_train_kick_dispatches_once_per_window_without_touching_the_gate(self):
+        job = self._kick_job()
+        job_if = job.split("\n")[3]
+        self.assertTrue(job_if.lstrip().startswith("if:"), job_if)
+        # The schedule run kicks; a merge run kicks only when its range waits for a train.
+        # A train (workflow_dispatch) never kicks, so there is no dispatch loop.
+        self.assertIn("github.event_name == 'schedule' || ((github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch')", job_if)
+        self.assertNotIn("'workflow_dispatch'", job_if)
+        self.assertIn("needs.resolve-target.outputs.release_train != 'true'", job_if)
+        self.assertIn("needs.release-state.result == 'success' && needs.classify-activation.outputs.mode == 'awaiting-activation'", job_if)
+        self.assertNotIn("superseded", job_if)
+        # It dispatches an ordinary train on main with the train's own confirmation phrase.
+        dispatch = job.index("/dispatches")
+        self.assertIn("-f ref=main -f 'inputs[phase]=release-train' -f 'inputs[confirm]=RELEASE_TRAIN'", job)
+        # Debounce before dispatch: a queued/running train or any run waiting for approval.
+        # Server-side status filters, so an old waiting run beyond the newest 100 is still seen.
+        for q in ('"status=waiting"', '"event=workflow_dispatch&status=queued"', '"event=workflow_dispatch&status=in_progress"',
+                  '"event=workflow_dispatch&status=requested"', '"event=workflow_dispatch&status=pending"'):
+            self.assertIn(q, job)
+        self.assertIn('runs?${q}&per_page=100', job)
+        # Only trains count as queued/running; any waiting run counts. A smoke or manual deploy
+        # dispatch must not make the window's kick stand down (nothing re-kicks after it ends).
+        self.assertIn('select(.id != ${RUN_ID} and (.status == \\"waiting\\" or .display_title == \\"Release train\\"))] | length', job)
+        self.assertIn('select(.status != "completed" and .display_title == "Release train")] | length', job)
+        self.assertIn("PENDING=$((PENDING + n))", job)
+        self.assertLess(job.index('if [[ "$PENDING" -ge 1 ]]'), dispatch)
+        # One train per window: a train since the window that reached approval or deploy used it.
+        self.assertIn("created=%3E%3D${SINCE}", job)
+        self.assertIn('select(.display_title == "Release train")', job)
+        self.assertIn('(.name == "Founder production approval (same run)" or .name == "Deploy to Production") and .conclusion != "skipped"', job)
+        self.assertLess(job.index('if [[ "$USED" -ge 1 ]]'), dispatch)
+        for name in ("Founder production approval (same run)", "Deploy to Production"):
+            self.assertIn(f"    name: {name}\n", self.workflow)
+        self.assertIn("group: alltrue-release-train-kick", job)
+        # Least privilege; it never approves, reviews, or touches environments.
+        self.assertIn("permissions:\n      actions: write", job)
+        for forbidden in ("environment", "pending_deployments", "contents: write", "secrets."):
+            self.assertNotIn(forbidden, job)
+
+    def test_release_train_kick_picks_the_latest_passed_window(self):
+        job = self._kick_job()
+        script = textwrap.dedent(job.split("        run: |\n", 1)[1])
+        window = script[script.index("NOW="):script.index("# Debounce")]
+        cases = {
+            "2026-10-14T03:00:00Z": "2026-10-13T10:17:00Z",
+            "2026-10-14T04:17:00Z": "2026-10-14T04:17:00Z",
+            "2026-10-14T09:59:00Z": "2026-10-14T04:17:00Z",
+            "2026-10-14T23:00:00Z": "2026-10-14T10:17:00Z",
+        }
+        for now, expected in cases.items():
+            with self.subTest(now=now):
+                fake_date = textwrap.dedent(f"""
+                    date() {{
+                      case "$*" in
+                        "-u +%s") command date -u -d "{now}" +%s ;;
+                        "-u +%F") command date -u -d "{now}" +%F ;;
+                        "-u -d yesterday +%F") command date -u -d "{now} -1 day" +%F ;;
+                        *) command date "$@" ;;
+                      esac
+                    }}
+                """)
+                out = subprocess.run(
+                    ["bash", "-c", "set -euo pipefail\nTRAIN_WINDOWS_UTC='04:17 10:17'\n"
+                     + fake_date + window + 'echo "$SINCE"'],
+                    capture_output=True, text=True, check=True,
+                )
+                self.assertEqual(out.stdout.strip(), expected)
 
     def test_existing_ci_completion_trigger_is_preserved(self):
         self.assertIn('workflows: ["CI — PHPUnit Tests"]', self.workflow)
@@ -1986,6 +2063,37 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
                                                "--attempts", "1"]))
             self.assertEqual(1, self.pdv.main(["verify", "--base-url", base, "--expect-backend-sha", self.PREV,
                                                "--attempts", "2", "--interval", "0"]))
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_verify_sends_a_user_agent_the_production_waf_accepts(self):
+        import http.server
+        import threading
+
+        manifest = json_bytes({"backend_sha": self.TARGET, "frontend_sha": None})
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                if self.headers.get("User-Agent", "").startswith("Python-urllib"):
+                    self.send_response(403)  # mirrors the production WAF
+                    self.end_headers()
+                    return
+                body = {"/api/health": b'{"ok":true}', "/api/v1/health": b'{"status":"ok"}',
+                        "/deployment.json": manifest}.get(self.path.split("?", 1)[0])
+                self.send_response(200 if body else 404)
+                self.end_headers()
+                self.wfile.write(body or b"")
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            base = f"http://127.0.0.1:{server.server_port}"
+            self.assertEqual(0, self.pdv.main(["verify", "--base-url", base, "--expect-backend-sha", self.TARGET,
+                                               "--attempts", "1"]))
         finally:
             server.shutdown()
             server.server_close()

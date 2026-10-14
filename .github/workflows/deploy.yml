@@ -1,4 +1,6 @@
 name: Deploy to Pi
+# Train runs are named so release-train-kick can find the last one.
+run-name: ${{ inputs.phase == 'release-train' && 'Release train' || 'Deploy to Pi' }}
 
 on:
   workflow_run:
@@ -11,16 +13,18 @@ on:
 
   # Release train: one Founder approval per train instead of one per R3 merge. Founder 1A
   # (2026-10-07): any run whose range is all R0-R2 or Founder-GO'd PRs deploys through
-  # production-auto with no approval, so the train is the backup for missed CD runs.
-  # Hourly at :17 past, 08:17-22:17 Asia/Taipei (00:17-14:17 UTC; Founder 3A 2026-10-07),
-  # off minute zero where GitHub drops scheduled runs under load. The next hour is the
-  # retry for a dropped run or a main tip still in CI; the last train gets its own
-  # 22:47 retry so a miss does not wait until morning. A run stands down if a deploy
-  # run is already waiting for approval, so it never cancels a train under the
-  # Founder. Also `workflow_dispatch phase=release-train`.
+  # production-auto with no approval, so the train only carries Founder-gated ranges.
+  # Two windows a day, 12:17 and 18:17 Asia/Taipei (04:17 and 10:17 UTC), so the Founder
+  # approves at most once per window (Founder 2026-10-14「好，照你建議做 go」approving
+  # 「批次核准：一天集中 1–2 班」; replaces the hourly 3A schedule). A schedule run does not
+  # deploy by itself: release-train-kick dispatches `phase=release-train`. GitHub drops or
+  # delays many scheduled runs, so the same kick also runs at the end of every merge's own
+  # run whose range waits for a train: it dispatches only when a window has passed, no train
+  # has asked for approval or deployed since that window, and no train or approval is pending.
+  # A train still stands down if a deploy run is already waiting for approval.
   schedule:
-    - cron: '17 0-14 * * *'
-    - cron: '47 14 * * *'
+    - cron: '17 4 * * *'
+    - cron: '17 10 * * *'
 
   workflow_dispatch:
     inputs:
@@ -99,7 +103,7 @@ jobs:
   resolve-target:
     name: Resolve exact activation target
     needs: contract-test
-    if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'application-deploy' || inputs.phase == 'release-train' || inputs.phase == 'parent-portal-smoke' || inputs.phase == 'pop-bootstrap')) || (github.event_name == 'repository_dispatch' && github.event.action == 'autonomous-production-deploy') || github.event_name == 'schedule') }}
+    if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'application-deploy' || inputs.phase == 'release-train' || inputs.phase == 'parent-portal-smoke' || inputs.phase == 'pop-bootstrap')) || (github.event_name == 'repository_dispatch' && github.event.action == 'autonomous-production-deploy')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45 # #3643 bounded wait for the tip CI
     outputs:
@@ -124,7 +128,7 @@ jobs:
         run: |
           set -euo pipefail
           RELEASE_TRAIN=false
-          if [[ "$EVENT_NAME" == "schedule" || ( "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "release-train" ) ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "release-train" ]]; then
             RELEASE_TRAIN=true
             for flag in "$FLAG_ADMISSIONS" "$FLAG_CALENDAR" "$FLAG_MANAGER"; do
               if [[ -n "$flag" && "$flag" != "unchanged" ]]; then
@@ -1075,7 +1079,7 @@ jobs:
               if [[ "$RELEASE_TRAIN" != "true" ]]; then
                 {
                   echo "## state=queued-for-release-train"
-                  echo "Not deployed. Founder-gated changes ride the next release train (hourly at :17 past, 08:17-22:17 Asia/Taipei, with a 22:47 retry; or dispatch phase=release-train). While one is pending, later R0-R2 merges wait for that train too."
+                  echo "Not deployed. Founder-gated changes ride the next release train (12:17 and 18:17 Asia/Taipei; if GitHub drops the scheduled run, the next merge after the window starts it). While one is pending, later R0-R2 merges wait for that train too."
                   echo "Reason: ${REASON}"
                   echo "Founder GO evidence: ${GO_REASON:-unavailable}"
                 } >> "$GITHUB_STEP_SUMMARY"
@@ -1115,13 +1119,89 @@ jobs:
               ;;
           esac
 
+  # Starts the release train for a window (see the schedule comment). It runs in the schedule
+  # run itself and, as the fallback for dropped or late cron runs, at the end of every merge's
+  # own run whose range waits for a train. It only replaces the manual "Run workflow" click:
+  # the dispatched run is an ordinary phase=release-train run, classified like a scheduled
+  # one, and still stops at "Founder production approval".
+  release-train-kick:
+    name: Start release train
+    needs: [resolve-target, classify-activation, release-state]
+    if: ${{ always() && (github.event_name == 'schedule' || ((github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch') && needs.resolve-target.result == 'success' && needs.resolve-target.outputs.release_train != 'true' && needs.release-state.result == 'success' && needs.classify-activation.outputs.mode == 'awaiting-activation')) }}
+    permissions:
+      actions: write # dispatch deploy.yml phase=release-train; no other write
+    concurrency:
+      group: alltrue-release-train-kick
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch the window's release train unless one already ran
+        env:
+          TRAIN_WINDOWS_UTC: "04:17 10:17" # must match the schedule crons
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The latest window that has passed (before today's first, yesterday's last).
+          NOW="$(date -u +%s)"; TODAY="$(date -u +%F)"; WINDOW=""
+          for hm in $TRAIN_WINDOWS_UTC; do
+            t="$(date -u -d "${TODAY} ${hm}" +%s)"
+            if (( t <= NOW )); then WINDOW="$t"; fi
+          done
+          if [[ -z "$WINDOW" ]]; then
+            WINDOW="$(date -u -d "$(date -u -d yesterday +%F) ${TRAIN_WINDOWS_UTC##* }" +%s)"
+          fi
+          SINCE="$(date -u -d "@${WINDOW}" +%Y-%m-%dT%H:%M:%SZ)"
+          # Debounce: no train while one is queued or running, or any deploy run waits for approval.
+          # Merge runs (workflow_run) are not counted: two finishing together would each skip.
+          # Other dispatches (smoke, manual deploy) are not counted either: nothing kicks again when
+          # they finish, so the window would be lost. A waiting run counts whatever started it.
+          # Filter by status on the server: an old waiting run can sit beyond the newest 100 runs.
+          PENDING=0
+          for q in "status=waiting" "event=workflow_dispatch&status=queued" "event=workflow_dispatch&status=in_progress" \
+            "event=workflow_dispatch&status=requested" "event=workflow_dispatch&status=pending"; do
+            n="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?${q}&per_page=100" \
+              --jq "[.workflow_runs[] | select(.id != ${RUN_ID} and (.status == \"waiting\" or .display_title == \"Release train\"))] | length")"
+            PENDING=$((PENDING + n))
+          done
+          if [[ "$PENDING" -ge 1 ]]; then
+            echo "::notice::Release train: a train or approval is already pending; not dispatching another."
+            exit 0
+          fi
+          # One train per window: a train since the window that asked for approval or deployed
+          # used it. A train that stood down or found nothing to deploy does not count.
+          TRAINS="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?event=workflow_dispatch&created=%3E%3D${SINCE}&per_page=100" \
+            --jq '.workflow_runs[] | select(.display_title == "Release train") | .id')"
+          for run in $TRAINS; do
+            USED="$(gh api "/repos/${REPO}/actions/runs/${run}/jobs?per_page=100" \
+              --jq '[.jobs[] | select((.name == "Founder production approval (same run)" or .name == "Deploy to Production") and .conclusion != "skipped")] | length')"
+            if [[ "$USED" -ge 1 ]]; then
+              echo "::notice::Release train: run ${run} already served the ${SINCE} window; the next window takes later merges."
+              exit 0
+            fi
+          done
+          gh api -X POST "/repos/${REPO}/actions/workflows/deploy.yml/dispatches" \
+            -f ref=main -f 'inputs[phase]=release-train' -f 'inputs[confirm]=RELEASE_TRAIN' >/dev/null
+          # Wait until the new run is listed so a queued kick behind this one sees it and stands down.
+          for _ in $(seq 1 12); do
+            SEEN="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?event=workflow_dispatch&per_page=5" \
+              --jq '[.workflow_runs[] | select(.status != "completed" and .display_title == "Release train")] | length')"
+            if [[ "$SEEN" -ge 1 ]]; then break; fi
+            sleep 5
+          done
+          echo "## Release train dispatched for the ${SINCE} window; it waits for Founder production approval like any train." >> "$GITHUB_STEP_SUMMARY"
+
   production-activation:
     name: Founder production approval (same run)
     needs: [resolve-target, detect-deployable, classify-activation]
     if: ${{ always() && needs.classify-activation.result == 'success' && ((needs.resolve-target.outputs.release_train == 'true' && ((needs.classify-activation.outputs.mode == 'auto' && needs.classify-activation.outputs.go_evidence != 'verified') || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true'))) || (github.event_name == 'workflow_dispatch' && inputs.phase != 'release-train' && needs.classify-activation.outputs.mode == 'manual')) }}
     # Release train: a merge's own CI (github.event_name == 'workflow_run') and the
     # bot-merge follow-up (github.event_name == 'repository_dispatch') never open an
-    # approval; R3 changes wait for the next scheduled (github.event_name == 'schedule')
+    # approval; R3 changes wait for the next train, which a schedule run (github.event_name == 'schedule')
+    # or a merge run dispatches through release-train-kick,
     # or dispatched train, classified by the same PR classifier.
     # A newer exact-main target supersedes an older approval request. The
     # protected environment still requires the Founder reviewer; this only

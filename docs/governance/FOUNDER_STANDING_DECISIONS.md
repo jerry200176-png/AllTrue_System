@@ -3,6 +3,38 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+## 2026-10-14（三）（全面搬到 cloud；對話中 Q1–Q24 逐條確認，最後「對」；本 repo PR #4078）
+
+方向：所有開發移到 Claude Desktop cloud session，Founder 電腦關機也要能繼續運作。**不在舊的本機機制上加 cloud 例外，而是淘汰本機機制**（#4071、portfolio-ops#135、sunrise-cafe#440 因此關閉）。本節只記決定；各項實作 PR 依 2026-10-14（二）第 5 條（#4069）治理變更規則提供 diff 由 Founder 批准後合併。
+
+1. **工作地點**：cloud session。規則放在各 repo 的 `AGENTS.md`／`CLAUDE.md`，共用規則放 portfolio-ops；本機記憶中仍有效的規則搬進 repo 文件，過時的刪除。
+2. **密碼**：cloud 環境變數只放低風險 token（GitHub、測試用 API、Cloudflare Browser Run）。GitHub token 一律 fine-grained、只列出需要的 repo、設到期日、最小權限；不得給 admin、secrets、organization 權限。正式環境密碼只放 GitHub Environment secrets，Agent 不持有。
+3. **全自動（目標狀態）**：CI 綠＋完整 review gate（2026-10-12 ④：無 P0／P1、本 PR 引入的回歸不論嚴重度一律修正、P2 修正輪、每個 thread 回覆並 resolve）→ 自動合併 → 自動部署 → 自動 health check → 失敗自動 rollback。只新增（additive）的 migration 自動執行（expand/contract），但須等實作 PR 合併、且 `governance/PORTFOLIO_AGENT_CONTRACT.md`（本 repo 與 portfolio-ops）移除 migration 停止點後才生效；在那之前所有 migration 照舊由 Founder 批准。
+4. **仍需 Founder 在 GitHub 按 Approve**：會刪除或改變既有結構的 migration（CI 自動偵測 `DROP`、欄位型別變更等並改走 environment 審核）、修改真實正式資料、新增或更換正式密碼、其他不可回復的操作。
+5. **通知與卡關**：通知用 GitHub 手機 app。Agent 需要決定時開 issue、標 `needs-founder`，寫「選項＋推薦」，然後先做其他工作，不停在對話等待。
+6. **淘汰**：`agent-start` 及本機 worktree／preflight 路徑檢查、Agent Session Provenance、`local-heavy-gate`、Exo、**Founder 工作站**的舊 crontab。Pi 上驅動 Laravel scheduler 與 `pop:execute-approved` 的 `schedule:run` cron **保留**。每小時清 PII（`pii-log-purge.yml`）與既有的 `bug-auto-intake.yml` 都在 GitHub Actions，保留；不另加 Claude routine 收 bug。
+7. **順序與資料**：AllTrue 先跑順，再改 portfolio-ops、sunrise-cafe；其他專案之後再搬。「舊資料不丟」：完整備份驗證完成前不刪本機工具，文件可先改。
+8. 本節第 3、4 條是目標狀態；在對應實作 PR 合併前，現行 `deploy.yml`／release train 的審核仍照舊生效。
+## 2026-10-14（二）（Cloud-only 作業；對話中逐條確認；本 repo PR #4069）
+
+1. **T0–T2**：Agent 依既有政策（`RISK_BASED_MERGE_POLICY.md`、本檔 2026-10-12 各條）自主開發、審查、合併與交付，不逐項請示。範圍不明或超出本檔授權時仍須提出。
+2. **預先批准的正式寫入（allowlist，只授權不放寬）**：只限下列 in-app 回報狀態與公開回覆，且各項須其執行路徑已依第 3 條合併後才生效：
+   - (a) Phase A：in-app 回報 `new`→`triaged`＋符合 `CHAT_BUG_SYSTEM.md` §3.8 的公開回覆（必含 GitHub issue URL）。
+   - (b) Phase C：**確實已修復且部署驗證通過**（版本＋health＋受影響路徑 smoke，見 `docs/sop/BUG_INTAKE_TO_PRODUCTION.md` Deployment evidence gate）的回報 → `resolved`＋公開回覆。
+   - (c) 14 天逾時結案：只限符合既有等待確認規則的回報，**等待天數固定為 14 天**（`--auto`／`AUTO_DAYS = 14`），不得使用手動路徑的 7 天預設或任何少於 14 天的值；**仍有問題的案件不得關閉**。
+   其他一律不在此列：資料修復、migration、credential、新增資料存取、權限／安全邊界變更，仍逐案問 Founder。
+3. **#3943／#3955 執行路徑**：必須改走既定的正式授權執行器（ADR-POP-008：Pi 本機 `pop:execute-approved`），**不得保留 GitHub runner → SSH 的寫入例外**。依 `docs/pop/adr/ADR-POP-015-standing-policy-inapp-lifecycle.md`，#3943／#3955 本身關閉不合併，可重用部分移植到 ADR-POP-015 的後繼實作 PR；本條的自行合併授權適用於這些後繼實作 PR（`RISK_BASED_MERGE_POLICY.md` §Founder standing exception 的第二條預先批准路徑）。後繼實作 PR 須為每條受影響的權限／寫入路徑（含跨校區與空 scope 必須 fail closed）新增或更新聚焦回歸測試並在 exact head CI 執行，且完成獨立審查、最新 head CI 全綠、無未處理 P0／P1、**本 PR 引入的回歸不論嚴重度一律修正**、所有 review thread 皆回覆並 resolve（即 2026-10-12 第 4 條完整 review 規則）後，Agent 可自行合併，不必再取得同一個 GO。
+4. **部署**：範圍內每個 PR 皆 T0–T2 者依既有規則自動上線；**含 T3 的部署每次由 Founder 批准**。
+5. **治理變更**：會**授予、擴大或改變權限、核准方式或受保護邊界**的治理變更（含 `docs/governance/`、`AGENTS.md`、`CLAUDE.md` 及控制面規則），Agent 先完成並提供具體 diff，**由 Founder 批准後才合併**。純文字修正、證據紀錄、清單／inventory 更新等不改變權限或邊界的治理文件變更，依一般風險分級處理（`COMPANY_CONSTITUTION.md` §3：不另加 Founder 全面核准）。
+6. **唯讀診斷**：先提交設計審查；本清單不授予任何新的資料存取權限。
+7. **期限與紀錄**：本節授權無固定期限，Founder 可隨時撤銷。每次使用第 2 條授權須在對應 issue 留下案件 ID、執行紀錄（POP request／execution ID；Phase C 另附 deploy workflow run 連結）與驗證結果；公開紀錄（GitHub issue／PR／commit／log）不得含個資。
+8. **多 Agent 分工**：Claude 與 Codex 在共用協調紀錄（GitHub issue）登記各自負責的 PR／branch 與實作／審查角色，不共編同一分支。
+
+## 2026-10-14（對話中「好，照你建議做 go」；批准「批次核准：一天集中 1–2 班」）
+
+1. **發車班表（release train）改為一天兩班**：台北 12:17、18:17（UTC 04:17、10:17），取代 2026-10-07 的每小時一班（3A）。每班最多要 Founder 核准一次，收齊上一班之後合併的所有 Founder 級改動。全部 R0–R2（或已有 Founder GO）的範圍照舊隨自己的 CI 自動上線，不等車。
+2. **核准關卡不變**：`deploy.yml` 只自動 dispatch `phase=release-train`（GitHub cron 會被吞掉或延遲，所以 merge 後的 deploy run 也會補發）；車仍停在 `production-activation` 等 Founder 核准，Agent 不得代為核准或改 Environment 設定。
+
 ## 2026-10-12（對話中「照推薦」；本 repo PR #3899）
 
 1. **實作既定規則的 R3 程式（帳務／權限）**：PR 內為每條受影響的金流／權限路徑新增或更新聚焦回歸測試並在 exact head CI 執行＋exact head required checks 綠＋獨立 review（Codex 或 reviewer agent）＋無未解 P0／P1 → Agent 自行 **merge**（僅限 merge）。**獨立 review 由 Agent 自行確認後才加 `queue`**：land queue 目前只檢查 required checks 與未解 thread 數，尚未驗證 review 證據（尚未自動化，見 #3972）。**部署不在此例外內**：含 R3 的範圍仍依 `deploy.yml` 既有 release train／production-activation Founder 核准上線（控制面尚未支援此例外，見 #3961）；上線後驗 `deployment.json`／health，**並依 `EVIDENCE_CONTRACT.md`（R2/R3）直接觀察受影響的 production API／UI 路徑並核對權威紀錄（ledger／session／權限判定）**。**新的帳務語意、新的 entitlement 規則或身分／權限邊界變更不在此範圍，仍問 Founder。** 對應條文：`RISK_BASED_MERGE_POLICY.md` §Founder standing exception。

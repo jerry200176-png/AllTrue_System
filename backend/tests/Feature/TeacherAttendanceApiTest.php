@@ -286,6 +286,21 @@ class TeacherAttendanceApiTest extends TestCase
         $this->assertNotContains($teacherC2['user']->id, $ids);
     }
 
+    /** @test in-app #397：unclosed 必須帶打卡紀錄 id，補卡按鈕才能送出 */
+    public function unclosed_rows_carry_signin_id_for_adjust(): void
+    {
+        $director = $this->makeDirector(1);
+        $teacher  = $this->makeTeacherUser(1);
+        $signin   = $this->makeSignIn($teacher['user']->id, 1, [
+            'SignInDT' => now()->setTime(8, 0)->toDateTimeString(), 'SignOutDT' => null,
+        ]);
+
+        $res = $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/teacher-attendance/unclosed?date=' . now()->toDateString());
+
+        $res->assertOk()->assertJsonPath('data.0.id', $signin->id);
+    }
+
     // ──────────────────────────────────────────────
     //  FR-004 / FR-009: Adjust (补卡 + audit trail)
     // ──────────────────────────────────────────────

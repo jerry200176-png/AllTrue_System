@@ -22,6 +22,7 @@
 | [ADR-POP-012](ADR-POP-012-dlq.md) | Dead Letter Queue | Accepted |
 | [ADR-POP-013](ADR-POP-013-versioning.md) | Full Versioning for Replay | Accepted |
 | [ADR-POP-014](ADR-POP-014-fitness-functions.md) | Architecture Fitness Functions | Accepted |
+| [ADR-POP-015](ADR-POP-015-standing-policy-inapp-lifecycle.md) | Standing-Policy Approval for In-App Report Lifecycle Write-Backs | Accepted |
 
 ## Lifecycle (all ADRs)
 

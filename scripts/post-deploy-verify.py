@@ -43,11 +43,15 @@ RC_HELD_MIGRATION = 12
 RC_HELD_PRE_VERIFY = 13  # a step failed after a migration ran (or with one in range), before identity was verified
 RC_GATE_ROLLBACK = 20  # gate -> executor: run rollback_deploy (distinct from a Python crash's 1)
 RC_SSH_LOST = 255
+USER_AGENT = "AllTrue-post-deploy-verify/1"
 
 
 def _fetch(url: str, timeout: float, insecure: bool) -> tuple[int, bytes]:
     context = ssl._create_unverified_context() if insecure else None  # noqa: S323 - mirrors the Pi's existing `curl -k`
-    request = urllib.request.Request(url, headers={"Cache-Control": "no-cache", "Connection": "close"})
+    # Production's WAF answers 403 to urllib's default "Python-urllib/x.y" User-Agent
+    # (2026-10-14 release train: every check 403 while curl got 200), so name ourselves.
+    request = urllib.request.Request(url, headers={"Cache-Control": "no-cache", "Connection": "close",
+                                                  "User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=timeout, context=context) as response:  # noqa: S310 - fixed https base URL
             return response.status, response.read(65536)
