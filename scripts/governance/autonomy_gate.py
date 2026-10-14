@@ -259,6 +259,385 @@ _MAX_GUARDED_SENSITIVE_FILES = 3
 _MAX_GUARDED_SENSITIVE_LINES = 240
 
 
+_MIGRATION_PREFIX = "backend/database/migrations/"
+# Founder 2026-10-14（三）補充 #1: identity/authz and billing tables never take the
+# additive path, whatever the change (matched on every table the file names).
+# The author's `Additive-Migration: yes` declaration and Codex's confirmation on
+# the final head carry the rest of the judgement; this list is not meant to be
+# a complete vocabulary of sensitive data.
+_ADDITIVE_EXCLUDED_TABLE_RE = re.compile(
+    r"user|role|permission|capabilit|auth|token|password|login|guardian|identity|parent|binding|"
+    r"apiclient|api_client|security|grant|teacher|"
+    r"invoice|payment|payroll|salary|billing|ledger|charge|pric|deduct|entitlement|refund|bank|"
+    r"accounting|dunning|rate_card|package|contract|tuition|fee|cash|allowance|coverage|correction|"
+    r"studentclass|student_class|^student$|singin|rfid|swipe|pop_|system_setting|_members|"
+    r"pii|legal|medical|national|personal|consent|export",
+    re.IGNORECASE,
+)
+_SCHEMA_TABLE_ARG_RE = re.compile(r"Schema\s*::\s*\w+\s*\(\s*S(\d+)", re.IGNORECASE)
+_ADDITIVE_DECLARATION_RE = re.compile(r"^Additive-Migration:[ \t]*yes[ \t]*\r?$", re.IGNORECASE | re.MULTILINE)
+# Markup that hides a line from the rendered PR body does not carry a declaration.
+_HIDDEN_MARKUP_RE = re.compile(r"<!--.*?(?:-->|\Z)|^[ \t]*(```|~~~).*?(?:^[ \t]*\1|\Z)", re.DOTALL | re.MULTILINE)
+
+
+def declares_additive_migration(body: str) -> bool:
+    """The PR author's explicit opt-in (Founder 2026-10-14（三）補充 #1)."""
+
+    return bool(_ADDITIVE_DECLARATION_RE.search(_HIDDEN_MARKUP_RE.sub("", body or "")))
+
+
+# Founder 2026-10-14 (三)④: a migration that only adds tables/columns/plain
+# indexes deploys like other reversible T2 work (expand/contract). This is an
+# allowlist: the file is lexed (strings become S, comments vanish), down() is
+# cut out (deploy.yml never runs migrate:rollback), and what is left must
+# reduce to the bare Laravel skeleton using only the statements below.
+# Anything else (raw SQL, facades, data writes, unique/foreign keys, change(),
+# drop/rename, loops, dynamic calls) keeps the Founder gate. A false negative
+# only costs a Founder approval.
+_MIGRATION_ALLOWED_USES = (
+    r"use\s+\\?Illuminate\\Database\\Migrations\\Migration\s*;",
+    r"use\s+\\?Illuminate\\Database\\Schema\\Blueprint\s*;",
+    r"use\s+\\?Illuminate\\Support\\Facades\\Schema\s*;",
+)
+_BLUEPRINT_METHODS = (
+    "id|increments|bigincrements|string|char|text|tinytext|mediumtext|longtext|integer|tinyinteger|"
+    "smallinteger|mediuminteger|biginteger|unsignedinteger|unsignedtinyinteger|unsignedsmallinteger|"
+    "unsignedmediuminteger|unsignedbiginteger|decimal|unsigneddecimal|float|double|boolean|date|datetime|"
+    "datetimetz|time|timetz|timestamp|timestamptz|timestamps|timestampstz|nullabletimestamps|softdeletes|"
+    "softdeletestz|json|jsonb|enum|set|uuid|ulid|year|binary|ipaddress|macaddress|remembertoken|"
+    "nullable|default|after|first|comment|unsigned|usecurrent|usecurrentonupdate|index"
+)
+_LITERAL_ARGS = r"(?:S\d+|-?\d+(?:\.\d+)?|true|false|null|\[|\]|,|\s)*"
+_COLUMN_CHAIN = (
+    rf"\$\w+\s*->\s*(?:{_BLUEPRINT_METHODS})\s*\({_LITERAL_ARGS}\)"
+    rf"(?:\s*->\s*(?:{_BLUEPRINT_METHODS})\s*\({_LITERAL_ARGS}\))*"
+)
+_SCHEMA_BLOCK_RE = re.compile(
+    r"Schema\s*::\s*(?P<kind>create|table)\s*\(\s*S(?P<table>\d+)\s*,\s*(?:static\s+)?(?:"
+    r"function\s*\(\s*Blueprint\s+\$\w+\s*\)\s*(?::\s*void\s*)?\{(?P<body>[^{}]*)\}"
+    r"|fn\s*\(\s*Blueprint\s+\$\w+\s*\)\s*=>(?P<arrow>[^;{}]*)"
+    r")\s*\)\s*;",
+    re.IGNORECASE,
+)
+_CHAIN_RE = re.compile(rf"\s*{_COLUMN_CHAIN}\s*", re.IGNORECASE)
+_METHOD_CALL_RE = re.compile(r"->\s*(\w+)\s*\(([^()]*)\)")
+# On an existing table only nullable columns without a default are
+# expand-safe: the previous release must keep inserting rows after a code
+# rollback, and a default would silently fill every historical row (the
+# module-migration rule M2 then requires a backfill, i.e. a data write).
+_KEY_METHODS = {"id", "increments", "bigincrements"}
+_INTEGER_HELPERS = {
+    f"{prefix}{size}integer" for prefix in ("", "unsigned") for size in ("", "tiny", "small", "medium", "big")
+}
+_NULLABLE_HELPERS = {"timestamps", "timestampstz", "nullabletimestamps", "softdeletes", "softdeletestz",
+                     "remembertoken", "index"}
+
+
+def _table_column_is_expand_safe(calls: list[tuple[str, str]]) -> bool:
+    """A column added to an existing table: no new key, nullable, no default."""
+
+    first, first_args = calls[0]
+    if first in _KEY_METHODS or re.search(r"\btrue\b", first_args, re.IGNORECASE):
+        return False
+    # integer('x', $autoIncrement, ...): PHP coerces 1, 'yes' etc. to true, so
+    # every argument after the column name must be omitted or literally false.
+    if first in _INTEGER_HELPERS and any(
+        arg.strip().lower() != "false" for arg in first_args.split(",")[1:]
+    ):
+        return False
+    if first == "index":
+        return len(calls) == 1
+    # timestamps()/softDeletes()/rememberToken() start nullable but return a
+    # mutable definition: their chained modifiers are evaluated like any column.
+    nullable, defaulted, current = first in _NULLABLE_HELPERS, False, False
+    for name, args in calls[1:]:  # the last call of each modifier wins
+        value = args.strip().lower()
+        if name == "nullable":
+            nullable = value in {"", "true"}
+        elif name == "default":
+            defaulted = value not in {"", "null"}
+        elif name in {"usecurrent", "usecurrentonupdate"}:
+            current = True  # its own flag: a later default(null) does not clear it
+    return nullable and not defaulted and not current
+
+
+def _schema_block_is_additive(kind: str, statements: list[str]) -> bool:
+    for statement in statements:
+        if not _CHAIN_RE.fullmatch(statement):
+            return False
+        calls = [(name.lower(), args) for name, args in _METHOD_CALL_RE.findall(statement)]
+        if kind == "table" and not _table_column_is_expand_safe(calls):
+            return False
+    return True
+
+
+def _reduce_schema_block(match: re.Match) -> str:
+    statements = _block_statements(match)
+    return " " if statements and _schema_block_is_additive(match.group("kind").lower(), statements) else match.group(0)
+
+
+_SCHEMA_COND = r"!?\s*Schema\s*::\s*has(?:table|column)\s*\(\s*S\d+\s*(?:,\s*S\d+\s*)?\)"
+_SCHEMA_GUARD_RE = re.compile(
+    rf"if\s*\(\s*{_SCHEMA_COND}(?:\s*(?:&&|\|\|)\s*{_SCHEMA_COND})*\s*\)\s*"
+    r"(?:\{\s*(?:return\s*;\s*)?\}|return\s*;)",
+    re.IGNORECASE,
+)
+_MIGRATION_SKELETON_RE = re.compile(
+    r"<\?php\s*(?:(?:" + "|".join(_MIGRATION_ALLOWED_USES) + r")\s*)*"
+    r"(?:return\s+new\s+class\s+extends\s+Migration|class\s+\w+\s+extends\s+Migration)\s*\{\s*"
+    r"public\s+function\s+up\s*\(\s*\)\s*(?::\s*void\s*)?\{\s*\}\s*(?:DOWN\s*)?\}\s*;?\s*",
+    re.IGNORECASE,
+)
+_DOWN_HEAD_RE = re.compile(r"public\s+function\s+down\s*\(\s*\)\s*(?::\s*void\s*)?\{", re.IGNORECASE)
+
+
+def _lex_php(source: str, literals: list[str] | None = None) -> str | None:
+    """Replace string literals with S<n> and drop comments; None if unsure.
+
+    ``literals`` receives the n-th literal's text (a literal with a backslash
+    gets a value no table or column name can equal).
+    """
+
+    out: list[str] = []
+    i, n, count = 0, len(source), 0
+    while i < n:
+        c = source[i]
+        if c in "'\"":
+            j = i + 1
+            while j < n and source[j] != c:
+                if c == '"' and source[j] in "${":
+                    return None  # interpolation can run code
+                j += 2 if source[j] == "\\" else 1
+            if j >= n:
+                return None
+            if literals is not None:
+                text = source[i + 1:j]
+                literals.append("\0" if "\\" in text else text)
+            out.append(f" S{count} ")
+            count += 1
+            i = j + 1
+        elif source.startswith("#[", i):
+            return None  # PHP 8 attribute, not a comment
+        elif source.startswith(("//", "#"), i):
+            # PHP ends a line comment at \n, \r or ?>; be stricter and refuse ?>.
+            j = i
+            while j < n and source[j] not in "\r\n":
+                if source.startswith("?>", j):
+                    return None
+                j += 1
+            i = j
+        elif source.startswith("/*", i):
+            j = source.find("*/", i + 2)
+            if j < 0:
+                return None
+            out.append(" ")
+            i = j + 2
+        elif c == "`" or source.startswith(("<<<", "?>"), i):
+            return None
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+_HELPER_DROPS = {
+    "droptimestamps": {"timestamps", "nullabletimestamps"},
+    "droptimestampstz": {"timestampstz"},
+    "dropsoftdeletes": {"softdeletes"},
+    "dropsoftdeletestz": {"softdeletestz"},
+    "dropremembertoken": {"remembertoken"},
+}
+# Columns each helper adds; a string argument (softDeletes('archived_at')) replaces the default.
+_HELPER_COLUMNS = {
+    "timestamps": ["created_at", "updated_at"], "timestampstz": ["created_at", "updated_at"],
+    "nullabletimestamps": ["created_at", "updated_at"], "softdeletes": ["deleted_at"],
+    "softdeletestz": ["deleted_at"], "remembertoken": ["remember_token"],
+}
+_DROP_TABLE_RE = re.compile(r"Schema\s*::\s*(?:dropIfExists|drop)\s*\(\s*S(\d+)\s*\)\s*;", re.IGNORECASE)
+_DROP_ARGS_RE = re.compile(r"(?:S\d+|\[|\]|,|\s)*")
+
+
+def _block_statements(match: re.Match) -> list[str]:
+    if match.group("arrow") is not None:
+        return [match.group("arrow")]
+    return [part for part in match.group("body").split(";") if part.strip()]
+
+
+def _index_name(table: str, columns: list[str]) -> str:
+    return re.sub(r"[-.]", "_", f"{table}_{'_'.join(columns)}_index".lower())
+
+
+def _add_index(entry: dict[str, set], table: str, columns: list[str], explicit: list[str]) -> None:
+    # dropIndex(['a', 'b']) derives the conventional name, so the column form
+    # only drops an implicitly named index on exactly those columns, in order.
+    if explicit:
+        entry["index_names"].add(explicit[0])
+    else:
+        entry["index_names"].add(_index_name(table, columns))
+        entry["index_columns"].add(tuple(columns))
+
+
+def _up_additions(code: str, literals: list[str]) -> dict[str, dict[str, set]]:
+    """Tables created and, per table, the columns, helpers and indexes up() adds."""
+
+    added: dict[str, dict[str, set]] = {}
+    for match in _SCHEMA_BLOCK_RE.finditer(code):
+        table = literals[int(match.group("table"))]
+        entry = added.setdefault(table, {"created": set(), "columns": set(), "helpers": set(),
+                                         "index_names": set(), "index_columns": set()})
+        if match.group("kind").lower() == "create":
+            entry["created"].add(table)
+        for statement in _block_statements(match):
+            calls = [(name.lower(), args) for name, args in _METHOD_CALL_RE.findall(statement)]
+            if not calls:
+                continue
+            first, args = calls[0]
+            names = [literals[int(i)] for i in re.findall(r"S(\d+)", args)]
+            if first == "index":
+                inside = re.search(r"\[(.*?)\]", args)
+                columns = [literals[int(i)] for i in re.findall(r"S(\d+)", inside.group(1))] if inside else names[:1]
+                rest = [literals[int(i)] for i in re.findall(r"S(\d+)", args[inside.end():] if inside else "")]
+                _add_index(entry, table, columns, rest[:1] if inside else names[1:2])
+            elif first in _NULLABLE_HELPERS:
+                # helper name + its column arguments, so the drop must name the same columns
+                entry["helpers"].add((first, tuple(names)))
+                entry["columns"].update(names or _HELPER_COLUMNS.get(first, []))
+            elif names:
+                entry["columns"].add(names[0])
+                for name, chained in calls[1:]:
+                    if name == "index":
+                        explicit = [literals[int(i)] for i in re.findall(r"S(\d+)", chained)]
+                        _add_index(entry, table, names[:1], explicit[:1])
+    return added
+
+
+def _down_is_inverse(down: str, literals: list[str], added: dict[str, dict[str, set]]) -> bool:
+    """down() may only drop what up() added: its tables, columns, indexes and helpers."""
+
+    def drop_table(match: re.Match) -> str:
+        table = literals[int(match.group(1))]
+        return " " if table in added.get(table, {}).get("created", set()) else match.group(0)
+
+    def drop_block(match: re.Match) -> str:
+        entry = added.get(literals[int(match.group("table"))])
+        if match.group("kind").lower() != "table" or entry is None:
+            return match.group(0)
+        for statement in _block_statements(match):
+            call = re.fullmatch(r"\s*\$\w+\s*->\s*(\w+)\s*\(([^()]*)\)\s*", statement)
+            if not call or not _DROP_ARGS_RE.fullmatch(call.group(2)):
+                return match.group(0)
+            name, args = call.group(1).lower(), call.group(2)
+            ordered = [literals[int(i)] for i in re.findall(r"S(\d+)", args)]
+            values = set(ordered)
+            if name == "dropcolumn":
+                ok = bool(values) and values <= entry["columns"]
+            elif name == "dropindex":
+                ok = (tuple(ordered) in entry["index_columns"]) if "[" in args else (
+                    len(values) == 1 and values <= entry["index_names"])
+            else:
+                ok = any(helper in _HELPER_DROPS.get(name, set()) and tuple(ordered) == helper_args
+                         for helper, helper_args in entry["helpers"])
+            if not ok:
+                return match.group(0)
+        return " "
+
+    for _ in range(4):
+        down = _SCHEMA_GUARD_RE.sub(" ", _SCHEMA_BLOCK_RE.sub(drop_block, _DROP_TABLE_RE.sub(drop_table, down)))
+    return not down.strip()
+
+
+def _migration_body_is_additive(source: str) -> bool:
+    literals: list[str] = []
+    code = _lex_php(source, literals)
+    if code is None:
+        return False
+    # A bare identifier such as S3 would shadow a literal token: fail closed.
+    # Case-insensitive, like the block regexes: a bare s0 must not pass as a literal.
+    if re.findall(r"\bS(\d+)\b", code, re.IGNORECASE) != [str(i) for i in range(len(literals))]:
+        return False
+    downs = list(_DOWN_HEAD_RE.finditer(code))
+    if len(downs) > 1 or len(re.findall(r"\bfunction\s+down\b", code, re.IGNORECASE)) != len(downs):
+        return False
+    down = ""
+    if downs:
+        depth, i = 1, downs[0].end()
+        while i < len(code) and depth:
+            depth += {"{": 1, "}": -1}.get(code[i], 0)
+            i += 1
+        if depth:
+            return False
+        down = code[downs[0].end():i - 1]
+        code = code[:downs[0].start()] + " DOWN " + code[i:]
+    # An escaped literal may decode to any name: refuse instead of guessing.
+    if "\0" in literals:
+        return False
+    tables = [literals[int(i)] for i in _SCHEMA_TABLE_ARG_RE.findall(code)]
+    if any(_ADDITIVE_EXCLUDED_TABLE_RE.search(table) for table in tables):
+        return False
+    # Any guard in up() can skip an addition it does not name, so a guarded
+    # up() may not be rolled back by dropping anything (down() must be empty).
+    guarded = re.search(_SCHEMA_COND, code, re.IGNORECASE) is not None
+    added = {} if guarded else _up_additions(code, literals)
+    if not _down_is_inverse(down, literals, added):
+        return False
+    for _ in range(4):  # guards may wrap blocks; a few passes cover real nesting
+        code = _SCHEMA_GUARD_RE.sub(" ", _SCHEMA_BLOCK_RE.sub(_reduce_schema_block, code))
+    return bool(_MIGRATION_SKELETON_RE.fullmatch(code))
+
+
+# Merge classification treats additive migrations as T2 now. Activation stays
+# Founder-gated until deploy.yml can roll code back after an additive
+# migration (today any migration in range holds with exit 12/13); the PR that
+# adds that rollback flips this flag.
+ADDITIVE_MIGRATION_AUTO_ACTIVATION = False
+
+
+def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
+    """Return newly added migration files that only add structure.
+
+    Fail closed: if any changed migration is not in the diff, is edited rather
+    than added, has a removed line, or fails ``_migration_body_is_additive``,
+    none of them count as additive.
+    """
+
+    candidates = {
+        str(path).replace("\\", "/") for path in paths
+        if str(path).replace("\\", "/").startswith(_MIGRATION_PREFIX) and str(path).endswith(".php")
+    }
+    if not candidates or "diff --git " not in (patch or ""):
+        return set()
+    additive: set[str] = set()
+    for chunk in re.split(r"(?=^diff --git )", patch, flags=re.MULTILINE):
+        head, _, body = chunk.partition("\n")
+        path = next((c for c in candidates if head.strip() == f"diff --git a/{c} b/{c}"), None)
+        if path is None:
+            continue
+        # A second chunk for the same path (e.g. committed + working-tree
+        # diffs) means the classifier can't see one final file: fail closed.
+        if path in additive:
+            return set()
+        # Split on \n only: str.splitlines() also splits on \r, \x0b, \u2028...
+        # which PHP treats as whitespace inside one line.
+        lines = [line[:-1] if line.endswith("\r") else line for line in body.split("\n")]
+        hunks = [index for index, line in enumerate(lines) if line.startswith("@@")]
+        # A new file has exactly one "@@ -0,0 +1,N @@" hunk in both git and
+        # GitHub API patches; anything else edits an existing migration.
+        header = re.match(r"@@ -0,0 \+1(?:,(\d+))? @@", lines[hunks[0]]) if len(hunks) == 1 else None
+        if header is None:
+            return set()
+        content = [line for line in lines[hunks[0] + 1:] if line and not line.startswith("\\ ")]
+        if any(not line.startswith("+") for line in content):
+            return set()
+        # A truncated patch (the GitHub API can cut long ones) could hide the
+        # tail of the file: the received lines must match the declared count.
+        if len(content) != int(header.group(1) or 1):
+            return set()
+        source = "\n".join(line[1:] for line in content)
+        if not _migration_body_is_additive(source):
+            return set()
+        additive.add(path)
+    return additive if additive == candidates else set()
+
 def _path_matches(path: str, pattern: str) -> bool:
     return fnmatch.fnmatchcase(path, pattern)
 
@@ -502,10 +881,17 @@ def has_rollback_evidence(body: str) -> bool:
     return value not in {"", "n/a", "na", "none", "tbd", "todo", "___", "..."}
 
 
-def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
-    """Derive the minimum safe tier from paths and diff text, including production UI smoke controls."""
+def classify_scope(
+    paths: Iterable[str], patch: str = "", additive_declared: bool = False
+) -> dict[str, object]:
+    """Derive the minimum safe tier from paths and diff text, including production UI smoke controls.
+
+    New migrations count as additive only when the PR body opts in
+    (``declares_additive_migration``); otherwise they stay T3.
+    """
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
+    additive = additive_migration_paths(normalized, patch) if additive_declared else set()
     if is_readonly_probe_only(normalized, patch):
         return {
             "machine_minimum_tier": 2,
@@ -516,8 +902,8 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     # Keep them eligible for the lightest path even when their assertions
     # mention a protected domain such as auth or billing.
     non_runtime_only = normalized and not any(is_deployable_path(path) for path in normalized)
-    runtime_paths = [path for path in normalized if is_deployable_path(path)]
-    marker_paths = runtime_paths or normalized
+    runtime_paths = [path for path in normalized if is_deployable_path(path) and path not in additive]
+    marker_paths = runtime_paths or [path for path in normalized if path not in additive]
     # Release-note bundles are deployable assets, but their historical copy is
     # not evidence of the current change's runtime effect. Use the same
     # narrowed semantic input as activation classification; paths themselves
@@ -538,7 +924,10 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     reasons: list[str] = []
 
     for path in normalized:
-        if path in _PRODUCTION_SMOKE_CONTROL_EXACT or (
+        if path in additive:
+            minimum = max(minimum, 2)
+            reasons.append(f"additive-only migration: {path}")
+        elif path in _PRODUCTION_SMOKE_CONTROL_EXACT or (
             path.startswith("frontend/e2e/")
             and path not in _LOCAL_ONLY_E2E_SPECS
             and not path.startswith("frontend/e2e/fixtures/ui-foundation/")
@@ -556,7 +945,7 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
             minimum = max(minimum, 2)
             reasons.append(f"product/runtime path: {path}")
 
-    if not non_runtime_only:
+    if not non_runtime_only and marker_paths:
         matched_t3 = [marker for marker in _T3_MARKERS if marker in haystack]
         if matched_t3:
             minimum = max(minimum, 3)
@@ -578,7 +967,9 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     }
 
 
-def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
+def classify_activation_scope(
+    paths: Iterable[str], patch: str = "", additive_confirmed: bool = False
+) -> dict[str, object]:
     """Classify activation by effect, boundedness, and reversible evidence.
 
     ``classify_scope`` remains the conservative merge classifier. This
@@ -589,8 +980,17 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     """
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
+    # additive_confirmed: the PR declared Additive-Migration: yes and Codex
+    # confirmed the final head (checked by the caller, Founder 2026-10-14（三）補充 #1).
+    additive = (
+        additive_migration_paths(normalized, patch)
+        if ADDITIVE_MIGRATION_AUTO_ACTIVATION and additive_confirmed else set()
+    )
     runtime_paths = [path for path in normalized if is_deployable_path(path)]
-    sensitive_paths = [path for path in normalized if is_production_activation_sensitive_path(path)]
+    sensitive_paths = [
+        path for path in normalized
+        if is_production_activation_sensitive_path(path) and path not in additive
+    ]
     always_founder_paths = [
         path for path in sensitive_paths
         if any(path.startswith(prefix) for prefix in _ALWAYS_FOUNDER_ACTIVATION_PREFIXES)
@@ -605,7 +1005,7 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     reasons: list[str] = []
     activation_class = "routine"
 
-    semantic_patch = _semantic_runtime_patch(runtime_paths, patch)
+    semantic_patch = _semantic_runtime_patch([path for path in runtime_paths if path not in additive], patch)
     changed_code = _semantic_changed_code_lines(semantic_patch)
     founder_effects = _founder_effects(
         changed_code, include_runtime_write=bool(sensitive_paths)
@@ -650,6 +1050,9 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     elif runtime_paths:
         minimum = 1
         reasons.extend(f"reversible runtime path: {path}" for path in runtime_paths)
+    if additive and activation_class != "founder-required":
+        minimum = max(minimum, 2)
+        reasons.extend(f"additive-only migration (expand/contract): {path}" for path in sorted(additive))
 
     if not sensitive_paths and founder_effects:
         minimum = max(minimum, 3)
@@ -1220,7 +1623,8 @@ def commit_effective_class(body: str, files: object) -> int | None:
     paths = [str(item["filename"]) for item in files]
     patch = "\n".join(f"diff --git a/{path} b/{path}\n{item['patch']}" for path, item in zip(paths, files))
     paths += [str(item["previous_filename"]) for item in files if item.get("previous_filename")]
-    result = validate_declaration(body, paths, patch)
+    # Release evidence never trusts the additive opt-in: it is not paired with Codex confirmation here.
+    result = validate_declaration(body, paths, patch, allow_additive=False)
     if not result["valid"] or result["effective_tier"] not in TIER_VALUES:
         return None
     return TIER_VALUES[result["effective_tier"]]
@@ -1542,14 +1946,16 @@ def effective_tier(
     return max(machine_minimum_tier, declared_tier), None
 
 
-def machine_declaration(paths: Iterable[str], patch: str = "") -> dict[str, object]:
+def machine_declaration(
+    paths: Iterable[str], patch: str = "", additive_declared: bool = False
+) -> dict[str, object]:
     """Return the declaration generated from the actual changed scope.
 
     This is an authoring aid, not an authority override: callers must still
     validate the submitted declaration with :func:`validate_declaration`.
     """
 
-    scope = classify_scope(paths, patch)
+    scope = classify_scope(paths, patch, additive_declared)
     minimum = int(scope["machine_minimum_tier"])
     return {
         "risk_class": f"R{minimum}",
@@ -1560,11 +1966,16 @@ def machine_declaration(paths: Iterable[str], patch: str = "") -> dict[str, obje
 
 
 def validate_declaration(
-    body: str, paths: Iterable[str], patch: str = ""
+    body: str, paths: Iterable[str], patch: str = "", *, allow_additive: bool = True
 ) -> dict[str, object]:
-    """Validate a PR declaration against an independently classified scope."""
+    """Validate a PR declaration against an independently classified scope.
 
-    generated = machine_declaration(paths, patch)
+    ``allow_additive=False`` ignores an ``Additive-Migration: yes`` line, for callers
+    that cannot also check the Codex confirmation the opt-in requires.
+    """
+
+    additive = allow_additive and declares_additive_migration(body)
+    generated = machine_declaration(paths, patch, additive)
     declared_risk, declared_tier = parse_declaration(body)
     effective, error = effective_tier(
         int(generated["machine_minimum_tier"]), declared_risk, declared_tier
@@ -1585,6 +1996,7 @@ __all__ = [
     "aggregate_landed_pr_effects",
     "reconcile_preexisting_pr_provenance",
     "classify_scope",
+    "declares_additive_migration",
     "decide_activation",
     "decide_manual_activation",
     "is_founder_approval_eligible",
