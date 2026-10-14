@@ -1578,7 +1578,7 @@ jobs:
 
           abort_deploy() {
             echo "❌ $1"
-            [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
+            [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
             if ! rollback_deploy; then
               echo "❌ 自動 rollback 也失敗 — deploy run 必須標紅"
               exit 11
@@ -1639,14 +1639,8 @@ jobs:
           echo "✅ production HEAD == CI 驗證版本（$TARGET_SHA）"
           PDV=$(mktemp -d)/v.py && cp scripts/post-deploy-verify.py "$PDV" || PDV=""
 
-          # The DB credential rotation authenticated over TCP and updated the
-          # TCP-matched principal, while Laravel was still allowed to connect
-          # through the Unix socket. MySQL treats that as a separate
-          # User@Host match (the incident presented as user@localhost).
-          # Normalize both settings so the effective connection is the same
-          # TCP tuple that rotation verified. Handle quoted/CRLF env values and
-          # an existing DB_SOCKET entry; changing only DB_HOST is insufficient
-          # when the socket setting is populated.
+          # Credential rotation verified the TCP principal; a Unix socket is a separate
+          # MySQL User@Host (user@localhost). Force TCP: set DB_HOST, clear DB_SOCKET.
           if grep -qE '^[[:space:]]*DB_HOST[[:space:]]*=' /home/admin/backend/.env; then
             sed -i -E 's/^[[:space:]]*DB_HOST[[:space:]]*=.*/DB_HOST=127.0.0.1/' /home/admin/backend/.env
           else
@@ -1723,6 +1717,8 @@ jobs:
           fi
 
           echo "=== [3b/7] 注入 Sentry DSN ==="
+          # Past [3/7] a range with a migration (or unknown) holds instead of rolling back.
+          git diff --quiet "$PREV_COMMIT" "$TARGET_SHA" -- ':(top)backend/database/migrations' || MIGRATION_RAN=1
           # 後端 .env：寫入或更新 SENTRY_LARAVEL_DSN
           if ! grep -q "^SENTRY_LARAVEL_DSN=" /home/admin/backend/.env; then
             echo "SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}" >> /home/admin/backend/.env

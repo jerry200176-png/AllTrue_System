@@ -2148,6 +2148,37 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             self.assertEqual(expected_rc, result.returncode, result.stdout + result.stderr)
             self.assertEqual(rolled_back, "ROLLBACK_CALLED" in result.stdout)
 
+    def test_steps_after_migration_hold_when_the_range_has_a_migration(self):
+        # A range migration whose schema was already applied (0 pending) must still hold later
+        # failures; a failed migrate keeps D1 (rollback) because the guard comes after [3/7].
+        line = next(x.strip() for x in self.workflow.split("\n") if "|| MIGRATION_RAN=1" in x)
+        self.assertLess(self.workflow.index('echo "=== [3b/7]'), self.workflow.index(line))
+        self.assertLess(self.workflow.index(line), self.workflow.index('abort_deploy "frontend build/deploy 失敗"'))
+        with tempfile.TemporaryDirectory(prefix="alltrue-range-migration-") as repo:
+            def git(*a):
+                return subprocess.run(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                      check=True, capture_output=True, text=True).stdout.strip()
+            git("init", "-q")
+            (Path(repo) / "backend" / "database" / "migrations").mkdir(parents=True)
+            (Path(repo) / "a.txt").write_text("a")
+            git("add", ".")
+            git("commit", "-qm", "base")
+            base = git("rev-parse", "HEAD")
+            (Path(repo) / "a.txt").write_text("b")
+            git("commit", "-qam", "code")
+            code = git("rev-parse", "HEAD")
+            (Path(repo) / "backend" / "database" / "migrations" / "m.php").write_text("<?php")
+            git("add", ".")
+            git("commit", "-qm", "mig")
+            mig = git("rev-parse", "HEAD")
+            for target, expected in ((code, "0"), (mig, "1"), ("0" * 40, "1")):
+                result = subprocess.run(
+                    ["bash", "-c", f"cd backend; MIGRATION_RAN=0; PREV_COMMIT={base}; TARGET_SHA={target}\n"
+                                   + line + '\necho "$MIGRATION_RAN"'],
+                    cwd=repo, text=True, capture_output=True, env={"PATH": os.environ["PATH"]},
+                )
+                self.assertEqual(expected, result.stdout.strip().splitlines()[-1], result.stderr)
+
     def test_rollback_reverify_failure_fails_the_rollback(self):
         function = "rollback_deploy() {" + self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
         harness = textwrap.dedent(r"""

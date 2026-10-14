@@ -40,7 +40,7 @@ DEFAULT_SMOKE = "/home/admin/scripts/post-merge-smoke.sh"
 RC_ROLLED_BACK = 10
 RC_ROLLBACK_FAILED = 11
 RC_HELD_MIGRATION = 12
-RC_HELD_PRE_VERIFY = 13  # a step failed after a migration ran, before identity was ever verified
+RC_HELD_PRE_VERIFY = 13  # a step failed after a migration ran (or with one in range), before identity was verified
 RC_GATE_ROLLBACK = 20  # gate -> executor: run rollback_deploy (distinct from a Python crash's 1)
 RC_SSH_LOST = 255
 
@@ -199,7 +199,7 @@ def summarize(rc: int, target_sha: str, previous_sha: str, runner_verify: str) -
         )
     elif rc == RC_HELD_PRE_VERIFY:
         lines.append(
-            f"A deploy step for `{target_sha}` failed after a migration had already run, before the release identity was "
+            f"A deploy step for `{target_sha}` failed after a migration ran (or with a migration in the range), before the release identity was "
             "verified. No automatic rollback ran and `migrate:rollback` was never invoked. Runtime state is UNKNOWN "
             "(code, frontend and deployment.json may be partly updated): check `/api/health` and `deployment.json` "
             "now and follow docs/RUNBOOK_ROLLBACK.md §3."

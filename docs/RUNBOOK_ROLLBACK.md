@@ -49,7 +49,7 @@ last_reviewed: 2026-06-07
 2. migration 前先 `mysqldump` 到 `/home/admin/backups/emergency/`
 3. 部署後由 `scripts/post-deploy-verify.py gate` 做**有上限的重試驗證**（約 1 分鐘）：`/api/health`、`/api/v1/health` 回 200，且 `deployment.json` 的 `backend_sha` = 目標 SHA（前端有變動時 `frontend_sha` 也要相符），通過後才跑 `post-merge-smoke.sh`
 4. **驗證或 smoke 失敗 → 自動回滾**（exit 10）：`git reset --hard $PREV_COMMIT` → 前端重 build → `php artisan optimize` → FPM refresh → health check + 以重試驗證 `deployment.json` = `PREV_COMMIT`（前端有變動時含 frontend SHA），若是驗證/smoke 觸發的回滾再對舊版重跑同一份 smoke；回滾本身沒驗過 → exit 11，需人工
-5. **部署範圍含 migration、本次跑過 migration、或驗證器自己出錯無法判斷時，不自動回滾**（exit 12）：run 標紅並發 `::error::`，production 留在目標版，**`deploy.yml` 已不再自動執行 `migrate:rollback`**（任何階段）；照 §3 人工處理（migration 前的 `mysqldump` 在 `/home/admin/backups/emergency/`）。migration 本身失敗（D1）仍照舊回滾 code
+5. **部署範圍含 migration、本次跑過 migration、或驗證器自己出錯無法判斷時，不自動回滾**（exit 12）：run 標紅並發 `::error::`，production 留在目標版，**`deploy.yml` 已不再自動執行 `migrate:rollback`**（任何階段）；照 §3 人工處理（migration 前的 `mysqldump` 在 `/home/admin/backups/emergency/`）。migration 步驟之後、驗證之前的步驟（前端 build、manifest、optimize、DB probe、FPM）失敗時，只要部署範圍含 migration（或 git 無法判斷）也一樣不回滾（exit 13，runtime 狀態未知）。migration 本身失敗（D1）仍照舊回滾 code
 6. Runner 另外從 GitHub 端重查 `/api/health`、`/api/v1/health` 與 `deployment.json`（唯讀）；失敗時 step summary 寫明是哪一種結果（10/11/12/SSH 斷線）
 
 → 多數情況**你什麼都不用做**。到 Actions 看該 deploy run log 確認「✅ Rollback 成功」即可。
