@@ -70,9 +70,23 @@
             <p><span class="nr-guide-key">意思</span>{{ categoryGuide(item.category).meaning }}</p>
             <p><span class="nr-guide-key">下一步</span>{{ categoryGuide(item.category).next }}</p>
           </article>
-          <p v-if="detailTruncated" class="nr-guide-foot nr-truncated" data-testid="nr-truncated">
-            明細只列出前 {{ storedRowCount }} 筆，共 {{ report.mismatch_count }} 筆差異；上面的分類數字包含全部。未列出的課程編號請洽工程團隊。
-          </p>
+          <div v-if="detailTruncated" class="nr-guide-foot nr-truncated" data-testid="nr-truncated">
+            <p>
+              明細目前列出前 {{ storedRowCount }} 筆，共 {{ report.mismatch_count }} 筆差異；上面的分類數字包含全部。
+              <template v-if="allRowsUnavailable">這份報告沒有保存其餘明細，下一次夜間核對後就能看到全部。</template>
+            </p>
+            <AtButton
+              v-if="!allRowsUnavailable"
+              shape="rect"
+              size="sm"
+              variant="secondary"
+              icon="expand_more"
+              :loading="loadingAllRows"
+              data-testid="nr-load-all"
+              @click="loadAllRows"
+            >載入全部 {{ report.mismatch_count }} 筆明細</AtButton>
+            <p v-if="allRowsError" class="nr-truncated-error" role="alert" data-testid="nr-load-all-error">{{ allRowsError }}</p>
+          </div>
           <p class="nr-guide-foot">本頁不會改數字。修正堂數由工程團隊處理，需先備份並經核准。</p>
         </section>
 
@@ -262,6 +276,10 @@ const {
   storedRowCount,
   detailTruncated,
   loadReport,
+  loadAllRows,
+  loadingAllRows,
+  allRowsError,
+  allRowsUnavailable,
   setFilter,
   toggleSort,
   sortKey,
@@ -514,6 +532,8 @@ onMounted(() => {
 .nr-guide-item p { margin: 2px 0 0; font-size: var(--ds-font-size-sm); line-height: 1.5; color: var(--ds-text-secondary); }
 .nr-guide-key { display: inline-block; min-width: 3.5em; margin-right: 6px; font-weight: 600; color: var(--ds-text-primary); }
 .nr-guide-foot { margin: 10px 0 0; font-size: var(--ds-font-size-sm); color: var(--ds-text-secondary); }
+.nr-truncated p { margin: 0 0 8px; }
+.nr-truncated-error { color: var(--ds-danger); }
 
 /* === Filters === */
 .nr-filters {
