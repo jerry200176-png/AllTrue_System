@@ -4,6 +4,7 @@
   "desiredMode": "throttled",
   "settingsUserReportedAt": "2026-10-14T12:19:58Z",
   "settingsIndependentVerification": "pending",
+  "activation": {"enabled":false,"decisionApproved":false,"stateCasVerified":false,"durableExecutorVerified":false,"mode":"canary","sourceSha":null,"senderId":259058503,"botId":199175422,"cooldownFile":null,"canary":null},
   "repositories": [
     {"repo":"jerry200176-png/AllTrue_System","base":"main","riskAdapter":"alltrue","automaticEvidence":"observed","overrideOffVerified":false,"canaryVerified":false,"enabled":false},
     {"repo":"jerry200176-png/sunrise-cafe","base":null,"riskAdapter":"full","automaticEvidence":"observed","overrideOffVerified":false,"canaryVerified":false,"enabled":false},

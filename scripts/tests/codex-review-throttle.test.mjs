@@ -4,254 +4,168 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { decide, control, emptyLedger, FileLedger, POLICY, keyOf, validateLedger } from '../../.github/scripts/codex-review-throttle.mjs';
-const a = 'a'.repeat(40), b = 'b'.repeat(40), c = 'c'.repeat(40), d = 'd'.repeat(40);
-const now = Date.parse('2026-10-14T12:00:00Z');
-const clone = (v) => structuredClone(v);
-const check = () => ({ __typename: 'CheckRun', name: 'CI', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-10-14T11:00:00Z',
-  checkSuite: { app: { databaseId: 15368 }, repository: { nameWithOwner: 'o/r' } } });
-function snapshot() { return { repo: 'o/r', number: 1, head: a, base: b, state: 'open', draft: false,
-  evidenceComplete: true, externalReview: false, threads: { nodes: [], pageInfo: { hasNextPage: false } },
-  ready: false, observedChangeAt: '2026-10-14T11:40:00Z', required: ['CI'], pins: [['CI', 15368]], checks: [check()],
-  ciHead: a, risk: { machine_minimum_tier: 1, reasons: [] }, baseDependenciesChanged: false }; }
-function entry(s = snapshot(), state = 'completed') { return { repo: s.repo, number: s.number, head: s.head, base: s.base,
-  policy: POLICY, key: keyOf(s), state }; }
-function harness(s = snapshot(), ledger = emptyLedger()) {
-  let data = clone(ledger), saves = 0, sends = 0, lookups = 0;
-  const store = { exclusive: async (work) => work(), load: () => clone(data), save: (v) => { data = clone(v); saves++; } };
-  const transport = { verified: true, send: async () => { assert.equal(data.entries.at(-1).state, 'requested'); sends++; },
-    lookup: async () => { lookups++; return null; } };
-  return { read: async () => clone(s), store, transport, now, dryRun: false,
-    stats: () => ({ data, saves, sends, lookups }) };
-}
+import { githubClient, GitHubLedger, repositoryPolicy, Backoff, verifyRemoteCas, bootstrapState } from '../../.github/scripts/codex-review-shared.mjs';
+import { commentTransport, requestBody, reconcile, runLive } from '../../.github/scripts/codex-review-runner.mjs';
+import { reader } from '../../.github/scripts/codex-review-snapshot.mjs';
+const a = 'a'.repeat(40), b = 'b'.repeat(40), c = 'c'.repeat(40), now = Date.parse('2026-10-14T12:00:00Z'), copy = structuredClone;
+const check = () => ({ __typename: 'CheckRun', name: 'CI', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-10-14T11:00:00Z', checkSuite: { app: { databaseId: 15368 }, repository: { nameWithOwner: 'o/r' } } });
+const snapshot = () => ({ repo: 'o/r', number: 1, head: a, base: b, state: 'open', draft: false, evidenceComplete: true, externalReview: false, threads: { nodes: [], pageInfo: { hasNextPage: false } }, ready: false, observedChangeAt: '2026-10-14T11:40:00Z', required: ['CI'], pins: [['CI', 15368]], checks: [check()], ciHead: a, risk: { machine_minimum_tier: 1, reasons: [] }, baseDependenciesChanged: false, reviews: [], comments: [] });
+const entry = (s = snapshot(), state = 'completed') => ({ repo: s.repo, number: s.number, head: s.head, base: s.base, policy: POLICY, key: keyOf(s), state });
+function memory(data = emptyLedger()) { let saved = copy(data); return { exclusive: async (f) => f(), load: async () => copy(saved), save: async (v) => { validateLedger(v); saved = copy(v); } }; }
 const plan = (s, l = emptyLedger()) => decide(s, l, now);
-test('initial stable exact-head candidate is full; no implied approval', () => {
-  assert.equal(plan(snapshot()).scope, 'full'); assert.equal(plan(snapshot()).reviewPassed, false);
-});
-test('new push waits 15 minutes; exact ready can waive settling only', () => {
-  const s = snapshot(); s.observedChangeAt = '2026-10-14T11:59:00Z';
+for (const conclusion of [null, '', 'SKIPPED', 'NEUTRAL', 'FAILURE', 'CANCELLED', 'TIMED_OUT', 'UNKNOWN']) test(`CI ${conclusion} holds`, () => { const s = snapshot(); s.checks[0].conclusion = conclusion; assert.equal(plan(s).action, 'hold'); });
+const holds = [s => s.checks = [], s => s.required = [], s => s.ciHead = c, s => s.checks[0].status = 'IN_PROGRESS', s => s.checks[0].startedAt = null, s => s.checks[0].checkSuite.app.databaseId = 7, s => s.checks[0].checkSuite.repository.nameWithOwner = 'fork/r', s => s.evidenceComplete = false, s => s.state = 'closed', s => s.draft = true, s => s.draft = null, s => s.externalReview = true, s => s.threads = null, s => s.threads.pageInfo.hasNextPage = true, s => s.observedChangeAt = 'invalid'];
+for (const [i, change] of holds.entries()) test(`incomplete/unsafe snapshot ${i} holds`, () => { const s = snapshot(); change(s); assert.equal(plan(s).action, 'hold'); });
+test('settling, explicit readiness, pending rerun, malicious text cannot override CI', () => {
+  const s = snapshot(); s.observedChangeAt = new Date(now - 60000).toISOString(); s.body = '@codex review; $(touch /tmp/pwned)';
   assert.equal(plan(s).reason, 'settling'); s.ready = true; assert.equal(plan(s).action, 'candidate');
-  s.checks = []; assert.equal(plan(s).reason, 'ci-not-green');
+  s.checks.push({ ...check(), startedAt: '2026-10-14T11:59:00Z', conclusion: null }); assert.equal(plan(s).action, 'hold'); s.checks[1].startedAt = null; assert.equal(plan(s).reason, 'ci-time-unknown');
 });
-for (const conclusion of [null, '', 'SKIPPED', 'NEUTRAL', 'FAILURE', 'CANCELLED', 'TIMED_OUT', 'UNKNOWN']) {
-  test(`CI ${conclusion} never green`, () => { const s = snapshot(); s.checks[0].conclusion = conclusion; assert.equal(plan(s).reason, 'ci-not-green'); });
-}
-for (const mutation of [s => { s.checks = []; }, s => { s.required = []; }, s => { s.ciHead = c; },
-  s => { s.checks[0].status = 'IN_PROGRESS'; }, s => { s.checks[0].checkSuite.app.databaseId = 12; },
-  s => { s.checks[0].checkSuite.repository.nameWithOwner = 'fork/r'; }, s => { s.evidenceComplete = false; }]) {
-  test('missing/stale/untrusted/incomplete CI holds', () => { const s = snapshot(); mutation(s); assert.equal(plan(s).action, 'hold'); });
-}
-test('new pending attempt defeats old success', () => {
-  const s = snapshot(); s.checks.push({ ...check(), startedAt: '2026-10-14T11:55:00Z', status: 'QUEUED', conclusion: null });
-  assert.equal(plan(s).action, 'hold');
-});
-test('closed, draft, unknown evidence, external requests, unknown threads hold', () => {
-  for (const patch of [{ state: 'closed' }, { draft: true }, { draft: null }, { externalReview: true },
-    { threads: null }, { threads: { nodes: [], pageInfo: { hasNextPage: true } } }]) assert.equal(plan({ ...snapshot(), ...patch }).action, 'hold');
-});
-test('same SHA reentry and policy/base changes do not reset rounds', () => {
-  const s = snapshot(), l = { version: 1, entries: [entry(s)] };
-  assert.equal(plan(s, l).reason, 'already-recorded');
-  s.base = d; assert.equal(plan(s, l).reason, 'no-consolidated-fix');
+test('dedupe, in-flight/failed states, policy/base changes cannot reset two-round budget', () => {
+  const s = snapshot(), l = { version: 1, entries: [entry()] }; assert.equal(plan(s, l).reason, 'already-recorded');
   s.head = c; s.ciHead = c; s.fixReady = true;
-  assert.equal(plan(s, l).scope, 'full');
-  l.entries.push(entry(s)); s.head = d; s.ciHead = d;
-  assert.equal(plan(s, l).reason, 'round-limit');
-  l.entries[0].policy = 'older'; l.entries[0].key = ['o/r', 1, a, b, 'older'].join(':');
-  assert.equal(plan(s, l).reason, 'round-limit');
+  for (const state of ['requested', 'running', 'failed']) { l.entries[0].state = state; assert.equal(plan(s, l).action, 'hold'); }
+  l.entries[0].state = 'completed'; assert.equal(plan(s, l).round, 2); assert.equal(plan(s, l).scope, 'incremental');
+  s.threads.nodes = [{ id: 'T', isResolved: false, comments: { totalCount: 1 } }]; assert.equal(plan(s, l).unresolvedFindings[0].id, 'T');
+  for (const change of [{ base: c }, { baseDependenciesChanged: true }, { risk: { machine_minimum_tier: 3 } }, { risk: { machine_minimum_tier: 2, reasons: ['concurrency'] } }]) assert.equal(plan({ ...s, ...change }, l).scope, 'full');
+  l.entries.push(entry(s)); s.base = c; assert.equal(plan(s, l).reason, 'round-limit');
+  l.entries[0].policy = 'old'; l.entries[0].key = ['o/r', 1, a, b, 'old'].join(':'); assert.equal(plan(s, l).reason, 'round-limit');
 });
-test('consolidated re-review includes delta and unresolved findings', () => {
-  const l = { version: 1, entries: [entry()] }, s = snapshot(); s.head = c; s.ciHead = c;
-  assert.equal(plan(s, l).reason, 'fix-not-ready'); s.fixReady = true;
-  s.threads.nodes.push({ id: 'thread', isResolved: false, comments: { totalCount: 1 } });
-  const p = plan(s, l); assert.equal(p.scope, 'incremental'); assert.equal(p.from, a); assert.equal(p.to, c);
-  assert.equal(p.unresolvedFindings[0].id, 'thread'); assert.equal(p.round, 2);
-  for (const change of [{ risk: { machine_minimum_tier: 3 } }, { baseDependenciesChanged: true },
-    { risk: { machine_minimum_tier: 2, reasons: ['concurrency'] } }]) assert.equal(plan({ ...s, ...change }, l).scope, 'full');
+test('dry-run has no writes/sends; fresh refs/CI and verified transport gate the real reservation', async () => {
+  let writes = 0, sends = 0, reads = 0; const store = memory(); store.save = async () => { writes++; };
+  const options = { store, read: async () => snapshot(), transport: { verified: true, send: async () => { sends++; } }, now };
+  assert.equal((await control(options)).dryRun, true); assert.equal(writes + sends, 0);
+  assert.equal((await control({ ...options, dryRun: false, transport: { verified: false } })).reason, 'transport-unverified');
+  for (const field of ['head', 'base', 'draft', 'checks']) { reads = 0; const result = await control({ ...options, dryRun: false, read: async () => { const s = snapshot(); if (++reads > 1) s[field] = field === 'draft' ? true : field === 'checks' ? [] : c; return s; } }); assert.equal(result.action, 'hold'); }
+  assert.equal(writes + sends, 0);
 });
-for (const state of ['requested', 'running', 'failed']) test(`${state} blocks another head`, () => {
-  const s = snapshot(); s.head = c; s.ciHead = c; s.fixReady = true;
-  assert.equal(plan(s, { version: 1, entries: [entry(snapshot(), state)] }).action, 'hold');
+test('ambiguous POST survives restart and reconciles running/completed/failed without re-send', async () => {
+  const store = memory(); let sends = 0; const transport = { verified: true, send: async () => { sends++; throw new Error('timeout'); }, lookup: async () => null };
+  const options = { read: async () => snapshot(), store, transport, dryRun: false, now };
+  assert.equal((await control(options)).action, 'requested'); assert.equal((await control(options)).reason, 'already-recorded'); assert.equal(sends, 1);
+  for (const state of ['running', 'completed', 'failed']) { const st = memory({ version: 1, entries: [entry(snapshot(), 'requested')] }); await control({ ...options, store: st, transport: { ...transport, lookup: async () => ({ state }) } }); assert.equal((await st.load()).entries[0].state, state); } assert.equal(sends, 1);
 });
-test('dry run makes no reservation, send or remote lookup', async () => {
-  const h = harness(); const p = await control({ ...h, dryRun: true });
-  assert.equal(p.action, 'candidate'); assert.deepEqual(h.stats(), { data: emptyLedger(), saves: 0, sends: 0, lookups: 0 });
+function remote() { let data = emptyLedger(), sha = a, writes = 0; const api = async (method, route, body) => { if (method === 'GET' && route.includes('/contents?')) return [{ path: 'ledger.json', type: 'file' }]; if (method === 'GET') return { type: 'file', encoding: 'base64', sha, content: Buffer.from(JSON.stringify(data)).toString('base64') }; assert.equal(body.branch, 'codex-review-state'); if (body.sha !== sha) throw new Error('409 conflict'); data = JSON.parse(Buffer.from(body.content, 'base64')); sha = c; writes++; return { content: { sha } }; }; return { api, data: () => data, writes: () => writes }; }
+test('remote CAS race has one send; lost reservation response never retries, missing/corrupt/history state stops', async () => {
+  const r = remote(); let sends = 0; const options = { read: async () => snapshot(), dryRun: false, now, transport: { verified: true, send: async () => { sends++; }, lookup: async () => null } };
+  await Promise.allSettled([control({ ...options, store: new GitHubLedger(r.api, 'o/r') }), control({ ...options, store: new GitHubLedger(r.api, 'o/r') })]); assert.equal(sends, 1); assert.equal(r.data().entries.length, 1);
+  const s = new GitHubLedger(r.api, 'o/r'); await s.load(); await assert.rejects(s.save(emptyLedger()), /history/);
+  const lost = remote(), api = async (...args) => { const value = await lost.api(...args); if (args[0] === 'PUT') throw new Error('lost'); return value; };
+  await assert.rejects(control({ ...options, store: new GitHubLedger(api, 'o/r') }), /lost/); await control({ ...options, store: new GitHubLedger(api, 'o/r') }); assert.equal(lost.writes(), 1); assert.equal(sends, 1);
+  await assert.rejects(new GitHubLedger(async () => { throw new Error('404'); }, 'o/r').load(), /404/); assert.throws(() => validateLedger({})); assert.throws(() => validateLedger({ version: 1, entries: [entry(), entry()] }));
 });
-test('transport unverified cannot send', async () => {
-  const h = harness(); h.transport.verified = false;
-  assert.equal((await control(h)).reason, 'transport-unverified'); assert.equal(h.stats().sends, 0);
-});
-for (const moved of ['head', 'base']) test(`rereads ${moved} immediately before request`, async () => {
-  const h = harness(); let reads = 0;
-  h.read = async () => { const s = snapshot(); if (++reads > 1) s[moved] = d; return s; };
-  assert.equal((await control(h)).reason, 'refs-moved'); assert.equal(h.stats().saves, 0);
-});
-test('fresh CI/draft changes block even with unchanged refs', async () => {
-  const h = harness(); let reads = 0;
-  h.read = async () => ({ ...snapshot(), draft: ++reads > 1 });
-  assert.equal((await control(h)).reason, 'not-ready-pr'); assert.equal(h.stats().sends, 0);
-});
-test('uncertain POST is read back, never blindly resent across invocations', async () => {
-  const h = harness(); h.transport.send = async () => { throw new Error('timeout'); };
-  assert.equal((await control(h)).action, 'requested');
-  assert.equal(h.stats().lookups, 1); assert.equal(h.stats().data.entries.length, 1);
-  assert.equal((await control(h)).reason, 'already-recorded'); assert.equal(h.stats().lookups, 2);
-});
-test('readback advances requested -> running -> completed/failed without a resend', async () => {
-  for (const state of ['running', 'completed', 'failed']) {
-    const h = harness(snapshot(), { version: 1, entries: [entry(snapshot(), 'requested')] });
-    h.transport.lookup = async () => ({ state }); await control(h);
-    assert.equal(h.stats().data.entries[0].state, state); assert.equal(h.stats().sends, 0);
+test('shared rate limits honor seconds/date/reset/GraphQL and persisted cooldown blocks another run/repo', async () => {
+  for (const r of [{ status: 403, headers: { 'Retry-After': '120' }, body: { message: 'secondary rate limit' } }, { status: 429, headers: { 'Retry-After': new Date(now + 180000).toUTCString() } }, { status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String((now + 300000) / 1000) } }, { status: 200, body: { errors: [{ type: 'RATE_LIMITED' }] } }]) {
+    let calls = 0, saved; const api = githubClient(async () => { calls++; return r; }, { now: () => now, persist: (v) => { saved = copy(v); } });
+    await assert.rejects(api('GET', '/one'), Backoff); await assert.rejects(api('GET', '/two'), Backoff); assert.equal(calls, 1);
+    await assert.rejects(githubClient(async () => { calls++; }, { now: () => now, cooldown: saved })('POST', '/one'), Backoff); assert.equal(calls, 1); assert.ok(saved.until >= now + 60000);
   }
 });
-test('durable journal survives a new process object; missing/corrupt/duplicate state fails closed', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-ledger-')), file = path.join(dir, 'ledger.json');
+function serviceFixture() {
+  const s = snapshot(), target = { repo: s.repo, number: 1, head: a, base: b }, plan = { ...target, key: keyOf(s), nonce: 'd'.repeat(32), scope: 'full', from: null, unresolvedFindings: [] };
+  const e = { ...entry(s, 'requested'), nonce: plan.nonce, requestedAt: new Date(now).toISOString(), requestBody: requestBody(plan) };
+  const own = { id: 1, user: { id: 10 }, body: e.requestBody, created_at: e.requestedAt, updated_at: e.requestedAt };
+  const done = { id: 2, user: { id: 20, type: 'Bot' }, body: `<!-- codex-throttle:${e.key}:${e.nonce} -->\nhead=${a} base=${b}`, commit_id: a, submitted_at: e.requestedAt, state: 'COMMENTED' };
+  return { s, plan, e, own, done };
+}
+test('transport authenticates exact sender/bot, immutable refs/marker/body/time; no heuristic completion', async () => {
+  const f = serviceFixture(); let comments = [f.own], reviews = [f.done], sends = 0;
+  const api = async (method, route, body) => { if (method === 'POST') { sends++; assert.equal(body.body, f.e.requestBody); return {}; } if (route.includes('/comments?')) return comments; if (route.includes('/reviews?')) return reviews; return { state: 'open', draft: false, head: { sha: a }, base: { sha: b } }; };
+  const t = commentTransport(api, 'o/r', 1, 10, 20); assert.equal((await t.lookup(f.e)).state, 'completed'); await t.send(f.plan, f.e); assert.equal(sends, 1);
+  for (const patch of [{ user: { id: 999, type: 'Bot' } }, { commit_id: c }, { body: 'looks good' }, { body: f.done.body.replace(b, c) }, { submitted_at: '2000-01-01' }, { body: f.done.body.replace('d'.repeat(32), 'e'.repeat(32)) }]) { reviews = [{ ...f.done, ...patch }]; assert.equal(await t.lookup(f.e), null); }
+  reviews = [f.done]; for (const patch of [{ user: { id: 999 } }, { body: f.own.body + 'edit' }, { updated_at: '2000-01-01' }]) { comments = [{ ...f.own, ...patch }]; assert.equal(await t.lookup(f.e), null); }
+  reviews = [];
+  for (const state of ['running', 'failed']) { comments = [f.own, { ...f.done, created_at: f.e.requestedAt, body: `Codex review ${state}\n${f.done.body}` }]; assert.equal((await t.lookup(f.e)).state, state); }
+  comments = [f.own, f.own]; assert.equal(await t.lookup(f.e), null); await assert.rejects(t.send({ ...f.plan, head: c }, f.e), /mismatch/);
+});
+test('external completions consume rounds; unknown/running comments hold, retained across observations', () => {
+  const f = serviceFixture(), old = emptyLedger(); f.s.senderId = 10; f.s.reviews = [f.done];
+  let l = reconcile(f.s, old, 20); assert.equal(l.external.length, 1); f.s.head = c; f.s.ciHead = c; f.s.fixReady = true; assert.equal(plan(f.s, l).round, 2);
+  f.s.comments = [{ id: 3, body: '@codex review', user: { id: 77 } }]; l = reconcile(f.s, l, 20); assert.equal(plan(f.s, l).reason, 'external-review-unknown');
+  f.s.reviews = []; f.s.comments = []; assert.equal(reconcile(f.s, l, 20).external.length, 2);
+  f.s.reviews = [{ ...f.done, state: 'PENDING' }]; assert.equal(plan(f.s, reconcile(f.s, emptyLedger(), 20)).action, 'hold');
+});
+function activation() { return { version: 1, policy: POLICY, repositories: [{ repo: 'o/r', base: 'main', riskAdapter: 'full', enabled: true, overrideOffVerified: true }], activation: { enabled: true, decisionApproved: true, stateCasVerified: true, durableExecutorVerified: true, sourceSha: a, mode: 'canary', senderId: 10, botId: 20, canary: { repo: 'o/r', number: 1, head: a, base: b } } }; }
+function cooldown() { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-cooldown-')), store = new FileLedger(path.join(dir, 'state')); store.save({ ...emptyLedger(), cooldownUntil: 0 }); return { dir, store }; }
+test('runner is disabled by default; eight repos/sample/settings baseline stay unverified', async () => {
+  const cfg = JSON.parse(fs.readFileSync('.github/scripts/codex-review-fleet.json')); assert.equal(cfg.repositories.length, 8); assert.equal(cfg.settingsUserReportedAt, '2026-10-14T12:19:58Z');
+  for (const p of cfg.repositories) { assert.equal(p.enabled, false); assert.equal(p.overrideOffVerified, false); assert.throws(() => repositoryPolicy(cfg, p.repo, true)); }
+  await assert.rejects(runLive({ config: cfg, repo: cfg.repositories[0].repo, number: 1, sha: a, apiRequest: () => assert.fail('network') }), /disabled/);
+});
+test('runner uses durable cooldown, authenticated executor, remote reservation and one comment (fixtures only)', async () => {
+  const cd = cooldown(); let posts = 0; const state = memory(), cfg = activation();
+  const req = async (method, route) => { if (method === 'POST') { posts++; return { status: 201, body: {} }; } const body = route.endsWith('/commits/main') ? { sha: a } : route.includes('/users/') ? { id: 20, type: 'Bot' } : route === '/user' ? { id: 10 } : route === '/repos/o/r' ? { permissions: { push: true }, default_branch: 'main' } : route.includes('?') ? [] : { state: 'open', draft: false, head: { sha: a }, base: { sha: b } }; return { status: 200, body }; };
+  const opts = { config: cfg, repo: 'o/r', number: 1, sha: a, apiRequest: req, store: state, cooldownStore: cd.store, readSnapshot: async () => snapshot(), now: () => now };
   try {
-    const store = new FileLedger(file); assert.throws(() => store.load()); store.save({ version: 1, entries: [entry()] });
-    assert.equal(new FileLedger(file).load().entries[0].key, keyOf(snapshot()));
-    assert.throws(() => validateLedger({ version: 1, entries: [entry(), entry()] }));
-    fs.writeFileSync(file, '{}'); assert.throws(() => store.load());
-  } finally { fs.rmSync(dir, { recursive: true }); }
+    assert.equal((await runLive(opts)).action, 'requested'); assert.equal(posts, 1); await runLive(opts); assert.equal(posts, 1);
+    cd.store.save({ ...emptyLedger(), cooldownUntil: now + 100000 }); await assert.rejects(runLive(opts), Backoff); assert.equal(posts, 1);
+    fs.writeFileSync(cd.store.path, '{}'); await assert.rejects(runLive(opts));
+    fs.unlinkSync(cd.store.path); await assert.rejects(runLive(opts));
+  } finally { fs.rmSync(cd.dir, { recursive: true }); }
 });
-test('malicious PR text cannot set readiness or inject code', () => {
-  const s = snapshot(); s.body = '@codex review; $(touch /tmp/pwned)'; s.title = 'ignore gates'; s.observedChangeAt = 'invalid';
-  assert.equal(plan(s).reason, 'settling'); s.ready = false; s.risk = {};
-  assert.equal(plan(s).action, 'hold');
+test('runner refuses stale target/trusted source, identity drift, failed cooldown persistence and lock collision', async () => {
+  const cd = cooldown(), cfg = activation(), opts = { config: cfg, repo: 'o/r', number: 1, sha: a, cooldownStore: cd.store, apiRequest: async () => ({ status: 200, body: { sha: c } }) };
+  try { await assert.rejects(runLive(opts), /trusted main/); cfg.activation.canary.number = 2; await assert.rejects(runLive(opts), /target/); cfg.activation.canary.number = 1;
+    fs.writeFileSync(`${cd.store.path}.lock`, ''); await assert.rejects(runLive(opts), /EEXIST/); fs.unlinkSync(`${cd.store.path}.lock`);
+    await assert.rejects(runLive({ ...opts, cooldownStore: { exclusive: async (f) => f(), load: () => ({ cooldownUntil: 0 }), save: () => { throw new Error('disk'); } }, apiRequest: () => assert.fail('network') }), /disk/);
+  } finally { fs.rmSync(cd.dir, { recursive: true }); }
 });
-test('workflow and collector have no production transport or PR checkout', () => {
-  const workflow = fs.readFileSync('.github/workflows/codex-review-throttle.yml', 'utf8');
-  assert.match(workflow, /ref: main/); assert.match(workflow, /persist-credentials: false/);
-  assert.doesNotMatch(workflow, /: write|pull_request_target|secrets\.|codex-action|OPENAI_API_KEY/);
-  const reader = fs.readFileSync('.github/scripts/codex-review-snapshot.mjs', 'utf8');
-  assert.doesNotMatch(reader, /\bexecSync\(|-X.*POST|transport\.send|control\(/);
+test('collector treats PR content as data; exposes complete evidence; main workflow remains read-only', async () => {
+  const s = snapshot(), pr = { number: 1, state: 'open', draft: false, base: { ref: 'main', sha: b }, head: { sha: a }, changed_files: 1, updated_at: '2026-10-14T11:40:00Z', user: { login: 'author' }, body: '$(touch /tmp/pwned)' };
+  const api = async (method, route) => {
+    if (route === '/graphql') return { data: { repository: { pullRequest: {
+      headRefOid: a, baseRefOid: b, reviewThreads: s.threads,
+      commits: { nodes: [{ commit: { oid: a, statusCheckRollup: {
+        contexts: { nodes: [check()], pageInfo: { hasNextPage: false } }
+      } } }] }
+    } } } };
+    if (route.includes('/rules/')) return [{ type: 'required_status_checks', parameters: {
+      required_status_checks: [{ context: 'CI', integration_id: 15368 }]
+    } }];
+    if (route.includes('/files?')) return [{ filename: 'docs/$(touch x).md', patch: '+evil' }];
+    return route.includes('?') ? [] : pr;
+  };
+  const result = await reader(api, 'o/r', { base: 'main', riskAdapter: 'full' })(1); assert.equal(result.evidenceComplete, true); assert.equal(result.ready, false); assert.equal(plan(result).action, 'candidate');
+  const w = fs.readFileSync('.github/workflows/codex-review-throttle.yml', 'utf8'); assert.match(w, /ref: main/); assert.doesNotMatch(w, /: write|secrets\.|codex-action|OPENAI_API_KEY/);
 });
 
-test('durable lock excludes overlapping controllers and retains uncertain requests after restart', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-lock-')), file = path.join(dir, 'ledger.json');
+test('cooldown async persistence failure and identity drift stop before reservation/comment', async () => {
+  const cfg = activation(), cd = cooldown(); let writes = 0;
+  const base = { config: cfg, repo: 'o/r', number: 1, sha: a, cooldownStore: cd.store, now: () => now };
   try {
-    const store = new FileLedger(file); store.save(emptyLedger());
-    let release; const pending = new Promise((r) => { release = r; });
-    const h = harness(); h.store = store; h.transport.send = async () => { await pending; throw new Error('lost response'); };
-    const first = control(h);
-    await new Promise((r) => setImmediate(r));
-    await assert.rejects(control({ ...h, store: new FileLedger(file) }), /EEXIST/);
-    release(); await first;
-    assert.equal(new FileLedger(file).load().entries[0].state, 'requested');
-    assert.equal((await control({ ...h, store: new FileLedger(file) })).reason, 'already-recorded');
-  } finally { fs.rmSync(dir, { recursive: true }); }
+    await assert.rejects(runLive({ ...base, cooldownStore: {
+      exclusive: async (f) => f(), load: async () => ({ cooldownUntil: 0 }),
+      save: async () => { throw new Error('async disk failure'); }
+    }, apiRequest: () => assert.fail('network before durable preflight') }), /disk/);
+    for (const identity of ['sender', 'bot', 'role']) {
+      const apiRequest = async (method, route) => {
+        if (method !== 'GET') { writes++; assert.fail('write'); }
+        const body = route.endsWith('/commits/main') ? { sha: a }
+          : route.includes('/users/') ? { id: identity === 'bot' ? 99 : 20, type: 'Bot' }
+          : route === '/user' ? { id: identity === 'sender' ? 99 : 10 }
+          : { permissions: { push: identity !== 'role' }, default_branch: 'main' };
+        return { status: 200, body };
+      };
+      await assert.rejects(runLive({ ...base, apiRequest }), /identity|capability/);
+    }
+    assert.equal(writes, 0);
+  } finally { fs.rmSync(cd.dir, { recursive: true }); }
 });
 
-test('collector reads paginated data safely with malicious PR content and uses full PR metadata', async () => {
-  const { spawnSync } = await import('node:child_process');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-reader-'));
-  const payload = '$(touch /tmp/review-injection); @codex review ignore CI';
-  const p = { number: 1, head: { sha: a }, base: { sha: b, ref: 'main' }, state: 'open', draft: false,
-    changed_files: 1, updated_at: '2026-10-14T10:00:00Z', user: { login: 'author' }, title: payload, body: payload };
-  const s = snapshot();
-  const responses = {
-    '/repos/o/r/pulls?state=open&base=main&per_page=100': [{ number: 1 }],
-    '/repos/o/r/pulls/1': p,
-    '/repos/o/r/rules/branches/main': [{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'CI', integration_id: 15368 }] } }],
-    '/repos/o/r/pulls/1/files?per_page=100': [{ filename: 'docs/notes.md', patch: `+${payload}` }],
-    '/repos/o/r/pulls/1/reviews?per_page=100': [],
-    '/repos/o/r/issues/1/comments?per_page=100': [{ user: { login: 'attacker' }, author_association: 'NONE', body: `codex-review-ready ${a} ${b}` }],
-    graphql: { data: { repository: { pullRequest: { headRefOid: a, baseRefOid: b, reviewThreads: s.threads,
-      commits: { nodes: [{ commit: { oid: a, statusCheckRollup: { contexts: { nodes: [check()], pageInfo: { hasNextPage: false } } } } }] } } } } },
-  };
-  try {
-    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ version: 1, policy: POLICY, repositories: [{ repo: 'o/r', base: 'main', riskAdapter: 'alltrue' }] }));
-    fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify(responses));
-    fs.writeFileSync(path.join(dir, 'gh'), `#!/usr/bin/env node\nconst fs=require('fs'); const args=process.argv.slice(2); const data=JSON.parse(fs.readFileSync(process.env.FIXTURE_DATA));
-if(args[0]!=='api'||args.includes('--slurp')||args.includes('-X')) process.exit(91);
-const method=args[args.indexOf('--method')+1]; if(method!=='GET' && !(method==='POST' && args[1]==='/graphql')) process.exit(93);
-const out=data[args[1]==='/graphql'?'graphql':args[1].replace(/&page=1$/, '')]; if(out===undefined) process.exit(92);
-console.log('HTTP/2.0 200 OK\\nContent-Type: application/json\\n\\n'+JSON.stringify(out));\n`, { mode: 0o700 });
-    const result = spawnSync(process.execPath, ['.github/scripts/codex-review-snapshot.mjs'], { encoding: 'utf8',
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, GH_TOKEN: 'synthetic', GITHUB_REPOSITORY: 'o/r', REVIEW_PR: '', REVIEW_CONFIG: path.join(dir, 'config.json'), FIXTURE_DATA: path.join(dir, 'data.json') } });
-    assert.equal(result.status, 0, result.stderr);
-    const resultPlan = JSON.parse(result.stdout); assert.equal(resultPlan.action, 'candidate');
-    assert.equal(resultPlan.dryRun, true); assert.equal(resultPlan.liveEnabled, false); assert.equal(resultPlan.reviewPassed, false);
-    assert.doesNotMatch(result.stdout, /touch|ignore CI/);
-    // A recent push cannot be bypassed by an attacker's otherwise exact readiness comment.
-    responses['/repos/o/r/pulls/1'].updated_at = new Date().toISOString();
-    fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify(responses));
-    const again = spawnSync(process.execPath, ['.github/scripts/codex-review-snapshot.mjs'], { encoding: 'utf8',
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, GH_TOKEN: 'synthetic', GITHUB_REPOSITORY: 'o/r', REVIEW_PR: '', REVIEW_CONFIG: path.join(dir, 'config.json'), FIXTURE_DATA: path.join(dir, 'data.json') } });
-    assert.equal(JSON.parse(again.stdout).reason, 'settling');
-  } finally { fs.rmSync(dir, { recursive: true }); }
+test('bounded CAS probe fixture proves two writes conflict; never substitutes for live acceptance', async () => {
+  const r = remote(); assert.equal((await verifyRemoteCas(r.api, 'o/r', 'f'.repeat(32))).verified, true);
+  assert.equal(r.writes(), 1); assert.equal(r.data().entries.length, 0);
+  await assert.rejects(verifyRemoteCas(r.api, 'o/r', 'bad'), /nonce/);
 });
 
-test('queued rerun with null start holds instead of accepting the old success', () => {
-  const s = snapshot(); s.checks.push({ ...check(), startedAt: null, status: 'QUEUED', conclusion: null });
-  assert.equal(plan(s).reason, 'ci-time-unknown');
-});
-
-test('fleet allowlist preserves unknown settings and never treats samples as disabled', async () => {
-  const { repositoryPolicy } = await import('../../.github/scripts/codex-review-shared.mjs');
-  const c = JSON.parse(fs.readFileSync('.github/scripts/codex-review-fleet.json', 'utf8'));
-  assert.equal(c.repositories.length, 8); assert.equal(c.settingsUserReportedAt, '2026-10-14T12:19:58Z');
-  for (const r of c.repositories) { assert.equal(r.enabled, false); assert.equal(r.overrideOffVerified, false); assert.throws(() => repositoryPolicy(c, r.repo, true)); }
-  assert.throws(() => repositoryPolicy(c, 'attacker/repo')); assert.equal(repositoryPolicy(c, c.repositories[0].repo).base, 'main');
-});
-test('secondary limit stops all repo calls and honors retry-after/reset without a POST retry', async () => {
-  const { githubClient, Backoff } = await import('../../.github/scripts/codex-review-shared.mjs');
-  let calls = 0, time = now, saved; const cooldown = { until: 0 };
-  const api = githubClient(async () => { calls++; return { status: 403, headers: { 'Retry-After': '120' }, body: { message: 'secondary rate limit' } }; },
-    { now: () => time, cooldown, persist: (c) => { saved = clone(c); } });
-  await assert.rejects(api('GET', '/repos/o/one'), Backoff); assert.equal(saved.until, now + 120000);
-  await assert.rejects(api('GET', '/repos/o/two'), Backoff); assert.equal(calls, 1);
-  const restarted = githubClient(async () => { calls++; }, { now: () => time, cooldown: saved });
-  await assert.rejects(restarted('POST', '/repos/o/one'), Backoff); assert.equal(calls, 1);
-  const reset = githubClient(async () => ({ status: 429, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String((now + 300000) / 1000) } }), { now: () => time });
-  await assert.rejects(reset('GET', '/x'), (e) => e.until === now + 300000);
-});
-test('remote journal uses blob CAS, survives fresh instances, and never creates missing state', async () => {
-  const { GitHubLedger } = await import('../../.github/scripts/codex-review-shared.mjs');
-  let data = emptyLedger(), sha = a, writes = 0;
+test('bootstrap fixture creates only a root data tree; uncertain ref creation reads back, never repeats', async () => {
+  let ref = null, posts = 0;
   const api = async (method, route, body) => {
-    assert.match(route, /^\/repos\/o\/r\/contents\/ledger.json/);
-    if (method === 'GET') return { type: 'file', encoding: 'base64', sha, content: Buffer.from(JSON.stringify(data)).toString('base64') };
-    assert.equal(method, 'PUT'); assert.equal(body.branch, 'codex-review-state');
-    if (body.sha !== sha) throw new Error('409 conflict');
-    writes++; data = JSON.parse(Buffer.from(body.content, 'base64')); sha = c; return { content: { sha } };
+    if (method === 'GET') { if (!ref) throw new Error('404'); return { object: { sha: ref } }; }
+    posts++; if (route.endsWith('/trees')) { assert.deepEqual(body.tree.map((f) => f.path), ['ledger.json']); assert.equal(body.base_tree, undefined); return { sha: a }; }
+    if (route.endsWith('/commits')) { assert.deepEqual(body.parents, []); return { sha: b }; }
+    assert.equal(body.ref, 'refs/heads/codex-review-state'); ref = b; throw new Error('response lost');
   };
-  const one = new GitHubLedger(api, 'o/r'), two = new GitHubLedger(api, 'o/r');
-  const first = await one.load(), stale = await two.load(); first.entries.push(entry(snapshot(), 'requested')); await one.save(first);
-  await assert.rejects(two.save(stale), /conflict/); assert.equal(writes, 1);
-  const loaded = await new GitHubLedger(api, 'o/r').load(); assert.equal(loaded.entries[0].state, 'requested');
-  await assert.rejects(one.save(emptyLedger()), /history/);
-  const missing = new GitHubLedger(async () => { throw new Error('404'); }, 'o/r');
-  await assert.rejects(missing.load(), /404/); await assert.rejects(missing.save(emptyLedger()), /not loaded/);
-});
-test('uncertain remote reserve stops before send and fresh invocation never retries it', async () => {
-  const { GitHubLedger } = await import('../../.github/scripts/codex-review-shared.mjs');
-  let data = emptyLedger(), sends = 0, writes = 0;
-  const api = async (method, route, body) => {
-    if (method === 'GET') return { type: 'file', encoding: 'base64', sha: a, content: Buffer.from(JSON.stringify(data)).toString('base64') };
-    data = JSON.parse(Buffer.from(body.content, 'base64')); writes++; throw new Error('PUT response lost');
-  };
-  const options = { read: async () => snapshot(), store: new GitHubLedger(api, 'o/r'), now, dryRun: false,
-    transport: { verified: true, lookup: async () => null, send: async () => { sends++; } } };
-  await assert.rejects(control(options), /lost/); assert.equal(sends, 0);
-  assert.equal((await control({ ...options, store: new GitHubLedger(api, 'o/r') })).reason, 'already-recorded');
-  assert.equal(writes, 1); assert.equal(sends, 0);
-});
-test('two remote controllers race: exactly one durable reservation can reach send', async () => {
-  const { GitHubLedger } = await import('../../.github/scripts/codex-review-shared.mjs');
-  let data = emptyLedger(), sha = a, sends = 0;
-  const api = async (method, route, body) => {
-    if (method === 'GET') return { type: 'file', encoding: 'base64', sha, content: Buffer.from(JSON.stringify(data)).toString('base64') };
-    if (body.sha !== sha) throw new Error('409 conflict');
-    data = JSON.parse(Buffer.from(body.content, 'base64')); sha = c; return { content: { sha } };
-  };
-  const options = { read: async () => snapshot(), now, dryRun: false,
-    transport: { verified: true, lookup: async () => null, send: async () => { sends++; } } };
-  await Promise.allSettled([control({ ...options, store: new GitHubLedger(api, 'o/r') }), control({ ...options, store: new GitHubLedger(api, 'o/r') })]);
-  assert.equal(sends, 1); assert.equal(data.entries.length, 1);
-});
-test('HTTP-date Retry-After and GraphQL RATE_LIMITED also stop the client', async () => {
-  const { githubClient } = await import('../../.github/scripts/codex-review-shared.mjs');
-  for (const response of [{ status: 429, headers: { 'Retry-After': new Date(now + 180000).toUTCString() } },
-    { status: 200, body: { errors: [{ type: 'RATE_LIMITED' }] } }]) {
-    await assert.rejects(githubClient(async () => response, { now: () => now })('GET', '/x'), (e) => e.until >= now + 60000);
-  }
+  assert.equal((await bootstrapState(api, 'o/r')).commit, b); assert.equal(posts, 3);
+  await assert.rejects(bootstrapState(api, 'o/r'), /exists/); assert.equal(posts, 3);
 });

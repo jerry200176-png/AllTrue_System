@@ -5,8 +5,8 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'Optional PR to inspect; blank inspects open PRs to main (read-only)'
-        required: false
+        description: 'One PR to inspect (read-only; no bulk sweep)'
+        required: true
         default: ''
 permissions:
   contents: read
