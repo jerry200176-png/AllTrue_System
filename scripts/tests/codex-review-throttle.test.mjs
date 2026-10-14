@@ -6,7 +6,7 @@ import path from 'node:path';
 import { decide, control, emptyLedger, FileLedger, POLICY, keyOf, validateLedger } from '../../.github/scripts/codex-review-throttle.mjs';
 import { githubClient, GitHubLedger, repositoryPolicy, Backoff, verifyRemoteCas, bootstrapState } from '../../.github/scripts/codex-review-shared.mjs';
 import { commentTransport, requestBody, reconcile, runLive } from '../../.github/scripts/codex-review-runner.mjs';
-import { reader } from '../../.github/scripts/codex-review-snapshot.mjs';
+import { reader, request } from '../../.github/scripts/codex-review-snapshot.mjs';
 const a = 'a'.repeat(40), b = 'b'.repeat(40), c = 'c'.repeat(40), now = Date.parse('2026-10-14T12:00:00Z'), copy = structuredClone;
 const check = () => ({ __typename: 'CheckRun', name: 'CI', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-10-14T11:00:00Z', checkSuite: { app: { databaseId: 15368 }, repository: { nameWithOwner: 'o/r' } } });
 const snapshot = () => ({ repo: 'o/r', number: 1, head: a, base: b, state: 'open', draft: false, evidenceComplete: true, externalReview: false, threads: { nodes: [], pageInfo: { hasNextPage: false } }, ready: false, observedChangeAt: '2026-10-14T11:40:00Z', required: ['CI'], pins: [['CI', 15368]], checks: [check()], ciHead: a, risk: { machine_minimum_tier: 1, reasons: [] }, baseDependenciesChanged: false, reviews: [], comments: [] });
@@ -168,4 +168,12 @@ test('bootstrap fixture creates only a root data tree; uncertain ref creation re
   };
   assert.equal((await bootstrapState(api, 'o/r')).commit, b); assert.equal(posts, 3);
   await assert.rejects(bootstrapState(api, 'o/r'), /exists/); assert.equal(posts, 3);
+});
+
+test('real CLI adapter preserves Retry-After on synthetic non-JSON HTTP responses', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-http-')), before = process.env.PATH;
+  try { fs.writeFileSync(path.join(dir, 'gh'), "#!/bin/sh\nprintf 'HTTP/2.0 429 Too Many Requests\\nRetry-After: 120\\n\\nnot-json'\n", { mode: 0o700 });
+    process.env.PATH = `${dir}:${before}`;
+    await assert.rejects(githubClient(request, { now: () => now })('GET', '/fixture'), (e) => e instanceof Backoff && e.until === now + 120000);
+  } finally { process.env.PATH = before; fs.rmSync(dir, { recursive: true }); }
 });
