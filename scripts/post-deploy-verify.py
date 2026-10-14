@@ -40,6 +40,7 @@ DEFAULT_SMOKE = "/home/admin/scripts/post-merge-smoke.sh"
 RC_ROLLED_BACK = 10
 RC_ROLLBACK_FAILED = 11
 RC_HELD_MIGRATION = 12
+RC_HELD_PRE_VERIFY = 13  # a step failed after a migration ran, before identity was ever verified
 RC_GATE_ROLLBACK = 20  # gate -> executor: run rollback_deploy (distinct from a Python crash's 1)
 RC_SSH_LOST = 255
 
@@ -181,7 +182,8 @@ def summarize(rc: int, target_sha: str, previous_sha: str, runner_verify: str) -
         )
     elif rc == RC_ROLLED_BACK:
         lines.append(
-            f"Automatic rollback ran: production was returned to the previously deployed SHA (detected `{previous_sha}`) "
+            "Automatic rollback ran: production was returned to the commit that was live when the executor started "
+            f"(preflight detected `{previous_sha}`; the Deploy log's `回滾到` line names the exact commit) "
             f"after `{target_sha}` failed, and the rollback was re-verified. The target is NOT live."
         )
     elif rc == RC_ROLLBACK_FAILED:
@@ -194,6 +196,13 @@ def summarize(rc: int, target_sha: str, previous_sha: str, runner_verify: str) -
             f"`{target_sha}` failed after activation and either a migration is in range/ran or the verifier could "
             "not decide, so no automatic rollback ran and `migrate:rollback` was never invoked. Production remains "
             "on the target. Manual intervention is required now (see docs/RUNBOOK_ROLLBACK.md)."
+        )
+    elif rc == RC_HELD_PRE_VERIFY:
+        lines.append(
+            f"A deploy step for `{target_sha}` failed after a migration had already run, before the release identity was "
+            "verified. No automatic rollback ran and `migrate:rollback` was never invoked. Runtime state is UNKNOWN "
+            "(code, frontend and deployment.json may be partly updated): check `/api/health` and `deployment.json` "
+            "now and follow docs/RUNBOOK_ROLLBACK.md §3."
         )
     elif rc == RC_SSH_LOST:
         lines.append("The SSH session to the production executor was lost. Production state is unknown; check it now.")

@@ -1429,6 +1429,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                 write_deployment_manifest() { echo manifest >> "$TRACE"; return 0; }
                 grep() { if [ "$1" = '^DEPLOY_SECRET=' ]; then echo DEPLOY_SECRET=isolated; else command grep "$@"; fi; }
                 curl() { echo curl >> "$TRACE"; printf '{"status":"ok","ok":true,"opcache_cleared":true}'; }
+                PDV=/tmp/isolated-pdv
+                python3() { if [ "$2" = /tmp/isolated-pdv ]; then return 0; fi; command python3 "$@"; }
             """)
             result = subprocess.run(
                 ["bash", "-c", harness + function + "\nrollback_deploy\n"],
@@ -1999,6 +2001,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             10: "Automatic rollback ran",
             11: "Manual intervention is required now",
             12: "never invoked",
+            13: "Runtime state is UNKNOWN",
             255: "SSH session",
             1: "exited with code `1`",
         }
@@ -2125,7 +2128,8 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
 
     def test_rollback_reverifies_the_previous_identity(self):
         function = self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
-        reverify = function.index('python3 -I "$PDV" verify -k --expect-backend-sha "$PREV_COMMIT" || rollback_failed=1')
+        reverify = function.index('python3 -I "${PDV:-/missing}" verify -k --expect-backend-sha "$PREV_COMMIT"')
+        self.assertIn('echo --expect-frontend-sha "$PREV_COMMIT") || rollback_failed=1', function)
         self.assertLess(function.index('write_deployment_manifest "$PREV_COMMIT"'), reverify)
         self.assertLess(reverify, function.index('if [ "$rollback_failed" -ne 0 ]'))
         abort = self.workflow.split("abort_deploy() {", 1)[1].split("\n          }", 1)[0]
@@ -2136,7 +2140,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         self.assertNotIn("php artisan migrate:rollback", self.workflow)
         abort = "abort_deploy() {" + self.workflow.split("abort_deploy() {", 1)[1].split("\n          }", 1)[0] + "\n}\n"
         harness = 'rollback_deploy() { echo ROLLBACK_CALLED; return 0; }\n'
-        for migration_ran, expected_rc, rolled_back in (("0", 10, True), ("1", 12, False)):
+        for migration_ran, expected_rc, rolled_back in (("0", 10, True), ("1", 13, False)):
             result = subprocess.run(
                 ["bash", "-c", harness + abort + "MIGRATION_RAN=" + migration_ran + "\nabort_deploy x\n"],
                 text=True, capture_output=True, env={"PATH": os.environ["PATH"]},
@@ -2161,6 +2165,16 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
                                     capture_output=True, env={"PATH": os.environ["PATH"], "VERIFY_RC": str(verify_rc)})
             self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
             self.assertIn("reverify -I /tmp/pdv verify -k --expect-backend-sha old", result.stdout)
+        # A verifier that was never captured fails the rollback instead of skipping the re-verify.
+        missing = harness.replace("PDV=/tmp/pdv", "PDV=")
+        result = subprocess.run(["bash", "-c", missing + function + "\nrollback_deploy\n"], text=True,
+                                capture_output=True, env={"PATH": os.environ["PATH"], "VERIFY_RC": "0"})
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        # A frontend-changing rollback must also prove the previous frontend identity.
+        frontend = harness.replace("FRONTEND_CHANGED=0", "FRONTEND_CHANGED=3")
+        result = subprocess.run(["bash", "-c", frontend + function + "\nrollback_deploy\n"], text=True,
+                                capture_output=True, env={"PATH": os.environ["PATH"], "VERIFY_RC": "0"})
+        self.assertIn("--expect-backend-sha old --expect-frontend-sha old", result.stdout)
 
     def test_runner_step_records_rc_and_summarizes_failures(self):
         self.assertIn("<< 'ENDSSH' || rc=$?", self.workflow)

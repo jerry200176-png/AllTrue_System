@@ -41,7 +41,7 @@ else
   # （schema 回滾走 docs/RUNBOOK_ROLLBACK.md §3 人工流程 + migration 前 mysqldump）。
   if grep -q '\[ "${MIGRATION_RAN:-0}" -eq 0 \] || {' "$DEPLOY" \
     && ! grep -q 'php artisan migrate:rollback' "$DEPLOY"; then
-    ok "migration 跑過後失敗 → hold（exit 12），不自動 migrate:rollback"
+    ok "migration 跑過後失敗 → hold（exit 12／13），不自動 migrate:rollback"
   else
     bad "缺 migration hold，或 deploy.yml 仍會自動 migrate:rollback"
   fi

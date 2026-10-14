@@ -19,7 +19,8 @@ last_reviewed: 2026-06-07
 
 | 情境 | 最快動作 | 章節 |
 |---|---|---|
-| deploy 後 health/smoke 自己失敗 | **不用動**——`deploy.yml` 已自動回滾到上一 commit | §2 |
+| deploy 後 health/identity/smoke 失敗，summary 寫「Automatic rollback ran」（exit 10） | **不用動**——`deploy.yml` 已自動回滾到上一 commit 並重驗 | §2 |
+| summary 寫 exit 11／12／13 或 SSH 斷線 | **要動**——沒有自動回滾（或回滾沒驗過），壞版可能仍在線上；立刻查 `/api/health`、`deployment.json`，照 §3 | §2、§3 |
 | 自動回滾沒救起來 / 已過一陣子才發現 | 開 **revert PR**（`git revert <hash>` → PR → merge → 自動重佈） | §3a |
 | 站全掛、等不及 CI | 走 §3b **緊急部署判斷**（仍只用 current-main target SHA） | §3b |
 | 資料被寫壞 / migration 有破壞性 | §3c **DB 回滾 + 還原備份**（先備份再動） | §3c |
