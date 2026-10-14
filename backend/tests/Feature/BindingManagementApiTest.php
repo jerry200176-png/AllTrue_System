@@ -89,6 +89,8 @@ class BindingManagementApiTest extends TestCase
         $this->getJson('/api/v1/bindings?page=1&per_page=1&campus_id=' . $campus->id, $this->authHeaders($director))
             ->assertOk()->assertJsonCount(1, 'data')
             ->assertJsonPath('meta.total', 2)->assertJsonPath('meta.last_page', 2);
+        $this->getJson('/api/v1/bindings?page=9&per_page=1&campus_id=' . $campus->id, $this->authHeaders($director))
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('meta.current_page', 2);
         $byName = $this->getJson('/api/v1/bindings?page=1&student_name=' . urlencode('甲'), $this->authHeaders($director))
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.student_id', $alice->id)
             ->assertJsonPath('data.0.line_user_id_masked', 'Ueeeeeee…eeee');

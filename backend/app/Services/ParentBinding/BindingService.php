@@ -113,6 +113,7 @@ final class BindingService
 
         $total = (clone $q)->count();
         $lastPage = max(1, (int) ceil($total / $perPage));
+        $page = min(max(1, $page), $lastPage); // e.g. after unbinding the only row on the last page
         $rows = $q->orderBy('student_line_bindings.bound_at', 'desc')
             ->orderBy('student_line_bindings.id', 'desc')
             ->forPage($page, $perPage)
