@@ -437,14 +437,7 @@ class CourseLeaveCascadeService
             $course,
             (int) Carbon::parse($leaveSession->SessionDate)->dayOfWeekIso
         );
-        $sessionRows = [];
-        foreach ($sessions as $s) {
-            $sessionRows[] = [
-                'id' => (int) $s->id,
-                'date' => Carbon::parse($s->SessionDate)->toDateString(),
-                'status' => (string) ($s->Status ?? ''),
-            ];
-        }
+        $sessionRows = self::planRows($sessions);
 
         // Monthly/date-mode courses are bounded by their contract interval.
         // A leave reduces actual billable sessions; it never creates a tail or
@@ -481,7 +474,8 @@ class CourseLeaveCascadeService
             ];
         }
         $purchased = max(0, (int) ($course->SessionCount ?? 0));
-        $plan = self::computeAppendOnlyPlan($sessionRows, $leaveSessionDate, $weekdays, (int) $leaveSession->id, $purchased);
+        // #4019: same rows and contract slots as appendTailAfterLeave(), so the preview shows the date that is written.
+        $plan = self::computeAppendOnlyPlan($sessionRows, $leaveSessionDate, $weekdays, (int) $leaveSession->id, $purchased, self::contractSlotKeys($course));
         $next = null;
         $ord = 0;
         foreach ($sessionRows as $row) {
@@ -512,8 +506,12 @@ class CourseLeaveCascadeService
     /**
      * Ordinary leave plan: never moves/vacates; append at most one tail.
      *
-     * @param  list<array{id?:int|string|null,date:string,status?:string|null}>  $sessionRows
+     * #4019: with $contractSlots ("isoDow|HH:MM"), a tail of a lesson on a two-lesson date may share the latest date
+     * with its sibling (see sharedTailDate()); without it the plan stays date-keyed.
+     *
+     * @param  list<array{id?:int|string|null,date:string,status?:string|null,start?:?string,end?:?string,note?:?string}>  $sessionRows
      * @param  array<int>  $weekdays
+     * @param  list<string>  $contractSlots
      * @return array{moves: list, vacated: list, append: ?string, extended_end_date: ?string, append_count: int}
      */
     public static function computeAppendOnlyPlan(
@@ -521,7 +519,8 @@ class CourseLeaveCascadeService
         string $leaveDate,
         array $weekdays,
         ?int $leaveSessionId = null,
-        int $purchasedSessions = 0
+        int $purchasedSessions = 0,
+        array $contractSlots = []
     ): array {
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
         $weekdays = array_values(array_unique(array_map('intval', $weekdays)));
@@ -529,12 +528,16 @@ class CourseLeaveCascadeService
             $weekdays = [(int) Carbon::parse($normalizedLeaveDate)->dayOfWeekIso];
         }
         $occupiedDates = [];
+        $liveDates = [$normalizedLeaveDate => true];
         $billable = 0;
         foreach ($sessionRows as $row) {
             $id = isset($row['id']) ? (int) $row['id'] : 0;
             $date = Carbon::parse((string) $row['date'])->toDateString();
             $status = strtolower((string) ($row['status'] ?? ''));
             $occupiedDates[$date] = true;
+            if ($status !== 'cancelled') {
+                $liveDates[$date] = true;
+            }
             $isLeaveTarget = ($leaveSessionId && $id === $leaveSessionId)
                 || (!$leaveSessionId && $date === $normalizedLeaveDate);
             if ($isLeaveTarget) {
@@ -551,8 +554,13 @@ class CourseLeaveCascadeService
         if ($needsAppend) {
             $appendCount = 1;
             $latest = self::maxDateKey($occupiedDates) ?: $normalizedLeaveDate;
-            $append = self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $weekdays, $occupiedDates);
+            $shared = self::sharedTailDate($sessionRows, $normalizedLeaveDate, $weekdays, $leaveSessionId, $contractSlots);
+            $append = $shared ?? self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $weekdays, $occupiedDates);
             $occupiedDates[$append] = true;
+            if ($shared !== null) {
+                // #4052 review: sharedTailDate() ignores cancelled rows, so EndDate does too (never past the last live lesson).
+                $occupiedDates = $liveDates + [$append => true];
+            }
         }
         return [
             'moves' => [],
@@ -561,6 +569,108 @@ class CourseLeaveCascadeService
             'extended_end_date' => self::maxDateKey($occupiedDates) ?: $normalizedLeaveDate,
             'append_count' => $appendCount,
         ];
+    }
+
+    /**
+     * #4019/#4047: the tail date of a lesson on a date with two or more lessons, else null (the caller then takes the
+     * next recurring date after the course's latest date). It is a pure function of the course state without this
+     * leave date's own auto-tails (the "base"), so either leave order gives the same dates and the preview equals the write:
+     * - the base's latest date, when it is after the leave date, is on a contract weekday where the left lesson's start
+     *   time is a contract slot (#4043 r4266126936), holds a billable contract lesson (never a confirmed makeup, whose
+     *   Note carries `exception_workflow:`), and has fewer live lessons than the leave date;
+     * - otherwise the next date after the base's latest date on a weekday where the left lesson's start time is a
+     *   contract slot (any course weekday when none is), which is where the sibling tails go too.
+     * Either date is refused (null) when a live row there, sibling tails included, takes or overlaps the left slot.
+     *
+     * @param  list<array<string,mixed>>  $rows
+     * @param  array<int>  $weekdays
+     * @param  list<string>  $contractSlots
+     */
+    private static function sharedTailDate(array $rows, string $leaveDate, array $weekdays, ?int $leaveSessionId, array $contractSlots): ?string
+    {
+        $hm = fn ($t): string => substr(trim((string) ($t ?? '')), 0, 5);
+        $live = array_values(array_filter($rows, fn ($r) => strtolower((string) ($r['status'] ?? '')) !== 'cancelled'));
+        $base = array_values(array_filter($live, fn ($r) => !(str_contains((string) ($r['note'] ?? ''), self::NOTE_AUTO_EXTENDED)
+            && str_contains((string) ($r['note'] ?? ''), ':ld=' . $leaveDate))));
+        $on = fn (array $set, string $d): array => array_values(array_filter($set, fn ($r) => Carbon::parse((string) $r['date'])->toDateString() === $d));
+        $leave = null;
+        foreach ($rows as $r) {
+            if ($leaveSessionId && (int) ($r['id'] ?? 0) === $leaveSessionId) {
+                $leave = $r;
+            }
+        }
+        $start = $hm($leave['start'] ?? null);
+        $end = $hm($leave['end'] ?? null) ?: $start;
+        $onLeaveDate = count($on($base, $leaveDate));
+        if ($contractSlots === [] || $start === '' || $onLeaveDate < 2) {
+            return null;
+        }
+        $free = function (string $d) use ($on, $live, $hm, $start, $end): bool {
+            foreach ($on($live, $d) as $r) {
+                $rStart = $hm($r['start'] ?? null);
+                $rEnd = $hm($r['end'] ?? null) ?: $rStart;
+                if ($rStart === $start || ($rStart < $end && $start < $rEnd)) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+        $baseDates = [$leaveDate => true];
+        foreach ($base as $r) {
+            $baseDates[Carbon::parse((string) $r['date'])->toDateString()] = true;
+        }
+        $latest = (string) self::maxDateKey($baseDates);
+        $dow = (int) Carbon::parse($latest)->dayOfWeekIso;
+        $onLatest = $on($base, $latest);
+        $anchored = false;
+        foreach ($onLatest as $r) {
+            $anchored = $anchored || (empty($r['makeup'])
+                && !in_array(strtolower((string) ($r['status'] ?? '')), self::NON_BILLABLE_STATUSES, true)
+                && in_array($dow . '|' . $hm($r['start'] ?? null), $contractSlots, true));
+        }
+        if ($anchored && $latest > $leaveDate && in_array($dow, $weekdays, true) && count($onLatest) < $onLeaveDate
+            && in_array($dow . '|' . $start, $contractSlots, true) && $free($latest)) {
+            return $latest;
+        }
+        $slotDays = array_values(array_filter($weekdays, fn ($d) => in_array($d . '|' . $start, $contractSlots, true)));
+        $next = self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $slotDays ?: $weekdays, $baseDates);
+
+        return $free($next) ? $next : null;
+    }
+
+    /**
+     * Planner rows (id, date, status, slot, note, makeup flag) for computeAppendOnlyPlan(); shared by preview and write.
+     *
+     * @return list<array{id:int,date:string,status:string,start:?string,end:?string,note:string,makeup:bool}>
+     */
+    private static function planRows(\Illuminate\Support\Collection $sessions): array
+    {
+        return $sessions->map(fn ($s) => [
+            'id' => (int) $s->id,
+            'date' => Carbon::parse($s->SessionDate)->toDateString(),
+            'status' => (string) ($s->Status ?? ''),
+            'start' => $s->StartTime !== null ? (string) $s->StartTime : null,
+            'end' => $s->EndTime !== null ? (string) $s->EndTime : null,
+            'note' => (string) ($s->Note ?? ''),
+            // #4047: a confirmed makeup (ExceptionWorkflowController) never anchors a tail; other one-off edits still can.
+            'makeup' => str_contains((string) ($s->Note ?? ''), 'exception_workflow:'),
+        ])->values()->all();
+    }
+
+    /** @return list<string> the course's contract slots as "isoDow|HH:MM" (week/time … week6/time6). */
+    private static function contractSlotKeys(?StudentClass $course): array
+    {
+        $keys = [];
+        foreach (['', '1', '2', '3', '4', '5', '6'] as $n) {
+            $dow = (int) ($course?->getAttribute('week' . $n) ?? 0);
+            $time = substr(trim((string) ($course?->getAttribute('time' . $n) ?? '')), 0, 5);
+            if ($dow >= 1 && $dow <= 7 && $time !== '') {
+                $keys[] = $dow . '|' . $time;
+            }
+        }
+
+        return $keys;
     }
 
     /**
@@ -602,17 +712,13 @@ class CourseLeaveCascadeService
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
         $weekdays = self::resolveCourseWeekdays($course, Carbon::parse($leaveSession->SessionDate)->dayOfWeekIso);
         $purchased = max(0, (int) ($course->SessionCount ?? 0));
-        $sessionRows = $sessions->map(fn ($s) => [
-            'id' => (int) $s->id,
-            'date' => Carbon::parse($s->SessionDate)->toDateString(),
-            'status' => (string) ($s->Status ?? ''),
-        ])->all();
         $plan = self::computeAppendOnlyPlan(
-            $sessionRows,
+            self::planRows($sessions),
             $normalizedLeaveDate,
             $weekdays,
             (int) $leaveSession->id,
-            $purchased
+            $purchased,
+            self::contractSlotKeys($course)
         );
         $newSession = null;
         $twoLessonDate = self::lessonsOnDate($sessions, $normalizedLeaveDate) > 1;
@@ -630,7 +736,12 @@ class CourseLeaveCascadeService
                 'EndTime' => $appendEnd,
                 'Status' => 'scheduled',
                 'Note' => $note,
+                // #4019: a cancelled row in this slot must not come back as the tail; a live one is created beside it.
+                '_revive_cancelled' => true,
             ])['session'];
+            if (strtolower((string) ($newSession->Status ?? '')) !== 'scheduled') {
+                throw new \InvalidArgumentException('請假補堂失敗：補堂時段已被其他堂次占用');
+            }
             self::syncLearningRecordSessionDate($newSession);
         }
         $extendedEndDate = $plan['extended_end_date'];

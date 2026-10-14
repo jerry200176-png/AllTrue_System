@@ -79,6 +79,46 @@ class AdminReconcileControllerTest extends TestCase
         $this->assertStringNotContainsString('東湖分校', $stored);
     }
 
+    public function test_latest_and_history_ignore_dry_run_reports(): void
+    {
+        $live = storage_path('logs/nightly-reconcile-99991230.json');
+        $preview = storage_path('logs/nightly-reconcile-dryrun-99991231.json');
+        $extraFiles = [$live, $preview];
+        try {
+            file_put_contents($live, json_encode([
+                'checked_at' => '9999-12-30 02:00:00', 'mode' => 'live',
+                'total_checked' => 5, 'mismatch_count' => 0, 'cause_counts' => [], 'mismatches' => [],
+            ]));
+            file_put_contents($preview, json_encode([
+                'checked_at' => '9999-12-31 10:00:00', 'mode' => 'dry-run',
+                'total_checked' => 6, 'mismatch_count' => 0, 'cause_counts' => [], 'mismatches' => [],
+            ]));
+            // A dry-run written by an older build under the dated live name.
+            file_put_contents($this->reportPath, json_encode([
+                'checked_at' => '9999-12-31 09:00:00', 'mode' => 'dry-run',
+                'total_checked' => 7, 'mismatch_count' => 0, 'cause_counts' => [], 'mismatches' => [],
+            ]));
+
+            $token = $this->superAdminToken();
+            $this->withToken($token)->getJson('/api/v1/admin/reconcile/latest')
+                ->assertOk()
+                ->assertJsonPath('data.checked_at', '9999-12-30 02:00:00')
+                ->assertJsonPath('data.mode', 'live');
+
+            $history = $this->withToken($token)->getJson('/api/v1/admin/reconcile')
+                ->assertOk()
+                ->json('data');
+            $dates = array_column($history, 'date');
+            $this->assertContains('9999-12-30 02:00:00', $dates);
+            $this->assertNotContains('9999-12-31 10:00:00', $dates);
+            $this->assertNotContains('9999-12-31 09:00:00', $dates);
+        } finally {
+            foreach ($extraFiles as $file) {
+                @unlink($file);
+            }
+        }
+    }
+
     private function superAdminToken(): string
     {
         $user = User::create([
