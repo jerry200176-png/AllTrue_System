@@ -53,6 +53,8 @@ class BindingController extends Controller
                 status: $validated['status'] ?? null,
                 page: (int) $validated['page'],
                 perPage: (int) ($validated['per_page'] ?? 20),
+                studentId: isset($validated['student_id']) ? (int) $validated['student_id'] : null,
+                lineUserId: $validated['line_user_id'] ?? null,
             );
 
             return response()->json([

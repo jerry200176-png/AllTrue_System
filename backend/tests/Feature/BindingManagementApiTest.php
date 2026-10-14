@@ -95,6 +95,8 @@ class BindingManagementApiTest extends TestCase
         $this->assertArrayNotHasKey('line_user_id', $byName->json('data.0'));
         $this->getJson('/api/v1/bindings?page=1&status=unverified', $this->authHeaders($director))
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.student_id', $bob->id);
+        $this->getJson('/api/v1/bindings?page=1&student_id=' . $bob->id, $this->authHeaders($director))
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.student_id', $bob->id);
         $this->getJson('/api/v1/bindings', $this->authHeaders($director))
             ->assertOk()->assertJsonCount(2, 'bindings')->assertJsonMissingPath('data');
 
@@ -113,6 +115,8 @@ class BindingManagementApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('bound_count', 0)
             ->assertJsonPath('student_total', 2);
+        $this->getJson('/api/v1/bindings?page=1&campus_id=' . $campus->id, $this->authHeaders($director))
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.student_id', $bob->id);
     }
 
     public function test_authorized_director_can_create_binding_in_own_campus(): void

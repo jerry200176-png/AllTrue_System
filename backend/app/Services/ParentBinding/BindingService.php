@@ -72,26 +72,34 @@ final class BindingService
      *
      * @return array{data: list<\stdClass>, current_page: int, last_page: int, total: int}
      */
-    public function pageBindings(?int $campusId, ?array $allowedCampusIds, ?string $studentName, ?string $status, int $page, int $perPage): array
+    public function pageBindings(?int $campusId, ?array $allowedCampusIds, ?string $studentName, ?string $status, int $page, int $perPage, ?int $studentId = null, ?string $lineUserId = null): array
     {
+        // Scoped by the student's current campus, like destroy() and stats(): a transferred
+        // student's binding belongs to the new campus whatever its stored campus_id says.
         $q = DB::table('student_line_bindings')
             ->join('Student', 'student_line_bindings.student_id', '=', 'Student.id')
-            ->leftJoin('Campus', 'student_line_bindings.campus_id', '=', 'Campus.id')
+            ->leftJoin('Campus', 'Student.CampusID', '=', 'Campus.id')
             ->select([
                 'student_line_bindings.id',
                 'student_line_bindings.student_id',
                 'student_line_bindings.line_user_id',
-                'student_line_bindings.campus_id',
+                'Student.CampusID as campus_id',
                 'student_line_bindings.bound_at',
                 'student_line_bindings.verified_at',
                 'Student.name as student_name',
                 'Campus.name as campus_name',
             ]);
         if ($campusId !== null) {
-            $q->where('student_line_bindings.campus_id', $campusId);
+            $q->where('Student.CampusID', $campusId);
         }
         if ($allowedCampusIds !== null) {
-            $q->whereIn('student_line_bindings.campus_id', $allowedCampusIds);
+            $q->whereIn('Student.CampusID', $allowedCampusIds);
+        }
+        if ($studentId !== null) {
+            $q->where('student_line_bindings.student_id', $studentId);
+        }
+        if ($lineUserId !== null) {
+            $q->where('student_line_bindings.line_user_id', $lineUserId);
         }
         if ($studentName !== null && trim($studentName) !== '') {
             $q->where('Student.name', 'like', '%' . addcslashes(trim($studentName), '%_\\') . '%');
