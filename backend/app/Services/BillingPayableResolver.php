@@ -84,7 +84,7 @@ class BillingPayableResolver
             ->with(['payments' => fn ($query) => $query->select(['id', 'InvoiceID', 'Amount', 'Method']), 'items'])
             ->whereIn('StudentClassID', $ids->all())
             ->orderBy('id')
-            ->get(['id', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'Status', 'billing_period'])
+            ->get(['id', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'Status', 'billing_period', 'zero_amount_reason'])
             ->groupBy('StudentClassID');
         $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
 
@@ -126,7 +126,13 @@ class BillingPayableResolver
         // B15's own verdict (ambiguous items/coverage gaps, out-of-contract sessions, amount discrepancy) is preserved.
         $monthlyReview = (bool) ($monthly['review_required'] ?? false);
         $isPackageMember = (int) ($course->getAttribute('PackageID') ?? 0) > 0;
-        $zeroFee = !$isPackageMember && !$monthlyReview && $charge <= 0 && (float) ($course->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
+        // #3991: staff marked a NT$0 bill 免費／贈送 on this no-fee course, so a period-engine review cannot reopen it.
+        // #3991 review: B15 flags review only at the top level, so EVERY period it lists must be a marked term; an unmarked
+        // month with lessons (an `unattributed` row) keeps the course in review.
+        $freePeriods = $invoices->filter(fn ($invoice) => $invoice->freeGiftHolds($course))->pluck('billing_period')->filter()->all();
+        $reviewPeriods = collect($monthly['periods'] ?? [])->pluck('billing_period');
+        $markedFree = $reviewPeriods->isNotEmpty() && $reviewPeriods->diff($freePeriods)->isEmpty();
+        $zeroFee = !$isPackageMember && (!$monthlyReview || $markedFree) && $charge <= 0 && (float) ($course->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
         if ($tutoring || $zeroFee) {
             return $result('free', 0, 0, 0, [], 'none', null);
         }

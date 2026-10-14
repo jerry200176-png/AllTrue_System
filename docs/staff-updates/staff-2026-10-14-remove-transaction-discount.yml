@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-14-remove-transaction-discount
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 交易折扣已停用
+    summary: 新增課程、加購堂數和月結續約都以原價建立，不再提供折扣。
+    items:
+      - category: improved
+        text: 建課、加購與月結續約的「交易折扣」欄位已移除；已建立的舊課程金額不變。
+    source_refs:
+      - "changelog:2026-10-14:remove-transaction-discount"

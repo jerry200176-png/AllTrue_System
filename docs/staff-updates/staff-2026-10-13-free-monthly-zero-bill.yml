@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-13-free-monthly-zero-bill
+    published_at: "2026-10-13"
+    audiences:
+      - director
+    importance: major
+    title: 免費課程要勾選免費／贈送
+    summary: 免費課程登記零元時要勾選「免費／贈送」，系統會留下一張有標記的零元帳單。
+    items:
+      - category: added
+        text: 沒有設定費用的課程，登記收款時可勾選「免費／贈送」，登錄一張零元帳單，學生帳務會顯示標記。
+      - category: action_required
+        text: 沒勾選就不能登記零元；課程要收費的話，請先到課程管理設定費用。
+    source_refs:
+      - "changelog:2026-10-13:free-monthly-zero-bill"

@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-13-billing-notes-append-only
+    published_at: "2026-10-13"
+    audiences:
+      - director
+    importance: major
+    title: 帳單和收款可以留備註紀錄
+    summary: 每則備註都記下是誰、什麼時候寫的，寫了就不能改。
+    items:
+      - category: added
+        text: 在學生帳務裡，展開帳單或看收款紀錄時，按「備註紀錄」就能新增備註，並看到每則是誰、什麼時候寫的。
+      - category: improved
+        text: 備註送出後不能修改或刪除；寫錯了請再新增一則更正。原本的舊備註會以「原備註」放在最前面。
+      - category: improved
+        text: 只有主任看得到，而且只看得到自己分校的學生；老師和家長看不到。
+    source_refs:
+      - "changelog:2026-10-13:billing-notes-append-only"

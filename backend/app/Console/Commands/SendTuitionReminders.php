@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Notification;
+use App\Services\NotificationSyncService;
 use App\Services\Line\LinePush;
 use App\Services\Line\ParentLinePush;
 use App\Models\Student;
@@ -43,7 +43,12 @@ class SendTuitionReminders extends Command
         // F7 S5: the resolver can only remove courses (paid/free); review_required/unknown keep the legacy decision.
         $onResolver = (bool) config('billing.paid_status_outbound_notifications', true);
         $settled = app(\App\Services\BillingPayableResolver::class)->settledCourseIds($unpaidCourses, 'tuition_reminders');
-        $unpaidCourses = $unpaidCourses->reject(fn (StudentClass $c) => isset($settled[(int) $c->ID]))->values();
+        $unpaidCourses = NotificationSyncService::withinTuitionReminderWindow($unpaidCourses->reject(fn (StudentClass $c) => isset($settled[(int) $c->ID]))->values());
+
+        // #3877: per-campus syncs never read a transferred student's old campus; retire those notices here.
+        if (!$dryRun) {
+            NotificationSyncService::retireTransferredTuition();
+        }
 
         if ($unpaidCourses->isEmpty()) {
             $this->info('No overdue unpaid courses found.');
@@ -118,20 +123,11 @@ class SendTuitionReminders extends Command
                 continue;
             }
 
-            // Notifications are campus-scoped (no per-user column) with a NOT NULL unique SourceKey (#3376):
-            // one row per campus per day, idempotent on re-runs. Only when the campus has a director to read it.
+            // Directors are notified through the single actionable per-course/invoice stream
+            // (NotificationSyncService): no second aggregate stream, so no duplicates, no orphaning,
+            // campus/ownership and paid-state are re-evaluated by the sync itself (#3877 follow-up).
             if ($this->directorRecipientIds((int) $campusId) !== []) {
-                $sourceKey = "tuition-reminder:{$campusId}:" . now()->toDateString();
-                Notification::query()->updateOrCreate(['SourceKey' => $sourceKey], [
-                    'CampusID'   => $campusId,
-                    'Type'       => 'tuition',
-                    'Severity'   => 'medium',
-                    'Title'      => $title,
-                    'Body'       => $body,
-                    'SourceType' => 'TuitionReminder',
-                    'SourceID'   => (string) $campusId,
-                    'OccurredAt' => now(),
-                ]);
+                NotificationSyncService::sync([(int) $campusId]);
             }
 
             Log::info("tuition_reminders_sent", [
