@@ -2067,6 +2067,37 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_verify_sends_a_user_agent_the_production_waf_accepts(self):
+        import http.server
+        import threading
+
+        manifest = json_bytes({"backend_sha": self.TARGET, "frontend_sha": None})
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                if self.headers.get("User-Agent", "").startswith("Python-urllib"):
+                    self.send_response(403)  # mirrors the production WAF
+                    self.end_headers()
+                    return
+                body = {"/api/health": b'{"ok":true}', "/api/v1/health": b'{"status":"ok"}',
+                        "/deployment.json": manifest}.get(self.path.split("?", 1)[0])
+                self.send_response(200 if body else 404)
+                self.end_headers()
+                self.wfile.write(body or b"")
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            base = f"http://127.0.0.1:{server.server_port}"
+            self.assertEqual(0, self.pdv.main(["verify", "--base-url", base, "--expect-backend-sha", self.TARGET,
+                                               "--attempts", "1"]))
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_decide_rolls_back_only_when_the_range_provably_has_no_migration(self):
         self.assertEqual("rollback", self.pdv.decide("0", "0"))
         self.assertEqual("rollback", self.pdv.decide("  0\n", "0"))

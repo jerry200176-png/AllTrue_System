@@ -176,6 +176,52 @@ describe('ReceiptModal payment-reports contract', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  it('takes focus, closes on Escape without bubbling, and returns focus when closed (#398/#405)', async () => {
+    global.fetch.mockResolvedValue(ok(SAMPLE));
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    const outerEsc = vi.fn();
+    document.body.addEventListener('keydown', outerEsc);
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 456 }, attachTo: document.body });
+    await tick();
+    const panel = wrapper.find('[data-testid="receipt-modal-panel"]');
+    expect(panel.attributes('role')).toBe('dialog');
+    expect(document.activeElement).toBe(panel.element);
+
+    await panel.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.emitted('close')).toHaveLength(1);
+    expect(outerEsc).not.toHaveBeenCalled();
+
+    await wrapper.setProps({ show: false });
+    await nextTick();
+    expect(document.activeElement).toBe(opener);
+
+    document.body.removeEventListener('keydown', outerEsc);
+    wrapper.unmount();
+    opener.remove();
+  });
+
+  it('falls back to returnFocusTo when the opener was removed while the receipt was open', async () => {
+    global.fetch.mockResolvedValue(ok(SAMPLE));
+    const ledger = document.createElement('div');
+    ledger.tabIndex = -1;
+    const card = document.createElement('button');
+    document.body.append(ledger, card);
+    card.focus();
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 456, returnFocusTo: ledger }, attachTo: document.body });
+    await tick();
+    card.remove(); // the ledger reloads and redraws its cards after 確認入帳
+    await wrapper.setProps({ show: false });
+    await nextTick();
+    expect(document.activeElement).toBe(ledger);
+
+    wrapper.unmount();
+    ledger.remove();
+  });
+
   it('loads only GET /api/v1/payment-reports/{id}/receipt', async () => {
     global.fetch.mockResolvedValueOnce(ok(SAMPLE));
     mount(ReceiptModal, { props: { show: true, reportId: 456 } });
