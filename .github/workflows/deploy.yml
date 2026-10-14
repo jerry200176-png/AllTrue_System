@@ -2546,7 +2546,7 @@ jobs:
             /^DB_PASSWORD=/ { print "DB_PASSWORD=" pass; passwords++; next }
             { print }
             END { if (users != 1 || passwords != 1) exit 42 }
-          ' .env > "$ENV_TMP"
+          ' .env > "$ENV_TMP" # secret-echo-allow: staged password read from ENVIRON and written only to the private env file
           unset STAGED_DB_PASSWORD
           chmod --reference=.env "$ENV_TMP"
           mv "$ENV_TMP" .env

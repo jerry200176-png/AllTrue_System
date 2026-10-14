@@ -35,6 +35,7 @@ const ALIAS = /\/dev\/(?!null\b)|\/proc\//;
 // GitHub renders the job summary and shows GITHUB_OUTPUT / GITHUB_ENV values in later steps: a file
 // redirect to one of them is a public sink, not a safe file
 const PUBLIC_FILE = /^\$(?:GITHUB_(?:STEP_SUMMARY|OUTPUT|ENV)|\{GITHUB_(?:STEP_SUMMARY|OUTPUT|ENV)(?::?[-+?=][\s\S]*)?\})$/;
+const SAFE_SHELL = /^(?:bash|sh)(?:\s+(?:--noprofile|--norc|-[eu]+|-[eu]*o\s+pipefail))*(?:\s+\{0\})?$/;
 const RESERVED = /^(?:\{|\}|if|then|elif|else|fi|do|done|while|until|!|time|esac)$/;
 
 // --- shell lexer: commands with words (char text + source offset + quote per char), redirects, heredocs, nested substitutions
@@ -280,6 +281,55 @@ function credHits(w, exprs, sensitive = new Set(), transformed = false) {
   return hits;
 }
 
+// --- interpreter programs (inline -c/-e/-r/awk text, Python heredocs): environment reads and whole-environment dumps
+const ENV_ACCESS = /\b(?:os\s*\.\s*)?environ\s*(?:\[|\.\s*get\s*\()|\b(?:os\s*\.\s*)?getenv\s*\(|\bprocess\s*\.\s*env\s*(?:\.|\[)|\$ENV\s*\{|(?:\bENVIRON|\bENV|\$_ENV|\$_SERVER)\s*\[/g;
+const ENV_DUMP = /\b(?:print|pprint|repr|str|dict|dumps)\s*\(\s*(?:dict\s*\(\s*)?os\s*\.\s*environ\s*\)|\{\s*os\s*\.\s*environ\s*[}!:]|\bos\s*\.\s*environ\s*\.\s*(?:items|values)\s*\(|\b(?:JSON\s*\.\s*stringify|console\s*\.\s*\w+|Object\s*\.\s*(?:entries|values))\s*\(\s*process\s*\.\s*env\s*[,)]|\b(?:print_r|var_dump|var_export|json_encode)\s*\(\s*(?:getenv\s*\(\s*\)|\$_ENV\b|\$_SERVER\b)|\bin\s+ENVIRON\b|%ENV\b|\bENV\s*\.\s*(?:to_h|to_a|each|inspect|map)\b|\b(?:p|pp|puts|print)\s*\(?\s*ENV\b(?!\s*[[.])/g;
+const secretRead = (t, sensitive) => [...t.matchAll(ENV_ACCESS)].filter((m) => {
+  const name = /^\s*(['"`]?)([A-Za-z_]\w*)\1/.exec(t.slice(m.index + m[0].length))?.[2];
+  return name && (isSecretName(name) || sensitive.has(name));
+}).map((m) => m.index);
+const programHits = (t, sensitive) => [...secretRead(t, sensitive), ...[...t.matchAll(ENV_DUMP)].map((m) => m.index)];
+const INLINE = [[/^python[0-9.]*$/, /^-[A-Za-z]*c$/], [/^node(?:js)?$/, /^-[A-Za-z]*[ep]$|^--(?:eval|print)$/], [/^php[0-9.]*$/, /^-r$/], [/^perl$/, /^-[A-Za-z]*[eE]$/], [/^ruby$/, /^-[A-Za-z]*e$/]];
+function inlinePrograms(words, info) { // the words holding inline program text
+  const a = words.slice(info.k + 1);
+  if (/^[gmn]?awk$/.test(info.name)) {
+    const progs = []; let file = false, j = 0;
+    for (; j < a.length && /^-./.test(a[j].text); j++) {
+      const o = a[j].text;
+      if (o === '--') { j++; break; }
+      if (o === '-e' || o === '--source') progs.push(a[++j]);
+      else if (/^-[vFfilW]$/.test(o)) { if (o === '-f') file = true; j++; } else if (/^-f|^--file/.test(o)) file = true;
+    }
+    return [...progs, ...(file || progs.length ? [] : [a[j]])].filter(Boolean);
+  }
+  const opt = INLINE.find(([n]) => n.test(info.name))?.[1];
+  return opt ? a.flatMap((w, i) => opt.test(w.text) ? [a[i + 1]] : /^--(?:eval|print)=/.test(w.text) ? [w] : []).filter(Boolean) : [];
+}
+// a Python program reading stdin (`python3 - <<'PY'`, `python <<PY`): its heredoc is Python, not shell
+const pythonStdin = (info, args) => /^python[0-9.]*$/.test(info.name) && !args.some((x) => /^-[A-Za-z]*[cm]$/.test(x)) && [undefined, '-'].includes(args.find((x) => !/^-./.test(x)));
+function pythonOutputs(py, sensitive) { // password-like env reads (or names assigned from them) that reach print/log; env dumps
+  const tainted = new Set();
+  for (const line of py.split('\n')) {
+    const m = /^\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*=(?!=)(.*)$/.exec(line);
+    if (m && (secretRead(m[2], sensitive).length || [...tainted].some((n) => new RegExp(`\\b${n}\\b`).test(m[2])))) m[1].split(',').forEach((n) => tainted.add(n.trim()));
+  }
+  const hits = [...py.matchAll(ENV_DUMP)].map((m) => ({ at: m.index, to: 'log' }));
+  for (const m of py.matchAll(/\b(?:print|pprint|sys\s*\.\s*(std(?:out|err))\s*\.\s*write|(logging|logger|log|warnings|SystemExit|sys\s*\.\s*exit|exit)\b(?:\s*\.\s*\w+)?)\s*\(/g)) {
+    let d = 0, e = m.index + m[0].length - 1;
+    for (; e < py.length; e++) {
+      const c = py[e];
+      if (c === '"' || c === "'") { for (e++; e < py.length && py[e] !== c; e++) if (py[e] === '\\') e++; }
+      else if (c === '(') d++;
+      else if (c === ')' && --d === 0) break;
+    }
+    const args = py.slice(m.index, e + 1);
+    if (!secretRead(args, sensitive).length && ![...tainted].some((n) => new RegExp(`\\b${n}\\b`).test(args))) continue;
+    const file = /\bfile\s*=\s*([^,)]+)/.exec(args)?.[1] ?? '';
+    hits.push({ at: m.index, to: m[2] || m[1] === 'stderr' || /stderr|\/dev\//.test(file) ? 'log' : file && !/stdout/.test(file) ? 'file' : 'stdout' });
+  }
+  return hits;
+}
+
 function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns true when (ctx 'sub') sensitive data reaches the captured stdout
   let taint = false, scope;
   const rec = (off, verdict) => { if (verdict === 'taint') taint = true; out.push({ off, safe: verdict !== 'unsafe', scope }); };
@@ -321,6 +371,7 @@ function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns tr
         else analyze(inner, 'top', out, exprs, new Set(sensitive));
       }
     }
+    for (const w of inlinePrograms(c.words, info)) for (const at of programHits(w.text, sensitive)) rec(w.pos[at] ?? w.off, 'unsafe');
     for (const w of c.words) {
       if (pure && assignRe.test(w.text) && credHits(w, exprs, sensitive).length) sensitive.add(w.text.match(/^[A-Za-z_][A-Za-z0-9_]*/)[0]);
       const capture = pure && assignRe.test(w.text) && /^[^=]*=\x03$/.test(w.text) && w.subs.length === 1;
@@ -358,7 +409,10 @@ function analyze(script, ctx, out, exprs, sensitive = new Set()) { // returns tr
       }
       if (!r.heredoc) continue;
       const { body, off } = r.heredoc;
-      if (!/^(?:cat|mysql|mariadb|psql)$/.test(info.name)) { const hs = lex(body, off); out.comments?.push(...hs.comments); analyze(hs, 'top', out, exprs); continue; } // a shell runs it
+      const py = pythonStdin(info, args);
+      // printed to a $(...) capture stays private (not propagated: the capture's consumers are reviewed via annotations)
+      if (py) for (const h of pythonOutputs(body, sensitive)) rec(off + h.at, h.to === 'file' ? 'safe' : h.to === 'stdout' ? sink(P, s, ctx, true).replace('taint', 'safe') : 'unsafe');
+      if (!py && !/^(?:cat|mysql|mariadb|psql)$/.test(info.name)) { const hs = lex(body, off); out.comments?.push(...hs.comments); analyze(hs, 'top', out, exprs); continue; } // a shell runs it
       // data heredoc: .env text is data; expansions (unquoted delimiter) are printed by cat or executed as SQL
       const bw = r.quoted ? { text: '', pos: [], q: [], subs: [] } : lex(body, off, true).word;
       if (r.quoted) for (const m of body.matchAll(CRED)) {
@@ -517,14 +571,13 @@ function scanAll(items) {
       for (const [q, k, v] of kvs.filter(([q, k]) => q.endsWith(`.env.${k}`) && p.startsWith(q.slice(0, -(`.env.${k}`).length) + '.')).sort(([a], [b]) => a.length - b.length)) bindings.set(k, v.includes('${{') && credExpr(v));
       const aliases = new Set([...bindings].filter(([, credential]) => credential).map(([key]) => key));
       const results = scanScript(`${name}${p}`, s, aliases);
-      if (p.endsWith('.script')) for (const match of s.matchAll(/\bprocess\s*\.\s*env\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*(['"])(.*?)\2\s*\])/g)) {
-        if (isSecretName(match[1] ?? match[3]) || aliases.has(match[1] ?? match[3])) results.push({ where: `${name}${p}`, text: match[0], why: 'JavaScript credential environment read requires reviewed private transport' });
-      }
+      if (p.endsWith('.script')) for (const at of programHits(s, aliases)) results.push({ where: `${name}${p}`, text: s.slice(at, at + 40), why: 'JavaScript credential environment read or dump requires reviewed private transport' });
       return results.map((f) => ({ ...f, context: createHash('sha256').update(s).digest('hex').slice(0, 16) }));
     }),
     // `shell: bash -x {0}` traces every command; an expression shell may pull a traced value from anywhere in the file
     ...shells.filter(([, v]) => TRACE.test(v)).map(([p, v]) => ({ where: `${name}${p}`, text: `shell: ${v}`, why: 'shell tracing' })),
-    ...shells.filter(([, v]) => /^(?:pwsh|powershell|cmd|python|node|ruby)(?:\s|$)/i.test(v.trim())).map(([p, v]) => ({ where: `${name}${p}`, text: `shell: ${v}`, why: 'unsupported shell; use a reviewed Bash transport' })),
+    // fail closed: only bash/sh with known non-tracing options; an interpreter, path-qualified, custom or expression shell is rejected
+    ...declaredShells.filter(([, v]) => !SAFE_SHELL.test(v.trim())).map(([p, v]) => ({ where: `${name}${p}`, text: `shell: ${v}`, why: 'unsupported shell; use bash or sh (a reviewed Bash transport)' })),
     ...shells.flatMap(([p, v]) => v.includes('${{') ? [] : scanScript(`${name}${p} template`, v)),
     ...runners.filter(([p, v]) => /windows/i.test(v) || matrixValues(p, v).some((value) => /windows/i.test(value))).map(([p]) => ({ where: `${name}${p}`, text: 'Windows job', why: 'unsupported implicit Windows shell; reviewed Bash jobs only' })),
     ...(shells.some(([, v]) => v.includes('${{')) ? all.filter((v) => TRACE.test(v)).map((v) => ({ where: name, text: `expression shell: ${v}`, why: 'shell tracing' })) : []),
@@ -752,6 +805,33 @@ export const trip = {
   "sh -c 'printenv'": blk("sh -c 'printenv'"),
   "bash -ec 'export -p'": blk("bash -ec 'export -p'"),
   'composite action run step': 'runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo "$DB_PASSWORD"',
+  // #1387 r4261900988 / r4261900936: interpreter shells and programs, fail closed
+  ...Object.fromEntries(['python3 {0}', 'awk -f {0}', 'perl {0}', '/usr/bin/pwsh {0}', '/bin/bash {0}', 'mysh {0}', 'bash -x {0}', 'bash -c true {0}', '${{ inputs.sh }}']
+    .flatMap((v) => [[`step shell ${v}`, `jobs:\n  j:\n    steps:\n      - shell: ${v}\n        run: echo hi`],
+      [`job defaults shell ${v}`, `jobs:\n  j:\n    defaults:\n      run:\n        shell: ${v}\n    steps:\n      - run: echo hi`],
+      [`workflow defaults shell ${v}`, `defaults:\n  run:\n    shell: ${v}\njobs:\n  j:\n    steps:\n      - run: echo hi`]])),
+  'matrix-composed interpreter shell': 'jobs:\n  j:\n    strategy:\n      matrix:\n        sh: ["python3 {0}"]\n    steps:\n      - shell: ${{ matrix.sh }}\n        run: print(1)',
+  ...Object.fromEntries([
+    `python -c 'import os; print(os.environ["DB_PASSWORD"])'`, `python3 -c 'import os; x = os.environ.get("DB_PASSWORD")'`, `python3 -Ic 'import os; os.getenv("DB_PASSWORD")'`,
+    `node -e 'console.log(process.env.DB_PASSWORD)'`, `node -p "process.env['DB_PASSWORD']"`, `node --eval='process.env.DB_PASSWORD'`,
+    `php -r 'echo getenv("DB_PASSWORD");'`, `perl -e 'print $ENV{DB_PASSWORD}'`, `perl -lE 'say $ENV{"DB_PASSWORD"}'`, `ruby -e 'puts ENV["DB_PASSWORD"]'`,
+    `awk 'BEGIN { print ENVIRON["DB_PASSWORD"] }'`, `awk -v x=1 -F: 'BEGIN { p = ENVIRON["DB_PASSWORD"] }' > out`, `gawk -e 'BEGIN { print ENVIRON["MYSQL_PWD"] }'`,
+    `python3 -c 'import os; print(os.environ)'`, `python3 -c 'import os, json; json.dumps(dict(os.environ))'`, `python3 -c 'import os; [print(k) for k, v in os.environ.items()]'`,
+    `node -e 'console.log(JSON.stringify(process.env))'`, `node -e 'console.log(process.env)'`, `php -r 'print_r(getenv());'`, `awk 'BEGIN { for (k in ENVIRON) print k }'`,
+    `sudo -u app env X=1 python3 -c 'import os; os.environ["DB_PASSWORD"]'`,
+  ].map((c) => [`inline interpreter ${c}`, blk(c)])),
+  'inline program reads YAML credential alias': 'jobs:\n  j:\n    env:\n      VALUE: ${{ steps.generate.outputs.password }}\n    steps:\n      - run: node -e \'console.log(process.env.VALUE)\'',
+  'github-script environment dump': 'jobs:\n  j:\n    steps:\n      - uses: actions/github-script@v7\n        with:\n          script: console.log(JSON.stringify(process.env))',
+  ...Object.fromEntries([
+    ["python3 - <<'PY'", 'import os', 'print(os.environ["DB_PASSWORD"])'], ['python3 - <<PY', 'import os', 'print(f"pw={os.environ[\'DB_PASSWORD\']}")'],
+    ["python <<'PY'", 'import os', 'pw = os.environ.get("DB_PASSWORD")', 'print(pw)'], ["python3 - arg <<'PY'", 'import os, sys', 'sys.stdout.write(os.getenv("DB_PASSWORD"))'],
+    ["python3 - > out.txt <<'PY'", 'import os, logging', 'logging.warning("pw %s", os.environ["DB_PASSWORD"])'],
+    ["python3 - > out.txt <<'PY'", 'import os, sys', 'print(os.environ["DB_PASSWORD"], file=sys.stderr)'],
+    ["python3 - > out.txt <<'PY'", 'import os', 'raise SystemExit("bad " + os.environ["DB_PASSWORD"])'],
+    ["python3 - > out.txt <<'PY'", 'import os', 'print(os.environ)'], ["python3 - > out.txt <<'PY'", 'import os, json', 'snapshot = json.dumps(dict(os.environ))'],
+    ["python3 - > out.txt <<'PY'", 'import os', 'for key, value in os.environ.items():', '    pass'],
+    ['python3 - <<PY', 'pw = "$DB_PASSWORD"'],
+  ].map((l) => [`Python heredoc ${l.join(' / ')}`, blk(...l, 'PY')])),
 };
 export const ok = {
   'runtime matrix is not a shell matrix': 'jobs:\n  j:\n    strategy:\n      matrix:\n        runtime: [node, ruby]\n    steps:\n      - run: echo hi',
@@ -804,6 +884,17 @@ export const ok = {
   'empty credential value': "env:\n  DB_PASSWORD: ''\njobs:\n  j:\n    steps:\n      - uses: x/y@v1\n        with: { password: '' }",
   'step name mentions xtrace / untraced shells': 'jobs:\n  j:\n    steps:\n      - name: Diagnose xtrace\n        shell: bash -eo pipefail {0}\n        run: echo hi',
   'github-script reading process.env': "jobs:\n  j:\n    steps:\n      - uses: actions/github-script@v7\n        with:\n          script: |\n            const n = process.env.ISSUE_NUMBER",
+  'reviewed bash/sh shells': ['bash', 'sh', 'bash {0}', 'bash -e {0}', 'sh -e {0}', 'bash --noprofile --norc -eo pipefail {0}', 'bash -euo pipefail {0}']
+    .map((v, i) => `${i ? '' : 'defaults:\n  run:\n    shell: bash\n'}jobs:\n  j${i}:\n    defaults:\n      run:\n        shell: ${v}\n    steps:\n      - shell: ${v}\n        run: echo hi`).join('\n'),
+  'inline interpreter public reads': blk(`python3 -c 'import os; print(os.environ["BRANCH"])'`, `node -e 'console.log(process.env.BRANCH)'`, `php -r 'echo getenv("B64");'`,
+    `perl -e 'print $ENV{HOME}'`, `ruby -e 'puts ENV["HOME"]'`, `awk -f prog.awk backend/data.txt`, `awk '{ print $1 }' data.txt`, `awk -v user=u 'BEGIN { print ENVIRON["HOME"] }'`,
+    `python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" < data.json`),
+  'Python heredoc reads password for private use': blk("python3 - <<'PY'", 'import os, subprocess', 'pw = os.environ["STAGED_DB_PASSWORD"]',
+    'subprocess.run(["mysql", "--defaults-extra-file=/dev/stdin"], input=f"[client]\\npassword={pw}\\n", text=True, env=os.environ.copy(), check=True)',
+    'print("rotation staged")', 'PY'),
+  'Python heredoc regex is not shell': blk("python3 - <<'PY'", 'import re', 'refs = sorted(set(re.findall(r"(?<![A-Za-z0-9])#([1-9][0-9]*)\\b", "x #1 > $(y)")))', 'print(refs)', 'PY'),
+  'Python heredoc prints password only to a file or a capture': blk("python3 - > secret.txt <<'PY'", 'import os', 'print(os.environ["DB_PASSWORD"])', 'PY',
+    'X="$(python3 - <<\'PY\'', 'import os, json', 'print(json.dumps({"password": os.environ["DB_PASSWORD"]}))', 'PY', ')"'),
 };
 const fail = (...m) => { console.error(...m); process.exit(1); };
 for (const [k, y] of Object.entries(trip)) if (!scan('probe', y).length) fail('guard missed probe:', k);
@@ -869,24 +960,64 @@ for (const [k, y] of Object.entries(ok)) { const r = scan('ok', y); if (r.length
 }
 
 
-// Narrow capture annotations are justified by frozen producer/consumer programs.
-// A future public print, verbose/trace option, changed helper, or new callsite invalidates the proof.
-{
-  const contracts = {
-    'deploy.yml': 'd7fff2cee58a84d0774f33234949e20853018799d9333a9011734f94d21700fd',
-    'actual-duration-acceptance.yml': '063c896ae2603651b362654af106e74fcdc2ce6a67e10707a063c0950835bf97',
-    'multi-guardian-activation.yml': 'e9e59d11428058b3f8eb355859fa0b1b21ffee841d4826a98fe676108011713f',
-  };
-  const hash = (s) => createHash('sha256').update(s).digest('hex');
-  for (const [name, expected] of Object.entries(contracts)) {
-    const producerConsumers = readFileSync(join(dir, name), 'utf8').trimEnd();
-    if (hash(producerConsumers) !== expected) fail('capture annotation producer/consumer changed; re-review exact quiet transport:', name);
+// Narrow capture annotations are justified by frozen producer/consumer snippets, never whole files. Each pin hashes only
+// the reviewed lines: a unique marker line through the next line holding the end marker, or (no end marker) every
+// `run:` block holding the marker. An unrelated edit elsewhere passes; a changed producer/consumer (a public print,
+// verbose/trace option, new callsite) or an annotation outside every pinned snippet of a pinned file fails.
+export const PINS = [
+  ['.github/workflows/deploy.yml', 'local rb_secret rb_response', 'unset rb_secret rb_response', '7e2d2b81296f5eee7b8c6deddb98f4b8d32ba73ca984dc6544e37bff9deba404'],
+  ['.github/workflows/deploy.yml', 'apply_bool_feature_flag() {', 'apply_bool_feature_flag "$MANAGER_FLAG_MODE"', 'cb60a657304f52d325b9aae414fad8eb29c0564fb814ba63431a593bfb52ef24'],
+  ['.github/workflows/deploy.yml', `DEPLOY_SECRET="$(grep '^DEPLOY_SECRET='`, 'unset DEPLOY_SECRET OPCACHE_RESPONSE', '196db6c36d545b0257094b3cdeaf69d9a51da76af04903cd467457bc08ca5a63'],
+  ['.github/workflows/deploy.yml', 'export STAGED_DB_PASSWORD', 'unset STAGED_DB_PASSWORD', '9c47de6cc7409cc2c2bae03f3c5b3d004bea5b0800d709bfe1239c95fc7bb22a'],
+  ['.github/workflows/actual-duration-acceptance.yml', '/tmp/token.txt', null, '4b5b10a214d41bdb14db55673bcce8f653536940500df2a5b50e7734518d5291'],
+  ['.github/workflows/multi-guardian-activation.yml', 'try_login() {', null, 'c414720923e7b7b3a7321eac36afcec7117139c01b5ed03faef7c38ae59d2ed6'],
+  ['scripts/smoke-auth-lib.sh', 'smoke_extract_access_token() {', 'login failed after $max_attempts attempts (last HTTP status', 'e597ee2d43d0d882e0d20b67c066c7a538b76cb06619754e5d16e4d6e325c75d'],
+  ['.github/actions/production-ssh-trust/setup.sh', ': "${INPUT_HOST_KEY:?', `| awk '$1 !~ /^#/ { print }' > "$known_hosts"; then`, 'd4247cacfdcfe60babc11b7b26b6e7634f1f635b57c4fc46f5e638f781ce9416'],
+];
+const indent = (l) => /^\s*/.exec(l)[0].length;
+export function snippetRanges(text, from, to) { // [[first, last], ...] line ranges, or null when a marker is missing/ambiguous
+  const lines = text.split('\n'), hits = lines.flatMap((l, i) => (l.includes(from) ? [i] : []));
+  if (to !== null) {
+    const end = lines.findIndex((l, i) => i >= hits[0] && l.includes(to));
+    return hits.length === 1 && end >= 0 ? [[hits[0], end]] : null;
   }
-  if (hash(readFileSync('scripts/smoke-auth-lib.sh', 'utf8')) !== '7d5fc28c79e9439c1600782e09ff76cdfdfca05b042a0d6b643cad031d27c920')
-    fail('quiet auth helper changed; re-review capture annotation');
+  const ranges = hits.map((i) => {
+    let h = i;
+    while (h >= 0 && !/^\s*(?:-\s+)?run:\s*[|>]/.test(lines[h])) h--;
+    let e = h + 1;
+    while (e + 1 < lines.length && (!lines[e + 1].trim() || indent(lines[e + 1]) >= indent(lines[h + 1]))) e++;
+    while (e > h && !lines[e].trim()) e--;
+    return h >= 0 && i <= e ? [h, e] : null;
+  });
+  return hits.length && ranges.every(Boolean) ? [...new Map(ranges.map((r) => [r[0], r])).values()] : null;
+}
+const sha256 = (s) => createHash('sha256').update(s).digest('hex');
+export function pinProblems(read) {
+  const problems = [], byFile = new Map();
+  for (const [file, from, to, expected] of PINS) {
+    const text = read(file), ranges = snippetRanges(text, from, to);
+    if (!ranges) { problems.push(`reviewed snippet marker missing or ambiguous: ${file} ${from}`); continue; }
+    const lines = text.split('\n');
+    byFile.set(file, [...(byFile.get(file) ?? []), ...ranges]);
+    if (sha256(ranges.map(([a, b]) => lines.slice(a, b + 1).join('\n')).join('\n--\n')) !== expected)
+      problems.push(`capture annotation producer/consumer changed; re-review exact quiet transport: ${file} ${from}`);
+  }
+  for (const [file, ranges] of byFile) read(file).split('\n').forEach((l, i) => {
+    if (/secret-echo-allow:/.test(l) && !ranges.some(([a, b]) => i >= a && i <= b)) problems.push(`annotation outside every reviewed snippet: ${file} line ${i + 1}`);
+  });
+  return problems;
+}
+{
+  const pinned = pinProblems((f) => readFileSync(f, 'utf8'));
+  if (pinned.length) fail(pinned.join('\n'));
   const d = readFileSync(join(dir, 'deploy.yml'), 'utf8');
+  const edited = (from, to) => pinProblems((f) => (f.endsWith('deploy.yml') ? d.replace(from, to) : readFileSync(f, 'utf8')));
+  if (edited('=== [6/7] Health check + Smoke test ===', '=== [6/7] unrelated edit ===').length || edited('jobs:\n', 'jobs:\n  # unrelated\n').length)
+    fail('an unrelated deploy.yml edit must not fail the snippet pins');
+  for (const [from, to] of [['curl -skf -X POST \\', 'curl -vskf -X POST \\'], ['\' .env > "$ENV_TMP"', '\' .env | tee "$ENV_TMP"'],
+    ['unset rb_secret rb_response', 'true'], ['jobs:\n', 'jobs:\n  # x # secret-echo-allow: new unpinned capture annotation\n']])
+    if (!edited(from, to).length) fail('editing a pinned producer/consumer snippet must fail:', to);
   const localPinScript = readFileSync('.github/actions/production-ssh-trust/setup.sh', 'utf8');
-  if (hash(localPinScript.trimEnd()) !== 'ab69c68b67ccb7dc959d573be29c462281a853a4d23dfdc86f831a460b33a979') fail('local action private host-pin transport changed; re-review exact producer/consumer');
   if (scan('local-action-script', blk(...localPinScript.split('\n'), 'echo "$INPUT_HOST_KEY"')).length === 0) fail('local action script append must not publish its host-pin input');
   const start = d.indexOf('          apply_bool_feature_flag() {');
   const end = d.indexOf('          apply_bool_feature_flag "$ADMISSIONS', start);
