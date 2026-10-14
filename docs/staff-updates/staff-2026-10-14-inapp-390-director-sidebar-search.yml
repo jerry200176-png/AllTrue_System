@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-14-inapp-390-director-sidebar-search
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 側欄「更多功能」改為「搜尋」
+    summary: 主任側欄的「更多功能」只剩搜尋，現在直接叫「搜尋」。
+    items:
+      - category: improved
+        text: 側欄原本的「更多功能」按鈕改名為「搜尋」，點開一樣能搜尋學生、老師、課程或功能；所有功能仍在側欄原位。
+    source_refs:
+      - "changelog:2026-10-14:inapp-390-director-sidebar-search"
