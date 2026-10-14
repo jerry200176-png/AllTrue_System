@@ -6,19 +6,19 @@ Applies to every Claude/Codex session in this repo, cloud or local. These rules 
 
 - A wake that echoes your own comment, a Codex "Running" summary edit, an informational bot quota notice (for example Cursor Bugbot), or CI finishing on a **superseded** head needs no tool call and at most a one-line reply.
 - Exception: if the notice means the **required** review did not run (Codex rate-limited), it is a decision point. Run the `/code-review` fallback that `CLAUDE.md` §Parallel agents requires.
-- Do real work only on: CI finished on the **current** head, a review with comments, a merge conflict or queue-drop notice, the merge itself, a deploy waiting for approval, or a deploy that **finished** (success or failure: verify exact SHA, health and affected-path smoke, or start the failure/rollback follow-up).
+- Do real work only on: CI finished on the **current** head, a required review that completed (with or without comments), a merge conflict or queue-drop notice, the merge itself, a deploy waiting for approval, or a deploy that **finished** (success or failure: verify exact SHA, health and affected-path smoke, or start the failure/rollback follow-up).
 - Read all pending notifications first, then act once for the batch.
 
 ## 2. Keep tool output small
 
 - GitHub lists: `perPage` 5–20, `minimal_output: true`. Page review threads with the `after` cursor instead of re-reading from the start.
-- Never print a whole workflow-run list or check-run list. Filter it (`python3 -c` / `jq`) to name, status and conclusion, or only the failing entries.
+- Never print a whole workflow-run list or check-run list. Pin the query to the current head SHA, or filter it (`python3 -c` / `jq`) keeping head SHA, run ID, name, status and conclusion, so a green run on a superseded head is never mistaken for exact-head CI.
 - CI failures: read the failing job's log tail only (`get_job_logs` with `failed_only` / `tail_lines`), not the full log.
 - Files: grep for the symbol, then read the line range you need.
 
 ## 3. Review rounds
 
-- Fix every finding of a round in one push, then reply to and resolve every thread in one batch.
+- Address every finding of a round at once: put all required fixes in one push, give each other finding its disposition in the reply, then reply to and resolve every thread in one batch.
 - P2 handling follows `FOUNDER_STANDING_DECISIONS.md` 2026-10-12 ④ unchanged: one remediation round; later P2s go to one follow-up issue per PR (append to it rather than opening a new one each round), **except** a regression this PR introduced, which is fixed before merge whatever its severity or round.
 
 ## 4. Helpers (subagents)
