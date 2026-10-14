@@ -1157,8 +1157,14 @@ jobs:
           SINCE="$(date -u -d "@${WINDOW}" +%Y-%m-%dT%H:%M:%SZ)"
           # Debounce: no train while one is queued or running, or any deploy run waits for approval.
           # Merge runs (workflow_run) are not counted: two finishing together would each skip.
-          PENDING="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?per_page=100" \
-            --jq "[.workflow_runs[] | select(.id != ${RUN_ID} and .status != \"completed\" and (.status == \"waiting\" or .event == \"workflow_dispatch\"))] | length")"
+          # Filter by status on the server: an old waiting run can sit beyond the newest 100 runs.
+          PENDING=0
+          for q in "status=waiting" "event=workflow_dispatch&status=queued" "event=workflow_dispatch&status=in_progress" \
+            "event=workflow_dispatch&status=requested" "event=workflow_dispatch&status=pending"; do
+            n="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?${q}&per_page=100" \
+              --jq "[.workflow_runs[] | select(.id != ${RUN_ID})] | length")"
+            PENDING=$((PENDING + n))
+          done
           if [[ "$PENDING" -ge 1 ]]; then
             echo "::notice::Release train: a train or approval is already pending; not dispatching another."
             exit 0

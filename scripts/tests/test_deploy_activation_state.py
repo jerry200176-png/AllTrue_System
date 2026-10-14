@@ -1061,7 +1061,13 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         dispatch = job.index("/dispatches")
         self.assertIn("-f ref=main -f 'inputs[phase]=release-train' -f 'inputs[confirm]=RELEASE_TRAIN'", job)
         # Debounce before dispatch: a queued/running train or any run waiting for approval.
-        self.assertIn('select(.id != ${RUN_ID} and .status != \\"completed\\" and (.status == \\"waiting\\" or .event == \\"workflow_dispatch\\"))', job)
+        # Server-side status filters, so an old waiting run beyond the newest 100 is still seen.
+        for q in ('"status=waiting"', '"event=workflow_dispatch&status=queued"', '"event=workflow_dispatch&status=in_progress"',
+                  '"event=workflow_dispatch&status=requested"', '"event=workflow_dispatch&status=pending"'):
+            self.assertIn(q, job)
+        self.assertIn('runs?${q}&per_page=100', job)
+        self.assertIn('select(.id != ${RUN_ID})] | length', job)
+        self.assertIn("PENDING=$((PENDING + n))", job)
         self.assertLess(job.index('if [[ "$PENDING" -ge 1 ]]'), dispatch)
         # One train per window: a train since the window that reached approval or deploy used it.
         self.assertIn("created=%3E%3D${SINCE}", job)
