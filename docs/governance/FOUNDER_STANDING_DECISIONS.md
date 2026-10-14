@@ -15,3 +15,18 @@
 3. **關 GitHub issue**：merge＋上線驗證（版本＋health＋受影響路徑 smoke）＋（**僅限對應 in-app 回報的 issue**）已在 in-app 公開回覆即可關 GitHub issue，不等回報者確認；復發再開。**受影響路徑 smoke 與「回報者回覆問題仍存在時重開 GitHub issue」都由 Agent 手動執行**：Phase-C 關 issue 前不會驗證 smoke，回報者拒絕驗收也不會自動重開已關的 issue（尚未自動化，見 #3972）。重複／被取代者附證據可關。**in-app 回報本身的狀態不變**：仍依 `EVIDENCE_CONTRACT.md` 標 `resolved`，要等回報者驗收或逾時政策才 `closed`。
 4. **Review 停止規則**：P0、P1 一律 merge 前必修；**本 PR 引入的回歸（regression）不論嚴重度一律必修**；其餘 P2 集中修一輪後 merge；之後新出現、且非本 PR 引入回歸的 P2 **開 follow-up issue**，不擋 merge。每個 review thread 都要回覆並 resolve（延後的 P2 回覆中附 follow-up issue 連結）。
 5. **既有明確 hold 維持**：#3862、#3785、RFID 真機。
+
+## 2026-10-14（Cloud-only 作業；對話中逐條確認，本 repo PR 待補號）
+
+1. **T0–T2**：Agent 依既有政策（`RISK_BASED_MERGE_POLICY.md`、本檔 2026-10-12 各條）自主開發、審查、合併與交付，不逐項請示。範圍不明或超出本檔授權時仍須提出。
+2. **預先批准的正式寫入（allowlist，只授權不放寬）**：只限下列 in-app 回報狀態與公開回覆，且各項須其執行路徑已依第 3 條合併後才生效：
+   - (a) Phase A：in-app 回報 `new`→`triaged`＋符合 `CHAT_BUG_SYSTEM.md` §3.8 的公開回覆（必含 GitHub issue URL）。
+   - (b) Phase C：**確實已修復且部署驗證通過**（版本＋health＋受影響路徑 smoke，見 `docs/sop/BUG_INTAKE_TO_PRODUCTION.md` Deployment evidence gate）的回報 → `resolved`＋公開回覆。
+   - (c) 14 天逾時結案：只限符合既有等待確認規則（`bug-reporter-timeout` 資格判定）的回報；**仍有問題的案件不得關閉**。
+   其他一律不在此列：資料修復、migration、credential、新增資料存取、權限／安全邊界變更，仍逐案問 Founder。
+3. **#3943／#3955 執行路徑**：必須改走既定的正式授權執行器（ADR-POP-008：Pi 本機 `pop:execute-approved`），**不得保留 GitHub runner → SSH 的寫入例外**。完成獨立審查、最新 head CI 全綠、無未處理 P0／P1、所有 review thread 皆有明確處置後，Agent 可自行合併，不必再取得同一個 GO。
+4. **部署**：範圍內每個 PR 皆 T0–T2 者依既有規則自動上線；**含 T3 的部署每次由 Founder 批准**。
+5. **治理文件**：修改 `docs/governance/`、`AGENTS.md`、`CLAUDE.md` 等治理文件的 PR，Agent 先完成並提供具體 diff，**由 Founder 批准後才合併**。
+6. **唯讀診斷**：先提交設計審查；本清單不授予任何新的資料存取權限。
+7. **期限與紀錄**：本節授權無固定期限，Founder 可隨時撤銷。每次使用第 2 條授權須在對應 issue 留下案件 ID、workflow run 連結與驗證結果；公開紀錄（GitHub issue／PR／commit／log）不得含個資。
+8. **多 Agent 分工**：Claude 與 Codex 在共用協調紀錄（GitHub issue）登記各自負責的 PR／branch 與實作／審查角色，不共編同一分支。

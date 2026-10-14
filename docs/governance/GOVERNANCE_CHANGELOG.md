@@ -1,5 +1,12 @@
 # Governance changelog
 
+## 2026-10-14 — Cloud-only autonomy and pre-approved in-app write-backs
+
+- Founder decision (Jerry, in session): T0–T2 work proceeds autonomously under existing policy; scope doubts are still raised.
+- Pre-approved production writes are limited to in-app report status and public replies (Phase A triage, Phase C after verified deploy, 14-day timeout under existing eligibility). Data repair, migration, credentials, new data access and boundary changes stay per-case Founder decisions.
+- #3943/#3955 must move to the ADR-POP-008 Pi-local executor; no runner→SSH write exception is kept. T3 deploys and governance-document merges remain Founder-approved each time. Read-only diagnostics need a design review first.
+- No GitHub Environment reviewer, POP approval quorum, production executor, permission or security control is changed by this entry.
+
 ## 2026-10-07 — Evidence-gated production activation (Founder 1A)
 
 - Founder decision (Jerry, "1A 2A 3A"): remove the manual production approve when every merged PR in the undeployed range is machine R0-R2 or has a Founder GO. The GO is PR body line 1 exactly `Founder GO: Jerry YYYY-MM-DD approves #N at <head SHA>` and line 2 `Rollback: revert this PR` (the only rollback mention; free text never counts), bound to that head's exact diff (patches, blob OIDs, modes), in a body last edited by the owner before merge. R1/R2 PRs in such a range need `Rollback: revert this PR` as line 1; migrations and gate-policy changes always keep the reviewer.
