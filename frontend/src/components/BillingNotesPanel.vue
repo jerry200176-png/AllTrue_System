@@ -22,7 +22,7 @@
         <textarea :id="inputId" v-model="draft" rows="2" :maxlength="MAX_BODY" />
         <button type="submit" :disabled="saving || loading || !loaded || !draft.trim()">{{ saving ? '儲存中…' : '新增' }}</button>
       </form>
-      <p class="billing-notes__muted">備註送出後不能修改或刪除；寫錯了請再新增一則更正。</p>
+      <p v-if="!readOnly" class="billing-notes__muted">備註送出後不能修改或刪除；寫錯了請再新增一則更正。</p>
     </div>
   </div>
 </template>

@@ -213,6 +213,8 @@ describe('BillingNotesPanel (#3836 append-only billing notes)', () => {
     expect(w.get('.billing-notes__readonly').text()).toContain('（帳單已作廢）');
     expect(w.find('form').exists()).toBe(false);
     expect(w.find('textarea').exists()).toBe(false);
+    // The "add another note to correct it" hint would be impossible advice here (#4062 review).
+    expect(w.text()).not.toContain('再新增一則更正');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
