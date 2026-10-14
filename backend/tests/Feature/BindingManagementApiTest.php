@@ -97,8 +97,9 @@ class BindingManagementApiTest extends TestCase
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.student_id', $bob->id);
         $this->getJson('/api/v1/bindings?page=1&student_id=' . $bob->id, $this->authHeaders($director))
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.student_id', $bob->id);
-        $this->getJson('/api/v1/bindings', $this->authHeaders($director))
-            ->assertOk()->assertJsonCount(2, 'bindings')->assertJsonMissingPath('data');
+        $legacy = $this->getJson('/api/v1/bindings', $this->authHeaders($director))
+            ->assertOk()->assertJsonCount(2, 'bindings');
+        $this->assertArrayNotHasKey('data', $legacy->json());
 
         // Bound = verified only; unverified = has bindings, none verified.
         $this->getJson('/api/v1/bindings/stats?campus_id=' . $campus->id, $this->authHeaders($director))
