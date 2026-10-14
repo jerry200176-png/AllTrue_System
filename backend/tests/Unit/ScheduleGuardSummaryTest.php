@@ -94,6 +94,22 @@ class ScheduleGuardSummaryTest extends TestCase
         );
     }
 
+    public function test_rows_without_a_student_stay_distinct_per_source(): void
+    {
+        $rows = [];
+        foreach ([31, 32] as $sourceId) {
+            $row = $this->detail('schedule');
+            $row['student_id'] = 0;
+            $row['student_name'] = '';
+            $row['subject_name'] = '';
+            $row['course_period'] = '';
+            $row['source_id'] = $sourceId;
+            $rows[] = $row;
+        }
+
+        self::assertSame(2, substr_count($this->invoke('buildOverlapSummary', $rows), '未綁定學生'));
+    }
+
     private function detail(string $source): array
     {
         return ['source' => $source, 'source_id' => 12, 'student_id' => 7,

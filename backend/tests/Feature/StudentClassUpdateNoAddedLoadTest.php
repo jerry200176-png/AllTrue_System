@@ -49,6 +49,16 @@ class StudentClassUpdateNoAddedLoadTest extends TestCase
             ->assertJsonPath('code', 'teacher_schedule_conflict');
     }
 
+    public function test_a_course_that_held_no_seat_is_still_checked(): void
+    {
+        [$token, $course] = $this->seedDoubleBookedSlot();
+        $course->forceFill(['RemainingSessions' => 0, 'UsedSessions' => 8])->save();
+
+        $this->update($token, $course, '15:00')
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'teacher_schedule_conflict');
+    }
+
     private function update(string $token, StudentClass $course, string $start)
     {
         return $this->withHeaders([

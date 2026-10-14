@@ -1807,7 +1807,15 @@ class StudentClassController extends Controller
                 // switching to 月結 on a slot that is already full (in-app #406).
                 $oldRoomId = $studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null;
                 $oldClassType = (string) ($studentClass->getAttribute('ClassType') ?: 'one_on_one');
-                $addsNoLoad = $newTeacherId === $oldTeacherSnapshot
+                // The stored course must already hold its seat (same rule as
+                // StudentClass::applyHoldsTemplateSeat); a used-up count course re-activated
+                // as monthly would otherwise skip the check (#4089 review).
+                $oldMode = $studentClass->getAttribute('ScheduleMode');
+                $oldRemaining = $studentClass->getAttribute('RemainingSessions');
+                $oldHoldsSeat = (int) ($studentClass->getAttribute('Stop') ?? 0) === 0
+                    && ($oldMode === null || $oldMode !== 'count' || $oldRemaining === null || (int) $oldRemaining > 0);
+                $addsNoLoad = $oldHoldsSeat
+                    && $newTeacherId === $oldTeacherSnapshot
                     && $newClassType === $oldClassType
                     && $newRoomId === $oldRoomId
                     && $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass) === $recurringSlots

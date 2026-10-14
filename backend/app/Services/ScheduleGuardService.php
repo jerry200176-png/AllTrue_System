@@ -1243,7 +1243,9 @@ class ScheduleGuardService
                 'schedule' => '排課紀錄',
                 default => $source,
             };
-            $key = $sid . '|' . $studentLabel . '|' . $courseLabel . '|' . $start . '|' . $end;
+            // Rows without a student stay distinct per source, as countDistinctStudents() counts them.
+            $identity = $sid > 0 ? (string) $sid : 'anon:' . $source . ':' . (string) ($row['source_id'] ?? '');
+            $key = $identity . '|' . $studentLabel . '|' . $courseLabel . '|' . $start . '|' . $end;
             if (!isset($groups[$key])) {
                 $groups[$key] = ['student' => $studentLabel, 'course' => $courseLabel, 'start' => $start, 'end' => $end, 'sources' => []];
             }
