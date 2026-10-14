@@ -80,13 +80,13 @@ export async function control(options) {
   return options.store.exclusive(() => run(options));
 }
 async function run({ read, store, transport, dryRun = true, now = Date.now() }) {
-  let ledger = store.load();
+  let ledger = await store.load();
   let s = await read();
   // Always reconcile persisted uncertainty by reading the remote marker, never by resending.
   if (!dryRun && transport) {
     for (const e of ledger.entries.filter((e) => e.repo === s.repo && e.number === s.number && ['requested', 'running'].includes(e.state))) {
       const remote = await transport.lookup(e.key);
-      if (remote && STATES.has(remote.state)) { e.state = remote.state; store.save(ledger); }
+      if (remote && STATES.has(remote.state)) { e.state = remote.state; await store.save(ledger); }
     }
   }
   let plan = decide(s, ledger, now);
@@ -95,21 +95,21 @@ async function run({ read, store, transport, dryRun = true, now = Date.now() }) 
   const fresh = await read(); // immediate head/base AND CI/state revalidation before reservation
   if (fresh.head !== s.head || fresh.base !== s.base) return { action: 'hold', reason: 'refs-moved', reviewPassed: false };
   s = fresh;
-  ledger = store.load();
+  ledger = await store.load();
   plan = decide(s, ledger, now);
   if (plan.action !== 'candidate') return plan;
   const e = { repo: s.repo, number: s.number, head: s.head, base: s.base, policy: POLICY,
     key: plan.key, state: 'requested', round: plan.round };
   ledger.entries.push(e);
-  store.save(ledger);
+  await store.save(ledger);
   try {
     await transport.send(plan); // must carry exact immutable refs, delta and unresolved findings
     const remote = await transport.lookup(e.key);
-    if (remote && STATES.has(remote.state)) { e.state = remote.state; store.save(ledger); }
+    if (remote && STATES.has(remote.state)) { e.state = remote.state; await store.save(ledger); }
   } catch {
     // A failed POST/response is ambiguous. One readback, no blind retry, even across restarts.
     const remote = await transport.lookup(e.key);
-    if (remote && STATES.has(remote.state)) { e.state = remote.state; store.save(ledger); }
+    if (remote && STATES.has(remote.state)) { e.state = remote.state; await store.save(ledger); }
   }
   return { ...plan, action: e.state, dryRun: false, reviewPassed: false };
 }

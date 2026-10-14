@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "policy": "codex-throttle-v1",
+  "desiredMode": "throttled",
+  "settingsUserReportedAt": "2026-10-14T12:19:58Z",
+  "settingsIndependentVerification": "pending",
+  "repositories": [
+    {"repo":"jerry200176-png/AllTrue_System","base":"main","riskAdapter":"alltrue","automaticEvidence":"observed","overrideOffVerified":false,"canaryVerified":false,"enabled":false},
+    {"repo":"jerry200176-png/sunrise-cafe","base":null,"riskAdapter":"full","automaticEvidence":"observed","overrideOffVerified":false,"canaryVerified":false,"enabled":false},
+    {"repo":"jerry200176-png/portfolio-ops","base":null,"riskAdapter":"full","automaticEvidence":"observed","overrideOffVerified":false,"canaryVerified":false,"enabled":false},
+    {"repo":"jerry200176-png/income-statement-app","base":null,"riskAdapter":"full","automaticEvidence":"not-observed-in-sample","overrideOffVerified":false,"canaryVerified":false,"enabled":false},
+    {"repo":"jerry200176-png/engineering-intelligence","base":null,"riskAdapter":"full","automaticEvidence":"not-observed-in-sample","overrideOffVerified":false,"canaryVerified":false,"enabled":false},
+    {"repo":"jerry200176-png/income-statement-app-releases","base":null,"riskAdapter":"full","automaticEvidence":"not-observed-in-sample","overrideOffVerified":false,"canaryVerified":false,"enabled":false},
+    {"repo":"jerry200176-png/exoprotocol","base":null,"riskAdapter":"full","automaticEvidence":"no-pr-sample","overrideOffVerified":false,"canaryVerified":false,"enabled":false},
+    {"repo":"jerry200176-png/jerry-cai-todo","base":null,"riskAdapter":"full","automaticEvidence":"no-pr-sample","overrideOffVerified":false,"canaryVerified":false,"enabled":false}
+  ]
+}

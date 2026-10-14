@@ -158,13 +158,15 @@ test('collector reads paginated data safely with malicious PR content and uses f
       commits: { nodes: [{ commit: { oid: a, statusCheckRollup: { contexts: { nodes: [check()], pageInfo: { hasNextPage: false } } } } }] } } } } },
   };
   try {
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ version: 1, policy: POLICY, repositories: [{ repo: 'o/r', base: 'main', riskAdapter: 'alltrue' }] }));
     fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify(responses));
     fs.writeFileSync(path.join(dir, 'gh'), `#!/usr/bin/env node\nconst fs=require('fs'); const args=process.argv.slice(2); const data=JSON.parse(fs.readFileSync(process.env.FIXTURE_DATA));
-if(args[0]!=='api'||args.includes('--slurp')||args.includes('--method')||args.includes('-X')) process.exit(91);
-const out=data[args[1]]; if(out===undefined) process.exit(92);
-console.log(args.includes('--paginate')?out.map(v=>JSON.stringify(v)).join('\\n'):JSON.stringify(out));\n`, { mode: 0o700 });
+if(args[0]!=='api'||args.includes('--slurp')||args.includes('-X')) process.exit(91);
+const method=args[args.indexOf('--method')+1]; if(method!=='GET' && !(method==='POST' && args[1]==='/graphql')) process.exit(93);
+const out=data[args[1]==='/graphql'?'graphql':args[1].replace(/&page=1$/, '')]; if(out===undefined) process.exit(92);
+console.log('HTTP/2.0 200 OK\\nContent-Type: application/json\\n\\n'+JSON.stringify(out));\n`, { mode: 0o700 });
     const result = spawnSync(process.execPath, ['.github/scripts/codex-review-snapshot.mjs'], { encoding: 'utf8',
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, GH_TOKEN: 'synthetic', GITHUB_REPOSITORY: 'o/r', REVIEW_PR: '', FIXTURE_DATA: path.join(dir, 'data.json') } });
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, GH_TOKEN: 'synthetic', GITHUB_REPOSITORY: 'o/r', REVIEW_PR: '', REVIEW_CONFIG: path.join(dir, 'config.json'), FIXTURE_DATA: path.join(dir, 'data.json') } });
     assert.equal(result.status, 0, result.stderr);
     const resultPlan = JSON.parse(result.stdout); assert.equal(resultPlan.action, 'candidate');
     assert.equal(resultPlan.dryRun, true); assert.equal(resultPlan.liveEnabled, false); assert.equal(resultPlan.reviewPassed, false);
@@ -173,7 +175,7 @@ console.log(args.includes('--paginate')?out.map(v=>JSON.stringify(v)).join('\\n'
     responses['/repos/o/r/pulls/1'].updated_at = new Date().toISOString();
     fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify(responses));
     const again = spawnSync(process.execPath, ['.github/scripts/codex-review-snapshot.mjs'], { encoding: 'utf8',
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, GH_TOKEN: 'synthetic', GITHUB_REPOSITORY: 'o/r', REVIEW_PR: '', FIXTURE_DATA: path.join(dir, 'data.json') } });
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, GH_TOKEN: 'synthetic', GITHUB_REPOSITORY: 'o/r', REVIEW_PR: '', REVIEW_CONFIG: path.join(dir, 'config.json'), FIXTURE_DATA: path.join(dir, 'data.json') } });
     assert.equal(JSON.parse(again.stdout).reason, 'settling');
   } finally { fs.rmSync(dir, { recursive: true }); }
 });
@@ -181,4 +183,75 @@ console.log(args.includes('--paginate')?out.map(v=>JSON.stringify(v)).join('\\n'
 test('queued rerun with null start holds instead of accepting the old success', () => {
   const s = snapshot(); s.checks.push({ ...check(), startedAt: null, status: 'QUEUED', conclusion: null });
   assert.equal(plan(s).reason, 'ci-time-unknown');
+});
+
+test('fleet allowlist preserves unknown settings and never treats samples as disabled', async () => {
+  const { repositoryPolicy } = await import('../../.github/scripts/codex-review-shared.mjs');
+  const c = JSON.parse(fs.readFileSync('.github/scripts/codex-review-fleet.json', 'utf8'));
+  assert.equal(c.repositories.length, 8); assert.equal(c.settingsUserReportedAt, '2026-10-14T12:19:58Z');
+  for (const r of c.repositories) { assert.equal(r.enabled, false); assert.equal(r.overrideOffVerified, false); assert.throws(() => repositoryPolicy(c, r.repo, true)); }
+  assert.throws(() => repositoryPolicy(c, 'attacker/repo')); assert.equal(repositoryPolicy(c, c.repositories[0].repo).base, 'main');
+});
+test('secondary limit stops all repo calls and honors retry-after/reset without a POST retry', async () => {
+  const { githubClient, Backoff } = await import('../../.github/scripts/codex-review-shared.mjs');
+  let calls = 0, time = now, saved; const cooldown = { until: 0 };
+  const api = githubClient(async () => { calls++; return { status: 403, headers: { 'Retry-After': '120' }, body: { message: 'secondary rate limit' } }; },
+    { now: () => time, cooldown, persist: (c) => { saved = clone(c); } });
+  await assert.rejects(api('GET', '/repos/o/one'), Backoff); assert.equal(saved.until, now + 120000);
+  await assert.rejects(api('GET', '/repos/o/two'), Backoff); assert.equal(calls, 1);
+  const restarted = githubClient(async () => { calls++; }, { now: () => time, cooldown: saved });
+  await assert.rejects(restarted('POST', '/repos/o/one'), Backoff); assert.equal(calls, 1);
+  const reset = githubClient(async () => ({ status: 429, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String((now + 300000) / 1000) } }), { now: () => time });
+  await assert.rejects(reset('GET', '/x'), (e) => e.until === now + 300000);
+});
+test('remote journal uses blob CAS, survives fresh instances, and never creates missing state', async () => {
+  const { GitHubLedger } = await import('../../.github/scripts/codex-review-shared.mjs');
+  let data = emptyLedger(), sha = a, writes = 0;
+  const api = async (method, route, body) => {
+    assert.match(route, /^\/repos\/o\/r\/contents\/ledger.json/);
+    if (method === 'GET') return { type: 'file', encoding: 'base64', sha, content: Buffer.from(JSON.stringify(data)).toString('base64') };
+    assert.equal(method, 'PUT'); assert.equal(body.branch, 'codex-review-state');
+    if (body.sha !== sha) throw new Error('409 conflict');
+    writes++; data = JSON.parse(Buffer.from(body.content, 'base64')); sha = c; return { content: { sha } };
+  };
+  const one = new GitHubLedger(api, 'o/r'), two = new GitHubLedger(api, 'o/r');
+  const first = await one.load(), stale = await two.load(); first.entries.push(entry(snapshot(), 'requested')); await one.save(first);
+  await assert.rejects(two.save(stale), /conflict/); assert.equal(writes, 1);
+  const loaded = await new GitHubLedger(api, 'o/r').load(); assert.equal(loaded.entries[0].state, 'requested');
+  await assert.rejects(one.save(emptyLedger()), /history/);
+  const missing = new GitHubLedger(async () => { throw new Error('404'); }, 'o/r');
+  await assert.rejects(missing.load(), /404/); await assert.rejects(missing.save(emptyLedger()), /not loaded/);
+});
+test('uncertain remote reserve stops before send and fresh invocation never retries it', async () => {
+  const { GitHubLedger } = await import('../../.github/scripts/codex-review-shared.mjs');
+  let data = emptyLedger(), sends = 0, writes = 0;
+  const api = async (method, route, body) => {
+    if (method === 'GET') return { type: 'file', encoding: 'base64', sha: a, content: Buffer.from(JSON.stringify(data)).toString('base64') };
+    data = JSON.parse(Buffer.from(body.content, 'base64')); writes++; throw new Error('PUT response lost');
+  };
+  const options = { read: async () => snapshot(), store: new GitHubLedger(api, 'o/r'), now, dryRun: false,
+    transport: { verified: true, lookup: async () => null, send: async () => { sends++; } } };
+  await assert.rejects(control(options), /lost/); assert.equal(sends, 0);
+  assert.equal((await control({ ...options, store: new GitHubLedger(api, 'o/r') })).reason, 'already-recorded');
+  assert.equal(writes, 1); assert.equal(sends, 0);
+});
+test('two remote controllers race: exactly one durable reservation can reach send', async () => {
+  const { GitHubLedger } = await import('../../.github/scripts/codex-review-shared.mjs');
+  let data = emptyLedger(), sha = a, sends = 0;
+  const api = async (method, route, body) => {
+    if (method === 'GET') return { type: 'file', encoding: 'base64', sha, content: Buffer.from(JSON.stringify(data)).toString('base64') };
+    if (body.sha !== sha) throw new Error('409 conflict');
+    data = JSON.parse(Buffer.from(body.content, 'base64')); sha = c; return { content: { sha } };
+  };
+  const options = { read: async () => snapshot(), now, dryRun: false,
+    transport: { verified: true, lookup: async () => null, send: async () => { sends++; } } };
+  await Promise.allSettled([control({ ...options, store: new GitHubLedger(api, 'o/r') }), control({ ...options, store: new GitHubLedger(api, 'o/r') })]);
+  assert.equal(sends, 1); assert.equal(data.entries.length, 1);
+});
+test('HTTP-date Retry-After and GraphQL RATE_LIMITED also stop the client', async () => {
+  const { githubClient } = await import('../../.github/scripts/codex-review-shared.mjs');
+  for (const response of [{ status: 429, headers: { 'Retry-After': new Date(now + 180000).toUTCString() } },
+    { status: 200, body: { errors: [{ type: 'RATE_LIMITED' }] } }]) {
+    await assert.rejects(githubClient(async () => response, { now: () => now })('GET', '/x'), (e) => e.until >= now + 60000);
+  }
 });
