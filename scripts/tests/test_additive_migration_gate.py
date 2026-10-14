@@ -129,6 +129,7 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::table('t', fn (Blueprint $t) => $t->integer('n')->default(0));",
             "Schema::table('t', fn (Blueprint $t) => $t->timestamp('c')->nullable()->useCurrent());",
             "Schema::table('t', fn (Blueprint $t) => $t->timestamp('c')->nullable()->useCurrentOnUpdate());",
+            "Schema::table('t', fn (Blueprint $t) => $t->timestamp('c')->nullable()->useCurrent()->default(null));",
         )
         for up in bad:
             self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set(), up)

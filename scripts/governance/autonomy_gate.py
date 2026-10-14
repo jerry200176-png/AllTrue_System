@@ -332,7 +332,7 @@ def _table_column_is_expand_safe(calls: list[tuple[str, str]]) -> bool:
         return len(calls) == 1
     # timestamps()/softDeletes()/rememberToken() start nullable but return a
     # mutable definition: their chained modifiers are evaluated like any column.
-    nullable, defaulted = first in _NULLABLE_HELPERS, False
+    nullable, defaulted, current = first in _NULLABLE_HELPERS, False, False
     for name, args in calls[1:]:  # the last call of each modifier wins
         value = args.strip().lower()
         if name == "nullable":
@@ -340,8 +340,8 @@ def _table_column_is_expand_safe(calls: list[tuple[str, str]]) -> bool:
         elif name == "default":
             defaulted = value not in {"", "null"}
         elif name in {"usecurrent", "usecurrentonupdate"}:
-            defaulted = True  # DEFAULT CURRENT_TIMESTAMP also fills historical rows
-    return nullable and not defaulted
+            current = True  # its own flag: a later default(null) does not clear it
+    return nullable and not defaulted and not current
 
 
 def _schema_block_is_additive(kind: str, statements: list[str]) -> bool:
