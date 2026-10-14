@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import ssl
 import subprocess
 import sys
@@ -149,7 +150,8 @@ def range_additive(previous_sha: str, target_sha: str, run=subprocess.run) -> st
     Founder 2026-10-14 (三): code rolled back over additive-only schema (new
     tables, nullable/defaulted columns, plain indexes) still runs, so the
     rollback may proceed. The classifier is the one in the *previous* (already
-    deployed) commit, never the target's own: a range must not judge itself.
+    deployed) commit, never the target's own. (This verifier script itself comes
+    from the target, the same trust the existing gate/decide already has.)
     A previous commit without the classifier, a git error or any doubt is `0`.
     """
     import importlib.util
@@ -184,6 +186,31 @@ def range_additive(previous_sha: str, target_sha: str, run=subprocess.run) -> st
     except BaseException:  # noqa: BLE001 - any classifier failure (even SystemExit) means hold
         return "0"
     return "1" if set(additive) == paths else "0"
+
+
+_PENDING_RE = re.compile(r"\b(\d{4}_\d{2}_\d{2}_\d{6}_\w+)\b")
+
+
+def pending_in_range(status: str, previous_sha: str, target_sha: str, run=subprocess.run) -> str:
+    """`1` only when every pending migration in `migrate:status` output is a file this range adds.
+
+    A pending migration that already existed at the previous commit (left over
+    from an earlier deploy) ran outside the reviewed range, so the additive
+    rollback must not apply. Any doubt is `0`.
+    """
+    rows = [line for line in status.splitlines() if re.search(r"\| No|Pending", line)]
+    names = [match.group(1) for line in rows if (match := _PENDING_RE.search(line))]
+    if not rows or len(names) != len(rows):
+        return "0"
+    try:
+        result = run(["git", "diff", "--no-renames", "--name-only", "--diff-filter=A", previous_sha, target_sha,
+                      "--", MIGRATIONS_PATHSPEC], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return "0"
+    if result.returncode != 0:
+        return "0"
+    added = {line.strip().rsplit("/", 1)[-1] for line in result.stdout.splitlines() if line.strip()}
+    return "1" if all(f"{name}.php" in added for name in names) else "0"
 
 
 def range_migrations(previous_sha: str, target_sha: str, run=subprocess.run) -> str:
@@ -221,7 +248,8 @@ def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migration
         print("🚀 部署完成 — Health + identity + Smoke test 全通過")
         return 0
     decision = decide(migrations_fn(args.previous_sha, args.target_sha), args.migration_ran)
-    if decision == "hold":
+    # "hard": a pending migration from outside this range ran; never take the additive rollback.
+    if decision == "hold" and "hard" not in str(args.migration_ran):
         decision = decide("1", "1", (additive_fn or range_additive)(args.previous_sha, args.target_sha))
     if decision == "rollback":
         return RC_GATE_ROLLBACK
@@ -300,6 +328,10 @@ def main(argv=None) -> int:
     g.add_argument("--migration-ran", required=True)
     g.add_argument("--smoke", default=DEFAULT_SMOKE)
 
+    q = sub.add_parser("pending-in-range")
+    q.add_argument("previous_sha")
+    q.add_argument("target_sha")
+
     r = sub.add_parser("range-additive")
     r.add_argument("previous_sha")
     r.add_argument("target_sha")
@@ -319,6 +351,9 @@ def main(argv=None) -> int:
         return verify(args)
     if args.command == "gate":
         return gate(args)
+    if args.command == "pending-in-range":
+        print(pending_in_range(sys.stdin.read(), args.previous_sha, args.target_sha))
+        return 0
     if args.command == "range-additive":
         print(range_additive(args.previous_sha, args.target_sha))
         return 0

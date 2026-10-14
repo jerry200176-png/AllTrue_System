@@ -634,7 +634,8 @@ def codex_confirms_head(
         return False
     if any(by_codex(item) and item.get("commit_id") == head_sha for item in reviews):
         return False
-    done = max(completed) - timedelta(minutes=2)
+    # GitHub keeps one 👍 per user per PR: an older 👍 (an earlier head) fails closed.
+    done = max(completed)
     return any(
         by_codex(item) and item.get("content") == "+1" and (_iso(item.get("created_at")) or done) > done
         for item in reactions

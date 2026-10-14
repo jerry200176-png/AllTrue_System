@@ -1564,7 +1564,7 @@ jobs:
           cd /home/admin
 
           PREV_COMMIT=$(git rev-parse HEAD)
-          MIGRATION_RAN=0
+          MIGRATION_RAN=0 MIG_HARD=
           TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"
           RELEASE_TRAIN="${{ needs.resolve-target.outputs.release_train }}"
           ADMISSIONS_FLAG_MODE="${{ inputs.admissions_funnel_v1 }}"
@@ -1678,8 +1678,7 @@ jobs:
 
           abort_deploy() {
             echo "❌ $1"
-            # Founder 2026-10-14: every range migration additive-only (deployed classifier) → code rollback is safe.
-            [ "${MIGRATION_RAN:-0}" -eq 0 ] || [ "$(python3 -I "${PDV:-x}" range-additive "$PREV_COMMIT" "$TARGET_SHA")" != 1 ] || MIGRATION_RAN=0
+            [ -n "$MIG_HARD" ] || [ "$(python3 -I "$PDV" range-additive "$PREV_COMMIT" "$TARGET_SHA")" != 1 ] || MIGRATION_RAN=0
             [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
             if ! rollback_deploy; then
               echo "❌ 自動 rollback 也失敗 — deploy run 必須標紅"
@@ -1792,6 +1791,7 @@ jobs:
           PENDING=$(printf '%s\n' "$MIGRATE_STATUS" | grep -cE "\| No|Pending" || true)
           if [ "$PENDING" -gt 0 ]; then
             echo "有 $PENDING 筆 pending migration，先備份再執行..."
+            [ "$(python3 -I "$PDV" pending-in-range "$PREV_COMMIT" "$TARGET_SHA" <<<"$MIGRATE_STATUS")" = 1 ] || MIG_HARD=hard
             TS=$(date '+%Y-%m-%d_%H%M%S')
             BACKUP_FILE="/home/admin/backups/emergency/db_pre_migration_${TS}.sql.gz"
             mkdir -p /home/admin/backups/emergency
@@ -1972,7 +1972,7 @@ jobs:
           export SMOKE_BRANCH_ID="${{ secrets.SMOKE_BRANCH_ID }}"
           export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
           export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
-          python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIGRATION_RAN"
+          python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN"
           case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac
           abort_deploy "health check 或 smoke test 失敗"
           ENDSSH

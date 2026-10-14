@@ -2235,9 +2235,28 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
                 if name == "additive, trusted classifier":
                     self.assertEqual("0", self.pdv.range_additive(prev, "f" * 40, run=run))
 
+    def test_pending_migrations_from_outside_the_range_block_the_additive_rollback(self):
+        status = ("  2026_10_14_000000_x ........................ Pending\n"
+                  "  2026_01_01_000000_old ...................... Ran\n")
+        def run_with(stdout, code=0):
+            return lambda cmd, **kw: subprocess.CompletedProcess(cmd, code, stdout=stdout, stderr="")
+        added = "backend/database/migrations/2026_10_14_000000_x.php\n"
+        self.assertEqual("1", self.pdv.pending_in_range(status, "p", "t", run=run_with(added)))
+        leftover = status + "  2026_09_01_000000_left ..................... Pending\n"
+        self.assertEqual("0", self.pdv.pending_in_range(leftover, "p", "t", run=run_with(added)))
+        self.assertEqual("0", self.pdv.pending_in_range(status, "p", "t", run=run_with(added, 1)))
+        self.assertEqual("0", self.pdv.pending_in_range("Pending but no name\n", "p", "t", run=run_with(added)))
+        self.assertEqual("0", self.pdv.pending_in_range("", "p", "t", run=run_with(added)))
+        # The gate never takes the additive rollback once a pending migration from outside the range ran.
+        rc = self._gate(migrations="1", migration_ran="hard1", migrations_additive="1", verify_rc=1)[0]
+        self.assertEqual(self.pdv.RC_HELD_MIGRATION, rc)
+        self.assertIn('--migration-ran "$MIG_HARD$MIGRATION_RAN"', self.workflow)
+        self.assertIn('[ -n "$MIG_HARD" ]', self.workflow)
+        self.assertIn('pending-in-range "$PREV_COMMIT" "$TARGET_SHA" <<<"$MIGRATE_STATUS")" = 1 ] || MIG_HARD=hard', self.workflow)
+
     def test_abort_asks_the_captured_verifier_whether_the_range_is_additive(self):
         abort = self.workflow.split("abort_deploy() {", 1)[1].split("\n          }", 1)[0]
-        self.assertIn('[ "${MIGRATION_RAN:-0}" -eq 0 ] || [ "$(python3 -I "${PDV:-x}" range-additive '
+        self.assertIn('[ -n "$MIG_HARD" ] || [ "$(python3 -I "$PDV" range-additive '
                       '"$PREV_COMMIT" "$TARGET_SHA")" != 1 ] || MIGRATION_RAN=0\n', abort)
         # The #4053 hold line stays verbatim right after it.
         self.assertIn('MIGRATION_RAN=0\n            [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::', abort)
@@ -2284,7 +2303,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         stage = deploy.split(self.START, 1)[1].split("\n          ENDSSH", 1)[0]
         gate = stage.index('python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT"')
         self.assertLess(stage.index('export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"'), gate)
-        self.assertIn('--frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIGRATION_RAN"', stage)
+        self.assertIn('--frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN"', stage)
         self.assertLess(gate, stage.index("case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac"))
         self.assertTrue(stage.rstrip().endswith('abort_deploy "health check 或 smoke test 失敗"'))
         self.assertNotIn("migrate:rollback", stage)
@@ -2329,13 +2348,13 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         abort = "abort_deploy() {" + self.workflow.split("abort_deploy() {", 1)[1].split("\n          }", 1)[0] + "\n}\n"
         harness = 'rollback_deploy() { echo ROLLBACK_CALLED; return 0; }\n'
         harness += 'python3() { [ "$3" = range-additive ] && [ "$4$5" = pt ] && printf "$ADDITIVE"; }\n'
-        for migration_ran, additive, expected_rc, rolled_back in (
-            ("0", "0", 10, True), ("1", "0", 13, False), ("1", "1", 10, True), ("1", "", 13, False),
-            ("1", "1\\n1", 13, False),
+        for migration_ran, additive, hard, expected_rc, rolled_back in (
+            ("0", "0", "", 10, True), ("1", "0", "", 13, False), ("1", "1", "", 10, True), ("1", "", "", 13, False),
+            ("1", "1\\n1", "", 13, False), ("1", "1", "hard", 13, False),
         ):
             result = subprocess.run(
-                ["bash", "-c", harness + abort + "set -u\nPREV_COMMIT=p\nTARGET_SHA=t\nMIGRATION_RAN=" + migration_ran
-                 + "\nADDITIVE='" + additive + "'\nabort_deploy x\n"],
+                ["bash", "-c", harness + abort + "set -u\nPREV_COMMIT=p\nTARGET_SHA=t\nPDV=v\nMIG_HARD=" + hard
+                 + "\nMIGRATION_RAN=" + migration_ran + "\nADDITIVE='" + additive + "'\nabort_deploy x\n"],
                 text=True, capture_output=True, env={"PATH": os.environ["PATH"]},
             )
             self.assertEqual(expected_rc, result.returncode, result.stdout + result.stderr)

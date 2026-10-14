@@ -362,6 +362,7 @@ class CodexConfirmation(unittest.TestCase):
             ([summary()], [], [dict(THUMB, user=other)]),
             ([summary()], [], [dict(THUMB, content="eyes")]),
             ([summary()], [], [dict(THUMB, created_at="2026-10-14T10:00:00Z")]),
+            ([summary()], [], [dict(THUMB, created_at="2026-10-14T12:46:00Z")]),
             ([dict(summary(), user=other)], [], [THUMB]),
             ([{"user": CODEX, "body": summary()["body"].split("\n", 1)[1]}], [], [THUMB]),
         ):
