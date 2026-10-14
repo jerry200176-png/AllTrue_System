@@ -55,7 +55,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (!byStudent.has(id)) {
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
-        waiting_confirm: 0, overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [], unbilled: 0,
+        waiting_confirm: 0, overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [], unbilled: 0, has_paid: false,
       });
     }
     return byStudent.get(id);
@@ -74,11 +74,14 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
         owed: OWING.has(r.payment_status) ? rowOwedTotal(r) : 0, paid: Number(r.paid_amount ?? 0),
       });
     }
+    // in-app #407: any sign of money received (paid flag, paid status, a payment date) counts as 已收.
+    const paidSignal = r.paid === true || r.payment_status === 'paid' || Boolean(r.last_paid_at);
+    if (paidSignal) row.has_paid = true;
     if (r.payment_status === 'pending_report') row.waiting_confirm += 1;
     if (!OWING.has(r.payment_status)) continue;
     const items = owedItems(r);
     // in-app #407: an owing contract with no bill yet must not read as 已收.
-    if (!items.some((it) => it.amount > 0)) { if (r.payable_status === 'unbilled') row.unbilled += 1; continue; }
+    if (!items.some((it) => it.amount > 0)) { if (r.payable_status === 'unbilled' && !paidSignal && r.payment_status !== 'monthly_due_soon') row.unbilled += 1; continue; }
     row.open_contracts += 1;
     for (const it of items) {
       if (it.amount <= 0) continue;

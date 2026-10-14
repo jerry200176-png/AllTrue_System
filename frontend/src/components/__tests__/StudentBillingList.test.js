@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import StudentBillingList from '../tuition/StudentBillingList.vue';
-import { buildStudentBillingRows, rowOwedTotal } from '../../lib/studentBillingRows.js';
+import { buildStudentBillingRows, rowOwedTotal, STUDENT_FILTERS } from '../../lib/studentBillingRows.js';
 
 const ROWS = [
   { id: 11, student_id: 1, student_name: '甲', payment_status: 'unpaid', payable_outstanding: 3000, due_date: '2026-10-01' },
@@ -152,10 +152,23 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
     const w = mount(StudentBillingList, { props: { alertRows: [
       { id: 51, student_id: 5, student_name: '戊', payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null },
       { id: 61, student_id: 6, student_name: '己', payment_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03' },
+      // paid monthly package: hard-coded unbilled payable, but paid
+      { id: null, student_id: 8, student_name: '辛', payment_status: 'monthly_due_soon', payable_status: 'unbilled', payable_outstanding: null, paid: true, last_paid_at: '2026-10-01' },
+      // course paid by flag only (G-009), no payment date
+      { id: 91, student_id: 9, student_name: '壬', payment_status: 'paid', payable_outstanding: 0, last_paid_at: null },
     ], students: [{ id: 7, name: '庚' }], today: '2026-10-07' } });
     const badge = (id) => w.find(`[data-testid="sbl-row-${id}"]`).find('[data-testid="at-badge"]').text();
     expect(badge(5)).toBe('還沒開帳單');
     expect(badge(6)).toBe('已收');
     expect(badge(7)).toBe('沒有待收款項');
+    expect(badge(8)).toBe('已收');
+    expect(badge(9)).toBe('已收');
+  });
+
+  it('keeps students with an unbilled contract out of the 沒有未繳 filter (in-app #407)', () => {
+    const rows = buildStudentBillingRows([
+      { id: 51, student_id: 5, student_name: '戊', payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null },
+    ], [{ id: 7, name: '庚' }], '2026-10-07');
+    expect(rows.filter(STUDENT_FILTERS.clear.test).map((r) => r.student_id)).toEqual([7]);
   });
 });
