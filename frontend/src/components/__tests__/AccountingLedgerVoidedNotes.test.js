@@ -17,13 +17,15 @@ async function mountWith(extra) {
 describe('學生帳務對帳 · 已作廢帳單的備註', () => {
   it('lists the notes read-only, with the voided label and no add form', async () => {
     const w = await mountWith({ voided_invoice_notes: [{ invoice_id: 7, invoice_no: 'INV-202610-000007', course_ref: 'COURSE-000003',
-      read_only: true, label: '（帳單已作廢）', notes: [{ id: 1, body: '家長要求先暫停', author_name: '主任', created_at: '2026-10-13T10:00:00+08:00' }] }] });
+      read_only: true, label: '（帳單已作廢）', notes: [{ id: null, body: '[合約 #3 刪除，帳單作廢]', author_name: null, created_at: null, legacy: true }, { id: 1, body: '家長要求先暫停', author_name: '主任', created_at: '2026-10-13T10:00:00+08:00' }] }] });
     const section = w.find('[data-testid="ledger-voided-invoice-notes"]');
     expect(section.exists()).toBe(true);
     expect(section.text()).toContain('INV-202610-000007');
     expect(section.text()).toContain('（帳單已作廢）');
     expect(section.text()).toContain('家長要求先暫停');
     expect(section.text()).toContain('主任・2026/10/13');
+    expect(section.text()).toContain('原備註（舊資料）');
+    expect(section.text()).toContain('[合約 #3 刪除，帳單作廢]');
     expect(section.find('textarea').exists()).toBe(false);
     expect(section.find('form').exists()).toBe(false);
   });

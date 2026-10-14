@@ -52,13 +52,25 @@ class BillingNoteVoidedInvoiceTest extends TestCase
         $ledger->assertJsonPath('voided_invoice_notes.0.invoice_id', (int) $invoice->id)
             ->assertJsonPath('voided_invoice_notes.0.read_only', true)
             ->assertJsonPath('voided_invoice_notes.0.label', BillingNote::VOIDED_INVOICE_LABEL)
-            ->assertJsonPath('voided_invoice_notes.0.notes.0.body', '家長要求先暫停');
+            // The invoice's own Note (destroy appends its void marker) comes first, read-only, then the appended notes.
+            ->assertJsonPath('voided_invoice_notes.0.notes.0.legacy', true)
+            ->assertJsonPath('voided_invoice_notes.0.notes.1.body', '家長要求先暫停');
+        $this->assertStringContainsString("合約 #{$deleted->ID} 刪除", (string) $ledger->json('voided_invoice_notes.0.notes.0.body'));
 
         // Another campus's director gets nothing.
         $other = $this->staff(Campus::factory()->create()->id, 'Other');
         $this->getJson($url, $other)->assertForbidden()->assertJsonMissing(['body' => '家長要求先暫停']);
         $this->getJson("/api/v1/accounting/ledger?student_class_id={$kept->ID}", $other)->assertForbidden()
             ->assertJsonMissing(['body' => '家長要求先暫停']);
+
+        // A transferred student: the new campus's director still reads the note; the old campus's director does not.
+        $newCampus = Campus::factory()->create();
+        $student->forceFill(['CampusID' => $newCampus->id])->save();
+        $newDirector = $this->staff($newCampus->id, 'New');
+        $this->assertContains('家長要求先暫停', array_column($this->getJson($url, $newDirector)->assertOk()->json('notes'), 'body'));
+        $this->getJson("/api/v1/accounting/ledger?student_class_id={$kept->ID}", $newDirector)->assertOk()
+            ->assertJsonPath('voided_invoice_notes.0.notes.1.body', '家長要求先暫停');
+        $this->getJson($url, $director)->assertForbidden();
     }
 
     private function course(int $studentId): StudentClass

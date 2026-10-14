@@ -39,7 +39,6 @@ class BillingNoteController extends Controller
         $notes = BillingNote::query()
             ->where('subject_type', $data['subject_type'])
             ->where('subject_id', (int) $data['subject_id'])
-            ->when($readOnly, fn ($q) => $q->where('campus_id', $subject['campus_id']))
             ->orderBy('created_at')->orderBy('id')
             ->get();
 

@@ -214,8 +214,8 @@
             <div v-for="g in payload.voided_invoice_notes" :key="g.invoice_id" class="ledger-voided-notes">
               <strong>{{ g.invoice_no }}</strong> <small>{{ g.course_ref }}{{ g.label }}</small>
               <ol class="ledger-voided-notes__list">
-                <li v-for="n in g.notes" :key="n.id">
-                  <small>{{ n.author_name || '未知' }}・{{ fmtDate(n.created_at) }}</small>
+                <li v-for="(n, i) in g.notes" :key="n.id ?? `legacy-${i}`">
+                  <small>{{ n.legacy ? '原備註（舊資料）' : `${n.author_name || '未知'}・${fmtDate(n.created_at)}` }}</small>
                   <p>{{ n.body }}</p>
                 </li>
               </ol>
