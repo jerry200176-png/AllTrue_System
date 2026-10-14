@@ -4,7 +4,7 @@
 
 - Founder decision (Jerry, in session): T0–T2 work proceeds autonomously under existing policy; scope doubts are still raised.
 - Pre-approved production writes are limited to in-app report status and public replies (Phase A triage, Phase C after verified deploy, 14-day timeout under existing eligibility). Data repair, migration, credentials, new data access and boundary changes stay per-case Founder decisions.
-- #3943/#3955 must move to the ADR-POP-008 Pi-local executor; no runner→SSH write exception is kept. T3 deploys and governance-document merges remain Founder-approved each time. Read-only diagnostics need a design review first.
+- #3943/#3955 must move to the ADR-POP-008 Pi-local executor; no runner→SSH write exception is kept. T3 deploys and governance changes that grant or alter authority, approval or protected boundaries remain Founder-approved each time; editorial, evidence and inventory changes follow their normal tier (no blanket Founder approval, per the constitution). Read-only diagnostics need a design review first.
 - No GitHub Environment reviewer, POP approval quorum, production executor, permission or security control is changed by this entry.
 
 ## 2026-10-07 — Evidence-gated production activation (Founder 1A)
