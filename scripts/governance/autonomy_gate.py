@@ -294,7 +294,7 @@ _SCHEMA_BLOCK_RE = re.compile(
     re.IGNORECASE,
 )
 _CHAIN_RE = re.compile(rf"\s*{_COLUMN_CHAIN}\s*", re.IGNORECASE)
-_METHOD_NAME_RE = re.compile(r"->\s*(\w+)\s*\(")
+_METHOD_CALL_RE = re.compile(r"->\s*(\w+)\s*\(([^()]*)\)")
 # On an existing table only nullable/defaulted columns are expand-safe: the
 # previous release must keep inserting rows after a code rollback.
 _KEY_METHODS = {"id", "increments", "bigincrements"}
@@ -302,15 +302,31 @@ _NULLABLE_HELPERS = {"timestamps", "timestampstz", "nullabletimestamps", "softde
                      "remembertoken", "index"}
 
 
+def _table_column_is_expand_safe(calls: list[tuple[str, str]]) -> bool:
+    """A column added to an existing table: no new key, nullable or defaulted."""
+
+    first, first_args = calls[0]
+    # integer('x', true) and friends turn on auto-increment, i.e. a new key.
+    if first in _KEY_METHODS or re.search(r"\btrue\b", first_args, re.IGNORECASE):
+        return False
+    if first in _NULLABLE_HELPERS:
+        return True
+    nullable = defaulted = False
+    for name, args in calls[1:]:  # the last call of each modifier wins
+        value = args.strip().lower()
+        if name == "nullable":
+            nullable = value in {"", "true"}
+        elif name == "default":
+            defaulted = value not in {"", "null"}
+    return nullable or defaulted
+
+
 def _schema_block_is_additive(kind: str, statements: list[str]) -> bool:
     for statement in statements:
         if not _CHAIN_RE.fullmatch(statement):
             return False
-        methods = [name.lower() for name in _METHOD_NAME_RE.findall(statement)]
-        if kind == "table" and (
-            methods[0] in _KEY_METHODS
-            or (methods[0] not in _NULLABLE_HELPERS and not {"nullable", "default"} & set(methods[1:]))
-        ):
+        calls = [(name.lower(), args) for name, args in _METHOD_CALL_RE.findall(statement)]
+        if kind == "table" and not _table_column_is_expand_safe(calls):
             return False
     return True
 
@@ -429,10 +445,15 @@ def additive_migration_paths(paths: Iterable[str], patch: str) -> set[str]:
         hunks = [index for index, line in enumerate(lines) if line.startswith("@@")]
         # A new file has exactly one "@@ -0,0 +1,N @@" hunk in both git and
         # GitHub API patches; anything else edits an existing migration.
-        if len(hunks) != 1 or not lines[hunks[0]].startswith("@@ -0,0 +"):
+        header = re.match(r"@@ -0,0 \+1(?:,(\d+))? @@", lines[hunks[0]]) if len(hunks) == 1 else None
+        if header is None:
             return set()
         content = [line for line in lines[hunks[0] + 1:] if line and not line.startswith("\\ ")]
         if any(not line.startswith("+") for line in content):
+            return set()
+        # A truncated patch (the GitHub API can cut long ones) could hide the
+        # tail of the file: the received lines must match the declared count.
+        if len(content) != int(header.group(1) or 1):
             return set()
         if not _migration_body_is_additive("\n".join(line[1:] for line in content)):
             return set()

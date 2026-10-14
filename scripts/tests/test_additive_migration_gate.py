@@ -105,15 +105,31 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::table('t', function (Blueprint $t) { $t->bigIncrements('k'); });",
             "Schema::table('t', function (Blueprint $t) { $t->string('code'); });",
             "Schema::table('t', fn (Blueprint $t) => $t->integer('n')->after('id'));",
+            "Schema::table('t', fn (Blueprint $t) => $t->bigInteger('k', true)->nullable());",
+            "Schema::table('t', fn (Blueprint $t) => $t->unsignedInteger('k', TRUE)->default(1));",
+            "Schema::table('t', fn (Blueprint $t) => $t->string('c')->nullable(false));",
+            "Schema::table('t', fn (Blueprint $t) => $t->string('c')->default(null));",
+            "Schema::table('t', fn (Blueprint $t) => $t->string('c')->nullable()->nullable(false));",
         )
         for up in bad:
             self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set(), up)
         good = (
             "Schema::table('t', function (Blueprint $t) { $t->string('c')->nullable(); $t->integer('n')->default(0); $t->index('c'); $t->timestamps(); });",
             "Schema::create('n', function (Blueprint $t) { $t->id(); $t->string('code'); });",
+            "Schema::table('t', fn (Blueprint $t) => $t->boolean('b')->nullable(true));",
+            "Schema::table('t', fn (Blueprint $t) => $t->boolean('b')->default(false));",
         )
         for up in good:
             self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), {MIG}, up)
+
+    def test_truncated_patch_stays_t3(self):
+        add = "Schema::table('t', fn (Blueprint $t) => $t->string('a')->nullable());"
+        full = new_file(MIG, migration(add) + "\nDB::statement('x');")
+        truncated = full.rsplit("+DB::statement", 1)[0]
+        self.assertEqual(additive_migration_paths([MIG], truncated), set())
+        self.assertEqual(self.tiers(truncated), (3, 3))
+        padded = new_file(MIG, migration(add)).replace("@@ -0,0 +1,", "@@ -0,0 +1,9", 1)
+        self.assertEqual(additive_migration_paths([MIG], padded), set())
 
     def test_braceless_guard_return_is_t2(self):
         up = "if (!Schema::hasTable('c')) return; Schema::table('c', fn (Blueprint $t) => $t->boolean('a')->default(true));"
