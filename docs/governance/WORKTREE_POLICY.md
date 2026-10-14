@@ -4,7 +4,21 @@
 **Scope:** AllTrue System  
 **Rule:** Adapters cite this file — do not redefine paths.
 
-## Canonical model (Phase 0.5)
+## Default: cloud session (Founder 2026-10-14)
+
+All work runs in Claude cloud sessions so it continues while the Founder's PC
+is off. A cloud session starts from a fresh clone; it has no `/home/jerry`.
+
+| Step | Rule |
+|------|------|
+| Baseline | `origin/main` |
+| Branch | `chore\|ci\|fix/<slug>` (`branch-policy.mjs`); one session per branch |
+| Evidence | PR diff, risk declaration, review, exact-head required checks |
+| Not used | `agent-start`, `make agent-preflight`, `.agent-session/manifest.json`, Exo |
+
+## Legacy local model (Phase 0.5, being retired)
+
+Only for a task that genuinely needs the local machine.
 
 | Role | Path | Rule |
 |------|------|------|

@@ -1,6 +1,8 @@
 # Agent Preflight
 
-Run **before any write**. Non-zero exit ⇒ stop (no edit, no commit).
+Run **before any write** in a local WSL worktree. Non-zero exit ⇒ stop (no edit, no commit).
+
+**Cloud sessions (default since 2026-10-14):** skip steps 1–2; follow the cloud section of [WORKTREE_POLICY.md](../governance/WORKTREE_POLICY.md). CI still runs `AGENT_PREFLIGHT_MODE=ci` in Presubmit.
 
 1. Read [WORKTREE_POLICY.md](../governance/WORKTREE_POLICY.md).
 2. From an allowlisted task worktree: `make agent-preflight`.
