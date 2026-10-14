@@ -6,7 +6,7 @@ Applies to every Claude/Codex session in this repo, cloud or local. These rules 
 
 - A wake that echoes your own comment, a Codex "Running" summary edit, an informational bot quota notice (for example Cursor Bugbot), or CI finishing on a **superseded** head needs no tool call and at most a one-line reply.
 - Exception: if the notice means the **required** review did not run (Codex rate-limited), it is a decision point. Run the `/code-review` fallback that `CLAUDE.md` §Parallel agents requires.
-- Do real work only on: CI finished on the **current** head, a required review that completed (with or without comments), a merge conflict or queue-drop notice, the merge itself, a deploy waiting for approval, or a deploy that **finished** (success or failure: verify exact SHA, health and affected-path smoke, or start the failure/rollback follow-up).
+- Do real work only on: CI finished on the **current** head, a required review that completed (with or without comments), any review (required or advisory) that reports findings, a Founder decision you asked for, a merge conflict or queue-drop notice, the merge itself, a deploy waiting for approval, or a deploy that **finished** (success or failure: verify exact SHA, health and affected-path smoke, or start the failure/rollback follow-up).
 - Read all pending notifications first, then act once for the batch.
 
 ## 2. Keep tool output small
