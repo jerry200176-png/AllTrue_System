@@ -1563,7 +1563,7 @@ jobs:
             local rb_secret rb_response
             rb_secret="$(grep '^DEPLOY_SECRET=' /home/admin/backend/.env | cut -d= -f2-)"
             for _ in $(seq 1 16); do
-              if [ -z "$rb_secret" ] || ! rb_response=$(curl -skf --connect-timeout 10 --max-time 30 -X POST -H "X-Deploy-Secret: ${rb_secret}" -H "Connection: close" -H "Content-Type: application/json" https://daan.lifenet.com.tw/api/internal/opcache-reset # secret-echo-allow: quiet rollback curl header captured privately; no trace or verbose mode
+              if [ -z "$rb_secret" ] || ! rb_response=$(curl -skf --connect-timeout 10 --max-time 30 -X POST -H "X-Deploy-Secret: ${rb_secret}" -H "Connection: close" -H "Content-Type: application/json" https://daan.lifenet.com.tw/api/internal/opcache-reset # secret-echo-allow: pinned capture
               ) || ! echo "$rb_response" | grep -q '"opcache_cleared":true'; then
                 echo "❌ rollback FPM refresh failed"; rollback_failed=1; break
               fi
@@ -1764,10 +1764,10 @@ jobs:
               case "$value" in true|false) ;; *) value=false ;; esac
             fi
             printf '%s=%s\n' "$vite_key" "$value" >> /home/admin/frontend/.env.production.local
-            echo "✅ ${key} prepared (mode=${mode:-unchanged}, value=$value)" # secret-echo-allow: reviewed formatter emits only normalized true or false; function and callers frozen
+            echo "✅ ${key} prepared (mode=${mode:-unchanged}, value=$value)" # secret-echo-allow: pinned true/false
             eval "$4=$changed"
             eval "$5=$present"
-            eval "$6=\"\$backup\"" # secret-echo-allow: copy saved flag line into constant caller variable; no output
+            eval "$6=\"\$backup\"" # secret-echo-allow: pinned no output
           }
           apply_bool_feature_flag "$ADMISSIONS_FLAG_MODE" ADMISSIONS_FUNNEL_V1 VITE_ADMISSIONS_FUNNEL_V1 ADMISSIONS_FLAG_CHANGED ADMISSIONS_FLAG_WAS_PRESENT ADMISSIONS_FLAG_BACKUP
           apply_bool_feature_flag "$CALENDAR_FLAG_MODE" COURSE_SESSION_CALENDAR_V1 VITE_COURSE_SESSION_CALENDAR_V1 CALENDAR_FLAG_CHANGED CALENDAR_FLAG_WAS_PRESENT CALENDAR_FLAG_BACKUP
@@ -1857,7 +1857,7 @@ jobs:
                 https://daan.lifenet.com.tw/api/internal/opcache-reset \
                 -H "X-Deploy-Secret: ${DEPLOY_SECRET}" \
                 -H "Connection: close" \
-                -H "Content-Type: application/json") # secret-echo-allow: captured quiet opcache response; auth header and consumers frozen
+                -H "Content-Type: application/json") # secret-echo-allow: pinned capture
             then
               abort_deploy "FPM web-process refresh request failed on attempt ${attempt}"
             fi

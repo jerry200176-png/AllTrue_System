@@ -1023,9 +1023,9 @@ for (const [k, y] of Object.entries(ok)) { const r = scan('ok', y); if (r.length
 // `run:` block holding the marker. An unrelated edit elsewhere passes; a changed producer/consumer (a public print,
 // verbose/trace option, new callsite) or an annotation outside every pinned snippet of a pinned file fails.
 export const PINS = [
-  ['.github/workflows/deploy.yml', 'local rb_secret rb_response', 'unset rb_secret rb_response', '7e2d2b81296f5eee7b8c6deddb98f4b8d32ba73ca984dc6544e37bff9deba404'],
-  ['.github/workflows/deploy.yml', 'apply_bool_feature_flag() {', 'apply_bool_feature_flag "$MANAGER_FLAG_MODE"', 'cb60a657304f52d325b9aae414fad8eb29c0564fb814ba63431a593bfb52ef24'],
-  ['.github/workflows/deploy.yml', `DEPLOY_SECRET="$(grep '^DEPLOY_SECRET='`, 'unset DEPLOY_SECRET OPCACHE_RESPONSE', '196db6c36d545b0257094b3cdeaf69d9a51da76af04903cd467457bc08ca5a63'],
+  ['.github/workflows/deploy.yml', 'local rb_secret rb_response', 'unset rb_secret rb_response', 'd2514ed7a74e93c895e9c7210b9bf4ddcc840304a5b14fad52aa3c2b42ebcf51'],
+  ['.github/workflows/deploy.yml', 'apply_bool_feature_flag() {', 'apply_bool_feature_flag "$MANAGER_FLAG_MODE"', '6b5d30608c1f39f7cbf00c2ee00f7cde56cad1835a2bd6268652d184b9778fb3'],
+  ['.github/workflows/deploy.yml', `DEPLOY_SECRET="$(grep '^DEPLOY_SECRET='`, 'unset DEPLOY_SECRET OPCACHE_RESPONSE', '0341d369ec6476dd49ea434f29b28a757f7a59b4b2fd104a00d4d5703eb875b0'],
   ['.github/workflows/deploy.yml', 'ENV_TMP="$(mktemp .env.1387-staged.XXXXXX)"', 'unset STAGED_DB_PASSWORD', '7d38b47826a6235eb10a483197e8bf2097c0c150e63078b6020cabf3aa38c07f'],
   ['.github/workflows/actual-duration-acceptance.yml', '/tmp/token.txt', null, '4b5b10a214d41bdb14db55673bcce8f653536940500df2a5b50e7734518d5291'],
   ['.github/workflows/multi-guardian-activation.yml', 'try_login() {', null, 'c414720923e7b7b3a7321eac36afcec7117139c01b5ed03faef7c38ae59d2ed6'],
