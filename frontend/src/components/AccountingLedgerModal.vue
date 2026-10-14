@@ -78,6 +78,7 @@
                 v-for="c in contractCourses"
                 :key="c.id"
                 :course="c"
+                :focused="isOpenedCourse(c)"
                 :outstanding="owedFor(c.id)"
                 :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
                 :shared-follower="!packageLead(c)"
@@ -503,9 +504,23 @@ async function loadLedger() {
   } finally {
     if (requestVersion === ledgerRequestVersion) loading.value = false;
   }
+  if (requestVersion === ledgerRequestVersion && payload.value) {
+    await nextTick();
+    scrollToOpenedContract();
+  }
 }
 
 watch(() => [props.show, props.studentClassId, props.reportId, props.studentId, props.branchId], loadLedger, { immediate: true });
+
+// In-app #396: opened from one course, the panel marks that contract card and scrolls to it,
+// so the director does not have to scroll through every contract to find it.
+const isOpenedCourse = (c) => Number(props.studentClassId || 0) > 0 && Number(c?.id) === Number(props.studentClassId);
+function scrollToOpenedContract() {
+  if (!Number(props.studentClassId || 0) || contractCourses.value.length < 2) return;
+  if (isOpenedCourse(contractCourses.value[0])) return;
+  const card = modalEl.value?.querySelector(`[data-testid="contract-card-${Number(props.studentClassId)}"]`);
+  card?.scrollIntoView?.({ block: 'start' });
+}
 
 // 開啟的是單一課程時，列表裡別的課程的帳單要標「其他課程」（#3894）。
 const isOtherCourseInvoice = (inv) => {
