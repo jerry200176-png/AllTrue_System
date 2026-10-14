@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import { getReconcileLatest } from '../api';
+import { getReconcileLatest, getReconcileRows } from '../api';
 
 /**
  * 夜間堂數對帳異常面板：讀最新報告、分類篩選。不改寫堂數。
@@ -84,6 +84,11 @@ export function useNightlyReconcile(tokenRef) {
   const report = ref(null);            // GET /latest 回傳的整包 data（null = 無報告）
   const loading = ref(false);
   const error = ref('');
+  const loadingAllRows = ref(false);
+  const allRowsError = ref('');
+  // Set when the server has no full row list for this report (a report from
+  // before the rows file existed), so the panel stops offering the button.
+  const allRowsUnavailable = ref(false);
 
   // ---- 篩選與排序 ----
   const filters = ref({
@@ -180,7 +185,8 @@ export function useNightlyReconcile(tokenRef) {
     };
   });
 
-  // The command stores the full mismatch_count but only the first 200 rows.
+  // The summary report holds the full mismatch_count but only the first 200
+  // rows; loadAllRows() pages the rest in from the rows endpoint (#4044).
   const storedRowCount = computed(() => (Array.isArray(report.value?.mismatches) ? report.value.mismatches.length : 0));
   const detailTruncated = computed(() => (Number(report.value?.mismatch_count) || 0) > storedRowCount.value);
 
@@ -201,11 +207,46 @@ export function useNightlyReconcile(tokenRef) {
     try {
       const data = await getReconcileLatest(token);
       report.value = data;  // null if 404
+      allRowsError.value = '';
+      allRowsUnavailable.value = false;
     } catch (e) {
       error.value = e.message || '載入失敗';
       report.value = null;
     } finally {
       loading.value = false;
+    }
+  }
+
+  // ---- 載入全部明細（#4044）----
+  async function loadAllRows() {
+    const token = tokenRef?.value;
+    if (!token || !report.value || loadingAllRows.value) return;
+    const checkedAt = report.value.checked_at;
+    loadingAllRows.value = true;
+    allRowsError.value = '';
+    try {
+      const rows = [];
+      let page = 1;
+      let lastPage = 1;
+      let complete = true;
+      do {
+        const { rows: pageRows, meta } = await getReconcileRows(token, page);
+        if (meta.checked_at !== checkedAt) {
+          throw new Error('對帳報告已更新，請按「重新載入」後再試。');
+        }
+        rows.push(...pageRows);
+        lastPage = Math.max(1, Number(meta.last_page) || 1);
+        complete = meta.complete !== false;
+        page += 1;
+      } while (page <= lastPage);
+      if (rows.length > storedRowCount.value) {
+        report.value = { ...report.value, mismatches: rows };
+      }
+      allRowsUnavailable.value = !complete;
+    } catch (e) {
+      allRowsError.value = e.message || '明細載入失敗';
+    } finally {
+      loadingAllRows.value = false;
     }
   }
 
@@ -271,6 +312,10 @@ export function useNightlyReconcile(tokenRef) {
     storedRowCount,
     detailTruncated,
     loadReport,
+    loadAllRows,
+    loadingAllRows,
+    allRowsError,
+    allRowsUnavailable,
     setFilter,
     toggleSort,
     sortKey,
