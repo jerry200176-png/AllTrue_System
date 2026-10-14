@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-14-billing-notes-race
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 備註紀錄不會重複或被蓋掉
+    summary: 網路不穩時，帳務備註會先請你重新載入紀錄，確認後才能再送。
+    items:
+      - category: fixed
+        text: 收合再展開備註紀錄時，剛新增的備註不會再被舊的載入結果蓋掉，也不會出現兩筆一樣的備註。
+      - category: improved
+        text: 紀錄載入失敗或送出後沒收到回應時，會顯示「重新載入紀錄」按鈕，確認後才能再新增，避免同一則備註存兩次。
+    source_refs:
+      - "changelog:2026-10-14:billing-notes-race"
