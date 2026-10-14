@@ -1567,6 +1567,14 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         [(_, size)] = _run_block_expression_sizes(block)
         self.assertEqual(len("format('echo ''{0}''\n" + "# {{x}}\n" * 2_000 + "', github.sha)"), size)
         self.assertEqual([], _run_block_expression_sizes("      - run: |\n          echo plain\n"))
+        # Every valid YAML form of a run value is measured, not only `run: |` (#4066 review).
+        for form in ("      - run: echo '${{ github.sha }}'\n",
+                     "      - run: \"echo ${{ github.sha }}\"\n",
+                     "      - run:  |\n          echo ${{ github.sha }}\n",
+                     "      - run: |2\n          echo ${{ github.sha }}\n",
+                     "      - run: >-  # folded\n          echo ${{ github.sha }}\n",
+                     "      - run:\n          echo ${{ github.sha }}\n"):
+            self.assertEqual(1, len(_run_block_expression_sizes(form)), form)
 
     def test_deploy_step_run_block_is_not_an_expression(self):
         # The Deploy step is the largest run block in the repo. Keep every ${{ }} in its env:, so the

@@ -24,16 +24,27 @@ def run_block_expression_sizes(workflow_text):
     lines = workflow_text.split("\n")
     sizes = []
     for i, line in enumerate(lines):
-        m = re.match(r"^(\s*)(?:- )?run: [|>][-+]?\s*$", line)
+        # Every YAML form of a run value (#4066 review): block scalars with any chomping/indentation
+        # indicator or trailing comment (`|`, `|-`, `|2`, `>+`, `|  # note`), an inline value
+        # (`run: echo ...`, quoted or not), and a plain value continued on the following lines.
+        m = re.match(r"^(\s*)(?:- )?run:(?:\s+(.*))?$", line)
         if not m:
             continue
-        key_indent, body = len(m.group(1)), []
+        key_indent, rest = len(m.group(1)), (m.group(2) or "").strip()
+        inline = rest and not re.fullmatch(r"[|>][-+0-9]*(\s+#.*)?", rest)
+        body = []
         for nxt in lines[i + 1:]:
             if nxt.strip() and len(nxt) - len(nxt.lstrip(" ")) <= key_indent:
                 break
             body.append(nxt)
-        indents = [len(x) - len(x.lstrip(" ")) for x in body if x.strip()]
-        script = "\n".join(x[min(indents):] for x in body) if indents else ""
+        if inline:
+            # A quoted or plain inline value; any continuation lines belong to the same scalar.
+            script = " ".join([rest] + [x.strip() for x in body if x.strip()])
+            if len(script) >= 2 and script[0] == script[-1] and script[0] in "'\"":
+                script = script[1:-1]
+        else:
+            indents = [len(x) - len(x.lstrip(" ")) for x in body if x.strip()]
+            script = "\n".join(x[min(indents):] for x in body) if indents else ""
         if "${{" not in script:
             continue
         # format('<template>', expr, ...): the template doubles every ' { } and each ${{ }} becomes {N}.
