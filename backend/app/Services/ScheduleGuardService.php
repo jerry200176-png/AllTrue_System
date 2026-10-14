@@ -431,7 +431,9 @@ class ScheduleGuardService
 
         return array_values(array_filter($teacherCourses, function (object $course) use ($horizonStart, $windowEnd): bool {
             $courseEnd = $course->EndDate ? substr((string) $course->EndDate, 0, 10) : null;
-            if ((string) ($course->ScheduleMode ?? '') !== 'count' && $courseEnd && $courseEnd < $horizonStart) {
+            // A null/blank mode is legacy count mode everywhere else (applyHoldsTemplateSeat keeps it).
+            $mode = trim((string) ($course->ScheduleMode ?? '')) ?: 'count';
+            if ($mode !== 'count' && $courseEnd && $courseEnd < $horizonStart) {
                 return false;
             }
             $courseStart = $course->StartDate ? substr((string) $course->StartDate, 0, 10) : null;

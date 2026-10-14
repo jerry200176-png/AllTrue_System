@@ -707,7 +707,7 @@ class ScheduleGuardrailsTest extends TestCase
     public function test_ended_date_mode_contract_does_not_hold_recurring_seat(): void
     {
         $teacherId = $this->createTeacher(1, 'teacher-guard-ended@example.com');
-        $addCourse = function (string $name, ?string $endDate) use ($teacherId): void {
+        $addCourse = function (string $name, ?string $endDate, ?string $mode = 'date') use ($teacherId): void {
             $student = $this->createStudent(1, $name);
             StudentClass::query()->insert([
                 'StudentID' => $student->id, 'TeacherID' => $teacherId, 'ClassType' => 'one_on_two',
@@ -716,7 +716,7 @@ class ScheduleGuardrailsTest extends TestCase
                 'TotalHours' => 16, 'SessionCount' => 8, 'SessionDuration' => 120,
                 'RemainingSessions' => 8, 'UsedSessions' => 0,
                 'Charge' => 1600, 'Pay' => 1600, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
-                'MDate' => now(), 'week' => 5, 'time' => '19:00', 'ScheduleMode' => 'date',
+                'MDate' => now(), 'week' => 5, 'time' => '19:00', 'ScheduleMode' => $mode,
             ]);
         };
         $guard = app(\App\Services\ScheduleGuardService::class);
@@ -736,6 +736,34 @@ class ScheduleGuardrailsTest extends TestCase
         $this->assertNotEmpty($blocked);
         $this->assertSame('teacher_capacity', $blocked[0]['type'] ?? null);
         $this->assertSame(2, $blocked[0]['current_students'] ?? null);
+    }
+
+    /** A legacy blank/null-mode contract is count mode: an estimated past EndDate must not free its seat. */
+    public function test_legacy_null_mode_contract_keeps_recurring_seat_past_end_date(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-guard-null-mode@example.com');
+        foreach (['舊制甲', '舊制乙'] as $name) {
+            $student = $this->createStudent(1, $name);
+            StudentClass::query()->insert([
+                'StudentID' => $student->id, 'TeacherID' => $teacherId, 'ClassType' => 'one_on_two',
+                'GradeID' => 1, 'SubjectID' => 1, 'by1' => 1, 'Period' => 4,
+                'StartDate' => Carbon::today()->subMonths(6)->toDateString(),
+                'EndDate' => Carbon::today()->subMonth()->toDateString(),
+                'TotalHours' => 16, 'SessionCount' => 8, 'SessionDuration' => 120,
+                'RemainingSessions' => 4, 'UsedSessions' => 4,
+                'Charge' => 1600, 'Pay' => 1600, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
+                'MDate' => now(), 'week' => 5, 'time' => '19:00', 'ScheduleMode' => '',
+            ]);
+        }
+
+        $blocked = app(\App\Services\ScheduleGuardService::class)->validateRecurringCourse([
+            'teacher_id' => $teacherId,
+            'class_type' => 'one_on_two',
+            'branch_id' => 1,
+            'slots' => [['day_of_week' => 5, 'start_time' => '19:00', 'end_time' => '21:00']],
+        ]);
+        $this->assertNotEmpty($blocked);
+        $this->assertSame('teacher_capacity', $blocked[0]['type'] ?? null);
     }
 
     /**
