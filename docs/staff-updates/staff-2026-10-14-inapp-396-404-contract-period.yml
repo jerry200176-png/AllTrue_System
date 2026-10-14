@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-14-inapp-396-404-contract-period
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務看得出是哪份合約、哪一期
+    summary: 學生帳務可展開看每份合約的期間與金額；課程頁帳務表多了合約／期間欄。
+    items:
+      - category: improved
+        text: 帳務中心學生清單可展開，列出每份合約的編號、期間、未繳與已繳金額。
+      - category: improved
+        text: 課程頁帳務資料表新增「合約／期間」欄。
+    source_refs:
+      - "changelog:2026-10-14:inapp-396-404-contract-period"

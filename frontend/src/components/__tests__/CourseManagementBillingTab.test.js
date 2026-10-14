@@ -93,4 +93,12 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('{{ getRateUnitDisplayLabel(c) }} ${{ sessionPrice(c) }}');
     expect(source).toContain('{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}');
   });
+
+  it('shows the contract ref and period column on the course billing table (in-app #396 #404)', () => {
+    expect(source).toContain('<th>合約／期間</th>');
+    expect(source).toContain('data-testid="billing-contract-period"');
+    expect(source).toContain('formatCourseRef(row.course.id)');
+    expect(source).toContain('formatCoursePeriod(');
+    expect(source).toContain('colspan="6" class="student-billing-state"');
+  });
 });

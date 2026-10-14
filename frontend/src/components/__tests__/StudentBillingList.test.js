@@ -115,3 +115,27 @@ describe('StudentBillingList', () => {
     expect(w.find('[data-testid="sbl-empty"]').text()).toContain('找不到符合「不存在」的學生。請調整搜尋或篩選。');
   });
 });
+
+describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
+  const rows = [
+    { id: 11, student_id: 1, student_name: '甲', payment_status: 'unpaid', payable_outstanding: 3000, paid_amount: 500, due_date: '2026-10-01', course_start_date: '2026-09-01', course_end_date: '2026-12-31' },
+    { id: 12, student_id: 1, student_name: '甲', payment_status: 'paid', payable_outstanding: 0, paid_amount: 2000, course_start_date: '2026-01-05', course_end_date: null },
+  ];
+
+  it('is collapsed by default and lists each contract ref and period when expanded', async () => {
+    const w = mount(StudentBillingList, { props: { alertRows: rows, today: '2026-10-07' } });
+    const btn = w.find('[data-testid="sbl-expand-1"]');
+    expect(btn.attributes('aria-expanded')).toBe('false');
+    expect(w.find('[data-testid="sbl-contracts-1"]').exists()).toBe(false);
+    await btn.trigger('click');
+    expect(btn.attributes('aria-expanded')).toBe('true');
+    const list = w.find('[data-testid="sbl-contracts-1"]');
+    expect(list.text()).toContain('課程 000011');
+    expect(list.text()).toContain('2026-09-01 ~ 2026-12-31');
+    expect(list.text()).toContain('NT$ 3,000');
+    expect(list.text()).toContain('課程 000012');
+    expect(list.text()).toContain('2026-01-05 ~ —');
+    await btn.trigger('click');
+    expect(w.find('[data-testid="sbl-contracts-1"]').exists()).toBe(false);
+  });
+});
