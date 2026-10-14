@@ -2040,6 +2040,7 @@ class StudentClassController extends Controller
                 $newCharge = max(0, $newBase + $preservedDelta);
                 $studentClass->update(['Charge' => $newCharge]);
                 $studentClass->refresh();
+                $this->syncUntouchedCountInvoicesToCharge($studentClass, $oldChargeSnapshot, $newCharge);
             }
         }
 
@@ -5069,6 +5070,48 @@ class StudentClassController extends Controller
             'future_session_count' => $futureSessionCount,
         ];
     }
+    /**
+     * In-app #408: a rate edit re-prices Charge, but the count-mode bill issued at the
+     * old price kept its TotalAmount, so the 繳費通知 asked for the old total.
+     *
+     * Only a bill nobody has acted on follows the new price: count mode, not void,
+     * its stored total still equals the old Charge, every line belongs to this course,
+     * nothing applied (a voided payment nets to 0), no pending parent report, and not
+     * a 免費／贈送 bill. Any other bill keeps its amount (audit value) as before.
+     */
+    private function syncUntouchedCountInvoicesToCharge(StudentClass $course, int $oldCharge, int $newCharge): void
+    {
+        if ($newCharge === $oldCharge || (string) ($course->ScheduleMode ?? 'count') !== 'count') {
+            return;
+        }
+        $classId = (int) $course->getKey();
+        if (PaymentReport::query()->where('StudentClassID', $classId)->where('status', 'pending')->exists()) {
+            return;
+        }
+        $invoices = Invoice::query()
+            ->where('StudentClassID', $classId)
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+            ->lockForUpdate()
+            ->get();
+        foreach ($invoices as $invoice) {
+            if ((int) ($invoice->TotalAmount ?? 0) !== $oldCharge
+                || (int) ($invoice->PaidAmount ?? 0) !== 0
+                || $invoice->isMarkedFreeGift()
+                || InvoiceItem::query()->where('InvoiceID', $invoice->id)->where('StudentClassID', '!=', $classId)->exists()
+                || (int) $this->invoiceAmounts->resolve($invoice, $course)['net_applied'] !== 0
+                || PaymentReport::query()->where('InvoiceID', $invoice->id)->where('status', 'pending')->exists()) {
+                continue;
+            }
+            $invoice->TotalAmount = $newCharge;
+            $invoice->save();
+            InvoiceItem::query()
+                ->where('InvoiceID', $invoice->id)
+                ->where('StudentClassID', $classId)
+                ->where('Amount', $oldCharge)
+                ->update(['Amount' => $newCharge]);
+        }
+    }
+
     /**
      * Weekly slots in the same shape update() hands the recurring guard.
      *

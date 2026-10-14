@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-15-inapp-408-rate-edit-syncs-open-bill
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 改單堂費用後，繳費通知金額會跟著更新
+    summary: 堂數制課程改費用後，還沒收款的帳單會改成新總額。
+    items:
+      - category: fixed
+        text: 堂數制課程改單堂費用後，還沒收款、也沒有付款回報待核對的帳單，金額會改成新的課程總額，繳費通知不再顯示舊金額。
+      - category: fixed
+        text: 已經收過款或有付款回報待核對的帳單金額不變，請從帳務作廢或更正。
+    source_refs:
+      - "changelog:2026-10-15:inapp-408-rate-edit-syncs-open-bill"
