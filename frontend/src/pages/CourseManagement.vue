@@ -714,8 +714,8 @@
                     <span v-else class="hint">尚無回報</span>
                   </td>
                   <td>
-                    <span v-if="row.reports?.some((r) => r.status === 'confirmed')" class="hint">確認入帳後可開</span>
-                    <span v-else class="hint">待確認入帳</span>
+                    <span v-if="row.reports?.some((r) => r.status === 'confirmed')" class="hint">可開收據</span>
+                    <span v-else class="hint">核對入帳後才能開收據</span>
                   </td>
                   <td class="cell-actions">
                     <div class="action-btns-row">
@@ -1431,7 +1431,7 @@ import { useMonthlyCorrectionPreview } from '../composables/course-management/us
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
   REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL,
-  ownRemainingSessions, poolTotalSessions, poolUsedSessions,
+  ownRemainingSessions, poolTotalSessions, poolUsedSessions, REVIEW_REQUIRED_LABEL,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import {
@@ -4172,7 +4172,7 @@ const paymentStatusButtonLabel = (course) => {
   if (isTutoringCourse(course)) return '無須繳費';
   if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
   if (monthlyPaymentLabel(course)) return monthlyPaymentLabel(course);
-  if (course?.payment_status === 'review_required') return '付款期間待確認';
+  if (course?.payment_status === 'review_required') return REVIEW_REQUIRED_LABEL;
   // Course-level badge: the tuition label map (periodPaymentLabel is for dated monthly rows).
   const status = course?.payment_status;
   return TUITION_STATUS_CONFIG[status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid'].label;

@@ -86,6 +86,6 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
 export const STUDENT_FILTERS = {
   all: { label: '全部', test: () => true },
   owing: { label: '有未繳', test: (r) => r.owed_now > 0 },
-  confirm: { label: '等你確認', test: (r) => r.waiting_confirm > 0 },
+  confirm: { label: '待核對入帳', test: (r) => r.waiting_confirm > 0 },
   clear: { label: '已繳清', test: (r) => r.owed_now === 0 && r.owed_later === 0 && r.waiting_confirm === 0 },
 };

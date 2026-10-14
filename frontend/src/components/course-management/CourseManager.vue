@@ -206,7 +206,7 @@ export default {
               <option v-for="period in monthlySummary.periods" :key="period.billing_period" :value="period.billing_period">{{ period.billing_period }}</option>
             </select>
           </label>
-          <p v-if="monthlySummary.review_required" class="cmw__hint" role="status">付款期間待確認。先核對堂次與已登錄收款，再預覽分期更正；尚未建立帳單的月份，在帳務中心也不會有繳費單。</p>
+          <p v-if="monthlySummary.review_required" class="cmw__hint" role="status">月結帳單與上課堂數不符，請核對。先核對堂次與已登錄收款，再預覽分期更正；尚未建立帳單的月份，在帳務中心也不會有繳費單。</p>
           <div class="cmw__period-table">
             <table>
               <thead><tr><th scope="col">帳期／服務期間</th><th scope="col">帳單付款登錄</th><th scope="col">未收金額</th></tr></thead>

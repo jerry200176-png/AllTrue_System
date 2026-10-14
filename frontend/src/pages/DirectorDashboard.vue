@@ -881,7 +881,15 @@ const paymentAlertBadgeText = (s) => {
     if (!Number.isFinite(n) || n <= 0) return '已繳 · 堂數已用完';
     return `已繳 · 剩 ${n} 堂`;
   }
-  return `未繳 · ${s.remaining_lessons} 堂`;
+  return `${unpaidAlertLabel(s)} · ${s.remaining_lessons} 堂`;
+};
+
+// alert_type 'unpaid' also covers partly paid and parent-reported rows (in-app #395-#404):
+// name the underlying payment_status so the director knows the next step.
+const unpaidAlertLabel = (s) => {
+  if (s.payment_status === 'partial') return '繳一部分';
+  if (s.payment_status === 'pending_report') return '待核對入帳';
+  return '未繳';
 };
 
 const isPaymentNoticeAvailable = (student) => isPaymentNoticeStatus(student?.payment_status);

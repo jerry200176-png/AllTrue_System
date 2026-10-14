@@ -55,7 +55,7 @@ defineExpose({ reload, loading });
 
 <template>
   <div class="monthly-review">
-    <p>列出付款期間待確認的月結課程，包含已上課卻沒有對應帳單的月份。先核對，再更正合約與建立帳單。</p>
+    <p>列出月結帳單與上課堂數不符的課程，包含已上課卻沒有對應帳單的月份。先核對，再更正合約與建立帳單。</p>
     <form class="monthly-review__search" @submit.prevent="search">
       <label>學生姓名 <input v-model="name" type="search" placeholder="搜尋學生" /></label>
       <AtButton type="submit" variant="secondary" size="sm" shape="rect">搜尋</AtButton>

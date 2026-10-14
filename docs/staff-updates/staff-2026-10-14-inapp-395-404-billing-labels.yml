@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-14-inapp-395-404-billing-labels
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務狀態文字更清楚
+    summary: 帳務狀態改成直接說明下一步要做什麼。
+    items:
+      - category: improved
+        text: 家長回報付款顯示「已回報付款，待你核對入帳」；分頁與篩選簡稱「待核對入帳」。
+      - category: improved
+        text: 結案沒收到錢顯示「課已結束，尚未收款」；月結堂數和帳單對不上顯示「月結帳單與上課堂數不符，請核對」。
+      - category: improved
+        text: 收據欄已確認入帳顯示「可開收據」；主任總覽的繳費提醒分成「未繳」「繳一部分」「待核對入帳」。
+    source_refs:
+      - "changelog:2026-10-14:inapp-395-404-billing-labels"
