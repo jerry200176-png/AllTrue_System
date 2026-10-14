@@ -17,7 +17,8 @@ on:
   # retry for a dropped run or a main tip still in CI; the last train gets its own
   # 22:47 retry so a miss does not wait until morning. A run stands down if a deploy
   # run is already waiting for approval, so it never cancels a train under the
-  # Founder. Also `workflow_dispatch phase=release-train`.
+  # Founder. Also `workflow_dispatch phase=release-train`, which the release-train-kick
+  # job sends after a merge, because GitHub drops most scheduled runs.
   schedule:
     - cron: '17 0-14 * * *'
     - cron: '47 14 * * *'
@@ -1075,7 +1076,7 @@ jobs:
               if [[ "$RELEASE_TRAIN" != "true" ]]; then
                 {
                   echo "## state=queued-for-release-train"
-                  echo "Not deployed. Founder-gated changes ride the next release train (hourly at :17 past, 08:17-22:17 Asia/Taipei, with a 22:47 retry; or dispatch phase=release-train). While one is pending, later R0-R2 merges wait for that train too."
+                  echo "Not deployed. Founder-gated changes ride the next release train (during train hours this run starts one unless one is pending; backup schedule hourly at :17 past, 08:17-22:17 Asia/Taipei, with a 22:47 retry). While one is pending, later R0-R2 merges wait for that train too."
                   echo "Reason: ${REASON}"
                   echo "Founder GO evidence: ${GO_REASON:-unavailable}"
                 } >> "$GITHUB_STEP_SUMMARY"
@@ -1114,6 +1115,56 @@ jobs:
               exit 1
               ;;
           esac
+
+  # Event-driven release train. GitHub drops or delays most scheduled runs under load
+  # (2026-10-07..14: 29 schedule runs instead of ~110, some 5-8 h late), so a merge's own
+  # run starts the train when it ends queued-for-release-train or is superseded by a newer
+  # main commit (#3992). This only replaces the manual "Run workflow" click: the dispatched
+  # run is an ordinary phase=release-train run, classified like a scheduled one, and still
+  # stops at "Founder production approval". The schedule stays as the backup.
+  release-train-kick:
+    name: Start release train
+    needs: [resolve-target, classify-activation, release-state]
+    if: ${{ always() && (github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch') && needs.resolve-target.result == 'success' && needs.resolve-target.outputs.release_train != 'true' && (needs.resolve-target.outputs.superseded == 'true' || (needs.release-state.result == 'success' && needs.classify-activation.outputs.mode == 'awaiting-activation')) }}
+    permissions:
+      actions: write # dispatch deploy.yml phase=release-train; no other write
+    concurrency:
+      group: alltrue-release-train-kick
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Dispatch the release train unless one is pending
+        env:
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Train hours match the schedule: 00:00-14:59 UTC = 08:00-22:59 Asia/Taipei (Founder 3A).
+          if (( 10#$(date -u +%H) > 14 )); then
+            echo "::notice::Release train: outside train hours; the next merge or scheduled train starts it."
+            exit 0
+          fi
+          # Debounce: one train at a time. A queued or running schedule/dispatch run, or any run
+          # waiting for approval, already covers main (a second train would stand down anyway).
+          PENDING="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?per_page=100" \
+            --jq "[.workflow_runs[] | select(.id != ${RUN_ID} and .status != \"completed\" and (.status == \"waiting\" or .event == \"schedule\" or .event == \"workflow_dispatch\"))] | length")"
+          if [[ "$PENDING" -ge 1 ]]; then
+            echo "::notice::Release train: a train or approval is already pending; not dispatching another."
+            exit 0
+          fi
+          gh api -X POST "/repos/${REPO}/actions/workflows/deploy.yml/dispatches" \
+            -f ref=main -f 'inputs[phase]=release-train' -f 'inputs[confirm]=RELEASE_TRAIN' >/dev/null
+          # Wait until the new run is listed so a queued kick behind this one sees it and stands down.
+          for _ in $(seq 1 12); do
+            SEEN="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?event=workflow_dispatch&per_page=5" \
+              --jq '[.workflow_runs[] | select(.status != "completed")] | length')"
+            [[ "$SEEN" -ge 1 ]] && break
+            sleep 5
+          done
+          echo "## Release train dispatched (phase=release-train); it waits for Founder production approval like any train." >> "$GITHUB_STEP_SUMMARY"
 
   production-activation:
     name: Founder production approval (same run)

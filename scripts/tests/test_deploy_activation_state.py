@@ -1037,6 +1037,38 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('classify_event = "schedule" if os.environ.get("PHASE") == "release-train"', self.workflow)
         self.assertIn("target_in_main=os.environ.get(\"IN_MAIN\") in {\"ahead\", \"identical\"}", self.workflow)
 
+    def test_merge_runs_dispatch_the_release_train_without_touching_the_gate(self):
+        # GitHub drops most scheduled runs, so a merge's own run starts the train (#3992).
+        start = self.workflow.index("  release-train-kick:\n")
+        job = self.workflow[start:self.workflow.index("  production-activation:\n")]
+        job_if = job.split("\n")[3]
+        self.assertTrue(job_if.lstrip().startswith("if:"), job_if)
+        # Only a merge's own run kicks: never a train or schedule run (no dispatch loop).
+        self.assertIn("(github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch')", job_if)
+        self.assertNotIn("'schedule'", job_if)
+        self.assertNotIn("'workflow_dispatch'", job_if)
+        self.assertIn("needs.resolve-target.outputs.release_train != 'true'", job_if)
+        # Kick when the range waits for a train, or when a newer main commit superseded it.
+        self.assertIn("needs.resolve-target.outputs.superseded == 'true'", job_if)
+        self.assertIn("(needs.release-state.result == 'success' && needs.classify-activation.outputs.mode == 'awaiting-activation')", job_if)
+        # It dispatches an ordinary train on main with the train's own confirmation phrase.
+        self.assertIn('/actions/workflows/deploy.yml/dispatches', job)
+        self.assertIn("-f ref=main -f 'inputs[phase]=release-train' -f 'inputs[confirm]=RELEASE_TRAIN'", job)
+        # Debounce: nothing is dispatched while a train runs or any run waits for approval.
+        self.assertIn('select(.id != ${RUN_ID} and .status != \\"completed\\" and (.status == \\"waiting\\" or .event == \\"schedule\\" or .event == \\"workflow_dispatch\\"))', job)
+        self.assertLess(job.index('if [[ "$PENDING" -ge 1 ]]'), job.index("/dispatches"))
+        self.assertIn("group: alltrue-release-train-kick", job)
+        # Same hours as the scheduled trains (cron hour range 0-14 UTC).
+        self.assertIn("'17 0-14 * * *'", self.workflow)
+        self.assertIn("(( 10#$(date -u +%H) > 14 ))", job)
+        self.assertLess(job.index("> 14 ))"), job.index("/dispatches"))
+        # Least privilege; it never approves, reviews, or touches environments.
+        self.assertIn("permissions:\n      actions: write", job)
+        for forbidden in ("environment", "pending_deployments", "contents: write", "secrets."):
+            self.assertNotIn(forbidden, job)
+        # The Founder approval gate is unchanged: a dispatched train is classified like a scheduled one.
+        self.assertIn('classify_event = "schedule" if os.environ.get("PHASE") == "release-train"', self.workflow)
+
     def test_existing_ci_completion_trigger_is_preserved(self):
         self.assertIn('workflows: ["CI — PHPUnit Tests"]', self.workflow)
         self.assertIn("types: [completed]", self.workflow)
