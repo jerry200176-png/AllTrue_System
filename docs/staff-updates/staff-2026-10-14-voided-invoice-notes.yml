@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-14-voided-invoice-notes
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 刪除課程後，帳單備註不會消失
+    summary: 課程刪除後，被作廢帳單上的備註仍可在學生帳務對帳查看。
+    items:
+      - category: fixed
+        text: 學生帳務對帳新增「已刪除課程的帳單備註」區塊，標示（帳單已作廢），只能查看，不能新增或修改。
+    source_refs:
+      - "changelog:2026-10-14:voided-invoice-notes"

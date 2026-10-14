@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BillingNote;
 use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\PaymentReport;
@@ -711,6 +712,8 @@ class AccountingController extends Controller
                 'receipt_count' => $reportRows->where('status', 'confirmed')->count(),
                 'anomaly_count' => $uniqueAnomalies->count(),
             ],
+            // #4041: notes of invoices voided when their course was deleted; read-only, outside the invoice table.
+            'voided_invoice_notes' => $this->deletedCourseInvoiceNotes($student),
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
             'courses' => $classes->map(fn (StudentClass $class) => [
                 'id' => (int) $class->ID,
@@ -995,6 +998,50 @@ class AccountingController extends Controller
     {
         $period = preg_replace('/[^0-9]/', '', (string) $paidPeriod);
         return 'PAY-' . ($period ?: 'LEGACY') . '-' . str_pad((string) $paymentId, 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Same access rule as the live notes panel: the caller already passed the campus guard for this
+     * student's current campus; a note's write-time campus_id is not re-checked (a transfer keeps it).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function deletedCourseInvoiceNotes(Student $student): array
+    {
+        $invoices = BillingNote::deletedCourseVoidInvoices()->where('Invoice.StudentID', (int) $student->id)->orderByDesc('Invoice.id')->get();
+        if ($invoices->isEmpty()) {
+            return [];
+        }
+        $notes = BillingNote::query()
+            ->where('subject_type', 'invoice')
+            ->whereIn('subject_id', $invoices->pluck('id')->map(fn ($id) => (int) $id)->all())
+            ->orderBy('created_at')->orderBy('id')
+            ->get()
+            ->groupBy('subject_id');
+
+        return $invoices->map(function (Invoice $invoice) use ($notes) {
+            $legacy = trim((string) ($invoice->Note ?? ''));
+            $entries = $notes->get((int) $invoice->id, collect())->map(fn (BillingNote $note) => [
+                'id' => (int) $note->id,
+                'body' => $note->body,
+                'author_name' => (string) $note->author_name,
+                'created_at' => $note->created_at?->toIso8601String(),
+                'legacy' => false,
+            ])->values()->all();
+            if ($legacy !== '') {
+                // The invoice's own note column, read-only and first, as in the live notes panel.
+                array_unshift($entries, ['id' => null, 'body' => $legacy, 'author_name' => null, 'created_at' => null, 'legacy' => true]);
+            }
+
+            return $entries === [] ? null : [
+                'invoice_id' => (int) $invoice->id,
+                'invoice_no' => $this->invoiceNo($invoice),
+                'course_ref' => $this->courseRef((int) $invoice->StudentClassID),
+                'read_only' => true,
+                'label' => BillingNote::VOIDED_INVOICE_LABEL,
+                'notes' => $entries,
+            ];
+        })->filter()->values()->all();
     }
 
     private function courseRef(int $studentClassId): string
