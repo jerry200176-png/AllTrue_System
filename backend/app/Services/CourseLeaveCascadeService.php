@@ -566,7 +566,8 @@ class CourseLeaveCascadeService
     /**
      * #4019: the course's latest date when the left lesson's tail may share it, else null. Only for a lesson on a date
      * with two or more lessons, and only when all hold:
-     * - the latest date is after the leave date and on a contract weekday;
+     * - the latest date is after the leave date and on a contract weekday, and the left lesson's start time is a
+     *   contract slot on that weekday;
      * - it holds a live lesson at a contract slot time, or this leave date's sibling auto-tail (never a lone makeup);
      * - it has fewer live lessons than the leave date, and none at or overlapping the left lesson's own slot.
      *
@@ -590,7 +591,10 @@ class CourseLeaveCascadeService
         $dow = (int) Carbon::parse($latest)->dayOfWeekIso;
         $onLatest = $on($latest);
         if ($contractSlots === [] || $start === '' || count($on($leaveDate)) < 2 || $latest <= $leaveDate
-            || !in_array($dow, $weekdays, true) || count($onLatest) >= count($on($leaveDate))) {
+            || !in_array($dow, $weekdays, true) || count($onLatest) >= count($on($leaveDate))
+            || !in_array($dow . '|' . $start, $contractSlots, true)) {
+            // The last test: the left lesson's own time must be a contract slot on the latest weekday, so a
+            // Wednesday lesson's time is never written onto a Saturday (#4043 review r4266126936).
             return null;
         }
         $anchored = false;

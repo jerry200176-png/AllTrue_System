@@ -201,6 +201,19 @@ class LeaveCascadeSameDateLessonsTest extends TestCase
         $this->assertSame('2026-07-29', $this->endDate($courseId));
     }
 
+    /** #4043 review: on a Wed 17:00/19:30 + Sat 10:00 course ending on Saturday, a Wednesday lesson's tail goes to the next Wednesday. */
+    public function test_multi_weekday_tail_never_takes_another_weekdays_date(): void
+    {
+        [$courseId, , $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'count');
+        DB::table('StudentClass')->where('ID', $courseId)->update(['SessionCount' => 7, 'RemainingSessions' => 7, 'week2' => 6, 'time2' => '10:00:00']);
+        DB::table('ClassSession')->insert(['StudentClassID' => $courseId, 'SessionDate' => '2026-07-18', 'StartTime' => '10:00:00',
+            'EndTime' => '12:00:00', 'Status' => 'scheduled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+
+        $this->assertSame('2026-07-22', $this->previewAppend($courseId, $second));
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $second));
+        $this->assertSame(['2026-07-22', '19:30'], $this->tailSlot($courseId, $second), 'the Wednesday 19:30 tail is not written onto Saturday 07-18');
+    }
+
     private function previewAppend(int $courseId, int $sessionId): ?string
     {
         return $this->postJson('/api/v1/schedules/leave-cascade-preview', ['student_course_id' => $courseId, 'schedule_date' => '2026-07-01', 'class_session_id' => $sessionId],
