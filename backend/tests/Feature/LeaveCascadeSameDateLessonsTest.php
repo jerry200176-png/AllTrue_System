@@ -129,6 +129,99 @@ class LeaveCascadeSameDateLessonsTest extends TestCase
         $this->assertNull($this->tailFor($courseId, $first));
     }
 
+    /** #4019: both lessons of a date left in two steps share the next contract date, each in its own slot; preview agrees. */
+    public function test_both_lessons_left_share_one_next_contract_date(): void
+    {
+        [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'count');
+
+        $this->assertSame('2026-07-22', $this->previewAppend($courseId, $second));
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $second));
+        $this->assertSame(['2026-07-22', '19:30'], $this->tailSlot($courseId, $second));
+
+        $this->assertSame('2026-07-22', $this->previewAppend($courseId, $first), 'the preview shows the shared date that is written');
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $first));
+        $this->assertSame(['2026-07-22', '17:00'], $this->tailSlot($courseId, $first));
+        $this->assertSame('2026-07-22', $this->endDate($courseId), 'two leaves on one date extend the course by one week');
+
+        DB::transaction(fn () => CourseLeaveCascadeService::undoLeaveCascade($courseId, '2026-07-01', $second));
+        $this->assertNull($this->tailFor($courseId, $second));
+        $this->assertSame(['2026-07-22', '17:00'], $this->tailSlot($courseId, $first));
+        $this->assertSame('2026-07-22', $this->endDate($courseId));
+
+        DB::transaction(fn () => CourseLeaveCascadeService::undoLeaveCascade($courseId, '2026-07-01', $first));
+        $this->assertNull($this->tailFor($courseId, $first));
+        $this->assertSame('2026-07-15', $this->endDate($courseId));
+    }
+
+    /** #4019: a cancelled row in the shared slot is not handed back as the tail; a live scheduled tail is created. */
+    public function test_shared_tail_over_a_cancelled_row_is_scheduled(): void
+    {
+        [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'count');
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $second));
+        $cancelled = (int) DB::table('ClassSession')->insertGetId(['StudentClassID' => $courseId, 'SessionDate' => '2026-07-22',
+            'StartTime' => '17:00:00', 'EndTime' => '19:00:00', 'Status' => 'cancelled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $first));
+
+        $tail = $this->tailFor($courseId, $first);
+        $this->assertNotNull($tail);
+        $this->assertNotSame($cancelled, (int) $tail->id);
+        $this->assertSame(['2026-07-22', '17:00'], $this->tailSlot($courseId, $first));
+        $this->assertSame(['cancelled'], $this->statuses($cancelled));
+    }
+
+    /** #4019: monthly courses never append, so neither leave moves EndDate and the preview has no tail. */
+    public function test_monthly_two_lesson_leaves_append_nothing(): void
+    {
+        [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'date');
+        foreach ([$second, $first] as $id) {
+            $this->assertNull($this->previewAppend($courseId, $id));
+            DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $id));
+        }
+        $this->assertSame(['leave', 'leave'], $this->statuses($first, $second));
+        $this->assertNull($this->tailFor($courseId, $first));
+        $this->assertNull($this->tailFor($courseId, $second));
+        $this->assertSame('2026-07-31', $this->endDate($courseId));
+    }
+
+    /** #4019: a latest date that holds only a makeup at a non-contract time is never reused for a tail. */
+    public function test_a_lone_makeup_date_is_not_reused(): void
+    {
+        [$courseId, $first, $second] = $this->courseWithTwoLessonsOn('2026-07-01', 'count');
+        DB::table('StudentClass')->where('ID', $courseId)->update(['SessionCount' => 7, 'RemainingSessions' => 7]);
+        DB::table('ClassSession')->insert(['StudentClassID' => $courseId, 'SessionDate' => '2026-07-22', 'StartTime' => '10:00:00',
+            'EndTime' => '11:00:00', 'Status' => 'scheduled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+
+        $this->assertSame('2026-07-29', $this->previewAppend($courseId, $second));
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $second));
+        $this->assertSame(['2026-07-29', '19:30'], $this->tailSlot($courseId, $second));
+
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01', $first));
+        $this->assertSame(['2026-07-29', '17:00'], $this->tailSlot($courseId, $first), 'the sibling tail\'s date is shared');
+        $this->assertSame('2026-07-29', $this->endDate($courseId));
+    }
+
+    private function previewAppend(int $courseId, int $sessionId): ?string
+    {
+        return $this->postJson('/api/v1/schedules/leave-cascade-preview', ['student_course_id' => $courseId, 'schedule_date' => '2026-07-01', 'class_session_id' => $sessionId],
+            ['Authorization' => 'Bearer ' . $this->directorToken(), 'Accept' => 'application/json'])->assertOk()->json('append');
+    }
+
+    /** @return array{0:string,1:string}|null */
+    private function tailSlot(int $courseId, int $leaveSessionId): ?array
+    {
+        $tail = $this->tailFor($courseId, $leaveSessionId);
+
+        return $tail ? [substr((string) $tail->SessionDate, 0, 10), substr((string) $tail->StartTime, 0, 5)] : null;
+    }
+
+    private function endDate(int $courseId): ?string
+    {
+        $end = DB::table('StudentClass')->where('ID', $courseId)->value('EndDate');
+
+        return $end ? substr((string) $end, 0, 10) : null;
+    }
+
     private function directorToken(): string
     {
         $user = User::create(['LoginName' => 'leave-3914-' . uniqid() . '@example.com', 'Name' => '主任', 'PSW' => 'secret', 'type' => 'A', 'phone' => '0912345678', 'MustChangePassword' => false]);
