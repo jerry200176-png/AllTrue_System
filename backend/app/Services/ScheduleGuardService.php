@@ -49,12 +49,12 @@ class ScheduleGuardService
         $startDate = isset($payload['start_date']) && $payload['start_date'] ? (string) $payload['start_date'] : null;
         $endDate = isset($payload['end_date']) && $payload['end_date'] ? (string) $payload['end_date'] : null;
 
-        $teacherCourses = $this->loadTeacherRecurringCourses(
+        $teacherCourses = self::templatesActiveInWindow($this->loadTeacherRecurringCourses(
             $teacherId,
             $branchId,
             $excludeStudentClassId,
             $excludeStudentId
-        );
+        ), $startDate, $endDate);
         $conflicts = [];
         $selfOverlaps = [];
         // Lock state of the edited course's sessions, loaded once for all slots.
@@ -387,6 +387,7 @@ class ScheduleGuardService
                 'sc.SessionDuration',
                 'sc.StartDate',
                 'sc.EndDate',
+                'sc.ScheduleMode',
                 'sc.week',
                 'sc.week1',
                 'sc.week2',
@@ -411,6 +412,34 @@ class ScheduleGuardService
         }
 
         return $query->get()->all();
+    }
+
+    /**
+     * Drop weekly templates whose contract dates cannot meet the edited window
+     * (from max(today, start) to end). A date-mode contract that ended before the
+     * window no longer holds a seat (in-app #401/#402); count-mode end dates are
+     * estimates, so those stay governed by RemainingSessions.
+     *
+     * @param  array<int, object>  $teacherCourses
+     * @return array<int, object>
+     */
+    public static function templatesActiveInWindow(array $teacherCourses, ?string $startDate, ?string $endDate): array
+    {
+        $today = Carbon::today()->toDateString();
+        $horizonStart = ($startDate && $startDate > $today) ? substr($startDate, 0, 10) : $today;
+        $windowEnd = $endDate ? substr($endDate, 0, 10) : null;
+
+        return array_values(array_filter($teacherCourses, function (object $course) use ($horizonStart, $windowEnd): bool {
+            $courseEnd = $course->EndDate ? substr((string) $course->EndDate, 0, 10) : null;
+            // A null/blank mode is legacy count mode everywhere else (applyHoldsTemplateSeat keeps it).
+            $mode = trim((string) ($course->ScheduleMode ?? '')) ?: 'count';
+            if ($mode !== 'count' && $courseEnd && $courseEnd < $horizonStart) {
+                return false;
+            }
+            $courseStart = $course->StartDate ? substr((string) $course->StartDate, 0, 10) : null;
+
+            return !($windowEnd && $courseStart && $courseStart > $windowEnd);
+        }));
     }
 
     /**
