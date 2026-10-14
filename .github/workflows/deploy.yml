@@ -1658,7 +1658,7 @@ jobs:
 
           abort_deploy() {
             echo "❌ $1"
-            [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
+            [ "${MIGRATION_RAN:-0}" -eq 0 ] || [ "$(python3 -I "${PDV:-x}" range-additive "$PREV_COMMIT" "$TARGET_SHA")" = 1 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
             if ! rollback_deploy; then
               echo "❌ 自動 rollback 也失敗 — deploy run 必須標紅"
               exit 11
@@ -1960,7 +1960,8 @@ jobs:
       # Post-deploy safety net (Founder 2026-10-14). The executor above already
       # verified health + deployment.json identity with bounded retries and, on
       # failure, rolled back through its reviewed rollback_deploy (exit 10/11) or,
-      # when the range has a migration, held without any rollback (exit 12).
+      # when the range has a migration that is not additive-only, held without
+      # any rollback (exit 12/13).
       # These steps add an independent read-only check from outside the Pi and a
       # loud summary; they open no new path into production.
       - name: Checkout post-deploy verifier
