@@ -30,7 +30,6 @@ class BindingController extends Controller
             'campus_id'   => ['sometimes', 'integer', 'min:1'],
             'student_id'  => ['sometimes', 'integer', 'min:1'],
             'line_user_id' => ['sometimes', 'string', 'max:64'],
-            'student_name' => ['sometimes', 'string', 'max:64'],
             'limit'       => ['sometimes', 'integer', 'min:1', 'max:500'],
         ]);
 
@@ -47,30 +46,9 @@ class BindingController extends Controller
             lineUserId: $validated['line_user_id'] ?? null,
             limit: (int) ($validated['limit'] ?? 100),
             allowedCampusIds: $allowedCampusIds,
-            studentName: $validated['student_name'] ?? null,
         );
 
-        // `data` is what the binding page reads (in-app #400); `bindings` stays for existing callers.
-        return response()->json(['bindings' => $bindings, 'data' => $bindings, 'count' => $bindings->count()]);
-    }
-
-    public function stats(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'campus_id' => ['sometimes', 'integer', 'min:1'],
-        ]);
-
-        $allowedCampusIds = $this->allowedCampusIds($request);
-        if ($allowedCampusIds !== null
-            && isset($validated['campus_id'])
-            && !in_array((int) $validated['campus_id'], $allowedCampusIds, true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
-
-        return response()->json($this->bindingService->stats(
-            campusId: isset($validated['campus_id']) ? (int) $validated['campus_id'] : null,
-            allowedCampusIds: $allowedCampusIds,
-        ));
+        return response()->json(['bindings' => $bindings, 'count' => $bindings->count()]);
     }
 
     public function show(Request $request, int $id): JsonResponse
