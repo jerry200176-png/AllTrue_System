@@ -51,7 +51,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toContain('aria-label="主任待處理佇列"');
     expect(source).toContain("if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report' || ps === 'pending_reconciliation';");
     expect(source).toContain("if (modes.size > 1) return 'mixed';");
-    expect(source).toContain('請分開選取未繳或等你確認的課，才能進行批次處理。');
+    expect(source).toContain('請分開選取未繳或待核對入帳的課，才能進行批次處理。');
   });
 
   it('admin reported-paid path does not auto-open a receipt', () => {
@@ -91,7 +91,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toContain('if (!batchPreviewOpen.value) return;');
     expect(source).toContain('批次摘要');
     expect(source).toContain('只會處理上方未繳／繳了一部分的課程');
-    expect(source).toContain('只會處理上方等你確認的課程');
+    expect(source).toContain('只會處理上方待核對入帳的課程');
   });
 
   it('class-list receipt lookup opens with match.id (payment report id)', () => {

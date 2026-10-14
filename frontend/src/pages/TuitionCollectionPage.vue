@@ -138,7 +138,7 @@
       <div v-if="rows.length" class="tc-action-queue" role="region" aria-label="主任待處理佇列">
         <div>
           <strong>{{ tabCounts.action ? `今天先處理 ${tabCounts.action} 筆` : '今天待處理已清空' }}</strong>
-          <span>{{ tabCounts.action ? '未繳與等你確認的課會集中在待處理，已收／續課提醒留在其他分類。' : '如需查看續課或已結清提醒，請切換其他分類。' }}</span>
+          <span>{{ tabCounts.action ? '未繳與待核對入帳的課會集中在待處理，已收／續課提醒留在其他分類。' : '如需查看續課或已結清提醒，請切換其他分類。' }}</span>
         </div>
         <button v-if="activeTab !== 'action'" class="tc-queue-link" type="button" @click="activeTab = 'action'">
           回到待處理
@@ -241,7 +241,7 @@
               @click="openBatchPreview"
             >批次確認入帳</button>
           </template>
-          <span v-else class="tc-batch-help">請分開選取未繳或等你確認的課，才能進行批次處理。</span>
+          <span v-else class="tc-batch-help">請分開選取未繳或待核對入帳的課，才能進行批次處理。</span>
           <button class="tc-btn tc-btn--ghost" type="button" :disabled="batchBusy" @click="clearSelection">取消選取</button>
         </div>
 
@@ -290,7 +290,7 @@
                     :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
                     :disabled="!selectableRows.length"
                     @change="toggleSelectAll($event.target.checked)"
-                    :aria-label="batchMode === 'confirm' ? '全選等你確認' : batchMode === 'mixed' ? '全選待處理' : '全選未繳'"
+                    :aria-label="batchMode === 'confirm' ? '全選待核對入帳' : batchMode === 'mixed' ? '全選待處理' : '全選未繳'"
                   />
                 </th>
                 <th class="tc-th-sort" role="button" tabindex="0" @click="toggleSort('student_name')" @keydown.enter.prevent="toggleSort('student_name')" @keydown.space.prevent="toggleSort('student_name')">
@@ -782,7 +782,7 @@
           <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.exception_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.exception_count || 0 }}</span><span class="tc-card-label">例外待處理</span></div>
           <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">多收待處理</span></div>
         </div>
-        <p class="tc-summary-note">「已結案課程」包含已收與仍等你確認收款的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
+        <p class="tc-summary-note">「已結案課程」包含已收與課已結束、尚未收款的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
         <p class="tc-summary-note" role="note" aria-label="帳務標籤說明">
           舊制無帳單：課程已標記繳費，但目前沒有有效帳單。例外待處理：至少一張有效帳單的淨收款超過帳單金額。
           請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對；標籤本身不會自動處理款項。
@@ -813,7 +813,7 @@
                   <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
                   <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
                   <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || (row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL) }}</span>
-                  <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '付款期間待確認' }}</span>
+                  <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || REVIEW_REQUIRED_LABEL }}</span>
                   <span v-if="row.closed_reason === 'waived'" class="acct-chip">{{ WAIVED_LABEL }}</span>
                   <span v-else-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation && !row.payment_review_required" class="text-light">正常</span>
                 </td>
@@ -846,7 +846,7 @@
                 送出前確認
               </h3>
               <p id="batch-preview-description" class="tc-dialog-desc">
-                {{ batchPreviewMode === 'confirm' ? '請先核對等你確認的資料；確認後才會變成已收並開收據。' : '請先核對本批次資料；送出後會先列為等你確認，不會直接變成已收。' }}
+                {{ batchPreviewMode === 'confirm' ? '請先核對待核對入帳的資料；確認後才會變成已收並開收據。' : '請先核對本批次資料；送出後會先列為待核對入帳，不會直接變成已收。' }}
               </p>
             </div>
             <button class="tc-dialog-close" type="button" aria-label="關閉確認視窗" @click="closeBatchPreview" :disabled="batchBusy">
@@ -875,7 +875,7 @@
 
           <div class="tc-batch-preview-note" role="note">
             <span class="material-symbols-outlined" aria-hidden="true">info</span>
-            <span>{{ batchPreviewMode === 'confirm' ? '只會處理上方等你確認的課程；若資料不符，請取消後逐筆檢查。' : '只會處理上方未繳／繳了一部分的課程；取消後可重新選取。' }}</span>
+            <span>{{ batchPreviewMode === 'confirm' ? '只會處理上方待核對入帳的課程；若資料不符，請取消後逐筆檢查。' : '只會處理上方未繳／繳了一部分的課程；取消後可重新選取。' }}</span>
           </div>
 
           <div class="tc-dialog-btns">
@@ -1124,7 +1124,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { normalizeNavigationId, resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
-import { TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL, FREE_GIFT_LABEL, ZERO_REASON_FREE_GIFT } from '../lib/courseMoneyState.js';
+import { TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL, FREE_GIFT_LABEL, ZERO_REASON_FREE_GIFT } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -1433,7 +1433,7 @@ function clearSelection() {
 function openBatchPreview() {
   const mode = batchMode.value;
   if (mode === 'mixed') {
-    showToast('請分開選取未繳或等你確認的課，才能進行批次處理。', 'warning');
+    showToast('請分開選取未繳或待核對入帳的課，才能進行批次處理。', 'warning');
     billingWorkflowError('report', 'validation');
     return;
   }

@@ -23,7 +23,7 @@
       </template>
       <span v-else>已收清</span>
       <template v-if="pendingReport">
-        <span class="contract__chip pay-partial">家長說{{ pendingReport.date ? ` ${shortDate(pendingReport.date)} ` : '' }}繳了 {{ money(pendingReport.amount) }}，等你確認</span>
+        <span class="contract__chip pay-partial">家長回報{{ pendingReport.date ? ` ${shortDate(pendingReport.date)} ` : '' }}已付 {{ money(pendingReport.amount) }}，待你核對入帳</span>
         <AtButton size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</AtButton>
       </template>

@@ -145,33 +145,37 @@ export const TUITION_STATUS_CONFIG = {
   unpaid: { label: '未繳', cls: 'st-unpaid' },
   partial: { label: '繳了一部分', cls: 'st-partial' },
   waived: { label: '不收了', cls: 'st-paid' },
-  pending_report: { label: '家長說繳了，等你確認', cls: 'st-pending' },
-  // Tab/badge: also holds paused unpaid courses, so neutral; rows say which (ENDED_/PAUSED_PENDING_LABEL).
-  pending_reconciliation: { label: '等你確認收款', cls: 'st-pending' },
+  pending_report: { label: '已回報付款，待你核對入帳', cls: 'st-pending' },
+  // Tab/badge (in-app #395-#404): no money received yet. Rows say ended vs paused (ENDED_/PAUSED_PENDING_LABEL).
+  pending_reconciliation: { label: '課已結束，尚未收款', cls: 'st-pending' },
   paid: { label: '已收', cls: 'st-paid' },
   renew_needed: { label: '續課待處理', cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期', cls: 'st-monthly' },
 };
 export const WAIVED_LABEL = TUITION_STATUS_CONFIG.waived.label;
-export const ENDED_PENDING_LABEL = '課已結束，等你確認收款';
-export const PAUSED_PENDING_LABEL = '暫停中・等你確認收款';
+export const ENDED_PENDING_LABEL = '課已結束，尚未收款';
+export const PAUSED_PENDING_LABEL = '暫停中，尚未收款';
 export const INVOICE_STATUS_LABELS = { paid: '已收', unpaid: '未繳', partial: '繳了一部分', void: '已作廢' };
 // #3991 (Founder 2026-10-13): a NT$0 bill exists only when marked free/gift. Mirrors Invoice::ZERO_REASON_FREE_GIFT.
 export const ZERO_REASON_FREE_GIFT = 'free_gift';
 export const FREE_GIFT_LABEL = '免費／贈送';
 // `voided` only exists in the ledger, the one screen that lists voids.
-export const REPORT_STATUS_LABELS = { pending: '等你確認', confirmed: '已收', rejected: '已退回', voided: '已撤銷' };
+export const REPORT_STATUS_LABELS = { pending: '待核對入帳', confirmed: '已收', rejected: '已退回', voided: '已撤銷' };
 
 // ── monthly period payment labels (folded from monthlyPaymentDisplay.js) ──
+// Review wording only for review cases; any other unmapped status stays neutral (in-app #395-#404).
+export const REVIEW_REQUIRED_LABEL = '月結帳單與上課堂數不符，請核對';
+export const UNKNOWN_STATUS_LABEL = '狀態待確認';
 export const periodPaymentLabel = (status) => ({
-  paid: '已收', unpaid: '未繳', partial: '繳了一部分', pending_report: '等你確認',
-  review_required: '付款期間待確認', unknown: '付款期間待確認',
-})[status] || '付款期間待確認';
+  paid: '已收', unpaid: '未繳', partial: '繳了一部分', pending_report: REPORT_STATUS_LABELS.pending,
+  // 'unknown' = sessions with no bill (MonthlyPeriodPaymentService), itself a review case.
+  review_required: REVIEW_REQUIRED_LABEL, unknown: REVIEW_REQUIRED_LABEL,
+})[status] || UNKNOWN_STATUS_LABEL;
 
 export function monthlyPaymentLabel(course) {
   const summary = course?.monthly_payment;
   if (!summary) return null;
-  if (summary.review_required) return '付款期間待確認';
+  if (summary.review_required) return REVIEW_REQUIRED_LABEL;
   if (course.payment_status === 'pending_report' && summary.payment_status === 'unpaid') return `${summary.billing_period} ${periodPaymentLabel('pending_report')}`;
   return `${summary.billing_period} ${periodPaymentLabel(summary.payment_status)}`;
 }

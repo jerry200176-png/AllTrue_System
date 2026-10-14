@@ -26,9 +26,9 @@ describe('tuition 確認不收 (waive) action', () => {
     expect(source).toContain(`v-if="row.closed_reason === 'waived'" class="acct-chip">{{ WAIVED_LABEL }}`);
   });
 
-  it('F7 S3a: shows the backend reconciliation label and the 付款期間待確認 state instead of 正常', () => {
+  it('F7 S3a: shows the backend reconciliation label and the review-required state instead of 正常', () => {
     expect(source).toContain(`row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || (row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL) }}`);
-    expect(source).toContain(`row.payment_review_required" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || '付款期間待確認' }}`);
+    expect(source).toContain(`row.payment_review_required" class="acct-chip acct-chip--pending">{{ row.reconciliation_label || REVIEW_REQUIRED_LABEL }}`);
     expect(source).toContain('!row.pending_reconciliation && !row.payment_review_required" class="text-light">正常');
   });
 

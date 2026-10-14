@@ -551,7 +551,7 @@ const ledgerExceptions = computed(() => {
   return rows.sort((a, b) => a.severity - b.severity);
 });
 
-// Default list = money that counts (已收 / 等你確認); rejected, voided and 0 元 rows sit under 其他紀錄.
+// Default list = money that counts (已收 / 待核對入帳); rejected, voided and 0 元 rows sit under 其他紀錄.
 const isMainReceipt = (r) => ['confirmed', 'pending'].includes(r.status) && Number(r.amount || 0) > 0;
 const otherReceipts = computed(() => (payload.value?.receipts || []).filter((r) => !isMainReceipt(r)));
 const shownReceipts = computed(() => [...(payload.value?.receipts || []).filter(isMainReceipt), ...(showOtherReceipts.value ? otherReceipts.value : [])]);
