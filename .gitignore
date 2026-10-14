@@ -202,8 +202,8 @@ director-review-*.csv
 ops-review-key-map.json
 **/repair-bundle-campus-*.json
 **/leave-hc-filled*.csv
-# ExoProtocol: audit logs excluded (privacy.commit_logs=false)
-.exo/logs/
+# ExoProtocol retired (Founder 2026-10-14); never add new .exo/ files
+.exo/
 tmp-cutover/
 
 # Local agent-start session manifest: read in the worktree, never committed.
