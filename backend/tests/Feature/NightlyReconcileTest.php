@@ -321,6 +321,24 @@ class NightlyReconcileTest extends TestCase
         @unlink($rowsPath);
     }
 
+    public function test_failed_rows_file_write_fails_the_run(): void
+    {
+        $this->bootstrapCourse(4, 2);
+        $rowsPath = storage_path('logs/nightly-reconcile-rows-dryrun-' . now()->format('Ymd') . '.json');
+        @unlink($rowsPath);
+        // A directory at the target path makes file_put_contents fail.
+        mkdir($rowsPath);
+
+        try {
+            $this->artisan('reconcile:nightly', ['--dry-run' => true])->assertExitCode(1);
+        } finally {
+            @rmdir($rowsPath);
+        }
+
+        // The summary report is still written for the panel's fallback.
+        $this->assertSame(1, $this->readReport()['mismatch_count']);
+    }
+
     // ── Helpers ──
 
     /** Most tests run --dry-run, which writes its own preview file (#3945). */
