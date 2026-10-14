@@ -11,7 +11,8 @@ export const request = async (method, route, body) => {
   catch (e) { raw = e.stdout; if (!raw) throw new Error('GitHub read failed'); }
   raw = String(raw).replace(/\r/g, ''); const end = raw.indexOf('\n\n');
   const headers = Object.fromEntries(raw.slice(0, end).split('\n').slice(1).map((l) => { const i = l.indexOf(':'); return [l.slice(0, i), l.slice(i + 1).trim()]; }));
-  return { status: Number(/^HTTP\/\S+ (\d+)/.exec(raw)?.[1]), headers, body: JSON.parse(raw.slice(end + 2)) };
+  let bodyData; try { bodyData = JSON.parse(raw.slice(end + 2)); } catch { bodyData = { message: 'invalid GitHub response' }; }
+  return { status: Number(/^HTTP\/\S+ (\d+)/.exec(raw)?.[1]), headers, body: bodyData };
 };
 export function reader(api, repo, policy) {
 const get = (p) => api('GET', `/repos/${repo}/${p}`);
