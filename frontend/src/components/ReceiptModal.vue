@@ -1,6 +1,16 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal receipt-modal">
+    <div
+      ref="panelRef"
+      class="modal receipt-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="電子收據"
+      tabindex="-1"
+      data-testid="receipt-modal-panel"
+      @keydown.esc.stop.prevent="$emit('close')"
+      @keydown.tab="onTab"
+    >
       <div class="receipt-header">
         <h3>電子收據</h3>
         <button class="ghost icon-btn" @click="$emit('close')" title="關閉">
@@ -83,7 +93,8 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
+import { trapTab } from '../lib/focusTrap';
 import {
   adaptPaymentReportReceipt,
   buildReceiptCopyText,
@@ -228,6 +239,25 @@ async function downloadReceiptImage() {
     copyError.value = '下載圖片失敗，請改用列印或手動截圖。';
   }
 }
+
+// The receipt can open on top of another overlay (the ledger, #398/#405): take focus,
+// keep Tab inside, close on Escape without closing the overlay underneath, and give
+// focus back when it closes.
+const panelRef = ref(null);
+let returnFocusEl = null;
+function onTab(event) {
+  trapTab(event, panelRef.value);
+}
+watch(() => props.show, (visible) => {
+  if (visible) {
+    returnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    nextTick(() => panelRef.value?.focus());
+    return;
+  }
+  const target = returnFocusEl;
+  returnFocusEl = null;
+  if (target && target.isConnected && typeof target.focus === 'function') target.focus();
+}, { immediate: true });
 
 watch(() => [props.show, props.reportId], async ([visible]) => {
   if (!visible) return;
