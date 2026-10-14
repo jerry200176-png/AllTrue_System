@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
-import { useNightlyReconcile } from '../useNightlyReconcile';
+import { useNightlyReconcile, isReportStale, latestExpectedRunMs } from '../useNightlyReconcile';
 
 // Mock api module
 vi.mock('../../api', () => ({
@@ -244,7 +244,7 @@ describe('useNightlyReconcile', () => {
     expect(categoryLabel('ledger_ahead')).toBe('扣堂帳本領先');
     expect(categoryLabel('counter_overstated')).toBe('已用堂數偏高');
     expect(categoryLabel('partial_minutes')).toBe('部分時數換算');
-    expect(categoryLabel('contract_cap')).toBe('出勤超出合約堂數');
+    expect(categoryLabel('contract_cap')).toBe('使用紀錄超出合約堂數');
     expect(categoryLabel('source_conflict')).toBe('課堂狀態與扣堂證據衝突');
     expect(categoryLabel('unknown')).toBe('待分類');
     expect(categoryLabel('')).toBe('');
@@ -273,5 +273,50 @@ describe('useNightlyReconcile', () => {
   it('filters default to empty strings', () => {
     const { filters } = setup();
     expect(filters.value).toEqual({ campus: '', subject: '', category: '' });
+  });
+
+  // ---- truncation (#3945) ----
+  it('flags a report whose mismatch_count exceeds the stored rows', async () => {
+    api.getReconcileLatest.mockResolvedValue(makeReport({ mismatch_count: 250 }));
+    const { detailTruncated, storedRowCount, loadReport } = setup();
+    await loadReport();
+    expect(storedRowCount.value).toBe(3);
+    expect(detailTruncated.value).toBe(true);
+  });
+
+  it('does not flag truncation when every row is stored', async () => {
+    api.getReconcileLatest.mockResolvedValue(makeReport());
+    const { detailTruncated, loadReport } = setup();
+    await loadReport();
+    expect(detailTruncated.value).toBe(false);
+  });
+});
+
+describe('nightly reconcile staleness (#3945)', () => {
+  const at = (iso) => new Date(iso).getTime();
+  const live = (checkedAt) => ({ checked_at: checkedAt, mode: 'live' });
+
+  it('expects today\'s 02:00 Taipei run once its grace period has passed', () => {
+    expect(latestExpectedRunMs(at('2026-10-13T03:00:00+08:00'))).toBe(at('2026-10-13T02:00:00+08:00'));
+    expect(latestExpectedRunMs(at('2026-10-13T02:59:59+08:00'))).toBe(at('2026-10-12T02:00:00+08:00'));
+    expect(latestExpectedRunMs(at('2026-10-13T01:00:00+08:00'))).toBe(at('2026-10-12T02:00:00+08:00'));
+    // 23:30 UTC on the 12th is already 07:30 on the 13th in Taipei.
+    expect(latestExpectedRunMs(at('2026-10-12T23:30:00Z'))).toBe(at('2026-10-13T02:00:00+08:00'));
+  });
+
+  it('turns yesterday\'s report stale right after today\'s 02:00 run is due', () => {
+    const report = live('2026-10-12 02:00:05');
+    expect(isReportStale(report, at('2026-10-13T02:30:00+08:00'))).toBe(false);
+    expect(isReportStale(report, at('2026-10-13T03:00:01+08:00'))).toBe(true);
+    expect(isReportStale(live('2026-10-13 02:00:05'), at('2026-10-13T09:00:00+08:00'))).toBe(false);
+  });
+
+  it('never lets a dry-run preview count as the scheduled run', () => {
+    const preview = { checked_at: '2026-10-13 10:00:00', mode: 'dry-run' };
+    expect(isReportStale(preview, at('2026-10-13T10:05:00+08:00'))).toBe(true);
+  });
+
+  it('treats a report without a mode as a legacy live report', () => {
+    expect(isReportStale({ checked_at: '2026-10-13 02:00:05' }, at('2026-10-13T09:00:00+08:00'))).toBe(false);
   });
 });

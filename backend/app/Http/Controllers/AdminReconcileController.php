@@ -13,7 +13,7 @@ class AdminReconcileController extends Controller
      */
     public function latest(Request $request)
     {
-        $files = glob(storage_path('logs/nightly-reconcile-*.json'));
+        $files = $this->liveReportFiles();
         if (empty($files)) {
             return response()->json([
                 'data' => null,
@@ -21,7 +21,6 @@ class AdminReconcileController extends Controller
             ], 404);
         }
 
-        rsort($files);
         $latest = $files[0];
         $report = json_decode((string) file_get_contents($latest), true);
         if (!is_array($report)) {
@@ -40,8 +39,7 @@ class AdminReconcileController extends Controller
      */
     public function index(Request $request)
     {
-        $files = glob(storage_path('logs/nightly-reconcile-*.json'));
-        rsort($files);
+        $files = $this->liveReportFiles();
 
         $reports = [];
         foreach (array_slice($files, 0, 30) as $file) {
@@ -54,6 +52,29 @@ class AdminReconcileController extends Controller
         }
 
         return response()->json(['data' => $reports]);
+    }
+
+    /**
+     * Dated live reports, newest first. Dry-run previews are written to
+     * nightly-reconcile-dryrun-*.json and never count as the scheduled run;
+     * older dry-runs that still sit under the dated name are skipped by mode
+     * (#3945). A report without a mode predates the field and is live.
+     *
+     * @return list<string>
+     */
+    private function liveReportFiles(): array
+    {
+        $files = array_values(array_filter(
+            glob(storage_path('logs/nightly-reconcile-*.json')) ?: [],
+            static fn (string $file): bool => preg_match('/^nightly-reconcile-\d{8}\.json$/', basename($file)) === 1
+        ));
+        rsort($files);
+
+        return array_values(array_filter($files, static function (string $file): bool {
+            $report = json_decode((string) @file_get_contents($file), true);
+
+            return !is_array($report) || ($report['mode'] ?? 'live') === 'live';
+        }));
     }
 
     /**
