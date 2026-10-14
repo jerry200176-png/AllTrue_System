@@ -55,7 +55,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (!byStudent.has(id)) {
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
-        waiting_confirm: 0, overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [],
+        waiting_confirm: 0, overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [], unbilled: 0,
       });
     }
     return byStudent.get(id);
@@ -77,7 +77,8 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (r.payment_status === 'pending_report') row.waiting_confirm += 1;
     if (!OWING.has(r.payment_status)) continue;
     const items = owedItems(r);
-    if (!items.some((it) => it.amount > 0)) continue;
+    // in-app #407: an owing contract with no bill yet must not read as 已收.
+    if (!items.some((it) => it.amount > 0)) { if (r.payable_status === 'unbilled') row.unbilled += 1; continue; }
     row.open_contracts += 1;
     for (const it of items) {
       if (it.amount <= 0) continue;
@@ -102,5 +103,5 @@ export const STUDENT_FILTERS = {
   all: { label: '全部', test: () => true },
   owing: { label: '有未繳', test: (r) => r.owed_now > 0 },
   confirm: { label: '待核對入帳', test: (r) => r.waiting_confirm > 0 },
-  clear: { label: '已繳清', test: (r) => r.owed_now === 0 && r.owed_later === 0 && r.waiting_confirm === 0 },
+  clear: { label: '沒有未繳', test: (r) => r.owed_now === 0 && r.owed_later === 0 && r.waiting_confirm === 0 && !r.unbilled },
 };

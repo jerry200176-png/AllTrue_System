@@ -110,7 +110,7 @@ describe('StudentBillingList', () => {
     const row = w.find('[data-testid="sbl-row-4"]');
     expect(row.text()).not.toContain('目前沒有未繳');
     expect(row.find('.sbl__now strong').text()).toBe('—');
-    expect(row.find('[data-testid="at-badge"]').text()).toContain('已收');
+    expect(row.find('[data-testid="at-badge"]').text()).toBe('沒有待收款項');
     expect(w.find('[data-testid="sbl-clear"]').text()).toBe('本校區目前沒有到期未繳。');
     const w2 = mount(StudentBillingList, { props: { alertRows: ROWS, today: '2026-10-07' } });
     expect(w2.find('[data-testid="sbl-row-2"]').text()).toContain('已回報付款，待你核對入帳');
@@ -146,5 +146,16 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
     expect(list.text()).toContain('2026-01-05 ~ —');
     await btn.trigger('click');
     expect(w.find('[data-testid="sbl-contracts-1"]').exists()).toBe(false);
+  });
+
+  it('says 已收 only with a payment on record and flags owing contracts with no bill (in-app #407)', () => {
+    const w = mount(StudentBillingList, { props: { alertRows: [
+      { id: 51, student_id: 5, student_name: '戊', payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null },
+      { id: 61, student_id: 6, student_name: '己', payment_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03' },
+    ], students: [{ id: 7, name: '庚' }], today: '2026-10-07' } });
+    const badge = (id) => w.find(`[data-testid="sbl-row-${id}"]`).find('[data-testid="at-badge"]').text();
+    expect(badge(5)).toBe('還沒開帳單');
+    expect(badge(6)).toBe('已收');
+    expect(badge(7)).toBe('沒有待收款項');
   });
 });
