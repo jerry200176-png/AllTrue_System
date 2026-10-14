@@ -3,6 +3,7 @@
 namespace App\Operations;
 
 use App\Models\SecurityAuditEvent;
+use App\Operations\Inapp\InappStandingPolicy;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -105,6 +106,35 @@ final class PopOperationService
         array $approverCampusIds = [],
         int $ttlMinutes = 15
     ): array {
+        return $this->recordApproval($requestId, $approvalReference, $approver, $approverRole, $commitSha, $approverId, $approverCampusIds, $ttlMinutes, false);
+    }
+
+    /**
+     * ADR-POP-015 standing-policy decision. Approval = the human recordApproval() path (approver_role=policy,
+     * atomic `approved`, token bound to the deployed SHA); a denial leaves the human quorum. @param array<int,string> $denialReasons
+     */
+    public function recordPolicyDecision(string $requestId, InappStandingPolicy $policy, array $denialReasons): array
+    {
+        $commitSha = $this->localDeploymentSha();
+        if ($denialReasons === []) {
+            $result = $this->recordApproval($requestId, $policy->decisionReference(), $policy->approverRef(), 'policy', $commitSha, null, [], 15, true);
+            unset($result['token']); // the Pi executor rebuilds it from the stored hash
+
+            return $result;
+        }
+        $request = $this->request($requestId);
+        DB::table('pop_approval_events')->insert(['operation_id' => $requestId, 'event_type' => 'policy_denied',
+            'approval_reference' => $policy->decisionReference(), 'approver' => $policy->approverRef(), 'approver_role' => 'policy',
+            'approver_id' => null, 'commit_sha' => $commitSha, 'phase' => 'execute', 'parameters_hash' => $request->parameters_hash,
+            'token_hash' => null, 'expires_at' => now(), 'created_at' => now()]);
+
+        return ['request_id' => $requestId, 'status' => (string) $request->status, 'ready' => false];
+    }
+
+    /** @param array<int,int> $approverCampusIds */
+    private function recordApproval(string $requestId, string $approvalReference, string $approver, string $approverRole,
+        string $commitSha, ?int $approverId, array $approverCampusIds, int $ttlMinutes, bool $byStandingPolicy): array
+    {
         $request = $this->request($requestId);
         $entry = $this->catalog->operation((string) $request->operation_id);
         if ((string) $entry['lifecycle'] !== 'active') {
@@ -113,16 +143,20 @@ final class PopOperationService
         $this->assertCommitSha($commitSha);
         $this->assertReference($approvalReference);
         $this->assertFounderApprovalReference($entry, $approvalReference);
-        $this->assertActor($approver);
+        if ($byStandingPolicy && (!InappStandingPolicy::governs($entry) || $approverRole !== 'policy'
+            || $approver !== (new InappStandingPolicy($this->catalog))->approverRef())) {
+            throw new RuntimeException('POP standing-policy approval is not valid for this operation; fail closed.');
+        }
+        if (!$byStandingPolicy) $this->assertActor($approver);
         if ($ttlMinutes < 1 || $ttlMinutes > 60) {
             throw new RuntimeException('POP approval TTL is outside the allowed range.');
         }
-        $requiredRoles = $this->approvalRoles($entry);
+        $requiredRoles = $byStandingPolicy ? ['policy'] : $this->approvalRoles($entry);
         if (!in_array($approverRole, $requiredRoles, true)) {
             throw new RuntimeException('POP approver role is not authorized for this operation.');
         }
         $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertCampusScope($parameters, $approverRole, $approverCampusIds);
+        if (!$byStandingPolicy) $this->assertCampusScope($parameters, $approverRole, $approverCampusIds); // the requester's scope was checked at draft
         $this->assertRequestIntegrity($request, $entry, $parameters, null, false);
         if ($this->isReviewedMonthly($entry)) {
             $this->assertMonthlyApprover($request, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
@@ -143,10 +177,13 @@ final class PopOperationService
             throw new RuntimeException('POP request catalog version is stale; create a new draft.');
         }
 
-        return DB::transaction(function () use ($requestId, $entry, $approvalReference, $approver, $approverRole, $commitSha, $approverId, $ttlMinutes, $parameters, $requiredRoles): array {
+        return DB::transaction(function () use ($requestId, $entry, $approvalReference, $approver, $approverRole, $commitSha, $approverId, $ttlMinutes, $parameters, $requiredRoles, $byStandingPolicy): array {
             $locked = DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
-            if (!$locked) {
+            if (!$locked || ($byStandingPolicy && (string) $locked->status !== 'awaiting_approval')) {
                 throw new RuntimeException('POP request not found; fail closed.');
+            }
+            if ($byStandingPolicy && !(new InappStandingPolicy($this->catalog))->capAvailable($locked)) {
+                throw new RuntimeException('POP standing-policy daily cap is exhausted; fail closed.');
             }
             $lockedParameters = json_decode((string) $locked->parameters, true, 512, JSON_THROW_ON_ERROR);
             $this->assertRequestIntegrity($locked, $entry, $lockedParameters, null, false);
@@ -710,7 +747,39 @@ final class PopOperationService
             return $roles;
         }
 
+        // ADR-POP-015: super_admin is the fallback quorum; InappStandingPolicy may approve instead (quorumRoles).
+        if (InappStandingPolicy::governs($entry) && $policy === InappStandingPolicy::ID && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         throw new RuntimeException('POP approval policy is not supported by this execution slice; fail closed.');
+    }
+
+    /**
+     * approver_role=policy counts only for governed operations with every ADR-POP-015 kill switch open; a tripped
+     * switch cancels the unexecuted request (policy_revoked event). @param \Illuminate\Support\Collection<int,object> $approvals
+     */
+    private function quorumRoles(array $entry, \Illuminate\Support\Collection $approvals, string $requestId): array
+    {
+        if (!$approvals->contains(fn (object $row): bool => (string) $row->approver_role === 'policy')) {
+            return $this->approvalRoles($entry);
+        }
+        try {
+            if (!InappStandingPolicy::governs($entry)) throw new RuntimeException('POP standing-policy approval is not valid here.');
+            InappStandingPolicy::assertKillSwitchesOpen($requestId);
+        } catch (Throwable $exception) {
+            DB::transaction(function () use ($requestId, $approvals): void {
+                if (DB::table('pop_operation_requests')->where('id', $requestId)->where('status', 'approved')
+                    ->update(['status' => 'cancelled', 'updated_at' => now()]) === 1) {
+                    $event = (array) $approvals->first(fn (object $row): bool => (string) $row->approver_role === 'policy');
+                    DB::table('pop_approval_events')->insert(array_merge(array_diff_key($event, ['id' => 1]),
+                        ['event_type' => 'policy_revoked', 'token_hash' => null, 'expires_at' => now(), 'created_at' => now()]));
+                }
+            });
+            throw $exception;
+        }
+
+        return ['policy'];
     }
 
     /** @param array<string,mixed> $entry */
@@ -882,11 +951,11 @@ final class PopOperationService
             return null;
         }
         $entry = $this->catalog->operation((string) $request->operation_id);
-        $requiredRoles = $this->approvalRoles($entry);
         $approvals = DB::table('pop_approval_events')
             ->where('operation_id', $request->id)
             ->where('event_type', 'approved')
             ->get();
+        $requiredRoles = $this->quorumRoles($entry, $approvals, (string) $request->id);
         $this->assertMonthlyApprovalEvents($request, $entry, $approvals->all());
         $approvedRoles = $approvals->pluck('approver_role')->map(fn ($role): string => (string) $role)->unique()->values()->all();
         if (array_diff($requiredRoles, $approvedRoles) !== []) {
@@ -913,11 +982,11 @@ final class PopOperationService
     private function localApproval(object $request): object
     {
         $entry = $this->catalog->operation((string) $request->operation_id);
-        $requiredRoles = $this->approvalRoles($entry);
         $approvals = DB::table('pop_approval_events')
             ->where('operation_id', $request->id)
             ->where('event_type', 'approved')
             ->get();
+        $requiredRoles = $this->quorumRoles($entry, $approvals, (string) $request->id);
         $this->assertMonthlyApprovalEvents($request, $entry, $approvals->all());
         $roles = $approvals->pluck('approver_role')->map(fn ($role): string => (string) $role)->unique()->values()->all();
         $commits = $approvals->pluck('commit_sha')->map(fn ($sha): string => (string) $sha)->unique()->values()->all();

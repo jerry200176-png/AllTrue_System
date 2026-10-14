@@ -50,7 +50,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | R2 | 要在 Pi 執行任何含 `test` / `phpunit` / `config:clear` 的指令 | ❌ 停。測試只走 GitHub Actions |
 | R3 | 要執行 `git push --force` / `-f` / 直接 push main | ❌ 停。一律推 feature branch，等 PR merge |
 | R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` **完整**還原，禁止部分還原 |
-| R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；正式 migration 須先有 Founder 對確切範圍的批准，再由既有授權的 `deploy.yml` 執行器處理 |
+| R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；一律由 `deploy.yml` 執行。**只新增**表／欄位／索引、且 PR 內文宣告 `Additive-Migration: yes` 的新 migration 合併時算 T2（`additive_migration_paths()`；身分／權限表與帳務表除外；須 Codex 在最終 head 確認；Founder 2026-10-14（三）④＋補充 #1），但在 `deploy.yml` 支援其失敗時自動回滾 code 之前，上線仍走 Founder 批准；會 drop／rename／change／寫資料的 migration 一律須 Founder 對確切範圍批准 |
 | R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動走隔離 task worktree → PR → CI → 依現行授權由 `deploy.yml` 控制部署。**唯讀例外（Founder 2026-10-07）**：只為查 bug 可 SSH/SCP 讀附件、`tinker --execute` 跑 SELECT；禁止任何寫入、`artisan` 寫入指令、R2 指令；每次在對應 issue 留言記錄讀了什麼（只寫 ID，不寫姓名）；讀回的檔案看完即刪 |
 
 ## ⚠️ 4 條黃線（違反 = CI 反覆失敗）
@@ -125,7 +125,7 @@ Claude Code on the web／其他雲端 session 的 container 是全新隔離環�
 **log 只有 ID／數量（公開 repo，#3605）**：完整 JSON（標題／描述／留言）只在以 `DUMP_ARTIFACT_KEY` 加密的 artifact（`*.full.tar.gz.enc`）；缺 secret 時 workflow fail closed。雲端 session 沒有金鑰也抓不到 artifact（`blob.core.windows.net` 403 是真的 egress 政策、不要繞過），所以報告內容只能由本機 agent 用 `gh run download` + `openssl` 解密讀取，解密步驟見 SOP 第 5 步。
 **兩者有 15 分鐘新鮮度限制**（`scripts/validate-bug-intake-evidence.py --max-age-minutes 15`）：queue-dump 與 detail-dump 必須在同一輪 15 分鐘內連續觸發並互相對得上，否則視為 stale、禁止拿舊 dump 直接分診。
 **回寫（new→triaged + 公開留言）沒有雲端路徑**：`bug-phase-a-triage.yml`／`bug-followup-comment.yml` 只有 `workflow_dispatch`、**沒有** push fallback（這是刻意的——會寫production，不像唯讀 dump 給雲端 agent 開後門）。雲端 session 能做到開 GitHub issue 為止；`bug_id` + `github_issue_url` + 符合 §3.8 白話規則的 `public_reply`（必須含 issue URL）要交給有 `workflow_dispatch` 權限的人類手動跑。`bug-phase-c-allowlist.yml` 雖有 push trigger，但限定「修復已上線」的 Phase C，不可拿來做未驗證的 Phase A。
-**即時唯讀（2026-10-13 起）**：若環境有 `ALLTRUE_TRIAGE_TOKEN`（超級管理員在「個人資料 → 安全性 → AI 分診唯讀金鑰」建立，預設 90 天到期），可直接 HTTPS 讀 `GET /api/v1/triage/bug-reports`（列表／單筆含留言／附件），不必走 dump。這把金鑰只能讀，其他 API 一律 403；回寫仍走上述 dispatch workflow。**repo 是公開的：絕不可把回報內容（姓名、電話、描述、留言、截圖）貼到 GitHub issue／PR／commit**，只寫 ID 與自己的技術判斷。
+**即時唯讀（2026-10-13 起；cloud 環境的具名例外見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-14（三）補充第 3 條）**：若環境有 `ALLTRUE_TRIAGE_TOKEN`（超級管理員在「個人資料 → 安全性 → AI 分診唯讀金鑰」建立，預設 90 天到期），可直接 HTTPS 讀 `GET /api/v1/triage/bug-reports`（列表／單筆含留言／附件），不必走 dump。這把金鑰只能讀，其他 API 一律 403；回寫仍走上述 dispatch workflow。**repo 是公開的：絕不可把回報內容（姓名、電話、描述、留言、截圖）貼到 GitHub issue／PR／commit**，只寫 ID 與自己的技術判斷。
 完整程序見 [`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`](docs/sop/BUG_INTAKE_TO_PRODUCTION.md)。
 
 完整 Gotchas G-001 ~ G-012：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。

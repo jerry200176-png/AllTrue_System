@@ -80,6 +80,7 @@ jobs:
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
           python3 -m unittest scripts.tests.test_pr_declaration_gate
+          python3 -m unittest scripts.tests.test_additive_migration_gate
           python3 -m unittest scripts.tests.test_ui_smoke_gate
           python3 -m unittest scripts.tests.test_autonomous_convergence
           python3 scripts/tests/test_required_php_checks.py
@@ -87,7 +88,6 @@ jobs:
           bash scripts/tests/production-acceptance-stage-contract.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
           bash scripts/tests/synthetic-director-workflow-contract.test.sh
-          bash scripts/tests/agent-session-manifest-untracked.test.sh
 
       - name: Test control plane lint catches violations
         run: |

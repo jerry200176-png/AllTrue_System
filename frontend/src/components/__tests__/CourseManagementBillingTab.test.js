@@ -101,4 +101,11 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('formatCoursePeriod(');
     expect(source).toContain('colspan="6" class="student-billing-state"');
   });
+
+  it('receipt column says a confirmed report can issue a receipt (in-app #395-#404)', () => {
+    expect(source).toContain(`r.status === 'confirmed')" class="hint">可開收據</span>`);
+    expect(source).toContain('<span v-else class="hint">核對入帳後才能開收據</span>');
+    expect(source).not.toContain('確認入帳後可開');
+    expect(source).toContain("if (course?.payment_status === 'review_required') return REVIEW_REQUIRED_LABEL;");
+  });
 });
