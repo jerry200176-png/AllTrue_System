@@ -788,10 +788,25 @@ jobs:
                           str((commit.get("commit") or {}).get("message") or ""),
                       )))
                       recovered = []
+                      merged_matches = []
                       for pr_number in referenced_prs:
                           try:
-                              candidate_pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
+                              try:
+                                  candidate_pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
+                              except RuntimeError as error:
+                                  # A message may cite an issue, e.g. "(#3908) (#3939)": that 404 is not
+                                  # provenance. Other API failures still abort the classifier (fail closed).
+                                  if "HTTP 404" in str(error):
+                                      print(f"#{pr_number} in commit message is not a pull request; skipped")
+                                      continue
+                                  raise
                               if candidate_pr.get("base", {}).get("ref") != "main":
+                                  continue
+                              if candidate_pr.get("merged_at") and candidate_pr.get("merge_commit_sha") == commit_sha:
+                                  # GitHub returned no /commits/{sha}/pulls for this squash commit (dfcde48 / #3939),
+                                  # but the PR's own merge_commit_sha is exactly this commit. It joins the normal
+                                  # candidate path below, which re-reads the PR and its declaration.
+                                  merged_matches.append({"number": int(pr_number), "base": {"ref": "main"}, "merged_at": candidate_pr.get("merged_at")})
                                   continue
                               pr_files = pages(gh_api(
                                   f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
@@ -839,12 +854,15 @@ jobs:
                                   print(f"PR #{pr_number} reconciliation rejected: {reconciliation.get('reason')}")
                           except (OSError, ValueError, subprocess.CalledProcessError) as error:
                               print(f"PR #{pr_number} reconciliation evidence unavailable: {error}")
-                      if len(recovered) == 1:
+                      if len(recovered) == 1 and not merged_matches:
                           attributed.append(recovered[0])
                           seen_reconciled_prs.add(recovered[0]["number"])
                           attributed_commits.add(commit_sha)
                           continue
-                      provenance_complete = False
+                      if not recovered and len(merged_matches) == 1:
+                          candidates = merged_matches
+                      else:
+                          provenance_complete = False
                   for candidate in candidates:
                       pr_number = candidate.get("number")
                       if (

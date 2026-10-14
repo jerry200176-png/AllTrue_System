@@ -724,9 +724,9 @@
                         class="small ghost btn-payment-slip"
                         data-testid="billing-payment-slip-action"
                         type="button"
-                        title="產生繳費通知單"
+                        title="產生繳費單"
                         @click="openPaymentSlip(row.course)"
-                      >繳費通知</button>
+                      >繳費單</button>
                       <button class="small ghost btn-invoices" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
                       <button v-if="shouldShowPaymentAction(row.course)" class="small primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
                       <span v-if="isTutoringBillingAnomaly(row.course)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
@@ -772,7 +772,6 @@
       :initial-teacher-id="schedulerInitialTeacherId"
       :allow-package-mode="true"
       mode="backfill"
-      :allow-financial-discount="allowFinancialDiscount"
       @cancel="showBackfillModal = false"
       @success="handleUniversalBackfillSuccess"
       @duplicate-course="handleSchedulerDuplicateCM"
@@ -1112,6 +1111,7 @@
 
     <EnrollmentConflictDecisionModal
       :show="showDuplicateInterceptModal"
+      :attempted-payment-type="String(interceptOriginalPayload?.payment_type || '')"
       :conflicts="duplicateConflicts"
       :class-type="interceptPendingClassType"
       :submitting="forceSubmitting"
@@ -1371,7 +1371,6 @@
 <script setup>
 // Autonomous delivery canary: no runtime behavior change.
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { isDirectorRole } from '../lib/roleCapabilities.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
@@ -1538,7 +1537,6 @@ const props = defineProps({
   initialStudentName: { type: String, default: '' },
   initialCourseIntent: { type: String, default: '' },
 });
-const allowFinancialDiscount = computed(() => isDirectorRole(props.userRole));
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
 
 // 課程查找 C-PR5 (PRD D2): the student's billing opens in place (the ledger panel), not on another page: paying, confirming
@@ -2843,7 +2841,6 @@ function openPurchaseModal(course) {
       current_end_date: course?.end_date || course?.EndDate || null,
       months: 1,
       end_date: '',
-      discount: { type: 'NONE', value: '0', reason: '' },
       original_amount: estimateMonthlyRenewalCharge(course),
       preview_end_date: '',
     };
