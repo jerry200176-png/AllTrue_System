@@ -48,6 +48,7 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
 use App\Http\Controllers\TriageBillingSnapshotController;
 use App\Http\Controllers\TriageBugReportController;
+use App\Http\Controllers\TriageContractLinkController;
 use App\Http\Controllers\TriageTokenController;
 use App\Http\Controllers\TeacherDuplicateController;
 use App\Http\Controllers\SubjectController;
@@ -956,7 +957,8 @@ Route::prefix('v1')->group(function () {
             ->whereNumber('id')->name('triage.bug-reports.show');
         Route::get('bug-reports/{id}/attachments/{attachmentId}', [TriageBugReportController::class, 'attachment'])
             ->whereNumber(['id', 'attachmentId'])->name('triage.bug-reports.attachment');
-        // #4100: IDs + numbers of one contract; scoped to the campus of an open bug report (待 Founder 核准; Founder decision pending: reach A/B/C on #4118).
+        // #4100 option B: IDs + numbers of ONE contract a super admin linked to an open report;
+        // gated by triage_tokens.billing_snapshot_enabled (default off; 待 Founder 核准 before turning on).
         Route::get('student-classes/{id}/billing-snapshot', [TriageBillingSnapshotController::class, 'show'])
             ->whereNumber('id')->name('triage.student-classes.billing-snapshot');
     });
@@ -964,6 +966,9 @@ Route::prefix('v1')->group(function () {
         Route::get('admin/triage-tokens', [TriageTokenController::class, 'index']);
         Route::post('admin/triage-tokens', [TriageTokenController::class, 'store']);
         Route::delete('admin/triage-tokens/{id}', [TriageTokenController::class, 'destroy'])->whereNumber('id');
+        // #4100: link ONE open report to ONE contract for the triage billing snapshot (session only; never the token).
+        Route::post('admin/triage-contract-links', [TriageContractLinkController::class, 'store']);
+        Route::delete('admin/triage-contract-links/{id}', [TriageContractLinkController::class, 'destroy'])->whereNumber('id');
     });
 
     // ── Duplicate Sessions P2 Review (director + super_admin) ──

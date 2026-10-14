@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\BugReport;
+use App\Models\BugReportContractLink;
 use App\Models\Invoice;
 use App\Models\StudentClass;
 use Illuminate\Http\Request;
@@ -10,40 +11,47 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 /**
- * #4100: read-only billing numbers of ONE contract for a triage token, so an AI can check the
- * G-009 / G-011 money state behind an open bug report without production SSH.
- * IDs and numbers only (no names, notes or free text). The contract must belong to the campus
- * of an OPEN bug report named by bug_report_id; anything else is 404 so IDs are not confirmed.
- * AuthenticateTriageToken audits every call; RestrictAccessTokenScope closes every other route.
+ * #4100 (Founder option B): read-only billing numbers of ONE contract for a triage token, so an AI
+ * can check the G-009 / G-011 money state behind an open bug report without production SSH.
+ * IDs and numbers only (no names, notes or free text). Succeeds only when ALL hold:
+ *   - config('triage_tokens.billing_snapshot_enabled') is true (default false);
+ *   - a super admin linked exactly this (bug_report_id, contract) and the link is not revoked;
+ *   - the report is open; and the report campus equals the contract student's campus.
+ * Every other case is the same 404, so guessed IDs, other contracts and other campuses look alike.
+ * Checked on every request (no caching). AuthenticateTriageToken audits every call.
  */
 class TriageBillingSnapshotController extends Controller
 {
-    private const OPEN_STATUSES = ['new', 'triaged', 'in_progress'];
-
     public function show(Request $request, int $id)
     {
+        if (!(bool) config('triage_tokens.billing_snapshot_enabled')) {
+            return $this->notFound();
+        }
         $validator = Validator::make($request->query(), [
             'bug_report_id' => ['required', 'integer', 'min:1'],
         ]);
         if ($validator->fails()) {
             return response()->json(['message' => 'Invalid query', 'errors' => $validator->errors()], 422);
         }
+        $bugId = (int) $validator->validated()['bug_report_id'];
 
-        $bug = BugReport::query()
-            ->whereKey((int) $validator->validated()['bug_report_id'])
-            ->whereIn('status', self::OPEN_STATUSES)
-            ->first();
-        $course = StudentClass::query()->whereKey($id)->first();
-        $courseCampusId = $course instanceof StudentClass
-            ? DB::table('Student')->where('id', (int) $course->StudentID)->value('CampusID')
-            : null;
-        // Fail closed on a missing Student row or an unset (null/0) campus: never match "no campus" to "no campus".
-        if (!$bug instanceof BugReport || $courseCampusId === null || (int) $courseCampusId <= 0
-            || (int) $courseCampusId !== (int) $bug->getAttribute('CampusID')) {
-            return response()->json(['message' => 'Not found'], 404);
+        $linked = BugReportContractLink::query()->active()
+            ->where('bug_report_id', $bugId)->where('student_class_id', $id)->exists();
+        $bug = $linked ? BugReport::query()->whereKey($bugId)
+            ->whereIn('status', BugReportContractLink::OPEN_REPORT_STATUSES)->first() : null;
+        $campusId = $bug instanceof BugReport ? BugReportContractLink::contractCampusId($id) : null;
+        $course = $bug instanceof BugReport && $campusId !== null && $campusId === (int) $bug->getAttribute('CampusID')
+            ? StudentClass::query()->whereKey($id)->first() : null;
+        if (!$course instanceof StudentClass) {
+            return $this->notFound();
         }
 
-        return response()->json($this->snapshot($course, (int) $bug->getKey()));
+        return response()->json($this->snapshot($course, $bugId));
+    }
+
+    private function notFound()
+    {
+        return response()->json(['message' => 'Not found'], 404);
     }
 
     /** @return array<string, mixed> */

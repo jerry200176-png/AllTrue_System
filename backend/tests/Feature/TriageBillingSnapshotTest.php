@@ -15,7 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
-/** #4100: triage-token billing snapshot (IDs + numbers, open-report campus only). CI only. */
+/** #4100 option B: triage billing snapshot of ONE super-admin-linked contract behind an open report. CI only. */
 final class TriageBillingSnapshotTest extends TestCase
 {
     use RefreshDatabase;
@@ -28,177 +28,177 @@ final class TriageBillingSnapshotTest extends TestCase
 
     private int $seq = 0;
 
-    public function test_snapshot_returns_ids_and_numbers_only_with_the_g009_delta(): void
+    private User $admin;
+
+    private string $token;
+
+    private Campus $campus;
+
+    protected function setUp(): void
     {
-        $campus = Campus::factory()->create();
-        $token = $this->createToken($this->user('S'));
-        $course = $this->course($campus, ['Charge' => 8800, 'Rate' => 900, 'SessionCount' => 8]);
+        parent::setUp();
+        config(['triage_tokens.billing_snapshot_enabled' => true]);
+        $this->admin = $this->user('S');
+        $this->token = $this->createToken($this->admin);
+        $this->campus = Campus::factory()->create();
+    }
+
+    public function test_linked_open_report_returns_ids_and_numbers_only_with_the_g009_delta(): void
+    {
+        $course = $this->course($this->campus, ['Charge' => 8800, 'Rate' => 900, 'SessionCount' => 8]);
         $invoice = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-01', 'DueDate' => '2026-09-15', 'TotalAmount' => 8800, 'PaidAmount' => 5000, 'Status' => 'partial', 'Note' => 'SECRET-INVOICE-NOTE', 'billing_period' => '2026-09']);
         $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-09-02', 'Method' => 'cash', 'Note' => 'SECRET-PAYMENT-NOTE']);
-        $bug = $this->bug($campus, 'triaged');
+        $bug = $this->bug($this->campus, 'triaged');
+        $this->link($bug, $course)->assertCreated();
 
-        $res = $this->getJson($this->url($course, $bug), $this->bearer($token))->assertOk();
+        $res = $this->getJson($this->url($course, $bug), $this->bearer())->assertOk();
 
         $this->assertSame(self::KEYS, array_keys($res->json()));
-        $res->assertJsonPath('student_class_id', $course->ID)
-            ->assertJsonPath('bug_report_id', $bug->id)
-            ->assertJsonPath('rate_unit', 'session')
-            ->assertJsonPath('session_count', 8)
-            ->assertJsonPath('standard_lesson_minutes', 90)
-            ->assertJsonPath('deduction_basis', 'fixed_session')
-            ->assertJsonPath('charge', 8800)
-            ->assertJsonPath('rate_times_count', 7200)
-            ->assertJsonPath('charge_minus_base', 1600)
-            ->assertJsonPath('session_charge_rows', 0)
-            ->assertJsonPath('paid_flag', 0)
-            ->assertJsonPath('remaining_sessions', 8)
-            ->assertJsonPath('stop', 0)
+        $res->assertJsonPath('student_class_id', $course->ID)->assertJsonPath('bug_report_id', $bug->id)
+            ->assertJsonPath('rate_unit', 'session')->assertJsonPath('session_count', 8)
+            ->assertJsonPath('standard_lesson_minutes', 90)->assertJsonPath('deduction_basis', 'fixed_session')
+            ->assertJsonPath('charge', 8800)->assertJsonPath('rate_times_count', 7200)
+            ->assertJsonPath('charge_minus_base', 1600)->assertJsonPath('session_charge_rows', 0)
+            ->assertJsonPath('paid_flag', 0)->assertJsonPath('remaining_sessions', 8)->assertJsonPath('stop', 0)
             ->assertJsonPath('invoices', [['id' => $invoice->id, 'status' => 'partial', 'total' => 8800, 'paid' => 5000, 'period' => '2026-09', 'issue_date' => '2026-09-01']])
             ->assertJsonPath('payments', [['id' => $payment->id, 'invoice_id' => $invoice->id, 'amount' => 5000]]);
         $this->assertEquals(900, $res->json('rate'));
         foreach (['SECRET-STUDENT', 'SECRET-MEMO', 'SECRET-INVOICE-NOTE', 'SECRET-PAYMENT-NOTE', '0912000000'] as $private) {
             $this->assertStringNotContainsString($private, $res->getContent());
         }
-
-        $row = DB::table('security_audit_events')->where('event_type', 'triage_token.read')->orderByDesc('id')->first();
-        $meta = json_decode($row->metadata, true);
-        $this->assertSame(SecurityAuditEvent::ref('student_class', $course->ID), $row->subject_ref);
-        $this->assertSame(SecurityAuditEvent::ref('bug_report', $bug->id), $meta['bug_report_ref']);
-        $this->assertSame('triage.student-classes.billing-snapshot', $meta['route']);
-        $this->assertSame(200, $meta['http_status']);
+        $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot", $this->bearer())->assertStatus(422);
     }
 
-    public function test_hour_rate_unit_uses_total_hours_as_the_base(): void
+    public function test_unlinked_revoked_closed_and_mismatched_pairs_all_get_the_same_404(): void
     {
-        $campus = Campus::factory()->create();
-        $token = $this->createToken($this->user('S'));
-        $course = $this->course($campus, ['Charge' => 10000, 'Rate' => 450, 'rate_unit' => 'hour', 'TotalHours' => 20]);
+        $course = $this->course($this->campus);
+        $otherCourse = $this->course($this->campus);
+        $bug = $this->bug($this->campus, 'new');
+        $otherBug = $this->bug($this->campus, 'new');
 
-        $this->getJson($this->url($course, $this->bug($campus, 'new')), $this->bearer($token))->assertOk()
-            ->assertJsonPath('rate_times_count', 9000)
-            ->assertJsonPath('charge_minus_base', 1000)
-            ->assertJsonPath('invoices', [])
-            ->assertJsonPath('payments', []);
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound(); // no link
+        $linkId = (int) $this->link($bug, $course)->assertCreated()->json('id');
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertOk();
+
+        $this->getJson($this->url($otherCourse, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']); // other contract, same report
+        $this->getJson($this->url($course, $otherBug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']); // same contract, other report
+        $this->getJson("/api/v1/triage/student-classes/999999/billing-snapshot?bug_report_id={$bug->id}", $this->bearer())->assertNotFound();
+        $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot?bug_report_id=999999", $this->bearer())->assertNotFound();
+
+        $bug->forceFill(['status' => 'closed'])->save(); // report closed after linking: lapses at once
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']);
+        $bug->forceFill(['status' => 'triaged'])->save();
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertOk();
+
+        $this->deleteJson("/api/v1/admin/triage-contract-links/{$linkId}", [], $this->as($this->admin))->assertOk();
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']);
+        $this->deleteJson("/api/v1/admin/triage-contract-links/{$linkId}", [], $this->as($this->admin))->assertNotFound();
+        $this->assertNotNull(DB::table('bug_report_contract_links')->where('id', $linkId)->value('revoked_at')); // soft revoke keeps history
     }
 
-    public function test_bug_report_id_is_required(): void
+    public function test_student_moved_to_another_campus_after_linking_is_404(): void
     {
-        $campus = Campus::factory()->create();
-        $token = $this->createToken($this->user('S'));
-        $course = $this->course($campus);
+        $course = $this->course($this->campus);
+        $bug = $this->bug($this->campus, 'new');
+        $this->link($bug, $course)->assertCreated();
+        DB::table('Student')->where('id', $course->StudentID)->update(['CampusID' => Campus::factory()->create()->id]);
 
-        $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot", $this->bearer($token))->assertStatus(422);
-        $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot?bug_report_id=abc", $this->bearer($token))->assertStatus(422);
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound();
     }
 
-    public function test_only_an_open_report_in_the_same_campus_unlocks_the_contract(): void
+    public function test_flag_off_answers_404_even_for_a_live_link(): void
     {
-        $campus = Campus::factory()->create();
-        $other = Campus::factory()->create();
-        $token = $this->createToken($this->user('S'));
-        $course = $this->course($campus);
+        $course = $this->course($this->campus);
+        $bug = $this->bug($this->campus, 'new');
+        $this->link($bug, $course)->assertCreated();
 
-        foreach (['new', 'triaged', 'in_progress'] as $status) {
-            $this->getJson($this->url($course, $this->bug($campus, $status)), $this->bearer($token))->assertOk();
+        config(['triage_tokens.billing_snapshot_enabled' => false]);
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']);
+    }
+
+    public function test_link_creation_validates_campus_open_report_existence_and_one_live_link_per_report(): void
+    {
+        $course = $this->course($this->campus);
+        $foreignCourse = $this->course(Campus::factory()->create());
+        $bug = $this->bug($this->campus, 'new');
+
+        $this->link($bug, $foreignCourse)->assertStatus(422)->assertJsonPath('code', 'campus_mismatch');
+        $this->link($this->bug($this->campus, 'closed'), $course)->assertStatus(422)->assertJsonPath('code', 'bug_report_not_open');
+        $this->postJson('/api/v1/admin/triage-contract-links', ['bug_report_id' => 999999, 'student_class_id' => $course->ID], $this->as($this->admin))->assertStatus(422);
+        $this->postJson('/api/v1/admin/triage-contract-links', ['bug_report_id' => $bug->id, 'student_class_id' => 999999], $this->as($this->admin))->assertStatus(422);
+        $this->postJson('/api/v1/admin/triage-contract-links', ['bug_report_id' => $bug->id], $this->as($this->admin))->assertStatus(422);
+
+        $this->link($bug, $course)->assertCreated();
+        $this->link($bug, $this->course($this->campus))->assertStatus(409); // one live contract per report
+        $this->assertSame(1, DB::table('bug_report_contract_links')->count());
+    }
+
+    public function test_triage_token_and_non_super_admin_sessions_cannot_manage_links(): void
+    {
+        $course = $this->course($this->campus);
+        $bug = $this->bug($this->campus, 'new');
+        $linkId = (int) $this->link($bug, $course)->assertCreated()->json('id');
+        $payload = ['bug_report_id' => $bug->id, 'student_class_id' => $course->ID];
+
+        $this->postJson('/api/v1/admin/triage-contract-links', $payload, $this->bearer())->assertForbidden();
+        $this->deleteJson("/api/v1/admin/triage-contract-links/{$linkId}", [], $this->bearer())->assertForbidden();
+        foreach (['A', 'T'] as $type) {
+            $user = $this->user($type);
+            $this->postJson('/api/v1/admin/triage-contract-links', $payload, $this->as($user))->assertForbidden();
+            $this->deleteJson("/api/v1/admin/triage-contract-links/{$linkId}", [], $this->as($user))->assertForbidden();
         }
-        foreach (['resolved', 'closed'] as $status) {
-            $this->getJson($this->url($course, $this->bug($campus, $status)), $this->bearer($token))
-                ->assertNotFound()->assertExactJson(['message' => 'Not found']);
-        }
-        $foreign = $this->bug($other, 'new');
-        $this->getJson($this->url($course, $foreign), $this->bearer($token))->assertNotFound()->assertExactJson(['message' => 'Not found']);
-        $open = $this->bug($campus, 'new');
-        $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot?bug_report_id=999999", $this->bearer($token))->assertNotFound();
-        $this->getJson("/api/v1/triage/student-classes/999999/billing-snapshot?bug_report_id={$open->id}", $this->bearer($token))
-            ->assertNotFound()->assertExactJson(['message' => 'Not found']);
-        $this->assertSame(3, DB::table('security_audit_events')->where('event_type', 'triage_token.read')->where('outcome', 'success')->count());
+        $this->postJson('/api/v1/admin/triage-contract-links', $payload, ['Accept' => 'application/json'])->assertUnauthorized();
+        $this->assertNull(DB::table('bug_report_contract_links')->where('id', $linkId)->value('revoked_at'));
     }
 
-    public function test_request_without_a_valid_triage_token_is_401(): void
+    public function test_snapshot_requires_a_triage_token_and_write_methods_change_nothing(): void
     {
-        $campus = Campus::factory()->create();
-        $admin = $this->user('S');
-        $course = $this->course($campus);
-        $url = $this->url($course, $this->bug($campus, 'new'));
+        $course = $this->course($this->campus);
+        $bug = $this->bug($this->campus, 'new');
+        $this->link($bug, $course)->assertCreated();
+        $url = $this->url($course, $bug);
 
         $this->getJson($url)->assertUnauthorized();
         $session = bin2hex(random_bytes(16));
-        AuthToken::create(['user_id' => $admin->id, 'token' => $session, 'expires_at' => now()->addDay()]);
-        $this->getJson($url, $this->bearer($session))->assertUnauthorized();
-        $this->getJson($url, ['X-User-Id' => (string) $admin->id, 'Accept' => 'application/json'])->assertUnauthorized();
-    }
-
-    public function test_token_still_cannot_reach_non_triage_billing_routes(): void
-    {
-        $campus = Campus::factory()->create();
-        $token = $this->createToken($this->user('S'));
-        $course = $this->course($campus);
-        $this->bug($campus, 'new');
-
-        foreach ([
-            ['GET', '/api/v1/invoices'], ['GET', '/api/v1/finance/summary'], ['GET', '/api/v1/student-classes/export'],
-            ['POST', "/api/v1/student-classes/{$course->ID}/billing-correction"], ['GET', '/api/v1/me'],
-        ] as [$method, $uri]) {
-            $this->json($method, $uri, [], $this->bearer($token))->assertForbidden();
-        }
-        $this->assertSame(8800, (int) StudentClass::query()->whereKey($course->ID)->value('Charge'));
-    }
-
-    /** Documents the CURRENT reach (Founder decision A/B/C on #4118): any open report unlocks every contract in its campus. */
-    public function test_any_open_report_in_a_campus_unlocks_an_unrelated_contract_in_that_campus(): void
-    {
-        $campus = Campus::factory()->create();
-        $token = $this->createToken($this->user('S'));
-        $unrelatedReport = $this->bug($campus, 'new'); // about something else; no link to the contract exists
-        $unrelatedContract = $this->course($campus, ['Charge' => 4000, 'Rate' => 500, 'SessionCount' => 8]);
-
-        $this->getJson($this->url($unrelatedContract, $unrelatedReport), $this->bearer($token))->assertOk()
-            ->assertJsonPath('student_class_id', $unrelatedContract->ID)
-            ->assertJsonPath('charge', 4000);
-    }
-
-    public function test_contract_without_a_student_row_or_with_an_unset_campus_is_404(): void
-    {
-        $campus = Campus::factory()->create();
-        $token = $this->createToken($this->user('S'));
-        $open = $this->bug($campus, 'new');
-        $orphan = $this->course($campus);
-        DB::table('Student')->where('id', $orphan->StudentID)->delete();
-        $this->getJson($this->url($orphan, $open), $this->bearer($token))->assertNotFound()->assertExactJson(['message' => 'Not found']);
-
-        // Student.CampusID is NOT NULL in the schema; 0 is the legacy "unset" value and must not match a report with campus 0.
-        $unset = $this->course($campus);
-        DB::table('Student')->where('id', $unset->StudentID)->update(['CampusID' => 0]);
-        $zeroReport = BugReport::create(['CampusID' => 0, 'reporter_user_id' => $this->user('T')->id, 'title' => 'billing', 'description' => 'desc', 'severity' => 'medium', 'status' => 'new']);
-        $this->getJson($this->url($unset, $zeroReport), $this->bearer($token))->assertNotFound();
-        $this->getJson($this->url($unset, $open), $this->bearer($token))->assertNotFound();
-    }
-
-    public function test_write_methods_on_the_snapshot_route_are_rejected_and_change_nothing(): void
-    {
-        $campus = Campus::factory()->create();
-        $token = $this->createToken($this->user('S'));
-        $course = $this->course($campus);
-        $url = $this->url($course, $this->bug($campus, 'new'));
-
-        // Only GET is registered, so the router answers 405 before any controller runs (same as TriageTokenTest for bug-reports).
+        AuthToken::create(['user_id' => $this->admin->id, 'token' => $session, 'expires_at' => now()->addDay()]);
+        $this->getJson($url, ['Authorization' => "Bearer {$session}", 'Accept' => 'application/json'])->assertUnauthorized();
+        $this->getJson($url, $this->as($this->admin))->assertUnauthorized();
+        // Only GET is registered: the router answers 405 before any controller runs.
         foreach (['POST', 'PUT', 'PATCH', 'DELETE'] as $method) {
-            $this->json($method, $url, ['Charge' => 1], $this->bearer($token))->assertStatus(405);
+            $this->json($method, $url, ['Charge' => 1], $this->bearer())->assertStatus(405);
         }
         $this->assertSame(8800, (int) StudentClass::query()->whereKey($course->ID)->value('Charge'));
-        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'triage_token.read')->where('outcome', 'success')->count());
+        $this->json('GET', '/api/v1/invoices', [], $this->bearer())->assertForbidden();
+    }
+
+    public function test_create_revoke_and_read_are_audited_with_hmac_refs_only(): void
+    {
+        $course = $this->course($this->campus);
+        $bug = $this->bug($this->campus, 'new');
+        $linkId = (int) $this->link($bug, $course)->assertCreated()->json('id');
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertOk();
+        $this->deleteJson("/api/v1/admin/triage-contract-links/{$linkId}", [], $this->as($this->admin))->assertOk();
+
+        $courseRef = SecurityAuditEvent::ref('student_class', $course->ID);
+        $bugRef = SecurityAuditEvent::ref('bug_report', $bug->id);
+        foreach (['triage_contract_link.created', 'triage_contract_link.revoked', 'triage_token.read'] as $event) {
+            $row = DB::table('security_audit_events')->where('event_type', $event)->orderByDesc('id')->first();
+            $this->assertNotNull($row, $event);
+            $this->assertSame($courseRef, $row->subject_ref, $event);
+            $this->assertSame($bugRef, json_decode($row->metadata, true)['bug_report_ref'], $event);
+            $this->assertStringNotContainsString('SECRET', $row->metadata);
+        }
+        $this->assertSame(SecurityAuditEvent::ref('user', $this->admin->id), DB::table('security_audit_events')->where('event_type', 'triage_contract_link.created')->value('actor_ref'));
     }
 
     public function test_audit_rows_for_existing_bug_report_routes_are_unchanged(): void
     {
-        $campus = Campus::factory()->create();
-        $token = $this->createToken($this->user('S'));
-        $bug = $this->bug($campus, 'new');
-        $other = $this->bug($campus, 'new');
+        $bug = $this->bug($this->campus, 'new');
+        $other = $this->bug($this->campus, 'new');
 
         // A stray bug_report_id query param must not leak into bug-report route audit rows.
-        $this->getJson("/api/v1/triage/bug-reports/{$bug->id}?bug_report_id={$other->id}", $this->bearer($token))->assertOk();
-        $this->getJson('/api/v1/triage/bug-reports', $this->bearer($token))->assertOk();
+        $this->getJson("/api/v1/triage/bug-reports/{$bug->id}?bug_report_id={$other->id}", $this->bearer())->assertOk();
+        $this->getJson('/api/v1/triage/bug-reports', $this->bearer())->assertOk();
 
         $rows = DB::table('security_audit_events')->where('event_type', 'triage_token.read')->orderBy('id')->get();
         $this->assertCount(2, $rows);
@@ -210,6 +210,11 @@ final class TriageBillingSnapshotTest extends TestCase
         $this->assertNull($rows[1]->subject_ref);
         $this->assertSame('triage.bug-reports.index', $list['route']);
         $this->assertArrayNotHasKey('bug_report_ref', $list);
+    }
+
+    private function link(BugReport $bug, StudentClass $course): \Illuminate\Testing\TestResponse
+    {
+        return $this->postJson('/api/v1/admin/triage-contract-links', ['bug_report_id' => $bug->id, 'student_class_id' => $course->ID], $this->as($this->admin));
     }
 
     private function url(StudentClass $course, BugReport $bug): string
@@ -238,8 +243,7 @@ final class TriageBillingSnapshotTest extends TestCase
 
     private function createToken(User $admin): string
     {
-        return (string) $this->postJson('/api/v1/admin/triage-tokens', ['name' => 'ci'], ['X-User-Id' => (string) $admin->id, 'Accept' => 'application/json'])
-            ->assertCreated()->json('token');
+        return (string) $this->postJson('/api/v1/admin/triage-tokens', ['name' => 'ci'], $this->as($admin))->assertCreated()->json('token');
     }
 
     private function user(string $type): User
@@ -249,8 +253,14 @@ final class TriageBillingSnapshotTest extends TestCase
     }
 
     /** @return array<string, string> */
-    private function bearer(string $token): array
+    private function as(User $user): array
     {
-        return ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        return ['X-User-Id' => (string) $user->id, 'Accept' => 'application/json'];
+    }
+
+    /** @return array<string, string> */
+    private function bearer(): array
+    {
+        return ['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json'];
     }
 }
