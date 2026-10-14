@@ -13,7 +13,7 @@ import { getReconcileLatest } from '../api';
 export const CATEGORY_GUIDE = Object.freeze({
   attendance_ahead: {
     meaning: '點名、已上課的課堂或評量紀錄，比課程上的已用堂數多。',
-    next: '到「出缺勤」確認這幾堂是否真的有上，再把課程編號交給工程團隊修正。',
+    next: '逐一比對這門課的點名、課堂狀態、評量與扣堂紀錄（「出缺勤」看點名與課堂狀態，「學習評量」看評量），確認這幾堂是否真的有上，再把課程編號交給工程團隊修正。',
   },
   ledger_ahead: {
     meaning: '扣堂紀錄比課程上的已用堂數多，也比點名、已上課的課堂和評量紀錄多。',
@@ -21,7 +21,7 @@ export const CATEGORY_GUIDE = Object.freeze({
   },
   counter_overstated: {
     meaning: '課程上的已用堂數，比依點名、已上課的課堂、評量和扣堂紀錄算出的還多。',
-    next: '到「課程查找」看這門課是否漏點名，再把課程編號交給工程團隊。',
+    next: '比對這門課的點名、課堂狀態、評量與扣堂紀錄，四項都找不到的已用堂數就是多記的；確認後再把課程編號交給工程團隊。',
   },
   partial_minutes: {
     meaning: '有按分鐘扣的課，換算成堂數後對不上。',
@@ -33,13 +33,51 @@ export const CATEGORY_GUIDE = Object.freeze({
   },
   source_conflict: {
     meaning: '已取消的課堂仍留有點名、評量或扣堂紀錄。',
-    next: '到「出缺勤」確認這堂到底有沒有上，再把課程編號交給工程團隊。',
+    next: '把這堂已取消的課堂和它的點名、評量、扣堂與退回紀錄逐一比對，確認這堂到底有沒有上，再把課程編號交給工程團隊。',
   },
   unknown: {
     meaning: '系統無法歸類這筆差異。',
     next: '把課程編號交給工程團隊。',
   },
 });
+
+// The scheduler runs reconcile:nightly daily at 02:00 Asia/Taipei (UTC+8, no
+// DST). A run gets this long to finish before its report counts as missing.
+export const RUN_HOUR_TAIPEI = 2;
+export const RUN_GRACE_MS = 60 * 60 * 1000;
+const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The backend writes checked_at as "YYYY-MM-DD HH:mm:ss" in app time
+ * (Asia/Taipei) with no offset; parse it as such so the result does not depend
+ * on the viewer's timezone.
+ */
+export function parseServerTime(value) {
+  const text = String(value || '');
+  const m = text.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/);
+  return new Date(m ? `${m[1]}T${m[2]}+08:00` : text);
+}
+
+/** Epoch ms of the most recent 02:00 Taipei run whose grace period has passed. */
+export function latestExpectedRunMs(nowMs) {
+  const taipei = new Date(nowMs + TAIPEI_OFFSET_MS);
+  let run = Date.UTC(taipei.getUTCFullYear(), taipei.getUTCMonth(), taipei.getUTCDate(), RUN_HOUR_TAIPEI) - TAIPEI_OFFSET_MS;
+  if (nowMs < run + RUN_GRACE_MS) run -= DAY_MS;
+  return run;
+}
+
+/**
+ * A report is stale when it is not a live scheduled run (a dry-run preview
+ * never counts, #3945) or was written before the latest expected 02:00 run.
+ */
+export function isReportStale(report, nowMs) {
+  if (!report) return false;
+  if ((report.mode ?? 'live') !== 'live') return true;
+  const checkedAt = parseServerTime(report.checked_at);
+  if (Number.isNaN(checkedAt.getTime())) return false;
+  return checkedAt.getTime() < latestExpectedRunMs(nowMs);
+}
 
 export function useNightlyReconcile(tokenRef) {
   // ---- 原始資料 ----
@@ -142,6 +180,10 @@ export function useNightlyReconcile(tokenRef) {
     };
   });
 
+  // The command stores the full mismatch_count but only the first 200 rows.
+  const storedRowCount = computed(() => (Array.isArray(report.value?.mismatches) ? report.value.mismatches.length : 0));
+  const detailTruncated = computed(() => (Number(report.value?.mismatch_count) || 0) > storedRowCount.value);
+
   const causeCounts = computed(() => {
     const counts = summary.value?.cause_counts || {};
     return Object.entries(counts)
@@ -207,7 +249,7 @@ export function useNightlyReconcile(tokenRef) {
       ledger_ahead: '扣堂帳本領先',
       counter_overstated: '已用堂數偏高',
       partial_minutes: '部分時數換算',
-      contract_cap: '出勤超出合約堂數',
+      contract_cap: '使用紀錄超出合約堂數',
       source_conflict: '課堂狀態與扣堂證據衝突',
       unknown: '待分類',
     };
@@ -226,6 +268,8 @@ export function useNightlyReconcile(tokenRef) {
     categoryOptions,
     summary,
     causeCounts,
+    storedRowCount,
+    detailTruncated,
     loadReport,
     setFilter,
     toggleSort,
