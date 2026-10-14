@@ -298,6 +298,9 @@ _METHOD_CALL_RE = re.compile(r"->\s*(\w+)\s*\(([^()]*)\)")
 # On an existing table only nullable/defaulted columns are expand-safe: the
 # previous release must keep inserting rows after a code rollback.
 _KEY_METHODS = {"id", "increments", "bigincrements"}
+_INTEGER_HELPERS = {
+    f"{prefix}{size}integer" for prefix in ("", "unsigned") for size in ("", "tiny", "small", "medium", "big")
+}
 _NULLABLE_HELPERS = {"timestamps", "timestampstz", "nullabletimestamps", "softdeletes", "softdeletestz",
                      "remembertoken", "index"}
 
@@ -306,8 +309,13 @@ def _table_column_is_expand_safe(calls: list[tuple[str, str]]) -> bool:
     """A column added to an existing table: no new key, nullable or defaulted."""
 
     first, first_args = calls[0]
-    # integer('x', true) and friends turn on auto-increment, i.e. a new key.
     if first in _KEY_METHODS or re.search(r"\btrue\b", first_args, re.IGNORECASE):
+        return False
+    # integer('x', $autoIncrement, ...): PHP coerces 1, 'yes' etc. to true, so
+    # every argument after the column name must be omitted or literally false.
+    if first in _INTEGER_HELPERS and any(
+        arg.strip().lower() != "false" for arg in first_args.split(",")[1:]
+    ):
         return False
     if first in _NULLABLE_HELPERS:
         return True

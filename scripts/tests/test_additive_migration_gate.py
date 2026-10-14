@@ -117,6 +117,9 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::table('t', fn (Blueprint $t) => $t->integer('n')->after('id'));",
             "Schema::table('t', fn (Blueprint $t) => $t->bigInteger('k', true)->nullable());",
             "Schema::table('t', fn (Blueprint $t) => $t->unsignedInteger('k', TRUE)->default(1));",
+            "Schema::table('t', fn (Blueprint $t) => $t->bigInteger('k', 1)->nullable());",
+            "Schema::table('t', fn (Blueprint $t) => $t->integer('k', 'yes')->nullable());",
+            "Schema::table('t', fn (Blueprint $t) => $t->smallInteger('k', false, 1)->nullable());",
             "Schema::table('t', fn (Blueprint $t) => $t->string('c')->nullable(false));",
             "Schema::table('t', fn (Blueprint $t) => $t->string('c')->default(null));",
             "Schema::table('t', fn (Blueprint $t) => $t->string('c')->nullable()->nullable(false));",
@@ -128,6 +131,8 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::create('n', function (Blueprint $t) { $t->id(); $t->string('code'); });",
             "Schema::table('t', fn (Blueprint $t) => $t->boolean('b')->nullable(true));",
             "Schema::table('t', fn (Blueprint $t) => $t->boolean('b')->default(false));",
+            "Schema::table('t', fn (Blueprint $t) => $t->unsignedBigInteger('k', false)->nullable());",
+            "Schema::table('t', fn (Blueprint $t) => $t->decimal('d', 8, 2)->nullable());",
         )
         for up in good:
             self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), {MIG}, up)
