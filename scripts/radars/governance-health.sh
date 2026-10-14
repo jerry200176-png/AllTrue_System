@@ -42,7 +42,7 @@ REV=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
 run_check "instruction_invariants" "bash scripts/governance/check-instruction-invariants.sh" fail
 run_check "capability_registry" "python3 scripts/governance/validate-capability-registry.py" fail
 run_check "overlay_pin" "bash scripts/governance/check-overlay-pin.sh" fail
-run_check "agent_preflight_self" "bash scripts/agent-preflight.sh" fail
+run_check "agent_preflight_self" "AGENT_PREFLIGHT_MODE=ci bash scripts/agent-preflight.sh" fail
 
 # Broken SOP links (deterministic subset)
 run_check "canonical_entrypoints" "test -f AGENTS.md && test -f docs/governance/COMPANY_CONSTITUTION.md && test -f docs/governance/WORKTREE_POLICY.md && test -f docs/sop/AGENT_PREFLIGHT.md" fail
