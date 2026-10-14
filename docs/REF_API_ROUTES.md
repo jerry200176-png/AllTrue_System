@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 505 api/* routes · generated 2026-10-14
+> Source: `php artisan route:list --json` · 506 api/* routes · generated 2026-10-14
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -205,7 +205,7 @@
 | POST | `api/v1/bank-reconciliation/{id}/reconcile` | `BankReconciliationController@reconcile` | role+campus |
 | GET | `api/v1/bank-reconciliation/{id}/suggest` | `BankReconciliationController@suggestMatches` | role+campus |
 
-## /api/v1/bindings (7)
+## /api/v1/bindings (8)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -214,6 +214,7 @@
 | GET | `api/v1/bindings/conflicts` | `BindingConflictController@index` | role+campus |
 | POST | `api/v1/bindings/conflicts/{id}/resolve` | `BindingConflictController@resolve` | role+campus |
 | GET | `api/v1/bindings/metrics` | `BindingController@metrics` | role+campus |
+| GET | `api/v1/bindings/stats` | `BindingController@stats` | role+campus |
 | GET | `api/v1/bindings/{id}` | `BindingController@show` | role+campus |
 | DELETE | `api/v1/bindings/{id}` | `BindingController@destroy` | role+campus |
 

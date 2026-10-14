@@ -972,6 +972,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['require_auth', 'role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('bindings', [BindingController::class, 'index']);
         Route::get('bindings/metrics', [BindingController::class, 'metrics']);
+        Route::get('bindings/stats', [BindingController::class, 'stats']);
         Route::get('bindings/{id}', [BindingController::class, 'show'])->whereNumber('id');
         Route::post('bindings', [BindingController::class, 'store']);
         Route::delete('bindings/{id}', [BindingController::class, 'destroy'])->whereNumber('id');
