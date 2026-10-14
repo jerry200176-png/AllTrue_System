@@ -3,16 +3,13 @@
 > **Cursor 使用者**：`.cursorrules` 已自動載入，這裡補充必讀順序與 Commit SOP。
 >
 > **AllTrue AI 公司 slogan：前人種樹，後人乘涼。**
-> 所有 Agent 做事前先查 `docs/INDEX.md` 與 MemPalace；做完把決策寫回文件，讓下一個 AI 不靠猜測。
+> 所有 Agent 做事前先查 `docs/INDEX.md`（本機另可查 MemPalace；cloud session 沒有，跳過）；做完把決策寫回文件，讓下一個 AI 不靠猜測。
 
 ## Worktree & path safety (canonical)
 
-**Launch:** `agent-start alltrue <task-id>` (only official Agent entry).
-**Bare store:** `/home/jerry/workspace/repos/AllTrue_System.git`
-**Tasks:** `/home/jerry/workspace/tasks/alltrue/<task-id>/`
-**Forbidden checkouts:** `/home/jerry/alltrue`, `/home/jerry/workspace/AllTrue_System`, `/home/jerry/workspace/AllTrue_System-clean`
+**Default (Founder 2026-10-14（三）, [`FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)):** work in a Claude cloud session. Clone fresh from `origin/main`, branch with an accepted `scripts/ci/branch-policy.mjs` prefix, open a PR. No `agent-start`, no local preflight, no `.agent-session/manifest.json`. The PR diff, risk declaration, review and required checks are the delivery evidence.
+**Local WSL (legacy, being retired):** only if a task truly needs it; then `agent-start alltrue <task-id>` and never the forbidden checkouts. Do not update `human-authored.json` to represent agent work.
 **Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
-**Provenance:** `agent-start` writes `.agent-session/manifest.json` locally. Keep it git-ignored; CI rejects a tracked copy. Use the task worktree/session record, PR declaration, git diff, review, and required checks as delivery evidence. Do not update `human-authored.json` to represent agent work — see WORKTREE_POLICY.
 
 ## Code Review Rules
 
@@ -157,7 +154,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 - Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
 - Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add label `intentional-revert` + reason in the PR body, then re-run presubmit.
 - Deploys: only `deploy.yml`. A range whose every PR is R0-R2 or carries a Founder GO deploys on its own CI; otherwise it waits for the release train (Founder 1A/3A, 2026-10-07).
-- Helpers (subagents) start from fresh `origin/main` in their own `agent-start` worktree; never copy files from another worktree.
+- Helpers (subagents) start from fresh `origin/main` in their own branch/session; never copy files from another worktree or session.
 - Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
 - Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.
 - A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.

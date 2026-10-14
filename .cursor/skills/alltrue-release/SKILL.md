@@ -49,7 +49,7 @@ description: >-
 
 ## 5. AllTrue-specific rules
 
-- 合法路徑：WSL push → PR → merge → `deploy.yml`（Founder `production-activation` 依現行 gate）
+- 合法路徑：feature branch push（cloud session 預設；本機 WSL 為舊路徑）→ PR → merge → `deploy.yml`（Founder `production-activation` 依現行 gate）
 - 回滾：只用現行 workflow 已證明可執行的路徑；「有舊 SHA」≠「可 post-success rollback」
 - 公開留言禁技術術語（`CHAT_BUG_SYSTEM` 回覆規範）
 - merged ≠ deployed ≠ runtime verified ≠ 已回覆

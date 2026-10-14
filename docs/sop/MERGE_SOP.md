@@ -7,7 +7,7 @@
 
 ## Before opening a PR
 
-1. Run `make agent-preflight` in a **non-forbidden** worktree.  
+1. Local WSL worktree only: run `make agent-preflight` in a **non-forbidden** worktree. Cloud sessions skip this ([`WORKTREE_POLICY.md`](../governance/WORKTREE_POLICY.md)).  
 2. Classify **Risk-Class** (R0–R3) and **Autonomy-Tier** (T0–T3); when unsure, pick higher.
 3. Ensure tests match risk (R1+ needs regression coverage for the bug/path).
 
