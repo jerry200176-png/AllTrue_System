@@ -73,6 +73,33 @@ class BindingManagementApiTest extends TestCase
         $this->assertDatabaseHas('student_line_bindings', ['id' => $bindingB->id]);
     }
 
+    /** In-app #400: the binding page reads `data` and `/bindings/stats`; both must answer. */
+    public function test_binding_page_list_and_stats_contract(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $other = CampusFactory::new()->create();
+        $director = $this->directorFor($campus);
+        $alice = StudentFactory::new()->create(['CampusID' => $campus->id, 'name' => '甲同學', 'enable' => 1]);
+        $bob = StudentFactory::new()->create(['CampusID' => $campus->id, 'name' => '乙同學', 'enable' => 1]);
+        StudentFactory::new()->create(['CampusID' => $campus->id, 'name' => '丙同學', 'enable' => 1]);
+        $this->bindingFor($alice, $campus, 'U' . str_repeat('e', 32));
+        $this->bindingFor($bob, $campus, 'U' . str_repeat('f', 32))->update(['verified_at' => null]);
+        $this->bindingFor(StudentFactory::new()->create(['CampusID' => $other->id, 'enable' => 1]), $other, 'U' . str_repeat('g', 32));
+
+        $this->getJson('/api/v1/bindings?campus_id=' . $campus->id, $this->authHeaders($director))
+            ->assertOk()->assertJsonCount(2, 'data')->assertJsonCount(2, 'bindings');
+        $this->getJson('/api/v1/bindings?student_name=' . urlencode('甲'), $this->authHeaders($director))
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.student_id', $alice->id);
+
+        $this->getJson('/api/v1/bindings/stats?campus_id=' . $campus->id, $this->authHeaders($director))
+            ->assertOk()
+            ->assertJsonPath('bound_count', 2)
+            ->assertJsonPath('unverified_bound_count', 1)
+            ->assertJsonPath('student_total', 3);
+        $this->getJson('/api/v1/bindings/stats?campus_id=' . $other->id, $this->authHeaders($director))
+            ->assertForbidden();
+    }
+
     public function test_authorized_director_can_create_binding_in_own_campus(): void
     {
         $campus = CampusFactory::new()->create();

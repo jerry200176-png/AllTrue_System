@@ -368,6 +368,8 @@ class TeacherAttendanceController extends Controller
         $query = DB::table('TeacherSingIn as ts')
             ->leftJoin('User as u', 'u.id', '=', 'ts.TeacherID')
             ->select([
+                // The 補卡 button posts to /teacher-attendance/{id}/adjust (in-app #397).
+                'ts.id',
                 'ts.TeacherID as teacher_id',
                 DB::raw("COALESCE(u.Name, '') as teacher_name"),
                 'ts.SignInDT as sign_in_dt',
