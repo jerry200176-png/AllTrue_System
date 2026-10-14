@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-14-inapp-397-401-fixes
+    published_at: "2026-10-14"
+    audiences:
+      - director
+    importance: digest
+    title: 補卡、排課人數判斷修正
+    summary: 補卡可以正常送出；已結束的合約不再佔老師名額。
+    items:
+      - category: fixed
+        text: 出勤「需要補卡的未簽退」按補卡不會再顯示「這筆打卡紀錄已不存在」。
+      - category: fixed
+        text: 改固定時段時，已結束的合約不再算進老師該時段人數，不會被誤擋「已達上限」。
+    source_refs:
+      - "changelog:2026-10-14:inapp-397-401-fixes"
