@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use Carbon\Carbon;
 use App\Models\Student;
-use App\Models\ParentSession;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -37,10 +36,7 @@ class SystemTrustController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $session = ParentSession::query()
-            ->where('TokenHash', hash('sha256', $token))
-            ->where('ExpiresAt', '>', now())
-            ->first();
+        $session = app(\App\Services\ParentBinding\ParentGuardianAccessService::class)->liveSession($token); // #3944 follow-up
         if (!$session) {
             return response()->json(['message' => 'Unauthorized'], 401);
         }

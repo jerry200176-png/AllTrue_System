@@ -9,6 +9,7 @@ use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\FeedbackPushNotifier;
+use App\Services\ParentBinding\ParentGuardianAccessService;
 use App\Services\ParentFeedbackAwaitingService;
 use App\Services\StudentIdentityService;
 use Carbon\Carbon;
@@ -570,12 +571,7 @@ class LearningRecordFeedbackController extends Controller
 
     private function resolveParentSession(Request $request): ?ParentSession
     {
-        $token = $request->bearerToken();
-        if (!$token) return null;
-
-        return ParentSession::where('TokenHash', hash('sha256', $token))
-            ->where('ExpiresAt', '>', Carbon::now())
-            ->first();
+        return app(ParentGuardianAccessService::class)->liveSession($request->bearerToken());
     }
 
     private function authorizeParentRecord(ParentSession $session, LearningRecord $record, bool $requireActions = false)
@@ -587,7 +583,8 @@ class LearningRecordFeedbackController extends Controller
         $sameStudent = (int) $ctx['student_id'] === (int) $session->StudentID;
         $sameGroup = $group && (int) ($session->getAttribute('identity_group_id') ?: 0) === (int) $group->id;
         $mode = $group ? $identity->accessMode((int) $group->id) : StudentIdentityService::MODE_OFF;
-        if (!$sameStudent && (!$sameGroup || $mode === StudentIdentityService::MODE_OFF)) {
+        if (!$sameStudent && (!$sameGroup || $mode === StudentIdentityService::MODE_OFF
+            || !app(ParentGuardianAccessService::class)->sessionMayReachStudent($session, (int) $ctx['student_id']))) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
         if ($requireActions && $group && $identity->activeMembers((int) $group->id)->count() > 1 && $mode !== StudentIdentityService::MODE_ACTIONS) {
