@@ -4,8 +4,9 @@ Applies to every Claude/Codex session in this repo, cloud or local. These rules 
 
 ## 1. PR events: act at decision points only
 
-- A wake that echoes your own comment, a Codex "Running" summary edit, a bot usage-limit notice, or CI finishing on a **superseded** head needs no tool call and at most a one-line reply.
-- Do real work only on: CI finished on the **current** head, a review with comments, a merge conflict or queue-drop notice, the merge itself, or a deploy waiting for approval.
+- A wake that echoes your own comment, a Codex "Running" summary edit, an informational bot quota notice (for example Cursor Bugbot), or CI finishing on a **superseded** head needs no tool call and at most a one-line reply.
+- Exception: if the notice means the **required** review did not run (Codex rate-limited), it is a decision point. Run the `/code-review` fallback that `CLAUDE.md` §Parallel agents requires.
+- Do real work only on: CI finished on the **current** head, a review with comments, a merge conflict or queue-drop notice, the merge itself, a deploy waiting for approval, or a deploy that **finished** (success or failure: verify exact SHA, health and affected-path smoke, or start the failure/rollback follow-up).
 - Read all pending notifications first, then act once for the batch.
 
 ## 2. Keep tool output small
@@ -18,7 +19,7 @@ Applies to every Claude/Codex session in this repo, cloud or local. These rules 
 ## 3. Review rounds
 
 - Fix every finding of a round in one push, then reply to and resolve every thread in one batch.
-- P2 handling follows `FOUNDER_STANDING_DECISIONS.md` ④ unchanged: one remediation round; later P2s go straight to one follow-up issue per PR (append to it rather than opening a new one each round).
+- P2 handling follows `FOUNDER_STANDING_DECISIONS.md` 2026-10-12 ④ unchanged: one remediation round; later P2s go to one follow-up issue per PR (append to it rather than opening a new one each round), **except** a regression this PR introduced, which is fixed before merge whatever its severity or round.
 
 ## 4. Helpers (subagents)
 
