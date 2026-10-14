@@ -15,7 +15,6 @@ on:
       - "Presubmit Gate"
       - "Docs Integrity"
       - "Secret Scan"
-      - "Agent Session Provenance"
     types: [completed]
   schedule:
     - cron: "*/5 * * * *"

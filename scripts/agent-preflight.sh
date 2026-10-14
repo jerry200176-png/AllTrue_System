@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Agent preflight — fail-closed gate before any AllTrue write.
-# Official writes: /home/jerry/workspace/tasks/alltrue/<task-id> via agent-start only.
+# Works from any clone (cloud session or local). The local task-path allowlist
+# was retired by Founder 2026-10-14（三）#6; known-bad legacy checkouts stay denied.
 # Modes: agent (default) | ci
 set -euo pipefail
 
@@ -11,10 +12,7 @@ MODE="${AGENT_PREFLIGHT_MODE:-agent}"
 
 fail() {
   echo "agent-preflight: FAIL: $*" >&2
-  echo "agent-preflight: recovery:" >&2
-  echo "  agent-start alltrue <task-id> --dry-run" >&2
-  echo "  # bare: /home/jerry/workspace/repos/AllTrue_System.git" >&2
-  echo "  # tasks: /home/jerry/workspace/tasks/alltrue/<task-id>" >&2
+  echo "agent-preflight: recovery: fresh branch from origin/main with a scripts/ci/branch-policy.mjs prefix, clean tree" >&2
   echo "  Never write in /home/jerry/alltrue, AllTrue_System-clean, runner _work, backups, /mnt/c, or bare *.git" >&2
   exit 1
 }
@@ -55,13 +53,12 @@ if [[ "$MODE" == "ci" ]]; then
   ok "mode=ci project=$PROJECT"
   [[ -f "$SCRIPT_DIR/agent-preflight.sh" ]] || fail "preflight script missing"
   [[ -f "$SCRIPT_ROOT/docs/governance/WORKTREE_POLICY.md" ]] || fail "WORKTREE_POLICY.md missing"
-  [[ -f "$SCRIPT_DIR/check-agent-provenance.sh" ]] || fail "provenance checker missing"
+  [[ -f "$SCRIPT_DIR/ci/branch-policy.mjs" ]] || fail "branch policy missing"
   python3 - "$CONFIG" <<'PY'
 import json,sys
 cfg=json.load(open(sys.argv[1]))
 assert "/home/jerry/alltrue" in cfg["forbidden_exact"]
-assert "/home/jerry/workspace/tasks/alltrue/" in cfg["allowed_path_prefixes"]
-assert cfg.get("canonical_bare_repo","").endswith("AllTrue_System.git")
+assert "allowed_path_prefixes" not in cfg, "local path allowlist is retired (Founder 2026-10-14)"
 print("classifier-ok")
 PY
   ok "ci preflight passed"
@@ -90,16 +87,6 @@ while IFS= read -r sub; do
   fi
 done < <(json_get forbidden_path_substrings)
 
-ALLOWED=0
-while IFS= read -r prefix; do
-  [[ -z "$prefix" ]] && continue
-  if [[ "$TARGET" == "$prefix"* ]]; then
-    ALLOWED=1
-    break
-  fi
-done < <(json_get allowed_path_prefixes)
-[[ "$ALLOWED" == "1" ]] || fail "path not on allowlist (use agent-start): $TARGET"
-
 # Sentinel hard-deny if present on ancestors
 if [[ -f /home/jerry/alltrue/AGENT_WRITES_FORBIDDEN ]] && [[ "$TARGET" == "/home/jerry/alltrue" ]]; then
   fail "AGENT_WRITES_FORBIDDEN sentinel"
@@ -124,18 +111,20 @@ HEAD_SHA="$(git rev-parse HEAD)"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
 if [[ "$(json_get forbid_main_branch_writes)" == "true" ]]; then
-  [[ "$BRANCH" != "main" && "$BRANCH" != "master" ]] || fail "writes forbidden on $BRANCH — use agent-start"
+  [[ "$BRANCH" != "main" && "$BRANCH" != "master" ]] || fail "writes forbidden on $BRANCH — create a branch"
 fi
 
-BRANCH_RE="$(json_get branch_prefix_regex)"
-python3 - "$BRANCH" "$BRANCH_RE" <<'PY' || fail "branch '$BRANCH' lacks type/slug identity"
-import re,sys
-sys.exit(0 if re.match(sys.argv[2], sys.argv[1]) else 1)
-PY
+# Same branch policy as Presubmit CHECK 1 / ci-preflight (scripts/ci/branch-policy.mjs).
+command -v node >/dev/null || fail "node not installed (needed for branch policy)"
+node --input-type=module -e '
+const { validateBranchName } = await import(process.argv[1]);
+const v = validateBranchName(process.argv[2]);
+if (!v.ok) { console.error(v.message); process.exit(1); }
+' "$SCRIPT_DIR/ci/branch-policy.mjs" "$BRANCH" || fail "branch '$BRANCH' rejected by scripts/ci/branch-policy.mjs"
 
 if [[ "$(json_get require_base_equals_origin_main)" == "true" ]]; then
   MB="$(git merge-base HEAD origin/main)"
-  [[ "$MB" == "$ORIGIN_MAIN" ]] || fail "stale base: merge-base=$MB origin/main=$ORIGIN_MAIN — recreate via agent-start"
+  [[ "$MB" == "$ORIGIN_MAIN" ]] || fail "stale base: merge-base=$MB origin/main=$ORIGIN_MAIN — rebase on origin/main"
 fi
 
 if [[ "$(json_get require_clean_worktree)" == "true" ]]; then

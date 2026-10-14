@@ -17,7 +17,6 @@ const jobNames = {
   'ci.yml': ['Control Plane Contract Lint', 'Golden scenarios report', 'PHPUnit Feature & Unit Tests', 'Vite Frontend Build'],
   'docs-integrity.yml': ['Docs Integrity Check'],
   'secret-scan.yml': ['gitleaks scan'],
-  'agent-provenance.yml': ['Agent Session Provenance'],
 };
 
 test('queue dispatches exactly the workflows covered here and passes pr_number', () => {
@@ -58,10 +57,18 @@ test('batch-only workflows keep their required job name and are dispatchable wit
 
 test('every context the batch must prove is produced by a dispatched workflow', () => {
   const produced = new Set([...Object.values(jobNames).flat(), ...Object.values(batchOnly)]);
-  // the live main ruleset's required contexts at the time of writing
-  for (const c of ['Presubmit Checks', 'PHPStan Advisory (php)', 'PHPUnit Feature & Unit Tests', 'Vite Frontend Build', 'Docs Integrity Check', 'gitleaks scan', 'Golden scenarios report', 'Control Plane Contract Lint', 'Agent Session Provenance']) {
+  // the live main ruleset's required contexts (after Agent Session Provenance was dropped, 2026-10-14)
+  for (const c of ['Presubmit Checks', 'PHPStan Advisory (php)', 'PHPUnit Feature & Unit Tests', 'Vite Frontend Build', 'Docs Integrity Check', 'gitleaks scan', 'Golden scenarios report', 'Control Plane Contract Lint']) {
     assert.ok(produced.has(c), `no dispatched workflow produces ${c}`);
   }
+});
+
+test('retired Agent Session Provenance is neither dispatched nor awaited', () => {
+  // Founder 2026-10-14（三）#6: the workflow is deleted; the main ruleset must drop the
+  // context before this lands, or every PR waits on a check nobody produces.
+  assert.ok(!fs.existsSync(path.join(root, '.github/workflows/agent-provenance.yml')));
+  assert.doesNotMatch(queue, /agent-provenance/);
+  assert.doesNotMatch(read('.github/workflows/land-queue.yml'), /Agent Session Provenance/);
 });
 
 test('queue never uses --admin and lands a batch only from the green verdict', () => {
