@@ -1,0 +1,36 @@
+# governance-capability: non-production
+name: Codex review throttle (dry run)
+# No paid model action, issue comments, review requests, dispatches or merge permissions.
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Optional PR to inspect; blank inspects open PRs to main (read-only)'
+        required: false
+        default: ''
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  statuses: read
+concurrency:
+  group: codex-review-throttle
+  cancel-in-progress: false
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted main only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Exercise controller with synthetic transports
+        run: node --test scripts/tests/codex-review-throttle.test.mjs
+      - name: Read GitHub evidence and print decisions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          REVIEW_PR: ${{ inputs.pr_number }}
+        run: node .github/scripts/codex-review-snapshot.mjs
