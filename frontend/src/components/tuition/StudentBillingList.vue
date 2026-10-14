@@ -172,9 +172,9 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__status{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .sbl__last,.sbl__overdue{font-size:13px;font-variant-numeric:tabular-nums}
 .sbl__muted{font-size:12px;color:var(--ds-ink-mute)}
-.sbl__toggle{background:none;border:0;padding:4px 12px;min-height:32px;font-size:12px;color:var(--ds-ink-mute);cursor:pointer;text-decoration:underline}
+.sbl__toggle{background:none;border:0;padding:4px 12px;min-height:32px;font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);cursor:pointer;text-decoration:underline}
 .sbl__contracts{list-style:none;margin:0;padding:0 12px 8px}
-.sbl__contract{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px;padding:4px 0;font-variant-numeric:tabular-nums}
+.sbl__contract{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:var(--ds-font-size-md);padding:4px 0;font-variant-numeric:tabular-nums}
 @media (max-width:760px){
   .sbl__toggle{min-height:44px}
   .sbl__head{display:none}
