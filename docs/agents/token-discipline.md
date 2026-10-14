@@ -11,7 +11,7 @@ Applies to every Claude/Codex session in this repo, cloud or local. These rules 
 
 ## 2. Keep tool output small
 
-- GitHub lists: `perPage` 5–20, `minimal_output: true`. Page review threads with the `after` cursor instead of re-reading from the start.
+- GitHub lists: `perPage` 5–20, `minimal_output: true`, and follow pagination to the end for any list a decision depends on (check runs, workflow runs, review threads, notifications), filtering each page instead of printing it. Page review threads with the `after` cursor instead of re-reading from the start.
 - Never print a whole workflow-run list or check-run list. Pin the query to the current head SHA, or filter it (`python3 -c` / `jq`) keeping head SHA, run ID, name, status and conclusion, so a green run on a superseded head is never mistaken for exact-head CI.
 - CI failures: read the failing job's log tail first (`get_job_logs` with `failed_only` / `tail_lines`); widen the range step by step, up to the full failing-job log, only when the tail does not show the cause.
 - Files: grep for the symbol, then read the line range you need.
