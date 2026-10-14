@@ -522,6 +522,11 @@ jobs:
           echo "actual_duration-course-ids-only-no-pii:"
           mysql -N -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" AllTrue -e \
             "SELECT ID FROM StudentClass WHERE deduction_basis='actual_duration';" 2>/dev/null
+
+          # #3948 pilot scope evidence: campus of each opted-in course (numeric ids only, no names).
+          echo "actual_duration-course-campus-ids-no-pii:"
+          mysql -N -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" AllTrue -e \
+            "SELECT sc.ID, COALESCE(s.CampusID, 0) FROM StudentClass sc LEFT JOIN Student s ON s.id = sc.StudentID WHERE sc.deduction_basis='actual_duration' ORDER BY sc.ID;" 2>/dev/null
           ENDSSH
 
       - name: Compose audit artifact (redacted)

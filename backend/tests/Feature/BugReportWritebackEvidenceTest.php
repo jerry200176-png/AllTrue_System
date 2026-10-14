@@ -56,6 +56,7 @@ final class BugReportWritebackEvidenceTest extends TestCase
                     'original_name' => 'new.png', 'mime_type' => 'image/png', 'size' => 8]);
             }
             $this->assertFalse(BugReportWritebackEvidence::verify($bug->fresh(), $evidence['captured_at'], $evidence['proof']), $change);
+            $this->assertNull(BugReportWritebackEvidence::refreshUnchanged($bug, $evidence['captured_at'], $evidence['proof']), $change);
         }
     }
 
@@ -67,6 +68,7 @@ final class BugReportWritebackEvidenceTest extends TestCase
         $this->assertFalse(BugReportWritebackEvidence::verify($bug, 'tomorrow', $evidence['proof']));
         config(['app.key' => '']);
         $this->assertNull(BugReportWritebackEvidence::capture($bug));
+        $this->assertNull(BugReportWritebackEvidence::refreshUnchanged($bug, $evidence['captured_at'], $evidence['proof']));
         $this->assertFalse(BugReportWritebackEvidence::verify($bug, $evidence['captured_at'], $evidence['proof']));
     }
 
@@ -132,6 +134,22 @@ final class BugReportWritebackEvidenceTest extends TestCase
         $evidence = BugReportWritebackEvidence::capture($bug);
         BugReport::query()->whereKey($bug->id)->update(['description' => 'Changed after the read']);
         $this->assertFalse(BugReportWritebackEvidence::verify($bug, $evidence['captured_at'], $evidence['proof']));
+    }
+
+    public function test_unchanged_reviewed_snapshot_gets_fresh_attestation_without_mutation(): void
+    {
+        $bug = $this->bug();
+        $original = $bug->getRawOriginal();
+        $evidence = BugReportWritebackEvidence::capture($bug);
+        $this->travelTo(\Illuminate\Support\Carbon::parse($evidence['captured_at'])->addMinutes(16));
+        $this->assertFalse(BugReportWritebackEvidence::verify($bug, $evidence['captured_at'], $evidence['proof']));
+        $fresh = BugReportWritebackEvidence::refreshUnchanged($bug, $evidence['captured_at'], $evidence['proof']);
+        $this->assertNotNull($fresh);
+        $this->assertSame(now()->toISOString(), $fresh['captured_at']);
+        $this->assertTrue(BugReportWritebackEvidence::verify($bug, $fresh['captured_at'], $fresh['proof']));
+        $this->assertSame($original, $bug->fresh()->getRawOriginal());
+        $this->assertNull(BugReportWritebackEvidence::refreshUnchanged($bug, $fresh['captured_at'], $evidence['proof']));
+        $this->assertNull(BugReportWritebackEvidence::refreshUnchanged($bug, $evidence['captured_at'], str_repeat('0', 64)));
     }
 
     private function bug(): BugReport
