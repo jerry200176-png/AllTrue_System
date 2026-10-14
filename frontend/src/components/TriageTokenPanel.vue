@@ -83,8 +83,12 @@ const creating = ref(false);
 const confirmingId = ref(null);
 const revokingId = ref(null);
 const errorMsg = ref('');
-// Id of the token whose plaintext is on screen, so revoking it also clears the secret.
-const createdId = ref(null);
+// Id of the token whose plaintext is on screen, so revoking it also clears the secret. Derived from the
+// parent-owned secret ("<id>|<secret>", TriageTokenService::create) so it survives a tab-switch remount.
+const createdId = computed(() => {
+  const m = /^(\d+)\|/.exec(props.secret || '');
+  return m ? Number(m[1]) : null;
+});
 // Only the newest list request may write `tokens` (a stale GET must not undo a post-mutation refresh).
 let loadSeq = 0;
 
@@ -122,7 +126,6 @@ async function create() {
   try {
     const res = await createTriageToken(props.token, name.value.trim());
     emit('update:secret', res.token);
-    createdId.value = res.record?.id ?? null;
     copied.value = false;
     name.value = '';
     await load();
@@ -145,7 +148,6 @@ async function copy() {
 
 function dismiss() {
   emit('update:secret', '');
-  createdId.value = null;
   copied.value = false;
 }
 
@@ -155,7 +157,7 @@ async function revoke(id) {
   try {
     await revokeTriageToken(props.token, id);
     confirmingId.value = null;
-    if (createdId.value != null && createdId.value === id) dismiss();
+    if (createdId.value != null && createdId.value === Number(id)) dismiss();
     await load();
   } catch (e) {
     errorMsg.value = e.message || '撤銷失敗';

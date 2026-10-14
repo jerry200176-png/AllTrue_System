@@ -155,6 +155,26 @@ describe('TriageTokenPanel', () => {
     expect(w.html()).not.toContain('alltrue_triage_SECRET');
   });
 
+  it('clears the secret on revoke after a tab-switch remount (id comes from the parent-owned secret)', async () => {
+    stubApi();
+    const first = mountPanel();
+    await flushPromises();
+    await first.get('[data-testid="triage-token-name"]').setValue('x');
+    await first.get('form').trigger('submit');
+    await flushPromises();
+    const kept = first.emitted('update:secret').at(-1)[0];
+    first.unmount();
+
+    const emitted = [];
+    const w = mount(TriageTokenPanel, { props: { token: 'session', secret: kept, 'onUpdate:secret': (v) => emitted.push(v) } });
+    await flushPromises();
+    expect(w.find('[data-testid="triage-token-secret"]').exists()).toBe(true);
+    await w.get('[data-testid="triage-token-revoke"]').trigger('click');
+    await w.get('[data-testid="triage-token-confirm"]').trigger('click');
+    await flushPromises();
+    expect(emitted.at(-1)).toBe('');
+  });
+
   it('drops a stale list response that finishes after the post-create refresh', async () => {
     let releaseFirst;
     let getCount = 0;
