@@ -8,7 +8,6 @@ use App\Models\Student;
 use App\Models\StudentGuardian;
 use App\Models\Campus;
 use App\Support\ParentBinding\ParentBindingCodes as C;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -70,8 +69,10 @@ final class BindingService
     /**
      * The binding page's list (in-app #400): paged, filtered by student name and
      * verification status, and with the LINE user ID masked (never sent raw).
+     *
+     * @return array{data: list<\stdClass>, current_page: int, last_page: int, total: int}
      */
-    public function pageBindings(?int $campusId, ?array $allowedCampusIds, ?string $studentName, ?string $status, int $page, int $perPage): LengthAwarePaginator
+    public function pageBindings(?int $campusId, ?array $allowedCampusIds, ?string $studentName, ?string $status, int $page, int $perPage): array
     {
         $q = DB::table('student_line_bindings')
             ->join('Student', 'student_line_bindings.student_id', '=', 'Student.id')
@@ -101,17 +102,22 @@ final class BindingService
             $q->whereNull('student_line_bindings.verified_at');
         }
 
-        $paginator = $q->orderBy('student_line_bindings.bound_at', 'desc')
+        $total = (clone $q)->count();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $rows = $q->orderBy('student_line_bindings.bound_at', 'desc')
             ->orderBy('student_line_bindings.id', 'desc')
-            ->paginate($perPage, ['*'], 'page', $page);
-        $paginator->setCollection($paginator->getCollection()->map(function (\stdClass $row): \stdClass {
-            $row->line_user_id_masked = self::maskLineUserId((string) $row->line_user_id);
-            unset($row->line_user_id);
+            ->forPage($page, $perPage)
+            ->get()
+            ->map(function (\stdClass $row): \stdClass {
+                $row->line_user_id_masked = self::maskLineUserId((string) $row->line_user_id);
+                unset($row->line_user_id);
 
-            return $row;
-        }));
+                return $row;
+            })
+            ->values()
+            ->all();
 
-        return $paginator;
+        return ['data' => $rows, 'current_page' => $page, 'last_page' => $lastPage, 'total' => $total];
     }
 
     /**

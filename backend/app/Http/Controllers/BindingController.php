@@ -56,8 +56,8 @@ class BindingController extends Controller
             );
 
             return response()->json([
-                'data' => $paged->items(),
-                'meta' => ['current_page' => $paged->currentPage(), 'last_page' => $paged->lastPage(), 'total' => $paged->total()],
+                'data' => $paged['data'],
+                'meta' => ['current_page' => $paged['current_page'], 'last_page' => $paged['last_page'], 'total' => $paged['total']],
             ]);
         }
 
