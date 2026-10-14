@@ -15,6 +15,11 @@ Read-only. Used by `.github/workflows/deploy.yml`:
                 `migrate:rollback`. Only exit 20 tells the executor to run its
                 reviewed `rollback_deploy`; any other non-zero exit (a crash,
                 a traceback = 1, argparse = 2, a kill) is treated as a hold.
+                Exception (Founder 2026-10-14): when every migration in the
+                range is a new additive-only file (`range-additive` = 1),
+                code rollback is safe under the newer schema and proceeds.
+* `range-additive PREV TARGET` — prints 1 when every migration in the range is a new,
+                additive-only file per the previous commit's classifier, else 0.
 * `summarize` — the step summary for a failed production executor exit code.
 
 Stdlib only: it runs on the Pi and on a bare GitHub-hosted runner.
@@ -25,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import ssl
 import subprocess
 import sys
@@ -126,10 +132,85 @@ def verify(args, fetch=_fetch, sleep=time.sleep, clock=time.monotonic) -> int:
     return 1
 
 
-def decide(migration_files: str, migration_ran: str) -> str:
-    """`rollback` only when the range provably has no migration; anything else holds."""
+def decide(migration_files: str, migration_ran: str, migrations_additive: str = "0") -> str:
+    """`rollback` when the range provably has no migration, or only additive ones; anything else holds."""
+    if str(migrations_additive).strip() == "1":
+        return "rollback"
     values = (str(migration_files).strip(), str(migration_ran).strip())
     return "rollback" if all(value == "0" for value in values) else "hold"
+
+
+MIGRATIONS_PATHSPEC = ":(top)backend/database/migrations"
+CLASSIFIER_PATH = "scripts/governance/autonomy_gate.py"
+
+
+def range_additive(previous_sha: str, target_sha: str, run=subprocess.run) -> str:
+    """`1` only when every migration in the range is a new, additive-only file; otherwise `0`.
+
+    Founder 2026-10-14 (三): code rolled back over additive-only schema (new
+    tables, nullable/defaulted columns, plain indexes) still runs, so the
+    rollback may proceed. The classifier is the one in the *previous* (already
+    deployed) commit, never the target's own. (This verifier script itself comes
+    from the target, the same trust the existing gate/decide already has.)
+    A previous commit without the classifier, a git error or any doubt is `0`.
+    """
+    import importlib.util
+    import tempfile
+
+    def git(*args: str) -> str | None:
+        try:
+            result = run(["git", *args], capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return result.stdout if result.returncode == 0 else None
+
+    names = git("diff", "--no-renames", "--name-only", previous_sha, target_sha, "--", MIGRATIONS_PATHSPEC)
+    patch = git("diff", "--no-renames", "--no-color", "--no-ext-diff", "--no-textconv",
+                previous_sha, target_sha, "--", MIGRATIONS_PATHSPEC)
+    source = git("show", f"{previous_sha}:{CLASSIFIER_PATH}")
+    if names is None or patch is None or source is None:
+        return "0"
+    paths = {line.strip() for line in names.splitlines() if line.strip()}
+    if not paths:
+        return "0"
+    try:
+        with tempfile.TemporaryDirectory(prefix="trusted-classifier-") as directory:
+            module_path = os.path.join(directory, "autonomy_gate.py")
+            with open(module_path, "w", encoding="utf-8") as handle:
+                handle.write(source)
+            spec = importlib.util.spec_from_file_location("trusted_autonomy_gate", module_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            classify = getattr(module, "additive_migration_paths", None)
+            additive = classify(sorted(paths), patch) if callable(classify) else set()
+    except BaseException:  # noqa: BLE001 - any classifier failure (even SystemExit) means hold
+        return "0"
+    return "1" if set(additive) == paths else "0"
+
+
+_PENDING_RE = re.compile(r"\b(\d{4}_\d{2}_\d{2}_\d{6}_\w+)\b")
+
+
+def pending_in_range(status: str, previous_sha: str, target_sha: str, run=subprocess.run) -> str:
+    """`1` only when every pending migration in `migrate:status` output is a file this range adds.
+
+    A pending migration that already existed at the previous commit (left over
+    from an earlier deploy) ran outside the reviewed range, so the additive
+    rollback must not apply. Any doubt is `0`.
+    """
+    rows = [line for line in status.splitlines() if re.search(r"\| No|Pending", line)]
+    names = [match.group(1) for line in rows if (match := _PENDING_RE.search(line))]
+    if not rows or len(names) != len(rows):
+        return "0"
+    try:
+        result = run(["git", "diff", "--no-renames", "--name-only", "--diff-filter=A", previous_sha, target_sha,
+                      "--", MIGRATIONS_PATHSPEC], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return "0"
+    if result.returncode != 0:
+        return "0"
+    added = {line.strip().rsplit("/", 1)[-1] for line in result.stdout.splitlines() if line.strip()}
+    return "1" if all(f"{name}.php" in added for name in names) else "0"
 
 
 def range_migrations(previous_sha: str, target_sha: str, run=subprocess.run) -> str:
@@ -146,7 +227,7 @@ def range_migrations(previous_sha: str, target_sha: str, run=subprocess.run) -> 
     return str(len([line for line in result.stdout.splitlines() if line.strip()]))
 
 
-def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migrations) -> int:
+def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migrations, additive_fn=None) -> int:
     """Executor's final stage: 0 verified, RC_HELD_MIGRATION hold, 1 roll back (caller runs rollback_deploy)."""
     frontend_changed = str(args.frontend_changed).strip() not in ("", "0")
     verify_args = argparse.Namespace(
@@ -167,6 +248,9 @@ def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migration
         print("🚀 部署完成 — Health + identity + Smoke test 全通過")
         return 0
     decision = decide(migrations_fn(args.previous_sha, args.target_sha), args.migration_ran)
+    # "hard": a pending migration from outside this range ran; never take the additive rollback.
+    if decision == "hold" and "hard" not in str(args.migration_ran):
+        decision = decide("1", "1", (additive_fn or range_additive)(args.previous_sha, args.target_sha))
     if decision == "rollback":
         return RC_GATE_ROLLBACK
     print(
@@ -197,13 +281,13 @@ def summarize(rc: int, target_sha: str, previous_sha: str, runner_verify: str) -
         )
     elif rc == RC_HELD_MIGRATION:
         lines.append(
-            f"`{target_sha}` failed after activation and either a migration is in range/ran or the verifier could "
+            f"`{target_sha}` failed after activation and either a non-additive migration is in range/ran or the verifier could "
             "not decide, so no automatic rollback ran and `migrate:rollback` was never invoked. Production remains "
             "on the target. Manual intervention is required now (see docs/RUNBOOK_ROLLBACK.md)."
         )
     elif rc == RC_HELD_PRE_VERIFY:
         lines.append(
-            f"A deploy step for `{target_sha}` failed after a migration ran (or with a migration in the range), before the release identity was "
+            f"A deploy step for `{target_sha}` failed after a non-additive migration ran (or was in the range), before the release identity was "
             "verified. No automatic rollback ran and `migrate:rollback` was never invoked. Runtime state is UNKNOWN "
             "(code, frontend and deployment.json may be partly updated): check `/api/health` and `deployment.json` "
             "now and follow docs/RUNBOOK_ROLLBACK.md §3."
@@ -244,6 +328,14 @@ def main(argv=None) -> int:
     g.add_argument("--migration-ran", required=True)
     g.add_argument("--smoke", default=DEFAULT_SMOKE)
 
+    q = sub.add_parser("pending-in-range")
+    q.add_argument("previous_sha")
+    q.add_argument("target_sha")
+
+    r = sub.add_parser("range-additive")
+    r.add_argument("previous_sha")
+    r.add_argument("target_sha")
+
     s = sub.add_parser("summarize")
     s.add_argument("--rc", type=int, required=True)
     s.add_argument("--target-sha", required=True)
@@ -259,6 +351,12 @@ def main(argv=None) -> int:
         return verify(args)
     if args.command == "gate":
         return gate(args)
+    if args.command == "pending-in-range":
+        print(pending_in_range(sys.stdin.read(), args.previous_sha, args.target_sha))
+        return 0
+    if args.command == "range-additive":
+        print(range_additive(args.previous_sha, args.target_sha))
+        return 0
     sys.stdout.write(summarize(args.rc, args.target_sha, args.previous_sha, args.runner_verify))
     return 0
 

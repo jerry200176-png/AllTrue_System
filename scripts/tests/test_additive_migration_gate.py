@@ -336,5 +336,48 @@ class AdditiveMigrationGate(unittest.TestCase):
         self.assertEqual(self.tiers(patch, (MIG, "backend/app/Http/Controllers/Auth/X.php")), (3, 3))
 
 
+HEAD = "a" * 40
+CODEX = {"login": "chatgpt-codex-connector[bot]"}
+
+
+def summary(sha=HEAD, when="2026-10-14T12:47:02.745419Z"):
+    return {"user": CODEX, "body": "<!-- codex-pull-request-review-summary -->\n| Review | Status | Commit |\n"
+            f"| 📝 **Code Review** | ✅ **Completed** <relative-time datetime=\"{when}\">{when}</relative-time> | `{sha[:7]}` | New commits |"}
+
+
+THUMB = {"user": CODEX, "content": "+1", "created_at": "2026-10-14T12:47:05Z"}
+
+
+class CodexConfirmation(unittest.TestCase):
+    def test_summary_plus_thumbs_up_without_review_confirms(self):
+        self.assertTrue(gate.codex_confirms_head(HEAD, [summary()], [], [THUMB]))
+
+    def test_missing_or_mismatched_evidence_does_not_confirm(self):
+        other = {"login": "someone"}
+        for comments, reviews, reactions in (
+            ([], [], [THUMB]),
+            ([summary("b" * 40)], [], [THUMB]),
+            ([summary()], [{"user": CODEX, "commit_id": HEAD}], [THUMB]),
+            ([summary()], [], []),
+            ([summary()], [], [dict(THUMB, user=other)]),
+            ([summary()], [], [dict(THUMB, content="eyes")]),
+            ([summary()], [], [dict(THUMB, created_at="2026-10-14T10:00:00Z")]),
+            ([summary()], [], [dict(THUMB, created_at="2026-10-14T12:46:00Z")]),
+            ([dict(summary(), user=other)], [], [THUMB]),
+            ([{"user": CODEX, "body": summary()["body"].split("\n", 1)[1]}], [], [THUMB]),
+        ):
+            self.assertFalse(gate.codex_confirms_head(HEAD, comments, reviews, reactions))
+        self.assertFalse(gate.codex_confirms_head("short", [summary()], [], [THUMB]))
+        self.assertFalse(gate.codex_confirms_head(HEAD, None, [], [THUMB]))
+
+    def test_confirmation_survives_aggregation_only_when_every_commit_carries_it(self):
+        base = {"number": "7", "merged_at": "x", "declared_risk": 2, "declared_tier": 2,
+                "paths": [MIG], "patch": new_file(MIG, ADD), "patch_complete": True}
+        both = gate.aggregate_landed_pr_effects([dict(base, additive_confirmed=True)] * 2)
+        self.assertIs(both[0]["additive_confirmed"], True)
+        mixed = gate.aggregate_landed_pr_effects([dict(base, additive_confirmed=True), dict(base)])
+        self.assertIs(mixed[0]["additive_confirmed"], False)
+
+
 if __name__ == "__main__":
     unittest.main()
