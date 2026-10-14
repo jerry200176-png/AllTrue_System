@@ -119,13 +119,107 @@ class AdminReconcileControllerTest extends TestCase
         }
     }
 
-    private function superAdminToken(): string
+    public function test_rows_pages_through_every_mismatch_beyond_the_stored_200(): void
+    {
+        $rowsPath = storage_path('logs/nightly-reconcile-rows-99991231.json');
+        try {
+            $all = array_map(fn (int $i): array => $this->idOnlyRow(1000 + $i), range(1, 250));
+            file_put_contents($this->reportPath, json_encode([
+                'checked_at' => '9999-12-31 02:00:00', 'mode' => 'live', 'threshold' => 0,
+                'total_checked' => 900, 'mismatch_count' => 250,
+                'cause_counts' => ['counter_overstated' => 250],
+                'mismatches' => array_slice($all, 0, 200),
+            ]));
+            file_put_contents($rowsPath, json_encode([
+                'checked_at' => '9999-12-31 02:00:00', 'mode' => 'live', 'mismatch_count' => 250, 'mismatches' => $all,
+            ]));
+
+            $token = $this->superAdminToken();
+            $seen = [];
+            foreach ([1, 2, 3] as $page) {
+                $response = $this->withToken($token)
+                    ->getJson('/api/v1/admin/reconcile/latest/rows?per_page=100&page=' . $page)
+                    ->assertOk()
+                    ->assertJsonPath('meta.page', $page)
+                    ->assertJsonPath('meta.total', 250)
+                    ->assertJsonPath('meta.last_page', 3)
+                    ->assertJsonPath('meta.complete', true)
+                    ->assertJsonPath('meta.checked_at', '9999-12-31 02:00:00');
+                $this->assertCount($page === 3 ? 50 : 100, $response->json('data'));
+                $this->assertSame('學生資料已不存在', $response->json('data.0.student_name'));
+                $seen = array_merge($seen, array_column($response->json('data'), 'student_class_id'));
+            }
+            $this->assertSame(array_column($all, 'student_class_id'), $seen);
+
+            // Default page size is the 200-row cap; past the end is an empty page.
+            $this->withToken($token)->getJson('/api/v1/admin/reconcile/latest/rows')
+                ->assertOk()->assertJsonCount(200, 'data')->assertJsonPath('meta.per_page', 200);
+            $this->withToken($token)->getJson('/api/v1/admin/reconcile/latest/rows?page=9')
+                ->assertOk()->assertJsonCount(0, 'data');
+            $this->withToken($token)->getJson('/api/v1/admin/reconcile/latest/rows?per_page=201')
+                ->assertStatus(422);
+        } finally {
+            @unlink($rowsPath);
+        }
+    }
+
+    public function test_rows_falls_back_to_stored_rows_without_a_matching_rows_file(): void
+    {
+        $rowsPath = storage_path('logs/nightly-reconcile-rows-99991231.json');
+        try {
+            file_put_contents($this->reportPath, json_encode([
+                'checked_at' => '9999-12-31 02:00:00', 'mode' => 'live', 'threshold' => 0,
+                'total_checked' => 900, 'mismatch_count' => 250, 'cause_counts' => ['counter_overstated' => 250],
+                'mismatches' => [$this->idOnlyRow(1), $this->idOnlyRow(2)],
+            ]));
+            // A rows file from an earlier run of the same day must not be served.
+            file_put_contents($rowsPath, json_encode([
+                'checked_at' => '9999-12-31 01:00:00', 'mismatch_count' => 3,
+                'mismatches' => [$this->idOnlyRow(7), $this->idOnlyRow(8), $this->idOnlyRow(9)],
+            ]));
+
+            $response = $this->withToken($this->superAdminToken())
+                ->getJson('/api/v1/admin/reconcile/latest/rows')
+                ->assertOk()
+                ->assertJsonPath('meta.total', 2)
+                ->assertJsonPath('meta.mismatch_count', 250)
+                ->assertJsonPath('meta.complete', false);
+            $this->assertSame([1, 2], array_column($response->json('data'), 'student_class_id'));
+        } finally {
+            @unlink($rowsPath);
+        }
+    }
+
+    public function test_rows_is_super_admin_only(): void
+    {
+        file_put_contents($this->reportPath, json_encode([
+            'checked_at' => '9999-12-31 02:00:00', 'mode' => 'live', 'total_checked' => 1,
+            'mismatch_count' => 1, 'cause_counts' => [], 'mismatches' => [$this->idOnlyRow(1)],
+        ]));
+
+        $this->withToken($this->superAdminToken('T'))
+            ->getJson('/api/v1/admin/reconcile/latest/rows')
+            ->assertForbidden();
+        $this->flushHeaders()->getJson('/api/v1/admin/reconcile/latest/rows')->assertUnauthorized();
+    }
+
+    /** @return array<string,int|string> */
+    private function idOnlyRow(int $id): array
+    {
+        return [
+            'student_class_id' => $id, 'student_id' => 0, 'subject_id' => 0, 'session_count' => 8,
+            'recorded_used' => 3, 'expected_used' => 2, 'actual_attended' => 2, 'diff' => 1,
+            'category' => 'counter_overstated',
+        ];
+    }
+
+    private function superAdminToken(string $type = 'S'): string
     {
         $user = User::create([
             'LoginName' => 'reconcile-super-' . uniqid() . '@test.com',
             'Name' => 'Super',
             'PSW' => 'secret',
-            'type' => 'S',
+            'type' => $type,
             'phone' => 912000002,
         ]);
         $raw = bin2hex(random_bytes(16));

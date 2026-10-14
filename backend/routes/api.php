@@ -320,6 +320,7 @@ Route::prefix('v1')->group(function () {
 
         // ── Nightly Reconcile ──
         Route::get('admin/reconcile/latest', [AdminReconcileController::class, 'latest']);
+        Route::get('admin/reconcile/latest/rows', [AdminReconcileController::class, 'rows']);
         Route::get('admin/reconcile', [AdminReconcileController::class, 'index']);
 
         // ── Bug Reports (admin) ──
