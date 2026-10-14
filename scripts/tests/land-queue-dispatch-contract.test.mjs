@@ -130,3 +130,11 @@ test('every squash goes through guardedSquash (fresh thread re-read right before
   const guarded = [...queue.matchAll(/guardedSquash\([^)]*unresolvedThreads, squash\)/g)].length;
   assert.equal(guarded, 2, 'serial path (processQueue) and batch path (landBatch) both re-check threads');
 });
+
+test('retired Agent Session Provenance stays a pass-through until the ruleset drops it', () => {
+  // Founder 2026-10-14（三）#6 retired the manifest check, but the main ruleset still
+  // requires the context, so the job must keep its name and must not run the deleted script.
+  const wf = read('.github/workflows/agent-provenance.yml');
+  assert.match(wf, /name: Agent Session Provenance/);
+  assert.doesNotMatch(wf, /check-agent-provenance|\bif: github\.event\.pull_request\.user/);
+});
