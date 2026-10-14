@@ -81,6 +81,68 @@ class ScheduleGuardSummaryTest extends TestCase
         self::assertSame($result, $this->invoke('finalizeCapacityConflict', $result));
     }
 
+    public function test_inapp_406_same_student_from_contract_and_session_reads_as_one_entry(): void
+    {
+        $other = $this->detail('student_class');
+        $other['student_id'] = 8;
+        $other['student_name'] = '另一位';
+        $rows = [$this->detail('student_class'), $other, $this->detail('class_session')];
+
+        self::assertSame(
+            '測試學生（數學・9/1期）(16:00-18:00,固定課程＋課堂紀錄)；另一位（數學・9/1期）(16:00-18:00,固定課程)',
+            $this->invoke('buildOverlapSummary', $rows)
+        );
+    }
+
+    public function test_same_student_at_drifted_times_is_one_entry_listing_both_times(): void
+    {
+        $drifted = $this->detail('class_session');
+        $drifted['start_time'] = '16:30';
+        $drifted['end_time'] = '18:30';
+
+        self::assertSame(
+            '測試學生（數學・9/1期）(16:00-18:00,固定課程)、（數學・9/1期）(16:30-18:30,課堂紀錄)',
+            $this->invoke('buildOverlapSummary', [$this->detail('student_class'), $drifted])
+        );
+    }
+
+    public function test_same_student_with_two_contracts_lists_both(): void
+    {
+        $renewal = $this->detail('student_class');
+        $renewal['course_period'] = '12/1期';
+
+        self::assertSame(
+            '測試學生（數學・9/1期）(16:00-18:00,固定課程)、（數學・12/1期）(16:00-18:00,固定課程)',
+            $this->invoke('buildOverlapSummary', [$this->detail('student_class'), $renewal])
+        );
+    }
+
+    public function test_duplicate_contracts_with_identical_labels_both_show(): void
+    {
+        $first = $this->detail('student_class');
+        $first['course_id'] = 101;
+        $duplicate = $first;
+        $duplicate['course_id'] = 102;
+
+        self::assertSame(2, substr_count($this->invoke('buildOverlapSummary', [$first, $duplicate]), '固定課程'));
+    }
+
+    public function test_rows_without_a_student_stay_distinct_per_source(): void
+    {
+        $rows = [];
+        foreach ([31, 32] as $sourceId) {
+            $row = $this->detail('schedule');
+            $row['student_id'] = 0;
+            $row['student_name'] = '';
+            $row['subject_name'] = '';
+            $row['course_period'] = '';
+            $row['source_id'] = $sourceId;
+            $rows[] = $row;
+        }
+
+        self::assertSame(2, substr_count($this->invoke('buildOverlapSummary', $rows), '未綁定學生'));
+    }
+
     private function detail(string $source): array
     {
         return ['source' => $source, 'source_id' => 12, 'student_id' => 7,

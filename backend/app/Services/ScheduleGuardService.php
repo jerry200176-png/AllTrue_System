@@ -1223,16 +1223,20 @@ class ScheduleGuardService
             return '';
         }
 
-        $segments = [];
-        $max = min(5, count($details));
-        for ($i = 0; $i < $max; $i++) {
-            $row = $details[$i];
+        // One segment per occupant, counted the way countDistinctStudents() counts them, so
+        // a contract and its materialized session no longer read as two students (in-app #406).
+        // Each segment keeps every distinct course/time variant (a stale renewal shows both
+        // contracts); anonymous rows stay distinct per source.
+        $groups = [];
+        foreach ($details as $row) {
             $name = (string) ($row['student_name'] ?? '');
             $sid = (int) ($row['student_id'] ?? 0);
             $studentLabel = $name !== '' ? $name : ($sid > 0 ? ('#' . $sid) : '未綁定學生');
             $subjectName = (string) ($row['subject_name'] ?? '');
             $coursePeriod = (string) ($row['course_period'] ?? '');
             $courseLabel = trim($subjectName . ($coursePeriod !== '' ? '・' . $coursePeriod : ''));
+            $start = (string) ($row['start_time'] ?? '');
+            $end = (string) ($row['end_time'] ?? '');
             // Human summary only; overlap_details retains the diagnostic source enum.
             $source = (string) ($row['source'] ?? '');
             $sourceLabel = match ($source) {
@@ -1241,18 +1245,41 @@ class ScheduleGuardService
                 'schedule' => '排課紀錄',
                 default => $source,
             };
-            $segments[] = sprintf(
-                '%s%s(%s-%s,%s)',
-                $studentLabel,
-                $courseLabel !== '' ? "（{$courseLabel}）" : '',
-                (string) ($row['start_time'] ?? ''),
-                (string) ($row['end_time'] ?? ''),
-                $sourceLabel
-            );
+            $occupant = $sid > 0
+                ? $sid . '|' . $studentLabel
+                : 'anon:' . $source . ':' . (string) ($row['source_id'] ?? '') . '|' . $studentLabel;
+            // The course id keeps two duplicate contracts apart; a contract and its own sessions share it.
+            $variant = (string) ($row['course_id'] ?? '') . '|' . $courseLabel . '|' . $start . '|' . $end;
+            if (!isset($groups[$occupant])) {
+                $groups[$occupant] = ['student' => $studentLabel, 'variants' => []];
+            }
+            if (!isset($groups[$occupant]['variants'][$variant])) {
+                $groups[$occupant]['variants'][$variant] = ['course' => $courseLabel, 'start' => $start, 'end' => $end, 'sources' => []];
+            }
+            if ($sourceLabel !== '' && !in_array($sourceLabel, $groups[$occupant]['variants'][$variant]['sources'], true)) {
+                $groups[$occupant]['variants'][$variant]['sources'][] = $sourceLabel;
+            }
         }
 
-        if (count($details) > $max) {
-            $segments[] = sprintf('...其餘 %d 筆', count($details) - $max);
+        $groups = array_values($groups);
+        $segments = [];
+        $max = min(5, count($groups));
+        for ($i = 0; $i < $max; $i++) {
+            $parts = [];
+            foreach ($groups[$i]['variants'] as $v) {
+                $parts[] = sprintf(
+                    '%s(%s-%s,%s)',
+                    $v['course'] !== '' ? "（{$v['course']}）" : '',
+                    $v['start'],
+                    $v['end'],
+                    implode('＋', $v['sources'])
+                );
+            }
+            $segments[] = $groups[$i]['student'] . implode('、', $parts);
+        }
+
+        if (count($groups) > $max) {
+            $segments[] = sprintf('...其餘 %d 筆', count($groups) - $max);
         }
 
         return implode('；', $segments);
