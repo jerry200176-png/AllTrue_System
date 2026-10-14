@@ -325,9 +325,16 @@ def _lex_php(source: str) -> str | None:
                 return None
             out.append(" S ")
             i = j + 1
+        elif source.startswith("#[", i):
+            return None  # PHP 8 attribute, not a comment
         elif source.startswith(("//", "#"), i):
-            j = source.find("\n", i)
-            i = n if j < 0 else j
+            # PHP ends a line comment at \n, \r or ?>; be stricter and refuse ?>.
+            j = i
+            while j < n and source[j] not in "\r\n":
+                if source.startswith("?>", j):
+                    return None
+                j += 1
+            i = j
         elif source.startswith("/*", i):
             j = source.find("*/", i + 2)
             if j < 0:
