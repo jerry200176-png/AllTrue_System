@@ -2,7 +2,7 @@
 # Rollback Readiness Check（#733）— 完全非破壞性，零 production 風險。
 #
 # 在 GitHub Actions / 本地 checkout 內驗證「萬一要回滾，機制是否健全」：
-#   CHECK 1  deploy.yml 自動回滾區塊完整（PREV_COMMIT 捕捉 + git reset + migrate:rollback + 二次 health）
+#   CHECK 1  deploy.yml 自動回滾區塊完整（PREV_COMMIT 捕捉 + git reset + migration 後 hold（不自動 migrate:rollback）+ 二次 health）
 #   CHECK 2  所有 migration 都有 down()（否則 migrate:rollback 會半途失敗）
 #   CHECK 3  最新 main commit 可乾淨 git revert（程式碼回滾模擬，sandbox 內 revert 後立即 abort）
 #   CHECK 4  DB 備份還原驗證 workflow 存在且引用 mysqldump（資料層回滾的安全網）
@@ -37,9 +37,14 @@ else
   grep -q 'git reset --hard "$PREV_COMMIT"' "$DEPLOY" \
     && ok "有 git reset --hard \$PREV_COMMIT（程式碼回滾）" \
     || bad "缺程式碼回滾步驟"
-  grep -q 'migrate:rollback' "$DEPLOY" \
-    && ok "有 migrate:rollback（DB schema 回滾）" \
-    || bad "缺 migrate:rollback"
+  # Founder 2026-10-14：跑過 migration 後失敗不得自動回滾 code，也絕不自動 migrate:rollback
+  # （schema 回滾走 docs/RUNBOOK_ROLLBACK.md §3 人工流程 + migration 前 mysqldump）。
+  if grep -q '\[ "${MIGRATION_RAN:-0}" -eq 0 \] || {' "$DEPLOY" \
+    && ! grep -q 'php artisan migrate:rollback' "$DEPLOY"; then
+    ok "migration 跑過後失敗 → hold（exit 12），不自動 migrate:rollback"
+  else
+    bad "缺 migration hold，或 deploy.yml 仍會自動 migrate:rollback"
+  fi
   # 健康檢查必須出現至少兩次（部署後 + 回滾後）
   HC=$(grep -c '/api/v1/health' "$DEPLOY")
   if [ "${HC:-0}" -ge 2 ]; then

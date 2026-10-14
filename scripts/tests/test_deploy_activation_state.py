@@ -1879,7 +1879,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
 
     def args(self, **overrides):
         values = dict(base_url="https://daan.test", health_path=None, expect_backend_sha=self.TARGET,
-                      expect_frontend_sha=None, attempts=3, interval=0, timeout=1, insecure=False)
+                      expect_frontend_sha=None, attempts=3, interval=0, timeout=1, insecure=False, deadline=150)
         values.update(overrides)
         return type("Args", (), values)
 
@@ -1902,6 +1902,20 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         self.assertEqual(1, self.pdv.verify(self.args(), fetch=fetch, sleep=sleeps.append))
         self.assertEqual(9, len(calls))
         self.assertEqual(2, len(sleeps))  # no sleep after the last attempt
+
+    def test_verify_stops_at_the_total_deadline(self):
+        fetch, calls = self.fake_fetch(self.healthy(backend=self.PREV))
+        now = {"t": 0.0}
+        sleeps = []
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            now["t"] += seconds
+
+        args = self.args(attempts=100, interval=10, deadline=35)
+        self.assertEqual(1, self.pdv.verify(args, fetch=fetch, sleep=sleep, clock=lambda: now["t"]))
+        self.assertEqual(3, len(sleeps))  # 0, 10, 20, 30 -> the next sleep would cross 35
+        self.assertEqual(12, len(calls))
 
     def test_verify_recovers_when_a_later_attempt_is_healthy(self):
         state = {"n": 0}
@@ -1926,6 +1940,12 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             ({"/api/v1/health": OSError("down")}, "/api/v1/health unreachable"),
             ({"/deployment.json": (404, b"")}, "deployment.json missing or invalid"),
             ({"/deployment.json": (200, b"not json")}, "deployment.json unreachable or invalid"),
+            ({"/api/health": (200, b"<html>login</html>")}, "/api/health returned a non-JSON body"),
+            ({"/api/health": (200, b"<?php echo 1;")}, "/api/health returned a non-JSON body"),
+            ({"/api/v1/health": (200, b"[]")}, "non-object JSON"),
+            ({"/api/v1/health": (200, b"{}")}, "has no status/ok field"),
+            ({"/api/health": __import__("http.client").client.IncompleteRead(b"")}, "/api/health unreachable: IncompleteRead"),
+            ({"/deployment.json": __import__("http.client").client.BadStatusLine("x")}, "deployment.json unreachable or invalid"),
         ]
         for override, expected in cases:
             responses = {**self.healthy(), **override}
@@ -2002,7 +2022,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         args = argparse.Namespace(
             base_url="https://daan.test", attempts=2, interval=0, timeout=1, insecure=True,
             target_sha=self.TARGET, previous_sha=self.PREV, frontend_changed=frontend_changed,
-            migration_ran=migration_ran, smoke="/x/post-merge-smoke.sh",
+            migration_ran=migration_ran, smoke="/x/post-merge-smoke.sh", deadline=150,
         )
         rc = self.pdv.gate(args, verify_fn=verify_fn, run=run, migrations_fn=lambda prev, target: migrations)
         return rc, seen
@@ -2022,9 +2042,10 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
 
     def test_gate_failure_without_migration_asks_for_the_reviewed_rollback(self):
         rc, seen = self._gate(verify_rc=1)
-        self.assertEqual(1, rc)
+        self.assertEqual(self.pdv.RC_GATE_ROLLBACK, rc)
+        self.assertNotEqual(1, self.pdv.RC_GATE_ROLLBACK)  # a Python traceback exits 1: must never mean rollback
         self.assertNotIn("smoke", seen)  # smoke never runs against an unverified target
-        self.assertEqual(1, self._gate(smoke_rc=1)[0])
+        self.assertEqual(self.pdv.RC_GATE_ROLLBACK, self._gate(smoke_rc=1)[0])
 
     def test_gate_holds_without_rollback_when_a_migration_is_in_range(self):
         for kwargs in ({"migrations": "2"}, {"migration_ran": "1"}, {"migrations": "unknown"}):
@@ -2070,19 +2091,22 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
     def test_executor_final_stage_maps_gate_exit_codes(self):
         deploy = self._deploy_step()
         stage = deploy.split(self.START, 1)[1].split("\n          ENDSSH", 1)[0]
-        gate = stage.index('python3 "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT"')
+        gate = stage.index('python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT"')
         self.assertLess(stage.index('export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"'), gate)
         self.assertIn('--frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIGRATION_RAN"', stage)
-        self.assertLess(gate, stage.index("case $? in 0) exit 0 ;; 12) exit 12 ;; esac"))
+        self.assertLess(gate, stage.index("case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac"))
         self.assertTrue(stage.rstrip().endswith('abort_deploy "health check 或 smoke test 失敗"'))
         self.assertNotIn("migrate:rollback", stage)
         self.assertNotIn("post-merge-smoke.sh", stage)  # the gate runs smoke only after verify passes
 
-    def test_executor_final_stage_runs_rollback_only_on_gate_exit_1(self):
+    def test_executor_final_stage_runs_rollback_only_on_the_gate_rollback_code(self):
         stage = self._deploy_step().split(self.START, 1)[1].split("\n          ENDSSH", 1)[0]
         stage = "echo start" + stage.split("\n", 1)[1].replace("${{", "PLACEHOLDER{{")
         harness = 'python3() { return "$GATE_RC"; }\nabort_deploy() { echo abort; exit 10; }\n'
-        for gate_rc, expected_rc, aborted in ((0, 0, False), (12, 12, False), (1, 10, True), (2, 10, True)):
+        # Only 20 rolls back; a crash (1), argparse (2), missing file/python (2/127) or a kill (137) holds.
+        cases = ((0, 0, False), (12, 12, False), (20, 10, True), (1, 12, False), (2, 12, False),
+                 (127, 12, False), (137, 12, False))
+        for gate_rc, expected_rc, aborted in cases:
             result = subprocess.run(
                 ["bash", "-c", harness + stage], text=True, capture_output=True,
                 env={"PATH": os.environ["PATH"], "GATE_RC": str(gate_rc), "PDV": "x", "TARGET_SHA": "t",
@@ -2093,18 +2117,32 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
 
     def test_verifier_is_captured_before_any_runtime_change(self):
         deploy = self._deploy_step()
-        capture = deploy.index('PDV=$(mktemp) && cp scripts/post-deploy-verify.py "$PDV" || PDV=""')
+        # Private mktemp -d directory + `python3 -I`: no module planted in /tmp can shadow the stdlib.
+        capture = deploy.index('PDV=$(mktemp -d)/v.py && cp scripts/post-deploy-verify.py "$PDV" || PDV=""')
+        self.assertNotRegex(deploy, r'python3 "\$PDV"')
         self.assertLess(deploy.index('echo "✅ production HEAD == CI 驗證版本'), capture)
         self.assertLess(capture, deploy.index('echo "=== [2/7] Composer'))
 
     def test_rollback_reverifies_the_previous_identity(self):
         function = self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
-        reverify = function.index('python3 "$PDV" verify -k --expect-backend-sha "$PREV_COMMIT" || rollback_failed=1')
+        reverify = function.index('python3 -I "$PDV" verify -k --expect-backend-sha "$PREV_COMMIT" || rollback_failed=1')
         self.assertLess(function.index('write_deployment_manifest "$PREV_COMMIT"'), reverify)
         self.assertLess(reverify, function.index('if [ "$rollback_failed" -ne 0 ]'))
         abort = self.workflow.split("abort_deploy() {", 1)[1].split("\n          }", 1)[0]
         self.assertIn("exit 11", abort)
         self.assertIn("exit 10", abort)
+
+    def test_deploy_never_runs_migrate_rollback_and_holds_after_a_migration_ran(self):
+        self.assertNotIn("php artisan migrate:rollback", self.workflow)
+        abort = "abort_deploy() {" + self.workflow.split("abort_deploy() {", 1)[1].split("\n          }", 1)[0] + "\n}\n"
+        harness = 'rollback_deploy() { echo ROLLBACK_CALLED; return 0; }\n'
+        for migration_ran, expected_rc, rolled_back in (("0", 10, True), ("1", 12, False)):
+            result = subprocess.run(
+                ["bash", "-c", harness + abort + "MIGRATION_RAN=" + migration_ran + "\nabort_deploy x\n"],
+                text=True, capture_output=True, env={"PATH": os.environ["PATH"]},
+            )
+            self.assertEqual(expected_rc, result.returncode, result.stdout + result.stderr)
+            self.assertEqual(rolled_back, "ROLLBACK_CALLED" in result.stdout)
 
     def test_rollback_reverify_failure_fails_the_rollback(self):
         function = "rollback_deploy() {" + self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
@@ -2116,13 +2154,13 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             php() { :; }
             grep() { if [ "$1" = '^DEPLOY_SECRET=' ]; then echo s; else command grep "$@"; fi; }
             curl() { printf '{"status":"ok","opcache_cleared":true}'; }
-            python3() { if [ "$1" = /tmp/pdv ]; then echo "reverify $*"; return "$VERIFY_RC"; fi; command python3 "$@"; }
+            python3() { if [ "$2" = /tmp/pdv ]; then echo "reverify $*"; return "$VERIFY_RC"; fi; command python3 "$@"; }
         """)
         for verify_rc, expected in ((0, 0), (1, 1)):
             result = subprocess.run(["bash", "-c", harness + function + "\nrollback_deploy\n"], text=True,
                                     capture_output=True, env={"PATH": os.environ["PATH"], "VERIFY_RC": str(verify_rc)})
             self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
-            self.assertIn("reverify /tmp/pdv verify -k --expect-backend-sha old", result.stdout)
+            self.assertIn("reverify -I /tmp/pdv verify -k --expect-backend-sha old", result.stdout)
 
     def test_runner_step_records_rc_and_summarizes_failures(self):
         self.assertIn("<< 'ENDSSH' || rc=$?", self.workflow)

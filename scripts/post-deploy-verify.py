@@ -12,8 +12,9 @@ Read-only. Used by `.github/workflows/deploy.yml`:
                 automatic rollback may run: any migration in the deployed range
                 (or a migration that ran) means hold (exit 12): fail and alert,
                 never roll code back under a newer schema and never run
-                `migrate:rollback`. Exit 1 tells the executor to run its
-                reviewed `rollback_deploy`.
+                `migrate:rollback`. Only exit 20 tells the executor to run its
+                reviewed `rollback_deploy`; any other non-zero exit (a crash,
+                a traceback = 1, argparse = 2, a kill) is treated as a hold.
 * `summarize` — the step summary for a failed production executor exit code.
 
 Stdlib only: it runs on the Pi and on a bare GitHub-hosted runner.
@@ -39,6 +40,7 @@ DEFAULT_SMOKE = "/home/admin/scripts/post-merge-smoke.sh"
 RC_ROLLED_BACK = 10
 RC_ROLLBACK_FAILED = 11
 RC_HELD_MIGRATION = 12
+RC_GATE_ROLLBACK = 20  # gate -> executor: run rollback_deploy (distinct from a Python crash's 1)
 RC_SSH_LOST = 255
 
 
@@ -53,18 +55,20 @@ def _fetch(url: str, timeout: float, insecure: bool) -> tuple[int, bytes]:
 
 
 def _health_problem(path: str, status: int, body: bytes) -> str | None:
+    """Healthy = HTTP 200 and a JSON object saying so (an HTML page or PHP source never passes)."""
     if status != 200:
         return f"{path} returned HTTP {status}"
     try:
         payload = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
-        return None
-    if isinstance(payload, dict):
-        if "status" in payload and payload["status"] != "ok":
-            return f"{path} status={payload['status']!r}"
-        if "ok" in payload and payload["ok"] is not True:
-            return f"{path} ok={payload['ok']!r}"
-    return None
+        return f"{path} returned a non-JSON body"
+    if not isinstance(payload, dict):
+        return f"{path} returned non-object JSON"
+    if "status" in payload:
+        return None if payload["status"] == "ok" else f"{path} status={payload['status']!r}"
+    if "ok" in payload:
+        return None if payload["ok"] is True else f"{path} ok={payload['ok']!r}"
+    return f"{path} has no status/ok field"
 
 
 def check_once(base_url, health_paths, expect_backend, expect_frontend, timeout, insecure, fetch=_fetch):
@@ -74,7 +78,7 @@ def check_once(base_url, health_paths, expect_backend, expect_frontend, timeout,
     for path in health_paths:
         try:
             status, body = fetch(base + path, timeout, insecure)
-        except (OSError, ValueError) as error:
+        except Exception as error:  # noqa: BLE001 - any transport fault (incl. http.client.HTTPException) is retryable
             problems.append(f"{path} unreachable: {error.__class__.__name__}")
             continue
         problem = _health_problem(path, status, body)
@@ -83,7 +87,7 @@ def check_once(base_url, health_paths, expect_backend, expect_frontend, timeout,
     try:
         status, body = fetch(f"{base}/deployment.json?ts={int(time.time())}", timeout, insecure)
         manifest = json.loads(body.decode("utf-8")) if status == 200 else None
-    except (OSError, ValueError) as error:
+    except Exception as error:  # noqa: BLE001 - retryable, never a crash that the executor could misread
         problems.append(f"deployment.json unreachable or invalid: {error.__class__.__name__}")
         return problems
     if not isinstance(manifest, dict):
@@ -96,8 +100,9 @@ def check_once(base_url, health_paths, expect_backend, expect_frontend, timeout,
     return problems
 
 
-def verify(args, fetch=_fetch, sleep=time.sleep) -> int:
+def verify(args, fetch=_fetch, sleep=time.sleep, clock=time.monotonic) -> int:
     problems = ["not attempted"]
+    deadline = clock() + getattr(args, "deadline", 150.0)
     for attempt in range(1, args.attempts + 1):
         problems = check_once(
             args.base_url, args.health_path or DEFAULT_HEALTH_PATHS, args.expect_backend_sha,
@@ -108,6 +113,9 @@ def verify(args, fetch=_fetch, sleep=time.sleep) -> int:
             return 0
         print(f"post-deploy verify: attempt {attempt}/{args.attempts} failed: {'; '.join(problems)}")
         if attempt < args.attempts:
+            if clock() + args.interval >= deadline:
+                print(f"post-deploy verify: deadline reached after attempt {attempt}")
+                break
             sleep(args.interval)
     print(f"post-deploy verify: FAILED after {args.attempts} attempts: {'; '.join(problems)}")
     return 1
@@ -140,6 +148,7 @@ def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migration
         base_url=args.base_url, health_path=None, expect_backend_sha=args.target_sha,
         expect_frontend_sha=args.target_sha if frontend_changed else None,
         attempts=args.attempts, interval=args.interval, timeout=args.timeout, insecure=args.insecure,
+        deadline=args.deadline,
     )
     ok = (verify_fn or verify)(verify_args) == 0
     if ok:
@@ -154,7 +163,7 @@ def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migration
         return 0
     decision = decide(migrations_fn(args.previous_sha, args.target_sha), args.migration_ran)
     if decision == "rollback":
-        return 1
+        return RC_GATE_ROLLBACK
     print(
         "::error::Post-deploy verification failed and the deployed range contains a migration "
         f"(migration ran={args.migration_ran}). No automatic rollback and no migrate:rollback: "
@@ -172,7 +181,7 @@ def summarize(rc: int, target_sha: str, previous_sha: str, runner_verify: str) -
         )
     elif rc == RC_ROLLED_BACK:
         lines.append(
-            f"Automatic rollback ran: production was returned to the previously deployed SHA `{previous_sha}` "
+            f"Automatic rollback ran: production was returned to the previously deployed SHA (detected `{previous_sha}`) "
             f"after `{target_sha}` failed, and the rollback was re-verified. The target is NOT live."
         )
     elif rc == RC_ROLLBACK_FAILED:
@@ -182,14 +191,17 @@ def summarize(rc: int, target_sha: str, previous_sha: str, runner_verify: str) -
         )
     elif rc == RC_HELD_MIGRATION:
         lines.append(
-            f"`{target_sha}` failed post-deploy verification and its range contains a migration, so no automatic "
-            "rollback ran and `migrate:rollback` was never invoked. Production remains on the target. "
-            "Manual intervention is required now (see docs/RUNBOOK_ROLLBACK.md)."
+            f"`{target_sha}` failed after activation and either a migration is in range/ran or the verifier could "
+            "not decide, so no automatic rollback ran and `migrate:rollback` was never invoked. Production remains "
+            "on the target. Manual intervention is required now (see docs/RUNBOOK_ROLLBACK.md)."
         )
     elif rc == RC_SSH_LOST:
         lines.append("The SSH session to the production executor was lost. Production state is unknown; check it now.")
     else:
-        lines.append(f"The production executor exited with code `{rc}` (refused before activation, or unclassified).")
+        lines.append(
+            f"The production executor exited with code `{rc}`: refused before activation, or failed after activation "
+            "without a classified outcome. Check `/api/health` and `deployment.json` now."
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -201,7 +213,8 @@ def main(argv=None) -> int:
         p.add_argument("--base-url", default=DEFAULT_BASE_URL)
         p.add_argument("--attempts", type=int, default=12)
         p.add_argument("--interval", type=float, default=5.0)
-        p.add_argument("--timeout", type=float, default=10.0)
+        p.add_argument("--timeout", type=float, default=5.0)
+        p.add_argument("--deadline", type=float, default=150.0, help="total seconds across all attempts")
         p.add_argument("-k", "--insecure", action="store_true")
 
     v = sub.add_parser("verify")

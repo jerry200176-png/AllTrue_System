@@ -1552,14 +1552,6 @@ jobs:
               rollback_failed=1
             fi
 
-            if [ "${MIGRATION_RAN:-0}" -eq 1 ]; then
-              echo "回滾 migration..."
-              if ! (cd /home/admin/backend && php artisan migrate:rollback --step=1 --force); then
-                echo "⚠️ migrate:rollback 失敗"
-                rollback_failed=1
-              fi
-            fi
-
             # Abort after target checkout (e.g. failed migration): refresh FPM like [5/7].
             (cd /home/admin/backend && php artisan opcache:reset 2>/dev/null) || echo "⚠️ rollback CLI opcache reset 失敗"
             local rb_secret rb_response
@@ -1575,7 +1567,7 @@ jobs:
             health2=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
               | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
               2>/dev/null || echo "error")
-            [ -z "${PDV:-}" ] || python3 "$PDV" verify -k --expect-backend-sha "$PREV_COMMIT" || rollback_failed=1
+            [ -z "${PDV:-}" ] || python3 -I "$PDV" verify -k --expect-backend-sha "$PREV_COMMIT" || rollback_failed=1
             if [ "$rollback_failed" -ne 0 ] || [ "$health2" != "ok" ]; then
               echo "❌ Rollback 未完成：health=$health2 rollback_failed=$rollback_failed — 需要人工介入"
               return 1
@@ -1585,6 +1577,7 @@ jobs:
 
           abort_deploy() {
             echo "❌ $1"
+            [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran: no auto rollback, no migrate:rollback. Manual fix needed."; exit 12; }
             if ! rollback_deploy; then
               echo "❌ 自動 rollback 也失敗 — deploy run 必須標紅"
               exit 11
@@ -1643,7 +1636,7 @@ jobs:
             abort_deploy "部署目標 SHA 驗證失敗"
           fi
           echo "✅ production HEAD == CI 驗證版本（$TARGET_SHA）"
-          PDV=$(mktemp) && cp scripts/post-deploy-verify.py "$PDV" || PDV=""
+          PDV=$(mktemp -d)/v.py && cp scripts/post-deploy-verify.py "$PDV" || PDV=""
 
           # The DB credential rotation authenticated over TCP and updated the
           # TCP-matched principal, while Laravel was still allowed to connect
@@ -1880,8 +1873,8 @@ jobs:
           export SMOKE_BRANCH_ID="${{ secrets.SMOKE_BRANCH_ID }}"
           export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
           export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
-          python3 "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIGRATION_RAN"
-          case $? in 0) exit 0 ;; 12) exit 12 ;; esac
+          python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIGRATION_RAN"
+          case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac
           abort_deploy "health check 或 smoke test 失敗"
           ENDSSH
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
@@ -1921,7 +1914,7 @@ jobs:
             echo ""
             echo "## state=production-verified"
             echo "The executor returned success only after deployment identity, health, and post-merge smoke verification passed,"
-            echo "and the runner independently re-verified /api/health and deployment.json backend_sha."
+            echo "and the runner re-checked /api/health, /api/v1/health and the deployment.json manifest (backend_sha) from outside the Pi."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize production verification failure
@@ -1933,6 +1926,10 @@ jobs:
           PREVIOUS_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
         run: |
           set -euo pipefail
+          if [ ! -f post-deploy-verify/scripts/post-deploy-verify.py ]; then
+            echo "::error title=Production deploy not verified::executor rc=${RC:-unknown}, runner verify=${RUNNER_VERIFY}; verifier checkout failed. Check /api/health and deployment.json now."
+            exit 1
+          fi
           summary="$(python3 post-deploy-verify/scripts/post-deploy-verify.py summarize \
             --rc "${RC:-1}" --target-sha "$TARGET_SHA" --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY")"
           printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
