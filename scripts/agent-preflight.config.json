@@ -1,9 +1,8 @@
 {
   "project": "AllTrue_System",
-  "expected_remote_suffixes": [
-    "github.com/jerry200176-png/AllTrue_System.git",
-    "github.com/jerry200176-png/AllTrue_System",
-    "/jerry200176-png/AllTrue_System"
+  "expected_remote_patterns": [
+    "^(https://|ssh://git@|git@)github\\.com[:/]jerry200176-png/AllTrue_System(\\.git)?$",
+    "^http://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?/git/jerry200176-png/AllTrue_System(\\.git)?$"
   ],
   "forbidden_exact": [
     "/home/jerry/alltrue",

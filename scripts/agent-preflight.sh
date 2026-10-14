@@ -61,6 +61,11 @@ assert "/home/jerry/alltrue" in cfg["forbidden_exact"]
 assert "allowed_path_prefixes" not in cfg, "local path allowlist is retired (Founder 2026-10-14)"
 print("classifier-ok")
 PY
+  # A local session manifest must never be committed (.gitignore does not
+  # apply once a path is tracked); this replaces the retired provenance gate's check.
+  if [[ -n "$(git -C "$SCRIPT_ROOT" ls-files -- .agent-session/manifest.json)" ]]; then
+    fail ".agent-session/manifest.json is tracked; git rm --cached it"
+  fi
   ok "ci preflight passed"
   exit 0
 fi
@@ -95,11 +100,12 @@ fi
 cd "$TARGET"
 REMOTE="$(git remote get-url origin 2>/dev/null || true)"
 [[ -n "$REMOTE" ]] || fail "origin remote missing"
+# Anchored patterns: GitHub itself or the cloud session's local git proxy only.
 REMOTE_OK=0
-while IFS= read -r suf; do
-  [[ -z "$suf" ]] && continue
-  case "$REMOTE" in *"$suf") REMOTE_OK=1 ;; esac
-done < <(json_get expected_remote_suffixes)
+while IFS= read -r pat; do
+  [[ -z "$pat" ]] && continue
+  [[ "$REMOTE" =~ $pat ]] && REMOTE_OK=1
+done < <(json_get expected_remote_patterns)
 [[ "$REMOTE_OK" == "1" ]] || fail "unexpected origin URL: $REMOTE"
 
 if [[ "${AGENT_PREFLIGHT_SKIP_FETCH:-0}" != "1" ]]; then
