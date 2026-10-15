@@ -47,18 +47,24 @@ final class AuthenticateTriageToken
         // #4100: on the billing snapshot the path id is a contract; the report it was read for is the query param.
         $isBilling = $route instanceof Route && $route->getName() === 'triage.student-classes.billing-snapshot';
         // Every query a resolved token makes on the billing snapshot is logged, refusals included (Founder: 留下查詢紀錄);
-        // the route's own throttle bounds that volume. Every other refusal or failure shares the cross-route cap.
+        // the route's own throttle bounds that volume. Every other refusal or failure keeps the cross-route cap below.
         $alwaysAudit = $isBilling && $tokenId !== null && in_array($status, [404, 422], true);
-        if ($status >= 400 && !$alwaysAudit && !TriageTokenService::mayAuditDenial($request->ip())) { return; }
-        $routeId = $request->route('id');
+        if (!$alwaysAudit) {
+            if ($status >= 400 && !TriageTokenService::mayAuditDenial($request->ip())) { return; } // every refusal or failure shares the cross-route cap
+        }
+        $bugId = $request->route('id');
         $attachmentId = $request->route('attachmentId');
         $queryBugId = $request->query('bug_report_id');
-        SecurityAuditEvent::append('triage_token.read', $outcome, [
+        $subject = [
             'actor_type' => 'triage_token',
             'actor_id' => $tokenId,
-            'subject_type' => $isBilling ? 'student_class' : 'bug_report',
-            'subject_id' => is_numeric($routeId) ? (int) $routeId : null,
-        ], [
+            'subject_type' => 'bug_report',
+            'subject_id' => is_numeric($bugId) ? (int) $bugId : null,
+        ];
+        if ($isBilling) {
+            $subject['subject_type'] = 'student_class'; // the path id on this route is a contract, not a report
+        }
+        SecurityAuditEvent::append('triage_token.read', $outcome, $subject, [
             'attachment_ref' => SecurityAuditEvent::ref('bug_report_attachment', is_numeric($attachmentId) ? (int) $attachmentId : null),
             'bug_report_ref' => $isBilling && is_numeric($queryBugId) ? SecurityAuditEvent::ref('bug_report', (int) $queryBugId) : null,
             'route' => $route instanceof Route ? (string) $route->getName() : '',

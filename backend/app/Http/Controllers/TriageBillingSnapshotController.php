@@ -35,7 +35,7 @@ class TriageBillingSnapshotController extends Controller
         }
         $bugId = (int) $validator->validated()['bug_report_id'];
 
-        $linked = BugReportContractLink::query()->active()
+        $linked = BugReportContractLink::live()
             ->where('bug_report_id', $bugId)->where('student_class_id', $id)->exists();
         $bug = $linked ? BugReport::query()->whereKey($bugId)
             ->whereIn('status', BugReportContractLink::OPEN_REPORT_STATUSES)->first() : null;

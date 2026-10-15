@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property \Carbon\CarbonInterface|null $revoked_at
  * @property int|null $revoked_by
  * @property bool|null $active 1 while live, NULL once revoked (unique per report)
+ *
+ * @method static static create(array $attributes = [])
  */
 class BugReportContractLink extends Model
 {
@@ -47,9 +49,12 @@ class BugReportContractLink extends Model
     public static function revoke(int $linkId, ?int $actorId, string $reason): bool
     {
         $link = self::query()->whereKey($linkId)->first(['id', 'bug_report_id', 'student_class_id']);
-        $affected = $link === null ? 0 : self::query()->whereKey($linkId)->whereNull('revoked_at')->where('active', true)
+        if (!$link instanceof self) {
+            return false;
+        }
+        $affected = self::live()->whereKey($linkId)
             ->update(['revoked_at' => now(), 'revoked_by' => $actorId, 'active' => null]);
-        if ($affected !== 1 || $link === null) {
+        if ($affected !== 1) {
             return false;
         }
         SecurityAuditEvent::append('triage_contract_link.revoked', 'success', [
@@ -73,14 +78,14 @@ class BugReportContractLink extends Model
         if (!\Illuminate\Support\Facades\Schema::hasTable('bug_report_contract_links')) {
             return;
         }
-        foreach (self::query()->active()->where('bug_report_id', $bugReportId)->pluck('id') as $id) {
+        foreach (self::live()->where('bug_report_id', $bugReportId)->pluck('id') as $id) {
             self::revoke((int) $id, $actorId, 'report_closed');
         }
     }
 
-    /** @param Builder<BugReportContractLink> $query */
-    public function scopeActive(Builder $query): void
+    /** Links that are still live (not revoked); the single definition every reader and the revoke use. */
+    public static function live(): Builder
     {
-        $query->whereNull('revoked_at')->where('active', true);
+        return self::query()->whereNull('revoked_at')->where('active', true);
     }
 }
