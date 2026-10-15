@@ -98,7 +98,9 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || github.sha }}
 
       - name: Verify deploy state-machine contract
-        run: python3 scripts/tests/test_deploy_activation_state.py
+        run: |
+          python3 scripts/tests/test_deploy_activation_state.py
+          python3 scripts/tests/test_principal_rotation_grant_replay.py
 
   resolve-target:
     name: Resolve exact activation target
@@ -2536,6 +2538,20 @@ jobs:
 
           ident = r"(?:'(?:''|\\\\.|[^'])*'|`(?:``|[^`])*`)"
           target = re.compile(rf"(?i)(\b(?:TO|FROM)\s+)({ident})@({ident})")
+          # MariaDB SHOW GRANTS embeds the account's authentication clause right
+          # after the grantee. It belongs to the old principal, so strip only that
+          # clause; the new principal gets its own password via CREATE USER above.
+          literal = r"'(?:''|\\\\.|[^'\\\\])*'"
+          auth_clause = re.compile(
+              rf"(?i)^\s+IDENTIFIED\s+(?:"
+              rf"BY\s+PASSWORD\s+{literal}"
+              rf"|VIA\s+\w+(?:\s+(?:USING|AS)\s+{literal})?"
+              rf"(?:\s+OR\s+\w+(?:\s+(?:USING|AS)\s+{literal})?)*"
+              rf")(?=\s|;|$)"
+          )
+          residual = re.compile(
+              r"(?i)IDENTIFIED|PASSWORD\s*\(|\*[0-9A-F]{40}|\$[A-Z0-9]\$|[0-9A-F]{32,}|[A-Za-z0-9+/]{40,}={0,2}"
+          )
 
           def decode(token):
               if token.startswith("`"):
@@ -2548,24 +2564,33 @@ jobs:
 
           print(f"CREATE USER {quote(new_user)}@{quote(old_host)} IDENTIFIED BY {quote(new_pass)};")
           count = 0
+          stripped = 0
           for raw in sys.stdin:
               grant = raw.strip()
               if not grant:
                   continue
-              if " IDENTIFIED " in grant.upper():
-                  raise SystemExit("SHOW GRANTS contains authentication material; refusing unsafe replay")
               matches = list(target.finditer(grant))
               if len(matches) != 1:
                   raise SystemExit("unexpected SHOW GRANTS target shape")
               match = matches[0]
               if decode(match.group(2)) != old_user or decode(match.group(3)) != old_host:
                   raise SystemExit("SHOW GRANTS target does not match CURRENT_USER()")
+              head = grant[:match.start()]
+              tail = grant[match.end():]
+              auth = auth_clause.match(tail)
+              if auth:
+                  tail = tail[auth.end():]
+                  stripped += 1
+              if residual.search(head) or residual.search(tail):
+                  raise SystemExit("SHOW GRANTS contains authentication material; refusing unsafe replay")
               replacement = match.group(1) + quote(new_user) + "@" + quote(old_host)
-              statement = grant[:match.start()] + replacement + grant[match.end():]
+              statement = head + replacement + tail
               print(statement.rstrip(";") + ";")
               count += 1
           if count == 0:
               raise SystemExit("SHOW GRANTS returned no statements")
+          # Counts only: never the grant text, a hash or a password.
+          print(f"grant replay: {count} statement(s), {stripped} authentication clause(s) stripped", file=sys.stderr)
           PY
 
           created_attempted=0
@@ -2610,7 +2635,7 @@ jobs:
           } > "$STATE_FILE"
           chmod 600 "$STATE_FILE"
           completed=1
-          echo "Phase 1 complete: exact SHOW GRANTS statements replayed and the new principal passed a fresh SELECT 1 connection."
+          echo "Phase 1 complete: SHOW GRANTS statements replayed (old authentication clause stripped) and the new principal passed a fresh SELECT 1 connection."
           echo "The old principal and application .env were not changed."
           REMOTE
 
