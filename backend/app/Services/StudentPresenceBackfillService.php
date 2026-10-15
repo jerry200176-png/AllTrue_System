@@ -119,7 +119,7 @@ class StudentPresenceBackfillService
 
         try {
             $name = Student::find($signIn->StudentID)?->name ?? ('#' . $signIn->StudentID);
-            Notification::firstOrCreate(
+            $notification = Notification::firstOrCreate(
                 ['SourceKey' => 'deduction_failed:' . $signIn->id],
                 [
                     'CampusID'   => $campusId,
@@ -133,6 +133,12 @@ class StudentPresenceBackfillService
                     'OccurredAt' => now(),
                 ]
             );
+            // #413: the same sign-in failing again after it was resolved is notified again.
+            if (!$notification->wasRecentlyCreated && $notification->ResolvedAt !== null) {
+                NotificationResolution::reopen($notification, 'system:deduction_failed', '扣堂再次失敗，重新通知');
+                $notification->OccurredAt = now();
+                $notification->save();
+            }
         } catch (\Throwable $e) {
             Log::error('swipe_attendance_deduction_alert_failed', $context + ['error' => $e->getMessage()]);
         }
