@@ -223,6 +223,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 家長綁定威脅模型（設計） | [`security/PARENT_BINDING_THREAT_MODEL.md`](security/PARENT_BINDING_THREAT_MODEL.md) |
 | OWASP ASVS L1 自查（年度） | `docs/security/ASVS_L1_2026.md` |
 | Audit log 政策（敏感 admin 行為） | `docs/security/AUDIT_LOG_POLICY.md` |
+| Pi SSH secrets／`production-ssh` environment（格式、切換、拒絕驗證） | [`RUNBOOK_PRODUCTION_SSH_ENVIRONMENT.md`](RUNBOOK_PRODUCTION_SSH_ENVIRONMENT.md) |
 
 ### 技術債
 | 需要什麼 | 去哪裡找 |
@@ -333,6 +334,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/ADOPTION_QUALITY_METRICS.md` | 採用率與品質指標定義 |
 | `docs/RUNBOOK_ROLLBACK.md` | 回滾 SOP 與 rollback readiness 檢查 |
 | `docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md` | 依實際時長扣堂的啟用與回滾（兩個旗標、盤點、限制）|
+| `docs/RUNBOOK_PRODUCTION_SSH_ENVIRONMENT.md` | Pi SSH secrets 移入 main-only `production-ssh` environment：secret 格式、切換順序、非 main 拒絕驗證、回滾（#4143）|
 | `docs/DAILY_CHECKLIST.md` | 每日例行檢查清單 |
 | `docs/SMOKE_TEST_RUNBOOK.md` | 部署後 smoke test SOP（`scripts/post-merge-smoke.sh`）|
 | `docs/DOCS_GOVERNANCE_SOP.md` | 文件治理節奏（已整合進本 INDEX §治理節奏；stub 供索引）|

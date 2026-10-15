@@ -41,6 +41,7 @@ jobs:
     # Production SSH secrets are only exposed to the reviewed workflow on main.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper

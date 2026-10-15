@@ -117,11 +117,13 @@ jobs:
   # already uses on the Pi, so it doesn't need a second, third alerting path.
   # 2026-10-15 (#4140): split out of the `integrity` job so the PR-triggered jobs
   # reference no production SSH secret; this job only ever runs on the schedule
-  # (control-plane-lint P1). Same alert, no new capability.
+  # (control-plane-lint P1) and declares the main-only production-ssh environment
+  # (control-plane-lint P2, #4143). Same alert, no new capability.
   notify-schedule-failure:
     name: Notify ops channel on scheduled failure
     needs: [changes, integrity]
     if: ${{ failure() && github.event_name == 'schedule' }}
+    environment: production-ssh
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

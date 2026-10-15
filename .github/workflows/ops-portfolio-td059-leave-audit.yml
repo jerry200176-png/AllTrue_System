@@ -70,6 +70,7 @@ jobs:
   pi-readonly-audits:
     name: Pi TD-059 audit + leave CSV
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 25
     steps:
       - name: Checkout pinned SSH trust helper

@@ -45,6 +45,7 @@ jobs:
     # Production SSH secrets are only exposed to the reviewed workflow and probe script on main.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
