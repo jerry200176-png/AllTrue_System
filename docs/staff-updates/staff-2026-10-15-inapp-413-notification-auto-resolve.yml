@@ -4,7 +4,7 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 處理完的提醒會自動結案，再發生會再通知
+    title: 處理完的提醒會自動結案
     summary: 扣堂失敗補扣後、年級升級已處理完時，提醒會自動結案；問題再出現會重新通知。
     items:
       - category: improved
