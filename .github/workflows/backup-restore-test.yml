@@ -12,6 +12,7 @@ jobs:
   restore-test:
     name: DB Backup Integrity Test
     runs-on: ubuntu-latest
+    environment: production-ssh
 
     steps:
       - name: Checkout pinned SSH trust helper

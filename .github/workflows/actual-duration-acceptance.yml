@@ -128,6 +128,7 @@ jobs:
     name: Read-only -- show target student's existing courses before any write
     needs: guard
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper
@@ -210,6 +211,7 @@ jobs:
     needs: [guard, show_target_and_existing_courses]
     if: needs.guard.outputs.will_write == 'true'
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 15
     steps:
       - name: Checkout (for scripts/smoke-auth-lib.sh -- the same proven login helper post-merge-smoke.sh uses)

@@ -8,6 +8,8 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
+import { checkJobEnvironments as productionSshEnvironmentProblems } from './ci/production-secret-triggers.mjs';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 
@@ -275,6 +277,28 @@ function checkTrackedProductionDeployWorkflows() {
   }
 }
 
+/** P2 (#4143): every job that reads production SSH secrets declares the main-only production-ssh environment. */
+function checkProductionSshEnvironment() {
+  let tracked = [];
+  try {
+    tracked = execSync('git ls-files .github/workflows/*.yml .github/workflows/*.yaml', { cwd: root, encoding: 'utf8' })
+      .split('\n')
+      .filter(Boolean);
+  } catch (err) {
+    add('P2', '.github/workflows', 0, `cannot list tracked workflows (${err.message.split('\n')[0]}); failing closed`);
+    return;
+  }
+  if (tracked.length === 0) {
+    add('P2', '.github/workflows', 0, 'no tracked workflows found; failing closed');
+    return;
+  }
+  for (const rel of tracked) {
+    for (const p of productionSshEnvironmentProblems(read(rel))) {
+      add('P2', rel, p.line, `job ${p.job} reads production SSH secrets but ${p.reason}; declare environment: production-ssh (docs/RUNBOOK_PRODUCTION_SSH_ENVIRONMENT.md)`);
+    }
+  }
+}
+
 function checkIndexGovernanceLogic() {
   if (!exists('docs/INDEX.md')) return;
   const index = read('docs/INDEX.md');
@@ -399,6 +423,7 @@ function main() {
     checkPolicyI4();
     checkMemPalaceE7();
     checkExecutionI1();
+    checkProductionSshEnvironment();
     checkCodeImportBarrier();
     checkContractChangeGate();
   }

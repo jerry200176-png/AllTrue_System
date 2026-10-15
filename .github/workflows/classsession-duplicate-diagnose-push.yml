@@ -36,6 +36,7 @@ jobs:
   diagnose:
     name: Production read-only ClassSession scan
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
