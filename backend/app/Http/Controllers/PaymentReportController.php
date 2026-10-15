@@ -818,7 +818,7 @@ class PaymentReportController extends Controller
                 'StudentID' => $course->StudentID, 'StudentClassID' => $course->getKey(), 'IssueDate' => Carbon::today()->toDateString(),
                 'TotalAmount' => (int) $data['amount'], 'ScheduleModeAtIssue' => 'count',
             ], [['StudentClassID' => $course->getKey(), 'Description' => '更正帳單', 'Amount' => (int) $data['amount']]]);
-            $link->link($replaced, $invoice, $userId, (string) $data['correction_reason'], (string) $data['idempotency_key']);
+            $oldNoteTagged = $link->link($replaced, $invoice, $userId, (string) $data['correction_reason'], (string) $data['idempotency_key']);
 
             $report = PaymentReport::create([
                 'StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
@@ -832,7 +832,7 @@ class PaymentReportController extends Controller
                 'replaces_invoice_id' => $replaced->id, 'user_id' => $userId]);
 
             return response()->json(['message' => '已開更正帳單並送出，等你確認', 'report_id' => $report->id, 'payment_id' => null,
-                'invoice_id' => (int) $invoice->id, 'status' => 'pending']);
+                'invoice_id' => (int) $invoice->id, 'status' => 'pending', 'old_note_tagged' => $oldNoteTagged]);
         });
     }
 

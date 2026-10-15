@@ -54,22 +54,35 @@ final class InvoiceCorrectionLink
         return ['refusal' => null, 'replay' => null];
     }
 
-    /** Writes both notes and the audit rows. Throws (rolling the caller's transaction back) when either cannot be kept whole. */
-    public function link(Invoice $replaced, Invoice $invoice, ?int $userId, string $reason, string $key): void
+    /**
+     * Writes both notes and the audit rows. The old bill gets the full tag when it fits after trimming older free
+     * text, else a short tag with the new bill id and the audit correlation id; when even that cannot fit beside
+     * its existing tags (a very long void reason), its note is left as is and the audit rows carry the link, so a
+     * long void reason never blocks a correction. Existing tags are never cut.
+     *
+     * Retention: these audit rows are the replacement state, so they are kept with retention_until = NULL. Any
+     * purge of security_audit_events must skip NULL rows and this event type.
+     *
+     * @return bool whether the old bill's note got a tag
+     */
+    public function link(Invoice $replaced, Invoice $invoice, ?int $userId, string $reason, string $key): bool
     {
         $operator = 'user_id=' . ($userId ?? 'system');
+        $correlationId = (string) Str::uuid();
         $newNote = self::appendNoteTag((string) $invoice->Note, '[更正自 #' . $replaced->displayNo() . '／操作者：' . $operator . '／原因：' . self::cleanReason($reason) . ']');
-        $oldNote = self::appendNoteTag((string) $replaced->Note, sprintf('[replaced_by: #%s; %s; at=%s]', $invoice->displayNo(), $operator, now()->format('Y-m-d H:i:s')));
-        if ($newNote === null || $oldNote === null) {
+        if ($newNote === null) {
             throw new HttpResponseException(response()->json([
                 'message' => '帳單備註的紀錄已滿，無法再記錄更正單號。沒有登記任何款項。', 'code' => 'replaces_invoice_note_full'], 422));
         }
+        $oldNote = self::appendNoteTag((string) $replaced->Note, sprintf('[replaced_by: #%s; %s; at=%s]', $invoice->displayNo(), $operator, now()->format('Y-m-d H:i:s')))
+            ?? self::appendNoteTag((string) $replaced->Note, sprintf('[更正為 #%d audit=%s]', (int) $invoice->id, $correlationId));
         $invoice->Note = $newNote;
         $invoice->save();
-        $replaced->Note = $oldNote;
-        $replaced->save();
+        if ($oldNote !== null) {
+            $replaced->Note = $oldNote;
+            $replaced->save();
+        }
 
-        $correlationId = (string) Str::uuid();
         $campusId = (int) (DB::table('Student')->where('id', $invoice->StudentID)->value('CampusID') ?? 0) ?: null;
         foreach (['replaced' => $replaced, 'replacement' => $invoice] as $role => $subject) {
             SecurityAuditEvent::append(self::EVENT, 'success', [
@@ -78,10 +91,13 @@ final class InvoiceCorrectionLink
             ], ['reason_code' => $role, 'old_charge' => (int) $replaced->TotalAmount, 'new_charge' => (int) $invoice->TotalAmount,
                 'reason_hash' => self::requestHash($reason, $key)]);
         }
-        // The audit rows are the replacement state, so a failed write must not leave an unlinked bill.
+        // The audit rows are the replacement state, so a failed write must not leave an unlinked bill; keep them forever.
+        DB::table('security_audit_events')->where('correlation_id', $correlationId)->update(['retention_until' => null]);
         if (DB::table('security_audit_events')->where('correlation_id', $correlationId)->count() !== 2) {
             throw new RuntimeException('invoice correction audit was not recorded');
         }
+
+        return $oldNote !== null;
     }
 
     /** @return array{invoice: ?Invoice, amount: int, request_hash: ?string}|null */
@@ -120,20 +136,40 @@ final class InvoiceCorrectionLink
     }
 
     /**
-     * Invoice.Note is VARCHAR(255). Existing [..] tags (the void audit etc.) and the new tag are kept whole; only the
-     * older free text is trimmed. Null when the tags alone do not fit.
+     * Invoice.Note is VARCHAR(255). Existing tags and the new tag are kept whole; only older free text is trimmed.
+     * Null when the tags alone do not fit, or when the free text holds a bracket that is not a whole tag (never cut).
      */
     private static function appendNoteTag(string $note, string $tag): ?string
     {
-        preg_match_all('/\[[^\[\]]*\]/u', $note, $m);
-        $tail = implode(' ', [...$m[0], $tag]);
+        [$free, $tags] = self::parseNote($note);
+        $tail = implode(' ', [...$tags, $tag]);
         if (mb_strlen($tail) > 255) {
             return null;
         }
-        $free = trim(preg_replace('/\s+/u', ' ', preg_replace('/\[[^\[\]]*\]/u', ' ', $note) ?? '') ?? '');
         $room = 255 - mb_strlen($tail) - 1;
-        $free = $room > 0 ? trim(mb_substr($free, 0, $room)) : '';
+        if (mb_strlen($free) > $room) {
+            if (str_contains($free, '[') || str_contains($free, ']')) {
+                return null;
+            }
+            $free = $room > 0 ? trim(mb_substr($free, 0, $room)) : '';
+        }
 
         return $free === '' ? $tail : $free . ' ' . $tail;
+    }
+
+    /**
+     * Splits a note into free text and whole tags. A void / exception-void audit tag is matched up to its fixed
+     * "user_id=…; at=…" ending, so a reason written before brackets were stripped ("[void: 開錯 [註] …]") stays
+     * one tag instead of fragments.
+     *
+     * @return array{0: string, 1: list<string>}
+     */
+    private static function parseNote(string $note): array
+    {
+        $pattern = '/\[(?:void|exception-void): .*?; user_id=[^;\]]*; at=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:; positive_payments=[^\]]*?; net=-?\d+)?\]|\[[^\[\]]*\]/su';
+        preg_match_all($pattern, $note, $m);
+        $free = trim(preg_replace('/\s+/u', ' ', preg_replace($pattern, ' ', $note) ?? '') ?? '');
+
+        return [$free, $m[0]];
     }
 }

@@ -43,6 +43,8 @@ class InvoiceCorrectionReissueTest extends TestCase
         $events = DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->get();
         $this->assertCount(2, $events);
         $this->assertCount(1, $events->pluck('correlation_id')->unique());
+        $this->assertSame([null, null], $events->pluck('retention_until')->all()); // replacement state: never purged
+        $res->assertJsonPath('old_note_tagged', true);
 
         $this->withToken($token)->putJson('/api/v1/payment-reports/' . $res->json('report_id') . '/confirm')->assertOk();
         $this->assertSame('paid', DB::table('Invoice')->where('id', $newId)->value('Status'));
@@ -132,7 +134,7 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertStringContainsString("／操作者：user_id={$this->userId}／原因：", $note);
     }
 
-    public function test_a_long_note_keeps_the_void_tag_whole_and_tags_that_cannot_fit_refuse(): void
+    public function test_a_long_note_keeps_the_void_tag_whole_and_trims_older_text(): void
     {
         $token = $this->token([1]);
         $course = $this->course($this->student());
@@ -147,13 +149,85 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertStringStartsWith('家長約定說明', $note);
         $this->assertStringContainsString($voidTag[0], $note);
         $this->assertMatchesRegularExpression('/\[replaced_by: #INV-\d+-' . str_pad((string) $newId, 6, '0', STR_PAD_LEFT) . '; user_id=\d+; at=[^\]]+\]$/u', $note);
+    }
 
-        $full = $this->voidedInvoice($token, $other = $this->course($this->student()), 8800, str_repeat('開錯金額', 45));
-        $before = $this->note($full);
-        $this->record($token, $other, $full)->assertStatus(422)->assertJsonPath('code', 'replaces_invoice_note_full');
-        $this->assertSame($before, $this->note($full));
-        $this->assertSame(1, DB::table('Invoice')->where('StudentClassID', $other->ID)->count());
-        $this->assertSame(0, DB::table('payment_reports')->where('StudentClassID', $other->ID)->count());
+    /** A void tag written before brackets were stripped stays one whole tag; its pieces are never trimmed as free text. */
+    public function test_an_older_void_reason_with_brackets_is_kept_whole(): void
+    {
+        $token = $this->token([1]);
+        $course = $this->course($this->student());
+        $legacyTag = '[void: 開錯 [註：家長] 金額 [見附件]; user_id=5; at=2026-09-01 10:00:00]';
+        $oldId = $this->invoice($course, 8800, str_repeat('舊備註', 50) . ' ' . $legacyTag);
+        DB::table('Invoice')->where('id', $oldId)->update(['Status' => 'void']);
+
+        $this->record($token, $course, $oldId)->assertOk()->assertJsonPath('old_note_tagged', true);
+
+        $note = $this->note($oldId);
+        $this->assertLessThanOrEqual(255, mb_strlen($note));
+        $this->assertStringContainsString($legacyTag, $note);
+        $this->assertStringStartsWith('舊備註', $note);
+        $this->assertStringContainsString('[replaced_by: #INV-', $note);
+    }
+
+    /** A long void reason never blocks a correction: a short tag with the audit id, or the audit rows alone. */
+    public function test_a_long_void_reason_falls_back_to_a_short_tag_then_to_the_audit_rows(): void
+    {
+        $token = $this->token([1]);
+        $course = $this->course($this->student());
+        $oldId = $this->voidedInvoice($token, $course, 8800, str_repeat('開錯金額說明', 24) . '一');
+        $before = $this->note($oldId);
+
+        $newId = (int) $this->record($token, $course, $oldId)->assertOk()->assertJsonPath('old_note_tagged', true)->json('invoice_id');
+
+        $correlation = (string) DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->value('correlation_id');
+        $note = $this->note($oldId);
+        $this->assertLessThanOrEqual(255, mb_strlen($note));
+        $this->assertStringStartsWith($before, $note);
+        $this->assertStringEndsWith("[更正為 #{$newId} audit={$correlation}]", $note);
+
+        $other = $this->course($this->student());
+        $fullId = $this->voidedInvoice($token, $other, 8800, str_repeat('開錯金額', 50));
+        $fullBefore = $this->note($fullId);
+        $otherNew = (int) $this->record($token, $other, $fullId)->assertOk()->assertJsonPath('old_note_tagged', false)->json('invoice_id');
+        $this->assertSame($fullBefore, $this->note($fullId));
+        $this->assertStringContainsString('更正自 #INV-', $this->note($otherNew));
+        $this->assertSame(4, DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->count());
+        $this->record($token, $other, $fullId)->assertOk()->assertJsonPath('invoice_id', $otherNew); // still replayable
+    }
+
+    public function test_guards_monthly_package_conflict_open_bill_pending_amount_and_paid_course(): void
+    {
+        $token = $this->token([1]);
+        $student = $this->student();
+        $monthly = $this->course($student, ['ScheduleMode' => 'date']);
+        $this->record($token, $monthly, $this->voidedInvoice($token, $monthly, 8800))->assertStatus(422)->assertJsonPath('code', 'correction_reissue_count_only');
+        $member = $this->course($student, ['PackageID' => 1]);
+        $this->record($token, $member, $this->voidedInvoice($token, $member, 8800))->assertStatus(422)->assertJsonPath('code', 'correction_reissue_count_only');
+
+        $course = $this->course($student);
+        $oldId = $this->voidedInvoice($token, $course, 8800);
+        $this->record($token, $course, $oldId, ['invoice_id' => $oldId])->assertStatus(422)->assertJsonPath('code', 'correction_reissue_conflict');
+        $this->record($token, $course, $oldId, ['amount' => 0, 'free_gift' => true])->assertStatus(422)->assertJsonPath('code', 'correction_reissue_conflict');
+        $this->record($token, $course, $oldId, ['amount' => 0])->assertStatus(422)->assertJsonPath('code', 'correction_amount_invalid');
+
+        $open = $this->invoice($course, 8800);
+        $this->record($token, $course, $oldId)->assertStatus(422)->assertJsonPath('code', 'open_invoice_exists');
+        DB::table('Invoice')->where('id', $open)->update(['Status' => 'void']);
+
+        $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $course->ID, 'payment_date' => now()->toDateString(), 'payment_method' => 'cash', 'amount' => 7200,
+        ])->assertOk();
+        $this->record($token, $course, $oldId)->assertStatus(422)->assertJsonPath('code', 'pending_report_exists');
+
+        $paid = $this->course($student, ['Paid' => 1]);
+        $paidOld = $this->voidedInvoice($token, $paid, 8800);
+        $paidBill = $this->invoice($paid, 7200);
+        DB::table('Invoice')->where('id', $paidBill)->update(['Status' => 'paid', 'PaidAmount' => 7200]);
+        DB::table('Payment')->insert(['InvoiceID' => $paidBill, 'Amount' => 7200, 'PaidAt' => now(), 'Method' => 'cash']);
+        $this->record($token, $paid, $paidOld)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+
+        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->count());
+        $this->assertSame(0, DB::table('Invoice')->where('Note', 'like', '%更正自%')->count());
     }
 
     /** Two concurrent submits: the replaced bill is read under a row lock taken after the course lock, so the second waits. */
@@ -234,13 +308,14 @@ class InvoiceCorrectionReissueTest extends TestCase
         return Student::create(['name' => 'Student ' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0900000000', 'MDT' => now(), 'Notify_Token' => '']);
     }
 
-    private function course(Student $student): StudentClass
+    /** @param array<string, mixed> $over */
+    private function course(Student $student, array $over = []): StudentClass
     {
-        return StudentClass::create([
+        return StudentClass::create(array_merge([
             'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
             'StartDate' => '2026-09-01', 'EndDate' => '2026-12-31', 'TotalHours' => 20, 'Charge' => 7200, 'Paid' => 0,
             'Rate' => 900, 'rate_unit' => 'session', 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 8,
             'SessionDuration' => 120, 'RemainingSessions' => 8, 'ClassType' => 'one_on_one', 'UsedSessions' => 0,
-        ]);
+        ], $over));
     }
 }
