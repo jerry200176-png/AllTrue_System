@@ -105,7 +105,7 @@
       "required": "Founder-gated case-specific activation",
       "future_state": "Keep explicit or migrate to Founder-approved controlled flag operation"
     },
-    "attendance-case-diagnose.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Push/request and manual diagnose path reviewed; tinker query writes only local evidence."},
+    "attendance-case-diagnose.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Manual dispatch from main only (feature-branch push trigger removed 2026-10-15); tinker query writes only local evidence."},
     "backup-restore-test.yml": {"classification":"non-production","production_mutation":"not-production","evidence":"Pi SSH reads a backup and restores into an isolated restore-test database, not the application database."},
     "inapp-289-backup-candidate-read.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Case-specific workflow lists fixed pre-incident backup metadata, runs gzip integrity checks, and checks only dump table-definition signatures; it has no restore, database creation, SQL, or production-data write path."},
     "inapp-289-preincident-target-manifest.yml": {"classification":"non-production","production_mutation":"not-production","evidence":"Founder-scoped one-case workflow restores a verified pre-incident snapshot only into a unique temporary database, emits no names or unrelated records, requires exactly one digest match, and drops that temporary database on exit; it never connects to or writes the application database."},
@@ -188,7 +188,7 @@
       "future_state": "Retain until production acceptance has a separately governed short-lived session issuer; product acceptance remains read-only"
     },
     "ci.yml": {"classification":"non-production","production_mutation":"not-production","evidence":"Artisan commands run against ephemeral CI services; SSH/Pi strings are comments or local contract text."},
-    "classsession-duplicate-diagnose-push.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Audit and repair commands are dry-run-only; tinker output is diagnostic."},
+    "classsession-duplicate-diagnose-push.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Manual dispatch from main only (feature-branch push trigger removed 2026-10-15); audit and repair commands are dry-run-only; tinker output is diagnostic."},
     "credential-fingerprint-audit.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Fingerprint comparison is read-only and uploads evidence; cleanup targets runner temp files."},
     "db-password-fingerprint-audit.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Credential fingerprint audit reads connection metadata only; cleanup targets runner temp files."},
     "deploy.yml": {

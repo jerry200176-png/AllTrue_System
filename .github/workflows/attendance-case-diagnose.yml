@@ -3,11 +3,16 @@ name: Attendance Case Diagnose (read-only)
 # Public repo (#3605): inputs take a student_id (never a name). The raw probe output stays in an
 # unpublished raw/ dir (never tee'd to the log); the artifact, job log and summary carry ids, statuses,
 # dates and counts only.
+#
+# Trigger: workflow_dispatch from main only.
+# 2026-10-15 security tightening: the former `push: chore/task-attendance-root-fix-**` trigger was
+# removed. It ran this job with the production SSH key (PI_SSH_KEY) on any push to a matching feature
+# branch and executed that branch's scripts/diagnose-attendance-case.php through tinker on production,
+# i.e. unreviewed code received the production key. The job now also refuses to run unless github.ref
+# is refs/heads/main, so the probe script that runs is always the reviewed copy on main.
+# No new capability: same read-only probe, same inputs, same artifact.
 
 on:
-  push:
-    branches:
-      - 'chore/task-attendance-root-fix-**'
   workflow_dispatch:
     inputs:
       campus_id:
@@ -37,6 +42,8 @@ concurrency:
 
 jobs:
   diagnose:
+    # Production SSH secrets are only exposed to the reviewed workflow and probe script on main.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
