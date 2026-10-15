@@ -39,7 +39,7 @@ final class TriageBillingSnapshotTest extends TestCase
         parent::setUp();
         config(['triage_tokens.billing_snapshot_enabled' => true]);
         $this->admin = $this->user('S');
-        $this->token = $this->createToken($this->admin);
+        $this->token = (string) $this->postJson('/api/v1/admin/triage-tokens', ['name' => 'ci'], $this->as($this->admin))->assertCreated()->json('token');
         $this->campus = Campus::factory()->create();
     }
 
@@ -152,33 +152,14 @@ final class TriageBillingSnapshotTest extends TestCase
         $bug = $this->bug($this->campus, 'new');
         $this->link($bug, $course)->assertCreated();
 
-        config(['triage_tokens.billing_snapshot_enabled' => false]);
+        // Load the shipped config with the env unset: the default itself must be OFF (no Founder approval yet).
+        $this->assertFalse(getenv('TRIAGE_BILLING_SNAPSHOT_ENABLED'));
+        config(['triage_tokens' => require base_path('config/triage_tokens.php')]);
         $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']);
-    }
-
-    public function test_kill_switch_defaults_off_when_env_is_unset_and_follows_the_env_when_set(): void
-    {
-        $name = 'TRIAGE_BILLING_SNAPSHOT_ENABLED';
-        $saved = [getenv($name), $_ENV[$name] ?? null, $_SERVER[$name] ?? null];
-        $load = fn (): array => require base_path('config/triage_tokens.php');
-        try {
-            putenv($name);
-            unset($_ENV[$name], $_SERVER[$name]);
-            $this->assertFalse($load()['billing_snapshot_enabled'], 'default must stay OFF until the Founder approves');
-
-            putenv("{$name}=true");
-            $_ENV[$name] = $_SERVER[$name] = 'true';
-            $this->assertTrue($load()['billing_snapshot_enabled'], 'the switch must read the env, not a literal');
-        } finally {
-            putenv($saved[0] === false ? $name : "{$name}={$saved[0]}");
-            foreach (['_ENV' => $saved[1], '_SERVER' => $saved[2]] as $global => $value) {
-                if ($value === null) {
-                    unset($GLOBALS[$global][$name]);
-                } else {
-                    $GLOBALS[$global][$name] = $value;
-                }
-            }
-        }
+        putenv('TRIAGE_BILLING_SNAPSHOT_ENABLED=true'); // and it follows the env, not a literal
+        $fromEnv = (require base_path('config/triage_tokens.php'))['billing_snapshot_enabled'];
+        putenv('TRIAGE_BILLING_SNAPSHOT_ENABLED');
+        $this->assertTrue($fromEnv);
     }
 
     public function test_link_creation_validates_campus_open_report_existence_and_one_live_link_per_report(): void
@@ -267,14 +248,10 @@ final class TriageBillingSnapshotTest extends TestCase
 
         $rows = DB::table('security_audit_events')->where('event_type', 'triage_token.read')->orderBy('id')->get();
         $this->assertCount(2, $rows);
-        $show = json_decode($rows[0]->metadata, true);
-        $this->assertSame(SecurityAuditEvent::ref('bug_report', $bug->id), $rows[0]->subject_ref);
-        $this->assertSame('triage.bug-reports.show', $show['route']);
-        $this->assertArrayNotHasKey('bug_report_ref', $show);
-        $list = json_decode($rows[1]->metadata, true);
-        $this->assertNull($rows[1]->subject_ref);
-        $this->assertSame('triage.bug-reports.index', $list['route']);
-        $this->assertArrayNotHasKey('bug_report_ref', $list);
+        foreach ([[SecurityAuditEvent::ref('bug_report', $bug->id), 'triage.bug-reports.show'], [null, 'triage.bug-reports.index']] as $i => [$ref, $route]) {
+            $meta = json_decode($rows[$i]->metadata, true);
+            $this->assertSame([$ref, $route, false], [$rows[$i]->subject_ref, $meta['route'], array_key_exists('bug_report_ref', $meta)]);
+        }
     }
 
     private function link(BugReport $bug, StudentClass $course): \Illuminate\Testing\TestResponse
@@ -304,11 +281,6 @@ final class TriageBillingSnapshotTest extends TestCase
     private function bug(Campus $campus, string $status): BugReport
     {
         return BugReport::create(['CampusID' => $campus->id, 'reporter_user_id' => $this->user('T')->id, 'title' => 'billing', 'description' => 'desc', 'severity' => 'medium', 'status' => $status]);
-    }
-
-    private function createToken(User $admin): string
-    {
-        return (string) $this->postJson('/api/v1/admin/triage-tokens', ['name' => 'ci'], $this->as($admin))->assertCreated()->json('token');
     }
 
     private function user(string $type): User

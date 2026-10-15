@@ -46,8 +46,7 @@ final class AuthenticateTriageToken
         $route = $request->route();
         // #4100: on the billing snapshot the path id is a contract; the report it was read for is the query param.
         $isBilling = $route instanceof Route && $route->getName() === 'triage.student-classes.billing-snapshot';
-        // Every query a resolved token makes on the billing snapshot is logged, refusals included (Founder: 留下查詢紀錄);
-        // the route's own throttle bounds that volume. Every other refusal or failure keeps the cross-route cap below.
+        // Founder (留下查詢紀錄): every billing query by a resolved token is logged, refusals included; others keep the cap.
         $alwaysAudit = $isBilling && $tokenId !== null && in_array($status, [404, 422], true);
         if (!$alwaysAudit) {
             if ($status >= 400 && !TriageTokenService::mayAuditDenial($request->ip())) { return; } // every refusal or failure shares the cross-route cap
@@ -55,8 +54,7 @@ final class AuthenticateTriageToken
         $bugId = $request->route('id');
         $attachmentId = $request->route('attachmentId');
         $queryBugId = $request->query('bug_report_id');
-        // On the billing route the path id is a contract, so the later key overrides the report subject type.
-        $billingSubject = $isBilling ? ['subject_type' => 'student_class'] : [];
+        $billingSubject = $isBilling ? ['subject_type' => 'student_class'] : []; // later key wins: the path id is a contract
         SecurityAuditEvent::append('triage_token.read', $outcome, [
             'actor_type' => 'triage_token',
             'actor_id' => $tokenId,
