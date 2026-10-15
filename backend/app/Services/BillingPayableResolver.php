@@ -67,7 +67,8 @@ class BillingPayableResolver
      * #4114 (Founder Q3): which contracts / packages have a receipt still standing (net Payment > 0, the mayOwe ledger) on a
      * non-void invoice of the contract or of any course in its package (a package bill sits on one member). A paid status
      * outside these sets rests on the legacy StudentClass.Paid / CoursePackage.paid flag alone: shown 需核對, never 已收,
-     * and still never owed. Read-only.
+     * and still never owed. Same receipt / reversal ledger as lastPaidAtByStudentClassIds (#4123): an invoice with net > 0 is
+     * exactly one that still has an unreversed receipt, so a receipt cancelled by a reversal is not evidence. Read-only.
      *
      * @param int[] $studentClassIds
      * @param int[] $packageIds

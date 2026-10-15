@@ -1309,4 +1309,38 @@ class TuitionAlertsApiTest extends TestCase
             'monthly_sessions' => null,
         ], $overrides));
     }
+
+    /**
+     * #4114 x #4123: a receipt cancelled by a reversal (negative row or Method='void' row) is not a payment record, the same
+     * net ledger last_paid_at uses. When nothing is owed (bill zero-rated after the reversal) the paid-flag row reads 需核對
+     * with no 最近繳費 date; while the bill still owes it is plain unpaid, never flag-only. A partial reversal leaves a
+     * receipt standing: real 已收 with a date.
+     */
+    public function test_reversed_receipt_is_not_payment_evidence(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-reversed@example.com');
+        $student = $this->plainStudent('S4114R');
+        $make = function (int $subject, int $total, array $rows) use ($student) {
+            $course = $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 1, 'Charge' => 5000, 'SubjectID' => $subject]);
+            $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-04-01',
+                'TotalAmount' => $total, 'PaidAmount' => $total, 'Status' => 'paid']);
+            foreach ($rows as [$amount, $method, $at]) {
+                Payment::create(['InvoiceID' => $invoice->id, 'Amount' => $amount, 'PaidAt' => $at, 'Method' => $method]);
+            }
+
+            return (int) $course->ID;
+        };
+        $negative = [[5000, 'cash', '2026-04-05'], [-5000, 'cash', '2026-04-06']];
+        $voidRow = [[5000, 'cash', '2026-04-05'], [5000, 'void', '2026-04-06']];
+
+        foreach ([$negative, $voidRow] as $i => $ledger) {
+            $settled = $this->tuitionRow($token, $make(1 + $i, 0, $ledger));
+            $this->assertSame(['renew_needed', true, null], [$settled['payment_status'], $settled['legacy_paid_flag_only'], $settled['last_paid_at']],
+                'a fully reversed receipt is not a payment record');
+            $owed = $this->tuitionRow($token, $make(3 + $i, 5000, $ledger));
+            $this->assertSame(['unpaid', false, null], [$owed['payment_status'], $owed['legacy_paid_flag_only'], $owed['last_paid_at']]);
+        }
+        $partial = $this->tuitionRow($token, $make(5, 3000, [[5000, 'cash', '2026-04-05'], [-2000, 'cash', '2026-04-06']]));
+        $this->assertSame(['renew_needed', false, '2026-04-05'], [$partial['payment_status'], $partial['legacy_paid_flag_only'], $partial['last_paid_at']]);
+    }
 }

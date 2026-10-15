@@ -30,7 +30,7 @@ last_reviewed: 2026-10-15
   3. 若前面沒有收款可抵，剩餘才從最舊的後續收款抵，確保淨收款為 0 時沒有日期。
 - 只有抵銷後仍 > 0 的收款能提供日期；整張帳單淨收款為 0 時沒有日期。
 - 舊欄位 `StudentClass.PayDate` **只**在這門課**完全沒有任何 Payment 紀錄**時（含作廢帳單上的列、沖銷列都算有紀錄）才當作備援顯示；只要有任何 Payment 紀錄，就只看上述有效收款，避免收款後例外作廢（`exceptionVoidInvoice`）時舊日期又跑回來。
-- `last_paid_at` 只是顯示資訊，**不是**「已收」的依據；「已收」只看 `payment_status`（見 `ContractMoneyState::alertStatus`）。只有 `Paid=1`、沒有任何 Payment 的舊合約如何顯示，待 Founder 決定（#4114），本規則不改其現行顯示。
+- `last_paid_at` 只是顯示資訊，**不是**「已收」的依據；「已收」只看 `payment_status`（見 `ContractMoneyState::alertStatus`）。只有舊 `Paid`／方案 `paid` 標記、沒有有效收款的合約如何顯示，見下方〈只有舊「已收」標記、沒有付款紀錄〉（#4114）。
 
 ## 變更管制（AI／工程師）
 
@@ -166,7 +166,7 @@ last_reviewed: 2026-10-15
 
 Founder Q3 是本次對 `GET /api/v1/alerts/tuition` 顯示語意的明示同意（§變更管制），範圍僅限以下標示：
 
-- 列的 `payment_status` 為 `paid`／`renew_needed`／`monthly_due_soon`，但合約本身與**同方案所有課程**的非作廢帳單上都沒有淨額 > 0 的收款（Payment；負數或 `Method='void'` 為沖銷）時，回傳 `legacy_paid_flag_only = true`（`BillingPayableResolver::validPaymentEvidence`）。方案列看整個方案的課程。
+- 列的 `payment_status` 為 `paid`／`renew_needed`／`monthly_due_soon`，但合約本身與**同方案所有課程**的非作廢帳單上都沒有淨額 > 0 的收款（Payment；負數或 `Method='void'` 為沖銷）時，回傳 `legacy_paid_flag_only = true`（`BillingPayableResolver::validPaymentEvidence`）。方案列看整個方案的課程。「收款」與「沖銷」的分法和上方 `last_paid_at`（#4123）同一套淨額 ledger：被沖銷抵掉的收款不算付款紀錄，所以只要某張帳單淨額 > 0，該帳單就同時有 `last_paid_at` 日期、也不會標成只有舊標記。
 - 前端把這類 `paid` 顯示為中性的「需核對：舊資料標記已收，缺付款紀錄」（琥珀色），不顯示綠色「已收」，也不顯示「未繳」。`renew_needed`／`monthly_due_soon` 的狀態文字不變，但學生清單不再把它們算成「已收」。
 - `payment_status`、列入條件、金額、`outstanding`、對外通知與催繳都**不變**：不算欠款、不進「有未繳」、不催繳；學生清單「沒有未繳」篩選照常包含。
 - 唯讀：不寫帳務、不改 `StudentClass.Paid`／`CoursePackage.paid`、不需 migration。課程管理 `GET /api/v1/student-classes` 的 `paid` 列帶同一欄位。
