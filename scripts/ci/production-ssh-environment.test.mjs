@@ -43,6 +43,14 @@ test('secret detection: case-insensitive, PI_HOST/PI_USER, index form, dynamic, 
   assert.deepEqual(ids(`on: push\njobs: {}\n# PI_SSH_KEY in prose only`), []);
 });
 
+test('secret detection: whitespace inside ${{ }} (#4147 review)', () => {
+  for (const s of ['${{ secrets . PI_SSH_KEY }}', '${{ secrets. PI_USER }}', "${{ secrets [ 'PI_SSH_KEY' ] }}",
+    '${{ secrets [ inputs.k ] }}', '${{ toJSON ( secrets ) }}', '${{ Secrets . PROD_DEPLOY_KEY }}']) {
+    assert.deepEqual(ids(wf(job('a', '', `        env:\n          K: ${s}\n`))), ['a'], s);
+    assert.deepEqual(ids(wf(job('a', `    environment: ${REQUIRED_ENVIRONMENT}\n`, `        env:\n          K: ${s}\n`))), [], s);
+  }
+});
+
 test('quoted job keys and trailing comments are separate jobs', () => {
   const text = wf(job('a', '    environment: production-ssh\n'), job('"b"').replace('"b":', '"b":  # note'));
   assert.deepEqual(ids(text), ['b']);

@@ -66,6 +66,14 @@ test('secret detection: case-insensitive, index form, toJSON(secrets), secrets: 
   assert.deepEqual(checkWorkflow(`${on}\njobs: {}\n# PI_SSH_KEY in prose only`), []);
 });
 
+test('secret detection: whitespace inside ${{ }} (#4147 review)', () => {
+  const on = 'on:\n  push:\n    branches: [dev]';
+  for (const s of ['${{ secrets . PI_SSH_KEY }}', '${{ secrets .PI_HOST_KEY }}', "${{ secrets [ 'PI_SSH_KEY' ] }}",
+    '${{ secrets [ inputs.k ] }}', '${{ toJSON ( secrets ) }}', '${{ SECRETS.  prod_deploy_key }}']) {
+    assert.equal(checkWorkflow(wf(on, `        env:\n          K: ${s}\n`)).length, 1, s);
+  }
+});
+
 test('pull_request workflow passes only when the secret lives in a schedule-only job', () => {
   const head = 'name: t\non:\n  pull_request:\n    branches: [main]\n  schedule:\n    - cron: "0 1 * * 1"\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: x\n';
   const notify = (cond) => `  notify:\n    if: ${cond}\n    runs-on: ubuntu-latest\n    steps:\n      - run: y\n${KEY}`;

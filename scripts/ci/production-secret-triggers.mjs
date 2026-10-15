@@ -12,10 +12,10 @@
 
 const NAME = String.raw`(?:PI_SSH_[A-Z0-9_]*|PI_HOST_KEY|[A-Z0-9_]*DEPLOY_KEY[A-Z0-9_]*|[A-Z0-9_]*SSH[A-Z0-9_]*KEY[A-Z0-9_]*)`;
 const SECRET_PATTERNS = [
-  new RegExp(String.raw`\bsecrets\.${NAME}\b`, 'i'),
-  new RegExp(String.raw`\bsecrets\[\s*['"]${NAME}['"]\s*\]`, 'i'),
-  /\bsecrets\[(?!\s*['"])/i, // dynamic index: any secret
-  /\btoJSON\(\s*secrets\s*\)/i, // every secret
+  new RegExp(String.raw`\bsecrets\s*\.\s*${NAME}\b`, 'i'), // whitespace around `.` is valid in ${{ }}
+  new RegExp(String.raw`\bsecrets\s*\[\s*['"]${NAME}['"]\s*\]`, 'i'),
+  /\bsecrets\s*\[(?!\s*['"])/i, // dynamic index: any secret
+  /\btoJSON\s*\(\s*secrets\s*\)/i, // every secret
   /^\s*secrets:\s*inherit\b/im, // reusable-workflow caller passes every secret
 ];
 
