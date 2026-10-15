@@ -21,6 +21,14 @@ const STATES = [
   { paymentStatus: 'paid', actionLabel: '在這裡看帳務' },
 ];
 
+/**
+ * Non-GET endpoints the App shell sends that change no course or billing state:
+ * - session-dates: read-only query sent as POST (classSessionsApi.js) to carry the course list in the body.
+ * - adoption/events: fire-and-forget usage telemetry (adoptionTelemetry.js).
+ * Any other non-GET request fails the test.
+ */
+const READ_ONLY_POSTS = new Set(['/api/v1/student-classes/session-dates', '/api/v1/adoption/events']);
+
 function course(id, studentId, studentName, paymentStatus) {
   return {
     id, student_id: studentId, student_name: studentName, teacher_name: '合成老師', TeacherID: 7301,
@@ -38,11 +46,21 @@ for (const { paymentStatus, actionLabel } of STATES) {
     const target = course(7101, 7201, '合成目標學生', paymentStatus);
     const other = course(7102, 7202, '合成其他學生', paymentStatus === 'paid' ? 'unpaid' : 'paid');
     const ledgerIds = [];
+    /** @type {string[]} */
+    const writes = [];
     await page.route('**/api/v1/**', async (route) => {
       const url = new URL(route.request().url());
       const p = url.pathname;
-      if (route.request().method() !== 'GET') {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+      const method = route.request().method();
+      if (method !== 'GET') {
+        if (method === 'POST' && READ_ONLY_POSTS.has(p)) {
+          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+          return;
+        }
+        // The payment entry must stay read-only: record any other write and fail it
+        // so the assertion below (not a silent 200) decides the test.
+        writes.push(`${method} ${p}`);
+        await route.fulfill({ status: 500, json: { message: `unexpected ${method} in read-only payment entry test` } });
         return;
       }
       if (p.endsWith('/me')) {
@@ -86,5 +104,6 @@ for (const { paymentStatus, actionLabel } of STATES) {
     await expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHeading: heading, courses, actionLabel });
     expect(ledgerIds).toEqual([target.id]);
     await expect(page.locator('#ledger-modal-title')).toHaveText(`${target.student_name}的帳務`);
+    expect(writes, 'payment entry must not issue any non-GET API request').toEqual([]);
   });
 }
