@@ -1,0 +1,8 @@
+# Machine-readable merge freeze (Founder-owned). Read from main only, never from a PR head.
+# While frozen: auto-merge-safe.yml arms no auto-merge and disarms any armed one;
+# land-queue.yml merges nothing and comments once per queued PR.
+# Unreadable or malformed (anything but a top-level `frozen: true|false`) counts as frozen.
+# Lifting the freeze is a Founder decision: set `frozen: false` in a reviewed PR.
+frozen: true
+reason: "Founder merge freeze 2026-10-15 pending security incident"
+since: 2026-10-15
