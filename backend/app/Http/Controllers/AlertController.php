@@ -756,7 +756,7 @@ class AlertController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? null : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
         $sc = StudentClass::with(['student', 'coursePackage'])->find($studentClassId);
-        $student = $sc instanceof StudentClass ? $sc->student : null;
+        $student = $sc?->student;
         if (!$sc instanceof StudentClass || !$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) {
             abort(403);
         }
