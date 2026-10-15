@@ -45,7 +45,8 @@ test('secret detection: case-insensitive, PI_HOST/PI_USER, index form, dynamic, 
 
 test('secret detection: whitespace inside ${{ }} (#4147 review)', () => {
   for (const s of ['${{ secrets . PI_SSH_KEY }}', '${{ secrets. PI_USER }}', "${{ secrets [ 'PI_SSH_KEY' ] }}",
-    '${{ secrets [ inputs.k ] }}', '${{ toJSON ( secrets ) }}', '${{ Secrets . PROD_DEPLOY_KEY }}']) {
+    '${{ secrets [ inputs.k ] }}', '${{ toJSON ( secrets ) }}', '${{ Secrets . PROD_DEPLOY_KEY }}',
+    "${{ join(secrets.*, ',') }}", "${{ join(secrets . *, ',') }}"]) {
     assert.deepEqual(ids(wf(job('a', '', `        env:\n          K: ${s}\n`))), ['a'], s);
     assert.deepEqual(ids(wf(job('a', `    environment: ${REQUIRED_ENVIRONMENT}\n`, `        env:\n          K: ${s}\n`))), [], s);
   }

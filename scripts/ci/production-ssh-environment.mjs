@@ -6,7 +6,8 @@
 //
 // Secrets covered (case-insensitive): secrets.PI_* (PI_SSH_KEY, PI_SSH_HOST, PI_SSH_USER,
 // PI_HOST_KEY, PI_HOST, PI_USER, ...), any *DEPLOY_KEY* / *SSH*KEY*, the index form
-// secrets['X'], a dynamic secrets[expr], toJSON(secrets) and `secrets: inherit`.
+// secrets['X'], a dynamic secrets[expr], toJSON(secrets), the object filter secrets.* and
+// `secrets: inherit`. Whitespace inside ${{ }} (secrets . X, secrets [ 'X' ]) is tolerated.
 //
 // Documented exceptions (DOCUMENTED_EXCEPTIONS): jobs that already declare a reviewer-gated
 // environment keep it, because a job can declare only one. Those environments must ALSO hold the
@@ -26,6 +27,7 @@ const SECRET_PATTERNS = [
   new RegExp(String.raw`\bsecrets\s*\[\s*['"]${NAME}['"]\s*\]`, 'i'),
   /\bsecrets\s*\[(?!\s*['"])/i, // dynamic index: any secret
   /\btoJSON\s*\(\s*secrets\s*\)/i, // every secret
+  /\bsecrets\s*\.\s*\*/i, // object filter secrets.* (e.g. join(secrets.*, ',')): every secret
   /^\s*secrets:\s*inherit\b/im, // reusable-workflow caller passes every secret
 ];
 const ALIAS = /(?::\s+|-\s+|<<:\s*)\*[A-Za-z_][A-Za-z0-9_-]*\s*(?:#.*)?$/m;

@@ -1,6 +1,6 @@
 // Control-plane rule P1 (2026-10-15): a workflow that references production SSH secrets
 // (PI_SSH_*, PI_HOST_KEY, any *DEPLOY_KEY* / *SSH*KEY*, or every secret via toJSON(secrets) /
-// secrets[expr] / `secrets: inherit`) must not start from an unreviewed ref.
+// secrets[expr] / secrets.* / `secrets: inherit`) must not start from an unreviewed ref.
 // Allowed: workflow_dispatch, schedule, workflow_run, workflow_call, repository_dispatch, and
 // `push` whose `branches:` filter is exactly main. Rejected: push with no branch filter, any
 // non-main branch, branches-ignore or tags; every pull_request (its `branches:` filter matches the
@@ -16,6 +16,7 @@ const SECRET_PATTERNS = [
   new RegExp(String.raw`\bsecrets\s*\[\s*['"]${NAME}['"]\s*\]`, 'i'),
   /\bsecrets\s*\[(?!\s*['"])/i, // dynamic index: any secret
   /\btoJSON\s*\(\s*secrets\s*\)/i, // every secret
+  /\bsecrets\s*\.\s*\*/i, // object filter secrets.* (e.g. join(secrets.*, ',')): every secret
   /^\s*secrets:\s*inherit\b/im, // reusable-workflow caller passes every secret
 ];
 

@@ -69,7 +69,8 @@ test('secret detection: case-insensitive, index form, toJSON(secrets), secrets: 
 test('secret detection: whitespace inside ${{ }} (#4147 review)', () => {
   const on = 'on:\n  push:\n    branches: [dev]';
   for (const s of ['${{ secrets . PI_SSH_KEY }}', '${{ secrets .PI_HOST_KEY }}', "${{ secrets [ 'PI_SSH_KEY' ] }}",
-    '${{ secrets [ inputs.k ] }}', '${{ toJSON ( secrets ) }}', '${{ SECRETS.  prod_deploy_key }}']) {
+    '${{ secrets [ inputs.k ] }}', '${{ toJSON ( secrets ) }}', '${{ SECRETS.  prod_deploy_key }}',
+    "${{ join(secrets.*, ',') }}", "${{ join(secrets . *, ',') }}"]) {
     assert.equal(checkWorkflow(wf(on, `        env:\n          K: ${s}\n`)).length, 1, s);
   }
 });

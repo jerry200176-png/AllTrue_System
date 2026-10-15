@@ -177,5 +177,19 @@ Anything unexpected → stop and treat it as an incident (`docs/OPERATIONS_RUNBO
 
 ## Rollback
 
-Revert the PR, then add the repository-level secrets back (same names, current key). The
-environment can stay; it is inert once no job declares it.
+Order matters. After step (e) no repository-level key exists, so reverting the workflows first would
+leave `main` on workflows that read repository secrets that are gone. The revert's own CI completion
+then starts `deploy.yml` without credentials.
+
+1. **Restore the repository-level secrets first** (Settings → Secrets and variables → Actions →
+   Repository secrets), with the same names and the formats in the table above, using the **current**
+   key (`base64 -w0 < "$KEY" | gh secret set PI_SSH_KEY --repo "$REPO"`; others at the prompt). Keep the
+   environment secrets as they are.
+2. Confirm with `gh secret list --repo "$REPO"` (it shows names and update times only, never values)
+   that all six names are present at repository level. Until the revert, every SSH job still declares
+   an environment, so the runtime check comes in step 4.
+3. Revert the PR (merge the revert through the normal PR path).
+4. Run `pi-health` on `main` and apply the step (d).2 checks (SSH steps executed, `Authenticated to` in
+   the log). The environment can stay; it is inert once no job declares it.
+
+Before step (e) the repository secrets still exist, so a rollback is just step 3 + step 4.
