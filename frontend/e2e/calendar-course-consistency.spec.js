@@ -201,9 +201,43 @@ async function assertResponsive(page, label) {
   }
 }
 
+// Enforce the read-only contract in the browser, like the other production
+// acceptance specs: no POST/PUT/PATCH/DELETE from the page may reach the API.
+// Adoption telemetry is answered locally with 204 and never reaches the server;
+// every other write is aborted and fails the test in afterEach.
+const READ_ONLY_METHODS = ['GET', 'HEAD', 'OPTIONS'];
+let blockedApiWrites = [];
+
+async function installReadOnlyApiGuard(page) {
+  blockedApiWrites = [];
+  await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
+    const request = route.request();
+    const method = request.method().toUpperCase();
+    if (READ_ONLY_METHODS.includes(method)) {
+      await route.continue();
+      return;
+    }
+    const { pathname } = new URL(request.url());
+    if (method === 'POST' && pathname === '/api/v1/adoption/events') {
+      await route.fulfill({ status: 204, body: '' });
+      return;
+    }
+    blockedApiWrites.push({ method, path: pathname });
+    await route.abort('blockedbyclient');
+  });
+}
+
 test.describe('production acceptance — calendar/course parity', () => {
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
     'missing controlled production director session');
+
+  test.beforeEach(async ({ page }) => {
+    await installReadOnlyApiGuard(page);
+  });
+
+  test.afterEach(async () => {
+    expect(blockedApiWrites, 'read-only acceptance must not send API writes').toEqual([]);
+  });
 
   for (const viewport of [
     { name: 'desktop', width: 1440, height: 900 },
