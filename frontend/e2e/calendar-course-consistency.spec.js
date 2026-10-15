@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { expectCoursePaymentEntryOpensLedgerInPlace } from './fixtures/coursePaymentEntry.js';
 import { openPageFromSidebarSearch } from './fixtures/openPageFromSidebarSearch.js';
 
 /**
@@ -419,19 +420,7 @@ test.describe('production acceptance — calendar/course parity', () => {
     await navigate(page, COURSE_NAV_LABEL);
     await expect(pageHeading(page, COURSE_NAV_LABEL)).toBeVisible({ timeout: 15_000 });
 
-    const paymentCell = page.locator('.payment-status-and-action').filter({
-      has: page.getByRole('button', { name: /登記繳費回報|查看「待核對入帳」|前往帳務中心/, exact: true }),
-    }).first();
-    await expect(paymentCell).toBeVisible({ timeout: 15_000 });
-    const status = paymentCell.locator('.payment-status-badge');
-    const action = paymentCell.getByRole('button', { name: /登記繳費回報|查看「待核對入帳」|前往帳務中心/, exact: true });
-    await expect(status).toBeVisible({ timeout: 15_000 });
-    await expect(status).toHaveAttribute('role', 'status');
-    await expect(status).toHaveCSS('cursor', 'default');
-    await expect(page.locator('.btn-status')).toHaveCount(0);
-    await expect(action).toBeVisible();
-    await action.click();
-    await expect(page.getByRole('heading', { name: '帳務中心', exact: true })).toBeVisible({ timeout: 15_000 });
+    await expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHeading: pageHeading(page, COURSE_NAV_LABEL) });
   });
   }
 
