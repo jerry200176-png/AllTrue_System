@@ -156,6 +156,31 @@ final class TriageBillingSnapshotTest extends TestCase
         $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']);
     }
 
+    public function test_kill_switch_defaults_off_when_env_is_unset_and_follows_the_env_when_set(): void
+    {
+        $name = 'TRIAGE_BILLING_SNAPSHOT_ENABLED';
+        $saved = [getenv($name), $_ENV[$name] ?? null, $_SERVER[$name] ?? null];
+        $load = fn (): array => require base_path('config/triage_tokens.php');
+        try {
+            putenv($name);
+            unset($_ENV[$name], $_SERVER[$name]);
+            $this->assertFalse($load()['billing_snapshot_enabled'], 'default must stay OFF until the Founder approves');
+
+            putenv("{$name}=true");
+            $_ENV[$name] = $_SERVER[$name] = 'true';
+            $this->assertTrue($load()['billing_snapshot_enabled'], 'the switch must read the env, not a literal');
+        } finally {
+            putenv($saved[0] === false ? $name : "{$name}={$saved[0]}");
+            foreach (['_ENV' => $saved[1], '_SERVER' => $saved[2]] as $global => $value) {
+                if ($value === null) {
+                    unset($GLOBALS[$global][$name]);
+                } else {
+                    $GLOBALS[$global][$name] = $value;
+                }
+            }
+        }
+    }
+
     public function test_link_creation_validates_campus_open_report_existence_and_one_live_link_per_report(): void
     {
         $course = $this->course($this->campus);
