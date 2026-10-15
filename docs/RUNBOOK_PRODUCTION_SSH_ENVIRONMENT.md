@@ -70,7 +70,9 @@ Every secret-bearing job is listed in `docs/governance/PRODUCTION_WORKFLOW_INVEN
   `needs:<job>`: the job needs a same-file job on `production-activation`, and its `if:` requires that
   job's success with no `||` (e.g. `deploy.yml` `parent-portal-smoke`, `pop-bootstrap`).
   `founder-decision`: the job is a listed ungated writer and its `decision` names the open Founder
-  decision (the scheduled writers and the Founder 1A auto-deploy path);
+  decision (the scheduled writers and the Founder 1A auto-deploy path). Being scheduled is not an
+  exemption by itself: the entry must also give `authorization` (with its source), `scope`,
+  `idempotency`, `stop_switch`, `audit_trail` and `isolation`;
 - a `writes: false` job contains a strong write marker in its own text (`--apply`, `ALLOW_PROD_REPAIR=1`,
   `sed -i`, `->save(`, `mysql -e "CREATE DATABASE`, ...). The marker scan is only a backstop. It does not see
   scripts shipped to the Pi or what an artisan command does inside. The `evidence` review covers those.

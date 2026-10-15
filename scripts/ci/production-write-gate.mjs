@@ -14,13 +14,16 @@
 //   needs:<job>            the job `needs:` <job> in the same file, <job> declares production-activation,
 //                          and the job's `if:` requires needs.<job>.result == 'success' with no `||`
 //   founder-decision       an explicitly listed ungated writer (scheduled operations, the Founder 1A
-//                          auto-deploy path); needs a non-empty `decision` naming the open decision
+//                          auto-deploy path). It is not exempt by being scheduled: it needs a non-empty
+//                          `decision` plus every EXCEPTION_EVIDENCE field (authorization with its source,
+//                          fixed write scope, idempotency, stop switch, audit trail, target isolation)
 // Unlisted jobs, stale entries, and read-only jobs whose own text carries a strong write marker fail.
 // Scripts a job ships to the Pi (base64 / scp) are not scanned; the evidence field covers them.
 
 import { jobBlocks, environmentName, jobProperty, referencesProductionSecret } from './production-ssh-environment.mjs';
 
 export const GATED_ENVIRONMENT = 'production-activation';
+export const EXCEPTION_EVIDENCE = Object.freeze(['authorization', 'scope', 'idempotency', 'stop_switch', 'audit_trail', 'isolation']);
 export const READ_ONLY_ENVIRONMENTS = Object.freeze(['production-ssh', GATED_ENVIRONMENT]);
 
 // Strong write markers. A read-only job may not contain any of these in its own text.
@@ -113,6 +116,8 @@ export function checkWriteGates(text, classified = {}) {
       else if (!cond.includes(`needs.${gateId}.result == 'success'`) || cond.includes('||')) fail(`if: must require needs.${gateId}.result == 'success' with no ||`);
     } else if (gate === 'founder-decision') {
       if (typeof c.decision !== 'string' || !c.decision.trim()) fail('founder-decision gate needs a decision text');
+      const missing = EXCEPTION_EVIDENCE.filter((k) => typeof c[k] !== 'string' || !c[k].trim());
+      if (missing.length) fail(`founder-decision exception lacks evidence: ${missing.join(', ')}`);
       if (c.schedule === true && !hasSchedule(text)) fail('marked as a scheduled writer but the workflow has no schedule trigger');
     } else {
       fail(`writes production with unknown gate "${gate}"`);

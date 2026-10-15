@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import {
-  checkWriteGates, gatesForWorkflow, staleGateKeys, GATED_ENVIRONMENT, READ_ONLY_ENVIRONMENTS, WRITE_MARKERS,
+  checkWriteGates, gatesForWorkflow, staleGateKeys, EXCEPTION_EVIDENCE, GATED_ENVIRONMENT, READ_ONLY_ENVIRONMENTS, WRITE_MARKERS,
 } from './production-write-gate.mjs';
 
 const KEY = '        env:\n          K: ${{ secrets.PI_SSH_KEY }}\n';
@@ -51,13 +51,18 @@ test('needs:<job> gate: same-file gate job on production-activation, needs liste
   assert.deepEqual(ids(wf([job('w', ok)]), { w: W('needs:approve') }), ['w']);
 });
 
-test('founder-decision exceptions need a decision; scheduled ones need a schedule trigger', () => {
+test('founder-decision exceptions need a decision and every evidence field; scheduled ones need a schedule', () => {
   const text = wf([job('a', env('production-ssh'))]);
-  assert.deepEqual(ids(text, { a: W('founder-decision') }), ['a']);
-  assert.deepEqual(ids(text, { a: W('founder-decision', { decision: 'open: keep or gate' }) }), []);
-  assert.deepEqual(ids(text, { a: W('founder-decision', { decision: 'd', schedule: true }) }), ['a']);
+  const ev = Object.fromEntries(EXCEPTION_EVIDENCE.map((k) => [k, `${k} text`]));
+  assert.deepEqual(ids(text, { a: W('founder-decision', ev) }), ['a']);
+  assert.deepEqual(ids(text, { a: W('founder-decision', { decision: 'open: keep or gate' }) }), ['a']);
+  assert.deepEqual(ids(text, { a: W('founder-decision', { decision: 'open: keep or gate', ...ev }) }), []);
+  for (const k of EXCEPTION_EVIDENCE) {
+    assert.deepEqual(ids(text, { a: W('founder-decision', { decision: 'd', ...ev, [k]: ' ' }) }), ['a'], k);
+  }
+  assert.deepEqual(ids(text, { a: W('founder-decision', { decision: 'd', ...ev, schedule: true }) }), ['a']);
   const scheduled = wf([job('a', env('production-ssh'))], "  schedule:\n    - cron: '0 1 * * *'\n  workflow_dispatch:\n");
-  assert.deepEqual(ids(scheduled, { a: W('founder-decision', { decision: 'd', schedule: true }) }), []);
+  assert.deepEqual(ids(scheduled, { a: W('founder-decision', { decision: 'd', ...ev, schedule: true }) }), []);
   assert.deepEqual(ids(text, { a: W('anything') }), ['a']);
 });
 
