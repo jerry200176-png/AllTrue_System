@@ -499,7 +499,26 @@ class AlertController extends Controller
             return $row + ['has_confirmed_receipt' => $reportId !== null, 'receipt_report_id' => $reportId !== null ? (int) $reportId : null];
         })->values();
 
-        return response()->json($rows);
+        return response()->json($this->markLegacyPaidFlagOnly($rows));
+    }
+
+    /**
+     * #4114 (Founder Q3): a paid status (paid / renew_needed / monthly_due_soon) with no receipt standing on the contract or
+     * its package rests on the legacy Paid / package `paid` flag alone. `payment_status` is unchanged, so the row is still
+     * not owed and sends no reminder; `legacy_paid_flag_only` makes the list read 需核對 instead of 已收.
+     */
+    private function markLegacyPaidFlagOnly(\Illuminate\Support\Collection $rows): \Illuminate\Support\Collection
+    {
+        $paidLike = fn (array $row) => in_array($row['payment_status'] ?? null, ['paid', 'renew_needed', 'monthly_due_soon'], true);
+        $candidates = $rows->filter($paidLike);
+        $evidence = $this->payableResolver->validPaymentEvidence(
+            $candidates->flatMap(fn ($row) => $row['member_class_ids'] ?? [$row['id']])->filter()->all(),
+            $candidates->filter(fn ($row) => $row['id'] === null)->pluck('package_id')->filter()->all(),
+        );
+
+        return $rows->map(fn ($row) => $row + ['legacy_paid_flag_only' => $paidLike($row) && ($row['id'] === null
+            ? !isset($evidence['packages'][(int) ($row['package_id'] ?? 0)])
+            : collect($row['member_class_ids'] ?? [$row['id']])->every(fn ($id) => !isset($evidence['classes'][(int) $id])))])->values();
     }
 
     /** @param array<string, mixed>|null $verdict BillingPayableResolver course row; invoices that still owe beat the Paid flag (Founder Q2) */

@@ -1134,7 +1134,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { normalizeNavigationId, resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
-import { TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL, FREE_GIFT_LABEL, ZERO_REASON_FREE_GIFT } from '../lib/courseMoneyState.js';
+import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL, TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL, FREE_GIFT_LABEL, ZERO_REASON_FREE_GIFT } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -1589,21 +1589,26 @@ async function submitBatchConfirm() {
 // ═══ Payment Status Helpers ═══
 const STATUS_CONFIG = TUITION_STATUS_CONFIG;
 
+// #4114 (Founder Q3): `paid` by the legacy flag alone (no Payment) reads 需核對 in amber, never green 已收.
+const legacyPaidOnly = (r) => r.payment_status === 'paid' && isLegacyPaidFlagOnly(r);
+
 function statusLabel(r) {
   const ps = r.payment_status;
+  if (legacyPaidOnly(r)) return LEGACY_FLAG_UNVERIFIED_LABEL;
   if (ps && STATUS_CONFIG[ps]) return STATUS_CONFIG[ps].label;
   return r.paid ? TUITION_STATUS_CONFIG.paid.label : TUITION_STATUS_CONFIG.unpaid.label;
 }
 
 function statusClass(r) {
   const ps = r.payment_status;
+  if (legacyPaidOnly(r)) return 'st-pending';
   if (ps && STATUS_CONFIG[ps]) return STATUS_CONFIG[ps].cls;
   return r.paid ? 'st-paid' : 'st-unpaid';
 }
 
 function rowClass(r) {
   const ps = r.payment_status;
-  if (ps === 'paid' || ps === 'renew_needed') return 'row-paid';
+  if ((ps === 'paid' || ps === 'renew_needed') && !isLegacyPaidFlagOnly(r)) return 'row-paid';
   return '';
 }
 

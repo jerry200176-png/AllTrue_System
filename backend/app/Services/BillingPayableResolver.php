@@ -64,6 +64,48 @@ class BillingPayableResolver
     }
 
     /**
+     * #4114 (Founder Q3): which contracts / packages have a receipt still standing (net Payment > 0, the mayOwe ledger) on a
+     * non-void invoice of the contract or of any course in its package (a package bill sits on one member). A paid status
+     * outside these sets rests on the legacy StudentClass.Paid / CoursePackage.paid flag alone: shown 需核對, never 已收,
+     * and still never owed. Read-only.
+     *
+     * @param int[] $studentClassIds
+     * @param int[] $packageIds
+     * @return array{classes: array<int, true>, packages: array<int, true>}
+     */
+    public function validPaymentEvidence(array $studentClassIds, array $packageIds = []): array
+    {
+        $ids = collect($studentClassIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
+        $packageOf = $ids === [] ? [] : StudentClass::query()->whereIn('ID', $ids)->where('PackageID', '>', 0)
+            ->pluck('PackageID', 'ID')->map(fn ($p) => (int) $p)->all();
+        $packages = collect($packageIds)->map(fn ($id) => (int) $id)->merge(array_values($packageOf))->filter(fn (int $id) => $id > 0)->unique()->values()->all();
+        $members = $packages === [] ? [] : StudentClass::query()->whereIn('PackageID', $packages)
+            ->pluck('PackageID', 'ID')->map(fn ($p) => (int) $p)->all();
+        $scope = array_values(array_unique(array_merge($ids, array_keys($members))));
+        $paid = $scope === [] ? [] : DB::table('Invoice')
+            ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->whereIn('Invoice.StudentClassID', $scope)
+            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
+            ->groupBy('Invoice.id', 'Invoice.StudentClassID')
+            ->havingRaw("SUM(CASE WHEN Payment.Amount < 0 OR Payment.Method = 'void' THEN -ABS(Payment.Amount) ELSE Payment.Amount END) > 0")
+            ->pluck('Invoice.StudentClassID')->mapWithKeys(fn ($id) => [(int) $id => true])->all();
+        $paidPackages = [];
+        foreach ($members as $classId => $packageId) {
+            if (isset($paid[$classId])) {
+                $paidPackages[$packageId] = true;
+            }
+        }
+        $classes = [];
+        foreach ($ids as $id) {
+            if (isset($paid[$id]) || isset($paidPackages[$packageOf[$id] ?? 0])) {
+                $classes[$id] = true;
+            }
+        }
+
+        return ['classes' => $classes, 'packages' => $paidPackages];
+    }
+
+    /**
      * F7 S1: course-level paid status over ALL non-void invoices (additive; byStudentClassIds is unchanged).
      *
      * status: free (tutoring / zero-fee) > review_required (monthly period that cannot be attributed)

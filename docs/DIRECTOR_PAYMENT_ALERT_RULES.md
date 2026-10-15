@@ -147,3 +147,12 @@ last_reviewed: 2026-08-16
 **列入條件不變**：`Paid != 1` 的未繳課程仍列入催繳（含已回報未入帳）。禁止把 pending 當成 paid 從名單拿掉。主任 `PUT .../confirm` 後才 Paid／核銷／收據；`reject` 後維持未繳。產品無獨立會計角色。
 
 權威狀態機：[`architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md)。
+
+## 只有舊「已收」標記、沒有付款紀錄（#4114／in-app #407，Founder Q3 2026-10-15）
+
+Founder Q3 是本次對 `GET /api/v1/alerts/tuition` 顯示語意的明示同意（§變更管制），範圍僅限以下標示：
+
+- 列的 `payment_status` 為 `paid`／`renew_needed`／`monthly_due_soon`，但合約本身與**同方案所有課程**的非作廢帳單上都沒有淨額 > 0 的收款（Payment；負數或 `Method='void'` 為沖銷）時，回傳 `legacy_paid_flag_only = true`（`BillingPayableResolver::validPaymentEvidence`）。方案列看整個方案的課程。
+- 前端把這類 `paid` 顯示為中性的「需核對：舊資料標記已收，缺付款紀錄」（琥珀色），不顯示綠色「已收」，也不顯示「未繳」。`renew_needed`／`monthly_due_soon` 的狀態文字不變，但學生清單不再把它們算成「已收」。
+- `payment_status`、列入條件、金額、`outstanding`、對外通知與催繳都**不變**：不算欠款、不進「有未繳」、不催繳；學生清單「沒有未繳」篩選照常包含。
+- 唯讀：不寫帳務、不改 `StudentClass.Paid`／`CoursePackage.paid`、不需 migration。課程管理 `GET /api/v1/student-classes` 的 `paid` 列帶同一欄位。

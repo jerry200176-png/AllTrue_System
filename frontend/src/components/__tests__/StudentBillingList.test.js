@@ -154,15 +154,15 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
       { id: 61, student_id: 6, student_name: '己', payment_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03' },
       // paid monthly package: hard-coded unbilled payable, but paid
       { id: null, student_id: 8, student_name: '辛', payment_status: 'monthly_due_soon', payable_status: 'unbilled', payable_outstanding: null, paid: true, last_paid_at: '2026-10-01' },
-      // course paid by flag only (G-009), no payment date
-      { id: 91, student_id: 9, student_name: '壬', payment_status: 'paid', payable_outstanding: 0, last_paid_at: null },
+      // course paid by flag only (G-009): the server marks it, so it reads 需核對, never 已收 (#4114, Founder Q3)
+      { id: 91, student_id: 9, student_name: '壬', payment_status: 'paid', payable_outstanding: 0, last_paid_at: null, legacy_paid_flag_only: true },
     ], students: [{ id: 7, name: '庚' }], today: '2026-10-07' } });
     const badge = (id) => w.find(`[data-testid="sbl-row-${id}"]`).find('[data-testid="at-badge"]').text();
     expect(badge(5)).toBe('還沒開帳單');
     expect(badge(6)).toBe('已收');
     expect(badge(7)).toBe('沒有待收款項');
     expect(badge(8)).toBe('已收');
-    expect(badge(9)).toBe('已收');
+    expect(badge(9)).toBe('需核對：舊資料標記已收，缺付款紀錄');
   });
 
   it('keeps students with an unbilled contract out of the 沒有未繳 filter (in-app #407)', () => {
@@ -182,8 +182,8 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
       { id: 121, student_id: 12, student_name: '丑', paid: true, payment_status: 'paid', payable_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03' },
       // paid monthly plan (server hard-codes unbilled payable for monthly packages)
       { id: null, student_id: 13, student_name: '寅', paid: true, payment_status: 'monthly_due_soon', payable_status: 'unbilled', payable_outstanding: null, last_paid_at: '2026-10-01' },
-      // valid paid status, no pay date
-      { id: 141, student_id: 14, student_name: '卯', paid: true, payment_status: 'paid', payable_outstanding: 0, last_paid_at: null },
+      // paid by the legacy flag alone, no Payment on record (#4114): not owed, so still in 沒有未繳
+      { id: 141, student_id: 14, student_name: '卯', paid: true, payment_status: 'paid', payable_outstanding: 0, last_paid_at: null, legacy_paid_flag_only: true },
     ];
     const rows = buildStudentBillingRows(alertRows, [], '2026-10-07');
     expect(rows.filter(STUDENT_FILTERS.clear.test).map((r) => r.student_id).sort()).toEqual([12, 13, 14]);
@@ -193,7 +193,26 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
     expect(badge(11)).toBe('還沒開帳單');
     expect(badge(12)).toBe('已收');
     expect(badge(13)).toBe('已收');
-    expect(badge(14)).toBe('已收');
+    expect(badge(14)).toBe('需核對：舊資料標記已收，缺付款紀錄');
+  });
+
+  // #4114 (Founder Q3): flag-only is neutral 需核對 (amber): never green 已收, never 未繳, never owed.
+  it('shows 需核對 for a contract paid by the legacy flag alone, even next to a real payment', () => {
+    const alertRows = [
+      { id: 151, student_id: 15, student_name: '辰', payment_status: 'renew_needed', payable_outstanding: 0, outstanding: 0, legacy_paid_flag_only: true },
+      { id: 161, student_id: 16, student_name: '巳', payment_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03', legacy_paid_flag_only: false },
+      { id: 162, student_id: 16, student_name: '巳', payment_status: 'paid', payable_outstanding: 0, legacy_paid_flag_only: true },
+    ];
+    const rows = buildStudentBillingRows(alertRows, [], '2026-10-07');
+    const r15 = rows.find((r) => r.student_id === 15);
+    expect([r15.has_paid, r15.legacy_flag_only, r15.owed_now, r15.open_contracts]).toEqual([false, 1, 0, 0]);
+    expect(rows.filter(STUDENT_FILTERS.owing.test)).toEqual([]);
+    const w = mount(StudentBillingList, { props: { alertRows, today: '2026-10-07' } });
+    for (const id of [15, 16]) {
+      const b = w.find(`[data-testid="sbl-row-${id}"]`).findAll('[data-testid="at-badge"]');
+      expect(b.map((x) => x.text())).toEqual(['需核對：舊資料標記已收，缺付款紀錄']);
+      expect(b[0].classes()).toContain('at-badge--warning');
+    }
   });
 });
 

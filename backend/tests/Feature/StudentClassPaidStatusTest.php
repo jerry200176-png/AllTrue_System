@@ -519,6 +519,27 @@ class StudentClassPaidStatusTest extends TestCase
         $this->assertSame('paid', $match['payment_status'], 'payment_status should be paid when invoice has payment');
     }
 
+    /** #4114 (Founder Q3): course management marks a `paid` resting on the legacy flag alone; payment_status is unchanged. */
+    public function test_index_marks_paid_flag_without_payment_record(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $flagOnly = $this->createStudentClass($student->id, ['Paid' => 1, 'PayDate' => '2026-03-01', 'Charge' => 16500]);
+        $paid = $this->createStudentClass($student->id, ['Paid' => 1, 'Charge' => 16500, 'SubjectID' => 2]);
+        $invoice = \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $paid->ID,
+            'IssueDate' => now()->toDateString(), 'TotalAmount' => 16500, 'PaidAmount' => 16500, 'Status' => 'paid']);
+        \App\Models\Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 16500, 'PaidAt' => '2026-04-15', 'Method' => 'cash']);
+        $unpaid = $this->createStudentClass($student->id, ['Charge' => 16500, 'SubjectID' => 3]);
+
+        $data = collect($this->getJson('/api/v1/student-classes?branch_id=1', ['Authorization' => "Bearer {$token}"])->assertOk()->json('data'));
+        $pick = fn (StudentClass $c) => $data->firstWhere('ID', $c->ID);
+
+        $this->assertSame(['paid', true], [$pick($flagOnly)['payment_status'], $pick($flagOnly)['legacy_paid_flag_only']]);
+        $this->assertSame(['paid', false], [$pick($paid)['payment_status'], $pick($paid)['legacy_paid_flag_only']]);
+        $this->assertSame(['unpaid', false], [$pick($unpaid)['payment_status'], $pick($unpaid)['legacy_paid_flag_only']]);
+        $this->assertSame(1, (int) $flagOnly->fresh()->Paid, 'read-only: the stored flag is untouched');
+    }
+
     /**
      * TD-083 B1 / R94: partial invoice payment must NOT display as paid on the course list.
      */
