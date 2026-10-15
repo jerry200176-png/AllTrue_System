@@ -733,7 +733,7 @@
                         @click="openPaymentSlip(row.course)"
                       >繳費單</button>
                       <button class="small ghost btn-invoices" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
-                      <button v-if="shouldShowPaymentAction(row.course)" class="small primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
+                      <button v-if="showsBillingRowNextAction(row.course)" class="small primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
                       <span v-if="isTutoringBillingAnomaly(row.course)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                     </div>
                   </td>
@@ -4206,6 +4206,8 @@ const paymentNextActionLabel = (course) => {
 const isTutoringCourse = (course) => course?.class_type === 'tutoring';
 const isTutoringBillingAnomaly = (course) => isTutoringCourse(course) && course?.tutoring_billing_anomaly === true;
 const shouldShowPaymentAction = (course) => !isTutoringCourse(course);
+// #3982: paid / review-needed rows fall back to 在這裡看帳務, which the billing row already shows as its own button.
+const showsBillingRowNextAction = (course) => shouldShowPaymentAction(course) && paymentNextActionLabel(course) !== '在這裡看帳務';
 const paymentStatusHelpTitle = (course) => {
   if (isTutoringBillingAnomaly(course)) return '輔導課不應產生付款義務；帳務資料需由主任檢查。';
   if (isTutoringCourse(course)) return '無須繳費；輔導課不產生付款義務。';
