@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 
 import { checkWorkflow as productionSecretTriggerProblems } from './ci/production-secret-triggers.mjs';
 import { checkJobEnvironments as productionSshEnvironmentProblems } from './ci/production-ssh-environment.mjs';
+import { checkWriteGates, gatesForWorkflow, staleGateKeys } from './ci/production-write-gate.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -322,6 +323,29 @@ function checkProductionSshEnvironment() {
   }
 }
 
+/** P3 (Founder Q2): a job that reads production SSH secrets and writes production waits for production-activation. */
+function checkProductionWriteGate() {
+  const inventoryPath = 'docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json';
+  let tracked = [];
+  let inventory;
+  try {
+    tracked = execSync('git ls-files .github/workflows/*.yml .github/workflows/*.yaml', { cwd: root, encoding: 'utf8' })
+      .split('\n')
+      .filter(Boolean);
+    inventory = JSON.parse(read(inventoryPath));
+  } catch (err) {
+    add('P3', inventoryPath, 0, `cannot read workflows or job_gates (${err.message.split('\n')[0]}); failing closed`);
+    return;
+  }
+  const names = tracked.map((rel) => path.basename(rel));
+  for (const key of staleGateKeys(inventory, names)) add('P3', inventoryPath, 0, `job_gates entry ${key} names a workflow that no longer exists`);
+  for (const rel of tracked) {
+    for (const p of checkWriteGates(read(rel), gatesForWorkflow(inventory, path.basename(rel)))) {
+      add('P3', rel, p.line, `job ${p.job}: ${p.reason} (${inventoryPath} job_gates; docs/RUNBOOK_PRODUCTION_SSH_ENVIRONMENT.md)`);
+    }
+  }
+}
+
 function checkIndexGovernanceLogic() {
   if (!exists('docs/INDEX.md')) return;
   const index = read('docs/INDEX.md');
@@ -448,6 +472,7 @@ function main() {
     checkExecutionI1();
     checkProductionSecretTriggers();
     checkProductionSshEnvironment();
+    checkProductionWriteGate();
     checkCodeImportBarrier();
     checkContractChangeGate();
   }

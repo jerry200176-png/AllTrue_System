@@ -97,8 +97,12 @@ jobs:
 
   deliver-line:
     name: Notify campus LINE groups (no CSV/PII)
+    # P3 (Founder Q2): a LINE push to staff groups is a production write, so it waits for the
+    # Founder in production-activation. The daily schedule only runs `track`; a waiting approval
+    # every day would also hold this workflow's concurrency group.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    environment: production-ssh
+    environment: production-activation
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper

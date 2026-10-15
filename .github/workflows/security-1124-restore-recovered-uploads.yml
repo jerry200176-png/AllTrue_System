@@ -27,7 +27,7 @@ jobs:
   restore:
     name: Restore the 45 files recovered from orphaned git history (fill missing only)
     runs-on: ubuntu-latest
-    environment: production-ssh
+    environment: production-activation
     timeout-minutes: 15
 
     steps:

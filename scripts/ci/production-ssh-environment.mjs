@@ -69,7 +69,7 @@ export function jobBlocks(text) {
 }
 
 /** Job-level property `key` → {value, children} at the job's own indent, or null. */
-function jobProperty(jobLines, key) {
+export function jobProperty(jobLines, key) {
   const first = jobLines.find(meaningful);
   if (!first) return null;
   const propIndent = indentOf(first);

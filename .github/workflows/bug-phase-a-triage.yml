@@ -35,7 +35,7 @@ permissions:
 jobs:
   triage:
     runs-on: ubuntu-latest
-    environment: production-ssh
+    environment: production-activation
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper

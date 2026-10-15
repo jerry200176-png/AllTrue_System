@@ -33,7 +33,7 @@ jobs:
   repair:
     name: Run allowlisted Yang 1445 repair
     runs-on: ubuntu-latest
-    environment: production-ssh
+    environment: production-activation
     timeout-minutes: 15
 
     steps:
