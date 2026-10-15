@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 """Fail when a workflow run block nears GitHub's 21,000-byte expression limit (#4051).
 
-GitHub turns a `run:` block that contains `${{ }}` into one format() expression. Above
-21,000 UTF-8 bytes it silently stops parsing the whole workflow: every push then shows a
-failed 0-job run named after the file, and nothing in that workflow runs (for deploy.yml:
-no deploy and no release train). A run block without `${{ }}` is a plain string and is not
-subject to this limit, but it is reported so that adding one expression to it is caught here.
-Stdlib only, so it runs in any job without installs.
-
-Run values that this line-based reader cannot measure exactly fail closed instead of passing:
-a YAML anchor, alias or tag (`run: &a |`, `run: *a`, `run: !!str |`, #4085) and a block scalar
-with an explicit indentation indicator (`run: |2`), whose kept indentation it would drop.
+GitHub turns a `run:` block containing `${{ }}` into one format() expression; above 21,000 UTF-8
+bytes it silently stops parsing the workflow (a failed 0-job run per push, nothing runs). Plain
+blocks are not expressions and are only reported. Forms this line-based reader cannot size
+exactly (anchor, alias, tag: #4085; `|2` indentation indicator) fail closed. Stdlib only.
 
 Usage: python3 scripts/ci/workflow_expression_size.py [--limit BYTES] [workflow ...]
 """

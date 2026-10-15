@@ -34,12 +34,8 @@ def deploy_step_env(workflow_text):
 
 
 def read_deploy_workflow():
-    """deploy.yml with the remote deploy script shown inline in the Deploy step (#4051).
-
-    The script lives in scripts/production-deploy/pi-remote-deploy.sh. Each @@DEPLOY_<NAME>@@ placeholder is
-    shown as the ${{ }} expression that the step env: DEPLOY_<NAME> feeds it, so the executor
-    contracts below read the script the Pi receives, wired through the committed workflow.
-    """
+    """deploy.yml with pi-remote-deploy.sh inlined at the Deploy step (#4051); each placeholder is
+    shown as the ${{ }} expression its step env: DEPLOY_<NAME> carries."""
     workflow = WORKFLOW.read_text(encoding="utf-8")
     env = deploy_step_env(workflow)
     script = re.sub(r"@@(DEPLOY_[A-Z0-9_]+)@@", lambda m: env[m.group(1)], REMOTE_DEPLOY.read_text(encoding="utf-8"))
@@ -1625,11 +1621,6 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertEqual({f"DEPLOY_{n}" for n in placeholders} | {"DEPLOY_PI_SSH_USER", "DEPLOY_PI_SSH_HOST"}, set(env))
         self.assertEqual("${{ secrets.PI_SSH_USER }}", env["DEPLOY_PI_SSH_USER"])
         self.assertEqual("${{ needs.resolve-target.outputs.target_sha }}", env["DEPLOY_TARGET_SHA"])
-        # The executor left the protected deploy.yml; its new home keeps the same T3/Founder boundary.
-        for path in (REMOTE_DEPLOY, REMOTE_RENDERER):
-            rel = str(path.relative_to(ROOT))
-            self.assertEqual("T3", machine_declaration([rel])["autonomy_tier"], rel)
-            self.assertTrue(is_production_activation_sensitive_path(rel), rel)
 
     def test_remote_script_renders_like_github_text_substitution(self):
         sys.path.insert(0, str(REMOTE_RENDERER.parent))

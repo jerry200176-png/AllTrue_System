@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
-"""Render the remote deploy script that the Deploy step sends to the Pi over ssh stdin (#4051).
+"""Render the Pi deploy script from pi-remote-deploy.sh for the Deploy step's ssh stdin (#4051).
 
-deploy.yml used to inline this script as a quoted heredoc, with nine ${{ }} values that GitHub
-substituted as plain text before the step ran. That made the run block a single format()
-expression close to GitHub's 21,000-byte limit. The script now lives in
-scripts/production-deploy/pi-remote-deploy.sh, and each former ${{ }} is an @@DEPLOY_<NAME>@@ placeholder.
-The step passes the same values through its env: as DEPLOY_<NAME>, and this renderer substitutes
-them as plain text in one pass, exactly as GitHub did. The output is byte-for-byte the script
-the Pi received before. It writes to stdout and exits non-zero, so nothing is sent, when the
-template is missing or names a placeholder outside the allowlist.
-
-Usage: python3 scripts/production-deploy/render_pi_remote_deploy.py TEMPLATE > rendered.sh
+Each former ${{ }} is an @@DEPLOY_<NAME>@@ placeholder, fed by the step env: DEPLOY_<NAME> and
+substituted as plain text in one pass, as GitHub did, so the Pi receives the same bytes as the
+old inline heredoc. Exits non-zero (nothing sent) on a missing template or unknown placeholder.
 """
 import os
 import re
