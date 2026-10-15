@@ -31,7 +31,7 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
   // PR #4159 review: the 「進行中」 filter reload omits the stopped course; it is fetched and kept.
   it('retains the closed course after a status-filtered reload without changing the filter', () => {
     const close = source.slice(source.indexOf('async function closeCourseInPlace('), source.indexOf('const courses = ref([]);'));
-    expect(close).toMatch(/await loadCourses\(pagination\.value\.page\);\s*await retainClosedCourse\(course\);/);
+    expect(close).toMatch(/const reloadRequestId = await reloadCoursesForClose\(\);\s*await retainClosedCourse\(course, reloadRequestId\);/);
     expect(close).toContain('retainClosedCourseInList({');
     expect(close).toContain('student_id: String(studentId)');
     expect(close).not.toContain("params.set('status'");
@@ -41,10 +41,24 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
   // PR #4159 review round 2: the retained course gets the same session load as loadCourses() results.
   it('loads sessions for the retained course with the loadCourses() loaders, guarded by the request id', () => {
     const close = source.slice(source.indexOf('async function closeCourseInPlace('), source.indexOf('const courses = ref([]);'));
-    expect(close).toMatch(/loadSessions: async \(list\) => \{[\s\S]*?await loadSessionsForCourseList\(list, token, \(\) => requestId === courseLoadRequestId\);/);
+    expect(close).toMatch(/loadSessions: async \(list\) => \{[\s\S]*?if \(!isCurrent\(\)\) return;\s*await loadSessionsForCourseList\(list, token, isCurrent\);/);
     const helper = source.slice(source.indexOf('async function loadSessionsForCourseList('), source.indexOf('const courses = ref([]);'));
     expect(helper).toContain('await loadClassSessionsForCourses(list, token, isCurrent)');
     expect(helper).toContain('await loadEffectiveSessionDates(list, token, isCurrent)');
     expect(helper).toContain('sessionDataLoadFailed.value = true');
+  });
+
+  // PR #4159 review round 3: retention is tied to the close-triggered reload's own request id.
+  it('carries the post-close reload request id into retention instead of re-reading the latest one', () => {
+    const close = source.slice(source.indexOf('async function closeCourseInPlace('), source.indexOf('const courses = ref([]);'));
+    expect(close).toContain('async function retainClosedCourse(course, requestId) {');
+    expect(close).not.toMatch(/const requestId = courseLoadRequestId;/);
+    expect(close).toMatch(/const isCurrent = \(\) => requestId === courseLoadRequestId;\s*if \(!isCurrent\(\)\) return;/);
+    expect(close).toContain('isCurrent,');
+    expect(close).toContain('if (next !== courses.value && isCurrent()) courses.value = next;');
+    // The id is read synchronously right after loadCourses() starts, before awaiting it…
+    expect(close).toMatch(/const pending = loadCourses\(pagination\.value\.page\);\s*const reloadRequestId = courseLoadRequestId;\s*await pending;\s*return reloadRequestId;/);
+    // …which is that load's id because loadCourses() bumps it before its first await.
+    expect(source).toMatch(/const loadCourses = async \(page = 1\) => \{\s*const requestId = \+\+courseLoadRequestId;/);
   });
 });

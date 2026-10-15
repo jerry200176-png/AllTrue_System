@@ -197,6 +197,70 @@ describe('post-close reload under the 進行中 (status=active) filter', () => {
     expect(loadSessions).not.toHaveBeenCalled();
   });
 
+  // PR #4159 review round 3: a filter/page change while the post-close reload is pending owns the
+  // view. Retention for the stale reload must not touch the newer courses or session caches.
+  describe('race with a newer list load', () => {
+    function makeView() {
+      const view = { requestId: 0, courses: [], sessions: {} };
+      const startLoad = (list) => { view.requestId += 1; view.courses = list; view.sessions = Object.fromEntries(list.map((c) => [c.id, [`s${c.id}`]])); return view.requestId; };
+      const retain = async (closeReloadId, course, { duringFetch } = {}) => {
+        const isCurrent = () => closeReloadId === view.requestId;
+        const next = await retainClosedCourseInList({
+          courses: view.courses,
+          course,
+          isCurrent,
+          fetchStudentCourses: async () => { duringFetch?.(); return [other, backend.paid]; },
+          loadSessions: async (list) => {
+            if (!isCurrent()) return;
+            view.sessions = Object.fromEntries(list.map((c) => [c.id, [`s${c.id}`]]));
+          },
+        });
+        if (next !== view.courses && isCurrent()) view.courses = next;
+      };
+      return { view, startLoad, retain };
+    }
+
+    it('a filter change during the pending post-close reload leaves the newer list and sessions untouched', async () => {
+      const { view, startLoad, retain } = makeView();
+      const closeReloadId = startLoad(listActive());
+      const newer = [{ id: 99, student_id: 5, Stop: 0 }];
+      // Newer load lands before retention starts.
+      startLoad(newer);
+      const loadSessions = vi.fn();
+      const skipped = await retainClosedCourseInList({
+        courses: view.courses, course: backend.paid, isCurrent: () => closeReloadId === view.requestId,
+        fetchStudentCourses: vi.fn(), loadSessions,
+      });
+      expect(skipped).toBe(newer);
+      expect(loadSessions).not.toHaveBeenCalled();
+      // Newer load lands while the retain fetch is in flight.
+      const id2 = startLoad(listActive());
+      await retain(id2, { ...backend.paid, Stop: 0 }, { duringFetch: () => startLoad(newer) });
+      expect(view.courses).toBe(newer);
+      expect(view.courses.some((c) => c.id === 42)).toBe(false);
+      expect(view.sessions).toEqual({ 99: ['s99'] });
+    });
+
+    it('a newer load landing during the session load returns the original list', async () => {
+      let current = true;
+      const courses = listActive();
+      const next = await retainClosedCourseInList({
+        courses, course: backend.paid, isCurrent: () => current,
+        fetchStudentCourses: async () => [backend.paid],
+        loadSessions: async () => { current = false; },
+      });
+      expect(next).toBe(courses);
+    });
+
+    it('without interleaving, retention still appends the closed course and loads its sessions', async () => {
+      const { view, startLoad, retain } = makeView();
+      const id = startLoad(listActive());
+      await retain(id, { ...backend.paid, Stop: 0 });
+      expect(view.courses.map((c) => c.id)).toEqual([7, 42]);
+      expect(view.sessions).toEqual({ 7: ['s7'], 42: ['s42'] });
+    });
+  });
+
   it('a failed retain fetch is reported as a refresh failure, not a failed close', async () => {
     const { calls, deps } = setup();
     deps.course = { ...backend.paid, Stop: 0 };

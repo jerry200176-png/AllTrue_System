@@ -69,18 +69,20 @@ export async function closeCourseNoRenew({
  * Fetch that student's courses without the status filter and append the closed one, so a paid
  * close shows under 歷史課程 and an unpaid settled_pending close stays visible with its label.
  * `loadSessions(next)` then loads sessions for the new list the same way the list reload does.
+ * `isCurrent()` is the caller's request guard: once it is false nothing is appended or loaded.
  * Returns the same array when nothing needs to change.
  */
-export async function retainClosedCourseInList({ courses = [], course, fetchStudentCourses, loadSessions }) {
+export async function retainClosedCourseInList({ courses = [], course, fetchStudentCourses, loadSessions, isCurrent = () => true }) {
   const id = Number(course?.id ?? course?.ID ?? 0);
-  if (!id || courses.some((x) => Number(x?.id ?? x?.ID) === id)) return courses;
+  if (!isCurrent() || !id || courses.some((x) => Number(x?.id ?? x?.ID) === id)) return courses;
   const studentId = course?.student_id ?? course?.StudentID;
   if (studentId == null || studentId === '') return courses;
   const fresh = (await fetchStudentCourses(studentId) || []).find((x) => Number(x?.id ?? x?.ID) === id);
-  if (!fresh) return courses;
+  // A newer list load won while fetching: leave its courses and session caches alone.
+  if (!fresh || !isCurrent()) return courses;
   const next = [...courses, fresh];
   // The reload loaded ClassSessions only for its own rows; without this the appended course has
   // none cached and its 歷史課程 row shows 0 attended lessons (PR #4159 review round 2).
   if (typeof loadSessions === 'function') await loadSessions(next);
-  return next;
+  return isCurrent() ? next : courses;
 }

@@ -1564,8 +1564,8 @@ async function closeCourseInPlace(course) {
     getSubjectLabel,
     isCourseSettled,
     reloadCourses: async () => {
-      await loadCourses(pagination.value.page);
-      await retainClosedCourse(course);
+      const reloadRequestId = await reloadCoursesForClose();
+      await retainClosedCourse(course, reloadRequestId);
     },
     confirmImpl: (message, opts) => askConfirm({ message, ...opts }),
   });
@@ -1576,11 +1576,16 @@ async function closeCourseInPlace(course) {
 // PR #4159 review: under the 「進行中」 filter the reload sends status=active, so the now-stopped
 // course drops out of the list. Fetch it once (same list endpoint, its student only, no status
 // filter) and keep it in the current view — the user's filter itself is left unchanged.
-async function retainClosedCourse(course) {
-  const requestId = courseLoadRequestId;
+// PR #4159 review round 3: retention belongs to the close-triggered reload only. If the user
+// changes a filter/page while it is pending, that newer load owns `courses` and the session
+// caches, so every step below re-checks this exact request id after each await.
+async function retainClosedCourse(course, requestId) {
+  const isCurrent = () => requestId === courseLoadRequestId;
+  if (!isCurrent()) return;
   const next = await retainClosedCourseInList({
     courses: courses.value,
     course,
+    isCurrent,
     fetchStudentCourses: async (studentId) => {
       if (!props.branchId) return [];
       const token = await getAccessToken();
@@ -1595,11 +1600,22 @@ async function retainClosedCourse(course) {
     loadSessions: async (list) => {
       const token = await getAccessToken();
       if (!token) return;
-      await loadSessionsForCourseList(list, token, () => requestId === courseLoadRequestId);
+      if (!isCurrent()) return;
+      await loadSessionsForCourseList(list, token, isCurrent);
     },
   });
   // A newer list load (filter/page change) wins; never merge into a different view.
-  if (next !== courses.value && requestId === courseLoadRequestId) courses.value = next;
+  if (next !== courses.value && isCurrent()) courses.value = next;
+}
+
+// Runs the post-close loadCourses() and returns that load's own request id. loadCourses() bumps
+// courseLoadRequestId synchronously before its first await, so reading it right after the call
+// (before awaiting) is exactly this reload's id, not a later filter/page load's.
+async function reloadCoursesForClose() {
+  const pending = loadCourses(pagination.value.page);
+  const reloadRequestId = courseLoadRequestId;
+  await pending;
+  return reloadRequestId;
 }
 
 // Same ClassSession + effective-date load loadCourses() runs for its result rows.
