@@ -472,9 +472,13 @@ jobs:
           if [ "$EFFECTIVE_BRANCH_ID" != "9" ]; then
             acceptance_args+=(--grep-invert 'contracted four-session detail explains two unarranged sessions')
           fi
-          npx playwright test "${acceptance_args[@]}" > playwright-report/acceptance-results.json
+          # Keep going after a Playwright failure so the gate names the failing spec/title in the log
+          # (file + test title only, never page text); the step still fails with Playwright's code.
+          playwright_rc=0
+          npx playwright test "${acceptance_args[@]}" > playwright-report/acceptance-results.json || playwright_rc=$?
           node ../.github/scripts/acceptance-report-gate.mjs --self-test
           RESULTS_PATH="playwright-report/acceptance-results.json" EFFECTIVE_BRANCH_ID="$EFFECTIVE_BRANCH_ID" ACCEPTANCE_SCOPE="${ACCEPTANCE_SCOPE}" node ../.github/scripts/acceptance-report-gate.mjs
+          exit "$playwright_rc"
 
       # Public repo (#3605/#3627): the Playwright JSON can embed calendar text (student names) in failure
       # messages, so it is never uploaded in plaintext. Without DUMP_ARTIFACT_KEY nothing is uploaded.

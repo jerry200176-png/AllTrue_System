@@ -1,6 +1,6 @@
 import { REPORT_STATUS_LABELS } from './courseMoneyState.js';
 const NEXT_STEP_LABELS = {
-  billing_correction: '堂數若要減少，請改走「合約／堂次調整」。',
+  billing_correction: '堂數若要減少，請改走「合約／堂次調整」；要加堂請用「續課」。',
   edit_charge_only: '堂數維持不變，請在一般編輯畫面只調整總費用。',
   void_payment: '若收款是誤登錄，請先到收費頁作廢帳單。',
   payment_report: '請先到繳費回報處理或作廢該筆回報。',

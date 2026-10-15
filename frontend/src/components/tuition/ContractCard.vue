@@ -1,7 +1,9 @@
 <template>
-  <article class="contract" :data-testid="`contract-card-${course.id}`">
+  <article :class="['contract', { 'contract--focused': focused }]" :data-testid="`contract-card-${course.id}`">
     <header class="contract__head">
       <h5>{{ title }}</h5>
+      <span v-if="courseRef" class="contract__ref" data-testid="contract-ref">{{ courseRef }}</span>
+      <span v-if="focused" class="contract__focused" data-testid="contract-focused">你點開的這門課</span>
       <span class="contract__mode">{{ modeLine }}</span>
     </header>
 
@@ -101,9 +103,12 @@ import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
+import { formatCourseRef } from '../../lib/studentBillingRows.js';
 
 const props = defineProps({
   course: { type: Object, required: true },
+  // In-app #396: the course the billing panel was opened from.
+  focused: { type: Boolean, default: false },
   outstanding: { type: Number, default: 0 },
   pendingReport: { type: Object, default: null },
   // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }.
@@ -144,6 +149,11 @@ const title = computed(() => {
   const c = data.value || props.course;
   const range = [dateOnly(c.start_date), dateOnly(c.end_date)].filter(Boolean).join('–');
   return range ? `${c.subject || '課程'}・${range}` : (c.subject || '課程');
+});
+// Founder 2026-10-15 (Q9=A, #3982): same 「課程 000123」 reference the tables show (plan D11 note).
+const courseRef = computed(() => {
+  const ref = formatCourseRef(props.course.id);
+  return ref === formatCourseRef(null) ? '' : ref;
 });
 const modeLine = computed(() => ((data.value?.schedule_mode || props.course.schedule_mode) === 'date'
   ? '月結：每個月依當月上課日收費'
@@ -294,6 +304,9 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
 .contract__head h5{margin:0;font-size:15px}
 .contract__mode{font-size:12px;color:var(--ds-ink-mute)}
+.contract__ref{font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);font-variant-numeric:tabular-nums}
+.contract--focused{border-color:var(--ds-cta);border-width:2px}
+.contract__focused{font-size:var(--ds-font-size-sm);font-weight:600;color:var(--ds-cta)}
 .contract__money{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:14px}
 .contract__money .due{color:var(--ds-danger)}
 .contract__confirm-text{margin:0;font-size:14px;line-height:1.6}

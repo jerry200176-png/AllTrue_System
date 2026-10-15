@@ -5,6 +5,12 @@
       <p class="modal-desc">{{ studentName }}／{{ subjectLabel }}</p>
       <p class="choice-intro">先選你要處理的事情，系統會帶到正確流程。</p>
 
+      <!-- Founder 2026-10-15 Q8=A (#4014): lessons are added through 續課, never by raising this contract. -->
+      <div class="renew-hint" data-testid="contract-adjust-renew-hint">
+        <p class="renew-hint__text"><strong>要加堂？</strong>這裡不能把堂數改多，請用「續課」：會另外建立一期新的堂數和帳單，原合約與已上課紀錄都不變。</p>
+        <button type="button" class="renew-hint__action" data-testid="contract-adjust-renew" @click="onChoose('renew')">前往續課</button>
+      </div>
+
       <div class="choice-list">
         <button
           type="button"
@@ -89,6 +95,16 @@ function onChoose(action) {
 .modal-title { font-size: 1.2rem; font-weight: 800; color: var(--text); margin: 0 0 4px; }
 .modal-desc { color: var(--text-light); font-size: 13px; margin: 0 0 12px; }
 .choice-intro { margin: 0 0 14px; color: var(--ds-ink-mute); font-size: 13px; }
+.renew-hint {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 10px 12px;
+  border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-md); background: var(--ds-canvas);
+}
+.renew-hint__text { flex: 1 1 240px; margin: 0; color: var(--text); font-size: var(--ds-font-size-sm); line-height: 1.5; }
+.renew-hint__action {
+  border: 1px solid var(--ds-primary); border-radius: var(--ds-radius-md); background: var(--ds-canvas-soft);
+  color: var(--ds-primary-text); font-weight: 700; padding: 6px 12px; cursor: pointer;
+}
+.renew-hint__action:hover, .renew-hint__action:focus-visible { background: var(--ds-canvas); outline: 2px solid var(--ds-primary); outline-offset: 1px; }
 .choice-list { display: grid; gap: 10px; }
 .choice-card {
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 13px 12px;

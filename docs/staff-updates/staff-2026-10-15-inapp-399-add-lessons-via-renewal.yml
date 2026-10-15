@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-15-inapp-399-add-lessons-via-renewal
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 要加堂請用續課
+    summary: 已開始上課的課程不能直接把堂數改多；調整視窗會說明並提供「前往續課」按鈕。
+    items:
+      - category: improved
+        text: 在「合約／堂次調整」按「前往續課」，會打開原本的續課／加購流程，另外建立一期新的堂數和帳單，原合約不變。
+    source_refs:
+      - "changelog:2026-10-15:inapp-399-add-lessons-via-renewal"
