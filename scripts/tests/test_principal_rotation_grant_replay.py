@@ -140,7 +140,7 @@ class GrantReplayTransformerTest(unittest.TestCase):
                 result = self.run_transform([grant])
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(REFUSAL, result.stderr)
-                self.assertEqual(result.stdout.count("GRANT"), 0)
+                self.assertEqual(result.stdout, "")
                 self.assert_no_secret_material(result)
 
     def test_other_existing_guards_still_refuse(self):
@@ -154,6 +154,20 @@ class GrantReplayTransformerTest(unittest.TestCase):
                 result = self.run_transform([grant])
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(message, result.stderr)
+                self.assertEqual(result.stdout, "")
+
+    def test_late_refusal_emits_zero_bytes_even_after_valid_lines(self):
+        # Run 38724893175 refused on a GRANT line after CREATE USER was already
+        # printed; validation must now finish before anything reaches mysql.
+        result = self.run_transform([
+            "GRANT ALL PRIVILEGES ON `alltrue`.* TO `admin`@`%`",
+            "GRANT SELECT ON `alltrue`.* TO `admin`@`%`",
+            "GRANT USAGE ON *.* TO `admin`@`%` IDENTIFIED BY PASSWORD('s3cret')",
+        ])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(REFUSAL, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertNotIn("CREATE USER", result.stdout + result.stderr)
 
     def test_workflow_never_echoes_raw_grants(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -161,6 +175,105 @@ class GrantReplayTransformerTest(unittest.TestCase):
         self.assertIn('| python3 "$TRANSFORMER" \\', step)
         self.assertIn('| "${OLD_MYSQL[@]}" >/dev/null', step)
         self.assertNotRegex(step, r"\btee\b")
+
+
+def extract_preflight():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    match = re.search(
+        r"\n([ ]*# BEGIN leftover-staged-principal preflight.*?# END leftover-staged-principal preflight)\n",
+        workflow,
+        re.S,
+    )
+    if not match:
+        raise AssertionError("leftover staged-principal preflight not found in deploy.yml")
+    return textwrap.dedent(match.group(1)) + "\n"
+
+
+FAKE_MYSQL = r"""
+fake_mysql() {
+  local sql="${@: -1}"
+  printf '%s\n' "$sql" >> "$FAKE_SQL_LOG"
+  case "$sql" in
+    *"FROM mysql.user"*)
+      [[ "$FAKE_USER_TABLE" == deny ]] && { echo "ERROR 1142 SELECT command denied" >&2; return 1; }
+      printf '%s\n' "$FAKE_USER_TABLE" ;;
+    *"information_schema.USER_PRIVILEGES"*)
+      [[ "$FAKE_IS" == deny ]] && { echo "ERROR 1044 denied" >&2; return 1; }
+      printf '%s\n' "$FAKE_IS" ;;
+    *) echo "unexpected statement" >&2; return 1 ;;
+  esac
+}
+OLD_MYSQL=(fake_mysql)
+"""
+
+
+class LeftoverStagedPrincipalPreflightTest(unittest.TestCase):
+    def run_preflight(self, user_table, info_schema="0"):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "preflight.sh"
+            sql_log = Path(tmp) / "sql.log"
+            script.write_text(
+                "set -euo pipefail\n" + FAKE_MYSQL + extract_preflight() + "echo PREFLIGHT_PASSED\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                ["bash", str(script)],
+                capture_output=True,
+                text=True,
+                env=dict(os.environ, FAKE_USER_TABLE=user_table, FAKE_IS=info_schema, FAKE_SQL_LOG=str(sql_log)),
+                check=False,
+            )
+            sql = sql_log.read_text(encoding="utf-8") if sql_log.exists() else ""
+        return result, sql
+
+    def test_zero_leftovers_passes_with_count_only(self):
+        result, sql = self.run_preflight("0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("count=0 source=mysql.user", result.stdout)
+        self.assertIn("PREFLIGHT_PASSED", result.stdout)
+        self.assertIn("SELECT COUNT(*) FROM mysql.user WHERE User REGEXP '^atr_[0-9]{12}_[0-9a-f]{6}$'", sql)
+        for statement in sql.splitlines():
+            self.assertTrue(statement.startswith("SELECT COUNT("), statement)
+
+    def test_leftover_principal_refuses_before_any_create(self):
+        result, sql = self.run_preflight("1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("count=1 source=mysql.user", result.stdout)
+        self.assertIn("leftover staged principal exists without a state file", result.stdout)
+        self.assertIn("Founder review required", result.stdout)
+        self.assertNotIn("PREFLIGHT_PASSED", result.stdout)
+        self.assertNotIn("atr_", result.stdout.replace("count=1", ""))
+
+    def test_falls_back_to_information_schema_when_mysql_user_is_unreadable(self):
+        result, sql = self.run_preflight("deny", "0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("count=0 source=information_schema.USER_PRIVILEGES", result.stdout)
+        self.assertIn("covers only grantees visible to it", result.stdout)
+        self.assertIn("GRANTEE REGEXP '^''atr_[0-9]{12}_[0-9a-f]{6}''@'", sql)
+        self.assertNotIn("ERROR", result.stdout + result.stderr)
+
+    def test_fallback_leftover_refuses(self):
+        result, _ = self.run_preflight("deny", "2")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("count=2 source=information_schema.USER_PRIVILEGES", result.stdout)
+
+    def test_uncountable_or_malformed_count_refuses(self):
+        for user_table, info_schema in (("deny", "deny"), ("", "0"), ("1\n2", "0"), ("abc", "0")):
+            with self.subTest(user_table=user_table, info_schema=info_schema):
+                result, _ = self.run_preflight(user_table, info_schema)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("PREFLIGHT_PASSED", result.stdout)
+
+    def test_pattern_matches_the_staged_name_generator_and_runs_before_it(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        generator = "STAGED_DB_USERNAME=\"atr_$(date -u '+%y%m%d%H%M%S')_$(openssl rand -hex 3)\""
+        self.assertIn(generator, workflow)
+        self.assertLess(workflow.index("# END leftover-staged-principal preflight"), workflow.index(generator))
+        self.assertLess(workflow.index('if [[ -f "$STATE_FILE" ]]; then'), workflow.index("# BEGIN leftover-staged-principal preflight"))
+        pattern = re.search(r"STAGED_PRINCIPAL_REGEXP='([^']+)'", workflow).group(1)
+        self.assertRegex("atr_261015083000_a1b2c3", pattern)
+        self.assertNotRegex("admin", pattern)
+        self.assertNotRegex("atr_2610150830_a1b2c3", pattern)
 
 
 if __name__ == "__main__":

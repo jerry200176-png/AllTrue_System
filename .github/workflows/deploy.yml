@@ -2521,6 +2521,34 @@ jobs:
             exit 1
           }
 
+          # BEGIN leftover-staged-principal preflight (read-only; counts only)
+          # A staged principal with no state file means an earlier attempt left an
+          # account behind. Refuse before creating another one.
+          STAGED_PRINCIPAL_REGEXP='^atr_[0-9]{12}_[0-9a-f]{6}$'
+          LEFTOVER_SOURCE=mysql.user
+          if ! LEFTOVER_COUNT="$("${OLD_MYSQL[@]}" -e \
+            "SELECT COUNT(*) FROM mysql.user WHERE User REGEXP '${STAGED_PRINCIPAL_REGEXP}'" 2>/dev/null)"; then
+            # Without SELECT on mysql.user, information_schema.USER_PRIVILEGES lists only
+            # the grantees this principal may see, so the count can miss accounts.
+            LEFTOVER_SOURCE=information_schema.USER_PRIVILEGES
+            LEFTOVER_COUNT="$("${OLD_MYSQL[@]}" -e \
+              "SELECT COUNT(DISTINCT GRANTEE) FROM information_schema.USER_PRIVILEGES WHERE GRANTEE REGEXP '^''${STAGED_PRINCIPAL_REGEXP:1:-1}''@'" 2>/dev/null)" || {
+              echo "::error::Cannot count existing staged principals; no account was changed. Founder review required."
+              exit 1
+            }
+            echo "::warning::mysql.user is not readable by the old principal; leftover count uses ${LEFTOVER_SOURCE}, which covers only grantees visible to it."
+          fi
+          [[ "$LEFTOVER_COUNT" =~ ^[0-9]+$ ]] || {
+            echo "::error::Unexpected staged-principal count shape; no account was changed."
+            exit 1
+          }
+          echo "Leftover staged-principal preflight: count=${LEFTOVER_COUNT} source=${LEFTOVER_SOURCE}"
+          if (( LEFTOVER_COUNT > 0 )); then
+            echo "::error::A leftover staged principal exists without a state file; no account was changed. Founder review required before any rerun."
+            exit 1
+          fi
+          # END leftover-staged-principal preflight
+
           STAGED_DB_USERNAME="atr_$(date -u '+%y%m%d%H%M%S')_$(openssl rand -hex 3)"
           STAGED_DB_PASSWORD="$(openssl rand -hex 32)"
           export OLD_DB_USERNAME OLD_ACCOUNT_HOST STAGED_DB_USERNAME STAGED_DB_PASSWORD
@@ -2562,7 +2590,9 @@ jobs:
           def quote(value):
               return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
-          print(f"CREATE USER {quote(new_user)}@{quote(old_host)} IDENTIFIED BY {quote(new_pass)};")
+          # Validate every line before emitting anything: a refusal must send zero
+          # bytes to the piped mysql, so CREATE USER can never run on its own.
+          statements = [f"CREATE USER {quote(new_user)}@{quote(old_host)} IDENTIFIED BY {quote(new_pass)};"]
           count = 0
           stripped = 0
           for raw in sys.stdin:
@@ -2585,10 +2615,11 @@ jobs:
                   raise SystemExit("SHOW GRANTS contains authentication material; refusing unsafe replay")
               replacement = match.group(1) + quote(new_user) + "@" + quote(old_host)
               statement = head + replacement + tail
-              print(statement.rstrip(";") + ";")
+              statements.append(statement.rstrip(";") + ";")
               count += 1
           if count == 0:
               raise SystemExit("SHOW GRANTS returned no statements")
+          sys.stdout.write("\n".join(statements) + "\n")
           # Counts only: never the grant text, a hash or a password.
           print(f"grant replay: {count} statement(s), {stripped} authentication clause(s) stripped", file=sys.stderr)
           PY
