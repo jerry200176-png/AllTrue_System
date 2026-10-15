@@ -132,7 +132,9 @@ const badges = (r) => {
   if (r.waiting_confirm > 0) out.push({ tone: 'warning', label: '已回報付款，待你核對入帳' });
   if (r.owed_now > 0) out.push({ tone: 'danger', label: '未繳' });
   else if (r.owed_later > 0 && !out.length) out.push({ tone: 'neutral', label: '還沒到期' });
-  else if (!out.length) out.push({ tone: 'success', label: '已收' });
+  else if (!out.length && r.unbilled > 0) out.push({ tone: 'neutral', label: '還沒開帳單' });
+  // in-app #407: 已收 only when the server says a contract is paid (never a payment date alone).
+  else if (!out.length) out.push(r.has_paid ? { tone: 'success', label: '已收' } : { tone: 'neutral', label: '沒有待收款項' });
   return out;
 };
 const metaLine = (r) => [r.overdue_days > 0 ? `逾期 ${r.overdue_days} 天` : '', r.last_paid_at ? `最近繳費 ${formatDate(r.last_paid_at)}` : ''].filter(Boolean).join('・');
