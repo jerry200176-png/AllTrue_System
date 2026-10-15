@@ -8,6 +8,8 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
+import { checkWorkflow as productionSecretTriggerProblems } from './ci/production-secret-triggers.mjs';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 
@@ -275,6 +277,28 @@ function checkTrackedProductionDeployWorkflows() {
   }
 }
 
+/** P1: production SSH secrets never start from an unreviewed (non-main) ref. */
+function checkProductionSecretTriggers() {
+  let tracked = [];
+  try {
+    tracked = execSync('git ls-files .github/workflows/*.yml .github/workflows/*.yaml', { cwd: root, encoding: 'utf8' })
+      .split('\n')
+      .filter(Boolean);
+  } catch (err) {
+    add('P1', '.github/workflows', 0, `cannot list tracked workflows (${err.message.split('\n')[0]}); failing closed`);
+    return;
+  }
+  if (tracked.length === 0) {
+    add('P1', '.github/workflows', 0, 'no tracked workflows found; failing closed');
+    return;
+  }
+  for (const rel of tracked) {
+    for (const p of productionSecretTriggerProblems(read(rel))) {
+      add('P1', rel, p.line, `production SSH secret workflow triggers on ${p.event} (${p.reason}); use workflow_dispatch, schedule, or push to main only (never pull_request)`);
+    }
+  }
+}
+
 function checkIndexGovernanceLogic() {
   if (!exists('docs/INDEX.md')) return;
   const index = read('docs/INDEX.md');
@@ -399,6 +423,7 @@ function main() {
     checkPolicyI4();
     checkMemPalaceE7();
     checkExecutionI1();
+    checkProductionSecretTriggers();
     checkCodeImportBarrier();
     checkContractChangeGate();
   }
