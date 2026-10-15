@@ -1,0 +1,225 @@
+name: Bug Phase-A request write-back (Founder-approved, default OFF)
+# governance-capability: in-app-lifecycle-writeback
+
+# Cloud path for Phase A (new -> triaged + public reply), which cloud agents cannot dispatch.
+# A merged request file alone never writes: the `write` job uses the `production-activation`
+# environment (main-only, Founder required reviewer), so every run waits for the Founder to approve
+# that exact run after reading the request sha256, bug IDs and per-bug decisions logged before it.
+# Kill switch: repository variable PHASE_A_REQUEST_ENABLED must equal `true`; absent = skip.
+# Turning it on is a separate Founder approval. The Pi write reuses bug-phase-a-triage.yml's script.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/bug-phase-a-triage.request.md'
+
+concurrency:
+  group: bug-phase-a-request
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      enabled: ${{ steps.switch.outputs.enabled }}
+    steps:
+      - name: Check kill switch
+        id: switch
+        env:
+          PHASE_A_REQUEST_ENABLED: ${{ vars.PHASE_A_REQUEST_ENABLED }}
+        run: |
+          if [[ "$PHASE_A_REQUEST_ENABLED" == "true" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::PHASE_A_REQUEST_ENABLED is not true; Phase-A request path is off, nothing written."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  validate:
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      plan_b64: ${{ steps.check.outputs.plan_b64 }}
+      sha256: ${{ steps.check.outputs.sha256 }}
+      issues: ${{ steps.check.outputs.issues }}
+      count: ${{ steps.check.outputs.count }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            scripts/ci/bug-phase-a-request.mjs
+            scripts/lib/userFacingCopyGate.mjs
+            operations/closeout/bug-phase-a-triage.request.md
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Validate request (IDs, scope, issue links, reply rules)
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQ: operations/closeout/bug-phase-a-triage.request.md
+        run: |
+          set -euo pipefail
+          T=scripts/ci/bug-phase-a-request.mjs
+          echo '{}' > issues.json
+          for n in $(node "$T" issues --request "$REQ" --repo "$GITHUB_REPOSITORY"); do
+            one="$(gh api "repos/$GITHUB_REPOSITORY/issues/$n" --jq '{title, body, is_pull_request: (.pull_request != null)}' || echo null)"
+            jq --arg n "$n" --argjson v "$one" '.[$n] = $v' issues.json > i.tmp && mv i.tmp issues.json
+          done
+          node "$T" validate --request "$REQ" --repo "$GITHUB_REPOSITORY" --issues issues.json --out plan.json
+          {
+            echo "plan_b64=$(jq -c '{request_sha256, plan}' plan.json | base64 -w0)"
+            echo "sha256=$(jq -r .request_sha256 plan.json)"
+            echo "issues=$(jq -r '[.plan[].issue_number] | unique | join(" ")' plan.json)"
+            echo "count=$(jq '.plan | length' plan.json)"
+          } >> "$GITHUB_OUTPUT"
+          jq -r '"Request sha256: `\(.request_sha256)`", "", "| bug | issue | disposition | reply sha256 |", "|---|---|---|---|", (.plan[] | "| \(.bug_id) | #\(.issue_number) | \(.disposition) | `\(.reply_sha256[0:12])` |")' plan.json >> "$GITHUB_STEP_SUMMARY"
+
+  preflight:
+    needs: validate
+    if: needs.validate.outputs.count != '0'
+    runs-on: ubuntu-latest
+    environment: production-ssh
+    timeout-minutes: 10
+    outputs:
+      apply: ${{ steps.decide.outputs.apply }}
+      decision: ${{ steps.decide.outputs.decision }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+            scripts/ci/bug-phase-a-request.mjs
+            scripts/ci/bug-phase-a-probe.sh
+            scripts/lib/userFacingCopyGate.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Read current status (read-only)
+        id: decide
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PLAN_B64: ${{ needs.validate.outputs.plan_b64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          echo "$PLAN_B64" | base64 -d > plan.json
+          PROBE_B64="$(jq -c '[.plan[] | {bug_id, issue_url, reply_sha256}]' plan.json | base64 -w0)"
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "PLAN_B64='$PROBE_B64' bash -s" < scripts/ci/bug-phase-a-probe.sh > probe.out
+          grep '^PHASEA_PROBE ' probe.out | tail -1 | cut -d' ' -f2- > probe.json
+          rc=0; DECISION="$(node scripts/ci/bug-phase-a-request.mjs decide --plan plan.json --probe probe.json)" || rc=$?
+          echo "Request sha256 $(jq -r .request_sha256 plan.json); decision $DECISION"
+          echo "decision=$DECISION" >> "$GITHUB_OUTPUT"
+          echo "Decision (before approval): \`$DECISION\`" >> "$GITHUB_STEP_SUMMARY"
+          [[ "$rc" == 0 ]] || { echo "::error::refused, nothing written: $(jq -c .refused <<<"$DECISION")"; exit 1; }
+          echo "apply=$(jq -c .apply <<<"$DECISION")" >> "$GITHUB_OUTPUT"
+          [[ "$(jq -c .apply <<<"$DECISION")" != "[]" ]] || echo "::notice::already applied: $(jq -c .already_applied <<<"$DECISION"); no write needed"
+
+  write:
+    needs: [validate, preflight]
+    if: needs.preflight.result == 'success' && needs.preflight.outputs.apply != '[]' && needs.preflight.outputs.apply != ''
+    runs-on: ubuntu-latest
+    environment: production-activation
+    timeout-minutes: 15
+    outputs:
+      written: ${{ steps.write.outputs.written }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+            .github/workflows/bug-phase-a-triage.yml
+            operations/closeout/bug-phase-a-triage.request.md
+            scripts/ci/bug-phase-a-request.mjs
+            scripts/ci/bug-phase-a-probe.sh
+            scripts/lib/userFacingCopyGate.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Re-check approved request, then write
+        id: write
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PLAN_B64: ${{ needs.validate.outputs.plan_b64 }}
+          APPROVED_SHA256: ${{ needs.validate.outputs.sha256 }}
+          APPROVED_APPLY: ${{ needs.preflight.outputs.apply }}
+          REQ: operations/closeout/bug-phase-a-triage.request.md
+        run: |
+          set -euo pipefail
+          T=scripts/ci/bug-phase-a-request.mjs
+          [[ "$(sha256sum "$REQ" | cut -d' ' -f1)" == "$APPROVED_SHA256" ]] || { echo "::error::request changed after approval"; exit 1; }
+          mkdir -p ~/.ssh && echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          pi() { ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes "${PI_SSH_USER}@${PI_SSH_HOST}" "$@"; }
+          echo "$PLAN_B64" | base64 -d > plan.json
+          PROBE_B64="$(jq -c '[.plan[] | {bug_id, issue_url, reply_sha256}]' plan.json | base64 -w0)"
+          probe() { pi "PLAN_B64='$PROBE_B64' bash -s" < scripts/ci/bug-phase-a-probe.sh | grep '^PHASEA_PROBE ' | tail -1 | cut -d' ' -f2- > probe.json; }
+          probe
+          NOW="$(node "$T" decide --plan plan.json --probe probe.json | jq -c .apply)" || { echo "::error::refused on re-check"; exit 1; }
+          [[ "$NOW" == "$APPROVED_APPLY" ]] || { echo "::error::state changed since approval ($APPROVED_APPLY -> $NOW); submit a new request"; exit 1; }
+          node "$T" remote --workflow .github/workflows/bug-phase-a-triage.yml --out remote.sh
+          DONE='[]'
+          for id in $(jq -r '.[]' <<<"$APPROVED_APPLY"); do
+            URL="$(jq -r --argjson id "$id" '.plan[] | select(.bug_id == $id) | .issue_url' plan.json)"
+            DISP="$(jq -r --argjson id "$id" '.plan[] | select(.bug_id == $id) | .disposition' plan.json)"
+            REPLY_B64="$(node "$T" reply --request "$REQ" --bug-id "$id")"
+            [[ "$URL" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ && "$DISP" =~ ^[a-z_]+$ && "$REPLY_B64" =~ ^[A-Za-z0-9+/=]+$ ]] || exit 1
+            pi "BUG_ID='$id' GITHUB_ISSUE_URL='$URL' DISPOSITION='$DISP' CLOSE_AS_LOGGED='false' PUBLIC_REPLY_B64='$REPLY_B64' bash -s" < remote.sh > "write-$id.out" \
+              || { echo "::error::write failed for bug $id"; exit 1; }
+            DONE="$(jq -c --argjson id "$id" '. + [$id]' <<<"$DONE")"
+            echo "written=$DONE" >> "$GITHUB_OUTPUT"
+            echo "bug $id written"
+          done
+          probe
+          AFTER="$(node "$T" decide --plan plan.json --probe probe.json)" || { echo "::error::post-write check refused"; exit 1; }
+          [[ "$(jq -c '.apply' <<<"$AFTER")" == "[]" ]] || { echo "::error::post-write check: not all applied"; exit 1; }
+
+  record:
+    needs: [gate, validate, preflight, write]
+    if: always() && needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Execution record (IDs, counts, hashes only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA256: ${{ needs.validate.outputs.sha256 }}
+          ISSUES: ${{ needs.validate.outputs.issues }}
+          DECISION: ${{ needs.preflight.outputs.decision || '{}' }}
+          WRITTEN: ${{ needs.write.outputs.written || '[]' }}
+          RESULTS: ${{ format('validate={0} preflight={1} write={2}', needs.validate.result, needs.preflight.result, needs.write.result) }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          set -euo pipefail
+          jq -n --arg run "$GITHUB_RUN_ID" --arg sha "$SHA256" --arg results "$RESULTS" --argjson d "$DECISION" --argjson written "$WRITTEN" \
+            '{run_id: $run, request_sha256: $sha, results: $results, written: $written, already_applied: ($d.already_applied // []),
+              refused: [($d.refused // [])[] | .bug_id],
+              counts: {written: ($written | length), already_applied: (($d.already_applied // []) | length), refused: (($d.refused // []) | length)}}' | tee record.json
+          { echo '```json'; cat record.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$FAILED" == "true" ]]; then
+            for n in $ISSUES; do
+              gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "Phase-A request run $GITHUB_RUN_ID failed ($RESULTS). Request sha256 $SHA256. Written: $WRITTEN. No other write is confirmed; see the run log."
+            done
+            exit 1
+          fi

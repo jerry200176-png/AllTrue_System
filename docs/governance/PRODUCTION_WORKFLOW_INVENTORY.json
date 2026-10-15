@@ -149,6 +149,18 @@
       "required": "Phase-A bug intake SOP",
       "future_state": "Retain as explicit lifecycle writeback unless Founder approves a replacement"
     },
+    "bug-phase-a-request.yml": {
+      "classification": "in-app-lifecycle-writeback",
+      "production_mutation": "confirmed",
+      "trigger": "push to main on operations/closeout/bug-phase-a-triage.request.md; skipped unless vars.PHASE_A_REQUEST_ENABLED == 'true' (default OFF)",
+      "production_command_or_path": "bug-phase-a-triage.yml Pi script (BugReportService::changeStatus new->triaged and addComment), extracted at run time",
+      "authorization": "production-activation environment (Founder required reviewer) on every run, after request sha256, bug IDs and read-only per-bug decisions are logged; at most 5 IDs, status new only",
+      "concurrency": "bug-phase-a-request; cancel-in-progress=false; per-bug re-check after approval and idempotent no-op on rerun",
+      "rollback": "Set PHASE_A_REQUEST_ENABLED off or revert; manual status/comment correction per report",
+      "canonical": false,
+      "required": "Founder Q3: cloud-usable Phase-A write-back with per-run approval",
+      "future_state": "Disabled until a separate Founder approval sets the kill switch"
+    },
     "bug-phase-c-allowlist.yml": {
       "classification": "in-app-lifecycle-writeback",
       "production_mutation": "confirmed",
