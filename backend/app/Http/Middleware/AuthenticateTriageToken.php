@@ -47,8 +47,7 @@ final class AuthenticateTriageToken
         // #4100: on the billing snapshot the path id is a contract; the report it was read for is the query param.
         $isBilling = $route instanceof Route && $route->getName() === 'triage.student-classes.billing-snapshot';
         // Founder (留下查詢紀錄): every billing query by a resolved token is logged, refusals included; others keep the cap.
-        $alwaysAudit = $isBilling && $tokenId !== null && in_array($status, [404, 422], true);
-        if (!$alwaysAudit) {
+        if (!($isBilling && $tokenId !== null && in_array($status, [404, 422], true))) {
             if ($status >= 400 && !TriageTokenService::mayAuditDenial($request->ip())) { return; } // every refusal or failure shares the cross-route cap
         }
         $bugId = $request->route('id');

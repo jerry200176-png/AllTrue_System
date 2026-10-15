@@ -52,9 +52,7 @@ class BugReportContractLink extends Model
         if (!$link instanceof self) {
             return false;
         }
-        $affected = self::live()->whereKey($linkId)
-            ->update(['revoked_at' => now(), 'revoked_by' => $actorId, 'active' => null]);
-        if ($affected !== 1) {
+        if (self::live()->whereKey($linkId)->update(['revoked_at' => now(), 'revoked_by' => $actorId, 'active' => null]) !== 1) {
             return false;
         }
         SecurityAuditEvent::append('triage_contract_link.revoked', 'success', [
@@ -88,7 +86,6 @@ class BugReportContractLink extends Model
     {
         $query = self::query();
         $query->whereNull('revoked_at')->where('active', true);
-
         return $query;
     }
 }
