@@ -211,6 +211,11 @@ class StudentClassController extends Controller
         // F7 S3b: one resolver batch per page is the payment_status authority (B7).
         $courseStatuses = app(\App\Services\BillingPayableResolver::class)
             ->courseStatusesByStudentClassIds($classIds, $classes->items());
+        // #4114 (Founder Q3): contracts with a standing receipt; a `paid` without one is the legacy flag alone (需核對).
+        // Package expansion stays inside the caller's campuses (teachers / super admin: the owner-student rule alone).
+        $paymentEvidence = app(\App\Services\BillingPayableResolver::class)->validPaymentEvidence(
+            $classIds, [], $role === 'teacher' || empty($campusIds) ? null : array_map('intval', (array) $campusIds)
+        )['classes'];
         $pendingReportByClassId = !empty($classIds)
             ? PaymentReport::query()
                 ->whereIn('StudentClassID', $classIds)
@@ -326,7 +331,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses) {
+        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses, $paymentEvidence) {
             $class->setAttribute('subject_name', $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null);
@@ -626,6 +631,11 @@ class StudentClassController extends Controller
                     $class->setAttribute('payment_status', $monthlyPayment['payment_status']);
                 }
             }
+            // Display only: payment_status stays `paid` (not owed, no reminder); the client shows 需核對, not 已收.
+            // Only a real legacy flag (Paid=1 / package paid) qualifies: a derived `paid` (e.g. a Charge=0 single
+            // period, 0 >= 0) has no flag to verify (#4174 review).
+            $class->setAttribute('legacy_paid_flag_only', $effectivePaid && !$isTutoringCourse && !ContractMoneyState::isWaived($class)
+                && $class->getAttribute('payment_status') === 'paid' && !isset($paymentEvidence[(int) $class->ID]));
             $class->setAttribute('status', empty($class->Stop) ? 'active' : 'inactive');
             $class->closed_reason = $class->closed_reason ?? null;
             $class->trial_converted_to_id = $class->trial_converted_to_id
