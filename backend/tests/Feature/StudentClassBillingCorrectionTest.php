@@ -385,7 +385,8 @@ class StudentClassBillingCorrectionTest extends TestCase
     /**
      * Regression for the 2026-10-15T16:00Z CI break: whether the tail
      * reservation is retired depends only on its Taipei calendar date versus
-     * Taipei "today", never on the runner's wall clock or UTC date.
+     * Taipei "today", never on the runner's wall clock or UTC date, and the
+     * confirmed write retires exactly the rows the preview listed.
      *
      * @dataProvider taipeiMidnightBoundaryProvider
      */
@@ -418,6 +419,16 @@ class StudentClassBillingCorrectionTest extends TestCase
         } else {
             $preview->assertJsonCount(0, 'affected_scheduled_sessions');
         }
+
+        // The confirmed write must retire exactly what the preview listed: a
+        // tail dated yesterday (Taipei) stays scheduled after confirmation.
+        $confirmed = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
+            'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認跨午夜邊界',
+            'confirmation_token' => $preview->json('confirmation_token'),
+        ])->assertOk();
+        $this->assertSame($preview->json('affected_scheduled_sessions'), $confirmed->json('cancelled_scheduled_sessions'));
+        $this->assertDatabaseHas('ClassSession', ['id' => $scheduled->last()->id, 'Status' => $tailIsRetirable ? 'cancelled' : 'scheduled']);
+        $this->assertSame(2, ClassSession::whereIn('id', $scheduled->take(2)->pluck('id'))->where('Status', 'scheduled')->count());
     }
 
     /** @return array<string, array{string, bool}> */

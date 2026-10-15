@@ -739,6 +739,19 @@ class ContractSessionSchedule
     /** @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}> */
     public static function scheduledSessionsBeyondCountFromRows($allActive, int $newCount): array
     {
+        return self::describeRetirableSessions(self::retirableScheduledRowsBeyondCount($allActive, $newCount));
+    }
+
+    /**
+     * The single eligibility rule for which reservations a reduced count may
+     * retire: purchased-quota rows past the retained count that are still
+     * `scheduled` and dated today or later in the app timezone. The billing
+     * correction preview lists exactly these rows and its confirmed write
+     * cancels exactly these rows, so the two cannot drift. Past-dated
+     * `scheduled` rows (attendance not yet recorded) are never retired here.
+     */
+    public static function retirableScheduledRowsBeyondCount($allActive, int $newCount)
+    {
         $today = Carbon::today()->toDateString();
 
         return self::purchasedQuotaSessionRows($allActive)->slice($newCount)
@@ -746,6 +759,13 @@ class ContractSessionSchedule
                 return strtolower((string) $session->getAttribute('Status')) === 'scheduled'
                     && substr((string) $session->getAttribute('SessionDate'), 0, 10) >= $today;
             })
+            ->values();
+    }
+
+    /** @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}> */
+    public static function describeRetirableSessions($sessions): array
+    {
+        return $sessions
             ->map(static fn (ClassSession $session): array => [
                 'session_id' => (int) $session->getKey(),
                 'session_date' => substr((string) $session->getAttribute('SessionDate'), 0, 10),

@@ -87,7 +87,10 @@ final class BillingCorrection
                 ->where('StudentClassID', $classId)
                 ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
                 ->lockForUpdate()->get();
-            $currentAffected = ContractSessionSchedule::scheduledSessionsBeyondCountFromRows($lockedSessions, $newCount);
+            // Same rows the preview listed and the token binds: one eligibility
+            // rule for both, evaluated once under the session locks.
+            $retirableSessions = ContractSessionSchedule::retirableScheduledRowsBeyondCount($lockedSessions, $newCount);
+            $currentAffected = ContractSessionSchedule::describeRetirableSessions($retirableSessions);
             $currentUsageDiagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$classId])[$classId] ?? [];
             $currentObservedUsed = max(
                 (int) ($currentUsageDiagnostic['expected_used'] ?? 0),
@@ -161,7 +164,10 @@ final class BillingCorrection
                 $adjustedInvoiceCount++;
             }
 
-            app(ContractSessionSchedule::class)->cancelExcessScheduledSessionsFromRows($lockedSessions, $newCount);
+            foreach ($retirableSessions as $session) {
+                $session->Status = 'cancelled';
+                $session->save();
+            }
             SessionDeductionService::recomputeCounters($classId);
             $fresh = $locked->fresh();
 
