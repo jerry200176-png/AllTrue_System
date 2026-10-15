@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { appOriginOf, installReadOnlyAppGuard } from './fixtures/readOnlyAppGuard.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -203,35 +204,13 @@ async function assertResponsive(page, label) {
 
 // Enforce the read-only contract in the browser, like the other production
 // acceptance specs: no POST/PUT/PATCH/DELETE from any page may reach the app's
-// own origin (the acceptance base URL). Adoption telemetry is answered locally
-// with 204 and never reaches the server; every other write to the app origin is
-// aborted and fails the test in afterEach. Third-party hosts (e.g. Sentry
-// ingest) are not intercepted and never count as a violation. The route is
-// installed on the browser context so popup pages are guarded too.
-const READ_ONLY_METHODS = ['GET', 'HEAD', 'OPTIONS'];
-const APP_ORIGIN = (() => {
-  try { return new URL(BASE || '').origin; } catch { return ''; }
-})();
+// own origin (the acceptance base URL). See fixtures/readOnlyAppGuard.js:
+// adoption telemetry is answered locally with 204, every other write to the
+// app origin is aborted and fails the test in afterEach, and third-party hosts
+// (e.g. Sentry ingest) are never intercepted. The route is installed on the
+// browser context so popup pages are guarded too.
+const APP_ORIGIN = appOriginOf(BASE);
 let blockedAppWrites = [];
-
-async function installReadOnlyAppGuard(context) {
-  blockedAppWrites = [];
-  await context.route((url) => APP_ORIGIN !== '' && url.origin === APP_ORIGIN, async (route) => {
-    const request = route.request();
-    const method = request.method().toUpperCase();
-    if (READ_ONLY_METHODS.includes(method)) {
-      await route.continue();
-      return;
-    }
-    const { pathname } = new URL(request.url());
-    if (method === 'POST' && pathname === '/api/v1/adoption/events') {
-      await route.fulfill({ status: 204, body: '' });
-      return;
-    }
-    blockedAppWrites.push({ method, path: pathname });
-    await route.abort('blockedbyclient');
-  });
-}
 
 test.describe('production acceptance — calendar/course parity', () => {
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
@@ -241,7 +220,7 @@ test.describe('production acceptance — calendar/course parity', () => {
   test.use({ serviceWorkers: 'block' });
 
   test.beforeEach(async ({ context }) => {
-    await installReadOnlyAppGuard(context);
+    blockedAppWrites = await installReadOnlyAppGuard(context, APP_ORIGIN);
   });
 
   test.afterEach(async () => {
