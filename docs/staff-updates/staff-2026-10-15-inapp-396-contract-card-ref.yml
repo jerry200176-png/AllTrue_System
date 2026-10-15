@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-15-inapp-396-contract-card-ref
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 合約卡會顯示課程編號
+    summary: 學生帳務裡每張合約卡的標題旁，會顯示和表格一樣的「課程 000123」。
+    items:
+      - category: improved
+        text: 合約卡標題旁顯示「課程 000123」，跟收款佇列、學生清單的編號一樣，對照更快。
+    source_refs:
+      - "changelog:2026-10-15:inapp-396-contract-card-ref"
