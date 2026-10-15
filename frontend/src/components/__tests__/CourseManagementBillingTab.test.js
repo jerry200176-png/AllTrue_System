@@ -79,7 +79,7 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain("if (isTutoringCourse(course)) return '無須繳費';");
     expect(source).toContain("if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';");
     expect(source).toContain('const shouldShowPaymentAction = (course) => !isTutoringCourse(course);');
-    expect(source).toContain('v-if="shouldShowPaymentAction(row.course)"');
+    expect(source).toContain('v-if="showsBillingRowNextAction(row.course)"');
     expect(source).toContain('v-if="isTutoringBillingAnomaly(row.course)"');
     expect(source).toContain('輔導課不應產生付款義務');
     expect(source).toContain("return 'tag-no-payment';");
