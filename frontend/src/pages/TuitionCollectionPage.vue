@@ -101,7 +101,7 @@
       <details class="tc-summary-disclosure" v-if="rows.length">
         <summary>
           <span>收款摘要</span>
-          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・已開帳單未結清 {{ formatCurrency(totalOutstanding) }}<template v-if="unbilledOutstandingCount">（另 {{ unbilledOutstandingCount }} 筆待處理尚未開帳單，不計入金額）</template></span>
+          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・已開帳單未結清 {{ formatCurrency(totalOutstanding) }}<template v-if="unbilledOutstandingCount">（另 {{ unbilledOutstandingCount }} 筆待處理尚未開帳單，不計入金額）</template><template v-if="pendingReviewRows.length">・另有金額待確認 {{ pendingReviewRows.length }} 筆 {{ formatCurrency(pendingReviewTotal) }}，未計入未收</template></span>
           <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
         </summary>
         <div class="tc-summary tc-summary--strip" aria-label="催繳摘要">
@@ -131,6 +131,10 @@
               </span>
               <span v-else class="tc-rate">收款率 —</span>
             </span>
+          </div>
+          <div v-if="pendingReviewRows.length" class="tc-card tc-card--warn" data-testid="tc-pending-review-card">
+            <span class="tc-card-num">{{ formatCurrency(pendingReviewTotal) }}</span>
+            <span class="tc-card-label">{{ TUITION_STATUS_CONFIG.amount_review.label }} {{ pendingReviewRows.length }} 筆（未計入未收）</span>
           </div>
         </div>
       </details>
@@ -461,6 +465,11 @@
                         改成「{{ WAIVED_LABEL }}」
                       </button>
                     </template>
+
+                    <!-- Founder D2: open bill whose amount is still to be confirmed; no collection action until confirmed -->
+                    <span v-if="r.payment_status === 'amount_review'" class="tc-renew-hint" data-testid="tc-amount-review-hint">
+                      {{ TUITION_STATUS_CONFIG.amount_review.label }}：請先到「已結清 → 待核對」確認金額，未計入未收
+                    </span>
 
                     <!-- pending_report: confirm / reject -->
                     <template v-if="r.payment_status === 'pending_report'">
@@ -1089,7 +1098,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { summarizeBatchResults } from '../lib/batchResultSummary.js';
-import { rowOwedTotal } from '../lib/studentBillingRows.js';
+import { isPendingConfirmation, pendingReviewAmount, rowOwedTotal } from '../lib/studentBillingRows.js';
 import { useToast } from '../composables/useToast';
 import { authedFetch } from '../lib/authedFetch.js';
 import * as paymentActions from '../lib/paymentActions.js';
@@ -1321,6 +1330,8 @@ const TAB_DEFS = [
   // Short tab name; every pointer to this tab uses the same REPORT_STATUS_LABELS.pending.
   { key: 'pending_report', label: REPORT_STATUS_LABELS.pending },
   { key: 'pending_reconciliation', label: TUITION_STATUS_CONFIG.pending_reconciliation.label },
+  // Founder D2: listed on its own; never counted in 待處理 / 未繳 or summed into the money totals.
+  { key: 'amount_review', label: TUITION_STATUS_CONFIG.amount_review.label },
   { key: 'renewal', label: '續課/將到期' },
 ];
 
@@ -1724,7 +1735,7 @@ function isOverdue(r) {
 }
 
 const tabCounts = computed(() => {
-  const c = { action: 0, all: 0, unpaid: 0, overdue: 0, pending_report: 0, pending_reconciliation: 0, renewal: 0 };
+  const c = { action: 0, all: 0, unpaid: 0, overdue: 0, pending_report: 0, pending_reconciliation: 0, amount_review: 0, renewal: 0 };
   rows.value.forEach(r => {
     c.all++;
     const ps = r.payment_status;
@@ -1733,6 +1744,7 @@ const tabCounts = computed(() => {
     if (ps === 'unpaid' || ps === 'partial') c.unpaid++;
     else if (ps === 'pending_report') c.pending_report++;
     else if (ps === 'pending_reconciliation') c.pending_reconciliation++;
+    else if (ps === 'amount_review') c.amount_review++;
     else if (ps === 'paid' || ps === 'renew_needed' || ps === 'monthly_due_soon') c.renewal++;
   });
   return c;
@@ -1762,8 +1774,12 @@ const unbilledOutstandingCount = computed(() => rows.value
 // ═══ Summary Computed ═══
 const overdueRows = computed(() => rows.value.filter(isOverdue));
 const overdueTotal = computed(() => overdueRows.value.reduce((s, r) => s + rowOwedTotal(r), 0));
-const totalCharge = computed(() => rows.value.reduce((s, r) => s + (r.payable_amount || 0), 0));
-const totalPaid = computed(() => rows.value.reduce((s, r) => s + (r.paid_amount || 0), 0));
+// Founder D2: 金額待確認 rows are listed and totalled on their own line, never in the confirmed money totals.
+const confirmedRows = computed(() => rows.value.filter((r) => !isPendingConfirmation(r)));
+const pendingReviewRows = computed(() => rows.value.filter(isPendingConfirmation));
+const pendingReviewTotal = computed(() => pendingReviewRows.value.reduce((s, r) => s + pendingReviewAmount(r), 0));
+const totalCharge = computed(() => confirmedRows.value.reduce((s, r) => s + (r.payable_amount || 0), 0));
+const totalPaid = computed(() => confirmedRows.value.reduce((s, r) => s + (r.paid_amount || 0), 0));
 const collectionRate = computed(() => {
   if (totalCharge.value === 0) return null;
   return Math.round((totalPaid.value / totalCharge.value) * 100);
@@ -1817,6 +1833,7 @@ const tabFilteredRows = computed(() => {
   if (tab === 'unpaid') return rows.value.filter(r => r.payment_status === 'unpaid' || r.payment_status === 'partial');
   if (tab === 'pending_report') return rows.value.filter(r => r.payment_status === 'pending_report');
   if (tab === 'pending_reconciliation') return rows.value.filter(r => r.payment_status === 'pending_reconciliation');
+  if (tab === 'amount_review') return rows.value.filter(r => r.payment_status === 'amount_review');
   if (tab === 'renewal') return rows.value.filter(r => ['paid', 'renew_needed', 'monthly_due_soon'].includes(r.payment_status));
   return rows.value;
 });
@@ -2509,6 +2526,9 @@ watch(() => props.initialTab, (tab) => {
   } else if (tab === 'pending_reconciliation') {
     activeAccountingTab.value = 'receivables';
     activeTab.value = 'pending_reconciliation';
+  } else if (tab === 'amount_review') {
+    activeAccountingTab.value = 'receivables';
+    activeTab.value = 'amount_review';
   } else if (tab === 'renewal') {
     activeAccountingTab.value = 'receivables';
     activeTab.value = 'renewal';

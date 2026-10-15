@@ -146,9 +146,42 @@ class AccountingPendingQueueTest extends TestCase
 
         $alert = $this->tuitionRow($c);
         $this->assertNotNull($alert, 'an issued, open invoice must not vanish from 帳務中心');
-        $this->assertSame('pending_reconciliation', $alert['payment_status']);
+        // Founder D2: findable, but marked 金額待確認 and never the confirmed-unpaid status.
+        $this->assertSame('amount_review', $alert['payment_status']);
+        $this->assertTrue($alert['amount_pending_confirmation']);
+        $this->assertSame(4400, $alert['pending_confirmation_amount']);
         $this->assertSame(4400, $alert['outstanding']);
-        $this->assertSame([4400], array_column($alert['open_periods'], 'outstanding'));
+    }
+
+    public function test_review_required_pending_amount_uses_the_settled_page_basis(): void
+    {
+        // Founder D2: 帳務中心 and 已結清 → 待核對 show one amount for the same contract, both from the
+        // resolver's course-level `outstanding`. A partial payment makes the basis differ from the bill total.
+        $c = $this->reviewMonthlyCourse();
+        $invoice = $this->invoice($c, 4400, 'partial', 1000);
+        $invoice->forceFill(['billing_period' => '2026-09'])->save();
+
+        $verdict = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $c->ID])[(int) $c->ID];
+        $this->assertSame('review_required', $verdict['status'], 'fixture must reproduce the review verdict');
+
+        $settled = $this->row($c);
+        $this->assertTrue($settled['payment_review_required']);
+        $alert = $this->tuitionRow($c);
+        $this->assertSame('amount_review', $alert['payment_status']);
+        $this->assertSame((int) $verdict['outstanding'], $alert['pending_confirmation_amount']);
+        $this->assertSame($settled['outstanding_amount'], $alert['pending_confirmation_amount']);
+        $this->assertSame(3400, $alert['pending_confirmation_amount']);
+    }
+
+    public function test_confirmed_unpaid_rows_are_not_marked_pending_confirmation(): void
+    {
+        $c = $this->course(['closed_reason' => 'settled']);
+        $this->invoice($c, 8800);
+
+        $alert = $this->tuitionRow($c);
+        $this->assertSame('pending_reconciliation', $alert['payment_status']);
+        $this->assertFalse($alert['amount_pending_confirmation']);
+        $this->assertSame(0, $alert['pending_confirmation_amount']);
     }
 
     private function reviewMonthlyCourse(): StudentClass

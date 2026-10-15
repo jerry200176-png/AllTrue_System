@@ -889,6 +889,7 @@ const paymentAlertBadgeText = (s) => {
 const unpaidAlertLabel = (s) => {
   if (s.payment_status === 'partial') return '繳一部分';
   if (s.payment_status === 'pending_report') return '待核對入帳';
+  if (s.payment_status === 'amount_review') return '金額待確認';
   return '未繳';
 };
 

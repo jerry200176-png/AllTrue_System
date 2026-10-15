@@ -32,6 +32,13 @@ export function owedItems(r) {
   return [{ amount: Number(r.payable_outstanding ?? 0), due_date: r.due_date || null }];
 }
 
+/**
+ * Founder D2 (in-app #394): an open bill whose amount is still to be confirmed (server `amount_review`).
+ * The amount is the server's `pending_confirmation_amount`, the same resolver field 已結清 → 待核對 shows.
+ */
+export const isPendingConfirmation = (r) => r?.payment_status === 'amount_review' || r?.amount_pending_confirmation === true;
+export const pendingReviewAmount = (r) => (isPendingConfirmation(r) ? Math.max(0, Number(r.pending_confirmation_amount ?? 0)) : 0);
+
 /** Total a row still owes (all open bills); the campus-wide totals use the same number as the student list. */
 export const rowOwedTotal = (r) => owedItems(r).reduce((sum, it) => sum + Math.max(0, it.amount), 0);
 
@@ -55,7 +62,8 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (!byStudent.has(id)) {
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
-        waiting_confirm: 0, overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [],
+        waiting_confirm: 0, pending_review_amount: 0, pending_review_count: 0,
+        overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [],
       });
     }
     return byStudent.get(id);
@@ -71,11 +79,17 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (r.id != null) {
       row.contracts.push({
         id: Number(r.id), ref: formatCourseRef(r.id), period: formatCoursePeriod(r.course_start_date, r.course_end_date),
-        owed: OWING.has(r.payment_status) ? rowOwedTotal(r) : 0, paid: Number(r.paid_amount ?? 0),
+        owed: OWING.has(r.payment_status) && !isPendingConfirmation(r) ? rowOwedTotal(r) : 0, paid: Number(r.paid_amount ?? 0),
+        pending_review: pendingReviewAmount(r),
       });
     }
     if (r.payment_status === 'pending_report') row.waiting_confirm += 1;
-    if (!OWING.has(r.payment_status)) continue;
+    // Founder D2: 金額待確認 is its own line, never part of owed_now / owed_later.
+    if (pendingReviewAmount(r) > 0) {
+      row.pending_review_amount += pendingReviewAmount(r);
+      row.pending_review_count += 1;
+    }
+    if (!OWING.has(r.payment_status) || isPendingConfirmation(r)) continue;
     const items = owedItems(r);
     if (!items.some((it) => it.amount > 0)) continue;
     row.open_contracts += 1;
@@ -102,5 +116,6 @@ export const STUDENT_FILTERS = {
   all: { label: '全部', test: () => true },
   owing: { label: '有未繳', test: (r) => r.owed_now > 0 },
   confirm: { label: '待核對入帳', test: (r) => r.waiting_confirm > 0 },
-  clear: { label: '已繳清', test: (r) => r.owed_now === 0 && r.owed_later === 0 && r.waiting_confirm === 0 },
+  pending_review: { label: '金額待確認', test: (r) => r.pending_review_count > 0 },
+  clear: { label: '已繳清', test: (r) => r.owed_now === 0 && r.owed_later === 0 && r.waiting_confirm === 0 && !r.pending_review_count },
 };

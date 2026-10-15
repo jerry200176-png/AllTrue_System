@@ -400,6 +400,7 @@ class AlertController extends Controller
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
 
                 $paymentStatus = ContractMoneyState::alertStatus($sc, $paidAmount, $charge, $pendingReportId !== null, $verdict['status'] ?? null);
+                $amountPendingConfirmation = false;
                 if ($row['alert_type'] === 'pending_reconciliation') {
                     // F7 S3a: stopped + still owing per the invoices. Every amount the UI reads comes from the
                     // resolver's cumulative totals (never the single-invoice payable or the contract price).
@@ -413,6 +414,13 @@ class AlertController extends Controller
                         'payable_invoice_id' => $stopped['current_invoice_id'],
                     ]);
                     $paymentStatus = $pendingReportId !== null ? 'pending_report' : 'pending_reconciliation';
+                    // Founder D2 (in-app #394): a review_required bill stays findable, but its amount is still to be
+                    // confirmed. Its own status keeps it out of every confirmed-unpaid count and total. The amount is
+                    // the resolver's `outstanding`, the same field 已結清 → 待核對 (AccountingController::settledCourses) shows.
+                    if (($stopped['status'] ?? null) === 'review_required') {
+                        $amountPendingConfirmation = true;
+                        $paymentStatus = 'amount_review';
+                    }
                 }
 
                 $newerInfo = $newerCourseMap[$classId] ?? null;
@@ -451,6 +459,8 @@ class AlertController extends Controller
                             ->values()->all()
                         : [],
                     'payment_status'           => $paymentStatus,
+                    'amount_pending_confirmation' => $amountPendingConfirmation,
+                    'pending_confirmation_amount' => $amountPendingConfirmation ? $outstanding : 0,
                     'latest_payment_report_id' => $pendingReportId,
                     'has_newer_course'         => $newerInfo !== null,
                     'newer_course_id'          => $newerInfo['newer_id'] ?? null,

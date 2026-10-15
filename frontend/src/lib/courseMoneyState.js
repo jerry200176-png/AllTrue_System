@@ -148,6 +148,8 @@ export const TUITION_STATUS_CONFIG = {
   pending_report: { label: '已回報付款，待你核對入帳', cls: 'st-pending' },
   // Tab/badge (in-app #395-#404): no money received yet. Rows say ended vs paused (ENDED_/PAUSED_PENDING_LABEL).
   pending_reconciliation: { label: '課已結束，尚未收款', cls: 'st-pending' },
+  // Founder D2 (in-app #394): an open bill whose amount is still to be confirmed. Listed, never summed as owed.
+  amount_review: { label: '金額待確認', cls: 'st-pending' },
   paid: { label: '已收', cls: 'st-paid' },
   renew_needed: { label: '續課待處理', cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期', cls: 'st-monthly' },
