@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-15-duplicate-billing-button
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 課程帳務列只留一顆「在這裡看帳務」
+    summary: 已繳費或待核對的課程，帳務列不再並排兩顆一樣的按鈕。
+    items:
+      - category: fixed
+        text: 已繳費或待核對的課程，帳務列不再出現兩顆一模一樣的「在這裡看帳務」按鈕。
+    source_refs:
+      - "changelog:2026-10-15:duplicate-billing-button"
