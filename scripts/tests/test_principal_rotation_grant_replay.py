@@ -189,80 +189,110 @@ def extract_preflight():
     return textwrap.dedent(match.group(1)) + "\n"
 
 
-FAKE_MYSQL = r"""
-fake_mysql() {
-  local sql="${@: -1}"
-  printf '%s\n' "$sql" >> "$FAKE_SQL_LOG"
-  case "$sql" in
-    *"FROM mysql.user"*)
-      [[ "$FAKE_USER_TABLE" == deny ]] && { echo "ERROR 1142 SELECT command denied" >&2; return 1; }
-      printf '%s\n' "$FAKE_USER_TABLE" ;;
-    *"information_schema.USER_PRIVILEGES"*)
-      [[ "$FAKE_IS" == deny ]] && { echo "ERROR 1044 denied" >&2; return 1; }
-      printf '%s\n' "$FAKE_IS" ;;
-    *) echo "unexpected statement" >&2; return 1 ;;
-  esac
-}
-OLD_MYSQL=(fake_mysql)
+FAKE_MYSQL_PY = r"""
+import os, re, sys
+sql = sys.argv[-1]
+with open(os.environ["FAKE_SQL_LOG"], "a", encoding="utf-8") as log:
+    log.write(sql + "\n")
+table = os.environ["FAKE_USER_TABLE"]
+if "FROM mysql.user" not in sql:
+    sys.exit("unexpected statement")
+if table == "deny":
+    sys.exit("ERROR 1142 (42000): SELECT command denied")
+if table.startswith("raw:"):
+    print(table[4:])
+    sys.exit(0)
+m = re.fullmatch(
+    r"SELECT COUNT\(\*\) FROM mysql\.user WHERE User REGEXP '([^']+)' "
+    r"AND NOT \(User = '([^']+)' AND Host = '([^']+)'\)",
+    sql,
+)
+if not m:
+    sys.exit("unexpected preflight SQL shape")
+pattern, ex_user, ex_host = m.groups()
+rows = [r.rsplit("@", 1) for r in table.split(",") if r]
+print(sum(1 for u, h in rows if re.search(pattern, u) and not (u == ex_user and h == ex_host)))
 """
 
 
 class LeftoverStagedPrincipalPreflightTest(unittest.TestCase):
-    def run_preflight(self, user_table, info_schema="0"):
+    def run_preflight(self, user_table, old_user="admin", old_host="%"):
         with tempfile.TemporaryDirectory() as tmp:
+            fake = Path(tmp) / "fake_mysql.py"
+            fake.write_text(FAKE_MYSQL_PY, encoding="utf-8")
             script = Path(tmp) / "preflight.sh"
             sql_log = Path(tmp) / "sql.log"
             script.write_text(
-                "set -euo pipefail\n" + FAKE_MYSQL + extract_preflight() + "echo PREFLIGHT_PASSED\n",
+                "set -euo pipefail\n"
+                f"OLD_MYSQL=({sys.executable} -I {fake} --batch)\n"
+                f"OLD_DB_USERNAME='{old_user}'\nOLD_ACCOUNT_HOST='{old_host}'\n"
+                + extract_preflight()
+                + "echo PREFLIGHT_PASSED\n",
                 encoding="utf-8",
             )
             result = subprocess.run(
                 ["bash", str(script)],
                 capture_output=True,
                 text=True,
-                env=dict(os.environ, FAKE_USER_TABLE=user_table, FAKE_IS=info_schema, FAKE_SQL_LOG=str(sql_log)),
+                env=dict(os.environ, FAKE_USER_TABLE=user_table, FAKE_SQL_LOG=str(sql_log)),
                 check=False,
             )
             sql = sql_log.read_text(encoding="utf-8") if sql_log.exists() else ""
         return result, sql
 
+    def assert_refused(self, result):
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("PREFLIGHT_PASSED", result.stdout)
+
     def test_zero_leftovers_passes_with_count_only(self):
-        result, sql = self.run_preflight("0")
+        result, sql = self.run_preflight("admin@%,root@localhost")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("count=0 source=mysql.user", result.stdout)
         self.assertIn("PREFLIGHT_PASSED", result.stdout)
-        self.assertIn("SELECT COUNT(*) FROM mysql.user WHERE User REGEXP '^atr_[0-9]{12}_[0-9a-f]{6}$'", sql)
-        for statement in sql.splitlines():
-            self.assertTrue(statement.startswith("SELECT COUNT("), statement)
+        self.assertEqual(len(sql.splitlines()), 1)
+        self.assertTrue(sql.startswith("SELECT COUNT(*) FROM mysql.user WHERE User REGEXP '^atr_[0-9]{12}_[0-9a-f]{6}$'"))
 
     def test_leftover_principal_refuses_before_any_create(self):
-        result, sql = self.run_preflight("1")
-        self.assertNotEqual(result.returncode, 0)
+        result, _ = self.run_preflight("admin@%,atr_261015083000_a1b2c3@%")
+        self.assert_refused(result)
         self.assertIn("count=1 source=mysql.user", result.stdout)
         self.assertIn("leftover staged principal exists without a state file", result.stdout)
         self.assertIn("Founder review required", result.stdout)
-        self.assertNotIn("PREFLIGHT_PASSED", result.stdout)
-        self.assertNotIn("atr_", result.stdout.replace("count=1", ""))
+        self.assertNotIn("atr_", result.stdout + result.stderr)
 
-    def test_falls_back_to_information_schema_when_mysql_user_is_unreadable(self):
-        result, sql = self.run_preflight("deny", "0")
+    def test_current_principal_is_excluded_so_a_later_rotation_can_run(self):
+        current = "atr_261015083000_a1b2c3"
+        result, sql = self.run_preflight(f"{current}@%,root@localhost", old_user=current, old_host="%")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("count=0 source=information_schema.USER_PRIVILEGES", result.stdout)
-        self.assertIn("covers only grantees visible to it", result.stdout)
-        self.assertIn("GRANTEE REGEXP '^''atr_[0-9]{12}_[0-9a-f]{6}''@'", sql)
-        self.assertNotIn("ERROR", result.stdout + result.stderr)
+        self.assertIn("count=0 source=mysql.user (current principal excluded)", result.stdout)
+        self.assertIn(f"AND NOT (User = '{current}' AND Host = '%')", sql)
+        self.assertNotIn(current, result.stdout + result.stderr)
 
-    def test_fallback_leftover_refuses(self):
-        result, _ = self.run_preflight("deny", "2")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("count=2 source=information_schema.USER_PRIVILEGES", result.stdout)
+    def test_exclusion_is_exact_user_and_host(self):
+        current = "atr_261015083000_a1b2c3"
+        cases = {
+            "same user, other host": f"{current}@%,{current}@localhost",
+            "other staged user": f"{current}@%,atr_261016090000_ffeedd@%",
+        }
+        for name, table in cases.items():
+            with self.subTest(case=name):
+                result, _ = self.run_preflight(table, old_user=current, old_host="%")
+                self.assert_refused(result)
+                self.assertIn("count=1 source=mysql.user", result.stdout)
 
-    def test_uncountable_or_malformed_count_refuses(self):
-        for user_table, info_schema in (("deny", "deny"), ("", "0"), ("1\n2", "0"), ("abc", "0")):
-            with self.subTest(user_table=user_table, info_schema=info_schema):
-                result, _ = self.run_preflight(user_table, info_schema)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertNotIn("PREFLIGHT_PASSED", result.stdout)
+    def test_unreadable_mysql_user_fails_closed_without_fallback(self):
+        result, sql = self.run_preflight("deny")
+        self.assert_refused(result)
+        self.assertIn("cannot read mysql.user, so it cannot list all accounts", result.stdout)
+        self.assertIn("Founder review required", result.stdout)
+        self.assertNotIn("information_schema", sql)
+        self.assertNotIn("ERROR 1142", result.stdout + result.stderr)
+
+    def test_malformed_count_refuses(self):
+        for raw in ("raw:", "raw:1\n2", "raw:abc", "raw:-1"):
+            with self.subTest(raw=raw):
+                result, _ = self.run_preflight(raw)
+                self.assert_refused(result)
 
     def test_pattern_matches_the_staged_name_generator_and_runs_before_it(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -270,6 +300,8 @@ class LeftoverStagedPrincipalPreflightTest(unittest.TestCase):
         self.assertIn(generator, workflow)
         self.assertLess(workflow.index("# END leftover-staged-principal preflight"), workflow.index(generator))
         self.assertLess(workflow.index('if [[ -f "$STATE_FILE" ]]; then'), workflow.index("# BEGIN leftover-staged-principal preflight"))
+        self.assertLess(workflow.index('OLD_ACCOUNT_HOST="${CURRENT_ACCOUNT#'), workflow.index("# BEGIN leftover-staged-principal preflight"))
+        self.assertNotIn("information_schema", extract_preflight().split("# account behind.")[1].split("STAGED_PRINCIPAL_REGEXP=")[1])
         pattern = re.search(r"STAGED_PRINCIPAL_REGEXP='([^']+)'", workflow).group(1)
         self.assertRegex("atr_261015083000_a1b2c3", pattern)
         self.assertNotRegex("admin", pattern)
