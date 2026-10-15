@@ -53,6 +53,11 @@ describe('issuedBillRateNote', () => {
     expect(issuedBillRateNote(course(), [])).toBeNull();
   });
 
+  it('is hidden when the contract Charge is zero or negative', () => {
+    expect(issuedBillRateNote(course({ current_contract_charge: 0 }), [bill()])).toBeNull();
+    expect(issuedBillRateNote(course({ current_contract_charge: -1 }), [bill()])).toBeNull();
+  });
+
   it('is hidden for non-count-mode contracts and when the server sends no value', () => {
     expect(issuedBillRateNote(course({ schedule_mode: 'date' }), [bill()])).toBeNull();
     expect(issuedBillRateNote(course({ current_contract_charge: null }), [bill()])).toBeNull();

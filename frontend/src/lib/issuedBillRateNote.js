@@ -12,7 +12,8 @@ const isOpenUnpaid = (inv) => ['unpaid', ''].includes(String(inv.status ?? ''))
 
 export function issuedBillRateNote(course, invoices) {
   const current = course?.current_contract_charge;
-  if (current == null || course.paid || course.package_id) return null;
+  // A zero Charge (free or not yet priced) is no basis to suggest voiding a bill.
+  if (current == null || Number(current) <= 0 || course.paid || course.package_id) return null;
   if (String(course.schedule_mode || 'count') !== 'count') return null;
   const open = (invoices || []).filter((inv) => Number(inv.student_class_id) === Number(course.id) && inv.status !== 'void');
   // Only a single issued bill can be compared with the whole contract; several open bills need a person.
