@@ -1,6 +1,5 @@
 // merge-freeze: one parser for operations/merge-freeze.yaml, shared by auto-merge-safe.yml and land-queue.
-// Fail closed: the file is "not frozen" only when it has exactly one top-level `frozen: false` line.
-// Anything else (missing, unreadable, malformed, duplicate keys, other values) is frozen.
+// Fail closed: not frozen only with exactly one top-level `frozen: false` line; anything else is frozen.
 import { execFileSync } from 'node:child_process';
 
 export const FREEZE_PATH = 'operations/merge-freeze.yaml';
@@ -31,7 +30,7 @@ export function readFreeze(repo, ref = 'main', run = (args) => execFileSync('gh'
   }
 }
 
-// CLI: node merge-freeze.mjs <repo> [ref] -> prints frozen=<bool> and reason=<text> (GITHUB_OUTPUT format).
+// CLI: node merge-freeze.mjs <repo> [ref] -> frozen=<bool> and reason=<text> (GITHUB_OUTPUT format).
 if (import.meta.url === `file://${process.argv[1]}`) {
   const f = readFreeze(process.argv[2], process.argv[3] || 'main');
   console.log(`frozen=${f.frozen}\nreason=${f.reason.replace(/[\r\n]+/g, ' ')}`);

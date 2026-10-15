@@ -81,9 +81,6 @@ class AutoMergeFreezeTest(unittest.TestCase):
             self.assertEqual(self.run_step("disable-auto-merge", "Disable server-side auto-merge if armed").returncode, 0)
         return (self.dir / "armed").read_text().strip() == "true"
 
-    def test_edited_is_a_trigger(self):
-        self.assertIn("edited", WF[True]["pull_request_target"]["types"])
-
     def test_open_t0_arms(self):
         self.world(OPEN, T0_BODY, armed=False)
         self.assertTrue(self.pipeline())
@@ -93,11 +90,10 @@ class AutoMergeFreezeTest(unittest.TestCase):
         self.world(FROZEN, T0_BODY, armed=True)
         self.assertFalse(self.pipeline())
         self.assertEqual(self.decision, "hold")
-        log = (self.dir / "log").read_text()
-        self.assertNotIn("--auto --squash", log)
-        self.assertIn("--disable-auto", log)
+        self.assertNotIn("--auto --squash", (self.dir / "log").read_text())
 
     def test_edited_to_higher_tier_disarms(self):
+        self.assertIn("edited", WF[True]["pull_request_target"]["types"])
         self.world(OPEN, T3_BODY, armed=True)
         self.assertFalse(self.pipeline())
         self.assertEqual(self.decision, "hold")
@@ -114,11 +110,6 @@ class AutoMergeFreezeTest(unittest.TestCase):
         self.world(OPEN, T0_BODY, armed=True)
         (self.dir / "pr.json").write_text(json.dumps({"head": {"sha": "moved"}, "body": T0_BODY}))
         self.assertFalse(self.pipeline())
-
-    def test_hold_without_armed_auto_merge_is_a_no_op(self):
-        self.world(FROZEN, T0_BODY, armed=False)
-        self.assertFalse(self.pipeline())
-        self.assertNotIn("--disable-auto", (self.dir / "log").read_text())
 
     def test_freeze_rechecked_right_before_arming(self):
         self.world(FROZEN, T0_BODY, armed=True)

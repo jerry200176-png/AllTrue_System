@@ -5,11 +5,9 @@ name: Autonomous safe merge
 # the classifier already on main, and asks GitHub to enable server-side
 # auto-merge for T0/T1 work. GitHub still enforces the required status checks
 # and branch rules before the merge is actually performed.
-#
-# Merge freeze: operations/merge-freeze.yaml on the base branch (read through the
-# API, never from the PR head). Frozen, unreadable or malformed = hold. Every hold
-# (freeze, higher tier after an `edited` body, classifier failure) disarms any
-# auto-merge that is already armed.
+# Merge freeze: operations/merge-freeze.yaml on the base branch via the API, never
+# the PR head; frozen, unreadable or malformed = hold. Every hold (freeze, higher
+# tier after an `edited` body, failed classification) disarms an armed auto-merge.
 on:
   pull_request_target:
     branches: [main]

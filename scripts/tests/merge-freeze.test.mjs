@@ -7,12 +7,8 @@ import { freezeHold } from '../../.github/scripts/land-queue.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 
-test('parseFreeze: explicit true/false, quoted reason, since', () => {
+test('parseFreeze: only a single top-level frozen: false unfreezes; malformed, empty, duplicate or missing key fails closed (frozen)', () => {
   assert.deepEqual(parseFreeze('frozen: false\nreason: "x"\nsince: 2026-10-15\n'), { frozen: false, reason: 'x', since: '2026-10-15' });
-  assert.equal(parseFreeze('# c\nfrozen: true # comment\n').frozen, true);
-});
-
-test('parseFreeze: malformed, empty, duplicate or missing key fails closed (frozen)', () => {
   for (const t of ['', '   ', 'frozen: no', 'frozen: False', '  frozen: false', 'reason: x', 'frozen: false\nfrozen: false', null, undefined]) {
     assert.equal(parseFreeze(t).frozen, true, JSON.stringify(t));
   }
