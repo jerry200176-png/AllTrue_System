@@ -8,32 +8,24 @@ use App\Models\Invoice;
 use App\Models\StudentClass;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 
 /**
- * #4100 (Founder option B): read-only billing numbers of ONE contract for a triage token, so an AI
- * can check the G-009 / G-011 money state behind an open bug report without production SSH.
- * IDs and numbers only (no names, notes or free text). Succeeds only when ALL hold:
- *   - config('triage_tokens.billing_snapshot_enabled') is true (default false);
- *   - a super admin linked exactly this (bug_report_id, contract) and the link is not revoked;
- *   - the report is open; and the report campus equals the contract student's campus.
- * Every other case is the same 404, so guessed IDs, other contracts and other campuses look alike.
- * Checked on every request (no caching). AuthenticateTriageToken audits every call.
+ * #4100 (Founder option B): read-only billing IDs + numbers (no names, notes or free text) of ONE contract for a
+ * triage token, to check G-009 / G-011 money state behind an open report. Needs ALL of: the switch on (default
+ * off), a live super-admin link of exactly this (report, contract), an open report, and the same campus. Anything
+ * else is the same 404; re-checked on every request; AuthenticateTriageToken audits every call.
  */
 class TriageBillingSnapshotController extends Controller
 {
     public function show(Request $request, int $id)
     {
         if (!(bool) config('triage_tokens.billing_snapshot_enabled')) {
-            return $this->notFound();
+            return response()->json(['message' => 'Not found'], 404);
         }
-        $validator = Validator::make($request->query(), [
-            'bug_report_id' => ['required', 'integer', 'min:1'],
-        ]);
-        if ($validator->fails()) {
-            return response()->json(['message' => 'Invalid query', 'errors' => $validator->errors()], 422);
+        $bugId = filter_var($request->query('bug_report_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($bugId === false) {
+            return response()->json(['message' => 'Invalid query: bug_report_id must be a positive integer'], 422);
         }
-        $bugId = (int) $validator->validated()['bug_report_id'];
 
         $linked = BugReportContractLink::live()
             ->where('bug_report_id', $bugId)->where('student_class_id', $id)->exists();
@@ -43,15 +35,10 @@ class TriageBillingSnapshotController extends Controller
         $course = $bug instanceof BugReport && $campusId !== null && $campusId === (int) $bug->getAttribute('CampusID')
             ? StudentClass::query()->whereKey($id)->first() : null;
         if (!$course instanceof StudentClass) {
-            return $this->notFound();
+            return response()->json(['message' => 'Not found'], 404);
         }
 
         return response()->json($this->snapshot($course, $bugId));
-    }
-
-    private function notFound()
-    {
-        return response()->json(['message' => 'Not found'], 404);
     }
 
     /** @return array<string, mixed> */
@@ -68,9 +55,7 @@ class TriageBillingSnapshotController extends Controller
         $invoices = Invoice::query()->where('StudentClassID', $courseId)->orderBy('id')
             ->get(['id', 'Status', 'TotalAmount', 'PaidAmount', 'billing_period', 'IssueDate']);
         $payments = $invoices->isEmpty() ? collect() : DB::table('Payment')
-            ->whereIn('InvoiceID', $invoices->pluck('id')->all())
-            ->orderBy('id')
-            ->get(['id', 'InvoiceID', 'Amount']);
+            ->whereIn('InvoiceID', $invoices->pluck('id')->all())->orderBy('id')->get(['id', 'InvoiceID', 'Amount']);
 
         return [
             'student_class_id' => $courseId,
@@ -90,18 +75,10 @@ class TriageBillingSnapshotController extends Controller
             'remaining_sessions' => $course->RemainingSessions === null ? null : (int) $course->RemainingSessions,
             'stop' => (int) $course->Stop,
             'invoices' => $invoices->map(fn (Invoice $invoice) => [
-                'id' => (int) $invoice->id,
-                'status' => (string) $invoice->Status,
-                'total' => (int) $invoice->TotalAmount,
-                'paid' => (int) $invoice->PaidAmount,
-                'period' => $invoice->billing_period,
-                'issue_date' => substr((string) $invoice->IssueDate, 0, 10),
+                'id' => (int) $invoice->id, 'status' => (string) $invoice->Status, 'total' => (int) $invoice->TotalAmount,
+                'paid' => (int) $invoice->PaidAmount, 'period' => $invoice->billing_period, 'issue_date' => substr((string) $invoice->IssueDate, 0, 10),
             ])->values()->all(),
-            'payments' => $payments->map(fn (object $payment) => [
-                'id' => (int) $payment->id,
-                'invoice_id' => (int) $payment->InvoiceID,
-                'amount' => (int) $payment->Amount,
-            ])->values()->all(),
+            'payments' => $payments->map(fn (object $payment) => ['id' => (int) $payment->id, 'invoice_id' => (int) $payment->InvoiceID, 'amount' => (int) $payment->Amount])->values()->all(),
         ];
     }
 }

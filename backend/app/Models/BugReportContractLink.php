@@ -34,18 +34,12 @@ class BugReportContractLink extends Model
     /** Campus of the contract's student; null when the contract or its Student row is missing or the campus is unset (fail closed). */
     public static function contractCampusId(int $studentClassId): ?int
     {
-        $campusId = \Illuminate\Support\Facades\DB::table('StudentClass')
-            ->join('Student', 'Student.id', '=', 'StudentClass.StudentID')
-            ->where('StudentClass.ID', $studentClassId)
-            ->value('Student.CampusID');
-
+        $campusId = \Illuminate\Support\Facades\DB::table('StudentClass')->join('Student', 'Student.id', '=', 'StudentClass.StudentID')
+            ->where('StudentClass.ID', $studentClassId)->value('Student.CampusID');
         return $campusId !== null && (int) $campusId > 0 ? (int) $campusId : null;
     }
 
-    /**
-     * Conditional soft revoke: only a still-live row is touched, so two concurrent revokes cannot both
-     * succeed and the loser writes no audit row. Returns true when THIS call revoked it.
-     */
+    /** Conditional soft revoke (only a live row is touched): of two concurrent revokes only THIS-call-true one audits. */
     public static function revoke(int $linkId, ?int $actorId, string $reason): bool
     {
         $link = self::query()->whereKey($linkId)->first(['id', 'bug_report_id', 'student_class_id']);

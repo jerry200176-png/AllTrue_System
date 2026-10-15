@@ -39,9 +39,6 @@ class TriageContractLinkController extends Controller
         if (!$bug instanceof BugReport) {
             return $this->reject('bug_report_not_found');
         }
-        if (!in_array((string) $bug->getAttribute('status'), BugReportContractLink::OPEN_REPORT_STATUSES, true)) {
-            return $this->reject('bug_report_not_open');
-        }
         $courseCampusId = BugReportContractLink::contractCampusId($courseId);
         if ($courseCampusId === null) {
             return $this->reject('contract_not_found');
@@ -51,7 +48,7 @@ class TriageContractLinkController extends Controller
         }
 
         try {
-            // Lock the report and re-check it is still open: a concurrent close either commits first (refused here)
+            // The open check runs ONLY under the report's row lock: a concurrent close either commits first (refused here)
             // or waits for this insert and then revokes it through BugReport::saved. No link outlives a close.
             $link = DB::transaction(function () use ($bugId, $courseId, $user) {
                 $locked = BugReport::query()->whereKey($bugId)->lockForUpdate()->first(['id', 'status']);
@@ -69,7 +66,9 @@ class TriageContractLinkController extends Controller
         if (!$link instanceof BugReportContractLink) {
             return $this->reject('bug_report_not_open');
         }
-        $this->audit('triage_contract_link.created', $user, $link);
+        SecurityAuditEvent::append('triage_contract_link.created', 'success', [
+            'actor_type' => 'user', 'actor_id' => $user->getKey(), 'subject_type' => 'student_class', 'subject_id' => (int) $link->student_class_id,
+        ], ['bug_report_ref' => SecurityAuditEvent::ref('bug_report', $bugId), 'client_ip_ref' => SecurityAuditEvent::ref('ip', $request->ip())]);
 
         return response()->json(['id' => (int) $link->id, 'bug_report_id' => $bugId, 'student_class_id' => $courseId], 201);
     }
@@ -88,18 +87,5 @@ class TriageContractLinkController extends Controller
     private function reject(string $code)
     {
         return response()->json(['message' => 'Cannot link this report and contract', 'code' => $code], 422);
-    }
-
-    private function audit(string $event, User $actor, BugReportContractLink $link): void
-    {
-        SecurityAuditEvent::append($event, 'success', [
-            'actor_type' => 'user',
-            'actor_id' => $actor->getKey(),
-            'subject_type' => 'student_class',
-            'subject_id' => (int) $link->student_class_id,
-        ], [
-            'bug_report_ref' => SecurityAuditEvent::ref('bug_report', (int) $link->bug_report_id),
-            'client_ip_ref' => SecurityAuditEvent::ref('ip', request()->ip()),
-        ]);
     }
 }

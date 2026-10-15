@@ -85,9 +85,11 @@ final class TriageBillingSnapshotTest extends TestCase
         $this->getJson("/api/v1/triage/student-classes/999999/billing-snapshot?bug_report_id={$bug->id}", $this->bearer())->assertNotFound();
         $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot?bug_report_id=999999", $this->bearer())->assertNotFound();
 
-        $bug->forceFill(['status' => 'closed'])->save(); // report closed after linking: link revoked for good
+        $bug->forceFill(['status' => 'resolved'])->save(); // report resolved after linking: link revoked for good
         $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']);
         $this->assertNotNull(DB::table('bug_report_contract_links')->where('id', $linkId)->value('revoked_at'));
+        $this->assertNull(DB::table('bug_report_contract_links')->where('id', $linkId)->value('active'));
+        $this->assertSame('report_closed', json_decode(DB::table('security_audit_events')->where('event_type', 'triage_contract_link.revoked')->orderBy('id')->value('metadata'), true)['reason_code']);
         $bug->forceFill(['status' => 'triaged'])->save(); // reopening does NOT bring access back
         $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']);
         $this->deleteJson("/api/v1/admin/triage-contract-links/{$linkId}", [], $this->as($this->admin))->assertNotFound();
@@ -100,20 +102,6 @@ final class TriageBillingSnapshotTest extends TestCase
         $this->assertSame((int) $this->admin->id, (int) DB::table('bug_report_contract_links')->where('id', $relinkId)->value('revoked_by'));
         $this->assertSame(2, DB::table('bug_report_contract_links')->count()); // soft revoke keeps history
         $this->assertSame(2, DB::table('security_audit_events')->where('event_type', 'triage_contract_link.revoked')->count()); // one per real revoke
-    }
-
-    public function test_resolving_a_report_revokes_its_link(): void
-    {
-        $course = $this->course($this->campus);
-        $bug = $this->bug($this->campus, 'in_progress');
-        $linkId = (int) $this->link($bug, $course)->assertCreated()->json('id');
-
-        $bug->forceFill(['status' => 'resolved'])->save();
-        $bug->forceFill(['status' => 'in_progress'])->save();
-        $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound();
-        $row = DB::table('security_audit_events')->where('event_type', 'triage_contract_link.revoked')->first();
-        $this->assertSame('report_closed', json_decode($row->metadata, true)['reason_code']);
-        $this->assertNull(DB::table('bug_report_contract_links')->where('id', $linkId)->value('active'));
     }
 
     public function test_every_refused_snapshot_query_is_audited_past_the_denial_cap(): void
@@ -323,13 +311,11 @@ final class TriageBillingSnapshotTest extends TestCase
         return User::create(['LoginName' => "billing-triage{$n}@test.com", 'Name' => "Triage {$n}", 'PSW' => 'secret', 'type' => $type, 'phone' => (string) (910000000 + $n)]);
     }
 
-    /** @return array<string, string> */
     private function as(User $user): array
     {
         return ['X-User-Id' => (string) $user->id, 'Accept' => 'application/json'];
     }
 
-    /** @return array<string, string> */
     private function bearer(): array
     {
         return ['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json'];
