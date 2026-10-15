@@ -131,9 +131,16 @@ class AlertController extends Controller
         $stoppedResults = $stoppedResults->get();
         $stoppedStatuses = $this->payableResolver
             ->courseStatusesByStudentClassIds($stoppedResults->pluck('ID')->all(), $stoppedResults);
+        // In-app #394: a review_required verdict built from issued invoices still owes their open balance.
+        // Dropping it hid the student from the list (shown 已收) while the drawer showed 未繳 for the same bill.
+        // Review without an issued invoice is an estimate only and stays in 已結清 → 待核對.
         $pendingSettlementResults = $stoppedResults
-            ->filter(fn ($c) => in_array($stoppedStatuses[(int) $c->ID]['status'] ?? null, ['unpaid', 'partial', 'unbilled'], true)
-                && (int) $stoppedStatuses[(int) $c->ID]['outstanding'] > 0)
+            ->filter(function (StudentClass $c) use ($stoppedStatuses) {
+                $s = $stoppedStatuses[(int) $c->ID] ?? [];
+
+                return (in_array($s['status'] ?? null, ['unpaid', 'partial', 'unbilled'], true) && (int) ($s['outstanding'] ?? 0) > 0)
+                    || BillingPayableResolver::isAmountPendingConfirmation($c, $s);
+            })
             ->values();
 
         $countPkgQuery = CoursePackage::query()
@@ -392,6 +399,7 @@ class AlertController extends Controller
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
 
                 $paymentStatus = ContractMoneyState::alertStatus($sc, $paidAmount, $charge, $pendingReportId !== null, $verdict['status'] ?? null);
+                $amountPendingConfirmation = false;
                 if ($row['alert_type'] === 'pending_reconciliation') {
                     // F7 S3a: stopped + still owing per the invoices. Every amount the UI reads comes from the
                     // resolver's cumulative totals (never the single-invoice payable or the contract price).
@@ -405,6 +413,14 @@ class AlertController extends Controller
                         'payable_invoice_id' => $stopped['current_invoice_id'],
                     ]);
                     $paymentStatus = $pendingReportId !== null ? 'pending_report' : 'pending_reconciliation';
+                    // Founder D2 (in-app #394): a review_required bill stays findable, but its amount is still to be
+                    // confirmed. Its own status keeps it out of every confirmed-unpaid count and total. The amount is
+                    // the resolver's `outstanding`, the same field 已結清 → 待核對 (AccountingController::settledCourses) shows.
+                    if ($sc instanceof StudentClass && BillingPayableResolver::isAmountPendingConfirmation($sc, $stopped)) {
+                        $amountPendingConfirmation = true;
+                        // A pending parent report stays confirmable (確認入帳 / 待核對入帳); the amount is still unconfirmed.
+                        $paymentStatus = $pendingReportId !== null ? 'pending_report' : 'amount_review';
+                    }
                 }
 
                 $newerInfo = $newerCourseMap[$classId] ?? null;
@@ -443,6 +459,8 @@ class AlertController extends Controller
                             ->values()->all()
                         : [],
                     'payment_status'           => $paymentStatus,
+                    'amount_pending_confirmation' => $amountPendingConfirmation,
+                    'pending_confirmation_amount' => $amountPendingConfirmation ? $outstanding : 0,
                     'latest_payment_report_id' => $pendingReportId,
                     'has_newer_course'         => $newerInfo !== null,
                     'newer_course_id'          => $newerInfo['newer_id'] ?? null,
@@ -739,20 +757,25 @@ class AlertController extends Controller
         $campusIds = $role === 'super_admin' ? null : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
         $sc = StudentClass::with(['student', 'coursePackage'])->find($studentClassId);
         $student = $sc?->student;
-        if (!$sc || !$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) {
+        if (!$sc instanceof StudentClass || !$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) {
             abort(403);
         }
 
         // ARCH2: a slip exists only while the Verdict says the contract owes. Paid=1 beside an unpaid invoice still gets
         // its slip (the money is owed); Payment rows that settle a Paid=0 contract refuse it. No Verdict answer
         // (review_required) keeps the legacy flag test.
-        $settlement = $this->payableResolver->courseStatusesByStudentClassIds([$studentClassId], [$sc])[$studentClassId]['status'] ?? null;
+        $verdict = $this->payableResolver->courseStatusesByStudentClassIds([$studentClassId], [$sc])[$studentClassId] ?? [];
+        $settlement = $verdict['status'] ?? null;
+        // Founder D2 (#4121 review): an issued bill whose amount is still to be confirmed never reaches a parent.
+        if (BillingPayableResolver::isAmountPendingConfirmation($sc, $verdict)) {
+            return response()->json(['message' => '金額待確認，請先確認應收金額'], 422);
+        }
         if ($settlement === 'free') {
             return response()->json(['message' => '這門課是免費課程，不需要繳費單'], 422);
         }
         $settled = in_array($settlement, ['unpaid', 'partial', 'unbilled'], true)
             ? false
-            : ($settlement === 'paid' || (int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid()));
+            : ($settlement === 'paid' || (int) ($sc->getAttribute('Paid') ?? 0) === 1 || $sc->isEffectivelyPaid());
         if ($settled) {
             return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
         }
@@ -794,9 +817,7 @@ class AlertController extends Controller
                 // Count-mode alerts already use the contract price rather than
                 // a stale historical Charge snapshot. Keep the tuition slip on
                 // that same canonical display path (in-app #275).
-                'charge' => $sc instanceof StudentClass
-                    ? $this->countModeCharge($sc)
-                    : max(0, (int) ($sc->Charge ?? 0)),
+                'charge' => $this->countModeCharge($sc),
                 'period_sessions' => null,
                 'period_start' => null,
                 'period_end' => null,
