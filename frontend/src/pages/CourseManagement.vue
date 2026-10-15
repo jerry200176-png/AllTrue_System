@@ -129,6 +129,13 @@
       </div>
     </transition>
 
+    <div v-if="closedCourseNotice" class="creation-success-banner" role="status" data-testid="closed-course-hidden-notice">
+      <span class="material-symbols-outlined creation-success-banner__icon" aria-hidden="true">info</span>
+      <span>{{ closedCourseNotice.message }}</span>
+      <button v-if="closedCourseNotice.canShowAll" class="btn-soft" type="button" data-testid="closed-course-show-all" @click="showClosedCourseUnderAllStatuses">切到「全部」</button>
+      <button class="creation-success-banner__close" type="button" @click="closedCourseNotice = null" aria-label="關閉">✕</button>
+    </div>
+
     <section v-if="pendingLeaveLoaded || pendingLeaveLoading || pendingLeaveError" class="pending-leave-summary" aria-live="polite">
       <div class="pending-leave-summary__header">
         <div class="pending-leave-summary__icon material-symbols-outlined" aria-hidden="true">inbox</div>
@@ -1388,7 +1395,7 @@ import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { useTransferSessions } from '../composables/course-management/useTransferSessions';
 import { useContractAmendment } from '../composables/course-management/useContractAmendment';
 import { useCoursePause } from '../composables/course-management/useCoursePause';
-import { closeCourseNoRenew as runCloseCourseNoRenew, retainClosedCourseInList } from '../lib/closeCourseNoRenew.js';
+import { closeCourseNoRenew as runCloseCourseNoRenew, closedCourseHiddenNotice, createCourseCloseFlow } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -1555,77 +1562,37 @@ const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
 };
 
-// in-app #352/#415: closing stays in 課程查找; a closed course is revealed under its student's 歷史課程.
-async function closeCourseInPlace(course) {
+// in-app #352/#415: closing stays in 課程查找 and only runs the normal list reload. If the current
+// filter hides the closed course, a notice offers to switch 課程狀態 to 「全部」 (no injected rows).
+const closedCourseNotice = ref(null);
+async function runCloseCourseInPlace(course) {
+  closedCourseNotice.value = null;
   const closed = await runCloseCourseNoRenew({
     course,
     studentName: course?.student_name || course?.student?.name,
     getRemainingSessions: ownRemainingSessions,
     getSubjectLabel,
     isCourseSettled,
-    reloadCourses: async () => {
-      const reloadRequestId = await reloadCoursesForClose();
-      await retainClosedCourse(course, reloadRequestId);
-    },
+    reloadCourses: () => loadCourses(pagination.value.page),
     confirmImpl: (message, opts) => askConfirm({ message, ...opts }),
   });
-  if (closed) revealHistoryCourse(course);
+  if (closed) {
+    closedCourseNotice.value = closedCourseHiddenNotice({ course, courses: courses.value, courseStatus: filters.value.course_status });
+  }
   return closed;
 }
-
-// PR #4159 review: under the 「進行中」 filter the reload sends status=active, so the now-stopped
-// course drops out of the list. Fetch it once (same list endpoint, its student only, no status
-// filter) and keep it in the current view — the user's filter itself is left unchanged.
-// PR #4159 review round 3: retention belongs to the close-triggered reload only. If the user
-// changes a filter/page while it is pending, that newer load owns `courses` and the session
-// caches, so every step below re-checks this exact request id after each await.
-async function retainClosedCourse(course, requestId) {
-  const isCurrent = () => requestId === courseLoadRequestId;
-  if (!isCurrent()) return;
-  const next = await retainClosedCourseInList({
-    courses: courses.value,
-    course,
-    isCurrent,
-    fetchStudentCourses: async (studentId) => {
-      if (!props.branchId) return [];
-      const token = await getAccessToken();
-      if (!token) return [];
-      const params = new URLSearchParams({ branch_id: String(props.branchId), student_id: String(studentId), per_page: '100', page: '1' });
-      const res = await authedFetch(`/api/v1/student-classes?${params}`, { credentials: 'include', headers: { 'Accept': 'application/json' } }, token);
-      if (!res.ok) throw new Error(res.statusText || 'reload failed');
-      const json = await res.json();
-      const list = json?.data ?? json;
-      return (Array.isArray(list) ? list : (list?.data ?? [])).map(normalizeLaravelCourse);
-    },
-    loadSessions: async (list) => {
-      const token = await getAccessToken();
-      if (!token) return;
-      if (!isCurrent()) return;
-      await loadSessionsForCourseList(list, token, isCurrent);
-    },
-  });
-  // A newer list load (filter/page change) wins; never merge into a different view.
-  if (next !== courses.value && isCurrent()) courses.value = next;
+const courseCloseFlow = createCourseCloseFlow({
+  closeCourse: runCloseCourseInPlace,
+  getDrawerCourse: () => (courseManagerOpen.value ? courseManagerCourse.value : null),
+  closeDrawer: () => closeCourseManager(),
+});
+function closeCourseInPlace(course) {
+  return courseCloseFlow.close(course);
 }
-
-// Runs the post-close loadCourses() and returns that load's own request id. loadCourses() bumps
-// courseLoadRequestId synchronously before its first await, so reading it right after the call
-// (before awaiting) is exactly this reload's id, not a later filter/page load's.
-async function reloadCoursesForClose() {
-  const pending = loadCourses(pagination.value.page);
-  const reloadRequestId = courseLoadRequestId;
-  await pending;
-  return reloadRequestId;
-}
-
-// Same ClassSession + effective-date load loadCourses() runs for its result rows.
-async function loadSessionsForCourseList(list, token, isCurrent) {
-  const sessionsOk = await loadClassSessionsForCourses(list, token, isCurrent);
-  if (!isCurrent()) return;
-  if (sessionsOk === false) sessionDataLoadFailed.value = true;
-  const effectiveSessionsOk = await loadEffectiveSessionDates(list, token, isCurrent);
-  if (!isCurrent()) return;
-  if (effectiveSessionsOk === false) sessionDataLoadFailed.value = true;
+function showClosedCourseUnderAllStatuses() {
+  closedCourseNotice.value = null;
+  filters.value.course_status = '';
+  loadCourses(1);
 }
 
 const courses = ref([]);
@@ -2719,8 +2686,8 @@ function onCourseManagerAction({ name, payload } = {}) {
   if (!c || !name) return;
   const map = {
     pause: () => requestCoursePause(c), resume: () => requestCoursePause(c),
-    // in-app #415: 結束課程 in the drawer closes in place (no jump to 學生管理), then returns to the list.
-    close: async () => { if (await closeCourseInPlace(c)) closeCourseManager(); }, delete: () => { confirmDeleteTarget.value = c; },
+    // in-app #415: 結束課程 in the drawer closes in place (no jump to 學生管理).
+    close: () => courseCloseFlow.closeFromDrawer(c), delete: () => { confirmDeleteTarget.value = c; },
     'monthly-correction': () => openMonthlyCorrection(c),
     'manual-session': () => openManualSessionModal(c), 'monthly-session': () => openMonthlySessionModal(c),
     'quick-add': () => { if (canQuickAddSession(c) || isMonthlyMode(c)) openQuickAddSessionModal(c); },
@@ -4060,19 +4027,15 @@ const isUserNote = (note) => {
   return note.trim().split(/;\s*/).some((part) => part.trim() && !isSystemNotePart(part));
 };
 
-const studentGroupKey = (c) => {
-  const studentId = c?.student_id ?? c?.StudentID ?? null;
-  return studentId != null && studentId !== ''
-    ? `sid:${studentId}`
-    : `name:${String(c?.student_name || '').trim() || '未命名學生'}`;
-};
 const groupCoursesByStudent = (list = []) => {
   const grouped = [];
   const groupedMap = new Map();
   for (const c of list) {
     const studentName = String(c?.student_name || '').trim() || '未命名學生';
     const studentId = c?.student_id ?? c?.StudentID ?? null;
-    const key = studentGroupKey(c);
+    const key = studentId != null && studentId !== ''
+      ? `sid:${studentId}`
+      : `name:${studentName}`;
     if (!groupedMap.has(key)) {
       const group = { key, student_id: studentId, student_name: studentName, school_grade: '', courses: [] };
       groupedMap.set(key, group);
@@ -4134,17 +4097,6 @@ const toggleHistoryGroup = (key) => {
   else s.add(key);
   expandedHistoryGroups.value = s;
 };
-// in-app #415: after 結束課程, open that student's 歷史課程 when the reloaded course is history
-// (an unpaid close stays in the active list as 課已結束，尚未收款 until reconciled).
-function revealHistoryCourse(course) {
-  const id = Number(course?.id ?? course?.ID ?? 0);
-  const reloaded = (courses.value || []).find((x) => Number(x.id) === id);
-  if (!reloaded) return;
-  const key = studentGroupKey(reloaded);
-  // An unpaid close (settled_pending) stays in the student's active list with its label.
-  expandedStudentGroups.value = new Set([...expandedStudentGroups.value, key]);
-  if (isHistoryCourse(reloaded)) expandedHistoryGroups.value = new Set([...expandedHistoryGroups.value, key]);
-}
 
 const expandAllGroups = () => {
   resetExpandedStudentGroups(groupedCourses.value);
@@ -4294,19 +4246,9 @@ const formatMoney = (value) => {
   return Number.isFinite(n) ? n.toLocaleString() : '0';
 };
 
-const normalizeLaravelCourse = (c) => ({
-  ...c,
-  id: Number(c?.id ?? c?.ID ?? 0),
-  data_source: 'laravel',
-  student_name: c.student_name ?? '—',
-  teacher_name: c.teacher_name ?? '',
-  memo: c.memo ?? c.Memo ?? '',
-  sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
-  remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null
-});
-
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
+  closedCourseNotice.value = null;
   if (!props.branchId) {
     if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
     courses.value = [];
@@ -4351,7 +4293,16 @@ const loadCourses = async (page = 1) => {
         const json = await res.json();
         const list = json?.data ?? json;
         const arr = Array.isArray(list) ? list : (list?.data ?? []);
-        const result = arr.map(normalizeLaravelCourse);
+        const result = arr.map(c => ({
+          ...c,
+          id: Number(c?.id ?? c?.ID ?? 0),
+          data_source: 'laravel',
+          student_name: c.student_name ?? '—',
+          teacher_name: c.teacher_name ?? '',
+          memo: c.memo ?? c.Memo ?? '',
+          sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
+          remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null
+        }));
         if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
         pagination.value = {
           page: Number(json?.current_page ?? page),

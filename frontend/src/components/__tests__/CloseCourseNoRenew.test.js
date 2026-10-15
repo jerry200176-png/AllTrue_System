@@ -7,8 +7,13 @@ vi.mock('../../lib/authedFetch', () => ({
   getAccessToken: (...a) => getAccessToken(...a),
 }));
 
-import { closeCourseNoRenew, RELOAD_AFTER_CLOSE_FAILED_MESSAGE, retainClosedCourseInList } from '../../lib/closeCourseNoRenew.js';
-import { ENDED_PENDING_LABEL, closedReason, isHistoryCourse } from '../../lib/courseMoneyState.js';
+import {
+  CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE,
+  RELOAD_AFTER_CLOSE_FAILED_MESSAGE,
+  closeCourseNoRenew,
+  closedCourseHiddenNotice,
+  createCourseCloseFlow,
+} from '../../lib/closeCourseNoRenew.js';
 
 function setup({ remaining = 0, settled = true, accepted = true, response = { pending_reconciliation: true } } = {}) {
   const calls = { requests: [], alerts: [], confirms: [], reloads: 0 };
@@ -82,27 +87,22 @@ describe('shared close-course action', () => {
     expect(calls.reloads).toBe(0);
   });
 
-  // in-app #415: callers reveal 歷史課程 / close the 管理課程 drawer only after a real close.
+  // in-app #415: callers close the 管理課程 drawer only after a real close.
   it('resolves true only when the course was actually closed', async () => {
-    const ok = setup();
-    expect(await closeCourseNoRenew(ok.deps)).toBe(true);
-    const canceled = setup({ accepted: false });
-    expect(await closeCourseNoRenew(canceled.deps)).toBe(false);
-    const unknown = setup({ settled: null });
-    expect(await closeCourseNoRenew(unknown.deps)).toBe(false);
+    expect(await closeCourseNoRenew(setup().deps)).toBe(true);
+    expect(await closeCourseNoRenew(setup({ accepted: false }).deps)).toBe(false);
+    expect(await closeCourseNoRenew(setup({ settled: null }).deps)).toBe(false);
     const failed = setup();
     authedFetch.mockImplementation(async () => ({ ok: false, statusText: 'Bad', json: async () => ({ message: 'nope' }) }));
     expect(await closeCourseNoRenew(failed.deps)).toBe(false);
     expect(failed.calls.reloads).toBe(0);
   });
 
-  // PR #4159 review: the close POST is committed; a failed refresh must not reclassify it as failed.
-  it('still resolves true with a non-destructive notice when only the refresh fails', async () => {
+  it('a refresh failure after a successful close still resolves true with its own notice', async () => {
     const { calls, deps } = setup();
     deps.reloadCourses = async () => { calls.reloads += 1; throw new Error('network'); };
     expect(await closeCourseNoRenew(deps)).toBe(true);
     expect(calls.requests).toHaveLength(1);
-    expect(calls.reloads).toBe(1);
     expect(calls.alerts[0]).toContain('已結案');
     expect(calls.alerts[1]).toBe(RELOAD_AFTER_CLOSE_FAILED_MESSAGE);
     expect(calls.alerts.some((a) => a.startsWith('操作失敗') || a.startsWith('結案失敗'))).toBe(false);
@@ -117,157 +117,78 @@ describe('shared close-course action', () => {
   });
 });
 
-// PR #4159 review: with the 「進行中」 filter the post-close reload sends status=active, which
-// omits the now-stopped course. The close flow must still surface it without changing the filter.
-describe('post-close reload under the 進行中 (status=active) filter', () => {
-  const other = { id: 7, student_id: 3, Stop: 0, status: 'active', closed_reason: null };
-  const backend = {
-    paid: { id: 42, student_id: 3, Stop: 1, status: 'inactive', closed_reason: 'settled', payment_status: 'paid' },
-    unpaid: { id: 43, student_id: 3, Stop: 1, status: 'inactive', closed_reason: 'settled_pending', payment_status: 'unpaid' },
-  };
-  // Mimics the list endpoint: the status=active filter drops Stop=1 rows.
-  const listActive = () => [other, backend.paid, backend.unpaid].filter((c) => c.Stop === 0);
+// in-app #415 (PR #4159 simplification): the page only reloads; a hidden closed course gets a notice.
+describe('notice when the current filter hides the closed course', () => {
+  const closed = { id: 42, student_id: 3 };
+  const other = { id: 7, student_id: 3 };
 
-  async function closeThenReload(course) {
-    const statusFilters = [];
-    let list = [other, { ...course, Stop: 0, status: 'active', closed_reason: null }];
-    const { calls, deps } = setup();
-    deps.course = { ...course, Stop: 0, closed_reason: null };
-    deps.reloadCourses = async () => {
-      calls.reloads += 1;
-      statusFilters.push('active');
-      list = listActive();
-      list = await retainClosedCourseInList({
-        courses: list,
-        course: deps.course,
-        fetchStudentCourses: async (sid) => { statusFilters.push(null); return [other, backend.paid, backend.unpaid].filter((c) => c.student_id === sid); },
-      });
-    };
-    expect(await closeCourseNoRenew(deps)).toBe(true);
-    return { list, statusFilters };
-  }
-
-  it('moves a paid close under 歷史課程', async () => {
-    const { list, statusFilters } = await closeThenReload(backend.paid);
-    expect(statusFilters).toEqual(['active', null]);
-    const closed = list.find((c) => c.id === 42);
-    expect(closed).toBeTruthy();
-    expect(isHistoryCourse(closed)).toBe(true);
-    expect(list.filter((c) => !isHistoryCourse(c)).map((c) => c.id)).toEqual([7]);
+  it('shows the 進行中 notice with a switch to 「全部」 when the reload omits the course', () => {
+    expect(closedCourseHiddenNotice({ course: closed, courses: [other], courseStatus: 'active' }))
+      .toEqual({ courseId: 42, message: CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE, canShowAll: true });
+    expect(CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE).toBe('已結束課程。目前篩選只顯示進行中，可切到「全部」或「歷史課程」查看。');
   });
 
-  it('keeps an unpaid settled_pending close visible in the active list with its label', async () => {
-    const { list } = await closeThenReload(backend.unpaid);
-    const closed = list.find((c) => c.id === 43);
-    expect(closed).toBeTruthy();
-    expect(isHistoryCourse(closed)).toBe(false);
-    expect(closedReason(closed)).toBe('settled_pending');
-    expect(ENDED_PENDING_LABEL).toBe('課已結束，尚未收款');
-    expect(list.filter((c) => !isHistoryCourse(c)).map((c) => c.id)).toEqual([7, 43]);
+  it('switching to 「全部」 reveals the course, so no notice remains', () => {
+    const notice = closedCourseHiddenNotice({ course: closed, courses: [other], courseStatus: 'active' });
+    expect(notice.canShowAll).toBe(true);
+    // After the switch the page reloads with course_status '' and the closed course is listed.
+    expect(closedCourseHiddenNotice({ course: closed, courses: [other, closed], courseStatus: '' })).toBeNull();
   });
 
-  it('does not refetch when the reloaded list already has the course (全部 filter)', async () => {
-    const fetchStudentCourses = vi.fn();
-    const courses = [other, backend.paid];
-    expect(await retainClosedCourseInList({ courses, course: backend.paid, fetchStudentCourses })).toBe(courses);
-    expect(fetchStudentCourses).not.toHaveBeenCalled();
+  it('no notice when the course is still visible; no switch when the status filter is not the cause', () => {
+    expect(closedCourseHiddenNotice({ course: closed, courses: [other, closed], courseStatus: 'active' })).toBeNull();
+    const byName = closedCourseHiddenNotice({ course: closed, courses: [other], courseStatus: '' });
+    expect(byName.canShowAll).toBe(false);
+    expect(byName.message).toContain('已結束課程');
+  });
+});
+
+describe('single-flight close and drawer identity', () => {
+  function deferred() { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; }
+  const A = { id: 1 };
+  const B = { id: 2 };
+
+  it('keeps course B\'s drawer open when A\'s close finishes after B was opened', async () => {
+    const d = deferred();
+    let drawer = A;
+    const closeDrawer = vi.fn(() => { drawer = null; });
+    const flow = createCourseCloseFlow({ closeCourse: () => d.promise, getDrawerCourse: () => drawer, closeDrawer });
+    const pending = flow.closeFromDrawer(A);
+    drawer = B; // user dismissed A's drawer and opened B while A's close was pending
+    d.resolve(true);
+    expect(await pending).toBe(true);
+    expect(closeDrawer).not.toHaveBeenCalled();
+    expect(drawer).toBe(B);
   });
 
-  // PR #4159 review round 2: the appended course must get its ClassSessions loaded too,
-  // otherwise its 歷史課程 row shows 0 attended lessons.
-  it('loads sessions for the list that includes the retained course', async () => {
-    const loadSessions = vi.fn(async () => {});
-    const courses = listActive();
-    const next = await retainClosedCourseInList({
-      courses,
-      course: { ...backend.paid, Stop: 0 },
-      fetchStudentCourses: async () => [other, backend.paid, backend.unpaid],
-      loadSessions,
-    });
-    expect(next.map((c) => c.id)).toEqual([7, 42]);
-    expect(loadSessions).toHaveBeenCalledTimes(1);
-    expect(loadSessions.mock.calls[0][0]).toBe(next);
+  it('closes the drawer when it still shows the closed course', async () => {
+    const closeDrawer = vi.fn();
+    const flow = createCourseCloseFlow({ closeCourse: async () => true, getDrawerCourse: () => ({ ID: 1 }), closeDrawer });
+    expect(await flow.closeFromDrawer(A)).toBe(true);
+    expect(closeDrawer).toHaveBeenCalledTimes(1);
   });
 
-  it('does not reload sessions when nothing was appended', async () => {
-    const loadSessions = vi.fn();
-    const courses = [other, backend.paid];
-    await retainClosedCourseInList({ courses, course: backend.paid, fetchStudentCourses: vi.fn(), loadSessions });
-    await retainClosedCourseInList({ courses: [other], course: backend.paid, fetchStudentCourses: async () => [other], loadSessions });
-    expect(loadSessions).not.toHaveBeenCalled();
+  it('a second close (double click) is ignored while one is pending', async () => {
+    const d = deferred();
+    const closeCourse = vi.fn(() => d.promise);
+    const closeDrawer = vi.fn();
+    const flow = createCourseCloseFlow({ closeCourse, getDrawerCourse: () => A, closeDrawer });
+    const first = flow.closeFromDrawer(A);
+    expect(flow.isPending()).toBe(true);
+    expect(await flow.closeFromDrawer(A)).toBe(false);
+    expect(await flow.close(B)).toBe(false);
+    d.resolve(true);
+    expect(await first).toBe(true);
+    expect(closeCourse).toHaveBeenCalledTimes(1);
+    expect(closeDrawer).toHaveBeenCalledTimes(1);
+    expect(flow.isPending()).toBe(false);
+    await flow.close(B);
+    expect(closeCourse).toHaveBeenCalledTimes(2);
   });
 
-  // PR #4159 review round 3: a filter/page change while the post-close reload is pending owns the
-  // view. Retention for the stale reload must not touch the newer courses or session caches.
-  describe('race with a newer list load', () => {
-    function makeView() {
-      const view = { requestId: 0, courses: [], sessions: {} };
-      const startLoad = (list) => { view.requestId += 1; view.courses = list; view.sessions = Object.fromEntries(list.map((c) => [c.id, [`s${c.id}`]])); return view.requestId; };
-      const retain = async (closeReloadId, course, { duringFetch } = {}) => {
-        const isCurrent = () => closeReloadId === view.requestId;
-        const next = await retainClosedCourseInList({
-          courses: view.courses,
-          course,
-          isCurrent,
-          fetchStudentCourses: async () => { duringFetch?.(); return [other, backend.paid]; },
-          loadSessions: async (list) => {
-            if (!isCurrent()) return;
-            view.sessions = Object.fromEntries(list.map((c) => [c.id, [`s${c.id}`]]));
-          },
-        });
-        if (next !== view.courses && isCurrent()) view.courses = next;
-      };
-      return { view, startLoad, retain };
-    }
-
-    it('a filter change during the pending post-close reload leaves the newer list and sessions untouched', async () => {
-      const { view, startLoad, retain } = makeView();
-      const closeReloadId = startLoad(listActive());
-      const newer = [{ id: 99, student_id: 5, Stop: 0 }];
-      // Newer load lands before retention starts.
-      startLoad(newer);
-      const loadSessions = vi.fn();
-      const skipped = await retainClosedCourseInList({
-        courses: view.courses, course: backend.paid, isCurrent: () => closeReloadId === view.requestId,
-        fetchStudentCourses: vi.fn(), loadSessions,
-      });
-      expect(skipped).toBe(newer);
-      expect(loadSessions).not.toHaveBeenCalled();
-      // Newer load lands while the retain fetch is in flight.
-      const id2 = startLoad(listActive());
-      await retain(id2, { ...backend.paid, Stop: 0 }, { duringFetch: () => startLoad(newer) });
-      expect(view.courses).toBe(newer);
-      expect(view.courses.some((c) => c.id === 42)).toBe(false);
-      expect(view.sessions).toEqual({ 99: ['s99'] });
-    });
-
-    it('a newer load landing during the session load returns the original list', async () => {
-      let current = true;
-      const courses = listActive();
-      const next = await retainClosedCourseInList({
-        courses, course: backend.paid, isCurrent: () => current,
-        fetchStudentCourses: async () => [backend.paid],
-        loadSessions: async () => { current = false; },
-      });
-      expect(next).toBe(courses);
-    });
-
-    it('without interleaving, retention still appends the closed course and loads its sessions', async () => {
-      const { view, startLoad, retain } = makeView();
-      const id = startLoad(listActive());
-      await retain(id, { ...backend.paid, Stop: 0 });
-      expect(view.courses.map((c) => c.id)).toEqual([7, 42]);
-      expect(view.sessions).toEqual({ 7: ['s7'], 42: ['s42'] });
-    });
-  });
-
-  it('a failed retain fetch is reported as a refresh failure, not a failed close', async () => {
-    const { calls, deps } = setup();
-    deps.course = { ...backend.paid, Stop: 0 };
-    deps.reloadCourses = async () => {
-      await retainClosedCourseInList({ courses: listActive(), course: deps.course, fetchStudentCourses: async () => { throw new Error('x'); } });
-    };
-    expect(await closeCourseNoRenew(deps)).toBe(true);
-    expect(calls.alerts.at(-1)).toBe(RELOAD_AFTER_CLOSE_FAILED_MESSAGE);
+  it('releases the lock when the close throws', async () => {
+    const flow = createCourseCloseFlow({ closeCourse: async () => { throw new Error('x'); }, getDrawerCourse: () => null, closeDrawer: vi.fn() });
+    await expect(flow.close(A)).rejects.toThrow('x');
+    expect(flow.isPending()).toBe(false);
   });
 });

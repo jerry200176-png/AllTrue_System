@@ -3,8 +3,8 @@ import { authedFetch, getAccessToken } from './authedFetch';
 
 /**
  * Shared confirmation and request path for closing a course without renewal.
- * Resolves true only when the course was closed (callers use it to reveal 歷史課程).
- * A refresh failure after a successful close still resolves true (with its own notice).
+ * Resolves true only when the course was closed. A refresh failure after a successful close
+ * still resolves true (with its own notice), so an already-closed course is never retried.
  */
 export const RELOAD_AFTER_CLOSE_FAILED_MESSAGE = '已結束課程，但列表重新整理失敗，請重新整理頁面';
 
@@ -54,8 +54,7 @@ export async function closeCourseNoRenew({
     alertImpl('操作失敗：' + (error?.message || '請稍後再試'));
     return false;
   }
-  // The close is committed at this point; a failed list refresh must not be reported as a
-  // failed close (that would invite retrying an already-closed course).
+  // The close is committed here; a failed list refresh must not be reported as a failed close.
   try {
     await reloadCourses();
   } catch {
@@ -64,25 +63,43 @@ export async function closeCourseNoRenew({
   return true;
 }
 
+const courseIdOf = (course) => Number(course?.id ?? course?.ID ?? 0);
+
+export const CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE = '已結束課程。目前篩選只顯示進行中，可切到「全部」或「歷史課程」查看。';
+export const CLOSED_HIDDEN_BY_FILTER_NOTICE = '已結束課程。目前的篩選或分頁沒有顯示這門課，可調整篩選後查看。';
+
 /**
- * After a close, a status-filtered reload (「進行中」 → status=active) drops the now-stopped course.
- * Fetch that student's courses without the status filter and append the closed one, so a paid
- * close shows under 歷史課程 and an unpaid settled_pending close stays visible with its label.
- * `loadSessions(next)` then loads sessions for the new list the same way the list reload does.
- * `isCurrent()` is the caller's request guard: once it is false nothing is appended or loaded.
- * Returns the same array when nothing needs to change.
+ * in-app #415: after a close the page only runs its normal reload. When the current filter hides
+ * the closed course (e.g. 進行中), return a non-error notice instead of injecting rows.
+ * `canShowAll` means switching 課程狀態 to 「全部」 can reveal it.
  */
-export async function retainClosedCourseInList({ courses = [], course, fetchStudentCourses, loadSessions, isCurrent = () => true }) {
-  const id = Number(course?.id ?? course?.ID ?? 0);
-  if (!isCurrent() || !id || courses.some((x) => Number(x?.id ?? x?.ID) === id)) return courses;
-  const studentId = course?.student_id ?? course?.StudentID;
-  if (studentId == null || studentId === '') return courses;
-  const fresh = (await fetchStudentCourses(studentId) || []).find((x) => Number(x?.id ?? x?.ID) === id);
-  // A newer list load won while fetching: leave its courses and session caches alone.
-  if (!fresh || !isCurrent()) return courses;
-  const next = [...courses, fresh];
-  // The reload loaded ClassSessions only for its own rows; without this the appended course has
-  // none cached and its 歷史課程 row shows 0 attended lessons (PR #4159 review round 2).
-  if (typeof loadSessions === 'function') await loadSessions(next);
-  return isCurrent() ? next : courses;
+export function closedCourseHiddenNotice({ course, courses = [], courseStatus = '' }) {
+  const id = courseIdOf(course);
+  if (!id || (courses || []).some((x) => courseIdOf(x) === id)) return null;
+  if (courseStatus === 'active') return { courseId: id, message: CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE, canShowAll: true };
+  return { courseId: id, message: CLOSED_HIDDEN_BY_FILTER_NOTICE, canShowAll: Boolean(courseStatus) };
+}
+
+/**
+ * One close at a time across the row menu and the 管理課程 drawer. A drawer close only dismisses
+ * the drawer when it still shows the course that started the close (the user may have opened
+ * another course's drawer while the request was pending).
+ */
+export function createCourseCloseFlow({ closeCourse, getDrawerCourse, closeDrawer }) {
+  let pending = false;
+  async function close(course) {
+    if (pending) return false;
+    pending = true;
+    try {
+      return await closeCourse(course);
+    } finally {
+      pending = false;
+    }
+  }
+  async function closeFromDrawer(course) {
+    const closed = await close(course);
+    if (closed && courseIdOf(getDrawerCourse()) === courseIdOf(course)) closeDrawer();
+    return closed;
+  }
+  return { close, closeFromDrawer, isPending: () => pending };
 }
