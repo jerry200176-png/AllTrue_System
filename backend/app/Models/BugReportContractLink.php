@@ -86,6 +86,9 @@ class BugReportContractLink extends Model
     /** Links that are still live (not revoked); the single definition every reader and the revoke use. */
     public static function live(): Builder
     {
-        return self::query()->whereNull('revoked_at')->where('active', true);
+        $query = self::query();
+        $query->whereNull('revoked_at')->where('active', true);
+
+        return $query;
     }
 }
