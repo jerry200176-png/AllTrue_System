@@ -35,6 +35,7 @@ class IssuedBillCurrentContractChargeTest extends TestCase
         $bill = collect($ledger->json('invoices'))->firstWhere('id', $invoiceId);
         $this->assertSame(8800, $bill['total_amount']);
         $this->assertTrue($bill['single_course_items']);
+        $this->assertFalse($bill['hand_priced']);
         $this->assertSame(8800, (int) DB::table('Invoice')->where('id', $invoiceId)->value('TotalAmount'));
     }
 
@@ -82,6 +83,29 @@ class IssuedBillCurrentContractChargeTest extends TestCase
             ->assertOk()->json('invoices'))->firstWhere('id', $invoiceId);
 
         $this->assertFalse($bill['single_course_items']);
+    }
+
+    /** D3 (Founder 2026-10-15): a bill priced by a person is never flagged against the contract Charge. */
+    public function test_hand_priced_bills_are_marked_so_the_amount_difference_is_not_flagged(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->course($this->student());
+        $noted = $this->unpaidInvoice($course, 8800);
+        DB::table('Invoice')->where('id', $noted)->update(['Note' => '依家長約定優惠價']);
+        $typedTotal = $this->unpaidInvoice($course, 8800);
+        DB::table('InvoiceItem')->where('InvoiceID', $typedTotal)->update(['Amount' => 7200]);
+        $twoLines = $this->unpaidInvoice($course, 8800);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => $twoLines, 'StudentClassID' => $course->ID, 'Description' => 'materials', 'Amount' => 0]);
+        $noLine = $this->unpaidInvoice($course, 8800);
+        DB::table('InvoiceItem')->where('InvoiceID', $noLine)->delete();
+
+        $bills = collect($this->withToken($token)->getJson('/api/v1/accounting/ledger?student_class_id=' . $course->ID)
+            ->assertOk()->json('invoices'))->keyBy('id');
+
+        foreach ([$noted, $typedTotal, $twoLines, $noLine] as $id) {
+            $this->assertTrue($bills[$id]['hand_priced'], "invoice {$id}");
+            $this->assertSame(8800, (int) DB::table('Invoice')->where('id', $id)->value('TotalAmount'));
+        }
     }
 
     private function directorToken(): string

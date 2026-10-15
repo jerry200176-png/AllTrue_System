@@ -11,7 +11,7 @@ vi.mock('../../lib/authedFetch.js', () => ({
 import ContractCard from '../tuition/ContractCard.vue';
 
 const course = (over = {}) => ({ id: 7, schedule_mode: 'count', paid: false, package_id: null, current_contract_charge: 7200, ...over });
-const bill = (over = {}) => ({ id: 41, student_class_id: 7, status: 'unpaid', total_amount: 8800, paid_amount: 0, calculated_applied_amount: 0, single_course_items: true, ...over });
+const bill = (over = {}) => ({ id: 41, student_class_id: 7, status: 'unpaid', total_amount: 8800, paid_amount: 0, calculated_applied_amount: 0, single_course_items: true, hand_priced: false, ...over });
 
 describe('issuedBillRateNote', () => {
   it('shows a stale bill after a rate edit (Charge recomputed, bill not)', () => {
@@ -40,6 +40,11 @@ describe('issuedBillRateNote', () => {
   it('is hidden for a multi-course or hand-priced bill', () => {
     expect(issuedBillRateNote(course(), [bill({ single_course_items: false })])).toBeNull();
     expect(issuedBillRateNote(course(), [bill({ single_course_items: undefined })])).toBeNull();
+  });
+
+  it('is hidden for a hand-priced bill (Founder D3), and when the server sends no flag', () => {
+    expect(issuedBillRateNote(course(), [bill({ hand_priced: true })])).toBeNull();
+    expect(issuedBillRateNote(course(), [bill({ hand_priced: undefined })])).toBeNull();
   });
 
   it('is hidden when the bill is paid, partly paid or has money applied', () => {
@@ -74,23 +79,18 @@ describe('issuedBillRateNote', () => {
 describe('ContractCard issued-bill note', () => {
   const note = { invoiceId: 41, issued: 8800, current: 7200 };
 
-  it('shows both amounts, the recorded void-and-reissue path, and the void link when allowed', async () => {
-    const w = mount(ContractCard, { props: { course: { id: 7 }, rateNote: note, canVoid: true } });
+  it('shows both amounts and neutral copy with no void call to action (Founder D3)', async () => {
+    const w = mount(ContractCard, { props: { course: { id: 7 }, rateNote: note } });
     await flushPromises();
     const text = w.find('[data-testid="contract-rate-note"]').text();
     expect(text).toContain('開單時金額 NT$ 8,800 ／ 目前課程金額 NT$ 7,200');
-    expect(text).toContain('作廢此帳單（需填原因');
-    expect(text).toContain('不會連到作廢的那張');
-    expect(text).not.toContain('沒有可留紀錄');
-    await w.find('[data-testid="contract-rate-void"]').trigger('click');
-    expect(w.emitted('void-bill')?.[0]).toEqual([41]);
+    expect(text).toContain('請先確認原約定與應收金額；確認開錯才更正');
+    expect(text).not.toContain('作廢');
+    expect(w.find('[data-testid="contract-rate-void"]').exists()).toBe(false);
+    expect(w.findAll('button').some((b) => b.text().includes('作廢'))).toBe(false);
   });
 
-  it('has no void button when the bill cannot be voided directly, and no note without a difference', async () => {
-    const w = mount(ContractCard, { props: { course: { id: 7 }, rateNote: note } });
-    await flushPromises();
-    expect(w.find('[data-testid="contract-rate-note"]').exists()).toBe(true);
-    expect(w.find('[data-testid="contract-rate-void"]').exists()).toBe(false);
+  it('has no note without a difference', async () => {
     const none = mount(ContractCard, { props: { course: { id: 7 } } });
     await flushPromises();
     expect(none.find('[data-testid="contract-rate-note"]').exists()).toBe(false);
@@ -98,7 +98,7 @@ describe('ContractCard issued-bill note', () => {
 });
 
 describe('AccountingLedgerModal issued-bill row hint', () => {
-  it('marks only the issued unpaid bill and voids it through the existing audited action', async () => {
+  it('marks only the issued unpaid bill, with both amounts', async () => {
     const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
     localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role: 'director' } }));
     const invoices = [bill({ outstanding_amount: 8800, payments: [], can_direct_void: true }), bill({ id: 40, status: 'void', total_amount: 7200, payments: [] })];
@@ -106,7 +106,9 @@ describe('AccountingLedgerModal issued-bill row hint', () => {
       json: async () => ({ summary: {}, scope: { student_class_id: 7 }, courses: [course()], invoices, receipts: [], anomalies: [] }) })));
     const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 7, branchId: 1 }, global: { stubs: { Transition: false } } });
     await flushPromises();
-    expect(w.find('[data-testid="ledger-rate-hint-41"]').text()).toContain('目前課程金額 NT$ 7,200');
+    const hint = w.find('[data-testid="ledger-rate-hint-41"]').text();
+    expect(hint).toContain('開單時金額 NT$ 8,800');
+    expect(hint).toContain('目前課程金額 NT$ 7,200');
     expect(w.find('[data-testid="ledger-rate-hint-40"]').exists()).toBe(false);
     vi.unstubAllGlobals();
   });

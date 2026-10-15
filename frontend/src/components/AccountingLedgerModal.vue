@@ -88,8 +88,6 @@
                 :month-lines="monthLinesFor(c.id)"
                 :bill-draft="draftFor(c.id)"
                 :rate-note="issuedBillRateNote(c, payload.invoices)"
-                :can-void="canDirectVoidInvoice(invoiceById(issuedBillRateNote(c, payload.invoices)?.invoiceId))"
-                @void-bill="voidInvoice(invoiceById($event), 'direct')"
                 @record="openEntry"
                 @issue="openIssue"
                 @confirmed="openReceipt"
@@ -139,7 +137,7 @@
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
                         <small v-if="isOtherCourseInvoice(inv)" class="ledger-other-course" data-testid="ledger-other-course">其他課程</small>
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
-                        <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">目前課程金額 {{ formatCurrency(rateNoteFor(inv).current) }}，帳單維持開單金額</small>
+                        <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">開單時金額 {{ formatCurrency(rateNoteFor(inv).issued) }} ／ 目前課程金額 {{ formatCurrency(rateNoteFor(inv).current) }}，請先確認原約定</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
                       <td data-label="應繳日">{{ fmtDate(inv.due_date) }}</td>
@@ -631,7 +629,6 @@ const pendingReportFor = (id) => {
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
 // #4115: the issued-bill vs current-contract note for the bill row (display only).
-const invoiceById = (id) => (payload.value?.invoices || []).find((inv) => Number(inv.id) === Number(id)) || null;
 const rateNoteFor = (inv) => {
   const course = (payload.value?.courses || []).find((c) => Number(c.id) === Number(inv.student_class_id));
   const note = course ? issuedBillRateNote(course, payload.value?.invoices) : null;

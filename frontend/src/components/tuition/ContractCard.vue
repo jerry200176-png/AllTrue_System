@@ -33,11 +33,10 @@
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
-    <!-- #4115 / Founder Q2 = A: an issued bill keeps its amount when the rate changes; display only, no write here. -->
+    <!-- #4115 / Founder Q2 = A + D3: display only. A different amount alone is no reason to void, so no void action here. -->
     <div v-if="rateNote" class="contract__ratenote" data-testid="contract-rate-note">
       <p>開單時金額 {{ money(rateNote.issued) }} ／ 目前課程金額 {{ money(rateNote.current) }}</p>
-      <p class="contract__muted">帳單不會跟著單價自動改。要改成目前金額，請作廢此帳單（需填原因，會留紀錄）後以目前金額重開；重開的新帳單不會連到作廢的那張。</p>
-      <button v-if="canVoid" class="contract__link" type="button" data-testid="contract-rate-void" @click="emit('void-bill', rateNote.invoiceId)">作廢此帳單</button>
+      <p class="contract__muted">帳單不會跟著課程金額自動改。請先確認原約定與應收金額；確認開錯才更正。</p>
     </div>
 
     <div class="contract__memo">
@@ -130,10 +129,8 @@ const props = defineProps({
   sharedLeadSubject: { type: String, default: '' },
   // #4115: { invoiceId, issued, current } from issuedBillRateNote(); null hides the note.
   rateNote: { type: Object, default: null },
-  // The panel can void that bill with the existing audited void action (reason required).
-  canVoid: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'void-bill']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };

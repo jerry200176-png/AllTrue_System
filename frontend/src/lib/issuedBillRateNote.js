@@ -1,5 +1,6 @@
 // In-app #408 (#4115) / #3980 root cause B. Founder Q2 = A: an issued bill does not follow a later rate
-// change, and a correction must leave a record. This only compares numbers for display; it never changes a bill.
+// change, and a correction must leave a record. Founder D3: a different amount alone is no reason to void, so this
+// only compares numbers for display (neutral copy, no void call to action); it never changes a bill.
 // The comparison basis is the server's `courses[].current_contract_charge` (the contract's stored Charge, which
 // follows rate edits and keeps renewal discounts and session_charge deltas), so only a stale bill differs.
 // Returns null whenever the note must stay hidden.
@@ -8,7 +9,10 @@ const isOpenUnpaid = (inv) => ['unpaid', ''].includes(String(inv.status ?? ''))
   && Number(inv.paid_amount || 0) === 0
   && !inv.zero_amount_reason
   // Multi-course or hand-entered lines cannot be compared with one contract.
-  && inv.single_course_items === true;
+  && inv.single_course_items === true
+  // D3 (Founder 2026-10-15): a bill priced by a person (note, typed total, no or several lines) differs from the
+  // contract on purpose; a missing flag also hides the note.
+  && inv.hand_priced === false;
 
 export function issuedBillRateNote(course, invoices) {
   const current = course?.current_contract_charge;

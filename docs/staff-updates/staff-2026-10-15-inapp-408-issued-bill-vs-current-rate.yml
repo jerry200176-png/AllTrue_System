@@ -10,6 +10,6 @@ updates:
       - category: improved
         text: 堂數制課程的未收款帳單，若和目前課程金額不同，合約卡會顯示「開單時金額／目前課程金額」。
       - category: improved
-        text: 要改成目前金額，請作廢此帳單（需填原因，會留紀錄）後以目前金額重開；新帳單不會連到作廢的那張。
+        text: 金額不同不代表開錯，請先確認原約定與應收金額；確認開錯才更正。人工定價的帳單不會顯示這個比較。
     source_refs:
       - "changelog:2026-10-15:inapp-408-issued-bill-vs-current-rate"
