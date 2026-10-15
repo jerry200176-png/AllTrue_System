@@ -6,6 +6,7 @@ use App\Models\Campus;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
+use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\BillingPeriodInvoiceExists;
@@ -105,6 +106,9 @@ class BillingController extends Controller
             'MonthlySplit' => 'nullable|boolean',
             'SplitStart' => 'nullable|date',
             'SplitEnd' => 'nullable|date|after_or_equal:SplitStart',
+            // Founder D3 (#4128): reissue as a correction of a voided bill; both notes cross-reference each other.
+            'replaces_invoice_id' => 'nullable|integer|min:1',
+            'correction_reason' => 'required_with:replaces_invoice_id|string|min:3|max:80',
         ]);
         // #3991 (Founder 2026-10-13): a missing or 0 fee is never free by itself. The only NT$0 bill is the single-course,
         // single-term 免費／贈送 bill recorded from 登記收款 (director-record), which checks the course's fee evidence.
@@ -123,7 +127,7 @@ class BillingController extends Controller
             $this->assertInvoiceStudentCampusAllowed($request, (int) $itemCourse->student?->CampusID);
         }
 
-        return DB::transaction(function () use ($data, $issuer) {
+        return DB::transaction(function () use ($request, $data, $issuer) {
             // Lock order everywhere: student, then courses, then invoices. Purge locks the student
             // first too, so an invoice can never be written for a student deleted concurrently (#3593).
             if (!Student::query()->whereKey($data['StudentID'])->lockForUpdate()->first(['id'])) {
@@ -165,6 +169,14 @@ class BillingController extends Controller
                     'code' => 'tutoring_no_payment_obligation',
                 ], 422);
             }
+            // Founder D3: lock the replaced bill after the student and courses (lock order: student, courses, invoices).
+            $replaced = null;
+            if (!empty($data['replaces_invoice_id'])) {
+                $replaced = Invoice::query()->whereKey($data['replaces_invoice_id'])->lockForUpdate()->first();
+                if ($refusal = $this->replacementRefusal($replaced, $data)) {
+                    return $refusal;
+                }
+            }
             $scheduleModeAtIssue = !empty($data['StudentClassID'])
                 ? StudentClass::where('ID', $data['StudentClassID'])->first()?->ScheduleMode
                 : null;
@@ -196,8 +208,78 @@ class BillingController extends Controller
                 ], 409);
             }
 
+            if ($replaced) {
+                $this->linkCorrection($request, $replaced, $invoice, trim((string) $data['correction_reason']));
+            }
+
             return response()->json($invoice, 201);
         });
+    }
+
+    /**
+     * Founder D3 (#4128): only a voided bill of the same student and course can be replaced, and only once.
+     * A retry of the same reissue (same course and amount) returns the bill already issued instead of a second one.
+     */
+    private function replacementRefusal(?Invoice $replaced, array $data): ?\Illuminate\Http\JsonResponse
+    {
+        if (!$replaced) {
+            return response()->json(['message' => '找不到要更正的帳單。沒有建立任何帳單。', 'code' => 'replaces_invoice_not_found'], 404);
+        }
+        if (empty($data['StudentClassID']) || (int) $replaced->StudentID !== (int) $data['StudentID']
+            || (int) $replaced->StudentClassID !== (int) $data['StudentClassID']) {
+            return response()->json(['message' => '要更正的帳單不是這位學生的這門課程。沒有建立任何帳單。', 'code' => 'replaces_invoice_mismatch'], 422);
+        }
+        if (strtolower((string) ($replaced->Status ?? '')) !== 'void') {
+            return response()->json(['message' => '請先作廢原帳單（需填原因），再開更正帳單。沒有建立任何帳單。', 'code' => 'replaces_invoice_not_void'], 422);
+        }
+        if (preg_match('/\[replaced_by: #\S+; invoice_id=(\d+);/', (string) $replaced->Note, $m)) {
+            $existing = Invoice::query()->whereKey((int) $m[1])->first();
+            if ($existing && (int) $existing->StudentClassID === (int) $data['StudentClassID']
+                && (int) $existing->TotalAmount === (int) $data['TotalAmount'] && strtolower((string) $existing->Status) !== 'void') {
+                return response()->json($existing, 200); // retry of the same reissue: no second bill
+            }
+
+            return response()->json([
+                'message' => '這張帳單已經開過更正帳單，請改從最新的帳單處理。沒有建立任何帳單。',
+                'code' => 'replaces_invoice_already_replaced',
+                'replacement_invoice_id' => (int) $m[1],
+            ], 409);
+        }
+
+        return null;
+    }
+
+    /** Founder D3: no automatic link yet, so both notes name the other bill, the reason and the operator. */
+    private function linkCorrection(Request $request, Invoice $replaced, Invoice $invoice, string $reason): void
+    {
+        $userId = $request->attributes->get('auth_user')?->id;
+        $operator = 'user_id=' . ($userId ?? 'system');
+        $reason = str_replace(["\r", "\n", '[', ']'], ' ', $reason);
+        $invoice->Note = self::appendNoteTag((string) $invoice->Note, '[更正自 #' . $replaced->displayNo() . '／原因：' . $reason . '／操作者：' . $operator . ']');
+        $invoice->save();
+        $replaced->Note = self::appendNoteTag((string) $replaced->Note, sprintf('[replaced_by: #%s; invoice_id=%d; %s; at=%s]',
+            $invoice->displayNo(), (int) $invoice->id, $operator, now()->format('Y-m-d H:i:s')));
+        $replaced->save();
+
+        $correlationId = (string) \Illuminate\Support\Str::uuid();
+        $campusId = (int) (Student::query()->whereKey($invoice->StudentID)->value('CampusID') ?? 0) ?: null;
+        foreach ([$replaced, $invoice] as $subject) {
+            SecurityAuditEvent::append('invoice.correction_reissue', 'success', [
+                'correlation_id' => $correlationId, 'actor_type' => 'user', 'actor_id' => $userId,
+                'subject_type' => 'invoice', 'subject_id' => $subject->id, 'campus_id' => $campusId,
+            ], ['reason_code' => $subject === $replaced ? 'replaced' : 'replacement', 'old_charge' => (int) $replaced->TotalAmount,
+                'new_charge' => (int) $invoice->TotalAmount, 'reason_hash' => hash('sha256', $reason)]);
+        }
+        Log::info('[InvoiceCorrection] reissued as correction', ['invoice_id' => $invoice->id, 'replaces_invoice_id' => $replaced->id,
+            'student_class_id' => $invoice->StudentClassID, 'user_id' => $userId]);
+    }
+
+    /** Invoice.Note is VARCHAR(255): keep the whole tag, trim the older text. */
+    private static function appendNoteTag(string $note, string $tag): string
+    {
+        $note = trim($note);
+
+        return $note === '' ? mb_substr($tag, 0, 255) : trim(mb_substr($note, 0, max(0, 254 - mb_strlen($tag))) . ' ' . $tag);
     }
 
     public function recordPayment(Request $request, Invoice $invoice)
