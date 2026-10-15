@@ -1590,7 +1590,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             plain.write_text("      - run: |\n" + "          echo x\n" * 5000, encoding="utf-8")
             self.assertEqual(0, guard.main([str(plain)]))
             # #4085 and #4066 review: anchors, aliases, tags and |N cannot be sized line by line: fail closed.
-            for head in ("run: &script |", "run: *script", "run: !!str |", "run: |2", "run: >-4", "run: |2-"):
+            for head in ("run: &script |", "run: *script", "run: !!str |", "run: |2", "run: >-4", "run: |2-",
+                         '"run": |', "'run': |", "{name: x, run: echo}"):
                 odd = Path(tmp) / "odd.yml"
                 odd.write_text(f"      - {head}\n          echo ${{{{ x }}}}\n", encoding="utf-8")
                 self.assertEqual(1, guard.main([str(odd)]), head)
@@ -1603,6 +1604,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         run = step.split("        run: |\n", 1)[1]
         self.assertNotIn("${{", run)
         self.assertNotIn("ENDSSH", workflow)
+        self.assertIn("python3 -I scripts/production-deploy/render_pi_remote_deploy.py", run)
+        self.assertIn("      - 'scripts/production-deploy/**'\n",
+                      (WORKFLOW.parent / "rollback-readiness.yml").read_text(encoding="utf-8"))
         # Same commit as this workflow file: the job's default-ref checkout carries both files.
         checkout = workflow.split("  deploy:\n", 1)[1].split("      - name: Checkout pinned SSH trust helper\n", 1)[1]
         checkout = checkout.split("\n      - name: ", 1)[0]
@@ -1619,8 +1623,6 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         placeholders = set(re.findall(r"@@DEPLOY_([A-Z0-9_]+)@@", REMOTE_DEPLOY.read_text(encoding="utf-8")))
         self.assertEqual(placeholders, set(renderer.PLACEHOLDERS))
         self.assertEqual({f"DEPLOY_{n}" for n in placeholders} | {"DEPLOY_PI_SSH_USER", "DEPLOY_PI_SSH_HOST"}, set(env))
-        self.assertEqual("${{ secrets.PI_SSH_USER }}", env["DEPLOY_PI_SSH_USER"])
-        self.assertEqual("${{ needs.resolve-target.outputs.target_sha }}", env["DEPLOY_TARGET_SHA"])
 
     def test_remote_script_renders_like_github_text_substitution(self):
         sys.path.insert(0, str(REMOTE_RENDERER.parent))

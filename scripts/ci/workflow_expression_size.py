@@ -4,7 +4,8 @@
 GitHub turns a `run:` block containing `${{ }}` into one format() expression; above 21,000 UTF-8
 bytes it silently stops parsing the workflow (a failed 0-job run per push, nothing runs). Plain
 blocks are not expressions and are only reported. Forms this line-based reader cannot size
-exactly (anchor, alias, tag: #4085; `|2` indentation indicator) fail closed. Stdlib only.
+exactly (anchor, alias, tag: #4085; `|2`; quoted or flow-style keys) fail closed. Covers
+workflows and composite actions. Stdlib only.
 
 Usage: python3 scripts/ci/workflow_expression_size.py [--limit BYTES] [workflow ...]
 """
@@ -18,6 +19,8 @@ GITHUB_LIMIT = 21_000
 DEFAULT_LIMIT = 18_000
 ROOT = Path(__file__).resolve().parents[2]
 RUN_KEY = re.compile(r"^(\s*)(?:- )?run:(?:\s+(.*))?$")
+# A quoted `"run":` key or a flow mapping `{..., run: ...}` is not read line by line: fail closed.
+UNREADABLE_KEY = re.compile(r"^\s*(?:- )?(?:[\"']run[\"']\s*:|\{.*\brun\s*:)")
 BLOCK_INDICATOR = re.compile(r"[|>][-+]?(\s+#.*)?")
 UNMEASURABLE = re.compile(r"[&*!]|[|>][-+]?[0-9]")
 
@@ -41,6 +44,8 @@ def run_blocks(workflow_text):
     lines = workflow_text.split("\n")
     blocks = []
     for i, line in enumerate(lines):
+        if UNREADABLE_KEY.match(line):
+            raise UnmeasurableRunBlock(f"line {i + 1}: quoted or flow-style run key; use a plain `run: |` block")
         m = RUN_KEY.match(line)
         if not m:
             continue
@@ -76,7 +81,8 @@ def main(argv=None):
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("workflows", nargs="*", type=Path)
     args = parser.parse_args(argv)
-    paths = args.workflows or sorted((ROOT / ".github" / "workflows").glob("*.y*ml"))
+    paths = args.workflows or sorted((ROOT / ".github" / "workflows").glob("*.y*ml")) + sorted(
+        (ROOT / ".github" / "actions").glob("*/action.y*ml"))
     failures, largest, largest_plain = [], (0, "", 0), (0, "", 0)
     for path in paths:
         try:

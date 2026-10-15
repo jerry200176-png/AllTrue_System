@@ -9,8 +9,7 @@ import os
 import re
 import sys
 
-# Every value the remote script receives. An unset variable renders as "", like a ${{ }}
-# expression that evaluates to nothing.
+# Every value the remote script receives; an unset one renders as "", like an empty ${{ }}.
 PLACEHOLDERS = (
     "TARGET_SHA",
     "RELEASE_TRAIN",

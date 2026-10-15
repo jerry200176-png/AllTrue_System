@@ -1574,7 +1574,7 @@ jobs:
           remote_script="$(umask 077 && mktemp "${RUNNER_TEMP}/pi-remote-deploy.XXXXXX")"
           trap 'rm -f "$remote_script"' EXIT
           # Fails the step (bash -e) before ssh when the template is missing or malformed.
-          python3 scripts/production-deploy/render_pi_remote_deploy.py scripts/production-deploy/pi-remote-deploy.sh > "$remote_script"
+          python3 -I scripts/production-deploy/render_pi_remote_deploy.py scripts/production-deploy/pi-remote-deploy.sh > "$remote_script"
           ssh -i ~/.ssh/deploy_key \
             -o BatchMode=yes \
             -o ConnectTimeout=20 \
