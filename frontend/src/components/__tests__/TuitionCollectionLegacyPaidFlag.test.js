@@ -7,19 +7,21 @@ import TuitionCollectionPage from '../../pages/TuitionCollectionPage.vue';
 const base = { subject: '數學', schedule_mode: 'count', alert_type: 'low_sessions', payable_status: 'unbilled', remaining_sessions: 1, charge: 5000, paid_amount: 0, outstanding: 0, payable_outstanding: null };
 const FLAG_ONLY = { ...base, id: 1, student_id: 1, student_name: '旗標生', payment_status: 'paid', legacy_paid_flag_only: true };
 const RECEIVED = { ...base, id: 2, student_id: 2, student_name: '收款生', payment_status: 'paid', legacy_paid_flag_only: false, paid_amount: 5000, last_paid_at: '2026-10-01' };
+// a flag-only renewal row that still names a confirmed receipt keeps its 撤銷
+const FLAG_WITH_RECEIPT = { ...base, id: 3, student_id: 3, student_name: '收據生', payment_status: 'renew_needed', legacy_paid_flag_only: true, has_confirmed_receipt: true, receipt_report_id: 77 };
 
 const json = (body) => ({ ok: true, status: 200, json: () => Promise.resolve(body) });
 
 beforeAll(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-15T10:00:00+08:00'));
-  localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'test-token' }));
+  localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'test-token', user: { role: 'director' } }));
 });
 afterAll(() => vi.useRealTimers());
 
 describe('legacy paid flag without a payment record (#4114)', () => {
   it('shows 需核對 in amber instead of 已收, and keeps the row out of every owed count', async () => {
-    global.fetch = vi.fn((url) => Promise.resolve(json(String(url).includes('/api/v1/alerts/tuition') ? [FLAG_ONLY, RECEIVED] : [])));
+    global.fetch = vi.fn((url) => Promise.resolve(json(String(url).includes('/api/v1/alerts/tuition') ? [FLAG_ONLY, RECEIVED, FLAG_WITH_RECEIPT] : [])));
     const w = mount(TuitionCollectionPage, {
       props: { branchId: 1, initialTab: 'all' },
       global: { stubs: { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true, AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true } },
@@ -34,6 +36,12 @@ describe('legacy paid flag without a payment record (#4114)', () => {
     expect(tag('收款生').classes()).toContain('st-paid');
     const badge = (label) => w.findAll('.tc-tab').find((t) => t.text().startsWith(label)).find('.tc-tab-badge').text();
     expect(badge('待處理')).toBe('0');
+
+    // #4174 review: no receipt stands behind a flag-only row, so there is nothing to 撤銷
+    const voidBtn = (name) => w.findAll('tr').find((tr) => tr.text().includes(name)).find('[data-testid="tc-void"]');
+    expect(voidBtn('旗標生').exists()).toBe(false);
+    expect(voidBtn('收款生').exists()).toBe(true);
+    expect(voidBtn('收據生').exists()).toBe(true);
     w.unmount();
   });
 });

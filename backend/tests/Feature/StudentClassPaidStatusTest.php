@@ -541,6 +541,24 @@ class StudentClassPaidStatusTest extends TestCase
     }
 
     /**
+     * #4174 review: a single-period date-mode course with Charge=0, Paid=0 and no invoice derives `paid` (0 >= 0), but no
+     * legacy flag exists, so there is nothing to verify: no 需核對.
+     */
+    public function test_index_does_not_mark_derived_paid_without_a_legacy_flag(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $free = $this->createStudentClass($student->id, ['ScheduleMode' => 'date', 'Charge' => 0, 'Paid' => 0,
+            'StartDate' => '2026-10-05', 'EndDate' => '2026-10-26', 'settlement_day' => 5]);
+
+        $row = collect($this->getJson('/api/v1/student-classes?branch_id=1', ['Authorization' => "Bearer {$token}"])->assertOk()->json('data'))
+            ->firstWhere('ID', $free->ID);
+
+        $this->assertSame('paid', $row['payment_status'], 'the derived single-period status is the shape under test');
+        $this->assertFalse($row['legacy_paid_flag_only']);
+    }
+
+    /**
      * TD-083 B1 / R94: partial invoice payment must NOT display as paid on the course list.
      */
     public function test_index_shows_partial_when_invoice_only_partially_paid(): void

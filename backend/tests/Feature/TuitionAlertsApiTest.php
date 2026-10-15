@@ -1343,4 +1343,51 @@ class TuitionAlertsApiTest extends TestCase
         $partial = $this->tuitionRow($token, $make(5, 3000, [[5000, 'cash', '2026-04-05'], [-2000, 'cash', '2026-04-06']]));
         $this->assertSame(['renew_needed', false, '2026-04-05'], [$partial['payment_status'], $partial['legacy_paid_flag_only'], $partial['last_paid_at']]);
     }
+
+    /** #4174 review: a paid status with no legacy flag behind it (package `paid`=false, bill stored as paid, no Payment) is not 需核對. */
+    public function test_legacy_paid_flag_only_requires_an_actual_legacy_flag(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-noflag@example.com');
+        $student = $this->plainStudent('S4174F');
+        $pkg = CoursePackage::create(['student_id' => $student->id, 'campus_id' => 1, 'name' => 'NoFlag', 'total_sessions' => 8,
+            'remaining_sessions' => 1, 'used_sessions' => 7, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => false, 'stop' => false, 'enabled' => true]);
+        $anchor = $this->createCountModeClass($student->id, ['RemainingSessions' => 1, 'SessionCount' => 8, 'PackageID' => $pkg->id]);
+        Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $anchor->ID, 'IssueDate' => '2026-04-01',
+            'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid']);
+
+        $row = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('package_id', $pkg->id);
+
+        $this->assertSame('renew_needed', $row['payment_status'], 'paid-like status is the shape under test');
+        $this->assertFalse($row['legacy_paid_flag_only'], 'no Paid / package paid flag: nothing legacy to verify');
+    }
+
+    /**
+     * #4174 review: a course of another student on another campus linked to the same PackageID by bad data never counts as
+     * this package's payment record: its receipt must not clear the visible package's 需核對.
+     */
+    public function test_package_payment_evidence_stays_inside_owner_and_campus(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-xcampus@example.com');
+        $owner = $this->plainStudent('S4174X');
+        $foreign = Student::create(['name' => 'S4174Y', 'CampusID' => 2, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $pkg = CoursePackage::create(['student_id' => $owner->id, 'campus_id' => 1, 'name' => 'XCampus', 'total_sessions' => 8,
+            'remaining_sessions' => 1, 'used_sessions' => 7, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => true, 'stop' => false, 'enabled' => true]);
+        $this->createCountModeClass($owner->id, ['RemainingSessions' => 1, 'SessionCount' => 8, 'PackageID' => $pkg->id]);
+        $stray = $this->createCountModeClass($foreign->id, ['RemainingSessions' => 1, 'SessionCount' => 8, 'PackageID' => $pkg->id, 'SubjectID' => 6]);
+        Payment::create(['InvoiceID' => Invoice::create(['StudentID' => $foreign->id, 'StudentClassID' => $stray->ID, 'IssueDate' => '2026-04-01',
+            'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid'])->id, 'Amount' => 8000, 'PaidAt' => '2026-04-05', 'Method' => 'cash']);
+
+        $row = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('package_id', $pkg->id);
+
+        $this->assertSame('renew_needed', $row['payment_status']);
+        $this->assertTrue($row['legacy_paid_flag_only'], 'another campus\'s receipt is not this package\'s payment record');
+
+        $resolver = app(\App\Services\BillingPayableResolver::class);
+        $this->assertSame([], $resolver->validPaymentEvidence([], [$pkg->id], [1])['packages'], 'campus scope excludes the stray member');
+        $this->assertSame([], $resolver->validPaymentEvidence([], [$pkg->id])['packages'], 'owner rule excludes it even unscoped');
+    }
 }

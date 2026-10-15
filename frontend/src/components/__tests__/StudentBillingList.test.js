@@ -154,7 +154,8 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
       { id: 61, student_id: 6, student_name: '己', payment_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03' },
       // paid monthly package: hard-coded unbilled payable, but paid
       { id: null, student_id: 8, student_name: '辛', payment_status: 'monthly_due_soon', payable_status: 'unbilled', payable_outstanding: null, paid: true, last_paid_at: '2026-10-01' },
-      // course paid by flag only (G-009): the server marks it, so it reads 需核對, never 已收 (#4114, Founder Q3)
+      // course paid by flag only (G-009), no payment date
+      // the server marks it (legacy_paid_flag_only), so it reads 需核對, never 已收 (#4114, Founder Q3)
       { id: 91, student_id: 9, student_name: '壬', payment_status: 'paid', payable_outstanding: 0, last_paid_at: null, legacy_paid_flag_only: true },
     ], students: [{ id: 7, name: '庚' }], today: '2026-10-07' } });
     const badge = (id) => w.find(`[data-testid="sbl-row-${id}"]`).find('[data-testid="at-badge"]').text();
@@ -182,6 +183,7 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
       { id: 121, student_id: 12, student_name: '丑', paid: true, payment_status: 'paid', payable_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03' },
       // paid monthly plan (server hard-codes unbilled payable for monthly packages)
       { id: null, student_id: 13, student_name: '寅', paid: true, payment_status: 'monthly_due_soon', payable_status: 'unbilled', payable_outstanding: null, last_paid_at: '2026-10-01' },
+      // valid paid status, no pay date
       // paid by the legacy flag alone, no Payment on record (#4114): not owed, so still in 沒有未繳
       { id: 141, student_id: 14, student_name: '卯', paid: true, payment_status: 'paid', payable_outstanding: 0, last_paid_at: null, legacy_paid_flag_only: true },
     ];

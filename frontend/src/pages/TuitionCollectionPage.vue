@@ -486,7 +486,7 @@
 
                     <!-- paid / renew_needed / monthly_due_soon: void + receipt -->
                     <template v-if="r.payment_status === 'paid' || r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'">
-                      <button v-if="canVoid" class="tc-btn tc-btn--void" data-testid="tc-void" @click="openVoidDialog(r)" :disabled="actionLoading === r.id" title="撤銷收款">
+                      <button v-if="canVoid && hasVoidableReceipt(r)" class="tc-btn tc-btn--void" data-testid="tc-void" @click="openVoidDialog(r)" :disabled="actionLoading === r.id" title="撤銷收款">
                         <span class="material-symbols-outlined">undo</span>
                         撤銷
                       </button>
@@ -1591,6 +1591,10 @@ const STATUS_CONFIG = TUITION_STATUS_CONFIG;
 
 // #4114 (Founder Q3): `paid` by the legacy flag alone (no Payment) reads 需核對 in amber, never green 已收.
 const legacyPaidOnly = (r) => r.payment_status === 'paid' && isLegacyPaidFlagOnly(r);
+// #4174 review: a flag-only row has no receipt to void (the void would end in 找不到此課程的已確認核帳紀錄),
+// so 撤銷 shows only when the row names a confirmed receipt.
+const hasVoidableReceipt = (r) => !isLegacyPaidFlagOnly(r)
+  || r.has_confirmed_receipt === true || Number(r.receipt_report_id || 0) > 0 || Number(r.report_id || 0) > 0;
 
 function statusLabel(r) {
   const ps = r.payment_status;

@@ -502,26 +502,43 @@ class AlertController extends Controller
             return $row + ['has_confirmed_receipt' => $reportId !== null, 'receipt_report_id' => $reportId !== null ? (int) $reportId : null];
         })->values();
 
-        return response()->json($this->markLegacyPaidFlagOnly($rows));
+        return response()->json($this->markLegacyPaidFlagOnly($rows, $campusIds === [] ? null : array_map('intval', $campusIds)));
     }
 
     /**
      * #4114 (Founder Q3): a paid status (paid / renew_needed / monthly_due_soon) with no receipt standing on the contract or
      * its package rests on the legacy Paid / package `paid` flag alone. `payment_status` is unchanged, so the row is still
-     * not owed and sends no reminder; `legacy_paid_flag_only` makes the list read 需核對 instead of 已收.
+     * not owed and sends no reminder; `legacy_paid_flag_only` makes the list read 需核對 instead of 已收. Only a row whose
+     * legacy flag is actually set qualifies (StudentClass.Paid=1 / its package paid, or the package row's own `paid`); package
+     * evidence is read inside the caller's campuses only (#4174 review).
+     *
+     * @param int[]|null $campusIds null = super admin (every campus)
      */
-    private function markLegacyPaidFlagOnly(\Illuminate\Support\Collection $rows): \Illuminate\Support\Collection
+    private function markLegacyPaidFlagOnly(\Illuminate\Support\Collection $rows, ?array $campusIds): \Illuminate\Support\Collection
     {
         $paidLike = fn (array $row) => in_array($row['payment_status'] ?? null, ['paid', 'renew_needed', 'monthly_due_soon'], true);
         $candidates = $rows->filter($paidLike);
+        $isPackageRow = fn (array $row) => isset($row['package_id']);
+        $packageFlag = CoursePackage::query()->whereIn('id', $candidates->filter($isPackageRow)->pluck('package_id')->map(fn ($id) => (int) $id)->all())
+            ->pluck('paid', 'id')->mapWithKeys(fn ($paid, $id) => [(int) $id => (bool) $paid])->all();
+        $classFlag = StudentClass::query()->with('coursePackage')
+            ->whereIn('ID', $candidates->reject($isPackageRow)->pluck('id')->filter()->map(fn ($id) => (int) $id)->all())->get()
+            ->mapWithKeys(fn (StudentClass $c) => [(int) $c->ID => $c->isEffectivelyPaid()])->all();
+        $hasFlag = fn (array $row) => $isPackageRow($row)
+            ? ($packageFlag[(int) $row['package_id']] ?? false)
+            : ($classFlag[(int) ($row['id'] ?? 0)] ?? false);
+        $flagged = $candidates->filter($hasFlag);
+        // A package row asks about its package (the resolver reads only the owner's in-scope members), never about the raw
+        // member_class_ids list, which is not campus-filtered.
         $evidence = $this->payableResolver->validPaymentEvidence(
-            $candidates->flatMap(fn ($row) => $row['member_class_ids'] ?? [$row['id']])->filter()->all(),
-            $candidates->filter(fn ($row) => $row['id'] === null)->pluck('package_id')->filter()->all(),
+            $flagged->reject($isPackageRow)->pluck('id')->filter()->all(),
+            $flagged->filter($isPackageRow)->pluck('package_id')->filter()->all(),
+            $campusIds,
         );
 
-        return $rows->map(fn ($row) => $row + ['legacy_paid_flag_only' => $paidLike($row) && ($row['id'] === null
-            ? !isset($evidence['packages'][(int) ($row['package_id'] ?? 0)])
-            : collect($row['member_class_ids'] ?? [$row['id']])->every(fn ($id) => !isset($evidence['classes'][(int) $id])))])->values();
+        return $rows->map(fn ($row) => $row + ['legacy_paid_flag_only' => $paidLike($row) && $hasFlag($row) && ($isPackageRow($row)
+            ? !isset($evidence['packages'][(int) $row['package_id']])
+            : !isset($evidence['classes'][(int) ($row['id'] ?? 0)]))])->values();
     }
 
     /** @param array<string, mixed>|null $verdict BillingPayableResolver course row; invoices that still owe beat the Paid flag (Founder Q2) */
