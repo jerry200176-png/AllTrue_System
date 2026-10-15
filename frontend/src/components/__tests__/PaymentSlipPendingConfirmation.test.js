@@ -21,15 +21,38 @@ describe('payment slip on 金額待確認 contracts', () => {
     expect(w.get('[data-testid="tc-doc-slip-reason"]').text()).toBe(MSG);
   });
 
-  it.each([
-    ['course slip (course page, dashboard)', { studentClassId: 9 }, '/api/v1/alerts/tuition-slip/9'],
-    ['bill slip', { invoiceId: 1623 }, '/api/v1/invoices/1623/slip-data'],
-  ])('%s shows the API 422 reason and renders no slip', async (_, props, url) => {
+  it('course slip (course page, dashboard) shows the API 422 reason and renders no slip', async () => {
     global.fetch.mockResolvedValueOnce(refused());
-    const w = mount(PaymentSlipModal, { props: { show: true, ...props } });
+    const w = mount(PaymentSlipModal, { props: { show: true, studentClassId: 9 } });
     await flushPromises();
-    expect(global.fetch.mock.calls[0][0]).toBe(url);
+    expect(global.fetch.mock.calls[0][0]).toBe('/api/v1/alerts/tuition-slip/9');
     expect(w.find('.slip-error').text()).toContain(MSG);
     expect(w.text()).not.toContain('尚欠金額');
+  });
+
+  it('bill slip flagged amount_pending_confirmation renders no slip, no amount and no share actions', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
+      invoice_id: 1623, student_name: '王小明', status: 'unpaid', amount_pending_confirmation: true,
+      total_amount: null, paid_amount: null, remaining: null, items: [{ description: '數學月結費用', amount: null }], sessions: [],
+    }) });
+    const w = mount(PaymentSlipModal, { props: { show: true, invoiceId: 1623 } });
+    await flushPromises();
+    expect(global.fetch.mock.calls[0][0]).toBe('/api/v1/invoices/1623/slip-data');
+    expect(w.find('.slip-error').text()).toContain(MSG);
+    expect(w.text()).not.toContain('應繳金額');
+    expect(w.find('.slip-preview-wrap').exists()).toBe(false);
+    expect(w.findAll('button').map((b) => b.text()).join(' ')).not.toMatch(/下載|分享|複製/);
+    expect(w.find('.slip-actions').exists()).toBe(false);
+  });
+
+  it('a bill slip without the flag (e.g. a paid bill on the same course) still renders its amount', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
+      invoice_id: 1700, student_name: '王小明', status: 'unpaid', amount_pending_confirmation: false,
+      total_amount: 1200, paid_amount: 0, remaining: 1200, items: [{ description: '數學', amount: 1200 }], sessions: [],
+    }) });
+    const w = mount(PaymentSlipModal, { props: { show: true, invoiceId: 1700 } });
+    await flushPromises();
+    expect(w.find('.slip-error').exists()).toBe(false);
+    expect(w.text()).toContain('NT$ 1,200');
   });
 });

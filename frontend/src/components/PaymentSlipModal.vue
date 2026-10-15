@@ -72,7 +72,10 @@ async function fetchInvoiceSlip(id) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(body.message || '無法載入帳單資料');
   }
-  return resp.json();
+  const body = await resp.json();
+  // Founder D2: an unpaid bill whose amount is still 金額待確認 never becomes a parent slip (no render, no share).
+  if (body?.amount_pending_confirmation === true) throw new Error('金額待確認，請先確認應收金額');
+  return body;
 }
 
 async function fetchTuitionSlip(scId) {

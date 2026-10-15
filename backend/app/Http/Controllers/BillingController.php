@@ -484,14 +484,15 @@ class BillingController extends Controller
         }
         $this->assertInvoiceStudentCampusAllowed($request, (int) $invoice->student->CampusID);
 
-        // Founder D2 (#4121 review): no parent slip while the course's amount is 金額待確認 (same rule as /alerts/tuition-slip).
+        // Founder D2 (#4121 review): the 繳費明細 ledger reads this payload for its class dates, so it never fails. An
+        // unpaid bill on a 金額待確認 course carries no amounts and the flag; the parent slip refuses to render it.
         $slipCourse = $invoice->getRelationValue('studentClass');
+        $courseAmountPending = false;
         if ($slipCourse instanceof StudentClass) {
+            $slipCourseId = (int) $slipCourse->getAttribute('ID');
             $slipVerdict = app(BillingPayableResolver::class)
-                ->courseStatusesByStudentClassIds([(int) $slipCourse->getAttribute('ID')], [$slipCourse])[(int) $slipCourse->getAttribute('ID')] ?? [];
-            if (BillingPayableResolver::isAmountPendingConfirmation($slipCourse, $slipVerdict)) {
-                return response()->json(['message' => '金額待確認，請先確認應收金額'], 422);
-            }
+                ->courseStatusesByStudentClassIds([$slipCourseId], [$slipCourse])[$slipCourseId] ?? [];
+            $courseAmountPending = BillingPayableResolver::isAmountPendingConfirmation($slipCourse, $slipVerdict);
         }
 
         $campus = null;
@@ -550,6 +551,10 @@ class BillingController extends Controller
         });
 
         $sessions = $this->monthlyBilling->invoiceCoveredSessions($invoice, $projection);
+        $amountPending = $courseAmountPending && $remaining > 0; // a paid bill on the same course keeps its amounts
+        if ($amountPending) {
+            $items = $items->map(fn (array $item) => array_merge($item, ['amount' => null, 'stored_amount' => null]));
+        }
 
         $authUser = $request->attributes->get('auth_user');
         Log::info('[InvoiceSlip] generated', [
@@ -565,14 +570,15 @@ class BillingController extends Controller
             'campus_name'  => $campus->name ?? '',
             'issue_date'   => $invoice->IssueDate,
             'due_date'     => $invoice->DueDate,
-            'total_amount' => $totalAmount,
-            'stored_total_amount' => $projection['stored_total_amount'],
-            'computed_total_amount' => $projection['computed_total_amount'],
+            'amount_pending_confirmation' => $amountPending,
+            'total_amount' => $amountPending ? null : $totalAmount,
+            'stored_total_amount' => $amountPending ? null : $projection['stored_total_amount'],
+            'computed_total_amount' => $amountPending ? null : $projection['computed_total_amount'],
             'amount_source' => $projection['amount_source'],
             'amount_discrepancy' => $projection['amount_discrepancy'],
             'period_sessions' => $projection['period_sessions'],
-            'paid_amount'  => $paidAmount,
-            'remaining'    => $remaining,
+            'paid_amount'  => $amountPending ? null : $paidAmount,
+            'remaining'    => $amountPending ? null : $remaining,
             'status'       => $invoice->Status,
             'note'         => $invoice->Note,
             'items'        => $items,

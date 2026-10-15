@@ -208,10 +208,41 @@ class AccountingPendingQueueTest extends TestCase
         $this->getJson("/api/v1/alerts/tuition-slip/{$c->ID}", $this->headers)
             ->assertStatus(422)
             ->assertJsonPath('message', '金額待確認，請先確認應收金額');
-        // The bill's own slip (invoices/{id}/slip-data) refuses the same contract with the same message.
-        $this->getJson("/api/v1/invoices/{$invoice->id}/slip-data", $this->headers)
-            ->assertStatus(422)
-            ->assertJsonPath('message', '金額待確認，請先確認應收金額');
+    }
+
+    public function test_invoice_slip_data_keeps_class_dates_but_withholds_a_pending_confirmation_amount(): void
+    {
+        // The 繳費明細 ledger reads invoices/{id}/slip-data for 涵蓋上課日: it must still load, without amounts.
+        $c = $this->reviewMonthlyCourse();
+        $invoice = $this->invoice($c, 4400);
+        $invoice->forceFill(['billing_period' => '2026-09'])->save();
+        $this->assertTrue($this->tuitionRow($c)['amount_pending_confirmation'], 'fixture: the course must be 金額待確認');
+
+        $json = $this->getJson("/api/v1/invoices/{$invoice->id}/slip-data", $this->headers)->assertOk()->json();
+        $this->assertTrue($json['amount_pending_confirmation']);
+        foreach (['total_amount', 'stored_total_amount', 'computed_total_amount', 'paid_amount', 'remaining'] as $field) {
+            $this->assertNull($json[$field], $field);
+        }
+        foreach ($json['items'] as $item) {
+            $this->assertNull($item['amount']);
+        }
+        $this->assertArrayHasKey('sessions', $json); // 涵蓋上課日 still comes from this payload
+        $this->assertIsArray($json['sessions']);
+    }
+
+    public function test_paid_invoice_on_a_pending_confirmation_course_keeps_its_slip_amounts(): void
+    {
+        $c = $this->reviewMonthlyCourse();
+        $open = $this->invoice($c, 4400);
+        $open->forceFill(['billing_period' => '2026-09'])->save();
+        $paid = $this->invoice($c, 1200, 'paid', 1200);
+        $paid->forceFill(['billing_period' => '2026-09'])->save();
+        $this->assertTrue($this->tuitionRow($c)['amount_pending_confirmation'], 'fixture: the course must still be 金額待確認');
+
+        $json = $this->getJson("/api/v1/invoices/{$paid->id}/slip-data", $this->headers)->assertOk()->json();
+        $this->assertFalse($json['amount_pending_confirmation']);
+        $this->assertSame(1200, $json['total_amount']);
+        $this->assertSame(0, $json['remaining']);
     }
 
     public function test_tuition_slip_still_works_for_a_confirmed_unpaid_stopped_contract(): void
@@ -220,7 +251,9 @@ class AccountingPendingQueueTest extends TestCase
         $invoice = $this->invoice($c, 8800);
 
         $this->getJson("/api/v1/alerts/tuition-slip/{$c->ID}", $this->headers)->assertOk();
-        $this->getJson("/api/v1/invoices/{$invoice->id}/slip-data", $this->headers)->assertOk();
+        $this->getJson("/api/v1/invoices/{$invoice->id}/slip-data", $this->headers)->assertOk()
+            ->assertJsonPath('amount_pending_confirmation', false)
+            ->assertJsonPath('total_amount', 8800);
     }
 
     public function test_confirmed_unpaid_rows_are_not_marked_pending_confirmation(): void
