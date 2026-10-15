@@ -685,6 +685,52 @@ class TuitionAlertsApiTest extends TestCase
         $row = collect($res->json())->firstWhere('id', $course->ID);
         $this->assertNotNull($row);
         $this->assertSame('renew_needed', $row['payment_status']);
+        // #4114 (Founder Q3): Paid=1 with no Payment is the legacy flag alone; still a renewal row, never owed.
+        $this->assertTrue($row['legacy_paid_flag_only']);
+    }
+
+    /** #4114 (Founder Q3): flag-only paid rows are marked for 需核對; status, amounts and reminders are unchanged. */
+    public function test_legacy_paid_flag_only_marks_paid_rows_without_a_payment_record(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-flag@example.com');
+        $student = Student::create(['name' => 'S4114', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $low = ['Paid' => 1, 'RemainingSessions' => 1, 'Charge' => 5000];
+        $receipt = fn (StudentClass $c, string $status, int $amount) => Payment::create([
+            'InvoiceID' => Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $c->ID, 'IssueDate' => '2026-04-01',
+                'TotalAmount' => $amount, 'PaidAmount' => $amount, 'Status' => $status])->id,
+            'Amount' => $amount, 'PaidAt' => '2026-04-05', 'Method' => 'cash']);
+        $flagOnly = $this->createCountModeClass($student->id, $low);
+        $paid = $this->createCountModeClass($student->id, $low + ['SubjectID' => 2]);
+        $receipt($paid, 'paid', 5000);
+        $voidedBill = $this->createCountModeClass($student->id, $low + ['SubjectID' => 3]);
+        $receipt($voidedBill, 'void', 5000);
+        $unpaid = $this->createCountModeClass($student->id, ['Paid' => 0, 'SubjectID' => 4]);
+        $package = function (bool $withReceipt) use ($student, $receipt) {
+            $pkg = CoursePackage::create(['student_id' => $student->id, 'campus_id' => 1, 'name' => 'P' . (int) $withReceipt,
+                'total_sessions' => 8, 'remaining_sessions' => 1, 'used_sessions' => 7, 'rate' => 1000, 'rate_unit' => 'session',
+                'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true]);
+            $this->createCountModeClass($student->id, ['RemainingSessions' => 1, 'SessionCount' => 8, 'PackageID' => $pkg->id]);
+            $member = $this->createCountModeClass($student->id, ['RemainingSessions' => 1, 'SessionCount' => 8, 'PackageID' => $pkg->id, 'SubjectID' => 5]);
+            if ($withReceipt) {
+                $receipt($member, 'paid', 8000); // a package bill on a non-anchor member still counts
+            }
+
+            return $pkg->id;
+        };
+        $pkgFlagOnly = $package(false);
+        $pkgPaid = $package(true);
+
+        $rows = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+        $row = fn ($id) => $rows->first(fn ($r) => (int) $r['id'] === (int) $id && !isset($r['package_id']));
+        $pkg = fn ($id) => $rows->firstWhere('package_id', $id);
+
+        $this->assertSame(['renew_needed', 0, true], [$row($flagOnly->ID)['payment_status'], (int) $row($flagOnly->ID)['outstanding'], $row($flagOnly->ID)['legacy_paid_flag_only']]);
+        $this->assertFalse($row($paid->ID)['legacy_paid_flag_only'], 'a standing receipt is a real 已收');
+        $this->assertTrue($row($voidedBill->ID)['legacy_paid_flag_only'], 'a receipt on a void bill is not a payment record');
+        $this->assertSame(['unpaid', false], [$row($unpaid->ID)['payment_status'], $row($unpaid->ID)['legacy_paid_flag_only']]);
+        $this->assertSame(['renew_needed', true], [$pkg($pkgFlagOnly)['payment_status'], $pkg($pkgFlagOnly)['legacy_paid_flag_only']]);
+        $this->assertSame(['renew_needed', false], [$pkg($pkgPaid)['payment_status'], $pkg($pkgPaid)['legacy_paid_flag_only']]);
     }
 
     public function test_payment_status_monthly_due_soon_for_date_mode_paid(): void
@@ -708,6 +754,7 @@ class TuitionAlertsApiTest extends TestCase
         $row = collect($res->json())->firstWhere('id', $course->ID);
         $this->assertNotNull($row);
         $this->assertSame('monthly_due_soon', $row['payment_status']);
+        $this->assertTrue($row['legacy_paid_flag_only'], '#4114: Paid=1 without a Payment reads 需核對, not 已收');
     }
 
     public function test_payment_status_paid_for_count_mode_fully_paid_no_low_sessions(): void
@@ -1261,5 +1308,86 @@ class TuitionAlertsApiTest extends TestCase
             'settlement_day' => 1,
             'monthly_sessions' => null,
         ], $overrides));
+    }
+
+    /**
+     * #4114 x #4123: a receipt cancelled by a reversal (negative row or Method='void' row) is not a payment record, the same
+     * net ledger last_paid_at uses. When nothing is owed (bill zero-rated after the reversal) the paid-flag row reads 需核對
+     * with no 最近繳費 date; while the bill still owes it is plain unpaid, never flag-only. A partial reversal leaves a
+     * receipt standing: real 已收 with a date.
+     */
+    public function test_reversed_receipt_is_not_payment_evidence(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-reversed@example.com');
+        $student = $this->plainStudent('S4114R');
+        $make = function (int $subject, int $total, array $rows) use ($student) {
+            $course = $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 1, 'Charge' => 5000, 'SubjectID' => $subject]);
+            $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-04-01',
+                'TotalAmount' => $total, 'PaidAmount' => $total, 'Status' => 'paid']);
+            foreach ($rows as [$amount, $method, $at]) {
+                Payment::create(['InvoiceID' => $invoice->id, 'Amount' => $amount, 'PaidAt' => $at, 'Method' => $method]);
+            }
+
+            return (int) $course->ID;
+        };
+        $negative = [[5000, 'cash', '2026-04-05'], [-5000, 'cash', '2026-04-06']];
+        $voidRow = [[5000, 'cash', '2026-04-05'], [5000, 'void', '2026-04-06']];
+
+        foreach ([$negative, $voidRow] as $i => $ledger) {
+            $settled = $this->tuitionRow($token, $make(1 + $i, 0, $ledger));
+            $this->assertSame(['renew_needed', true, null], [$settled['payment_status'], $settled['legacy_paid_flag_only'], $settled['last_paid_at']],
+                'a fully reversed receipt is not a payment record');
+            $owed = $this->tuitionRow($token, $make(3 + $i, 5000, $ledger));
+            $this->assertSame(['unpaid', false, null], [$owed['payment_status'], $owed['legacy_paid_flag_only'], $owed['last_paid_at']]);
+        }
+        $partial = $this->tuitionRow($token, $make(5, 3000, [[5000, 'cash', '2026-04-05'], [-2000, 'cash', '2026-04-06']]));
+        $this->assertSame(['renew_needed', false, '2026-04-05'], [$partial['payment_status'], $partial['legacy_paid_flag_only'], $partial['last_paid_at']]);
+    }
+
+    /** #4174 review: a paid status with no legacy flag behind it (package `paid`=false, bill stored as paid, no Payment) is not 需核對. */
+    public function test_legacy_paid_flag_only_requires_an_actual_legacy_flag(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-noflag@example.com');
+        $student = $this->plainStudent('S4174F');
+        $pkg = CoursePackage::create(['student_id' => $student->id, 'campus_id' => 1, 'name' => 'NoFlag', 'total_sessions' => 8,
+            'remaining_sessions' => 1, 'used_sessions' => 7, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => false, 'stop' => false, 'enabled' => true]);
+        $anchor = $this->createCountModeClass($student->id, ['RemainingSessions' => 1, 'SessionCount' => 8, 'PackageID' => $pkg->id]);
+        Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $anchor->ID, 'IssueDate' => '2026-04-01',
+            'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid']);
+
+        $row = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('package_id', $pkg->id);
+
+        $this->assertSame('renew_needed', $row['payment_status'], 'paid-like status is the shape under test');
+        $this->assertFalse($row['legacy_paid_flag_only'], 'no Paid / package paid flag: nothing legacy to verify');
+    }
+
+    /**
+     * #4174 review: a course of another student on another campus linked to the same PackageID by bad data never counts as
+     * this package's payment record: its receipt must not clear the visible package's 需核對.
+     */
+    public function test_package_payment_evidence_stays_inside_owner_and_campus(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-xcampus@example.com');
+        $owner = $this->plainStudent('S4174X');
+        $foreign = Student::create(['name' => 'S4174Y', 'CampusID' => 2, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $pkg = CoursePackage::create(['student_id' => $owner->id, 'campus_id' => 1, 'name' => 'XCampus', 'total_sessions' => 8,
+            'remaining_sessions' => 1, 'used_sessions' => 7, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => true, 'stop' => false, 'enabled' => true]);
+        $this->createCountModeClass($owner->id, ['RemainingSessions' => 1, 'SessionCount' => 8, 'PackageID' => $pkg->id]);
+        $stray = $this->createCountModeClass($foreign->id, ['RemainingSessions' => 1, 'SessionCount' => 8, 'PackageID' => $pkg->id, 'SubjectID' => 6]);
+        Payment::create(['InvoiceID' => Invoice::create(['StudentID' => $foreign->id, 'StudentClassID' => $stray->ID, 'IssueDate' => '2026-04-01',
+            'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid'])->id, 'Amount' => 8000, 'PaidAt' => '2026-04-05', 'Method' => 'cash']);
+
+        $row = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('package_id', $pkg->id);
+
+        $this->assertSame('renew_needed', $row['payment_status']);
+        $this->assertTrue($row['legacy_paid_flag_only'], 'another campus\'s receipt is not this package\'s payment record');
+
+        $resolver = app(\App\Services\BillingPayableResolver::class);
+        $this->assertSame([], $resolver->validPaymentEvidence([], [$pkg->id], [1])['packages'], 'campus scope excludes the stray member');
+        $this->assertSame([], $resolver->validPaymentEvidence([], [$pkg->id])['packages'], 'owner rule excludes it even unscoped');
     }
 }

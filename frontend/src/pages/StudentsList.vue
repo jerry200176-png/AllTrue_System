@@ -446,7 +446,7 @@
                       <div>
                         <dt>付款</dt>
                         <dd>
-                          <span :class="['student-course-card__payment', `student-course-card__payment--${course.payment_status || 'unknown'}`]">{{ paymentStatusButtonLabel(course) }}</span>
+                          <span :class="['student-course-card__payment', `student-course-card__payment--${isLegacyPaidFlagOnly(course) ? 'pending' : (course.payment_status || 'unknown')}`]">{{ paymentStatusButtonLabel(course) }}</span>
                           <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需修正</span>
                           <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
                         </dd>
@@ -1007,7 +1007,7 @@ import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled } from '../lib/paymentStatus.js';
 import {
   closedReason as effectiveClosedReason, courseProgress, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
-  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL,
+  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1306,6 +1306,8 @@ const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isTutoringCourse(course)) return '無須繳費';
   if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
+  // #4114 (Founder Q3): paid by the legacy flag alone (no Payment) is 需核對, never 已收.
+  if (isLegacyPaidFlagOnly(course)) return LEGACY_FLAG_UNVERIFIED_LABEL;
   if (isCourseSettled(course) === null) return '繳費狀態載入中';
   // Course-level badge: the tuition label map (periodPaymentLabel is for dated monthly rows).
   const status = course?.payment_status;
