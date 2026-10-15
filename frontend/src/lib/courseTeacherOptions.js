@@ -22,12 +22,29 @@ export function buildCreateTeacherOptions(teachers = []) {
     .filter(isAssignableTeacher)
     .map((teacher) => {
       const id = teacherIdOf(teacher);
+      // Keep every source field (branch_ids / branch_id / email / status …): the
+      // scheduler and TeacherAvailabilityPlanner read branch metadata for labels
+      // and eligibility. Only id/name are normalized.
       return {
+        ...teacher,
         id,
         name: teacher?.username || teacher?.name || teacher?.Name || `#${id ?? ''}`,
       };
     })
     .filter((teacher) => teacher.id);
+}
+
+/**
+ * Seed value for the create picker's teacher. A calendar cell under a
+ * deactivated / historical teacher column must not pre-select that teacher
+ * (the backend would reject it with 「所選老師已無法指派」), so any id that is
+ * not in the create options is cleared.
+ */
+export function resolveCreateTeacherId(teacherId, createOptions = []) {
+  const id = teacherIdOf({ id: teacherId });
+  if (!id) return '';
+  const options = Array.isArray(createOptions) ? createOptions : [];
+  return options.some((teacher) => teacherIdOf(teacher) === id) ? teacherId : '';
 }
 
 export function buildEditTeacherOptions(teachers = [], course = null) {
