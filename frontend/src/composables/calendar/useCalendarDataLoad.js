@@ -303,6 +303,8 @@ export function useCalendarDataLoad({
             email: t?.email || '',
             branch_ids: branchIds,
             branch_id: branch,
+            // Keep status so the create-course picker can hide deactivated teachers (in-app #411).
+            status: t?.status ?? null,
           };
         })
         .filter(Boolean);

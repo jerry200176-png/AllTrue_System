@@ -12,6 +12,24 @@ export function isAssignableTeacher(teacher) {
   return teacher?.status == null || teacher.status === 'active';
 }
 
+/**
+ * Options for the NEW-course teacher picker (UniversalClassScheduler create mode).
+ * Deactivated teachers are excluded; edit pickers must keep using
+ * buildEditTeacherOptions so an existing course still shows its historical teacher.
+ */
+export function buildCreateTeacherOptions(teachers = []) {
+  return (Array.isArray(teachers) ? teachers : [])
+    .filter(isAssignableTeacher)
+    .map((teacher) => {
+      const id = teacherIdOf(teacher);
+      return {
+        id,
+        name: teacher?.username || teacher?.name || teacher?.Name || `#${id ?? ''}`,
+      };
+    })
+    .filter((teacher) => teacher.id);
+}
+
 export function buildEditTeacherOptions(teachers = [], course = null) {
   const normalized = (Array.isArray(teachers) ? teachers : [])
     .map((teacher) => ({

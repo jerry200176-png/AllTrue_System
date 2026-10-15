@@ -570,6 +570,7 @@ import {
   isRangeWithinFetchedBounds,
 } from '../lib/calendarLoadPerformance';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
+import { buildCreateTeacherOptions } from '../lib/courseTeacherOptions.js';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
@@ -844,12 +845,9 @@ const studentSelectOptions = computed(() => (
     label: student.name,
   }))
 ));
-const schedulerTeachers = computed(() => (
-  (teachers.value || []).map((t) => ({
-    id: Number(t?.id ?? 0),
-    name: t?.username || t?.name || t?.Name || `#${t?.id ?? ''}`,
-  })).filter((t) => Number.isFinite(t.id) && t.id > 0)
-));
+// Create-only picker: deactivated teachers are hidden (in-app #411). Existing-course
+// edit flows keep using the full `teachers` list so historical teachers still show.
+const schedulerTeachers = computed(() => buildCreateTeacherOptions(teachers.value));
 const schedulerRooms = computed(() => (
   (roomList.value || []).map((r) => ({
     id: Number(r?.id ?? 0),
