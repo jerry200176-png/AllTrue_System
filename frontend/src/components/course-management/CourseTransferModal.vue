@@ -65,6 +65,8 @@ const props = defineProps({
   courseId: { type: [Number, String], default: null },
   subjects: { type: Array, default: () => [] },
   teachers: { type: Array, default: () => [] },
+  // #409: values carried over from an attempted 課程設定 edit (subject, teacher_id, weekday, time, duration_minutes).
+  prefill: { type: Object, default: () => ({}) },
 });
 const emit = defineEmits(['close', 'done']);
 const DAYS = ['一', '二', '三', '四', '五', '六', '日'];
@@ -76,7 +78,7 @@ const canSubmit = computed(() => !!form.start_date && (form.subject || form.teac
 
 watch(() => props.show, (v) => {
   if (v) {
-    Object.assign(form, { subject: '', teacher_id: '', start_date: '', weekday: '', time: '16:00', duration_minutes: 120, reason: '' });
+    Object.assign(form, { subject: '', teacher_id: '', start_date: '', weekday: '', time: '16:00', duration_minutes: 120, reason: '' }, props.prefill || {});
     preview.value = null;
     error.value = '';
   }
