@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-15-inapp-396-ledger-opened-course
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 學生帳務會直接帶你到點開的那門課
+    summary: 從課程打開學生帳務時，那門課的合約卡會被標出並自動捲到。
+    items:
+      - category: improved
+        text: 從某一門課按「在這裡看帳務」，那門課的合約卡會標「你點開的這門課」並自動捲到它。
+    source_refs:
+      - "changelog:2026-10-15:inapp-396-ledger-opened-course"

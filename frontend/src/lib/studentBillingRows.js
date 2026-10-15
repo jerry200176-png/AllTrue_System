@@ -3,6 +3,9 @@
 // student of the campus so a fully paid student is still findable.
 
 const OWING = new Set(['unpaid', 'partial', 'pending_reconciliation', 'monthly_due_soon', 'renew_needed']);
+// Statuses the server only sends for a contract it judges fully paid (ContractMoneyState::alertStatus /
+// computePackageCountPaymentStatus: Paid flag OR valid invoice payments, invoices that still owe win).
+const PAID = new Set(['paid', 'renew_needed', 'monthly_due_soon']);
 
 const dayStart = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`);
 const todayYmd = () => new Date().toISOString().slice(0, 10);
@@ -63,7 +66,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
         waiting_confirm: 0, pending_review_amount: 0, pending_review_count: 0,
-        overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [],
+        overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [], unbilled: 0, has_paid: false,
       });
     }
     return byStudent.get(id);
@@ -83,6 +86,11 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
         pending_review: pendingReviewAmount(r),
       });
     }
+    // in-app #407 / #4123: 已收 follows the server's authoritative paid status only. A payment date alone
+    // (legacy PayDate, an earlier term's payment) is not proof the contract is paid, nor is the raw `paid` flag
+    // when the invoices say it still owes.
+    const paidSignal = PAID.has(r.payment_status);
+    if (paidSignal) row.has_paid = true;
     if (r.payment_status === 'pending_report') row.waiting_confirm += 1;
     // Founder D2: 金額待確認 is its own line, never part of owed_now / owed_later.
     if (pendingReviewAmount(r) > 0) {
@@ -91,7 +99,8 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     }
     if (!OWING.has(r.payment_status) || isPendingConfirmation(r)) continue;
     const items = owedItems(r);
-    if (!items.some((it) => it.amount > 0)) continue;
+    // in-app #407: an owing contract with no bill yet must not read as 已收.
+    if (!items.some((it) => it.amount > 0)) { if (r.payable_status === 'unbilled' && !paidSignal) row.unbilled += 1; continue; }
     row.open_contracts += 1;
     for (const it of items) {
       if (it.amount <= 0) continue;
@@ -117,5 +126,5 @@ export const STUDENT_FILTERS = {
   owing: { label: '有未繳', test: (r) => r.owed_now > 0 },
   confirm: { label: '待核對入帳', test: (r) => r.waiting_confirm > 0 },
   pending_review: { label: '金額待確認', test: (r) => r.pending_review_count > 0 },
-  clear: { label: '已繳清', test: (r) => r.owed_now === 0 && r.owed_later === 0 && r.waiting_confirm === 0 && !r.pending_review_count },
+  clear: { label: '沒有未繳', test: (r) => r.owed_now === 0 && r.owed_later === 0 && r.waiting_confirm === 0 && !r.unbilled && !r.pending_review_count },
 };
