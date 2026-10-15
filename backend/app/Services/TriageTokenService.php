@@ -8,9 +8,15 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 
-/** Read-only AI triage tokens: Sanctum row stores sha256 only; expiry = created_at + ttl_days. */
+/**
+ * Read-only AI triage tokens: Sanctum row stores sha256 only. Expiry is fixed at
+ * issue (expires_at); a later ttl_days change can only shorten it, never extend it (#4021).
+ */
 final class TriageTokenService
 {
+    /** Cap for rows issued before expires_at existed (2026-10-13 launch default ttl_days). */
+    private const LEGACY_MAX_TTL_DAYS = 90;
+
     public static function ability(): string
     {
         return (string) config('triage_tokens.ability');
@@ -45,6 +51,7 @@ final class TriageTokenService
             'name' => $name,
             'token' => hash('sha256', $secret),
             'abilities' => [self::ability()],
+            'expires_at' => now()->addDays((int) config('triage_tokens.ttl_days')),
         ])->save();
 
         return ['token' => $pat->getKey() . '|' . $secret, 'record' => self::present($pat)];
@@ -79,9 +86,15 @@ final class TriageTokenService
         return $pat;
     }
 
+    /** min(expiry fixed at issue, created_at + current ttl_days): config can shorten a token, never lengthen it. */
     public static function expiresAt(PersonalAccessToken $pat): Carbon
     {
-        return Carbon::parse($pat->getAttribute('created_at'))->addDays((int) config('triage_tokens.ttl_days'));
+        $created = Carbon::parse($pat->getAttribute('created_at'));
+        $stored = $pat->getAttribute('expires_at');
+        $issued = $stored ? Carbon::parse($stored) : $created->copy()->addDays(self::LEGACY_MAX_TTL_DAYS);
+        $current = $created->copy()->addDays((int) config('triage_tokens.ttl_days'));
+
+        return $issued->lessThan($current) ? $issued : $current;
     }
 
     public static function isExpired(PersonalAccessToken $pat): bool

@@ -101,6 +101,18 @@ function checkWorkflowYaml(errors) {
   }
 }
 
+// Same triage-token shape as the .gitleaks.toml rule (#4022); the bare prefix alone never matches.
+const SECRET_PATTERNS = [
+  [/AKIA[0-9A-Z]{16}/, 'AWS key'],
+  [/-----BEGIN (RSA |OPENSSH )?PRIVATE KEY-----/, 'private key'],
+  [/ghp_[A-Za-z0-9]{36}/, 'GitHub PAT'],
+  [/(?:\d+\|)?alltrue_triage_[A-Za-z0-9]{40}(?![A-Za-z0-9])/, 'AllTrue triage token'],
+];
+
+function findSecretLabels(text) {
+  return SECRET_PATTERNS.filter(([re]) => re.test(text)).map(([, label]) => label);
+}
+
 function checkSecrets(errors) {
   let diff = '';
   try {
@@ -108,13 +120,11 @@ function checkSecrets(errors) {
       cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024,
     });
   } catch { return; }
-  for (const [re, label] of [[/AKIA[0-9A-Z]{16}/, 'AWS key'], [/-----BEGIN (RSA |OPENSSH )?PRIVATE KEY-----/, 'private key'], [/ghp_[A-Za-z0-9]{36}/, 'GitHub PAT']]) {
-    if (re.test(diff)) {
-      errors.push(formatGovError({
-        code: GOV_CODES.SECRET, message: `Possible secret in diff: ${label}`,
-        actual: label, policy: 'Secret Scan', fix: 'Remove secret; rotate if pushed',
-      }));
-    }
+  for (const label of findSecretLabels(diff)) {
+    errors.push(formatGovError({
+      code: GOV_CODES.SECRET, message: `Possible secret in diff: ${label}`,
+      actual: label, policy: 'Secret Scan', fix: 'Remove secret; rotate if pushed',
+    }));
   }
 }
 
@@ -123,6 +133,10 @@ async function main() {
     if (classifyStepFailure({ step: 'Branch naming', logSnippet: 'Invalid branch name' }).primary !== 'BRANCH_NAMING_POLICY') throw new Error('taxonomy');
     if (classifySameShaRerun({ earlierConclusion: 'failure', laterConclusion: 'success', headShaSame: true }).kind !== 'flake') throw new Error('flake');
     if (!validateBranchName('sec/x').ok || validateBranchName('agent/x').ok) throw new Error('branch');
+    const triage = `+ token = "12|${'alltrue_'}triage_${'Ab3'.repeat(13)}x"`; // built at runtime so this file never holds a token
+    if (findSecretLabels(triage).join() !== 'AllTrue triage token') throw new Error('triage token not detected');
+    if (findSecretLabels(`${'alltrue_'}triage_${'Ab3'.repeat(13)}x`).join() !== 'AllTrue triage token') throw new Error('bare triage secret not detected');
+    if (findSecretLabels("'secret_prefix' => 'alltrue_triage_', see 1|alltrue_triage_forged").length) throw new Error('triage prefix false positive');
     console.log('ci-preflight self-test: OK');
     return;
   }

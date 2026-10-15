@@ -3,6 +3,19 @@
 
 title = "AllTrue publication gitleaks allowlist"
 
+# Without [extend] a repo config replaces the default rules; with it the
+# pinned defaults stay on and the rules below are added (#4022).
+[extend]
+useDefault = true
+
+# Issued AI triage tokens: "<id>|alltrue_triage_<40 alnum>" (config/triage_tokens.php).
+# The id is optional so a pasted bare secret is caught too; the bare prefix is not.
+[[rules]]
+id = "alltrue-triage-token"
+description = "AllTrue read-only AI triage token"
+regex = '''(?:\d+\|)?alltrue_triage_[A-Za-z0-9]{40}(?:[^A-Za-z0-9]|$)'''
+keywords = ["alltrue_triage_"]
+
 [allowlist]
 description = "Known false positives after filter-repo + credential rotation"
 paths = [

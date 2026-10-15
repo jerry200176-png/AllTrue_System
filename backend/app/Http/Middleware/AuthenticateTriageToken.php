@@ -34,7 +34,13 @@ final class AuthenticateTriageToken
         $pat->forceFill(['last_used_at' => now()])->save();
         $request->attributes->set('triage_token_id', (int) $pat->getKey());
 
-        $response = $next($request);
+        try {
+            $response = $next($request);
+        } catch (\Throwable $e) {
+            // #4004: a read that throws must still leave its audit row.
+            $this->audit($request, (int) $pat->getKey(), 'failure', 500, 'read_failed');
+            throw $e;
+        }
         $status = $response->getStatusCode();
         $this->audit($request, (int) $pat->getKey(), $status < 400 ? 'success' : 'failure', $status, $status < 400 ? 'read' : 'read_failed');
 
