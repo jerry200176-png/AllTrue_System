@@ -20,6 +20,32 @@ ROOT = Path(__file__).parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+REMOTE_DEPLOY = ROOT / "scripts" / "production-deploy" / "pi-remote-deploy.sh"
+REMOTE_RENDERER = ROOT / "scripts" / "production-deploy" / "render_pi_remote_deploy.py"
+SSH_LINE = '"${DEPLOY_PI_SSH_USER}@${DEPLOY_PI_SSH_HOST}" < "$remote_script" || rc=$?\n'
+
+
+def deploy_step_env(workflow_text):
+    """The Deploy step's env: entries, {name: value}."""
+    step = workflow_text.split("      - name: Deploy\n", 1)[1].split("        run: |\n", 1)[0]
+    env = step.split("        env:\n", 1)[1]
+    return dict(re.findall(r"^          ([A-Z0-9_]+): (.+)$", env, re.M))
+
+
+def read_deploy_workflow():
+    """deploy.yml with the remote deploy script shown inline in the Deploy step (#4051).
+
+    The script lives in scripts/production-deploy/pi-remote-deploy.sh. Each @@DEPLOY_<NAME>@@ placeholder is
+    shown as the ${{ }} expression that the step env: DEPLOY_<NAME> feeds it, so the executor
+    contracts below read the script the Pi receives, wired through the committed workflow.
+    """
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    env = deploy_step_env(workflow)
+    script = re.sub(r"@@(DEPLOY_[A-Z0-9_]+)@@", lambda m: env[m.group(1)], REMOTE_DEPLOY.read_text(encoding="utf-8"))
+    inline = "".join(("          " + line) if line.strip() else line for line in script.splitlines(True))
+    assert workflow.count(SSH_LINE) == 1, "Deploy step ssh line changed"
+    return workflow.replace(SSH_LINE, SSH_LINE + inline + "          ENDSSH\n")
+
 from scripts.governance.autonomy_gate import (  # noqa: E402
     aggregate_landed_pr_effects,
     auto_environment_is_valid,
@@ -706,7 +732,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         ]))
 
     def test_deploy_queue_uses_runtime_manifest_and_full_undeployed_range(self):
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = read_deploy_workflow()
         self.assertIn("/deployment.json", workflow)
         self.assertIn("compare/{deployed}...{head}", workflow)
         self.assertIn("runtime_base_sha", workflow)
@@ -714,7 +740,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertNotIn('base = parents[0]["sha"]', workflow)
 
     def test_superseded_ci_run_skips_before_founder_approval(self):
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = read_deploy_workflow()
         resolve = workflow[workflow.index("  resolve-target:"):workflow.index("  detect-deployable:")]
         detect = workflow[workflow.index("  detect-deployable:"):workflow.index("  classify-activation:")]
         self.assertIn('if [[ "$EVENT_NAME" == "workflow_run" ]]; then', resolve)
@@ -724,7 +750,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertIn("needs.resolve-target.outputs.superseded != 'true'", detect)
 
     def test_manual_activation_holds_unknown_runtime_identity(self):
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = read_deploy_workflow()
         classify = workflow[workflow.index("  classify-activation:"):]
         pop_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "pop-bootstrap" ]]')
         manual_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" != "release-train" ]]; then')
@@ -994,7 +1020,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
                 ))
 
     def test_environment_logs_match_self_review_policy(self):
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = read_deploy_workflow()
         self.assertIn("review boundary verified: required reviewer, self-review allowed", workflow)
         self.assertNotIn("review boundary verified: required reviewer, prevent self-review", workflow)
 
@@ -1002,7 +1028,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
 class DeployActivationWorkflowContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.workflow = WORKFLOW.read_text(encoding="utf-8")
+        cls.workflow = read_deploy_workflow()
 
     def test_release_train_schedule_and_dispatch_are_wired(self):
         # Founder 2026-10-14 (batch approvals, 1-2 trains a day): windows at 12:17 and 18:17
@@ -1538,35 +1564,95 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
     def test_expression_bearing_run_scripts_stay_under_the_github_limit(self):
         # GitHub evaluates a run script that contains ${{ }} as one expression and rejects the whole
-        # workflow (a 0-job failed run) when it exceeds 21,000 UTF-8 bytes. Stdlib only: this test
-        # gates every deployment (contract-test job), which installs no Python packages.
-        lines = self.workflow.split("\n")
-        checked = 0
-        for i, line in enumerate(lines):
-            m = re.match(r"^(\s*)(?:- )?run: [|>][-+]?\s*$", line)
-            if not m:
-                continue
-            key_indent, body = len(m.group(1)), []
-            for nxt in lines[i + 1:]:
-                if nxt.strip() and len(nxt) - len(nxt.lstrip(" ")) <= key_indent:
-                    break
-                body.append(nxt)
-            indents = [len(x) - len(x.lstrip(" ")) for x in body if x.strip()]
-            script = "\n".join(x[min(indents):] for x in body) if indents else ""
-            if "${{" in script:
-                checked += 1
-                # Measure what GitHub evaluates: format('<template>', expr, ...), where the
-                # template doubles every ' { } and each ${{ }} becomes a {N} placeholder.
-                exprs = re.findall(r"\$\{\{(.*?)\}\}", script, re.S)
-                template = re.sub(r"\$\{\{.*?\}\}", "\0", script, flags=re.S)
-                template = template.replace("'", "''").replace("{", "{{").replace("}", "}}")
-                parts = template.split("\0")
-                template = "".join(p + (f"{{{n}}}" if n < len(exprs) else "") for n, p in enumerate(parts))
-                expression = f"format('{template}', " + ", ".join(e.strip() for e in exprs) + ")"
-                # Hard limit 21,000; keep >=200 bytes of margin so an edit cannot silently
-                # stop GitHub parsing deploy.yml (a 0-job run on every push).
-                self.assertLess(len(expression.encode("utf-8")), 20_800, f"run block at line {i + 1}")
-        self.assertGreater(checked, 0)
+        # workflow (a 0-job failed run) above 21,000 UTF-8 bytes. The guard also runs on every PR in
+        # Control Plane Contract Lint; stdlib only, because the contract-test job installs nothing.
+        from scripts.ci import workflow_expression_size as guard
+
+        self.assertEqual(18_000, guard.DEFAULT_LIMIT)
+        self.assertEqual(0, guard.main([]))
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertGreater(len(guard.run_blocks(workflow)), 20)
+        sizes = guard.run_block_expression_sizes(workflow)
+        self.assertLess(max([size for _, size in sizes] or [0]), guard.DEFAULT_LIMIT)
+        # Pin the measurement: format('<template>', expr...) doubles ' { } and numbers each ${{ }}.
+        text = "    steps:\n      - run: |\n          echo '{x}' ${{ a }}\n          b ${{ c }}\n"
+        expected = "format('echo ''{{x}}'' {0}\nb {1}\n', a, c)"
+        self.assertEqual([(2, len(expected))], guard.run_block_expression_sizes(text))
+        self.assertEqual([], guard.run_block_expression_sizes("      - run: echo plain\n"))
+
+    def test_expression_size_guard_fails_over_the_limit_and_on_unmeasurable_forms(self):
+        from scripts.ci import workflow_expression_size as guard
+
+        with tempfile.TemporaryDirectory() as tmp:
+            big = Path(tmp) / "big.yml"
+            big.write_text("      - run: |\n" + "          echo ${{ x }}\n" * 1500, encoding="utf-8")
+            self.assertEqual(1, guard.main([str(big)]))
+            self.assertEqual(0, guard.main(["--limit", "100000", str(big)]))
+            # A plain block (no ${{ }}) is not an expression; it is reported but never fails.
+            plain = Path(tmp) / "plain.yml"
+            plain.write_text("      - run: |\n" + "          echo x\n" * 5000, encoding="utf-8")
+            self.assertEqual(0, guard.main([str(plain)]))
+            # #4085 and #4066 review: anchors, aliases, tags and |N cannot be sized line by line: fail closed.
+            for head in ("run: &script |", "run: *script", "run: !!str |", "run: |2", "run: >-4", "run: |2-"):
+                odd = Path(tmp) / "odd.yml"
+                odd.write_text(f"      - {head}\n          echo ${{{{ x }}}}\n", encoding="utf-8")
+                self.assertEqual(1, guard.main([str(odd)]), head)
+                with self.assertRaises(guard.UnmeasurableRunBlock):
+                    guard.run_blocks(odd.read_text(encoding="utf-8"))
+
+    def test_deploy_step_sends_the_checked_in_remote_script_without_expressions(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        step = workflow.split("      - name: Deploy\n", 1)[1].split("\n      - name: ", 1)[0]
+        run = step.split("        run: |\n", 1)[1]
+        self.assertNotIn("${{", run)
+        self.assertNotIn("ENDSSH", workflow)
+        # Same commit as this workflow file: the job's default-ref checkout carries both files.
+        checkout = workflow.split("  deploy:\n", 1)[1].split("      - name: Checkout pinned SSH trust helper\n", 1)[1]
+        checkout = checkout.split("\n      - name: ", 1)[0]
+        self.assertNotIn("ref:", checkout)
+        self.assertIn("            scripts/production-deploy/pi-remote-deploy.sh\n", checkout)
+        self.assertIn("            scripts/production-deploy/render_pi_remote_deploy.py\n", checkout)
+        # Every placeholder is fed by exactly one step env value, and the renderer allows exactly these.
+        sys.path.insert(0, str(REMOTE_RENDERER.parent))
+        try:
+            import render_pi_remote_deploy as renderer
+        finally:
+            sys.path.pop(0)
+        env = deploy_step_env(workflow)
+        placeholders = set(re.findall(r"@@DEPLOY_([A-Z0-9_]+)@@", REMOTE_DEPLOY.read_text(encoding="utf-8")))
+        self.assertEqual(placeholders, set(renderer.PLACEHOLDERS))
+        self.assertEqual({f"DEPLOY_{n}" for n in placeholders} | {"DEPLOY_PI_SSH_USER", "DEPLOY_PI_SSH_HOST"}, set(env))
+        self.assertEqual("${{ secrets.PI_SSH_USER }}", env["DEPLOY_PI_SSH_USER"])
+        self.assertEqual("${{ needs.resolve-target.outputs.target_sha }}", env["DEPLOY_TARGET_SHA"])
+        # The executor left the protected deploy.yml; its new home keeps the same T3/Founder boundary.
+        for path in (REMOTE_DEPLOY, REMOTE_RENDERER):
+            rel = str(path.relative_to(ROOT))
+            self.assertEqual("T3", machine_declaration([rel])["autonomy_tier"], rel)
+            self.assertTrue(is_production_activation_sensitive_path(rel), rel)
+
+    def test_remote_script_renders_like_github_text_substitution(self):
+        sys.path.insert(0, str(REMOTE_RENDERER.parent))
+        try:
+            import render_pi_remote_deploy as renderer
+        finally:
+            sys.path.pop(0)
+        template = 'A="@@DEPLOY_TARGET_SHA@@"\nB="@@DEPLOY_SENTRY_DSN@@" @@DEPLOY_SMOKE_BRANCH_ID@@\n'
+        tricky = 'x$y"`z`\\ 中 @@DEPLOY_TARGET_SHA@@'
+        environ = {"DEPLOY_TARGET_SHA": "abc", "DEPLOY_SENTRY_DSN": tricky}
+        # Plain text, one pass (a value that looks like a placeholder stays literal), unset renders "".
+        self.assertEqual(f'A="abc"\nB="{tricky}" \n', renderer.render(template, environ))
+        with self.assertRaises(ValueError):
+            renderer.render("@@DEPLOY_NOT_ALLOWED@@", environ)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "t.sh"
+            path.write_bytes(template.encode("utf-8"))
+            cmd = [sys.executable, str(REMOTE_RENDERER), str(path)]
+            out = subprocess.run(cmd, capture_output=True, env={**os.environ, **environ})
+            self.assertEqual(0, out.returncode)
+            self.assertEqual(renderer.render(template, environ).encode("utf-8"), out.stdout)
+            missing = subprocess.run([sys.executable, str(REMOTE_RENDERER), str(Path(tmp) / "none")], capture_output=True)
+            self.assertEqual(1, missing.returncode)
+            self.assertEqual(b"", missing.stdout)
 
     def test_rollback_refreshes_fpm_workers_before_health(self):
         function = self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
@@ -1864,7 +1950,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
                 self.assertFalse(auto_environment_is_valid(**dict(ok, **bad)))
 
     def test_workflow_wiring_fails_closed_and_rechecks_before_side_effects(self):
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = read_deploy_workflow()
         classify = workflow[workflow.index("  classify-activation:\n"):workflow.index("  release-state:\n")]
         self.assertIn("ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}\n          path: trusted-policy", classify)
         self.assertIn("for gate in (trusted, target_gate)", classify)
@@ -1941,7 +2027,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.pdv = _load_post_deploy_verify()
-        cls.workflow = WORKFLOW.read_text(encoding="utf-8")
+        cls.workflow = read_deploy_workflow()
 
     def fake_fetch(self, responses):
         calls = []
@@ -2428,12 +2514,43 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             self.assertIn("smoke scripts/post-merge-smoke.sh expect=old strict=", result.stdout)
 
     def test_runner_step_records_rc_and_summarizes_failures(self):
-        self.assertIn("<< 'ENDSSH' || rc=$?", self.workflow)
+        self.assertIn('"${DEPLOY_PI_SSH_USER}@${DEPLOY_PI_SSH_HOST}" < "$remote_script" || rc=$?', self.workflow)
         self.assertIn('echo "rc=$rc" >> "$GITHUB_OUTPUT"\n          exit "$rc"', self.workflow)
+        self._run_runner_step()
         self.assertIn("RC: ${{ steps.deploy.outputs.rc }}", self.workflow)
         self.assertIn('--rc "${RC:-1}"', self.workflow)
         self.assertIn('--expect-backend-sha "$TARGET_SHA" --attempts 12 --interval 5', self.workflow)
         self.assertNotIn("artisan", (ROOT / "scripts" / "post-deploy-verify.py").read_text())  # never migrate:rollback
+
+    def _run_runner_step(self):
+        # Run the real runner block under GitHub's `bash -e` with ssh stubbed: the Pi receives the
+        # rendered script on stdin, ssh's exit code is the step's rc output and exit code, and a
+        # render failure stops before ssh.
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        run = workflow.split("      - name: Deploy\n", 1)[1].split("        run: |\n", 1)[1].split("\n      - name: ", 1)[0]
+        run = textwrap.dedent(run)
+        for ssh_rc in (0, 10, 12, 255):
+            with tempfile.TemporaryDirectory() as tmp:
+                out, received = Path(tmp) / "out", Path(tmp) / "received"
+                stub = f'ssh() {{ cat > "{received}"; echo "$@" > "{received}.args"; return {ssh_rc}; }}\n'
+                env = {"PATH": os.environ["PATH"], "RUNNER_TEMP": tmp, "GITHUB_OUTPUT": str(out),
+                       "DEPLOY_PI_SSH_USER": "admin", "DEPLOY_PI_SSH_HOST": "pi.test", "DEPLOY_TARGET_SHA": self.TARGET}
+                result = subprocess.run(["bash", "-e", "-c", stub + run], cwd=ROOT, env=env, text=True, capture_output=True)
+                self.assertEqual(ssh_rc, result.returncode, result.stderr)
+                self.assertEqual(f"rc={ssh_rc}\n", out.read_text())
+                sent = received.read_text(encoding="utf-8")
+                self.assertIn(f'TARGET_SHA="{self.TARGET}"', sent)
+                self.assertNotIn("@@DEPLOY_", sent)
+                self.assertTrue(received.with_suffix(".args").read_text().rstrip().endswith("admin@pi.test"))
+                self.assertEqual([], list(Path(tmp).glob("pi-remote-deploy.*")))  # removed on exit
+        broken = run.replace("scripts/production-deploy/pi-remote-deploy.sh >", "scripts/production-deploy/missing.sh >")
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = 'ssh() { echo SSH_CALLED; }\n'
+            env = {"PATH": os.environ["PATH"], "RUNNER_TEMP": tmp, "GITHUB_OUTPUT": str(Path(tmp) / "out")}
+            result = subprocess.run(["bash", "-e", "-c", stub + broken], cwd=ROOT, env=env, text=True, capture_output=True)
+            self.assertNotEqual(0, result.returncode)
+            self.assertNotIn("SSH_CALLED", result.stdout)
+
 
 
 def json_bytes(value):
