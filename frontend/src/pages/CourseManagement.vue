@@ -133,7 +133,7 @@
       <span class="material-symbols-outlined creation-success-banner__icon" aria-hidden="true">info</span>
       <span>{{ closedCourseNotice.message }}</span>
       <button v-if="closedCourseNotice.canShowAll" class="btn-soft" type="button" data-testid="closed-course-show-all" @click="showClosedCourseUnderAllStatuses">切到「全部」</button>
-      <button class="creation-success-banner__close" type="button" @click="closedCourseNotice = null" aria-label="關閉">✕</button>
+      <button class="creation-success-banner__close" type="button" @click="closedCourseNotice = null" aria-label="關閉"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
     </div>
 
     <section v-if="pendingLeaveLoaded || pendingLeaveLoading || pendingLeaveError" class="pending-leave-summary" aria-live="polite">
