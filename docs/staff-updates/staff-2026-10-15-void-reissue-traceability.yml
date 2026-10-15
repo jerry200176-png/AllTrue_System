@@ -4,11 +4,11 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 作廢帳單後可登記更正帳單，新舊單互相記得
-    summary: 帳單確認開錯並作廢後，登記收款時可指定更正哪一張，新舊帳單備註會互記單號、原因與操作者。
+    title: 作廢帳單可登記更正，新舊單互記
+    summary: 作廢開錯的帳單後，登記收款時可指定更正哪一張，新舊帳單會互記單號與原因。
     items:
       - category: improved
-        text: 堂數制課程「登記收款」可勾選「這筆是更正已作廢的帳單」，選原帳單並填原因；送出後用這個金額開新帳單，確認入帳照常。
+        text: 堂數制課程登記收款可勾「這筆是更正已作廢的帳單」，選原帳單並填原因；確認入帳照常。
       - category: improved
         text: 重複送出不會開第二張帳單；同一張作廢帳單只能更正一次。
     source_refs:
