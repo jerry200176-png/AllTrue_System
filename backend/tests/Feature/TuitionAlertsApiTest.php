@@ -1101,6 +1101,31 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertNull($row['last_paid_at'], 'a reversed receipt is not a 最近繳費 date');
     }
 
+    public function test_record_payment_then_exception_void_leaves_no_last_paid_at(): void
+    {
+        $token = $this->createDirectorToken([1], 'lp-exvoid@example.com');
+        $student = $this->plainStudent('收款後例外作廢');
+        $course = $this->createCountModeClass($student->id, ['Paid' => 0, 'RemainingSessions' => 2]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-04-01',
+            'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $this->withHeaders($headers)->postJson("/api/v1/invoices/{$invoice->id}/payments", ['Amount' => 5000, 'PaidAt' => '2026-04-05', 'Method' => 'cash'])->assertSuccessful();
+        $this->assertSame('2026-04-05', $this->tuitionRow($token, (int) $course->ID)['last_paid_at']);
+        $this->withHeaders($headers)->postJson("/api/v1/invoices/{$invoice->id}/exception-void", ['reason' => 'receipt entered on the wrong bill'])->assertOk();
+
+        $this->assertNull($this->tuitionRow($token, (int) $course->ID)['last_paid_at'], 'the stale PayDate must not come back once the only receipt is voided');
+    }
+
+    public function test_flag_only_contract_without_payment_history_keeps_paydate_fallback(): void
+    {
+        $token = $this->createDirectorToken([1], 'lp-flag-only@example.com');
+        $student = $this->plainStudent('只有旗標');
+        $course = $this->createCountModeClass($student->id, ['Paid' => 1, 'PayDate' => '2025-03-01', 'RemainingSessions' => 2]);
+
+        $this->assertSame('2025-03-01', $this->tuitionRow($token, (int) $course->ID)['last_paid_at']);
+    }
+
     public function test_partial_payment_is_partial_not_paid(): void
     {
         $token = $this->createDirectorToken([1], 'lp-partial@example.com');

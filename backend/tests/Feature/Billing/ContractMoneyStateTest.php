@@ -202,4 +202,26 @@ class ContractMoneyStateTest extends TestCase
         $resolver = app(\App\Services\BillingPayableResolver::class);
         $this->assertSame([$id => '2026-09-02'], $resolver->lastPaidAtByStudentClassIds([$id, $onlyReversals]));
     }
+
+    public function test_last_paid_at_is_empty_when_receipts_are_fully_reversed_without_a_report_link(): void
+    {
+        // PaidStatusParityTest fixtures void_negative_cash and void_method_positive: net applied is 0, so no date.
+        $negativeCash = $this->seedCourse();
+        $a = $this->invoice($negativeCash, 'unpaid', 1000, 0);
+        $this->payment($a, 1000, 'cash', '2026-09-02 10:00:00');
+        $this->payment($a, -1000, 'cash', '2026-09-03 10:00:00');
+        $positiveVoid = $this->seedCourse();
+        $b = $this->invoice($positiveVoid, 'unpaid', 1000, 0);
+        $this->payment($b, 1000, 'cash', '2026-09-02 10:00:00');
+        $this->payment($b, 1000, 'void', '2026-09-03 10:00:00');
+        // a partial reversal cancels the newest receipt first; the older one still stands
+        $partial = $this->seedCourse();
+        $c = $this->invoice($partial, 'partial', 1000, 300);
+        $this->payment($c, 300, 'cash', '2026-09-02 10:00:00');
+        $this->payment($c, 100, 'cash', '2026-09-05 10:00:00');
+        $this->payment($c, -100, 'cash', '2026-09-06 10:00:00');
+
+        $resolver = app(\App\Services\BillingPayableResolver::class);
+        $this->assertSame([$partial => '2026-09-02'], $resolver->lastPaidAtByStudentClassIds([$negativeCash, $positiveVoid, $partial]));
+    }
 }

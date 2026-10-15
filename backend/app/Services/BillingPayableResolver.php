@@ -332,8 +332,12 @@ class BillingPayableResolver
     }
 
     /**
-     * Batch-fetch the latest valid Payment.PaidAt (Y-m-d) per StudentClass ID via Invoice.StudentClassID -> Payment.InvoiceID.
-     * Void invoices and void/negative (reversal) Payment rows are ignored.
+     * Batch-fetch the latest valid receipt date (Y-m-d) per StudentClass ID (#4123), from the same net Payment ledger the
+     * resolver projects (mayOwe / InvoiceAmountReconciliationService): a receipt is a positive, non-void row; a reversal is
+     * a negative row or a `Method='void'` row of any sign. Per non-void invoice, each reversal first cancels the receipt of
+     * its own payment report (same payment_report_id), and what is left cancels the newest receipts first. A date counts
+     * only from a receipt that still has a positive amount after that, so an invoice whose net applied is 0 gives no date.
+     * Void invoices are ignored.
      *
      * @param  int[]  $studentClassIds
      * @return array<int, string>  only classes that have a dated payment
@@ -348,27 +352,77 @@ class BillingPayableResolver
             ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->whereIn('Invoice.StudentClassID', $studentClassIds)
             ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
-            // #4123: only valid receipts give a payment date. Reversal rows (Method='void' or a negative/zero
-            // Amount, e.g. report void / MonthlyAccountingCorrectionService) are not payments, and a receipt
-            // whose payment report was reversed (a void row with the same payment_report_id) no longer counts.
-            ->where('Payment.Amount', '>', 0)
-            ->where(fn ($q) => $q->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void'))
-            ->where(fn ($q) => $q->whereNull('Payment.payment_report_id')->orWhereNotExists(fn ($r) => $r->select(DB::raw(1))
-                ->from('Payment as reversal')
-                ->whereColumn('reversal.payment_report_id', 'Payment.payment_report_id')
-                ->where('reversal.Method', 'void')))
-            ->select('Invoice.StudentClassID', DB::raw('MAX(Payment.PaidAt) as last_paid_at'))
-            ->groupBy('Invoice.StudentClassID')
+            ->select('Invoice.StudentClassID', 'Payment.InvoiceID', 'Payment.id', 'Payment.Amount', 'Payment.Method', 'Payment.PaidAt', 'Payment.payment_report_id')
+            ->orderBy('Payment.id')
             ->get();
 
         $map = [];
-        foreach ($rows as $row) {
-            if ($row->last_paid_at) {
-                $map[(int) $row->StudentClassID] = substr($row->last_paid_at, 0, 10);
+        foreach ($rows->groupBy('InvoiceID') as $payments) {
+            $classId = (int) $payments->first()->StudentClassID;
+            $date = $this->latestUnreversedReceiptDate($payments);
+            if ($date !== null && (!isset($map[$classId]) || $date > $map[$classId])) {
+                $map[$classId] = $date;
             }
         }
 
         return $map;
+    }
+
+    /**
+     * IDs of the given contracts that have any Payment row at all (void invoices and reversal rows included). Only a
+     * contract with no Payment history may fall back to the legacy StudentClass.PayDate for 最近繳費 (#4123).
+     *
+     * @param  int[]  $studentClassIds
+     * @return array<int, true>
+     */
+    public function studentClassIdsWithPaymentHistory(array $studentClassIds): array
+    {
+        if (empty($studentClassIds)) {
+            return [];
+        }
+
+        return DB::table('Invoice')
+            ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->whereIn('Invoice.StudentClassID', $studentClassIds)
+            ->distinct()
+            ->pluck('Invoice.StudentClassID')
+            ->mapWithKeys(fn ($id) => [(int) $id => true])
+            ->all();
+    }
+
+    /** @param  Collection<int, object>  $payments  one invoice's Payment rows */
+    private function latestUnreversedReceiptDate(Collection $payments): ?string
+    {
+        $isReversal = fn ($p) => (int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void';
+        $receipts = $payments->filter(fn ($p) => !$isReversal($p) && (int) ($p->Amount ?? 0) > 0)
+            ->map(fn ($p) => ['left' => (int) $p->Amount, 'paid_at' => $p->PaidAt, 'report' => $p->payment_report_id, 'id' => (int) $p->id])
+            ->values()->all();
+        $unlinked = 0;
+        foreach ($payments->filter($isReversal) as $reversal) {
+            $amount = abs((int) ($reversal->Amount ?? 0));
+            foreach ($receipts as &$receipt) {
+                if ($amount > 0 && $reversal->payment_report_id !== null && $receipt['report'] !== null
+                    && (int) $receipt['report'] === (int) $reversal->payment_report_id) {
+                    $take = min($amount, $receipt['left']);
+                    $receipt['left'] -= $take;
+                    $amount -= $take;
+                }
+            }
+            unset($receipt);
+            $unlinked += $amount;
+        }
+        // newest receipts are cancelled first
+        usort($receipts, fn ($a, $b) => [(string) $b['paid_at'], $b['id']] <=> [(string) $a['paid_at'], $a['id']]);
+        $latest = null;
+        foreach ($receipts as $receipt) {
+            $take = min($unlinked, $receipt['left']);
+            $unlinked -= $take;
+            if ($receipt['left'] - $take > 0 && $receipt['paid_at'] && ($latest === null || (string) $receipt['paid_at'] > $latest)) {
+                $latest = (string) $receipt['paid_at'];
+            }
+        }
+
+        return $latest === null ? null : substr($latest, 0, 10);
     }
 
     /** @return array<string, int|string|null> */
