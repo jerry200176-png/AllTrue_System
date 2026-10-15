@@ -625,7 +625,8 @@ class PaymentReportController extends Controller
                 return response()->json(['message' => '更正帳單不能同時指定其他帳單或標記免費。沒有登記任何款項。', 'code' => 'correction_reissue_conflict'], 422);
             }
 
-            return $sc instanceof StudentClass ? $this->recordCorrectionReissue($request, $data, $sc, $userId === null ? null : (int) $userId)
+            $actorId = $request->attributes->get('auth_user')?->id; // the auth_user_id attribute is not set on this route
+            return $sc instanceof StudentClass ? $this->recordCorrectionReissue($request, $data, $sc, $actorId === null ? null : (int) $actorId)
                 : response()->json(['message' => '課程資料不存在'], 404);
         }
         if ($freeGift) {
@@ -818,6 +819,7 @@ class PaymentReportController extends Controller
             ], [['StudentClassID' => $course->getKey(), 'Description' => '更正帳單', 'Amount' => (int) $data['amount']]]);
             $oldNoteTagged = $link->link($replaced, $invoice, $userId, (string) $data['correction_reason'], (string) $data['idempotency_key']);
 
+            /** @var PaymentReport $report */
             $report = PaymentReport::query()->create([
                 'StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
                 'reported_by_name' => $sc->student->name, 'payment_date' => $data['payment_date'],
