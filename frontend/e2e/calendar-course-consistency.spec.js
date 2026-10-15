@@ -202,15 +202,21 @@ async function assertResponsive(page, label) {
 }
 
 // Enforce the read-only contract in the browser, like the other production
-// acceptance specs: no POST/PUT/PATCH/DELETE from the page may reach the API.
-// Adoption telemetry is answered locally with 204 and never reaches the server;
-// every other write is aborted and fails the test in afterEach.
+// acceptance specs: no POST/PUT/PATCH/DELETE from any page may reach the app's
+// own origin (the acceptance base URL). Adoption telemetry is answered locally
+// with 204 and never reaches the server; every other write to the app origin is
+// aborted and fails the test in afterEach. Third-party hosts (e.g. Sentry
+// ingest) are not intercepted and never count as a violation. The route is
+// installed on the browser context so popup pages are guarded too.
 const READ_ONLY_METHODS = ['GET', 'HEAD', 'OPTIONS'];
-let blockedApiWrites = [];
+const APP_ORIGIN = (() => {
+  try { return new URL(BASE || '').origin; } catch { return ''; }
+})();
+let blockedAppWrites = [];
 
-async function installReadOnlyApiGuard(page) {
-  blockedApiWrites = [];
-  await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
+async function installReadOnlyAppGuard(context) {
+  blockedAppWrites = [];
+  await context.route((url) => APP_ORIGIN !== '' && url.origin === APP_ORIGIN, async (route) => {
     const request = route.request();
     const method = request.method().toUpperCase();
     if (READ_ONLY_METHODS.includes(method)) {
@@ -222,7 +228,7 @@ async function installReadOnlyApiGuard(page) {
       await route.fulfill({ status: 204, body: '' });
       return;
     }
-    blockedApiWrites.push({ method, path: pathname });
+    blockedAppWrites.push({ method, path: pathname });
     await route.abort('blockedbyclient');
   });
 }
@@ -231,12 +237,15 @@ test.describe('production acceptance — calendar/course parity', () => {
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
     'missing controlled production director session');
 
-  test.beforeEach(async ({ page }) => {
-    await installReadOnlyApiGuard(page);
+  // Service workers could send requests that bypass context.route.
+  test.use({ serviceWorkers: 'block' });
+
+  test.beforeEach(async ({ context }) => {
+    await installReadOnlyAppGuard(context);
   });
 
   test.afterEach(async () => {
-    expect(blockedApiWrites, 'read-only acceptance must not send API writes').toEqual([]);
+    expect(blockedAppWrites, 'read-only acceptance must not send writes to the app origin').toEqual([]);
   });
 
   for (const viewport of [
