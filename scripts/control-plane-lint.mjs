@@ -32,6 +32,7 @@ const REQUIRED = [
   'docs/INCIDENT_POLICY_ENGINE.md',
   'docs/INCIDENT_RUNTIME_LOOP.md',
   '.github/workflows/deploy.yml',
+  'scripts/production-deploy/pi-remote-deploy.sh',
 ];
 
 const INCIDENT_STACK = REQUIRED.filter((f) => f.startsWith('docs/INCIDENT_'));

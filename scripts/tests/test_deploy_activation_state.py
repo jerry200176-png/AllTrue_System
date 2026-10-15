@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import argparse
+import json
 import os
 import subprocess
 import tempfile
@@ -1936,6 +1937,38 @@ class FounderGoAutoActivationTest(unittest.TestCase):
             raise RuntimeError("gh api failed")
         with self.assertRaises(RuntimeError):
             evaluate_founder_go_range(**dict(self._api(comparison, protected, good), api=boom))
+
+    def test_deploy_executor_change_is_classified_exactly_like_a_deploy_yml_change(self):
+        # #4051 moved the Pi executor out of deploy.yml. A change touching only it must keep every
+        # protection a deploy.yml change has, including the reviewer-required Founder GO range check.
+        import scripts.governance.autonomy_gate as gate
+
+        executor = sorted(gate._DEPLOY_EXECUTOR_PATHS)
+        self.assertEqual({"scripts/production-deploy/pi-remote-deploy.sh",
+                          "scripts/production-deploy/render_pi_remote_deploy.py"}, set(executor))
+        deploy = ".github/workflows/deploy.yml"
+        patch = lambda path: f"diff --git a/{path} b/{path}\n@@ -1 +1 @@\n-echo old\n+echo new\n"
+        for path in executor:
+            with self.subTest(path=path):
+                self.assertTrue((ROOT / path).is_file())
+                self.assertIn(path, gate._GATE_POLICY_PATHS)
+                for check in (is_control_plane_path, is_deployable_path, is_application_runtime_path,
+                              is_production_activation_sensitive_path):
+                    self.assertEqual(check(deploy), check(path), check.__name__)
+                self.assertEqual(is_control_plane_only_paths([deploy]), is_control_plane_only_paths([path]))
+                for classify in (classify_scope, classify_activation_scope):
+                    expected = json.dumps(classify([deploy], patch(deploy)), sort_keys=True, default=str)
+                    actual = json.dumps(classify([path], patch(path)), sort_keys=True, default=str)
+                    self.assertEqual(expected, actual.replace(path, deploy), classify.__name__)
+                self.assertEqual({k: v for k, v in machine_declaration([deploy]).items() if k != "reasons"},
+                                 {k: v for k, v in machine_declaration([path]).items() if k != "reasons"})
+                comparison = dict(self._range(11), status="ahead")
+                good = self._pr(11, self.body3())
+                for changed in (deploy, path):
+                    detail = {"files": [{"filename": changed, "status": "modified", "sha": "b" * 40, "patch": "@@ -1 +1 @@\n+x"}]}
+                    result = evaluate_founder_go_range(**self._api(comparison, detail, good))
+                    self.assertFalse(result["ok"], changed)
+                    self.assertIn("reviewer required", result["reason"], changed)
 
     def test_auto_environment_requires_verified_evidence_and_main_only(self):
         ok = dict(event_name="workflow_run", phase="", mode="auto-founder-go", go_evidence="verified", branch_names=["main"])
