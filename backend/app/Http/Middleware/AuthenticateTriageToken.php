@@ -55,16 +55,15 @@ final class AuthenticateTriageToken
         $bugId = $request->route('id');
         $attachmentId = $request->route('attachmentId');
         $queryBugId = $request->query('bug_report_id');
-        $subject = [
+        // On the billing route the path id is a contract, so the later key overrides the report subject type.
+        $billingSubject = $isBilling ? ['subject_type' => 'student_class'] : [];
+        SecurityAuditEvent::append('triage_token.read', $outcome, [
             'actor_type' => 'triage_token',
             'actor_id' => $tokenId,
             'subject_type' => 'bug_report',
             'subject_id' => is_numeric($bugId) ? (int) $bugId : null,
-        ];
-        if ($isBilling) {
-            $subject['subject_type'] = 'student_class'; // the path id on this route is a contract, not a report
-        }
-        SecurityAuditEvent::append('triage_token.read', $outcome, $subject, [
+            ...$billingSubject,
+        ], [
             'attachment_ref' => SecurityAuditEvent::ref('bug_report_attachment', is_numeric($attachmentId) ? (int) $attachmentId : null),
             'bug_report_ref' => $isBilling && is_numeric($queryBugId) ? SecurityAuditEvent::ref('bug_report', (int) $queryBugId) : null,
             'route' => $route instanceof Route ? (string) $route->getName() : '',
