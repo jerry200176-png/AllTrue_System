@@ -625,7 +625,8 @@ class PaymentReportController extends Controller
                 return response()->json(['message' => '更正帳單不能同時指定其他帳單或標記免費。沒有登記任何款項。', 'code' => 'correction_reissue_conflict'], 422);
             }
 
-            return $this->recordCorrectionReissue($request, $data, $sc, $userId === null ? null : (int) $userId);
+            return $sc instanceof StudentClass ? $this->recordCorrectionReissue($request, $data, $sc, $userId === null ? null : (int) $userId)
+                : response()->json(['message' => '課程資料不存在'], 404);
         }
         if ($freeGift) {
             return $this->recordFreeGiftBill((int) $data['student_class_id'], $data, $userId);
@@ -792,7 +793,7 @@ class PaymentReportController extends Controller
             if ($replay = $check['replay']) {
                 $report = PaymentReport::query()->where('InvoiceID', $replay->id)->orderBy('id')->first();
                 return response()->json(['message' => '這筆更正已經送出過', 'report_id' => $report?->id, 'payment_id' => null,
-                    'invoice_id' => (int) $replay->id, 'status' => $report?->status ?? 'pending', 'replayed' => true]);
+                    'invoice_id' => (int) $replay->id, 'status' => $report->status ?? 'pending', 'replayed' => true]);
             }
             if ((int) $data['amount'] <= 0) {
                 return response()->json(['message' => '更正帳單的金額必須大於 0。沒有登記任何款項。', 'code' => 'correction_amount_invalid'], 422);
@@ -817,7 +818,7 @@ class PaymentReportController extends Controller
             ], [['StudentClassID' => $course->getKey(), 'Description' => '更正帳單', 'Amount' => (int) $data['amount']]]);
             $oldNoteTagged = $link->link($replaced, $invoice, $userId, (string) $data['correction_reason'], (string) $data['idempotency_key']);
 
-            $report = PaymentReport::create([
+            $report = PaymentReport::query()->create([
                 'StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
                 'reported_by_name' => $sc->student->name, 'payment_date' => $data['payment_date'],
                 'payment_method' => $data['payment_method'], 'reported_amount' => $data['amount'],
