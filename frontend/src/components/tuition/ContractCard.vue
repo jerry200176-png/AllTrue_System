@@ -35,9 +35,9 @@
 
     <!-- #4115 / Founder Q2 = A: an issued bill keeps its amount when the rate changes; display only, no write here. -->
     <div v-if="rateNote" class="contract__ratenote" data-testid="contract-rate-note">
-      <p>開單時金額 {{ money(rateNote.issued) }} ／ 目前單價試算 {{ money(rateNote.estimate) }}（單價 {{ money(rateNote.rate) }}，{{ rateNote.count }} 堂）</p>
-      <p class="contract__muted">帳單不會跟著單價自動改。「帳務更正」會留紀錄，但只能在未收款時減少堂數；堂數不變、只改單價的帳單，目前沒有可留紀錄的改價方式，請先找老闆確認。</p>
-      <button v-if="canCorrect" class="contract__link" type="button" data-testid="contract-rate-correct" @click="emit('correct', course)">前往帳務更正</button>
+      <p>開單時金額 {{ money(rateNote.issued) }} ／ 目前課程金額 {{ money(rateNote.current) }}</p>
+      <p class="contract__muted">帳單不會跟著單價自動改。要改成目前金額，請作廢此帳單（需填原因，會留紀錄）後以目前金額重開；重開的新帳單不會連到作廢的那張。</p>
+      <button v-if="canVoid" class="contract__link" type="button" data-testid="contract-rate-void" @click="emit('void-bill', rateNote.invoiceId)">作廢此帳單</button>
     </div>
 
     <div class="contract__memo">
@@ -128,12 +128,12 @@ const props = defineProps({
   sharedFollower: { type: Boolean, default: false },
   // Subject of the member card that actually carries the package's 確認入帳 / 登記這筆 action.
   sharedLeadSubject: { type: String, default: '' },
-  // #4115: { issued, estimate, rate, count } from issuedBillRateNote(); null hides the note.
+  // #4115: { invoiceId, issued, current } from issuedBillRateNote(); null hides the note.
   rateNote: { type: Object, default: null },
-  // The host can open the existing billing-correction flow (課程管理 only).
-  canCorrect: { type: Boolean, default: false },
+  // The panel can void that bill with the existing audited void action (reason required).
+  canVoid: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'correct']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'void-bill']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };

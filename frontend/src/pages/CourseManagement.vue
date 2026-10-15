@@ -1312,10 +1312,8 @@
       :show="ledgerOpen"
       :student-class-id="ledgerStudentClassId"
       :branch-id="props.branchId"
-      can-correct
       @close="ledgerOpen = false"
       @changed="loadCourses(pagination.page)"
-      @billing-correction="openBillingCorrectionFromLedger"
     />
 
     <AtDialog
@@ -2403,18 +2401,6 @@ function isBillingCorrectionStructureEligible(course) {
 
 function isUnpaidCountCourse(course) {
   return isBillingCorrectionStructureEligible(course) && course?.payment_status === 'unpaid';
-}
-
-// #4115: the ledger's issued-bill note links to the existing, audited billing-correction flow (no new write path).
-function openBillingCorrectionFromLedger(contract) {
-  const course = courses.value.find((c) => Number(c.id) === Number(contract?.id));
-  if (!course) {
-    toastRef.value?.show?.({ title: '請先在課程管理找到這門課', description: '再用「調整合約」→「帳務更正」。', variant: 'info', durationMs: 4000 });
-    return;
-  }
-  ledgerOpen.value = false;
-  if (isUnpaidCountCourse(course)) openBillingCorrectionModal(course);
-  else openContractAdjustmentModal(course);
 }
 
 function openContractAdjustmentModal(course) {

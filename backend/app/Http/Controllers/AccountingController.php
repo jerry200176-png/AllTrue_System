@@ -629,6 +629,9 @@ class AccountingController extends Controller
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,
+                // #4115: every line belongs to this bill's own course (no multi-course or hand-entered lines).
+                'single_course_items' => $invoice->items->isNotEmpty()
+                    && $invoice->items->every(fn ($item) => (int) $item->StudentClassID === (int) $invoice->StudentClassID),
             ] + ($invoice->zero_amount_reason !== null ? ['zero_amount_reason' => $invoice->zero_amount_reason] : []); // #3991: 免費／贈送 badge
         })->values();
         $this->invoiceAmounts->forgetPreloadedSessions();
@@ -721,8 +724,8 @@ class AccountingController extends Controller
                 'subject' => $class->displaySubjectName($subjectNames),
                 'schedule_mode' => (string) ($class->ScheduleMode ?? ''),
                 'charge' => (int) ($class->Charge ?? 0),
-                // #4115 (Founder Q2 = A): display-only estimate next to an issued bill; never rewrites a bill.
-                'current_rate_estimate' => $this->currentRateEstimate($class),
+                // #4115 (Founder Q2 = A): display-only, compared with an issued bill; never rewrites a bill.
+                'current_contract_charge' => $this->currentContractCharge($class),
                 'paid' => (int) ($class->Paid ?? 0) === 1 || $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
                     && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class))), // #3991: current term
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
@@ -741,24 +744,17 @@ class AccountingController extends Controller
     }
 
     /**
-     * Rate × SessionCount for a count-mode, per-lesson-priced, non-package course: the same formula the
-     * billing-correction endpoint requires (BillingCorrection::correctCountMode). Null for every other course.
-     *
-     * @return array{rate: float|int, session_count: int, amount: int}|null
+     * The contract's current Charge for a count-mode, non-package course. Charge already follows rate and
+     * count edits, keeps renewal discounts and session_charge deltas, so an issued bill that still equals it is
+     * not flagged. Null for every other course. Read-only (#4115).
      */
-    private function currentRateEstimate(StudentClass $class): ?array
+    private function currentContractCharge(StudentClass $class): ?int
     {
-        $rateUnit = strtolower(trim((string) ($class->rate_unit ?? 'session')));
-        if ((string) ($class->ScheduleMode ?? 'count') !== 'count' || $class->isPartOfPackage() || $rateUnit !== 'session') {
-            return null;
-        }
-        $rate = (float) ($class->getAttribute('Rate') ?? 0);
-        $count = (int) ($class->SessionCount ?? 0);
-        if ($rate <= 0 || $count <= 0) {
+        if ((string) ($class->ScheduleMode ?? 'count') !== 'count' || $class->isPartOfPackage()) {
             return null;
         }
 
-        return ['rate' => fmod($rate, 1.0) === 0.0 ? (int) $rate : $rate, 'session_count' => $count, 'amount' => (int) round($rate * $count)];
+        return max(0, (int) ($class->Charge ?? 0));
     }
 
     private function paymentResponse(Request $request, bool $export)

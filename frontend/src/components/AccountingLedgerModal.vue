@@ -88,8 +88,8 @@
                 :month-lines="monthLinesFor(c.id)"
                 :bill-draft="draftFor(c.id)"
                 :rate-note="issuedBillRateNote(c, payload.invoices)"
-                :can-correct="canCorrect"
-                @correct="emit('billing-correction', $event)"
+                :can-void="canDirectVoidInvoice(invoiceById(issuedBillRateNote(c, payload.invoices)?.invoiceId))"
+                @void-bill="voidInvoice(invoiceById($event), 'direct')"
                 @record="openEntry"
                 @issue="openIssue"
                 @confirmed="openReceipt"
@@ -139,7 +139,7 @@
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
                         <small v-if="isOtherCourseInvoice(inv)" class="ledger-other-course" data-testid="ledger-other-course">其他課程</small>
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
-                        <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">目前單價試算 {{ formatCurrency(rateNoteFor(inv).estimate) }}，帳單維持開單金額</small>
+                        <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">目前課程金額 {{ formatCurrency(rateNoteFor(inv).current) }}，帳單維持開單金額</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
                       <td data-label="應繳日">{{ fmtDate(inv.due_date) }}</td>
@@ -331,10 +331,9 @@ import {
 
 const EXCEPTION_PREVIEW = 2;
 
-// canCorrect: the host can open the existing billing-correction flow for a contract (#4115).
-const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean, canCorrect: Boolean });
+const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean });
 
-const emit = defineEmits(['close', 'changed', 'step', 'billing-correction']);
+const emit = defineEmits(['close', 'changed', 'step']);
 
 // a11y: Esc closes, Tab stays inside the panel, focus returns to the opener.
 const modalEl = ref(null);
@@ -631,13 +630,14 @@ const pendingReportFor = (id) => {
   const r = (payload.value?.receipts || []).find((x) => ids.includes(Number(x.student_class_id)) && x.status === 'pending');
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
-// Contracts with money still due come first (PRD v2 §0.3).
-// #4115: the issued-bill vs current-rate note for the bill row (display only).
+// #4115: the issued-bill vs current-contract note for the bill row (display only).
+const invoiceById = (id) => (payload.value?.invoices || []).find((inv) => Number(inv.id) === Number(id)) || null;
 const rateNoteFor = (inv) => {
   const course = (payload.value?.courses || []).find((c) => Number(c.id) === Number(inv.student_class_id));
   const note = course ? issuedBillRateNote(course, payload.value?.invoices) : null;
   return note && note.invoiceId === Number(inv.id) ? note : null;
 };
+// Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
 // One card of a shared package carries its single payment action; the other members point to it. Lead = the member
 // holding a pending report, else the first one that still needs payment (mixed states), else the first member.

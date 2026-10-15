@@ -3,6 +3,7 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\AuthToken;
+use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -14,51 +15,73 @@ use Tests\TestCase;
 
 /**
  * In-app #408 (#4115) / #3980 root cause B. Founder Q2 = A: an issued bill does not silently follow a rate change.
- * The ledger only adds a read-only Rate × SessionCount estimate per count-mode contract; the bill amount is unchanged.
+ * The ledger adds the contract's current Charge (read-only) per count-mode course and whether a bill holds only that
+ * course's lines; the bill amount is unchanged.
  */
-class IssuedBillCurrentRateEstimateTest extends TestCase
+class IssuedBillCurrentContractChargeTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_count_mode_contract_carries_the_estimate_and_the_issued_bill_keeps_its_amount(): void
+    public function test_stale_bill_after_a_rate_edit_keeps_its_amount_and_the_contract_charge_is_exposed(): void
     {
         $token = $this->directorToken();
-        $student = $this->student();
-        $course = $this->course($student, ['Rate' => 900, 'SessionCount' => 8, 'Charge' => 7200]);
+        $course = $this->course($this->student(), ['Rate' => 900, 'SessionCount' => 8, 'Charge' => 7200]);
         $invoiceId = $this->unpaidInvoice($course, 8800);
 
         $ledger = $this->withToken($token)->getJson('/api/v1/accounting/ledger?student_class_id=' . $course->ID)->assertOk();
 
         $row = collect($ledger->json('courses'))->firstWhere('id', (int) $course->ID);
-        $this->assertSame(['rate' => 900, 'session_count' => 8, 'amount' => 7200], $row['current_rate_estimate']);
+        $this->assertSame(7200, $row['current_contract_charge']);
         $bill = collect($ledger->json('invoices'))->firstWhere('id', $invoiceId);
         $this->assertSame(8800, $bill['total_amount']);
+        $this->assertTrue($bill['single_course_items']);
         $this->assertSame(8800, (int) DB::table('Invoice')->where('id', $invoiceId)->value('TotalAmount'));
     }
 
-    public function test_the_estimate_follows_the_course_rate_and_count(): void
+    public function test_the_value_is_the_stored_charge_not_rate_times_count(): void
     {
         $token = $this->directorToken();
-        $course = $this->course($this->student(), ['Rate' => 1250, 'SessionCount' => 10, 'Charge' => 12500]);
+        // A discounted renewal keeps Rate but stores the discounted final amount as Charge.
+        $course = $this->course($this->student(), ['Rate' => 1000, 'SessionCount' => 8, 'Charge' => 7000]);
 
         $row = collect($this->withToken($token)->getJson('/api/v1/accounting/ledger?student_class_id=' . $course->ID)
             ->assertOk()->json('courses'))->firstWhere('id', (int) $course->ID);
 
-        $this->assertSame(['rate' => 1250, 'session_count' => 10, 'amount' => 12500], $row['current_rate_estimate']);
+        $this->assertSame(7000, $row['current_contract_charge']);
     }
 
-    public function test_monthly_and_non_per_lesson_contracts_have_no_estimate(): void
+    public function test_monthly_and_package_member_contracts_have_no_value(): void
     {
         $token = $this->directorToken();
         $student = $this->student();
-        $monthly = $this->course($student, ['ScheduleMode' => 'date', 'Rate' => 900, 'SessionCount' => 8]);
-        $hourly = $this->course($student, ['rate_unit' => 'hour', 'Rate' => 900, 'SessionCount' => 8]);
+        $monthly = $this->course($student, ['ScheduleMode' => 'date']);
+        $package = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => 'pkg', 'total_sessions' => 8,
+            'remaining_sessions' => 8, 'used_sessions' => 0, 'rate' => 900, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true,
+        ]);
+        $member = $this->course($student, ['PackageID' => $package->id]);
 
         $rows = collect($this->withToken($token)->getJson('/api/v1/accounting/ledger?student_id=' . $student->id)
             ->assertOk()->json('courses'))->keyBy('id');
 
-        $this->assertNull($rows[(int) $monthly->ID]['current_rate_estimate']);
-        $this->assertNull($rows[(int) $hourly->ID]['current_rate_estimate']);
+        $this->assertNull($rows[(int) $monthly->ID]['current_contract_charge']);
+        $this->assertNull($rows[(int) $member->ID]['current_contract_charge']);
+    }
+
+    public function test_a_bill_with_another_courses_line_is_not_single_course(): void
+    {
+        $token = $this->directorToken();
+        $student = $this->student();
+        $course = $this->course($student);
+        $other = $this->course($student);
+        $invoiceId = $this->unpaidInvoice($course, 8800);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => $invoiceId, 'StudentClassID' => $other->ID, 'Description' => 'other', 'Amount' => 1600]);
+
+        $bill = collect($this->withToken($token)->getJson('/api/v1/accounting/ledger?student_class_id=' . $course->ID)
+            ->assertOk()->json('invoices'))->firstWhere('id', $invoiceId);
+
+        $this->assertFalse($bill['single_course_items']);
     }
 
     private function directorToken(): string
