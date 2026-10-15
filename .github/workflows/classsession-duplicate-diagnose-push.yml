@@ -1,12 +1,15 @@
 # Read-only Pi diagnose for ClassSession cross-SC / Stop=1 orphans.
 # Public repo (#3605): ids, statuses, dates and counts only. No names, no free-text notes (length only).
-# Trigger: push to cursor/diag-classsession-* (same-repo → secrets available).
-name: ClassSession Duplicate Diagnose (push)
+# Trigger: workflow_dispatch from main only.
+# 2026-10-15 security tightening: the former `push: cursor/diag-classsession-**` trigger was removed.
+# It ran this job with the production SSH key (PI_SSH_KEY) on any push to a matching feature branch,
+# i.e. unreviewed workflow code received the production key. The job now also refuses to run unless
+# github.ref is refs/heads/main, so a dispatch against an unmerged branch cannot use the key either.
+# No new capability: same read-only probe, same inputs, same artifact. The filename keeps its
+# historical `-push` suffix only so existing references stay valid.
+name: ClassSession Duplicate Diagnose
 
 on:
-  push:
-    branches:
-      - 'cursor/diag-classsession-**'
   workflow_dispatch:
     inputs:
       student_id:
@@ -35,6 +38,8 @@ permissions:
 jobs:
   diagnose:
     name: Production read-only ClassSession scan
+    # Production SSH secrets are only exposed to the reviewed workflow on main.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production-ssh
     timeout-minutes: 15

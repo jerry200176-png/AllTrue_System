@@ -1,25 +1,16 @@
-// Control-plane rule P2 (2026-10-15, closes #4143): every job that can read the production SSH
-// secrets must declare `environment: production-ssh`. That environment only admits refs/heads/main
-// (deployment branch policy, docs/RUNBOOK_PRODUCTION_SSH_ENVIRONMENT.md), so GitHub itself refuses
-// the job on any other ref. This replaces reasoning about trigger shapes: a job without the
-// environment never sees the secret, whatever starts it.
-//
-// Secrets covered (case-insensitive): secrets.PI_* (PI_SSH_KEY, PI_SSH_HOST, PI_SSH_USER,
-// PI_HOST_KEY, PI_HOST, PI_USER, ...), any *DEPLOY_KEY* / *SSH*KEY*, the index form
-// secrets['X'], a dynamic secrets[expr], toJSON(secrets) and `secrets: inherit`.
-//
-// Documented exceptions (DOCUMENTED_EXCEPTIONS): jobs that already declare a reviewer-gated
-// environment keep it, because a job can declare only one. Those environments must ALSO hold the
-// same SSH secrets and a main-only branch policy (runbook step "Existing environments").
-// A `uses:` job that calls a local reusable workflow with `secrets: inherit` passes; the called
-// workflow's jobs are checked in their own file. Anything this parser cannot read fails closed.
-// Dependency-free on purpose: control-plane-lint runs before `npm ci`.
-// NOTE: PR #4140 adds the P1 trigger rule to this same file; merge both when rebasing.
+// Control-plane rule P1 (2026-10-15): a workflow that references production SSH secrets
+// (PI_SSH_*, PI_HOST_KEY, any *DEPLOY_KEY* / *SSH*KEY*, or every secret via toJSON(secrets) /
+// secrets[expr] / `secrets: inherit`) must not start from an unreviewed ref.
+// Allowed: workflow_dispatch, schedule, workflow_run, workflow_call, repository_dispatch, and
+// `push` whose `branches:` filter is exactly main. Rejected: push with no branch filter, any
+// non-main branch, branches-ignore or tags; every pull_request (its `branches:` filter matches the
+// BASE branch, so the unreviewed PR head still runs) and every pull_request_target.
+// Only exception: a workflow whose sole secret references sit inside jobs gated with
+// `if: ... github.event_name == 'schedule'` (no `||`), so its PR/push jobs never see the secret.
+// Any `on:` shape this parser cannot read fails closed. Dependency-free on purpose:
+// control-plane-lint runs before `npm ci`.
 
-export const REQUIRED_ENVIRONMENT = 'production-ssh';
-export const DOCUMENTED_EXCEPTIONS = Object.freeze(['production-activation']);
-
-const NAME = String.raw`(?:PI_[A-Z0-9_]*|[A-Z0-9_]*DEPLOY_KEY[A-Z0-9_]*|[A-Z0-9_]*SSH[A-Z0-9_]*KEY[A-Z0-9_]*)`;
+const NAME = String.raw`(?:PI_SSH_[A-Z0-9_]*|PI_HOST_KEY|[A-Z0-9_]*DEPLOY_KEY[A-Z0-9_]*|[A-Z0-9_]*SSH[A-Z0-9_]*KEY[A-Z0-9_]*)`;
 const SECRET_PATTERNS = [
   new RegExp(String.raw`\bsecrets\.${NAME}\b`, 'i'),
   new RegExp(String.raw`\bsecrets\[\s*['"]${NAME}['"]\s*\]`, 'i'),
@@ -27,116 +18,138 @@ const SECRET_PATTERNS = [
   /\btoJSON\(\s*secrets\s*\)/i, // every secret
   /^\s*secrets:\s*inherit\b/im, // reusable-workflow caller passes every secret
 ];
-const ALIAS = /(?::\s+|-\s+|<<:\s*)\*[A-Za-z_][A-Za-z0-9_-]*\s*(?:#.*)?$/m;
 
 export const referencesProductionSecret = (text) => SECRET_PATTERNS.some((p) => p.test(text));
 
+const REF_EVENTS = new Set(['push', 'pull_request', 'pull_request_target']);
+const PUSH_KEYS = new Set(['branches', 'paths', 'paths-ignore']);
+const ON_KEY = /^(?:on|"on"|'on'):(.*)$/;
+const BARE_KEY = /^([a-z_][a-z0-9_-]*):(?:\s+(.*?))?\s*$/;
+
+const stripComment = (v) => v.replace(/\s+#.*$/, '').trim();
+const unquote = (v) => v.trim().replace(/^['"]|['"]$/g, '');
 const indentOf = (line) => line.length - line.trimStart().length;
 const meaningful = (line) => line.trim() !== '' && !line.trimStart().startsWith('#');
-const stripComment = (v) => v.replace(/\s+#.*$/, '').trim();
-const unquote = (v) => v.trim().replace(/^(['"])(.*)\1$/, '$2');
+const unreadable = (line, what) => ({ event: 'on', line, reason: `unreadable trigger shape (${what}); fails closed` });
 
-/** Splits a workflow into top-level (non-job) text and each job's block; null when unreadable. */
-export function jobBlocks(text) {
+/** Returns [{event, line, reason}] for every trigger that can start from a non-main ref. */
+export function unsafeRefTriggers(text) {
   const lines = text.split('\n');
-  const start = lines.findIndex((l) => /^(?:jobs|"jobs"|'jobs'):\s*(?:#.*)?$/.test(l));
-  if (start < 0) return null;
+  const start = lines.findIndex((l) => ON_KEY.test(l));
+  if (start < 0) return [unreadable(1, 'no top-level on: key')];
+  const problems = [];
+  const inline = stripComment(lines[start].match(ON_KEY)[1]);
+  if (inline) {
+    if (!/^(?:[a-z_]+|\[\s*[a-z_]+(?:\s*,\s*[a-z_]+)*\s*\])$/.test(inline)) return [unreadable(start + 1, inline)];
+    for (const ev of inline.replace(/[[\]]/g, '').split(',').map((s) => s.trim())) {
+      if (REF_EVENTS.has(ev)) problems.push(refProblem(ev, start + 1, 'no branch filter'));
+    }
+    return problems;
+  }
   let end = start + 1;
   while (end < lines.length && (!meaningful(lines[end]) || indentOf(lines[end]) > 0)) end++;
-  const body = lines.slice(start + 1, end).map((t, i) => ({ t, no: start + 2 + i }));
-  const first = body.find((l) => meaningful(l.t));
-  if (!first) return null;
-  const jobIndent = indentOf(first.t);
-  const jobs = [];
-  for (const l of body) {
-    if (!meaningful(l.t)) {
-      if (jobs.length) jobs[jobs.length - 1].lines.push(l.t);
+  const block = lines.slice(start + 1, end).map((t, i) => ({ text: t, no: start + 2 + i }))
+    .filter((l) => meaningful(l.text));
+  if (block.length === 0) return [unreadable(start + 1, 'empty on:')];
+  const eventIndent = indentOf(block[0].text);
+  for (let i = 0; i < block.length; i++) {
+    const { text: l, no } = block[i];
+    if (indentOf(l) < eventIndent) return [unreadable(no, l.trim())];
+    if (indentOf(l) > eventIndent) continue;
+    const item = l.trim().match(/^-\s+([a-z_]+)$/);
+    if (item) {
+      if (REF_EVENTS.has(item[1])) problems.push(refProblem(item[1], no, 'no branch filter'));
       continue;
     }
-    const ind = indentOf(l.t);
-    if (ind < jobIndent) return null;
-    if (ind === jobIndent) {
-      const m = stripComment(l.t.trim()).match(/^(['"]?)([A-Za-z_][A-Za-z0-9_-]*)\1:$/);
-      if (!m) return null;
-      jobs.push({ id: m[2], line: l.no, lines: [] });
-    } else jobs[jobs.length - 1].lines.push(l.t);
+    const m = stripComment(l.trim()).match(BARE_KEY);
+    if (!m) {
+      problems.push(unreadable(no, l.trim()));
+      continue;
+    }
+    const [, event, value = ''] = m;
+    if (!REF_EVENTS.has(event)) continue;
+    if (event !== 'push') {
+      problems.push(refProblem(event, no, `${event} runs the unreviewed PR head whatever its branch filter`));
+      continue;
+    }
+    const body = [];
+    for (let j = i + 1; j < block.length && indentOf(block[j].text) > eventIndent; j++) body.push(block[j]);
+    const reason = pushFilterProblem(value, body);
+    if (reason) problems.push(refProblem(event, no, reason));
+  }
+  return problems;
+}
+
+const refProblem = (event, line, reason) => ({ event, line, reason });
+
+function pushFilterProblem(value, body) {
+  if (value && value !== '{}' && value !== '~' && value !== 'null') return `unreadable flow-style filter "${value}"; fails closed`;
+  if (body.length === 0) return 'no branch filter';
+  const keyIndent = indentOf(body[0].text);
+  let branches = null;
+  for (let i = 0; i < body.length; i++) {
+    const l = body[i].text;
+    if (indentOf(l) < keyIndent) return `unreadable filter line "${l.trim()}"; fails closed`;
+    if (indentOf(l) > keyIndent) continue;
+    const m = stripComment(l.trim()).match(BARE_KEY);
+    if (!m) return `unreadable filter line "${l.trim()}"; fails closed`;
+    if (!PUSH_KEYS.has(m[1])) return `${m[1]} filter reaches non-main refs`;
+    if (m[1] !== 'branches') continue;
+    if (m[2]) {
+      if (!/^\[.*\]$/.test(m[2])) return `unreadable branches value "${m[2]}"; fails closed`;
+      branches = m[2].slice(1, -1).split(',').map(unquote);
+    } else {
+      branches = [];
+      for (let j = i + 1; j < body.length && indentOf(body[j].text) > keyIndent; j++) {
+        const item = stripComment(body[j].text.trim()).match(/^-\s+(.+)$/);
+        if (!item) return `unreadable branches item "${body[j].text.trim()}"; fails closed`;
+        branches.push(unquote(item[1]));
+      }
+    }
+  }
+  if (branches === null) return 'no branch filter';
+  const v = branches.filter(Boolean);
+  if (v.length === 0) return 'empty branch filter';
+  const bad = v.filter((b) => b !== 'main');
+  return bad.length ? `branch filter includes non-main ref(s): ${bad.join(', ')}` : null;
+}
+
+/** Splits a workflow into its top-level (non-job) text and each job's block. */
+function jobBlocks(text) {
+  const lines = text.split('\n');
+  const start = lines.findIndex((l) => /^jobs:\s*(?:#.*)?$/.test(l));
+  if (start < 0) return { outside: text, jobs: [] };
+  let end = start + 1;
+  while (end < lines.length && (!meaningful(lines[end]) || indentOf(lines[end]) > 0)) end++;
+  const jobs = [];
+  for (let i = start + 1; i < end; i++) {
+    const m = lines[i].match(/^ {2}([A-Za-z0-9_-]+):\s*$/);
+    if (m) jobs.push({ id: m[1], lines: [] });
+    else if (jobs.length) jobs[jobs.length - 1].lines.push(lines[i]);
+    else if (meaningful(lines[i])) return { outside: text, jobs: [] }; // unreadable jobs map: treat all as outside
   }
   const outside = [...lines.slice(0, start), ...lines.slice(end)].join('\n');
-  return { outside, jobs: jobs.map((j) => ({ id: j.id, line: j.line, lines: j.lines })) };
+  return { outside, jobs: jobs.map((j) => ({ id: j.id, text: j.lines.join('\n') })) };
 }
 
-/** Job-level property `key` → {value, children} at the job's own indent, or null. */
-function jobProperty(jobLines, key) {
-  const first = jobLines.find(meaningful);
-  if (!first) return null;
-  const propIndent = indentOf(first);
-  for (let i = 0; i < jobLines.length; i++) {
-    const l = jobLines[i];
-    if (!meaningful(l) || indentOf(l) !== propIndent) continue;
-    const m = stripComment(l.trim()).match(/^(['"]?)([A-Za-z_-]+)\1:(?:\s+(.*))?$/);
-    if (!m || m[2] !== key) continue;
-    const children = [];
-    for (let j = i + 1; j < jobLines.length && (!meaningful(jobLines[j]) || indentOf(jobLines[j]) > propIndent); j++) {
-      if (meaningful(jobLines[j])) children.push(jobLines[j]);
-    }
-    return { value: (m[3] || '').trim(), children };
-  }
-  return null;
+function scheduleOnly(jobText) {
+  const m = jobText.match(/^ {4}if:\s*(.+)$/m);
+  if (!m) return false;
+  const cond = m[1].trim();
+  return /github\.event_name\s*==\s*'schedule'/.test(cond) && !cond.includes('||');
 }
 
-/** The literal environment name a job declares; '' when absent; null when not statically readable. */
-export function environmentName(jobLines) {
-  const p = jobProperty(jobLines, 'environment');
-  if (!p) return '';
-  let name;
-  if (p.value) {
-    const flow = p.value.match(/^\{(.*)\}$/);
-    if (flow) {
-      const n = flow[1].match(/(?:^|,)\s*name\s*:\s*([^,}]+)/);
-      name = n ? n[1] : null;
-    } else name = p.value;
-  } else {
-    const childIndent = p.children.length ? indentOf(p.children[0]) : 0;
-    const n = p.children
-      .filter((c) => indentOf(c) === childIndent)
-      .map((c) => stripComment(c.trim()).match(/^name:\s*(.+)$/))
-      .find(Boolean);
-    name = n ? n[1] : null;
-  }
-  if (name == null) return null;
-  name = unquote(stripComment(name));
-  return /^[A-Za-z0-9_.-]+$/.test(name) ? name : null; // expressions are not statically provable
-}
-
-function callsLocalWorkflowWithInherit(jobLines) {
-  const uses = jobProperty(jobLines, 'uses');
-  const secrets = jobProperty(jobLines, 'secrets');
-  return Boolean(uses && /^['"]?\.\/\.github\/workflows\/[^\s'"]+\.ya?ml['"]?$/.test(stripComment(uses.value))
-    && secrets && stripComment(secrets.value) === 'inherit');
-}
-
-/** Violations [{job, line, reason}] for one workflow file's text (empty when it holds no SSH secret). */
-export function checkJobEnvironments(text) {
+/** Violations for one workflow file's text (empty when it holds no production SSH secret). */
+export function checkWorkflow(text) {
   if (!referencesProductionSecret(text)) return [];
-  if (ALIAS.test(text)) {
-    return [{ job: '*', line: 1, reason: 'YAML alias in a production SSH secret workflow; cannot prove which job reads the secret, fails closed' }];
-  }
-  const parsed = jobBlocks(text);
-  if (!parsed) return [{ job: '*', line: 1, reason: 'unreadable jobs: map; fails closed' }];
-  const problems = [];
-  if (referencesProductionSecret(parsed.outside)) {
-    problems.push({ job: '*', line: 1, reason: 'production SSH secret referenced outside jobs (workflow-level env/defaults); move it into an environment-gated job' });
-  }
-  const allowed = new Set([REQUIRED_ENVIRONMENT, ...DOCUMENTED_EXCEPTIONS]);
-  for (const job of parsed.jobs) {
-    const jobText = job.lines.join('\n');
-    if (!referencesProductionSecret(jobText)) continue;
-    const env = environmentName(job.lines);
-    if (env && allowed.has(env)) continue;
-    if (env === '' && callsLocalWorkflowWithInherit(job.lines)) continue;
-    const reason = env === null ? 'environment is not a literal name'
-      : env === '' ? 'no environment declared' : `environment "${env}" is not main-restricted for SSH secrets`;
-    problems.push({ job: job.id, line: job.line, reason });
+  const problems = unsafeRefTriggers(text);
+  if (problems.length === 0) return [];
+  const structural = problems.some((p) => p.event === 'on' || p.event === 'pull_request_target');
+  const { outside, jobs } = jobBlocks(text);
+  if (!structural && !referencesProductionSecret(outside)) {
+    const exposed = jobs.filter((j) => referencesProductionSecret(j.text) && !scheduleOnly(j.text));
+    if (exposed.length === 0) return [];
+    return problems.map((p) => ({ ...p, reason: `${p.reason}; secret-bearing job(s): ${exposed.map((j) => j.id).join(', ')}` }));
   }
   return problems;
 }

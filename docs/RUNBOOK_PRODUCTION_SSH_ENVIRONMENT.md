@@ -2,7 +2,7 @@
 
 **Owner:** Founder (credential steps). **Risk:** R3 / T3 (production credentials + control plane).
 **Decision:** Founder approved the direction on 2026-10-15. Enforced by control-plane-lint rule
-**P2** (`scripts/ci/production-secret-triggers.mjs`, issue #4143).
+**P2** (`scripts/ci/production-ssh-environment.mjs`, issue #4143).
 
 **Why.** Repository-level secrets can be read by a workflow run on any ref. The deploy-trust review
 found the Pi SSH key readable by 8,431 runs that were not on `main`. Secrets stored in an
