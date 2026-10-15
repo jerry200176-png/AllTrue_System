@@ -1,3 +1,5 @@
+import { isLegacyPaidFlagOnly } from './courseMoneyState.js';
+
 // Billing redesign PRD v2 D1/D3/D8/D12: one row per student, built from the
 // existing per-contract alert rows (same numbers as the queue), plus every
 // student of the campus so a fully paid student is still findable.
@@ -66,7 +68,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
         waiting_confirm: 0, pending_review_amount: 0, pending_review_count: 0,
-        overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [], unbilled: 0, has_paid: false,
+        overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [], unbilled: 0, has_paid: false, legacy_flag_only: 0,
       });
     }
     return byStudent.get(id);
@@ -90,7 +92,9 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     // (legacy PayDate, an earlier term's payment) is not proof the contract is paid, nor is the raw `paid` flag
     // when the invoices say it still owes.
     const paidSignal = PAID.has(r.payment_status);
-    if (paidSignal) row.has_paid = true;
+    // #4114 (Founder Q3): paid by the legacy flag alone is 需核對, not 已收; still not owed (status unchanged).
+    if (paidSignal && isLegacyPaidFlagOnly(r)) row.legacy_flag_only += 1;
+    else if (paidSignal) row.has_paid = true;
     if (r.payment_status === 'pending_report') row.waiting_confirm += 1;
     // Founder D2: 金額待確認 is its own line, never part of owed_now / owed_later.
     if (pendingReviewAmount(r) > 0) {

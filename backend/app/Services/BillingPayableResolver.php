@@ -64,6 +64,61 @@ class BillingPayableResolver
     }
 
     /**
+     * #4114 (Founder Q3): which contracts / packages have a receipt still standing (net Payment > 0, the mayOwe ledger) on a
+     * non-void invoice of the contract or of any course in its package (a package bill sits on one member). A paid status
+     * outside these sets rests on the legacy StudentClass.Paid / CoursePackage.paid flag alone: shown 需核對, never 已收,
+     * and still never owed. Same receipt / reversal ledger as lastPaidAtByStudentClassIds (#4123): an invoice with net > 0 is
+     * exactly one that still has an unreversed receipt, so a receipt cancelled by a reversal is not evidence. Read-only.
+     *
+     * Package expansion stays inside the package owner's own courses (StudentClass.StudentID = course_packages.student_id)
+     * and, when given, the caller's authorized campuses: a course of another student or campus linked to the same PackageID
+     * by bad data is never read, so its ledger cannot clear this caller's 需核對 (#4174 review).
+     *
+     * @param int[] $studentClassIds
+     * @param int[] $packageIds
+     * @param int[]|null $campusIds the caller's authorized campuses; null = unrestricted (super admin / teacher scope)
+     * @return array{classes: array<int, true>, packages: array<int, true>}
+     */
+    public function validPaymentEvidence(array $studentClassIds, array $packageIds = [], ?array $campusIds = null): array
+    {
+        $ids = collect($studentClassIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
+        $packageOf = $ids === [] ? [] : StudentClass::query()->whereIn('ID', $ids)->where('PackageID', '>', 0)
+            ->pluck('PackageID', 'ID')->map(fn ($p) => (int) $p)->all();
+        $packages = collect($packageIds)->map(fn ($id) => (int) $id)->merge(array_values($packageOf))->filter(fn (int $id) => $id > 0)->unique()->values()->all();
+        $campuses = $campusIds === null ? null : array_values(array_unique(array_map('intval', $campusIds)));
+        $members = $packages === [] || $campuses === [] ? [] : DB::table('StudentClass')
+            ->join('course_packages', 'course_packages.id', '=', 'StudentClass.PackageID')
+            ->whereIn('StudentClass.PackageID', $packages)
+            ->whereColumn('StudentClass.StudentID', 'course_packages.student_id')
+            ->when($campuses !== null, fn ($q) => $q->join('Student', 'Student.id', '=', 'StudentClass.StudentID')
+                ->whereIn('Student.CampusID', $campuses))
+            ->pluck('StudentClass.PackageID', 'StudentClass.ID')->mapWithKeys(fn ($p, $id) => [(int) $id => (int) $p])->all();
+        $scope = array_values(array_unique(array_merge($ids, array_keys($members))));
+        $paid = $scope === [] ? [] : DB::table('Invoice')
+            ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->whereIn('Invoice.StudentClassID', $scope)
+            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
+            ->groupBy('Invoice.id', 'Invoice.StudentClassID')
+            ->havingRaw("SUM(CASE WHEN Payment.Amount < 0 OR Payment.Method = 'void' THEN -ABS(Payment.Amount) ELSE Payment.Amount END) > 0")
+            ->pluck('Invoice.StudentClassID')->mapWithKeys(fn ($id) => [(int) $id => true])->all();
+        $paidPackages = [];
+        foreach ($members as $classId => $packageId) {
+            if (isset($paid[$classId])) {
+                $paidPackages[$packageId] = true;
+            }
+        }
+        $classes = [];
+        foreach ($ids as $id) {
+            // A seed reads its package's receipts only when it is itself an in-scope member of that package.
+            if (isset($paid[$id]) || (isset($members[$id]) && isset($paidPackages[$members[$id]]))) {
+                $classes[$id] = true;
+            }
+        }
+
+        return ['classes' => $classes, 'packages' => $paidPackages];
+    }
+
+    /**
      * F7 S1: course-level paid status over ALL non-void invoices (additive; byStudentClassIds is unchanged).
      *
      * status: free (tutoring / zero-fee) > review_required (monthly period that cannot be attributed)
