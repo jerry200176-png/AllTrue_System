@@ -38,8 +38,9 @@ Steps (a)–(c) → merge the PR → (d) → (e) → (f) → (g).
 2. **Deployment branches and tags** → **Selected branches and tags** → add the rule `main`. Add no
    other branch or tag.
 3. **Required reviewers: leave this OFF.** Scheduled jobs (`pi-health`, `slow-query-report`,
-   `backup-restore-test`, `bug-auto-intake`, the `deploy.yml` schedule, and others) must keep running
-   with nobody present. The branch policy is the control here, not a reviewer. Leave the wait timer
+   `bug-auto-intake`, the `deploy.yml` schedule, and others) must keep running
+   with nobody present. (`backup-restore-test`, monthly, is on `production-activation`: gated pending
+   evidence, see P3 below.) The branch policy is the control here, not a reviewer. Leave the wait timer
    at 0.
 
 ### Existing environments (documented exceptions)
@@ -70,7 +71,7 @@ Every secret-bearing job is listed in `docs/governance/PRODUCTION_WORKFLOW_INVEN
   `needs:<job>`: the job needs a same-file job on `production-activation`, and its `if:` requires that
   job's success with no `||` (e.g. `deploy.yml` `parent-portal-smoke`, `pop-bootstrap`).
   `founder-decision`: the job is a listed ungated writer and its `decision` names the open Founder
-  decision (the scheduled writers and the Founder 1A auto-deploy path). Being scheduled is not an
+  decision (the two scheduled bug-report writers and the Founder 1A auto-deploy path). Being scheduled is not an
   exemption by itself: the entry must also give `authorization` (with its source), `scope`,
   `idempotency`, `stop_switch`, `audit_trail` and `isolation`;
 - a `writes: false` job contains a strong write marker in its own text (`--apply`, `ALLOW_PROD_REPAIR=1`,

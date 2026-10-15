@@ -66,6 +66,12 @@ test('founder-decision exceptions need a decision and every evidence field; sche
   assert.deepEqual(ids(text, { a: W('anything') }), ['a']);
 });
 
+test('a scheduled writer needs no exception when it waits for the gated environment', () => {
+  const scheduled = (e) => wf([job('a', env(e))], "  schedule:\n    - cron: '0 2 1 * *'\n  workflow_dispatch:\n");
+  assert.deepEqual(ids(scheduled(GATED_ENVIRONMENT), { a: W(GATED_ENVIRONMENT) }), []);
+  assert.deepEqual(ids(scheduled('production-ssh'), { a: W(GATED_ENVIRONMENT) }), ['a']);
+});
+
 test('evidence must cite file:line and writes must be boolean', () => {
   const text = wf([job('a', env('production-ssh'))]);
   assert.deepEqual(ids(text, { a: { ...RO, evidence: 'trust me' } }), ['a']);
