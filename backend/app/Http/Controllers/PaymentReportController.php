@@ -828,11 +828,11 @@ class PaymentReportController extends Controller
                 'status' => 'pending', 'report_token_hash' => hash('sha256', 'director-' . $sc->ID . '-' . now()->timestamp),
                 'token_expires_at' => Carbon::now()->addDays(30),
             ]);
-            DB::table('invoice_corrections')->where('id', $correctionId)->update(['payment_report_id' => $report->id]);
-            Log::info('PaymentReport director-record correction reissue', ['report_id' => $report->id, 'invoice_id' => $invoice->id,
+            DB::table('invoice_corrections')->where('id', $correctionId)->update(['payment_report_id' => $report->getKey()]);
+            Log::info('PaymentReport director-record correction reissue', ['report_id' => $report->getKey(), 'invoice_id' => $invoice->id,
                 'replaces_invoice_id' => $replaced->id, 'user_id' => $userId]);
 
-            return response()->json(['message' => '已開更正帳單並送出，等你確認', 'report_id' => $report->id, 'payment_id' => null,
+            return response()->json(['message' => '已開更正帳單並送出，等你確認', 'report_id' => $report->getKey(), 'payment_id' => null,
                 'invoice_id' => (int) $invoice->id, 'status' => 'pending', 'correction_id' => $correctionId]);
         });
     }
