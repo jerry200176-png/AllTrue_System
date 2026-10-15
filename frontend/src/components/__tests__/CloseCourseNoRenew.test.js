@@ -80,4 +80,18 @@ describe('shared close-course action', () => {
     expect(calls.alerts).toEqual(['請重新登入']);
     expect(calls.reloads).toBe(0);
   });
+
+  // in-app #415: callers reveal 歷史課程 / close the 管理課程 drawer only after a real close.
+  it('resolves true only when the course was actually closed', async () => {
+    const ok = setup();
+    expect(await closeCourseNoRenew(ok.deps)).toBe(true);
+    const canceled = setup({ accepted: false });
+    expect(await closeCourseNoRenew(canceled.deps)).toBe(false);
+    const unknown = setup({ settled: null });
+    expect(await closeCourseNoRenew(unknown.deps)).toBe(false);
+    const failed = setup();
+    authedFetch.mockImplementation(async () => ({ ok: false, statusText: 'Bad', json: async () => ({ message: 'nope' }) }));
+    expect(await closeCourseNoRenew(failed.deps)).toBe(false);
+    expect(failed.calls.reloads).toBe(0);
+  });
 });

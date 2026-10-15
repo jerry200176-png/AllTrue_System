@@ -1,7 +1,10 @@
 import { ENDED_PENDING_LABEL, TUITION_STATUS_CONFIG } from './courseMoneyState.js';
 import { authedFetch, getAccessToken } from './authedFetch';
 
-/** Shared confirmation and request path for closing a course without renewal. */
+/**
+ * Shared confirmation and request path for closing a course without renewal.
+ * Resolves true only when the course was closed (callers use it to reveal 歷史課程).
+ */
 export async function closeCourseNoRenew({
   course,
   studentName,
@@ -13,11 +16,11 @@ export async function closeCourseNoRenew({
   alertImpl = globalThis.alert,
 }) {
   const courseId = Number(course?.id ?? course?.ID ?? 0);
-  if (!courseId) { alertImpl('課程資料缺少識別碼，請重新整理後再試'); return; }
+  if (!courseId) { alertImpl('課程資料缺少識別碼，請重新整理後再試'); return false; }
   const subject = getSubjectLabel(course?.subject);
   const remaining = Math.max(0, Number(getRemainingSessions(course) ?? 0));
   const settled = isCourseSettled(course);
-  if (settled === null) { alertImpl('繳費狀態載入中，請重新整理後再結案'); return; }
+  if (settled === null) { alertImpl('繳費狀態載入中，請重新整理後再結案'); return false; }
   const paymentWarning = settled
     ? ''
     : `\n\n目前尚未完成繳費；結案後會標記「${ENDED_PENDING_LABEL}」，不會視為已收。`;
@@ -25,11 +28,11 @@ export async function closeCourseNoRenew({
     ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
     : '';
   // The 2nd arg is read by the in-app dialog (askConfirm); the native confirm ignores it.
-  if (!await confirmImpl(`確定要結案「${studentName || '學生'}」的 ${subject} 課程嗎？${paymentWarning}${balanceWarning}\n\n結案後此課程不再排課；若尚未繳費，會保留在帳務中心的「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」分頁。已繳費與已上課紀錄仍會保留。`, { title: `結束${subject}？`, confirmLabel: '結束課程', danger: true })) return;
+  if (!await confirmImpl(`確定要結案「${studentName || '學生'}」的 ${subject} 課程嗎？${paymentWarning}${balanceWarning}\n\n結案後此課程不再排課；若尚未繳費，會保留在帳務中心的「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」分頁。已繳費與已上課紀錄仍會保留。`, { title: `結束${subject}？`, confirmLabel: '結束課程', danger: true })) return false;
 
   try {
     const token = await getAccessToken();
-    if (!token) { alertImpl('請重新登入'); return; }
+    if (!token) { alertImpl('請重新登入'); return false; }
     const res = await authedFetch(`/api/v1/student-classes/${courseId}/pause`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -40,12 +43,14 @@ export async function closeCourseNoRenew({
       }),
     }, token);
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) { alertImpl('結案失敗：' + (json.message || res.statusText)); return; }
+    if (!res.ok) { alertImpl('結案失敗：' + (json.message || res.statusText)); return false; }
     alertImpl(json.pending_reconciliation
       ? `已結案，課程保留在帳務中心的「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」分頁，尚未視為已收。`
       : '已結案，此課程不再出現在繳費／續課提醒中。');
     await reloadCourses();
+    return true;
   } catch (error) {
     alertImpl('操作失敗：' + (error?.message || '請稍後再試'));
   }
+  return false;
 }

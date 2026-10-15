@@ -1555,8 +1555,9 @@ const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
 };
 
-function closeCourseInPlace(course) {
-  return runCloseCourseNoRenew({
+// in-app #352/#415: closing stays in 課程查找; a closed course is revealed under its student's 歷史課程.
+async function closeCourseInPlace(course) {
+  const closed = await runCloseCourseNoRenew({
     course,
     studentName: course?.student_name || course?.student?.name,
     getRemainingSessions: ownRemainingSessions,
@@ -1565,6 +1566,8 @@ function closeCourseInPlace(course) {
     reloadCourses: () => loadCourses(pagination.value.page),
     confirmImpl: (message, opts) => askConfirm({ message, ...opts }),
   });
+  if (closed) revealHistoryCourse(course);
+  return closed;
 }
 
 const courses = ref([]);
@@ -2658,7 +2661,8 @@ function onCourseManagerAction({ name, payload } = {}) {
   if (!c || !name) return;
   const map = {
     pause: () => requestCoursePause(c), resume: () => requestCoursePause(c),
-    close: () => goToStudentsCommercial(c, 'close'), delete: () => { confirmDeleteTarget.value = c; },
+    // in-app #415: 結束課程 in the drawer closes in place (no jump to 學生管理), then returns to the list.
+    close: async () => { if (await closeCourseInPlace(c)) closeCourseManager(); }, delete: () => { confirmDeleteTarget.value = c; },
     'monthly-correction': () => openMonthlyCorrection(c),
     'manual-session': () => openManualSessionModal(c), 'monthly-session': () => openMonthlySessionModal(c),
     'quick-add': () => { if (canQuickAddSession(c) || isMonthlyMode(c)) openQuickAddSessionModal(c); },
@@ -3998,15 +4002,19 @@ const isUserNote = (note) => {
   return note.trim().split(/;\s*/).some((part) => part.trim() && !isSystemNotePart(part));
 };
 
+const studentGroupKey = (c) => {
+  const studentId = c?.student_id ?? c?.StudentID ?? null;
+  return studentId != null && studentId !== ''
+    ? `sid:${studentId}`
+    : `name:${String(c?.student_name || '').trim() || '未命名學生'}`;
+};
 const groupCoursesByStudent = (list = []) => {
   const grouped = [];
   const groupedMap = new Map();
   for (const c of list) {
     const studentName = String(c?.student_name || '').trim() || '未命名學生';
     const studentId = c?.student_id ?? c?.StudentID ?? null;
-    const key = studentId != null && studentId !== ''
-      ? `sid:${studentId}`
-      : `name:${studentName}`;
+    const key = studentGroupKey(c);
     if (!groupedMap.has(key)) {
       const group = { key, student_id: studentId, student_name: studentName, school_grade: '', courses: [] };
       groupedMap.set(key, group);
@@ -4068,6 +4076,16 @@ const toggleHistoryGroup = (key) => {
   else s.add(key);
   expandedHistoryGroups.value = s;
 };
+// in-app #415: after 結束課程, open that student's 歷史課程 when the reloaded course is history
+// (an unpaid close stays in the active list as 課已結束，尚未收款 until reconciled).
+function revealHistoryCourse(course) {
+  const id = Number(course?.id ?? course?.ID ?? 0);
+  const reloaded = (courses.value || []).find((x) => Number(x.id) === id);
+  if (!reloaded || !isHistoryCourse(reloaded)) return;
+  const key = studentGroupKey(reloaded);
+  expandedHistoryGroups.value = new Set([...expandedHistoryGroups.value, key]);
+  expandedStudentGroups.value = new Set([...expandedStudentGroups.value, key]);
+}
 
 const expandAllGroups = () => {
   resetExpandedStudentGroups(groupedCourses.value);
