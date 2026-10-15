@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
-import { expectCoursePaymentEntryOpensLedgerInPlace } from './fixtures/coursePaymentEntry.js';
+import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
 import { openPageFromSidebarSearch } from './fixtures/openPageFromSidebarSearch.js';
 
 /**
@@ -417,10 +417,13 @@ test.describe('production acceptance — calendar/course parity', () => {
     }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
     await page.goto('/');
     await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
+    const courses = recordCourseLists(page);
     await navigate(page, COURSE_NAV_LABEL);
     await expect(pageHeading(page, COURSE_NAV_LABEL)).toBeVisible({ timeout: 15_000 });
 
-    await expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHeading: pageHeading(page, COURSE_NAV_LABEL) });
+    // The row's state is unknown here: any action is accepted to find a row, then the
+    // helper checks the clicked label against the clicked course's payment state.
+    await expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHeading: pageHeading(page, COURSE_NAV_LABEL), courses });
   });
   }
 
