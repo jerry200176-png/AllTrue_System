@@ -1,8 +1,9 @@
-// In-app #408 (#4115) / #3980 root cause B. Founder Q2 = A: an issued bill does not follow a later rate
-// change, and a correction must leave a record. Founder D3: a different amount alone is no reason to void, so this
-// only compares numbers for display (neutral copy, no void call to action); it never changes a bill.
-// The comparison basis is the server's `courses[].current_contract_charge` (the contract's stored Charge, which
-// follows rate edits and keeps renewal discounts and session_charge deltas), so only a stale bill differs.
+// In-app #408 (#4115) / #3980 root cause B. Founder Q2 = A: an issued bill does not follow a later price change, and
+// a correction must leave a record. Founder D3: a different amount alone is no reason to void. This only puts two
+// numbers side by side (neutral copy, no void call to action) and never changes a bill.
+// Shown only when the server has issue-time evidence that the bill was priced at the contract's Charge then
+// (`priced_from_contract`); a typed, negotiated, instalment or legacy bill is never compared. Even then the
+// difference may be an agreed change, so the copy does not call the bill wrong.
 // Returns null whenever the note must stay hidden.
 const isOpenUnpaid = (inv) => ['unpaid', ''].includes(String(inv.status ?? ''))
   && Number(inv.calculated_applied_amount || 0) === 0
@@ -10,9 +11,8 @@ const isOpenUnpaid = (inv) => ['unpaid', ''].includes(String(inv.status ?? ''))
   && !inv.zero_amount_reason
   // Multi-course or hand-entered lines cannot be compared with one contract.
   && inv.single_course_items === true
-  // D3 (Founder 2026-10-15): a bill priced by a person (note, typed total, no or several lines) differs from the
-  // contract on purpose; a missing flag also hides the note.
-  && inv.hand_priced === false;
+  // D3: only with issue-time evidence that the bill was priced at the contract Charge; a missing flag hides it.
+  && inv.priced_from_contract === true;
 
 export function issuedBillRateNote(course, invoices) {
   const current = course?.current_contract_charge;

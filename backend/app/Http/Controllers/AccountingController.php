@@ -632,8 +632,9 @@ class AccountingController extends Controller
                 // #4115: every line belongs to this bill's own course (no multi-course or hand-entered lines).
                 'single_course_items' => $invoice->items->isNotEmpty()
                     && $invoice->items->every(fn ($item) => (int) $item->StudentClassID === (int) $invoice->StudentClassID),
-                // D3 (Founder 2026-10-15): a hand-priced bill is never compared with the contract Charge (see isHandPriced()).
-                'hand_priced' => $this->isHandPriced($invoice),
+                // D3 (Founder 2026-10-15): only a bill with issue-time evidence that it was priced at the contract Charge
+                // is ever compared with the current Charge (see pricedFromContract()); manual or negotiated bills never are.
+                'priced_from_contract' => $this->pricedFromContract($invoice),
             ] + ($invoice->zero_amount_reason !== null ? ['zero_amount_reason' => $invoice->zero_amount_reason] : []); // #3991: 免費／贈送 badge
         })->values();
         $this->invoiceAmounts->forgetPreloadedSessions();
@@ -760,19 +761,20 @@ class AccountingController extends Controller
     }
 
     /**
-     * D3 (#4128): a bill whose amount was set by a person, not copied from the contract, so differing from the current
-     * Charge is no sign that it is wrong. Signals: no line (amount typed when the payment was reported), several lines
-     * (composed by hand or split), a total typed apart from its one line, a note (staff or special-path bill), or a
-     * 免費／贈送 mark. Read-only.
+     * D3 (#4128): true only when BillingController::store recorded, at issue time, that this bill's one line and total
+     * equalled the contract's Charge then (billing_snapshot source contract_charge_at_issue) and the amount is unchanged.
+     * Every other bill (typed or negotiated amount, instalment, several lines, legacy rows without that evidence) is
+     * false, so a difference from today's Charge is never presented for it. Read-only.
      */
-    private function isHandPriced(Invoice $invoice): bool
+    private function pricedFromContract(Invoice $invoice): bool
     {
+        $snapshot = $invoice->billing_snapshot;
         $items = $invoice->items;
 
-        return $items->count() !== 1
-            || (int) $items->first()->Amount !== (int) $invoice->TotalAmount
-            || trim((string) ($invoice->Note ?? '')) !== ''
-            || $invoice->zero_amount_reason !== null;
+        return is_array($snapshot) && ($snapshot['source'] ?? null) === 'contract_charge_at_issue'
+            && (int) ($snapshot['contract_charge'] ?? -1) === (int) $invoice->TotalAmount
+            && $items->count() === 1 && (int) $items->first()->Amount === (int) $invoice->TotalAmount
+            && $invoice->zero_amount_reason === null;
     }
 
     private function paymentResponse(Request $request, bool $export)

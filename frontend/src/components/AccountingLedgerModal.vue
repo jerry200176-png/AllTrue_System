@@ -137,7 +137,7 @@
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
                         <small v-if="isOtherCourseInvoice(inv)" class="ledger-other-course" data-testid="ledger-other-course">其他課程</small>
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
-                        <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">開單時金額 {{ formatCurrency(rateNoteFor(inv).issued) }} ／ 目前課程金額 {{ formatCurrency(rateNoteFor(inv).current) }}，請先確認原約定</small>
+                        <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">開單時金額 {{ formatCurrency(rateNoteFor(inv).issued) }} ／ 目前課程金額 {{ formatCurrency(rateNoteFor(inv).current) }}（不代表有誤）</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
                       <td data-label="應繳日">{{ fmtDate(inv.due_date) }}</td>
@@ -883,7 +883,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-row--open td{background:var(--ds-canvas-soft)}
 .ledger-row--attention td:nth-child(2) strong{color:var(--ds-ink)}
 .ledger-overpay-hint{display:block;color:var(--ds-danger);font-weight:600}
-.ledger-rate-hint{display:block;color:var(--ds-warning);font-weight:600}
+.ledger-rate-hint{display:block;color:var(--ds-ink-mute)}
 .ledger-other-course{display:inline-block;color:var(--ds-ink-mute);font-weight:600}
 .due{color:var(--ds-danger);font-weight:700}
 

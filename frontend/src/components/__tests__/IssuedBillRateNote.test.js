@@ -11,10 +11,10 @@ vi.mock('../../lib/authedFetch.js', () => ({
 import ContractCard from '../tuition/ContractCard.vue';
 
 const course = (over = {}) => ({ id: 7, schedule_mode: 'count', paid: false, package_id: null, current_contract_charge: 7200, ...over });
-const bill = (over = {}) => ({ id: 41, student_class_id: 7, status: 'unpaid', total_amount: 8800, paid_amount: 0, calculated_applied_amount: 0, single_course_items: true, hand_priced: false, ...over });
+const bill = (over = {}) => ({ id: 41, student_class_id: 7, status: 'unpaid', total_amount: 8800, paid_amount: 0, calculated_applied_amount: 0, single_course_items: true, priced_from_contract: true, ...over });
 
 describe('issuedBillRateNote', () => {
-  it('shows a stale bill after a rate edit (Charge recomputed, bill not)', () => {
+  it('compares a bill priced at the contract Charge after that Charge changed', () => {
     expect(issuedBillRateNote(course(), [bill()])).toEqual({ invoiceId: 41, issued: 8800, current: 7200 });
   });
 
@@ -42,9 +42,9 @@ describe('issuedBillRateNote', () => {
     expect(issuedBillRateNote(course(), [bill({ single_course_items: undefined })])).toBeNull();
   });
 
-  it('is hidden for a hand-priced bill (Founder D3), and when the server sends no flag', () => {
-    expect(issuedBillRateNote(course(), [bill({ hand_priced: true })])).toBeNull();
-    expect(issuedBillRateNote(course(), [bill({ hand_priced: undefined })])).toBeNull();
+  it('is hidden for a manual, negotiated or legacy bill without issue-time evidence (Founder D3)', () => {
+    expect(issuedBillRateNote(course(), [bill({ priced_from_contract: false })])).toBeNull();
+    expect(issuedBillRateNote(course(), [bill({ priced_from_contract: undefined })])).toBeNull();
   });
 
   it('is hidden when the bill is paid, partly paid or has money applied', () => {
@@ -85,6 +85,8 @@ describe('ContractCard issued-bill note', () => {
     const text = w.find('[data-testid="contract-rate-note"]').text();
     expect(text).toContain('開單時金額 NT$ 8,800 ／ 目前課程金額 NT$ 7,200');
     expect(text).toContain('請先確認原約定與應收金額；確認開錯才更正');
+    expect(text).toContain('不代表帳單有誤');
+    for (const word of ['過期', '錯誤', '開錯了', '舊價']) expect(text).not.toContain(word);
     expect(text).not.toContain('作廢');
     expect(w.find('[data-testid="contract-rate-void"]').exists()).toBe(false);
     expect(w.findAll('button').some((b) => b.text().includes('作廢'))).toBe(false);

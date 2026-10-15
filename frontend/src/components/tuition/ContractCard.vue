@@ -37,7 +37,7 @@
     <!-- #4115 / Founder Q2 = A + D3: display only. A different amount alone is no reason to void, so no void action here. -->
     <div v-if="rateNote" class="contract__ratenote" data-testid="contract-rate-note">
       <p>開單時金額 {{ money(rateNote.issued) }} ／ 目前課程金額 {{ money(rateNote.current) }}</p>
-      <p class="contract__muted">帳單不會跟著課程金額自動改。請先確認原約定與應收金額；確認開錯才更正。</p>
+      <p class="contract__muted">這張帳單開單時是當時的課程金額，之後課程金額有變更；帳單不會自動改。兩者不同可能是議價或約定調整，不代表帳單有誤。請先確認原約定與應收金額；確認開錯才更正。</p>
     </div>
 
     <div class="contract__memo">
@@ -319,7 +319,7 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__money .due{color:var(--ds-danger)}
 .contract__confirm-text{margin:0;font-size:14px;line-height:1.6}
 .contract__reject-label{display:block;margin-bottom:6px;font-size:14px;font-weight:700}
-.contract__ratenote{display:grid;gap:4px;padding:8px 10px;border-radius:var(--ds-radius-md);background:var(--ds-warning-wash);font-size:var(--ds-font-size-sm)}
+.contract__ratenote{display:grid;gap:4px;padding:8px 10px;border-radius:var(--ds-radius-md);background:var(--ds-canvas-soft);font-size:var(--ds-font-size-sm)}
 .contract__ratenote p{margin:0}
 .contract__memo{background:var(--ds-canvas-soft);border-radius:8px;padding:8px 10px;display:grid;gap:6px}
 .contract__memo-text{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
