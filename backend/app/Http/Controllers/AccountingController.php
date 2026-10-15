@@ -721,6 +721,8 @@ class AccountingController extends Controller
                 'subject' => $class->displaySubjectName($subjectNames),
                 'schedule_mode' => (string) ($class->ScheduleMode ?? ''),
                 'charge' => (int) ($class->Charge ?? 0),
+                // #4115 (Founder Q2 = A): display-only estimate next to an issued bill; never rewrites a bill.
+                'current_rate_estimate' => $this->currentRateEstimate($class),
                 'paid' => (int) ($class->Paid ?? 0) === 1 || $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
                     && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class))), // #3991: current term
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
@@ -736,6 +738,27 @@ class AccountingController extends Controller
             'receipts' => $reportRows->all(),
             'anomalies' => $uniqueAnomalies->all(),
         ]);
+    }
+
+    /**
+     * Rate × SessionCount for a count-mode, per-lesson-priced, non-package course: the same formula the
+     * billing-correction endpoint requires (BillingCorrection::correctCountMode). Null for every other course.
+     *
+     * @return array{rate: float|int, session_count: int, amount: int}|null
+     */
+    private function currentRateEstimate(StudentClass $class): ?array
+    {
+        $rateUnit = strtolower(trim((string) ($class->rate_unit ?? 'session')));
+        if ((string) ($class->ScheduleMode ?? 'count') !== 'count' || $class->isPartOfPackage() || $rateUnit !== 'session') {
+            return null;
+        }
+        $rate = (float) ($class->getAttribute('Rate') ?? 0);
+        $count = (int) ($class->SessionCount ?? 0);
+        if ($rate <= 0 || $count <= 0) {
+            return null;
+        }
+
+        return ['rate' => fmod($rate, 1.0) === 0.0 ? (int) $rate : $rate, 'session_count' => $count, 'amount' => (int) round($rate * $count)];
     }
 
     private function paymentResponse(Request $request, bool $export)

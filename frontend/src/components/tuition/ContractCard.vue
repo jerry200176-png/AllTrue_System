@@ -33,6 +33,13 @@
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
+    <!-- #4115 / Founder Q2 = A: an issued bill keeps its amount when the rate changes; display only, no write here. -->
+    <div v-if="rateNote" class="contract__ratenote" data-testid="contract-rate-note">
+      <p>開單時金額 {{ money(rateNote.issued) }} ／ 目前單價試算 {{ money(rateNote.estimate) }}（單價 {{ money(rateNote.rate) }}，{{ rateNote.count }} 堂）</p>
+      <p class="contract__muted">帳單不會跟著單價自動改。「帳務更正」會留紀錄，但只能在未收款時減少堂數；堂數不變、只改單價的帳單，目前沒有可留紀錄的改價方式，請先找老闆確認。</p>
+      <button v-if="canCorrect" class="contract__link" type="button" data-testid="contract-rate-correct" @click="emit('correct', course)">前往帳務更正</button>
+    </div>
+
     <div class="contract__memo">
       <template v-if="!editing">
         <p v-if="memo" class="contract__memo-text" data-testid="contract-memo">{{ memo }}</p>
@@ -121,8 +128,12 @@ const props = defineProps({
   sharedFollower: { type: Boolean, default: false },
   // Subject of the member card that actually carries the package's 確認入帳 / 登記這筆 action.
   sharedLeadSubject: { type: String, default: '' },
+  // #4115: { issued, estimate, rate, count } from issuedBillRateNote(); null hides the note.
+  rateNote: { type: Object, default: null },
+  // The host can open the existing billing-correction flow (課程管理 only).
+  canCorrect: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'correct']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };
@@ -303,6 +314,8 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__money .due{color:var(--ds-danger)}
 .contract__confirm-text{margin:0;font-size:14px;line-height:1.6}
 .contract__reject-label{display:block;margin-bottom:6px;font-size:14px;font-weight:700}
+.contract__ratenote{display:grid;gap:4px;padding:8px 10px;border-radius:var(--ds-radius-md);background:var(--ds-warning-wash);font-size:var(--ds-font-size-sm)}
+.contract__ratenote p{margin:0}
 .contract__memo{background:var(--ds-canvas-soft);border-radius:8px;padding:8px 10px;display:grid;gap:6px}
 .contract__memo-text{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
 .contract__memo textarea{width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:6px 8px}

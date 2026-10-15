@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-15-inapp-408-issued-bill-vs-current-rate
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 帳單金額和目前單價不同時會並列給你看
+    summary: 已開的帳單不會跟著單價自動改價，學生帳務會同時顯示開單金額和目前單價試算。
+    items:
+      - category: improved
+        text: 堂數制課程的未收款帳單，若和「目前單價 × 堂數」不同，合約卡會顯示「開單時金額／目前單價試算」。
+      - category: improved
+        text: 帳單不會自動改價；要更正請走會留紀錄的「帳務更正」，它只能在未收款時減少堂數。
+    source_refs:
+      - "changelog:2026-10-15:inapp-408-issued-bill-vs-current-rate"
