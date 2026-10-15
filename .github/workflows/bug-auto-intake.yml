@@ -29,6 +29,7 @@ jobs:
     # Secret-bearing: only the reviewed workflow on main may touch production.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
     outputs:
       json: ${{ steps.list.outputs.json }}
@@ -177,6 +178,7 @@ jobs:
     needs: issues
     if: github.ref == 'refs/heads/main' && needs.issues.outputs.pairs != '[]' && needs.issues.outputs.pairs != '' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper

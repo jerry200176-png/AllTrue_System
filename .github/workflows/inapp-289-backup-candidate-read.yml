@@ -16,6 +16,7 @@ concurrency:
 jobs:
   inventory:
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 8
     steps:
       - name: Checkout pinned production SSH trust helper

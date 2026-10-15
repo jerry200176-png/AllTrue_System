@@ -31,8 +31,8 @@ rules:
       # values. Inputs are workflow_dispatch-only and validated first:
       # student_id/teacher_id/branch_id must be integers (guard job), and
       # expected_head_sha must be 40-char hex (guard job).
-      - actual-duration-acceptance.yml:153
-      - actual-duration-activation.yml:188
+      - actual-duration-acceptance.yml:154
+      - actual-duration-activation.yml:190
   artipacked:
     ignore:
       # These jobs push branches/tags/issues with the checkout credentials.

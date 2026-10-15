@@ -18,6 +18,7 @@ concurrency:
 jobs:
   manifest:
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 14
     steps:
       - name: Checkout pinned production SSH trust helper

@@ -25,6 +25,7 @@ permissions:
 jobs:
   resolve:
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 15
     outputs:
       bug_id: ${{ steps.target.outputs.bug_id }}

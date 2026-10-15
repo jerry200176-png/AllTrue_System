@@ -66,6 +66,7 @@ concurrency:
 jobs:
   dump:
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

@@ -96,11 +96,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Configure pinned production SSH trust
-        uses: ./.github/actions/production-ssh-trust
-        with:
-          host: ${{ secrets.PI_HOST || secrets.PI_SSH_HOST }}
-          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Setup Node.js 22
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
@@ -116,12 +111,37 @@ jobs:
           make validate-capabilities
           make overlay-pin || { echo "overlay pin check failed"; exit 1; }
 
-      # Weekly schedule runs silently otherwise — a red run just sits in the
-      # Actions tab until some unrelated PR happens to collide with it (see
-      # 2026-08-23 incident). Push it to the same ops channel monitor-alert.sh
-      # already uses on the Pi, so it doesn't need a second, third alerting path.
-      - name: Notify ops channel on scheduled failure
-        if: failure() && github.event_name == 'schedule'
+  # Weekly schedule runs silently otherwise — a red run just sits in the
+  # Actions tab until some unrelated PR happens to collide with it (see
+  # 2026-08-23 incident). Push it to the same ops channel monitor-alert.sh
+  # already uses on the Pi, so it doesn't need a second, third alerting path.
+  # 2026-10-15 (#4140): split out of the `integrity` job so the PR-triggered jobs
+  # reference no production SSH secret; this job only ever runs on the schedule
+  # (control-plane-lint P1) and declares the main-only production-ssh environment
+  # (control-plane-lint P2, #4143). Same alert, no new capability.
+  notify-schedule-failure:
+    name: Notify ops channel on scheduled failure
+    needs: [changes, integrity]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    environment: production-ssh
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 (SHA pin pilot 2026-07-18)
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_HOST || secrets.PI_SSH_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Notify ops channel
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
           PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
