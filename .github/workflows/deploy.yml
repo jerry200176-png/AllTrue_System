@@ -642,33 +642,11 @@ jobs:
           def gh_api(path, *extra):
               # Fail closed on empty/truncated bodies. The Go `gh` client can
               # print "unexpected end of JSON input" on stderr while stdout is
-              # empty; json.loads("") then loses the path context.
-              proc = subprocess.run(
-                  ["gh", "api", path, *extra],
-                  text=True,
-                  capture_output=True,
-                  env=os.environ.copy(),
-                  check=False,
-              )
-              body = proc.stdout or ""
-              if proc.returncode != 0:
-                  err = (proc.stderr or body or "").strip().replace("\n", " ")[:180]
-                  raise RuntimeError(
-                      f"gh api failed path={path} code={proc.returncode} err={err!r}"
-                  )
-              stripped = body.strip()
-              if not stripped:
-                  err = (proc.stderr or "").strip().replace("\n", " ")[:180]
-                  raise RuntimeError(
-                      f"gh api empty JSON body path={path} err={err!r}"
-                  )
-              try:
-                  return json.loads(stripped)
-              except json.JSONDecodeError as exc:
-                  prefix = stripped[:80].replace("\n", " ")
-                  raise RuntimeError(
-                      f"gh api invalid JSON path={path}: {exc}; body_prefix={prefix!r}"
-                  ) from exc
+              # empty (run 38610137074). gh_api_json retries only an empty body
+              # or HTTP 5xx, at most 3 attempts with backoff, then raises
+              # RuntimeError so the except handler below still fails closed.
+              from scripts.governance.gh_api_retry import gh_api_json
+              return gh_api_json(path, *extra)
 
           def pages(value):
               if isinstance(value, list):
