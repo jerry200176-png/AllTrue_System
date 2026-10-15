@@ -6,6 +6,7 @@ use App\Models\AuthToken;
 use App\Models\BugReport;
 use App\Models\Campus;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\SecurityAuditEvent;
 use App\Models\Student;
@@ -48,6 +49,10 @@ final class TriageBillingSnapshotTest extends TestCase
         $course = $this->course($this->campus, ['Charge' => 8800, 'Rate' => 900, 'SessionCount' => 8]);
         $invoice = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-01', 'DueDate' => '2026-09-15', 'TotalAmount' => 8800, 'PaidAmount' => 5000, 'Status' => 'partial', 'Note' => 'SECRET-INVOICE-NOTE', 'billing_period' => '2026-09']);
         $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-09-02', 'Method' => 'cash', 'Note' => 'SECRET-PAYMENT-NOTE']);
+        $reversal = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 700, 'PaidAt' => '2026-09-03', 'Method' => 'void']); // positive-amount void = reversal
+        $merged = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $this->course($this->campus)->ID, 'IssueDate' => '2026-10-01', 'DueDate' => '2026-10-15', 'TotalAmount' => 9999, 'PaidAmount' => 9999, 'Status' => 'paid', 'billing_period' => '2026-10']);
+        InvoiceItem::create(['InvoiceID' => $merged->id, 'StudentClassID' => $course->ID, 'Description' => 'x', 'Amount' => 4000]); // merged bill anchored elsewhere: no money shown
+        Payment::create(['InvoiceID' => $merged->id, 'Amount' => 9999, 'PaidAt' => '2026-10-02', 'Method' => 'cash']);
         $bug = $this->bug($this->campus, 'triaged');
         $this->link($bug, $course)->assertCreated();
 
@@ -60,10 +65,11 @@ final class TriageBillingSnapshotTest extends TestCase
             ->assertJsonPath('charge', 8800)->assertJsonPath('rate_times_count', 7200)
             ->assertJsonPath('charge_minus_base', 1600)->assertJsonPath('session_charge_rows', 0)
             ->assertJsonPath('paid_flag', 0)->assertJsonPath('remaining_sessions', 8)->assertJsonPath('stop', 0)
-            ->assertJsonPath('invoices', [['id' => $invoice->id, 'status' => 'partial', 'total' => 8800, 'paid' => 5000, 'period' => '2026-09', 'issue_date' => '2026-09-01']])
-            ->assertJsonPath('payments', [['id' => $payment->id, 'invoice_id' => $invoice->id, 'amount' => 5000]]);
+            ->assertJsonPath('invoices', [['id' => $invoice->id, 'status' => 'partial', 'shared' => false, 'total' => 8800, 'paid' => 5000, 'period' => '2026-09', 'issue_date' => '2026-09-01'],
+                ['id' => $merged->id, 'status' => 'paid', 'shared' => true, 'total' => null, 'paid' => null, 'period' => '2026-10', 'issue_date' => '2026-10-01']])
+            ->assertJsonPath('payments', [['id' => $payment->id, 'invoice_id' => $invoice->id, 'amount' => 5000], ['id' => $reversal->id, 'invoice_id' => $invoice->id, 'amount' => -700]]);
         $this->assertEquals(900, $res->json('rate'));
-        foreach (['SECRET-STUDENT', 'SECRET-MEMO', 'SECRET-INVOICE-NOTE', 'SECRET-PAYMENT-NOTE', '0912000000'] as $private) {
+        foreach (['SECRET-STUDENT', 'SECRET-MEMO', 'SECRET-INVOICE-NOTE', 'SECRET-PAYMENT-NOTE', '0912000000', 'void', '9999'] as $private) {
             $this->assertStringNotContainsString($private, $res->getContent());
         }
         $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot", $this->bearer())->assertStatus(422);
@@ -117,8 +123,14 @@ final class TriageBillingSnapshotTest extends TestCase
         $this->getJson($this->url($other, $bug), $this->bearer())->assertNotFound(); // cross-contract
         $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot", $this->bearer())->assertStatus(422);
 
+        DB::listen(function ($query): void { // a failing snapshot (500) is still audited past the cap
+            if (str_contains($query->sql, 'from `Invoice`')) { throw new \RuntimeException('db down'); }
+        });
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertStatus(500);
+
         $rows = DB::table('security_audit_events')->where('event_type', 'triage_token.read')->where('outcome', 'failure')->orderBy('id')->get();
-        $this->assertCount(14, $rows);
+        $this->assertCount(15, $rows);
+        $this->assertSame(500, json_decode($rows[14]->metadata, true)['http_status']);
         $this->assertSame(SecurityAuditEvent::ref('student_class', $other->ID), $rows[12]->subject_ref);
         $this->assertSame(404, json_decode($rows[12]->metadata, true)['http_status']);
         $this->assertSame(422, json_decode($rows[13]->metadata, true)['http_status']);
@@ -196,7 +208,9 @@ final class TriageBillingSnapshotTest extends TestCase
         $this->postJson('/api/v1/admin/triage-contract-links', ['bug_report_id' => $bug->id, 'student_class_id' => 999999], $this->as($this->admin))->assertStatus(422);
         $this->postJson('/api/v1/admin/triage-contract-links', ['bug_report_id' => $bug->id], $this->as($this->admin))->assertStatus(422);
 
+        $this->assertFalse(StudentClass::hasOperationalHistory([$course->ID]));
         $this->link($bug, $course)->assertCreated();
+        $this->assertTrue(StudentClass::hasOperationalHistory([$course->ID])); // a linked contract can no longer be hard-deleted
         $this->link($bug, $this->course($this->campus))->assertStatus(409); // one live contract per report
         $this->assertSame(1, DB::table('bug_report_contract_links')->count());
     }
@@ -311,13 +325,7 @@ final class TriageBillingSnapshotTest extends TestCase
         return User::create(['LoginName' => "billing-triage{$n}@test.com", 'Name' => "Triage {$n}", 'PSW' => 'secret', 'type' => $type, 'phone' => (string) (910000000 + $n)]);
     }
 
-    private function as(User $user): array
-    {
-        return ['X-User-Id' => (string) $user->id, 'Accept' => 'application/json'];
-    }
+    private function as(User $user): array { return ['X-User-Id' => (string) $user->id, 'Accept' => 'application/json']; }
 
-    private function bearer(): array
-    {
-        return ['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json'];
-    }
+    private function bearer(): array { return ['Authorization' => "Bearer {$this->token}", 'Accept' => 'application/json']; }
 }

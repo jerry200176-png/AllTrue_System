@@ -5,12 +5,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * #4100 (Founder option B, 2026-10-14): a super admin links ONE open bug report to ONE contract; only that pair is
- * readable through the triage billing snapshot. Additive: one new table, no change to existing tables, no data writes.
- * Soft revoke keeps history; `active` is 1 while live and NULL once revoked, so the unique (bug_report_id, active)
- * allows ONE live contract per report plus any number of revoked rows. Rollback = drop this (new) table.
- */
+/** #4100 (option B): a super admin links ONE open bug report to ONE contract. Additive: one new table, no data writes.
+ * Soft revoke keeps history; `active` is 1 while live, NULL once revoked, so unique (bug_report_id, active) = ONE live link per report. */
 return new class extends Migration
 {
     public function up(): void
@@ -48,6 +44,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('bug_report_contract_links');
+        // Intentionally empty: up() may adopt an existing table, so rollback never drops link history (Founder 2026-10-14 補充 #1).
     }
 };

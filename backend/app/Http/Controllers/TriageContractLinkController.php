@@ -10,11 +10,8 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
-/**
- * #4100 (Founder option B): super-admin session API that links ONE open bug report to ONE course
- * contract for the triage billing snapshot, or soft-revokes that link. API only (no UI yet).
- * The triage token can never reach these routes (not in triage_tokens.allowed_routes).
- */
+/** #4100 (option B): super-admin session API that links ONE open bug report to ONE contract for the triage billing snapshot,
+ * or soft-revokes that link. API only (no UI yet); the triage token never reaches it (not in triage_tokens.allowed_routes). */
 class TriageContractLinkController extends Controller
 {
     public function __construct()

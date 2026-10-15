@@ -9,12 +9,8 @@ use App\Models\StudentClass;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
-/**
- * #4100 (Founder option B): read-only billing IDs + numbers (no names, notes or free text) of ONE contract for a
- * triage token, to check G-009 / G-011 money state behind an open report. Needs ALL of: the switch on (default
- * off), a live super-admin link of exactly this (report, contract), an open report, and the same campus. Anything
- * else is the same 404; re-checked on every request; AuthenticateTriageToken audits every call.
- */
+/** #4100 (option B): IDs + numbers (no names, notes, free text) of ONE contract for a triage token. Needs ALL of: switch on
+ * (default off), a live super-admin link of exactly this (report, contract), an open report, the same campus; else the same 404. */
 class TriageBillingSnapshotController extends Controller
 {
     public function show(Request $request, int $id)
@@ -52,10 +48,13 @@ class TriageBillingSnapshotController extends Controller
         $base = (int) round((float) ($rate ?? 0) * $quantity);
         $charge = $course->Charge === null ? null : (int) $course->Charge;
 
-        $invoices = Invoice::query()->where('StudentClassID', $courseId)->orderBy('id')
-            ->get(['id', 'Status', 'TotalAmount', 'PaidAmount', 'billing_period', 'IssueDate']);
-        $payments = $invoices->isEmpty() ? collect() : DB::table('Payment')
-            ->whereIn('InvoiceID', $invoices->pluck('id')->all())->orderBy('id')->get(['id', 'InvoiceID', 'Amount']);
+        // Anchored or itemized on this contract. A bill that also covers another contract is shown without money (no cross-contract amounts).
+        $invoices = Invoice::query()->where('StudentClassID', $courseId)
+            ->orWhereIn('id', DB::table('InvoiceItem')->where('StudentClassID', $courseId)->select('InvoiceID'))
+            ->orderBy('id')->get(['id', 'StudentClassID', 'Status', 'TotalAmount', 'PaidAmount', 'billing_period', 'IssueDate']);
+        $shared = DB::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())->where('StudentClassID', '<>', $courseId)
+            ->pluck('InvoiceID')->merge($invoices->filter(fn (Invoice $i) => (int) $i->StudentClassID !== $courseId)->pluck('id'))->map(fn ($id) => (int) $id)->all();
+        $payments = DB::table('Payment')->whereIn('InvoiceID', $invoices->pluck('id')->diff($shared)->all())->orderBy('id')->get(['id', 'InvoiceID', 'Amount', 'Method']);
 
         return [
             'student_class_id' => $courseId,
@@ -75,10 +74,14 @@ class TriageBillingSnapshotController extends Controller
             'remaining_sessions' => $course->RemainingSessions === null ? null : (int) $course->RemainingSessions,
             'stop' => (int) $course->Stop,
             'invoices' => $invoices->map(fn (Invoice $invoice) => [
-                'id' => (int) $invoice->id, 'status' => (string) $invoice->Status, 'total' => (int) $invoice->TotalAmount,
-                'paid' => (int) $invoice->PaidAmount, 'period' => $invoice->billing_period, 'issue_date' => substr((string) $invoice->IssueDate, 0, 10),
+                'id' => (int) $invoice->id, 'status' => (string) $invoice->Status, 'shared' => in_array((int) $invoice->id, $shared, true),
+                'total' => in_array((int) $invoice->id, $shared, true) ? null : (int) $invoice->TotalAmount,
+                'paid' => in_array((int) $invoice->id, $shared, true) ? null : (int) $invoice->PaidAmount,
+                'period' => $invoice->billing_period, 'issue_date' => substr((string) $invoice->IssueDate, 0, 10),
             ])->values()->all(),
-            'payments' => $payments->map(fn (object $payment) => ['id' => (int) $payment->id, 'invoice_id' => (int) $payment->InvoiceID, 'amount' => (int) $payment->Amount])->values()->all(),
+            // Signed like Invoice::netPaidSql(): a reversal (negative, or Method 'void') is negative; the raw method is not exposed.
+            'payments' => $payments->map(fn (object $p) => ['id' => (int) $p->id, 'invoice_id' => (int) $p->InvoiceID,
+                'amount' => (int) $p->Amount < 0 || $p->Method === 'void' ? -abs((int) $p->Amount) : (int) $p->Amount])->values()->all(),
         ];
     }
 }

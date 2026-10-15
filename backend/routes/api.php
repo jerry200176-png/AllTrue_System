@@ -957,8 +957,7 @@ Route::prefix('v1')->group(function () {
             ->whereNumber('id')->name('triage.bug-reports.show');
         Route::get('bug-reports/{id}/attachments/{attachmentId}', [TriageBugReportController::class, 'attachment'])
             ->whereNumber(['id', 'attachmentId'])->name('triage.bug-reports.attachment');
-        // #4100 option B: IDs + numbers of ONE contract a super admin linked to an open report;
-        // gated by triage_tokens.billing_snapshot_enabled (default off; 待 Founder 核准 before turning on).
+        // #4100: ONE super-admin-linked contract of an open report; triage_tokens.billing_snapshot_enabled (default off, 待 Founder 核准).
         Route::get('student-classes/{id}/billing-snapshot', [TriageBillingSnapshotController::class, 'show'])
             ->whereNumber('id')->name('triage.student-classes.billing-snapshot');
     });

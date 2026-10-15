@@ -16,7 +16,6 @@ use Illuminate\Database\Eloquent\Model;
  * @property \Carbon\CarbonInterface|null $revoked_at
  * @property int|null $revoked_by
  * @property bool|null $active 1 while live, NULL once revoked (unique per report)
- *
  * @method static static create(array $attributes = [])
  */
 class BugReportContractLink extends Model
