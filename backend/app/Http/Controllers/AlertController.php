@@ -419,7 +419,8 @@ class AlertController extends Controller
                     // the resolver's `outstanding`, the same field 已結清 → 待核對 (AccountingController::settledCourses) shows.
                     if (($stopped['status'] ?? null) === 'review_required') {
                         $amountPendingConfirmation = true;
-                        $paymentStatus = 'amount_review';
+                        // A pending parent report stays confirmable (確認入帳 / 待核對入帳); the amount is still unconfirmed.
+                        $paymentStatus = $pendingReportId !== null ? 'pending_report' : 'amount_review';
                     }
                 }
 

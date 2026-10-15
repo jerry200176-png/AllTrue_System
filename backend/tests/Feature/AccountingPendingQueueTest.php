@@ -173,6 +173,31 @@ class AccountingPendingQueueTest extends TestCase
         $this->assertSame(3400, $alert['pending_confirmation_amount']);
     }
 
+    public function test_review_required_with_pending_parent_report_stays_confirmable_and_marked_pending(): void
+    {
+        // A parent already reported paying this 金額待確認 bill: the row must stay confirmable (pending_report →
+        // 確認入帳 / 待核對入帳) while still carrying the pending-confirmation marker and the settled-page amount.
+        $c = $this->reviewMonthlyCourse();
+        $invoice = $this->invoice($c, 4400);
+        $invoice->forceFill(['billing_period' => '2026-09'])->save();
+        $report = \App\Models\PaymentReport::create([
+            'StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'reported_by_name' => '家長',
+            'payment_date' => now()->toDateString(), 'payment_method' => 'transfer', 'reported_amount' => 4400,
+            'status' => 'pending', 'report_token_hash' => hash('sha256', 'd2-' . uniqid()), 'token_expires_at' => now()->addDay(),
+        ]);
+
+        $verdict = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $c->ID])[(int) $c->ID];
+        $this->assertSame('review_required', $verdict['status'], 'fixture must reproduce the review verdict');
+
+        $alert = $this->tuitionRow($c);
+        $this->assertNotNull($alert);
+        $this->assertSame('pending_report', $alert['payment_status']);
+        $this->assertSame((int) $report->id, $alert['latest_payment_report_id']);
+        $this->assertTrue($alert['amount_pending_confirmation']);
+        $this->assertSame((int) $verdict['outstanding'], $alert['pending_confirmation_amount']);
+        $this->assertSame($this->row($c)['outstanding_amount'], $alert['pending_confirmation_amount']);
+    }
+
     public function test_confirmed_unpaid_rows_are_not_marked_pending_confirmation(): void
     {
         $c = $this->course(['closed_reason' => 'settled']);

@@ -467,7 +467,7 @@
                     </template>
 
                     <!-- Founder D2: open bill whose amount is still to be confirmed; no collection action until confirmed -->
-                    <span v-if="r.payment_status === 'amount_review'" class="tc-renew-hint" data-testid="tc-amount-review-hint">
+                    <span v-if="isPendingConfirmation(r)" class="tc-renew-hint" data-testid="tc-amount-review-hint">
                       {{ TUITION_STATUS_CONFIG.amount_review.label }}：請先到「已結清 → 待核對」確認金額，未計入未收
                     </span>
 
@@ -1098,7 +1098,8 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { summarizeBatchResults } from '../lib/batchResultSummary.js';
-import { isPendingConfirmation, pendingReviewAmount, rowOwedTotal } from '../lib/studentBillingRows.js';
+import { rowOwedTotal } from '../lib/studentBillingRows.js';
+import { isPendingConfirmation, pendingReviewAmount } from '../lib/studentBillingRows.js';
 import { useToast } from '../composables/useToast';
 import { authedFetch } from '../lib/authedFetch.js';
 import * as paymentActions from '../lib/paymentActions.js';
@@ -1730,7 +1731,7 @@ function openLedgerForReport(row) {
 
 // ═══ Tab Filter counts / overdue (activeTab + TAB_DEFS declared above batch UI) ═══
 function isOverdue(r) {
-  return (r.days_until_settlement != null && r.days_until_settlement < 0) &&
+  return (r.days_until_settlement != null && r.days_until_settlement < 0) && !isPendingConfirmation(r) &&
     ['unpaid', 'partial', 'pending_report', 'pending_reconciliation'].includes(r.payment_status);
 }
 
@@ -1744,8 +1745,8 @@ const tabCounts = computed(() => {
     if (ps === 'unpaid' || ps === 'partial') c.unpaid++;
     else if (ps === 'pending_report') c.pending_report++;
     else if (ps === 'pending_reconciliation') c.pending_reconciliation++;
-    else if (ps === 'amount_review') c.amount_review++;
     else if (ps === 'paid' || ps === 'renew_needed' || ps === 'monthly_due_soon') c.renewal++;
+    if (isPendingConfirmation(r)) c.amount_review++;
   });
   return c;
 });
@@ -1762,14 +1763,14 @@ const statusCounts = computed(() => {
 const OUTSTANDING_STATUSES = ['unpaid', 'partial', 'pending_report', 'pending_reconciliation'];
 const totalOutstanding = computed(() => {
   return rows.value
-    .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status))
+    .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status) && !isPendingConfirmation(r))
     .reduce((sum, r) => sum + rowOwedTotal(r), 0);
 });
 
 // 未開帳單（payable_status !== 'invoiced'）的提醒 payable_outstanding 為 null，金額只有估算值，
 // 故不計入「已開帳單未結清」；另計筆數讓主任知道還有多少筆金額尚未確定。
 const unbilledOutstandingCount = computed(() => rows.value
-  .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status) && r.payable_status !== 'invoiced').length);
+  .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status) && r.payable_status !== 'invoiced' && !isPendingConfirmation(r)).length);
 
 // ═══ Summary Computed ═══
 const overdueRows = computed(() => rows.value.filter(isOverdue));
@@ -1833,7 +1834,7 @@ const tabFilteredRows = computed(() => {
   if (tab === 'unpaid') return rows.value.filter(r => r.payment_status === 'unpaid' || r.payment_status === 'partial');
   if (tab === 'pending_report') return rows.value.filter(r => r.payment_status === 'pending_report');
   if (tab === 'pending_reconciliation') return rows.value.filter(r => r.payment_status === 'pending_reconciliation');
-  if (tab === 'amount_review') return rows.value.filter(r => r.payment_status === 'amount_review');
+  if (tab === 'amount_review') return rows.value.filter(isPendingConfirmation);
   if (tab === 'renewal') return rows.value.filter(r => ['paid', 'renew_needed', 'monthly_due_soon'].includes(r.payment_status));
   return rows.value;
 });

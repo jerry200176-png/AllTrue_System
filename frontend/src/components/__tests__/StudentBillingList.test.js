@@ -227,4 +227,14 @@ describe('金額待確認 rows (Founder D2)', () => {
     await w.find('[data-testid="sbl-filter-pending_review"]').trigger('click');
     expect(w.findAll('[data-testid^="sbl-row-"]').map((r) => r.attributes('data-testid'))).toEqual(['sbl-row-5']);
   });
+
+  it('counts a pending report on a 金額待確認 bill as waiting to confirm, not as owed', () => {
+    const [r] = buildStudentBillingRows([
+      { id: 51, student_id: 6, student_name: '己', payment_status: 'pending_report', amount_pending_confirmation: true, pending_confirmation_amount: 4400,
+        payable_outstanding: 4400, due_date: '2026-09-01' },
+    ], [], '2026-10-07');
+    expect([r.owed_now, r.owed_later, r.overdue_days, r.waiting_confirm]).toEqual([0, 0, 0, 1]);
+    expect([r.pending_review_amount, r.pending_review_count]).toEqual([4400, 1]);
+    expect(r.contracts[0]).toMatchObject({ owed: 0, pending_review: 4400 });
+  });
 });

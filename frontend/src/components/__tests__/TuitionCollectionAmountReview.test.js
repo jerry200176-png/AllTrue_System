@@ -8,6 +8,8 @@ const base = { student_name: '測試生', subject: '數學', schedule_mode: 'dat
 const CONFIRMED = { ...base, id: 1, student_id: 1, payment_status: 'pending_reconciliation', charge: 8800, payable_amount: 8800, payable_outstanding: 8800, paid_amount: 0, outstanding: 8800, amount_pending_confirmation: false, pending_confirmation_amount: 0 };
 const REVIEW = { ...base, id: 2, student_id: 2, payment_status: 'amount_review', charge: 4400, payable_amount: 4400, payable_outstanding: 3400, paid_amount: 1000, outstanding: 3400, open_periods: [{ billing_period: '2026-09', outstanding: 3400, due_date: null }], amount_pending_confirmation: true, pending_confirmation_amount: 3400 };
 
+const REPORTED = { ...base, id: 3, student_id: 3, student_name: '回報生', payment_status: 'pending_report', latest_payment_report_id: 77, charge: 4400, payable_amount: 4400, payable_outstanding: 4400, paid_amount: 0, outstanding: 4400, days_until_settlement: -5, amount_pending_confirmation: true, pending_confirmation_amount: 4400 };
+
 const json = (body) => ({ ok: true, status: 200, json: () => Promise.resolve(body) });
 
 beforeAll(() => {
@@ -17,8 +19,8 @@ beforeAll(() => {
 });
 afterAll(() => vi.useRealTimers());
 
-async function mountPage() {
-  global.fetch = vi.fn((url) => Promise.resolve(json(String(url).includes('/api/v1/alerts/tuition') ? [CONFIRMED, REVIEW] : [])));
+async function mountPage(alertRows = [CONFIRMED, REVIEW]) {
+  global.fetch = vi.fn((url) => Promise.resolve(json(String(url).includes('/api/v1/alerts/tuition') ? alertRows : [])));
   const wrapper = mount(TuitionCollectionPage, {
     props: { branchId: 1, initialTab: 'all' },
     global: { stubs: { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true, AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true } },
@@ -45,6 +47,22 @@ describe('金額待確認 rows in the tuition queue (Founder D2)', () => {
     expect(w.find('[data-testid="tc-pending-review-card"]').text()).toContain('NT$ 3,400');
     // 收款率 = confirmed paid / confirmed billed: the pending row's 1,000 / 4,400 stays out.
     expect(w.find('.tc-rate').text()).toContain('0%');
+    w.unmount();
+  });
+
+  it('keeps a pending parent report on a 金額待確認 bill confirmable, but its amount out of debt totals and overdue', async () => {
+    const w = await mountPage([CONFIRMED, REPORTED]);
+
+    expect(tabBadge(w, '待核對入帳')).toBe('1');
+    expect(tabBadge(w, '金額待確認')).toBe('1');
+    expect(tabBadge(w, '逾期應收')).toBe('0');
+    const row = w.findAll('tr').find((tr) => tr.text().includes('回報生'));
+    expect(row.text()).toContain('確認入帳');
+    expect(row.find('[data-testid="tc-amount-review-hint"]').exists()).toBe(true);
+
+    const summary = w.find('.tc-summary-disclosure__hint').text();
+    expect(summary).toContain('已開帳單未結清 NT$ 8,800');
+    expect(summary).toContain('另有金額待確認 1 筆 NT$ 4,400，未計入未收');
     w.unmount();
   });
 });
