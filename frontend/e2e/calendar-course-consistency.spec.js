@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { openPageFromSidebarSearch } from './fixtures/openPageFromSidebarSearch.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -17,7 +18,6 @@ const START = process.env.SMOKE_START_DATE || '2026-08-05';
 const END = process.env.SMOKE_END_DATE || '2026-08-07';
 const CALENDAR_NAV_LABEL = '班級行事曆';
 const COURSE_NAV_LABEL = '課程查找';
-const SUBJECT_UNITS_NAV_LABEL = '科目數統計';
 const CALENDAR_PAGE_TITLE = '班級行事曆 / 課表';
 const COURSE_PAGE_TITLE = '課程查找';
 // Keep the returning-user fixture aligned with the same STAFF_UPDATES source
@@ -121,20 +121,13 @@ async function navigate(page, label) {
 }
 
 async function navigateSubjectUnits(page) {
-  await dismissOverlays(page);
-  const sidebar = page.locator('nav.sidebar-nav');
-  const direct = sidebar.getByRole('button', { name: SUBJECT_UNITS_NAV_LABEL, exact: false }).first();
-  if (await direct.count() && await direct.isVisible().catch(() => false)) {
-    await direct.click();
-  } else {
-    const moreTrigger = sidebar.locator('.sidebar-more-trigger').first();
-    await expect(moreTrigger).toBeVisible({ timeout: 15_000 });
-    await moreTrigger.click();
-    const morePanel = page.locator('.sidebar-more-panel');
-    await expect(morePanel).toBeVisible({ timeout: 15_000 });
-    await morePanel.getByRole('button', { name: SUBJECT_UNITS_NAV_LABEL, exact: false }).first().click();
-  }
-  await expect(page.locator('[data-guide="subject-units-header"]')).toBeVisible({ timeout: 15_000 });
+  // 科目數統計 is a 報表與薪資 hub tab since #3866; search reaches it without the
+  // hub's PIN-gated default tab (#4130).
+  await openPageFromSidebarSearch(page, {
+    role: SESSION?.user?.role || 'director',
+    pageKey: 'subject-units',
+    readySelector: '[data-guide="subject-units-header"]',
+  });
 }
 
 function subjectUnitsPath(start, end, branchId) {
