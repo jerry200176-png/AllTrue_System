@@ -1388,7 +1388,7 @@ import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { useTransferSessions } from '../composables/course-management/useTransferSessions';
 import { useContractAmendment } from '../composables/course-management/useContractAmendment';
 import { useCoursePause } from '../composables/course-management/useCoursePause';
-import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
+import { closeCourseNoRenew as runCloseCourseNoRenew, retainClosedCourseInList } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -1563,11 +1563,38 @@ async function closeCourseInPlace(course) {
     getRemainingSessions: ownRemainingSessions,
     getSubjectLabel,
     isCourseSettled,
-    reloadCourses: () => loadCourses(pagination.value.page),
+    reloadCourses: async () => {
+      await loadCourses(pagination.value.page);
+      await retainClosedCourse(course);
+    },
     confirmImpl: (message, opts) => askConfirm({ message, ...opts }),
   });
   if (closed) revealHistoryCourse(course);
   return closed;
+}
+
+// PR #4159 review: under the 「進行中」 filter the reload sends status=active, so the now-stopped
+// course drops out of the list. Fetch it once (same list endpoint, its student only, no status
+// filter) and keep it in the current view — the user's filter itself is left unchanged.
+async function retainClosedCourse(course) {
+  const requestId = courseLoadRequestId;
+  const next = await retainClosedCourseInList({
+    courses: courses.value,
+    course,
+    fetchStudentCourses: async (studentId) => {
+      if (!props.branchId) return [];
+      const token = await getAccessToken();
+      if (!token) return [];
+      const params = new URLSearchParams({ branch_id: String(props.branchId), student_id: String(studentId), per_page: '100', page: '1' });
+      const res = await authedFetch(`/api/v1/student-classes?${params}`, { credentials: 'include', headers: { 'Accept': 'application/json' } }, token);
+      if (!res.ok) throw new Error(res.statusText || 'reload failed');
+      const json = await res.json();
+      const list = json?.data ?? json;
+      return (Array.isArray(list) ? list : (list?.data ?? [])).map(normalizeLaravelCourse);
+    },
+  });
+  // A newer list load (filter/page change) wins; never merge into a different view.
+  if (next !== courses.value && requestId === courseLoadRequestId) courses.value = next;
 }
 
 const courses = ref([]);
@@ -4081,10 +4108,11 @@ const toggleHistoryGroup = (key) => {
 function revealHistoryCourse(course) {
   const id = Number(course?.id ?? course?.ID ?? 0);
   const reloaded = (courses.value || []).find((x) => Number(x.id) === id);
-  if (!reloaded || !isHistoryCourse(reloaded)) return;
+  if (!reloaded) return;
   const key = studentGroupKey(reloaded);
-  expandedHistoryGroups.value = new Set([...expandedHistoryGroups.value, key]);
+  // An unpaid close (settled_pending) stays in the student's active list with its label.
   expandedStudentGroups.value = new Set([...expandedStudentGroups.value, key]);
+  if (isHistoryCourse(reloaded)) expandedHistoryGroups.value = new Set([...expandedHistoryGroups.value, key]);
 }
 
 const expandAllGroups = () => {
@@ -4233,6 +4261,17 @@ const formatMoney = (value) => {
   return Number.isFinite(n) ? n.toLocaleString() : '0';
 };
 
+const normalizeLaravelCourse = (c) => ({
+  ...c,
+  id: Number(c?.id ?? c?.ID ?? 0),
+  data_source: 'laravel',
+  student_name: c.student_name ?? '—',
+  teacher_name: c.teacher_name ?? '',
+  memo: c.memo ?? c.Memo ?? '',
+  sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
+  remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null
+});
+
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
   if (!props.branchId) {
@@ -4279,16 +4318,7 @@ const loadCourses = async (page = 1) => {
         const json = await res.json();
         const list = json?.data ?? json;
         const arr = Array.isArray(list) ? list : (list?.data ?? []);
-        const result = arr.map(c => ({
-          ...c,
-          id: Number(c?.id ?? c?.ID ?? 0),
-          data_source: 'laravel',
-          student_name: c.student_name ?? '—',
-          teacher_name: c.teacher_name ?? '',
-          memo: c.memo ?? c.Memo ?? '',
-          sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
-          remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null
-        }));
+        const result = arr.map(normalizeLaravelCourse);
         if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
         pagination.value = {
           page: Number(json?.current_page ?? page),

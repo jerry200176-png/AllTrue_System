@@ -27,4 +27,14 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
     expect(reveal).toContain('expandedHistoryGroups.value = new Set([...expandedHistoryGroups.value, key])');
     expect(source).toContain('const key = studentGroupKey(c);');
   });
+
+  // PR #4159 review: the 「進行中」 filter reload omits the stopped course; it is fetched and kept.
+  it('retains the closed course after a status-filtered reload without changing the filter', () => {
+    const close = source.slice(source.indexOf('async function closeCourseInPlace('), source.indexOf('const courses = ref([]);'));
+    expect(close).toMatch(/await loadCourses\(pagination\.value\.page\);\s*await retainClosedCourse\(course\);/);
+    expect(close).toContain('retainClosedCourseInList({');
+    expect(close).toContain('student_id: String(studentId)');
+    expect(close).not.toContain("params.set('status'");
+    expect(close).not.toContain('filters.value');
+  });
 });

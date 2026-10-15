@@ -7,7 +7,8 @@ vi.mock('../../lib/authedFetch', () => ({
   getAccessToken: (...a) => getAccessToken(...a),
 }));
 
-import { closeCourseNoRenew } from '../../lib/closeCourseNoRenew.js';
+import { closeCourseNoRenew, RELOAD_AFTER_CLOSE_FAILED_MESSAGE, retainClosedCourseInList } from '../../lib/closeCourseNoRenew.js';
+import { ENDED_PENDING_LABEL, closedReason, isHistoryCourse } from '../../lib/courseMoneyState.js';
 
 function setup({ remaining = 0, settled = true, accepted = true, response = { pending_reconciliation: true } } = {}) {
   const calls = { requests: [], alerts: [], confirms: [], reloads: 0 };
@@ -93,5 +94,92 @@ describe('shared close-course action', () => {
     authedFetch.mockImplementation(async () => ({ ok: false, statusText: 'Bad', json: async () => ({ message: 'nope' }) }));
     expect(await closeCourseNoRenew(failed.deps)).toBe(false);
     expect(failed.calls.reloads).toBe(0);
+  });
+
+  // PR #4159 review: the close POST is committed; a failed refresh must not reclassify it as failed.
+  it('still resolves true with a non-destructive notice when only the refresh fails', async () => {
+    const { calls, deps } = setup();
+    deps.reloadCourses = async () => { calls.reloads += 1; throw new Error('network'); };
+    expect(await closeCourseNoRenew(deps)).toBe(true);
+    expect(calls.requests).toHaveLength(1);
+    expect(calls.reloads).toBe(1);
+    expect(calls.alerts[0]).toContain('已結案');
+    expect(calls.alerts[1]).toBe(RELOAD_AFTER_CLOSE_FAILED_MESSAGE);
+    expect(calls.alerts.some((a) => a.startsWith('操作失敗') || a.startsWith('結案失敗'))).toBe(false);
+  });
+
+  it('reports a network failure of the close request itself as a failed close', async () => {
+    const { calls, deps } = setup();
+    authedFetch.mockImplementation(async () => { throw new Error('offline'); });
+    expect(await closeCourseNoRenew(deps)).toBe(false);
+    expect(calls.reloads).toBe(0);
+    expect(calls.alerts).toEqual(['操作失敗：offline']);
+  });
+});
+
+// PR #4159 review: with the 「進行中」 filter the post-close reload sends status=active, which
+// omits the now-stopped course. The close flow must still surface it without changing the filter.
+describe('post-close reload under the 進行中 (status=active) filter', () => {
+  const other = { id: 7, student_id: 3, Stop: 0, status: 'active', closed_reason: null };
+  const backend = {
+    paid: { id: 42, student_id: 3, Stop: 1, status: 'inactive', closed_reason: 'settled', payment_status: 'paid' },
+    unpaid: { id: 43, student_id: 3, Stop: 1, status: 'inactive', closed_reason: 'settled_pending', payment_status: 'unpaid' },
+  };
+  // Mimics the list endpoint: the status=active filter drops Stop=1 rows.
+  const listActive = () => [other, backend.paid, backend.unpaid].filter((c) => c.Stop === 0);
+
+  async function closeThenReload(course) {
+    const statusFilters = [];
+    let list = [other, { ...course, Stop: 0, status: 'active', closed_reason: null }];
+    const { calls, deps } = setup();
+    deps.course = { ...course, Stop: 0, closed_reason: null };
+    deps.reloadCourses = async () => {
+      calls.reloads += 1;
+      statusFilters.push('active');
+      list = listActive();
+      list = await retainClosedCourseInList({
+        courses: list,
+        course: deps.course,
+        fetchStudentCourses: async (sid) => { statusFilters.push(null); return [other, backend.paid, backend.unpaid].filter((c) => c.student_id === sid); },
+      });
+    };
+    expect(await closeCourseNoRenew(deps)).toBe(true);
+    return { list, statusFilters };
+  }
+
+  it('moves a paid close under 歷史課程', async () => {
+    const { list, statusFilters } = await closeThenReload(backend.paid);
+    expect(statusFilters).toEqual(['active', null]);
+    const closed = list.find((c) => c.id === 42);
+    expect(closed).toBeTruthy();
+    expect(isHistoryCourse(closed)).toBe(true);
+    expect(list.filter((c) => !isHistoryCourse(c)).map((c) => c.id)).toEqual([7]);
+  });
+
+  it('keeps an unpaid settled_pending close visible in the active list with its label', async () => {
+    const { list } = await closeThenReload(backend.unpaid);
+    const closed = list.find((c) => c.id === 43);
+    expect(closed).toBeTruthy();
+    expect(isHistoryCourse(closed)).toBe(false);
+    expect(closedReason(closed)).toBe('settled_pending');
+    expect(ENDED_PENDING_LABEL).toBe('課已結束，尚未收款');
+    expect(list.filter((c) => !isHistoryCourse(c)).map((c) => c.id)).toEqual([7, 43]);
+  });
+
+  it('does not refetch when the reloaded list already has the course (全部 filter)', async () => {
+    const fetchStudentCourses = vi.fn();
+    const courses = [other, backend.paid];
+    expect(await retainClosedCourseInList({ courses, course: backend.paid, fetchStudentCourses })).toBe(courses);
+    expect(fetchStudentCourses).not.toHaveBeenCalled();
+  });
+
+  it('a failed retain fetch is reported as a refresh failure, not a failed close', async () => {
+    const { calls, deps } = setup();
+    deps.course = { ...backend.paid, Stop: 0 };
+    deps.reloadCourses = async () => {
+      await retainClosedCourseInList({ courses: listActive(), course: deps.course, fetchStudentCourses: async () => { throw new Error('x'); } });
+    };
+    expect(await closeCourseNoRenew(deps)).toBe(true);
+    expect(calls.alerts.at(-1)).toBe(RELOAD_AFTER_CLOSE_FAILED_MESSAGE);
   });
 });

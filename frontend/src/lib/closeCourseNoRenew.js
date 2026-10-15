@@ -4,7 +4,10 @@ import { authedFetch, getAccessToken } from './authedFetch';
 /**
  * Shared confirmation and request path for closing a course without renewal.
  * Resolves true only when the course was closed (callers use it to reveal 歷史課程).
+ * A refresh failure after a successful close still resolves true (with its own notice).
  */
+export const RELOAD_AFTER_CLOSE_FAILED_MESSAGE = '已結束課程，但列表重新整理失敗，請重新整理頁面';
+
 export async function closeCourseNoRenew({
   course,
   studentName,
@@ -47,10 +50,31 @@ export async function closeCourseNoRenew({
     alertImpl(json.pending_reconciliation
       ? `已結案，課程保留在帳務中心的「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」分頁，尚未視為已收。`
       : '已結案，此課程不再出現在繳費／續課提醒中。');
-    await reloadCourses();
-    return true;
   } catch (error) {
     alertImpl('操作失敗：' + (error?.message || '請稍後再試'));
+    return false;
   }
-  return false;
+  // The close is committed at this point; a failed list refresh must not be reported as a
+  // failed close (that would invite retrying an already-closed course).
+  try {
+    await reloadCourses();
+  } catch {
+    alertImpl(RELOAD_AFTER_CLOSE_FAILED_MESSAGE);
+  }
+  return true;
+}
+
+/**
+ * After a close, a status-filtered reload (「進行中」 → status=active) drops the now-stopped course.
+ * Fetch that student's courses without the status filter and append the closed one, so a paid
+ * close shows under 歷史課程 and an unpaid settled_pending close stays visible with its label.
+ * Returns the same array when nothing needs to change.
+ */
+export async function retainClosedCourseInList({ courses = [], course, fetchStudentCourses }) {
+  const id = Number(course?.id ?? course?.ID ?? 0);
+  if (!id || courses.some((x) => Number(x?.id ?? x?.ID) === id)) return courses;
+  const studentId = course?.student_id ?? course?.StudentID;
+  if (studentId == null || studentId === '') return courses;
+  const fresh = (await fetchStudentCourses(studentId) || []).find((x) => Number(x?.id ?? x?.ID) === id);
+  return fresh ? [...courses, fresh] : courses;
 }
