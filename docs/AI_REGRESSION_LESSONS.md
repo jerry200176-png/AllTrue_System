@@ -10,8 +10,9 @@ last_reviewed: 2026-09-05
 
 - **現象**：`deploy.yml` 的 `phase1-create` 以 `SHOW GRANTS contains authentication material; refusing unsafe replay` fail closed。正式機是 MariaDB，它會在 `GRANT USAGE` 行後面附上舊帳號的 `IDENTIFIED BY PASSWORD '*…'`／`IDENTIFIED VIA <plugin> USING '…'`；轉換器卻假設 MySQL 8 的形狀（GRANT 行不帶認證子句）。另外，轉換器在檢查 GRANT 之前就先印出 `CREATE USER`，所以拒絕時那一行仍可能送進 `mysql`，再被 cleanup trap 靜默 DROP，log 無法證明最後狀態。
 - **根因**：內嵌在 workflow 的轉換器沒有任何可執行測試，也沒有 MariaDB 樣本；而且輸出是邊檢查邊寫，不是全部通過才寫。
-- **強制規則**：只剝除緊接在被授權者後面的認證子句。剝除後若仍有 `IDENTIFIED`、`PASSWORD(` 或像 hash 的字串一律拒絕。全部輸入驗證通過前不得輸出任何位元組。建立新帳號前，先以舊帳號跑唯讀、可完整列舉的預檢：用 `mysql.user` 計算 `atr_*` 帳號數，排除 `CURRENT_USER()` 的精確 user@host；讀不到 `mysql.user` 就 fail closed，不可退回只列可見授權的 `information_schema`。log 只記數量，不記名稱或 hash。
-- **測試必補**：`scripts/tests/test_principal_rotation_grant_replay.py` 直接抽出 `deploy.yml` 裡實際出貨的轉換器與預檢程式來跑：MariaDB `BY PASSWORD`／`VIA … USING … OR`、MySQL 8 不變、殘留認證字串拒絕、拒絕時 stdout 為零位元組、預檢的殘留拒絕／排除目前帳號／讀不到 `mysql.user` 拒絕／數量格式錯誤拒絕。
+- **強制規則**：只剝除緊接在被授權者後面的認證子句。剝除後若仍有 `IDENTIFIED`、`PASSWORD(` 或像 hash 的字串一律拒絕。全部輸入驗證通過前不得輸出任何位元組。建立新帳號前，先以舊帳號跑唯讀、可完整列舉的預檢：用 `mysql.global_priv`／`mysql.user` 計算 `atr_*` 帳號數，排除 `CURRENT_USER()` 的精確 user@host 與 Phase 3 已 `ACCOUNT LOCK` 的前任；讀不到鎖定狀態就把前任也算進去，讀不到 `mysql.user` 就 fail closed，不可退回只列可見授權的 `information_schema`。log 只記數量，不記名稱或 hash。
+- **強制規則（續）**：會寫正式憑證的 job 必須 `needs:` 其合約測試且要求 `result == 'success'`，不可與測試平行跑。
+- **測試必補**：`scripts/tests/test_principal_rotation_grant_replay.py` 直接抽出 `deploy.yml` 裡實際出貨的轉換器與預檢程式來跑：MariaDB `BY PASSWORD`／`VIA … USING … OR`、MySQL 8 不變、殘留認證字串拒絕、拒絕時 stdout 為零位元組、預檢的殘留拒絕／排除目前帳號／已鎖定前任＋目前帳號通過／未鎖定非目前 `atr_*` 拒絕／讀不到鎖定狀態時前任仍算／讀不到 `mysql.user` 拒絕／數量格式錯誤拒絕；`test_deploy_activation_state.py` 斷言輪替 job `needs: contract-test`。
 
 ### R156. 不再提供交易折扣；任何會產生折扣的入口一律在寫入前擋下（#4018／#4020，2026-10-14）
 

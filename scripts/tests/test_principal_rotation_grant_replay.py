@@ -194,29 +194,44 @@ import os, re, sys
 sql = sys.argv[-1]
 with open(os.environ["FAKE_SQL_LOG"], "a", encoding="utf-8") as log:
     log.write(sql + "\n")
-table = os.environ["FAKE_USER_TABLE"]
-if "FROM mysql.user" not in sql:
-    sys.exit("unexpected statement")
-if table == "deny":
-    sys.exit("ERROR 1142 (42000): SELECT command denied")
-if table.startswith("raw:"):
-    print(table[4:])
-    sys.exit(0)
+denied = set(filter(None, os.environ.get("FAKE_DENY", "").split(",")))
+raw = os.environ.get("FAKE_RAW")
 m = re.fullmatch(
-    r"SELECT COUNT\(\*\) FROM mysql\.user WHERE User REGEXP '([^']+)' "
-    r"AND NOT \(User = '([^']+)' AND Host = '([^']+)'\)",
+    r"SELECT COUNT\(\*\) FROM (mysql\.global_priv|mysql\.user) WHERE User REGEXP '([^']+)' "
+    r"AND NOT \(User = '([^']+)' AND Host = '([^']+)'\)"
+    r"( AND COALESCE\(JSON_VALUE\(Priv, '\$\.account_locked'\), 'false'\) <> 'true'| AND account_locked <> 'Y')?",
     sql,
 )
 if not m:
     sys.exit("unexpected preflight SQL shape")
-pattern, ex_user, ex_host = m.groups()
-rows = [r.rsplit("@", 1) for r in table.split(",") if r]
-print(sum(1 for u, h in rows if re.search(pattern, u) and not (u == ex_user and h == ex_host)))
+table, pattern, ex_user, ex_host, lock_filter = m.groups()
+source = "global_priv" if table == "mysql.global_priv" else ("account_locked" if lock_filter else "user")
+if table == "mysql.global_priv" and lock_filter is None or table == "mysql.user" and lock_filter and "JSON" in lock_filter:
+    sys.exit("lock filter does not match table")
+if source in denied:
+    sys.exit("ERROR 1142 (42000): SELECT command denied")
+if raw is not None:
+    print(raw)
+    sys.exit(0)
+count = 0
+for entry in filter(None, os.environ["FAKE_ACCOUNTS"].split(",")):
+    account, _, flag = entry.partition(":")
+    user, host = account.rsplit("@", 1)
+    if not re.search(pattern, user) or (user == ex_user and host == ex_host):
+        continue
+    if lock_filter and flag == "locked":
+        continue
+    count += 1
+print(count)
 """
+
+CURRENT = "atr_261020090000_bbbbbb"
+PREDECESSOR = "atr_261015083000_aaaaaa"
+ORPHAN = "atr_261021100000_cccccc"
 
 
 class LeftoverStagedPrincipalPreflightTest(unittest.TestCase):
-    def run_preflight(self, user_table, old_user="admin", old_host="%"):
+    def run_preflight(self, accounts, old_user="admin", old_host="%", deny="", raw=None):
         with tempfile.TemporaryDirectory() as tmp:
             fake = Path(tmp) / "fake_mysql.py"
             fake.write_text(FAKE_MYSQL_PY, encoding="utf-8")
@@ -230,68 +245,92 @@ class LeftoverStagedPrincipalPreflightTest(unittest.TestCase):
                 + "echo PREFLIGHT_PASSED\n",
                 encoding="utf-8",
             )
-            result = subprocess.run(
-                ["bash", str(script)],
-                capture_output=True,
-                text=True,
-                env=dict(os.environ, FAKE_USER_TABLE=user_table, FAKE_SQL_LOG=str(sql_log)),
-                check=False,
-            )
+            env = dict(os.environ, FAKE_ACCOUNTS=accounts, FAKE_DENY=deny, FAKE_SQL_LOG=str(sql_log))
+            if raw is not None:
+                env["FAKE_RAW"] = raw
+            result = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=False)
             sql = sql_log.read_text(encoding="utf-8") if sql_log.exists() else ""
         return result, sql
+
+    def assert_passed(self, result, source):
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f"count=0 source={source} ", result.stdout)
+        self.assertIn("PREFLIGHT_PASSED", result.stdout)
 
     def assert_refused(self, result):
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("PREFLIGHT_PASSED", result.stdout)
 
+    def assert_no_names(self, result):
+        self.assertNotIn("atr_2", result.stdout + result.stderr)
+        self.assertNotIn("ERROR 1142", result.stdout + result.stderr)
+
     def test_zero_leftovers_passes_with_count_only(self):
         result, sql = self.run_preflight("admin@%,root@localhost")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("count=0 source=mysql.user", result.stdout)
-        self.assertIn("PREFLIGHT_PASSED", result.stdout)
+        self.assert_passed(result, "mysql.global_priv")
         self.assertEqual(len(sql.splitlines()), 1)
-        self.assertTrue(sql.startswith("SELECT COUNT(*) FROM mysql.user WHERE User REGEXP '^atr_[0-9]{12}_[0-9a-f]{6}$'"))
+        for statement in sql.splitlines():
+            self.assertTrue(statement.startswith("SELECT COUNT(*) FROM mysql."), statement)
 
-    def test_leftover_principal_refuses_before_any_create(self):
-        result, _ = self.run_preflight("admin@%,atr_261015083000_a1b2c3@%")
+    def test_orphan_principal_refuses_before_any_create(self):
+        result, _ = self.run_preflight(f"admin@%,{ORPHAN}@%")
         self.assert_refused(result)
-        self.assertIn("count=1 source=mysql.user", result.stdout)
-        self.assertIn("leftover staged principal exists without a state file", result.stdout)
-        self.assertIn("Founder review required", result.stdout)
-        self.assertNotIn("atr_", result.stdout + result.stderr)
+        self.assertIn("count=1 source=mysql.global_priv", result.stdout)
+        self.assertIn("unlocked staged principal other than the current one exists without a state file", result.stdout)
+        self.assertIn("then lock or drop it manually", result.stdout)
+        self.assert_no_names(result)
 
     def test_current_principal_is_excluded_so_a_later_rotation_can_run(self):
-        current = "atr_261015083000_a1b2c3"
-        result, sql = self.run_preflight(f"{current}@%,root@localhost", old_user=current, old_host="%")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("count=0 source=mysql.user (current principal excluded)", result.stdout)
-        self.assertIn(f"AND NOT (User = '{current}' AND Host = '%')", sql)
-        self.assertNotIn(current, result.stdout + result.stderr)
+        result, sql = self.run_preflight(f"{CURRENT}@%,root@localhost", old_user=CURRENT)
+        self.assert_passed(result, "mysql.global_priv")
+        self.assertIn(f"AND NOT (User = '{CURRENT}' AND Host = '%')", sql)
+        self.assert_no_names(result)
 
-    def test_exclusion_is_exact_user_and_host(self):
-        current = "atr_261015083000_a1b2c3"
+    def test_locked_predecessor_and_current_principal_pass(self):
+        # admin -> atr_1 -> atr_2: Phase 3 locked atr_1; atr_2 is the app user.
+        accounts = f"admin@%:locked,{PREDECESSOR}@%:locked,{CURRENT}@%"
+        for deny, source in (("", "mysql.global_priv"), ("global_priv", "mysql.user.account_locked")):
+            with self.subTest(source=source):
+                result, _ = self.run_preflight(accounts, old_user=CURRENT, deny=deny)
+                self.assert_passed(result, source)
+                self.assert_no_names(result)
+
+    def test_unlocked_non_current_staged_principal_refuses(self):
         cases = {
-            "same user, other host": f"{current}@%,{current}@localhost",
-            "other staged user": f"{current}@%,atr_261016090000_ffeedd@%",
+            "orphan beside locked predecessor": f"{PREDECESSOR}@%:locked,{CURRENT}@%,{ORPHAN}@%",
+            "password-quarantined predecessor": f"{PREDECESSOR}@%,{CURRENT}@%",
+            "same user, other host": f"{CURRENT}@%,{CURRENT}@localhost",
         }
-        for name, table in cases.items():
-            with self.subTest(case=name):
-                result, _ = self.run_preflight(table, old_user=current, old_host="%")
-                self.assert_refused(result)
-                self.assertIn("count=1 source=mysql.user", result.stdout)
+        for name, accounts in cases.items():
+            for deny in ("", "global_priv"):
+                with self.subTest(case=name, deny=deny):
+                    result, _ = self.run_preflight(accounts, old_user=CURRENT, deny=deny)
+                    self.assert_refused(result)
+                    self.assertIn("count=1 ", result.stdout)
+                    self.assert_no_names(result)
+
+    def test_unreadable_lock_status_counts_locked_predecessors(self):
+        accounts = f"{PREDECESSOR}@%:locked,{CURRENT}@%"
+        result, _ = self.run_preflight(accounts, old_user=CURRENT, deny="global_priv,account_locked")
+        self.assert_refused(result)
+        self.assertIn("count=1 source=mysql.user-lock-status-unavailable", result.stdout)
+        self.assert_no_names(result)
+        result, _ = self.run_preflight(f"{CURRENT}@%", old_user=CURRENT, deny="global_priv,account_locked")
+        self.assert_passed(result, "mysql.user-lock-status-unavailable")
 
     def test_unreadable_mysql_user_fails_closed_without_fallback(self):
-        result, sql = self.run_preflight("deny")
+        result, sql = self.run_preflight("admin@%", deny="global_priv,account_locked,user")
         self.assert_refused(result)
         self.assertIn("cannot read mysql.user, so it cannot list all accounts", result.stdout)
         self.assertIn("Founder review required", result.stdout)
         self.assertNotIn("information_schema", sql)
-        self.assertNotIn("ERROR 1142", result.stdout + result.stderr)
+        self.assertEqual(len(sql.splitlines()), 3)
+        self.assert_no_names(result)
 
     def test_malformed_count_refuses(self):
-        for raw in ("raw:", "raw:1\n2", "raw:abc", "raw:-1"):
+        for raw in ("", "1\n2", "abc", "-1"):
             with self.subTest(raw=raw):
-                result, _ = self.run_preflight(raw)
+                result, _ = self.run_preflight("admin@%", raw=raw)
                 self.assert_refused(result)
 
     def test_pattern_matches_the_staged_name_generator_and_runs_before_it(self):
@@ -301,11 +340,21 @@ class LeftoverStagedPrincipalPreflightTest(unittest.TestCase):
         self.assertLess(workflow.index("# END leftover-staged-principal preflight"), workflow.index(generator))
         self.assertLess(workflow.index('if [[ -f "$STATE_FILE" ]]; then'), workflow.index("# BEGIN leftover-staged-principal preflight"))
         self.assertLess(workflow.index('OLD_ACCOUNT_HOST="${CURRENT_ACCOUNT#'), workflow.index("# BEGIN leftover-staged-principal preflight"))
-        self.assertNotIn("information_schema", extract_preflight().split("# account behind.")[1].split("STAGED_PRINCIPAL_REGEXP=")[1])
+        code = "\n".join(line for line in extract_preflight().splitlines() if not line.lstrip().startswith("#"))
+        self.assertNotIn("information_schema", code)
         pattern = re.search(r"STAGED_PRINCIPAL_REGEXP='([^']+)'", workflow).group(1)
         self.assertRegex("atr_261015083000_a1b2c3", pattern)
         self.assertNotRegex("admin", pattern)
         self.assertNotRegex("atr_2610150830_a1b2c3", pattern)
+
+    def test_phase3_lock_flag_matches_the_preflight_exclusion(self):
+        # The preflight trusts only ACCOUNT LOCK; the quarantine fallback leaves
+        # an unlocked account, which must keep counting.
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn('-e "ALTER USER ${OLD_ACCOUNT_SQL} ACCOUNT LOCK"', workflow)
+        self.assertIn("LOCK_METHOD=password_quarantine", workflow)
+        phase3 = workflow[workflow.index("- name: Lock the old principal"):workflow.index("- name: Remove local key material")]
+        self.assertTrue("DROP USER" not in phase3, "Phase 3 must keep (lock), not drop, the predecessor")
 
 
 if __name__ == "__main__":
