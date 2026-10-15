@@ -37,12 +37,19 @@ export function buildCreateTeacherOptions(teachers = []) {
 /**
  * Seed value for the create picker's teacher. A calendar cell under a
  * deactivated / historical teacher column must not pre-select that teacher
- * (the backend would reject it with 「所選老師已無法指派」), so any id that is
- * not in the create options is cleared.
+ * (the backend would reject it with 「所選老師已無法指派」), so once the teacher
+ * list has loaded any id that is not in the create options is cleared.
+ *
+ * While the teacher list is still loading (`loaded: false`) the seed is kept
+ * as-is: an empty option list says nothing about the teacher, and clearing an
+ * active id there could never be undone when the list arrives (#4157 review).
+ * UniversalClassScheduler re-validates its form against the options when they
+ * arrive, so a deactivated seed is still dropped after loading.
  */
-export function resolveCreateTeacherId(teacherId, createOptions = []) {
+export function resolveCreateTeacherId(teacherId, createOptions = [], { loaded = true } = {}) {
   const id = teacherIdOf({ id: teacherId });
   if (!id) return '';
+  if (!loaded) return teacherId;
   const options = Array.isArray(createOptions) ? createOptions : [];
   return options.some((teacher) => teacherIdOf(teacher) === id) ? teacherId : '';
 }

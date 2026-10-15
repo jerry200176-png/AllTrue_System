@@ -28,6 +28,9 @@ export function useCalendarDataLoad({
   const sessionDatesByCourseId = ref({});
   const allStudents = ref([]);
   const teachers = ref([]);
+  // True once a teacher fetch has settled (success, empty branch or error). The
+  // create picker keeps a cell-click teacher seed until then (#4157 review).
+  const teachersLoaded = ref(false);
   const lastCalendarFetch = ref(null);
 
   const isCourseActiveForCalendar = (course) => {
@@ -275,6 +278,7 @@ export function useCalendarDataLoad({
     const teacherMode = typeof isTeacher === 'function' ? isTeacher() : !!isTeacher?.value;
     if (!bid && !teacherMode) {
       teachers.value = [];
+      teachersLoaded.value = true;
       return;
     }
     try {
@@ -313,6 +317,8 @@ export function useCalendarDataLoad({
         : normalized.filter((t) => (t.branch_ids || []).includes(bid) || Number(t.branch_id || 0) === bid);
     } catch (e) {
       teachers.value = [];
+    } finally {
+      teachersLoaded.value = true;
     }
   };
 
@@ -333,6 +339,7 @@ export function useCalendarDataLoad({
     sessionDatesByCourseId,
     allStudents,
     teachers,
+    teachersLoaded,
     lastCalendarFetch,
     loadCourses,
     loadStudents,

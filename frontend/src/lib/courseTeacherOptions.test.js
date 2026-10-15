@@ -85,7 +85,7 @@ assert.equal(resolveCreateTeacherId('', createOptions), '', 'empty stays empty')
 assert.equal(resolveCreateTeacherId(null, createOptions), '', 'null becomes empty');
 assert.match(
   calendarPage,
-  /const onSlotClick = [\s\S]*?teacher_id: resolveCreateTeacherId\(teacherId, schedulerTeachers\.value\)/,
+  /const onSlotClick = [\s\S]*?teacher_id: resolveCreateTeacherId\(teacherId, schedulerTeachers\.value, createTeacherSeedOptions\(\)\)/,
   'SmartCalendar cell click must validate the seeded teacher against the create options'
 );
 assert.match(
@@ -95,6 +95,25 @@ assert.match(
 );
 assert.match(
   calendarPage,
-  /const schedulerInitialTeacherId = computed\(\(\) => resolveCreateTeacherId\(modalForm\.value\.teacher_id, schedulerTeachers\.value\)\)/,
+  /const schedulerInitialTeacherId = computed\(\(\) => resolveCreateTeacherId\(modalForm\.value\.teacher_id, schedulerTeachers\.value, createTeacherSeedOptions\(\)\)\)/,
   'initial teacher id must be re-validated against the create options'
 );
+
+// Codex P2 round 2 (#4157): when the teachers request is slower than the course
+// request, the grid already shows a course-derived teacher column while the
+// create options are still empty. The seed must survive until teachers load.
+assert.equal(resolveCreateTeacherId(7, [], { loaded: false }), 7, 'active seed is kept while teachers are loading');
+assert.equal(resolveCreateTeacherId('7', [], { loaded: false }), '7', 'string seed keeps its form while loading');
+assert.equal(resolveCreateTeacherId(9, [], { loaded: false }), 9, 'seed is not judged before the list exists');
+assert.equal(resolveCreateTeacherId('', [], { loaded: false }), '', 'empty seed stays empty while loading');
+assert.equal(resolveCreateTeacherId(7, createOptions, { loaded: true }), 7, 'active seed is kept once loaded');
+assert.equal(resolveCreateTeacherId(9, createOptions, { loaded: true }), '', 'deactivated seed is cleared once loaded');
+assert.equal(resolveCreateTeacherId(7, [], { loaded: true }), '', 'loaded empty list clears the seed (no assignable teacher)');
+assert.match(
+  calendarPage,
+  /const createTeacherSeedOptions = \(\) => \(\{ loaded: teachersLoaded\.value \}\)/,
+  'SmartCalendar must pass the teacher loaded flag to the seed resolver'
+);
+assert.match(calendarLoader, /finally \{\s*teachersLoaded\.value = true;/, 'teacher loader must mark the list loaded once the fetch settles');
+
+console.log('courseTeacherOptions tests passed');
