@@ -629,6 +629,11 @@ class AccountingController extends Controller
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,
+                // #4115: every line belongs to this bill's own course (no multi-course or hand-entered lines).
+                'single_course_items' => $invoice->items->isNotEmpty()
+                    && $invoice->items->every(fn ($item) => (int) $item->StudentClassID === (int) $invoice->StudentClassID),
+                // D3 (Founder 2026-10-15): a hand-priced bill is never compared with the contract Charge (see isHandPriced()).
+                'hand_priced' => $this->isHandPriced($invoice),
             ] + ($invoice->zero_amount_reason !== null ? ['zero_amount_reason' => $invoice->zero_amount_reason] : []); // #3991: 免費／贈送 badge
         })->values();
         $this->invoiceAmounts->forgetPreloadedSessions();
@@ -721,6 +726,8 @@ class AccountingController extends Controller
                 'subject' => $class->displaySubjectName($subjectNames),
                 'schedule_mode' => (string) ($class->ScheduleMode ?? ''),
                 'charge' => (int) ($class->Charge ?? 0),
+                // #4115 (Founder Q2 = A): display-only, compared with an issued bill; never rewrites a bill.
+                'current_contract_charge' => $this->currentContractCharge($class),
                 'paid' => (int) ($class->Paid ?? 0) === 1 || $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
                     && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class))), // #3991: current term
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
@@ -736,6 +743,36 @@ class AccountingController extends Controller
             'receipts' => $reportRows->all(),
             'anomalies' => $uniqueAnomalies->all(),
         ]);
+    }
+
+    /**
+     * The contract's current Charge for a count-mode, non-package course. Charge already follows rate and
+     * count edits, keeps renewal discounts and session_charge deltas, so an issued bill that still equals it is
+     * not flagged. Null for every other course. Read-only (#4115).
+     */
+    private function currentContractCharge(StudentClass $class): ?int
+    {
+        if ((string) ($class->ScheduleMode ?? 'count') !== 'count' || $class->isPartOfPackage()) {
+            return null;
+        }
+
+        return max(0, (int) ($class->Charge ?? 0));
+    }
+
+    /**
+     * D3 (#4128): a bill whose amount was set by a person, not copied from the contract, so differing from the current
+     * Charge is no sign that it is wrong. Signals: no line (amount typed when the payment was reported), several lines
+     * (composed by hand or split), a total typed apart from its one line, a note (staff or special-path bill), or a
+     * 免費／贈送 mark. Read-only.
+     */
+    private function isHandPriced(Invoice $invoice): bool
+    {
+        $items = $invoice->items;
+
+        return $items->count() !== 1
+            || (int) $items->first()->Amount !== (int) $invoice->TotalAmount
+            || trim((string) ($invoice->Note ?? '')) !== ''
+            || $invoice->zero_amount_reason !== null;
     }
 
     private function paymentResponse(Request $request, bool $export)
