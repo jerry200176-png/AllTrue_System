@@ -362,7 +362,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
-import { canOfferPaymentSlip, paymentCenterIntentFor } from '../lib/paymentStatus.js';
+import { isPaymentNoticeStatus, paymentCenterIntentFor } from '../lib/paymentStatus.js';
 import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
@@ -893,7 +893,8 @@ const unpaidAlertLabel = (s) => {
   return '未繳';
 };
 
-const isPaymentNoticeAvailable = (student) => canOfferPaymentSlip(student);
+// Founder D2 (#4121 review): no parent slip while the amount is 金額待確認 (the slip endpoint answers 422 too).
+const isPaymentNoticeAvailable = (student) => isPaymentNoticeStatus(student?.payment_status) && student?.amount_pending_confirmation !== true;
 
 const paymentStudentClassId = (student) => Number(student?.student_class_id || student?.id || 0);
 

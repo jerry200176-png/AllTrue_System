@@ -13,9 +13,6 @@ export const isCourseSettled = (course) => {
 
 export const isPaymentNoticeStatus = (status) => PAYMENT_NOTICE_STATUSES.includes(status);
 
-/** Founder D2 (#4121 review): a parent slip needs an owing status AND a confirmed amount (server refuses with 422 too). */
-export const canOfferPaymentSlip = (row) => isPaymentNoticeStatus(row?.payment_status) && row?.amount_pending_confirmation !== true;
-
 export const paymentCenterIntentFor = (student) => {
   const status = student?.payment_status;
   if (status === 'pending_report') return 'pending_report';
