@@ -1623,6 +1623,11 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         placeholders = set(re.findall(r"@@DEPLOY_([A-Z0-9_]+)@@", REMOTE_DEPLOY.read_text(encoding="utf-8")))
         self.assertEqual(placeholders, set(renderer.PLACEHOLDERS))
         self.assertEqual({f"DEPLOY_{n}" for n in placeholders} | {"DEPLOY_PI_SSH_USER", "DEPLOY_PI_SSH_HOST"}, set(env))
+        expr = lambda source, names: {f"DEPLOY_{n.upper()}": f"${{{{ {source}.{n} }}}}" for n in names}
+        self.assertEqual(expr("secrets", ("PI_SSH_USER", "PI_SSH_HOST", "SENTRY_DSN", "SMOKE_TEACHER_LOGIN",
+                                          "SMOKE_TEACHER_PASSWORD", "SMOKE_BRANCH_ID"))
+                         | expr("inputs", ("admissions_funnel_v1", "course_session_calendar_v1", "course_manager_v1"))
+                         | expr("needs.resolve-target.outputs", ("target_sha", "release_train")), env)
 
     def test_remote_script_renders_like_github_text_substitution(self):
         sys.path.insert(0, str(REMOTE_RENDERER.parent))

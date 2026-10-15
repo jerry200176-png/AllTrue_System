@@ -15,11 +15,9 @@ import re
 import sys
 
 GITHUB_LIMIT = 21_000
-# Fail well before the hard limit so the next edit still has room to land a fix.
-DEFAULT_LIMIT = 18_000
+DEFAULT_LIMIT = 18_000  # well below the hard limit, so a fix still fits
 ROOT = Path(__file__).resolve().parents[2]
 RUN_KEY = re.compile(r"^(\s*)(?:- )?run:(?:\s+(.*))?$")
-# A quoted `"run":` key or a flow mapping `{..., run: ...}` is not read line by line: fail closed.
 UNREADABLE_KEY = re.compile(r"^\s*(?:- )?(?:[\"']run[\"']\s*:|\{.*\brun\s*:)")
 BLOCK_INDICATOR = re.compile(r"[|>][-+]?(\s+#.*)?")
 UNMEASURABLE = re.compile(r"[&*!]|[|>][-+]?[0-9]")

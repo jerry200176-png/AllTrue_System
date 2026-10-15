@@ -28,7 +28,6 @@ def render(template, environ):
     unknown = sorted({name for name in PATTERN.findall(template) if name not in PLACEHOLDERS})
     if unknown:
         raise ValueError(f"unknown placeholder(s): {', '.join(unknown)}")
-    # One pass, like GitHub's substitution: a value that itself looks like a placeholder stays literal.
     return PATTERN.sub(lambda m: environ.get(f"DEPLOY_{m.group(1)}", ""), template)
 
 
