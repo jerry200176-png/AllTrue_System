@@ -1,4 +1,4 @@
-## 2026-10-15 — fix(billing): 作廢後重開更正帳單時，新舊帳單備註互記單號、原因與操作者 (Founder D3；Refs #4115)
-<!-- release-notes: silent_ship=silent-2026-10-15-void-reissue-traceability -->
-<!-- silent-reason: API only; no screen sends replaces_invoice_id yet (lands with the Founder-decided UI PR) -->
-- 開帳單 API 新增選填 `replaces_invoice_id` 與 `correction_reason`：只能更正同一位學生、同一門課且已作廢的帳單；新帳單備註記「更正自 #舊單號／操作者／原因」（操作者由系統寫入），舊帳單備註加上新單號（不會截掉原作廢紀錄），並寫入稽核紀錄；是否已更正以稽核紀錄判斷。同一原因與金額重送不會開出第二張，其他重送會被拒絕。
+## 2026-10-15 — fix(billing): 作廢後登記更正帳單，新舊帳單備註互記單號、原因與操作者 (Founder D3/B1；Refs #4115)
+<!-- release-notes: staff_update=staff-2026-10-15-void-reissue-traceability -->
+- 學生帳務「登記收款」：堂數制課程的帳單作廢後，可勾選「這筆是更正已作廢的帳單」，選原帳單並填原因。系統用這個金額開新帳單，新帳單備註記「更正自 #舊單號／操作者／原因」，舊帳單備註加上新單號（不截掉原作廢紀錄），並寫入稽核紀錄；確認入帳照常。
+- 重複送出同一張表單會回到同一張帳單，不會開第二張；同一張作廢帳單換原因或金額再更正會被擋下。

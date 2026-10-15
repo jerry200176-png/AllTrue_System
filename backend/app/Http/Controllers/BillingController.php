@@ -6,7 +6,6 @@ use App\Models\Campus;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
-use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\BillingPeriodInvoiceExists;
@@ -91,7 +90,7 @@ class BillingController extends Controller
     {
         $data = $request->validate([
             'StudentID' => 'required|integer',
-            'StudentClassID' => 'nullable|required_with:replaces_invoice_id|integer',
+            'StudentClassID' => 'nullable|integer',
             'IssueDate' => 'required|date',
             'DueDate' => 'nullable|date',
             'TotalAmount' => 'required|integer|min:0',
@@ -106,9 +105,6 @@ class BillingController extends Controller
             'MonthlySplit' => 'nullable|boolean',
             'SplitStart' => 'nullable|date',
             'SplitEnd' => 'nullable|date|after_or_equal:SplitStart',
-            // Founder D3 (#4128): reissue as a correction of a voided bill; both notes cross-reference each other.
-            'replaces_invoice_id' => 'nullable|integer|min:1',
-            'correction_reason' => 'required_with:replaces_invoice_id|string|min:3|max:80',
         ]);
         // #3991 (Founder 2026-10-13): a missing or 0 fee is never free by itself. The only NT$0 bill is the single-course,
         // single-term 免費／贈送 bill recorded from 登記收款 (director-record), which checks the course's fee evidence.
@@ -127,7 +123,7 @@ class BillingController extends Controller
             $this->assertInvoiceStudentCampusAllowed($request, (int) $itemCourse->student?->CampusID);
         }
 
-        return DB::transaction(function () use ($request, $data, $issuer) {
+        return DB::transaction(function () use ($data, $issuer) {
             // Lock order everywhere: student, then courses, then invoices. Purge locks the student
             // first too, so an invoice can never be written for a student deleted concurrently (#3593).
             if (!Student::query()->whereKey($data['StudentID'])->lockForUpdate()->first(['id'])) {
@@ -169,15 +165,6 @@ class BillingController extends Controller
                     'code' => 'tutoring_no_payment_obligation',
                 ], 422);
             }
-            // Founder D3: lock the replaced bill after the student and courses (lock order: student, courses, invoices).
-            $replaced = null;
-            if (!empty($data['replaces_invoice_id'])) {
-                $replaced = Invoice::query()->whereKey($data['replaces_invoice_id'])->lockForUpdate()->first();
-                if ($refusal = $this->replacementRefusal($request, $replaced, $data)) {
-                    return $refusal;
-                }
-                $data['Note'] = str_replace(['[', ']'], ' ', (string) ($data['Note'] ?? '')); // only the server writes tags
-            }
             $scheduleModeAtIssue = !empty($data['StudentClassID'])
                 ? StudentClass::where('ID', $data['StudentClassID'])->first()?->ScheduleMode
                 : null;
@@ -209,134 +196,8 @@ class BillingController extends Controller
                 ], 409);
             }
 
-            if ($replaced) {
-                $this->linkCorrection($request, $replaced, $invoice, trim((string) $data['correction_reason']));
-            }
-
             return response()->json($invoice, 201);
         });
-    }
-
-    private const CORRECTION_EVENT = 'invoice.correction_reissue';
-
-    /**
-     * Founder D3 (#4128): only a voided bill of the same student and course can be replaced, and only once.
-     * Replacement state comes from the audit rows (never from the free-text Note). A retry with the same
-     * amount and reason returns the bill already issued; anything else is refused.
-     */
-    private function replacementRefusal(Request $request, ?Invoice $replaced, array $data): ?\Illuminate\Http\JsonResponse
-    {
-        $campusId = $replaced ? (int) (Student::query()->whereKey($replaced->StudentID)->value('CampusID') ?? 0) : 0;
-        if (!$replaced || !$this->invoiceStudentCampusAllowed($request, $campusId)) {
-            return response()->json(['message' => '找不到要更正的帳單。沒有建立任何帳單。', 'code' => 'replaces_invoice_not_found'], 404);
-        }
-        if (mb_strlen(self::correctionReason((string) $data['correction_reason'])) < 2) {
-            return response()->json(['message' => '請填寫更正原因。沒有建立任何帳單。', 'code' => 'correction_reason_invalid'], 422);
-        }
-        if ((int) $replaced->StudentID !== (int) $data['StudentID'] || (int) $replaced->StudentClassID !== (int) $data['StudentClassID']) {
-            return response()->json(['message' => '要更正的帳單不是這位學生的這門課程。沒有建立任何帳單。', 'code' => 'replaces_invoice_mismatch'], 422);
-        }
-        if (strtolower((string) ($replaced->Status ?? '')) !== 'void') {
-            return response()->json(['message' => '請先作廢原帳單（需填原因），再開更正帳單。沒有建立任何帳單。', 'code' => 'replaces_invoice_not_void'], 422);
-        }
-        if ($prior = $this->priorCorrection($replaced)) {
-            $existing = $prior['invoice'];
-            if ($existing && strtolower((string) $existing->Status) !== 'void' && $prior['amount'] === (int) $data['TotalAmount']
-                && hash_equals((string) $prior['reason_hash'], hash('sha256', self::correctionReason((string) $data['correction_reason'])))) {
-                return response()->json($existing, 200); // retry of the same reissue: no second bill
-            }
-
-            return response()->json([
-                'message' => '這張帳單已經開過更正帳單，請改從最新的帳單處理。沒有建立任何帳單。',
-                'code' => 'replaces_invoice_already_replaced',
-                'replacement_invoice_id' => $existing ? (int) $existing->id : null,
-            ], 409);
-        }
-
-        return null;
-    }
-
-    /** @return array{invoice: ?Invoice, amount: int, reason_hash: ?string}|null the earlier correction of this bill, from the audit rows */
-    private function priorCorrection(Invoice $replaced): ?array
-    {
-        // Concurrent reissues are serialized by the student row lock taken first in store() and the replaced bill's
-        // row lock, so this plain read already sees a committed earlier correction.
-        $oldRef = SecurityAuditEvent::ref('invoice', (int) $replaced->id);
-        $row = DB::table('security_audit_events')->where('event_type', self::CORRECTION_EVENT)->where('subject_ref', $oldRef)
-            ->get(['correlation_id', 'metadata'])
-            ->first(fn ($r) => (json_decode((string) $r->metadata, true)['reason_code'] ?? null) === 'replaced');
-        if (!$row) {
-            return null;
-        }
-        $meta = json_decode((string) $row->metadata, true);
-        $newRef = DB::table('security_audit_events')->where('event_type', self::CORRECTION_EVENT)
-            ->where('correlation_id', $row->correlation_id)->where('subject_ref', '!=', $oldRef)->value('subject_ref');
-        $invoice = Invoice::query()->where('StudentClassID', $replaced->StudentClassID)->where('id', '>', $replaced->id)->get()
-            ->first(fn (Invoice $i) => $newRef !== null && hash_equals((string) $newRef, (string) SecurityAuditEvent::ref('invoice', (int) $i->id)));
-
-        return ['invoice' => $invoice, 'amount' => (int) ($meta['new_charge'] ?? -1), 'reason_hash' => $meta['reason_hash'] ?? null];
-    }
-
-    /** Free text going into a tag: no brackets, separators or markers, so it cannot fake a tag or the operator. */
-    private static function correctionReason(string $reason): string
-    {
-        $clean = str_replace(["\r", "\n", '[', ']', '／', '/', ';', '；', '：', ':', '操作者', '更正自', 'replaced_by'], ' ', $reason);
-
-        return trim(preg_replace('/\s+/u', ' ', $clean) ?? '');
-    }
-
-    /** Founder D3: no automatic link yet, so both notes name the other bill; the operator is written by the server. */
-    private function linkCorrection(Request $request, Invoice $replaced, Invoice $invoice, string $reason): void
-    {
-        $userId = $request->attributes->get('auth_user')?->id;
-        $operator = 'user_id=' . ($userId ?? 'system');
-        $reason = self::correctionReason($reason);
-        $newNote = self::appendNoteTag((string) $invoice->Note, '[更正自 #' . $replaced->displayNo() . '／操作者：' . $operator . '／原因：' . $reason . ']');
-        $oldNote = self::appendNoteTag((string) $replaced->Note, sprintf('[replaced_by: #%s; %s; at=%s]',
-            $invoice->displayNo(), $operator, now()->format('Y-m-d H:i:s')));
-        if ($newNote === null || $oldNote === null) {
-            // Never cut an existing tag: refuse, and the transaction rolls the new bill back.
-            throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
-                'message' => '帳單備註的紀錄已滿，無法再記錄更正單號。沒有建立任何帳單。', 'code' => 'replaces_invoice_note_full'], 422));
-        }
-        $invoice->Note = $newNote;
-        $invoice->save();
-        $replaced->Note = $oldNote;
-        $replaced->save();
-
-        $correlationId = (string) \Illuminate\Support\Str::uuid();
-        $campusId = (int) (Student::query()->whereKey($invoice->StudentID)->value('CampusID') ?? 0) ?: null;
-        foreach ([$replaced, $invoice] as $subject) {
-            SecurityAuditEvent::append(self::CORRECTION_EVENT, 'success', [
-                'correlation_id' => $correlationId, 'actor_type' => 'user', 'actor_id' => $userId,
-                'subject_type' => 'invoice', 'subject_id' => $subject->id, 'campus_id' => $campusId,
-            ], ['reason_code' => $subject === $replaced ? 'replaced' : 'replacement', 'old_charge' => (int) $replaced->TotalAmount,
-                'new_charge' => (int) $invoice->TotalAmount, 'reason_hash' => hash('sha256', $reason)]);
-        }
-        // The audit rows are the replacement state, so a failed write must not leave an unlinked bill.
-        if (DB::table('security_audit_events')->where('correlation_id', $correlationId)->count() !== 2) {
-            throw new \RuntimeException('invoice correction audit was not recorded');
-        }
-        Log::info('[InvoiceCorrection] reissued as correction', ['invoice_id' => $invoice->id, 'replaces_invoice_id' => $replaced->id,
-            'student_class_id' => $invoice->StudentClassID, 'user_id' => $userId]);
-    }
-
-    /**
-     * Invoice.Note is VARCHAR(255). Existing [..] tags (void audit etc.) and the new tag are kept whole; only the
-     * older free text is trimmed. Null when the tags alone do not fit.
-     */
-    private static function appendNoteTag(string $note, string $tag): ?string
-    {
-        preg_match_all('/\[[^\[\]]*\]/u', $note, $m);
-        $tail = implode(' ', [...$m[0], $tag]);
-        if (mb_strlen($tail) > 255) {
-            return null;
-        }
-        $free = trim(preg_replace('/\s+/u', ' ', preg_replace('/\[[^\[\]]*\]/u', ' ', $note) ?? '') ?? '');
-        $room = 255 - mb_strlen($tail) - 1;
-        $free = $room > 0 ? trim(mb_substr($free, 0, $room)) : '';
-
-        return $free === '' ? $tail : $free . ' ' . $tail;
     }
 
     public function recordPayment(Request $request, Invoice $invoice)
@@ -484,7 +345,7 @@ class BillingController extends Controller
             $reason = trim((string) $data['reason']);
             $audit = sprintf(
                 '[void: %s; user_id=%s; at=%s]',
-                str_replace(["\r", "\n", '[', ']'], ' ', $reason), // D3: user text cannot forge a tag
+                str_replace(["\r", "\n", '[', ']'], ' ', $reason), // D3: user text cannot forge a note tag
                 $authUser?->id ?? 'system',
                 now()->format('Y-m-d H:i:s')
             );
@@ -623,6 +484,17 @@ class BillingController extends Controller
         }
         $this->assertInvoiceStudentCampusAllowed($request, (int) $invoice->student->CampusID);
 
+        // Founder D2 (#4121 review): the 繳費明細 ledger reads this payload for its class dates, so it never fails. An
+        // unpaid bill on a 金額待確認 course carries no amounts and the flag; the parent slip refuses to render it.
+        $slipCourse = $invoice->getRelationValue('studentClass');
+        $courseAmountPending = false;
+        if ($slipCourse instanceof StudentClass) {
+            $slipCourseId = (int) $slipCourse->getAttribute('ID');
+            $slipVerdict = app(BillingPayableResolver::class)
+                ->courseStatusesByStudentClassIds([$slipCourseId], [$slipCourse])[$slipCourseId] ?? [];
+            $courseAmountPending = BillingPayableResolver::isAmountPendingConfirmation($slipCourse, $slipVerdict);
+        }
+
         $campus = null;
         if ($invoice->student && $invoice->student->CampusID) {
             $campus = Campus::find($invoice->student->CampusID);
@@ -679,6 +551,10 @@ class BillingController extends Controller
         });
 
         $sessions = $this->monthlyBilling->invoiceCoveredSessions($invoice, $projection);
+        $amountPending = $courseAmountPending && $remaining > 0; // a paid bill on the same course keeps its amounts
+        if ($amountPending) {
+            $items = $items->map(fn (array $item) => array_merge($item, ['amount' => null, 'stored_amount' => null]));
+        }
 
         $authUser = $request->attributes->get('auth_user');
         Log::info('[InvoiceSlip] generated', [
@@ -694,14 +570,15 @@ class BillingController extends Controller
             'campus_name'  => $campus->name ?? '',
             'issue_date'   => $invoice->IssueDate,
             'due_date'     => $invoice->DueDate,
-            'total_amount' => $totalAmount,
-            'stored_total_amount' => $projection['stored_total_amount'],
-            'computed_total_amount' => $projection['computed_total_amount'],
+            'amount_pending_confirmation' => $amountPending,
+            'total_amount' => $amountPending ? null : $totalAmount,
+            'stored_total_amount' => $amountPending ? null : $projection['stored_total_amount'],
+            'computed_total_amount' => $amountPending ? null : $projection['computed_total_amount'],
             'amount_source' => $projection['amount_source'],
             'amount_discrepancy' => $projection['amount_discrepancy'],
             'period_sessions' => $projection['period_sessions'],
-            'paid_amount'  => $paidAmount,
-            'remaining'    => $remaining,
+            'paid_amount'  => $amountPending ? null : $paidAmount,
+            'remaining'    => $amountPending ? null : $remaining,
             'status'       => $invoice->Status,
             'note'         => $invoice->Note,
             'items'        => $items,
@@ -779,17 +656,11 @@ class BillingController extends Controller
 
     private function assertInvoiceStudentCampusAllowed(Request $request, int $studentCampusId): void
     {
-        if (!$this->invoiceStudentCampusAllowed($request, $studentCampusId)) {
-            abort(403);
-        }
-    }
-
-    private function invoiceStudentCampusAllowed(Request $request, int $studentCampusId): bool
-    {
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-
-        return empty($campusIds) || in_array($studentCampusId, $campusIds, true);
+        if (!empty($campusIds) && !in_array($studentCampusId, $campusIds, true)) {
+            abort(403);
+        }
     }
 
     private function buildMonthlySplitItems(int $totalAmount, string $start, string $end): array
