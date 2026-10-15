@@ -99,6 +99,7 @@ jobs:
     needs: guard
     if: github.event.inputs.action == 'inventory'
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper
@@ -163,6 +164,7 @@ jobs:
     needs: guard
     if: github.event.inputs.action == 'enable_backend'
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
@@ -349,6 +351,7 @@ jobs:
     needs: guard
     if: github.event.inputs.action == 'disable_backend'
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
@@ -469,6 +472,7 @@ jobs:
     needs: guard
     if: github.event.inputs.action == 'verify_backend'
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper

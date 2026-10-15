@@ -138,6 +138,7 @@ jobs:
     needs: guard
     if: github.event.inputs.action == 'preflight'
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper and read-only scripts
@@ -222,6 +223,7 @@ jobs:
     needs: guard
     if: github.event.inputs.action == 'grant_pilot_dry_run'
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper and grant script

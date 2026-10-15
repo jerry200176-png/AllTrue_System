@@ -27,6 +27,7 @@ permissions:
 jobs:
   dump:
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 12
     steps:
       - name: Require DUMP_ARTIFACT_KEY (fail closed, no plaintext fallback)

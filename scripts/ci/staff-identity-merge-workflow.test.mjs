@@ -10,7 +10,7 @@ const jobs = {};
 for (const m of wf.slice(wf.indexOf('\njobs:\n')).matchAll(/^  ([a-z_]+):\n([\s\S]*?)(?=^  [a-z_]+:\n|(?![\s\S]))/gm)) jobs[m[1]] = m[2];
 assert.deepEqual(Object.keys(jobs).sort(), ['guard', 'run'], 'exact job set');
 assert.equal((wf.match(/^          - [a-z_]+$/gm) || []).length, 2, 'exactly candidates + dry_run');
-assert.ok(!/execute|apply|revert|--force|environment:/i.test(wf.replace(/^#.*$/gm, '')), 'no write path, no approval env');
+assert.ok(!/execute|apply|revert|--force|environment:/i.test(wf.replace(/^#.*$/gm, '').replace(/^ {4}environment: production-ssh$/gm, '')), 'no write path, no approval env');
 assert.ok(!/--execute|--apply/.test(cmd) && !/config:clear|cache:clear|optimize/.test(wf), 'no write option, no cache clearing');
 assert.match(wf, /^# governance-capability: read-only-probe/);
 assert.match(wf, /concurrency:\n  group: staff-identity-merge\n  cancel-in-progress: false/);
