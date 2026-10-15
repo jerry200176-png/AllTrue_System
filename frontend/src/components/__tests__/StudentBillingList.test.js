@@ -197,6 +197,90 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
   });
 });
 
+// #4114 / #4123: 已收 needs the server's paid verdict; none of these cases may read 已收 (or 已收清).
+describe('StudentBillingList 已收 regressions (#4114)', () => {
+  const badges = (w, id) => w.find(`[data-testid="sbl-row-${id}"]`).findAll('[data-testid="at-badge"]').map((b) => b.text());
+  const mountRows = (alertRows, students = []) => mount(StudentBillingList, { props: { alertRows, students, today: '2026-10-07' } });
+  const neverPaid = (w, id) => badges(w, id).forEach((t) => expect(t).not.toContain('已收'));
+
+  it('no invoice and no Payment is not 已收', () => {
+    const w = mountRows([
+      { id: 201, student_id: 20, student_name: '甲一', paid: false, payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null, last_paid_at: null },
+    ], [{ id: 21, name: '甲二' }]);
+    expect(badges(w, 20)).toEqual(['還沒開帳單']);
+    expect(badges(w, 21)).toEqual(['沒有待收款項']);
+  });
+
+  it('a zero amount due alone is not 已收', () => {
+    const w = mountRows([
+      { id: 221, student_id: 22, student_name: '甲三', payment_status: 'unpaid', payable_status: 'review_required', payable_outstanding: 0, last_paid_at: null },
+    ]);
+    expect(w.find('[data-testid="sbl-row-22"]').find('.sbl__now strong').text()).toBe('—');
+    neverPaid(w, 22);
+  });
+
+  it('a pending payment report is not 已收', () => {
+    const w = mountRows([
+      { id: 231, student_id: 23, student_name: '甲四', paid: false, payment_status: 'pending_report', payable_status: 'unbilled', payable_outstanding: null, last_paid_at: null },
+    ]);
+    expect(badges(w, 23)).toEqual(['已回報付款，待你核對入帳']);
+    neverPaid(w, 23);
+  });
+
+  it('a voided report is not 已收', () => {
+    // server state after a report void: Paid=0, invoice back to unpaid, the reversed receipt gives no date
+    const w = mountRows([
+      { id: 241, student_id: 24, student_name: '甲五', paid: false, payment_status: 'unpaid', payable_status: 'unpaid', payable_outstanding: 5000, paid_amount: 0, due_date: '2026-10-01', last_paid_at: null },
+    ]);
+    expect(badges(w, 24)).toEqual(['未繳']);
+    expect(w.find('[data-testid="sbl-row-24"]').text()).not.toContain('最近繳費');
+  });
+
+  it('a stale PayDate with no Payment is not 已收', () => {
+    const w = mountRows([
+      { id: 251, student_id: 25, student_name: '甲六', paid: false, payment_status: 'unpaid', payable_status: 'review_required', payable_outstanding: null, last_paid_at: '2025-01-15' },
+    ]);
+    neverPaid(w, 25);
+    expect(buildStudentBillingRows(w.props('alertRows'), [], '2026-10-07')[0].has_paid).toBe(false);
+  });
+
+  it('a partial payment is not 已收清', () => {
+    const w = mountRows([
+      { id: 261, student_id: 26, student_name: '甲七', payment_status: 'partial', payable_status: 'partial', payable_outstanding: 3000, paid_amount: 2000, due_date: '2026-10-01', last_paid_at: '2026-09-20' },
+      { id: 271, student_id: 27, student_name: '甲八', payment_status: 'partial', payable_status: 'partial', payable_outstanding: 3000, paid_amount: 2000, due_date: '2026-11-01', last_paid_at: '2026-09-20' },
+    ]);
+    expect(badges(w, 26)).toEqual(['未繳']);
+    expect(badges(w, 27)).toEqual(['還沒到期']);
+    neverPaid(w, 26);
+    neverPaid(w, 27);
+    expect(w.find('[data-testid="sbl-row-26"]').text()).toContain('最近繳費');
+  });
+
+  it('mixed contracts: a paid contract does not make the student 已收 while another contract has money due', () => {
+    const w = mountRows([
+      { id: 281, student_id: 28, student_name: '甲九', payment_status: 'paid', payable_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03' },
+      { id: 282, student_id: 28, student_name: '甲九', payment_status: 'unpaid', payable_status: 'unpaid', payable_outstanding: 3000, due_date: '2026-10-01' },
+      { id: 291, student_id: 29, student_name: '乙一', payment_status: 'paid', payable_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03' },
+      { id: 292, student_id: 29, student_name: '乙一', payment_status: 'unpaid', payable_status: 'unpaid', payable_outstanding: 3000, due_date: '2026-11-01' },
+      { id: 301, student_id: 30, student_name: '乙二', payment_status: 'paid', payable_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03' },
+      { id: 302, student_id: 30, student_name: '乙二', payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null },
+    ]);
+    expect(badges(w, 28)).toEqual(['未繳']);
+    expect(badges(w, 29)).toEqual(['還沒到期']);
+    expect(badges(w, 30)).toEqual(['還沒開帳單']);
+  });
+
+  // TODO(#4114): a paid contract plus a contract whose amount is still unknown (review_required, no amount, not
+  // unbilled) still reads 已收 for the whole student (`has_paid` is any-contract). Needs a per-contract decision.
+  it.skip('mixed contracts: a paid contract plus an unsettled contract with no amount is not 已收 (#4114)', () => {
+    const w = mountRows([
+      { id: 311, student_id: 31, student_name: '乙三', payment_status: 'paid', payable_status: 'paid', payable_outstanding: 0, last_paid_at: '2026-10-03' },
+      { id: 312, student_id: 31, student_name: '乙三', payment_status: 'unpaid', payable_status: 'review_required', payable_outstanding: null },
+    ]);
+    neverPaid(w, 31);
+  });
+});
+
 // Founder D2 (in-app #394): 金額待確認 is findable but never part of 未收 / owed totals.
 describe('金額待確認 rows (Founder D2)', () => {
   const REVIEW_ROWS = [
