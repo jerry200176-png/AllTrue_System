@@ -180,6 +180,7 @@ class AlertController extends Controller
             ->values()
             ->all();
         $paidAtMap = $this->payableResolver->lastPaidAtByStudentClassIds($allClassIds);
+        $paymentHistoryMap = $this->payableResolver->studentClassIdsWithPaymentHistory($allClassIds);
         $invoiceAggMap = $this->payableResolver->invoiceAggregateByStudentClassIds($allClassIds);
         $allResults = $countResults->merge($dateResults)->merge($pendingSettlementResults)->keyBy('ID');
         $payableMap = $this->payableResolver->byStudentClassIds($allClassIds, $allResults);
@@ -369,7 +370,7 @@ class AlertController extends Controller
             ->merge(
                 $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
             )
-            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses, $courseStatuses) {
+            ->map(function ($row) use ($paidAtMap, $paymentHistoryMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses, $courseStatuses) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
@@ -438,7 +439,9 @@ class AlertController extends Controller
                 return $row + [
                     'closed_reason'            => $sc?->getAttribute('closed_reason'),
                     'paid_at'                  => $directPaidAt,
-                    'last_paid_at'             => $directPaidAt ?? $invoicePaidAt,
+                    // #4123: only a receipt still standing on the net Payment ledger gives 最近繳費. The legacy PayDate
+                    // is a fallback only for contracts with no Payment history at all (any row, void/reversed included).
+                    'last_paid_at'             => $invoicePaidAt ?? (isset($paymentHistoryMap[$classId]) ? null : $directPaidAt),
                     'charge'                   => $charge,
                     'estimated_amount'         => $charge,
                     'charge_semantics'         => 'estimate_only',
