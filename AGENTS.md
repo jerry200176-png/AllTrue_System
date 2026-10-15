@@ -101,6 +101,15 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 - 多 agent 或多 PR 任務需指定 `[INT] Integration Owner` 檢查 artifact 能否接起來；完成後由 `[DOCS/MEM] Memory Curator` 決定寫回哪份長期記憶文件。
 - 完成後把有效策略寫回 `AI_REGRESSION_LESSONS.md`、`TECH_DEBT.md` 或 `SYSTEM_TECH_GUIDE.md`，讓下一個 session 不重學。
 
+### 工程取向（Founder 2026-10-15）
+
+適用架構、UI/UX、實作與 review：
+- 先理解完整使用者旅程與共同根因，再動手。
+- 有界研究：先找本 repo 既有實作與成熟開源／上游方案，重用最小合適解，不重造輪子；只做最小且有根據的根因修正，並附回歸測試。
+- 每個真實缺陷群在 issue／PR 內留短紀錄：症狀／根因、既有方案／來源、為何重用或最小自訂、回歸測試、部署與驗收證據（不另開文件）。
+- 避免：多個 agent 重複認領同一工作、反覆載入整個 repo context、對未變更的 SHA 重複 review、拖慢交付的研究。
+- Bug 優先於新功能；不可為了清空佇列而 merge 已知回歸。
+
 ### 外部 Agent Playbook 引用
 
 可參考 [`msitarzewski/agency-agents`](https://github.com/msitarzewski/agency-agents) 的角色設計、deliverable 格式與多工具整合概念，但它不是 AllTrue 產品功能，也不可整包安裝覆蓋本 repo 規則。
