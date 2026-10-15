@@ -21,9 +21,7 @@ final class InvoiceCorrectionLink
 {
     public const EVENT = 'invoice.correction_reissue';
 
-    /**
-     * @return array{refusal: ?JsonResponse, replay: ?Invoice} replay = the bill an identical earlier request issued
-     */
+    /** @return array{refusal: ?JsonResponse, replay: ?Invoice} replay = the bill an identical earlier request issued */
     public function precheck(?Invoice $replaced, StudentClass $course, bool $campusAllowed, string $reason, int $amount, string $key): array
     {
         $refuse = fn (int $status, string $code, string $message, array $extra = []) => ['refusal' => response()->json(
@@ -69,12 +67,12 @@ final class InvoiceCorrectionLink
     {
         $operator = 'user_id=' . ($userId ?? 'system');
         $correlationId = (string) Str::uuid();
-        $newNote = self::appendNoteTag((string) $invoice->Note, '[更正自 #' . $replaced->displayNo() . '／操作者：' . $operator . '／原因：' . self::cleanReason($reason) . ']');
+        $newNote = self::appendNoteTag((string) $invoice->Note, '[更正自 #' . self::invoiceNo($replaced) . '／操作者：' . $operator . '／原因：' . self::cleanReason($reason) . ']');
         if ($newNote === null) {
             throw new HttpResponseException(response()->json([
                 'message' => '帳單備註的紀錄已滿，無法再記錄更正單號。沒有登記任何款項。', 'code' => 'replaces_invoice_note_full'], 422));
         }
-        $oldNote = self::appendNoteTag((string) $replaced->Note, sprintf('[replaced_by: #%s; %s; at=%s]', $invoice->displayNo(), $operator, now()->format('Y-m-d H:i:s')))
+        $oldNote = self::appendNoteTag((string) $replaced->Note, sprintf('[replaced_by: #%s; %s; at=%s]', self::invoiceNo($invoice), $operator, now()->format('Y-m-d H:i:s')))
             ?? self::appendNoteTag((string) $replaced->Note, sprintf('[更正為 #%d audit=%s]', (int) $invoice->id, $correlationId));
         $invoice->Note = $newNote;
         $invoice->save();
@@ -121,6 +119,13 @@ final class InvoiceCorrectionLink
         return ['invoice' => $invoice, 'amount' => (int) ($meta['new_charge'] ?? -1), 'request_hash' => $meta['reason_hash'] ?? null];
     }
 
+    /** Staff-facing number, same format as the accounting ledger (INV-YYYYMM-000123). */
+    private static function invoiceNo(Invoice $invoice): string
+    {
+        return 'INV-' . (preg_replace('/[^0-9]/', '', (string) ($invoice->billing_period ?: substr((string) $invoice->IssueDate, 0, 7))) ?: 'LEGACY')
+            . '-' . str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT);
+    }
+
     /** The cleaned reason plus the client's idempotency key: a double submit matches, a new attempt does not. */
     private static function requestHash(string $reason, string $key): string
     {
@@ -158,9 +163,8 @@ final class InvoiceCorrectionLink
     }
 
     /**
-     * Splits a note into free text and whole tags. A void / exception-void audit tag is matched up to its fixed
-     * "user_id=…; at=…" ending, so a reason written before brackets were stripped ("[void: 開錯 [註] …]") stays
-     * one tag instead of fragments.
+     * Free text and whole tags. A void / exception-void tag is matched up to its fixed "user_id=…; at=…" ending, so an
+     * older reason with brackets ("[void: 開錯 [註] …]") stays one tag.
      *
      * @return array{0: string, 1: list<string>}
      */

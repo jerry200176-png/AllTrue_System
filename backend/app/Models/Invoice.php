@@ -66,14 +66,6 @@ class Invoice extends Model
         'billing_snapshot' => 'array',
     ];
 
-    /** Staff-facing bill number, e.g. INV-202610-000123 (same format as the accounting ledger). */
-    public function displayNo(): string
-    {
-        $period = preg_replace('/[^0-9]/', '', (string) ($this->billing_period ?: substr((string) $this->IssueDate, 0, 7)));
-
-        return 'INV-' . ($period ?: 'LEGACY') . '-' . str_pad((string) $this->id, 6, '0', STR_PAD_LEFT);
-    }
-
     public function isMarkedFreeGift(): bool
     {
         return (string) $this->getAttribute('zero_amount_reason') === self::ZERO_REASON_FREE_GIFT;

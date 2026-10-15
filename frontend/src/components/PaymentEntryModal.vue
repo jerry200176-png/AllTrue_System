@@ -136,13 +136,10 @@ const form = reactive({
   amount: 0,
   note: '',
   free_gift: false,
-  correcting: false,
-  replaces_invoice_id: null,
-  correction_reason: '',
+  correcting: false, replaces_invoice_id: null, correction_reason: '',
 });
 const voidedInvoices = computed(() => (Array.isArray(props.row?.voided_invoices) ? props.row.voided_invoices : []));
-// One key per opened form: a double click or a retry after a network error sends the same key, so the server
-// returns the bill it already issued instead of a second one.
+// One key per opened form: a double click or a retry sends the same key, so the server returns the same bill.
 const newKey = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID()
   : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16)));
 let idempotencyKey = newKey();
@@ -161,9 +158,7 @@ watch(() => props.show, (val) => {
       : (props.row.payable_outstanding ?? props.row.payable_amount ?? '');
     form.note = '';
     form.free_gift = false;
-    form.correcting = false;
-    form.replaces_invoice_id = voidedInvoices.value[0]?.id ?? null;
-    form.correction_reason = '';
+    Object.assign(form, { correcting: false, replaces_invoice_id: voidedInvoices.value[0]?.id ?? null, correction_reason: '' });
     idempotencyKey = newKey();
     submitError.value = '';
   }
@@ -198,7 +193,6 @@ async function submit() {
     submitError.value = '請選擇要更正的帳單，並填寫更正原因（至少 3 個字）。';
     return;
   }
-
   submitting.value = true;
   try {
     const body = {

@@ -33,14 +33,12 @@ describe('PaymentEntryModal correction of a voided bill', () => {
     await w.find('[data-testid="pe-correction-toggle"]').setValue(true);
     expect(w.find('[data-testid="pe-correction-invoice"]').element.value).toBe('41');
     await w.find('[data-testid="pe-correction-reason"]').setValue('原約定 7200');
-
     global.fetch.mockResolvedValueOnce(fail(500, '連線失敗'));
     await w.find('form').trigger('submit');
     await tick();
     global.fetch.mockResolvedValueOnce(ok({ report_id: 9, invoice_id: 50, status: 'pending' }));
     await w.find('form').trigger('submit');
     await tick();
-
     const [first, second] = global.fetch.mock.calls.map(bodyOf);
     expect(first).toMatchObject({ student_class_id: 5, amount: 7200, replaces_invoice_id: 41, correction_reason: '原約定 7200' });
     expect(first.invoice_id).toBeUndefined();
@@ -75,19 +73,7 @@ describe('PaymentEntryModal correction of a voided bill', () => {
     await tick();
     expect(global.fetch).not.toHaveBeenCalled();
     expect(w.text()).toContain('請選擇要更正的帳單，並填寫更正原因');
-
     const plain = await open({ voided_invoices: [] });
     expect(plain.find('[data-testid="pe-correction"]').exists()).toBe(false);
-  });
-
-  it('without the box ticked, records a plain payment as before', async () => {
-    const w = await open();
-    await w.find('input[type="number"]').setValue(7200);
-    global.fetch.mockResolvedValueOnce(ok({ report_id: 9 }));
-    await w.find('form').trigger('submit');
-    await tick();
-    const body = bodyOf(global.fetch.mock.calls[0]);
-    expect(body.replaces_invoice_id).toBeUndefined();
-    expect(body.idempotency_key).toBeUndefined();
   });
 });

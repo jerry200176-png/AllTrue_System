@@ -762,10 +762,8 @@ class PaymentReportController extends Controller
     }
 
     /**
-     * Founder D3/B1 (#4132): 登記收款 for a count-mode course whose bill was voided as wrong. A new bill is issued at the
-     * recorded amount, both notes cross-reference each other with the audit rows, and the pending report points at the
-     * new bill so 確認入帳 settles it as usual. The same submit again returns the same bill and report.
-     *
+     * Founder D3/B1 (#4132): 登記收款 settling a new bill that corrects a voided count-mode bill (InvoiceCorrectionLink);
+     * the pending report points at the new bill, so 確認入帳 settles it as usual.
      * @param array<string, mixed> $data
      */
     private function recordCorrectionReissue(Request $request, array $data, StudentClass $sc, ?int $userId)
@@ -793,7 +791,6 @@ class PaymentReportController extends Controller
             }
             if ($replay = $check['replay']) {
                 $report = PaymentReport::query()->where('InvoiceID', $replay->id)->orderBy('id')->first();
-
                 return response()->json(['message' => '這筆更正已經送出過', 'report_id' => $report?->id, 'payment_id' => null,
                     'invoice_id' => (int) $replay->id, 'status' => $report?->status ?? 'pending', 'replayed' => true]);
             }
