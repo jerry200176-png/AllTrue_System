@@ -484,6 +484,16 @@ class BillingController extends Controller
         }
         $this->assertInvoiceStudentCampusAllowed($request, (int) $invoice->student->CampusID);
 
+        // Founder D2 (#4121 review): no parent slip while the course's amount is 金額待確認 (same rule as /alerts/tuition-slip).
+        $slipCourse = $invoice->getRelationValue('studentClass');
+        if ($slipCourse instanceof StudentClass) {
+            $slipVerdict = app(BillingPayableResolver::class)
+                ->courseStatusesByStudentClassIds([(int) $slipCourse->getAttribute('ID')], [$slipCourse])[(int) $slipCourse->getAttribute('ID')] ?? [];
+            if (BillingPayableResolver::isAmountPendingConfirmation($slipCourse, $slipVerdict)) {
+                return response()->json(['message' => '金額待確認，請先確認應收金額'], 422);
+            }
+        }
+
         $campus = null;
         if ($invoice->student && $invoice->student->CampusID) {
             $campus = Campus::find($invoice->student->CampusID);

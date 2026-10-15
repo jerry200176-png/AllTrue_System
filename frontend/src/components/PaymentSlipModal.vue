@@ -67,7 +67,11 @@ async function fetchInvoiceSlip(id) {
   const resp = await fetch(`/api/v1/invoices/${id}/slip-data`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}` },
   });
-  if (!resp.ok) throw new Error('無法載入帳單資料');
+  if (!resp.ok) {
+    // Founder D2: a 422 says why (e.g. 金額待確認，請先確認應收金額); show it instead of a generic error.
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(body.message || '無法載入帳單資料');
+  }
   return resp.json();
 }
 

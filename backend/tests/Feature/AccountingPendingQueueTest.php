@@ -208,14 +208,19 @@ class AccountingPendingQueueTest extends TestCase
         $this->getJson("/api/v1/alerts/tuition-slip/{$c->ID}", $this->headers)
             ->assertStatus(422)
             ->assertJsonPath('message', '金額待確認，請先確認應收金額');
+        // The bill's own slip (invoices/{id}/slip-data) refuses the same contract with the same message.
+        $this->getJson("/api/v1/invoices/{$invoice->id}/slip-data", $this->headers)
+            ->assertStatus(422)
+            ->assertJsonPath('message', '金額待確認，請先確認應收金額');
     }
 
     public function test_tuition_slip_still_works_for_a_confirmed_unpaid_stopped_contract(): void
     {
         $c = $this->course(['closed_reason' => 'settled']);
-        $this->invoice($c, 8800);
+        $invoice = $this->invoice($c, 8800);
 
         $this->getJson("/api/v1/alerts/tuition-slip/{$c->ID}", $this->headers)->assertOk();
+        $this->getJson("/api/v1/invoices/{$invoice->id}/slip-data", $this->headers)->assertOk();
     }
 
     public function test_confirmed_unpaid_rows_are_not_marked_pending_confirmation(): void

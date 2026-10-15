@@ -1,29 +1,35 @@
 // Founder D2 (#4121 review): a parent slip never carries an amount that is still 金額待確認.
-import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { mount } from '@vue/test-utils';
+// The API answers 422; every slip entry shows that reason instead of a slip.
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { mount, flushPromises } from '@vue/test-utils';
 import TuitionDocActions from '../TuitionDocActions.vue';
+import PaymentSlipModal from '../PaymentSlipModal.vue';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const dashboard = readFileSync(resolve(__dirname, '../../pages/DirectorDashboard.vue'), 'utf8');
-const courseManagement = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue'), 'utf8');
+vi.mock('modern-screenshot', () => ({ domToBlob: vi.fn() }));
 
-describe('payment slip on 金額待確認 rows', () => {
-  it('the director dashboard keeps the flag from /alerts/tuition and gates 繳費單 on it', () => {
-    expect(dashboard).toContain('amount_pending_confirmation: c.amount_pending_confirmation === true');
-    expect(dashboard).toContain("const isPaymentNoticeAvailable = (student) => isPaymentNoticeStatus(student?.payment_status) && student?.amount_pending_confirmation !== true;");
-    expect(dashboard).toMatch(/v-if="isPaymentNoticeAvailable\(student\)"[^>]*@click="openPaymentSlip\(student\)">繳費單/);
-  });
+const MSG = '金額待確認，請先確認應收金額';
+const refused = () => ({ ok: false, status: 422, json: async () => ({ message: MSG }) });
 
-  it('the course page gates 繳費單 on the same flag', () => {
-    expect(courseManagement).toContain("isPaymentNoticeStatus(course?.payment_status) && course?.amount_pending_confirmation !== true");
+describe('payment slip on 金額待確認 contracts', () => {
+  beforeEach(() => {
+    global.fetch = vi.fn();
   });
 
   it('the queue slip button is disabled with the 金額待確認 reason', () => {
     const w = mount(TuitionDocActions, { props: { row: { id: 1, payable_status: 'invoiced', payment_status: 'pending_reconciliation', amount_pending_confirmation: true }, canView: true } });
     expect(w.get('[data-testid="tc-doc-slip"]').element.disabled).toBe(true);
-    expect(w.get('[data-testid="tc-doc-slip-reason"]').text()).toBe('金額待確認，請先確認應收金額');
+    expect(w.get('[data-testid="tc-doc-slip-reason"]').text()).toBe(MSG);
+  });
+
+  it.each([
+    ['course slip (course page, dashboard)', { studentClassId: 9 }, '/api/v1/alerts/tuition-slip/9'],
+    ['bill slip', { invoiceId: 1623 }, '/api/v1/invoices/1623/slip-data'],
+  ])('%s shows the API 422 reason and renders no slip', async (_, props, url) => {
+    global.fetch.mockResolvedValueOnce(refused());
+    const w = mount(PaymentSlipModal, { props: { show: true, ...props } });
+    await flushPromises();
+    expect(global.fetch.mock.calls[0][0]).toBe(url);
+    expect(w.find('.slip-error').text()).toContain(MSG);
+    expect(w.text()).not.toContain('尚欠金額');
   });
 });

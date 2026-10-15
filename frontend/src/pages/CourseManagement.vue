@@ -4966,7 +4966,7 @@ const paymentSlipOpen = ref(false);
 const paymentSlipStudentClassId = ref(null);
 
 const isPaymentNoticeAvailable = (course) =>
-  shouldShowPaymentAction(course) && isPaymentNoticeStatus(course?.payment_status) && course?.amount_pending_confirmation !== true;
+  shouldShowPaymentAction(course) && isPaymentNoticeStatus(course?.payment_status);
 
 const openPaymentSlip = (course) => {
   const studentClassId = Number(course?.id || 0);
