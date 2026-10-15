@@ -284,12 +284,17 @@ function checkProductionSecretTriggers() {
     tracked = execSync('git ls-files .github/workflows/*.yml .github/workflows/*.yaml', { cwd: root, encoding: 'utf8' })
       .split('\n')
       .filter(Boolean);
-  } catch {
+  } catch (err) {
+    add('P1', '.github/workflows', 0, `cannot list tracked workflows (${err.message.split('\n')[0]}); failing closed`);
+    return;
+  }
+  if (tracked.length === 0) {
+    add('P1', '.github/workflows', 0, 'no tracked workflows found; failing closed');
     return;
   }
   for (const rel of tracked) {
     for (const p of productionSecretTriggerProblems(read(rel))) {
-      add('P1', rel, p.line, `production SSH secret workflow triggers on ${p.event} (${p.reason}); use workflow_dispatch or push/pull_request to main only`);
+      add('P1', rel, p.line, `production SSH secret workflow triggers on ${p.event} (${p.reason}); use workflow_dispatch, schedule, or push to main only (never pull_request)`);
     }
   }
 }
