@@ -101,6 +101,18 @@ describe('學生帳務對帳 · 涵蓋上課日 (M1)', () => {
     expect(toggle.attributes('aria-expanded')).toBe('true');
   });
 
+  it('金額待確認 bill (Founder D2): slip-data has no amounts but the class dates still load', async () => {
+    const { w } = await mountLedger(ledger({ invoices: [MONTHLY_INVOICE] }), {
+      '/api/v1/invoices/41/slip-data': respond({ ...MONTHLY_SLIP, status: 'unpaid', amount_pending_confirmation: true,
+        total_amount: null, paid_amount: null, remaining: null, items: [{ description: '數學', amount: null }] }),
+    });
+    await invoiceToggle(w, 41).trigger('click');
+    await flushPromises();
+
+    expect(coverageDates(w, 'inv-41')).toHaveLength(4);
+    expect(w.find('[data-testid="ledger-coverage-inv-41"]').text()).toContain('共 4 堂');
+  });
+
   it('count-mode invoice: lists the purchased range and truncates with 尚有 N 堂', async () => {
     const total = COVERAGE_PREVIEW_LIMIT + 5;
     const { w } = await mountLedger(ledger({ invoices: [COUNT_INVOICE] }), {

@@ -45,6 +45,7 @@ const slip = computed(() => {
   if (!props.canView) return { ok: false, reason: NO_PERMISSION };
   if (legacy.value) return { ok: false, reason: '已繳清，系統裡沒有帳單' };
   const s = props.row.payment_status;
+  if (props.row.amount_pending_confirmation === true) return { ok: false, reason: '金額待確認，請先確認應收金額' };
   if (props.row.id == null && !props.row.invoice_id && SLIP_STATUSES.includes(s)) return { ok: false, reason: '共用方案繳費單請至成員課程開立' }; // 沒有課程 id 也沒有帳單 id，繳費單無從查起
   if (SLIP_STATUSES.includes(s)) return { ok: true };
   if (s === 'pending_report') return { ok: false, reason: '已回報，等確認入帳' };

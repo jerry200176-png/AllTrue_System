@@ -196,3 +196,45 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
     expect(badge(14)).toBe('已收');
   });
 });
+
+// Founder D2 (in-app #394): 金額待確認 is findable but never part of 未收 / owed totals.
+describe('金額待確認 rows (Founder D2)', () => {
+  const REVIEW_ROWS = [
+    { id: 11, student_id: 1, student_name: '甲', payment_status: 'unpaid', payable_outstanding: 3000, due_date: '2026-10-01' },
+    { id: 41, student_id: 5, student_name: '戊', payment_status: 'amount_review', amount_pending_confirmation: true, pending_confirmation_amount: 3400,
+      payable_outstanding: 3400, open_periods: [{ billing_period: '2026-09', outstanding: 3400, due_date: null }] },
+  ];
+
+  it('keeps the pending amount on its own line, out of owed_now / owed_later', () => {
+    const rows = buildStudentBillingRows(REVIEW_ROWS, [], '2026-10-07');
+    const e = rows.find((r) => r.student_id === 5);
+    expect([e.owed_now, e.owed_later, e.open_contracts]).toEqual([0, 0, 0]);
+    expect([e.pending_review_amount, e.pending_review_count]).toEqual([3400, 1]);
+    expect(e.contracts).toEqual([expect.objectContaining({ id: 41, owed: 0, pending_review: 3400 })]);
+  });
+
+  it('shows 金額待確認 separately from the campus 未收 total and never as 已收 / 已繳清', async () => {
+    const w = mount(StudentBillingList, { props: { alertRows: REVIEW_ROWS, today: '2026-10-07' } });
+    const summary = w.find('[data-testid="sbl-summary"]').text();
+    expect(summary).toContain('本校區到今天未收 NT$ 3,000');
+    expect(summary).toContain('未繳 1 位');
+    expect(w.find('[data-testid="sbl-pending-review"]').text()).toContain('NT$ 3,400（1 筆，未計入未收）');
+    const row = w.find('[data-testid="sbl-row-5"]').text();
+    expect(row).toContain('金額待確認');
+    expect(row).not.toContain('已收');
+    await w.find('[data-testid="sbl-filter-clear"]').trigger('click');
+    expect(w.find('[data-testid="sbl-row-5"]').exists()).toBe(false);
+    await w.find('[data-testid="sbl-filter-pending_review"]').trigger('click');
+    expect(w.findAll('[data-testid^="sbl-row-"]').map((r) => r.attributes('data-testid'))).toEqual(['sbl-row-5']);
+  });
+
+  it('counts a pending report on a 金額待確認 bill as waiting to confirm, not as owed', () => {
+    const [r] = buildStudentBillingRows([
+      { id: 51, student_id: 6, student_name: '己', payment_status: 'pending_report', amount_pending_confirmation: true, pending_confirmation_amount: 4400,
+        payable_outstanding: 4400, due_date: '2026-09-01' },
+    ], [], '2026-10-07');
+    expect([r.owed_now, r.owed_later, r.overdue_days, r.waiting_confirm]).toEqual([0, 0, 0, 1]);
+    expect([r.pending_review_amount, r.pending_review_count]).toEqual([4400, 1]);
+    expect(r.contracts[0]).toMatchObject({ owed: 0, pending_review: 4400 });
+  });
+});

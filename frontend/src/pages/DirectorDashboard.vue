@@ -889,10 +889,12 @@ const paymentAlertBadgeText = (s) => {
 const unpaidAlertLabel = (s) => {
   if (s.payment_status === 'partial') return '繳一部分';
   if (s.payment_status === 'pending_report') return '待核對入帳';
+  if (s.payment_status === 'amount_review') return '金額待確認';
   return '未繳';
 };
 
-const isPaymentNoticeAvailable = (student) => isPaymentNoticeStatus(student?.payment_status);
+// Founder D2 (#4121 review): no parent slip while the amount is 金額待確認 (the slip endpoint answers 422 too).
+const isPaymentNoticeAvailable = (student) => isPaymentNoticeStatus(student?.payment_status) && student?.amount_pending_confirmation !== true;
 
 const paymentStudentClassId = (student) => Number(student?.student_class_id || student?.id || 0);
 
@@ -1165,6 +1167,7 @@ const loadData = async () => {
           remaining_lessons: c.remaining_sessions ?? c.RemainingSessions ?? 0,
           alert_type: c.alert_type || 'unpaid',
           payment_status: c.payment_status || null,
+          amount_pending_confirmation: c.amount_pending_confirmation === true,
           days_until_settlement: c.days_until_settlement ?? null,
           due_date: c.due_date ?? null,
           settlement_day: c.settlement_day ?? null,
