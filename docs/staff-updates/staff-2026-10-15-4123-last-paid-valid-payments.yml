@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-15-4123-last-paid-valid-payments
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 「最近繳費」日期只看有效收款
+    summary: 帳務中心的「最近繳費」日期不再顯示撤銷的款項或舊的繳費日期。
+    items:
+      - category: fixed
+        text: 「最近繳費」以有效的收款紀錄為準；撤銷或沖銷的款項不算。
+    source_refs:
+      - "changelog:2026-10-15:4123-last-paid-valid-payments"
