@@ -37,7 +37,8 @@ def is_transient_failure(returncode: int, stdout: str, stderr: str) -> bool:
     body_empty = not (stdout or "").strip()
     if returncode == 0:
         return body_empty
-    if _SERVER_ERROR.search(stderr or "") or _SERVER_ERROR.search(stdout or ""):
+    # stderr only: a paginated 4xx body on stdout may quote "HTTP 502" text.
+    if _SERVER_ERROR.search(stderr or ""):
         return True
     return body_empty and _EMPTY_JSON_MARKER in (stderr or "")
 

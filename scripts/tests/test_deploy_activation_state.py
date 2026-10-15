@@ -2517,6 +2517,22 @@ class GhApiRetryTest(unittest.TestCase):
         self.assertIn("gh api invalid JSON", str(error))
         self.assertEqual(len(calls), 1)
 
+    def test_server_error_text_on_stdout_only_is_not_retried(self):
+        body = '[{"message": "upstream said HTTP 502 earlier"}]'
+        error, calls, sleeps, _ = self._call([(body, "gh: Not Found (HTTP 404)", 1)])
+        self.assertIsInstance(error, RuntimeError)
+        self.assertIn("HTTP 404", str(error))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(sleeps, [])
+
+    def test_attempts_below_one_fails_closed_without_calling(self):
+        from scripts.governance.gh_api_retry import gh_api_json
+
+        calls = []
+        with self.assertRaises(ValueError):
+            gh_api_json(self.PATH, attempts=0, runner=lambda *a, **k: calls.append(a), sleep=lambda _: None)
+        self.assertEqual(calls, [])
+
     def test_attempt_count_follows_argument(self):
         error, calls, _, _ = self._call([self.EMPTY] * 5, attempts=5)
         self.assertIsInstance(error, RuntimeError)
