@@ -142,6 +142,38 @@ function subjectUnitsPath(start, end, branchId) {
   return `/api/v1/finance/subject-units/timeline?${params}`;
 }
 
+// #4130: each UI switch must be paired with the timeline response for exactly
+// the range/campus it asked for. Matching "any 200 timeline response" let a
+// wait resolve on a stale response from an earlier edit, and silently ignored a
+// 403/5xx for the requested campus, so the wait hung until the 45s test limit
+// without naming the step. The listener is attached before the action
+// (Promise.all), the wait is bounded, and a non-200 answer fails at once.
+const SUBJECT_UNITS_RESPONSE_TIMEOUT_MS = 15_000;
+
+function isSubjectUnitsTimelineFor(url, { start, end, branchId }) {
+  const parsed = new URL(url);
+  return parsed.pathname.endsWith('/v1/finance/subject-units/timeline')
+    && parsed.searchParams.get('start') === start
+    && parsed.searchParams.get('end') === end
+    && parsed.searchParams.get('branch_id') === String(branchId);
+}
+
+async function switchAndAwaitSubjectUnits(page, step, expected, action) {
+  const label = `${step} (${expected.start}—${expected.end}, branch ${expected.branchId})`;
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (candidate) => isSubjectUnitsTimelineFor(candidate.url(), expected),
+      { timeout: SUBJECT_UNITS_RESPONSE_TIMEOUT_MS },
+    ).catch((error) => {
+      throw new Error(`${label}: the page sent no subject-units timeline request for this range/campus `
+        + `within ${SUBJECT_UNITS_RESPONSE_TIMEOUT_MS}ms (${error?.name || 'Error'})`);
+    }),
+    action(),
+  ]);
+  expect(response.status(), `${label}: subject-units timeline returned HTTP ${response.status()}`).toBe(200);
+  return response;
+}
+
 function displayedNumber(text) {
   return Number(String(text).replace('%', '').trim());
 }
@@ -363,17 +395,21 @@ test.describe('production acceptance — calendar/course parity', () => {
     expect(branchIds.length, 'director session must expose at least two campuses for the campus-switch check').toBeGreaterThan(1);
 
     const initialBranch = branchIds.includes(String(BRANCH_ID)) ? String(BRANCH_ID) : branchIds[0];
-    await branchSelect.selectOption(initialBranch);
-    await page.waitForTimeout(250);
+    // Only switch when the value differs: re-selecting the current campus is
+    // not a switch, and its response would be indistinguishable from the next one.
+    if (await branchSelect.inputValue() !== initialBranch) {
+      await branchSelect.selectOption(initialBranch);
+    }
     const periodStart = START;
     const periodEnd = END;
     const dateInputs = page.locator('[data-guide="subject-units-header"] input[type="date"]');
     await expect(dateInputs).toHaveCount(2);
+    // fill() on a date input already dispatches input + change, and every change
+    // refetches; an extra dispatchEvent('change') only queued a duplicate request.
     await dateInputs.nth(0).fill(periodStart);
-    const initialPeriodResponse = page.waitForResponse((response) => response.url().includes('/api/v1/finance/subject-units/timeline') && response.status() === 200);
-    await dateInputs.nth(1).fill(periodEnd);
-    await dateInputs.nth(1).dispatchEvent('change');
-    await initialPeriodResponse;
+    await switchAndAwaitSubjectUnits(page, 'initial period',
+      { start: periodStart, end: periodEnd, branchId: initialBranch },
+      () => dateInputs.nth(1).fill(periodEnd));
     await expect(page.locator('.contribution-table tbody tr').first()).toBeVisible({ timeout: 15_000 });
     const initial = await assertSubjectUnitsRenderedAgainstApi(page, request, token, periodStart, periodEnd, initialBranch);
 
@@ -387,19 +423,20 @@ test.describe('production acceptance — calendar/course parity', () => {
     expect(descendingRaw).toEqual([...descendingRaw].sort((a, b) => b - a));
 
     const switchedBranch = branchIds.find((branchId) => branchId !== initialBranch);
-    const branchResponse = page.waitForResponse((response) => response.url().includes('/api/v1/finance/subject-units/timeline') && response.status() === 200);
-    await branchSelect.selectOption(switchedBranch);
-    await branchResponse;
+    await switchAndAwaitSubjectUnits(page, 'campus switch',
+      { start: periodStart, end: periodEnd, branchId: switchedBranch },
+      () => branchSelect.selectOption(switchedBranch));
     await expect(page.locator('.contribution-table tbody tr').first()).toBeVisible({ timeout: 15_000 });
     const switchedCampus = await assertSubjectUnitsRenderedAgainstApi(page, request, token, periodStart, periodEnd, switchedBranch);
 
     const widerStart = `${periodStart.slice(0, 7)}-01`;
     const widerEnd = monthEndFor(periodStart);
+    expect(`${widerStart}..${widerEnd}`, 'period switch must change the range (SMOKE_START_DATE..SMOKE_END_DATE already spans the whole month)')
+      .not.toBe(`${periodStart}..${periodEnd}`);
     await dateInputs.nth(0).fill(widerStart);
-    const periodResponse = page.waitForResponse((response) => response.url().includes('/api/v1/finance/subject-units/timeline') && response.status() === 200);
-    await dateInputs.nth(1).fill(widerEnd);
-    await dateInputs.nth(1).dispatchEvent('change');
-    await periodResponse;
+    await switchAndAwaitSubjectUnits(page, 'period switch',
+      { start: widerStart, end: widerEnd, branchId: switchedBranch },
+      () => dateInputs.nth(1).fill(widerEnd));
     await expect(page.locator('.contribution-table tbody tr').first()).toBeVisible({ timeout: 15_000 });
     const switchedPeriod = await assertSubjectUnitsRenderedAgainstApi(page, request, token, widerStart, widerEnd, switchedBranch);
 
