@@ -162,6 +162,40 @@ final class TriageBillingSnapshotTest extends TestCase
         $this->assertTrue($fromEnv);
     }
 
+    public function test_a_close_landing_while_a_link_is_created_leaves_no_link_after_reopen(): void
+    {
+        $course = $this->course($this->campus);
+        $bug = $this->bug($this->campus, 'new');
+        $sql = [];
+        DB::listen(function ($query) use ($bug, &$sql): void {
+            $sql[] = $query->sql;
+            // The concurrent close commits after store()'s unlocked checks and before its locked re-check.
+            if (str_contains($query->sql, 'inner join `Student`')) {
+                BugReport::query()->whereKey($bug->id)->first()->forceFill(['status' => 'closed'])->save();
+            }
+        });
+        $this->link($bug, $course)->assertStatus(422)->assertJsonPath('code', 'bug_report_not_open');
+        $this->assertNotEmpty(preg_grep('/from `bug_reports` where .* for update$/', $sql));
+        $bug->refresh()->forceFill(['status' => 'triaged'])->save(); // reopen
+        $this->assertSame(0, DB::table('bug_report_contract_links')->count());
+        $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound();
+    }
+
+    public function test_migration_refuses_an_existing_table_missing_its_unique_index(): void
+    {
+        $migration = require base_path('database/migrations/2026_10_14_200000_create_bug_report_contract_links_table.php');
+        $migration->up(); // the complete table passes
+        // A session TEMPORARY table shadows the real one without an implicit commit: no unique index, like a half-failed run.
+        DB::statement('CREATE TEMPORARY TABLE bug_report_contract_links (id bigint unsigned PRIMARY KEY, bug_report_id bigint unsigned NOT NULL, active tinyint(1) NULL)');
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('missing: unique index uniq_bug_contract_link_active');
+        try {
+            $migration->up();
+        } finally {
+            DB::statement('DROP TEMPORARY TABLE bug_report_contract_links');
+        }
+    }
+
     public function test_link_creation_validates_campus_open_report_existence_and_one_live_link_per_report(): void
     {
         $course = $this->course($this->campus);

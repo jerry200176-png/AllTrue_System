@@ -51,19 +51,23 @@ class TriageContractLinkController extends Controller
         }
 
         try {
-            $link = DB::transaction(fn () => BugReportContractLink::create([
-                'bug_report_id' => $bugId,
-                'student_class_id' => $courseId,
-                'created_by' => (int) $user->getKey(),
-                'created_at' => now(),
-                'active' => true,
-            ]));
+            // Lock the report and re-check it is still open: a concurrent close either commits first (refused here)
+            // or waits for this insert and then revokes it through BugReport::saved. No link outlives a close.
+            $link = DB::transaction(function () use ($bugId, $courseId, $user) {
+                $locked = BugReport::query()->whereKey($bugId)->lockForUpdate()->first(['id', 'status']);
+                return $locked instanceof BugReport && in_array((string) $locked->getAttribute('status'), BugReportContractLink::OPEN_REPORT_STATUSES, true)
+                    ? BugReportContractLink::create(['bug_report_id' => $bugId, 'student_class_id' => $courseId, 'created_by' => (int) $user->getKey(), 'created_at' => now(), 'active' => true])
+                    : null;
+            });
         } catch (QueryException $e) {
             // Only uniq_bug_contract_link_active (one live contract per report) is a 409; anything else is a real error.
             if ((int) ($e->errorInfo[1] ?? 0) !== 1062 || stripos($e->getMessage(), 'uniq_bug_contract_link_active') === false) {
                 throw $e;
             }
             return response()->json(['message' => 'This report already has an active contract link', 'code' => 'link_exists'], 409);
+        }
+        if (!$link instanceof BugReportContractLink) {
+            return $this->reject('bug_report_not_open');
         }
         $this->audit('triage_contract_link.created', $user, $link);
 
