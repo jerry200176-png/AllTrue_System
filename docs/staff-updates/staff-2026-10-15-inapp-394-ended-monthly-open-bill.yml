@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-15-inapp-394-ended-monthly-open-bill
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 結束的月結課，未繳帳單不再消失
+    summary: 已結束的月結合約還有未繳帳單、但金額要核對時，會列在「金額待確認」，不再寫已收。
+    items:
+      - category: fixed
+        text: 已開出但還沒收到錢、金額需要核對的帳單，會另外列在「金額待確認」，不算進未收合計；確認金額後再收款。
+    source_refs:
+      - "changelog:2026-10-15:inapp-394-ended-monthly-open-bill"
