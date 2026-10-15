@@ -1117,6 +1117,35 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertNull($this->tuitionRow($token, (int) $course->ID)['last_paid_at'], 'the stale PayDate must not come back once the only receipt is voided');
     }
 
+    public function test_legacy_backfilled_receipt_voided_then_repaid_shows_the_repayment_date(): void
+    {
+        // #4149 review: the backfill links its receipt only through PaymentReport.payment_id; the report void's reversal
+        // carries the report id. The repayment after the void is the 最近繳費 date, not the voided legacy receipt.
+        $token = $this->createDirectorToken([1], 'lp-legacy-void-repay@example.com');
+        $student = $this->plainStudent('舊收據撤銷後重繳');
+        $course = $this->createCountModeClass($student->id, ['Paid' => 1, 'PayDate' => '2026-03-01', 'RemainingSessions' => 2]);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        try {
+            Carbon::setTestNow('2026-04-20 10:00:00');
+            $this->artisan('payments:backfill-legacy')->assertExitCode(0);
+            $report = PaymentReport::query()->where('StudentClassID', $course->ID)->firstOrFail();
+            $this->assertNotNull($report->payment_id);
+            $this->assertNull(Payment::query()->findOrFail($report->payment_id)->payment_report_id, 'backfill shape: no payment_report_id');
+            $this->assertSame('2026-03-01', $this->tuitionRow($token, (int) $course->ID)['last_paid_at']);
+
+            $this->withHeaders($headers)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => 'wrong legacy receipt'])->assertOk();
+            $this->assertNull($this->tuitionRow($token, (int) $course->ID)['last_paid_at']);
+
+            Carbon::setTestNow('2026-05-06 10:00:00');
+            $this->withHeaders($headers)->postJson("/api/v1/invoices/{$report->InvoiceID}/payments", ['Amount' => 5000, 'PaidAt' => '2026-05-05', 'Method' => 'cash'])->assertSuccessful();
+
+            $this->assertSame('2026-05-05', $this->tuitionRow($token, (int) $course->ID)['last_paid_at']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_flag_only_contract_without_payment_history_keeps_paydate_fallback(): void
     {
         $token = $this->createDirectorToken([1], 'lp-flag-only@example.com');

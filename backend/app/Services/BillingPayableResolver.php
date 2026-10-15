@@ -334,10 +334,10 @@ class BillingPayableResolver
     /**
      * Batch-fetch the latest valid receipt date (Y-m-d) per StudentClass ID (#4123), from the same net Payment ledger the
      * resolver projects (mayOwe / InvoiceAmountReconciliationService): a receipt is a positive, non-void row; a reversal is
-     * a negative row or a `Method='void'` row of any sign. Per non-void invoice, each reversal first cancels the receipt of
-     * its own payment report (same payment_report_id), and what is left cancels the newest receipts first. A date counts
-     * only from a receipt that still has a positive amount after that, so an invoice whose net applied is 0 gives no date.
-     * Void invoices are ignored.
+     * a negative row or a `Method='void'` row of any sign. Per non-void invoice, reversals are applied in write order; see
+     * latestUnreversedReceiptDate for how each one is matched to the receipt it reverses. A date counts only from a receipt
+     * that still has a positive amount after that, so an invoice whose net applied is 0 gives no date. Void invoices are
+     * ignored.
      *
      * @param  int[]  $studentClassIds
      * @return array<int, string>  only classes that have a dated payment
@@ -352,7 +352,10 @@ class BillingPayableResolver
             ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->whereIn('Invoice.StudentClassID', $studentClassIds)
             ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
-            ->select('Invoice.StudentClassID', 'Payment.InvoiceID', 'Payment.id', 'Payment.Amount', 'Payment.Method', 'Payment.PaidAt', 'Payment.payment_report_id')
+            // a legacy-backfilled receipt is linked only one way, via payment_reports.payment_id (BackfillLegacyPayments)
+            ->leftJoin('payment_reports as reversed_report', 'reversed_report.id', '=', 'Payment.payment_report_id')
+            ->select('Invoice.StudentClassID', 'Payment.InvoiceID', 'Payment.id', 'Payment.Amount', 'Payment.Method', 'Payment.PaidAt',
+                'Payment.payment_report_id', 'reversed_report.payment_id as report_payment_id')
             ->orderBy('Payment.id')
             ->get();
 
@@ -390,39 +393,76 @@ class BillingPayableResolver
             ->all();
     }
 
-    /** @param  Collection<int, object>  $payments  one invoice's Payment rows */
+    /**
+     * One invoice's ledger, rows in write (id) order. Each reversal, in write order, cancels:
+     *  1. the receipt it is explicitly linked to: the receipt with the same payment_report_id, or the receipt its payment
+     *     report points to through payment_reports.payment_id (legacy backfill rows carry no payment_report_id);
+     *  2. what is left, only receipts written before it (a reversal cannot reverse a later repayment): the single earlier
+     *     receipt whose standing amount equals the remainder, otherwise the oldest earlier receipts first, so an ambiguous
+     *     reversal fails safe to keeping the newest receipt's date;
+     *  3. anything still left (no earlier receipt to reverse) nets against later receipts, oldest first, so an invoice whose
+     *     net applied is 0 never gives a date.
+     *
+     * @param  Collection<int, object>  $payments
+     */
     private function latestUnreversedReceiptDate(Collection $payments): ?string
     {
         $isReversal = fn ($p) => (int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void';
         $receipts = $payments->filter(fn ($p) => !$isReversal($p) && (int) ($p->Amount ?? 0) > 0)
-            ->map(fn ($p) => ['left' => (int) $p->Amount, 'paid_at' => $p->PaidAt, 'report' => $p->payment_report_id, 'id' => (int) $p->id])
+            ->map(fn ($p) => ['left' => (int) $p->Amount, 'paid_at' => (string) ($p->PaidAt ?? ''), 'id' => (int) $p->id,
+                'report' => $p->payment_report_id === null ? null : (int) $p->payment_report_id])
             ->values()->all();
-        $unlinked = 0;
+        // oldest first: by receipt date, then write order
+        usort($receipts, fn ($a, $b) => [$a['paid_at'], $a['id']] <=> [$b['paid_at'], $b['id']]);
+        $orphaned = 0;
         foreach ($payments->filter($isReversal) as $reversal) {
             $amount = abs((int) ($reversal->Amount ?? 0));
-            foreach ($receipts as &$receipt) {
-                if ($amount > 0 && $reversal->payment_report_id !== null && $receipt['report'] !== null
-                    && (int) $receipt['report'] === (int) $reversal->payment_report_id) {
-                    $take = min($amount, $receipt['left']);
-                    $receipt['left'] -= $take;
-                    $amount -= $take;
-                }
+            $report = $reversal->payment_report_id === null ? null : (int) $reversal->payment_report_id;
+            $reportPayment = ($reversal->report_payment_id ?? null) === null ? null : (int) $reversal->report_payment_id;
+            if ($report !== null || $reportPayment !== null) {
+                $amount = $this->cancelReceipts($receipts, $amount, fn ($r) => ($report !== null && $r['report'] === $report)
+                    || ($reportPayment !== null && $r['id'] === $reportPayment));
             }
-            unset($receipt);
-            $unlinked += $amount;
+            $earlier = fn ($r) => $r['id'] < (int) $reversal->id;
+            $exact = array_keys(array_filter($receipts, fn ($r) => $earlier($r) && $r['left'] > 0 && $r['left'] === $amount));
+            if ($amount > 0 && count($exact) === 1) {
+                $receipts[$exact[0]]['left'] = 0;
+                $amount = 0;
+            }
+            $orphaned += $this->cancelReceipts($receipts, $amount, $earlier);
         }
-        // newest receipts are cancelled first
-        usort($receipts, fn ($a, $b) => [(string) $b['paid_at'], $b['id']] <=> [(string) $a['paid_at'], $a['id']]);
+        $this->cancelReceipts($receipts, $orphaned, fn () => true);
+
         $latest = null;
         foreach ($receipts as $receipt) {
-            $take = min($unlinked, $receipt['left']);
-            $unlinked -= $take;
-            if ($receipt['left'] - $take > 0 && $receipt['paid_at'] && ($latest === null || (string) $receipt['paid_at'] > $latest)) {
-                $latest = (string) $receipt['paid_at'];
+            if ($receipt['left'] > 0 && $receipt['paid_at'] !== '' && ($latest === null || $receipt['paid_at'] > $latest)) {
+                $latest = $receipt['paid_at'];
             }
         }
 
         return $latest === null ? null : substr($latest, 0, 10);
+    }
+
+    /**
+     * Cancel up to $amount from the matching receipts in their (oldest-first) order; returns what could not be cancelled.
+     *
+     * @param  array<int, array{left: int, paid_at: string, id: int, report: int|null}>  $receipts
+     */
+    private function cancelReceipts(array &$receipts, int $amount, callable $matches): int
+    {
+        foreach ($receipts as &$receipt) {
+            if ($amount <= 0) {
+                break;
+            }
+            if ($receipt['left'] > 0 && $matches($receipt)) {
+                $take = min($amount, $receipt['left']);
+                $receipt['left'] -= $take;
+                $amount -= $take;
+            }
+        }
+        unset($receipt);
+
+        return $amount;
     }
 
     /** @return array<string, int|string|null> */

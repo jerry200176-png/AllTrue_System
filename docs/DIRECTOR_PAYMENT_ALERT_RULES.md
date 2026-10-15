@@ -24,7 +24,11 @@ last_reviewed: 2026-10-15
 
 - 只看**非作廢**帳單（`Invoice.Status != 'void'`）上的 Payment。
 - **收款**＝金額 > 0 且 `Method != 'void'` 的列；**沖銷**＝金額 < 0 的列，或 `Method = 'void'` 的列（不論正負，與 `PaidStatusParityTest` 的 `void_negative_cash`／`void_method_positive` 同一套 ledger）。
-- 每張帳單內，沖銷先抵銷同一筆付款回報（相同 `payment_report_id`）的收款，其餘從**最新**的收款往回抵。只有抵銷後仍 > 0 的收款能提供日期；整張帳單淨收款為 0 時沒有日期。
+- 每張帳單內，沖銷依寫入順序（`Payment.id`）逐筆處理：
+  1. 先抵銷它明確對應的收款：相同 `payment_report_id` 的收款，或其付款回報 `payment_reports.payment_id` 指向的收款（`BackfillLegacyPayments` 補建的舊收款只有這個單向關聯）。
+  2. 其餘只能抵銷**比它早寫入**的收款（撤銷不能抵掉之後才重繳的款）：若剛好只有一筆早於它、剩餘金額相同的收款，就抵那一筆；否則從**最舊**的收款開始抵，無法確定時寧可保留最新收款的日期，不顯示更舊的日期。
+  3. 若前面沒有收款可抵，剩餘才從最舊的後續收款抵，確保淨收款為 0 時沒有日期。
+- 只有抵銷後仍 > 0 的收款能提供日期；整張帳單淨收款為 0 時沒有日期。
 - 舊欄位 `StudentClass.PayDate` **只**在這門課**完全沒有任何 Payment 紀錄**時（含作廢帳單上的列、沖銷列都算有紀錄）才當作備援顯示；只要有任何 Payment 紀錄，就只看上述有效收款，避免收款後例外作廢（`exceptionVoidInvoice`）時舊日期又跑回來。
 - `last_paid_at` 只是顯示資訊，**不是**「已收」的依據；「已收」只看 `payment_status`（見 `ContractMoneyState::alertStatus`）。只有 `Paid=1`、沒有任何 Payment 的舊合約如何顯示，待 Founder 決定（#4114），本規則不改其現行顯示。
 
