@@ -362,7 +362,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
-import { isPaymentNoticeStatus, paymentCenterIntentFor } from '../lib/paymentStatus.js';
+import { canOfferPaymentSlip, paymentCenterIntentFor } from '../lib/paymentStatus.js';
 import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
@@ -893,7 +893,7 @@ const unpaidAlertLabel = (s) => {
   return '未繳';
 };
 
-const isPaymentNoticeAvailable = (student) => isPaymentNoticeStatus(student?.payment_status);
+const isPaymentNoticeAvailable = (student) => canOfferPaymentSlip(student);
 
 const paymentStudentClassId = (student) => Number(student?.student_class_id || student?.id || 0);
 
@@ -1166,6 +1166,7 @@ const loadData = async () => {
           remaining_lessons: c.remaining_sessions ?? c.RemainingSessions ?? 0,
           alert_type: c.alert_type || 'unpaid',
           payment_status: c.payment_status || null,
+          amount_pending_confirmation: c.amount_pending_confirmation === true,
           days_until_settlement: c.days_until_settlement ?? null,
           due_date: c.due_date ?? null,
           settlement_day: c.settlement_day ?? null,

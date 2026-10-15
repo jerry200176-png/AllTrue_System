@@ -1379,7 +1379,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
-import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
+import { canOfferPaymentSlip, isCourseSettled } from '../lib/paymentStatus.js';
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
 import { isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
@@ -4966,7 +4966,7 @@ const paymentSlipOpen = ref(false);
 const paymentSlipStudentClassId = ref(null);
 
 const isPaymentNoticeAvailable = (course) =>
-  shouldShowPaymentAction(course) && isPaymentNoticeStatus(course?.payment_status);
+  shouldShowPaymentAction(course) && canOfferPaymentSlip(course);
 
 const openPaymentSlip = (course) => {
   const studentClassId = Number(course?.id || 0);

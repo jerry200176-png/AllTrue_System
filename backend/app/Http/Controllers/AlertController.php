@@ -417,7 +417,7 @@ class AlertController extends Controller
                     // Founder D2 (in-app #394): a review_required bill stays findable, but its amount is still to be
                     // confirmed. Its own status keeps it out of every confirmed-unpaid count and total. The amount is
                     // the resolver's `outstanding`, the same field 已結清 → 待核對 (AccountingController::settledCourses) shows.
-                    if (($stopped['status'] ?? null) === 'review_required') {
+                    if ($sc !== null && self::isAmountPendingConfirmation($sc, $stopped)) {
                         $amountPendingConfirmation = true;
                         // A pending parent report stays confirmable (確認入帳 / 待核對入帳); the amount is still unconfirmed.
                         $paymentStatus = $pendingReportId !== null ? 'pending_report' : 'amount_review';
@@ -531,6 +531,20 @@ class AlertController extends Controller
             'settlement_day'     => $c->settlement_day !== null ? (int) $c->settlement_day : null,
             'due_date'           => null,
         ];
+    }
+
+    /**
+     * Founder D2 (in-app #394): a stopped contract whose review_required verdict comes from issued invoices that still
+     * owe. Listed as 金額待確認 in the queue, kept out of confirmed totals, and refused a parent slip.
+     *
+     * @param array<string, mixed> $verdict BillingPayableResolver::courseStatusesByStudentClassIds() row
+     */
+    private static function isAmountPendingConfirmation(StudentClass $sc, array $verdict): bool
+    {
+        return (int) ($sc->getAttribute('Stop') ?? 0) === 1
+            && ($verdict['status'] ?? null) === 'review_required'
+            && ($verdict['source'] ?? null) === 'invoice'
+            && (int) ($verdict['outstanding'] ?? 0) > 0;
     }
 
     private function mapPendingSettlementAlert(StudentClass $c, array $subjectNameMap = []): array
@@ -765,7 +779,12 @@ class AlertController extends Controller
         // ARCH2: a slip exists only while the Verdict says the contract owes. Paid=1 beside an unpaid invoice still gets
         // its slip (the money is owed); Payment rows that settle a Paid=0 contract refuse it. No Verdict answer
         // (review_required) keeps the legacy flag test.
-        $settlement = $this->payableResolver->courseStatusesByStudentClassIds([$studentClassId], [$sc])[$studentClassId]['status'] ?? null;
+        $verdict = $this->payableResolver->courseStatusesByStudentClassIds([$studentClassId], [$sc])[$studentClassId] ?? [];
+        $settlement = $verdict['status'] ?? null;
+        // Founder D2 (#4121 review): an issued bill whose amount is still to be confirmed never reaches a parent.
+        if (self::isAmountPendingConfirmation($sc, $verdict)) {
+            return response()->json(['message' => '金額待確認，請先確認應收金額'], 422);
+        }
         if ($settlement === 'free') {
             return response()->json(['message' => '這門課是免費課程，不需要繳費單'], 422);
         }

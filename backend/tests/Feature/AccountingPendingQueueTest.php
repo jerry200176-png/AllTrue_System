@@ -198,6 +198,26 @@ class AccountingPendingQueueTest extends TestCase
         $this->assertSame($this->row($c)['outstanding_amount'], $alert['pending_confirmation_amount']);
     }
 
+    public function test_tuition_slip_is_refused_while_the_amount_is_pending_confirmation(): void
+    {
+        $c = $this->reviewMonthlyCourse();
+        $invoice = $this->invoice($c, 4400);
+        $invoice->forceFill(['billing_period' => '2026-09'])->save();
+        $this->assertTrue($this->tuitionRow($c)['amount_pending_confirmation']);
+
+        $this->getJson("/api/v1/alerts/tuition-slip/{$c->ID}", $this->headers)
+            ->assertStatus(422)
+            ->assertJsonPath('message', '金額待確認，請先確認應收金額');
+    }
+
+    public function test_tuition_slip_still_works_for_a_confirmed_unpaid_stopped_contract(): void
+    {
+        $c = $this->course(['closed_reason' => 'settled']);
+        $this->invoice($c, 8800);
+
+        $this->getJson("/api/v1/alerts/tuition-slip/{$c->ID}", $this->headers)->assertOk();
+    }
+
     public function test_confirmed_unpaid_rows_are_not_marked_pending_confirmation(): void
     {
         $c = $this->course(['closed_reason' => 'settled']);
