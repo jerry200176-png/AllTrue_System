@@ -68,13 +68,19 @@ export async function closeCourseNoRenew({
  * After a close, a status-filtered reload (「進行中」 → status=active) drops the now-stopped course.
  * Fetch that student's courses without the status filter and append the closed one, so a paid
  * close shows under 歷史課程 and an unpaid settled_pending close stays visible with its label.
+ * `loadSessions(next)` then loads sessions for the new list the same way the list reload does.
  * Returns the same array when nothing needs to change.
  */
-export async function retainClosedCourseInList({ courses = [], course, fetchStudentCourses }) {
+export async function retainClosedCourseInList({ courses = [], course, fetchStudentCourses, loadSessions }) {
   const id = Number(course?.id ?? course?.ID ?? 0);
   if (!id || courses.some((x) => Number(x?.id ?? x?.ID) === id)) return courses;
   const studentId = course?.student_id ?? course?.StudentID;
   if (studentId == null || studentId === '') return courses;
   const fresh = (await fetchStudentCourses(studentId) || []).find((x) => Number(x?.id ?? x?.ID) === id);
-  return fresh ? [...courses, fresh] : courses;
+  if (!fresh) return courses;
+  const next = [...courses, fresh];
+  // The reload loaded ClassSessions only for its own rows; without this the appended course has
+  // none cached and its 歷史課程 row shows 0 attended lessons (PR #4159 review round 2).
+  if (typeof loadSessions === 'function') await loadSessions(next);
+  return next;
 }

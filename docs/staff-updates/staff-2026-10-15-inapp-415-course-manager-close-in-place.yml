@@ -5,11 +5,11 @@ updates:
       - director
     importance: digest
     title: 結束課程不再跳到學生管理
-    summary: 在課程查找的「管理課程」按結束課程，會留在原頁面，課程移到歷史課程。
+    summary: 管理課程裡結束課程會留在原頁；已收款移到歷史課程，未收款留清單標「課已結束，尚未收款」。
     items:
       - category: fixed
         text: 「管理課程」裡按「結束課程」直接結案，不再跳到學生管理頁。
       - category: improved
-        text: 結案後自動展開該學生的「歷史課程」，馬上看得到剛結束的課。
+        text: 結案後自動展開該學生的課程；已收款的課會出現在「歷史課程」，尚未收款的課照舊留在清單標「課已結束，尚未收款」。
     source_refs:
       - "changelog:2026-10-15:inapp-415-course-manager-close-in-place"

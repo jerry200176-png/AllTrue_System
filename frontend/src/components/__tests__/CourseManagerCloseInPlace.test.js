@@ -37,4 +37,14 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
     expect(close).not.toContain("params.set('status'");
     expect(close).not.toContain('filters.value');
   });
+
+  // PR #4159 review round 2: the retained course gets the same session load as loadCourses() results.
+  it('loads sessions for the retained course with the loadCourses() loaders, guarded by the request id', () => {
+    const close = source.slice(source.indexOf('async function closeCourseInPlace('), source.indexOf('const courses = ref([]);'));
+    expect(close).toMatch(/loadSessions: async \(list\) => \{[\s\S]*?await loadSessionsForCourseList\(list, token, \(\) => requestId === courseLoadRequestId\);/);
+    const helper = source.slice(source.indexOf('async function loadSessionsForCourseList('), source.indexOf('const courses = ref([]);'));
+    expect(helper).toContain('await loadClassSessionsForCourses(list, token, isCurrent)');
+    expect(helper).toContain('await loadEffectiveSessionDates(list, token, isCurrent)');
+    expect(helper).toContain('sessionDataLoadFailed.value = true');
+  });
 });

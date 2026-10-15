@@ -1592,9 +1592,24 @@ async function retainClosedCourse(course) {
       const list = json?.data ?? json;
       return (Array.isArray(list) ? list : (list?.data ?? [])).map(normalizeLaravelCourse);
     },
+    loadSessions: async (list) => {
+      const token = await getAccessToken();
+      if (!token) return;
+      await loadSessionsForCourseList(list, token, () => requestId === courseLoadRequestId);
+    },
   });
   // A newer list load (filter/page change) wins; never merge into a different view.
   if (next !== courses.value && requestId === courseLoadRequestId) courses.value = next;
+}
+
+// Same ClassSession + effective-date load loadCourses() runs for its result rows.
+async function loadSessionsForCourseList(list, token, isCurrent) {
+  const sessionsOk = await loadClassSessionsForCourses(list, token, isCurrent);
+  if (!isCurrent()) return;
+  if (sessionsOk === false) sessionDataLoadFailed.value = true;
+  const effectiveSessionsOk = await loadEffectiveSessionDates(list, token, isCurrent);
+  if (!isCurrent()) return;
+  if (effectiveSessionsOk === false) sessionDataLoadFailed.value = true;
 }
 
 const courses = ref([]);

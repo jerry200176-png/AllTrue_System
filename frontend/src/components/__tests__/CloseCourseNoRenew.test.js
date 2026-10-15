@@ -173,6 +173,30 @@ describe('post-close reload under the 進行中 (status=active) filter', () => {
     expect(fetchStudentCourses).not.toHaveBeenCalled();
   });
 
+  // PR #4159 review round 2: the appended course must get its ClassSessions loaded too,
+  // otherwise its 歷史課程 row shows 0 attended lessons.
+  it('loads sessions for the list that includes the retained course', async () => {
+    const loadSessions = vi.fn(async () => {});
+    const courses = listActive();
+    const next = await retainClosedCourseInList({
+      courses,
+      course: { ...backend.paid, Stop: 0 },
+      fetchStudentCourses: async () => [other, backend.paid, backend.unpaid],
+      loadSessions,
+    });
+    expect(next.map((c) => c.id)).toEqual([7, 42]);
+    expect(loadSessions).toHaveBeenCalledTimes(1);
+    expect(loadSessions.mock.calls[0][0]).toBe(next);
+  });
+
+  it('does not reload sessions when nothing was appended', async () => {
+    const loadSessions = vi.fn();
+    const courses = [other, backend.paid];
+    await retainClosedCourseInList({ courses, course: backend.paid, fetchStudentCourses: vi.fn(), loadSessions });
+    await retainClosedCourseInList({ courses: [other], course: backend.paid, fetchStudentCourses: async () => [other], loadSessions });
+    expect(loadSessions).not.toHaveBeenCalled();
+  });
+
   it('a failed retain fetch is reported as a refresh failure, not a failed close', async () => {
     const { calls, deps } = setup();
     deps.course = { ...backend.paid, Stop: 0 };
