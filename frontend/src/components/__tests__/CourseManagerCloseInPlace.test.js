@@ -25,7 +25,8 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
 
   it('only runs the normal reload, then sets the hidden-course notice (no row injection)', () => {
     expect(closeFlow).toContain('reloadCourses: () => loadCourses(pagination.value.page)');
-    expect(closeFlow).toContain('closedCourseNotice.value = closedCourseHiddenNotice({ course, courses: courses.value, courseStatus: filters.value.course_status });');
+    expect(closeFlow).toContain('closedCourseNotice.value = closedCourseHiddenNotice({ course, courses: courses.value, courseStatus: filters.value.course_status, pendingReconciliation });');
+    expect(closeFlow).toContain('onClosed: ({ pendingReconciliation: pending }) => { pendingReconciliation = pending; },');
     expect(source).not.toContain('retainClosedCourse');
     expect(source).not.toContain('revealHistoryCourse');
     expect(closeFlow).not.toContain('courses.value =');

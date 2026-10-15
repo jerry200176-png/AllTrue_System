@@ -15,6 +15,7 @@ export async function closeCourseNoRenew({
   getSubjectLabel,
   isCourseSettled,
   reloadCourses,
+  onClosed,
   confirmImpl = globalThis.confirm,
   alertImpl = globalThis.alert,
 }) {
@@ -47,6 +48,7 @@ export async function closeCourseNoRenew({
     }, token);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) { alertImpl('結案失敗：' + (json.message || res.statusText)); return false; }
+    onClosed?.({ pendingReconciliation: Boolean(json.pending_reconciliation) });
     alertImpl(json.pending_reconciliation
       ? `已結案，課程保留在帳務中心的「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」分頁，尚未視為已收。`
       : '已結案，此課程不再出現在繳費／續課提醒中。');
@@ -66,17 +68,23 @@ export async function closeCourseNoRenew({
 const courseIdOf = (course) => Number(course?.id ?? course?.ID ?? 0);
 
 export const CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE = '已結束課程。目前篩選只顯示進行中，可切到「全部」或「歷史課程」查看。';
+// An unpaid close (settled_pending) stays in the main list under 「全部」, never in 歷史課程.
+export const CLOSED_PENDING_HIDDEN_BY_ACTIVE_FILTER_NOTICE = '已結束課程（尚未收款）。目前篩選只顯示進行中，可切到「全部」查看，課程會標「課已結束，尚未收款」。';
 export const CLOSED_HIDDEN_BY_FILTER_NOTICE = '已結束課程。目前的篩選或分頁沒有顯示這門課，可調整篩選後查看。';
 
 /**
  * in-app #415: after a close the page only runs its normal reload. When the current filter hides
  * the closed course (e.g. 進行中), return a non-error notice instead of injecting rows.
- * `canShowAll` means switching 課程狀態 to 「全部」 can reveal it.
+ * `canShowAll` means switching 課程狀態 to 「全部」 can reveal it. `pendingReconciliation` (the close
+ * response flag, i.e. closed_reason settled_pending) keeps 歷史課程 out of the text for unpaid closes.
  */
-export function closedCourseHiddenNotice({ course, courses = [], courseStatus = '' }) {
+export function closedCourseHiddenNotice({ course, courses = [], courseStatus = '', pendingReconciliation = false }) {
   const id = courseIdOf(course);
   if (!id || (courses || []).some((x) => courseIdOf(x) === id)) return null;
-  if (courseStatus === 'active') return { courseId: id, message: CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE, canShowAll: true };
+  if (courseStatus === 'active') {
+    const message = pendingReconciliation ? CLOSED_PENDING_HIDDEN_BY_ACTIVE_FILTER_NOTICE : CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE;
+    return { courseId: id, message, canShowAll: true };
+  }
   return { courseId: id, message: CLOSED_HIDDEN_BY_FILTER_NOTICE, canShowAll: Boolean(courseStatus) };
 }
 

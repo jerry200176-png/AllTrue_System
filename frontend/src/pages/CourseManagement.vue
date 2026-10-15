@@ -1567,6 +1567,7 @@ const goToStudentsCommercial = (course, intent = 'edit') => {
 const closedCourseNotice = ref(null);
 async function runCloseCourseInPlace(course) {
   closedCourseNotice.value = null;
+  let pendingReconciliation = false;
   const closed = await runCloseCourseNoRenew({
     course,
     studentName: course?.student_name || course?.student?.name,
@@ -1574,10 +1575,11 @@ async function runCloseCourseInPlace(course) {
     getSubjectLabel,
     isCourseSettled,
     reloadCourses: () => loadCourses(pagination.value.page),
+    onClosed: ({ pendingReconciliation: pending }) => { pendingReconciliation = pending; },
     confirmImpl: (message, opts) => askConfirm({ message, ...opts }),
   });
   if (closed) {
-    closedCourseNotice.value = closedCourseHiddenNotice({ course, courses: courses.value, courseStatus: filters.value.course_status });
+    closedCourseNotice.value = closedCourseHiddenNotice({ course, courses: courses.value, courseStatus: filters.value.course_status, pendingReconciliation });
   }
   return closed;
 }

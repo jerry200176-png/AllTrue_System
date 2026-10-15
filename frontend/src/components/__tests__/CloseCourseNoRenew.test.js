@@ -9,6 +9,7 @@ vi.mock('../../lib/authedFetch', () => ({
 
 import {
   CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE,
+  CLOSED_PENDING_HIDDEN_BY_ACTIVE_FILTER_NOTICE,
   RELOAD_AFTER_CLOSE_FAILED_MESSAGE,
   closeCourseNoRenew,
   closedCourseHiddenNotice,
@@ -126,6 +127,37 @@ describe('notice when the current filter hides the closed course', () => {
     expect(closedCourseHiddenNotice({ course: closed, courses: [other], courseStatus: 'active' }))
       .toEqual({ courseId: 42, message: CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE, canShowAll: true });
     expect(CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE).toBe('已結束課程。目前篩選只顯示進行中，可切到「全部」或「歷史課程」查看。');
+  });
+
+  // PR #4159 review: an unpaid close (settled_pending) stays in the main list, never in 歷史課程.
+  it('points an unpaid close only to 「全部」 and never mentions 歷史課程', () => {
+    const notice = closedCourseHiddenNotice({ course: closed, courses: [other], courseStatus: 'active', pendingReconciliation: true });
+    expect(notice).toEqual({ courseId: 42, message: CLOSED_PENDING_HIDDEN_BY_ACTIVE_FILTER_NOTICE, canShowAll: true });
+    expect(notice.message).toContain('「全部」');
+    expect(notice.message).not.toContain('歷史課程');
+    expect(notice.message).toContain('課已結束，尚未收款');
+  });
+
+  it('points a paid close to 「全部」 or 「歷史課程」', () => {
+    const notice = closedCourseHiddenNotice({ course: closed, courses: [other], courseStatus: 'active', pendingReconciliation: false });
+    expect(notice.message).toBe(CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE);
+    expect(notice.message).toContain('「歷史課程」');
+  });
+
+  it('reports the close outcome (pending reconciliation or not) from the server response', async () => {
+    for (const pending of [true, false]) {
+      const { deps } = setup({ response: { pending_reconciliation: pending } });
+      const outcomes = [];
+      deps.onClosed = (o) => outcomes.push(o);
+      expect(await closeCourseNoRenew(deps)).toBe(true);
+      expect(outcomes).toEqual([{ pendingReconciliation: pending }]);
+    }
+    const failed = setup();
+    const outcomes = [];
+    failed.deps.onClosed = (o) => outcomes.push(o);
+    authedFetch.mockImplementation(async () => ({ ok: false, statusText: 'Bad', json: async () => ({}) }));
+    expect(await closeCourseNoRenew(failed.deps)).toBe(false);
+    expect(outcomes).toEqual([]);
   });
 
   it('switching to 「全部」 reveals the course, so no notice remains', () => {
