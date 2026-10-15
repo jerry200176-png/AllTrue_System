@@ -13,8 +13,8 @@ use Tests\TestCase;
 
 /**
  * Founder D3 / B1 (#4132): 登記收款 can settle a new bill that corrects a voided one. Both notes cross-reference each
- * other (bill number, operator, reason), two audit rows share one correlation id, and a double submit never issues a
- * second bill.
+ * other (bill number, operator, reason), the invoice_corrections row is the permanent link (UNIQUE original bill), and
+ * a retry of the same request returns its original result.
  */
 class InvoiceCorrectionReissueTest extends TestCase
 {
@@ -38,11 +38,10 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertMatchesRegularExpression('/\[replaced_by: #INV-\d+-' . str_pad((string) $newId, 6, '0', STR_PAD_LEFT) . "; user_id={$this->userId}; at=/", $oldNote);
         $this->assertSame(7200, (int) DB::table('Invoice')->where('id', $newId)->value('TotalAmount'));
         $this->assertSame($newId, (int) DB::table('payment_reports')->where('id', $res->json('report_id'))->value('InvoiceID'));
-        $events = DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->get();
-        $this->assertCount(2, $events);
-        $this->assertCount(1, $events->pluck('correlation_id')->unique());
-        $this->assertSame([null, null], $events->pluck('retention_until')->all()); // replacement state: never purged
-        $res->assertJsonPath('old_note_tagged', true);
+        $link = DB::table('invoice_corrections')->where('original_invoice_id', $oldId)->first();
+        $this->assertSame([$newId, (int) $res->json('report_id'), 7200, '原約定 7200', self::KEY, $this->userId], [(int) $link->replacement_invoice_id,
+            (int) $link->payment_report_id, (int) $link->amount, $link->reason, $link->idempotency_key, (int) $link->operator_user_id]);
+        $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->count());
         $this->withToken($token)->putJson('/api/v1/payment-reports/' . $res->json('report_id') . '/confirm')->assertOk();
         $this->assertSame('paid', DB::table('Invoice')->where('id', $newId)->value('Status'));
         $this->assertSame(2, DB::table('Invoice')->where('StudentClassID', $course->ID)->count());
@@ -64,7 +63,27 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertSame(2, DB::table('Invoice')->where('StudentClassID', $course->ID)->count());
         $this->assertSame(1, DB::table('payment_reports')->where('StudentClassID', $course->ID)->count());
         $this->assertSame(1, substr_count($this->note($oldId), 'replaced_by'));
-        $this->assertSame(2, DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->count());
+        $this->assertSame(1, DB::table('invoice_corrections')->where('original_invoice_id', $oldId)->count());
+        config(['app.key' => 'base64:' . base64_encode(random_bytes(32))]); // the link does not depend on APP_KEY
+        $this->record($token, $course, $oldId)->assertOk()->assertJsonPath('invoice_id', $first->json('invoice_id'));
+        $this->record($token, $course, $oldId, ['idempotency_key' => '0b7d8c9e-1f2a-4b3c-9d4e-5f6a7b8c9d0e'])->assertStatus(409);
+    }
+
+    /** Two different requests racing past the checks: the database's UNIQUE(original) lets exactly one link exist. */
+    public function test_the_database_refuses_a_second_correction_of_the_same_bill(): void
+    {
+        $token = $this->token([1]);
+        $course = $this->course($this->student());
+        $oldId = $this->voidedInvoice($token, $course, 8800);
+        $first = $this->record($token, $course, $oldId)->assertOk();
+        $other = $this->invoice($course, 7200);
+        $this->expectException(\Illuminate\Database\QueryException::class);
+        try {
+            DB::table('invoice_corrections')->insert(['original_invoice_id' => $oldId, 'replacement_invoice_id' => $other, 'student_class_id' => $course->ID,
+                'amount' => 7200, 'reason' => '另一個請求', 'idempotency_key' => '0b7d8c9e-1f2a-4b3c-9d4e-5f6a7b8c9d0e', 'created_at' => now()]);
+        } finally {
+            $this->assertSame((int) $first->json('invoice_id'), (int) DB::table('invoice_corrections')->where('original_invoice_id', $oldId)->value('replacement_invoice_id'));
+        }
     }
 
     public function test_teacher_is_forbidden_and_other_campus_or_missing_bills_are_not_found(): void
@@ -93,7 +112,7 @@ class InvoiceCorrectionReissueTest extends TestCase
         $sameCourseOpen = $this->invoice($course, 8800);
         $this->record($token, $course, $sameCourseOpen)->assertStatus(422)->assertJsonPath('code', 'replaces_invoice_not_void');
         $this->assertSame(0, DB::table('payment_reports')->count());
-        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->count());
+        $this->assertSame(0, DB::table('invoice_corrections')->count());
     }
 
     public function test_reason_and_key_are_required(): void
@@ -144,7 +163,7 @@ class InvoiceCorrectionReissueTest extends TestCase
         $legacyTag = '[void: 開錯 [註：家長] 金額 [見附件]; user_id=5; at=2026-09-01 10:00:00]';
         $oldId = $this->invoice($course, 8800, str_repeat('舊備註', 50) . ' ' . $legacyTag);
         DB::table('Invoice')->where('id', $oldId)->update(['Status' => 'void']);
-        $this->record($token, $course, $oldId)->assertOk()->assertJsonPath('old_note_tagged', true);
+        $this->record($token, $course, $oldId)->assertOk();
         $note = $this->note($oldId);
         $this->assertLessThanOrEqual(255, mb_strlen($note));
         $this->assertStringContainsString($legacyTag, $note);
@@ -152,26 +171,26 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertStringContainsString('[replaced_by: #INV-', $note);
     }
 
-    /** A long void reason never blocks a correction: a short tag with the audit id, or the audit rows alone. */
+    /** A long void reason never blocks a correction: a short tag naming the link row, or the link row alone. */
     public function test_a_long_void_reason_falls_back_to_a_short_tag_then_to_the_audit_rows(): void
     {
         $token = $this->token([1]);
         $course = $this->course($this->student());
         $oldId = $this->voidedInvoice($token, $course, 8800, str_repeat('開錯金額說明', 24) . '一');
         $before = $this->note($oldId);
-        $newId = (int) $this->record($token, $course, $oldId)->assertOk()->assertJsonPath('old_note_tagged', true)->json('invoice_id');
-        $correlation = (string) DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->value('correlation_id');
+        $res = $this->record($token, $course, $oldId)->assertOk();
+        [$newId, $correctionId] = [(int) $res->json('invoice_id'), (int) $res->json('correction_id')];
         $note = $this->note($oldId);
         $this->assertLessThanOrEqual(255, mb_strlen($note));
         $this->assertStringStartsWith($before, $note);
-        $this->assertStringEndsWith("[更正為 #{$newId} audit={$correlation}]", $note);
+        $this->assertStringEndsWith("[更正為 #{$newId} 更正紀錄 #{$correctionId}]", $note);
         $other = $this->course($this->student());
         $fullId = $this->voidedInvoice($token, $other, 8800, str_repeat('開錯金額', 50));
         $fullBefore = $this->note($fullId);
-        $otherNew = (int) $this->record($token, $other, $fullId)->assertOk()->assertJsonPath('old_note_tagged', false)->json('invoice_id');
+        $otherNew = (int) $this->record($token, $other, $fullId)->assertOk()->json('invoice_id');
         $this->assertSame($fullBefore, $this->note($fullId));
         $this->assertStringContainsString('更正自 #INV-', $this->note($otherNew));
-        $this->assertSame(4, DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->count());
+        $this->assertSame($otherNew, (int) DB::table('invoice_corrections')->where('original_invoice_id', $fullId)->value('replacement_invoice_id'));
         $this->record($token, $other, $fullId)->assertOk()->assertJsonPath('invoice_id', $otherNew); // still replayable
     }
 
@@ -201,30 +220,8 @@ class InvoiceCorrectionReissueTest extends TestCase
         DB::table('Invoice')->where('id', $paidBill)->update(['Status' => 'paid', 'PaidAmount' => 7200]);
         DB::table('Payment')->insert(['InvoiceID' => $paidBill, 'Amount' => 7200, 'PaidAt' => now(), 'Method' => 'cash']);
         $this->record($token, $paid, $paidOld)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
-        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->count());
+        $this->assertSame(0, DB::table('invoice_corrections')->count());
         $this->assertSame(0, DB::table('Invoice')->where('Note', 'like', '%更正自%')->count());
-    }
-
-    /** Two concurrent submits: the replaced bill is read under a row lock taken after the course lock, so the second waits. */
-    public function test_the_replaced_bill_is_locked_after_the_course_so_concurrent_submits_serialize(): void
-    {
-        $token = $this->token([1]);
-        $course = $this->course($this->student());
-        $oldId = $this->voidedInvoice($token, $course, 8800);
-        $queries = [];
-        DB::listen(function ($q) use (&$queries) {
-            $queries[] = [strtolower($q->sql), $q->bindings];
-        });
-        $first = $this->record($token, $course, $oldId)->assertOk();
-        $courseLock = collect($queries)->search(fn ($q) => str_contains($q[0], 'from `studentclass`') && str_contains($q[0], 'for update'));
-        $invoiceLock = collect($queries)->search(fn ($q) => str_contains($q[0], 'from `invoice`') && str_contains($q[0], 'for update')
-            && in_array($oldId, array_map('intval', $q[1]), true));
-        $this->assertNotFalse($courseLock);
-        $this->assertNotFalse($invoiceLock);
-        $this->assertGreaterThan($courseLock, $invoiceLock);
-        // The submit that waited then sees the committed correction: the same bill, no second one.
-        $this->record($token, $course, $oldId)->assertOk()->assertJsonPath('invoice_id', $first->json('invoice_id'));
-        $this->assertSame(2, DB::table('Invoice')->where('StudentClassID', $course->ID)->count());
     }
 
     /** @param array<string, mixed> $over */

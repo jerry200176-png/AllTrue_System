@@ -792,9 +792,9 @@ class PaymentReportController extends Controller
                 return $check['refusal'];
             }
             if ($replay = $check['replay']) {
-                $report = PaymentReport::query()->where('InvoiceID', $replay->id)->orderBy('id')->first();
-                return response()->json(['message' => '這筆更正已經送出過', 'report_id' => $report?->id, 'payment_id' => null,
-                    'invoice_id' => (int) $replay->id, 'status' => $report->status ?? 'pending', 'replayed' => true]);
+                $report = PaymentReport::query()->whereKey((int) $replay->payment_report_id)->first();
+                return response()->json(['message' => '這筆更正已經送出過', 'report_id' => $report?->id, 'payment_id' => null, 'correction_id' => (int) $replay->id,
+                    'invoice_id' => (int) $replay->replacement_invoice_id, 'status' => $report->status ?? 'pending', 'replayed' => true]);
             }
             if ((int) $data['amount'] <= 0) {
                 return response()->json(['message' => '更正帳單的金額必須大於 0。沒有登記任何款項。', 'code' => 'correction_amount_invalid'], 422);
@@ -817,7 +817,7 @@ class PaymentReportController extends Controller
                 'StudentID' => $course->StudentID, 'StudentClassID' => $course->getKey(), 'IssueDate' => Carbon::today()->toDateString(),
                 'TotalAmount' => (int) $data['amount'], 'ScheduleModeAtIssue' => 'count',
             ], [['StudentClassID' => $course->getKey(), 'Description' => '更正帳單', 'Amount' => (int) $data['amount']]]);
-            $oldNoteTagged = $link->link($replaced, $invoice, $userId, (string) $data['correction_reason'], (string) $data['idempotency_key']);
+            $correctionId = $link->link($replaced, $invoice, $userId, (string) $data['correction_reason'], (string) $data['idempotency_key']);
 
             /** @var PaymentReport $report */
             $report = PaymentReport::query()->create([
@@ -828,11 +828,12 @@ class PaymentReportController extends Controller
                 'status' => 'pending', 'report_token_hash' => hash('sha256', 'director-' . $sc->ID . '-' . now()->timestamp),
                 'token_expires_at' => Carbon::now()->addDays(30),
             ]);
+            DB::table('invoice_corrections')->where('id', $correctionId)->update(['payment_report_id' => $report->id]);
             Log::info('PaymentReport director-record correction reissue', ['report_id' => $report->id, 'invoice_id' => $invoice->id,
                 'replaces_invoice_id' => $replaced->id, 'user_id' => $userId]);
 
             return response()->json(['message' => '已開更正帳單並送出，等你確認', 'report_id' => $report->id, 'payment_id' => null,
-                'invoice_id' => (int) $invoice->id, 'status' => 'pending', 'old_note_tagged' => $oldNoteTagged]);
+                'invoice_id' => (int) $invoice->id, 'status' => 'pending', 'correction_id' => $correctionId]);
         });
     }
 
