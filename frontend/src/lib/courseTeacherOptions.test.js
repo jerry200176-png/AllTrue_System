@@ -114,6 +114,15 @@ assert.match(
   /const createTeacherSeedOptions = \(\) => \(\{ loaded: teachersLoaded\.value \}\)/,
   'SmartCalendar must pass the teacher loaded flag to the seed resolver'
 );
-assert.match(calendarLoader, /finally \{\s*teachersLoaded\.value = true;/, 'teacher loader must mark the list loaded once the fetch settles');
+assert.match(
+  calendarLoader,
+  /const loadTeachers = async \(\) => \{\s*const seq = \+\+teachersRequestSeq;[\s\S]*?teachersLoaded\.value = false;/,
+  'teacher loader must reset readiness at the start of every fetch (campus switch, #4157 review)'
+);
+assert.match(
+  calendarLoader,
+  /if \(!isLatest\(\)\) return;\s*teachers\.value = next;\s*teachersLoaded\.value = true;/,
+  'only the latest teacher request may publish options and readiness'
+);
 
 console.log('courseTeacherOptions tests passed');
