@@ -3,6 +3,8 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
+use App\Models\Invoice;
 use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -22,7 +24,7 @@ class IssuedBillCurrentContractChargeTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_a_bill_without_issue_time_evidence_keeps_its_amount_and_is_not_compared(): void
+    public function test_stale_bill_after_a_rate_edit_keeps_its_amount_and_the_contract_charge_is_exposed(): void
     {
         $token = $this->directorToken();
         $course = $this->course($this->student(), ['Rate' => 900, 'SessionCount' => 8, 'Charge' => 7200]);
@@ -35,7 +37,7 @@ class IssuedBillCurrentContractChargeTest extends TestCase
         $bill = collect($ledger->json('invoices'))->firstWhere('id', $invoiceId);
         $this->assertSame(8800, $bill['total_amount']);
         $this->assertTrue($bill['single_course_items']);
-        $this->assertFalse($bill['priced_from_contract']); // a row without issue-time evidence is never compared
+        $this->assertFalse($bill['hand_priced']);
         $this->assertSame(8800, (int) DB::table('Invoice')->where('id', $invoiceId)->value('TotalAmount'));
     }
 
@@ -85,73 +87,91 @@ class IssuedBillCurrentContractChargeTest extends TestCase
         $this->assertFalse($bill['single_course_items']);
     }
 
-    /** D3: a bill issued through the billing API at the contract Charge, then the Charge changes: the only compared case. */
-    public function test_api_bill_priced_at_the_contract_charge_is_compared_after_the_charge_changes(): void
+    /** D3 (Founder 2026-10-15): a bill priced by a person is never flagged against the contract Charge. */
+    public function test_hand_priced_bills_are_marked_so_the_amount_difference_is_not_flagged(): void
     {
         $token = $this->directorToken();
-        $course = $this->course($this->student(), ['Charge' => 7200]);
-        $id = $this->issueViaApi($token, $course, 7200, true);
-        DB::table('StudentClass')->where('ID', $course->ID)->update(['Rate' => 800, 'Charge' => 6400]);
-
-        $ledger = $this->withToken($token)->getJson('/api/v1/accounting/ledger?student_class_id=' . $course->ID)->assertOk();
-
-        $this->assertTrue(collect($ledger->json('invoices'))->firstWhere('id', $id)['priced_from_contract']);
-        $this->assertSame(6400, collect($ledger->json('courses'))->firstWhere('id', (int) $course->ID)['current_contract_charge']);
-        $this->assertSame(7200, (int) DB::table('Invoice')->where('id', $id)->value('TotalAmount'));
-        $this->assertSame(7200, (int) DB::table('InvoiceItem')->where('InvoiceID', $id)->value('Amount'));
-    }
-
-    /**
-     * Review regression (#4128): a manual single-course bill through POST /invoices (Charge 7200, typed 6800, no price
-     * edit), with the item's course given and with it omitted (the issuer fills it). Never compared, amounts unchanged.
-     */
-    public function test_manual_api_bill_below_the_charge_is_not_compared_with_or_without_the_item_course(): void
-    {
-        $token = $this->directorToken();
-        $course = $this->course($this->student(), ['Charge' => 7200]);
-        $withCourse = $this->issueViaApi($token, $course, 6800, true);
-        $withoutCourse = $this->issueViaApi($token, $course, 6800, false);
+        $course = $this->course($this->student());
+        $noted = $this->unpaidInvoice($course, 8800);
+        DB::table('Invoice')->where('id', $noted)->update(['Note' => '依家長約定優惠價']);
+        $typedTotal = $this->unpaidInvoice($course, 8800);
+        DB::table('InvoiceItem')->where('InvoiceID', $typedTotal)->update(['Amount' => 7200]);
+        $twoLines = $this->unpaidInvoice($course, 8800);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => $twoLines, 'StudentClassID' => $course->ID, 'Description' => 'materials', 'Amount' => 0]);
+        $noLine = $this->unpaidInvoice($course, 8800);
+        DB::table('InvoiceItem')->where('InvoiceID', $noLine)->delete();
 
         $bills = collect($this->withToken($token)->getJson('/api/v1/accounting/ledger?student_class_id=' . $course->ID)
             ->assertOk()->json('invoices'))->keyBy('id');
 
-        foreach ([$withCourse, $withoutCourse] as $id) {
-            $this->assertTrue($bills[$id]['single_course_items'], "invoice {$id}");
-            $this->assertFalse($bills[$id]['priced_from_contract'], "invoice {$id}");
+        foreach ([$noted, $typedTotal, $twoLines, $noLine] as $id) {
+            $this->assertTrue($bills[$id]['hand_priced'], "invoice {$id}");
+            $this->assertSame(8800, (int) DB::table('Invoice')->where('id', $id)->value('TotalAmount'));
+        }
+    }
+
+    /**
+     * Review regression (#4128, option i): a manual single-course bill through POST /invoices (Charge 7200, typed 6800,
+     * no price edit), with the item's course given and omitted (the issuer fills it). The ledger only reads: both
+     * amounts stay 6800 and nothing is written to the bill (no billing_snapshot).
+     */
+    public function test_manual_api_bill_below_the_charge_keeps_its_amounts_with_or_without_the_item_course(): void
+    {
+        $token = $this->directorToken();
+        foreach ([true, false] as $itemCourse) {
+            $course = $this->course($this->student(), ['Charge' => 7200]);
+            $item = ['Description' => 'tuition', 'Amount' => 6800] + ($itemCourse ? ['StudentClassID' => $course->ID] : []);
+            $id = (int) $this->withToken($token)->postJson('/api/v1/invoices', ['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+                'IssueDate' => '2026-09-01', 'TotalAmount' => 6800, 'Items' => [$item]])->assertCreated()->json('id');
+
+            $ledger = $this->withToken($token)->getJson('/api/v1/accounting/ledger?student_class_id=' . $course->ID)->assertOk();
+
+            $this->assertSame(7200, collect($ledger->json('courses'))->firstWhere('id', (int) $course->ID)['current_contract_charge']);
+            $bill = collect($ledger->json('invoices'))->firstWhere('id', $id);
+            $this->assertSame(6800, $bill['total_amount']);
+            $this->assertTrue($bill['single_course_items']);
             $this->assertSame(6800, (int) DB::table('Invoice')->where('id', $id)->value('TotalAmount'));
+            $this->assertNull(DB::table('Invoice')->where('id', $id)->value('billing_snapshot'));
             $this->assertSame(6800, (int) DB::table('InvoiceItem')->where('InvoiceID', $id)->value('Amount'));
             $this->assertSame((int) $course->ID, (int) DB::table('InvoiceItem')->where('InvoiceID', $id)->value('StudentClassID'));
         }
     }
 
-    /** D3: an instalment, a multi-line bill or a typed total without its line is never compared either. */
-    public function test_instalment_and_composed_api_bills_are_not_compared(): void
+    /**
+     * A count course billed through POST /invoices and then switched to 月結 with the bill still unpaid: paying it
+     * stores the monthly evidence (billing_snapshot) and the receipt reads it. The billing_snapshot slot is the
+     * monthly path's alone (#4128 option i writes nothing there).
+     */
+    public function test_count_bill_switched_to_monthly_keeps_its_monthly_evidence_on_pay_and_receipt(): void
     {
-        $token = $this->directorToken();
-        $course = $this->course($this->student(), ['Charge' => 7200]);
-        $instalment = $this->issueViaApi($token, $course, 3600, true);
-        $twoLines = (int) $this->withToken($token)->postJson('/api/v1/invoices', ['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
-            'IssueDate' => '2026-09-01', 'TotalAmount' => 7200, 'Items' => [['Description' => 'tuition', 'Amount' => 6000], ['Description' => 'materials', 'Amount' => 1200]]])
-            ->assertCreated()->json('id');
-        $noLine = (int) $this->withToken($token)->postJson('/api/v1/invoices', ['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
-            'IssueDate' => '2026-09-01', 'TotalAmount' => 7200])->assertCreated()->json('id');
+        Carbon::setTestNow('2026-07-31 12:00:00');
+        try {
+            $token = $this->directorToken();
+            $course = $this->course($this->student(), ['Charge' => 7200, 'StartDate' => '2026-07-01', 'EndDate' => '2026-07-31']);
+            $id = (int) $this->withToken($token)->postJson('/api/v1/invoices', ['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+                'IssueDate' => '2026-07-01', 'billing_period' => '2026-07', 'TotalAmount' => 7200,
+                'Items' => [['Description' => 'tuition', 'Amount' => 7200, 'StudentClassID' => $course->ID]]])->assertCreated()->json('id');
+            $this->assertNull(Invoice::findOrFail($id)->billing_snapshot);
+            DB::table('StudentClass')->where('ID', $course->ID)->update(['ScheduleMode' => 'date', 'Charge' => 1800, 'Rate' => 1650,
+                'SessionCount' => 0, 'RemainingSessions' => 0, 'monthly_sessions' => 4, 'settlement_day' => 31]);
+            foreach (['2026-07-03', '2026-07-10', '2026-07-17', '2026-07-24'] as $date) {
+                ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+            }
 
-        $bills = collect($this->withToken($token)->getJson('/api/v1/accounting/ledger?student_class_id=' . $course->ID)
-            ->assertOk()->json('invoices'))->keyBy('id');
+            $record = $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', [
+                'student_class_id' => $course->ID, 'payment_date' => '2026-07-31', 'payment_method' => 'cash', 'amount' => 6600,
+            ])->assertOk()->assertJsonPath('invoice_id', $id);
+            $this->withToken($token)->putJson('/api/v1/payment-reports/' . $record->json('report_id') . '/confirm')->assertOk();
 
-        foreach ([$instalment, $twoLines, $noLine] as $id) {
-            $this->assertFalse($bills[$id]['priced_from_contract'], "invoice {$id}");
+            $invoice = Invoice::findOrFail($id);
+            $this->assertSame('monthly_billable_sessions', $invoice->billing_snapshot['source']);
+            $this->assertSame(4, (int) $invoice->billing_snapshot['period_sessions']);
+            $this->assertCount(4, $invoice->billing_snapshot['sessions']);
+            $receipt = $this->withToken($token)->getJson('/api/v1/payment-reports/' . $record->json('report_id') . '/receipt')->assertOk();
+            $receipt->assertJsonPath('period_sessions', 4)->assertJsonPath('session_dates.0.date', '2026/07/03');
+        } finally {
+            Carbon::setTestNow();
         }
-        $this->assertSame(3600, (int) DB::table('Invoice')->where('id', $instalment)->value('TotalAmount'));
-    }
-
-    private function issueViaApi(string $token, StudentClass $course, int $amount, bool $itemCourse): int
-    {
-        $item = ['Description' => 'tuition', 'Amount' => $amount] + ($itemCourse ? ['StudentClassID' => $course->ID] : []);
-
-        return (int) $this->withToken($token)->postJson('/api/v1/invoices', [
-            'StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-01', 'TotalAmount' => $amount, 'Items' => [$item],
-        ])->assertCreated()->json('id');
     }
 
     private function directorToken(): string

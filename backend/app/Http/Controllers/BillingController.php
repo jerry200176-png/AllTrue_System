@@ -188,7 +188,7 @@ class BillingController extends Controller
                     'ScheduleModeAtIssue' => $scheduleModeAtIssue,
                     'Note' => $data['Note'] ?? '',
                     'billing_period' => $data['billing_period'] ?? null,
-                ] + $this->contractPriceProvenance($data, $items), $items, true);
+                ], $items, true);
             } catch (BillingPeriodInvoiceExists) {
                 return response()->json([
                     'message' => '此課程該月份已有有效帳單，請勿重複建立。',
@@ -198,28 +198,6 @@ class BillingController extends Controller
 
             return response()->json($invoice, 201);
         });
-    }
-
-    /**
-     * D3 (#4128): issue-time evidence that a count-mode, single-course bill was priced at the contract's Charge then.
-     * Only with this evidence does the ledger later compare the bill with a changed Charge; a typed, negotiated or
-     * instalment amount gets none. Evidence only: it never changes the bill amount.
-     *
-     * @param list<array<string, mixed>> $items
-     * @return array{billing_snapshot?: array<string, mixed>}
-     */
-    private function contractPriceProvenance(array $data, array $items): array
-    {
-        $course = !empty($data['StudentClassID']) ? StudentClass::query()->whereKey($data['StudentClassID'])->first() : null;
-        $charge = (int) ($course?->Charge ?? 0);
-        $line = count($items) === 1 ? $items[0] : null;
-        if (!$course || (string) ($course->ScheduleMode ?? 'count') !== 'count' || $course->isPartOfPackage() || $charge <= 0
-            || (int) $data['TotalAmount'] !== $charge || !$line || (int) $line['Amount'] !== $charge
-            || (!empty($line['StudentClassID']) && (int) $line['StudentClassID'] !== (int) $course->ID)) {
-            return [];
-        }
-
-        return ['billing_snapshot' => ['version' => 1, 'source' => 'contract_charge_at_issue', 'contract_charge' => $charge]];
     }
 
     public function recordPayment(Request $request, Invoice $invoice)
