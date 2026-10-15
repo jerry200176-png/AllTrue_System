@@ -2416,6 +2416,8 @@ function chooseContractAdjustment(action) {
   const course = contractAdjustmentCourse.value;
   showContractAdjustmentModal.value = false;
   if (!course) return;
+  // #4014 (Founder Q8=A): adding lessons = the course row's existing 續課／加購 entry.
+  if (action === 'renew') { openCommercialPurchaseEntry(course); return; }
   if (action === 'billing') {
     if (!isUnpaidCountCourse(course)) return;
     openBillingCorrectionModal(course);

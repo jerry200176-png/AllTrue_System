@@ -37,7 +37,17 @@ describe('ContractCard', () => {
     expect(rows[2]).toContain('未付');
     expect(w.find('[data-testid="contract-summary"]').text()).toBe('共 3 堂・已上 1・還沒上 3');
     expect(w.find('[data-testid="contract-unscheduled"]').text()).toBe('還有 2 堂還沒排日期');
-    expect(w.text()).not.toMatch(/課程 0|帳單-|收據-/);
+    // Founder 2026-10-15 (Q9=A, in-app #396 / #3982): the card shows the course reference in the
+    // same 「課程 000123」 format as the tables; invoice/receipt codes stay off the card.
+    expect(w.find('[data-testid="contract-ref"]').text()).toBe('課程 000009');
+    expect(w.text()).not.toMatch(/帳單-|收據-/);
+  });
+
+  it('hides the course reference when the contract id is not a positive integer', async () => {
+    authedFetch.mockResolvedValueOnce(respond(COVERAGE));
+    const w = mount(ContractCard, { props: { course: { id: 'x', subject: '數學' } } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-ref"]').exists()).toBe(false);
   });
 
   it('U1 numbers count-mode lessons (第 n 堂, no per-row countdown: G-011) and skips cancelled/leave', async () => {
