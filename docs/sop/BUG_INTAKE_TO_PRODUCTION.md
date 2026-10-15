@@ -4,7 +4,7 @@
 
 本表是 in-app 回報各階段自動化的**唯一權威對照**；其他文件只連到這裡。真相以 `.github/workflows/` 為準，有出入時改本表。
 
-| 階段 | Workflow（做什麼） | 觸發 | Cloud session（無 SSH、`workflow_dispatch` 403） |
+| 階段 | Workflow（做什麼） | 觸發 | Cloud session（無 SSH；寫 production 的 dispatch 不得自行執行，見表下說明） |
 |------|--------------------|------|------------------------------------------------|
 | 收件建單 + 收到回覆 | `bug-auto-intake.yml`：每筆 `new` 開／重用 IDs-only GitHub issue（SourceRef 去重）、加 `area:<類別>`、同類提醒、留固定「收到，我們正在查」回覆（Founder 6A）。狀態**維持 `new`**，等 Phase A | schedule 每小時 :23；人工 dispatch 預設 dry-run，`dry_run=false` 會真的建單並寫 production | 自動，不需動作 |
 | 撈佇列 | `bug-queue-dump.yml`：log 只有 ID／數量；明文 artifact 另含 metadata（嚴重度、分校 ID、page key、時間、回報者 user ID／角色、回饋類型），標題／描述／留言不在其中；文字在加密 `*.full.tar.gz.enc`（#3605；queue 不含描述／留言）；附 in-app ↔ issue reconcile step summary | push request-file `operations/closeout/bug-queue-dump.request.md`；或 dispatch | 可觸發；看得到 log 的 ID／數量；artifact 與全文要本機下載並解密 |
@@ -15,6 +15,8 @@
 | Phase C 上線後回寫 | `bug-phase-c-allowlist.yml`：已上線修復 → `resolved` + 公開回覆，並自動關對應 issue（F14；`type:epic`、`lifecycle:frozen` 不關，issue 標題或 SourceRef 對到的任何 in-app 回報不在本次已檢查清單內就不關）。`bug-phase-c-autodispatch.yml` 在 allowlist 有新增 ID 合併進 main 後逐筆 dispatch 並驗證 | push：PR 在 allowlist 新增條目（`reply`／`rev`／`deploy`）→ merge；或 push request-file `operations/closeout/bug-phase-c-allowlist.request.md`；已在 allowlist 的 ID 可直接 dispatch（`bug_id`） | 可以（開 PR → CI → merge）；只限 `rev` 已在 production 的修復，不可拿來做 Phase A |
 | `resolved`→`closed` 逾時 | `bug-reporter-timeout.yml` `auto`（排程）：只看 `resolved`，14 天無回報者回覆即結案並白話回覆；回報者回覆會重開（Founder 2A）。符合者超過 20 筆時整批拒絕、**一筆都不關**，要先人工 dry-run 處理。人工 `dry-run`／`apply` 是另一條路：`days` 預設 **7**（只作用於 `resolved`），另外也檢查固定 14 天的 `triaged` 等回報者佇列；`apply` 必填 `confirmation=CLOSE_STALE_RESOLVED` 與逐筆審過的 `reviewed_ids` | `auto`：schedule 每日 10:40 台北（亦可 dispatch `auto-dry-run`／`auto`）；`dry-run`／`apply`：只限人工 dispatch | `auto` 自動；人工 `apply` 不行：交出 dry-run 審過的 `reviewed_ids` 與 `days` |
 | 週報 | `bug-sla-weekly-report.yml`：「in-app 週報 YYYY-Www」issue | schedule 週一 09:00 台北；可人工 dispatch 重產 | 自動 |
+
+**雲端 dispatch 現況（更正舊說法「一律 403」）**：2026-10-15：在這一個 Claude cloud session、以當時這套權限實測，`workflow_dispatch`（對 `land-queue.yml`）與 `repository_dispatch` 呼叫成功（未觸發任何寫入）。不代表所有雲端 session 或日後權限都能觸發。上表「不行」指**不得自行執行**，不是技術上一定做不到：寫入 production 一律須 Founder 明確批准；因以 Founder 身分執行的 agent 技術上可能觸發 dispatch，該批准須由寫入步驟上的 required-reviewer environment 強制（見保護方案 PR（進行中））。
 
 **關 GitHub issue（Founder 常設決定 2026-10-12 ③）**：merge + 上線驗證（版本＋health＋smoke，見下方 Deployment evidence gate）+ 已回覆 in-app → 即可關，不等回報者確認；復發再開。In-app 的 `resolved`→`closed` 仍只由回報者 `reporter-verify` 或上表逾時流程完成，Agent 不代按。
 
