@@ -186,4 +186,20 @@ class ContractMoneyStateTest extends TestCase
         $this->assertSame([$id => '2026-09-05'], $resolver->lastPaidAtByStudentClassIds([$id, $other]));
         $this->assertSame([], $resolver->invoiceAggregateByStudentClassIds([]));
     }
+
+    public function test_last_paid_at_ignores_void_and_negative_payment_rows(): void
+    {
+        $id = $this->seedCourse();
+        $a = $this->invoice($id, 'partial', 1000, 300);
+        $this->payment($a, 300, 'cash', '2026-09-02 10:00:00');
+        $this->payment($a, -100, 'void', '2026-09-10 10:00:00');
+        $this->payment($a, 100, 'void', '2026-09-11 10:00:00');
+        $this->payment($a, -50, 'cash', '2026-09-12 10:00:00');
+        $this->payment($a, 0, 'cash', '2026-09-13 10:00:00');
+        $onlyReversals = $this->seedCourse();
+        $this->payment($this->invoice($onlyReversals, 'unpaid', 1000, 0), -1000, 'void', '2026-09-20 10:00:00');
+
+        $resolver = app(\App\Services\BillingPayableResolver::class);
+        $this->assertSame([$id => '2026-09-02'], $resolver->lastPaidAtByStudentClassIds([$id, $onlyReversals]));
+    }
 }

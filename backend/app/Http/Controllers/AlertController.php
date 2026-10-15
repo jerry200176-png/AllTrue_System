@@ -438,7 +438,9 @@ class AlertController extends Controller
                 return $row + [
                     'closed_reason'            => $sc?->getAttribute('closed_reason'),
                     'paid_at'                  => $directPaidAt,
-                    'last_paid_at'             => $directPaidAt ?? $invoicePaidAt,
+                    // #4123: a valid Payment row wins over the legacy PayDate (same order as the course list);
+                    // PayDate stays only as the fallback for contracts with no Payment on record.
+                    'last_paid_at'             => $invoicePaidAt ?? $directPaidAt,
                     'charge'                   => $charge,
                     'estimated_amount'         => $charge,
                     'charge_semantics'         => 'estimate_only',

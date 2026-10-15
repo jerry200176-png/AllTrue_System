@@ -332,7 +332,8 @@ class BillingPayableResolver
     }
 
     /**
-     * Batch-fetch the latest Payment.PaidAt (Y-m-d) per StudentClass ID via Invoice.StudentClassID -> Payment.InvoiceID.
+     * Batch-fetch the latest valid Payment.PaidAt (Y-m-d) per StudentClass ID via Invoice.StudentClassID -> Payment.InvoiceID.
+     * Void invoices and void/negative (reversal) Payment rows are ignored.
      *
      * @param  int[]  $studentClassIds
      * @return array<int, string>  only classes that have a dated payment
@@ -347,6 +348,15 @@ class BillingPayableResolver
             ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->whereIn('Invoice.StudentClassID', $studentClassIds)
             ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
+            // #4123: only valid receipts give a payment date. Reversal rows (Method='void' or a negative/zero
+            // Amount, e.g. report void / MonthlyAccountingCorrectionService) are not payments, and a receipt
+            // whose payment report was reversed (a void row with the same payment_report_id) no longer counts.
+            ->where('Payment.Amount', '>', 0)
+            ->where(fn ($q) => $q->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void'))
+            ->where(fn ($q) => $q->whereNull('Payment.payment_report_id')->orWhereNotExists(fn ($r) => $r->select(DB::raw(1))
+                ->from('Payment as reversal')
+                ->whereColumn('reversal.payment_report_id', 'Payment.payment_report_id')
+                ->where('reversal.Method', 'void')))
             ->select('Invoice.StudentClassID', DB::raw('MAX(Payment.PaidAt) as last_paid_at'))
             ->groupBy('Invoice.StudentClassID')
             ->get();
