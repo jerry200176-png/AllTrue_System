@@ -34,22 +34,31 @@ final class AuthenticateTriageToken
         $pat->forceFill(['last_used_at' => now()])->save();
         $request->attributes->set('triage_token_id', (int) $pat->getKey());
 
+        // Past this point the token is authenticated, so every outcome is audited without the
+        // denial cap (#4004): successes never were capped, and a valid token's failures must
+        // not be droppable by another client's flood of refused requests from the same IP.
+        // The cap stays on unauthenticated refusals above, where the requester is unknown.
         try {
             $response = $next($request);
         } catch (\Throwable $e) {
-            // #4004: a read that throws must still leave its audit row.
-            $this->audit($request, (int) $pat->getKey(), 'failure', 500, 'read_failed');
+            // Laravel 8's routing pipeline normally renders controller exceptions into a 500
+            // before they get here; this catches anything that still escapes.
+            try {
+                $this->audit($request, (int) $pat->getKey(), 'failure', 500, 'read_failed', false);
+            } catch (\Throwable $auditError) {
+                report($auditError); // never mask the original exception
+            }
             throw $e;
         }
         $status = $response->getStatusCode();
-        $this->audit($request, (int) $pat->getKey(), $status < 400 ? 'success' : 'failure', $status, $status < 400 ? 'read' : 'read_failed');
+        $this->audit($request, (int) $pat->getKey(), $status < 400 ? 'success' : 'failure', $status, $status < 400 ? 'read' : 'read_failed', false);
 
         return $response;
     }
 
-    private function audit(Request $request, ?int $tokenId, string $outcome, int $status, string $reason): void
+    private function audit(Request $request, ?int $tokenId, string $outcome, int $status, string $reason, bool $capped = true): void
     {
-        if ($status >= 400 && !TriageTokenService::mayAuditDenial($request->ip())) { return; } // every refusal or failure shares the cross-route cap
+        if ($capped && $status >= 400 && !TriageTokenService::mayAuditDenial($request->ip())) { return; } // unauthenticated refusals share the cross-route cap
         $route = $request->route();
         $bugId = $request->route('id');
         $attachmentId = $request->route('attachmentId');

@@ -204,9 +204,13 @@ final class TriageTokenTest extends TestCase
             ->assertStatus(401)->assertJsonPath('code', 'token_expired');
     }
 
-    public function test_attachment_read_that_throws_is_still_audited(): void
+    public function test_attachment_read_that_throws_is_audited_even_after_the_denial_cap_is_spent(): void
     {
+        $this->withoutMiddleware(ThrottleRequestsByIp::class);
         $token = $this->createToken($this->user('S'));
+        $forged = ['Authorization' => 'Bearer 1|' . config('triage_tokens.secret_prefix') . 'forged', 'Accept' => 'application/json'];
+        foreach (range(1, 12) as $i) { $this->getJson('/api/v1/triage/bug-reports', $forged)->assertUnauthorized(); }
+        $this->assertSame(10, $this->auditCount('triage_token.read')); // the unauthenticated cap is spent
         $bug = $this->bug($this->user('T'), 'new');
         $att = BugReportAttachment::create(['bug_report_id' => $bug->id, 'stored_path' => "bug-reports/{$bug->id}/shot.png", 'original_name' => 'shot.png', 'mime_type' => 'image/png', 'size' => 7]);
         $disk = \Mockery::mock();
@@ -216,7 +220,8 @@ final class TriageTokenTest extends TestCase
 
         $this->getJson("/api/v1/triage/bug-reports/{$bug->id}/attachments/{$att->id}", $this->bearer($token))->assertStatus(500);
 
-        $rows = DB::table('security_audit_events')->where('event_type', 'triage_token.read')->get();
+        $rows = DB::table('security_audit_events')->where('event_type', 'triage_token.read')
+            ->where('actor_ref', SecurityAuditEvent::ref('triage_token', (int) explode('|', $token)[0]))->get();
         $this->assertCount(1, $rows);
         $this->assertSame('failure', $rows[0]->outcome);
         $meta = json_decode($rows[0]->metadata, true);

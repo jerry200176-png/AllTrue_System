@@ -23,3 +23,13 @@ paths = [
   '''backend/\.env\.testing''',
   '''docs/archive/control-plane-shadow-v1/''',
 ]
+# generic-api-key false positives from the full-history scan of main (8 hits,
+# 2026-10-15): domain identifiers next to a "key" word, not credentials. Each
+# regex is anchored to the whole captured secret and admits only lowercase /
+# dotted / UPPER_SNAKE identifier shapes, never a random-looking value.
+regexes = [
+  '''^syn\.[a-z]+(?:\.[a-z0-9-]+)+\.v[0-9]+$''',   # TrueFit material keys: syn.eng.phonics.short-vowels.v1
+  '''^weekly_[0-9]+_segments$''',                    # TeacherEligibility pay component key
+  '''^perfFlags\.[A-Z][A-Z0-9_]*$''',                # frontend feature-flag reference
+  '''^promo-[a-z]+-[0-9]+$''',                       # GradePromotion test idempotency keys
+]
