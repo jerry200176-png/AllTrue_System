@@ -49,6 +49,21 @@ class BillingPayableResolver
     }
 
     /**
+     * Founder D2 (in-app #394): a stopped contract whose review_required verdict comes from issued invoices that still
+     * owe. Findable as 金額待確認 in the tuition queue, never in confirmed totals, and never on a parent slip.
+     * One predicate for the queue, the queue marker, /alerts/tuition-slip and /invoices/{id}/slip-data.
+     *
+     * @param array<string, mixed> $verdict courseStatusesByStudentClassIds() row
+     */
+    public static function isAmountPendingConfirmation(StudentClass $course, array $verdict): bool
+    {
+        return (int) ($course->getAttribute('Stop') ?? 0) === 1
+            && ($verdict['status'] ?? null) === 'review_required'
+            && ($verdict['source'] ?? null) === 'invoice'
+            && (int) ($verdict['outstanding'] ?? 0) > 0;
+    }
+
+    /**
      * F7 S1: course-level paid status over ALL non-void invoices (additive; byStudentClassIds is unchanged).
      *
      * status: free (tutoring / zero-fee) > review_required (monthly period that cannot be attributed)

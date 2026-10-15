@@ -17,6 +17,7 @@ export const paymentCenterIntentFor = (student) => {
   const status = student?.payment_status;
   if (status === 'pending_report') return 'pending_report';
   if (status === 'pending_reconciliation') return 'pending_reconciliation';
+  if (status === 'amount_review') return 'amount_review';
   if (status === 'unpaid' || status === 'partial') return 'unpaid';
   if (student?.alert_type === 'low_sessions' || student?.alert_type === 'monthly_due_soon') return 'renewal';
   return 'pending';
