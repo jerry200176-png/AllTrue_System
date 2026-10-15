@@ -87,6 +87,7 @@
                 :amounts="amountsFor(c.id)"
                 :month-lines="monthLinesFor(c.id)"
                 :bill-draft="draftFor(c.id)"
+                :rate-note="issuedBillRateNote(c, payload.invoices)"
                 @record="openEntry"
                 @issue="openIssue"
                 @confirmed="openReceipt"
@@ -136,6 +137,7 @@
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
                         <small v-if="isOtherCourseInvoice(inv)" class="ledger-other-course" data-testid="ledger-other-course">其他課程</small>
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
+                        <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">開單時金額 {{ formatCurrency(rateNoteFor(inv).issued) }} ／ 目前課程金額 {{ formatCurrency(rateNoteFor(inv).current) }}（金額不同可能是約定調整，不代表帳單有誤）</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
                       <td data-label="應繳日">{{ fmtDate(inv.due_date) }}</td>
@@ -310,6 +312,7 @@ import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REAS
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
+import { issuedBillRateNote } from '../lib/issuedBillRateNote.js';
 import ReceiptModal from './ReceiptModal.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
@@ -625,6 +628,12 @@ const pendingReportFor = (id) => {
   const r = (payload.value?.receipts || []).find((x) => ids.includes(Number(x.student_class_id)) && x.status === 'pending');
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
+// #4115: the issued-bill vs current-contract note for the bill row (display only).
+const rateNoteFor = (inv) => {
+  const course = (payload.value?.courses || []).find((c) => Number(c.id) === Number(inv.student_class_id));
+  const note = course ? issuedBillRateNote(course, payload.value?.invoices) : null;
+  return note && note.invoiceId === Number(inv.id) ? note : null;
+};
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
 // One card of a shared package carries its single payment action; the other members point to it. Lead = the member
@@ -874,6 +883,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-row--open td{background:var(--ds-canvas-soft)}
 .ledger-row--attention td:nth-child(2) strong{color:var(--ds-ink)}
 .ledger-overpay-hint{display:block;color:var(--ds-danger);font-weight:600}
+.ledger-rate-hint{display:block;color:var(--ds-ink-mute)}
 .ledger-other-course{display:inline-block;color:var(--ds-ink-mute);font-weight:600}
 .due{color:var(--ds-danger);font-weight:700}
 
