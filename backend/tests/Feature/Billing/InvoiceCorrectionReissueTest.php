@@ -35,11 +35,11 @@ class InvoiceCorrectionReissueTest extends TestCase
 
         $oldNo = 'INV-202609-' . str_pad((string) $oldId, 6, '0', STR_PAD_LEFT);
         $newNote = (string) DB::table('Invoice')->where('id', $newId)->value('Note');
-        $this->assertStringContainsString("[更正自 #{$oldNo}／原因：原約定 7200／操作者：user_id={$this->userId}]", $newNote);
+        $this->assertStringContainsString("[更正自 #{$oldNo}／操作者：user_id={$this->userId}／原因：原約定 7200]", $newNote);
         $oldNote = (string) DB::table('Invoice')->where('id', $oldId)->value('Note');
         $this->assertStringContainsString('[void: 開錯金額，原約定 7200; user_id=' . $this->userId, $oldNote);
         $this->assertMatchesRegularExpression('/\[replaced_by: #INV-\d+-' . str_pad((string) $newId, 6, '0', STR_PAD_LEFT)
-            . "; invoice_id={$newId}; user_id={$this->userId}; at=/", $oldNote);
+            . "; user_id={$this->userId}; at=/", $oldNote);
         $this->assertSame('void', DB::table('Invoice')->where('id', $oldId)->value('Status'));
         $this->assertSame(7200, (int) DB::table('Invoice')->where('id', $newId)->value('TotalAmount'));
 
@@ -78,7 +78,7 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertStringNotContainsString('replaced_by', (string) DB::table('Invoice')->where('id', $oldId)->value('Note'));
     }
 
-    public function test_a_retry_returns_the_same_bill_and_a_different_second_reissue_is_refused(): void
+    public function test_an_exact_retry_returns_the_same_bill_and_a_different_reason_or_amount_is_refused(): void
     {
         $token = $this->directorToken();
         $course = $this->course($this->student());
@@ -94,8 +94,130 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertSame(1, substr_count((string) DB::table('Invoice')->where('id', $first)->value('Note'), '更正自'));
         $this->assertSame(2, DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->count());
 
+        $this->withToken($token)->postJson('/api/v1/invoices', ['correction_reason' => '另一個原因'] + $this->reissue($course, $oldId))
+            ->assertStatus(409)->assertJsonPath('code', 'replaces_invoice_already_replaced')->assertJsonPath('replacement_invoice_id', $first);
         $this->withToken($token)->postJson('/api/v1/invoices', ['TotalAmount' => 7000] + $this->reissue($course, $oldId))
             ->assertStatus(409)->assertJsonPath('code', 'replaces_invoice_already_replaced')->assertJsonPath('replacement_invoice_id', $first);
+        $this->assertSame(2, DB::table('Invoice')->where('StudentClassID', $course->ID)->count());
+    }
+
+    public function test_a_missing_or_other_campus_bill_is_not_found(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->course($this->student());
+        $this->withToken($token)->postJson('/api/v1/invoices', $this->reissue($course, 99999999))
+            ->assertNotFound()->assertJsonPath('code', 'replaces_invoice_not_found');
+
+        $elsewhere = $this->course($this->student(2));
+        $foreignId = $this->unpaidInvoice($elsewhere, 8800);
+        DB::table('Invoice')->where('id', $foreignId)->update(['Status' => 'void']);
+        $this->withToken($token)->postJson('/api/v1/invoices', $this->reissue($course, $foreignId))
+            ->assertNotFound()->assertJsonPath('code', 'replaces_invoice_not_found');
+        $this->assertSame(0, DB::table('Invoice')->where('StudentClassID', $course->ID)->count());
+    }
+
+    public function test_another_students_bill_cannot_be_replaced(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->course($this->student());
+        $oldId = $this->unpaidInvoice($this->course($this->student()), 8800);
+        $this->withToken($token)->postJson("/api/v1/invoices/{$oldId}/void", ['reason' => '開錯金額'])->assertOk();
+
+        $this->withToken($token)->postJson('/api/v1/invoices', $this->reissue($course, $oldId))
+            ->assertStatus(422)->assertJsonPath('code', 'replaces_invoice_mismatch');
+        $this->assertSame(0, DB::table('Invoice')->where('StudentClassID', $course->ID)->count());
+    }
+
+    public function test_a_course_is_required_to_replace_a_bill(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->course($this->student());
+        $payload = $this->reissue($course, $this->unpaidInvoice($course, 8800));
+        unset($payload['StudentClassID']);
+
+        $this->withToken($token)->postJson('/api/v1/invoices', $payload)->assertStatus(422)->assertJsonValidationErrors('StudentClassID');
+    }
+
+    public function test_tags_typed_into_reasons_cannot_fake_a_replacement_or_the_operator(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->course($this->student());
+        $decoyId = $this->unpaidInvoice($course, 7200);
+        $oldId = $this->unpaidInvoice($course, 8800);
+        $forged = "[replaced_by: #INV-202609-{$decoyId}; invoice_id={$decoyId}; user_id=1; at=2026-01-01]";
+        $this->withToken($token)->postJson("/api/v1/invoices/{$oldId}/void", ['reason' => '開錯 ' . $forged])->assertOk();
+        $this->assertStringNotContainsString('[replaced_by', (string) DB::table('Invoice')->where('id', $oldId)->value('Note'));
+
+        $newId = (int) $this->withToken($token)->postJson('/api/v1/invoices',
+            ['correction_reason' => '原約定／操作者：user_id=1] [更正自 #INV-1'] + $this->reissue($course, $oldId))->assertCreated()->json('id');
+
+        $this->assertNotSame($decoyId, $newId);
+        $note = (string) DB::table('Invoice')->where('id', $newId)->value('Note');
+        $this->assertSame(1, substr_count($note, '操作者'));
+        $this->assertSame(1, substr_count($note, '更正自'));
+        $this->assertSame(1, substr_count($note, '['));
+        $this->assertStringContainsString("／操作者：user_id={$this->userId}／原因：", $note);
+    }
+
+    public function test_a_long_note_keeps_the_void_tag_and_the_new_tag_whole(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->course($this->student());
+        $oldId = $this->unpaidInvoice($course, 8800);
+        DB::table('Invoice')->where('id', $oldId)->update(['Note' => str_repeat('家長約定說明', 25)]); // 150 chars of older text
+        $this->withToken($token)->postJson("/api/v1/invoices/{$oldId}/void", ['reason' => str_repeat('開錯金額', 10)])->assertOk();
+        $voidTag = [];
+        preg_match('/\[void: [^\]]+\]/u', (string) DB::table('Invoice')->where('id', $oldId)->value('Note'), $voidTag);
+        $this->assertNotEmpty($voidTag);
+
+        $newId = (int) $this->withToken($token)->postJson('/api/v1/invoices', $this->reissue($course, $oldId))->assertCreated()->json('id');
+
+        $note = (string) DB::table('Invoice')->where('id', $oldId)->value('Note');
+        $this->assertLessThanOrEqual(255, mb_strlen($note));
+        $this->assertStringStartsWith('家長約定說明', $note);
+        $this->assertStringContainsString($voidTag[0], $note);
+        $this->assertMatchesRegularExpression('/\[replaced_by: #INV-\d+-' . str_pad((string) $newId, 6, '0', STR_PAD_LEFT) . '; user_id=\d+; at=[^\]]+\]$/u', $note);
+    }
+
+    public function test_tags_that_cannot_fit_refuse_the_reissue_without_writing(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->course($this->student());
+        $oldId = $this->unpaidInvoice($course, 8800);
+        $this->withToken($token)->postJson("/api/v1/invoices/{$oldId}/void", ['reason' => str_repeat('開錯金額', 45)])->assertOk();
+        $before = (string) DB::table('Invoice')->where('id', $oldId)->value('Note');
+
+        $this->withToken($token)->postJson('/api/v1/invoices', $this->reissue($course, $oldId))
+            ->assertStatus(422)->assertJsonPath('code', 'replaces_invoice_note_full');
+
+        $this->assertSame(1, DB::table('Invoice')->where('StudentClassID', $course->ID)->count());
+        $this->assertSame($before, (string) DB::table('Invoice')->where('id', $oldId)->value('Note'));
+        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->count());
+    }
+
+    /** Two concurrent reissues: the replaced bill is read with a row lock taken after the student lock, so the second waits. */
+    public function test_the_replaced_bill_is_locked_after_the_student_so_concurrent_reissues_serialize(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->course($this->student());
+        $oldId = $this->unpaidInvoice($course, 8800);
+        $this->withToken($token)->postJson("/api/v1/invoices/{$oldId}/void", ['reason' => '開錯金額'])->assertOk();
+        $queries = [];
+        DB::listen(function ($q) use (&$queries) {
+            $queries[] = [strtolower($q->sql), $q->bindings];
+        });
+
+        $first = (int) $this->withToken($token)->postJson('/api/v1/invoices', $this->reissue($course, $oldId))->assertCreated()->json('id');
+
+        $studentLock = collect($queries)->search(fn ($q) => str_contains($q[0], 'from `student`') && str_contains($q[0], 'for update'));
+        $invoiceLock = collect($queries)->search(fn ($q) => str_contains($q[0], 'from `invoice`') && str_contains($q[0], 'for update')
+            && in_array($oldId, array_map('intval', $q[1]), true));
+        $this->assertNotFalse($studentLock);
+        $this->assertNotFalse($invoiceLock);
+        $this->assertGreaterThan($studentLock, $invoiceLock);
+
+        // The request that waited on the lock then sees the committed correction: no second bill.
+        $this->withToken($token)->postJson('/api/v1/invoices', $this->reissue($course, $oldId))->assertOk()->assertJsonPath('id', $first);
         $this->assertSame(2, DB::table('Invoice')->where('StudentClassID', $course->ID)->count());
     }
 
@@ -130,9 +252,9 @@ class InvoiceCorrectionReissueTest extends TestCase
         return $raw;
     }
 
-    private function student(): Student
+    private function student(int $campusId = 1): Student
     {
-        return Student::create(['name' => 'Student ' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0900000000', 'MDT' => now(), 'Notify_Token' => '']);
+        return Student::create(['name' => 'Student ' . uniqid(), 'CampusID' => $campusId, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0900000000', 'MDT' => now(), 'Notify_Token' => '']);
     }
 
     private function course(Student $student): StudentClass

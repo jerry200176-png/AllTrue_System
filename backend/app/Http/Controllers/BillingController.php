@@ -91,7 +91,7 @@ class BillingController extends Controller
     {
         $data = $request->validate([
             'StudentID' => 'required|integer',
-            'StudentClassID' => 'nullable|integer',
+            'StudentClassID' => 'nullable|required_with:replaces_invoice_id|integer',
             'IssueDate' => 'required|date',
             'DueDate' => 'nullable|date',
             'TotalAmount' => 'required|integer|min:0',
@@ -173,9 +173,10 @@ class BillingController extends Controller
             $replaced = null;
             if (!empty($data['replaces_invoice_id'])) {
                 $replaced = Invoice::query()->whereKey($data['replaces_invoice_id'])->lockForUpdate()->first();
-                if ($refusal = $this->replacementRefusal($replaced, $data)) {
+                if ($refusal = $this->replacementRefusal($request, $replaced, $data)) {
                     return $refusal;
                 }
+                $data['Note'] = str_replace(['[', ']'], ' ', (string) ($data['Note'] ?? '')); // only the server writes tags
             }
             $scheduleModeAtIssue = !empty($data['StudentClassID'])
                 ? StudentClass::where('ID', $data['StudentClassID'])->first()?->ScheduleMode
@@ -216,70 +217,126 @@ class BillingController extends Controller
         });
     }
 
+    private const CORRECTION_EVENT = 'invoice.correction_reissue';
+
     /**
      * Founder D3 (#4128): only a voided bill of the same student and course can be replaced, and only once.
-     * A retry of the same reissue (same course and amount) returns the bill already issued instead of a second one.
+     * Replacement state comes from the audit rows (never from the free-text Note). A retry with the same
+     * amount and reason returns the bill already issued; anything else is refused.
      */
-    private function replacementRefusal(?Invoice $replaced, array $data): ?\Illuminate\Http\JsonResponse
+    private function replacementRefusal(Request $request, ?Invoice $replaced, array $data): ?\Illuminate\Http\JsonResponse
     {
-        if (!$replaced) {
+        $campusId = $replaced ? (int) (Student::query()->whereKey($replaced->StudentID)->value('CampusID') ?? 0) : 0;
+        if (!$replaced || !$this->invoiceStudentCampusAllowed($request, $campusId)) {
             return response()->json(['message' => '找不到要更正的帳單。沒有建立任何帳單。', 'code' => 'replaces_invoice_not_found'], 404);
         }
-        if (empty($data['StudentClassID']) || (int) $replaced->StudentID !== (int) $data['StudentID']
-            || (int) $replaced->StudentClassID !== (int) $data['StudentClassID']) {
+        if (mb_strlen(self::correctionReason((string) $data['correction_reason'])) < 2) {
+            return response()->json(['message' => '請填寫更正原因。沒有建立任何帳單。', 'code' => 'correction_reason_invalid'], 422);
+        }
+        if ((int) $replaced->StudentID !== (int) $data['StudentID'] || (int) $replaced->StudentClassID !== (int) $data['StudentClassID']) {
             return response()->json(['message' => '要更正的帳單不是這位學生的這門課程。沒有建立任何帳單。', 'code' => 'replaces_invoice_mismatch'], 422);
         }
         if (strtolower((string) ($replaced->Status ?? '')) !== 'void') {
             return response()->json(['message' => '請先作廢原帳單（需填原因），再開更正帳單。沒有建立任何帳單。', 'code' => 'replaces_invoice_not_void'], 422);
         }
-        if (preg_match('/\[replaced_by: #\S+; invoice_id=(\d+);/', (string) $replaced->Note, $m)) {
-            $existing = Invoice::query()->whereKey((int) $m[1])->first();
-            if ($existing && (int) $existing->StudentClassID === (int) $data['StudentClassID']
-                && (int) $existing->TotalAmount === (int) $data['TotalAmount'] && strtolower((string) $existing->Status) !== 'void') {
+        if ($prior = $this->priorCorrection($replaced)) {
+            $existing = $prior['invoice'];
+            if ($existing && strtolower((string) $existing->Status) !== 'void' && $prior['amount'] === (int) $data['TotalAmount']
+                && hash_equals((string) $prior['reason_hash'], hash('sha256', self::correctionReason((string) $data['correction_reason'])))) {
                 return response()->json($existing, 200); // retry of the same reissue: no second bill
             }
 
             return response()->json([
                 'message' => '這張帳單已經開過更正帳單，請改從最新的帳單處理。沒有建立任何帳單。',
                 'code' => 'replaces_invoice_already_replaced',
-                'replacement_invoice_id' => (int) $m[1],
+                'replacement_invoice_id' => $existing ? (int) $existing->id : null,
             ], 409);
         }
 
         return null;
     }
 
-    /** Founder D3: no automatic link yet, so both notes name the other bill, the reason and the operator. */
+    /** @return array{invoice: ?Invoice, amount: int, reason_hash: ?string}|null the earlier correction of this bill, from the audit rows */
+    private function priorCorrection(Invoice $replaced): ?array
+    {
+        // Concurrent reissues are serialized by the student row lock taken first in store() and the replaced bill's
+        // row lock, so this plain read already sees a committed earlier correction.
+        $oldRef = SecurityAuditEvent::ref('invoice', (int) $replaced->id);
+        $row = DB::table('security_audit_events')->where('event_type', self::CORRECTION_EVENT)->where('subject_ref', $oldRef)
+            ->get(['correlation_id', 'metadata'])
+            ->first(fn ($r) => (json_decode((string) $r->metadata, true)['reason_code'] ?? null) === 'replaced');
+        if (!$row) {
+            return null;
+        }
+        $meta = json_decode((string) $row->metadata, true);
+        $newRef = DB::table('security_audit_events')->where('event_type', self::CORRECTION_EVENT)
+            ->where('correlation_id', $row->correlation_id)->where('subject_ref', '!=', $oldRef)->value('subject_ref');
+        $invoice = Invoice::query()->where('StudentClassID', $replaced->StudentClassID)->where('id', '>', $replaced->id)->get()
+            ->first(fn (Invoice $i) => $newRef !== null && hash_equals((string) $newRef, (string) SecurityAuditEvent::ref('invoice', (int) $i->id)));
+
+        return ['invoice' => $invoice, 'amount' => (int) ($meta['new_charge'] ?? -1), 'reason_hash' => $meta['reason_hash'] ?? null];
+    }
+
+    /** Free text going into a tag: no brackets, separators or markers, so it cannot fake a tag or the operator. */
+    private static function correctionReason(string $reason): string
+    {
+        $clean = str_replace(["\r", "\n", '[', ']', '／', '/', ';', '；', '：', ':', '操作者', '更正自', 'replaced_by'], ' ', $reason);
+
+        return trim(preg_replace('/\s+/u', ' ', $clean) ?? '');
+    }
+
+    /** Founder D3: no automatic link yet, so both notes name the other bill; the operator is written by the server. */
     private function linkCorrection(Request $request, Invoice $replaced, Invoice $invoice, string $reason): void
     {
         $userId = $request->attributes->get('auth_user')?->id;
         $operator = 'user_id=' . ($userId ?? 'system');
-        $reason = str_replace(["\r", "\n", '[', ']'], ' ', $reason);
-        $invoice->Note = self::appendNoteTag((string) $invoice->Note, '[更正自 #' . $replaced->displayNo() . '／原因：' . $reason . '／操作者：' . $operator . ']');
+        $reason = self::correctionReason($reason);
+        $newNote = self::appendNoteTag((string) $invoice->Note, '[更正自 #' . $replaced->displayNo() . '／操作者：' . $operator . '／原因：' . $reason . ']');
+        $oldNote = self::appendNoteTag((string) $replaced->Note, sprintf('[replaced_by: #%s; %s; at=%s]',
+            $invoice->displayNo(), $operator, now()->format('Y-m-d H:i:s')));
+        if ($newNote === null || $oldNote === null) {
+            // Never cut an existing tag: refuse, and the transaction rolls the new bill back.
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                'message' => '帳單備註的紀錄已滿，無法再記錄更正單號。沒有建立任何帳單。', 'code' => 'replaces_invoice_note_full'], 422));
+        }
+        $invoice->Note = $newNote;
         $invoice->save();
-        $replaced->Note = self::appendNoteTag((string) $replaced->Note, sprintf('[replaced_by: #%s; invoice_id=%d; %s; at=%s]',
-            $invoice->displayNo(), (int) $invoice->id, $operator, now()->format('Y-m-d H:i:s')));
+        $replaced->Note = $oldNote;
         $replaced->save();
 
         $correlationId = (string) \Illuminate\Support\Str::uuid();
         $campusId = (int) (Student::query()->whereKey($invoice->StudentID)->value('CampusID') ?? 0) ?: null;
         foreach ([$replaced, $invoice] as $subject) {
-            SecurityAuditEvent::append('invoice.correction_reissue', 'success', [
+            SecurityAuditEvent::append(self::CORRECTION_EVENT, 'success', [
                 'correlation_id' => $correlationId, 'actor_type' => 'user', 'actor_id' => $userId,
                 'subject_type' => 'invoice', 'subject_id' => $subject->id, 'campus_id' => $campusId,
             ], ['reason_code' => $subject === $replaced ? 'replaced' : 'replacement', 'old_charge' => (int) $replaced->TotalAmount,
                 'new_charge' => (int) $invoice->TotalAmount, 'reason_hash' => hash('sha256', $reason)]);
         }
+        // The audit rows are the replacement state, so a failed write must not leave an unlinked bill.
+        if (DB::table('security_audit_events')->where('correlation_id', $correlationId)->count() !== 2) {
+            throw new \RuntimeException('invoice correction audit was not recorded');
+        }
         Log::info('[InvoiceCorrection] reissued as correction', ['invoice_id' => $invoice->id, 'replaces_invoice_id' => $replaced->id,
             'student_class_id' => $invoice->StudentClassID, 'user_id' => $userId]);
     }
 
-    /** Invoice.Note is VARCHAR(255): keep the whole tag, trim the older text. */
-    private static function appendNoteTag(string $note, string $tag): string
+    /**
+     * Invoice.Note is VARCHAR(255). Existing [..] tags (void audit etc.) and the new tag are kept whole; only the
+     * older free text is trimmed. Null when the tags alone do not fit.
+     */
+    private static function appendNoteTag(string $note, string $tag): ?string
     {
-        $note = trim($note);
+        preg_match_all('/\[[^\[\]]*\]/u', $note, $m);
+        $tail = implode(' ', [...$m[0], $tag]);
+        if (mb_strlen($tail) > 255) {
+            return null;
+        }
+        $free = trim(preg_replace('/\s+/u', ' ', preg_replace('/\[[^\[\]]*\]/u', ' ', $note) ?? '') ?? '');
+        $room = 255 - mb_strlen($tail) - 1;
+        $free = $room > 0 ? trim(mb_substr($free, 0, $room)) : '';
 
-        return $note === '' ? mb_substr($tag, 0, 255) : trim(mb_substr($note, 0, max(0, 254 - mb_strlen($tag))) . ' ' . $tag);
+        return $free === '' ? $tail : $free . ' ' . $tail;
     }
 
     public function recordPayment(Request $request, Invoice $invoice)
@@ -427,7 +484,7 @@ class BillingController extends Controller
             $reason = trim((string) $data['reason']);
             $audit = sprintf(
                 '[void: %s; user_id=%s; at=%s]',
-                str_replace(["\r", "\n"], ' ', $reason),
+                str_replace(["\r", "\n", '[', ']'], ' ', $reason), // D3: user text cannot forge a tag
                 $authUser?->id ?? 'system',
                 now()->format('Y-m-d H:i:s')
             );
@@ -722,11 +779,17 @@ class BillingController extends Controller
 
     private function assertInvoiceStudentCampusAllowed(Request $request, int $studentCampusId): void
     {
-        $role = $request->attributes->get('auth_role');
-        $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-        if (!empty($campusIds) && !in_array($studentCampusId, $campusIds, true)) {
+        if (!$this->invoiceStudentCampusAllowed($request, $studentCampusId)) {
             abort(403);
         }
+    }
+
+    private function invoiceStudentCampusAllowed(Request $request, int $studentCampusId): bool
+    {
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+
+        return empty($campusIds) || in_array($studentCampusId, $campusIds, true);
     }
 
     private function buildMonthlySplitItems(int $totalAmount, string $start, string $end): array
