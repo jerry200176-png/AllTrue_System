@@ -60,11 +60,20 @@ describe('#4150 coursePaymentBadge: one verdict for every server status', () => 
   });
 
   it('shows the monthly period label only when asked (課程查找)', () => {
-    const monthly = course({ payment_status: 'free', monthly_payment: { billing_period: '2026-10', payment_status: 'paid' } });
-    expect(M.coursePaymentBadge(monthly).label).toBe(M.FREE_GIFT_LABEL);
-    expect(M.coursePaymentBadge(monthly, { monthlyPeriod: true })).toEqual({ label: '2026-10 已收', tone: 'free', nextAction: 'billing' });
+    const monthly = course({ payment_status: 'unpaid', monthly_payment: { billing_period: '2026-10', payment_status: 'paid' } });
+    expect(M.coursePaymentBadge(monthly).label).toBe(UNPAID);
+    expect(M.coursePaymentBadge(monthly, { monthlyPeriod: true })).toEqual({ label: '2026-10 已收', tone: 'owing', nextAction: 'report_payment' });
     const review = course({ payment_status: 'paid', monthly_payment: { billing_period: '2026-10', review_required: true } });
     expect(M.coursePaymentBadge(review, { monthlyPeriod: true })).toEqual({ label: M.REVIEW_REQUIRED_LABEL, tone: 'review', nextAction: 'billing' });
+  });
+
+  // Codex P2 on #4204: the server's free/gift verdict outranks the monthly period label (its NT$0 period reads 已收 or review).
+  it.each([
+    ['paid period', { billing_period: '2026-10', payment_status: 'paid' }],
+    ['review period', { billing_period: '2026-10', review_required: true }],
+  ])('a monthly free/gift course stays 免費／贈送 over a %s', (_name, monthly_payment) => {
+    const badge = M.coursePaymentBadge(course({ payment_status: 'free', payment_type: 'monthly', monthly_payment }), { monthlyPeriod: true });
+    expect(badge).toEqual({ label: M.FREE_GIFT_LABEL, tone: 'free', nextAction: 'billing' });
   });
 
   it('TUITION_STATUS_CONFIG knows free with a non-owing style', () => {

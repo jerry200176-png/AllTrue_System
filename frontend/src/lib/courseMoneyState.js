@@ -216,7 +216,8 @@ export const coursePaymentBadge = (course, { monthlyPeriod = false } = {}) => {
   const status = String(course.payment_status).toLowerCase();
   const nextAction = NEXT_ACTIONS[status] || 'billing';
   const tone = BADGE_TONES[status] || 'neutral';
-  const monthly = monthlyPeriod ? monthlyPaymentLabel(course) : null;
+  // The free/gift verdict outranks the period label: its NT$0 period reads 已收 or review (Codex P2 on #4204).
+  const monthly = monthlyPeriod && status !== 'free' ? monthlyPaymentLabel(course) : null;
   if (monthly) return { label: monthly, tone: course.monthly_payment.review_required ? 'review' : tone, nextAction };
   if (status === 'review_required') return { label: REVIEW_REQUIRED_LABEL, tone, nextAction };
   return { label: TUITION_STATUS_CONFIG[status]?.label || UNKNOWN_STATUS_LABEL, tone, nextAction };
