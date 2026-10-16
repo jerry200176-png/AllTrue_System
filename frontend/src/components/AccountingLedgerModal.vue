@@ -308,7 +308,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
-import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, isWaivedContract } from '../lib/courseMoneyState.js';
+import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, isWaivedContract, latestStandingPayment } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
@@ -591,12 +591,9 @@ const owedFor = (id) => (payload.value?.invoices || [])
   .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
 const courseInvoices = (id) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(id) && inv.status !== 'void');
-const lastInvoicePayment = (ids) => {
-  const pays = ids.flatMap((id) => courseInvoices(id)).flatMap((inv) => inv.payments || [])
-    .filter((p) => !p.is_void && Number(p.amount) > 0 && p.paid_at);
-  const last = pays.sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)) || Number(b.id) - Number(a.id))[0];
-  return last ? { date: String(last.paid_at).slice(0, 10), amount: Number(last.amount) } : null;
-};
+// Reversals are netted per invoice (latestStandingPayment, same rule as the server's last-paid resolver), never filtered by row.
+const lastInvoicePayment = (ids) => ids.flatMap((id) => courseInvoices(id)).map((inv) => latestStandingPayment(inv.payments))
+  .filter(Boolean).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
 // Pay line (spec 2.3): latest confirmed receipt = same source as the printed receipt; invoice payments next.
 // #4150: the contract's PayDate / Charge / Paid flag are legacy metadata, not proof of a payment, so they never
 // become a 繳費日 line; the card shows the neutral 需核對 note instead (G-009 dual truth, display only).
@@ -623,9 +620,8 @@ const amountsFor = (id) => {
 };
 const monthLinesFor = (id) => Object.fromEntries(courseInvoices(id).map((inv) => {
   const key = String(inv.billing_period || inv.period_start || '').slice(0, 7);
-  const paid = (inv.payments || []).filter((p) => !p.is_void && Number(p.amount) > 0 && p.paid_at)
-    .sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)))[0];
-  return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? String(paid.paid_at).slice(0, 10) : '', paidAmount: Number(inv.calculated_applied_amount || 0) }];
+  const paid = latestStandingPayment(inv.payments);
+  return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? paid.date : '', paidAmount: Number(inv.calculated_applied_amount || 0) }];
 }).filter(([k]) => k));
 // #3753 (D18): members of one shared CoursePackage are one obligation; one pending report covers them all.
 const packageMemberIds = (id) => {

@@ -697,8 +697,10 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     const w = await mountWith({
       courses: [{ id: 2, subject: '數學', paid: true, paid_at: '2026-08-01', charge: 6000 }],
       invoices: [inv({ calculated_applied_amount: 6000, outstanding_amount: 0, status: 'paid', payments: [
-        { id: 1, paid_at: '2026-09-20', amount: 6000, is_void: true },
-        { id: 2, paid_at: '2026-09-05', amount: 6000, is_void: false },
+        // the real void shape (PaymentReportController::void): the positive row stays is_void=false, a negative void row cancels it
+        { id: 1, paid_at: '2026-09-01', amount: 6000, method: 'cash', is_void: false, report_id: 4 },
+        { id: 2, paid_at: '2026-09-02', amount: -6000, method: 'void', is_void: true, report_id: 4 },
+        { id: 3, paid_at: '2026-09-05', amount: 6000, method: 'cash', is_void: false },
       ] })],
       receipts: [{ report_id: 4, student_class_id: 2, status: 'voided', amount: 6000, payment_date: '2026-09-20' }],
     });
@@ -708,7 +710,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
 
     const w2 = await mountWith({
       courses: [{ id: 2, subject: '數學', paid: true, paid_at: '2026-08-01', charge: 6000 }],
-      invoices: [inv({ payments: [{ id: 1, paid_at: '2026-09-20', amount: 6000, is_void: true }] })],
+      invoices: [inv({ payments: [{ id: 1, paid_at: '2026-09-20', amount: 6000, method: 'cash', is_void: false, report_id: 4 }, { id: 2, paid_at: '2026-09-21', amount: -6000, method: 'void', is_void: true, report_id: 4 }] })],
       receipts: [{ report_id: 4, student_class_id: 2, status: 'voided', amount: 6000, payment_date: '2026-09-20' }],
     });
     expect(card(w2).find('[data-testid="contract-last-payment"]').exists()).toBe(false);
@@ -802,6 +804,54 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     expect(w.find('[data-testid="contract-issue"]').exists()).toBe(false);
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
     expect(w.find('[data-testid="contract-money"]').text()).toBe('不收了');
+  });
+
+  describe('review round 3: reversals are netted (Codex characterization, #4201 comment 6214846821)', () => {
+    // Package 7, members 2 and 3; open bill on member 2; +6000 cash then a -6000 Method=void reversal, same report_id; receipt voided.
+    const pkg = (o) => ({ subject: '數學', paid_at: null, charge: 6000, package_id: 7, ...o });
+    const reversedBill = (extra = []) => inv({ total_amount: 6000, outstanding_amount: 6000, calculated_applied_amount: 0, status: 'unpaid', payments: [
+      { id: 1, paid_at: '2026-09-06', amount: 6000, method: 'cash', is_void: false, report_id: 5 },
+      { id: 2, paid_at: '2026-09-07', amount: -6000, method: 'void', is_void: true, report_id: 5 },
+      ...extra,
+    ] });
+    const body = (paid, extra) => ({
+      courses: [pkg({ id: 2, paid }), pkg({ id: 3, subject: '英文', paid })],
+      invoices: [reversedBill(extra)],
+      receipts: [{ report_id: 5, student_class_id: 2, status: 'voided', amount: 6000, payment_date: '2026-09-06' }],
+    });
+    const line = (w, id) => w.find(`[data-testid="contract-card-${id}"]`);
+
+    it('a sibling of a fully reversed payment shows no 繳費日', async () => {
+      const w = await mountWith(body(false));
+      expect(line(w, 3).text()).not.toContain('繳費日');
+      expect(line(w, 3).find('[data-testid="contract-last-payment"]').text()).toBe('還沒繳費');
+      w.unmount(); vi.unstubAllGlobals();
+    });
+
+    it('the collecting member with the same data shows no 繳費日', async () => {
+      const w = await mountWith(body(false));
+      expect(line(w, 2).text()).not.toContain('繳費日');
+      expect(line(w, 2).find('[data-testid="contract-last-payment"]').text()).toBe('還沒繳費');
+      w.unmount(); vi.unstubAllGlobals();
+    });
+
+    it('a reversal followed by a valid repayment shows the repayment date (even when it is dated before the reversed one)', async () => {
+      // Repayment recorded after the void (higher id) with the date the parent actually paid, earlier than the cancelled receipt.
+      const w = await mountWith(body(true, [{ id: 3, paid_at: '2026-09-04', amount: 6000, method: 'transfer', is_void: false, report_id: 6 }]));
+      for (const id of [2, 3]) {
+        expect(line(w, id).find('[data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/09/04　NT$ 6,000');
+      }
+      w.unmount(); vi.unstubAllGlobals();
+    });
+
+    it('a legacy paid=true flag with only reversed payments reaches 需核對', async () => {
+      const w = await mountWith(body(true));
+      for (const id of [2, 3]) {
+        expect(line(w, id).find('[data-testid="contract-legacy-unverified"]').text()).toBe(LEGACY);
+        expect(line(w, id).text()).not.toContain('繳費日');
+      }
+      w.unmount(); vi.unstubAllGlobals();
+    });
   });
 
   it('ContractCard: a tutoring course never shows the note', async () => {
