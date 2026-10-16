@@ -4,7 +4,8 @@ import { authedFetch, getAccessToken } from './authedFetch';
 /**
  * Shared confirmation and request path for closing a course without renewal.
  * Resolves true only when the course was closed. A refresh failure after a successful close
- * still resolves true (with its own notice), so an already-closed course is never retried.
+ * still resolves true (with its own notice and `onReloadFailed`), so an already-closed course is
+ * never retried.
  */
 export const RELOAD_AFTER_CLOSE_FAILED_MESSAGE = '已結束課程，但列表重新整理失敗，請重新整理頁面';
 
@@ -16,6 +17,7 @@ export async function closeCourseNoRenew({
   isCourseSettled,
   reloadCourses,
   onClosed,
+  onReloadFailed,
   confirmImpl = globalThis.confirm,
   alertImpl = globalThis.alert,
 }) {
@@ -57,10 +59,17 @@ export async function closeCourseNoRenew({
     return false;
   }
   // The close is committed here; a failed list refresh must not be reported as a failed close.
+  // reloadCourses may reject or resolve { ok: false } (CourseManagement's loadCourses when both
+  // list sources fail); both count as a refresh failure.
+  let reloaded;
   try {
-    await reloadCourses();
+    reloaded = (await reloadCourses())?.ok !== false;
   } catch {
+    reloaded = false;
+  }
+  if (!reloaded) {
     alertImpl(RELOAD_AFTER_CLOSE_FAILED_MESSAGE);
+    onReloadFailed?.();
   }
   return true;
 }

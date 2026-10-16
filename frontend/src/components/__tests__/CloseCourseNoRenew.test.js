@@ -15,6 +15,7 @@ import {
   closedCourseHiddenNotice,
   createCourseCloseFlow,
 } from '../../lib/closeCourseNoRenew.js';
+import { fallbackListRows } from '../../lib/listRefreshState.js';
 
 function setup({ remaining = 0, settled = true, accepted = true, response = { pending_reconciliation: true } } = {}) {
   const calls = { requests: [], alerts: [], confirms: [], reloads: 0 };
@@ -107,6 +108,32 @@ describe('shared close-course action', () => {
     expect(calls.alerts[0]).toContain('已結案');
     expect(calls.alerts[1]).toBe(RELOAD_AFTER_CLOSE_FAILED_MESSAGE);
     expect(calls.alerts.some((a) => a.startsWith('操作失敗') || a.startsWith('結案失敗'))).toBe(false);
+  });
+
+  it('a reload that resolves { ok: false } (both list sources failed) is a refresh failure, not a failed close', async () => {
+    const { calls, deps } = setup();
+    deps.reloadCourses = async () => { calls.reloads += 1; return { ok: false, error: new Error('fallback') }; };
+    deps.onReloadFailed = vi.fn();
+    expect(await closeCourseNoRenew(deps)).toBe(true);
+    expect(calls.alerts).toHaveLength(2);
+    expect(calls.alerts[1]).toBe(RELOAD_AFTER_CLOSE_FAILED_MESSAGE);
+    expect(deps.onReloadFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it('onReloadFailed also fires when the reload throws, and never on a successful reload', async () => {
+    const thrown = setup();
+    thrown.deps.reloadCourses = async () => { throw new Error('network'); };
+    thrown.deps.onReloadFailed = vi.fn();
+    expect(await closeCourseNoRenew(thrown.deps)).toBe(true);
+    expect(thrown.deps.onReloadFailed).toHaveBeenCalledTimes(1);
+    for (const outcome of [undefined, { ok: true }]) {
+      const ok = setup();
+      ok.deps.reloadCourses = async () => outcome;
+      ok.deps.onReloadFailed = vi.fn();
+      expect(await closeCourseNoRenew(ok.deps)).toBe(true);
+      expect(ok.calls.alerts).not.toContain(RELOAD_AFTER_CLOSE_FAILED_MESSAGE);
+      expect(ok.deps.onReloadFailed).not.toHaveBeenCalled();
+    }
   });
 
   it('reports a network failure of the close request itself as a failed close', async () => {
@@ -235,5 +262,21 @@ describe('single-flight close and drawer identity', () => {
     const flow = createCourseCloseFlow({ closeCourse: async () => { throw new Error('x'); }, getDrawerCourse: () => null, closeDrawer: vi.fn() });
     await expect(flow.close(A)).rejects.toThrow('x');
     expect(flow.isPending()).toBe(false);
+  });
+});
+
+// PR #4159 Codex r4289552000: a failed Supabase fallback must not be read as an empty course list.
+describe('fallbackListRows', () => {
+  it('returns null when the fallback errored or returned no array', () => {
+    expect(fallbackListRows({ data: null, error: new Error('x') })).toBeNull();
+    expect(fallbackListRows({ data: [{ id: 1 }], error: { message: 'x' } })).toBeNull();
+    expect(fallbackListRows({ data: null, error: null })).toBeNull();
+    expect(fallbackListRows()).toBeNull();
+  });
+
+  it('returns the rows, including an empty list, when the fallback succeeded', () => {
+    const rows = [{ id: 1 }];
+    expect(fallbackListRows({ data: rows, error: null })).toBe(rows);
+    expect(fallbackListRows({ data: [] })).toEqual([]);
   });
 });

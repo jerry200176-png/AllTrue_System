@@ -1388,7 +1388,7 @@ import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
-import { isCurrentListRequest } from '../lib/listRefreshState.js';
+import { fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
@@ -1568,6 +1568,7 @@ const closedCourseNotice = ref(null);
 async function runCloseCourseInPlace(course) {
   closedCourseNotice.value = null;
   let pendingReconciliation = false;
+  let reloadFailed = false;
   const closed = await runCloseCourseNoRenew({
     course,
     studentName: course?.student_name || course?.student?.name,
@@ -1576,9 +1577,11 @@ async function runCloseCourseInPlace(course) {
     isCourseSettled,
     reloadCourses: () => loadCourses(pagination.value.page),
     onClosed: ({ pendingReconciliation: pending }) => { pendingReconciliation = pending; },
+    onReloadFailed: () => { reloadFailed = true; },
     confirmImpl: (message, opts) => askConfirm({ message, ...opts }),
   });
-  if (closed) {
+  // A failed refresh leaves the previous rows on screen, so the hidden-by-filter notice would be wrong.
+  if (closed && !reloadFailed) {
     closedCourseNotice.value = closedCourseHiddenNotice({ course, courses: courses.value, courseStatus: filters.value.course_status, pendingReconciliation });
   }
   return closed;
@@ -4249,6 +4252,8 @@ const formatMoney = (value) => {
   return Number.isFinite(n) ? n.toLocaleString() : '0';
 };
 
+// Resolves { ok: false, error } when both the canonical API and the Supabase fallback fail; the
+// rows (and their session data) already on screen are kept. Other outcomes resolve undefined.
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
   closedCourseNotice.value = null;
@@ -4262,6 +4267,7 @@ const loadCourses = async (page = 1) => {
     return;
   }
   coursesLoading.value = true;
+  const previousSessionData = { completed: completedSessionDatesByCourse.value, sessions: sessionsByCourse.value };
   completedSessionDatesByCourse.value = {};
   sessionsByCourse.value = {};
   try {
@@ -4336,8 +4342,16 @@ const loadCourses = async (page = 1) => {
 
   if (filters.value.class_type) query = query.eq('class_type', filters.value.class_type);
   if (filters.value.teacher_id) query = query.eq('teacher_id', Number(filters.value.teacher_id));
-  const { data } = await query;
-  let result = (data || []).map(c => ({
+  const { data, error: fallbackError } = await query;
+  const fallbackRows = fallbackListRows({ data, error: fallbackError });
+  if (fallbackRows === null) {
+    if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
+    completedSessionDatesByCourse.value = previousSessionData.completed;
+    sessionsByCourse.value = previousSessionData.sessions;
+    coursesLoading.value = false;
+    return { ok: false, error: fallbackError || new Error('course list unavailable') };
+  }
+  let result = fallbackRows.map(c => ({
     ...c,
     id: Number(c?.id ?? c?.ID ?? 0),
     data_source: 'supabase',

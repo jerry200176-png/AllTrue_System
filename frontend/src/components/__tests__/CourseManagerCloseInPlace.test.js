@@ -23,6 +23,24 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
     expect(closeFlow).toContain('getDrawerCourse: () => (courseManagerOpen.value ? courseManagerCourse.value : null)');
   });
 
+  it('a failed refresh after a close shows no hidden-by-filter notice (Codex r4289552000)', () => {
+    expect(closeFlow).toContain('onReloadFailed: () => { reloadFailed = true; },');
+    expect(closeFlow).toMatch(/if \(closed && !reloadFailed\) \{\s*closedCourseNotice\.value = closedCourseHiddenNotice\(/);
+  });
+
+  it('loadCourses keeps the previous rows and resolves { ok: false } when the API and the Supabase fallback both fail', () => {
+    const load = source.slice(source.indexOf('const loadCourses = async (page = 1) => {'), source.indexOf('const {\n  showRescheduleModal'));
+    const fallback = load.slice(load.indexOf('const { data, error: fallbackError } = await query;'));
+    expect(fallback).toMatch(/^const \{ data, error: fallbackError \} = await query;\s*const fallbackRows = fallbackListRows\(\{ data, error: fallbackError \}\);\s*if \(fallbackRows === null\) \{/);
+    const failure = fallback.slice(0, fallback.indexOf('let result = fallbackRows.map('));
+    expect(failure).toContain("return { ok: false, error: fallbackError || new Error('course list unavailable') };");
+    expect(failure).toContain('sessionsByCourse.value = previousSessionData.sessions;');
+    expect(failure).toContain('coursesLoading.value = false;');
+    expect(failure).not.toContain('courses.value =');
+    expect(failure).not.toContain('pagination.value =');
+    expect(load).not.toContain('(data || []).map(');
+  });
+
   it('pause/resume share the close flow\'s per-course lifecycle lock (PR #4159 r4286957773)', () => {
     expect(source).toMatch(/\} = useCoursePause\(\{\s*courseLock: courseCloseFlow,/);
     expect(drawerActions).toContain('pause: () => requestCoursePause(c), resume: () => requestCoursePause(c),');
