@@ -129,6 +129,13 @@
       </div>
     </transition>
 
+    <div v-if="closedCourseNotice" class="creation-success-banner" role="status" data-testid="closed-course-hidden-notice">
+      <span class="material-symbols-outlined creation-success-banner__icon" aria-hidden="true">info</span>
+      <span>{{ closedCourseNotice.message }}</span>
+      <button v-if="closedCourseNotice.canShowAll" class="btn-soft" type="button" data-testid="closed-course-show-all" @click="showClosedCourseUnderAllStatuses">切到「全部」</button>
+      <button class="creation-success-banner__close" type="button" @click="closedCourseNotice = null" aria-label="關閉"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
+    </div>
+
     <section v-if="pendingLeaveLoaded || pendingLeaveLoading || pendingLeaveError" class="pending-leave-summary" aria-live="polite">
       <div class="pending-leave-summary__header">
         <div class="pending-leave-summary__icon material-symbols-outlined" aria-hidden="true">inbox</div>
@@ -166,6 +173,7 @@
 
     <!-- Course Table -->
     <div class="card table-card" data-guide="course-mgmt-table">
+      <AtInlineAlert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" style="margin: 0 0 14px;"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></AtInlineAlert>
       <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton" role="status" aria-label="課程資料載入中">
         <div v-for="idx in 3" :key="idx" class="course-skeleton-group">
           <div class="course-skeleton-header"></div>
@@ -1381,14 +1389,14 @@ import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
-import { isCurrentListRequest } from '../lib/listRefreshState.js';
+import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { useTransferSessions } from '../composables/course-management/useTransferSessions';
 import { useContractAmendment } from '../composables/course-management/useContractAmendment';
 import { useCoursePause } from '../composables/course-management/useCoursePause';
-import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
+import { closeCourseNoRenew as runCloseCourseNoRenew, closedCourseHiddenNotice, createCourseCloseFlow } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -1555,19 +1563,47 @@ const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
 };
 
-function closeCourseInPlace(course) {
-  return runCloseCourseNoRenew({
+// in-app #352/#415: closing stays in 課程查找 and only runs the normal list reload. If the current
+// filter hides the closed course, a notice offers to switch 課程狀態 to 「全部」 (no injected rows).
+const closedCourseNotice = ref(null);
+async function runCloseCourseInPlace(course) {
+  closedCourseNotice.value = null;
+  let pendingReconciliation = false;
+  let reloadResult;
+  const closed = await runCloseCourseNoRenew({
     course,
     studentName: course?.student_name || course?.student?.name,
     getRemainingSessions: ownRemainingSessions,
     getSubjectLabel,
     isCourseSettled,
-    reloadCourses: () => loadCourses(pagination.value.page),
+    reloadCourses: async () => (reloadResult = await loadCourses(pagination.value.page)),
+    onClosed: ({ pendingReconciliation: pending }) => { pendingReconciliation = pending; },
     confirmImpl: (message, opts) => askConfirm({ message, ...opts }),
   });
+  // Only a reload that won describes the list on screen; a failed or superseded one sets no notice (Codex r4290114672).
+  if (closed && reloadResult?.ok === true) {
+    closedCourseNotice.value = closedCourseHiddenNotice({ course, courses: courses.value, courseStatus: filters.value.course_status, pendingReconciliation });
+  }
+  return closed;
+}
+const courseCloseFlow = createCourseCloseFlow({
+  closeCourse: runCloseCourseInPlace,
+  getDrawerCourse: () => (courseManagerOpen.value ? courseManagerCourse.value : null),
+  closeDrawer: () => closeCourseManager(),
+});
+function closeCourseInPlace(course) {
+  return courseCloseFlow.close(course);
+}
+function showClosedCourseUnderAllStatuses() {
+  closedCourseNotice.value = null;
+  filters.value.course_status = '';
+  loadCourses(1);
 }
 
 const courses = ref([]);
+// Set by loadCourses itself, so every caller (close, pause/resume, filters) gets the hint (Codex r4290041474).
+const listRefreshFailed = ref(false);
+const courseListOutcome = createListLoadOutcome(listRefreshFailed);
 const pendingConvertTrialId = ref(0);
 // in-app #382: calendar sends a just-created manual course here to schedule its first lesson.
 const pendingManualSessionId = ref(0);
@@ -2550,6 +2586,7 @@ const {
   isResume: pauseConfirmIsResume, impacts: pauseConfirmImpacts,
   request: requestCoursePause, confirm: confirmCoursePause,
 } = useCoursePause({
+  courseLock: courseCloseFlow,
   onChanged: async () => {
     await loadCourses();
     syncCourseManagerCourseFromList();
@@ -2659,7 +2696,8 @@ function onCourseManagerAction({ name, payload } = {}) {
   if (!c || !name) return;
   const map = {
     pause: () => requestCoursePause(c), resume: () => requestCoursePause(c),
-    close: () => goToStudentsCommercial(c, 'close'), delete: () => { confirmDeleteTarget.value = c; },
+    // in-app #415: 結束課程 in the drawer closes in place (no jump to 學生管理).
+    close: () => courseCloseFlow.closeFromDrawer(c), delete: () => { confirmDeleteTarget.value = c; },
     'monthly-correction': () => openMonthlyCorrection(c),
     'manual-session': () => openManualSessionModal(c), 'monthly-session': () => openMonthlySessionModal(c),
     'quick-add': () => { if (canQuickAddSession(c) || isMonthlyMode(c)) openQuickAddSessionModal(c); },
@@ -4218,8 +4256,11 @@ const formatMoney = (value) => {
   return Number.isFinite(n) ? n.toLocaleString() : '0';
 };
 
+// Resolves { ok: true } when this request won, undefined when superseded, and { ok: false, error } when both
+// list sources fail (shows the refresh-failure hint; rows are kept only for the same query, listKey).
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
+  closedCourseNotice.value = null;
   if (!props.branchId) {
     if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
     courses.value = [];
@@ -4227,11 +4268,13 @@ const loadCourses = async (page = 1) => {
     completedSessionDatesByCourse.value = {};
     sessionsByCourse.value = {};
     expandedStudentGroups.value = new Set();
+    courseListOutcome.cleared();
     return;
   }
   coursesLoading.value = true;
-  completedSessionDatesByCourse.value = {};
-  sessionsByCourse.value = {};
+  // Cleared only once this request wins, so a failed/superseded load keeps them (Codex r4289665973).
+  const sessionCaches = [completedSessionDatesByCourse, sessionsByCourse];
+  const listKey = JSON.stringify([props.branchId, page, filters.value, pendingConvertTrialId.value, pendingManualSessionId.value, pendingLessonsCourseId.value, convertTrialStudentId.value]);
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     let token = sess?.access_token;
@@ -4282,6 +4325,8 @@ const loadCourses = async (page = 1) => {
           perPage: pagination.value.perPage,
         };
         courses.value = result;
+        courseListOutcome.succeeded(listKey);
+        clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
         resetExpandedStudentGroups(groupCoursesByStudent(result));
         syncCourseManagerCourseFromList();
         sessionDataLoadFailed.value = false;
@@ -4292,8 +4337,8 @@ const loadCourses = async (page = 1) => {
         const effectiveSessionsOk = await loadEffectiveSessionDates(result, token, isCurrent);
         if (!isCurrent()) return;
         if (effectiveSessionsOk === false) sessionDataLoadFailed.value = true;
-        if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
-        return;
+        coursesLoading.value = false;
+        return { ok: true };
       }
     }
   } catch (_) {}
@@ -4304,8 +4349,21 @@ const loadCourses = async (page = 1) => {
 
   if (filters.value.class_type) query = query.eq('class_type', filters.value.class_type);
   if (filters.value.teacher_id) query = query.eq('teacher_id', Number(filters.value.teacher_id));
-  const { data } = await query;
-  let result = (data || []).map(c => ({
+  const { data, error: fallbackError } = await query;
+  const fallbackRows = fallbackListRows({ data, error: fallbackError });
+  if (fallbackRows === null) {
+    if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
+    // Rows from another query (branch, filter, page) are cleared as on base, never kept (Codex r4289977924).
+    if (!courseListOutcome.failed(listKey)) {
+      courses.value = [];
+      pagination.value = { page: 1, lastPage: 1, total: 0, perPage: pagination.value.perPage };
+      clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
+      resetExpandedStudentGroups([]);
+    }
+    coursesLoading.value = false;
+    return { ok: false, error: fallbackError || new Error('course list unavailable') };
+  }
+  let result = fallbackRows.map(c => ({
     ...c,
     id: Number(c?.id ?? c?.ID ?? 0),
     data_source: 'supabase',
@@ -4336,6 +4394,8 @@ const loadCourses = async (page = 1) => {
   if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
   pagination.value = { page: 1, lastPage: 1, total: result.length, perPage: pagination.value.perPage };
   courses.value = result;
+  courseListOutcome.succeeded(listKey);
+  clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
   resetExpandedStudentGroups(groupCoursesByStudent(result));
   const isCurrent = () => isCurrentListRequest(requestId, courseLoadRequestId);
   try {
@@ -4352,7 +4412,9 @@ const loadCourses = async (page = 1) => {
     sessionsByCourse.value = {};
     sessionDataLoadFailed.value = true;
   }
-  if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
+  if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
+  coursesLoading.value = false;
+  return { ok: true };
 };
 
 const {
