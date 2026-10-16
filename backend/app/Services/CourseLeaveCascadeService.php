@@ -1008,6 +1008,8 @@ class CourseLeaveCascadeService
             throw new \InvalidArgumentException('找不到可撤銷的請假堂次');
         }
 
+        CourseLeaveCascadeSuccessorShiftService::assertUndoAllowed($course, (int) $leaveSession->id);
+
         if ((string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
             self::restoreLeaveSession($leaveSession);
             $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');

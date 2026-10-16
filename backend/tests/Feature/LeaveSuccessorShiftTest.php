@@ -174,7 +174,7 @@ class LeaveSuccessorShiftTest extends TestCase
         $leaveId = $this->sessions['2026-11-17'];
         $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->json('preview_token');
         $before = $this->fingerprint();
-        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertStatus(403);
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertStatus(403)->assertJsonPath('message', '續約順延尚未開放（撤銷請假的保護尚未上線），未做任何變更');
         $this->assertSame($before, $this->fingerprint());
     }
 
@@ -187,6 +187,82 @@ class LeaveSuccessorShiftTest extends TestCase
 
         $this->shift('preview', ['class_session_id' => $this->sessions['2026-11-17']])
             ->assertOk()->assertJsonPath('applicable', false);
+    }
+
+    /** #4210 Q9: refuse before changing any artifact. @dataProvider undoShiftCases */
+    public function test_undo_after_successor_shift_is_refused_without_writes(string $entry, bool $consumed, bool $desync): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->json('preview_token');
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertOk();
+        config(['perfflags.leave_successor_shift_apply_enabled' => false]);
+        $marker = \App\Models\Schedule::create([
+            'student_id' => self::STUDENT, 'student_course_id' => $this->old, 'teacher_id' => self::TEACHER,
+            'branch_id' => 1, 'schedule_date' => '2026-11-17', 'day_of_week' => 2,
+            'start_time' => '19:00', 'end_time' => '21:00', 'status' => 'leave', 'type' => 'regular',
+        ]);
+        if ($consumed) {
+            Carbon::setTestNow(Carbon::parse('2027-01-01 10:00:00', 'Asia/Taipei'));
+            DB::table('ClassSession')->where('StudentClassID', $this->renewal)->update(['Status' => 'completed']);
+            // Keep the synthetic login valid after advancing the clock.
+            AuthToken::query()->update(['expires_at' => now()->addDay()]);
+        }
+        if ($desync) {
+            DB::table('ClassSession')->where('id', $leaveId)->update(['Status' => 'scheduled']);
+        }
+        $before = $this->undoSnapshot();
+        $response = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->postJson($entry === 'schedule' ? '/api/v1/schedules/' . $marker->id . '/undo-leave' : '/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId]);
+        $response->assertStatus(422)->assertJsonPath('code', 'undo_leave_successor_shift_active')
+            ->assertJsonPath('affected_lessons.0.course_id', $this->renewal)
+            ->assertJsonPath('affected_lessons.0.session_id', $this->sessions['2026-12-01'])
+            ->assertJsonPath('affected_lessons.0.from.date', '2026-12-01')
+            ->assertJsonPath('affected_lessons.0.to.date', '2026-12-08');
+        $this->assertCount(4, $response->json('affected_lessons'));
+        $this->assertSame($before, $this->undoSnapshot());
+    }
+
+    public static function undoShiftCases(): array
+    {
+        return [
+            'session' => ['session', false, false],
+            'schedule' => ['schedule', false, false],
+            'past consumed renewal' => ['session', true, false],
+            'desynced leave sign-in' => ['session', false, true],
+        ];
+    }
+
+    /** #4210: an unrelated leave's provenance must not trap ordinary undo. */
+    public function test_undo_without_its_own_active_shift_still_works(): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        DB::table('ClassSession')->where('id', $leaveId)->update(['Status' => 'leave']);
+        DB::table('ClassSession')->where('id', $this->sessions['2026-12-01'])->update([
+            'Note' => 'successor-shift-after-leave:ls=' . ($leaveId * 10) . ':from=2026-11-24T19:00',
+        ]);
+        $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])->assertOk();
+        $this->assertSame('scheduled', DB::table('ClassSession')->where('id', $leaveId)->value('Status'));
+    }
+
+    /** #4210: provenance alone is historical once every original slot is restored. */
+    public function test_restored_shift_provenance_does_not_block_undo(): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        DB::table('ClassSession')->where('id', $leaveId)->update(['Status' => 'leave']);
+        DB::table('ClassSession')->where('id', $this->sessions['2026-12-01'])->update([
+            'Note' => 'successor-shift-after-leave:ls=' . $leaveId . ':from=2026-12-01T19:00',
+        ]);
+        $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])->assertOk();
+        $this->assertSame('scheduled', DB::table('ClassSession')->where('id', $leaveId)->value('Status'));
+    }
+
+    private function undoSnapshot(): string
+    {
+        return (string) json_encode(array_map(fn ($table) => DB::table($table)->get()->all(), [
+            'ClassSession', 'StudentClass', 'StudentSingIn', 'LearningRecord', (new SessionDeductionLedger)->getTable(), 'schedules',
+        ]));
     }
 
     private function assertBlockedWithoutWrites(string $type, ?int $sessionId): void

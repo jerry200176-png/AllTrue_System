@@ -34,6 +34,36 @@ class CourseLeaveCascadeSuccessorShiftService
     {
     }
 
+    /** #4210 Q9: provenance remains active until the affected slot is restored explicitly. */
+    public static function assertUndoAllowed(StudentClass $old, int $leaveSessionId): void
+    {
+        $marker = self::NOTE_SHIFT . ':ls=' . $leaveSessionId . ':from=';
+        $rows = ClassSession::query()
+            ->whereIn('StudentClassID', StudentClass::query()->select('ID')
+                ->where('StudentID', (int) $old->StudentID)->where('SubjectID', (int) $old->SubjectID)
+                ->where('ID', '!=', (int) $old->ID))
+            ->where('Note', 'like', '%' . $marker . '%')->orderBy('id')->lockForUpdate()->get();
+        $affected = [];
+        foreach ($rows as $row) {
+            if (!preg_match('/(?:^|;\s*)' . preg_quote($marker, '/') . '(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?=;|$)/', (string) $row->Note, $match)) {
+                continue;
+            }
+            $date = Carbon::parse($row->SessionDate)->toDateString();
+            $start = substr((string) $row->StartTime, 0, 5);
+            if ($date === $match[1] && $start === $match[2]) {
+                continue;
+            }
+            // Include past/consumed/cancelled rows too: undo must never rewrite their history.
+            $affected[] = ['course_id' => (int) $row->StudentClassID, 'session_id' => (int) $row->id,
+                'from' => ['date' => $match[1], 'start' => $match[2]],
+                'to' => ['date' => $date, 'start' => $start]];
+        }
+        if ($affected !== []) {
+            throw new SuccessorShiftRefused('此請假已順延續約堂次，順延仍有效，無法撤銷請假。請先查看受影響的續約堂次。', 422,
+                ['affected_lessons' => $affected]);
+        }
+    }
+
     /** @return array<string, mixed> */
     public function preview(int $leaveSessionId): array
     {

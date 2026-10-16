@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\SuccessorShiftRefused;
+use App\Services\CourseLeaveCascadeSuccessorShiftService;
+
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\Schedule;
@@ -581,6 +584,10 @@ class ScheduleController extends Controller
                     'class_sessions' => $rows,
                 ]);
             });
+        } catch (SuccessorShiftRefused $e) {
+            return response()->json(['message' => $e->getMessage(),
+                'code' => 'undo_leave_successor_shift_active',
+                'affected_lessons' => $e->plan()['affected_lessons']], 422);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'message' => $e->getMessage(),
@@ -645,6 +652,7 @@ class ScheduleController extends Controller
                     // 正常請假：走 cascade 反轉（含下游已上課護欄、回復順延尾堂）。
                     [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $sessionDate, (int) $session->id);
                 } else {
+                    CourseLeaveCascadeSuccessorShiftService::assertUndoAllowed($course, $sessionId);
                     // Desync：請假只記在簽到、ClassSession 仍非 leave、未產生順延。
                     // 作廢請假簽到並確保堂次回到 scheduled 即完成撤銷（無 cascade 需反轉）。
                     StudentSignIn::where('ClassSessionID', $sessionId)
@@ -675,6 +683,10 @@ class ScheduleController extends Controller
                     'class_sessions' => $rows,
                 ]);
             });
+        } catch (SuccessorShiftRefused $e) {
+            return response()->json(['message' => $e->getMessage(),
+                'code' => 'undo_leave_successor_shift_active',
+                'affected_lessons' => $e->plan()['affected_lessons']], 422);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'message' => $e->getMessage(),
