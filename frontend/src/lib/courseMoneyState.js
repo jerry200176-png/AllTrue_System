@@ -155,6 +155,51 @@ export const TUITION_STATUS_CONFIG = {
   monthly_due_soon: { label: '月結將到期', cls: 'st-monthly' },
 };
 export const WAIVED_LABEL = TUITION_STATUS_CONFIG.waived.label;
+// #4150: the ledger row's server verdict (ContractMoneyState::isWaived). A real waiver keeps Paid=0, so never infer it here.
+export const isWaivedContract = (course) => course?.waived === true;
+
+// #4150 (Codex on #4201): one invoice's payment rows -> the latest receipt still standing after reversals, or null.
+// Mirrors BillingPayableResolver::latestUnreversedReceiptDate: PaymentReportController::void writes a separate negative
+// Method='void' row and leaves the positive row is_void=false, so rows are netted, never filtered one by one. In write
+// (id) order each reversal cancels (1) the receipt sharing its report_id, (2) else the single earlier receipt whose
+// standing amount equals the remainder, else the oldest earlier receipts; (3) anything left nets against later receipts,
+// so a net-zero invoice has no date while a later valid repayment keeps its own date.
+const isReversalRow = (p) => Number(p?.amount || 0) < 0 || String(p?.method || '') === 'void';
+const cancelReceipts = (receipts, amount, matches) => {
+  let left = amount;
+  for (const r of receipts) {
+    if (left <= 0) break;
+    if (r.left > 0 && matches(r)) {
+      const take = Math.min(left, r.left);
+      r.left -= take;
+      left -= take;
+    }
+  }
+  return left;
+};
+export const latestStandingPayment = (payments) => {
+  const rows = [...(payments || [])].sort((a, b) => Number(a.id) - Number(b.id));
+  const receipts = rows.filter((p) => !isReversalRow(p) && Number(p.amount || 0) > 0)
+    .map((p) => ({ left: Number(p.amount), paidAt: String(p.paid_at || ''), id: Number(p.id), report: p.report_id == null ? null : Number(p.report_id) }))
+    .sort((a, b) => a.paidAt.localeCompare(b.paidAt) || a.id - b.id);
+  let orphaned = 0;
+  for (const rev of rows.filter(isReversalRow)) {
+    let amount = Math.abs(Number(rev.amount || 0));
+    const report = rev.report_id == null ? null : Number(rev.report_id);
+    if (report !== null) amount = cancelReceipts(receipts, amount, (r) => r.report === report);
+    const earlier = (r) => r.id < Number(rev.id);
+    const exact = receipts.filter((r) => earlier(r) && r.left > 0 && r.left === amount);
+    if (amount > 0 && exact.length === 1) {
+      exact[0].left = 0;
+      amount = 0;
+    }
+    orphaned += cancelReceipts(receipts, amount, earlier);
+  }
+  cancelReceipts(receipts, orphaned, () => true);
+  const latest = receipts.filter((r) => r.left > 0 && r.paidAt)
+    .sort((a, b) => b.paidAt.localeCompare(a.paidAt) || b.id - a.id)[0];
+  return latest ? { date: latest.paidAt.slice(0, 10), amount: latest.left } : null;
+};
 // #4114 (Founder Q3): paid only by the legacy Paid / package flag, no Payment on record. Neutral: never green 已收, never 未繳.
 export const LEGACY_FLAG_UNVERIFIED_LABEL = '需核對：舊資料標記已收，缺付款紀錄';
 export const isLegacyPaidFlagOnly = (row) => row?.legacy_paid_flag_only === true;
