@@ -20,21 +20,27 @@ SEPARATE_PATH = {"laravel_2833_preflight"}  # not rendered by the python heredoc
 WRITE_MARKERS = ("->insert", "->update(", "->delete(", "->execute(", "DB::statement", "->save(", "->truncate")
 
 
+def render(case):
+    if case in SECRET_ID_CASES:
+        return render_secret_case(case)
+    run = next(s for s in WORKFLOW["jobs"]["dump"]["steps"] if s.get("name", "").startswith("Run bounded"))["run"]
+    py = re.search(r"python3 - <<'PY' > /tmp/production_case_probe\.php\n(.*?)\nPY\n", run, re.S).group(1)
+    return subprocess.run(["python3", "-"], input=py, capture_output=True, text=True,
+                          env={**os.environ, "CASE_KEY": case, "TARGET_STUDENT_ID": "1", "TARGET_STUDENT_CLASS_ID": "",
+                               "EXPECTED_TEACHER_IDS": "7,42" if case == "contract_muzha_student" else ""})
+
+
 RUN = next(s for s in WORKFLOW["jobs"]["dump"]["steps"] if s.get("name", "").startswith("Run bounded"))["run"]
 PROBE_PY = re.search(r"python3 - <<'PY' > /tmp/production_case_probe\.php\n(.*?)\nPY\n", RUN, re.S).group(1)
 # Cases keyed by a StudentClass ID from the masked CASE_INPUT_STUDENT_CLASS_ID secret (no dispatch ID input accepted).
 SECRET_ID_CASES = {"inapp_414_amount_source"}
 
 
-def render(case, student_id=None, student_class_id="", secret_class_id=None):
-    if student_id is None:
-        student_id = "" if case in SECRET_ID_CASES else "1"
-    if secret_class_id is None:
-        secret_class_id = "1" if case in SECRET_ID_CASES else ""
+def render_secret_case(case, student_id="", student_class_id="", secret_class_id="1"):
     return subprocess.run(["python3", "-"], input=PROBE_PY, capture_output=True, text=True,
                           env={**os.environ, "CASE_KEY": case, "TARGET_STUDENT_ID": student_id,
                                "TARGET_STUDENT_CLASS_ID": student_class_id, "CASE_INPUT_STUDENT_CLASS_ID": secret_class_id,
-                               "EXPECTED_TEACHER_IDS": "7,42" if case == "contract_muzha_student" else ""})
+                               "EXPECTED_TEACHER_IDS": ""})
 
 
 def case_block(php, case):
@@ -59,7 +65,7 @@ class CaseDumpPhpLint(unittest.TestCase):
     @unittest.skipUnless("occurrence_identity_shadow" in OPTIONS, "case not present")
     def test_occurrence_identity_shadow_is_read_only(self):
         out = render("occurrence_identity_shadow").stdout
-        block = case_block(out, "occurrence_identity_shadow")
+        block = out.split("$case === 'occurrence_identity_shadow'")[1].split("} elseif ($case ===")[0]
         for bad in WRITE_MARKERS:
             self.assertNotIn(bad, block)
 
@@ -70,7 +76,7 @@ class InApp414AmountSourceCase(unittest.TestCase):
     CASE = "inapp_414_amount_source"
 
     def block(self):
-        r = render(self.CASE, secret_class_id="4567")
+        r = render_secret_case(self.CASE, secret_class_id="4567")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("$targetStudentClassId = 4567;", r.stdout)
         return case_block(r.stdout, self.CASE)
@@ -83,7 +89,7 @@ class InApp414AmountSourceCase(unittest.TestCase):
     def test_requires_a_positive_numeric_secret_class_id(self):
         for scid in ("", "abc", "0", "00", "-1", "1;x", "1 2", "\u0663", "1" * 13):
             with self.subTest(secret_class_id=scid):
-                r = render(self.CASE, secret_class_id=scid)
+                r = render_secret_case(self.CASE, secret_class_id=scid)
                 self.assertNotEqual(r.returncode, 0)
                 self.assertIn("requires the CASE_INPUT_STUDENT_CLASS_ID secret", r.stderr)
 
@@ -91,7 +97,7 @@ class InApp414AmountSourceCase(unittest.TestCase):
         # Dispatch inputs are printed in the public log's env block, so this case refuses them even when valid.
         for sid, scid in (("12", ""), ("", "4567"), ("12", "4567")):
             with self.subTest(student_id=sid, student_class_id=scid):
-                r = render(self.CASE, student_id=sid, student_class_id=scid, secret_class_id="4567")
+                r = render_secret_case(self.CASE, student_id=sid, student_class_id=scid, secret_class_id="4567")
                 self.assertNotEqual(r.returncode, 0)
                 self.assertIn("takes no student_id/student_class_id input", r.stderr)
 
