@@ -9,7 +9,7 @@ vi.mock('../../../lib/authedFetch', () => ({
 
 import { useCoursePause, COURSE_LIFECYCLE_BUSY_MESSAGE } from '../useCoursePause';
 import { createCourseCloseFlow } from '../../../lib/closeCourseNoRenew.js';
-import { CLOSED_COURSE_RESUME_MESSAGE } from '../../../lib/courseActions.js';
+import { CLOSED_COURSE_RESUME_MESSAGE, CONVERTED_TRIAL_RESUME_MESSAGE } from '../../../lib/courseActions.js';
 
 const res = (ok, json, statusText = 'Bad') => ({ ok, statusText, json: async () => json });
 const active = { id: 7, status: 'active' };
@@ -243,6 +243,17 @@ describe('useCoursePause on a closed course', () => {
     expect(notify).not.toHaveBeenCalledWith('恢復失敗：x');
     expect(p.target.value).toBeNull();
     expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('a converted trial points to its formal course and never opens the renewal entry (Codex r4292987786)', async () => {
+    const askClosed = vi.fn();
+    const openRenewal = vi.fn();
+    const p = useCoursePause({ onChanged, notify, askClosed, openRenewal });
+    await p.request({ ...closed, class_type: 'trial', closed_reason: 'converted_trial' });
+    expect(notify).toHaveBeenCalledWith(CONVERTED_TRIAL_RESUME_MESSAGE);
+    expect(askClosed).not.toHaveBeenCalled();
+    expect(openRenewal).not.toHaveBeenCalled();
+    expect(authedFetch).not.toHaveBeenCalled();
   });
 
   it('a merely paused course (no closed_reason) still resumes', async () => {

@@ -6510,6 +6510,15 @@ class StudentClassController extends Controller
         $cancelRemaining = $request->boolean('cancel_remaining', true);
         $forfeitRemaining = $request->boolean('forfeit_remaining', false);
 
+        // #4188: only the supported close reasons may skip the committed-close guard below; any other
+        // value would fall through to a plain pause and clear closed_reason.
+        if ($reason !== null && $reason !== '' && !in_array($reason, ['settled', 'completed'], true)) {
+            return response()->json([
+                'message' => '結案原因不正確，請重新整理頁面後再試。',
+                'error_code' => 'invalid_close_reason',
+            ], 422);
+        }
+
         // #4188: close (結案) and a plain pause/resume share this endpoint. Lock the row first and
         // decide on its committed state, so two requests for the same course run one after the other.
         DB::beginTransaction();
@@ -6612,11 +6621,11 @@ class StudentClassController extends Controller
                     ], 422);
                 }
                 // #4188: never reopen a committed close in place; continuing is 續課 (a new period),
-                // a mistaken close goes through 帳務更正. Past lessons, payments and the close stay as they are.
+                // a mistaken close is reported to an admin. Past lessons, payments and the close stay as they are.
                 if ($this->courseCloseCommitted($sc)) {
                     DB::rollBack();
                     return response()->json([
-                        'message' => '這門課已經結案，不能直接恢復。要繼續上課，請用「續課」建立新的一期；如果是誤結案，請到帳務更正處理。過去的上課、繳費與結案紀錄都會保留。',
+                        'message' => '這門課已經結案，不能直接恢復。要繼續上課，請用「續課」建立新的一期；如果是誤結案，請用「回報問題」通知系統管理員處理。過去的上課、繳費與結案紀錄都會保留。',
                         'error_code' => 'course_closed_use_renewal',
                         'closed_reason' => $sc->getAttribute('closed_reason'),
                     ], 409);

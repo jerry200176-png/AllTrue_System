@@ -5,7 +5,7 @@ updates:
       - director
     importance: digest
     title: 已結案的課改用續課繼續上
-    summary: 已結案的課按「恢復課程」不會重開，會提示改用「續課」；誤結案請到帳務更正處理。
+    summary: 已結案的課按「恢復課程」不會重開，會提示改用「續課」；誤結案請回報問題。
     items:
       - category: improved
         text: 已結案的課按「恢復課程」會說明原因，並可直接按「前往續課」；過去的上課、繳費與結案紀錄都會保留。

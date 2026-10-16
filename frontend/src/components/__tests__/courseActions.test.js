@@ -36,6 +36,10 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
     expect(isCourseCloseCommitted({ ...session, closed_reason: 'settled' })).toBe(false);
   });
 
+  it('a converted trial offers no 恢復課程 (Codex r4292987786)', () => {
+    expect(ids(courseActions({ ...session, status: 'inactive', closed_reason: 'converted_trial' }, base))).not.toContain('resume');
+  });
+
   it('waived courses cannot resume', () => {
     const m = courseActions({ ...session, status: 'inactive', closed_reason: 'waived' }, base);
     expect(m.primary.id).toBe('edit');

@@ -9,20 +9,23 @@
 /**
  * #4188: the course's close has committed (inactive with a stored closed_reason), the same rule the
  * server applies on the locked row. Such a course is not resumed in place: the server refuses
- * (409 course_closed_use_renewal) and staff continue through 續課, or fix a mistaken close in 帳務更正.
+ * (409 course_closed_use_renewal) and staff continue through 續課; a mistaken close is reported to an admin.
  */
 export function isCourseCloseCommitted(course) {
   return String(course?.status || '').toLowerCase() === 'inactive' && Boolean(course?.closed_reason);
 }
 
-export const CLOSED_COURSE_RESUME_MESSAGE = '這門課已經結案，不能直接恢復。要繼續上課，請用「續課」建立新的一期；如果是誤結案，請到帳務更正處理。過去的上課、繳費與結案紀錄都會保留。';
+export const CONVERTED_TRIAL_RESUME_MESSAGE = '這堂試聽課已轉為正式課程，請到正式課程繼續上課。';
+
+export const CLOSED_COURSE_RESUME_MESSAGE = '這門課已經結案，不能直接恢復。要繼續上課，請用「續課」建立新的一期；如果是誤結案，請用「回報問題」通知系統管理員處理。過去的上課、繳費與結案紀錄都會保留。';
 
 export function courseActions(course, caps = {}) {
   const paused = String(course?.status || '').toLowerCase() === 'inactive';
   const closed = isCourseCloseCommitted(course);
   // A closed course keeps a 恢復課程 item (it explains 續課) but is never the state primary.
   const canResume = paused && !closed;
-  const offerResume = paused && course?.closed_reason !== 'waived';
+  // Waived is terminal; a converted trial continues in its formal course, so neither offers 恢復.
+  const offerResume = paused && !['waived', 'converted_trial'].includes(course?.closed_reason);
   // 排課 (openManualSessionModal) is the row's former first-class button; 補課／補登 / 新增月結堂次 the More item.
   const schedule = (caps.isManualOccurrence || caps.isSession || caps.isMonthly)
     ? { id: 'manual-session', label: caps.isManualOccurrence ? '＋新增下一堂' : caps.isMonthly ? '排月結' : '排課' }

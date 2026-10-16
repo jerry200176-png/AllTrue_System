@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue';
 import { authedFetch, getAccessToken } from '../../lib/authedFetch';
-import { CLOSED_COURSE_RESUME_MESSAGE, isCourseCloseCommitted } from '../../lib/courseActions.js';
+import { CLOSED_COURSE_RESUME_MESSAGE, CONVERTED_TRIAL_RESUME_MESSAGE, isCourseCloseCommitted } from '../../lib/courseActions.js';
 
 // Pause / resume (暫停 / 恢復) confirm flow for CourseManagement: confirm-dialog state,
 // the POST /student-classes/:id/pause request and its error copy. The page supplies
@@ -28,6 +28,8 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
       ]);
 
   async function explainClosed(course) {
+    // A converted trial has no renewal of its own (convertTrial refuses it again); point to the formal course.
+    if (course?.closed_reason === 'converted_trial') { notify(CONVERTED_TRIAL_RESUME_MESSAGE); return; }
     if (!askClosed || !openRenewal) { notify(CLOSED_COURSE_RESUME_MESSAGE); return; }
     const goRenew = await askClosed({
       title: '這門課已經結案', message: CLOSED_COURSE_RESUME_MESSAGE, confirmLabel: '前往續課', cancelLabel: '關閉',

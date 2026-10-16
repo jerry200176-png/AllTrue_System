@@ -186,6 +186,23 @@ class StudentClassPauseCloseGuardTest extends TestCase
         $this->assertSame('scheduled', DB::table('ClassSession')->where('id', $future)->value('Status'));
     }
 
+    public function test_unsupported_reason_cannot_bypass_the_close_guard(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));
+        [$token, $course] = $this->fixture();
+        $this->close($token, $course)->assertOk();
+
+        $this->postJson(
+            "/api/v1/student-classes/{$course->ID}/pause",
+            ['action' => 'pause', 'reason' => 'manual'],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertStatus(422)->assertJsonPath('error_code', 'invalid_close_reason');
+
+        $course->refresh();
+        $this->assertSame(1, (int) $course->Stop);
+        $this->assertSame('settled', $course->closed_reason);
+    }
+
     /** @return array{0: string, 1: StudentClass} */
     private function fixture(array $overrides = []): array
     {
