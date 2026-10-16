@@ -34,11 +34,21 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
     expect(fallback).toMatch(/^const \{ data, error: fallbackError \} = await query;\s*const fallbackRows = fallbackListRows\(\{ data, error: fallbackError \}\);\s*if \(fallbackRows === null\) \{/);
     const failure = fallback.slice(0, fallback.indexOf('let result = fallbackRows.map('));
     expect(failure).toContain("return { ok: false, error: fallbackError || new Error('course list unavailable') };");
-    expect(failure).toContain('sessionsByCourse.value = previousSessionData.sessions;');
+    expect(failure).not.toContain('sessionsByCourse.value =');
     expect(failure).toContain('coursesLoading.value = false;');
     expect(failure).not.toContain('courses.value =');
     expect(failure).not.toContain('pagination.value =');
     expect(load).not.toContain('(data || []).map(');
+  });
+
+  it('loadCourses clears the session caches only when a request wins, never at start (Codex r4289665973 / #4189)', () => {
+    const load = source.slice(source.indexOf('const loadCourses = async (page = 1) => {'), source.indexOf('const {\n  showRescheduleModal'));
+    const start = load.slice(load.indexOf('coursesLoading.value = true;'), load.indexOf('  try {'));
+    expect(start).toContain('const sessionCaches = [completedSessionDatesByCourse, sessionsByCourse];');
+    expect(start).not.toMatch(/(completedSessionDatesByCourse|sessionsByCourse)\.value = \{\}/);
+    expect(load).not.toContain('previousSessionData');
+    const wins = load.match(/courses\.value = result;\s*clearRowCachesForWinningRequest\(requestId, courseLoadRequestId, sessionCaches\);/g) || [];
+    expect(wins).toHaveLength(2);
   });
 
   it('pause/resume share the close flow\'s per-course lifecycle lock (PR #4159 r4286957773)', () => {

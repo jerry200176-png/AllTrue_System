@@ -19,3 +19,15 @@ export function shouldShowInitialListSkeleton(loading, rows = []) {
 export function fallbackListRows({ data, error } = {}) {
   return !error && Array.isArray(data) ? data : null;
 }
+
+/**
+ * Per-row caches (e.g. session data keyed by row id) describe the rows on screen, so they are cleared
+ * only when a request wins and replaces those rows, never when a request starts. A request that fails
+ * or is superseded, even while an older one is still pending, leaves the rows and their cached data
+ * from the last successful load intact. Returns whether the caches were cleared.
+ */
+export function clearRowCachesForWinningRequest(requestId, latestRequestId, caches = []) {
+  if (!isCurrentListRequest(requestId, latestRequestId)) return false;
+  caches.forEach((cache) => { cache.value = {}; });
+  return true;
+}

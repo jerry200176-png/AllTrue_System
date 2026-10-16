@@ -15,7 +15,7 @@ import {
   closedCourseHiddenNotice,
   createCourseCloseFlow,
 } from '../../lib/closeCourseNoRenew.js';
-import { fallbackListRows } from '../../lib/listRefreshState.js';
+import { clearRowCachesForWinningRequest, fallbackListRows, isCurrentListRequest } from '../../lib/listRefreshState.js';
 
 function setup({ remaining = 0, settled = true, accepted = true, response = { pending_reconciliation: true } } = {}) {
   const calls = { requests: [], alerts: [], confirms: [], reloads: 0 };
@@ -278,5 +278,52 @@ describe('fallbackListRows', () => {
     const rows = [{ id: 1 }];
     expect(fallbackListRows({ data: rows, error: null })).toBe(rows);
     expect(fallbackListRows({ data: [] })).toEqual([]);
+  });
+});
+
+// Codex r4289665973 / #4189: overlapping loads must not zero the session data of the kept rows.
+describe('clearRowCachesForWinningRequest', () => {
+  // Mirrors loadCourses' ordering: a request clears the session caches only once it wins, and a
+  // double failure keeps the rows (and caches) on screen.
+  function createLoader(caches) {
+    let latest = 0;
+    return async function load(fetchRows) {
+      const requestId = ++latest;
+      const rows = await fetchRows();
+      if (!isCurrentListRequest(requestId, latest)) return 'superseded';
+      if (rows === null) return 'failed';
+      clearRowCachesForWinningRequest(requestId, latest, caches);
+      caches[0].value = Object.fromEntries(rows.map((r) => [r.id, r.sessions]));
+      return 'ok';
+    };
+  }
+  const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
+
+  it('load #1 pending, load #2 double-fails: session data stays from the last successful load', async () => {
+    const sessionsByCourse = { value: {} };
+    const load = createLoader([sessionsByCourse]);
+    expect(await load(async () => [{ id: 7, sessions: ['2026-10-01'] }])).toBe('ok');
+    const lastSuccessful = sessionsByCourse.value;
+
+    const first = deferred();
+    const load1 = load(() => first.promise);
+    const load2 = load(async () => null);
+    expect(await load2).toBe('failed');
+    expect(sessionsByCourse.value).toBe(lastSuccessful);
+    expect(sessionsByCourse.value).toEqual({ 7: ['2026-10-01'] });
+
+    first.resolve([{ id: 8, sessions: [] }]);
+    expect(await load1).toBe('superseded');
+    expect(sessionsByCourse.value).toBe(lastSuccessful);
+  });
+
+  it('clears every cache only for the current request', () => {
+    const a = { value: { 1: ['x'] } };
+    const b = { value: { 1: ['y'] } };
+    expect(clearRowCachesForWinningRequest(1, 2, [a, b])).toBe(false);
+    expect(a.value).toEqual({ 1: ['x'] });
+    expect(clearRowCachesForWinningRequest(2, 2, [a, b])).toBe(true);
+    expect(a.value).toEqual({});
+    expect(b.value).toEqual({});
   });
 });

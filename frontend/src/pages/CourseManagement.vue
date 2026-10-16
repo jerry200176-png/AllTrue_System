@@ -1388,7 +1388,7 @@ import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
-import { fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
+import { clearRowCachesForWinningRequest, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
@@ -4267,9 +4267,9 @@ const loadCourses = async (page = 1) => {
     return;
   }
   coursesLoading.value = true;
-  const previousSessionData = { completed: completedSessionDatesByCourse.value, sessions: sessionsByCourse.value };
-  completedSessionDatesByCourse.value = {};
-  sessionsByCourse.value = {};
+  // Session caches are cleared only once this request wins (see clearRowCachesForWinningRequest), so a
+  // failed or superseded load never zeroes the session data of the rows still on screen (Codex r4289665973).
+  const sessionCaches = [completedSessionDatesByCourse, sessionsByCourse];
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     let token = sess?.access_token;
@@ -4320,6 +4320,7 @@ const loadCourses = async (page = 1) => {
           perPage: pagination.value.perPage,
         };
         courses.value = result;
+        clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
         resetExpandedStudentGroups(groupCoursesByStudent(result));
         syncCourseManagerCourseFromList();
         sessionDataLoadFailed.value = false;
@@ -4346,8 +4347,6 @@ const loadCourses = async (page = 1) => {
   const fallbackRows = fallbackListRows({ data, error: fallbackError });
   if (fallbackRows === null) {
     if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
-    completedSessionDatesByCourse.value = previousSessionData.completed;
-    sessionsByCourse.value = previousSessionData.sessions;
     coursesLoading.value = false;
     return { ok: false, error: fallbackError || new Error('course list unavailable') };
   }
@@ -4382,6 +4381,7 @@ const loadCourses = async (page = 1) => {
   if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
   pagination.value = { page: 1, lastPage: 1, total: result.length, perPage: pagination.value.perPage };
   courses.value = result;
+  clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
   resetExpandedStudentGroups(groupCoursesByStudent(result));
   const isCurrent = () => isCurrentListRequest(requestId, courseLoadRequestId);
   try {
