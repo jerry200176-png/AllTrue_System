@@ -4,7 +4,10 @@ const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d/;
 const NEXT_STEP_HINTS = {
   edit_charge_only: '堂數不能再改了，但費用還能改：請關閉本視窗，改到課程「編輯」畫面直接調整總費用，堂數維持不變即可。',
   handle_affected_scheduled_sessions_then_retry: '請先在行事曆取消或調整以下未來堂次，再回到這裡重試；系統不會自動取消。',
+  record_or_cancel_past_sessions_then_retry: '請先到行事曆替下列堂次補點名，或取消這些堂次，再回到這裡重新預覽；系統不會自動取消已過日期的堂次。',
 };
+
+const PAST_UNRECORDED_CODE = 'billing_correction_past_unrecorded_sessions';
 
 function normalizeDate(value) {
   const date = String(value ?? '').slice(0, 10);
@@ -51,17 +54,31 @@ export function formatBillingCorrectionSessionLabel(session) {
 
 export function buildBillingCorrectionBlockedState(body = {}) {
   const code = String(body?.code ?? '');
-  const affectedSessions = normalizeAffectedScheduledSessions(body?.affected_scheduled_sessions);
   const isFutureScheduleConflict = code === 'billing_correction_future_schedule_over_capacity';
+  const isPastUnrecorded = code === PAST_UNRECORDED_CODE;
+  const affectedSessions = normalizeAffectedScheduledSessions(
+    isPastUnrecorded ? body?.past_unrecorded_sessions : body?.affected_scheduled_sessions,
+  );
+
+  let message = String(body?.message || '更正失敗');
+  if (isFutureScheduleConflict) {
+    message = '更正後堂數會少於目前已排堂次，因此尚未儲存。';
+  } else if (isPastUnrecorded) {
+    message = `有 ${affectedSessions.length} 堂已過日期、還沒點名的課會超出更正後的堂數，因此尚未儲存。`;
+  }
 
   return {
     code,
-    message: isFutureScheduleConflict
-      ? '更正後堂數會少於目前已排堂次，因此尚未儲存。'
-      : String(body?.message || '更正失敗'),
+    message,
     hint: NEXT_STEP_HINTS[body?.next_step] || null,
     affectedSessions,
-    canOpenCalendar: isFutureScheduleConflict && affectedSessions.length > 0,
+    sessionListLabel: isPastUnrecorded ? '需先補點名或取消的已過日期堂次' : '需先處理的未來堂次',
+    canOpenCalendar: (isFutureScheduleConflict || isPastUnrecorded) && affectedSessions.length > 0,
     firstAffectedDate: affectedSessions[0]?.sessionDate || '',
+    // The preview (and its token) no longer describes a correction that can be
+    // applied; the director must preview again after fixing the sessions.
+    resetsPreview: isPastUnrecorded
+      || code === 'billing_correction_confirmation_stale'
+      || code === 'billing_correction_confirmation_required',
   };
 }
