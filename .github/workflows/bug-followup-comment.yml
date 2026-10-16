@@ -49,16 +49,29 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Show the requested write
-        env:
-          BUG_ID: ${{ inputs.bug_id }}
-          EXPECTED_STATUS: ${{ inputs.expected_status }}
-          ISSUE_URL: ${{ inputs.github_issue_url }}
-          PROD_REV: ${{ inputs.production_revision }}
-          DEPLOY_RUN: ${{ inputs.deploy_run_id }}
-        # The reply is read from the event payload, never from env: GitHub prints every step's env
-        # values in the public log header, and dispatch inputs are not masked (public repo).
+        # Every displayed input is read from the event payload (never env: GitHub prints step env in the
+        # public log header) and validated before anything reaches the public run summary. Errors name
+        # the field, never the value; a failed preview blocks approval and the write.
         run: |
           set -euo pipefail
+          ev() { jq -r --arg k "$1" '.inputs[$k] | if . == null then "" else tostring end' "$GITHUB_EVENT_PATH"; }
+          BUG_ID="$(ev bug_id)"
+          ISSUE_URL="$(ev github_issue_url)"
+          EXPECTED_STATUS="$(ev expected_status)"
+          PROD_REV="$(ev production_revision)"
+          DEPLOY_RUN="$(ev deploy_run_id)"
+          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
+          [[ "$ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
+          [[ "$ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
+          [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved|closed)$ ]] || { echo "invalid expected_status"; exit 1; }
+          [[ "$PROD_REV" =~ ^([0-9a-f]{40})?$ ]] || { echo "invalid production_revision"; exit 1; }
+          [[ "$DEPLOY_RUN" =~ ^[0-9]*$ ]] || { echo "invalid deploy_run_id"; exit 1; }
+          if [[ "$EXPECTED_STATUS" == closed ]]; then
+            [[ -n "$PROD_REV" && -n "$DEPLOY_RUN" ]] || { echo "closed follow-up needs production_revision and deploy_run_id"; exit 1; }
+          fi
+          PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"
+          PUBLIC_REPLY="${PUBLIC_REPLY%x}"
+          [[ "$PUBLIC_REPLY" == *"$ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
           reply_len="$(jq -er '.inputs.public_reply | strings | length' "$GITHUB_EVENT_PATH")"
           reply_sha="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" | sha256sum | cut -d' ' -f1)"
           {
@@ -82,6 +95,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production-activation
+    # GET environment / deployment-branch-policies need Actions: read for GITHUB_TOKEN (as in deploy.yml).
+    permissions:
+      actions: read
+      contents: read
     steps:
       - name: Verify production-activation protection
         env:

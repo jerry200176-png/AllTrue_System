@@ -57,7 +57,7 @@ for (const [workflow, writeJob, nextJob] of [
     `${workflow} must never expose public_reply through env or an expression (step env is printed in public logs)`);
   assert.ok(!/^\s+PUBLIC_REPLY:/m.test(source), `${workflow} must not set PUBLIC_REPLY in a step env block`);
   const preview = source.match(/\n  preview:\n([\s\S]*?)\n  approve:\n/)[1];
-  assert.ok(!preview.includes('$PUBLIC_REPLY'), `${workflow} preview must not print the reply text`);
+  assert.ok(!/(printf|echo|cat|tee)[^\n]*\$\{?PUBLIC_REPLY/.test(preview), `${workflow} preview must not print the reply text`);
   assert.ok(preview.includes(`jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" | sha256sum`)
     && preview.includes(`jq -er '.inputs.public_reply | strings | length' "$GITHUB_EVENT_PATH"`),
     `${workflow} preview must show only the reply length and sha256`);
@@ -90,6 +90,60 @@ for (const [workflow, writeJob, nextJob] of [
     fs.writeFileSync(eventPath, JSON.stringify({ inputs: {} }));
     assert.throws(() => execFileSync('bash', ['-c', `set -euo pipefail\n${readLines[1]}`],
       { stdio: 'ignore', env: { ...process.env, GITHUB_EVENT_PATH: eventPath } }), `${workflow} missing reply must fail closed`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// #4196 review round 2: the approval job can read the environment API, and the preview validates
+// every displayed input (read from the event payload, not env) before writing the public summary.
+for (const [workflow, extra] of [
+  ['.github/workflows/bug-phase-a-triage.yml', { disposition: 'bug', close_as_logged: 'false' }],
+  ['.github/workflows/bug-followup-comment.yml', { expected_status: 'resolved', production_revision: '', deploy_run_id: '' }],
+]) {
+  const source = fs.readFileSync(workflow, 'utf8');
+  const approve = source.match(/\n  approve:\n([\s\S]*?)\n    steps:\n/)[1];
+  assert.ok(/\n    permissions:\n      actions: read\n/.test(approve),
+    `${workflow} approval job needs actions: read for the environment API (as deploy.yml)`);
+  const preview = source.match(/\n  preview:\n([\s\S]*?)\n  approve:\n/)[1];
+  assert.ok(!preview.includes('${{ inputs.') && !/\n        env:\n/.test(preview),
+    `${workflow} preview must read inputs from the event payload, not env`);
+  const run = preview.split('\n        run: |\n')[1].split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-preview-'));
+  try {
+    const summary = path.join(dir, 'summary.md');
+    const eventPath = path.join(dir, 'event.json');
+    const url = 'https://github.com/o/r/issues/7';
+    const reply = `已收到，追蹤：${url}`;
+    const runPreview = (inputs) => {
+      fs.writeFileSync(summary, '');
+      fs.writeFileSync(eventPath, JSON.stringify({ inputs }));
+      try {
+        const out = execFileSync('bash', ['-c', run], { encoding: 'utf8', cwd: dir, stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, GITHUB_EVENT_PATH: eventPath, GITHUB_STEP_SUMMARY: summary, GITHUB_REPOSITORY: 'o/r' } });
+        return { ok: true, out, summary: fs.readFileSync(summary, 'utf8') };
+      } catch (e) {
+        return { ok: false, out: `${e.stdout}${e.stderr}`, summary: fs.readFileSync(summary, 'utf8') };
+      }
+    };
+    const good = runPreview({ bug_id: '42', github_issue_url: url, public_reply: reply, ...extra });
+    assert.ok(good.ok, `${workflow} preview must accept a valid request: ${good.out}`);
+    assert.ok(good.summary.includes('- bug_id: 42') && good.summary.includes(createHash('sha256').update(reply, 'utf8').digest('hex')),
+      `${workflow} preview summary must show the id and reply hash`);
+    assert.ok(!good.summary.includes('已收到'), `${workflow} preview summary must not contain reply text`);
+    const secret = '王小明 0912345678';
+    for (const bad of [
+      { github_issue_url: secret, public_reply: `回覆 ${secret}` },
+      { bug_id: secret },
+      { github_issue_url: 'https://github.com/other/repo/issues/7', public_reply: 'see https://github.com/other/repo/issues/7' },
+      { public_reply: 'no link here' },
+      ...Object.keys(extra).filter((k) => k !== 'production_revision' && k !== 'deploy_run_id').map((k) => ({ [k]: secret })),
+    ]) {
+      const r = runPreview({ bug_id: '42', github_issue_url: url, public_reply: reply, ...extra, ...bad });
+      assert.ok(!r.ok, `${workflow} preview must reject ${Object.keys(bad)[0]}`);
+      assert.equal(r.summary, '', `${workflow} rejected preview must write nothing to the summary`);
+      assert.ok(!r.out.includes('王小明'), `${workflow} rejected preview must not echo the value`);
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
