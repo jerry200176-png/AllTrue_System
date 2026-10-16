@@ -779,10 +779,17 @@ class AttendanceController extends Controller
             return DB::transaction(function () use ($matchedSession, $student, $swipeAt, $campusId) {
                 // #4192: match selection happened before this transaction. Take
                 // the authoritative parent lock before a current session read.
-                $studentClass = StudentClass::where('ID', $matchedSession->StudentClassID)
-                    ->lockForUpdate()->firstOrFail();
-                $matchedSession = ClassSession::where('StudentClassID', $studentClass->ID)
-                    ->lockForUpdate()->findOrFail($matchedSession->id);
+                $studentClass = StudentClass::query()->where('ID', $matchedSession->StudentClassID)
+                    ->lockForUpdate()->first();
+                if (!$studentClass) {
+                    throw new \InvalidArgumentException('找不到原本的課程，請重新確認堂次。');
+                }
+                $matchedSessionId = $matchedSession->id;
+                $matchedSession = ClassSession::query()->where('StudentClassID', $studentClass->ID)
+                    ->where('id', $matchedSessionId)->lockForUpdate()->first();
+                if (!$matchedSession) {
+                    throw new \InvalidArgumentException('找不到原本的堂次，請重新確認課程。');
+                }
                 $swipeTeacherId = (int) ($studentClass->TeacherID ?? 0);
                 $subSwipeTid = $this->resolveSubstituteTeacherUserIdForSession(
                     (int) $studentClass->ID,

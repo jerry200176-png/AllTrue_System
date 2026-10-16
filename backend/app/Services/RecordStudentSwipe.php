@@ -73,9 +73,15 @@ class RecordStudentSwipe
         if ($studentClass && $classSessionId !== null) {
             // #4192: match selection is only a snapshot. Serialize with cancellation
             // and deduction writers, then use a current (locking) session read.
-            $studentClass = StudentClass::where('ID', $studentClass->ID)->lockForUpdate()->firstOrFail();
-            $classSession = ClassSession::where('StudentClassID', $studentClass->ID)
-                ->lockForUpdate()->findOrFail($classSessionId);
+            $studentClass = StudentClass::query()->where('ID', $studentClass->ID)->lockForUpdate()->first();
+            if (!$studentClass) {
+                throw new \InvalidArgumentException('找不到原本的課程，請重新確認堂次。');
+            }
+            $classSession = ClassSession::query()->where('StudentClassID', $studentClass->ID)
+                ->where('id', $classSessionId)->lockForUpdate()->first();
+            if (!$classSession) {
+                throw new \InvalidArgumentException('找不到原本的堂次，請重新確認課程。');
+            }
             $classSession->setRelation('studentClass', $studentClass);
             AttendanceEffectsService::assertCanRecordAttendance($classSession, 'present');
             $hours = $studentClass->TotalHours ? (int) $studentClass->TotalHours : null;
