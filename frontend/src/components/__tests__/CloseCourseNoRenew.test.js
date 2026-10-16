@@ -347,30 +347,21 @@ describe('switchClosedCourseNoticeToAllStatuses', () => {
   it('switches to 「全部」 and drops the notice when the reload succeeds', async () => {
     const { state, run } = page(async () => undefined);
     expect(await run()).toBe(true);
-    expect(state.statusDuringReload).toBe('');
-    expect(state.noticeDuringReload).toBeNull();
-    expect(state.status).toBe('');
-    expect(state.notice).toBeNull();
+    expect([state.statusDuringReload, state.noticeDuringReload, state.status, state.notice]).toEqual(['', null, '', null]);
   });
 
-  it('restores the previous 課程狀態 and the notice when the reload resolves { ok: false }', async () => {
-    const { state, original, run } = page(async () => ({ ok: false, error: new Error('x') }));
+  it.each([
+    ['resolves { ok: false }', async () => ({ ok: false, error: new Error('x') })],
+    ['throws', async () => { throw new Error('x'); }],
+  ])('restores the previous 課程狀態 and the notice when the reload %s', async (_label, reload) => {
+    const { state, original, run } = page(reload);
     expect(await run()).toBe(false);
-    expect(state.status).toBe('active');
-    expect(state.notice).toBe(original);
-  });
-
-  it('restores them when the reload throws', async () => {
-    const { state, original, run } = page(async () => { throw new Error('x'); });
-    expect(await run()).toBe(false);
-    expect(state.status).toBe('active');
-    expect(state.notice).toBe(original);
+    expect([state.status, state.notice]).toEqual(['active', original]);
   });
 
   it('leaves a filter the user changed during the failed reload alone', async () => {
     const { state, run } = page(async (s) => { s.status = 'history'; return { ok: false }; });
     expect(await run()).toBe(false);
-    expect(state.status).toBe('history');
-    expect(state.notice).toBeNull();
+    expect([state.status, state.notice]).toEqual(['history', null]);
   });
 });
