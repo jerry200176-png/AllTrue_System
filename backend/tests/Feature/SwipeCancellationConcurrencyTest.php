@@ -7,6 +7,7 @@ use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Services\RecordStudentSwipe;
 use Carbon\Carbon;
 use Illuminate\Database\Events\QueryExecuted;
@@ -25,7 +26,8 @@ class SwipeCancellationConcurrencyTest extends TestCase
 
     public static function swipePaths(): array
     {
-        return [['rfid'], ['attendance']];
+        // rfid_sign_out: the sign-out presence-window backfill (StudentPresenceBackfillService).
+        return [['rfid'], ['attendance'], ['rfid_sign_out']];
     }
 
     /** @dataProvider swipePaths */
@@ -38,7 +40,7 @@ class SwipeCancellationConcurrencyTest extends TestCase
         $this->assertStringStartsWith('AllTrue_test', $reader->getDatabaseName());
         $this->assertSame(0, $reader->transactionLevel());
         $reader->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
-        Carbon::setTestNow(Carbon::today()->setTime(10, 0));
+        Carbon::setTestNow(Carbon::today()->setTime($path === 'rfid_sign_out' ? 12 : 10, $path === 'rfid_sign_out' ? 30 : 0));
         $campus = Campus::factory()->create();
         $student = Student::create([
             'name' => 'Swipe race fixture', 'CampusID' => $campus->id, 'ClassID' => 1,
@@ -54,6 +56,16 @@ class SwipeCancellationConcurrencyTest extends TestCase
             'StudentClassID' => $course->ID, 'SessionDate' => now()->toDateString(),
             'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'Status' => 'scheduled',
         ]);
+        if ($path === 'rfid_sign_out') {
+            // Swiped in at 09:00 with no session in its window (self-study); the 12:30
+            // sign-out backfills every scheduled session that started in 09:00-12:30.
+            $openSignIn = StudentSignIn::create([
+                'StudentID' => $student->id, 'TeacherID' => null, 'Memo' => 'self_study',
+                'SignInDT' => now()->setTime(9, 0), 'SignOutDT' => null, 'MDT' => now()->setTime(9, 0),
+                'ClassSessionID' => null, 'Status' => 'present', 'CampusID' => $campus->id,
+                'PersonType' => 'student', 'SessionDeducted' => false,
+            ]);
+        }
         $name = 'swipe_cancellation_race';
         config(["database.connections.$name" => config('database.connections.' . config('database.default'))]);
         DB::purge($name);
@@ -86,7 +98,11 @@ class SwipeCancellationConcurrencyTest extends TestCase
         });
 
         try {
-            if ($path === 'rfid') {
+            if ($path === 'rfid_sign_out') {
+                $result = app(RecordStudentSwipe::class)->handle($student, $campus, now(), fn (array $result) => $result);
+                $this->assertSame('sign_out', $result['action']);
+                $status = $result['status'];
+            } elseif ($path === 'rfid') {
                 try {
                     $result = app(RecordStudentSwipe::class)->handle($student, $campus, now(), fn (array $result) => $result);
                     $status = $result['status'];
@@ -99,19 +115,24 @@ class SwipeCancellationConcurrencyTest extends TestCase
                 $status = app(AttendanceController::class)->swipe($request)->getStatusCode();
             }
             $this->assertTrue($cancelled, 'The second connection must commit the cancellation.');
-            $this->assertSame(422, $status);
-            $this->assertSame(['course', 'session'], array_slice($locks, 0, 2), 'Lock the course before rereading the session.');
+            // A sign-out still succeeds; it just must not backfill the cancelled session.
+            $this->assertSame($path === 'rfid_sign_out' ? 200 : 422, $status);
+            if ($path === 'rfid_sign_out') {
+                $this->assertNotNull($writer->table('StudentSingIn')->where('id', $openSignIn->id)->value('SignOutDT'));
+            }
             $this->assertSame('cancelled', $writer->table('ClassSession')->where('id', $session->id)->value('Status'));
             $this->assertSame(0, $writer->table('StudentSingIn')->where('ClassSessionID', $session->id)->count());
             $this->assertSame(0, $writer->table('LearningRecord')->where('ClassSessionID', $session->id)->count());
             $this->assertSame(0, $writer->table('session_deduction_ledger')->where('class_session_id', $session->id)->count());
             $this->assertSame(0, (int) $writer->table('StudentClass')->where('ID', $course->ID)->value('UsedSessions'));
+            $this->assertSame(['course', 'session'], array_slice($locks, 0, 2), 'Lock the course before rereading the session.');
         } finally {
             $reader->setEventDispatcher($originalEvents);
             foreach (['session_deduction_ledger', 'StudentSingIn', 'LearningRecord'] as $table) {
                 $column = $table === 'session_deduction_ledger' ? 'class_session_id' : 'ClassSessionID';
                 $writer->table($table)->where($column, $session->id)->delete();
             }
+            $writer->table('StudentSingIn')->where('StudentID', $student->id)->delete();
             $writer->table('ClassSession')->where('id', $session->id)->delete();
             $writer->table('StudentClass')->where('ID', $course->ID)->delete();
             $writer->table('Student')->where('id', $student->id)->delete();
