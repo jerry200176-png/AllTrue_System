@@ -2,6 +2,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const campusNineOnlyTitle = 'contracted four-session detail explains two unarranged sessions';
+// #4150: scope=payments only (not in `all`). These may end `skipped` only through their own
+// "not-exercised:" skip, i.e. the live campus had no case for that rule; any other skip fails.
+const paymentTests = [
+  ['payment-display-production.spec.js', 282, 3, '學生管理: free courses read 免費／贈送 and 未繳 only when unpaid'],
+  ['payment-display-production.spec.js', 327, 3, '課程查找: free courses read 免費／贈送 and 未繳 only when unpaid'],
+  ['payment-display-production.spec.js', 448, 3, '帳務: a waived course reads 不收了 and offers no payment action'],
+  ['payment-display-production.spec.js', 452, 3, '帳務: a legacy paid flag with no standing payment reads 需核對'],
+  ['payment-display-production.spec.js', 456, 3, '帳務: payments that net to zero show no 繳費日'],
+];
+const NOT_EXERCISED_SKIP = /^not-exercised: [A-Za-z0-9 _]+$/;
+const COVERAGE_NOTE = /^[a-z0-9_]+=\d+$/;
+const RULE_NOTE = /^[a-z0-9_]+$/;
 
 const expectedTests = (branchId, scope = 'all') => {
   const tests = [
@@ -28,6 +40,7 @@ const expectedTests = (branchId, scope = 'all') => {
     print: tests.filter(([file]) => file === 'calendar-print-production.spec.js'),
     tutoring: tests.filter(([file]) => file === 'tutoring-free-production.spec.js'),
     feedback: tests.filter(([file]) => file === 'feedback-launcher-production.spec.js'),
+    payments: paymentTests,
   }[scope];
   if (!selected) throw new Error(`unsupported acceptance scope: ${scope}`);
   return selected.map(([file, line, column, title]) => ({ file, line, column, title, project: 'chromium' }));
@@ -46,6 +59,9 @@ const collectTests = (report) => {
           project: test.projectName,
           status: test.status,
           resultStatuses: (test.results || []).map((result) => result.status),
+          // The JSON reporter repeats runtime annotations on the test and on each result; keep one of each.
+          annotations: [...new Map([...(test.annotations || []), ...(test.results || []).flatMap((result) => result.annotations || [])]
+            .map((note) => [`${note?.type}\u0000${note?.description}`, note])).values()],
         });
       }
     }
@@ -54,6 +70,28 @@ const collectTests = (report) => {
   for (const suite of report.suites || []) visit(suite);
   return collected;
 };
+
+const isNotExercisedSkip = (item) => item.status === 'skipped' && item.resultStatuses.length > 0
+  && item.resultStatuses.every((status) => status === 'skipped')
+  && item.annotations.some((note) => note?.type === 'skip' && NOT_EXERCISED_SKIP.test(String(note.description || '')));
+
+// Job-log summary: file, title, status and pattern-checked counts only. Free text (error messages,
+// attachments, page text) never reaches the log; the full report stays encrypted.
+export function summarizeReport(report) {
+  const lines = [];
+  for (const item of collectTests(report)) {
+    lines.push(`acceptance-result status=${item.status} results=${item.resultStatuses.join(',') || 'none'} file=${item.file} title=${item.title}`);
+    for (const note of item.annotations) {
+      const description = String(note?.description || '');
+      if (note?.type === 'coverage' && COVERAGE_NOTE.test(description)) lines.push(`  coverage ${description}`);
+      if (note?.type === 'not-exercised' && RULE_NOTE.test(description)) lines.push(`  NOT EXERCISED rule=${description}`);
+      if (note?.type === 'skip' && NOT_EXERCISED_SKIP.test(description)) lines.push(`  NOT EXERCISED ${description.slice('not-exercised: '.length)}`);
+    }
+  }
+  const count = (status) => collectTests(report).filter((item) => item.status === status).length;
+  lines.push(`acceptance-summary expected=${count('expected')} skipped=${count('skipped')} unexpected=${count('unexpected')} flaky=${count('flaky')}`);
+  return lines;
+}
 
 export function validateReport(report, branchId, scope = 'all') {
   const actual = collectTests(report);
@@ -69,6 +107,7 @@ export function validateReport(report, branchId, scope = 'all') {
   for (const item of expected) if (!actualKeys.has(key(item))) throw new Error(`missing expected acceptance: ${key(item)}`);
   for (const item of actual) {
     if (!expectedKeys.has(key(item))) throw new Error(`unexpected acceptance: ${key(item)}`);
+    if (scope === 'payments' && isNotExercisedSkip(item)) continue;
     if (item.status !== 'expected' || item.resultStatuses.length === 0 || item.resultStatuses.some((status) => status !== 'passed')) {
       throw new Error(`acceptance did not pass cleanly: ${key(item)} status=${item.status} results=${item.resultStatuses.join(',')}`);
     }
@@ -96,7 +135,7 @@ function selfTest() {
   });
   validateReport(makeReport(16), 16);
   validateReport(makeReport(9), 9);
-  for (const scope of ['calendar', 'print', 'tutoring', 'feedback']) {
+  for (const scope of ['calendar', 'print', 'tutoring', 'feedback', 'payments']) {
     validateReport(makeReport(16, scope), 16, scope);
   }
   const lineShifted = makeReport(16);
@@ -133,6 +172,33 @@ function selfTest() {
   const nonPassedResult = makeReport(16);
   nonPassedResult.suites[0].specs[0].tests[0].results[0].status = 'failed';
   expectReject('non-passed result', () => validateReport(nonPassedResult, 16));
+  // payments: a not-exercised skip passes (and is reported), any other skip or a failure does not.
+  const notExercised = makeReport(16, 'payments');
+  notExercised.suites[0].specs[2].tests[0] = { projectName: 'chromium', status: 'skipped', results: [{ status: 'skipped' }],
+    annotations: [{ type: 'skip', description: 'not-exercised: no waived case among 24 scanned ledgers' }] };
+  validateReport(notExercised, 16, 'payments');
+  if (!summarizeReport(notExercised).some((line) => line === '  NOT EXERCISED no waived case among 24 scanned ledgers')) {
+    throw new Error('self-test summary did not report the not-exercised skip');
+  }
+  expectReject('not-exercised skip outside payments', () => validateReport({ suites: [{ specs: [{
+    file: 'tutoring-free-production.spec.js', title: 'director read-only API and real UI acceptance',
+    tests: [{ projectName: 'chromium', status: 'skipped', results: [{ status: 'skipped' }], annotations: [{ type: 'skip', description: 'not-exercised: x' }] }],
+  }], suites: [] }] }, 16, 'tutoring'));
+  const sessionSkip = makeReport(16, 'payments');
+  sessionSkip.suites[0].specs[0].tests[0] = { projectName: 'chromium', status: 'skipped', results: [{ status: 'skipped' }],
+    annotations: [{ type: 'skip', description: 'missing controlled production director session' }] };
+  expectReject('payments session skip', () => validateReport(sessionSkip, 16, 'payments'));
+  const failedPayment = makeReport(16, 'payments');
+  failedPayment.suites[0].specs[1].tests[0].status = 'unexpected';
+  failedPayment.suites[0].specs[1].tests[0].results = [{ status: 'failed' }];
+  expectReject('payments failure', () => validateReport(failedPayment, 16, 'payments'));
+  const leakyNote = makeReport(16, 'payments');
+  leakyNote.suites[0].specs[0].tests[0].annotations = [{ type: 'coverage', description: 'student=王小明' }, { type: 'coverage', description: 'cards_checked=3' }];
+  const leakySummary = summarizeReport(leakyNote).join('\n');
+  if (leakySummary.includes('王小明') || !leakySummary.includes('coverage cards_checked=3')) throw new Error('self-test summary leaked or dropped a note');
+  for (const scope of ['all', 'calendar']) {
+    if (expectedTests(16, scope).some((item) => item.file === 'payment-display-production.spec.js')) throw new Error(`payments leaked into ${scope}`);
+  }
   console.log('acceptance-report-gate self-test: ok');
 }
 
@@ -143,6 +209,8 @@ if (process.argv.includes('--self-test')) {
   const branchId = Number(process.env.EFFECTIVE_BRANCH_ID || 0);
   const scope = process.env.ACCEPTANCE_SCOPE || 'all';
   if (!reportPath || !branchId) throw new Error('report path and effective branch are required');
-  validateReport(JSON.parse(fs.readFileSync(reportPath, 'utf8')), branchId, scope);
+  const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+  for (const line of summarizeReport(report)) console.log(line);
+  validateReport(report, branchId, scope);
   console.log(`acceptance-report-gate: passed branch=${branchId} scope=${scope}`);
 }
