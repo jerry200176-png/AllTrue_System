@@ -9,6 +9,7 @@ use App\Models\PaymentReport;
 use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\BillingPayableResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyRenewalPeriodService;
@@ -720,7 +721,12 @@ class AccountingController extends Controller
             // #4041: notes of invoices voided when their course was deleted; read-only, outside the invoice table.
             'voided_invoice_notes' => $this->deletedCourseInvoiceNotes($student),
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
-            'courses' => $classes->map(fn (StudentClass $class) => [
+            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates) {
+                // #3991: a 免費／贈送 mark settles the course only while it holds (Invoice::freeGiftHolds) for the current term.
+                $freeGiftSettled = $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
+                    && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
+
+                return [
                 'id' => (int) $class->ID,
                 'course_ref' => $this->courseRef((int) $class->ID),
                 'subject' => $class->displaySubjectName($subjectNames),
@@ -728,8 +734,10 @@ class AccountingController extends Controller
                 'charge' => (int) ($class->Charge ?? 0),
                 // #4115 (Founder Q2 = A): display-only, compared with an issued bill; never rewrites a bill.
                 'current_contract_charge' => $this->currentContractCharge($class),
-                'paid' => (int) ($class->Paid ?? 0) === 1 || $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
-                    && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class))), // #3991: current term
+                'paid' => (int) ($class->Paid ?? 0) === 1 || $freeGiftSettled, // #3991: current term
+                // #4150: display context so the panel never reads a waiver or a valid free/gift term as a missing payment.
+                'free_gift_settled' => $freeGiftSettled,
+                'waived' => ContractMoneyState::isWaived($class),
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
                 'first_session_date' => $firstSessionDates->get((int) $class->getAttribute('ID')),
@@ -738,7 +746,8 @@ class AccountingController extends Controller
                 // Monthly ('date') members stay separate: each is billed and recorded by its own period subtotal (#3892 review).
                 'package_id' => (int) ($class->PackageID ?? 0) > 0 && strtolower((string) ($class->ScheduleMode ?? 'count')) !== 'date'
                     ? (int) $class->PackageID : null,
-            ])->values()->all(),
+                ];
+            })->values()->all(),
             'invoices' => $invoiceRows->all(),
             'receipts' => $reportRows->all(),
             'anomalies' => $uniqueAnomalies->all(),
