@@ -651,13 +651,15 @@ const packageLeadOf = (c) => {
   const pending = (payload.value?.receipts || []).find((r) => r.status === 'pending' && members.some((m) => Number(m.id) === Number(r.student_class_id)));
   if (!pending && members.filter((m) => owedFor(m.id) > 0).length > 1) return c;
   return (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
+    // #4205: a waiver is terminal (Paid=0 only), so a member that still owes leads before a waived one.
+    || members.find((m) => !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
     || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];
 };
 const packageLead = (c) => packageLeadOf(c).id === c.id;
 // Multiple existing member bills cannot share one batch: the first report blocks siblings. Keep explicit card actions.
 const hasMultiplePackageBills = (c) => !!c.package_id && contractCourses.value.filter((m) => m.package_id === c.package_id && owedFor(m.id) > 0).length > 1;
 
-// D18: every contract the card would offer 登記收款 for (no pending report, money due or not yet billed),
+// D18: every contract the card would offer 登記收款 for (no pending report, money due or not yet billed, not waived),
 // oldest open invoice first; the allocation step fills the oldest and never exceeds what is owed.
 const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
   // directorRecord rejects invoices already marked paid or void.
@@ -665,7 +667,7 @@ const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
   .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
     || Number(a.id) - Number(b.id))[0];
 const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
-  .filter((c) => c.class_type !== 'tutoring' && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid))
+  .filter((c) => c.class_type !== 'tutoring' && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && !isWaivedContract(c) && (owedFor(c.id) > 0 || !c.paid))
   .map((c) => {
     const inv = oldestOpenInvoice(c.id);
     return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };
