@@ -460,6 +460,9 @@ class AddSessionConflictTest extends TestCase
     // --- add-session: movable session exists → success with moved_from_date ---
     public function test_add_session_moves_last_future_session_and_returns_moved_from(): void
     {
+        // The 2026-12-30 19:00-21:00 session must still be in the future; unpinned this went red from
+        // 2026-12-30 21:00 Taipei (13:00Z). Laravel's tearDown resets the test clock.
+        Carbon::setTestNow(Carbon::parse('2026-10-14 10:00:00', 'Asia/Taipei'));
         $token = $this->createDirectorToken([1]);
         $student = $this->createStudent(1);
         $sc = $this->createStudentClass($student->id, ['SessionCount' => 2]);
