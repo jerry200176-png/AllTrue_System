@@ -111,6 +111,38 @@ function ledgerFacts(ledger, courseById) {
   });
 }
 
+/**
+ * Contracts the bulk 登記收款 must list (PRD v2 D18, #3753, #4205): non-tutoring, not waived, money due or not yet
+ * billed, no pending report on its package, and one lead per shared package (a package with bills on several members
+ * keeps per-card actions). ids is null when a contract's class type is unknown.
+ */
+function expectedBulkIds(ledger, facts) {
+  if (ledger?.scope?.no_payment_obligation) return { ids: [] };
+  const byId = new Map(facts.map((f) => [f.id, f]));
+  const courses = ledger?.courses || [];
+  if (courses.some((c) => byId.get(Number(c.id))?.tutoring == null)) return { ids: null };
+  const owed = (id) => (ledger.invoices || []).filter((inv) => Number(inv.student_class_id) === Number(id))
+    .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
+  const ordered = courses.map((c, i) => ({ c, i })).sort((a, b) => owed(b.c.id) - owed(a.c.id) || a.i - b.i).map((x) => x.c);
+  const membersOf = (c) => (c.package_id ? ordered.filter((m) => m.package_id === c.package_id) : [c]);
+  const pendingOn = (c) => (ledger.receipts || []).find((r) => r.status === 'pending'
+    && membersOf(c).some((m) => Number(m.id) === Number(r.student_class_id)));
+  const due = (m) => owed(m.id) > 0 || !m.paid;
+  const leadOf = (c) => {
+    if (!c.package_id) return c;
+    const members = membersOf(c);
+    const pending = pendingOn(c);
+    if (!pending && members.filter((m) => owed(m.id) > 0).length > 1) return c;
+    return (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
+      || members.find((m) => m.waived !== true && due(m)) || members.find(due) || members[0];
+  };
+  const severalBills = (c) => !!c.package_id && membersOf(c).filter((m) => owed(m.id) > 0).length > 1;
+  return {
+    ids: ordered.filter((c) => byId.get(Number(c.id)).tutoring === false && c.waived !== true && !severalBills(c)
+      && Number(leadOf(c).id) === Number(c.id) && !pendingOn(c) && due(c)).map((c) => Number(c.id)).sort((a, b) => a - b),
+  };
+}
+
 async function apiGet(request, path) {
   const response = await request.get(`${BASE}${path}`, {
     headers: { Authorization: `Bearer ${SESSION.access_token}`, Accept: 'application/json' },
@@ -161,6 +193,10 @@ async function ledgerScan(request) {
 
 function note(type, description) {
   test.info().annotations.push({ type, description });
+}
+/** Target-rule coverage for the gate: one `rule-coverage` note per test, `<rule>=<cases checked>`. */
+function ruleCoverage(rule, cases) {
+  note('rule-coverage', `${rule}=${Number(cases)}`);
 }
 function coverage(counts) {
   for (const [key, value] of Object.entries(counts)) note('coverage', `${key}=${Number(value)}`);
@@ -336,6 +372,7 @@ test.describe('production acceptance — payment display (#4150)', () => {
     await guard.assertNoWrites();
     expect(violations, 'course payment badges on 學生管理 (course ids only)').toEqual([]);
     expect(counts.cards_unmatched, 'every rendered card maps to a loaded course').toBe(0);
+    ruleCoverage('free_gift', counts.free_cards_checked);
     if (counts.free_cards_checked === 0) note('not-exercised', 'students_list_free_label');
     test.skip(counts.cards_checked === 0, 'not-exercised: no course card rendered for the sampled students');
   });
@@ -375,6 +412,7 @@ test.describe('production acceptance — payment display (#4150)', () => {
     await guard.assertNoWrites();
     expect(violations, 'course payment badges on 課程查找 (course ids only)').toEqual([]);
     expect(counts.rows_unmatched, 'every billing row maps to a campus course').toBe(0);
+    ruleCoverage('free_gift', counts.free_rows_checked);
     if (counts.free_rows_checked === 0) note('not-exercised', 'course_finder_free_label');
     test.skip(counts.rows_checked === 0, 'not-exercised: no billing row rendered for the sampled students');
   });
@@ -435,26 +473,37 @@ test.describe('production acceptance — payment display (#4150)', () => {
         }
       }
       if (rule === 'waived') {
-        // No bulk 登記收款 may include a waived contract: its count is bounded by the non-waived payable contracts, and
-        // a single-contract entry never names a subject that only waived contracts carry.
-        const payable = ledger?.scope?.no_payment_obligation ? [] : facts.filter((f) => !f.waived && f.tutoring !== true);
+        // Exact bulk 登記收款 membership: open the allocation view (local, no request; never its submit) and compare
+        // its alloc-row-<id> set with the contracts that are due. A waived contract is never in it, no due one is missing.
+        const expected = expectedBulkIds(ledger, facts);
         const sticky = dialog.locator('[data-testid="ledger-sticky-pay-btn"]');
+        const waivedIds = facts.filter((f) => f.waived).map((f) => f.id);
+        let shown = [];
         if (await sticky.count()) {
-          const small = (await sticky.locator('small').innerText(SHORT)).trim();
-          const many = small.match(/^(\d+) 份合約$/);
-          const n = many ? Number(many[1]) : 1;
-          if (n > payable.length) violations.push({ course_id: 0, problem: 'bulk_entry_counts_waived_contract' });
-          if (!many && !payable.some((f) => f.subject === small) && facts.some((f) => f.waived && f.subject === small)) {
-            violations.push({ course_id: 0, problem: 'bulk_entry_names_waived_contract' });
-          }
+          await sticky.click();
+          const alloc = dialog.locator('[data-testid="alloc"]');
+          await expect(alloc).toBeVisible({ timeout: 10_000 });
+          shown = (await alloc.locator('[data-testid^="alloc-row-"]').evaluateAll((rows) => rows
+            .map((row) => Number(String(row.getAttribute('data-testid')).replace('alloc-row-', ''))))).sort((a, b) => a - b);
+          await alloc.locator('[data-testid="alloc-back"]').click();
+          await expect(alloc).toHaveCount(0, { timeout: 10_000 });
         }
-        counts.bulk_entries_checked = (counts.bulk_entries_checked || 0) + 1;
+        for (const id of shown.filter((x) => waivedIds.includes(x))) violations.push({ course_id: id, problem: 'bulk_includes_waived_contract' });
+        if (expected.ids) {
+          for (const id of expected.ids.filter((x) => !shown.includes(x))) violations.push({ course_id: id, problem: 'bulk_missing_payable_contract' });
+          for (const id of shown.filter((x) => !expected.ids.includes(x) && !waivedIds.includes(x))) violations.push({ course_id: id, problem: 'bulk_includes_unexpected_contract' });
+          counts.bulk_membership_exact = (counts.bulk_membership_exact || 0) + 1;
+        } else {
+          // A contract outside the campus course list has an unknown class type: only the waived exclusion is decidable.
+          counts.bulk_membership_undetermined = (counts.bulk_membership_undetermined || 0) + 1;
+        }
       }
       await dialog.getByRole('button', { name: '關閉學生帳務' }).click();
       await expect(dialog).toHaveCount(0, { timeout: 10_000 });
     }
     counts.blocked_post_reads = await guard.blockedPostReads();
     coverage(counts);
+    ruleCoverage({ waived: 'waived', legacy: 'legacy_only', reversed: 'net_zero_reversal' }[rule], counts.cases_checked);
     await test.info().attach(`ledger-${rule}-coverage.json`, { body: JSON.stringify({ branch_id: BRANCH_ID, ...counts, violations }), contentType: 'application/json' });
     await guard.assertNoWrites();
     expect(violations, `ledger rule ${rule} (course ids only)`).toEqual([]);

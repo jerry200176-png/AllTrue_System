@@ -5,12 +5,18 @@ const campusNineOnlyTitle = 'contracted four-session detail explains two unarran
 // #4150: scope=payments only (not in `all`). These may end `skipped` only through their own
 // "not-exercised:" skip, i.e. the live campus had no case for that rule; any other skip fails.
 const paymentTests = [
-  ['payment-display-production.spec.js', 298, 3, '學生管理: free courses read 免費／贈送 and 未繳 only when unpaid'],
-  ['payment-display-production.spec.js', 343, 3, '課程查找: free courses read 免費／贈送 and 未繳 only when unpaid'],
-  ['payment-display-production.spec.js', 464, 3, '帳務: a waived course reads 不收了 and offers no payment action'],
-  ['payment-display-production.spec.js', 468, 3, '帳務: a legacy paid flag with no standing payment reads 需核對'],
-  ['payment-display-production.spec.js', 472, 3, '帳務: payments that net to zero show no 繳費日'],
+  ['payment-display-production.spec.js', 334, 3, '學生管理: free courses read 免費／贈送 and 未繳 only when unpaid'],
+  ['payment-display-production.spec.js', 380, 3, '課程查找: free courses read 免費／贈送 and 未繳 only when unpaid'],
+  ['payment-display-production.spec.js', 513, 3, '帳務: a waived course reads 不收了 and offers no payment action'],
+  ['payment-display-production.spec.js', 517, 3, '帳務: a legacy paid flag with no standing payment reads 需核對'],
+  ['payment-display-production.spec.js', 521, 3, '帳務: payments that net to zero show no 繳費日'],
 ];
+// #4150 review: a payments run is conclusive only when at least one target rule (one per #4150 display fix) checked
+// at least one live case in a passing test. Ordinary rows alone exercise none of the fixes.
+const TARGET_RULES = ['free_gift', 'waived', 'legacy_only', 'net_zero_reversal'];
+const RULE_COVERAGE = /^(free_gift|waived|legacy_only|net_zero_reversal)=(\d+)$/;
+const PAYMENT_RULE = Object.fromEntries(paymentTests.map(([, , , title], index) => [title,
+  ['free_gift', 'free_gift', 'waived', 'legacy_only', 'net_zero_reversal'][index]]));
 const NOT_EXERCISED_SKIP = /^not-exercised: [A-Za-z0-9 _]+$/;
 const COVERAGE_NOTE = /^[a-z0-9_]+=\d+$/;
 const RULE_NOTE = /^[a-z0-9_]+$/;
@@ -75,6 +81,25 @@ const isNotExercisedSkip = (item) => item.status === 'skipped' && item.resultSta
   && item.resultStatuses.every((status) => status === 'skipped')
   && item.annotations.some((note) => note?.type === 'skip' && NOT_EXERCISED_SKIP.test(String(note.description || '')));
 
+export function ruleTally(report) {
+  const tally = Object.fromEntries(TARGET_RULES.map((rule) => [rule, { cases: 0, exercised: 0, notExercised: 0 }]));
+  for (const item of collectTests(report)) {
+    for (const note of item.annotations) {
+      const match = note?.type === 'rule-coverage' ? RULE_COVERAGE.exec(String(note.description || '')) : null;
+      if (!match) continue;
+      const cases = Number(match[2]);
+      if (item.status === 'expected' && cases > 0) {
+        tally[match[1]].cases += cases;
+        tally[match[1]].exercised += 1;
+      } else {
+        tally[match[1]].notExercised += 1;
+      }
+    }
+  }
+  return tally;
+}
+const anyRuleExercised = (tally) => TARGET_RULES.some((rule) => tally[rule].exercised > 0);
+
 // Job-log summary: file, title, status and pattern-checked counts only. Free text (error messages,
 // attachments, page text) never reaches the log; the full report stays encrypted.
 export function summarizeReport(report) {
@@ -91,9 +116,16 @@ export function summarizeReport(report) {
   const count = (status) => collectTests(report).filter((item) => item.status === status).length;
   lines.push(`acceptance-summary expected=${count('expected')} skipped=${count('skipped')} unexpected=${count('unexpected')} flaky=${count('flaky')}`);
   const notExercised = collectTests(report).filter(isNotExercisedSkip).length;
-  if (notExercised > 0) {
-    lines.push(`acceptance-coverage exercised=${count('expected')} not_exercised=${notExercised}`);
-    if (count('expected') === 0) lines.push('acceptance-verdict INCONCLUSIVE zero coverage (not an acceptance)');
+  if (notExercised > 0) lines.push(`acceptance-coverage exercised=${count('expected')} not_exercised=${notExercised}`);
+  const hasRuleNotes = collectTests(report).some((item) => item.annotations.some((note) => note?.type === 'rule-coverage'));
+  const tally = ruleTally(report);
+  if (hasRuleNotes) {
+    for (const rule of TARGET_RULES) {
+      lines.push(`acceptance-rule rule=${rule} exercised=${tally[rule].exercised} not_exercised=${tally[rule].notExercised} cases=${tally[rule].cases}`);
+    }
+  }
+  if ((hasRuleNotes || notExercised > 0) && !anyRuleExercised(tally)) {
+    lines.push('acceptance-verdict INCONCLUSIVE zero coverage (not an acceptance)');
   }
   return lines;
 }
@@ -118,8 +150,8 @@ export function validateReport(report, branchId, scope = 'all') {
     }
   }
   // A payments run where every rule was not exercised proves nothing about the display: inconclusive, never accepted.
-  if (scope === 'payments' && !actual.some((item) => item.status === 'expected')) {
-    throw new Error('acceptance INCONCLUSIVE: zero coverage, every payments rule was not exercised');
+  if (scope === 'payments' && !anyRuleExercised(ruleTally(report))) {
+    throw new Error('acceptance INCONCLUSIVE: zero coverage, no target payment rule was exercised');
   }
 }
 
@@ -137,7 +169,8 @@ function selfTest() {
         line: item.line,
         column: item.column,
         title: item.title,
-        tests: [{ projectName: item.project, status: 'expected', results: [{ status: 'passed' }] }],
+        tests: [{ projectName: item.project, status: 'expected', results: [{ status: 'passed' }],
+          annotations: item.file === 'payment-display-production.spec.js' ? [{ type: 'rule-coverage', description: `${PAYMENT_RULE[item.title]}=1` }] : [] }],
       })),
       suites: [],
     }],
@@ -221,6 +254,33 @@ function selfTest() {
     throw new Error('self-test summary did not flag zero coverage');
   }
   if (summarizeReport(notExercised).some((line) => line.includes('INCONCLUSIVE'))) throw new Error('self-test flagged a partially exercised run');
+  // Ordinary rows only: both list tests pass with free_gift=0, every ledger rule is not exercised -> INCONCLUSIVE.
+  const ordinary = makeReport(16, 'payments');
+  ordinary.suites[0].specs.forEach((spec, index) => {
+    const rule = PAYMENT_RULE[spec.title];
+    spec.tests[0] = index < 2
+      ? { projectName: 'chromium', status: 'expected', results: [{ status: 'passed' }], annotations: [{ type: 'rule-coverage', description: `${rule}=0` }] }
+      : { projectName: 'chromium', status: 'skipped', results: [{ status: 'skipped' }],
+        annotations: [{ type: 'rule-coverage', description: `${rule}=0` }, { type: 'skip', description: 'not-exercised: no case' }] };
+  });
+  expectReject('ordinary rows only (no target rule exercised)', () => validateReport(ordinary, 16, 'payments'));
+  const ordinarySummary = summarizeReport(ordinary);
+  for (const line of ['acceptance-rule rule=free_gift exercised=0 not_exercised=2 cases=0',
+    'acceptance-rule rule=waived exercised=0 not_exercised=1 cases=0', 'acceptance-verdict INCONCLUSIVE zero coverage (not an acceptance)']) {
+    if (!ordinarySummary.includes(line)) throw new Error(`self-test summary is missing: ${line}`);
+  }
+  // One target rule with one live case is enough to be conclusive; the rest are reported as not exercised.
+  const oneRule = JSON.parse(JSON.stringify(ordinary));
+  oneRule.suites[0].specs[3].tests[0] = { projectName: 'chromium', status: 'expected', results: [{ status: 'passed' }],
+    annotations: [{ type: 'rule-coverage', description: 'legacy_only=2' }] };
+  validateReport(oneRule, 16, 'payments');
+  if (!summarizeReport(oneRule).includes('acceptance-rule rule=legacy_only exercised=1 not_exercised=0 cases=2')) {
+    throw new Error('self-test summary did not count the exercised rule');
+  }
+  // A skipped test can never claim coverage.
+  const skippedClaim = JSON.parse(JSON.stringify(ordinary));
+  skippedClaim.suites[0].specs[2].tests[0].annotations[0].description = 'waived=5';
+  expectReject('coverage claimed by a skipped test', () => validateReport(skippedClaim, 16, 'payments'));
   console.log('acceptance-report-gate self-test: ok');
 }
 
