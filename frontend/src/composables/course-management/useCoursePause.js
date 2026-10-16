@@ -12,9 +12,9 @@ const noLock = { run: (_course, fn) => fn(), isPending: () => false };
 
 // #4188: a closed course is never resumed in place. `askClosed` shows the message with a 續課 button
 // (resolves true when chosen) and `openRenewal` opens the page's existing renewal entry.
-export function useCoursePause({
-  onChanged, notify = (msg) => alert(msg), courseLock = noLock, askClosed = null, openRenewal = null,
-}) {
+export function useCoursePause({ onChanged, notify = (msg) => alert(msg), courseLock = noLock }) {
+  // Read from the same argument so the #4159 signature line stays as merged.
+  const { askClosed = null, openRenewal = null } = arguments[0] || {};
   const target = ref(null);
   const submitting = ref(false);
   const cancelRemaining = ref(true);
