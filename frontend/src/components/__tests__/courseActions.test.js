@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { courseActions } from '../../lib/courseActions.js';
+import { courseActions, isCourseCloseCommitted } from '../../lib/courseActions.js';
 
 const ids = (model) => model.groups.flatMap((g) => g.items.map((i) => i.id));
 const session = { id: 1, status: 'active' };
@@ -23,6 +23,17 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
     expect(ids(m)).not.toContain('resume');
     expect(ids(m)).not.toContain('pause');
     expect(ids(m)[0]).toBe('edit');
+  });
+
+  it('closed course (#4188): 恢復 is not the primary, stays in 狀態 to explain 續課, and the predicate matches the server', () => {
+    const closed = { ...session, status: 'inactive', closed_reason: 'settled' };
+    const m = courseActions(closed, base);
+    expect(m.primary.id).toBe('edit');
+    expect(m.groups.find((g) => g.id === 'end').items.map((i) => i.id)).toContain('resume');
+    expect(courseActions(closed, { ...base, renewalDue: true }).primary.id).toBe('purchase');
+    expect(isCourseCloseCommitted(closed)).toBe(true);
+    expect(isCourseCloseCommitted({ ...session, status: 'inactive' })).toBe(false);
+    expect(isCourseCloseCommitted({ ...session, closed_reason: 'settled' })).toBe(false);
   });
 
   it('waived courses cannot resume', () => {

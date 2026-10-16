@@ -2591,6 +2591,9 @@ const {
     await loadCourses();
     syncCourseManagerCourseFromList();
   },
+  // #4188: 恢復課程 on a closed course explains 續課 and opens the existing renewal entry.
+  askClosed: (opts) => askConfirm(opts),
+  openRenewal: (course) => openCommercialPurchaseEntry(course),
 });
 
 const courseSessionCalendarEnabled = isCourseSessionCalendarEnabled(perfFlags);

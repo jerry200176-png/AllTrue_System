@@ -6611,6 +6611,16 @@ class StudentClassController extends Controller
                         'message' => '已提前結清的課程不可恢復；請為學生建立新約。',
                     ], 422);
                 }
+                // #4188: never reopen a committed close in place; continuing is 續課 (a new period),
+                // a mistaken close goes through 帳務更正. Past lessons, payments and the close stay as they are.
+                if ($this->courseCloseCommitted($sc)) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => '這門課已經結案，不能直接恢復。要繼續上課，請用「續課」建立新的一期；如果是誤結案，請到帳務更正處理。過去的上課、繳費與結案紀錄都會保留。',
+                        'error_code' => 'course_closed_use_renewal',
+                        'closed_reason' => $sc->getAttribute('closed_reason'),
+                    ], 409);
+                }
                 $sc->setAttribute('Stop', 0);
                 $sc->closed_reason = null;
                 $sc->save();

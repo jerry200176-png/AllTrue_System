@@ -9,6 +9,7 @@ vi.mock('../../../lib/authedFetch', () => ({
 
 import { useCoursePause, COURSE_LIFECYCLE_BUSY_MESSAGE } from '../useCoursePause';
 import { createCourseCloseFlow } from '../../../lib/closeCourseNoRenew.js';
+import { CLOSED_COURSE_RESUME_MESSAGE } from '../../../lib/courseActions.js';
 
 const res = (ok, json, statusText = 'Bad') => ({ ok, statusText, json: async () => json });
 const active = { id: 7, status: 'active' };
@@ -190,5 +191,67 @@ describe('useCoursePause shares the per-course lifecycle lock with close', () =>
     expect(notify).not.toHaveBeenCalledWith(COURSE_LIFECYCLE_BUSY_MESSAGE);
     d.resolve(true);
     await closing;
+  });
+});
+
+// #4188: a closed course (inactive + stored closed_reason) is never resumed in place.
+describe('useCoursePause on a closed course', () => {
+  const closed = { id: 10, status: 'inactive', closed_reason: 'settled' };
+
+  it('does not send a resume request; shows the message with a 續課 button that opens the renewal entry', async () => {
+    const askClosed = vi.fn(async () => true);
+    const openRenewal = vi.fn();
+    const p = useCoursePause({ onChanged, notify, askClosed, openRenewal });
+    await p.request(closed);
+    expect(p.target.value).toBeNull();
+    expect(askClosed).toHaveBeenCalledWith({
+      title: '這門課已經結案', message: CLOSED_COURSE_RESUME_MESSAGE, confirmLabel: '前往續課', cancelLabel: '關閉',
+    });
+    expect(openRenewal).toHaveBeenCalledWith(closed);
+    expect(getAccessToken).not.toHaveBeenCalled();
+    expect(authedFetch).not.toHaveBeenCalled();
+  });
+
+  it('closing the message opens nothing', async () => {
+    const openRenewal = vi.fn();
+    const askClosed = vi.fn(async () => false);
+    const p = useCoursePause({ onChanged, notify, askClosed, openRenewal });
+    await p.request({ ...closed, closed_reason: 'settled_pending' });
+    expect(askClosed).toHaveBeenCalledTimes(1);
+    expect(p.target.value).toBeNull();
+    expect(openRenewal).not.toHaveBeenCalled();
+    expect(authedFetch).not.toHaveBeenCalled();
+  });
+
+  it('a stale confirm for a course that is now closed is not sent', async () => {
+    const p = make();
+    p.request(paused);
+    p.target.value = { ...paused, closed_reason: 'completed' };
+    await p.confirm();
+    expect(authedFetch).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(CLOSED_COURSE_RESUME_MESSAGE);
+    expect(p.target.value).toBeNull();
+  });
+
+  it('a server 409 course_closed_use_renewal shows the same explanation and reloads', async () => {
+    authedFetch.mockResolvedValue(res(false, { error_code: 'course_closed_use_renewal', message: 'x' }));
+    const askClosed = vi.fn(async () => false);
+    const p = useCoursePause({ onChanged, notify, askClosed, openRenewal: vi.fn() });
+    p.request(paused);
+    await p.confirm();
+    expect(askClosed).toHaveBeenCalledTimes(1);
+    expect(notify).not.toHaveBeenCalledWith('恢復失敗：x');
+    expect(p.target.value).toBeNull();
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('a merely paused course (no closed_reason) still resumes', async () => {
+    authedFetch.mockResolvedValue(res(true, {}));
+    const askClosed = vi.fn();
+    const p = useCoursePause({ onChanged, notify, askClosed, openRenewal: vi.fn() });
+    p.request({ ...paused, closed_reason: null });
+    await p.confirm();
+    expect(askClosed).not.toHaveBeenCalled();
+    expect(authedFetch.mock.calls[0][1].body).toBe('{"action":"resume"}');
   });
 });

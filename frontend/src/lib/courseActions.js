@@ -6,9 +6,23 @@
  * Pure: the page passes capabilities it already computes, so this never re-derives billing or
  * scheduling rules. Item ids are the existing CourseManagement action names (onCourseManagerAction).
  */
+/**
+ * #4188: the course's close has committed (inactive with a stored closed_reason), the same rule the
+ * server applies on the locked row. Such a course is not resumed in place: the server refuses
+ * (409 course_closed_use_renewal) and staff continue through 續課, or fix a mistaken close in 帳務更正.
+ */
+export function isCourseCloseCommitted(course) {
+  return String(course?.status || '').toLowerCase() === 'inactive' && Boolean(course?.closed_reason);
+}
+
+export const CLOSED_COURSE_RESUME_MESSAGE = '這門課已經結案，不能直接恢復。要繼續上課，請用「續課」建立新的一期；如果是誤結案，請到帳務更正處理。過去的上課、繳費與結案紀錄都會保留。';
+
 export function courseActions(course, caps = {}) {
   const paused = String(course?.status || '').toLowerCase() === 'inactive';
-  const canResume = paused && course?.closed_reason !== 'waived';
+  const closed = isCourseCloseCommitted(course);
+  // A closed course keeps a 恢復課程 item (it explains 續課) but is never the state primary.
+  const canResume = paused && !closed;
+  const offerResume = paused && course?.closed_reason !== 'waived';
   // 排課 (openManualSessionModal) is the row's former first-class button; 補課／補登 / 新增月結堂次 the More item.
   const schedule = (caps.isManualOccurrence || caps.isSession || caps.isMonthly)
     ? { id: 'manual-session', label: caps.isManualOccurrence ? '＋新增下一堂' : caps.isMonthly ? '排月結' : '排課' }
@@ -46,7 +60,7 @@ export function courseActions(course, caps = {}) {
       { id: 'invoice', label: '在這裡看帳務' },
     ] },
     { id: 'end', label: '狀態', items: [
-      paused ? (canResume && { id: 'resume', label: '恢復課程' }) : { id: 'pause', label: '暫停課程' },
+      paused ? (offerResume && { id: 'resume', label: '恢復課程' }) : { id: 'pause', label: '暫停課程' },
       caps.canClose && { id: 'close', label: '結束課程（不再續課）', confirm: true },
     ] },
     { id: 'danger', label: '', items: [{ id: 'delete', label: '刪除課程', danger: true, confirm: true }] },
