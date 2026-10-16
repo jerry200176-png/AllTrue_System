@@ -42,6 +42,59 @@ for (const [workflow, writeJob] of [
   assert.ok(!/`\$[A-Z_]+`/.test(source), `${workflow} must not use backtick command substitution on inputs`);
 }
 
+// #4196 review: queue every in-app write (never drop a pending run), keep the reply text out of
+// the public run summary and step-env log headers, and require the exact main-only policy.
+for (const [workflow, writeJob, nextJob] of [
+  ['.github/workflows/bug-phase-a-triage.yml', 'triage', 'label-logged'],
+  ['.github/workflows/bug-followup-comment.yml', 'comment', 'close-shipped-issue'],
+]) {
+  const source = fs.readFileSync(workflow, 'utf8');
+  assert.ok(
+    source.includes('\nconcurrency:\n  group: inapp-production-writeback\n  cancel-in-progress: false\n  queue: max\n'),
+    `${workflow} workflow-level lock must queue (queue: max) like other production side-effect workflows`,
+  );
+  assert.ok(!source.includes('inputs.public_reply }}'),
+    `${workflow} must never expose public_reply through env or an expression (step env is printed in public logs)`);
+  assert.ok(!/^\s+PUBLIC_REPLY:/m.test(source), `${workflow} must not set PUBLIC_REPLY in a step env block`);
+  const preview = source.match(/\n  preview:\n([\s\S]*?)\n  approve:\n/)[1];
+  assert.ok(!preview.includes('$PUBLIC_REPLY'), `${workflow} preview must not print the reply text`);
+  assert.ok(preview.includes(`jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" | sha256sum`)
+    && preview.includes(`jq -er '.inputs.public_reply | strings | length' "$GITHUB_EVENT_PATH"`),
+    `${workflow} preview must show only the reply length and sha256`);
+  const approve = source.match(/\n  approve:\n([\s\S]*?)\n  [a-z-]+:\n    needs: approve\n/)[1];
+  assert.ok(approve.includes('api(f"{base}/deployment-branch-policies")')
+    && approve.includes('if names != ["main"]:')
+    && approve.includes('policy.get("protected_branches") is not False'),
+    `${workflow} approval gate must verify the exact main-only branch policy like deploy.yml`);
+  const write = source.match(new RegExp(`\\n  ${writeJob}:\\n([\\s\\S]*?)\\n  # [\\s\\S]*?\\n  ${nextJob}:\\n`))[1];
+  assert.ok(write.includes(`PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"\n          PUBLIC_REPLY="\${PUBLIC_REPLY%x}"`),
+    `${workflow} write job must read the reply from the event payload`);
+
+  // Behaviour: the event-payload read is byte-exact (trailing newline kept) and the preview hash matches.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-reply-event-'));
+  try {
+    const reply = '第一行 $(touch x) `id`\n second line https://github.com/o/r/issues/1\n';
+    const eventPath = path.join(dir, 'event.json');
+    fs.writeFileSync(eventPath, JSON.stringify({ inputs: { public_reply: reply } }));
+    const readLines = write.match(/\n          (PUBLIC_REPLY="\$\(jq [^\n]*)\n          (PUBLIC_REPLY="\$\{PUBLIC_REPLY%x\}")\n/);
+    const out = execFileSync('bash', ['-c', `set -euo pipefail\n${readLines[1]}\n${readLines[2]}\nprintf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\\n'`],
+      { encoding: 'utf8', cwd: dir, env: { ...process.env, GITHUB_EVENT_PATH: eventPath } });
+    assert.equal(Buffer.from(out, 'base64').toString('utf8'), reply, `${workflow} reply must round-trip exactly`);
+    assert.equal(fs.existsSync(path.join(dir, 'x')), false, `${workflow} reply must not execute`);
+    const shaLine = preview.match(/\n          (reply_sha="[^\n]*)\n/)[1];
+    const lenLine = preview.match(/\n          (reply_len="[^\n]*)\n/)[1];
+    const shown = execFileSync('bash', ['-c', `set -euo pipefail\n${shaLine}\n${lenLine}\nprintf '%s %s' "$reply_sha" "$reply_len"`],
+      { encoding: 'utf8', cwd: dir, env: { ...process.env, GITHUB_EVENT_PATH: eventPath } });
+    assert.equal(shown, `${createHash('sha256').update(reply, 'utf8').digest('hex')} ${[...reply].length}`,
+      `${workflow} preview hash/length must match the exact reply`);
+    fs.writeFileSync(eventPath, JSON.stringify({ inputs: {} }));
+    assert.throws(() => execFileSync('bash', ['-c', `set -euo pipefail\n${readLines[1]}`],
+      { stdio: 'ignore', env: { ...process.env, GITHUB_EVENT_PATH: eventPath } }), `${workflow} missing reply must fail closed`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 const phaseASource = fs.readFileSync('.github/workflows/bug-phase-a-triage.yml', 'utf8');
 assert.ok(
   phaseASource.includes('DISPOSITION: ${{ inputs.disposition }}')

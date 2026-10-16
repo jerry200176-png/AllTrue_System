@@ -35,6 +35,7 @@ permissions:
 concurrency:
   group: inapp-production-writeback
   cancel-in-progress: false
+  queue: max
 
 jobs:
   preview:
@@ -49,9 +50,12 @@ jobs:
           ISSUE_URL: ${{ inputs.github_issue_url }}
           DISPOSITION: ${{ inputs.disposition }}
           CLOSE_AS_LOGGED: ${{ inputs.close_as_logged }}
-          PUBLIC_REPLY: ${{ inputs.public_reply }}
+        # The reply is read from the event payload, never from env: GitHub prints every step's env
+        # values in the public log header, and dispatch inputs are not masked (public repo).
         run: |
           set -euo pipefail
+          reply_len="$(jq -er '.inputs.public_reply | strings | length' "$GITHUB_EVENT_PATH")"
+          reply_sha="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" | sha256sum | cut -d' ' -f1)"
           {
             echo "## In-app write requested (approve only if this matches the reviewed list)"
             echo
@@ -59,10 +63,10 @@ jobs:
             printf -- '- github_issue_url: %s\n' "$ISSUE_URL"
             printf -- '- disposition: %s\n' "$DISPOSITION"
             printf -- '- close_as_logged: %s\n' "$CLOSE_AS_LOGGED"
+            printf -- '- public_reply length (characters): %s\n' "$reply_len"
+            printf -- '- public_reply sha256 (exact UTF-8 input, no trailing newline added): %s\n' "$reply_sha"
             echo
-            echo "**Public reply**"
-            echo
-            printf '%s\n' "$PUBLIC_REPLY" | sed 's/^/> /'
+            echo "The reply text is intentionally not shown (public repo). Compare the sha256 with the reviewed private list row."
           } >> "$GITHUB_STEP_SUMMARY"
 
   approve:
@@ -79,20 +83,27 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          env_json="$(gh api "/repos/$REPO/environments/production-activation")"
-          printf '%s' "$env_json" | python3 -c '
-          import json, sys
-          env = json.load(sys.stdin)
+          python3 - <<'PY'
+          import json, os, subprocess
+          base = f"/repos/{os.environ['REPO']}/environments/production-activation"
+          def api(path):
+              return json.loads(subprocess.check_output(["gh", "api", path], text=True))
+          env = api(base)
           rules = env.get("protection_rules") or []
           if not any(r.get("type") == "required_reviewers" for r in rules):
               raise SystemExit("production-activation has no required reviewer; refusing to write")
           if env.get("can_admins_bypass") is not False:
               raise SystemExit("production-activation allows admin bypass; refusing to write")
+          # Same main-only check as deploy.yml production-activation gate.
           policy = env.get("deployment_branch_policy") or {}
-          if policy.get("custom_branch_policies") is not True:
-              raise SystemExit("production-activation is not main-only; refusing to write")
-          print("production-activation verified: required reviewer, no admin bypass, custom branch policy")
-          '
+          if policy.get("custom_branch_policies") is not True or policy.get("protected_branches") is not False:
+              raise SystemExit("production-activation needs a custom main-only branch policy; refusing to write")
+          policies = api(f"{base}/deployment-branch-policies").get("branch_policies") or []
+          names = sorted(str(p.get("name")) for p in policies)
+          if names != ["main"]:
+              raise SystemExit(f"production-activation must allow only main, got {names}; refusing to write")
+          print("production-activation verified: required reviewer, no admin bypass, main only")
+          PY
 
   triage:
     needs: approve
@@ -132,10 +143,13 @@ jobs:
           BUG_ID: ${{ inputs.bug_id }}
           GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
           DISPOSITION: ${{ inputs.disposition }}
-          PUBLIC_REPLY: ${{ inputs.public_reply }}
           CLOSE_AS_LOGGED: ${{ inputs.close_as_logged }}
+        # PUBLIC_REPLY is deliberately not in env (GitHub prints step env in the public log header).
+        # Read the exact bytes from the event payload; the trailing x keeps trailing newlines.
         run: |
           set -euo pipefail
+          PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"
+          PUBLIC_REPLY="${PUBLIC_REPLY%x}"
           [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
           [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
           [[ "$GITHUB_ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
