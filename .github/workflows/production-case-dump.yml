@@ -35,6 +35,7 @@ on:
           - paid_status_shadow_log
           - paid_status_shadow_courses
           - inapp_333_multi_teacher_templates
+          - billing_correction_past_session_impact
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
@@ -117,7 +118,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates'}:
+          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -1708,6 +1709,255 @@ jobs:
             ];
             $out['swipe_photo_delivery_audit_14d'] = $photoAudit->map(fn ($r) => ['campus_id'=>(int)$r->campus_id,
               'outcome'=>(string)$r->outcome, 'n'=>(int)$r->n, 'last_at'=>$r->last_at])->values()->all();
+          }} elseif ($case === 'billing_correction_past_session_impact') {{
+            // Read-only historical impact of the #4184 defect (#4136): before #4184 the count-mode billing-correction
+            // apply cancelled EVERY excess `scheduled` ClassSession, including past-dated ones the preview never listed.
+            // Founder-approved scope: IDs and aggregate counts only (no names, amounts, notes or reasons). Takes no student_id.
+            // No row records which sessions a correction cancelled, so nothing here is causal proof; tiers are inferences:
+            //   inferred_strong = schedule_audit_logs scheduled->cancelled row whose SNAPSHOT StudentClassID is the corrected
+            //     contract, same operator (HMAC actor_ref), created within [occurred_at-30s, +2s];
+            //   inferred_weak = same row in the wider [-120s, +2s] window or with an operator mismatch, or (no log row) a live
+            //     ClassSession still cancelled with updated_at in the tight window (timing only).
+            // Historical contract/date come from the audit snapshot (old_data/new_data); the live join is only for current status.
+            // The cancel itself voids live sign-ins/LearningRecords (ClassSessionObserver::updated ->
+            // CourseLeaveCascadeService::voidLiveArtifactsForNonAttendance); those are reported as impact, by ID.
+            // SecurityAuditEvent::append is best-effort, so completeness is checked (append_failed log lines, unmatched cancels).
+            // Everything runs inside one READ ONLY transaction that is rolled back; any write would fail with SQLSTATE 25006.
+            $windowStart = '2026-08-22 00:00:00'; // count-mode billing correction shipped 2026-08-22 (GitHub #1901)
+            $cap = 500;
+            // Fix gate (#4184 not merged yet, so no SHA to test): the fix adds this method; its presence in the deployed code
+            // (tinker loads the production checkout) means the defect can no longer add new cases after this snapshot.
+            $fixInProduction = method_exists(\\App\\Services\\Scheduling\\ContractSessionSchedule::class, 'partitionExcessScheduledRows');
+            $voidReason = \\App\\Services\\CourseLeaveCascadeService::VOID_REASON_CANCELLED; // bound only, never output
+            $sqlCoverage = <<<'SQL'
+          SELECT COUNT(*) AS n, MIN(occurred_at) AS first_at, MAX(occurred_at) AS last_at
+          FROM security_audit_events
+          WHERE event_type = 'student_class.billing_contract_correction' AND outcome = 'success'
+          SQL;
+            $sqlCorrections = <<<'SQL'
+          SELECT e.id AS audit_id, e.occurred_at, e.subject_ref, e.actor_ref,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.reason_code')) AS reason_code,
+            CAST(JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.old_session_count')) AS SIGNED) AS old_session_count,
+            CAST(JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.new_session_count')) AS SIGNED) AS new_session_count
+          FROM security_audit_events e
+          WHERE e.event_type = 'student_class.billing_contract_correction' AND e.outcome = 'success'
+            AND e.occurred_at >= ?
+          ORDER BY e.id
+          SQL;
+            $sqlRefused = <<<'SQL'
+          SELECT JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.reason_code')) AS reason_code, COUNT(*) AS n
+          FROM security_audit_events
+          WHERE event_type = 'student_class.edit_blocked' AND occurred_at >= ?
+            AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.reason_code')) LIKE 'billing_correction%'
+          GROUP BY JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.reason_code'))
+          ORDER BY reason_code
+          SQL;
+            $sqlClassIds = 'SELECT ID AS id FROM StudentClass ORDER BY ID';
+            // Every scheduled->cancelled audit row in a time range, with the historical contract and date from the snapshot.
+            $sqlLogCancels = <<<'SQL'
+          SELECT l.id AS log_id, l.session_id, l.operator_id, l.created_at,
+            CAST(JSON_UNQUOTE(JSON_EXTRACT(l.old_data, '$.StudentClassID')) AS UNSIGNED) AS snap_class_id,
+            SUBSTRING(JSON_UNQUOTE(JSON_EXTRACT(l.new_data, '$.SessionDate')), 1, 10) AS snap_session_date,
+            cs.Status AS current_status
+          FROM schedule_audit_logs l
+          LEFT JOIN ClassSession cs ON cs.id = l.session_id
+          WHERE l.created_at BETWEEN ? AND ?
+            AND l.new_data LIKE '%cancelled%'
+            AND JSON_UNQUOTE(JSON_EXTRACT(l.old_data, '$.Status')) = 'scheduled'
+            AND JSON_UNQUOTE(JSON_EXTRACT(l.new_data, '$.Status')) = 'cancelled'
+          ORDER BY l.id
+          SQL;
+            $sqlTimingOnly = <<<'SQL'
+          SELECT cs.id AS session_id, DATE_FORMAT(cs.SessionDate, '%Y-%m-%d') AS session_date, cs.Status AS current_status
+          FROM ClassSession cs
+          WHERE cs.StudentClassID = ? AND cs.Status = 'cancelled' AND cs.SessionDate < ?
+            AND cs.updated_at BETWEEN ? AND ?
+          ORDER BY cs.id
+          SQL;
+            $sqlSignIns = 'SELECT DISTINCT ClassSessionID AS session_id FROM StudentSingIn WHERE VoidedAt IS NULL AND ClassSessionID IN (%s)';
+            $sqlLedger = "SELECT class_session_id AS session_id FROM session_deduction_ledger WHERE class_session_id IN (%s) GROUP BY class_session_id HAVING SUM(CASE WHEN event_type = 'deduct' THEN 1 WHEN event_type = 'reverse' THEN -1 ELSE 0 END) > 0";
+            $sqlVoidedSignIns = 'SELECT id, ClassSessionID AS session_id, VoidedAt AS voided_at FROM StudentSingIn WHERE VoidedAt IS NOT NULL AND VoidReason = ? AND ClassSessionID IN (%s)';
+            $sqlVoidedRecords = 'SELECT id, ClassSessionID AS session_id, VoidedAt AS voided_at FROM LearningRecord WHERE VoidedAt IS NOT NULL AND VoidReason = ? AND ClassSessionID IN (%s)';
+            $fmt = fn ($c) => $c->format('Y-m-d H:i:s');
+            $tz = 'Asia/Taipei';
+            // SET TRANSACTION applies to the next transaction only (on the write PDO, which beginTransaction uses).
+            $db::select('SET TRANSACTION READ ONLY', [], false);
+            $db::beginTransaction();
+            try {{
+              $coverage = $db::selectOne($sqlCoverage);
+              $events = $db::select($sqlCorrections, [$windowStart]);
+              $refused = $db::select($sqlRefused, [$windowStart]);
+              $refs = [];
+              foreach ($events as $e) {{ $refs[(string) $e->subject_ref] = null; }}
+              if ($refs !== []) {{
+                foreach ($db::select($sqlClassIds) as $r) {{
+                  $ref = \\App\\Models\\SecurityAuditEvent::ref('student_class', (int) $r->id);
+                  if (array_key_exists($ref, $refs)) {{ $refs[$ref] = (int) $r->id; }}
+                }}
+              }}
+              $corrections = []; $sessions = []; $seen = []; $matchedLogIds = []; $unresolved = []; $dateMode = 0; $futureCancelled = 0;
+              foreach ($events as $e) {{
+                if ((string) $e->reason_code === 'date_mode_transfer_billing_reconciliation') {{ $dateMode++; continue; }} // date mode cancels nothing
+                $classId = $refs[(string) $e->subject_ref] ?? null;
+                if ($classId === null) {{ $unresolved[] = (int) $e->audit_id; continue; }}
+                $at = \\Carbon\\Carbon::parse((string) $e->occurred_at, $tz);
+                $applyDate = $at->toDateString(); // Asia/Taipei date at apply (app timezone)
+                $tightLo = $at->copy()->subSeconds(30); $hi = $at->copy()->addSeconds(2); $wideLo = $at->copy()->subSeconds(120);
+                $corrections[] = ['audit_id' => (int) $e->audit_id, 'student_class_id' => $classId, 'applied_at' => $fmt($at),
+                  'apply_date_taipei' => $applyDate, 'old_session_count' => (int) $e->old_session_count, 'new_session_count' => (int) $e->new_session_count];
+                $logged = [];
+                foreach ($db::select($sqlLogCancels, [$fmt($wideLo), $fmt($hi)]) as $l) {{
+                  if ((int) $l->snap_class_id !== $classId) {{ continue; }}
+                  $sid = (int) $l->session_id; $logged[$sid] = true; $matchedLogIds[(int) $l->log_id] = true;
+                  if ((string) $l->snap_session_date >= $applyDate) {{ $futureCancelled++; continue; }}
+                  $operatorMatch = $e->actor_ref !== null && $l->operator_id !== null
+                    && hash_equals((string) $e->actor_ref, (string) \\App\\Models\\SecurityAuditEvent::ref('user', (int) $l->operator_id));
+                  $cancelAt = \\Carbon\\Carbon::parse((string) $l->created_at, $tz);
+                  $tight = $cancelAt->gte($tightLo);
+                  if (isset($seen[$sid])) {{ continue; }}
+                  $seen[$sid] = true;
+                  $sessions[] = ['audit_id' => (int) $e->audit_id, 'student_class_id' => $classId, 'class_session_id' => $sid,
+                    'session_date' => (string) $l->snap_session_date, 'current_status' => $l->current_status === null ? 'row_missing' : (string) $l->current_status,
+                    'schedule_audit_log_id' => (int) $l->log_id, 'cancel_at' => $cancelAt,
+                    'tier' => ($operatorMatch && $tight) ? 'inferred_strong' : 'inferred_weak',
+                    'basis' => ($operatorMatch && $tight) ? 'audit_log_same_operator_tight_window' : ($operatorMatch ? 'audit_log_wide_window' : 'audit_log_operator_mismatch')];
+                }}
+                foreach ($db::select($sqlTimingOnly, [$classId, $applyDate, $fmt($tightLo), $fmt($hi)]) as $s) {{
+                  $sid = (int) $s->session_id;
+                  if (isset($logged[$sid]) || isset($seen[$sid])) {{ continue; }}
+                  $seen[$sid] = true;
+                  $sessions[] = ['audit_id' => (int) $e->audit_id, 'student_class_id' => $classId, 'class_session_id' => $sid,
+                    'session_date' => (string) $s->session_date, 'current_status' => (string) $s->current_status,
+                    'schedule_audit_log_id' => null, 'cancel_at' => $at,
+                    'tier' => 'inferred_weak', 'basis' => 'updated_at_tight_window_no_audit_log'];
+                }}
+              }}
+              // Artifacts the erroneous cancel itself voided (same reason constant, VoidedAt within [cancel_at-30s, +2s]).
+              $ids = array_map(fn ($s) => $s['class_session_id'], $sessions);
+              $signed = []; $deducted = []; $voidedSignIns = []; $voidedRecords = [];
+              foreach (array_chunk($ids, 500) as $chunk) {{
+                $in = implode(',', array_map('intval', $chunk));
+                foreach ($db::select(sprintf($sqlSignIns, $in)) as $r) {{ $signed[(int) $r->session_id] = true; }}
+                foreach ($db::select(sprintf($sqlLedger, $in)) as $r) {{ $deducted[(int) $r->session_id] = true; }}
+                foreach ($db::select(sprintf($sqlVoidedSignIns, $in), [$voidReason]) as $r) {{ $voidedSignIns[(int) $r->session_id][] = $r; }}
+                foreach ($db::select(sprintf($sqlVoidedRecords, $in), [$voidReason]) as $r) {{ $voidedRecords[(int) $r->session_id][] = $r; }}
+              }}
+              $inCancelWindow = function (array $rows, $cancelAt) use ($tz) {{
+                $out = [];
+                foreach ($rows as $r) {{
+                  $v = \\Carbon\\Carbon::parse((string) $r->voided_at, $tz);
+                  if ($v->gte($cancelAt->copy()->subSeconds(30)) && !$v->gt($cancelAt->copy()->addSeconds(2))) {{ $out[] = (int) $r->id; }}
+                }}
+                return $out;
+              }};
+              $kept = []; $excluded = ['live_sign_in' => 0, 'positive_ledger_net' => 0];
+              $restored = ['inferred_strong' => 0, 'inferred_weak' => 0];
+              $voidedTotals = ['sessions_with_voided_artifacts' => 0, 'sign_ins' => 0, 'learning_records' => 0];
+              foreach ($sessions as $s) {{
+                $sid = $s['class_session_id'];
+                if (isset($signed[$sid])) {{ $excluded['live_sign_in']++; continue; }}
+                if (isset($deducted[$sid])) {{ $excluded['positive_ledger_net']++; continue; }}
+                $s['voided_sign_in_ids'] = $inCancelWindow($voidedSignIns[$sid] ?? [], $s['cancel_at']);
+                $s['voided_learning_record_ids'] = $inCancelWindow($voidedRecords[$sid] ?? [], $s['cancel_at']);
+                unset($s['cancel_at']);
+                if ($s['current_status'] !== 'cancelled') {{ $restored[$s['tier']]++; continue; }} // changed since; not still impacted
+                if ($s['voided_sign_in_ids'] !== [] || $s['voided_learning_record_ids'] !== []) {{
+                  $voidedTotals['sessions_with_voided_artifacts']++;
+                  $voidedTotals['sign_ins'] += count($s['voided_sign_in_ids']);
+                  $voidedTotals['learning_records'] += count($s['voided_learning_record_ids']);
+                }}
+                $kept[] = $s;
+              }}
+              $strong = array_values(array_filter($kept, fn ($s) => $s['tier'] === 'inferred_strong'));
+              $weak = array_values(array_filter($kept, fn ($s) => $s['tier'] === 'inferred_weak'));
+              $affected = array_values(array_unique(array_map(fn ($s) => $s['student_class_id'], $kept)));
+              sort($affected);
+              // Completeness: past-dated scheduled->cancelled audit rows in the window that no correction event explains.
+              // Other paths cancel past sessions too, so these are not defect cases; they only matter if an event is missing.
+              $unmatched = [];
+              foreach ($db::select($sqlLogCancels, [$windowStart, $fmt(now())]) as $l) {{
+                if (isset($matchedLogIds[(int) $l->log_id])) {{ continue; }}
+                if ((string) $l->snap_session_date >= substr((string) $l->created_at, 0, 10)) {{ continue; }}
+                $unmatched[] = ['schedule_audit_log_id' => (int) $l->log_id, 'class_session_id' => (int) $l->session_id,
+                  'student_class_id' => (int) $l->snap_class_id, 'session_date' => (string) $l->snap_session_date];
+              }}
+            }} finally {{
+              $db::rollBack();
+            }}
+            // Best-effort audit failures are logged as `security_audit.append_failed` (Laravel daily logs, 14/30-day retention).
+            // A day counts as covered only when one of its files was read to EOF; an open/read failure is recorded
+            // (date + count only) and never counts as coverage.
+            $failedLines = 0; $logDays = []; $unreadableDays = [];
+            foreach (glob(storage_path('logs/laravel*.log')) ?: [] as $f) {{
+              if (!preg_match('/(\\d{{4}}-\\d{{2}}-\\d{{2}})\\.log$/', $f, $m) || $m[1] < substr($windowStart, 0, 10)) {{ continue; }}
+              // feof() is also true after a failed read, so require every byte present at open time to have been read.
+              $size = is_file($f) ? @filesize($f) : false;
+              $h = $size === false ? false : @fopen($f, 'r');
+              $readOk = $h !== false; $bytes = 0;
+              while ($readOk && ($line = @fgets($h)) !== false) {{
+                $bytes += strlen($line);
+                if (str_contains($line, 'security_audit.append_failed')) {{ $failedLines++; }}
+              }}
+              if ($readOk) {{ fclose($h); $readOk = $bytes >= $size; }}
+              if ($readOk) {{ $logDays[$m[1]] = true; }} else {{ $unreadableDays[$m[1]] = ($unreadableDays[$m[1]] ?? 0) + 1; }}
+            }}
+            ksort($unreadableDays);
+            $unreadableFiles = array_sum($unreadableDays);
+            $missingDays = 0;
+            for ($d = \\Carbon\\Carbon::parse($windowStart, $tz)->startOfDay(); $d->lte(now()->startOfDay()); $d->addDay()) {{
+              if (!isset($logDays[$d->toDateString()])) {{ $missingDays++; }}
+            }}
+            $logsCoverWindow = $missingDays === 0;
+            // Established only when no correction event can be missing: either no unexplained past cancel exists at all,
+            // or the logs cover every day of the window and record no append failure.
+            // Never established while a correction event could not be tied to its contract (APP_KEY rotated or StudentClass
+            // missing) or a retained log file could not be read.
+            $completeness = ($unresolved === [] && $unreadableFiles === 0
+              && ($unmatched === [] || ($logsCoverWindow && $failedLines === 0))) ? 'established' : 'inconclusive';
+            $reasons = [];
+            if (!$fixInProduction) {{ $reasons[] = 'fix_not_deployed'; }}
+            if ($unresolved !== []) {{ $reasons[] = 'unresolved_audit_subjects'; }}
+            if ($unreadableFiles > 0) {{ $reasons[] = 'log_file_unreadable'; }}
+            if ($completeness !== 'established') {{ $reasons[] = 'completeness_inconclusive'; }}
+            $out['read_only_transaction'] = true;
+            $out['fix_in_production'] = $fixInProduction;
+            $out['fix_marker'] = 'ContractSessionSchedule::partitionExcessScheduledRows';
+            $out['snapshot_complete'] = $reasons === [];
+            $out['reason'] = $reasons === [] ? null : implode(',', $reasons);
+            $out['completeness'] = $completeness;
+            $out['completeness_evidence'] = [
+              'unmatched_past_cancel_audit_rows' => count($unmatched),
+              'unmatched_distinct_contracts' => count(array_unique(array_map(fn ($u) => $u['student_class_id'], $unmatched))),
+              'append_failed_log_lines' => $failedLines,
+              'log_days_present' => count($logDays),
+              'log_days_missing_in_window' => $missingDays,
+              'unresolved_audit_subject_events' => count($unresolved),
+              'unreadable_log_files' => $unreadableFiles,
+              'unreadable_log_file_days' => array_map(fn ($d, $n) => ['date' => $d, 'files' => $n], array_keys($unreadableDays), array_values($unreadableDays)),
+            ];
+            $out['window_start_taipei'] = $windowStart;
+            $out['coverage_all_time'] = ['success_events' => (int) $coverage->n, 'first_at' => $coverage->first_at, 'last_at' => $coverage->last_at];
+            $out['counts'] = [
+              'success_events_in_window' => count($events),
+              'date_mode_events_skipped' => $dateMode,
+              'unresolved_subject_ref_events' => count($unresolved),
+              'count_mode_corrections' => count($corrections),
+              'affected_contracts' => count($affected),
+              'inferred_strong_past_sessions_still_cancelled' => count($strong),
+              'inferred_weak_past_sessions_still_cancelled' => count($weak),
+              'past_sessions_status_changed_since' => $restored,
+              'voided_by_cancel' => $voidedTotals,
+              'excluded' => $excluded,
+              'today_or_later_cancellations_intended' => $futureCancelled,
+            ];
+            $out['refused_by_reason_code'] = array_map(fn ($r) => ['reason_code' => (string) $r->reason_code, 'n' => (int) $r->n], $refused);
+            $out['unresolved_audit_ids'] = array_slice($unresolved, 0, $cap);
+            $out['corrections'] = array_slice($corrections, 0, $cap);
+            $out['affected_student_class_ids'] = array_slice($affected, 0, $cap);
+            $out['inferred_strong_sessions'] = array_slice($strong, 0, $cap);
+            $out['inferred_weak_sessions'] = array_slice($weak, 0, $cap);
+            $out['unmatched_past_cancels'] = array_slice($unmatched, 0, $cap);
+            $out['truncated'] = max(count($corrections), count($affected), count($strong), count($weak), count($unresolved), count($unmatched)) > $cap;
           }} elseif ($case === 'class_sessions_explain_319') {{
             // in-app #319 (#3069): EXPLAIN + timed paginate() of the /class-sessions index query for the real
             // Teacher Home request shapes. Read-only; plans, timings and row estimates only (no row data).
@@ -1851,6 +2101,9 @@ jobs:
                   raise SystemExit('木柵 campus was not found')
               if obj.get('student_count') != 1:
                   raise SystemExit('parent binding probe requires exactly one target student')
+          if obj.get('case') == 'billing_correction_past_session_impact':
+              if obj.get('read_only_transaction') is not True or 'counts' not in obj or 'snapshot_complete' not in obj or 'completeness' not in obj:
+                  raise SystemExit('billing-correction impact probe did not finish inside its read-only transaction')
           print('parsed read-only production case', obj.get('case'))
           PY
 

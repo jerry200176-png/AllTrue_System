@@ -35,6 +35,8 @@ export default defineConfig({
     /ui-foundation-pages\.spec\.js$/,
     /ui-foundation-a11y-axe\.spec\.js$/,
     /ui-foundation-role-matrix\.spec\.js$/,
+    /ui-foundation-sidebar-navigation\.spec\.js$/,
+    /ui-foundation-course-payment-entry\.spec\.js$/,
     /learning-records-polish\.spec\.js$/,
     /learning-records-preview\.spec\.js$/,
     /release-notes-clarity\.spec\.js$/,

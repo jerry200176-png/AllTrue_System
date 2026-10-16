@@ -10,7 +10,8 @@
     <!-- Excel card: pay date + amount on top, remaining lessons as the big number (spec 2.3). -->
     <div class="contract__excel" data-testid="contract-excel">
       <div class="contract__pay">
-        <p class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
+        <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
+        <p v-else class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
         <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">應繳 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未繳 {{ money(amounts.owed) }}</p>
       </div>
       <p v-if="!isMonthly && state === 'ready'" class="contract__left" data-testid="contract-left">剩 <strong>{{ upcomingCount }}</strong> 堂</p>
@@ -18,20 +19,27 @@
 
     <div class="contract__money" data-testid="contract-money">
       <span v-if="noObligation" class="contract__muted">輔導課不用繳費</span>
+      <span v-else-if="waived" class="contract__muted" data-testid="contract-waived">{{ WAIVED_LABEL }}</span>
       <span v-else-if="outstanding > 0">未繳 <strong class="due">{{ money(outstanding) }}</strong></span>
       <template v-else-if="!course.paid">
         <span class="contract__muted">還沒開帳單，金額待確認</span>
         <AtButton v-if="billDraft" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
       </template>
-      <span v-else>已收清</span>
+      <span v-else-if="!legacyUnverified">已收清</span>
       <template v-if="pendingReport">
         <span class="contract__chip pay-partial">家長回報{{ pendingReport.date ? ` ${shortDate(pendingReport.date)} ` : '' }}已付 {{ money(pendingReport.amount) }}，待你核對入帳</span>
         <AtButton size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</AtButton>
       </template>
-      <span v-else-if="sharedFollower && !noObligation && (outstanding > 0 || !course.paid)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
-      <AtButton v-else-if="!noObligation && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <span v-else-if="sharedFollower && !noObligation && !waived && (outstanding > 0 || !course.paid)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
+      <AtButton v-else-if="!noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
+    </div>
+
+    <!-- #4115 / Founder Q2 = A + D3: display only. A different amount alone is no reason to void, so no void action here. -->
+    <div v-if="rateNote" class="contract__ratenote" data-testid="contract-rate-note">
+      <p>開單時金額 {{ money(rateNote.issued) }} ／ 目前課程金額 {{ money(rateNote.current) }}</p>
+      <p class="contract__muted">帳單不會跟著課程金額自動改。金額不同可能是約定調整，不代表帳單有誤；請先確認原約定與應收金額，確認開錯才更正。</p>
     </div>
 
     <div class="contract__memo">
@@ -104,6 +112,7 @@ import AtTextarea from '../design-system/AtTextarea.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 import { formatCourseRef } from '../../lib/studentBillingRows.js';
+import { LEGACY_FLAG_UNVERIFIED_LABEL, WAIVED_LABEL, isWaivedContract } from '../../lib/courseMoneyState.js';
 
 const props = defineProps({
   course: { type: Object, required: true },
@@ -111,7 +120,8 @@ const props = defineProps({
   focused: { type: Boolean, default: false },
   outstanding: { type: Number, default: 0 },
   pendingReport: { type: Object, default: null },
-  // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }.
+  // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }, or { legacyUnverified: true }
+  // when only legacy metadata (PayDate / Paid flag) says paid and no payment record exists, or { waived: true } (#4150).
   lastPayment: { type: Object, default: null },
   // Ready next-period draft from the existing monthly-drafts endpoint (offers 開帳單 in place).
   billDraft: { type: Object, default: null },
@@ -123,6 +133,8 @@ const props = defineProps({
   sharedFollower: { type: Boolean, default: false },
   // Subject of the member card that actually carries the package's 確認入帳 / 登記這筆 action.
   sharedLeadSubject: { type: String, default: '' },
+  // #4115: { invoiceId, issued, current } from issuedBillRateNote(); null hides the note.
+  rateNote: { type: Object, default: null },
 });
 const emit = defineEmits(['changed', 'record', 'issue', 'confirmed']);
 
@@ -161,9 +173,14 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
 
 const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
 const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p.length === 2 ? `${Number(p[0])}/${Number(p[1])}` : ''; };
-// Same source as the printed receipt (receipts first, PayDate only as the parent's fallback; never "fixed" here).
+// Same source as the printed receipt (confirmed receipts, then non-void invoice payments; never "fixed" here).
+// #4150: legacy metadata alone is not a payment, so it reads 需核對, never 繳費日 (tutoring has nothing to collect).
+// #4150 review: a waiver (server ContractMoneyState::isWaived; a real one keeps Paid=0) is terminal, so no unpaid controls.
+const waived = computed(() => isWaivedContract(props.course));
+const legacyUnverified = computed(() => props.lastPayment?.legacyUnverified === true && !noObligation.value);
 const payLineText = computed(() => {
   const p = props.lastPayment;
+  if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
   return p?.date ? `繳費日 ${dateOnly(p.date)}　${money(p.amount)}` : '還沒繳費';
 });
 const monthLineText = (key) => {
@@ -297,6 +314,7 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__pay{display:grid;gap:2px;min-width:0}
 .contract__pay p{margin:0}
 .contract__payline{font-size:14px;font-weight:600}
+.contract__payline--review{color:var(--ds-ink-mute)}
 .contract__amounts{font-size:12px;color:var(--ds-ink-mute)}
 .contract__left{margin:0;font-size:14px;white-space:nowrap}
 .contract__left strong{font-size:20px;font-variant-numeric:tabular-nums}
@@ -311,6 +329,8 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__money .due{color:var(--ds-danger)}
 .contract__confirm-text{margin:0;font-size:14px;line-height:1.6}
 .contract__reject-label{display:block;margin-bottom:6px;font-size:14px;font-weight:700}
+.contract__ratenote{display:grid;gap:4px;padding:8px 10px;border-radius:var(--ds-radius-md);background:var(--ds-canvas-soft);font-size:var(--ds-font-size-sm)}
+.contract__ratenote p{margin:0}
 .contract__memo{background:var(--ds-canvas-soft);border-radius:8px;padding:8px 10px;display:grid;gap:6px}
 .contract__memo-text{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
 .contract__memo textarea{width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:6px 8px}

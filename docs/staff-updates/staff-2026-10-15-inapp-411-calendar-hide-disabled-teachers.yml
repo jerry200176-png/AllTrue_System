@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-15-inapp-411-calendar-hide-disabled-teachers
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 行事曆排課不再出現已停用老師
+    summary: 在班級行事曆建立新課程時，老師選單只會列出在職老師。
+    items:
+      - category: fixed
+        text: 行事曆「快速排課」的老師選單不再出現已停用的老師。
+      - category: improved
+        text: 已停用老師的舊課程仍照常顯示原本的老師，也能正常編輯。
+    source_refs:
+      - "changelog:2026-10-15:inapp-411-calendar-hide-disabled-teachers"

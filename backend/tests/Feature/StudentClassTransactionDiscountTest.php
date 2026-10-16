@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\TransactionDiscountCalculator;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -29,6 +30,16 @@ class StudentClassTransactionDiscountTest extends TestCase
         // Discounts are switched off in production (Founder 2026-10-14); these cases pin the dormant machinery
         // that still reads earlier terms' snapshots. TransactionDiscountDisabledTest covers the default.
         config(['billing.transaction_discounts_enabled' => true]);
+    }
+
+    /**
+     * renew-monthly validates end_date as after:today (Asia/Taipei). The monthly renewal cases send the literal
+     * end_date 2026-10-31, so they pin the clock before it; unpinned they go red from 2026-10-31 00:00 Taipei
+     * (2026-10-30T16:00Z). Laravel's tearDown resets the test clock.
+     */
+    private function pinClockBeforeRenewalEndDate(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-14 10:00:00', 'Asia/Taipei'));
     }
 
     public function test_none_and_zero_are_normalized_without_reason(): void
@@ -373,6 +384,7 @@ class StudentClassTransactionDiscountTest extends TestCase
 
     public function test_discounted_renewal_preserves_negative_void_payment_reconciliation_and_old_invoice(): void
     {
+        $this->pinClockBeforeRenewalEndDate();
         $student = $this->student();
         [$director, $token] = $this->staffToken('A', true);
         $course = $this->course($student->id, $director->id);
@@ -543,6 +555,7 @@ class StudentClassTransactionDiscountTest extends TestCase
 
     public function test_disabled_discount_monthly_renewal_is_refused_and_writes_nothing(): void
     {
+        $this->pinClockBeforeRenewalEndDate();
         config(['billing.transaction_discounts_enabled' => false]);
         $student = $this->student();
         [$director, $token] = $this->staffToken('A', true);
