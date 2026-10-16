@@ -111,7 +111,7 @@ import AtTextarea from '../design-system/AtTextarea.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 import { formatCourseRef } from '../../lib/studentBillingRows.js';
-import { LEGACY_FLAG_UNVERIFIED_LABEL } from '../../lib/courseMoneyState.js';
+import { LEGACY_FLAG_UNVERIFIED_LABEL, WAIVED_LABEL } from '../../lib/courseMoneyState.js';
 
 const props = defineProps({
   course: { type: Object, required: true },
@@ -120,7 +120,7 @@ const props = defineProps({
   outstanding: { type: Number, default: 0 },
   pendingReport: { type: Object, default: null },
   // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }, or { legacyUnverified: true }
-  // when only legacy metadata (PayDate / Paid flag) says paid and no payment record exists (#4150).
+  // when only legacy metadata (PayDate / Paid flag) says paid and no payment record exists, or { waived: true } (#4150).
   lastPayment: { type: Object, default: null },
   // Ready next-period draft from the existing monthly-drafts endpoint (offers 開帳單 in place).
   billDraft: { type: Object, default: null },
@@ -177,6 +177,7 @@ const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p
 const legacyUnverified = computed(() => props.lastPayment?.legacyUnverified === true && !noObligation.value);
 const payLineText = computed(() => {
   const p = props.lastPayment;
+  if (p?.waived) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
   return p?.date ? `繳費日 ${dateOnly(p.date)}　${money(p.amount)}` : '還沒繳費';
 });
 const monthLineText = (key) => {

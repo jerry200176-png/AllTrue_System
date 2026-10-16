@@ -717,9 +717,9 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     w2.unmount(); vi.unstubAllGlobals();
   });
 
-  it('a 免費／贈送 bill or a course with no legacy marker keeps 還沒繳費 (no note)', async () => {
+  it('a current-term 免費／贈送 (server free_gift_settled) or a course with no legacy marker keeps 還沒繳費 (no note)', async () => {
     const w = await mountWith({
-      courses: [{ id: 2, subject: '數學', paid: true, paid_at: null, charge: 0 }],
+      courses: [{ id: 2, subject: '數學', paid: true, paid_at: null, charge: 0, free_gift_settled: true }],
       invoices: [inv({ total_amount: 0, outstanding_amount: 0, status: 'paid', zero_amount_reason: 'free_gift' })],
     });
     expect(card(w).find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
@@ -729,6 +729,28 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     expect(card(w2).find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
     expect(card(w2).find('[data-testid="contract-last-payment"]').text()).toBe('還沒繳費');
     w2.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('review P2-1: a waived contract keeping legacy Paid/PayDate shows no note and no payment line', async () => {
+    const w = await mountWith({ courses: [{ id: 2, subject: '數學', paid: true, paid_at: '2026-08-01', charge: 5000, waived: true }] });
+    expect(card(w).find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
+    expect(card(w).find('[data-testid="contract-last-payment"]').text()).toBe('不收了');
+    expect(card(w).text()).not.toContain('繳費日');
+    expect(card(w).text()).not.toContain(LEGACY);
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('review P2-2: a stale-period gift mark next to a positive current bill does not hide the note', async () => {
+    const w = await mountWith({
+      courses: [{ id: 2, subject: '數學', paid: false, paid_at: '2026-08-01', charge: 3000, free_gift_settled: false }],
+      invoices: [
+        inv({ id: 1, billing_period: '2026-09', total_amount: 0, outstanding_amount: 0, status: 'paid', zero_amount_reason: 'free_gift' }),
+        inv({ id: 2, billing_period: '2026-10', total_amount: 3000, outstanding_amount: 3000 }),
+      ],
+    });
+    expect(card(w).find('[data-testid="contract-legacy-unverified"]').text()).toBe(LEGACY);
+    expect(card(w).find('[data-testid="contract-last-payment"]').exists()).toBe(false);
+    w.unmount(); vi.unstubAllGlobals();
   });
 
   it('ContractCard: a tutoring course never shows the note', async () => {

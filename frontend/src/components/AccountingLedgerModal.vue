@@ -600,7 +600,8 @@ const lastInvoicePayment = (id) => {
 // Pay line (spec 2.3): latest confirmed receipt = same source as the printed receipt; invoice payments next.
 // #4150: the contract's PayDate / Charge / Paid flag are legacy metadata, not proof of a payment, so they never
 // become a 繳費日 line; the card shows the neutral 需核對 note instead (G-009 dual truth, display only).
-const freeGiftCovered = (id) => courseInvoices(id).some((inv) => inv.zero_amount_reason === ZERO_REASON_FREE_GIFT);
+// Waiver and a current-term 免費／贈送 are server verdicts on the course row (ContractMoneyState::isWaived,
+// Invoice::freeGiftHolds); neither is guessed here from balances, Stop or a gift marker on an old bill.
 const payLineFor = (course) => {
   const rc = (payload.value?.receipts || [])
     .filter((r) => Number(r.student_class_id) === Number(course.id) && r.status === 'confirmed' && Number(r.amount) > 0 && r.payment_date)
@@ -608,7 +609,8 @@ const payLineFor = (course) => {
   if (rc) return { date: String(rc.payment_date).slice(0, 10), amount: Number(rc.amount) };
   const paid = lastInvoicePayment(course.id);
   if (paid) return paid;
-  return (course.paid_at || course.paid) && !freeGiftCovered(course.id) ? { legacyUnverified: true } : null;
+  if (course.waived === true) return { waived: true };
+  return (course.paid_at || course.paid) && course.free_gift_settled !== true ? { legacyUnverified: true } : null;
 };
 const amountsFor = (id) => {
   const list = courseInvoices(id);
