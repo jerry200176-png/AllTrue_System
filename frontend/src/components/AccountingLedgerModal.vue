@@ -308,7 +308,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
-import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT } from '../lib/courseMoneyState.js';
+import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, isWaivedContract } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
@@ -591,8 +591,8 @@ const owedFor = (id) => (payload.value?.invoices || [])
   .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
 const courseInvoices = (id) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(id) && inv.status !== 'void');
-const lastInvoicePayment = (id) => {
-  const pays = courseInvoices(id).flatMap((inv) => inv.payments || [])
+const lastInvoicePayment = (ids) => {
+  const pays = ids.flatMap((id) => courseInvoices(id)).flatMap((inv) => inv.payments || [])
     .filter((p) => !p.is_void && Number(p.amount) > 0 && p.paid_at);
   const last = pays.sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)) || Number(b.id) - Number(a.id))[0];
   return last ? { date: String(last.paid_at).slice(0, 10), amount: Number(last.amount) } : null;
@@ -602,14 +602,17 @@ const lastInvoicePayment = (id) => {
 // become a 繳費日 line; the card shows the neutral 需核對 note instead (G-009 dual truth, display only).
 // Waiver and a current-term 免費／贈送 are server verdicts on the course row (ContractMoneyState::isWaived,
 // Invoice::freeGiftHolds); neither is guessed here from balances, Stop or a gift marker on an old bill.
+// A shared count-mode package is one obligation (#3753): markPackagePaid() flags every member, while the receipt and
+// Payment stay on the member used for collection, so evidence is read across packageMemberIds (as pendingReportFor).
 const payLineFor = (course) => {
+  const ids = packageMemberIds(course.id);
   const rc = (payload.value?.receipts || [])
-    .filter((r) => Number(r.student_class_id) === Number(course.id) && r.status === 'confirmed' && Number(r.amount) > 0 && r.payment_date)
+    .filter((r) => ids.includes(Number(r.student_class_id)) && r.status === 'confirmed' && Number(r.amount) > 0 && r.payment_date)
     .sort((a, b) => String(b.payment_date).localeCompare(String(a.payment_date)) || Number(b.report_id) - Number(a.report_id))[0];
   if (rc) return { date: String(rc.payment_date).slice(0, 10), amount: Number(rc.amount) };
-  const paid = lastInvoicePayment(course.id);
+  const paid = lastInvoicePayment(ids);
   if (paid) return paid;
-  if (course.waived === true) return { waived: true };
+  if (isWaivedContract(course)) return { waived: true };
   return (course.paid_at || course.paid) && course.free_gift_settled !== true ? { legacyUnverified: true } : null;
 };
 const amountsFor = (id) => {

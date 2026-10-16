@@ -164,6 +164,8 @@ assert.equal(M.REPORT_STATUS_LABELS.confirmed, '已收');
 assert.equal(M.REPORT_STATUS_LABELS.voided, '已撤銷', 'ledger keeps its voided label');
 // #4114 (Founder Q3): paid by the legacy flag alone is its own neutral wording, only when the server says so.
 assert.equal(M.LEGACY_FLAG_UNVERIFIED_LABEL, '需核對：舊資料標記已收，缺付款紀錄');
+assert.equal(M.isWaivedContract({ waived: true, paid: false }), true);
+assert.equal(M.isWaivedContract({ paid: true, stop: true, closed_reason: null }), false);
 assert.equal(M.isLegacyPaidFlagOnly({ payment_status: 'paid', legacy_paid_flag_only: true }), true);
 assert.equal(M.isLegacyPaidFlagOnly({ payment_status: 'paid' }), false, 'older payloads keep 已收');
 

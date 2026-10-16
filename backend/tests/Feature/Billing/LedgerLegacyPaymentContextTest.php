@@ -47,6 +47,19 @@ class LedgerLegacyPaymentContextTest extends TestCase
         $this->assertFalse($courses->firstWhere('id', $plain->ID)['waived']);
     }
 
+    /** #4150 review round 2: the real waiver shape (waiveCourse() requires Paid=0 and voids open bills) is flagged too. */
+    public function test_a_real_paid_zero_waiver_is_flagged_waived_and_not_paid(): void
+    {
+        $student = $this->student();
+        $course = $this->course($student, ['ScheduleMode' => 'count', 'Charge' => 5000, 'Paid' => 0, 'Stop' => 1]);
+        // Same order as waiveCourse(): the open bill is voided, then the contract is closed as waived.
+        Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-01', 'Note' => '', 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'void']);
+        DB::table('StudentClass')->where('ID', $course->ID)->update(['closed_reason' => 'waived']);
+
+        $row = collect($this->ledger($student))->firstWhere('id', $course->ID);
+        $this->assertSame([true, false, null], [$row['waived'], $row['paid'], $row['paid_at']]);
+    }
+
     public function test_free_gift_settled_follows_the_current_term_rule(): void
     {
         $student = $this->student();

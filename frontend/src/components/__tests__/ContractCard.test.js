@@ -753,6 +753,57 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     w.unmount(); vi.unstubAllGlobals();
   });
 
+  it('review round 2: shared-package siblings resolve the receipt / payment recorded on another member', async () => {
+    const pkg = (o) => ({ subject: '數學', paid: true, paid_at: '2026-09-05', charge: 6000, package_id: 7, ...o });
+    const w = await mountWith({
+      courses: [pkg({ id: 2 }), pkg({ id: 3, subject: '英文' })],
+      receipts: [{ report_id: 5, student_class_id: 2, status: 'confirmed', amount: 6000, payment_date: '2026-09-05' }],
+      invoices: [inv({ calculated_applied_amount: 6000, outstanding_amount: 0, status: 'paid', payments: [{ id: 1, paid_at: '2026-09-05', amount: 6000 }] })],
+    });
+    const sib = w.find('[data-testid="contract-card-3"]');
+    expect(sib.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
+    expect(sib.find('[data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/09/05　NT$ 6,000');
+    w.unmount(); vi.unstubAllGlobals();
+
+    // Payment only (no receipt) on the collecting member: the sibling still reads it.
+    const w2 = await mountWith({
+      courses: [pkg({ id: 2 }), pkg({ id: 3, subject: '英文' })],
+      invoices: [inv({ calculated_applied_amount: 6000, outstanding_amount: 0, status: 'paid', payments: [{ id: 1, paid_at: '2026-09-06', amount: 6000 }] })],
+    });
+    expect(w2.find('[data-testid="contract-card-3"] [data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/09/06　NT$ 6,000');
+    expect(w2.find('[data-testid="contract-card-3"] [data-testid="contract-legacy-unverified"]').exists()).toBe(false);
+    w2.unmount(); vi.unstubAllGlobals();
+
+    // A course outside the package never borrows a member's payment.
+    const w3 = await mountWith({
+      courses: [pkg({ id: 2 }), { id: 4, subject: '國文', paid: true, paid_at: '2026-09-05', charge: 6000, package_id: null }],
+      invoices: [inv({ calculated_applied_amount: 6000, outstanding_amount: 0, status: 'paid', payments: [{ id: 1, paid_at: '2026-09-06', amount: 6000 }] })],
+    });
+    expect(w3.find('[data-testid="contract-card-4"] [data-testid="contract-legacy-unverified"]').text()).toBe(LEGACY);
+    w3.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('review round 2: a real waiver (Paid=0, open bills voided) shows no unpaid controls', async () => {
+    const w = await mountWith({
+      courses: [{ id: 2, subject: '數學', paid: false, paid_at: null, charge: 5000, stop: true, waived: true }],
+      invoices: [inv({ status: 'void', outstanding_amount: 0 })],
+    });
+    expect(card(w).find('[data-testid="contract-last-payment"]').text()).toBe('不收了');
+    expect(card(w).find('[data-testid="contract-money"]').text()).not.toContain('還沒開帳單');
+    expect(card(w).find('[data-testid="contract-record"]').exists()).toBe(false);
+    expect(card(w).find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('ContractCard: a waived course offers neither 登記這筆 nor 開帳單, even with a ready draft', async () => {
+    authedFetch.mockResolvedValueOnce(respond(COVERAGE));
+    const w = mount(ContractCard, { props: { course: { id: 9, paid: false, waived: true }, billDraft: { amount: 4000 }, lastPayment: { waived: true } } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-issue"]').exists()).toBe(false);
+    expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+    expect(w.find('[data-testid="contract-money"]').text()).toBe('不收了');
+  });
+
   it('ContractCard: a tutoring course never shows the note', async () => {
     authedFetch.mockResolvedValueOnce(respond({ ...COVERAGE, class_type: 'tutoring' }));
     const w = mount(ContractCard, { props: { course: { id: 9, paid: true }, lastPayment: { legacyUnverified: true } } });
