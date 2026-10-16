@@ -318,11 +318,29 @@ async function openCourseFinder(page) {
 }
 
 /** 課程查找 → filter one student → 帳務資料 tab; returns the group, or null when the page lists no such group. */
-async function openBillingTab(page, studentName) {
-  await page.locator('#course-filter-student').fill(studentName);
+/** Resolves true once the locator is visible, false after `timeout` (locator.isVisible() does not wait). */
+const appears = (locator, timeout = 10_000) => locator.waitFor({ state: 'visible', timeout }).then(() => true, () => false);
+
+/**
+ * 課程查找 → search one student → that student's own group (keyed `sid:<id>`, so a same-name or longer-name student
+ * is never picked) → 帳務資料 tab. Waits for the debounced search's own GET before reading the list; returns null when
+ * the page lists no group for this student id.
+ */
+async function openBillingTab(page, studentId, studentName) {
+  const filter = page.locator('#course-filter-student');
+  if ((await filter.inputValue()) !== studentName) {
+    const searched = page.waitForResponse((r) => {
+      const url = new URL(r.url());
+      return url.pathname === '/api/v1/student-classes' && r.request().method() === 'GET'
+        && url.searchParams.get('name') === studentName;
+    }, { timeout: 20_000 });
+    await filter.fill(studentName);
+    expect((await searched).ok(), 'course search GET').toBe(true);
+  }
   await expect(page.locator('.course-list-skeleton')).toHaveCount(0, { timeout: 20_000 });
-  const group = page.locator('.student-group-card').filter({ has: page.locator('.cell-student', { hasText: studentName }) }).first();
-  if (!(await group.isVisible({ timeout: 10_000 }).catch(() => false))) return null;
+  const group = page.locator('.student-group-card').filter({ has: page.locator(`#student-group-toggle-sid-${Number(studentId)}`) });
+  if (!(await appears(group))) return null;
+  await expect(group).toHaveCount(1);
   await group.locator('[data-testid="student-tab-billing"]').click();
   await expect(group.locator('.student-billing-state', { hasText: '載入帳務中' })).toHaveCount(0, { timeout: 20_000 });
   return group;
@@ -350,7 +368,7 @@ test.describe('production acceptance — payment display (#4150)', () => {
         await page.locator('#students-name-filter').fill(names.get(studentId));
         row = page.locator(`tr.student-row[data-student-id="${studentId}"]`);
       }
-      if (!(await row.isVisible({ timeout: 10_000 }).catch(() => false))) { counts.students_not_listed += 1; continue; }
+      if (!(await appears(row))) { counts.students_not_listed += 1; continue; }
       if ((await row.getAttribute('aria-expanded')) !== 'true') await row.locator('.btn-course-disclosure').click();
       const cards = page.locator(`#student-course-detail-${studentId} article.student-course-card[data-course-id]`);
       await cards.first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
@@ -392,7 +410,7 @@ test.describe('production acceptance — payment display (#4150)', () => {
     for (const studentId of studentsFirst(courses, (row) => statusOf(row) === 'free', UI_STUDENTS)) {
       counts.students_sampled += 1;
       const name = names.get(studentId);
-      const group = name ? await openBillingTab(page, name) : null;
+      const group = name ? await openBillingTab(page, studentId, name) : null;
       if (!group) { counts.students_not_listed += 1; continue; }
       for (const tr of await group.locator('tr').filter({ has: page.locator('[data-testid="billing-contract-period"]') }).all()) {
         const refLine = (await tr.locator('[data-testid="billing-contract-period"]').innerText(SHORT)).trim().split('\n')[0].trim();
@@ -433,18 +451,20 @@ test.describe('production acceptance — payment display (#4150)', () => {
     const counts = { ledgers_scanned: scan.scanned, students_with_case: scan[rule].length, ledgers_opened: 0, cases_checked: 0, students_not_listed: 0 };
     const violations = [];
     for (const studentId of scan[rule].slice(0, LEDGER_CASES)) {
-      const group = names.get(studentId) ? await openBillingTab(page, names.get(studentId)) : null;
+      const group = names.get(studentId) ? await openBillingTab(page, studentId, names.get(studentId)) : null;
       if (!group) { counts.students_not_listed += 1; continue; }
       const ledgerResponse = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/v1/accounting/ledger'
         && r.request().method() === 'GET', { timeout: 20_000 });
       const entry = group.locator('.btn-invoices').first();
-      if (!(await entry.isVisible({ timeout: 10_000 }).catch(() => false))) { counts.students_not_listed += 1; continue; }
+      if (!(await appears(entry))) { counts.students_not_listed += 1; continue; }
       await entry.click();
       const dialog = page.getByRole('dialog').filter({ has: page.locator('#ledger-modal-title') });
       await expect(dialog).toBeVisible({ timeout: 20_000 });
       const response = await ledgerResponse;
       expect(response.status(), 'ledger GET').toBe(200);
       const ledger = await response.json();
+      // The ledger must belong to the student the scan selected (never a same-name student's).
+      if (Number(ledger?.student?.id) !== Number(studentId)) violations.push({ course_id: 0, problem: 'ledger_opened_for_other_student' });
       counts.ledgers_opened += 1;
       const byId = new Map([...courses.map((row) => [idOf(row), row]), ...pageRows]);
       const facts = ledgerFacts(ledger, byId);
@@ -453,7 +473,7 @@ test.describe('production acceptance — payment display (#4150)', () => {
         const card = dialog.locator(`[data-testid="contract-card-${fact.id}"]`);
         const relevant = (rule === 'waived' && fact.waived && fact.tutoring !== true)
           || (rule === 'legacy' && fact.legacyNoStanding) || (rule === 'reversed' && fact.netZeroReversed);
-        if (relevant && !(await card.isVisible())) { violations.push({ course_id: fact.id, problem: 'contract_card_missing' }); continue; }
+        if (relevant && !(await appears(card, 5_000))) { violations.push({ course_id: fact.id, problem: 'contract_card_missing' }); continue; }
         if (rule === 'waived' && fact.waived && fact.tutoring !== true) {
           counts.cases_checked += 1;
           const money = card.locator('[data-testid="contract-waived"]');

@@ -5,11 +5,11 @@ const campusNineOnlyTitle = 'contracted four-session detail explains two unarran
 // #4150: scope=payments only (not in `all`). These may end `skipped` only through their own
 // "not-exercised:" skip, i.e. the live campus had no case for that rule; any other skip fails.
 const paymentTests = [
-  ['payment-display-production.spec.js', 334, 3, '學生管理: free courses read 免費／贈送 and 未繳 only when unpaid'],
-  ['payment-display-production.spec.js', 380, 3, '課程查找: free courses read 免費／贈送 and 未繳 only when unpaid'],
-  ['payment-display-production.spec.js', 513, 3, '帳務: a waived course reads 不收了 and offers no payment action'],
-  ['payment-display-production.spec.js', 517, 3, '帳務: a legacy paid flag with no standing payment reads 需核對'],
-  ['payment-display-production.spec.js', 521, 3, '帳務: payments that net to zero show no 繳費日'],
+  ['payment-display-production.spec.js', 352, 3, '學生管理: free courses read 免費／贈送 and 未繳 only when unpaid'],
+  ['payment-display-production.spec.js', 398, 3, '課程查找: free courses read 免費／贈送 and 未繳 only when unpaid'],
+  ['payment-display-production.spec.js', 533, 3, '帳務: a waived course reads 不收了 and offers no payment action'],
+  ['payment-display-production.spec.js', 537, 3, '帳務: a legacy paid flag with no standing payment reads 需核對'],
+  ['payment-display-production.spec.js', 541, 3, '帳務: payments that net to zero show no 繳費日'],
 ];
 // #4150 review: a payments run is conclusive only when at least one target rule (one per #4150 display fix) checked
 // at least one live case in a passing test. Ordinary rows alone exercise none of the fixes.
