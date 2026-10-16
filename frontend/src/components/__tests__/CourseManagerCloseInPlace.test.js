@@ -23,9 +23,13 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
     expect(closeFlow).toContain('getDrawerCourse: () => (courseManagerOpen.value ? courseManagerCourse.value : null)');
   });
 
-  it('a failed refresh after a close shows no hidden-by-filter notice (Codex r4289552000)', () => {
-    expect(closeFlow).toContain('onReloadFailed: () => { reloadFailed = true; },');
-    expect(closeFlow).toMatch(/if \(closed && !reloadFailed\) \{\s*closedCourseNotice\.value = closedCourseHiddenNotice\(/);
+  it('only a reload that won sets the notice: failed or superseded reloads do not (Codex r4289552000, r4290114672)', () => {
+    expect(closeFlow).toContain('reloadCourses: async () => (reloadResult = await loadCourses(pagination.value.page)),');
+    expect(closeFlow).toMatch(/if \(closed && reloadResult\?\.ok === true\) \{\s*closedCourseNotice\.value = closedCourseHiddenNotice\(/);
+    const load = source.slice(source.indexOf('const loadCourses = async (page = 1) => {'), source.indexOf('const {\n  showRescheduleModal'));
+    expect(load.match(/return \{ ok: true \};/g) || []).toHaveLength(2);
+    expect(load).toMatch(/if \(!isCurrent\(\)\) return;\s*if \(effectiveSessionsOk === false\) sessionDataLoadFailed\.value = true;\s*coursesLoading\.value = false;\s*return \{ ok: true \};/);
+    expect(load).toMatch(/if \(!isCurrentListRequest\(requestId, courseLoadRequestId\)\) return;\s*coursesLoading\.value = false;\s*return \{ ok: true \};\s*\};\s*$/);
   });
 
   it('loadCourses resolves { ok: false } and keeps rows only for the same query when the API and the Supabase fallback both fail', () => {
@@ -37,7 +41,6 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
     expect(failure).not.toContain('sessionsByCourse.value =');
     expect(failure).toContain('coursesLoading.value = false;');
     expect(load).not.toContain('(data || []).map(');
-    // Codex r4289977924: another query's rows (e.g. branch A after switching to B) are cleared.
     expect(load).toMatch(/const listKey = JSON\.stringify\(\[props\.branchId, page, filters\.value,/);
     expect(failure).toMatch(/if \(!courseListOutcome\.failed\(listKey\)\) \{\s*courses\.value = \[\];\s*pagination\.value = \{ page: 1, lastPage: 1, total: 0,[^}]*\};\s*clearRowCachesForWinningRequest\(requestId, courseLoadRequestId, sessionCaches\);/);
   });
@@ -64,7 +67,6 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
   });
 
   it('only runs the normal reload, then sets the hidden-course notice (no row injection)', () => {
-    expect(closeFlow).toContain('reloadCourses: () => loadCourses(pagination.value.page)');
     expect(closeFlow).toContain('closedCourseNotice.value = closedCourseHiddenNotice({ course, courses: courses.value, courseStatus: filters.value.course_status, pendingReconciliation });');
     expect(closeFlow).toContain('onClosed: ({ pendingReconciliation: pending }) => { pendingReconciliation = pending; },');
     expect(source).not.toContain('retainClosedCourse');

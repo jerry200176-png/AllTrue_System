@@ -11,21 +11,13 @@ export function shouldShowInitialListSkeleton(loading, rows = []) {
   return Boolean(loading) && (!Array.isArray(rows) || rows.length === 0);
 }
 
-/**
- * A list fallback (e.g. a Supabase `{ data, error }` result) that errored or returned no array is a
- * failed load: callers keep the rows already on screen and report the failure instead of replacing
- * them with an empty list. Returns the rows, or null on failure.
- */
+/** Rows of a `{ data, error }` list fallback, or null when it errored or returned no array (a failed load). */
 export function fallbackListRows({ data, error } = {}) {
   return !error && Array.isArray(data) ? data : null;
 }
 
-/**
- * Per-row caches (e.g. session data keyed by row id) describe the rows on screen, so they are cleared
- * only when a request wins and replaces those rows, never when a request starts. A request that fails
- * or is superseded, even while an older one is still pending, leaves the rows and their cached data
- * from the last successful load intact. Returns whether the caches were cleared.
- */
+/** Clears per-row caches only for the request that won, never at start, so a failed or superseded load
+ * keeps the on-screen rows' cached data from the last successful load. Returns whether it cleared. */
 export function clearRowCachesForWinningRequest(requestId, latestRequestId, caches = []) {
   if (!isCurrentListRequest(requestId, latestRequestId)) return false;
   caches.forEach((cache) => { cache.value = {}; });

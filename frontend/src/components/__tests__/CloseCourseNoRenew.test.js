@@ -283,8 +283,6 @@ describe('fallbackListRows', () => {
 
 // Codex r4289665973 / #4189: overlapping loads must not zero the session data of the kept rows.
 describe('clearRowCachesForWinningRequest', () => {
-  // Mirrors loadCourses' ordering: a request clears the session caches only once it wins, and a
-  // double failure keeps the rows (and caches) on screen.
   function createLoader(caches) {
     let latest = 0;
     return async function load(fetchRows) {
@@ -310,7 +308,6 @@ describe('clearRowCachesForWinningRequest', () => {
     const load2 = load(async () => null);
     expect(await load2).toBe('failed');
     expect(sessionsByCourse.value).toBe(lastSuccessful);
-    expect(sessionsByCourse.value).toEqual({ 7: ['2026-10-01'] });
 
     first.resolve([{ id: 8, sessions: [] }]);
     expect(await load1).toBe('superseded');

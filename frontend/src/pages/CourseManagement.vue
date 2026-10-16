@@ -1569,20 +1569,19 @@ const closedCourseNotice = ref(null);
 async function runCloseCourseInPlace(course) {
   closedCourseNotice.value = null;
   let pendingReconciliation = false;
-  let reloadFailed = false;
+  let reloadResult;
   const closed = await runCloseCourseNoRenew({
     course,
     studentName: course?.student_name || course?.student?.name,
     getRemainingSessions: ownRemainingSessions,
     getSubjectLabel,
     isCourseSettled,
-    reloadCourses: () => loadCourses(pagination.value.page),
+    reloadCourses: async () => (reloadResult = await loadCourses(pagination.value.page)),
     onClosed: ({ pendingReconciliation: pending }) => { pendingReconciliation = pending; },
-    onReloadFailed: () => { reloadFailed = true; },
     confirmImpl: (message, opts) => askConfirm({ message, ...opts }),
   });
-  // A failed refresh leaves the previous rows on screen, so the hidden-by-filter notice would be wrong.
-  if (closed && !reloadFailed) {
+  // Only a reload that won describes the list on screen; a failed or superseded one sets no notice (Codex r4290114672).
+  if (closed && reloadResult?.ok === true) {
     closedCourseNotice.value = closedCourseHiddenNotice({ course, courses: courses.value, courseStatus: filters.value.course_status, pendingReconciliation });
   }
   return closed;
@@ -4256,8 +4255,8 @@ const formatMoney = (value) => {
   return Number.isFinite(n) ? n.toLocaleString() : '0';
 };
 
-// Resolves { ok: false, error } when both the canonical API and the Supabase fallback fail, and shows
-// the list refresh-failure hint; rows on screen are kept only if they answer the same query (listKey).
+// Resolves { ok: true } when this request won, undefined when superseded, and { ok: false, error } when both
+// list sources fail (shows the refresh-failure hint; rows are kept only for the same query, listKey).
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
   closedCourseNotice.value = null;
@@ -4272,8 +4271,7 @@ const loadCourses = async (page = 1) => {
     return;
   }
   coursesLoading.value = true;
-  // Session caches are cleared only once this request wins (see clearRowCachesForWinningRequest), so a
-  // failed or superseded load never zeroes the session data of the rows still on screen (Codex r4289665973).
+  // Cleared only once this request wins, so a failed/superseded load keeps them (Codex r4289665973).
   const sessionCaches = [completedSessionDatesByCourse, sessionsByCourse];
   const listKey = JSON.stringify([props.branchId, page, filters.value, pendingConvertTrialId.value, pendingManualSessionId.value, pendingLessonsCourseId.value, convertTrialStudentId.value]);
   try {
@@ -4338,8 +4336,8 @@ const loadCourses = async (page = 1) => {
         const effectiveSessionsOk = await loadEffectiveSessionDates(result, token, isCurrent);
         if (!isCurrent()) return;
         if (effectiveSessionsOk === false) sessionDataLoadFailed.value = true;
-        if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
-        return;
+        coursesLoading.value = false;
+        return { ok: true };
       }
     }
   } catch (_) {}
@@ -4413,7 +4411,9 @@ const loadCourses = async (page = 1) => {
     sessionsByCourse.value = {};
     sessionDataLoadFailed.value = true;
   }
-  if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
+  if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
+  coursesLoading.value = false;
+  return { ok: true };
 };
 
 const {
