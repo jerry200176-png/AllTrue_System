@@ -48,13 +48,16 @@ class TriageBillingSnapshotController extends Controller
         $base = (int) round((float) ($rate ?? 0) * $quantity);
         $charge = $course->Charge === null ? null : (int) $course->Charge;
 
-        // Anchored or itemized on this contract. A bill that also covers another contract, or is owned by another student (BillingNoteController::invoiceStudent() rule), is shown without money.
+        // Anchored or itemized here. Not wholly this student's (BillingNoteController::invoiceStudent() rule): left out, count only. Also covers another of their contracts: no money.
         $invoices = Invoice::query()->where('StudentClassID', $courseId)
             ->orWhereIn('id', DB::table('InvoiceItem')->where('StudentClassID', $courseId)->select('InvoiceID'))
             ->orderBy('id')->get(['id', 'StudentID', 'StudentClassID', 'Status', 'TotalAmount', 'PaidAmount', 'billing_period', 'IssueDate']);
-        $shared = DB::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())->where('StudentClassID', '<>', $courseId)
-            ->pluck('InvoiceID')->merge($invoices->filter(fn (Invoice $i) => (int) $i->StudentClassID !== $courseId || (int) $i->StudentID !== (int) $course->StudentID)->pluck('id'))->map(fn ($id) => (int) $id)->all();
-        $payments = DB::table('Payment')->whereIn('InvoiceID', $invoices->pluck('id')->diff($shared)->all())->orderBy('id')->get(['id', 'InvoiceID', 'Amount', 'Method']);
+        $items = DB::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())->whereNotNull('StudentClassID')->get(['InvoiceID', 'StudentClassID']);
+        $refs = fn (Invoice $i) => $items->where('InvoiceID', $i->id)->pluck('StudentClassID')->push($i->StudentClassID)->map(fn ($c) => (int) $c)->filter()->unique();
+        $owners = StudentClass::query()->whereIn('ID', $invoices->flatMap(fn (Invoice $i) => $refs($i))->unique()->all())->pluck('StudentID', 'ID');
+        [$own, $foreign] = $invoices->partition(fn (Invoice $i) => (int) $i->StudentID === (int) $course->StudentID && $refs($i)->every(fn (int $c) => (int) ($owners[$c] ?? 0) === (int) $course->StudentID));
+        $shared = $own->filter(fn (Invoice $i) => $refs($i)->contains(fn (int $c) => $c !== $courseId))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $payments = DB::table('Payment')->whereIn('InvoiceID', $own->pluck('id')->diff($shared)->all())->orderBy('id')->get(['id', 'InvoiceID', 'Amount', 'Method']);
 
         return [
             'student_class_id' => $courseId,
@@ -73,12 +76,13 @@ class TriageBillingSnapshotController extends Controller
             'paid_flag' => (int) $course->Paid,
             'remaining_sessions' => $course->RemainingSessions === null ? null : (int) $course->RemainingSessions,
             'stop' => (int) $course->Stop,
-            'invoices' => $invoices->map(fn (Invoice $invoice) => [
+            'invoices' => $own->map(fn (Invoice $invoice) => [
                 'id' => (int) $invoice->id, 'status' => (string) $invoice->Status, 'shared' => in_array((int) $invoice->id, $shared, true),
                 'total' => in_array((int) $invoice->id, $shared, true) ? null : (int) $invoice->TotalAmount,
                 'paid' => in_array((int) $invoice->id, $shared, true) ? null : (int) $invoice->PaidAmount,
                 'period' => $invoice->billing_period, 'issue_date' => substr((string) $invoice->IssueDate, 0, 10),
             ])->values()->all(),
+            'excluded_foreign_invoices' => $foreign->count(),
             // Signed like Invoice::netPaidSql(): a reversal (negative, or Method 'void') is negative; the raw method is not exposed.
             'payments' => $payments->map(fn (object $p) => ['id' => (int) $p->id, 'invoice_id' => (int) $p->InvoiceID,
                 'amount' => (int) $p->Amount < 0 || $p->Method === 'void' ? -abs((int) $p->Amount) : (int) $p->Amount])->values()->all(),
