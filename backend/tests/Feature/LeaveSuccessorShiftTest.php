@@ -35,6 +35,7 @@ class LeaveSuccessorShiftTest extends TestCase
     {
         parent::setUp();
         Carbon::setTestNow(Carbon::parse('2026-11-01 10:00:00', 'Asia/Taipei'));
+        config(['perfflags.leave_successor_shift_apply_enabled' => true]);
         $this->token = $this->directorToken();
         $this->student(self::STUDENT);
         $this->old = $this->course(self::STUDENT, '2026-11-03', '2026-11-24');
@@ -165,6 +166,16 @@ class LeaveSuccessorShiftTest extends TestCase
 
         $this->assertSame($before, $this->fingerprint());
         $this->assertSame(0, DB::table('StudentSingIn')->count());
+    }
+
+    public function test_apply_is_refused_without_writes_while_the_gate_is_off(): void
+    {
+        config(['perfflags.leave_successor_shift_apply_enabled' => false]); // the default until undo is guarded (Q9a)
+        $leaveId = $this->sessions['2026-11-17'];
+        $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->json('preview_token');
+        $before = $this->fingerprint();
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertStatus(403);
+        $this->assertSame($before, $this->fingerprint());
     }
 
     public function test_not_applicable_when_the_tail_fits_before_the_renewal(): void

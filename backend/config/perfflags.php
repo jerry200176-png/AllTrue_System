@@ -12,6 +12,7 @@
 */
 
 return [
+    'leave_successor_shift_apply_enabled' => (bool) env('LEAVE_SUCCESSOR_SHIFT_APPLY_ENABLED', false), // #410: off until undo-leave refuses an active shift (Q9a)
     // Throttle notification sync to once per 5 min per branch.
     // false = always sync on every unread-count request (old behavior)
     'throttle_notification_sync' => (bool) env('PERF_THROTTLE_NOTIF_SYNC', true),

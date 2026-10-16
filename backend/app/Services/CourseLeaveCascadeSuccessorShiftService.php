@@ -46,6 +46,9 @@ class CourseLeaveCascadeSuccessorShiftService
      */
     public function apply(int $leaveSessionId, string $token, int $actorUserId): array
     {
+        if (!config('perfflags.leave_successor_shift_apply_enabled', false)) { // off until undo-leave refuses an active shift (Q9a)
+            throw new SuccessorShiftRefused('續約順延尚未開放（撤銷請假的保護尚未上線），未做任何變更', 403);
+        }
         return DB::transaction(function () use ($leaveSessionId, $token, $actorUserId) {
             $plan = $this->plan($leaveSessionId, true);
             if (!empty($plan['already_applied'])) {
@@ -61,12 +64,9 @@ class CourseLeaveCascadeSuccessorShiftService
                 throw new SuccessorShiftRefused('課表已變動，請重新預覽後再確認', 409, $plan);
             }
 
-            $leave = $this->sessionRow($leaveSessionId);
+            /** @var ClassSession $leave */ $leave = ClassSession::query()->whereKey($leaveSessionId)->firstOrFail();
             CourseLeaveCascadeService::markSessionLeaveOnly($leave);
-            $old = StudentClass::query()->find($plan['old_course_id']);
-            if (!$old instanceof StudentClass) {
-                throw new \InvalidArgumentException('找不到課程');
-            }
+            /** @var StudentClass $old */ $old = StudentClass::query()->whereKey($plan['old_course_id'])->firstOrFail();
             $campusId = (int) (DB::table('Student')->where('id', (int) $old->StudentID)->value('CampusID') ?? 0);
             if (!StudentSignIn::query()->where('ClassSessionID', $leaveSessionId)->exists()) {
                 $this->leaveAttendance->createClosedForSession($leave, $old, $actorUserId ?: null, null, $campusId ?: null);
@@ -77,11 +77,11 @@ class CourseLeaveCascadeSuccessorShiftService
                 if ($move['role'] !== 'successor') {
                     continue;
                 }
-                $row = $this->sessionRow((int) $move['session_id']);
+                /** @var ClassSession $row */ $row = ClassSession::query()->whereKey((int) $move['session_id'])->firstOrFail();
                 $row->SessionDate = $move['to']['date'];
                 $row->StartTime = $move['to']['start'];
                 $row->EndTime = $move['to']['end'];
-                $row->Note = CourseLeaveCascadeService::appendNote($row->Note, self::NOTE_SHIFT . ':ls=' . $leaveSessionId);
+                $row->Note = CourseLeaveCascadeService::appendNote($row->Note, self::NOTE_SHIFT . ':ls=' . $leaveSessionId . ':from=' . $move['from']['date'] . 'T' . substr($move['from']['start'], 0, 5));
                 $row->save();
                 CourseLeaveCascadeService::syncLearningRecordSessionDate($row);
             }
@@ -301,16 +301,6 @@ class CourseLeaveCascadeSuccessorShiftService
         }
 
         return $out;
-    }
-
-    private function sessionRow(int $id): ClassSession
-    {
-        $row = ClassSession::query()->find($id);
-        if (!$row instanceof ClassSession) {
-            throw new \InvalidArgumentException('找不到堂次');
-        }
-
-        return $row;
     }
 
     /** @return array<string, mixed> */
