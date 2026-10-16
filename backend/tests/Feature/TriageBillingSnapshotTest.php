@@ -53,6 +53,8 @@ final class TriageBillingSnapshotTest extends TestCase
         $merged = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $this->course($this->campus)->ID, 'IssueDate' => '2026-10-01', 'DueDate' => '2026-10-15', 'TotalAmount' => 9999, 'PaidAmount' => 9999, 'Status' => 'paid', 'billing_period' => '2026-10']);
         InvoiceItem::create(['InvoiceID' => $merged->id, 'StudentClassID' => $course->ID, 'Description' => 'x', 'Amount' => 4000]); // merged bill anchored elsewhere: no money shown
         Payment::create(['InvoiceID' => $merged->id, 'Amount' => 9999, 'PaidAt' => '2026-10-02', 'Method' => 'cash']);
+        $stray = Invoice::create(['StudentID' => $this->course(Campus::factory()->create())->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-11-01', 'DueDate' => '2026-11-15', 'TotalAmount' => 7777, 'PaidAmount' => 7777, 'Status' => 'paid', 'billing_period' => '2026-11']);
+        Payment::create(['InvoiceID' => $stray->id, 'Amount' => 7777, 'PaidAt' => '2026-11-02', 'Method' => 'cash']); // anchored here but owned by another campus's student: no money shown
         $bug = $this->bug($this->campus, 'triaged');
         $this->link($bug, $course)->assertCreated();
 
@@ -66,10 +68,11 @@ final class TriageBillingSnapshotTest extends TestCase
             ->assertJsonPath('charge_minus_base', 1600)->assertJsonPath('session_charge_rows', 0)
             ->assertJsonPath('paid_flag', 0)->assertJsonPath('remaining_sessions', 8)->assertJsonPath('stop', 0)
             ->assertJsonPath('invoices', [['id' => $invoice->id, 'status' => 'partial', 'shared' => false, 'total' => 8800, 'paid' => 5000, 'period' => '2026-09', 'issue_date' => '2026-09-01'],
-                ['id' => $merged->id, 'status' => 'paid', 'shared' => true, 'total' => null, 'paid' => null, 'period' => '2026-10', 'issue_date' => '2026-10-01']])
+                ['id' => $merged->id, 'status' => 'paid', 'shared' => true, 'total' => null, 'paid' => null, 'period' => '2026-10', 'issue_date' => '2026-10-01'],
+                ['id' => $stray->id, 'status' => 'paid', 'shared' => true, 'total' => null, 'paid' => null, 'period' => '2026-11', 'issue_date' => '2026-11-01']])
             ->assertJsonPath('payments', [['id' => $payment->id, 'invoice_id' => $invoice->id, 'amount' => 5000], ['id' => $reversal->id, 'invoice_id' => $invoice->id, 'amount' => -700]]);
         $this->assertEquals(900, $res->json('rate'));
-        foreach (['SECRET-STUDENT', 'SECRET-MEMO', 'SECRET-INVOICE-NOTE', 'SECRET-PAYMENT-NOTE', '0912000000', 'void', '9999'] as $private) {
+        foreach (['SECRET-STUDENT', 'SECRET-MEMO', 'SECRET-INVOICE-NOTE', 'SECRET-PAYMENT-NOTE', '0912000000', 'void', '9999', '7777'] as $private) {
             $this->assertStringNotContainsString($private, $res->getContent());
         }
         $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot", $this->bearer())->assertStatus(422);
