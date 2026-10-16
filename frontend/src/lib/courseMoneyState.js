@@ -134,6 +134,20 @@ export const closedReason = (course) => {
   return isCourseSettled(course) === true && remaining != null && remaining <= 0 ? 'completed' : null;
 };
 
+/**
+ * Money verdict of a closed course: 'pending' (closed, not paid: settled_pending, or an amended contract the server
+ * says is not settled), 'unknown' (an amended contract without a server verdict, e.g. a `_noncanonical` fallback row:
+ * never 已結算), 'settled' (an amended contract that is paid/free), null for every other row.
+ */
+export const closedPaymentState = (course) => {
+  const reason = closedReason(course);
+  if (reason === 'settled_pending') return 'pending';
+  if (reason !== 'contract_amended') return null;
+  const settled = isCourseSettled(course);
+  if (settled === null) return 'unknown';
+  return settled ? 'settled' : 'pending';
+};
+
 /** History list membership. includePending: StudentsList also files 待對帳結案 rows under history; CourseManagement keeps them in the active list. */
 export const isHistoryCourse = (course, { includePending = false } = {}) => {
   const reason = closedReason(course);

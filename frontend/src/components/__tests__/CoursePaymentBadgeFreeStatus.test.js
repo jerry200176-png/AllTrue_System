@@ -91,6 +91,21 @@ describe('#4150 isCourseSettled matches BillingPayableResolver (paid or free)', 
   });
 });
 
+describe('#4150 closedPaymentState (closed-course money verdict)', () => {
+  it.each([
+    ['amended, paid', { closed_reason: 'contract_amended', payment_status: 'paid' }, 'settled'],
+    ['amended, free', { closed_reason: 'contract_amended', payment_status: 'free' }, 'settled'],
+    ['amended, unpaid', { closed_reason: 'contract_amended', payment_status: 'unpaid' }, 'pending'],
+    ['amended, noncanonical fallback row', { closed_reason: 'contract_amended', payment_status: 'paid', _noncanonical: true }, 'unknown'],
+    ['amended, no status', { closed_reason: 'contract_amended' }, 'unknown'],
+    ['settled_pending', { closed_reason: 'settled_pending', payment_status: 'paid' }, 'pending'],
+    ['settled', { closed_reason: 'settled', payment_status: 'paid' }, null],
+    ['open course', { payment_status: 'unpaid' }, null],
+  ])('%s', (_name, row, state) => {
+    expect(M.closedPaymentState(row)).toBe(state);
+  });
+});
+
 describe('#4150 close-course warning', () => {
   async function confirmText(payment_status) {
     // The confirm is declined, so no request is sent.
@@ -123,6 +138,13 @@ describe('#4150 both pages use the shared badge helper', () => {
   });
   it('CourseManagement amended-contract rule reads isCourseSettled, not payment_status !== paid', () => {
     expect(pageSource('CourseManagement')).not.toMatch(/contract_amended' && \w+\.payment_status !== 'paid'/);
+  });
+  // Codex P2 on #4204: a `_noncanonical` amended row (list API failed) has no verdict, so it is never 已結算 / 已結案.
+  it('CourseManagement reads closedPaymentState at all three closed-course sites, and 已結算 waits for a verdict', () => {
+    const source = pageSource('CourseManagement');
+    expect(source).not.toContain("'contract_amended' && isCourseSettled(");
+    expect(source.match(/closedPaymentState\((c|hc)\) === 'unknown'/g)).toHaveLength(3);
+    expect(source).toContain(`v-else-if="closedPaymentState(hc) === 'unknown'" class="tag tag-history tag-history--pending">{{ PAYMENT_STATUS_LOADING_LABEL }}</span>`);
   });
   it('StudentsList attention uses the shared notice statuses', () => {
     const source = pageSource('StudentsList');
