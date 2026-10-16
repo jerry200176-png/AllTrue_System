@@ -33,11 +33,7 @@ class StudentClassPauseCloseGuardTest extends TestCase
         $this->close($token, $course)->assertOk();
         $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $future)->value('Status'));
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'pause', 'cancel_remaining' => true],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertStatus(409)
+        $this->lifecycle($token, $course, ['action' => 'pause', 'cancel_remaining' => true])->assertStatus(409)
             ->assertJsonPath('error_code', 'course_already_closed')
             ->assertJsonPath('closed_reason', 'settled');
 
@@ -54,11 +50,7 @@ class StudentClassPauseCloseGuardTest extends TestCase
 
         $this->close($token, $course)->assertOk()->assertJsonPath('pending_reconciliation', true);
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'pause'],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertStatus(409)->assertJsonPath('error_code', 'course_already_closed');
+        $this->lifecycle($token, $course, ['action' => 'pause'])->assertStatus(409)->assertJsonPath('error_code', 'course_already_closed');
 
         $course->refresh();
         $this->assertSame(1, (int) $course->Stop);
@@ -70,11 +62,7 @@ class StudentClassPauseCloseGuardTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));
         [$token, $course] = $this->fixture();
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'pause'],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertOk();
+        $this->lifecycle($token, $course, ['action' => 'pause'])->assertOk();
         $course->refresh();
         $this->assertSame(1, (int) $course->Stop);
         $this->assertSame('completed', $course->closed_reason, 'Paid count course with nothing left pauses as completed (unchanged).');
@@ -90,27 +78,15 @@ class StudentClassPauseCloseGuardTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));
         [$token, $course] = $this->fixture(['RemainingSessions' => 3, 'UsedSessions' => 5]);
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'pause'],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertOk();
+        $this->lifecycle($token, $course, ['action' => 'pause'])->assertOk();
         $course->refresh();
         $this->assertSame(1, (int) $course->Stop);
         $this->assertNull($course->closed_reason);
 
         // A paused course that is not closed can still be paused again (idempotent, unchanged).
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'pause'],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertOk();
+        $this->lifecycle($token, $course, ['action' => 'pause'])->assertOk();
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'pause', 'reason' => 'settled', 'forfeit_remaining' => true],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertOk();
+        $this->lifecycle($token, $course, ['action' => 'pause', 'reason' => 'settled', 'forfeit_remaining' => true])->assertOk();
         $course->refresh();
         $this->assertSame('settled', $course->closed_reason);
     }
@@ -122,19 +98,11 @@ class StudentClassPauseCloseGuardTest extends TestCase
         $past = $this->createClassSession((int) $course->ID, '2026-10-10', 'attended');
         $future = $this->createClassSession((int) $course->ID, '2026-10-20', 'scheduled');
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'pause', 'reason' => 'settled', 'forfeit_remaining' => true],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertOk();
+        $this->lifecycle($token, $course, ['action' => 'pause', 'reason' => 'settled', 'forfeit_remaining' => true])->assertOk();
         $before = (array) DB::table('StudentClass')->where('ID', $course->ID)->first();
         $futureNote = DB::table('ClassSession')->where('id', $future)->value('Note');
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'resume'],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertStatus(409)
+        $this->lifecycle($token, $course, ['action' => 'resume'])->assertStatus(409)
             ->assertJsonPath('error_code', 'course_closed_use_renewal')
             ->assertJsonPath('closed_reason', 'settled');
 
@@ -150,11 +118,7 @@ class StudentClassPauseCloseGuardTest extends TestCase
         [$token, $course] = $this->fixture(['Paid' => 0, 'Charge' => 8000]);
         $this->close($token, $course)->assertOk();
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'resume'],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertStatus(409)->assertJsonPath('error_code', 'course_closed_use_renewal');
+        $this->lifecycle($token, $course, ['action' => 'resume'])->assertStatus(409)->assertJsonPath('error_code', 'course_closed_use_renewal');
 
         $course->refresh();
         $this->assertSame(1, (int) $course->Stop);
@@ -167,18 +131,10 @@ class StudentClassPauseCloseGuardTest extends TestCase
         [$token, $course] = $this->fixture(['RemainingSessions' => 3, 'UsedSessions' => 5]);
         $future = $this->createClassSession((int) $course->ID, '2026-10-20', 'scheduled');
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'pause'],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertOk();
+        $this->lifecycle($token, $course, ['action' => 'pause'])->assertOk();
         $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $future)->value('Status'));
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'resume'],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertOk()->assertJsonPath('restored_count', 1);
+        $this->lifecycle($token, $course, ['action' => 'resume'])->assertOk()->assertJsonPath('restored_count', 1);
 
         $course->refresh();
         $this->assertSame(0, (int) $course->Stop);
@@ -192,11 +148,7 @@ class StudentClassPauseCloseGuardTest extends TestCase
         [$token, $course] = $this->fixture();
         $this->close($token, $course)->assertOk();
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'pause', 'reason' => 'manual'],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertStatus(422)->assertJsonPath('error_code', 'invalid_close_reason');
+        $this->lifecycle($token, $course, ['action' => 'pause', 'reason' => 'manual'])->assertStatus(422)->assertJsonPath('error_code', 'invalid_close_reason');
 
         $course->refresh();
         $this->assertSame(1, (int) $course->Stop);
@@ -209,11 +161,7 @@ class StudentClassPauseCloseGuardTest extends TestCase
         [$token, $course] = $this->fixture(['RemainingSessions' => 3, 'UsedSessions' => 5, 'Stop' => 0]);
         DB::table('StudentClass')->where('ID', $course->ID)->update(['closed_reason' => 'settled']);
 
-        $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'pause'],
-            ['Authorization' => "Bearer {$token}"]
-        )->assertStatus(409)->assertJsonPath('error_code', 'course_already_closed');
+        $this->lifecycle($token, $course, ['action' => 'pause'])->assertStatus(409)->assertJsonPath('error_code', 'course_already_closed');
 
         $course->refresh();
         $this->assertSame(0, (int) $course->Stop);
@@ -241,11 +189,12 @@ class StudentClassPauseCloseGuardTest extends TestCase
 
     private function close(string $token, StudentClass $course): \Illuminate\Testing\TestResponse
     {
-        return $this->postJson(
-            "/api/v1/student-classes/{$course->ID}/pause",
-            ['action' => 'pause', 'reason' => 'settled'],
-            ['Authorization' => "Bearer {$token}"]
-        );
+        return $this->lifecycle($token, $course, ['action' => 'pause', 'reason' => 'settled']);
+    }
+
+    private function lifecycle(string $token, StudentClass $course, array $body): \Illuminate\Testing\TestResponse
+    {
+        return $this->postJson("/api/v1/student-classes/{$course->ID}/pause", $body, ['Authorization' => "Bearer {$token}"]);
     }
 
     private function createDirectorToken(int $campusId): string
