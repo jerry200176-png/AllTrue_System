@@ -26,6 +26,35 @@ describe('in-app #287 billing correction guidance', () => {
     expect(formatBillingCorrectionSessionLabel(state.affectedSessions[0])).toBe('2026-09-29 20:00–22:00');
   });
 
+  it('explains a past unrecorded session block in plain words and resets the preview', () => {
+    const state = buildBillingCorrectionBlockedState({
+      message: '更正為 3 堂後，有 1 堂已過日期、還沒點名的課會超出堂數：2026-10-15 15:00–17:00。',
+      code: 'billing_correction_past_unrecorded_sessions',
+      next_step: 'record_or_cancel_past_sessions_then_retry',
+      past_unrecorded_sessions: [{
+        session_id: 20, session_date: '2026-10-15', start_time: '15:00', end_time: '17:00', status: 'scheduled',
+      }],
+      affected_scheduled_sessions: [{ session_id: 99, session_date: '2026-10-22', start_time: '15:00' }],
+    });
+
+    expect(state.message).toBe('有 1 堂已過日期、還沒點名的課會超出更正後的堂數，因此尚未儲存。');
+    expect(state.message).not.toMatch(/past_unrecorded|session_id|scheduled/);
+    expect(state.hint).toContain('補點名');
+    expect(state.hint).toContain('系統不會自動取消已過日期的堂次');
+    expect(state.affectedSessions.map((s) => s.sessionId)).toEqual([20]);
+    expect(formatBillingCorrectionSessionLabel(state.affectedSessions[0])).toBe('2026-10-15 15:00–17:00');
+    expect(state.sessionListLabel).toBe('需先補點名或取消的已過日期堂次');
+    expect(state.canOpenCalendar).toBe(true);
+    expect(state.firstAffectedDate).toBe('2026-10-15');
+    expect(state.resetsPreview).toBe(true);
+  });
+
+  it('keeps the preview for unrelated refusals and resets it for stale confirmations', () => {
+    expect(buildBillingCorrectionBlockedState({ code: 'billing_correction_charge_mismatch', message: 'x' }).resetsPreview).toBe(false);
+    expect(buildBillingCorrectionBlockedState({ code: 'billing_correction_confirmation_stale' }).resetsPreview).toBe(true);
+    expect(buildBillingCorrectionBlockedState({ code: 'billing_correction_confirmation_required' }).resetsPreview).toBe(true);
+  });
+
   it('sorts, deduplicates, and rejects malformed affected sessions', () => {
     expect(normalizeAffectedScheduledSessions([
       { session_id: '8', session_date: '2026-10-02T00:00:00Z', start_time: '09:30:00', end_time: '11:00:00' },

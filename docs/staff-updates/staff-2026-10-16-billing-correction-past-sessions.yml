@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-16-billing-correction-past-sessions
+    published_at: "2026-10-16"
+    audiences:
+      - director
+    importance: major
+    title: 堂數更正會先擋下過期未點名堂次
+    summary: 減少未收款堂數時，若有已過日期還沒點名的堂次超出新堂數，系統會先擋下並列出。
+    items:
+      - category: action_required
+        text: 看到「還不能更正」時，請先到行事曆替列出的堂次補點名或取消，再重新預覽。
+      - category: fixed
+        text: 確認更正後只會取消預覽列出的未來堂次，不會再多取消已過日期的堂次。
+    source_refs:
+      - "changelog:2026-10-16:billing-correction-apply-matches-preview"

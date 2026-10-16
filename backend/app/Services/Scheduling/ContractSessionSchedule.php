@@ -722,6 +722,23 @@ class ContractSessionSchedule
      */
     public function scheduledSessionsBeyondCount(int $classId, int $newCount): array
     {
+        return self::describeRetirableSessions($this->excessScheduledSessionsBeyondCount($classId, $newCount)['retirable']);
+    }
+
+    /** @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}> */
+    public static function scheduledSessionsBeyondCountFromRows($allActive, int $newCount): array
+    {
+        return self::describeRetirableSessions(self::retirableScheduledRowsBeyondCount($allActive, $newCount));
+    }
+
+    /**
+     * Read-only preflight for a reduced count: the excess `scheduled` rows
+     * split by the same rule the locked write uses (see partitionExcessScheduledRows).
+     *
+     * @return array{retirable: \Illuminate\Support\Collection<int, ClassSession>, past_unrecorded: \Illuminate\Support\Collection<int, ClassSession>}
+     */
+    public function excessScheduledSessionsBeyondCount(int $classId, int $newCount): array
+    {
         $allActive = ClassSession::query()
             ->where('StudentClassID', $classId)
             ->where(function ($query) {
@@ -733,33 +750,38 @@ class ContractSessionSchedule
             ->orderBy('id')
             ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status']);
 
-        return self::scheduledSessionsBeyondCountFromRows($allActive, $newCount);
-    }
-
-    /** @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}> */
-    public static function scheduledSessionsBeyondCountFromRows($allActive, int $newCount): array
-    {
-        return self::describeRetirableSessions(self::retirableScheduledRowsBeyondCount($allActive, $newCount));
+        return self::partitionExcessScheduledRows($allActive, $newCount);
     }
 
     /**
-     * The single eligibility rule for which reservations a reduced count may
-     * retire: purchased-quota rows past the retained count that are still
-     * `scheduled` and dated today or later in the app timezone. The billing
-     * correction preview lists exactly these rows and its confirmed write
-     * cancels exactly these rows, so the two cannot drift. Past-dated
-     * `scheduled` rows (attendance not yet recorded) are never retired here.
+     * The single eligibility rule for a reduced count, shared by the billing
+     * correction preview, its confirmation token and its locked write:
+     * purchased-quota rows past the retained count that are still `scheduled`,
+     * split by their date against today in the app timezone (Asia/Taipei).
+     *  - retirable: dated today or later; the correction cancels exactly these.
+     *  - past_unrecorded: dated before today with attendance never recorded;
+     *    the correction must refuse (fail closed) while any of these exist,
+     *    so history is never cancelled and the contract is never left over quota.
+     *
+     * @return array{retirable: \Illuminate\Support\Collection<int, ClassSession>, past_unrecorded: \Illuminate\Support\Collection<int, ClassSession>}
      */
-    public static function retirableScheduledRowsBeyondCount($allActive, int $newCount)
+    public static function partitionExcessScheduledRows($allActive, int $newCount): array
     {
         $today = Carbon::today()->toDateString();
-
-        return self::purchasedQuotaSessionRows($allActive)->slice($newCount)
-            ->filter(static function (ClassSession $session) use ($today): bool {
-                return strtolower((string) $session->getAttribute('Status')) === 'scheduled'
-                    && substr((string) $session->getAttribute('SessionDate'), 0, 10) >= $today;
-            })
+        $excessScheduled = self::purchasedQuotaSessionRows($allActive)->slice($newCount)
+            ->filter(static fn (ClassSession $session): bool => strtolower((string) $session->getAttribute('Status')) === 'scheduled')
             ->values();
+        [$retirable, $past] = $excessScheduled->partition(
+            static fn (ClassSession $session): bool => substr((string) $session->getAttribute('SessionDate'), 0, 10) >= $today
+        );
+
+        return ['retirable' => $retirable->values(), 'past_unrecorded' => $past->values()];
+    }
+
+    /** Today-or-later excess `scheduled` rows; see partitionExcessScheduledRows(). */
+    public static function retirableScheduledRowsBeyondCount($allActive, int $newCount)
+    {
+        return self::partitionExcessScheduledRows($allActive, $newCount)['retirable'];
     }
 
     /** @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}> */

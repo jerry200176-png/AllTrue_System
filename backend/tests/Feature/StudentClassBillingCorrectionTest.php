@@ -283,6 +283,7 @@ class StudentClassBillingCorrectionTest extends TestCase
 
     public function test_confirmation_rechecks_payment_report_created_after_preview_without_partial_write(): void
     {
+        $this->pinClockBeforeFixtureDates();
         [$token] = $this->director();
         $student = $this->student();
         $course = $this->course($student->id, ['SessionCount' => 4, 'Charge' => 4400, 'RemainingSessions' => 3, 'UsedSessions' => 1]);
@@ -385,8 +386,9 @@ class StudentClassBillingCorrectionTest extends TestCase
     /**
      * Regression for the 2026-10-15T16:00Z CI break: whether the tail
      * reservation is retired depends only on its Taipei calendar date versus
-     * Taipei "today", never on the runner's wall clock or UTC date, and the
-     * confirmed write retires exactly the rows the preview listed.
+     * Taipei "today", never on the runner's wall clock or UTC date. Dated
+     * today it is retired exactly as previewed; dated yesterday and never
+     * recorded, the correction is refused (fail closed).
      *
      * @dataProvider taipeiMidnightBoundaryProvider
      */
@@ -411,23 +413,33 @@ class StudentClassBillingCorrectionTest extends TestCase
 
         $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
             'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認跨午夜邊界', 'preview' => true,
-        ])->assertOk();
+        ]);
 
-        if ($tailIsRetirable) {
-            $preview->assertJsonCount(1, 'affected_scheduled_sessions')
-                ->assertJsonPath('affected_scheduled_sessions.0.session_id', $scheduled->last()->id);
-        } else {
-            $preview->assertJsonCount(0, 'affected_scheduled_sessions');
+        if (!$tailIsRetirable) {
+            // Fail closed (Founder 2026-10-16): a tail dated yesterday (Taipei)
+            // that was never recorded blocks the reduction; nothing is written.
+            $preview->assertStatus(422)
+                ->assertJsonPath('code', 'billing_correction_past_unrecorded_sessions')
+                ->assertJsonCount(1, 'past_unrecorded_sessions')
+                ->assertJsonPath('past_unrecorded_sessions.0.session_id', $scheduled->last()->id);
+            $this->assertDatabaseHas('ClassSession', ['id' => $scheduled->last()->id, 'Status' => 'scheduled']);
+            $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 4, 'Charge' => 4400]);
+            $this->assertSame(3, ClassSession::whereIn('id', $scheduled->pluck('id'))->where('Status', 'scheduled')->count());
+
+            return;
         }
 
-        // The confirmed write must retire exactly what the preview listed: a
-        // tail dated yesterday (Taipei) stays scheduled after confirmation.
+        $preview->assertOk()
+            ->assertJsonCount(1, 'affected_scheduled_sessions')
+            ->assertJsonPath('affected_scheduled_sessions.0.session_id', $scheduled->last()->id);
+
+        // The confirmed write retires exactly what the preview listed.
         $confirmed = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
             'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認跨午夜邊界',
             'confirmation_token' => $preview->json('confirmation_token'),
         ])->assertOk();
         $this->assertSame($preview->json('affected_scheduled_sessions'), $confirmed->json('cancelled_scheduled_sessions'));
-        $this->assertDatabaseHas('ClassSession', ['id' => $scheduled->last()->id, 'Status' => $tailIsRetirable ? 'cancelled' : 'scheduled']);
+        $this->assertDatabaseHas('ClassSession', ['id' => $scheduled->last()->id, 'Status' => 'cancelled']);
         $this->assertSame(2, ClassSession::whereIn('id', $scheduled->take(2)->pluck('id'))->where('Status', 'scheduled')->count());
     }
 
@@ -436,7 +448,7 @@ class StudentClassBillingCorrectionTest extends TestCase
     {
         return [
             '2026-10-15 23:59 Taipei: tail dated today is retirable' => ['2026-10-15T15:59:00Z', true],
-            '2026-10-16 00:01 Taipei: tail dated yesterday is history' => ['2026-10-15T16:01:00Z', false],
+            '2026-10-16 00:01 Taipei: unrecorded tail dated yesterday blocks the reduction' => ['2026-10-15T16:01:00Z', false],
         ];
     }
 

@@ -1035,7 +1035,7 @@
           <ul
             v-if="billingCorrectionBlocked.affectedSessions.length"
             class="billing-correction-affected-sessions"
-            aria-label="需先處理的未來堂次"
+            :aria-label="billingCorrectionBlocked.sessionListLabel"
           >
             <li v-for="session in billingCorrectionBlocked.affectedSessions" :key="session.sessionId">
               <time :datetime="`${session.sessionDate}T${session.startTime}`">{{ formatBillingCorrectionSessionLabel(session) }}</time>
@@ -2459,10 +2459,11 @@ async function submitBillingCorrection() {
     if (!res.ok) {
       // Keep this on-screen (not just a toast that vanishes) — the person acting on
       // it needs to see *why* it's blocked and what to do instead, not just retry.
-      if (body?.code === 'billing_correction_confirmation_stale' || body?.code === 'billing_correction_confirmation_required') {
+      const blocked = buildBillingCorrectionBlockedState(body);
+      if (blocked.resetsPreview) {
         billingCorrectionPreview.value = null;
       }
-      billingCorrectionBlocked.value = buildBillingCorrectionBlockedState(body);
+      billingCorrectionBlocked.value = blocked;
       return;
     }
     if (body?.requires_confirmation) {
