@@ -1885,16 +1885,24 @@ jobs:
               $db::rollBack();
             }}
             // Best-effort audit failures are logged as `security_audit.append_failed` (Laravel daily logs, 14/30-day retention).
-            $failedLines = 0; $logDays = [];
+            // A day counts as covered only when one of its files was read to EOF; an open/read failure is recorded
+            // (date + count only) and never counts as coverage.
+            $failedLines = 0; $logDays = []; $unreadableDays = [];
             foreach (glob(storage_path('logs/laravel*.log')) ?: [] as $f) {{
               if (!preg_match('/(\\d{{4}}-\\d{{2}}-\\d{{2}})\\.log$/', $f, $m) || $m[1] < substr($windowStart, 0, 10)) {{ continue; }}
-              $logDays[$m[1]] = true;
-              $h = @fopen($f, 'r');
-              while ($h && ($line = fgets($h)) !== false) {{
+              // feof() is also true after a failed read, so require every byte present at open time to have been read.
+              $size = is_file($f) ? @filesize($f) : false;
+              $h = $size === false ? false : @fopen($f, 'r');
+              $readOk = $h !== false; $bytes = 0;
+              while ($readOk && ($line = @fgets($h)) !== false) {{
+                $bytes += strlen($line);
                 if (str_contains($line, 'security_audit.append_failed')) {{ $failedLines++; }}
               }}
-              if ($h) {{ fclose($h); }}
+              if ($readOk) {{ fclose($h); $readOk = $bytes >= $size; }}
+              if ($readOk) {{ $logDays[$m[1]] = true; }} else {{ $unreadableDays[$m[1]] = ($unreadableDays[$m[1]] ?? 0) + 1; }}
             }}
+            ksort($unreadableDays);
+            $unreadableFiles = array_sum($unreadableDays);
             $missingDays = 0;
             for ($d = \\Carbon\\Carbon::parse($windowStart, $tz)->startOfDay(); $d->lte(now()->startOfDay()); $d->addDay()) {{
               if (!isset($logDays[$d->toDateString()])) {{ $missingDays++; }}
@@ -1902,9 +1910,14 @@ jobs:
             $logsCoverWindow = $missingDays === 0;
             // Established only when no correction event can be missing: either no unexplained past cancel exists at all,
             // or the logs cover every day of the window and record no append failure.
-            $completeness = ($unmatched === [] || ($logsCoverWindow && $failedLines === 0)) ? 'established' : 'inconclusive';
+            // Never established while a correction event could not be tied to its contract (APP_KEY rotated or StudentClass
+            // missing) or a retained log file could not be read.
+            $completeness = ($unresolved === [] && $unreadableFiles === 0
+              && ($unmatched === [] || ($logsCoverWindow && $failedLines === 0))) ? 'established' : 'inconclusive';
             $reasons = [];
             if (!$fixInProduction) {{ $reasons[] = 'fix_not_deployed'; }}
+            if ($unresolved !== []) {{ $reasons[] = 'unresolved_audit_subjects'; }}
+            if ($unreadableFiles > 0) {{ $reasons[] = 'log_file_unreadable'; }}
             if ($completeness !== 'established') {{ $reasons[] = 'completeness_inconclusive'; }}
             $out['read_only_transaction'] = true;
             $out['fix_in_production'] = $fixInProduction;
@@ -1918,6 +1931,9 @@ jobs:
               'append_failed_log_lines' => $failedLines,
               'log_days_present' => count($logDays),
               'log_days_missing_in_window' => $missingDays,
+              'unresolved_audit_subject_events' => count($unresolved),
+              'unreadable_log_files' => $unreadableFiles,
+              'unreadable_log_file_days' => array_map(fn ($d, $n) => ['date' => $d, 'files' => $n], array_keys($unreadableDays), array_values($unreadableDays)),
             ];
             $out['window_start_taipei'] = $windowStart;
             $out['coverage_all_time'] = ['success_events' => (int) $coverage->n, 'first_at' => $coverage->first_at, 'last_at' => $coverage->last_at];
