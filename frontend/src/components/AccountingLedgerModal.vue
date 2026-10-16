@@ -597,14 +597,18 @@ const lastInvoicePayment = (id) => {
   const last = pays.sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)) || Number(b.id) - Number(a.id))[0];
   return last ? { date: String(last.paid_at).slice(0, 10), amount: Number(last.amount) } : null;
 };
-// Pay line (spec 2.3): latest confirmed receipt = same source as the printed receipt; invoice payments next;
-// the contract's PayDate only as a last fallback (G-009 dual truth, never corrected from here).
+// Pay line (spec 2.3): latest confirmed receipt = same source as the printed receipt; invoice payments next.
+// #4150: the contract's PayDate / Charge / Paid flag are legacy metadata, not proof of a payment, so they never
+// become a 繳費日 line; the card shows the neutral 需核對 note instead (G-009 dual truth, display only).
+const freeGiftCovered = (id) => courseInvoices(id).some((inv) => inv.zero_amount_reason === ZERO_REASON_FREE_GIFT);
 const payLineFor = (course) => {
   const rc = (payload.value?.receipts || [])
     .filter((r) => Number(r.student_class_id) === Number(course.id) && r.status === 'confirmed' && Number(r.amount) > 0 && r.payment_date)
     .sort((a, b) => String(b.payment_date).localeCompare(String(a.payment_date)) || Number(b.report_id) - Number(a.report_id))[0];
   if (rc) return { date: String(rc.payment_date).slice(0, 10), amount: Number(rc.amount) };
-  return lastInvoicePayment(course.id) || (course.paid_at && Number(course.charge) > 0 ? { date: String(course.paid_at).slice(0, 10), amount: Number(course.charge) } : null);
+  const paid = lastInvoicePayment(course.id);
+  if (paid) return paid;
+  return (course.paid_at || course.paid) && !freeGiftCovered(course.id) ? { legacyUnverified: true } : null;
 };
 const amountsFor = (id) => {
   const list = courseInvoices(id);
