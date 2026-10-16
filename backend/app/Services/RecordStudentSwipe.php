@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\Student;
+use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -68,6 +69,17 @@ class RecordStudentSwipe
         }
 
         [$studentClass, $hours, $classSessionId] = $this->findMatchingClass($student, $swipeAt);
+        $classSession = null;
+        if ($studentClass && $classSessionId !== null) {
+            // #4192: match selection is only a snapshot. Serialize with cancellation
+            // and deduction writers, then use a current (locking) session read.
+            $studentClass = StudentClass::where('ID', $studentClass->ID)->lockForUpdate()->firstOrFail();
+            $classSession = ClassSession::where('StudentClassID', $studentClass->ID)
+                ->lockForUpdate()->findOrFail($classSessionId);
+            $classSession->setRelation('studentClass', $studentClass);
+            AttendanceEffectsService::assertCanRecordAttendance($classSession, 'present');
+            $hours = $studentClass->TotalHours ? (int) $studentClass->TotalHours : null;
+        }
 
         // TD-007: duplicate sign-in guard — 若同一個 ClassSession 當天已有未作廢的記錄則不重複建立
         if ($classSessionId !== null) {
@@ -85,7 +97,7 @@ class RecordStudentSwipe
         // a ClassSession, try to get TeacherID from the ClassSession's StudentClass.
         $resolvedTeacherId = $studentClass?->TeacherID;
         if ($resolvedTeacherId === null && $classSessionId !== null) {
-            $fallbackSc = ClassSession::find($classSessionId)?->studentClass;
+            $fallbackSc = $classSession?->studentClass;
             $resolvedTeacherId = $fallbackSc?->TeacherID ?? null;
             if ($resolvedTeacherId === null) {
                 Log::warning('[swipe] TeacherID resolved to null', [
@@ -118,12 +130,9 @@ class RecordStudentSwipe
 
         // FR-001/FR-002: Sync ClassSession.Status after successful swipe.
         // Only updates when Status = 'scheduled' (guard prevents overwriting human decisions).
-        if ($classSessionId !== null) {
-            $classSession = ClassSession::find($classSessionId);
-            if ($classSession) {
-                $swipeStatus = AttendanceEffectsService::resolveSwipeStatus($classSession, $swipeAt);
-                AttendanceEffectsService::applySessionStatus($classSession, $swipeStatus);
-            }
+        if ($classSession) {
+            $swipeStatus = AttendanceEffectsService::resolveSwipeStatus($classSession, $swipeAt);
+            AttendanceEffectsService::applySessionStatus($classSession, $swipeStatus);
         }
 
         // Deduct session on sign-in (點名成功才扣堂)

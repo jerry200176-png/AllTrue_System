@@ -777,7 +777,12 @@ class AttendanceController extends Controller
         // handling to prevent duplicate records from concurrent swipes.
         try {
             return DB::transaction(function () use ($matchedSession, $student, $swipeAt, $campusId) {
-                $studentClass = $matchedSession->studentClass;
+                // #4192: match selection happened before this transaction. Take
+                // the authoritative parent lock before a current session read.
+                $studentClass = StudentClass::where('ID', $matchedSession->StudentClassID)
+                    ->lockForUpdate()->firstOrFail();
+                $matchedSession = ClassSession::where('StudentClassID', $studentClass->ID)
+                    ->lockForUpdate()->findOrFail($matchedSession->id);
                 $swipeTeacherId = (int) ($studentClass->TeacherID ?? 0);
                 $subSwipeTid = $this->resolveSubstituteTeacherUserIdForSession(
                     (int) $studentClass->ID,

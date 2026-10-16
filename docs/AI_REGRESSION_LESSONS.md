@@ -6,6 +6,12 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### #4192. 刷卡候選不是出勤權威：先鎖合約，再鎖定重讀堂次（2026-10-16）
+
+- **根因**：`RecordStudentSwipe` 與 `AttendanceController::swipe` 選到堂次後，取消交易可能先提交；InnoDB REPEATABLE READ 的普通查詢仍可讀到舊狀態，之後的 UPDATE 卻覆寫已取消堂次。
+- **守門**：與 `AttendanceController::store`／`SessionDeductionService`／堂數更正共用 `StudentClass FOR UPDATE` → `ClassSession FOR UPDATE` 順序，再以重讀的物件驗證、建立出勤與扣堂；不可在鎖定後又換回普通快照查詢的堂次物件。
+- **測試**：`SwipeCancellationConcurrencyTest` 用獨立連線在候選查詢後提交取消，兩條刷卡路徑皆須拒絕，並驗證取消、出勤、學習紀錄與扣堂 ledger 的持久狀態。只在 CI 隔離 MySQL 執行；RFID 真機 hold 不因測試通過而解除。
+
 ### R156. 不再提供交易折扣；任何會產生折扣的入口一律在寫入前擋下（#4018／#4020，2026-10-14）
 
 - **現象**：100% 或等於原價的固定折扣讓續約產生 NT$0 帳單，但沒有任何流程能把它記成已結清：帳單維持未繳、課程卡一直提示「登記這筆」；而且這筆課有費用，所以「免費／贈送」也被拒絕（#4018）。
