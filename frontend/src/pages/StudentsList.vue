@@ -446,7 +446,7 @@
                       <div>
                         <dt>付款</dt>
                         <dd>
-                          <span :class="['student-course-card__payment', `student-course-card__payment--${isLegacyPaidFlagOnly(course) ? 'pending' : (course.payment_status || 'unknown')}`]">{{ paymentStatusButtonLabel(course) }}</span>
+                          <span :class="['student-course-card__payment', `student-course-card__payment--${paymentCardModifier(course)}`]">{{ paymentStatusButtonLabel(course) }}</span>
                           <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需修正</span>
                           <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
                         </dd>
@@ -1004,10 +1004,10 @@
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
-import { isCourseSettled } from '../lib/paymentStatus.js';
+import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import {
   closedReason as effectiveClosedReason, courseProgress, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
-  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL,
+  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1295,29 +1295,17 @@ const interceptPendingClassType = ref('');
 const forceSubmitting = ref(false);
 
 // Quick add session moved to course-mgmt (authoritative scheduling ops)
-const paymentStatusButtonClass = (course) => {
-  if (isTutoringBillingAnomaly(course)) return 'tag-billing-anomaly';
-  if (isTutoringCourse(course)) return 'tag-no-payment';
-  if (course?.payment_status === 'paid' || isCourseSettled(course) === null) return 'ghost';
-  if (course?.payment_status === 'pending_report') return 'ghost';
-  return 'primary';
-};
-const paymentStatusButtonLabel = (course) => {
-  if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
-  if (isTutoringCourse(course)) return '無須繳費';
-  if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
-  // #4114 (Founder Q3): paid by the legacy flag alone (no Payment) is 需核對, never 已收.
-  if (isLegacyPaidFlagOnly(course)) return LEGACY_FLAG_UNVERIFIED_LABEL;
-  if (isCourseSettled(course) === null) return '繳費狀態載入中';
-  // Course-level badge: the tuition label map (periodPaymentLabel is for dated monthly rows).
-  const status = course?.payment_status;
-  return TUITION_STATUS_CONFIG[status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid'].label;
-};
+// #4150: label/tone/next action come from the shared coursePaymentBadge; only the CSS class and button text are local.
+const BADGE_CLASS = { anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment', owing: 'primary' };
+const paymentStatusButtonClass = (course) => BADGE_CLASS[coursePaymentBadge(course).tone] || 'ghost';
+const CARD_MODIFIER = { anomaly: 'overdue', no_payment: 'paid', settled: 'paid', free: 'paid', owing: 'unpaid', review: 'pending' };
+const paymentCardModifier = (course) => CARD_MODIFIER[coursePaymentBadge(course).tone] || 'unknown';
+const paymentStatusButtonLabel = (course) => coursePaymentBadge(course).label;
 const paymentNextActionLabel = (course) => {
-  if (isTutoringCourse(course) || isCourseSettled(course) === null) return '';
-  if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
-  if (course?.payment_status === 'pending_report') return `查看「${REPORT_STATUS_LABELS.pending}」`;
-  return '前往帳務中心';
+  if (isCourseSettled(course) === null) return '';
+  return {
+    none: '', report_payment: '登記繳費回報', view_report: `查看「${REPORT_STATUS_LABELS.pending}」`,
+  }[coursePaymentBadge(course).nextAction] ?? '前往帳務中心';
 };
 const isTutoringCourse = (course) => course?.class_type === 'tutoring';
 const isTrialCourse = (course) => course?.class_type === 'trial';
@@ -1449,7 +1437,7 @@ const isCourseNeedsAttention = (course) => {
   const courseStatus = String(course?.status || '').toLowerCase();
   return isSessionPaymentLow(course)
     || isTutoringBillingAnomaly(course)
-    || (!isTutoringCourse(course) && ['overdue', 'unpaid', 'pending'].includes(paymentStatus))
+    || (!isTutoringCourse(course) && isPaymentNoticeStatus(paymentStatus))
     || courseStatus === 'inactive'
     || !course?.teacher_name
     || !hasCourseSchedule(course)
@@ -1460,7 +1448,7 @@ const getCourseAttentionLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isSessionPaymentLow(course)) return '需要續報';
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
-  if (!isTutoringCourse(course) && ['overdue', 'unpaid', 'pending'].includes(paymentStatus)) return '付款待確認';
+  if (!isTutoringCourse(course) && isPaymentNoticeStatus(paymentStatus)) return '付款待確認';
   if (String(course?.status || '').toLowerCase() === 'inactive') return '已暫停';
   if (!course?.teacher_name || !hasCourseSchedule(course) || !course?.branch_name || !course?.room_name) {
     return '資料待確認';
@@ -1491,7 +1479,7 @@ const getCoursePrimaryAction = (course) => {
     };
   }
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
-  if (!isTutoringCourse(course) && ['overdue', 'unpaid', 'pending'].includes(paymentStatus)) {
+  if (!isTutoringCourse(course) && isPaymentNoticeStatus(paymentStatus)) {
     return {
       key: 'payment',
       icon: 'receipt_long',

@@ -151,6 +151,8 @@ export const TUITION_STATUS_CONFIG = {
   // Founder D2 (in-app #394): an open bill whose amount is still to be confirmed. Listed, never summed as owed.
   amount_review: { label: '金額待確認', cls: 'st-pending' },
   paid: { label: '已收', cls: 'st-paid' },
+  // #4150: free-gift contract (BillingPayableResolver 'free'). Settled, nothing to collect.
+  free: { label: '免費／贈送', cls: 'st-paid' },
   renew_needed: { label: '續課待處理', cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期', cls: 'st-monthly' },
 };
@@ -163,7 +165,7 @@ export const PAUSED_PENDING_LABEL = '暫停中，尚未收款';
 export const INVOICE_STATUS_LABELS = { paid: '已收', unpaid: '未繳', partial: '繳了一部分', void: '已作廢' };
 // #3991 (Founder 2026-10-13): a NT$0 bill exists only when marked free/gift. Mirrors Invoice::ZERO_REASON_FREE_GIFT.
 export const ZERO_REASON_FREE_GIFT = 'free_gift';
-export const FREE_GIFT_LABEL = '免費／贈送';
+export const FREE_GIFT_LABEL = TUITION_STATUS_CONFIG.free.label;
 // `voided` only exists in the ledger, the one screen that lists voids.
 export const REPORT_STATUS_LABELS = { pending: '待核對入帳', confirmed: '已收', rejected: '已退回', voided: '已撤銷' };
 
@@ -184,3 +186,38 @@ export function monthlyPaymentLabel(course) {
   if (course.payment_status === 'pending_report' && summary.payment_status === 'unpaid') return `${summary.billing_period} ${periodPaymentLabel('pending_report')}`;
   return `${summary.billing_period} ${periodPaymentLabel(summary.payment_status)}`;
 }
+
+// ── course-level payment badge (StudentsList + CourseManagement) ──
+export const PAYMENT_STATUS_LOADING_LABEL = '繳費狀態載入中';
+const BADGE_TONES = {
+  paid: 'settled', free: 'free', partial: 'owing', unpaid: 'owing',
+  pending_report: 'review', amount_review: 'review', review_required: 'review',
+};
+const NEXT_ACTIONS = { unpaid: 'report_payment', partial: 'report_payment', pending_report: 'view_report' };
+
+/**
+ * #4150: the one course payment badge. Returns { label, tone, nextAction }; pages map tone to their
+ * own CSS class and nextAction to their own button text. Every server status passes through;
+ * a status this does not know is neutral (狀態待確認), never 未繳.
+ * tone: anomaly | no_payment | settled | free | owing | review | neutral
+ * nextAction: none | report_payment | view_report | billing
+ * monthlyPeriod: show the dated monthly period label (課程查找) when the course has one.
+ */
+export const coursePaymentBadge = (course, { monthlyPeriod = false } = {}) => {
+  if (course?.class_type === 'tutoring') {
+    return course?.tutoring_billing_anomaly === true
+      ? { label: '帳務資料需修正', tone: 'anomaly', nextAction: 'none' }
+      : { label: '無須繳費', tone: 'no_payment', nextAction: 'none' };
+  }
+  if (closedReason(course) === 'waived') return { label: WAIVED_LABEL, tone: 'settled', nextAction: 'billing' };
+  // #4114 (Founder Q3): paid by the legacy flag alone (no Payment) is 需核對, never 已收.
+  if (isLegacyPaidFlagOnly(course)) return { label: LEGACY_FLAG_UNVERIFIED_LABEL, tone: 'review', nextAction: 'billing' };
+  if (isCourseSettled(course) === null) return { label: PAYMENT_STATUS_LOADING_LABEL, tone: 'neutral', nextAction: 'billing' };
+  const status = String(course.payment_status).toLowerCase();
+  const nextAction = NEXT_ACTIONS[status] || 'billing';
+  const tone = BADGE_TONES[status] || 'neutral';
+  const monthly = monthlyPeriod ? monthlyPaymentLabel(course) : null;
+  if (monthly) return { label: monthly, tone: course.monthly_payment.review_required ? 'review' : tone, nextAction };
+  if (status === 'review_required') return { label: REVIEW_REQUIRED_LABEL, tone, nextAction };
+  return { label: TUITION_STATUS_CONFIG[status]?.label || UNKNOWN_STATUS_LABEL, tone, nextAction };
+};

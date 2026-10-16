@@ -4,11 +4,13 @@ export const PAYMENT_NOTICE_STATUSES = ['unpaid', 'partial', 'pending_report'];
 
 // Returns null (unknown) for rows without a canonical server status, e.g. direct-Supabase
 // fallback rows (`_noncanonical`) built when /api/v1/student-classes fails. Callers must not
-// treat unknown as unpaid.
+// treat unknown as unpaid. #4150: 'free' (free-gift contract) is settled too, the same rule as
+// BillingPayableResolver / ContractMoneyState::alertStatus.
+export const SETTLED_PAYMENT_STATUSES = ['paid', 'free'];
 export const isCourseSettled = (course) => {
   const status = String(course?.payment_status || '').toLowerCase();
   if (course?._noncanonical || !status) return null;
-  return status === 'paid';
+  return SETTLED_PAYMENT_STATUSES.includes(status);
 };
 
 export const isPaymentNoticeStatus = (status) => PAYMENT_NOTICE_STATUSES.includes(status);

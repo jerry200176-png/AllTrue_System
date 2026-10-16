@@ -305,13 +305,13 @@
                       <div v-if="isClosedReason(effectiveClosedReason(c))" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
                         <span class="settled-course-callout__main">{{ effectiveClosedReason(c) === 'contract_amended' ? '合約已提前結束' : '已結案' }}</span>
-                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : ((effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? `尚未完成繳費，請到帳務中心「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」確認` : (effectiveClosedReason(c) === 'waived' ? `欠款：${WAIVED_LABEL}` : effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : (effectiveClosedReason(c) === 'contract_amended' ? '堂數已調整結束' : '堂數已用完'))) }}</span>
+                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : ((effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && isCourseSettled(c) === false)) ? `尚未完成繳費，請到帳務中心「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」確認` : (effectiveClosedReason(c) === 'waived' ? `欠款：${WAIVED_LABEL}` : effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : (effectiveClosedReason(c) === 'contract_amended' ? '堂數已調整結束' : '堂數已用完'))) }}</span>
                       </div>
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="isPackageMember(c)" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
-                        <span v-else-if="isClosedReason(effectiveClosedReason(c))" class="tag tag-settled">{{ effectiveClosedReason(c) === 'waived' ? WAIVED_LABEL : (effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? ENDED_PENDING_LABEL : '已結案' }}</span>
+                        <span v-else-if="isClosedReason(effectiveClosedReason(c))" class="tag tag-settled">{{ effectiveClosedReason(c) === 'waived' ? WAIVED_LABEL : (effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && isCourseSettled(c) === false)) ? ENDED_PENDING_LABEL : '已結案' }}</span>
                         <button
                           v-if="c.usage_balance_status === 'review_required'"
                           type="button"
@@ -575,7 +575,7 @@
                     <span v-if="isPackageMember(hc)" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
                     <span v-if="effectiveClosedReason(hc) === 'converted_trial'" class="tag tag-history tag-history--settled">已轉正式</span>
                     <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag tag-history tag-history--settled">歷史 · {{ WAIVED_LABEL }}</span>
-                    <span v-else-if="effectiveClosedReason(hc) === 'settled_pending' || (effectiveClosedReason(hc) === 'contract_amended' && hc.payment_status !== 'paid')" class="tag tag-history tag-history--pending">{{ ENDED_PENDING_LABEL }}</span>
+                    <span v-else-if="effectiveClosedReason(hc) === 'settled_pending' || (effectiveClosedReason(hc) === 'contract_amended' && isCourseSettled(hc) === false)" class="tag tag-history tag-history--pending">{{ ENDED_PENDING_LABEL }}</span>
                     <span v-else-if="effectiveClosedReason(hc) === 'settled' || effectiveClosedReason(hc) === 'contract_amended'" class="tag tag-history tag-history--settled">已結算</span>
                     <span v-else class="tag tag-history tag-history--completed">已完課</span>
                     <button
@@ -1444,8 +1444,8 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL,
-  ownRemainingSessions, poolTotalSessions, poolUsedSessions, REVIEW_REQUIRED_LABEL,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
+  ownRemainingSessions, poolTotalSessions, poolUsedSessions,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import {
@@ -4202,34 +4202,20 @@ const courseLensMetrics = computed(() => {
   ];
 });
 
-const paymentStatusButtonClass = (course) => {
-  if (isTutoringBillingAnomaly(course)) return 'tag-billing-anomaly';
-  if (isTutoringCourse(course)) return 'tag-no-payment';
-  if (course?.monthly_payment?.review_required || course?.payment_status === 'review_required') return 'tag-pending-report';
-  if (course?.payment_status === 'paid') return isLegacyPaidFlagOnly(course) ? 'tag-pending-report' : 'tag-paid';
-  if (course?.payment_status === 'pending_report') return 'tag-pending-report';
-  return 'tag-unpaid';
-};
+// #4150: label/tone/next action come from the shared coursePaymentBadge; only the CSS class and button text are local.
+const BADGE_CLASS = { anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment', settled: 'tag-paid', free: 'tag-paid', owing: 'tag-unpaid' };
+const paymentBadge = (course) => coursePaymentBadge(course, { monthlyPeriod: true });
+const paymentStatusButtonClass = (course) => BADGE_CLASS[paymentBadge(course).tone] || 'tag-pending-report';
 const currentInvoiceForBillingRow = (row) => {
   const invoices = Array.isArray(row?.invoices) ? row.invoices.filter((invoice) => invoice?.status !== 'void') : [];
   return invoices.find((invoice) => ['unpaid', 'partial'].includes(invoice?.status)) || invoices[0] || null;
 };
-const paymentStatusButtonLabel = (course) => {
-  if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
-  if (isTutoringCourse(course)) return '無須繳費';
-  if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
-  // #4114 (Founder Q3): paid by the legacy flag alone (no Payment) is 需核對, never 已收.
-  if (isLegacyPaidFlagOnly(course)) return LEGACY_FLAG_UNVERIFIED_LABEL;
-  if (monthlyPaymentLabel(course)) return monthlyPaymentLabel(course);
-  if (course?.payment_status === 'review_required') return REVIEW_REQUIRED_LABEL;
-  // Course-level badge: the tuition label map (periodPaymentLabel is for dated monthly rows).
-  const status = course?.payment_status;
-  return TUITION_STATUS_CONFIG[status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid'].label;
-};
+const paymentStatusButtonLabel = (course) => paymentBadge(course).label;
 const paymentNextActionLabel = (course) => {
-  if (isTutoringCourse(course)) return '';
-  if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
-  if (course?.payment_status === 'pending_report') return `查看「${REPORT_STATUS_LABELS.pending}」`;
+  const nextAction = paymentBadge(course).nextAction;
+  if (nextAction === 'none') return '';
+  if (nextAction === 'report_payment') return '登記繳費回報';
+  if (nextAction === 'view_report') return `查看「${REPORT_STATUS_LABELS.pending}」`;
   return '在這裡看帳務';
 };
 const isTutoringCourse = (course) => course?.class_type === 'tutoring';
