@@ -23,6 +23,11 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
     expect(closeFlow).toContain('getDrawerCourse: () => (courseManagerOpen.value ? courseManagerCourse.value : null)');
   });
 
+  it('pause/resume share the close flow\'s per-course lifecycle lock (PR #4159 r4286957773)', () => {
+    expect(source).toMatch(/\} = useCoursePause\(\{\s*courseLock: courseCloseFlow,/);
+    expect(drawerActions).toContain('pause: () => requestCoursePause(c), resume: () => requestCoursePause(c),');
+  });
+
   it('only runs the normal reload, then sets the hidden-course notice (no row injection)', () => {
     expect(closeFlow).toContain('reloadCourses: () => loadCourses(pagination.value.page)');
     expect(closeFlow).toContain('closedCourseNotice.value = closedCourseHiddenNotice({ course, courses: courses.value, courseStatus: filters.value.course_status, pendingReconciliation });');

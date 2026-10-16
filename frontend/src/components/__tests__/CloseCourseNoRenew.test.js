@@ -207,15 +207,28 @@ describe('single-flight close and drawer identity', () => {
     const flow = createCourseCloseFlow({ closeCourse, getDrawerCourse: () => A, closeDrawer });
     const first = flow.closeFromDrawer(A);
     expect(flow.isPending()).toBe(true);
+    expect(flow.isPending(A)).toBe(true);
+    expect(flow.isPending(B)).toBe(false);
     expect(await flow.closeFromDrawer(A)).toBe(false);
-    expect(await flow.close(B)).toBe(false);
+    expect(await flow.close(A)).toBe(false);
     d.resolve(true);
     expect(await first).toBe(true);
     expect(closeCourse).toHaveBeenCalledTimes(1);
     expect(closeDrawer).toHaveBeenCalledTimes(1);
     expect(flow.isPending()).toBe(false);
-    await flow.close(B);
+    await flow.close(A);
     expect(closeCourse).toHaveBeenCalledTimes(2);
+  });
+
+  it('the lock is per course: a pending close of A does not block closing B', async () => {
+    const d = deferred();
+    const closeCourse = vi.fn((c) => (c === A ? d.promise : Promise.resolve(true)));
+    const flow = createCourseCloseFlow({ closeCourse, getDrawerCourse: () => null, closeDrawer: vi.fn() });
+    const first = flow.close(A);
+    expect(await flow.close(B)).toBe(true);
+    expect(closeCourse).toHaveBeenCalledTimes(2);
+    d.resolve(true);
+    expect(await first).toBe(true);
   });
 
   it('releases the lock when the close throws', async () => {

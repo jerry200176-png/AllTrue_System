@@ -2579,6 +2579,7 @@ const {
   isResume: pauseConfirmIsResume, impacts: pauseConfirmImpacts,
   request: requestCoursePause, confirm: confirmCoursePause,
 } = useCoursePause({
+  courseLock: courseCloseFlow,
   onChanged: async () => {
     await loadCourses();
     syncCourseManagerCourseFromList();

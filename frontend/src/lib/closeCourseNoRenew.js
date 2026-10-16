@@ -89,25 +89,32 @@ export function closedCourseHiddenNotice({ course, courses = [], courseStatus = 
 }
 
 /**
- * One close at a time across the row menu and the 管理課程 drawer. A drawer close only dismisses
- * the drawer when it still shows the course that started the close (the user may have opened
- * another course's drawer while the request was pending).
+ * One lifecycle mutation per course at a time: close (row menu + 管理課程 drawer) and pause/resume
+ * (useCoursePause, via `run`) share this per-course lock, because they all POST the same
+ * /student-classes/{id}/pause endpoint and a generic pause would clear a close's closed_reason
+ * (PR #4159 r4286957773). Other courses are not blocked. A drawer close only dismisses the drawer
+ * when it still shows the course that started the close (the user may have opened another
+ * course's drawer while the request was pending).
  */
 export function createCourseCloseFlow({ closeCourse, getDrawerCourse, closeDrawer }) {
-  let pending = false;
-  async function close(course) {
-    if (pending) return false;
-    pending = true;
+  const pendingIds = new Set();
+  const isPending = (course) => (course === undefined ? pendingIds.size > 0 : pendingIds.has(courseIdOf(course)));
+  // Resolves false without calling fn when another lifecycle action for this course is pending.
+  async function run(course, fn) {
+    const id = courseIdOf(course);
+    if (pendingIds.has(id)) return false;
+    pendingIds.add(id);
     try {
-      return await closeCourse(course);
+      return await fn();
     } finally {
-      pending = false;
+      pendingIds.delete(id);
     }
   }
+  const close = (course) => run(course, () => closeCourse(course));
   async function closeFromDrawer(course) {
     const closed = await close(course);
     if (closed && courseIdOf(getDrawerCourse()) === courseIdOf(course)) closeDrawer();
     return closed;
   }
-  return { close, closeFromDrawer, isPending: () => pending };
+  return { close, closeFromDrawer, run, isPending };
 }
