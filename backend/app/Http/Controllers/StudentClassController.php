@@ -625,7 +625,8 @@ class StudentClassController extends Controller
                 $monthlyPayment = $monthlyPayments[(int) $class->ID];
                 $class->setAttribute('monthly_payment', $monthlyPayment);
                 // A report is an administrative claim, not a payment for all periods.
-                if (!($pendingReportId !== null && count($monthlyPayment['periods']) === 1
+                // #4150: a free/gift verdict from the resolver outranks the period summary (its NT$0 period reads paid/review).
+                if ($resolved !== 'free' && !($pendingReportId !== null && count($monthlyPayment['periods']) === 1
                     && $monthlyPayment['periods'][0]['source'] === 'single_period_legacy'
                     && $monthlyPayment['payment_status'] === 'unpaid')) {
                     $class->setAttribute('payment_status', $monthlyPayment['payment_status']);
