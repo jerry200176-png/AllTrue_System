@@ -36,6 +36,7 @@ on:
           - paid_status_shadow_courses
           - inapp_333_multi_teacher_templates
           - billing_correction_past_session_impact
+          - inapp_414_amount_source
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
@@ -99,6 +100,9 @@ jobs:
           TARGET_STUDENT_CLASS_ID: ${{ inputs.student_class_id }}
           EXPECTED_TEACHER_IDS: ${{ inputs.expected_teacher_ids }}
           TARGET_SUBJECT_NAME: ${{ inputs.subject_name }}
+          # inapp_414_amount_source only: the StudentClass ID comes from a production-ssh environment secret, never a
+          # dispatch input. Inputs are printed in this public log's env block; secrets are masked.
+          CASE_INPUT_STUDENT_CLASS_ID: ${{ secrets.CASE_INPUT_STUDENT_CLASS_ID }}
         run: |
           set -euo pipefail
           mkdir -p out
@@ -118,7 +122,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact'}:
+          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -128,7 +132,15 @@ jobs:
           id_cases = {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'contract_xindian_student', 'contract_muzha_student', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang'}
           if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'}):
               raise SystemExit(f'{case} requires student_id')
-          if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'} or not target_student_class_id.isdigit()):
+          if case == 'inapp_414_amount_source':
+              # The ID is read only from the masked secret; any dispatch input is refused so it never reaches the public log.
+              if target_student_id or target_student_class_id:
+                  raise SystemExit('inapp_414_amount_source takes no student_id/student_class_id input; set the CASE_INPUT_STUDENT_CLASS_ID secret')
+              secret_class_id = (os.environ.get('CASE_INPUT_STUDENT_CLASS_ID') or '').strip()
+              if not secret_class_id.isascii() or not secret_class_id.isdigit() or len(secret_class_id) > 12 or int(secret_class_id) <= 0:
+                  raise SystemExit('inapp_414_amount_source requires the CASE_INPUT_STUDENT_CLASS_ID secret as a positive numeric ID')
+              target_student_class_id = secret_class_id
+          if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student', 'inapp_414_amount_source'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           expected_teacher_ids = os.environ.get('EXPECTED_TEACHER_IDS') or ''
           teacher_ids = expected_teacher_ids.split(',') if expected_teacher_ids else []
@@ -1958,6 +1970,172 @@ jobs:
             $out['inferred_weak_sessions'] = array_slice($weak, 0, $cap);
             $out['unmatched_past_cancels'] = array_slice($unmatched, 0, $cap);
             $out['truncated'] = max(count($corrections), count($affected), count($strong), count($weak), count($unresolved), count($unmatched)) > $cap;
+          }} elseif ($case === 'inapp_414_amount_source') {{
+            // in-app #414 (#4155): a course set at 8,800 per lesson shows 應繳 8,000. Which stored amount feeds it?
+            // Founder option A (#4136 comment 6216671699): one StudentClass ID, bound to campus 11 (Student.CampusID).
+            // Output is IDs, amounts, dates, statuses and enums only. Never names, phones, Memo, Note, Description,
+            // reasons, source references, receipt URLs, account digits or JSON blobs (billing_snapshot, pricing_snapshot).
+            // Schema notes (verified against backend/ migrations): StudentClass has no created_at (MDate instead);
+            // Invoice has no voided_at (void = Status 'void'; updated_at shown) and no outstanding column (computed);
+            // InvoiceItem has no qty/unit_price; Payment has no is_void (computed exactly as Invoice::netPaidSql).
+            // Everything runs inside one READ ONLY transaction that is rolled back; any write fails with SQLSTATE 25006.
+            $requiredCampusId = 11;
+            $cap = 200;
+            $conn = app('db')->connection();
+            $sqlContract = <<<'SQL'
+          SELECT sc.ID AS class_id, sc.StudentID AS student_id, s.CampusID AS campus_id, sc.Rate AS rate,
+            sc.rate_unit, sc.SessionCount AS session_count, sc.TotalHours AS total_hours, sc.Charge AS charge,
+            sc.Paid AS paid, sc.Pay AS pay, sc.PayDate AS pay_date, sc.Disconunt AS discount, sc.Stop AS stop,
+            sc.closed_reason, sc.ScheduleMode AS schedule_mode, sc.ClassType AS class_type, sc.PackageID AS package_id,
+            sc.standard_lesson_minutes, sc.deduction_basis, sc.MDate AS mdate
+          FROM StudentClass sc
+          JOIN Student s ON s.id = sc.StudentID
+          WHERE sc.ID = ?
+          SQL;
+            $sqlInvoices = <<<'SQL'
+          SELECT i.id AS invoice_id, i.StudentID AS student_id, i.StudentClassID AS student_class_id, i.Status AS status,
+            i.TotalAmount AS total_amount, i.PaidAmount AS paid_amount_stored, i.billing_period,
+            i.zero_amount_reason, i.ScheduleModeAtIssue AS schedule_mode_at_issue, i.IssueDate AS issue_date,
+            i.DueDate AS due_date, i.created_at, i.updated_at, i.reconciled_at
+          FROM Invoice i
+          WHERE i.StudentClassID = ? OR i.id IN (SELECT ii.InvoiceID FROM InvoiceItem ii WHERE ii.StudentClassID = ?)
+          ORDER BY i.id
+          SQL;
+            // Bills of the same student tied to no contract at all (legacy); shown by ID only, they may be the source.
+            $sqlUnlinked = <<<'SQL'
+          SELECT i.id AS invoice_id, i.Status AS status, i.TotalAmount AS total_amount, i.IssueDate AS issue_date, i.created_at
+          FROM Invoice i
+          WHERE i.StudentID = ? AND i.StudentClassID IS NULL
+            AND NOT EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id AND ii.StudentClassID IS NOT NULL)
+          ORDER BY i.id
+          SQL;
+            $sqlLines = 'SELECT id AS line_id, InvoiceID AS invoice_id, StudentClassID AS student_class_id, Amount AS amount, PeriodStart AS period_start, PeriodEnd AS period_end, created_at FROM InvoiceItem WHERE InvoiceID IN (%s) ORDER BY id';
+            $sqlPayments = 'SELECT id AS payment_id, InvoiceID AS invoice_id, Amount AS amount, Method AS method, payment_report_id AS report_id, PaidAt AS paid_at, created_at FROM Payment WHERE InvoiceID IN (%s) ORDER BY id';
+            $sqlReports = 'SELECT id AS report_id, StudentClassID AS student_class_id, InvoiceID AS invoice_id, reported_amount, payment_method, status, payment_date, payment_id, confirmed_at, voided_at, created_at FROM payment_reports WHERE StudentClassID = ? ORDER BY id';
+            $sqlAmendments = 'SELECT id AS amendment_id, effective_from, rate, rate_unit, created_at, voided_at FROM student_class_pricing_amendments WHERE student_class_id = ? ORDER BY effective_from, id';
+            $sqlAudit = <<<'SQL'
+          SELECT e.id AS audit_id, e.occurred_at, e.event_type, e.outcome, e.subject_ref, e.actor_ref,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.reason_code')) AS reason_code,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.old_charge')) AS old_charge,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.new_charge')) AS new_charge,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.old_session_count')) AS old_session_count,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.new_session_count')) AS new_session_count,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.outstanding_amount')) AS outstanding_amount
+          FROM security_audit_events e
+          WHERE e.subject_ref IN (%s)
+          ORDER BY e.id
+          SQL;
+            $billingEvent = fn (string $t) => (bool) preg_match('/billing|accounting|invoice|payment|charge|contract|pop\\.|repair\\./', $t);
+            $num = fn ($v) => is_numeric($v) ? $v + 0 : null;
+            // The target ID came from a masked secret; the artifact is not masked, so it never carries that ID (or the
+            // student ID). Other contracts' IDs stay numeric.
+            $idOut = fn ($v) => $v === null ? null : ((int) $v === $targetStudentClassId ? 'target' : (int) $v);
+            $reasons = [];
+            $conn->select('SET TRANSACTION READ ONLY', [], false);
+            $conn->beginTransaction();
+            try {{
+              $c = $conn->selectOne($sqlContract, [$targetStudentClassId]);
+              if ($c === null) {{ throw new \\RuntimeException('inapp_414: student_class not found'); }}
+              if ((int) $c->campus_id !== $requiredCampusId) {{ throw new \\RuntimeException('inapp_414: student_class is outside campus 11'); }}
+              $invoices = $conn->select($sqlInvoices, [$targetStudentClassId, $targetStudentClassId]);
+              $unlinked = $conn->select($sqlUnlinked, [(int) $c->student_id]);
+              $invoiceIds = array_map(fn ($r) => (int) $r->invoice_id, $invoices);
+              $in = implode(',', array_map('intval', $invoiceIds));
+              $lines = $invoiceIds === [] ? [] : $conn->select(sprintf($sqlLines, $in));
+              $payments = $invoiceIds === [] ? [] : $conn->select(sprintf($sqlPayments, $in));
+              $reports = $conn->select($sqlReports, [$targetStudentClassId]);
+              $amendments = $conn->select($sqlAmendments, [$targetStudentClassId]);
+              $refKinds = [\\App\\Models\\SecurityAuditEvent::ref('student_class', $targetStudentClassId) => ['student_class', $targetStudentClassId]];
+              foreach ($invoiceIds as $iid) {{ $refKinds[\\App\\Models\\SecurityAuditEvent::ref('invoice', $iid)] = ['invoice', $iid]; }}
+              $placeholders = implode(',', array_fill(0, count($refKinds), '?'));
+              $events = $conn->select(sprintf($sqlAudit, $placeholders), array_keys($refKinds));
+            }} finally {{
+              $conn->rollBack();
+            }}
+            $paymentRows = []; $netPaid = [];
+            foreach ($payments as $p) {{
+              $amount = (int) $p->amount;
+              $isVoid = (string) ($p->method ?? '') === 'void' || $amount < 0;
+              $signed = $isVoid ? -abs($amount) : ($amount > 0 ? $amount : 0);
+              $netPaid[(int) $p->invoice_id] = ($netPaid[(int) $p->invoice_id] ?? 0) + $signed;
+              $paymentRows[] = ['payment_id' => (int) $p->payment_id, 'invoice_id' => (int) $p->invoice_id, 'amount' => $amount,
+                'signed_amount' => $signed, 'method' => $p->method === null ? null : (string) $p->method, 'is_void' => $isVoid,
+                'report_id' => $p->report_id === null ? null : (int) $p->report_id, 'paid_at' => $p->paid_at, 'created_at' => $p->created_at];
+            }}
+            $lineSum = []; $lineSumThisClass = [];
+            $lineRows = array_map(function ($l) use (&$lineSum, &$lineSumThisClass, $targetStudentClassId, $idOut) {{
+              $iid = (int) $l->invoice_id;
+              $lineSum[$iid] = ($lineSum[$iid] ?? 0) + (int) $l->amount;
+              if ((int) $l->student_class_id === $targetStudentClassId) {{ $lineSumThisClass[$iid] = ($lineSumThisClass[$iid] ?? 0) + (int) $l->amount; }}
+              return ['line_id' => (int) $l->line_id, 'invoice_id' => $iid,
+                'student_class_id' => $idOut($l->student_class_id), 'amount' => (int) $l->amount,
+                'period_start' => $l->period_start, 'period_end' => $l->period_end, 'created_at' => $l->created_at];
+            }}, $lines);
+            $invoiceRows = array_map(function ($i) use ($netPaid, $lineSum, $lineSumThisClass, $c, $idOut) {{
+              $iid = (int) $i->invoice_id;
+              $paidNet = max(0, $netPaid[$iid] ?? 0);
+              return ['invoice_id' => $iid, 'student_id_matches_contract' => (int) $i->student_id === (int) $c->student_id,
+                'student_class_id' => $idOut($i->student_class_id),
+                'status' => $i->status === null ? null : (string) $i->status, 'is_void' => (string) $i->status === 'void',
+                'total_amount' => (int) $i->total_amount, 'paid_amount_stored' => (int) $i->paid_amount_stored,
+                'paid_amount_net_payments' => $paidNet, 'outstanding_computed' => max(0, (int) $i->total_amount - $paidNet),
+                'line_sum' => $lineSum[$iid] ?? 0, 'line_sum_this_class' => $lineSumThisClass[$iid] ?? 0,
+                'billing_period' => $i->billing_period, 'zero_amount_reason' => $i->zero_amount_reason,
+                'schedule_mode_at_issue' => $i->schedule_mode_at_issue, 'issue_date' => $i->issue_date, 'due_date' => $i->due_date,
+                'created_at' => $i->created_at, 'updated_at' => $i->updated_at, 'reconciled_at' => $i->reconciled_at];
+            }}, $invoices);
+            $auditRows = []; $otherEvents = 0;
+            foreach ($events as $e) {{
+              if (!$billingEvent((string) $e->event_type)) {{ $otherEvents++; continue; }}
+              [$kind, $sid] = $refKinds[(string) $e->subject_ref] ?? [null, null];
+              $auditRows[] = ['audit_id' => (int) $e->audit_id, 'occurred_at' => $e->occurred_at, 'event_type' => (string) $e->event_type,
+                'outcome' => (string) $e->outcome, 'subject_kind' => $kind, 'subject_id' => $kind === 'invoice' ? $sid : $idOut($sid),
+                'reason_code' => $e->reason_code === 'null' ? null : $e->reason_code, 'actor_ref' => $e->actor_ref,
+                'old_charge' => $num($e->old_charge), 'new_charge' => $num($e->new_charge),
+                'old_session_count' => $num($e->old_session_count), 'new_session_count' => $num($e->new_session_count),
+                'outstanding_amount' => $num($e->outstanding_amount)];
+            }}
+            $oldest = null;
+            foreach ($invoices as $i) {{ if ($i->created_at !== null && ($oldest === null || $i->created_at < $oldest)) {{ $oldest = $i->created_at; }} }}
+            $retentionDays = (int) config('audit.retention_days', 180);
+            if ($oldest !== null && \\Carbon\\Carbon::parse((string) $oldest)->lt(now()->subDays($retentionDays))) {{ $reasons[] = 'audit_history_may_be_purged'; }}
+            if ($invoices === []) {{ $reasons[] = 'no_linked_invoice'; }}
+            if ($unlinked !== []) {{ $reasons[] = 'unlinked_student_invoices_present'; }}
+            if (max(count($invoices), count($lineRows), count($paymentRows), count($reports), count($auditRows), count($unlinked)) > $cap) {{ $reasons[] = 'truncated'; }}
+            $out['read_only_transaction'] = true;
+            $out['campus_bound'] = $requiredCampusId;
+            $out['contract'] = ['class_id' => $idOut($c->class_id), 'campus_id' => (int) $c->campus_id,
+              'rate' => $num($c->rate), 'rate_unit' => $c->rate_unit, 'session_count' => $num($c->session_count),
+              'total_hours' => $num($c->total_hours), 'charge' => $num($c->charge), 'paid' => (int) $c->paid,
+              'pay' => $num($c->pay), 'pay_date' => $c->pay_date, 'discount' => $num($c->discount), 'stop' => (int) $c->stop,
+              'closed_reason' => $c->closed_reason, 'schedule_mode' => $c->schedule_mode, 'class_type' => $c->class_type,
+              'package_id' => $num($c->package_id), 'standard_lesson_minutes' => $num($c->standard_lesson_minutes),
+              'deduction_basis' => $c->deduction_basis, 'mdate' => $c->mdate];
+            $out['pricing_amendments'] = array_map(fn ($a) => ['amendment_id' => (int) $a->amendment_id, 'effective_from' => $a->effective_from,
+              'rate' => (int) $a->rate, 'rate_unit' => $a->rate_unit, 'created_at' => $a->created_at, 'voided_at' => $a->voided_at], array_slice($amendments, 0, $cap));
+            $out['invoices'] = array_slice($invoiceRows, 0, $cap);
+            $out['invoice_lines'] = array_slice($lineRows, 0, $cap);
+            $out['payments'] = array_slice($paymentRows, 0, $cap);
+            $out['payment_reports'] = array_map(fn ($r) => ['report_id' => (int) $r->report_id, 'student_class_id' => $idOut($r->student_class_id),
+              'invoice_id' => $r->invoice_id === null ? null : (int) $r->invoice_id, 'reported_amount' => $num($r->reported_amount),
+              'payment_method' => $r->payment_method, 'status' => $r->status, 'payment_date' => $r->payment_date,
+              'payment_id' => $r->payment_id === null ? null : (int) $r->payment_id, 'confirmed_at' => $r->confirmed_at,
+              'voided_at' => $r->voided_at, 'created_at' => $r->created_at], array_slice($reports, 0, $cap));
+            $out['unlinked_student_invoices'] = array_map(fn ($u) => ['invoice_id' => (int) $u->invoice_id, 'status' => $u->status,
+              'total_amount' => (int) $u->total_amount, 'issue_date' => $u->issue_date, 'created_at' => $u->created_at], array_slice($unlinked, 0, $cap));
+            $out['audit_events'] = array_slice($auditRows, 0, $cap);
+            $out['counts'] = ['invoices' => count($invoices), 'void_invoices' => count(array_filter($invoiceRows, fn ($r) => $r['is_void'])),
+              'invoice_lines' => count($lineRows), 'payments' => count($paymentRows), 'payment_reports' => count($reports),
+              'pricing_amendments' => count($amendments), 'audit_events' => count($auditRows),
+              'non_billing_audit_events_on_subjects' => $otherEvents, 'unlinked_student_invoices' => count($unlinked)];
+            $out['snapshot_complete'] = $reasons === [];
+            $out['reason'] = $reasons === [] ? null : implode(',', $reasons);
+            $out['evidence_limits'] = [
+              'Audit rows match on HMAC subject refs (APP_KEY); a rotated key or an event logged without subject_id is not found.',
+              'security_audit_events are purged after audit.retention_days; older amount changes leave no audit row.',
+              'outstanding_computed and paid_amount_net_payments follow Invoice::netPaidSql; the screen may use another resolver.',
+              'Course management shows 應繳 from the first non-void unpaid/partial invoice (else the first non-void one) of row.invoices.',
+            ];
           }} elseif ($case === 'class_sessions_explain_319') {{
             // in-app #319 (#3069): EXPLAIN + timed paginate() of the /class-sessions index query for the real
             // Teacher Home request shapes. Read-only; plans, timings and row estimates only (no row data).
@@ -2104,6 +2282,9 @@ jobs:
           if obj.get('case') == 'billing_correction_past_session_impact':
               if obj.get('read_only_transaction') is not True or 'counts' not in obj or 'snapshot_complete' not in obj or 'completeness' not in obj:
                   raise SystemExit('billing-correction impact probe did not finish inside its read-only transaction')
+          if obj.get('case') == 'inapp_414_amount_source':
+              if obj.get('read_only_transaction') is not True or obj.get('campus_bound') != 11 or 'snapshot_complete' not in obj or 'contract' not in obj:
+                  raise SystemExit('inapp_414 amount-source probe did not finish inside its read-only campus-11 transaction')
           print('parsed read-only production case', obj.get('case'))
           PY
 
