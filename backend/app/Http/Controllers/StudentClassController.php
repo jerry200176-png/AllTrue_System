@@ -6503,13 +6503,6 @@ class StudentClassController extends Controller
             return $auth;
         }
 
-        $sc = $studentClass;
-
-        // 確認不收（waived）為終態：不可再暫停／恢復，避免欠款重新出現。
-        if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能恢復或變更狀態')) {
-            return $refusal;
-        }
-
         $action = $request->input('action', 'pause');
         $today = Carbon::today()->toDateString();
 
@@ -6517,42 +6510,68 @@ class StudentClassController extends Controller
         $cancelRemaining = $request->boolean('cancel_remaining', true);
         $forfeitRemaining = $request->boolean('forfeit_remaining', false);
 
-        if (!$reason
-            && (string) ($sc->ScheduleMode ?? '') === 'count'
-            && (int) ($sc->Paid ?? 0) === 1
-            && (int) ($sc->RemainingSessions ?? 0) <= 0
-        ) {
-            $reason = 'completed';
-        }
-
-        // 月結制課程停用時，無論剩餘堂數，一律視為完課（completed）
-        if (!$reason && (string) ($sc->ScheduleMode ?? 'count') !== 'count') {
-            $reason = 'completed';
-        }
-
-        $remainingOwed = (int) ($sc->getAttribute('RemainingSessions') ?? 0);
-        $pendingReconciliation = $action === 'pause'
-            && in_array((string) $reason, ['settled', 'completed'], true)
-            && $this->courseNeedsPaymentReconciliation($sc);
-
-        // #1839: count-mode still owes sessions — do not settle/complete and wipe
-        // the leave-cascade tail. Pause (no settled/completed reason) stays allowed.
-        if (
-            $action === 'pause'
-            && !$forfeitRemaining
-            && in_array((string) $reason, ['settled', 'completed'], true)
-            && (string) ($sc->ScheduleMode ?? '') === 'count'
-            && $remainingOwed > 0
-        ) {
-            return response()->json([
-                'message' => "還有 {$remainingOwed} 堂未上，不能結案。請先把請假順延的堂次排好，或確認放棄餘額後再結案。",
-                'error_code' => 'remaining_sessions_unscheduled',
-                'remaining_sessions' => $remainingOwed,
-            ], 422);
-        }
-
+        // #4188: close (結案) and a plain pause/resume share this endpoint. Lock the row first and
+        // decide on its committed state, so two requests for the same course run one after the other.
         DB::beginTransaction();
         try {
+            $sc = StudentClass::query()->whereKey($studentClass->getKey())->lockForUpdate()->first();
+            if (!$sc instanceof StudentClass) {
+                DB::rollBack();
+                return response()->json(['message' => '找不到這門課程，請重新整理頁面。'], 404);
+            }
+
+            // 確認不收（waived）為終態：不可再暫停／恢復，避免欠款重新出現。
+            if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能恢復或變更狀態')) {
+                DB::rollBack();
+                return $refusal;
+            }
+
+            // #4188: a plain pause (no close reason) must not overwrite a close that already
+            // committed, e.g. one sent from another tab a moment earlier; it would clear closed_reason.
+            if ($action === 'pause' && !$reason && $this->courseCloseCommitted($sc)) {
+                DB::rollBack();
+                return response()->json([
+                    'message' => '這門課已經結案，不能再暫停。請重新整理頁面確認課程狀態。',
+                    'error_code' => 'course_already_closed',
+                    'closed_reason' => $sc->getAttribute('closed_reason'),
+                ], 409);
+            }
+
+            if (!$reason
+                && (string) ($sc->ScheduleMode ?? '') === 'count'
+                && (int) ($sc->Paid ?? 0) === 1
+                && (int) ($sc->RemainingSessions ?? 0) <= 0
+            ) {
+                $reason = 'completed';
+            }
+
+            // 月結制課程停用時，無論剩餘堂數，一律視為完課（completed）
+            if (!$reason && (string) ($sc->ScheduleMode ?? 'count') !== 'count') {
+                $reason = 'completed';
+            }
+
+            $remainingOwed = (int) ($sc->getAttribute('RemainingSessions') ?? 0);
+            $pendingReconciliation = $action === 'pause'
+                && in_array((string) $reason, ['settled', 'completed'], true)
+                && $this->courseNeedsPaymentReconciliation($sc);
+
+            // #1839: count-mode still owes sessions — do not settle/complete and wipe
+            // the leave-cascade tail. Pause (no settled/completed reason) stays allowed.
+            if (
+                $action === 'pause'
+                && !$forfeitRemaining
+                && in_array((string) $reason, ['settled', 'completed'], true)
+                && (string) ($sc->ScheduleMode ?? '') === 'count'
+                && $remainingOwed > 0
+            ) {
+                DB::rollBack();
+                return response()->json([
+                    'message' => "還有 {$remainingOwed} 堂未上，不能結案。請先把請假順延的堂次排好，或確認放棄餘額後再結案。",
+                    'error_code' => 'remaining_sessions_unscheduled',
+                    'remaining_sessions' => $remainingOwed,
+                ], 422);
+            }
+
             if ($action === 'pause') {
                 $sc->setAttribute('Stop', 1);
                 if ($reason === 'completed') {
@@ -6610,6 +6629,13 @@ class StudentClassController extends Controller
             DB::rollBack();
             return response()->json(['message' => '操作失敗：' . $e->getMessage()], 500);
         }
+    }
+
+    /** #4188: the locked row already carries a committed close (結案／完課／結清). */
+    private function courseCloseCommitted(StudentClass $sc): bool
+    {
+        return $sc->isUsageSettlementLocked()
+            || ((int) ($sc->getAttribute('Stop') ?? 0) === 1 && (string) ($sc->getAttribute('closed_reason') ?? '') !== '');
     }
 
     /**
