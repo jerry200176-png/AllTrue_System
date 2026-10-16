@@ -70,6 +70,16 @@ jobs:
     environment: production-ssh
     timeout-minutes: 12
     steps:
+      # Public repo: case output goes only into an artifact encrypted with DUMP_ARTIFACT_KEY, the same mechanism as
+      # bug-detail-dump.yml / bug-queue-dump.yml (decrypt locally per docs/sop/BUG_INTAKE_TO_PRODUCTION.md step 5).
+      - name: Require DUMP_ARTIFACT_KEY (fail closed, no plaintext fallback)
+        env:
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
+        run: |
+          if [ "${#DUMP_ARTIFACT_KEY}" -lt 16 ]; then
+            echo "::error::secret DUMP_ARTIFACT_KEY is missing or shorter than 16 chars; refusing to dump (see docs/sop/BUG_INTAKE_TO_PRODUCTION.md)"
+            exit 1
+          fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
@@ -91,6 +101,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
 
       - name: Run bounded read-only production probe
+        id: probe
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
@@ -101,14 +112,14 @@ jobs:
           TARGET_SUBJECT_NAME: ${{ inputs.subject_name }}
         run: |
           set -euo pipefail
-          mkdir -p out
+          mkdir -p -m 700 raw
           if [[ "$CASE_KEY" == "laravel_2833_preflight" ]]; then
             [[ -z "$TARGET_STUDENT_ID" && -z "$TARGET_STUDENT_CLASS_ID" && -z "$EXPECTED_TEACHER_IDS" && "$TARGET_SUBJECT_NAME" == "數學" ]]
             PREFLIGHT_B64=$(base64 -w0 scripts/laravel-2833-preflight.php)
             REQUEST_B64=$(base64 -w0 operations/closeout/laravel-2833-preflight.request.json)
             ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
               -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
-              "PREFLIGHT_B64='$PREFLIGHT_B64' REQUEST_B64='$REQUEST_B64' bash -s" <<'PREFLIGHT' | tee out/production-case.log
+              "PREFLIGHT_B64='$PREFLIGHT_B64' REQUEST_B64='$REQUEST_B64' bash -s" <<'PREFLIGHT' > raw/production-case.log 2> raw/production-case.stderr.log
           set -euo pipefail
           cd /home/admin/backend
           php -r 'eval(substr(base64_decode(getenv("PREFLIGHT_B64"), true), 5)); Laravel2833Preflight::run(json_decode(base64_decode(getenv("REQUEST_B64"), true), true, 512, JSON_THROW_ON_ERROR));'
@@ -2080,14 +2091,14 @@ jobs:
             echo 'php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
           } > "$remote_script"
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' < "$remote_script" | tee out/production-case.log
+            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' < "$remote_script" > raw/production-case.log 2> raw/production-case.stderr.log
           fi
           python3 - <<'PY'
           import json
           from pathlib import Path
-          text = Path('out/production-case.log').read_text(encoding='utf-8', errors='replace')
+          text = Path('raw/production-case.log').read_text(encoding='utf-8', errors='replace')
           obj = next((json.loads(line) for line in text.splitlines() if line.lstrip().startswith('{')), None)
-          Path('out/production-case.json').write_text(json.dumps(obj or {'ok': False, 'log_chars': len(text)}, ensure_ascii=False, indent=2), encoding='utf-8')
+          Path('raw/production-case.json').write_text(json.dumps(obj or {'ok': False, 'log_chars': len(text)}, ensure_ascii=False, indent=2), encoding='utf-8')
           if not obj or not obj.get('ok'):
               raise SystemExit('probe did not return ok JSON')
           if obj.get('case') == 'fixed_slot_campus9_student':
@@ -2107,10 +2118,75 @@ jobs:
           print('parsed read-only production case', obj.get('case'))
           PY
 
-      - name: Upload redacted evidence
+      - name: Encrypt case output (log shows status only)
+        if: always()
+        env:
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
+          CASE_KEY: ${{ inputs.case_key }}
+          PROBE_OUTCOME: ${{ steps.probe.outcome }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p out
+          if [ ! -d raw ] || [ -z "$(find raw -type f -print -quit)" ]; then
+            echo "case=$CASE_KEY probe_outcome=$PROBE_OUTCOME case_output=absent"
+            exit 0
+          fi
+          if [ "${#DUMP_ARTIFACT_KEY}" -lt 16 ]; then
+            echo "::error::DUMP_ARTIFACT_KEY is missing; case output is not uploaded"
+            exit 1
+          fi
+          # Status only, and only in the job log (no step summary): booleans, counts, byte lengths and machine reason tokens. Never case values.
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          token = lambda v: v if isinstance(v, str) and re.fullmatch(r'[a-z0-9_,]{1,200}', v) else (None if v is None else 'withheld')
+          flag = lambda v: v if isinstance(v, bool) or v is None else 'withheld'
+          case = os.environ['CASE_KEY'] if re.fullmatch(r'[a-z0-9_]{1,64}', os.environ['CASE_KEY']) else 'invalid'
+          size = lambda name: Path('raw', name).stat().st_size if Path('raw', name).is_file() else None
+          try:
+              obj = json.loads(Path('raw/production-case.json').read_text(encoding='utf-8'))
+          except Exception:
+              obj = None
+          obj = obj if isinstance(obj, dict) else {}
+          status = {
+              'case': case, 'probe_outcome': token(os.environ.get('PROBE_OUTCOME') or None),
+              'json_present': bool(obj), 'case_matches': obj.get('case') == case, 'ok': flag(obj.get('ok')),
+              'snapshot_complete': flag(obj.get('snapshot_complete')), 'completeness': token(obj.get('completeness')),
+              'reason': token(obj.get('reason')),
+              'bytes': {n: size(n) for n in ('production-case.log', 'production-case.stderr.log', 'production-case.json')},
+          }
+          print('case status:', json.dumps(status, sort_keys=True))
+          PY
+          tar -C raw -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY -out out/production-case.full.tar.gz.enc
+          (cd out && sha256sum production-case.full.tar.gz.enc > production-case.full.tar.gz.enc.sha256)
+          echo "encrypted_bytes=$(stat -c %s out/production-case.full.tar.gz.enc) sha256=$(cut -d' ' -f1 out/production-case.full.tar.gz.enc.sha256)"
+
+      - name: Shred plaintext case output
+        if: always()
+        run: |
+          set -uo pipefail
+          [ -d raw ] && find raw -type f -exec shred -u {} +
+          rm -rf raw
+          for f in /tmp/production_case_probe.php "$RUNNER_TEMP/production-case-remote.sh"; do
+            [ -e "$f" ] && shred -u "$f"
+          done
+          if [ -e raw ] || [ -e /tmp/production_case_probe.php ] || [ -e "$RUNNER_TEMP/production-case-remote.sh" ]; then
+            echo "::error::plaintext case output still present"
+            exit 1
+          fi
+          echo "plaintext shredded"
+
+      - name: Upload encrypted evidence
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: production-case-${{ inputs.case_key }}
-          path: out/production-case.json
+          path: |
+            out/production-case.full.tar.gz.enc
+            out/production-case.full.tar.gz.enc.sha256
+          if-no-files-found: ignore
           retention-days: 14
 
