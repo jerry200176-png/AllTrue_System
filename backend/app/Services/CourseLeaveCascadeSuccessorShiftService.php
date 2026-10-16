@@ -147,15 +147,15 @@ class CourseLeaveCascadeSuccessorShiftService
 
         $blockers = [];
         if ($this->hasApprovedEvaluation((int) $leave->id)) {
-            $blockers[] = ['type' => 'ineligible', 'session_id' => (int) $leave->id, 'message' => '請假堂次已有核准評量'];
+            $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $old->ID, 'session_id' => (int) $leave->id, 'message' => '請假堂次已有核准評量'];
         }
         if ((string) ($successor->scheduling_policy ?? 'auto_recurrence') !== 'auto_recurrence'
             || $successor->isUsageSettlementLocked() || $old->isUsageSettlementLocked()) {
-            $blockers[] = ['type' => 'ineligible', 'session_id' => null, 'message' => '續約課程為手動排課或已結算，無法自動順延'];
+            $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $successor->ID, 'session_id' => null, 'message' => '續約課程為手動排課或已結算，無法自動順延'];
         }
         foreach ($chain as $row) {
             if ($reason = $this->ineligibleReason($row)) {
-                $blockers[] = ['type' => 'ineligible', 'session_id' => (int) $row->id, 'date' => Carbon::parse($row->SessionDate)->toDateString(), 'message' => $reason];
+                $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $successor->ID, 'session_id' => (int) $row->id, 'date' => Carbon::parse($row->SessionDate)->toDateString(), 'message' => $reason];
             }
         }
 
@@ -177,7 +177,7 @@ class CourseLeaveCascadeSuccessorShiftService
         $branchId = (int) (DB::table('Student')->where('id', (int) $old->StudentID)->value('CampusID') ?? 0);
         foreach ($moves as $move) {
             $course = $move['role'] === 'old_tail' ? $old : $successor;
-            $blockers = array_merge($blockers, $this->conflicts($course, $branchId, $move['to'], $movingIds));
+            $blockers = array_merge($blockers, $this->conflicts($course, $branchId, $move['to'], $movingIds, $move['session_id']));
         }
 
         $oldDates = $oldSessions->filter(fn ($s) => strtolower((string) $s->Status) !== 'cancelled')
@@ -273,16 +273,18 @@ class CourseLeaveCascadeSuccessorShiftService
     /**
      * Teacher and classroom load come from the canonical ScheduleGuardService (same student excluded); the
      * student check sees every other live lesson of the student except the rows this plan moves.
+     * Each blocker names the course and moving lesson (null for the new tail) so the UI can link to the fix (Q9a).
      *
      * @param  array{date: string, start: string, end: string}  $to
      * @param  list<int>  $movingIds
      * @return list<array<string, mixed>>
      */
-    private function conflicts(StudentClass $course, int $branchId, array $to, array $movingIds): array
+    private function conflicts(StudentClass $course, int $branchId, array $to, array $movingIds, ?int $sessionId): array
     {
         $out = [];
+        $at = ['course_id' => (int) $course->ID, 'session_id' => $sessionId, 'date' => $to['date'], 'start' => $to['start']];
         foreach ($this->guard->validateCourseOccurrence($course, $branchId, $to['date'], $to['start'], $to['end']) as $c) {
-            $out[] = ['type' => str_contains((string) ($c['type'] ?? ''), 'room') ? 'classroom' : 'teacher', 'date' => $to['date'], 'start' => $to['start'], 'message' => (string) ($c['message'] ?? '時段衝突')];
+            $out[] = ['type' => str_contains((string) ($c['type'] ?? ''), 'room') ? 'classroom' : 'teacher'] + $at + ['message' => (string) ($c['message'] ?? '時段衝突')];
         }
         $studentClash = ClassSession::query()->from('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
@@ -295,7 +297,7 @@ class CourseLeaveCascadeSuccessorShiftService
             ->where('cs.EndTime', '>', $to['start'])
             ->exists();
         if ($studentClash) {
-            $out[] = ['type' => 'student', 'date' => $to['date'], 'start' => $to['start'], 'message' => '學生在此時段已有其他課程'];
+            $out[] = ['type' => 'student'] + $at + ['message' => '學生在此時段已有其他課程'];
         }
 
         return $out;

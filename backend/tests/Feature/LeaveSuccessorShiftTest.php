@@ -56,6 +56,7 @@ class LeaveSuccessorShiftTest extends TestCase
     public function test_preview_lists_every_move_and_apply_shifts_the_renewal_once(): void
     {
         $leaveId = $this->sessions['2026-11-17'];
+        $before = $this->fingerprint();
         $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk();
         $preview->assertJsonPath('applicable', true)->assertJsonPath('eligible', true)->assertJsonPath('blockers', []);
         $moves = $preview->json('moves');
@@ -66,7 +67,7 @@ class LeaveSuccessorShiftTest extends TestCase
             array_map(fn ($m) => $m['from']['date'] . '>' . $m['to']['date'], array_slice($moves, 1))
         );
         $preview->assertJsonPath('old_end_date', '2026-12-01')->assertJsonPath('successor_end_date', '2026-12-29');
-        $this->assertSame($this->fingerprint(), $this->fingerprint(), 'preview must not write');
+        $this->assertSame($before, $this->fingerprint(), 'preview must not write');
 
         $applied = $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk();
         $applied->assertJsonPath('applied', true);
@@ -188,8 +189,12 @@ class LeaveSuccessorShiftTest extends TestCase
         if ($sessionId !== null) {
             $this->assertSame($sessionId, $blockers->first()['session_id']);
         }
+        // Q9(a): every blocker names the course (and lesson, when one moves) the director opens to fix it.
+        $this->assertContains($blockers->first()['course_id'] ?? null, [$this->old, $this->renewal]);
+        $this->assertArrayHasKey('session_id', $blockers->first());
 
-        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertStatus(422);
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])
+            ->assertStatus(422)->assertJsonPath('plan.blockers.0.course_id', $preview->json('blockers.0.course_id'));
         $this->assertSame($before, $this->fingerprint());
     }
 
