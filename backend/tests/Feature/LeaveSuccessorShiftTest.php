@@ -258,6 +258,48 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertSame('scheduled', DB::table('ClassSession')->where('id', $leaveId)->value('Status'));
     }
 
+    /** #4210: a locking Q9 read must see a shift committed after undo's repeatable-read snapshot. */
+    public function test_undo_with_a_stale_snapshot_sees_the_committed_successor_shift(): void
+    {
+        $original = DB::getDefaultConnection();
+        $this->assertSame('mysql', DB::connection()->getDriverName());
+        $this->assertSame(1, DB::transactionLevel());
+        // Publish only these synthetic fixtures to a second connection. Force the next
+        // RefreshDatabase test to migrate again, since this test commits its fixtures.
+        DB::commit();
+        \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
+        config(['database.connections.q9_stale_undo' => config('database.connections.' . $original)]);
+        $undo = DB::connection('q9_stale_undo');
+        $leaveId = $this->sessions['2026-11-17'];
+        $renewalId = $this->sessions['2026-12-01'];
+        try {
+            $undo->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+            $undo->beginTransaction();
+            $this->assertSame('', $undo->table('ClassSession')->where('id', $renewalId)->value('Note'));
+
+            $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->json('preview_token');
+            $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertOk();
+            $before = $this->undoSnapshot();
+            // Demonstrate the stale snapshot is real, not merely sequential requests.
+            $this->assertSame('', $undo->table('ClassSession')->where('id', $renewalId)->value('Note'));
+            DB::setDefaultConnection('q9_stale_undo');
+            $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+                ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])
+                ->assertStatus(422)->assertJsonPath('code', 'undo_leave_successor_shift_active')
+                ->assertJsonPath('affected_lessons.0.session_id', $renewalId);
+            DB::setDefaultConnection($original);
+            $this->assertSame($before, $this->undoSnapshot());
+        } finally {
+            DB::setDefaultConnection($original);
+            while ($undo->transactionLevel() > 0) {
+                $undo->rollBack();
+            }
+            DB::purge('q9_stale_undo');
+            // Keep RefreshDatabase's existing teardown transaction balanced.
+            DB::beginTransaction();
+        }
+    }
+
     private function undoSnapshot(): string
     {
         return (string) json_encode(array_map(fn ($table) => DB::table($table)->get()->all(), [

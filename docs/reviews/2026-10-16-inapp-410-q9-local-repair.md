@@ -36,7 +36,7 @@ role/campus and downstream consumed-lesson guards remain intact.
   200 instead of 422. Two tests, five assertions, one failure; ordinary undo passed.
 - GREEN: `source /workspace/cloud-dev/activate.sh` then
   `bash scripts/phpunit-isolated.sh -d memory_limit=512M --filter '(Leave|ScheduleGuard|ClassSession)'`:
-  **335 tests, 1659 assertions, PASS**, ephemeral loopback MariaDB with unique
+  **336 tests, 1669 assertions, PASS**, ephemeral loopback MariaDB with unique
   synthetic test schema, not production.
 - New coverage: both undo endpoints, active shift with flag OFF, past/completed
   renewal lessons, desynced leave sign-in, unrelated leave-ID prefix, original
@@ -45,12 +45,64 @@ role/campus and downstream consumed-lesson guards remain intact.
 - Initial broader run hit the environment's 128 MB PHP memory limit; the bounded
   rerun above passed with 512 MB. No tracked runtime config changed.
 - `git diff --check`: PASS. `node scripts/arch-fitness-check.mjs`: PASS (15 checks).
-- PHPStan on all three touched production files: two `isset.variable` errors in
-  unchanged ScheduleController code (current lines 294 and 330; base 291 and 327).
-  A separate baseline-file analysis reproduces these same two errors, but also
-  loses path-specific baseline suppression, so it is not a clean comparison run.
-  No baseline or suppression was changed. PHPStan restricted to the two touched
-  services passes with no errors.
+- PHPStan same-path comparison against a detached worktree at the exact unchanged
+  base uses the identical command in each backend directory:
+  `vendor/bin/phpstan analyse --configuration phpstan.neon --no-progress --memory-limit=512M --error-format=json app/Http/Controllers/ScheduleController.php app/Services/CourseLeaveCascadeService.php app/Services/CourseLeaveCascadeSuccessorShiftService.php`.
+  Both exit 1 with exactly two file diagnostics and no general errors:
+
+  | Identifier | Exact message | Base line | Final line |
+  | --- | --- | --- | --- |
+  | `isset.variable` | Variable $courseMeta in isset() always exists and is not nullable. | 291 | 294 |
+  | `isset.variable` | Variable $courseMeta in isset() always exists and is not nullable. | 327 | 330 |
+
+  The corresponding source lines are byte-identical (`&& isset($courseMeta)` and
+  `if ($courseId > 0 && isset($courseMeta)`); three added import lines explain
+  the offsets. Normalized identifier/message/line comparisons match exactly:
+  **zero new diagnostics**. The detached base retains normal relative file paths
+  and path-specific baseline rules. The two touched services pass separately.
+  No baseline/suppression change. Evidence JSON:
+  `/workspace/scratch/q9-phpstan-base.json` and `q9-phpstan-head.json`.
+  Config SHA-256, identical in both worktrees:
+  `phpstan.neon`: `c23eed3f68ec9ab8c641ab32c3e1b2db4e5a7d882da1c3d840cc49efea230152`;
+  `phpstan-baseline.neon`: `906cffbcfb6b5adada6862dc1fd504481c725ea968a3d2d8316f539add549d73`.
+
+## Bounded transaction and stale-state verification
+
+Source inspection finds these transaction boundaries and lock sequences:
+
+| Path | Transaction and lock sequence |
+| --- | --- |
+| Shift apply | `apply()` opens transaction, re-plans; old course lock, old session locks, successor course/session locks; all move/tail/end-date writes commit together. |
+| Schedule-ID undo | Controller transaction; shared service locks old course, old sessions, then Q9 affected rows; refusal throws before restore/delete and rolls back. |
+| Session-ID undo | Controller transaction; selected session lock, old course lock; shared service locks old sessions and affected rows. Desync branch invokes Q9 before voiding sign-ins. |
+
+The shared old-course lock serializes ordinary apply/undo writes. By-session undo
+can first hold the selected session while apply holds the old course: the inverse
+order can deadlock; InnoDB must abort a transaction, not commit partial work.
+No retry policy or lock-order change is included; #4210 already tracks that work.
+
+The smallest regression for the stale-state safety concern uses two independent
+MariaDB connections in `test_undo_with_a_stale_snapshot_sees_the_committed_successor_shift`:
+
+1. Commit synthetic fixtures so both connections can observe them. Establish a
+   REPEATABLE READ snapshot on the undo connection with empty renewal note.
+2. Preview/apply on the primary connection and commit its real service transaction.
+3. Prove a normal read on the undo connection still sees the empty note.
+4. Invoke the real by-session undo endpoint on that stale connection. Its locking
+   reads see the committed provenance, return 422 with affected lesson ID, and
+   leave all six authoritative table snapshots unchanged.
+
+The test restores/purges connections and forces the next RefreshDatabase test to
+migrate, avoiding leaked committed fixtures. It needs no fork, sleeps or timing
+assumption. GREEN: **1 test, 10 assertions**. Mutation: remove only Q9 query's
+`lockForUpdate()`; test fails with **expected 422, received 200** (1 test, 7
+assertions, 1 failure). Restore the locking read: related suite passes with the
+final counts above. Production code is unchanged from `a3e4a469`.
+
+This proves the relevant committed-shift/stale-undo interleaving, not every
+possible concurrent interleaving or deadlock recovery. Default-OFF integration is
+safe within this bounded evidence; lock-order/liveness remains a pre-enable
+#4210 dependency and exact-head CI remains required.
 
 ## Independent bounded review
 
@@ -59,13 +111,17 @@ blocking findings. Reviewed diff SHA-256:
 `7c14658e9f9f82e10f6583245994fcb9f0faff22568f86b7ade55c28f0912e4d`.
 Review covered shared-service and desync paths, marker matching, restored slots,
 consumed lessons, campus/role preservation and scope. Reviewer did not rerun tests.
+A second bounded independent review found no issues with the stale-snapshot test,
+fixture cleanup, or validity of the PHPStan comparison. Its reviewed test-diff
+SHA-256 is `494d7da545f0b6f0a4e8d11c93fe3b881bc919a7542c1e9e216ce447c11fb307`.
 
 ## Risks, rollback and remaining integration
 
-- Runtime concurrency interleavings were not tested. Existing inverse lock order
-  between by-session undo and shift apply remains in #4210's separate pre-enable
-  lock-order work. Guard uses row locks inside existing endpoint transactions;
-  it makes no partial writes. Direct service callers must retain a transaction.
+- The committed-shift/stale-undo interleaving is verified above. Simultaneous
+  inverse lock acquisition and engine deadlock recovery are not simulated;
+  existing lock-order/liveness work remains in #4210 before activation. Direct
+  service callers must retain a transaction. No new blocker prevents integration
+  of this guard with the activation flag OFF, subject to exact-head required CI.
 - Existing empty-campus permissiveness in undo endpoints is unchanged; this
   patch does not claim an authorization audit or fix it.
 - Provenance provides original date/start only. Missing/malformed/lost notes or
