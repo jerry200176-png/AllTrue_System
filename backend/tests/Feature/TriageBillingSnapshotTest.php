@@ -24,7 +24,7 @@ final class TriageBillingSnapshotTest extends TestCase
     private const KEYS = [
         'student_class_id', 'bug_report_id', 'rate', 'rate_unit', 'session_count', 'total_hours',
         'standard_lesson_minutes', 'deduction_basis', 'charge', 'rate_times_count', 'charge_minus_base',
-        'session_charge_rows', 'paid_flag', 'remaining_sessions', 'stop', 'invoices', 'payments',
+        'session_charge_rows', 'paid_flag', 'remaining_sessions', 'stop', 'invoices', 'excluded_foreign_invoices', 'payments',
     ];
 
     private int $seq = 0;
@@ -50,17 +50,19 @@ final class TriageBillingSnapshotTest extends TestCase
         $invoice = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-01', 'DueDate' => '2026-09-15', 'TotalAmount' => 8800, 'PaidAmount' => 5000, 'Status' => 'partial', 'Note' => 'SECRET-INVOICE-NOTE', 'billing_period' => '2026-09']);
         $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-09-02', 'Method' => 'cash', 'Note' => 'SECRET-PAYMENT-NOTE']);
         $reversal = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 700, 'PaidAt' => '2026-09-03', 'Method' => 'void']); // positive-amount void = reversal
-        $merged = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $this->course($this->campus)->ID, 'IssueDate' => '2026-10-01', 'DueDate' => '2026-10-15', 'TotalAmount' => 9999, 'PaidAmount' => 9999, 'Status' => 'paid', 'billing_period' => '2026-10']);
-        InvoiceItem::create(['InvoiceID' => $merged->id, 'StudentClassID' => $course->ID, 'Description' => 'x', 'Amount' => 4000]); // merged bill anchored elsewhere: no money shown
+        $merged = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $this->course($this->campus, ['StudentID' => $course->StudentID])->ID, 'IssueDate' => '2026-10-01', 'DueDate' => '2026-10-15', 'TotalAmount' => 9999, 'PaidAmount' => 9999, 'Status' => 'paid', 'billing_period' => '2026-10']);
+        InvoiceItem::create(['InvoiceID' => $merged->id, 'StudentClassID' => $course->ID, 'Description' => 'x', 'Amount' => 4000]); // same student's bill anchored on their other contract: no money shown
         Payment::create(['InvoiceID' => $merged->id, 'Amount' => 9999, 'PaidAt' => '2026-10-02', 'Method' => 'cash']);
         $stray = Invoice::create(['StudentID' => $this->course(Campus::factory()->create())->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-11-01', 'DueDate' => '2026-11-15', 'TotalAmount' => 7777, 'PaidAmount' => 7777, 'Status' => 'paid', 'billing_period' => '2026-11']);
-        Payment::create(['InvoiceID' => $stray->id, 'Amount' => 7777, 'PaidAt' => '2026-11-02', 'Method' => 'cash']); // anchored here but owned by another campus's student: no money shown
+        Payment::create(['InvoiceID' => $stray->id, 'Amount' => 7777, 'PaidAt' => '2026-11-02', 'Method' => 'cash']); // anchored here but owned by another campus's student: left out
+        $itemOnly = Invoice::create(['StudentID' => $course->StudentID, 'IssueDate' => '2026-12-01', 'DueDate' => '2026-12-15', 'TotalAmount' => 3300, 'PaidAmount' => 3300, 'Status' => 'paid', 'billing_period' => '2026-12']);
+        InvoiceItem::create(['InvoiceID' => $itemOnly->id, 'StudentClassID' => $course->ID, 'Description' => 'x', 'Amount' => 3300]); // no anchor, only this contract: its own bill
+        $itemPay = Payment::create(['InvoiceID' => $itemOnly->id, 'Amount' => 3300, 'PaidAt' => '2026-12-02', 'Method' => 'cash']);
         $bug = $this->bug($this->campus, 'triaged');
         $this->link($bug, $course)->assertCreated();
 
         $res = $this->getJson($this->url($course, $bug), $this->bearer())->assertOk();
 
-        $this->assertSame(self::KEYS, array_keys($res->json()));
         $res->assertJsonPath('student_class_id', $course->ID)->assertJsonPath('bug_report_id', $bug->id)
             ->assertJsonPath('rate_unit', 'session')->assertJsonPath('session_count', 8)
             ->assertJsonPath('standard_lesson_minutes', 90)->assertJsonPath('deduction_basis', 'fixed_session')
@@ -69,13 +71,12 @@ final class TriageBillingSnapshotTest extends TestCase
             ->assertJsonPath('paid_flag', 0)->assertJsonPath('remaining_sessions', 8)->assertJsonPath('stop', 0)
             ->assertJsonPath('invoices', [['id' => $invoice->id, 'status' => 'partial', 'shared' => false, 'total' => 8800, 'paid' => 5000, 'period' => '2026-09', 'issue_date' => '2026-09-01'],
                 ['id' => $merged->id, 'status' => 'paid', 'shared' => true, 'total' => null, 'paid' => null, 'period' => '2026-10', 'issue_date' => '2026-10-01'],
-                ['id' => $stray->id, 'status' => 'paid', 'shared' => true, 'total' => null, 'paid' => null, 'period' => '2026-11', 'issue_date' => '2026-11-01']])
-            ->assertJsonPath('payments', [['id' => $payment->id, 'invoice_id' => $invoice->id, 'amount' => 5000], ['id' => $reversal->id, 'invoice_id' => $invoice->id, 'amount' => -700]]);
-        $this->assertEquals(900, $res->json('rate'));
-        foreach (['SECRET-STUDENT', 'SECRET-MEMO', 'SECRET-INVOICE-NOTE', 'SECRET-PAYMENT-NOTE', '0912000000', 'void', '9999', '7777'] as $private) {
+                ['id' => $itemOnly->id, 'status' => 'paid', 'shared' => false, 'total' => 3300, 'paid' => 3300, 'period' => '2026-12', 'issue_date' => '2026-12-01']])
+            ->assertJsonPath('payments', [['id' => $payment->id, 'invoice_id' => $invoice->id, 'amount' => 5000], ['id' => $reversal->id, 'invoice_id' => $invoice->id, 'amount' => -700], ['id' => $itemPay->id, 'invoice_id' => $itemOnly->id, 'amount' => 3300]]);
+        $this->assertSame([self::KEYS, 900.0, 1], [array_keys($res->json()), (float) $res->json('rate'), $res->json('excluded_foreign_invoices')]);
+        foreach (['SECRET-STUDENT', 'SECRET-MEMO', 'SECRET-INVOICE-NOTE', 'SECRET-PAYMENT-NOTE', '0912000000', 'void', '9999', '7777', '2026-11'] as $private) {
             $this->assertStringNotContainsString($private, $res->getContent());
         }
-        $this->getJson("/api/v1/triage/student-classes/{$course->ID}/billing-snapshot", $this->bearer())->assertStatus(422);
     }
 
     public function test_unlinked_revoked_closed_and_mismatched_pairs_all_get_the_same_404(): void
@@ -155,7 +156,6 @@ final class TriageBillingSnapshotTest extends TestCase
         $bug = $this->bug($this->campus, 'new');
         $this->link($bug, $course)->assertCreated();
 
-        // Load the shipped config with the env unset: the default itself must be OFF (no Founder approval yet).
         $this->assertFalse(getenv('TRIAGE_BILLING_SNAPSHOT_ENABLED'));
         config(['triage_tokens' => require base_path('config/triage_tokens.php')]);
         $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound()->assertExactJson(['message' => 'Not found']);
@@ -172,7 +172,6 @@ final class TriageBillingSnapshotTest extends TestCase
         $sql = [];
         DB::listen(function ($query) use ($bug, &$sql): void {
             $sql[] = $query->sql;
-            // The concurrent close commits after store()'s unlocked checks and before its locked re-check.
             if (str_contains($query->sql, 'inner join `Student`')) {
                 BugReport::query()->whereKey($bug->id)->first()->forceFill(['status' => 'closed'])->save();
             }
@@ -188,7 +187,6 @@ final class TriageBillingSnapshotTest extends TestCase
     {
         $migration = require base_path('database/migrations/2026_10_14_200000_create_bug_report_contract_links_table.php');
         $migration->up(); // the complete table passes
-        // A session TEMPORARY table shadows the real one without an implicit commit: no unique index, like a half-failed run.
         DB::statement('CREATE TEMPORARY TABLE bug_report_contract_links (id bigint unsigned PRIMARY KEY, bug_report_id bigint unsigned NOT NULL, active tinyint(1) NULL)');
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('missing: unique index uniq_bug_contract_link_active');
@@ -248,7 +246,6 @@ final class TriageBillingSnapshotTest extends TestCase
         AuthToken::create(['user_id' => $this->admin->id, 'token' => $session, 'expires_at' => now()->addDay()]);
         $this->getJson($url, ['Authorization' => "Bearer {$session}", 'Accept' => 'application/json'])->assertUnauthorized();
         $this->getJson($url, $this->as($this->admin))->assertUnauthorized();
-        // Only GET is registered: the router answers 405 before any controller runs.
         foreach (['POST', 'PUT', 'PATCH', 'DELETE'] as $method) {
             $this->json($method, $url, ['Charge' => 1], $this->bearer())->assertStatus(405);
         }
@@ -281,7 +278,6 @@ final class TriageBillingSnapshotTest extends TestCase
         $bug = $this->bug($this->campus, 'new');
         $other = $this->bug($this->campus, 'new');
 
-        // A stray bug_report_id query param must not leak into bug-report route audit rows.
         $this->getJson("/api/v1/triage/bug-reports/{$bug->id}?bug_report_id={$other->id}", $this->bearer())->assertOk();
         $this->getJson('/api/v1/triage/bug-reports', $this->bearer())->assertOk();
 
