@@ -88,10 +88,13 @@ class RecordStudentSwipe
         }
 
         // TD-007: duplicate sign-in guard — 若同一個 ClassSession 當天已有未作廢的記錄則不重複建立
+        // Locking (current) read under the course lock above: a plain read would use the
+        // transaction snapshot and miss a sign-in another swipe committed meanwhile.
         if ($classSessionId !== null) {
             $existingSignIn = StudentSignIn::where('StudentID', $student->id)
                 ->where('ClassSessionID', $classSessionId)
                 ->whereNull('VoidedAt')
+                ->lockForUpdate()
                 ->first();
 
             if ($existingSignIn) {
