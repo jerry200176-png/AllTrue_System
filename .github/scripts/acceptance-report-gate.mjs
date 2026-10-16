@@ -5,11 +5,11 @@ const campusNineOnlyTitle = 'contracted four-session detail explains two unarran
 // #4150: scope=payments only (not in `all`). These may end `skipped` only through their own
 // "not-exercised:" skip, i.e. the live campus had no case for that rule; any other skip fails.
 const paymentTests = [
-  ['payment-display-production.spec.js', 282, 3, '學生管理: free courses read 免費／贈送 and 未繳 only when unpaid'],
-  ['payment-display-production.spec.js', 327, 3, '課程查找: free courses read 免費／贈送 and 未繳 only when unpaid'],
-  ['payment-display-production.spec.js', 448, 3, '帳務: a waived course reads 不收了 and offers no payment action'],
-  ['payment-display-production.spec.js', 452, 3, '帳務: a legacy paid flag with no standing payment reads 需核對'],
-  ['payment-display-production.spec.js', 456, 3, '帳務: payments that net to zero show no 繳費日'],
+  ['payment-display-production.spec.js', 298, 3, '學生管理: free courses read 免費／贈送 and 未繳 only when unpaid'],
+  ['payment-display-production.spec.js', 343, 3, '課程查找: free courses read 免費／贈送 and 未繳 only when unpaid'],
+  ['payment-display-production.spec.js', 464, 3, '帳務: a waived course reads 不收了 and offers no payment action'],
+  ['payment-display-production.spec.js', 468, 3, '帳務: a legacy paid flag with no standing payment reads 需核對'],
+  ['payment-display-production.spec.js', 472, 3, '帳務: payments that net to zero show no 繳費日'],
 ];
 const NOT_EXERCISED_SKIP = /^not-exercised: [A-Za-z0-9 _]+$/;
 const COVERAGE_NOTE = /^[a-z0-9_]+=\d+$/;
@@ -90,6 +90,11 @@ export function summarizeReport(report) {
   }
   const count = (status) => collectTests(report).filter((item) => item.status === status).length;
   lines.push(`acceptance-summary expected=${count('expected')} skipped=${count('skipped')} unexpected=${count('unexpected')} flaky=${count('flaky')}`);
+  const notExercised = collectTests(report).filter(isNotExercisedSkip).length;
+  if (notExercised > 0) {
+    lines.push(`acceptance-coverage exercised=${count('expected')} not_exercised=${notExercised}`);
+    if (count('expected') === 0) lines.push('acceptance-verdict INCONCLUSIVE zero coverage (not an acceptance)');
+  }
   return lines;
 }
 
@@ -111,6 +116,10 @@ export function validateReport(report, branchId, scope = 'all') {
     if (item.status !== 'expected' || item.resultStatuses.length === 0 || item.resultStatuses.some((status) => status !== 'passed')) {
       throw new Error(`acceptance did not pass cleanly: ${key(item)} status=${item.status} results=${item.resultStatuses.join(',')}`);
     }
+  }
+  // A payments run where every rule was not exercised proves nothing about the display: inconclusive, never accepted.
+  if (scope === 'payments' && !actual.some((item) => item.status === 'expected')) {
+    throw new Error('acceptance INCONCLUSIVE: zero coverage, every payments rule was not exercised');
   }
 }
 
@@ -199,6 +208,19 @@ function selfTest() {
   for (const scope of ['all', 'calendar']) {
     if (expectedTests(16, scope).some((item) => item.file === 'payment-display-production.spec.js')) throw new Error(`payments leaked into ${scope}`);
   }
+  // payments: all five not exercised is INCONCLUSIVE (summary says so, gate fails), even with no failure.
+  const allSkipped = makeReport(16, 'payments');
+  allSkipped.suites[0].specs.forEach((spec) => {
+    spec.tests[0] = { projectName: 'chromium', status: 'skipped', results: [{ status: 'skipped' }],
+      annotations: [{ type: 'skip', description: 'not-exercised: no case' }] };
+  });
+  let inconclusive = '';
+  try { validateReport(allSkipped, 16, 'payments'); } catch (error) { inconclusive = String(error.message); }
+  if (!inconclusive.includes('INCONCLUSIVE')) throw new Error('self-test accepted a zero-coverage payments run');
+  if (!summarizeReport(allSkipped).includes('acceptance-verdict INCONCLUSIVE zero coverage (not an acceptance)')) {
+    throw new Error('self-test summary did not flag zero coverage');
+  }
+  if (summarizeReport(notExercised).some((line) => line.includes('INCONCLUSIVE'))) throw new Error('self-test flagged a partially exercised run');
   console.log('acceptance-report-gate self-test: ok');
 }
 

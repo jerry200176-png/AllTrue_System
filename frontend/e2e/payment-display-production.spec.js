@@ -32,6 +32,7 @@ const TELEMETRY_PATH = '/api/v1/adoption/events';
 // Reads the app sends as POST (query in the body; StudentClassController::sessionDates writes nothing). They are
 // still aborted, so no non-GET leaves the browser, but counted as blocked reads rather than write attempts.
 const POST_READ_PATHS = ['/api/v1/student-classes/session-dates'];
+const PROBE_PATH = '/api/v1/__acceptance_write_probe';
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const UNPAID_LABEL = TUITION_STATUS_CONFIG.unpaid.label;
 // Bounded sample: UI students per surface, API ledger reads used to pick cases, UI ledgers per rule.
@@ -191,7 +192,10 @@ async function openReadOnly(page) {
     window.fetch = (input, init = {}) => {
       const method = String(init.method || input?.method || 'GET').toUpperCase();
       const url = typeof input === 'string' ? input : input?.url || String(input || '');
-      if (!reads.includes(method) && !isTelemetry(method, url)) return Promise.reject(reject(method, url));
+      if (!reads.includes(method) && !isTelemetry(method, url)) {
+        // fetch() never throws synchronously: a blocked call returns a rejected promise, like a network error.
+        try { reject(method, url); } catch (error) { return Promise.reject(error); }
+      }
       return nativeFetch(input, init);
     };
     const xhrOpen = XMLHttpRequest.prototype.open;
@@ -234,11 +238,23 @@ async function openReadOnly(page) {
   await page.goto('/');
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
   await dismissOverlays(page);
-  // Prove both guards are live before any assertion relies on them.
-  const fetchBlocked = await page.evaluate(() => fetch('/api/v1/__acceptance_write_probe', { method: 'POST' })
-    .then(() => false, () => true));
-  expect(fetchBlocked, 'in-page fetch write guard is active').toBe(true);
-  await page.evaluate(() => { window.__readOnlyViolations = []; });
+  // Any write the app attempted while loading is a failure; it is never cleared.
+  expect(await page.evaluate(() => window.__readOnlyViolations), 'application write attempts during startup').toEqual([]);
+  expect(blocked, 'network write attempts during startup').toEqual([]);
+  // Prove the in-page guard is live before any assertion relies on it. The probe must come back as a rejected
+  // promise (not a synchronous throw), be recorded exactly once, and is the only record removed.
+  const probe = await page.evaluate(async (probePath) => {
+    let threw = false;
+    let pending;
+    try { pending = window.fetch(probePath, { method: 'POST' }); } catch { threw = true; }
+    const rejected = pending ? await pending.then(() => false, () => true) : false;
+    const matches = window.__readOnlyViolations.filter((v) => v.method === 'POST' && v.path === probePath);
+    const others = window.__readOnlyViolations.filter((v) => !(v.method === 'POST' && v.path === probePath));
+    window.__readOnlyViolations = others;
+    return { threw, rejected, recorded: matches.length, others };
+  }, PROBE_PATH);
+  expect(probe, 'in-page fetch write guard rejects the synthetic probe asynchronously and records it once')
+    .toEqual({ threw: false, rejected: true, recorded: 1, others: [] });
   return {
     async blockedPostReads() { return Number(await page.evaluate(() => window.__blockedPostReads)); },
     async assertNoWrites() {
