@@ -58,6 +58,9 @@ final class TriageBillingSnapshotTest extends TestCase
         $itemOnly = Invoice::create(['StudentID' => $course->StudentID, 'IssueDate' => '2026-12-01', 'DueDate' => '2026-12-15', 'TotalAmount' => 3300, 'PaidAmount' => 3300, 'Status' => 'paid', 'billing_period' => '2026-12']);
         InvoiceItem::create(['InvoiceID' => $itemOnly->id, 'StudentClassID' => $course->ID, 'Description' => 'x', 'Amount' => 3300]); // no anchor, only this contract: its own bill
         $itemPay = Payment::create(['InvoiceID' => $itemOnly->id, 'Amount' => 3300, 'PaidAt' => '2026-12-02', 'Method' => 'cash']);
+        $mixed = Invoice::create(['StudentID' => $course->StudentID, 'IssueDate' => '2027-01-01', 'DueDate' => '2027-01-15', 'TotalAmount' => 5500, 'PaidAmount' => 5500, 'Status' => 'paid', 'billing_period' => '2027-01']);
+        foreach ([$course->ID, null] as $line) { InvoiceItem::create(['InvoiceID' => $mixed->id, 'StudentClassID' => $line, 'Description' => 'x', 'Amount' => 2750]); } // a line with no contract: shared, no money
+        Payment::create(['InvoiceID' => $mixed->id, 'Amount' => 5500, 'PaidAt' => '2027-01-02', 'Method' => 'cash']);
         $bug = $this->bug($this->campus, 'triaged');
         $this->link($bug, $course)->assertCreated();
 
@@ -71,10 +74,11 @@ final class TriageBillingSnapshotTest extends TestCase
             ->assertJsonPath('paid_flag', 0)->assertJsonPath('remaining_sessions', 8)->assertJsonPath('stop', 0)
             ->assertJsonPath('invoices', [['id' => $invoice->id, 'status' => 'partial', 'shared' => false, 'total' => 8800, 'paid' => 5000, 'period' => '2026-09', 'issue_date' => '2026-09-01'],
                 ['id' => $merged->id, 'status' => 'paid', 'shared' => true, 'total' => null, 'paid' => null, 'period' => '2026-10', 'issue_date' => '2026-10-01'],
-                ['id' => $itemOnly->id, 'status' => 'paid', 'shared' => false, 'total' => 3300, 'paid' => 3300, 'period' => '2026-12', 'issue_date' => '2026-12-01']])
+                ['id' => $itemOnly->id, 'status' => 'paid', 'shared' => false, 'total' => 3300, 'paid' => 3300, 'period' => '2026-12', 'issue_date' => '2026-12-01'],
+                ['id' => $mixed->id, 'status' => 'paid', 'shared' => true, 'total' => null, 'paid' => null, 'period' => '2027-01', 'issue_date' => '2027-01-01']])
             ->assertJsonPath('payments', [['id' => $payment->id, 'invoice_id' => $invoice->id, 'amount' => 5000], ['id' => $reversal->id, 'invoice_id' => $invoice->id, 'amount' => -700], ['id' => $itemPay->id, 'invoice_id' => $itemOnly->id, 'amount' => 3300]]);
         $this->assertSame([self::KEYS, 900.0, 1], [array_keys($res->json()), (float) $res->json('rate'), $res->json('excluded_foreign_invoices')]);
-        foreach (['SECRET-STUDENT', 'SECRET-MEMO', 'SECRET-INVOICE-NOTE', 'SECRET-PAYMENT-NOTE', '0912000000', 'void', '9999', '7777', '2026-11'] as $private) {
+        foreach (['SECRET-STUDENT', 'SECRET-MEMO', 'SECRET-INVOICE-NOTE', 'SECRET-PAYMENT-NOTE', '0912000000', 'void', '9999', '7777', '2026-11', '5500'] as $private) {
             $this->assertStringNotContainsString($private, $res->getContent());
         }
     }
@@ -142,9 +146,7 @@ final class TriageBillingSnapshotTest extends TestCase
 
     public function test_student_moved_to_another_campus_after_linking_is_404(): void
     {
-        $course = $this->course($this->campus);
-        $bug = $this->bug($this->campus, 'new');
-        $this->link($bug, $course)->assertCreated();
+        $this->link($bug = $this->bug($this->campus, 'new'), $course = $this->course($this->campus))->assertCreated();
         DB::table('Student')->where('id', $course->StudentID)->update(['CampusID' => Campus::factory()->create()->id]);
 
         $this->getJson($this->url($course, $bug), $this->bearer())->assertNotFound();
@@ -152,9 +154,7 @@ final class TriageBillingSnapshotTest extends TestCase
 
     public function test_flag_off_answers_404_even_for_a_live_link(): void
     {
-        $course = $this->course($this->campus);
-        $bug = $this->bug($this->campus, 'new');
-        $this->link($bug, $course)->assertCreated();
+        $this->link($bug = $this->bug($this->campus, 'new'), $course = $this->course($this->campus))->assertCreated();
 
         $this->assertFalse(getenv('TRIAGE_BILLING_SNAPSHOT_ENABLED'));
         config(['triage_tokens' => require base_path('config/triage_tokens.php')]);
