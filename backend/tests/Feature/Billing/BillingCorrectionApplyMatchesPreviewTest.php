@@ -9,6 +9,7 @@ use App\Models\InvoiceItem;
 use App\Models\SessionDeductionLedger;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\Billing\BillingCorrection;
@@ -157,6 +158,43 @@ class BillingCorrectionApplyMatchesPreviewTest extends TestCase
 
         $this->assertDatabaseHas('ClassSession', ['id' => $tail->id, 'Status' => 'scheduled']);
         $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 4, 'Charge' => 4400]);
+    }
+
+    public function test_a_past_leave_recorded_only_by_sign_in_neither_blocks_nor_consumes_quota(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-15 12:00:00', 'Asia/Taipei'));
+        [$token] = $this->director();
+        [$course, $s] = $this->mixedCourse();
+        // Legacy leave: active StudentSingIn leave row, ClassSession left `scheduled`.
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $course->StudentID, 'CampusID' => 1,
+            'ClassSessionID' => $s['past']->id, 'SignInDT' => '2026-10-08 15:00:00', 'SignOutDT' => '2026-10-08 17:00:00', 'Status' => 'leave']);
+
+        $preview = $this->preview($token, $course, 1, 1100);
+        $previewIds = collect($preview->json('affected_scheduled_sessions'))->pluck('session_id')->all();
+        $this->assertSame([$s['today']->id, $s['tomorrow']->id, $s['later']->id], $previewIds);
+        $this->confirm($token, $course, 1, 1100, $preview->json('confirmation_token'))->assertOk();
+
+        $this->assertDatabaseHas('ClassSession', ['id' => $s['past']->id, 'Status' => 'scheduled']);
+        $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 1, 'Charge' => 1100]);
+    }
+
+    public function test_attended_rows_reserve_quota_before_an_older_unrecorded_reservation(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-15 12:00:00', 'Asia/Taipei'));
+        [$token, $actorId] = $this->director();
+        $course = $this->course($this->student()->id, ['SessionCount' => 2, 'Charge' => 2200, 'RemainingSessions' => 1, 'UsedSessions' => 1]);
+        $past = $this->scheduled($course, '2026-10-08');
+        $attended = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-10-14', 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'attended']);
+        SessionDeductionLedger::create(['student_class_id' => $course->ID, 'class_session_id' => $attended->id, 'event_type' => 'deduct', 'source' => 'attendance', 'minutes' => 120]);
+
+        $this->preview($token, $course, 1, 1100, 422)
+            ->assertJsonPath('code', 'billing_correction_past_unrecorded_sessions')
+            ->assertJsonPath('past_unrecorded_sessions.0.session_id', $past->id);
+        $response = $this->applyDirectly($course, 1, 1100, str_repeat('0', 64), $actorId);
+        $this->assertSame('billing_correction_past_unrecorded_sessions', json_decode((string) $response->getContent(), true)['code']);
+
+        $this->assertDatabaseHas('ClassSession', ['id' => $past->id, 'Status' => 'scheduled']);
+        $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 2, 'Charge' => 2200]);
     }
 
     private function applyDirectly(StudentClass $course, int $count, int $charge, string $confirmationToken, int $actorId)
