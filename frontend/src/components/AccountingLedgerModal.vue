@@ -651,7 +651,9 @@ const packageLeadOf = (c) => {
   const pending = (payload.value?.receipts || []).find((r) => r.status === 'pending' && members.some((m) => Number(m.id) === Number(r.student_class_id)));
   if (!pending && members.filter((m) => owedFor(m.id) > 0).length > 1) return c;
   return (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
-    || members.find((m) => !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid)) || members[0]; // #4205: a waiver is terminal
+    // #4205: a waiver is terminal (Paid=0 only), so a member that still owes leads before a waived one.
+    || members.find((m) => !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
+    || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];
 };
 const packageLead = (c) => packageLeadOf(c).id === c.id;
 // Multiple existing member bills cannot share one batch: the first report blocks siblings. Keep explicit card actions.
