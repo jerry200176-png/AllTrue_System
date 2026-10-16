@@ -36,8 +36,72 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: inapp-production-writeback
+  cancel-in-progress: false
+
 jobs:
+  preview:
+    # Runs before the approval so the reviewer sees exactly what will be written.
+    name: Preview the in-app write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Show the requested write
+        env:
+          BUG_ID: ${{ inputs.bug_id }}
+          EXPECTED_STATUS: ${{ inputs.expected_status }}
+          ISSUE_URL: ${{ inputs.github_issue_url }}
+          PROD_REV: ${{ inputs.production_revision }}
+          DEPLOY_RUN: ${{ inputs.deploy_run_id }}
+          PUBLIC_REPLY: ${{ inputs.public_reply }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## In-app write requested (approve only if this matches the reviewed list)"
+            echo
+            printf -- '- bug_id: %s\n' "$BUG_ID"
+            printf -- '- expected_status: %s\n' "$EXPECTED_STATUS"
+            printf -- '- github_issue_url: %s\n' "$ISSUE_URL"
+            printf -- '- production_revision: %s\n' "$PROD_REV"
+            printf -- '- deploy_run_id: %s\n' "$DEPLOY_RUN"
+            echo
+            echo "**Public reply**"
+            echo
+            printf '%s\n' "$PUBLIC_REPLY" | sed 's/^/> /'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  approve:
+    # Founder approval gate. Secrets stay on production-ssh (main-only); this job holds none.
+    name: Founder approval for production write
+    needs: preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production-activation
+    steps:
+      - name: Verify production-activation protection
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          env_json="$(gh api "/repos/$REPO/environments/production-activation")"
+          printf '%s' "$env_json" | python3 -c '
+          import json, sys
+          env = json.load(sys.stdin)
+          rules = env.get("protection_rules") or []
+          if not any(r.get("type") == "required_reviewers" for r in rules):
+              raise SystemExit("production-activation has no required reviewer; refusing to write")
+          if env.get("can_admins_bypass") is not False:
+              raise SystemExit("production-activation allows admin bypass; refusing to write")
+          policy = env.get("deployment_branch_policy") or {}
+          if policy.get("custom_branch_policies") is not True:
+              raise SystemExit("production-activation is not main-only; refusing to write")
+          print("production-activation verified: required reviewer, no admin bypass, custom branch policy")
+          '
+
   comment:
+    needs: approve
     runs-on: ubuntu-latest
     environment: production-ssh
     timeout-minutes: 15

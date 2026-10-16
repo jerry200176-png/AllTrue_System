@@ -23,6 +23,25 @@ for (const workflow of workflows) {
   assert.ok(!source.includes('PUBLIC_REPLY=\\$(printf %q'), `${workflow} must not interpolate raw reply text`);
 }
 
+// Every production write waits for the Founder reviewer on production-activation,
+// after a preview job that shows the exact request. Secrets stay on production-ssh.
+for (const [workflow, writeJob] of [
+  ['.github/workflows/bug-phase-a-triage.yml', 'triage'],
+  ['.github/workflows/bug-followup-comment.yml', 'comment'],
+]) {
+  const source = fs.readFileSync(workflow, 'utf8');
+  assert.match(source, /\n  approve:\n[\s\S]*?    needs: preview\n[\s\S]*?    environment: production-activation\n/,
+    `${workflow} must gate on production-activation after the preview job`);
+  assert.ok(source.includes(`\n  ${writeJob}:\n    needs: approve\n    runs-on: ubuntu-latest\n    environment: production-ssh\n`),
+    `${workflow} write job must need the approval job`);
+  assert.ok(source.includes('group: inapp-production-writeback') && source.includes('cancel-in-progress: false'),
+    `${workflow} must serialize in-app writes`);
+  const preview = source.match(/\n  preview:\n([\s\S]*?)\n  approve:\n/);
+  assert.ok(preview && !/secrets\./.test(preview[1]) && !/environment:/.test(preview[1]),
+    `${workflow} preview job must hold no secrets or environment`);
+  assert.ok(!/`\$[A-Z_]+`/.test(source), `${workflow} must not use backtick command substitution on inputs`);
+}
+
 const phaseASource = fs.readFileSync('.github/workflows/bug-phase-a-triage.yml', 'utf8');
 assert.ok(
   phaseASource.includes('DISPOSITION: ${{ inputs.disposition }}')
