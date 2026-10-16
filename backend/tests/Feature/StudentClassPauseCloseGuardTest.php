@@ -115,6 +115,77 @@ class StudentClassPauseCloseGuardTest extends TestCase
         $this->assertSame('settled', $course->closed_reason);
     }
 
+    public function test_resume_after_committed_close_is_refused_and_row_unchanged(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));
+        [$token, $course] = $this->fixture(['RemainingSessions' => 2, 'UsedSessions' => 6]);
+        $past = $this->createClassSession((int) $course->ID, '2026-10-10', 'attended');
+        $future = $this->createClassSession((int) $course->ID, '2026-10-20', 'scheduled');
+
+        $this->postJson(
+            "/api/v1/student-classes/{$course->ID}/pause",
+            ['action' => 'pause', 'reason' => 'settled', 'forfeit_remaining' => true],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertOk();
+        $before = (array) DB::table('StudentClass')->where('ID', $course->ID)->first();
+        $futureNote = DB::table('ClassSession')->where('id', $future)->value('Note');
+
+        $this->postJson(
+            "/api/v1/student-classes/{$course->ID}/pause",
+            ['action' => 'resume'],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertStatus(409)
+            ->assertJsonPath('error_code', 'course_closed_use_renewal')
+            ->assertJsonPath('closed_reason', 'settled');
+
+        $this->assertSame($before, (array) DB::table('StudentClass')->where('ID', $course->ID)->first());
+        $this->assertSame('attended', DB::table('ClassSession')->where('id', $past)->value('Status'));
+        $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $future)->value('Status'));
+        $this->assertSame($futureNote, DB::table('ClassSession')->where('id', $future)->value('Note'));
+    }
+
+    public function test_resume_after_pending_reconciliation_close_is_refused(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));
+        [$token, $course] = $this->fixture(['Paid' => 0, 'Charge' => 8000]);
+        $this->close($token, $course)->assertOk();
+
+        $this->postJson(
+            "/api/v1/student-classes/{$course->ID}/pause",
+            ['action' => 'resume'],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertStatus(409)->assertJsonPath('error_code', 'course_closed_use_renewal');
+
+        $course->refresh();
+        $this->assertSame(1, (int) $course->Stop);
+        $this->assertSame('settled_pending', $course->closed_reason);
+    }
+
+    public function test_resume_of_merely_paused_course_still_works(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));
+        [$token, $course] = $this->fixture(['RemainingSessions' => 3, 'UsedSessions' => 5]);
+        $future = $this->createClassSession((int) $course->ID, '2026-10-20', 'scheduled');
+
+        $this->postJson(
+            "/api/v1/student-classes/{$course->ID}/pause",
+            ['action' => 'pause'],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertOk();
+        $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $future)->value('Status'));
+
+        $this->postJson(
+            "/api/v1/student-classes/{$course->ID}/pause",
+            ['action' => 'resume'],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertOk()->assertJsonPath('restored_count', 1);
+
+        $course->refresh();
+        $this->assertSame(0, (int) $course->Stop);
+        $this->assertNull($course->closed_reason);
+        $this->assertSame('scheduled', DB::table('ClassSession')->where('id', $future)->value('Status'));
+    }
+
     /** @return array{0: string, 1: StudentClass} */
     private function fixture(array $overrides = []): array
     {
