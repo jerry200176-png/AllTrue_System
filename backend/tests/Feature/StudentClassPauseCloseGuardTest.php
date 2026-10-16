@@ -203,6 +203,23 @@ class StudentClassPauseCloseGuardTest extends TestCase
         $this->assertSame('settled', $course->closed_reason);
     }
 
+    public function test_plain_pause_keeps_a_close_reason_when_stop_has_drifted_to_zero(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));
+        [$token, $course] = $this->fixture(['RemainingSessions' => 3, 'UsedSessions' => 5, 'Stop' => 0]);
+        DB::table('StudentClass')->where('ID', $course->ID)->update(['closed_reason' => 'settled']);
+
+        $this->postJson(
+            "/api/v1/student-classes/{$course->ID}/pause",
+            ['action' => 'pause'],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertStatus(409)->assertJsonPath('error_code', 'course_already_closed');
+
+        $course->refresh();
+        $this->assertSame(0, (int) $course->Stop);
+        $this->assertSame('settled', $course->closed_reason);
+    }
+
     /** @return array{0: string, 1: StudentClass} */
     private function fixture(array $overrides = []): array
     {

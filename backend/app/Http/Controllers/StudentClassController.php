@@ -6650,11 +6650,14 @@ class StudentClassController extends Controller
         }
     }
 
-    /** #4188: the locked row already carries a committed close (結案／完課／結清). */
+    /**
+     * #4188: the locked row already carries a committed close (結案／完課／結清). A stored close reason
+     * counts even when Stop has drifted to 0 (legacy rows; the client treats the reason as authoritative).
+     */
     private function courseCloseCommitted(StudentClass $sc): bool
     {
         return $sc->isUsageSettlementLocked()
-            || ((int) ($sc->getAttribute('Stop') ?? 0) === 1 && (string) ($sc->getAttribute('closed_reason') ?? '') !== '');
+            || (string) ($sc->getAttribute('closed_reason') ?? '') !== '';
     }
 
     /**

@@ -256,6 +256,29 @@ describe('useCoursePause on a closed course', () => {
     expect(authedFetch).not.toHaveBeenCalled();
   });
 
+  it('a stale resume of a trial converted elsewhere uses the returned reason, never the renewal entry (Codex r4293113561)', async () => {
+    authedFetch.mockResolvedValue(res(false, { error_code: 'course_closed_use_renewal', closed_reason: 'converted_trial' }));
+    const askClosed = vi.fn();
+    const openRenewal = vi.fn();
+    const p = useCoursePause({ onChanged, notify, askClosed, openRenewal });
+    p.request({ ...paused, class_type: 'trial' });
+    await p.confirm();
+    expect(notify).toHaveBeenCalledWith(CONVERTED_TRIAL_RESUME_MESSAGE);
+    expect(askClosed).not.toHaveBeenCalled();
+    expect(openRenewal).not.toHaveBeenCalled();
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('a pause refused with course_already_closed clears the dialog and reloads (Codex r4293113553)', async () => {
+    authedFetch.mockResolvedValue(res(false, { error_code: 'course_already_closed', message: '這門課已經結案，不能再暫停。請重新整理頁面確認課程狀態。' }));
+    const p = make();
+    p.request(active);
+    await p.confirm();
+    expect(notify).toHaveBeenCalledWith('這門課已經結案，不能再暫停。請重新整理頁面確認課程狀態。');
+    expect(p.target.value).toBeNull();
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
   it('a merely paused course (no closed_reason) still resumes', async () => {
     authedFetch.mockResolvedValue(res(true, {}));
     const askClosed = vi.fn();

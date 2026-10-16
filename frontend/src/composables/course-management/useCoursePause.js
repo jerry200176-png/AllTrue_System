@@ -72,9 +72,17 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
       }, token);
       const json = await res.json().catch(() => ({}));
       if (!res.ok && json.error_code === 'course_closed_use_renewal') {
-        // The list was stale: the course closed elsewhere. Same explanation as a closed row.
+        // The list was stale: the course closed elsewhere. Explain it with the server's close reason
+        // (a trial converted elsewhere must not be sent back to conversion), then reload.
         target.value = null;
-        await explainClosed(course);
+        await explainClosed({ ...course, status: 'inactive', closed_reason: json.closed_reason || course.closed_reason });
+        await onChanged();
+        return;
+      }
+      if (!res.ok && json.error_code === 'course_already_closed') {
+        // A pause after another tab's close: show the server message and reload so the row is fresh.
+        target.value = null;
+        notify(json.message || '這門課已經結案，不能再暫停。');
         await onChanged();
         return;
       }
