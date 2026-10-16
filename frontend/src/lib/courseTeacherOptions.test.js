@@ -31,3 +31,98 @@ assert.equal(
   true,
   'non-editing forms may still clear stale teacher selections'
 );
+
+// in-app #411: the create-course picker (SmartCalendar 快速排課) must hide deactivated teachers.
+import { buildCreateTeacherOptions, resolveCreateTeacherId } from './courseTeacherOptions.js';
+import { readFileSync } from 'node:fs';
+
+const calendarTeachers = [
+  { id: 7, username: '王老師', status: 'active' },
+  { id: 9, username: '停用老師', status: 'inactive' },
+  { id: 10, username: '暫停老師', status: 'suspended' },
+  { id: 11, username: '舊資料老師' },
+];
+const createOptions = buildCreateTeacherOptions(calendarTeachers);
+assert.deepEqual(
+  createOptions.map((t) => t.id),
+  [7, 11],
+  'new-course picker must exclude non-active teachers but keep legacy rows without status'
+);
+assert.equal(createOptions[0].name, '王老師');
+
+// Edit flow still shows a now-deactivated historical teacher.
+const editOptions = buildEditTeacherOptions(createOptions, { teacher_id: 9, teacher_name: '停用老師' });
+assert.equal(editOptions[0].id, 9, 'editing must still show the course\'s historical (deactivated) teacher');
+
+const calendarPage = readFileSync(new URL('../pages/SmartCalendar.vue', import.meta.url), 'utf8');
+assert.match(
+  calendarPage,
+  /const schedulerTeachers = computed\(\(\) => buildCreateTeacherOptions\(teachers\.value\)\)/,
+  'SmartCalendar create-course scheduler must use buildCreateTeacherOptions'
+);
+const calendarLoader = readFileSync(new URL('../composables/calendar/useCalendarDataLoad.js', import.meta.url), 'utf8');
+assert.match(calendarLoader, /status: t\?\.status \?\? null/, 'calendar teacher loader must keep status for filtering');
+
+// Codex P2 (#4157): create options keep branch metadata the scheduler / availability
+// planner read for branch labels and eligibility.
+const branchCreateOptions = buildCreateTeacherOptions([
+  { id: '7', username: '王老師', status: 'active', branch_ids: [2, 3], branch_id: 2, email: 't7@example.test' },
+]);
+assert.deepEqual(branchCreateOptions[0].branch_ids, [2, 3], 'create options must keep branch_ids');
+assert.equal(branchCreateOptions[0].branch_id, 2, 'create options must keep branch_id');
+assert.equal(branchCreateOptions[0].email, 't7@example.test', 'create options must keep other source fields');
+assert.equal(branchCreateOptions[0].id, 7, 'id is normalized to a number');
+assert.equal(branchCreateOptions[0].name, '王老師', 'name is normalized');
+
+// Codex P2 (#4157): clicking an empty cell under a deactivated / historical teacher
+// column must not seed that teacher into the create picker.
+assert.equal(resolveCreateTeacherId(9, createOptions), '', 'deactivated teacher id from a cell click is cleared');
+assert.equal(resolveCreateTeacherId('10', createOptions), '', 'string ids of suspended teachers are cleared too');
+assert.equal(resolveCreateTeacherId(404, createOptions), '', 'unknown historical teacher id is cleared');
+assert.equal(resolveCreateTeacherId(7, createOptions), 7, 'active teacher id is kept');
+assert.equal(resolveCreateTeacherId('7', createOptions), '7', 'active teacher id keeps its original form');
+assert.equal(resolveCreateTeacherId('', createOptions), '', 'empty stays empty');
+assert.equal(resolveCreateTeacherId(null, createOptions), '', 'null becomes empty');
+assert.match(
+  calendarPage,
+  /const onSlotClick = [\s\S]*?teacher_id: resolveCreateTeacherId\(teacherId, schedulerTeachers\.value, createTeacherSeedOptions\(\)\)/,
+  'SmartCalendar cell click must validate the seeded teacher against the create options'
+);
+assert.match(
+  calendarPage,
+  /:initial-teacher-id="schedulerInitialTeacherId"/,
+  'create scheduler must receive the validated initial teacher id'
+);
+assert.match(
+  calendarPage,
+  /const schedulerInitialTeacherId = computed\(\(\) => resolveCreateTeacherId\(modalForm\.value\.teacher_id, schedulerTeachers\.value, createTeacherSeedOptions\(\)\)\)/,
+  'initial teacher id must be re-validated against the create options'
+);
+
+// Codex P2 round 2 (#4157): when the teachers request is slower than the course
+// request, the grid already shows a course-derived teacher column while the
+// create options are still empty. The seed must survive until teachers load.
+assert.equal(resolveCreateTeacherId(7, [], { loaded: false }), 7, 'active seed is kept while teachers are loading');
+assert.equal(resolveCreateTeacherId('7', [], { loaded: false }), '7', 'string seed keeps its form while loading');
+assert.equal(resolveCreateTeacherId(9, [], { loaded: false }), 9, 'seed is not judged before the list exists');
+assert.equal(resolveCreateTeacherId('', [], { loaded: false }), '', 'empty seed stays empty while loading');
+assert.equal(resolveCreateTeacherId(7, createOptions, { loaded: true }), 7, 'active seed is kept once loaded');
+assert.equal(resolveCreateTeacherId(9, createOptions, { loaded: true }), '', 'deactivated seed is cleared once loaded');
+assert.equal(resolveCreateTeacherId(7, [], { loaded: true }), '', 'loaded empty list clears the seed (no assignable teacher)');
+assert.match(
+  calendarPage,
+  /const createTeacherSeedOptions = \(\) => \(\{ loaded: teachersLoaded\.value \}\)/,
+  'SmartCalendar must pass the teacher loaded flag to the seed resolver'
+);
+assert.match(
+  calendarLoader,
+  /const loadTeachers = async \(\) => \{\s*const seq = \+\+teachersRequestSeq;[\s\S]*?teachersLoaded\.value = false;/,
+  'teacher loader must reset readiness at the start of every fetch (campus switch, #4157 review)'
+);
+assert.match(
+  calendarLoader,
+  /if \(!isLatest\(\)\) return;\s*teachers\.value = next;\s*teachersLoaded\.value = true;/,
+  'only the latest teacher request may publish options and readiness'
+);
+
+console.log('courseTeacherOptions tests passed');

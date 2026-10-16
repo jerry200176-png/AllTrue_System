@@ -64,6 +64,61 @@ class BillingPayableResolver
     }
 
     /**
+     * #4114 (Founder Q3): which contracts / packages have a receipt still standing (net Payment > 0, the mayOwe ledger) on a
+     * non-void invoice of the contract or of any course in its package (a package bill sits on one member). A paid status
+     * outside these sets rests on the legacy StudentClass.Paid / CoursePackage.paid flag alone: shown 需核對, never 已收,
+     * and still never owed. Same receipt / reversal ledger as lastPaidAtByStudentClassIds (#4123): an invoice with net > 0 is
+     * exactly one that still has an unreversed receipt, so a receipt cancelled by a reversal is not evidence. Read-only.
+     *
+     * Package expansion stays inside the package owner's own courses (StudentClass.StudentID = course_packages.student_id)
+     * and, when given, the caller's authorized campuses: a course of another student or campus linked to the same PackageID
+     * by bad data is never read, so its ledger cannot clear this caller's 需核對 (#4174 review).
+     *
+     * @param int[] $studentClassIds
+     * @param int[] $packageIds
+     * @param int[]|null $campusIds the caller's authorized campuses; null = unrestricted (super admin / teacher scope)
+     * @return array{classes: array<int, true>, packages: array<int, true>}
+     */
+    public function validPaymentEvidence(array $studentClassIds, array $packageIds = [], ?array $campusIds = null): array
+    {
+        $ids = collect($studentClassIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
+        $packageOf = $ids === [] ? [] : StudentClass::query()->whereIn('ID', $ids)->where('PackageID', '>', 0)
+            ->pluck('PackageID', 'ID')->map(fn ($p) => (int) $p)->all();
+        $packages = collect($packageIds)->map(fn ($id) => (int) $id)->merge(array_values($packageOf))->filter(fn (int $id) => $id > 0)->unique()->values()->all();
+        $campuses = $campusIds === null ? null : array_values(array_unique(array_map('intval', $campusIds)));
+        $members = $packages === [] || $campuses === [] ? [] : DB::table('StudentClass')
+            ->join('course_packages', 'course_packages.id', '=', 'StudentClass.PackageID')
+            ->whereIn('StudentClass.PackageID', $packages)
+            ->whereColumn('StudentClass.StudentID', 'course_packages.student_id')
+            ->when($campuses !== null, fn ($q) => $q->join('Student', 'Student.id', '=', 'StudentClass.StudentID')
+                ->whereIn('Student.CampusID', $campuses))
+            ->pluck('StudentClass.PackageID', 'StudentClass.ID')->mapWithKeys(fn ($p, $id) => [(int) $id => (int) $p])->all();
+        $scope = array_values(array_unique(array_merge($ids, array_keys($members))));
+        $paid = $scope === [] ? [] : DB::table('Invoice')
+            ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->whereIn('Invoice.StudentClassID', $scope)
+            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
+            ->groupBy('Invoice.id', 'Invoice.StudentClassID')
+            ->havingRaw("SUM(CASE WHEN Payment.Amount < 0 OR Payment.Method = 'void' THEN -ABS(Payment.Amount) ELSE Payment.Amount END) > 0")
+            ->pluck('Invoice.StudentClassID')->mapWithKeys(fn ($id) => [(int) $id => true])->all();
+        $paidPackages = [];
+        foreach ($members as $classId => $packageId) {
+            if (isset($paid[$classId])) {
+                $paidPackages[$packageId] = true;
+            }
+        }
+        $classes = [];
+        foreach ($ids as $id) {
+            // A seed reads its package's receipts only when it is itself an in-scope member of that package.
+            if (isset($paid[$id]) || (isset($members[$id]) && isset($paidPackages[$members[$id]]))) {
+                $classes[$id] = true;
+            }
+        }
+
+        return ['classes' => $classes, 'packages' => $paidPackages];
+    }
+
+    /**
      * F7 S1: course-level paid status over ALL non-void invoices (additive; byStudentClassIds is unchanged).
      *
      * status: free (tutoring / zero-fee) > review_required (monthly period that cannot be attributed)
@@ -332,7 +387,12 @@ class BillingPayableResolver
     }
 
     /**
-     * Batch-fetch the latest Payment.PaidAt (Y-m-d) per StudentClass ID via Invoice.StudentClassID -> Payment.InvoiceID.
+     * Batch-fetch the latest valid receipt date (Y-m-d) per StudentClass ID (#4123), from the same net Payment ledger the
+     * resolver projects (mayOwe / InvoiceAmountReconciliationService): a receipt is a positive, non-void row; a reversal is
+     * a negative row or a `Method='void'` row of any sign. Per non-void invoice, reversals are applied in write order; see
+     * latestUnreversedReceiptDate for how each one is matched to the receipt it reverses. A date counts only from a receipt
+     * that still has a positive amount after that, so an invoice whose net applied is 0 gives no date. Void invoices are
+     * ignored.
      *
      * @param  int[]  $studentClassIds
      * @return array<int, string>  only classes that have a dated payment
@@ -347,18 +407,117 @@ class BillingPayableResolver
             ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->whereIn('Invoice.StudentClassID', $studentClassIds)
             ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
-            ->select('Invoice.StudentClassID', DB::raw('MAX(Payment.PaidAt) as last_paid_at'))
-            ->groupBy('Invoice.StudentClassID')
+            // a legacy-backfilled receipt is linked only one way, via payment_reports.payment_id (BackfillLegacyPayments)
+            ->leftJoin('payment_reports as reversed_report', 'reversed_report.id', '=', 'Payment.payment_report_id')
+            ->select('Invoice.StudentClassID', 'Payment.InvoiceID', 'Payment.id', 'Payment.Amount', 'Payment.Method', 'Payment.PaidAt',
+                'Payment.payment_report_id', 'reversed_report.payment_id as report_payment_id')
+            ->orderBy('Payment.id')
             ->get();
 
         $map = [];
-        foreach ($rows as $row) {
-            if ($row->last_paid_at) {
-                $map[(int) $row->StudentClassID] = substr($row->last_paid_at, 0, 10);
+        foreach ($rows->groupBy('InvoiceID') as $payments) {
+            $classId = (int) $payments->first()->StudentClassID;
+            $date = $this->latestUnreversedReceiptDate($payments);
+            if ($date !== null && (!isset($map[$classId]) || $date > $map[$classId])) {
+                $map[$classId] = $date;
             }
         }
 
         return $map;
+    }
+
+    /**
+     * IDs of the given contracts that have any Payment row at all (void invoices and reversal rows included). Only a
+     * contract with no Payment history may fall back to the legacy StudentClass.PayDate for 最近繳費 (#4123).
+     *
+     * @param  int[]  $studentClassIds
+     * @return array<int, true>
+     */
+    public function studentClassIdsWithPaymentHistory(array $studentClassIds): array
+    {
+        if (empty($studentClassIds)) {
+            return [];
+        }
+
+        return DB::table('Invoice')
+            ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->whereIn('Invoice.StudentClassID', $studentClassIds)
+            ->distinct()
+            ->pluck('Invoice.StudentClassID')
+            ->mapWithKeys(fn ($id) => [(int) $id => true])
+            ->all();
+    }
+
+    /**
+     * One invoice's ledger, rows in write (id) order. Each reversal, in write order, cancels:
+     *  1. the receipt it is explicitly linked to: the receipt with the same payment_report_id, or the receipt its payment
+     *     report points to through payment_reports.payment_id (legacy backfill rows carry no payment_report_id);
+     *  2. what is left, only receipts written before it (a reversal cannot reverse a later repayment): the single earlier
+     *     receipt whose standing amount equals the remainder, otherwise the oldest earlier receipts first, so an ambiguous
+     *     reversal fails safe to keeping the newest receipt's date;
+     *  3. anything still left (no earlier receipt to reverse) nets against later receipts, oldest first, so an invoice whose
+     *     net applied is 0 never gives a date.
+     *
+     * @param  Collection<int, object>  $payments
+     */
+    private function latestUnreversedReceiptDate(Collection $payments): ?string
+    {
+        $isReversal = fn ($p) => (int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void';
+        $receipts = $payments->filter(fn ($p) => !$isReversal($p) && (int) ($p->Amount ?? 0) > 0)
+            ->map(fn ($p) => ['left' => (int) $p->Amount, 'paid_at' => (string) ($p->PaidAt ?? ''), 'id' => (int) $p->id,
+                'report' => $p->payment_report_id === null ? null : (int) $p->payment_report_id])
+            ->values()->all();
+        // oldest first: by receipt date, then write order
+        usort($receipts, fn ($a, $b) => [$a['paid_at'], $a['id']] <=> [$b['paid_at'], $b['id']]);
+        $orphaned = 0;
+        foreach ($payments->filter($isReversal) as $reversal) {
+            $amount = abs((int) ($reversal->Amount ?? 0));
+            $report = $reversal->payment_report_id === null ? null : (int) $reversal->payment_report_id;
+            $reportPayment = ($reversal->report_payment_id ?? null) === null ? null : (int) $reversal->report_payment_id;
+            if ($report !== null || $reportPayment !== null) {
+                $amount = $this->cancelReceipts($receipts, $amount, fn ($r) => ($report !== null && $r['report'] === $report)
+                    || ($reportPayment !== null && $r['id'] === $reportPayment));
+            }
+            $earlier = fn ($r) => $r['id'] < (int) $reversal->id;
+            $exact = array_keys(array_filter($receipts, fn ($r) => $earlier($r) && $r['left'] > 0 && $r['left'] === $amount));
+            if ($amount > 0 && count($exact) === 1) {
+                $receipts[$exact[0]]['left'] = 0;
+                $amount = 0;
+            }
+            $orphaned += $this->cancelReceipts($receipts, $amount, $earlier);
+        }
+        $this->cancelReceipts($receipts, $orphaned, fn () => true);
+
+        $latest = null;
+        foreach ($receipts as $receipt) {
+            if ($receipt['left'] > 0 && $receipt['paid_at'] !== '' && ($latest === null || $receipt['paid_at'] > $latest)) {
+                $latest = $receipt['paid_at'];
+            }
+        }
+
+        return $latest === null ? null : substr($latest, 0, 10);
+    }
+
+    /**
+     * Cancel up to $amount from the matching receipts in their (oldest-first) order; returns what could not be cancelled.
+     *
+     * @param  array<int, array{left: int, paid_at: string, id: int, report: int|null}>  $receipts
+     */
+    private function cancelReceipts(array &$receipts, int $amount, callable $matches): int
+    {
+        foreach ($receipts as &$receipt) {
+            if ($amount <= 0) {
+                break;
+            }
+            if ($receipt['left'] > 0 && $matches($receipt)) {
+                $take = min($amount, $receipt['left']);
+                $receipt['left'] -= $take;
+                $amount -= $take;
+            }
+        }
+        unset($receipt);
+
+        return $amount;
     }
 
     /** @return array<string, int|string|null> */

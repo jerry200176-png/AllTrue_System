@@ -1436,7 +1436,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, monthlyPaymentLabel, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions, REVIEW_REQUIRED_LABEL,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -4167,7 +4167,7 @@ const paymentStatusButtonClass = (course) => {
   if (isTutoringBillingAnomaly(course)) return 'tag-billing-anomaly';
   if (isTutoringCourse(course)) return 'tag-no-payment';
   if (course?.monthly_payment?.review_required || course?.payment_status === 'review_required') return 'tag-pending-report';
-  if (course?.payment_status === 'paid') return 'tag-paid';
+  if (course?.payment_status === 'paid') return isLegacyPaidFlagOnly(course) ? 'tag-pending-report' : 'tag-paid';
   if (course?.payment_status === 'pending_report') return 'tag-pending-report';
   return 'tag-unpaid';
 };
@@ -4179,6 +4179,8 @@ const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isTutoringCourse(course)) return '無須繳費';
   if (effectiveClosedReason(course) === 'waived') return WAIVED_LABEL;
+  // #4114 (Founder Q3): paid by the legacy flag alone (no Payment) is 需核對, never 已收.
+  if (isLegacyPaidFlagOnly(course)) return LEGACY_FLAG_UNVERIFIED_LABEL;
   if (monthlyPaymentLabel(course)) return monthlyPaymentLabel(course);
   if (course?.payment_status === 'review_required') return REVIEW_REQUIRED_LABEL;
   // Course-level badge: the tuition label map (periodPaymentLabel is for dated monthly rows).

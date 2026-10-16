@@ -34,6 +34,12 @@
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
+    <!-- #4115 / Founder Q2 = A + D3: display only. A different amount alone is no reason to void, so no void action here. -->
+    <div v-if="rateNote" class="contract__ratenote" data-testid="contract-rate-note">
+      <p>開單時金額 {{ money(rateNote.issued) }} ／ 目前課程金額 {{ money(rateNote.current) }}</p>
+      <p class="contract__muted">帳單不會跟著課程金額自動改。金額不同可能是約定調整，不代表帳單有誤；請先確認原約定與應收金額，確認開錯才更正。</p>
+    </div>
+
     <div class="contract__memo">
       <template v-if="!editing">
         <p v-if="memo" class="contract__memo-text" data-testid="contract-memo">{{ memo }}</p>
@@ -123,6 +129,8 @@ const props = defineProps({
   sharedFollower: { type: Boolean, default: false },
   // Subject of the member card that actually carries the package's 確認入帳 / 登記這筆 action.
   sharedLeadSubject: { type: String, default: '' },
+  // #4115: { invoiceId, issued, current } from issuedBillRateNote(); null hides the note.
+  rateNote: { type: Object, default: null },
 });
 const emit = defineEmits(['changed', 'record', 'issue', 'confirmed']);
 
@@ -311,6 +319,8 @@ watch(() => props.course.id, load, { immediate: true });
 .contract__money .due{color:var(--ds-danger)}
 .contract__confirm-text{margin:0;font-size:14px;line-height:1.6}
 .contract__reject-label{display:block;margin-bottom:6px;font-size:14px;font-weight:700}
+.contract__ratenote{display:grid;gap:4px;padding:8px 10px;border-radius:var(--ds-radius-md);background:var(--ds-canvas-soft);font-size:var(--ds-font-size-sm)}
+.contract__ratenote p{margin:0}
 .contract__memo{background:var(--ds-canvas-soft);border-radius:8px;padding:8px 10px;display:grid;gap:6px}
 .contract__memo-text{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
 .contract__memo textarea{width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:6px 8px}
