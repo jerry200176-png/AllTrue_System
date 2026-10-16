@@ -82,7 +82,7 @@ const isNotExercisedSkip = (item) => item.status === 'skipped' && item.resultSta
   && item.annotations.some((note) => note?.type === 'skip' && NOT_EXERCISED_SKIP.test(String(note.description || '')));
 
 export function ruleTally(report) {
-  const tally = Object.fromEntries(TARGET_RULES.map((rule) => [rule, { cases: 0, exercised: 0, notExercised: 0 }]));
+  const tally = Object.fromEntries(TARGET_RULES.map((rule) => [rule, { cases: 0, exercised: 0, notExercised: 0, failed: 0 }]));
   for (const item of collectTests(report)) {
     for (const note of item.annotations) {
       const match = note?.type === 'rule-coverage' ? RULE_COVERAGE.exec(String(note.description || '')) : null;
@@ -91,8 +91,10 @@ export function ruleTally(report) {
       if (item.status === 'expected' && cases > 0) {
         tally[match[1]].cases += cases;
         tally[match[1]].exercised += 1;
-      } else {
+      } else if (item.status === 'expected' || isNotExercisedSkip(item)) {
         tally[match[1]].notExercised += 1;
+      } else {
+        tally[match[1]].failed += 1;
       }
     }
   }
@@ -121,7 +123,7 @@ export function summarizeReport(report) {
   const tally = ruleTally(report);
   if (hasRuleNotes) {
     for (const rule of TARGET_RULES) {
-      lines.push(`acceptance-rule rule=${rule} exercised=${tally[rule].exercised} not_exercised=${tally[rule].notExercised} cases=${tally[rule].cases}`);
+      lines.push(`acceptance-rule rule=${rule} exercised=${tally[rule].exercised} not_exercised=${tally[rule].notExercised} failed=${tally[rule].failed} cases=${tally[rule].cases}`);
     }
   }
   if ((hasRuleNotes || notExercised > 0) && !anyRuleExercised(tally)) {
@@ -265,8 +267,8 @@ function selfTest() {
   });
   expectReject('ordinary rows only (no target rule exercised)', () => validateReport(ordinary, 16, 'payments'));
   const ordinarySummary = summarizeReport(ordinary);
-  for (const line of ['acceptance-rule rule=free_gift exercised=0 not_exercised=2 cases=0',
-    'acceptance-rule rule=waived exercised=0 not_exercised=1 cases=0', 'acceptance-verdict INCONCLUSIVE zero coverage (not an acceptance)']) {
+  for (const line of ['acceptance-rule rule=free_gift exercised=0 not_exercised=2 failed=0 cases=0',
+    'acceptance-rule rule=waived exercised=0 not_exercised=1 failed=0 cases=0', 'acceptance-verdict INCONCLUSIVE zero coverage (not an acceptance)']) {
     if (!ordinarySummary.includes(line)) throw new Error(`self-test summary is missing: ${line}`);
   }
   // One target rule with one live case is enough to be conclusive; the rest are reported as not exercised.
@@ -274,8 +276,15 @@ function selfTest() {
   oneRule.suites[0].specs[3].tests[0] = { projectName: 'chromium', status: 'expected', results: [{ status: 'passed' }],
     annotations: [{ type: 'rule-coverage', description: 'legacy_only=2' }] };
   validateReport(oneRule, 16, 'payments');
-  if (!summarizeReport(oneRule).includes('acceptance-rule rule=legacy_only exercised=1 not_exercised=0 cases=2')) {
+  if (!summarizeReport(oneRule).includes('acceptance-rule rule=legacy_only exercised=1 not_exercised=0 failed=0 cases=2')) {
     throw new Error('self-test summary did not count the exercised rule');
+  }
+  // A failing test is reported as failed for its rule, never as exercised.
+  const failedRule = JSON.parse(JSON.stringify(ordinary));
+  failedRule.suites[0].specs[2].tests[0] = { projectName: 'chromium', status: 'unexpected', results: [{ status: 'failed' }],
+    annotations: [{ type: 'rule-coverage', description: 'waived=1' }] };
+  if (!summarizeReport(failedRule).includes('acceptance-rule rule=waived exercised=0 not_exercised=0 failed=1 cases=0')) {
+    throw new Error('self-test summary did not report the failed rule');
   }
   // A skipped test can never claim coverage.
   const skippedClaim = JSON.parse(JSON.stringify(ordinary));

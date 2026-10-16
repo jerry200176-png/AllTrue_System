@@ -368,11 +368,11 @@ test.describe('production acceptance — payment display (#4150)', () => {
     }
     counts.blocked_post_reads = await guard.blockedPostReads();
     coverage(counts);
+    ruleCoverage('free_gift', counts.free_cards_checked);
     await test.info().attach('students-list-coverage.json', { body: JSON.stringify({ branch_id: BRANCH_ID, ...counts, violations }), contentType: 'application/json' });
     await guard.assertNoWrites();
     expect(violations, 'course payment badges on 學生管理 (course ids only)').toEqual([]);
     expect(counts.cards_unmatched, 'every rendered card maps to a loaded course').toBe(0);
-    ruleCoverage('free_gift', counts.free_cards_checked);
     if (counts.free_cards_checked === 0) note('not-exercised', 'students_list_free_label');
     test.skip(counts.cards_checked === 0, 'not-exercised: no course card rendered for the sampled students');
   });
@@ -408,11 +408,11 @@ test.describe('production acceptance — payment display (#4150)', () => {
     }
     counts.blocked_post_reads = await guard.blockedPostReads();
     coverage(counts);
+    ruleCoverage('free_gift', counts.free_rows_checked);
     await test.info().attach('course-finder-coverage.json', { body: JSON.stringify({ branch_id: BRANCH_ID, ...counts, violations }), contentType: 'application/json' });
     await guard.assertNoWrites();
     expect(violations, 'course payment badges on 課程查找 (course ids only)').toEqual([]);
     expect(counts.rows_unmatched, 'every billing row maps to a campus course').toBe(0);
-    ruleCoverage('free_gift', counts.free_rows_checked);
     if (counts.free_rows_checked === 0) note('not-exercised', 'course_finder_free_label');
     test.skip(counts.rows_checked === 0, 'not-exercised: no billing row rendered for the sampled students');
   });
