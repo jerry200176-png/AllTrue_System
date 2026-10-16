@@ -726,6 +726,9 @@ Route::prefix('v1')->group(function () {
         Route::post('schedules/retro-leave', [\App\Http\Controllers\ScheduleController::class, 'retroLeave']);
         Route::post('schedules/leave-by-session', [\App\Http\Controllers\ScheduleController::class, 'leaveBySession']);
         Route::post('schedules/leave-cascade-preview', [\App\Http\Controllers\ScheduleController::class, 'leaveCascadePreview']);
+        // In-app #410: leave tail that lands in a pre-created renewal → preview, then shift the renewal back.
+        Route::post('schedules/leave-successor-shift/preview', [\App\Http\Controllers\ScheduleLeaveSuccessorShiftController::class, 'preview'])->middleware('role:director,super_admin');
+        Route::post('schedules/leave-successor-shift/apply', [\App\Http\Controllers\ScheduleLeaveSuccessorShiftController::class, 'apply'])->middleware('role:director,super_admin');
         Route::post('schedules/bulk-leave', [\App\Http\Controllers\ScheduleController::class, 'bulkHolidayLeave']);
         Route::put('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'update']);
         Route::delete('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'destroy']);
