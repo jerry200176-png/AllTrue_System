@@ -103,8 +103,14 @@ jobs:
               return json.loads(subprocess.check_output(["gh", "api", path], text=True))
           env = api(base)
           rules = env.get("protection_rules") or []
-          if not any(r.get("type") == "required_reviewers" for r in rules):
+          reviewer_rules = [r for r in rules if r.get("type") == "required_reviewers"]
+          if not reviewer_rules:
               raise SystemExit("production-activation has no required reviewer; refusing to write")
+          # The only approver must be the Founder: exactly one User reviewer, jerry200176-png, in every rule.
+          for r in reviewer_rules:
+              found = sorted((str(x.get("type")), str((x.get("reviewer") or {}).get("login"))) for x in (r.get("reviewers") or []))
+              if found != [("User", "jerry200176-png")]:
+                  raise SystemExit(f"production-activation reviewers must be exactly the Founder, got {found}; refusing to write")
           if env.get("can_admins_bypass") is not False:
               raise SystemExit("production-activation allows admin bypass; refusing to write")
           # Same main-only check as deploy.yml production-activation gate.
@@ -115,7 +121,7 @@ jobs:
           names = sorted(str(p.get("name")) for p in policies)
           if names != ["main"]:
               raise SystemExit(f"production-activation must allow only main, got {names}; refusing to write")
-          print("production-activation verified: required reviewer, no admin bypass, main only")
+          print("production-activation verified: Founder-only reviewer, no admin bypass, main only")
           PY
 
   triage:

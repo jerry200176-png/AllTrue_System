@@ -105,6 +105,42 @@ for (const [workflow, extra] of [
   const approve = source.match(/\n  approve:\n([\s\S]*?)\n    steps:\n/)[1];
   assert.ok(/\n    permissions:\n      actions: read\n/.test(approve),
     `${workflow} approval job needs actions: read for the environment API (as deploy.yml)`);
+
+  // The approver must be exactly the Founder: run the extracted gate against fake environment APIs.
+  const gateRun = approve.length && source.match(/\n  approve:\n[\s\S]*?\n          python3 - <<'PY'\n([\s\S]*?)\n          PY\n/)[1]
+    .split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
+  const gateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-gate-'));
+  try {
+    const ghStub = path.join(gateDir, 'gh');
+    fs.writeFileSync(ghStub, '#!/usr/bin/env bash\ncase "$2" in *deployment-branch-policies) cat "$STUB_DIR/policies.json";; *) cat "$STUB_DIR/env.json";; esac\n');
+    fs.chmodSync(ghStub, 0o755);
+    fs.writeFileSync(path.join(gateDir, 'policies.json'), JSON.stringify({ branch_policies: [{ name: 'main' }] }));
+    fs.writeFileSync(path.join(gateDir, 'gate.py'), gateRun);
+    const founder = { type: 'User', reviewer: { login: 'jerry200176-png' } };
+    const gate = (reviewers) => {
+      fs.writeFileSync(path.join(gateDir, 'env.json'), JSON.stringify({
+        can_admins_bypass: false,
+        deployment_branch_policy: { custom_branch_policies: true, protected_branches: false },
+        protection_rules: [{ type: 'required_reviewers', reviewers }],
+      }));
+      try {
+        execFileSync('python3', [path.join(gateDir, 'gate.py')], { stdio: 'ignore',
+          env: { ...process.env, PATH: `${gateDir}:${process.env.PATH}`, STUB_DIR: gateDir, REPO: 'o/r' } });
+        return true;
+      } catch { return false; }
+    };
+    assert.equal(gate([founder]), true, `${workflow} gate must accept the Founder as sole reviewer`);
+    for (const bad of [
+      [],
+      [{ type: 'User', reviewer: { login: 'someone-else' } }],
+      [founder, { type: 'User', reviewer: { login: 'someone-else' } }],
+      [{ type: 'Team', reviewer: { login: 'jerry200176-png' } }],
+    ]) {
+      assert.equal(gate(bad), false, `${workflow} gate must reject reviewers ${JSON.stringify(bad)}`);
+    }
+  } finally {
+    fs.rmSync(gateDir, { recursive: true, force: true });
+  }
   const preview = source.match(/\n  preview:\n([\s\S]*?)\n  approve:\n/)[1];
   assert.ok(!preview.includes('${{ inputs.') && !/\n        env:\n/.test(preview),
     `${workflow} preview must read inputs from the event payload, not env`);
