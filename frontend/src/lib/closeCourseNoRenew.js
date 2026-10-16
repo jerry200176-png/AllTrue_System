@@ -127,3 +127,26 @@ export function createCourseCloseFlow({ closeCourse, getDrawerCourse, closeDrawe
   }
   return { close, closeFromDrawer, run, isPending };
 }
+
+/**
+ * 「切到「全部」」 on the hidden-closed-course notice: clear 課程狀態 and reload. When the reload fails
+ * (resolves `{ ok: false }` or throws), restore the previous 課程狀態 and the notice, so the filter
+ * never reads 「全部」 over the previous subset (Codex r4289925542). A superseded reload resolves
+ * undefined and is left alone; so is a filter the user changed meanwhile. Resolves whether it switched.
+ */
+export async function switchClosedCourseNoticeToAllStatuses({ notice, getStatus, setStatus, setNotice, reload }) {
+  const previousStatus = getStatus();
+  setNotice(null);
+  setStatus('');
+  let failed;
+  try {
+    failed = (await reload())?.ok === false;
+  } catch {
+    failed = true;
+  }
+  if (failed && getStatus() === '') {
+    setStatus(previousStatus);
+    setNotice(notice);
+  }
+  return !failed;
+}

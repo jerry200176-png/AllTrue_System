@@ -68,7 +68,12 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
   it('the notice switch button sets 課程狀態 to 「全部」 and reloads page 1', () => {
     expect(source).toContain('data-testid="closed-course-hidden-notice"');
     expect(source).toMatch(/v-if="closedCourseNotice\.canShowAll"[^>]*data-testid="closed-course-show-all" @click="showClosedCourseUnderAllStatuses"/);
-    expect(closeFlow).toMatch(/function showClosedCourseUnderAllStatuses\(\) \{\s*closedCourseNotice\.value = null;\s*filters\.value\.course_status = '';\s*loadCourses\(1\);/);
+    // Goes through the helper that restores 課程狀態 + the notice when the reload fails (Codex r4289925542).
+    expect(closeFlow).toMatch(/function showClosedCourseUnderAllStatuses\(\) \{\s*return switchClosedCourseNoticeToAllStatuses\(\{/);
+    expect(closeFlow).toContain('notice: closedCourseNotice.value,');
+    expect(closeFlow).toContain('setStatus: (status) => { filters.value.course_status = status; },');
+    expect(closeFlow).toContain('setNotice: (notice) => { closedCourseNotice.value = notice; },');
+    expect(closeFlow).toContain('reload: () => loadCourses(1),');
   });
 
   it('any new list load clears a stale notice', () => {

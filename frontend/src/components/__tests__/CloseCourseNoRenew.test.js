@@ -14,6 +14,7 @@ import {
   closeCourseNoRenew,
   closedCourseHiddenNotice,
   createCourseCloseFlow,
+  switchClosedCourseNoticeToAllStatuses,
 } from '../../lib/closeCourseNoRenew.js';
 import { clearRowCachesForWinningRequest, fallbackListRows, isCurrentListRequest } from '../../lib/listRefreshState.js';
 
@@ -325,5 +326,51 @@ describe('clearRowCachesForWinningRequest', () => {
     expect(clearRowCachesForWinningRequest(2, 2, [a, b])).toBe(true);
     expect(a.value).toEqual({});
     expect(b.value).toEqual({});
+  });
+});
+
+// Codex r4289925542: 「切到「全部」」 must not leave the filter reading 「全部」 over the previous subset.
+describe('switchClosedCourseNoticeToAllStatuses', () => {
+  function page(reload) {
+    const state = { status: 'active', notice: { message: CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE, canShowAll: true }, statusDuringReload: null, noticeDuringReload: undefined };
+    const original = state.notice;
+    const run = () => switchClosedCourseNoticeToAllStatuses({
+      notice: state.notice,
+      getStatus: () => state.status,
+      setStatus: (s) => { state.status = s; },
+      setNotice: (n) => { state.notice = n; },
+      reload: async () => { state.statusDuringReload = state.status; state.noticeDuringReload = state.notice; return reload(state); },
+    });
+    return { state, original, run };
+  }
+
+  it('switches to 「全部」 and drops the notice when the reload succeeds', async () => {
+    const { state, run } = page(async () => undefined);
+    expect(await run()).toBe(true);
+    expect(state.statusDuringReload).toBe('');
+    expect(state.noticeDuringReload).toBeNull();
+    expect(state.status).toBe('');
+    expect(state.notice).toBeNull();
+  });
+
+  it('restores the previous 課程狀態 and the notice when the reload resolves { ok: false }', async () => {
+    const { state, original, run } = page(async () => ({ ok: false, error: new Error('x') }));
+    expect(await run()).toBe(false);
+    expect(state.status).toBe('active');
+    expect(state.notice).toBe(original);
+  });
+
+  it('restores them when the reload throws', async () => {
+    const { state, original, run } = page(async () => { throw new Error('x'); });
+    expect(await run()).toBe(false);
+    expect(state.status).toBe('active');
+    expect(state.notice).toBe(original);
+  });
+
+  it('leaves a filter the user changed during the failed reload alone', async () => {
+    const { state, run } = page(async (s) => { s.status = 'history'; return { ok: false }; });
+    expect(await run()).toBe(false);
+    expect(state.status).toBe('history');
+    expect(state.notice).toBeNull();
   });
 });

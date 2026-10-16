@@ -1395,7 +1395,7 @@ import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { useTransferSessions } from '../composables/course-management/useTransferSessions';
 import { useContractAmendment } from '../composables/course-management/useContractAmendment';
 import { useCoursePause } from '../composables/course-management/useCoursePause';
-import { closeCourseNoRenew as runCloseCourseNoRenew, closedCourseHiddenNotice, createCourseCloseFlow } from '../lib/closeCourseNoRenew.js';
+import { closeCourseNoRenew as runCloseCourseNoRenew, closedCourseHiddenNotice, createCourseCloseFlow, switchClosedCourseNoticeToAllStatuses } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -1595,9 +1595,13 @@ function closeCourseInPlace(course) {
   return courseCloseFlow.close(course);
 }
 function showClosedCourseUnderAllStatuses() {
-  closedCourseNotice.value = null;
-  filters.value.course_status = '';
-  loadCourses(1);
+  return switchClosedCourseNoticeToAllStatuses({
+    notice: closedCourseNotice.value,
+    getStatus: () => filters.value.course_status,
+    setStatus: (status) => { filters.value.course_status = status; },
+    setNotice: (notice) => { closedCourseNotice.value = notice; },
+    reload: () => loadCourses(1),
+  });
 }
 
 const courses = ref([]);
