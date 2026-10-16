@@ -48,15 +48,15 @@ class TriageBillingSnapshotController extends Controller
         $base = (int) round((float) ($rate ?? 0) * $quantity);
         $charge = $course->Charge === null ? null : (int) $course->Charge;
 
-        // Anchored or itemized here. Not wholly this student's (BillingNoteController::invoiceStudent() rule): left out, count only. Also covers another of their contracts: no money.
+        // Anchored or itemized here. Not wholly this student's (BillingNoteController::invoiceStudent() rule): left out, count only. Also covers another of their contracts, or has a line with no contract: no money.
         $invoices = Invoice::query()->where('StudentClassID', $courseId)
             ->orWhereIn('id', DB::table('InvoiceItem')->where('StudentClassID', $courseId)->select('InvoiceID'))
             ->orderBy('id')->get(['id', 'StudentID', 'StudentClassID', 'Status', 'TotalAmount', 'PaidAmount', 'billing_period', 'IssueDate']);
-        $items = DB::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())->whereNotNull('StudentClassID')->get(['InvoiceID', 'StudentClassID']);
+        $items = DB::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())->get(['InvoiceID', 'StudentClassID']);
         $refs = fn (Invoice $i) => $items->where('InvoiceID', $i->id)->pluck('StudentClassID')->push($i->StudentClassID)->map(fn ($c) => (int) $c)->filter()->unique();
         $owners = StudentClass::query()->whereIn('ID', $invoices->flatMap(fn (Invoice $i) => $refs($i))->unique()->all())->pluck('StudentID', 'ID');
         [$own, $foreign] = $invoices->partition(fn (Invoice $i) => (int) $i->StudentID === (int) $course->StudentID && $refs($i)->every(fn (int $c) => (int) ($owners[$c] ?? 0) === (int) $course->StudentID));
-        $shared = $own->filter(fn (Invoice $i) => $refs($i)->contains(fn (int $c) => $c !== $courseId))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $shared = $own->filter(fn (Invoice $i) => $refs($i)->contains(fn (int $c) => $c !== $courseId) || $items->where('InvoiceID', $i->id)->contains(fn (object $r) => !(int) $r->StudentClassID))->pluck('id')->map(fn ($id) => (int) $id)->all();
         $payments = DB::table('Payment')->whereIn('InvoiceID', $own->pluck('id')->diff($shared)->all())->orderBy('id')->get(['id', 'InvoiceID', 'Amount', 'Method']);
 
         return [
