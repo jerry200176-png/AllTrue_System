@@ -31,3 +31,18 @@ export function clearRowCachesForWinningRequest(requestId, latestRequestId, cach
   caches.forEach((cache) => { cache.value = {}; });
   return true;
 }
+
+/**
+ * Page-level outcome of list loads. `succeeded(key)` records which query the rows on screen answer
+ * and clears `failedRef`. `failed(key)` sets `failedRef` (one refresh-failure hint for every caller)
+ * and returns whether the rows may stay: only when they answer that same query, never e.g. branch
+ * A's rows while branch B is selected (Codex r4289977924). `cleared()` forgets the shown rows.
+ */
+export function createListLoadOutcome(failedRef) {
+  let shownKey = null;
+  return {
+    succeeded(key) { shownKey = key; failedRef.value = false; },
+    failed(key) { failedRef.value = true; const keep = key === shownKey; if (!keep) shownKey = null; return keep; },
+    cleared() { shownKey = null; failedRef.value = false; },
+  };
+}

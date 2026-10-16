@@ -173,6 +173,7 @@
 
     <!-- Course Table -->
     <div class="card table-card" data-guide="course-mgmt-table">
+      <AtInlineAlert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" style="margin: 0 0 14px;"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></AtInlineAlert>
       <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton" role="status" aria-label="課程資料載入中">
         <div v-for="idx in 3" :key="idx" class="course-skeleton-group">
           <div class="course-skeleton-header"></div>
@@ -1388,14 +1389,14 @@ import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
-import { clearRowCachesForWinningRequest, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
+import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { useTransferSessions } from '../composables/course-management/useTransferSessions';
 import { useContractAmendment } from '../composables/course-management/useContractAmendment';
 import { useCoursePause } from '../composables/course-management/useCoursePause';
-import { closeCourseNoRenew as runCloseCourseNoRenew, closedCourseHiddenNotice, createCourseCloseFlow, switchClosedCourseNoticeToAllStatuses } from '../lib/closeCourseNoRenew.js';
+import { closeCourseNoRenew as runCloseCourseNoRenew, closedCourseHiddenNotice, createCourseCloseFlow } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -1595,16 +1596,15 @@ function closeCourseInPlace(course) {
   return courseCloseFlow.close(course);
 }
 function showClosedCourseUnderAllStatuses() {
-  return switchClosedCourseNoticeToAllStatuses({
-    notice: closedCourseNotice.value,
-    getStatus: () => filters.value.course_status,
-    setStatus: (status) => { filters.value.course_status = status; },
-    setNotice: (notice) => { closedCourseNotice.value = notice; },
-    reload: () => loadCourses(1),
-  });
+  closedCourseNotice.value = null;
+  filters.value.course_status = '';
+  loadCourses(1);
 }
 
 const courses = ref([]);
+// Set by loadCourses itself, so every caller (close, pause/resume, filters) gets the hint (Codex r4290041474).
+const listRefreshFailed = ref(false);
+const courseListOutcome = createListLoadOutcome(listRefreshFailed);
 const pendingConvertTrialId = ref(0);
 // in-app #382: calendar sends a just-created manual course here to schedule its first lesson.
 const pendingManualSessionId = ref(0);
@@ -4256,8 +4256,8 @@ const formatMoney = (value) => {
   return Number.isFinite(n) ? n.toLocaleString() : '0';
 };
 
-// Resolves { ok: false, error } when both the canonical API and the Supabase fallback fail; the
-// rows (and their session data) already on screen are kept. Other outcomes resolve undefined.
+// Resolves { ok: false, error } when both the canonical API and the Supabase fallback fail, and shows
+// the list refresh-failure hint; rows on screen are kept only if they answer the same query (listKey).
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
   closedCourseNotice.value = null;
@@ -4268,12 +4268,14 @@ const loadCourses = async (page = 1) => {
     completedSessionDatesByCourse.value = {};
     sessionsByCourse.value = {};
     expandedStudentGroups.value = new Set();
+    courseListOutcome.cleared();
     return;
   }
   coursesLoading.value = true;
   // Session caches are cleared only once this request wins (see clearRowCachesForWinningRequest), so a
   // failed or superseded load never zeroes the session data of the rows still on screen (Codex r4289665973).
   const sessionCaches = [completedSessionDatesByCourse, sessionsByCourse];
+  const listKey = JSON.stringify([props.branchId, page, filters.value, pendingConvertTrialId.value, pendingManualSessionId.value, pendingLessonsCourseId.value, convertTrialStudentId.value]);
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     let token = sess?.access_token;
@@ -4324,6 +4326,7 @@ const loadCourses = async (page = 1) => {
           perPage: pagination.value.perPage,
         };
         courses.value = result;
+        courseListOutcome.succeeded(listKey);
         clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
         resetExpandedStudentGroups(groupCoursesByStudent(result));
         syncCourseManagerCourseFromList();
@@ -4351,6 +4354,13 @@ const loadCourses = async (page = 1) => {
   const fallbackRows = fallbackListRows({ data, error: fallbackError });
   if (fallbackRows === null) {
     if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
+    // Rows from another query (branch, filter, page) are cleared as on base, never kept (Codex r4289977924).
+    if (!courseListOutcome.failed(listKey)) {
+      courses.value = [];
+      pagination.value = { page: 1, lastPage: 1, total: 0, perPage: pagination.value.perPage };
+      clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
+      resetExpandedStudentGroups([]);
+    }
     coursesLoading.value = false;
     return { ok: false, error: fallbackError || new Error('course list unavailable') };
   }
@@ -4385,6 +4395,7 @@ const loadCourses = async (page = 1) => {
   if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
   pagination.value = { page: 1, lastPage: 1, total: result.length, perPage: pagination.value.perPage };
   courses.value = result;
+  courseListOutcome.succeeded(listKey);
   clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
   resetExpandedStudentGroups(groupCoursesByStudent(result));
   const isCurrent = () => isCurrentListRequest(requestId, courseLoadRequestId);

@@ -28,7 +28,7 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
     expect(closeFlow).toMatch(/if \(closed && !reloadFailed\) \{\s*closedCourseNotice\.value = closedCourseHiddenNotice\(/);
   });
 
-  it('loadCourses keeps the previous rows and resolves { ok: false } when the API and the Supabase fallback both fail', () => {
+  it('loadCourses resolves { ok: false } and keeps rows only for the same query when the API and the Supabase fallback both fail', () => {
     const load = source.slice(source.indexOf('const loadCourses = async (page = 1) => {'), source.indexOf('const {\n  showRescheduleModal'));
     const fallback = load.slice(load.indexOf('const { data, error: fallbackError } = await query;'));
     expect(fallback).toMatch(/^const \{ data, error: fallbackError \} = await query;\s*const fallbackRows = fallbackListRows\(\{ data, error: fallbackError \}\);\s*if \(fallbackRows === null\) \{/);
@@ -36,9 +36,16 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
     expect(failure).toContain("return { ok: false, error: fallbackError || new Error('course list unavailable') };");
     expect(failure).not.toContain('sessionsByCourse.value =');
     expect(failure).toContain('coursesLoading.value = false;');
-    expect(failure).not.toContain('courses.value =');
-    expect(failure).not.toContain('pagination.value =');
     expect(load).not.toContain('(data || []).map(');
+    // Codex r4289977924: another query's rows (e.g. branch A after switching to B) are cleared.
+    expect(load).toMatch(/const listKey = JSON\.stringify\(\[props\.branchId, page, filters\.value,/);
+    expect(failure).toMatch(/if \(!courseListOutcome\.failed\(listKey\)\) \{\s*courses\.value = \[\];\s*pagination\.value = \{ page: 1, lastPage: 1, total: 0,[^}]*\};\s*clearRowCachesForWinningRequest\(requestId, courseLoadRequestId, sessionCaches\);/);
+  });
+
+  it('every list-load failure shows one page-level hint, so pause/resume, close and filters all get it (Codex r4290041474)', () => {
+    expect(source).toContain('const courseListOutcome = createListLoadOutcome(listRefreshFailed);');
+    expect(source).toMatch(/<AtInlineAlert v-if="listRefreshFailed"[^>]*data-testid="course-list-refresh-failed"/);
+    expect(source).toMatch(/\} = useCoursePause\(\{\s*courseLock: courseCloseFlow,\s*onChanged: async \(\) => \{\s*await loadCourses\(\);/);
   });
 
   it('loadCourses clears the session caches only when a request wins, never at start (Codex r4289665973 / #4189)', () => {
@@ -47,7 +54,7 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
     expect(start).toContain('const sessionCaches = [completedSessionDatesByCourse, sessionsByCourse];');
     expect(start).not.toMatch(/(completedSessionDatesByCourse|sessionsByCourse)\.value = \{\}/);
     expect(load).not.toContain('previousSessionData');
-    const wins = load.match(/courses\.value = result;\s*clearRowCachesForWinningRequest\(requestId, courseLoadRequestId, sessionCaches\);/g) || [];
+    const wins = load.match(/courses\.value = result;\s*courseListOutcome\.succeeded\(listKey\);\s*clearRowCachesForWinningRequest\(requestId, courseLoadRequestId, sessionCaches\);/g) || [];
     expect(wins).toHaveLength(2);
   });
 
@@ -68,12 +75,7 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
   it('the notice switch button sets 課程狀態 to 「全部」 and reloads page 1', () => {
     expect(source).toContain('data-testid="closed-course-hidden-notice"');
     expect(source).toMatch(/v-if="closedCourseNotice\.canShowAll"[^>]*data-testid="closed-course-show-all" @click="showClosedCourseUnderAllStatuses"/);
-    // Goes through the helper that restores 課程狀態 + the notice when the reload fails (Codex r4289925542).
-    expect(closeFlow).toMatch(/function showClosedCourseUnderAllStatuses\(\) \{\s*return switchClosedCourseNoticeToAllStatuses\(\{/);
-    expect(closeFlow).toContain('notice: closedCourseNotice.value,');
-    expect(closeFlow).toContain('setStatus: (status) => { filters.value.course_status = status; },');
-    expect(closeFlow).toContain('setNotice: (notice) => { closedCourseNotice.value = notice; },');
-    expect(closeFlow).toContain('reload: () => loadCourses(1),');
+    expect(closeFlow).toMatch(/function showClosedCourseUnderAllStatuses\(\) \{\s*closedCourseNotice\.value = null;\s*filters\.value\.course_status = '';\s*loadCourses\(1\);/);
   });
 
   it('any new list load clears a stale notice', () => {

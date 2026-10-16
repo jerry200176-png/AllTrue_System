@@ -14,9 +14,8 @@ import {
   closeCourseNoRenew,
   closedCourseHiddenNotice,
   createCourseCloseFlow,
-  switchClosedCourseNoticeToAllStatuses,
 } from '../../lib/closeCourseNoRenew.js';
-import { clearRowCachesForWinningRequest, fallbackListRows, isCurrentListRequest } from '../../lib/listRefreshState.js';
+import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../../lib/listRefreshState.js';
 
 function setup({ remaining = 0, settled = true, accepted = true, response = { pending_reconciliation: true } } = {}) {
   const calls = { requests: [], alerts: [], confirms: [], reloads: 0 };
@@ -329,39 +328,34 @@ describe('clearRowCachesForWinningRequest', () => {
   });
 });
 
-// Codex r4289925542: 「切到「全部」」 must not leave the filter reading 「全部」 over the previous subset.
-describe('switchClosedCourseNoticeToAllStatuses', () => {
-  function page(reload) {
-    const state = { status: 'active', notice: { message: CLOSED_HIDDEN_BY_ACTIVE_FILTER_NOTICE, canShowAll: true }, statusDuringReload: null, noticeDuringReload: undefined };
-    const original = state.notice;
-    const run = () => switchClosedCourseNoticeToAllStatuses({
-      notice: state.notice,
-      getStatus: () => state.status,
-      setStatus: (s) => { state.status = s; },
-      setNotice: (n) => { state.notice = n; },
-      reload: async () => { state.statusDuringReload = state.status; state.noticeDuringReload = state.notice; return reload(state); },
-    });
-    return { state, original, run };
-  }
+// Codex r4289977924 / r4290041474: rows are kept only for the same query; every failure sets the hint.
+describe('createListLoadOutcome', () => {
+  const key = (branch, status = '') => JSON.stringify([branch, 1, { course_status: status }]);
 
-  it('switches to 「全部」 and drops the notice when the reload succeeds', async () => {
-    const { state, run } = page(async () => undefined);
-    expect(await run()).toBe(true);
-    expect([state.statusDuringReload, state.noticeDuringReload, state.status, state.notice]).toEqual(['', null, '', null]);
+  it('branch A rows, switch to branch B, double failure: the rows must be cleared', () => {
+    const failedRef = { value: false };
+    const outcome = createListLoadOutcome(failedRef);
+    outcome.succeeded(key('A'));
+    expect([outcome.failed(key('B')), failedRef.value]).toEqual([false, true]);
+    expect(outcome.failed(key('A'))).toBe(false); // the cleared rows are not "branch A" any more
   });
 
-  it.each([
-    ['resolves { ok: false }', async () => ({ ok: false, error: new Error('x') })],
-    ['throws', async () => { throw new Error('x'); }],
-  ])('restores the previous 課程狀態 and the notice when the reload %s', async (_label, reload) => {
-    const { state, original, run } = page(reload);
-    expect(await run()).toBe(false);
-    expect([state.status, state.notice]).toEqual(['active', original]);
+  it('same-query refresh double failure keeps the rows and sets the hint; the next success clears it', () => {
+    const failedRef = { value: false };
+    const outcome = createListLoadOutcome(failedRef);
+    outcome.succeeded(key('A', 'active'));
+    expect([outcome.failed(key('A', 'active')), failedRef.value]).toEqual([true, true]);
+    expect(outcome.failed(key('A', ''))).toBe(false); // 「切到「全部」」 over the active subset
+    outcome.succeeded(key('A'));
+    expect(failedRef.value).toBe(false);
   });
 
-  it('leaves a filter the user changed during the failed reload alone', async () => {
-    const { state, run } = page(async (s) => { s.status = 'history'; return { ok: false }; });
-    expect(await run()).toBe(false);
-    expect([state.status, state.notice]).toEqual(['history', null]);
+  it('a pause/resume reload that resolves { ok: false } shows the hint without caller code', async () => {
+    const failedRef = { value: false };
+    const outcome = createListLoadOutcome(failedRef);
+    outcome.succeeded(key('A'));
+    const onChanged = async () => { await (async () => { outcome.failed(key('A')); return { ok: false }; })(); };
+    await onChanged(); // as wired into useCoursePause: `await loadCourses()`
+    expect(failedRef.value).toBe(true);
   });
 });
