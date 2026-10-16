@@ -1,7 +1,9 @@
 # In-app #410 / issue #4210: local Q9 repair evidence
 
-Status: LOCAL PREPARATION ONLY. Integration owner: Claude. No push, PR, merge,
-deployment, production access, credential change or flag activation performed.
+Status: original local-preparation evidence, followed by Draft publication at
+`fb96b145` as recorded below. Integration owner: Claude. The test-isolation
+correction below is local only. No merge, deployment, production access,
+credential change or flag activation performed.
 
 ## Scope and provenance
 
@@ -92,8 +94,9 @@ MariaDB connections in `test_undo_with_a_stale_snapshot_sees_the_committed_succe
    reads see the committed provenance, return 422 with affected lesson ID, and
    leave all six authoritative table snapshots unchanged.
 
-The test restores/purges connections and forces the next RefreshDatabase test to
-migrate, avoiding leaked committed fixtures. It needs no fork, sleeps or timing
+The final local test restores/purges connections and deletes only its own
+synthetic rows, preserving the schema and RefreshDatabase state. The originally
+published version forced remigration; the correction and reason are below. It needs no fork, sleeps or timing
 assumption. GREEN: **1 test, 10 assertions**. Mutation: remove only Q9 query's
 `lockForUpdate()`; test fails with **expected 422, received 200** (1 test, 7
 assertions, 1 failure). Restore the locking read: related suite passes with the
@@ -135,3 +138,45 @@ SHA-256 is `494d7da545f0b6f0a4e8d11c93fe3b881bc919a7542c1e9e216ce447c11fb307`.
 - Production-path verification, in-app writeback and reporter acceptance remain
   unperformed and belong to later authorized integration/release work. Keep
   `LEAVE_SUCCESSOR_SHIFT_APPLY_ENABLED` OFF.
+
+
+## Draft publication and test-isolation correction
+
+Draft PR #4212 publishes the unchanged reviewed `fb96b145`:
+https://github.com/jerry200176-png/AllTrue_System/pull/4212.
+Remote SHA was verified as `fb96b1454ddcf934634fb2449bcf1c334cec1271` against
+base `1911853f`. Overlap recheck found no file overlap. No merge or activation.
+
+Exact-head dispatched workflows:
+- Presubmit 38982816140: PASS.
+- Docs Integrity 38982821325: PASS.
+- Secret Scan 38982825260: PASS.
+- Security Scan/full PHPStan 38982829173: PASS.
+- CI 38982812599: control-plane, golden scenarios and frontend PASS; PHPUnit
+  FAIL (4014 tests, 19575 assertions, 3 errors, 11 skipped, 1 incomplete).
+
+The three errors are a test-isolation regression introduced by the new test:
+forcing `RefreshDatabaseState::$migrated=false` remigrates after earlier index
+tests left `APPLY_CLASS_SESSION_UNIQUE_INDEX=1` but removed the index. The next
+migration recreates it and breaks later deliberately duplicate slot fixtures in
+MonthlyBillingSlipTest, OrphanScheduledSessionsTest and PaymentReportApiTest.
+No Q9 endpoint test failed. This is not classified as pre-existing CI failure.
+
+Local correction: remove the forced remigration; in finally, delete only this
+test's courses/sessions, session audit/sign-in rows, user/token/membership and
+student, then balance the existing teardown transaction. No production-code or
+schema change. Existing schema and process migration state are preserved.
+
+Deterministic reproduction command:
+`bash scripts/phpunit-isolated.sh -d memory_limit=512M --filter '(ClassSessionD1UniqueIndexTest|LeaveSuccessorShiftTest|MonthlyBillingSlipTest|OrphanScheduledSessionsTest|PaymentReportApiTest)'`.
+- Published test: 111 tests, 596 assertions, 3 errors, 7 skipped.
+- Corrected test: 111 tests, 647 assertions, 0 errors, 7 skipped.
+The larger scheduling/regression suite is recorded in the handoff result.
+Independent bounded review found no issues in the correction; reviewed test-diff
+SHA-256: `99d46d5973c7c83128b3b75951a988532a4480200cb5f2b42f6d7775621ce776`.
+
+Publication scope was the unchanged reviewed `fb96b145`, so this new correction
+has not been pushed. Integration remains blocked on publishing/integrating the
+reviewed test-only correction and rerunning exact-head CI. The server guard and
+activation flag are unchanged. The public Draft body records the failed run and
+root cause rather than claiming readiness.

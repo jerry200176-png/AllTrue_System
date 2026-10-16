@@ -264,10 +264,10 @@ class LeaveSuccessorShiftTest extends TestCase
         $original = DB::getDefaultConnection();
         $this->assertSame('mysql', DB::connection()->getDriverName());
         $this->assertSame(1, DB::transactionLevel());
-        // Publish only these synthetic fixtures to a second connection. Force the next
-        // RefreshDatabase test to migrate again, since this test commits its fixtures.
+        $userId = AuthToken::query()->where('token', $this->token)->value('user_id');
+        // Publish synthetic fixtures to a second connection, then delete only our own
+        // rows below. Re-migrating here would reapply earlier tests' leaked index flag.
         DB::commit();
-        \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
         config(['database.connections.q9_stale_undo' => config('database.connections.' . $original)]);
         $undo = DB::connection('q9_stale_undo');
         $leaveId = $this->sessions['2026-11-17'];
@@ -295,6 +295,18 @@ class LeaveSuccessorShiftTest extends TestCase
                 $undo->rollBack();
             }
             DB::purge('q9_stale_undo');
+            DB::transaction(function () use ($userId) {
+                $courseIds = [$this->old, $this->renewal];
+                $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->pluck('id');
+                DB::table('schedule_audit_logs')->whereIn('session_id', $sessionIds)->delete();
+                DB::table('StudentSingIn')->whereIn('StudentClassID', $courseIds)->delete();
+                DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->delete();
+                DB::table('StudentClass')->whereIn('ID', $courseIds)->delete();
+                DB::table('auth_tokens')->where('user_id', $userId)->delete();
+                DB::table('UserCampus')->where('UserID', $userId)->delete();
+                DB::table('User')->where('id', $userId)->delete();
+                DB::table('Student')->where('id', self::STUDENT)->delete();
+            });
             // Keep RefreshDatabase's existing teardown transaction balanced.
             DB::beginTransaction();
         }
