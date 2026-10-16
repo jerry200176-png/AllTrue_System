@@ -48,12 +48,12 @@ class TriageBillingSnapshotController extends Controller
         $base = (int) round((float) ($rate ?? 0) * $quantity);
         $charge = $course->Charge === null ? null : (int) $course->Charge;
 
-        // Anchored or itemized on this contract. A bill that also covers another contract is shown without money (no cross-contract amounts).
+        // Anchored or itemized on this contract. A bill that also covers another contract, or is owned by another student (BillingNoteController::invoiceStudent() rule), is shown without money.
         $invoices = Invoice::query()->where('StudentClassID', $courseId)
             ->orWhereIn('id', DB::table('InvoiceItem')->where('StudentClassID', $courseId)->select('InvoiceID'))
-            ->orderBy('id')->get(['id', 'StudentClassID', 'Status', 'TotalAmount', 'PaidAmount', 'billing_period', 'IssueDate']);
+            ->orderBy('id')->get(['id', 'StudentID', 'StudentClassID', 'Status', 'TotalAmount', 'PaidAmount', 'billing_period', 'IssueDate']);
         $shared = DB::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())->where('StudentClassID', '<>', $courseId)
-            ->pluck('InvoiceID')->merge($invoices->filter(fn (Invoice $i) => (int) $i->StudentClassID !== $courseId)->pluck('id'))->map(fn ($id) => (int) $id)->all();
+            ->pluck('InvoiceID')->merge($invoices->filter(fn (Invoice $i) => (int) $i->StudentClassID !== $courseId || (int) $i->StudentID !== (int) $course->StudentID)->pluck('id'))->map(fn ($id) => (int) $id)->all();
         $payments = DB::table('Payment')->whereIn('InvoiceID', $invoices->pluck('id')->diff($shared)->all())->orderBy('id')->get(['id', 'InvoiceID', 'Amount', 'Method']);
 
         return [
