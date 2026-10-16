@@ -30,6 +30,8 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
   async function explainClosed(course) {
     // A converted trial has no renewal of its own (convertTrial refuses it again); point to the formal course.
     if (course?.closed_reason === 'converted_trial') { notify(CONVERTED_TRIAL_RESUME_MESSAGE); return; }
+    // Waived (確認不收) is terminal: no renewal offer; same wording as the server's refusal.
+    if (course?.closed_reason === 'waived') { notify('此合約已確認不收，不能恢復或變更狀態'); return; }
     if (!askClosed || !openRenewal) { notify(CLOSED_COURSE_RESUME_MESSAGE); return; }
     const goRenew = await askClosed({
       title: '這門課已經結案', message: CLOSED_COURSE_RESUME_MESSAGE, confirmLabel: '前往續課', cancelLabel: '關閉',

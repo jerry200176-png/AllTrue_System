@@ -279,6 +279,17 @@ describe('useCoursePause on a closed course', () => {
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
+  it('a waived course (drawer 恢復課程) gets the terminal message and no renewal offer (Codex r4293331348)', async () => {
+    const askClosed = vi.fn();
+    const openRenewal = vi.fn();
+    const p = useCoursePause({ onChanged, notify, askClosed, openRenewal });
+    await p.request({ ...closed, closed_reason: 'waived' });
+    expect(notify).toHaveBeenCalledWith('此合約已確認不收，不能恢復或變更狀態');
+    expect(askClosed).not.toHaveBeenCalled();
+    expect(openRenewal).not.toHaveBeenCalled();
+    expect(authedFetch).not.toHaveBeenCalled();
+  });
+
   it('a merely paused course (no closed_reason) still resumes', async () => {
     authedFetch.mockResolvedValue(res(true, {}));
     const askClosed = vi.fn();
