@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-15-inapp-409-forward-change-transfer
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 從某日起改科目／老師／時段，請用轉課
+    summary: 課程設定和合約／堂次調整都能直接打開轉課，已上過的課不會變動。
+    items:
+      - category: improved
+        text: 堂數制課程在課程設定改科目、老師或時段時，會說明已上過的課不會變動，並提供「改用轉課」按鈕，打開時已帶入你選的新內容。
+      - category: improved
+        text: 「合約／堂次調整」新增「改用轉課」入口，從某日起改科目、老師或時段不用再另外找。
+    source_refs:
+      - "changelog:2026-10-15:inapp-409-forward-change-transfer"

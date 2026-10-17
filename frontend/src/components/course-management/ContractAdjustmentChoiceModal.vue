@@ -11,6 +11,12 @@
         <button type="button" class="renew-hint__action" data-testid="contract-adjust-renew" @click="onChoose('renew')">前往續課</button>
       </div>
 
+      <!-- #409: forward-only subject／teacher／slot change lives in 轉課 (split-contract). -->
+      <div class="renew-hint" data-testid="contract-adjust-forward-transfer-hint">
+        <p class="renew-hint__text"><strong>要從某日起改科目／老師／時段？</strong>已上過的課不會變動；請用「轉課」：轉課日起的堂次、剩餘堂數與已繳金額轉到新合約。</p>
+        <button type="button" class="renew-hint__action" data-testid="contract-adjust-forward-transfer" @click="onChoose('forward-transfer')">改用轉課</button>
+      </div>
+
       <div class="choice-list">
         <button
           type="button"
