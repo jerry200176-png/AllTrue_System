@@ -1942,22 +1942,20 @@ jobs:
             && echo "✅ OPcache 清除完成" \
             || echo "⚠️ OPcache reset 失敗（非致命，TTL 到期後自動清除）"
 
-          # php artisan opcache:reset runs in CLI and cannot refresh Laravel's
-          # cached config inside PHP-FPM workers. This endpoint performs the
-          # same reset in the web process, which is required after a DB
-          # credential rotation when sudo cannot reload php-fpm interactively.
+          # CLI opcache:reset cannot refresh FPM workers' cached config; this endpoint does it
+          # in the web process (needed after DB credential rotation, no interactive sudo).
           DEPLOY_SECRET="$(grep '^DEPLOY_SECRET=' /home/admin/backend/.env | cut -d= -f2-)"
           if [ -z "$DEPLOY_SECRET" ]; then
             echo "❌ DEPLOY_SECRET missing; refusing to continue with stale FPM config"
             exit 1
           fi
           for attempt in $(seq 1 16); do
-            if ! OPCACHE_RESPONSE=$(curl -skf -X POST \
+            if ! OPCACHE_RESPONSE=$(curl -skf -X POST -w '\n%{http_code}' \
                 https://daan.lifenet.com.tw/api/internal/opcache-reset \
                 -H "X-Deploy-Secret: ${DEPLOY_SECRET}" \
                 -H "Connection: close" \
                 -H "Content-Type: application/json"); then
-              abort_deploy "FPM web-process refresh request failed on attempt ${attempt}"
+              abort_deploy "FPM web-process refresh request failed on attempt ${attempt} http=${OPCACHE_RESPONSE##*$'\n'}"
             fi
             if ! echo "$OPCACHE_RESPONSE" | grep -q '"ok":true' || \
                ! echo "$OPCACHE_RESPONSE" | grep -q '"db_connection_refreshed":true'; then

@@ -2,6 +2,8 @@
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
+import { openPageFromSidebarSearch } from './fixtures/openPageFromSidebarSearch.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -17,7 +19,6 @@ const START = process.env.SMOKE_START_DATE || '2026-08-05';
 const END = process.env.SMOKE_END_DATE || '2026-08-07';
 const CALENDAR_NAV_LABEL = '班級行事曆';
 const COURSE_NAV_LABEL = '課程查找';
-const SUBJECT_UNITS_NAV_LABEL = '科目數統計';
 const CALENDAR_PAGE_TITLE = '班級行事曆 / 課表';
 const COURSE_PAGE_TITLE = '課程查找';
 // Keep the returning-user fixture aligned with the same STAFF_UPDATES source
@@ -121,20 +122,13 @@ async function navigate(page, label) {
 }
 
 async function navigateSubjectUnits(page) {
-  await dismissOverlays(page);
-  const sidebar = page.locator('nav.sidebar-nav');
-  const direct = sidebar.getByRole('button', { name: SUBJECT_UNITS_NAV_LABEL, exact: false }).first();
-  if (await direct.count() && await direct.isVisible().catch(() => false)) {
-    await direct.click();
-  } else {
-    const moreTrigger = sidebar.locator('.sidebar-more-trigger').first();
-    await expect(moreTrigger).toBeVisible({ timeout: 15_000 });
-    await moreTrigger.click();
-    const morePanel = page.locator('.sidebar-more-panel');
-    await expect(morePanel).toBeVisible({ timeout: 15_000 });
-    await morePanel.getByRole('button', { name: SUBJECT_UNITS_NAV_LABEL, exact: false }).first().click();
-  }
-  await expect(page.locator('[data-guide="subject-units-header"]')).toBeVisible({ timeout: 15_000 });
+  // 科目數統計 is a 報表與薪資 hub tab since #3866; search reaches it without the
+  // hub's PIN-gated default tab (#4130).
+  await openPageFromSidebarSearch(page, {
+    role: SESSION?.user?.role || 'director',
+    pageKey: 'subject-units',
+    readySelector: '[data-guide="subject-units-header"]',
+  });
 }
 
 function subjectUnitsPath(start, end, branchId) {
@@ -423,22 +417,13 @@ test.describe('production acceptance — calendar/course parity', () => {
     }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
     await page.goto('/');
     await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
+    const courses = recordCourseLists(page);
     await navigate(page, COURSE_NAV_LABEL);
     await expect(pageHeading(page, COURSE_NAV_LABEL)).toBeVisible({ timeout: 15_000 });
 
-    const paymentCell = page.locator('.payment-status-and-action').filter({
-      has: page.getByRole('button', { name: /登記繳費回報|查看「待核對入帳」|前往帳務中心/, exact: true }),
-    }).first();
-    await expect(paymentCell).toBeVisible({ timeout: 15_000 });
-    const status = paymentCell.locator('.payment-status-badge');
-    const action = paymentCell.getByRole('button', { name: /登記繳費回報|查看「待核對入帳」|前往帳務中心/, exact: true });
-    await expect(status).toBeVisible({ timeout: 15_000 });
-    await expect(status).toHaveAttribute('role', 'status');
-    await expect(status).toHaveCSS('cursor', 'default');
-    await expect(page.locator('.btn-status')).toHaveCount(0);
-    await expect(action).toBeVisible();
-    await action.click();
-    await expect(page.getByRole('heading', { name: '帳務中心', exact: true })).toBeVisible({ timeout: 15_000 });
+    // The row's state is unknown here: any action is accepted to find a row, then the
+    // helper checks the clicked label against the clicked course's payment state.
+    await expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHeading: pageHeading(page, COURSE_NAV_LABEL), courses });
   });
   }
 

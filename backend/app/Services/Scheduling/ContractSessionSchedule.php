@@ -11,6 +11,7 @@ use App\Services\ClassSessionContractReflowService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ManualSessionBookingService;
 use App\Services\SessionDeductionService;
+use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -722,6 +723,23 @@ class ContractSessionSchedule
      */
     public function scheduledSessionsBeyondCount(int $classId, int $newCount): array
     {
+        return self::describeRetirableSessions($this->excessScheduledSessionsBeyondCount($classId, $newCount)['retirable']);
+    }
+
+    /** @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}> */
+    public static function scheduledSessionsBeyondCountFromRows($allActive, int $newCount): array
+    {
+        return self::describeRetirableSessions(self::retirableScheduledRowsBeyondCount($allActive, $newCount));
+    }
+
+    /**
+     * Read-only preflight for a reduced count: the excess `scheduled` rows
+     * split by the same rule the locked write uses (see partitionExcessScheduledRows).
+     *
+     * @return array{retirable: \Illuminate\Support\Collection<int, ClassSession>, past_unrecorded: \Illuminate\Support\Collection<int, ClassSession>}
+     */
+    public function excessScheduledSessionsBeyondCount(int $classId, int $newCount): array
+    {
         $allActive = ClassSession::query()
             ->where('StudentClassID', $classId)
             ->where(function ($query) {
@@ -733,19 +751,65 @@ class ContractSessionSchedule
             ->orderBy('id')
             ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status']);
 
-        return self::scheduledSessionsBeyondCountFromRows($allActive, $newCount);
+        return self::partitionExcessScheduledRows($allActive, $newCount);
+    }
+
+    /**
+     * The single eligibility rule for a reduced count, shared by the billing
+     * correction preview, its confirmation token and its locked write:
+     * purchased-quota rows are counted in two passes. Authoritatively used rows
+     * (any recorded status, or a `scheduled` row with an active deducted
+     * sign-in or a positive ledger net, the same evidence observed-used counts)
+     * reserve quota first; the remaining `scheduled` rows then fill what is left
+     * in date order, and the overflow is the excess. A `scheduled` row with an
+     * active leave sign-in (the legacy leave record, as LearningRecord's pending
+     * filter and ScheduleController::undoLeaveBySession read it) is a leave: it
+     * consumes no quota and is never excess. The excess splits by date against
+     * today in the app timezone (Asia/Taipei):
+     *  - retirable: dated today or later; the correction cancels exactly these.
+     *  - past_unrecorded: dated before today with attendance never recorded;
+     *    the correction must refuse (fail closed) while any of these exist,
+     *    so history is never cancelled and the contract is never left over quota.
+     *
+     * @return array{retirable: \Illuminate\Support\Collection<int, ClassSession>, past_unrecorded: \Illuminate\Support\Collection<int, ClassSession>}
+     */
+    public static function partitionExcessScheduledRows($allActive, int $newCount): array
+    {
+        $today = Carbon::today()->toDateString();
+        $quotaRows = self::purchasedQuotaSessionRows($allActive);
+        $isScheduled = static fn (ClassSession $session): bool => strtolower((string) $session->getAttribute('Status')) === 'scheduled';
+        $scheduledIds = $quotaRows->filter($isScheduled)->map(static fn (ClassSession $session): int => (int) $session->getKey())->values()->all();
+        $toInt = static fn ($id): int => (int) $id;
+        $signIns = $scheduledIds === [] ? collect() : StudentSignIn::query()->whereNull('VoidedAt')
+            ->whereIn('ClassSessionID', $scheduledIds)->get(['ClassSessionID', 'Status', 'SessionDeducted']);
+        $leaveStatuses = [SessionStatus::LEAVE, SessionStatus::EXCUSED, SessionStatus::LEAVE_REQUESTED];
+        $leaveIds = $signIns->filter(static fn ($signIn): bool => in_array(strtolower((string) $signIn->Status), $leaveStatuses, true))
+            ->pluck('ClassSessionID')->map($toInt)->flip();
+        $ledgerIds = $scheduledIds === [] ? collect() : DB::table('session_deduction_ledger')
+            ->whereIn('class_session_id', $scheduledIds)->groupBy('class_session_id')
+            ->havingRaw("SUM(CASE WHEN event_type = 'deduct' THEN 1 ELSE -1 END) > 0")->pluck('class_session_id');
+        $usedIds = $signIns->filter(static fn ($signIn): bool => (bool) $signIn->SessionDeducted)->pluck('ClassSessionID')
+            ->merge($ledgerIds)->map($toInt)->flip();
+        $unrecorded = $quotaRows->filter(static fn (ClassSession $session): bool => $isScheduled($session)
+            && !isset($usedIds[(int) $session->getKey()]) && !isset($leaveIds[(int) $session->getKey()]))->values();
+        $reserved = $quotaRows->count() - $leaveIds->count() - $unrecorded->count();
+        [$retirable, $past] = $unrecorded->slice(max(0, $newCount - $reserved))->partition(
+            static fn (ClassSession $session): bool => substr((string) $session->getAttribute('SessionDate'), 0, 10) >= $today
+        );
+
+        return ['retirable' => $retirable->values(), 'past_unrecorded' => $past->values()];
+    }
+
+    /** Today-or-later excess `scheduled` rows; see partitionExcessScheduledRows(). */
+    public static function retirableScheduledRowsBeyondCount($allActive, int $newCount)
+    {
+        return self::partitionExcessScheduledRows($allActive, $newCount)['retirable'];
     }
 
     /** @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}> */
-    public static function scheduledSessionsBeyondCountFromRows($allActive, int $newCount): array
+    public static function describeRetirableSessions($sessions): array
     {
-        $today = Carbon::today()->toDateString();
-
-        return self::purchasedQuotaSessionRows($allActive)->slice($newCount)
-            ->filter(static function (ClassSession $session) use ($today): bool {
-                return strtolower((string) $session->getAttribute('Status')) === 'scheduled'
-                    && substr((string) $session->getAttribute('SessionDate'), 0, 10) >= $today;
-            })
+        return $sessions
             ->map(static fn (ClassSession $session): array => [
                 'session_id' => (int) $session->getKey(),
                 'session_date' => substr((string) $session->getAttribute('SessionDate'), 0, 10),

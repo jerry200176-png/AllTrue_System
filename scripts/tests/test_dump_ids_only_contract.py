@@ -104,6 +104,162 @@ class DumpIdsOnlyTest(unittest.TestCase):
         self.assertNotIn("$out['teachers'] = collect($classes)", r.stdout)
 
 
+CASE_WF = "production-case-dump.yml"
+ENCRYPT_STEP = "Encrypt case output (log shows status only)"
+
+
+def case_steps():
+    return yaml.safe_load((WF / CASE_WF).read_text(encoding="utf-8"))["jobs"]["dump"]["steps"]
+
+
+def case_step(prefix):
+    return next(s for s in case_steps() if s.get("name", "").startswith(prefix))
+
+
+class ProductionCaseDumpEncryptedOutputTest(unittest.TestCase):
+    """Case output only reaches an encrypted artifact; the public log carries status only (in-app #414 prep)."""
+
+    def run_bash(self, script, cwd, env):
+        return subprocess.run(["bash", "-c", textwrap.dedent(script)], cwd=cwd, env=env, capture_output=True, text=True)
+
+    def seed_raw(self, d):
+        raw = Path(d, "raw")
+        raw.mkdir()
+        payload = {"ok": True, "case": "schedule_241", "student": NAME, "snapshot_complete": False,
+                   "completeness": "inconclusive", "reason": "truncated,no_linked_invoice"}
+        Path(raw, "production-case.log").write_text(f"noise {NAME}\n" + json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+        Path(raw, "production-case.stderr.log").write_text(f"warning about {NAME}\n", encoding="utf-8")
+        Path(raw, "production-case.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    def test_key_check_is_first_and_fails_closed_before_any_production_read(self):
+        steps = case_steps()
+        first = steps[0]
+        self.assertIn("secrets.DUMP_ARTIFACT_KEY", json.dumps(first))
+        self.assertNotIn("if", first)
+        self.assertNotIn("continue-on-error", first)
+        with tempfile.TemporaryDirectory() as d:
+            for key in ("", "short"):
+                r = self.run_bash(first["run"], d, {**os.environ, "DUMP_ARTIFACT_KEY": key})
+                self.assertNotEqual(r.returncode, 0, key)
+            self.assertEqual(self.run_bash(first["run"], d, {**os.environ, "DUMP_ARTIFACT_KEY": KEY}).returncode, 0)
+
+    def test_probe_output_goes_to_raw_files_never_the_log(self):
+        src = (WF / CASE_WF).read_text(encoding="utf-8")
+        run = case_step("Run bounded")["run"]
+        for gone in ("tee out/", "out/production-case.json", "out/production-case.log", "GITHUB_STEP_SUMMARY"):
+            self.assertNotIn(gone, src)
+        ssh_lines = [line for line in run.splitlines() if "<<'PREFLIGHT'" in line or "'bash -s' <" in line]
+        self.assertEqual(len(ssh_lines), 2)
+        for line in ssh_lines:
+            self.assertNotIn("tee", line)
+            self.assertTrue(line.rstrip().endswith("> raw/production-case.log 2> raw/production-case.stderr.log"), line)
+        for step in case_steps():
+            for line in step.get("run", "").splitlines():
+                if re.search(r"\b(?:cat|tee|echo|printf|head|tail|less|jq)\b", line):
+                    self.assertNotRegex(line, r"raw/|production-case\.(?:json|log)|production_case_probe\.php", line)
+
+    def test_probe_parser_prints_case_key_only(self):
+        run = case_step("Run bounded")["run"]
+        py = re.findall(r"python3 - <<'PY'\n(.*?)\n\s*PY\n", run, re.S)[-1]
+        with tempfile.TemporaryDirectory() as d:
+            self.seed_raw(d)
+            r = subprocess.run(["python3", "-c", textwrap.dedent(py)], cwd=d, capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn(NAME, r.stdout + r.stderr)
+            self.assertIn(NAME, Path(d, "raw", "production-case.json").read_text(encoding="utf-8"))
+
+    def test_encrypt_step_logs_status_only_and_uploads_only_ciphertext(self):
+        step = case_step(ENCRYPT_STEP)
+        self.assertEqual(step.get("if"), "always()")
+        self.assertIn("secrets.DUMP_ARTIFACT_KEY", json.dumps(step))
+        with tempfile.TemporaryDirectory() as d:
+            self.seed_raw(d)
+            summary = Path(d, "summary.md")
+            env = {**os.environ, "DUMP_ARTIFACT_KEY": KEY, "CASE_KEY": "schedule_241", "PROBE_OUTCOME": "success",
+                   "GITHUB_STEP_SUMMARY": str(summary)}
+            r = self.run_bash(step["run"], d, env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertFalse(summary.exists())  # nothing goes to the step summary
+            published = r.stdout + r.stderr
+            for absent in (NAME, "noise", "warning about", "student"):
+                self.assertNotIn(absent, published)
+            self.assertIn('"case": "schedule_241"', published)
+            self.assertIn('"snapshot_complete": false', published)
+            self.assertIn('"reason": "truncated,no_linked_invoice"', published)
+            self.assertRegex(published, r"sha256=[0-9a-f]{64}")
+            out = sorted(p.name for p in Path(d, "out").iterdir())
+            self.assertEqual(out, ["production-case.full.tar.gz.enc", "production-case.full.tar.gz.enc.sha256"])
+            self.assertNotIn(NAME.encode(), Path(d, "out", out[0]).read_bytes())
+            check = subprocess.run(["sha256sum", "-c", out[1]], cwd=Path(d, "out"), capture_output=True, text=True)
+            self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+            # Key holder's local recipe (docs/sop/BUG_INTAKE_TO_PRODUCTION.md step 5) recovers every raw file.
+            dec = subprocess.run(
+                "openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:DUMP_ARTIFACT_KEY "
+                "-in out/production-case.full.tar.gz.enc | tar xzO",
+                shell=True, cwd=d, env=env, capture_output=True)
+            self.assertEqual(dec.returncode, 0, dec.stderr)
+            self.assertEqual(dec.stdout.decode("utf-8").count(NAME), 4)  # log x2, stderr, json
+
+    def test_encrypt_step_withholds_non_token_status_text(self):
+        step = case_step(ENCRYPT_STEP)
+        with tempfile.TemporaryDirectory() as d:
+            raw = Path(d, "raw")
+            raw.mkdir()
+            Path(raw, "production-case.json").write_text(json.dumps(
+                {"ok": NAME, "snapshot_complete": NAME, "completeness": NAME, "reason": f"{NAME} x"}, ensure_ascii=False), encoding="utf-8")
+            summary = Path(d, "summary.md")
+            env = {**os.environ, "DUMP_ARTIFACT_KEY": KEY, "CASE_KEY": "schedule_241", "PROBE_OUTCOME": "failure",
+                   "GITHUB_STEP_SUMMARY": str(summary)}
+            r = self.run_bash(step["run"], d, env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertFalse(summary.exists())
+            self.assertNotIn(NAME, r.stdout + r.stderr)
+            self.assertIn("withheld", r.stdout)
+
+    def test_encrypt_step_without_key_uploads_nothing(self):
+        step = case_step(ENCRYPT_STEP)
+        with tempfile.TemporaryDirectory() as d:
+            self.seed_raw(d)
+            env = {**os.environ, "DUMP_ARTIFACT_KEY": "", "CASE_KEY": "schedule_241", "PROBE_OUTCOME": "success",
+                   "GITHUB_STEP_SUMMARY": str(Path(d, "summary.md"))}
+            r = self.run_bash(step["run"], d, env)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertNotIn(NAME, r.stdout + r.stderr)
+            self.assertEqual(list(Path(d, "out").iterdir()), [])
+
+    def test_upload_is_ciphertext_and_hash_only(self):
+        steps = case_steps()
+        uploads = [s for s in steps if "upload-artifact" in s.get("uses", "")]
+        self.assertEqual(len(uploads), 1)
+        paths = [p.strip() for p in uploads[0]["with"]["path"].splitlines() if p.strip()]
+        self.assertEqual(paths, ["out/production-case.full.tar.gz.enc", "out/production-case.full.tar.gz.enc.sha256"])
+        names = [s.get("name", "") for s in steps]
+        self.assertLess(names.index(ENCRYPT_STEP), names.index(uploads[0]["name"]))
+
+    def test_plaintext_is_shredded_in_always_cleanup(self):
+        step = case_step("Shred plaintext")
+        self.assertEqual(step.get("if"), "always()")
+        self.assertIn("shred -u", step["run"])
+        names = [s.get("name", "") for s in case_steps()]
+        self.assertLess(names.index(ENCRYPT_STEP), names.index(step["name"]))
+        with tempfile.TemporaryDirectory() as d:
+            self.seed_raw(d)
+            probe = Path(d, "probe.php")
+            probe.write_text("<?php // probe", encoding="utf-8")
+            runner_temp = Path(d, "runner")
+            runner_temp.mkdir()
+            Path(runner_temp, "production-case-remote.sh").write_text("x", encoding="utf-8")
+            script = step["run"].replace("/tmp/production_case_probe.php", str(probe))
+            r = self.run_bash(script, d, {**os.environ, "RUNNER_TEMP": str(runner_temp)})
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertFalse(Path(d, "raw").exists())
+            self.assertFalse(probe.exists())
+            self.assertFalse(Path(runner_temp, "production-case-remote.sh").exists())
+
+    def test_workflow_stays_on_the_pii_log_purge_list(self):
+        listed = (WF.parent / "pii-log-workflows.txt").read_text(encoding="utf-8").split()
+        self.assertIn(CASE_WF, listed)
+
+
 if __name__ == "__main__":
     unittest.main()
-

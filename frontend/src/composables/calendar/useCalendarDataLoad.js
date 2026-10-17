@@ -28,6 +28,15 @@ export function useCalendarDataLoad({
   const sessionDatesByCourseId = ref({});
   const allStudents = ref([]);
   const teachers = ref([]);
+  // True only while `teachers` holds the settled result of the LATEST teacher
+  // fetch (success, empty branch or error). Reset at the start of every fetch
+  // (initial load, campus switch, reload) so the create picker never validates a
+  // cell-click teacher seed against a previous campus's list (#4157 review).
+  const teachersLoaded = ref(false);
+  // Request ownership: only the newest loadTeachers() call may write
+  // `teachers` / `teachersLoaded`, so a slow response for an old campus can
+  // neither mark readiness nor overwrite the newer campus's options.
+  let teachersRequestSeq = 0;
   const lastCalendarFetch = ref(null);
 
   const isCourseActiveForCalendar = (course) => {
@@ -268,15 +277,21 @@ export function useCalendarDataLoad({
   };
 
   const loadTeachers = async () => {
+    const seq = ++teachersRequestSeq;
+    const isLatest = () => seq === teachersRequestSeq;
+    teachersLoaded.value = false;
     const { data: { session: sess } } = await supabase.auth.getSession();
+    if (!isLatest()) return;
     const token = sess?.access_token;
     if (!token) return;
     const bid = Number(branchId?.value ?? branchId) || 0;
     const teacherMode = typeof isTeacher === 'function' ? isTeacher() : !!isTeacher?.value;
     if (!bid && !teacherMode) {
       teachers.value = [];
+      teachersLoaded.value = true;
       return;
     }
+    let next = [];
     try {
       const params = new URLSearchParams({ per_page: 'all' });
       if (!teacherMode && bid) {
@@ -303,15 +318,20 @@ export function useCalendarDataLoad({
             email: t?.email || '',
             branch_ids: branchIds,
             branch_id: branch,
+            // Keep status so the create-course picker can hide deactivated teachers (in-app #411).
+            status: t?.status ?? null,
           };
         })
         .filter(Boolean);
-      teachers.value = teacherMode
+      next = teacherMode
         ? normalized
         : normalized.filter((t) => (t.branch_ids || []).includes(bid) || Number(t.branch_id || 0) === bid);
     } catch (e) {
-      teachers.value = [];
+      next = [];
     }
+    if (!isLatest()) return;
+    teachers.value = next;
+    teachersLoaded.value = true;
   };
 
   const reloadCalendarData = (...extraLoaders) => Promise.allSettled([
@@ -331,6 +351,7 @@ export function useCalendarDataLoad({
     sessionDatesByCourseId,
     allStudents,
     teachers,
+    teachersLoaded,
     lastCalendarFetch,
     loadCourses,
     loadStudents,

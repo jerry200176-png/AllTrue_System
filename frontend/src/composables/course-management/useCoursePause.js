@@ -4,8 +4,12 @@ import { authedFetch, getAccessToken } from '../../lib/authedFetch';
 // Pause / resume (暫停 / 恢復) confirm flow for CourseManagement: confirm-dialog state,
 // the POST /student-classes/:id/pause request and its error copy. The page supplies
 // `onChanged` (reload the list + resync the open course manager). Close (結案) shares
-// the same endpoint through lib/closeCourseNoRenew.js.
-export function useCoursePause({ onChanged, notify = (msg) => alert(msg) }) {
+// the same endpoint through lib/closeCourseNoRenew.js; the page passes that flow's per-course
+// lock as `courseLock` so a pause/resume and a close of the same course never run together.
+export const COURSE_LIFECYCLE_BUSY_MESSAGE = '這門課還有其他操作處理中，請稍候再試';
+const noLock = { run: (_course, fn) => fn(), isPending: () => false };
+
+export function useCoursePause({ onChanged, notify = (msg) => alert(msg), courseLock = noLock }) {
   const target = ref(null);
   const submitting = ref(false);
   const cancelRemaining = ref(true);
@@ -19,6 +23,7 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg) }) {
       ]);
 
   function request(course) {
+    if (courseLock.isPending(course)) { notify(COURSE_LIFECYCLE_BUSY_MESSAGE); return; }
     cancelRemaining.value = true;
     target.value = course;
   }
@@ -27,6 +32,11 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg) }) {
     if (submitting.value) return;
     const course = target.value;
     if (!course) return;
+    if (courseLock.isPending(course)) { notify(COURSE_LIFECYCLE_BUSY_MESSAGE); return; }
+    await courseLock.run(course, () => send(course));
+  }
+
+  async function send(course) {
     const paused = course.status === 'inactive';
     const action = paused ? '恢復' : '暫停';
     submitting.value = true;
