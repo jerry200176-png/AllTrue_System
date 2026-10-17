@@ -1,13 +1,19 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 520 api/* routes · generated 2026-10-17
+> Source: `php artisan route:list --json` · 523 api/* routes · generated 2026-10-17
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
 > ⚠️ `public` means no auth *middleware* — some public routes carry inline guards
 > (X-Deploy-Secret, LINE channel signature, ParentSession bearer). Verify the route
 > closure/controller before treating a `public` row as exposed (R60 checks belong in CI).
+
+## /api/fix-db (1)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/fix-db` | `Closure` | public |
 
 ## /api/health (1)
 
@@ -736,7 +742,7 @@
 |--------|-----|--------|------|
 | GET | `api/v1/schools` | `SchoolDirectoryController@index` | role+campus |
 
-## /api/v1/student-classes (38)
+## /api/v1/student-classes (40)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -752,6 +758,8 @@
 | DELETE | `api/v1/student-classes/{studentClass}` | `StudentClassController@destroy` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/add-session` | `StudentClassController@addSession` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/add-session/check` | `StudentClassController@checkAddSession` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/agreed-fee-correction/apply` | `AgreedFeeCorrectionController@apply` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/agreed-fee-correction/preview` | `AgreedFeeCorrectionController@preview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/billing-correction` | `StudentClassController@billingCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/charge-correction` | `StudentClassController@chargeCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/confirm-payment` | `StudentClassController@confirmPayment` | role+campus |
