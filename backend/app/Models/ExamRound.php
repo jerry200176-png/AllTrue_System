@@ -4,7 +4,21 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-/** @method static static create(array $attributes = []) */
+/**
+ * @property int $id
+ * @property int $campus_id
+ * @property string $title
+ * @property string|null $description
+ * @property string $status
+ * @property \Carbon\Carbon|null $exam_date
+ * @property \Carbon\Carbon|null $entry_deadline
+ * @property array|null $grade_ids
+ * @property int|null $created_by_user_id
+ * @property \Carbon\Carbon|null $published_at
+ * @property \Carbon\Carbon|null $closed_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, ExamRoundSubject> $subjects
+ * @method static static create(array $attributes = [])
+ */
 class ExamRound extends Model
 {
     protected $table = 'exam_rounds';
