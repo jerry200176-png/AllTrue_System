@@ -5,6 +5,9 @@ namespace App\Console\Commands;
 use App\Models\Notification;
 use App\Services\SessionDeductionService;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -21,6 +24,62 @@ class NightlyReconcile extends Command
         $dryRun    = (bool) $this->option('dry-run');
         $threshold = max(0, (int) $this->option('threshold'));
 
+        // #4068: serialize overlapping scheduled + manual runs so summary/rows
+        // files share one checked_at (Laravel Cache::lock — same idea as
+        // schedule withoutOverlapping, but also covers artisan manual runs).
+        $lock = null;
+        $lockKey = $dryRun ? 'reconcile:nightly:dry-run' : 'reconcile:nightly:live';
+        try {
+            $lock = Cache::lock($lockKey, 600);
+            if (!$lock->get()) {
+                $this->warn('Another reconcile:nightly is already running; skipping overlapping publish.');
+                return self::SUCCESS;
+            }
+        } catch (LockTimeoutException $e) {
+            $this->warn('Another reconcile:nightly is already running; skipping overlapping publish.');
+            return self::SUCCESS;
+        } catch (\Throwable $e) {
+            // Cache store without lock support: continue unlocked rather than fail the job.
+            report($e);
+            $lock = null;
+        }
+
+        try {
+            return $this->runReconcile($dryRun, $threshold);
+        } finally {
+            if ($lock instanceof Lock) {
+                $lock->release();
+            }
+        }
+    }
+
+    /**
+     * Write JSON via temp file + rename so concurrent readers never observe a
+     * truncated publish. Returns false when encoding or write fails.
+     */
+    /** @param string|false|null $json */
+    private function publishJsonAtomically(string $path, $json): bool
+    {
+        if (!is_string($json)) {
+            return false;
+        }
+        $tmp = $path . '.tmp.' . getmypid();
+        if (@file_put_contents($tmp, $json) === false) {
+            @unlink($tmp);
+
+            return false;
+        }
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function runReconcile(bool $dryRun, int $threshold): int
+    {
         if (!DB::getSchemaBuilder()->hasTable('StudentClass') || !DB::getSchemaBuilder()->hasTable('ClassSession')) {
             $this->warn('Required tables missing; skipping.');
             return self::SUCCESS;
@@ -92,7 +151,10 @@ class NightlyReconcile extends Command
         // A dry-run preview gets its own file so it never replaces the scheduled
         // live report the admin panel reads (#3945).
         $reportPath = storage_path('logs/' . ($dryRun ? 'nightly-reconcile-dryrun-' : 'nightly-reconcile-') . now()->format('Ymd') . '.json');
-        @file_put_contents($reportPath, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        $reportJson = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        // Atomic publish: temp + rename so readers never see a half-written file
+        // while an overlapping run is publishing (#4068).
+        $this->publishJsonAtomically($reportPath, $reportJson);
 
         // Every mismatch row (IDs, counts and category only, no names) goes to a
         // compact per-day sibling file so the panel can page past the 200 rows
@@ -107,7 +169,7 @@ class NightlyReconcile extends Command
         // Do not claim success when the complete row list could not be written:
         // rows past the first 200 would be unreachable (#4063 review). The panel
         // already falls back to the summary rows with complete=false.
-        $rowsWritten = $rowsJson !== false && @file_put_contents($rowsPath, $rowsJson) !== false;
+        $rowsWritten = $this->publishJsonAtomically($rowsPath, $rowsJson);
         if (!$rowsWritten) {
             Log::error('nightly_reconcile_rows_write_failed', [
                 'checked_at' => $checkedAt,
