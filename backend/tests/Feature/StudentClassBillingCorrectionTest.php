@@ -35,6 +35,121 @@ class StudentClassBillingCorrectionTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-08-25 10:00:00', 'Asia/Taipei'));
     }
 
+    public function test_full_receipt_reversal_allows_an_eligible_trial_obligation_correction_and_repayment(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['Rate' => 500, 'Charge' => 8000, 'SessionCount' => 16,
+            'RemainingSessions' => 16, 'UsedSessions' => 0, 'TotalHours' => 32]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 8000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID,
+            'Description' => 'Synthetic trial correction', 'Amount' => 8000]);
+        $body = ['student_class_id' => $course->ID, 'invoice_id' => $invoice->id,
+            'payment_date' => '2026-09-02', 'payment_method' => 'cash', 'amount' => 8000];
+        $original = $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', $body)->assertOk()->json('report_id');
+        $this->withToken($token)->putJson("/api/v1/payment-reports/{$original}/confirm")->assertOk();
+        $this->withToken($token)->putJson("/api/v1/payment-reports/{$original}/void", ['void_reason' => 'Synthetic mistaken receipt'])->assertOk();
+        $correction = ['new_session_count' => 1, 'new_charge' => 500, 'reason' => 'Synthetic verified trial obligation'];
+        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", $correction + ['preview' => true])->assertOk();
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction",
+            $correction + ['confirmation_token' => $preview->json('confirmation_token')])->assertOk();
+        $this->assertSame([8000, -8000], DB::table('Payment')->where('InvoiceID', $invoice->id)->orderBy('id')->pluck('Amount')->map(fn ($v) => (int) $v)->all());
+        $body['amount'] = 500;
+        $replacement = $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', $body)->assertOk()->json('report_id');
+        $this->assertSame(2, DB::table('Payment')->where('InvoiceID', $invoice->id)->count());
+        $this->withToken($token)->putJson("/api/v1/payment-reports/{$replacement}/confirm")->assertOk();
+        $this->assertSame([8000, -8000, 500], DB::table('Payment')->where('InvoiceID', $invoice->id)->orderBy('id')->pluck('Amount')->map(fn ($v) => (int) $v)->all());
+        $this->assertDatabaseHas('payment_reports', ['id' => $original, 'status' => 'voided']);
+        $this->assertDatabaseHas('Invoice', ['id' => $invoice->id, 'TotalAmount' => 500, 'PaidAmount' => 500]);
+    }
+
+    public function test_reject_and_replace_pending_amount_does_not_post_money_before_confirmation(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['Charge' => 8800]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $body = ['student_class_id' => $course->ID, 'invoice_id' => $invoice->id,
+            'payment_date' => '2026-09-02', 'payment_method' => 'cash', 'amount' => 8000];
+        $original = $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', $body)->assertOk()->json('report_id');
+        $this->withToken($token)->putJson("/api/v1/payment-reports/{$original}/reject", ['rejection_note' => 'Synthetic wrong reported amount'])->assertOk();
+        $body['amount'] = 8800;
+        $replacement = $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', $body)->assertOk()->json('report_id');
+        $this->assertSame(0, DB::table('Payment')->where('InvoiceID', $invoice->id)->count());
+        $this->assertDatabaseHas('payment_reports', ['id' => $original, 'status' => 'rejected', 'reported_amount' => 8000]);
+        $this->withToken($token)->putJson("/api/v1/payment-reports/{$replacement}/confirm")->assertOk();
+        $this->assertSame([8800], DB::table('Payment')->where('InvoiceID', $invoice->id)->pluck('Amount')->map(fn ($v) => (int) $v)->all());
+    }
+
+    public function test_selected_invoice_cap_is_not_bypassed_by_another_invoice(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['Charge' => 16800]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 8000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-09-02', 'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $course->ID, 'invoice_id' => $invoice->id, 'amount' => 8800,
+            'payment_date' => '2026-09-02', 'payment_method' => 'cash',
+        ])->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
+        $this->assertSame(0, DB::table('Payment')->count());
+        $this->assertSame(0, PaymentReport::where('StudentClassID', $course->ID)->count());
+        $this->assertSame(8000, (int) $invoice->fresh()->TotalAmount);
+    }
+
+    public function test_partial_reversal_after_preview_still_blocks_the_locked_correction(): void
+    {
+        [$token, $actorId] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['Rate' => 500, 'Charge' => 8000, 'SessionCount' => 16,
+            'RemainingSessions' => 16, 'UsedSessions' => 0]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 8000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $correction = ['new_session_count' => 1, 'new_charge' => 500, 'reason' => 'Synthetic correction'];
+        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", $correction + ['preview' => true])->assertOk();
+        foreach ([8000, -7500] as $amount) {
+            DB::table('Payment')->insert(['InvoiceID' => $invoice->id, 'Amount' => $amount,
+                'Method' => $amount < 0 ? 'void' : 'cash', 'PaidAt' => '2026-09-02']);
+        }
+        try {
+            app(\App\Services\Billing\BillingCorrection::class)->applyCountCorrection(
+                $course, 1, 500, 'Synthetic correction', 16, 8000, $preview->json('confirmation_token'),
+                $actorId
+            );
+            $this->fail('A surviving receipt must block the locked correction');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
+            $this->assertSame(409, $exception->getResponse()->getStatusCode());
+            $this->assertSame('billing_correction_payment_locked', json_decode($exception->getResponse()->getContent(), true)['code']);
+        }
+        $this->assertSame(8000, (int) $course->fresh()->Charge);
+        $this->assertSame(8000, (int) $invoice->fresh()->TotalAmount);
+    }
+
+    public function test_date_charge_correction_also_accepts_fully_reversed_history(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['ScheduleMode' => 'date', 'Charge' => 8000]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 8000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $receiptId = DB::table('Payment')->insertGetId(['InvoiceID' => $invoice->id, 'Amount' => 8000,
+            'Method' => 'cash', 'PaidAt' => '2026-09-02']);
+        $report = PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => 'Synthetic fixture', 'reported_amount' => 8000, 'payment_date' => '2026-09-02',
+            'payment_method' => 'cash', 'status' => 'voided', 'payment_id' => $receiptId,
+            'report_token_hash' => hash('sha256', 'synthetic-reversed-history'), 'token_expires_at' => now()->addDay()]);
+        DB::table('Payment')->insert(['InvoiceID' => $invoice->id, 'Amount' => -8000, 'Method' => 'void',
+            'PaidAt' => '2026-09-02', 'payment_report_id' => $report->id]);
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/charge-correction",
+            ['new_charge' => 500, 'reason' => 'Synthetic verified charge'])->assertOk();
+        $this->assertSame(500, (int) $invoice->fresh()->TotalAmount);
+        $this->assertSame([8000, -8000], DB::table('Payment')->where('InvoiceID', $invoice->id)->orderBy('id')->pluck('Amount')->map(fn ($v) => (int) $v)->all());
+    }
+
     public function test_editability_preflight_explains_locked_contract_and_safe_actions(): void
     {
         [$token] = $this->director();

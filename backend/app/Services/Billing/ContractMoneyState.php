@@ -132,6 +132,66 @@ final class ContractMoneyState
     }
 
     /**
+     * Unpaid-only count/charge correction guard. Other callers retain hasActivePayment's historical rule.
+     * Zero invoice net alone is insufficient: every reversal must have unambiguous receipt provenance.
+     * Missing legacy links, duplicate/excess reversals and inconsistent stored balances fail closed.
+     * Agreed-fee replacement opts into checking retained void history too; legacy callers keep their scope.
+     */
+    public static function blocksUnpaidCorrection(int $studentClassId, bool $includeVoided = false): bool
+    {
+        $invoices = fn () => DB::table('Invoice')
+            ->where('Invoice.StudentClassID', $studentClassId)
+            ->when(!$includeVoided, fn ($q) => $q->where(fn ($status) => $status->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void')));
+        if ($invoices()->select('Invoice.id')
+            ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->groupBy('Invoice.id', 'Invoice.PaidAmount')
+            ->havingRaw("Invoice.PaidAmount != 0 OR SUM(CASE WHEN Payment.Amount < 0 OR Payment.Method = 'void' THEN -ABS(Payment.Amount) ELSE COALESCE(Payment.Amount, 0) END) != 0")
+            ->exists()) {
+            return true;
+        }
+        $payments = $invoices()->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')->get(['Payment.*']);
+        // SQL collation can treat 'VOID' or 'void ' as 'void'; provenance uses exact PHP semantics.
+        // Refuse any balance disagreement rather than normalizing ambiguous historical methods.
+        if ($payments->groupBy('InvoiceID')->contains(fn ($rows) => (int) $rows->sum(fn ($p) =>
+            (int) $p->Amount < 0 || (string) $p->Method === 'void' ? -abs((int) $p->Amount) : (int) $p->Amount) !== 0)) {
+            return true;
+        }
+        $reversals = $payments->filter(fn ($p) => (int) $p->Amount < 0 || (string) $p->Method === 'void');
+        if ($reversals->contains(fn ($p) => empty($p->payment_report_id))) {
+            return true;
+        }
+        $groups = $reversals->groupBy('payment_report_id');
+        $reports = $groups->isEmpty() ? collect() : DB::table('payment_reports')->whereIn('id', $groups->keys()->all())->get()->keyBy('id');
+        $seenReceipts = [];
+        foreach ($groups as $reportId => $rows) {
+            $report = $reports->get($reportId);
+            if (!$report || $report->status !== 'voided' || (int) $report->StudentClassID !== $studentClassId) {
+                return true;
+            }
+            // Older receipts can be linked only by report.payment_id; current receipts also carry payment_report_id.
+            $receipts = $payments->filter(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void'
+                && ((int) ($p->payment_report_id ?? 0) === (int) $reportId || (int) $p->id === (int) ($report->payment_id ?? 0)));
+            if ($receipts->count() !== 1) {
+                return true;
+            }
+            $receipt = $receipts->first();
+            if (isset($seenReceipts[(int) $receipt->id])) {
+                return true;
+            }
+            $seenReceipts[(int) $receipt->id] = true;
+            if ((int) $receipt->InvoiceID !== (int) $report->InvoiceID
+                || (!empty($report->payment_id) && (int) $report->payment_id !== (int) $receipt->id)
+                || (!empty($receipt->payment_report_id) && (int) $receipt->payment_report_id !== (int) $reportId)
+                || (int) $receipt->Amount !== (int) $report->reported_amount
+                || $rows->contains(fn ($p) => (int) $p->InvoiceID !== (int) $receipt->InvoiceID)
+                || (int) $rows->sum(fn ($p) => abs((int) $p->Amount)) > (int) $receipt->Amount) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Thin delegates kept for StudentClassController (frozen); the aggregates live in the resolver.
      *
      * @param  int[]  $studentClassIds

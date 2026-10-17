@@ -162,6 +162,17 @@ class ContractMoneyStateTest extends TestCase
         $this->assertFalse(ContractMoneyState::hasActivePayment($voidInvoice));
     }
 
+    public function test_correction_refuses_case_or_space_ambiguous_void_methods(): void
+    {
+        foreach (['VOID', 'void '] as $method) {
+            $course = $this->seedCourse();
+            $invoice = $this->invoice($course, 'unpaid', 8000, 0);
+            $this->payment($invoice, 8000, 'cash', '2026-09-02 10:00:00');
+            $this->payment($invoice, 8000, $method, '2026-09-03 10:00:00');
+            $this->assertTrue(ContractMoneyState::blocksUnpaidCorrection($course));
+        }
+    }
+
     public function test_invoice_aggregate_and_last_paid_at(): void
     {
         $id = $this->seedCourse();

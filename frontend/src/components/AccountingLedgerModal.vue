@@ -74,9 +74,8 @@
             <h4>合約（每一堂課與付款）</h4>
             <p v-if="contractCourses.some(hasMultiplePackageBills)" class="ledger-empty" data-testid="ledger-package-batch-note">共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p>
             <div class="ledger-contracts">
+              <div v-for="c in contractCourses" :key="c.id">
               <ContractCard
-                v-for="c in contractCourses"
-                :key="c.id"
                 :course="c"
                 :focused="isOpenedCourse(c)"
                 :outstanding="owedFor(c.id)"
@@ -93,6 +92,8 @@
                 @confirmed="openReceipt"
                 @changed="onPanelChanged"
               />
+              <button v-if="payload.capabilities?.agreed_fee_correction" type="button" class="ledger-action" :data-testid="`fee-correction-open-${c.id}`" @click="feeCourseId = Number(c.id); feeCorrectionOpen = true">只更正約定費用</button>
+              </div>
             </div>
           </section>
 
@@ -280,6 +281,7 @@
           </div>
         </template>
       </div>
+      <AgreedFeeCorrectionModal v-if="feeCorrectionOpen && payload?.capabilities?.agreed_fee_correction" :key="feeCourseId" :course-id="feeCourseId" :invoice-id="feeInvoiceId" @close="feeCorrectionOpen = false" @changed="loadLedger(); emit('changed')" />
       <AtDialog :open="!!issueDraft" title="開立這期帳單？" size="sm" title-id="ledger-issue-title" @close="closeIssue">
         <p v-if="issueDraft" class="ledger-issue" data-testid="ledger-issue-text">
           {{ issueDraft.subject }}・{{ fmtDate(issueDraft.proposed_start_date) }}–{{ fmtDate(issueDraft.proposed_end_date) }}・{{ issueDraft.period_sessions }} 堂・{{ formatCurrency(issueDraft.amount) }}<template v-if="issueDraft.due_date">・繳費期限 {{ fmtDate(issueDraft.due_date) }}</template>
@@ -316,6 +318,7 @@ import { issuedBillRateNote } from '../lib/issuedBillRateNote.js';
 import ReceiptModal from './ReceiptModal.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
+import AgreedFeeCorrectionModal from './AgreedFeeCorrectionModal.vue';
 import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
 import PaymentEntryModal from './PaymentEntryModal.vue';
 import PaymentAllocation from './tuition/PaymentAllocation.vue';
@@ -338,7 +341,7 @@ const modalEl = ref(null);
 let returnFocusEl = null;
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 function onEsc() {
-  if (!entryOpen.value) emit('close');
+  if (!entryOpen.value && !feeCorrectionOpen.value) emit('close');
 }
 // ↑/↓ moves to the adjacent student (Linear-style peek). Only when the drawer itself or a step button has focus,
 // so arrows still work inside fields and selects.
@@ -464,9 +467,16 @@ async function loadCoverage(kind, id) {
   if (payload.value === ledgerAtStart) coverage.value = { ...coverage.value, [key]: next };
 }
 
+const feeCorrectionOpen = ref(false);
+const feeCourseId = ref(null);
+const feeInvoiceId = computed(() => {
+  const live = (payload.value?.invoices || []).filter((i) => Number(i.student_class_id) === feeCourseId.value && i.status !== 'void');
+  return live.length === 1 ? Number(live[0].id) : null;
+});
 let ledgerRequestVersion = 0;
 async function loadLedger() {
   const requestVersion = ++ledgerRequestVersion;
+  feeCorrectionOpen.value = false;
   loading.value = false;
   payload.value = null;
   if (!props.show) return;
@@ -741,6 +751,10 @@ function openEntry(course) {
     payable_status: oldest ? 'invoiced' : 'unbilled',
     payable_amount: oldest ? Number(oldest.outstanding_amount) : null,
     payable_outstanding: oldest ? Number(oldest.outstanding_amount) : null,
+    // Founder D3/B1 (#4132): with no open bill, a voided bill of a single count-mode course can be corrected here.
+    voided_invoices: oldest || course.schedule_mode === 'date' || course.package_id ? [] : (payload.value?.invoices || [])
+      .filter((inv) => Number(inv.student_class_id) === Number(course.id) && inv.status === 'void')
+      .map((inv) => ({ id: Number(inv.id), label: formatAccountingLedgerInvoiceLabel(inv), amount: Number(inv.total_amount || 0) })),
   };
   entryOpen.value = true;
 }
@@ -772,7 +786,7 @@ function getAuthRole() {
 
 async function voidReport(reportId) {
   if (!reportId || !isDirectorRole(getAuthRole())) return;
-  const reason = window.prompt('請輸入撤銷原因（會保留稽核紀錄）');
+  const reason = window.prompt('撤銷收款會保留稽核紀錄，不會更改帳單應繳金額；帳單開錯需另行作廢並更正。請輸入撤銷原因');
   if (!reason || !reason.trim()) return;
   busyReportId.value = reportId;
   try {

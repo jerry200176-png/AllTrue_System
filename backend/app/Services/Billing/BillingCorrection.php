@@ -137,13 +137,11 @@ final class BillingCorrection
                 ->lockForUpdate()
                 ->get();
             $invoiceIds = $openInvoices->pluck('id')->map(static fn ($id): int => (int) $id)->all();
-            if ($invoiceIds !== [] && Payment::query()
-                ->whereIn('InvoiceID', $invoiceIds)
-                ->where('Amount', '>', 0)
-                ->where(function ($query) {
-                    $query->whereNull('Method')->orWhere('Method', '!=', 'void');
-                })
-                ->lockForUpdate()->exists()) {
+            // Lock the complete ledger, including reversals, before repeating the shared guard.
+            if ($invoiceIds !== []) {
+                Payment::query()->whereIn('InvoiceID', $invoiceIds)->lockForUpdate()->get();
+            }
+            if (ContractMoneyState::blocksUnpaidCorrection($classId)) {
                 abort(response()->json([
                     'message' => '處理期間出現有效收款紀錄，請重新整理後改走帳務流程。',
                     'code' => 'billing_correction_payment_locked',
@@ -256,7 +254,7 @@ final class BillingCorrection
         }
 
         $classId = (int) $studentClass->getKey();
-        $activePayment = ContractMoneyState::hasActivePayment($classId);
+        $activePayment = ContractMoneyState::blocksUnpaidCorrection($classId);
         if ($activePayment) {
             $audit('billing_correction_payment_locked', 409);
             return $this->reply([
