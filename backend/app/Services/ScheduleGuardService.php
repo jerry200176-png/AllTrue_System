@@ -622,7 +622,7 @@ class ScheduleGuardService
         if ($endDate) {
             $scheduleRowsQuery->whereDate('schedule_date', '<=', $endDate);
         }
-        $scheduleRows = $scheduleRowsQuery->select(['id', 'student_id', 'schedule_date', 'status', 'start_time', 'end_time', 'class_type', 'student_course_id', 'original_schedule_id'])->get();
+        $scheduleRows = $scheduleRowsQuery->select(['id', 'student_id', 'schedule_date', 'status', 'start_time', 'end_time', 'class_type', 'student_course_id', 'original_schedule_id', 'type'])->get();
 
         $leaveOrRescheduled = [];
         $scheduledByDate = [];
@@ -644,6 +644,21 @@ class ScheduleGuardService
                 $filteredScheduledRows[] = $r;
             }
         }
+
+        // Same H1/#4245 provenance filter as buildTeacherDateOccupancyEntries: teacher+slot
+        // edits reach this path via StudentClassController → validateRecurringCourse.
+        $recurringCourseMeta = $this->loadCourseTeacherMeta(array_map(
+            static fn ($r) => (int) ($r->student_course_id ?? 0),
+            $filteredScheduledRows
+        ));
+        $filteredScheduledRows = array_values(array_filter(
+            $filteredScheduledRows,
+            fn ($row) => $this->scheduleRowOccupiesQueriedTeacher(
+                $row,
+                $teacherId,
+                $recurringCourseMeta[(int) ($row->student_course_id ?? 0)] ?? null
+            )
+        ));
 
         $classSessionsQuery = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
@@ -1316,6 +1331,7 @@ class ScheduleGuardService
                 'class_type',
                 'student_course_id',
                 'original_schedule_id',
+                'type',
             ]);
 
         if ($excludeScheduleId) {
@@ -1407,21 +1423,9 @@ class ScheduleGuardService
             }
         }
 
-        $courseMeta = [];
-        $courseIds = array_values(array_unique(array_filter(array_map(function ($row) {
+        $courseMeta = $this->loadCourseTeacherMeta(array_map(static function ($row) {
             return (int) ($row->student_course_id ?? 0);
-        }, $scheduledRows))));
-        if (!empty($courseIds)) {
-            $metaRows = DB::table('StudentClass')
-                ->whereIn('ID', $courseIds)
-                // TeacherID included so a stale schedules.teacher_id after contract teacher
-                // change cannot inflate occupancy (in-app #401/#402 / H1).
-                ->select(['ID', 'ClassType', 'room_id', 'TeacherID'])
-                ->get();
-            foreach ($metaRows as $meta) {
-                $courseMeta[(int) $meta->ID] = $meta;
-            }
-        }
+        }, $scheduledRows));
 
         foreach ($scheduledRows as $row) {
             $start = $this->normalizeTime($row->start_time ?? null);
@@ -1448,18 +1452,7 @@ class ScheduleGuardService
                 continue;
             }
             $meta = $courseId > 0 ? ($courseMeta[$courseId] ?? null) : null;
-            // Stale normal row after contract teacher move: schedules.teacher_id still points at
-            // the old teacher while StudentClass.TeacherID already moved (in-app #401/#402 H1).
-            // Do NOT apply that skip to substitute rows — SubstituteScheduleService stores
-            // status=scheduled + original_schedule_id with teacher_id = 代課 (≠ contract TeacherID);
-            // ClassSession occupancy is filtered by contract teacher, so dropping the substitute
-            // schedule would erase the only seat and allow real conflicts (#4245 review).
-            $isSubstituteOccupancy = (int) ($row->original_schedule_id ?? 0) > 0;
-            if (
-                !$isSubstituteOccupancy
-                && $meta !== null
-                && (int) ($meta->TeacherID ?? 0) !== $teacherId
-            ) {
+            if (!$this->scheduleRowOccupiesQueriedTeacher($row, $teacherId, $meta)) {
                 continue;
             }
             $classType = (string) ($row->class_type ?: ($meta->ClassType ?? 'one_on_one'));
@@ -1502,5 +1495,57 @@ class ScheduleGuardService
         }
 
         return $entries;
+    }
+
+    /**
+     * Load StudentClass meta needed for occupancy provenance (ClassType/room/TeacherID).
+     *
+     * @param  list<int>  $courseIds
+     * @return array<int, object>
+     */
+    private function loadCourseTeacherMeta(array $courseIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $courseIds))));
+        if ($ids === []) {
+            return [];
+        }
+        $courseMeta = [];
+        foreach (DB::table('StudentClass')->whereIn('ID', $ids)->select(['ID', 'ClassType', 'room_id', 'TeacherID'])->get() as $meta) {
+            $courseMeta[(int) $meta->ID] = $meta;
+        }
+
+        return $courseMeta;
+    }
+
+    /**
+     * H1 / #4245: a schedules row already filtered by teacher_id still occupies the queried
+     * teacher only when occurrence provenance says so.
+     *
+     * Empty original_schedule_id alone does NOT prove stale — legal extra/makeup rows keep
+     * their own teacher (type=extra), and RescheduleSessionService destinations also set
+     * original_schedule_id for an optional different teacher. makeupOccurrencesTaughtBy
+     * deliberately excludes rows already named for the queried teacher, so it cannot recover
+     * a wrongly skipped own-teacher extra row.
+     *
+     * Keep: contract TeacherID match; type=extra|makeup; original_schedule_id set (substitute /
+     * reschedule destination). Skip: normal leftover after contract teacher moved away.
+     */
+    private function scheduleRowOccupiesQueriedTeacher(object $row, int $queriedTeacherId, ?object $courseMeta): bool
+    {
+        if ($courseMeta === null) {
+            return true;
+        }
+        if ((int) ($courseMeta->TeacherID ?? 0) === $queriedTeacherId) {
+            return true;
+        }
+        $type = strtolower(trim((string) ($row->type ?? '')));
+        if ($type === 'extra' || $type === 'makeup') {
+            return true;
+        }
+        if ((int) ($row->original_schedule_id ?? 0) > 0) {
+            return true;
+        }
+
+        return false;
     }
 }

@@ -293,6 +293,285 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     }
 
     /**
+     * #4245 review: explicit extra/makeup rows keep their own teacher even when
+     * original_schedule_id is empty and StudentClass.TeacherID differs. Flag off/on
+     * must not matter for own-teacher extras — makeupOccurrencesTaughtBy excludes
+     * rows already named for the queried teacher and cannot rescue a false skip.
+     *
+     * @dataProvider explicitExtraOwnTeacherFlagProvider
+     */
+    public function test_update_teacher_rejects_explicit_extra_own_teacher_regardless_of_v2_flag(bool $flagOn): void
+    {
+        config([
+            'feature_flags.values' => [
+                'FEATURE_SCHEDULE_OCCURRENCE_V2' => false,
+                'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1' => $flagOn,
+            ],
+        ]);
+        [$token, $student, $course] = $this->seedCourseWithHistory();
+
+        $extraStudent = Student::create([
+            'name' => '補課自帶老師',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $extraCourse = StudentClass::create([
+            'StudentID' => $extraStudent->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 200,
+            'ClassType' => 'one_on_one',
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-03-01',
+            'TotalHours' => 20,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 4,
+            'UsedSessions' => 4,
+            'week' => 7,
+            'time' => '15:00:00',
+        ]);
+        Schedule::create([
+            'student_id' => $extraStudent->id,
+            'teacher_id' => 100,
+            'day_of_week' => 7,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'status' => 'scheduled',
+            'type' => 'extra',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $extraCourse->ID,
+            // intentionally null original_schedule_id — extra keeps own teacher
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'teacher_id' => 100,
+        ]);
+
+        $res->assertStatus(409)
+            ->assertJsonPath('code', 'teacher_schedule_conflict')
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+        $course->refresh();
+        $this->assertSame(99, (int) $course->TeacherID);
+    }
+
+    public static function explicitExtraOwnTeacherFlagProvider(): array
+    {
+        return [
+            'v2 flag off' => [false],
+            'v2 flag on' => [true],
+        ];
+    }
+
+    /**
+     * #4245 review: teacher+time/day edits use StudentClassController →
+     * collectConcreteRecurringOverlaps. Shared provenance must skip stale normal
+     * leftovers there too, while still counting substitute destinations.
+     */
+    public function test_update_teacher_and_time_ignores_stale_normal_but_keeps_substitute(): void
+    {
+        [$token, $student, $course] = $this->seedCourseWithHistory();
+        $course->update([
+            'ClassType' => 'one_on_two',
+            'by1' => 2,
+        ]);
+
+        $liveStudent = Student::create([
+            'name' => '合併路徑真實佔位',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $liveCourse = StudentClass::create([
+            'StudentID' => $liveStudent->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 100,
+            'ClassType' => 'one_on_two',
+            'by1' => 2,
+            'Period' => 4,
+            'StartDate' => '2026-03-01',
+            'TotalHours' => 20,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 4,
+            'UsedSessions' => 4,
+            'week' => 7,
+            'time' => '13:00:00',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $liveCourse->ID,
+            'SessionDate' => '2026-04-19',
+            'StartTime' => '13:00:00',
+            'EndTime' => '15:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        // Stale normal leftover on teacher 100 after contract moved to 200 — must not fill seat 2.
+        $movedStudent = Student::create([
+            'name' => '合併路徑殘留',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $movedCourse = StudentClass::create([
+            'StudentID' => $movedStudent->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 200,
+            'ClassType' => 'one_on_two',
+            'by1' => 2,
+            'Period' => 4,
+            'StartDate' => '2026-03-01',
+            'TotalHours' => 20,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 7,
+            'UsedSessions' => 1,
+            'week' => 7,
+            'time' => '13:00:00',
+        ]);
+        Schedule::create([
+            'student_id' => $movedStudent->id,
+            'teacher_id' => 100,
+            'day_of_week' => 7,
+            'start_time' => '13:00',
+            'end_time' => '15:00',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $movedCourse->ID,
+        ]);
+
+        $ok = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'teacher_id' => 100,
+            'class_type' => 'one_on_two',
+            'duration_hours' => 2,
+            'days_of_week' => [7],
+            'start_time' => '13:00',
+            'day_time_slots' => [['day' => 7, 'start_time' => '13:00', 'duration_minutes' => 120]],
+            'payment_type' => 'session',
+        ]);
+        $ok->assertOk();
+        $this->assertSame(100, (int) $course->fresh()->TeacherID);
+
+        // Reset course teacher so the substitute conflict path is independent.
+        $course->update(['TeacherID' => 99, 'time' => '15:00:00', 'week' => 7]);
+
+        $contractStudent = Student::create([
+            'name' => '合併路徑代課合約',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $contractCourse = StudentClass::create([
+            'StudentID' => $contractStudent->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 200,
+            'ClassType' => 'one_on_one',
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-03-01',
+            'TotalHours' => 20,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 4,
+            'UsedSessions' => 4,
+            'week' => 7,
+            'time' => '16:00:00',
+        ]);
+        $anchor = Schedule::create([
+            'student_id' => $contractStudent->id,
+            'teacher_id' => 200,
+            'day_of_week' => 7,
+            'start_time' => '16:00',
+            'end_time' => '18:00',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $contractCourse->ID,
+        ]);
+        Schedule::create([
+            'student_id' => $contractStudent->id,
+            'teacher_id' => 100,
+            'day_of_week' => 7,
+            'start_time' => '16:00',
+            'end_time' => '18:00',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $contractCourse->ID,
+            'original_schedule_id' => $anchor->id,
+        ]);
+
+        $blocked = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'teacher_id' => 100,
+            'class_type' => 'one_on_one',
+            'duration_hours' => 2,
+            'days_of_week' => [7],
+            'start_time' => '16:00',
+            'day_time_slots' => [['day' => 7, 'start_time' => '16:00', 'duration_minutes' => 120]],
+            'payment_type' => 'session',
+        ]);
+        $blocked->assertStatus(409)
+            ->assertJsonPath('code', 'teacher_schedule_conflict')
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+        $this->assertSame(99, (int) $course->fresh()->TeacherID);
+    }
+
+    /**
      * When immutable history exists and future sessions ARE scheduled,
      * syncFutureScheduledSessionTimes should update them, and reconcile
      * should run normally (times match the new value).
