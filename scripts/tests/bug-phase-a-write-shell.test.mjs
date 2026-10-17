@@ -1,8 +1,9 @@
 /**
- * Executable extraction of bug-phase-a-triage.yml write shell.
- * Covers: ssh 255 fail-stop; tinker-swallowed PHP fail (exit 0 + no receipt);
- * missing/malformed/wrong-hash/wrong-bug receipts; single success with valid receipt.
- * Synthetic payload + fake ssh only — never contacts a host.
+ * Executable extraction of bug-phase-a-triage.yml write shell (REMOTE + runner).
+ * Boundary: fake-ssh + receipt-gate exit≠0 when tinker swallows PHP (exit 0 + no
+ * receipt). Does not exercise Eloquent/MySQL. Real DB / chunkById / txn proofs:
+ * backend/tests/Feature/BugPhaseATinkerIntegrationTest.php (raw PsySH exit recorded;
+ * no fake wrapper). Synthetic payload + fake ssh only — never contacts a host.
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';

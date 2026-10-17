@@ -14,11 +14,14 @@ use Tests\TestCase;
 /**
  * Minimal MySQL integration for Phase-A write tinker (PR #4246).
  *
- * Loads the exact `php artisan tinker --execute='…'` bytes from
- * `.github/workflows/bug-phase-a-triage.yml` (REMOTE heredoc) and runs them
- * as a subprocess against AllTrue_test. Does not reimplement chunk/hash/receipt
- * logic. Opts out of RefreshDatabase wrapping so subprocess commit/rollback
- * boundaries stay visible to assertions.
+ * Boundary: runs the exact YAML `tinker --execute='…'` bytes against AllTrue_test
+ * (Eloquent/chunkById/txn/receipt file). Does **not** reimplement write logic and
+ * does **not** wrap PsySH to fake a non-zero process exit — raw `exit` is recorded
+ * as returned (PsySH often stays 0 after PHP `exit(1)`). Full REMOTE receipt-gate
+ * exit≠0 evidence lives in `scripts/tests/bug-phase-a-write-shell.test.mjs`.
+ *
+ * Opts out of RefreshDatabase wrapping so subprocess commit/rollback boundaries
+ * stay visible to assertions.
  */
 final class BugPhaseATinkerIntegrationTest extends TestCase
 {
@@ -32,7 +35,8 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
     /** Must match chunkById(200) in the extracted workflow tinker payload. */
     private const CHUNK_SIZE = 200;
 
-    private const FORCE_ROLLBACK_TRIGGER = 'phase_a_force_comment_rollback_trg';
+    /** Isolated AllTrue_test only — never production ALTER. */
+    private const FORCE_ROLLBACK_CHECK = 'phase_a_force_rollback_chk';
 
     private string $tinkerPhp = '';
 
@@ -58,7 +62,7 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
 
     protected function tearDown(): void
     {
-        $this->dropForceRollbackTrigger();
+        $this->dropForceRollbackCheck();
         foreach ($this->cleanupBugIds as $id) {
             BugReportComment::where('bug_report_id', $id)->delete();
             DB::table('bug_report_status_logs')->where('bug_report_id', $id)->delete();
@@ -95,11 +99,13 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
             'is_internal_note' => 0,
             'created_at' => now()->toDateTimeString(),
         ];
-        for ($i = 1; $i <= 5; $i++) {
+        // ≥101 newer rows after the target: still chunkById page 2, and also
+        // outside a newest-100 window (regression the old limit(100) would miss).
+        for ($i = 1; $i <= 101; $i++) {
             $rows[] = [
                 'bug_report_id' => $bug->id,
                 'author_user_id' => $reporter->id,
-                'body' => "filler-page2-after-{$i}-{$bug->id}",
+                'body' => "filler-after-target-{$i}-{$bug->id}",
                 'is_internal_note' => 0,
                 'created_at' => now()->toDateTimeString(),
             ];
@@ -121,6 +127,14 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
             ->value('id');
         $this->assertNotContains($targetId, $page1, 'fixture: target must miss chunkById page 1');
         $this->assertContains($targetId, $page2, 'fixture: target must sit on chunkById page 2');
+        $newest100 = BugReportComment::query()
+            ->where('bug_report_id', $bug->id)
+            ->where('is_internal_note', false)
+            ->orderByDesc('id')
+            ->limit(100)
+            ->pluck('id')
+            ->all();
+        $this->assertNotContains($targetId, $newest100, 'fixture: target must also miss newest-100 window');
 
         $first = $this->runExtractedTinker([
             'BUG_ID' => (string) $bug->id,
@@ -129,7 +143,7 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
             'PUBLIC_REPLY' => $reply,
             'CLOSE_AS_LOGGED' => 'false',
         ]);
-        $this->assertNotNull($first['receipt'], $first['stderr'] . "\n" . $first['stdout']);
+        $this->assertNotNull($first['receipt'], 'raw exit=' . var_export($first['exit'], true) . "\n" . $first['stderr'] . "\n" . $first['stdout']);
         $this->assertSame(1, (int) $first['receipt']['phase_a_receipt']);
         $this->assertSame($targetId, (int) $first['receipt']['comment_id']);
         $this->assertTrue((bool) $first['receipt']['comment_skipped']);
@@ -155,7 +169,7 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
             'PUBLIC_REPLY' => $reply,
             'CLOSE_AS_LOGGED' => 'false',
         ]);
-        $this->assertNotNull($retry['receipt'], $retry['stderr'] . "\n" . $retry['stdout']);
+        $this->assertNotNull($retry['receipt'], 'raw exit=' . var_export($retry['exit'], true) . "\n" . $retry['stderr'] . "\n" . $retry['stdout']);
         $this->assertTrue((bool) $retry['receipt']['comment_skipped']);
         $this->assertSame($targetId, (int) $retry['receipt']['comment_id']);
         $this->assertSame(
@@ -225,8 +239,9 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
 
     /**
      * Force failure after changeStatus has written inside the tinker transaction
-     * (comment INSERT trigger), prove an independent connection never sees a
-     * half-write / no success receipt, then drop the trigger and commit+retry.
+     * (test-only CHECK rejects sentinel body on comment INSERT). Independent
+     * connection must see no half-write and no success receipt; then drop CHECK
+     * and commit+retry. Raw PsySH exit is recorded as-is (often 0).
      */
     public function test_post_write_failure_rolls_back_then_commit_receipt_and_retry_dedupes(): void
     {
@@ -238,7 +253,7 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
         DB::purge('phase_a_observer');
         $observer = DB::connection('phase_a_observer');
 
-        $this->installForceRollbackTrigger();
+        $this->installForceRollbackCheck();
         try {
             $rolled = $this->runExtractedTinker([
                 'BUG_ID' => (string) $bug->id,
@@ -247,8 +262,14 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
                 'PUBLIC_REPLY' => $reply,
                 'CLOSE_AS_LOGGED' => 'false',
             ]);
-            $this->assertNull($rolled['receipt'], 'forced post-write failure must not leave a success receipt');
-            $this->assertStringContainsString('PHASE_A_FAIL code=', $rolled['stderr'] . $rolled['stdout']);
+            $this->assertNull(
+                $rolled['receipt'],
+                'forced post-write failure must not leave a success receipt; raw exit=' . var_export($rolled['exit'], true)
+            );
+            $combined = $rolled['stderr'] . $rolled['stdout'];
+            $this->assertStringContainsString('PHASE_A_FAIL code=db_query_failed', $combined);
+            // Do not assert exit≠0 here: raw artisan/tinker often returns 0 even after PHP exit(1).
+            // REMOTE receipt-gate non-zero is owned by bug-phase-a-write-shell.test.mjs.
 
             // Independent connection: rolled-back status/comment must be invisible.
             $this->assertSame('new', (string) $observer->table('bug_reports')->where('id', $bug->id)->value('status'));
@@ -262,7 +283,7 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
             );
             $this->assertSame('new', $bug->fresh()->status);
         } finally {
-            $this->dropForceRollbackTrigger();
+            $this->dropForceRollbackCheck();
         }
 
         $first = $this->runExtractedTinker([
@@ -272,7 +293,7 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
             'PUBLIC_REPLY' => $reply,
             'CLOSE_AS_LOGGED' => 'false',
         ]);
-        $this->assertNotNull($first['receipt'], $first['stderr'] . "\n" . $first['stdout']);
+        $this->assertNotNull($first['receipt'], 'raw exit=' . var_export($first['exit'], true) . "\n" . $first['stderr'] . "\n" . $first['stdout']);
         $this->assertFalse((bool) $first['receipt']['comment_skipped']);
         $this->assertSame('triaged', $first['receipt']['final']);
         $this->assertSame('triaged', (string) $observer->table('bug_reports')->where('id', $bug->id)->value('status'));
@@ -298,7 +319,7 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
             'PUBLIC_REPLY' => $reply,
             'CLOSE_AS_LOGGED' => 'false',
         ]);
-        $this->assertNotNull($retry['receipt'], $retry['stderr'] . "\n" . $retry['stdout']);
+        $this->assertNotNull($retry['receipt'], 'raw exit=' . var_export($retry['exit'], true) . "\n" . $retry['stderr'] . "\n" . $retry['stdout']);
         $this->assertTrue((bool) $retry['receipt']['comment_skipped']);
         $this->assertSame($commentId, (int) $retry['receipt']['comment_id']);
         $this->assertSame(hash('sha256', $reply), $retry['receipt']['public_body_sha256']);
@@ -312,27 +333,26 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
     }
 
     /**
-     * Test-DB-only trigger: fires on public-comment INSERT after changeStatus
-     * has already mutated rows inside the same tinker transaction.
+     * AllTrue_test-only CHECK (MySQL ≥8.0.16 enforced). Rejects sentinel body on
+     * comment INSERT after changeStatus already ran in the same tinker TX.
+     * No TRIGGER / SUPER / binlog; never applied to production schema.
      */
-    private function installForceRollbackTrigger(): void
+    private function installForceRollbackCheck(): void
     {
-        $this->dropForceRollbackTrigger();
-        DB::unprepared(
-            'CREATE TRIGGER `' . self::FORCE_ROLLBACK_TRIGGER . '`
-            BEFORE INSERT ON `bug_report_comments`
-            FOR EACH ROW
-            BEGIN
-              IF NEW.`body` LIKE \'PHASE_A_FORCE_ROLLBACK%\' THEN
-                SIGNAL SQLSTATE \'45000\' SET MESSAGE_TEXT = \'phase_a_test_forced_post_write_rollback\';
-              END IF;
-            END'
+        $this->dropForceRollbackCheck();
+        DB::statement(
+            'ALTER TABLE `bug_report_comments` ADD CONSTRAINT `' . self::FORCE_ROLLBACK_CHECK . '` '
+            . 'CHECK (`body` NOT LIKE \'PHASE_A_FORCE_ROLLBACK%\')'
         );
     }
 
-    private function dropForceRollbackTrigger(): void
+    private function dropForceRollbackCheck(): void
     {
-        DB::unprepared('DROP TRIGGER IF EXISTS `' . self::FORCE_ROLLBACK_TRIGGER . '`');
+        try {
+            DB::statement('ALTER TABLE `bug_report_comments` DROP CHECK `' . self::FORCE_ROLLBACK_CHECK . '`');
+        } catch (\Throwable $e) {
+            // Absent on fresh migrate or after prior drop — ignore.
+        }
     }
 
     /**
