@@ -212,4 +212,135 @@ describe('AgreedFeeCorrectionModal API contract', () => {
     expect(urls.some((u) => /payment|receipt|report/i.test(u))).toBe(false);
     wrapper.unmount();
   });
+
+  it('P2: deferred preview — edit during in-flight must not let stale 500 apply/success', async () => {
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'fixture' }));
+    let resolvePreview;
+    const deferred = new Promise((resolve) => { resolvePreview = resolve; });
+    const calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      const body = JSON.parse(options.body);
+      calls.push({ url: String(url), body });
+      if (String(url).endsWith('/preview')) {
+        await deferred;
+        // Server always returns the signed plan for the request body that was sent (500/old).
+        return ok({
+          ...plan,
+          new_charge: body.new_charge,
+          preview_token: `signed-${body.new_charge}-${body.reason}`,
+        });
+      }
+      return ok({ correction_id: 99 });
+    }));
+    const wrapper = mountFee();
+    await wrapper.get('[data-testid="fee-charge"]').setValue('500');
+    await wrapper.get('[data-testid="fee-reason"]').setValue('約定費用誤植');
+    await wrapper.get('form').trigger('submit');
+    // Preview still in flight — inputs must be locked.
+    const chargeInput = wrapper.get('[data-testid="fee-charge"]');
+    const reasonInput = wrapper.get('[data-testid="fee-reason"]');
+    expect(chargeInput.element.disabled).toBe(true);
+    expect(reasonInput.element.disabled).toBe(true);
+
+    // Simulate intent drift during the outstanding 500 request (race / forced edit bypassing disabled).
+    chargeInput.element.disabled = false;
+    reasonInput.element.disabled = false;
+    await chargeInput.setValue('600');
+    await reasonInput.setValue('改成新原因說明');
+    resolvePreview();
+    await flushPromises();
+
+    // Stale response for 500/old must not become an apply surface or emit success.
+    expect(wrapper.find('[data-testid="fee-plan"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="fee-apply"]').exists()).toBe(false);
+    expect(wrapper.emitted('changed')).toBeUndefined();
+    expect(calls.some((c) => c.url.endsWith('/apply'))).toBe(false);
+
+    // Re-preview with the edited values is required.
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    const previews = calls.filter((c) => c.url.endsWith('/preview'));
+    expect(previews).toHaveLength(2);
+    expect(previews[0].body).toMatchObject({ new_charge: 500, reason: '約定費用誤植' });
+    expect(previews[1].body).toMatchObject({ new_charge: 600, reason: '改成新原因說明' });
+    expect(wrapper.find('[data-testid="fee-apply"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="fee-apply"]').trigger('click');
+    await flushPromises();
+    const applyCall = calls.find((c) => c.url.endsWith('/apply'));
+    expect(applyCall.body).toMatchObject({
+      new_charge: 600,
+      reason: '改成新原因說明',
+      preview_token: 'signed-600-改成新原因說明',
+    });
+    expect(wrapper.emitted('changed')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('P2: deferred apply race — after preview, back+edit then late actions still require fresh preview', async () => {
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'fixture' }));
+    let resolveSecondPreview;
+    const secondDeferred = new Promise((resolve) => { resolveSecondPreview = resolve; });
+    let previewCount = 0;
+    const calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      const body = JSON.parse(options.body);
+      calls.push({ url: String(url), body });
+      if (String(url).endsWith('/preview')) {
+        previewCount += 1;
+        if (previewCount === 1) {
+          return ok({ ...plan, new_charge: 500, preview_token: 'signed-500-old' });
+        }
+        await secondDeferred;
+        return ok({
+          ...plan,
+          new_charge: body.new_charge,
+          preview_token: `signed-${body.new_charge}-new`,
+        });
+      }
+      return ok({ correction_id: 1 });
+    }));
+    const wrapper = mountFee();
+    await fillAndPreview(wrapper, '500', '約定費用誤植');
+    expect(wrapper.find('[data-testid="fee-plan"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="fee-back"]').trigger('click');
+    await wrapper.get('[data-testid="fee-charge"]').setValue('600');
+    await wrapper.get('[data-testid="fee-reason"]').setValue('改成新原因說明');
+    await wrapper.get('form').trigger('submit');
+    // Second preview in flight — must not still expose the old 500 apply surface.
+    expect(wrapper.find('[data-testid="fee-apply"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="fee-plan"]').exists()).toBe(false);
+
+    // Drift again before the second response lands (force-enable to simulate race).
+    const chargeInput = wrapper.get('[data-testid="fee-charge"]');
+    const reasonInput = wrapper.get('[data-testid="fee-reason"]');
+    expect(chargeInput.element.disabled).toBe(true);
+    chargeInput.element.disabled = false;
+    reasonInput.element.disabled = false;
+    await chargeInput.setValue('700');
+    await reasonInput.setValue('又改一次原因文字');
+    resolveSecondPreview();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="fee-apply"]').exists()).toBe(false);
+    expect(wrapper.emitted('changed')).toBeUndefined();
+    expect(calls.some((c) => c.url.endsWith('/apply'))).toBe(false);
+
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(calls.filter((c) => c.url.endsWith('/preview')).at(-1).body).toMatchObject({
+      new_charge: 700,
+      reason: '又改一次原因文字',
+    });
+    await wrapper.get('[data-testid="fee-apply"]').trigger('click');
+    await flushPromises();
+    expect(calls.at(-1).body).toMatchObject({
+      new_charge: 700,
+      reason: '又改一次原因文字',
+      preview_token: 'signed-700-new',
+    });
+    expect(wrapper.emitted('changed')).toHaveLength(1);
+    wrapper.unmount();
+  });
 });
