@@ -695,6 +695,7 @@ class AccountingController extends Controller
         $openInvoiceTotal = (int) $invoiceRows->where('status', '!=', 'void')->sum('total_amount');
 
         return response()->json([
+            'capabilities' => ['agreed_fee_correction' => in_array((string) $request->attributes->get('auth_role'), ['director', 'super_admin'], true) && \App\Services\Billing\AgreedFeeCorrection::available()],
             'student' => [
                 'id' => (int) $student->id,
                 'name' => (string) $student->name,
