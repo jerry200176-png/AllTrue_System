@@ -12,6 +12,7 @@ use App\Models\UserCampus;
 use App\Services\Billing\BillingPeriodInvoiceExists;
 use App\Services\Billing\InvoiceIssuer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /** Pins the unpaid-invoice shape every issuing site produced before InvoiceIssuer, and the opt-in period guard. */
@@ -47,11 +48,20 @@ class InvoiceIssuerTest extends TestCase
     public function test_issue_applies_unpaid_defaults_and_item_fallback_course(): void
     {
         $sc = $this->course();
+        DB::connection()->enableQueryLog();
+        DB::flushQueryLog();
         $invoice = app(InvoiceIssuer::class)->issue([
             'StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-09-01',
             'TotalAmount' => 6000, 'ScheduleModeAtIssue' => 'date', 'billing_period' => '2026-09',
         ], [['Description' => '月結', 'Amount' => 6000, 'PeriodStart' => '2026-09-01', 'PeriodEnd' => '2026-09-30']]);
-
+        $log = collect(DB::getQueryLog());
+        DB::connection()->disableQueryLog();
+        // #4217: StudentClass FOR UPDATE must precede Invoice INSERT inside Issuer's txn.
+        $lockIdx = $log->search(fn (array $q) => stripos($q['query'], 'StudentClass') !== false && stripos($q['query'], 'for update') !== false);
+        $insertIdx = $log->search(fn (array $q) => stripos($q['query'], 'insert') !== false && stripos($q['query'], 'invoice') !== false);
+        $this->assertNotFalse($lockIdx);
+        $this->assertNotFalse($insertIdx);
+        $this->assertLessThan($insertIdx, $lockIdx);
         $fresh = Invoice::findOrFail($invoice->id);
         $this->assertSame('unpaid', $fresh->Status);
         $this->assertSame(0, (int) $fresh->PaidAmount);

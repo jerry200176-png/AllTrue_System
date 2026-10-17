@@ -33,12 +33,13 @@ final class BillingCorrection
         int $actorId,
         $sessions = null
     ): string {
+        $classId = (int) $studentClass->getKey();
         $rows = $sessions ?? ClassSession::query()
-            ->where('StudentClassID', (int) $studentClass->getKey())
+            ->where('StudentClassID', $classId)
             ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
             ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'updated_at']);
         $snapshot = [
-            'class_id' => (int) $studentClass->getKey(),
+            'class_id' => $classId,
             'actor_id' => $actorId,
             'new_count' => $newCount,
             'new_charge' => $newCharge,
@@ -55,23 +56,54 @@ final class BillingCorrection
                 (string) $session->getAttribute('Status'),
                 (string) $session->getAttribute('updated_at'),
             ])->all(),
+            'ledger' => $this->ledgerHistoryFingerprint($classId), // void/report cycle after preview invalidates token
         ];
 
         return hash_hmac('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), (string) config('app.key'));
     }
 
-    /**
-     * Locked write of an unpaid count-mode correction: revalidate payment/session/confirmation state,
-     * apply the new count and charge to the course and any open invoice, retire surplus scheduled
-     * sessions and audit. Aborts with the same 404/409 responses the controller used.
-     *
-     * @return array<string, mixed>
-     */
+    /** Confirmation-only fingerprint of open-invoice payments + all payment reports. @return array{payments: list<array>, reports: list<array>} */
+    private function ledgerHistoryFingerprint(int $classId): array
+    {
+        $invoiceIds = Invoice::query()
+            ->where('StudentClassID', $classId)
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+            ->orderBy('id')->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+
+        $payments = $invoiceIds === [] ? [] : Payment::query()
+            ->whereIn('InvoiceID', $invoiceIds)->orderBy('id')
+            ->get(['id', 'InvoiceID', 'Amount', 'Method', 'payment_report_id', 'PaidAt'])
+            ->map(static fn (Payment $p): array => [
+                (int) $p->getKey(),
+                (int) $p->getAttribute('InvoiceID'),
+                (int) $p->getAttribute('Amount'),
+                (string) ($p->getAttribute('Method') ?? ''),
+                ($rid = $p->getAttribute('payment_report_id')) === null ? null : (int) $rid,
+                (string) ($p->getAttribute('PaidAt') ?? ''),
+            ])->all();
+
+        $reports = PaymentReport::query()
+            ->where('StudentClassID', $classId)->orderBy('id')
+            ->get(['id', 'InvoiceID', 'payment_id', 'status', 'reported_amount', 'updated_at'])
+            ->map(static fn (PaymentReport $r): array => [
+                (int) $r->getKey(),
+                ($inv = $r->getAttribute('InvoiceID')) === null ? null : (int) $inv,
+                ($pid = $r->getAttribute('payment_id')) === null ? null : (int) $pid,
+                (string) ($r->getAttribute('status') ?? ''),
+                (string) ($r->getAttribute('reported_amount') ?? ''),
+                (string) ($r->getAttribute('updated_at') ?? ''),
+            ])->all();
+
+        return ['payments' => $payments, 'reports' => $reports];
+    }
+
+    /** Locked unpaid count-mode write; aborts with the same 404/409 responses the controller used. @return array<string, mixed> */
     public function applyCountCorrection(StudentClass $studentClass, int $newCount, int $newCharge, string $reason, int $oldCount, int $oldCharge, string $confirmationToken, ?int $actorId): array
     {
         $classId = (int) $studentClass->getKey();
 
         return DB::transaction(function () use ($classId, $newCount, $newCharge, $reason, $oldCount, $oldCharge, $studentClass, $confirmationToken, $actorId) {
+            // Course lock whole txn — co-lock InvoiceIssuer (FOR UPDATE before INSERT).
             $locked = StudentClass::query()->where('ID', $classId)->lockForUpdate()->first();
             if (!$locked) {
                 abort(404);
@@ -107,6 +139,38 @@ final class BillingCorrection
                     'code' => 'billing_correction_confirmation_stale',
                 ], 409));
             }
+
+            if (PaymentReport::query()->where('StudentClassID', $classId)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->exists()) {
+                abort(response()->json([
+                    'message' => '處理期間出現繳費回報，請重新整理後改走帳務流程。',
+                    'code' => 'billing_correction_payment_report_locked',
+                ], 409));
+            }
+            PaymentReport::query()->where('StudentClassID', $classId)->lockForUpdate()->get();
+
+            $adjustedInvoiceCount = 0;
+            $openInvoices = Invoice::query()
+                ->where('StudentClassID', $classId)
+                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+                ->lockForUpdate()->get();
+            $invoiceIds = $openInvoices->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+            if ($invoiceIds !== []) {
+                Payment::query()->whereIn('InvoiceID', $invoiceIds)->lockForUpdate()->get();
+            }
+            if (ContractMoneyState::blocksUnpaidCorrection($classId)) {
+                abort(response()->json([
+                    'message' => '處理期間出現有效收款紀錄，請重新整理後改走帳務流程。',
+                    'code' => 'billing_correction_payment_locked',
+                ], 409));
+            }
+            // Payable is additive across non-void invoices — never stamp full charge onto each.
+            if ($openInvoices->count() > 1) {
+                abort(response()->json([
+                    'message' => '此課程有多張未作廢帳單，無法用堂數更正一次改寫全部應收；請先整理帳單後再操作。',
+                    'code' => 'billing_correction_multiple_open_invoices',
+                ], 409));
+            }
+
             $currentToken = $this->confirmationToken(
                 $locked, $newCount, $newCharge, $currentObservedUsed, $currentAffected,
                 (int) ($actorId ?? 0), $lockedSessions
@@ -115,36 +179,6 @@ final class BillingCorrection
                 abort(response()->json([
                     'message' => '課程、付款、出席或預排狀態已變更，請重新預覽並再次確認。',
                     'code' => 'billing_correction_confirmation_stale',
-                ], 409));
-            }
-
-            if (PaymentReport::query()->where('StudentClassID', $classId)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->exists()) {
-                abort(response()->json([
-                    'message' => '處理期間出現繳費回報，請重新整理後改走帳務流程。',
-                    'code' => 'billing_correction_payment_report_locked',
-                ], 409));
-            }
-
-            // An unpaid invoice may already exist even though no payment was
-            // entered. Keep the future payment report and receipt on the same
-            // corrected amount; paid invoices were rejected above.
-            $adjustedInvoiceCount = 0;
-            $openInvoices = Invoice::query()
-                ->where('StudentClassID', $classId)
-                ->where(function ($q) {
-                    $q->whereNull('Status')->orWhere('Status', '!=', 'void');
-                })
-                ->lockForUpdate()
-                ->get();
-            $invoiceIds = $openInvoices->pluck('id')->map(static fn ($id): int => (int) $id)->all();
-            // Lock the complete ledger, including reversals, before repeating the shared guard.
-            if ($invoiceIds !== []) {
-                Payment::query()->whereIn('InvoiceID', $invoiceIds)->lockForUpdate()->get();
-            }
-            if (ContractMoneyState::blocksUnpaidCorrection($classId)) {
-                abort(response()->json([
-                    'message' => '處理期間出現有效收款紀錄，請重新整理後改走帳務流程。',
-                    'code' => 'billing_correction_payment_locked',
                 ], 409));
             }
 
@@ -272,6 +306,16 @@ final class BillingCorrection
             return $this->reply([
                 'message' => '此課程已有待處理或已確認的繳費回報，請先完成或作廢該筆回報。',
                 'code' => 'billing_correction_payment_report_locked',
+            ], 409);
+        }
+
+        $openInvoiceCount = Invoice::query()->where('StudentClassID', $classId)
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->count();
+        if ($openInvoiceCount > 1) {
+            $audit('billing_correction_multiple_open_invoices', 409);
+            return $this->reply([
+                'message' => '此課程有多張未作廢帳單，無法用堂數更正一次改寫全部應收；請先整理帳單後再操作。',
+                'code' => 'billing_correction_multiple_open_invoices',
             ], 409);
         }
 

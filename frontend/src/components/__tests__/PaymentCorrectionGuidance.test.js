@@ -38,8 +38,7 @@ it('preserves an over-limit receipt and directs reconciliation rather than chang
   expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ amount: 8800, invoice_id: 902 });
   expect(w.emitted('confirmed')).toBeUndefined();
 });
-
-// PR4217: exercise the real child plus each real navigation consumer, not just an isolated emitted event.
+// PR4217: real child + each navigation consumer.
 it.each(['collection page', 'accounting ledger'])('keeps mismatched pending-report guidance and the entered amount in the %s', async (owner) => {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic-token', user: { role: 'director' } }));
   const row = { id: 901, student_id: 11, student_name: 'Synthetic fixture', subject: 'Synthetic subject',
@@ -56,11 +55,10 @@ it.each(['collection page', 'accounting ledger'])('keeps mismatched pending-repo
     }
     return { ok: true, status: 200, json: async () => path.includes('/accounting/ledger') ? payload : path.includes('/alerts/tuition') ? [row] : [] };
   });
+  const stubs = { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true,
+    AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true };
   const w = owner === 'collection page'
-    ? mount(TuitionCollectionPage, { props: { branchId: 1, initialTab: 'all' }, global: { stubs: {
-      MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true,
-      AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true,
-    } } })
+    ? mount(TuitionCollectionPage, { props: { branchId: 1, initialTab: 'all' }, global: { stubs } })
     : mount(AccountingLedgerModal, { props: { show: true, studentClassId: 901, branchId: 1 }, global: { stubs: { Transition: false } } });
   try {
     await flushPromises();
@@ -75,7 +73,5 @@ it.each(['collection page', 'accounting ledger'])('keeps mismatched pending-repo
     expect(w.text()).not.toContain('請按確認入帳，不要重複送出');
     expect(global.fetch.mock.calls.filter(([url]) => String(url).includes('/director-record'))).toHaveLength(1);
     expect(global.fetch.mock.calls.some(([url]) => /payment-reports\/\d+\/confirm/.test(String(url)))).toBe(false);
-  } finally {
-    w.unmount();
-  }
+  } finally { w.unmount(); }
 });
