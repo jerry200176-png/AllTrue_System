@@ -390,7 +390,7 @@
       :students="schedulerStudents"
       :teachers="schedulerTeachers"
       :rooms="schedulerRooms"
-      :initial-teacher-id="modalForm.teacher_id"
+      :initial-teacher-id="schedulerInitialTeacherId"
       :initial-start-time="modalForm.start_time"
       :initial-days-of-week="modalForm.days_of_week || []"
       :initial-calendar-ymd="modalForm.action_date || modalForm.first_class_date || ''"
@@ -570,6 +570,7 @@ import {
   isRangeWithinFetchedBounds,
 } from '../lib/calendarLoadPerformance';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
+import { buildCreateTeacherOptions, resolveCreateTeacherId } from '../lib/courseTeacherOptions.js';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
@@ -844,12 +845,16 @@ const studentSelectOptions = computed(() => (
     label: student.name,
   }))
 ));
-const schedulerTeachers = computed(() => (
-  (teachers.value || []).map((t) => ({
-    id: Number(t?.id ?? 0),
-    name: t?.username || t?.name || t?.Name || `#${t?.id ?? ''}`,
-  })).filter((t) => Number.isFinite(t.id) && t.id > 0)
-));
+// Create-only picker: deactivated teachers are hidden (in-app #411). Existing-course
+// edit flows keep using the full `teachers` list so historical teachers still show.
+const schedulerTeachers = computed(() => buildCreateTeacherOptions(teachers.value));
+// A cell under a deactivated/historical teacher column must not pre-select that
+// teacher in create mode (in-app #411): once teachers have loaded, only ids in the
+// create options pass through. While teachers are still loading the seed is kept
+// so an active teacher is never discarded (#4157 review); the scheduler re-checks
+// it against the options when they arrive.
+const createTeacherSeedOptions = () => ({ loaded: teachersLoaded.value });
+const schedulerInitialTeacherId = computed(() => resolveCreateTeacherId(modalForm.value.teacher_id, schedulerTeachers.value, createTeacherSeedOptions()));
 const schedulerRooms = computed(() => (
   (roomList.value || []).map((r) => ({
     id: Number(r?.id ?? 0),
@@ -967,6 +972,7 @@ const {
   sessionDatesByCourseId,
   allStudents,
   teachers,
+  teachersLoaded,
   lastCalendarFetch,
   loadCourses,
   loadTeachers,
@@ -2136,7 +2142,7 @@ const onSlotClick = (dayOfWeek, hour, fullDateStr, teacherId) => {
   conflictWarning.value = '';
   const start = `${String(hour).padStart(2, '0')}:00`;
   modalForm.value = {
-    student_id: '', subject: 'Math', teacher_id: teacherId || '', class_type: 'one_on_one',
+    student_id: '', subject: 'Math', teacher_id: resolveCreateTeacherId(teacherId, schedulerTeachers.value, createTeacherSeedOptions()), class_type: 'one_on_one',
     weeks: [1, 2, 3, 4, 5],
     day_of_week: dayOfWeek, days_of_week: [dayOfWeek],
     start_time: start,

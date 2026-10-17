@@ -186,4 +186,89 @@ class ContractMoneyStateTest extends TestCase
         $this->assertSame([$id => '2026-09-05'], $resolver->lastPaidAtByStudentClassIds([$id, $other]));
         $this->assertSame([], $resolver->invoiceAggregateByStudentClassIds([]));
     }
+
+    public function test_last_paid_at_ignores_void_and_negative_payment_rows(): void
+    {
+        $id = $this->seedCourse();
+        $a = $this->invoice($id, 'partial', 1000, 300);
+        $this->payment($a, 300, 'cash', '2026-09-02 10:00:00');
+        $this->payment($a, -100, 'void', '2026-09-10 10:00:00');
+        $this->payment($a, 100, 'void', '2026-09-11 10:00:00');
+        $this->payment($a, -50, 'cash', '2026-09-12 10:00:00');
+        $this->payment($a, 0, 'cash', '2026-09-13 10:00:00');
+        $onlyReversals = $this->seedCourse();
+        $this->payment($this->invoice($onlyReversals, 'unpaid', 1000, 0), -1000, 'void', '2026-09-20 10:00:00');
+
+        $resolver = app(\App\Services\BillingPayableResolver::class);
+        $this->assertSame([$id => '2026-09-02'], $resolver->lastPaidAtByStudentClassIds([$id, $onlyReversals]));
+    }
+
+    public function test_last_paid_at_is_empty_when_receipts_are_fully_reversed_without_a_report_link(): void
+    {
+        // PaidStatusParityTest fixtures void_negative_cash and void_method_positive: net applied is 0, so no date.
+        $negativeCash = $this->seedCourse();
+        $a = $this->invoice($negativeCash, 'unpaid', 1000, 0);
+        $this->payment($a, 1000, 'cash', '2026-09-02 10:00:00');
+        $this->payment($a, -1000, 'cash', '2026-09-03 10:00:00');
+        $positiveVoid = $this->seedCourse();
+        $b = $this->invoice($positiveVoid, 'unpaid', 1000, 0);
+        $this->payment($b, 1000, 'cash', '2026-09-02 10:00:00');
+        $this->payment($b, 1000, 'void', '2026-09-03 10:00:00');
+        // a partial reversal cancels the newest receipt first; the older one still stands
+        $partial = $this->seedCourse();
+        $c = $this->invoice($partial, 'partial', 1000, 300);
+        $this->payment($c, 300, 'cash', '2026-09-02 10:00:00');
+        $this->payment($c, 100, 'cash', '2026-09-05 10:00:00');
+        $this->payment($c, -100, 'cash', '2026-09-06 10:00:00');
+
+        $resolver = app(\App\Services\BillingPayableResolver::class);
+        $this->assertSame([$partial => '2026-09-02'], $resolver->lastPaidAtByStudentClassIds([$negativeCash, $positiveVoid, $partial]));
+    }
+
+    public function test_last_paid_at_follows_the_repayment_after_a_legacy_receipt_is_voided(): void
+    {
+        // #4149 review: BackfillLegacyPayments links the receipt only via PaymentReport.payment_id (no payment_report_id);
+        // PaymentReportController::void then writes a reversal carrying the report id. A later repayment must give the date.
+        $legacy = $this->seedCourse();
+        $a = $this->invoice($legacy, 'paid', 1000, 1000);
+        $receiptA = $this->ledgerRow($a, 1000, 'cash', '2026-03-01');
+        $reportA = $this->confirmedReport($legacy, $a, 1000, '2026-03-01', $receiptA);
+        $this->ledgerRow($a, -1000, 'void', '2026-04-20', $reportA);
+        $reportB = $this->confirmedReport($legacy, $a, 1000, '2026-05-05');
+        $this->ledgerRow($a, 1000, 'transfer', '2026-05-05', $reportB);
+
+        // a reversal with no link at all can only reverse a receipt that already existed when it was written
+        $unlinked = $this->seedCourse();
+        $b = $this->invoice($unlinked, 'paid', 1000, 1000);
+        $this->ledgerRow($b, 1000, 'cash', '2026-03-01');
+        $this->ledgerRow($b, -1000, 'cash', '2026-04-20');
+        $this->ledgerRow($b, 1000, 'cash', '2026-05-05');
+
+        // an unlinked reversal that does not identify one receipt fails safe to the newest standing receipt
+        $ambiguous = $this->seedCourse();
+        $c = $this->invoice($ambiguous, 'partial', 1000, 300);
+        $this->ledgerRow($c, 300, 'cash', '2026-09-02');
+        $this->ledgerRow($c, 300, 'cash', '2026-09-05');
+        $this->ledgerRow($c, -300, 'void', '2026-09-06');
+
+        $resolver = app(\App\Services\BillingPayableResolver::class);
+        $this->assertSame(
+            [$legacy => '2026-05-05', $unlinked => '2026-05-05', $ambiguous => '2026-09-05'],
+            $resolver->lastPaidAtByStudentClassIds([$legacy, $unlinked, $ambiguous])
+        );
+    }
+
+    private function ledgerRow(int $invoiceId, int $amount, string $method, string $paidAt, ?int $reportId = null): int
+    {
+        return (int) DB::table('Payment')->insertGetId(['InvoiceID' => $invoiceId, 'Amount' => $amount, 'Method' => $method,
+            'PaidAt' => $paidAt, 'payment_report_id' => $reportId]);
+    }
+
+    private function confirmedReport(int $classId, int $invoiceId, int $amount, string $date, ?int $paymentId = null): int
+    {
+        return (int) \App\Models\PaymentReport::create(['StudentID' => 1, 'StudentClassID' => $classId, 'InvoiceID' => $invoiceId,
+            'reported_by_name' => 'x', 'payment_date' => $date, 'payment_method' => 'cash', 'reported_amount' => $amount,
+            'status' => 'confirmed', 'payment_id' => $paymentId, 'report_token_hash' => hash('sha256', "r{$invoiceId}-{$date}"),
+            'token_expires_at' => now()])->id;
+    }
 }

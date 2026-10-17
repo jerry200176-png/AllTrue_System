@@ -58,6 +58,11 @@ openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass file:$HOME/.alltrue-dump-
   -in dump/bug-detail.full.tar.gz.enc | tar xz -C dump   # bug-queue-dump.full.tar.gz.enc for the queue
 ```
 
+`production-case-dump.yml` works the same way: its log shows only (it writes no step summary) the case key, exit status,
+completeness flag/reason tokens, byte lengths and the encrypted file's sha256. The artifact
+`production-case-<case_key>` holds only `production-case.full.tar.gz.enc` plus its `.sha256`; check the hash
+(`sha256sum -c`) and decrypt it with the same command.
+
 Decrypted files stay local; never paste them into issues, PRs or comments. Do not
 shortcut any of this with SSH, guessed IDs or stale artifacts.
 

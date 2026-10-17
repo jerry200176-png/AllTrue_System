@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-15-4114-legacy-paid-flag-needs-review
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 舊資料已收但沒收款紀錄會標需核對
+    summary: 只有舊資料標記已收、系統裡找不到收款紀錄的課程，不再顯示綠色已收。
+    items:
+      - category: improved
+        text: 這類課程會顯示「需核對：舊資料標記已收，缺付款紀錄」，不算欠款，也不會催繳。
+      - category: improved
+        text: 請找出當時的收款憑證核對；有收款紀錄的課程照常顯示已收。
+    source_refs:
+      - "changelog:2026-10-15:4114-legacy-paid-flag-needs-review"

@@ -180,6 +180,7 @@ class AlertController extends Controller
             ->values()
             ->all();
         $paidAtMap = $this->payableResolver->lastPaidAtByStudentClassIds($allClassIds);
+        $paymentHistoryMap = $this->payableResolver->studentClassIdsWithPaymentHistory($allClassIds);
         $invoiceAggMap = $this->payableResolver->invoiceAggregateByStudentClassIds($allClassIds);
         $allResults = $countResults->merge($dateResults)->merge($pendingSettlementResults)->keyBy('ID');
         $payableMap = $this->payableResolver->byStudentClassIds($allClassIds, $allResults);
@@ -369,7 +370,7 @@ class AlertController extends Controller
             ->merge(
                 $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
             )
-            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses, $courseStatuses) {
+            ->map(function ($row) use ($paidAtMap, $paymentHistoryMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses, $courseStatuses) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
@@ -438,7 +439,9 @@ class AlertController extends Controller
                 return $row + [
                     'closed_reason'            => $sc?->getAttribute('closed_reason'),
                     'paid_at'                  => $directPaidAt,
-                    'last_paid_at'             => $directPaidAt ?? $invoicePaidAt,
+                    // #4123: only a receipt still standing on the net Payment ledger gives 最近繳費. The legacy PayDate
+                    // is a fallback only for contracts with no Payment history at all (any row, void/reversed included).
+                    'last_paid_at'             => $invoicePaidAt ?? (isset($paymentHistoryMap[$classId]) ? null : $directPaidAt),
                     'charge'                   => $charge,
                     'estimated_amount'         => $charge,
                     'charge_semantics'         => 'estimate_only',
@@ -499,7 +502,43 @@ class AlertController extends Controller
             return $row + ['has_confirmed_receipt' => $reportId !== null, 'receipt_report_id' => $reportId !== null ? (int) $reportId : null];
         })->values();
 
-        return response()->json($rows);
+        return response()->json($this->markLegacyPaidFlagOnly($rows, $campusIds === [] ? null : array_map('intval', $campusIds)));
+    }
+
+    /**
+     * #4114 (Founder Q3): a paid status (paid / renew_needed / monthly_due_soon) with no receipt standing on the contract or
+     * its package rests on the legacy Paid / package `paid` flag alone. `payment_status` is unchanged, so the row is still
+     * not owed and sends no reminder; `legacy_paid_flag_only` makes the list read 需核對 instead of 已收. Only a row whose
+     * legacy flag is actually set qualifies (StudentClass.Paid=1 / its package paid, or the package row's own `paid`); package
+     * evidence is read inside the caller's campuses only (#4174 review).
+     *
+     * @param int[]|null $campusIds null = super admin (every campus)
+     */
+    private function markLegacyPaidFlagOnly(\Illuminate\Support\Collection $rows, ?array $campusIds): \Illuminate\Support\Collection
+    {
+        $paidLike = fn (array $row) => in_array($row['payment_status'] ?? null, ['paid', 'renew_needed', 'monthly_due_soon'], true);
+        $candidates = $rows->filter($paidLike);
+        $isPackageRow = fn (array $row) => isset($row['package_id']);
+        $packageFlag = CoursePackage::query()->whereIn('id', $candidates->filter($isPackageRow)->pluck('package_id')->map(fn ($id) => (int) $id)->all())
+            ->pluck('paid', 'id')->mapWithKeys(fn ($paid, $id) => [(int) $id => (bool) $paid])->all();
+        $classFlag = StudentClass::query()->with('coursePackage')
+            ->whereIn('ID', $candidates->reject($isPackageRow)->pluck('id')->filter()->map(fn ($id) => (int) $id)->all())->get()
+            ->mapWithKeys(fn (StudentClass $c) => [(int) $c->ID => $c->isEffectivelyPaid()])->all();
+        $hasFlag = fn (array $row) => $isPackageRow($row)
+            ? ($packageFlag[(int) $row['package_id']] ?? false)
+            : ($classFlag[(int) ($row['id'] ?? 0)] ?? false);
+        $flagged = $candidates->filter($hasFlag);
+        // A package row asks about its package (the resolver reads only the owner's in-scope members), never about the raw
+        // member_class_ids list, which is not campus-filtered.
+        $evidence = $this->payableResolver->validPaymentEvidence(
+            $flagged->reject($isPackageRow)->pluck('id')->filter()->all(),
+            $flagged->filter($isPackageRow)->pluck('package_id')->filter()->all(),
+            $campusIds,
+        );
+
+        return $rows->map(fn ($row) => $row + ['legacy_paid_flag_only' => $paidLike($row) && $hasFlag($row) && ($isPackageRow($row)
+            ? !isset($evidence['packages'][(int) $row['package_id']])
+            : !isset($evidence['classes'][(int) ($row['id'] ?? 0)]))])->values();
     }
 
     /** @param array<string, mixed>|null $verdict BillingPayableResolver course row; invoices that still owe beat the Paid flag (Founder Q2) */
