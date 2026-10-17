@@ -477,7 +477,7 @@
       :fetch-availability="fetchTeacherAvailability"
       @submitted="onBatchSubstituteSubmitted"
     />
-    <ToastWithUndo v-if="featureSubstituteV2" ref="toastRef" />
+    <ToastWithUndo ref="toastRef" />
 
     <!-- #740 Modals：舊版代課（feature flag 關閉時） -->
     <CalendarSubstituteLegacyModal
@@ -996,6 +996,7 @@ const {
   supabase,
   branchId: computed(() => props.branchId),
   userRole: computed(() => props.userRole),
+  onLeaveShiftSuccess: () => toastRef.value?.show?.({ title: '請假與續約順延已完成', variant: 'success', durationMs: 4000 }),
   showModal,
   modalForm,
   editingCourseId,

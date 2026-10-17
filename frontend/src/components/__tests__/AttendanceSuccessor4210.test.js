@@ -8,7 +8,7 @@ const source = readFileSync(resolve(__dirname, '../../pages/AttendancePage.vue')
 const command = source.slice(source.indexOf('const saveStatusEdit ='), source.indexOf('const submitManual =')).replace('const saveStatusEdit =', 'return');
 const plan={applicable:true,eligible:true,leave_session:{id:11},preview_token:'a'.repeat(64),old_end_date:'2026-12-08',successor_end_date:'2026-12-22',blockers:[],moves:[{role:'old_tail',session_id:null,from:null,to:{date:'2026-12-08',start:'19:00:00',end:'21:00:00'}},{role:'successor',session_id:21,from:{date:'2026-12-08',start:'16:00:00',end:'18:00:00'},to:{date:'2026-12-15',start:'16:00:00',end:'18:00:00'}}]};
 function setup({blocked=false,accepted=true,role='director',applyStatus=200}={}) {
- const deps={getToken:async()=>'synthetic',props:{userRole:role,branchId:1},previewSuccessorLeave,applySuccessorLeave,successorImpactItems,leaveBlockers:{value:[]},leaveBlockerDate:{value:''},pendingMarkMsg:{value:''},pendingMarkMsgType:{value:''},fetchPendingSessions:vi.fn(),fetchRecords:vi.fn(),httpFailureMessage:(_s,b)=>b.message};
+ const deps={confirmSuccessorLeave:vi.fn().mockResolvedValue(accepted),getToken:async()=>'synthetic',props:{userRole:role,branchId:1},previewSuccessorLeave,applySuccessorLeave,successorImpactItems,leaveBlockers:{value:[]},leaveBlockerDate:{value:''},pendingMarkMsg:{value:''},pendingMarkMsgType:{value:''},fetchPendingSessions:vi.fn(),fetchRecords:vi.fn(),httpFailureMessage:(_s,b)=>b.message};
  vi.stubGlobal('alert',vi.fn());vi.stubGlobal('confirm',vi.fn(()=>accepted));
  vi.stubGlobal('fetch',vi.fn(async url=>({ok:!url.endsWith('/apply')||applyStatus===200,status:applyStatus,json:async()=>url.endsWith('/preview')?blocked?{...plan,eligible:false,blockers:[{message:'歷史需核對',course_id:1,session_id:11}]}:plan:url.endsWith('/apply')?applyStatus===200?{applied:true}:{message:'尚未開放'}:{}})));
  const save=Function(...Object.keys(deps),command)(...Object.values(deps));
@@ -16,7 +16,7 @@ function setup({blocked=false,accepted=true,role='director',applyStatus=200}={})
 }
 afterEach(()=>vi.unstubAllGlobals());
 it('in-app410 attendance confirms server effects before applying and refreshes both authorities',async()=>{
- const {save,deps,record}=setup();await save(record);expect(confirm.mock.calls[0][0]).toContain('2026-12-15');expect(fetch.mock.calls.filter(([u])=>u.endsWith('/apply'))).toHaveLength(1);expect(record.Status).toBe('leave');expect(deps.fetchRecords).toHaveBeenCalledOnce();expect(deps.fetchPendingSessions).toHaveBeenCalledOnce();
+ const {save,deps,record}=setup();await save(record);expect(deps.confirmSuccessorLeave.mock.calls[0][0]).toContain('2026-12-15');expect(fetch.mock.calls.filter(([u])=>u.endsWith('/apply'))).toHaveLength(1);expect(record.Status).toBe('leave');expect(deps.fetchRecords).toHaveBeenCalledOnce();expect(deps.fetchPendingSessions).toHaveBeenCalledOnce();
 });
 it.each([{blocked:true},{accepted:false},{applyStatus:403}])('in-app410 attendance refusal/cancel/failure never reports successful leave: %j',async options=>{
  const {save,record}=setup(options);await save(record);expect(record.Status).toBe('absent');expect(record._editing).toBe(true);expect(record._saving).toBe(false);
@@ -36,4 +36,14 @@ it.each(['branch','session','role','status'])('in-app410 delayed ordinary fallba
  if(field==='status')record._newStatus='present';
  resolvePreview({ok:true,json:async()=>({applicable:false})});await pending;
  expect(confirm).not.toHaveBeenCalled();expect(fetch).toHaveBeenCalledTimes(1);expect(record.Status).toBe('absent');
+});
+it.each(['branch','session','role','status'])('in-app410 async design-system confirmation cannot apply after %s changes',async field=>{
+ const {save,deps,record}=setup();let accept;
+ deps.confirmSuccessorLeave.mockImplementation(()=>new Promise(resolve=>{accept=resolve;}));
+ const pending=save(record);for(let i=0;i<12;i++)await Promise.resolve();expect(deps.confirmSuccessorLeave).toHaveBeenCalledOnce();
+ if(field==='branch')deps.props.branchId=2;
+ if(field==='session')record.ClassSessionID=12;
+ if(field==='role')deps.props.userRole='teacher';
+ if(field==='status')record._newStatus='present';
+ accept(true);await pending;expect(fetch.mock.calls.some(([url])=>url.endsWith('/apply'))).toBe(false);expect(record.Status).toBe('absent');
 });

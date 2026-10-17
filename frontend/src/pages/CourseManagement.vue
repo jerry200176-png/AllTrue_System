@@ -3702,7 +3702,7 @@ async function openLeave(c) {
 }
 async function submitLeave() {
   if (leaveSubmitting.value) return;
-  if (!leavePreviewReady.value) { alert(leavePreviewError.value || '請先取得最新請假影響預覽'); return; }
+  if (!leavePreviewReady.value) { leavePreviewError.value ||= '請先取得最新請假影響預覽'; return; }
   if (!leaveForm.value.schedule_date) return;
   const branchId = Number(props.branchId) || 0;
   if (!branchId) { alert('請先選擇分校'); return; }
@@ -3730,7 +3730,7 @@ async function submitLeave() {
       showLeaveModal.value = false;
       leaveCourse.value = null;
       await loadCourses();
-      alert('請假與續約順延已完成');
+      toastRef.value?.show?.({ title: '請假與續約順延已完成', variant: 'success', durationMs: 4000 });
       return;
     }
     if (isRetro) {

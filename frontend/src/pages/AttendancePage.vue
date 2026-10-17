@@ -11,6 +11,7 @@
       </template>
     </AtPageHeader>
     <SuccessorLeaveBlockers :blockers="leaveBlockers" :date="leaveBlockerDate" @navigate="emit('navigate-context', $event)" />
+    <ConfirmDialogHost />
 
     <!-- Tab Switcher（director/super_admin 才顯示） -->
     <div v-if="!isTeacher" class="att-tabs at-tabs" role="tablist" aria-label="出缺勤工作區">
@@ -1113,6 +1114,8 @@ import { httpFailureMessage } from '../lib/humanizeApiErrorMessage';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
 import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems } from '../lib/leaveSuccessorShift.js';
 import SuccessorLeaveBlockers from '../components/course-management/SuccessorLeaveBlockers.vue';
+import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
+import { askConfirm, confirmState, settleConfirm } from '../composables/useConfirmDialog';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -1122,6 +1125,16 @@ const props = defineProps({
 const emit = defineEmits(['navigate', 'navigate-learning', 'navigate-context']);
 const leaveBlockers = ref([]);
 const leaveBlockerDate = ref('');
+const leaveConfirmOwner = ref(null);
+async function confirmSuccessorLeave(message) {
+  const answer = askConfirm({ title: '請假與續約順延影響', message, confirmLabel: '確認請假與順延' });
+  const owner = confirmState.value;
+  leaveConfirmOwner.value = owner;
+  try { return await answer; } finally { if (leaveConfirmOwner.value === owner) leaveConfirmOwner.value = null; }
+}
+function cancelLeaveConfirmation() { if (leaveConfirmOwner.value && confirmState.value === leaveConfirmOwner.value) settleConfirm(false); }
+onBeforeUnmount(cancelLeaveConfirmation);
+watch(() => [props.branchId, props.userRole], () => { cancelLeaveConfirmation(); leaveBlockers.value = []; leaveBlockerDate.value = ''; });
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const isDirectorOrAdmin = computed(() => props.userRole === 'director' || props.userRole === 'super_admin');
@@ -2208,7 +2221,9 @@ const saveStatusEdit = async (record) => {
             leaveBlockerDate.value = plan.leave_session.date || '';
             return;
           }
-          if (!confirm(`請確認請假與續約順延影響：\n${effects}`)) return;
+          if (!await confirmSuccessorLeave(effects)) return;
+          if (props.branchId !== branchAtPreview || record.ClassSessionID !== sessionAtPreview
+            || props.userRole !== roleAtPreview || record._newStatus !== 'leave') return;
           await applySuccessorLeave(plan, { token });
           record.Status = 'leave';
           record.status_label = '請假';

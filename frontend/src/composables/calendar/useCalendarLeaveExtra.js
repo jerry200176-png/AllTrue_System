@@ -15,6 +15,7 @@ export function useCalendarLeaveExtra({
   allStudents,
   getSubjectLabel,
   toastRef,
+  onLeaveShiftSuccess,
 }) {
   const getStudentName = (sid) => {
     const s = allStudents.value.find((x) => x.id === sid);
@@ -204,7 +205,7 @@ export function useCalendarLeaveExtra({
         if (ownsRequest()) {
           showLeaveModal.value = false;
           contextMenu.value = { show: false, x: 0, y: 0, course: null, date: null };
-          alert('請假與續約順延已完成');
+          onLeaveShiftSuccess?.();
         }
         await loadCourses();
         return;
