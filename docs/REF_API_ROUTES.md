@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 509 api/* routes · generated 2026-10-14
+> Source: `php artisan route:list --json` · 517 api/* routes · generated 2026-10-17
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -353,6 +353,19 @@
 |--------|-----|--------|------|
 | POST | `api/v1/enrollments` | `EnrollmentController@store` | role+campus |
 
+## /api/v1/exam-rounds (8)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/exam-rounds` | `ExamRoundController@index` | role+campus |
+| POST | `api/v1/exam-rounds` | `ExamRoundController@store` | role+campus |
+| GET | `api/v1/exam-rounds/{examRound}` | `ExamRoundController@show` | role+campus |
+| POST | `api/v1/exam-rounds/{examRound}/close` | `ExamRoundController@close` | role+campus |
+| GET | `api/v1/exam-rounds/{examRound}/progress` | `ExamRoundController@progress` | role+campus |
+| POST | `api/v1/exam-rounds/{examRound}/publish` | `ExamRoundController@publish` | role+campus |
+| POST | `api/v1/exam-rounds/{examRound}/scores` | `ExamRoundController@upsertScores` | role+campus |
+| GET | `api/v1/exam-rounds/{examRound}/students` | `ExamRoundController@students` | role+campus |
+
 ## /api/v1/exception-workflows (6)
 
 | Method | URI | Action | Auth |
@@ -515,7 +528,7 @@
 | POST | `api/v1/line/webhook` | `LineWebhookController@handleDomainBased` | public |
 | POST | `api/v1/line/webhook/{campusId}` | `LineWebhookController@handle` | public |
 
-## /api/v1/me (16)
+## /api/v1/me (17)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -523,6 +536,7 @@
 | PUT | `api/v1/me` | `AuthController@updateMe` | public |
 | POST | `api/v1/me/avatar` | `AuthController@uploadAvatar` | public |
 | GET | `api/v1/me/awaiting-reply-count` | `LearningRecordFeedbackController@awaitingReplyCount` | role+campus |
+| GET | `api/v1/me/exam-pending-summary` | `ExamRoundController@pendingSummary` | role+campus |
 | GET | `api/v1/me/learning-pending-summary` | `LearningRecordController@teacherPendingBadgeSummary` | role+campus |
 | GET | `api/v1/me/learning-progress-summary` | `LearningRecordController@teacherLearningProgressSummary` | role+campus |
 | GET | `api/v1/me/notification-preferences` | `AuthController@notificationPreferences` | public |
@@ -698,7 +712,7 @@
 |--------|-----|--------|------|
 | POST | `api/v1/schedule-import/preview` | `ScheduleImportController@preview` | role+campus |
 
-## /api/v1/schedules (11)
+## /api/v1/schedules (13)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -707,6 +721,8 @@
 | POST | `api/v1/schedules/bulk-leave` | `ScheduleController@bulkHolidayLeave` | role+campus |
 | POST | `api/v1/schedules/leave-by-session` | `ScheduleController@leaveBySession` | role+campus |
 | POST | `api/v1/schedules/leave-cascade-preview` | `ScheduleController@leaveCascadePreview` | role+campus |
+| POST | `api/v1/schedules/leave-successor-shift/apply` | `ScheduleLeaveSuccessorShiftController@apply` | role+campus |
+| POST | `api/v1/schedules/leave-successor-shift/preview` | `ScheduleLeaveSuccessorShiftController@preview` | role+campus |
 | POST | `api/v1/schedules/retro-leave` | `ScheduleController@retroLeave` | role+campus |
 | POST | `api/v1/schedules/undo-leave-by-session` | `ScheduleController@undoLeaveBySession` | role+campus |
 | PUT | `api/v1/schedules/{schedule}` | `ScheduleController@update` | role+campus |

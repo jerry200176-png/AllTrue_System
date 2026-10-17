@@ -12,3 +12,5 @@ assert.match(fn, /for who in "\$\{GITHUB_REPOSITORY_OWNER\}" app\/github-actions
 assert.match(fn, /select\(\. != \$\{num\}\)/, 'never links an issue to itself');
 assert.doesNotMatch(fn, /issue close|gh issue reopen|--state closed/, 'advisory only: never closes duplicates');
 console.log('bug-auto-intake family contract: PASS');
+
+await import('./bug-auto-intake-canonical.test.mjs');

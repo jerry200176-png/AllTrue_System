@@ -7,7 +7,8 @@ vi.mock('../../../lib/authedFetch', () => ({
   getAccessToken: (...a) => getAccessToken(...a),
 }));
 
-import { useCoursePause } from '../useCoursePause';
+import { useCoursePause, COURSE_LIFECYCLE_BUSY_MESSAGE } from '../useCoursePause';
+import { createCourseCloseFlow } from '../../../lib/closeCourseNoRenew.js';
 
 const res = (ok, json, statusText = 'Bad') => ({ ok, statusText, json: async () => json });
 const active = { id: 7, status: 'active' };
@@ -100,5 +101,94 @@ describe('useCoursePause', () => {
     p.submitting.value = true;
     await p.confirm();
     expect(getAccessToken).not.toHaveBeenCalled();
+  });
+});
+
+// PR #4159 r4286957773: close and pause/resume POST the same /pause endpoint, and a generic pause
+// clears closed_reason, so they share one per-course lock (the close flow's single-flight).
+describe('useCoursePause shares the per-course lifecycle lock with close', () => {
+  function deferred() { let resolve, reject; const promise = new Promise((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; }
+  const other = { id: 9, status: 'active' };
+  function setup(closeCourse) {
+    const flow = createCourseCloseFlow({ closeCourse, getDrawerCourse: () => null, closeDrawer: vi.fn() });
+    const p = useCoursePause({ onChanged, notify, courseLock: flow });
+    return { flow, p };
+  }
+
+  it('a pause confirmed while a close of the same course is pending is not sent', async () => {
+    const d = deferred();
+    const { flow, p } = setup(() => d.promise);
+    p.request(active); // dialog opened before the close started
+    const closing = flow.close(active);
+    await p.confirm();
+    expect(authedFetch).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(COURSE_LIFECYCLE_BUSY_MESSAGE);
+    expect(p.target.value).toEqual(active);
+    p.request(active);
+    expect(notify).toHaveBeenCalledTimes(2);
+    d.resolve(true);
+    await closing;
+  });
+
+  it('a close while a pause of the same course is pending is not sent', async () => {
+    const d = deferred();
+    authedFetch.mockReturnValue(d.promise);
+    const closeCourse = vi.fn(async () => true);
+    const { flow, p } = setup(closeCourse);
+    p.request(active);
+    const pausing = p.confirm();
+    await vi.waitFor(() => expect(authedFetch).toHaveBeenCalledTimes(1));
+    expect(await flow.close(active)).toBe(false);
+    expect(await flow.closeFromDrawer(active)).toBe(false);
+    expect(closeCourse).not.toHaveBeenCalled();
+    d.resolve(res(true, {}));
+    await pausing;
+  });
+
+  it('releases the lock after a successful pause', async () => {
+    authedFetch.mockResolvedValue(res(true, {}));
+    const closeCourse = vi.fn(async () => true);
+    const { flow, p } = setup(closeCourse);
+    p.request(active);
+    await p.confirm();
+    expect(flow.isPending(active)).toBe(false);
+    expect(await flow.close(active)).toBe(true);
+    expect(closeCourse).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the lock after a failed or throwing pause', async () => {
+    const closeCourse = vi.fn(async () => true);
+    const { flow, p } = setup(closeCourse);
+    authedFetch.mockResolvedValueOnce(res(false, { message: 'no' }));
+    p.request(active);
+    await p.confirm();
+    expect(flow.isPending(active)).toBe(false);
+    authedFetch.mockRejectedValueOnce(new Error('net'));
+    await p.confirm();
+    expect(flow.isPending(active)).toBe(false);
+    expect(await flow.close(active)).toBe(true);
+  });
+
+  it('releases the lock after a failed close, so a later pause is sent', async () => {
+    const { flow, p } = setup(async () => { throw new Error('x'); });
+    await expect(flow.close(active)).rejects.toThrow('x');
+    authedFetch.mockResolvedValue(res(true, {}));
+    p.request(active);
+    await p.confirm();
+    expect(authedFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a pending close of one course does not block pausing a different course', async () => {
+    const d = deferred();
+    authedFetch.mockResolvedValue(res(true, {}));
+    const { flow, p } = setup(() => d.promise);
+    const closing = flow.close(active);
+    p.request(other);
+    await p.confirm();
+    expect(authedFetch).toHaveBeenCalledTimes(1);
+    expect(authedFetch.mock.calls[0][0]).toBe('/api/v1/student-classes/9/pause');
+    expect(notify).not.toHaveBeenCalledWith(COURSE_LIFECYCLE_BUSY_MESSAGE);
+    d.resolve(true);
+    await closing;
   });
 });

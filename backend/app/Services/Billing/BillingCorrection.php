@@ -87,7 +87,15 @@ final class BillingCorrection
                 ->where('StudentClassID', $classId)
                 ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
                 ->lockForUpdate()->get();
-            $currentAffected = ContractSessionSchedule::scheduledSessionsBeyondCountFromRows($lockedSessions, $newCount);
+            // Same rule the preview used and the token binds, evaluated once
+            // under the session locks: refuse while any excess reservation is
+            // past-dated and unrecorded, otherwise retire exactly the rest.
+            $excess = ContractSessionSchedule::partitionExcessScheduledRows($lockedSessions, $newCount);
+            if ($excess['past_unrecorded']->isNotEmpty()) {
+                abort(response()->json($this->pastUnrecordedSessionsRefusal($excess['past_unrecorded'], $newCount), 422));
+            }
+            $retirableSessions = $excess['retirable'];
+            $currentAffected = ContractSessionSchedule::describeRetirableSessions($retirableSessions);
             $currentUsageDiagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$classId])[$classId] ?? [];
             $currentObservedUsed = max(
                 (int) ($currentUsageDiagnostic['expected_used'] ?? 0),
@@ -161,7 +169,10 @@ final class BillingCorrection
                 $adjustedInvoiceCount++;
             }
 
-            app(ContractSessionSchedule::class)->cancelExcessScheduledSessionsFromRows($lockedSessions, $newCount);
+            foreach ($retirableSessions as $session) {
+                $session->Status = 'cancelled';
+                $session->save();
+            }
             SessionDeductionService::recomputeCounters($classId);
             $fresh = $locked->fresh();
 
@@ -318,7 +329,12 @@ final class BillingCorrection
         // return their exact list first and require a state-bound confirmation.
         // The confirmation is revalidated after locking payment and session
         // state in the write transaction below.
-        $affectedScheduledSessions = app(ContractSessionSchedule::class)->scheduledSessionsBeyondCount($classId, $newCount);
+        $excess = app(ContractSessionSchedule::class)->excessScheduledSessionsBeyondCount($classId, $newCount);
+        if ($excess['past_unrecorded']->isNotEmpty()) {
+            $audit('billing_correction_past_unrecorded_sessions', 422);
+            return $this->reply($this->pastUnrecordedSessionsRefusal($excess['past_unrecorded'], $newCount), 422);
+        }
+        $affectedScheduledSessions = ContractSessionSchedule::describeRetirableSessions($excess['retirable']);
         $confirmationToken = $this->confirmationToken(
             $studentClass,
             $newCount,
@@ -356,6 +372,35 @@ final class BillingCorrection
         );
 
         return $this->reply($result);
+    }
+
+    /**
+     * Fail closed (Founder 2026-10-16): a reduced count may not leave a
+     * past-dated, never-recorded reservation outside the contract. History is
+     * not cancelled automatically and the contract is not left over quota; the
+     * director records attendance or cancels those sessions first, then retries.
+     *
+     * @return array<string, mixed>
+     */
+    private function pastUnrecordedSessionsRefusal($pastSessions, int $newCount): array
+    {
+        $sessions = ContractSessionSchedule::describeRetirableSessions($pastSessions);
+        $labels = array_map(static function (array $session): string {
+            $time = $session['end_time'] !== '' ? "{$session['start_time']}–{$session['end_time']}" : $session['start_time'];
+
+            return "{$session['session_date']} {$time}";
+        }, $sessions);
+        $count = count($sessions);
+
+        return [
+            'message' => "更正為 {$newCount} 堂後，有 {$count} 堂已過日期、還沒點名的課會超出堂數："
+                . implode('、', $labels)
+                . '。請先到行事曆替這些堂次補點名，或取消這些堂次，再重新預覽更正。系統不會自動取消已過日期的堂次。',
+            'code' => 'billing_correction_past_unrecorded_sessions',
+            'next_step' => 'record_or_cancel_past_sessions_then_retry',
+            'new_session_count' => $newCount,
+            'past_unrecorded_sessions' => $sessions,
+        ];
     }
 
     /** @param array<string, mixed> $body @return array{status: int, body: array<string, mixed>} */

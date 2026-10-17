@@ -625,7 +625,8 @@ class StudentClassController extends Controller
                 $monthlyPayment = $monthlyPayments[(int) $class->ID];
                 $class->setAttribute('monthly_payment', $monthlyPayment);
                 // A report is an administrative claim, not a payment for all periods.
-                if (!($pendingReportId !== null && count($monthlyPayment['periods']) === 1
+                // #4150: a free/gift verdict from the resolver outranks the period summary (its NT$0 period reads paid/review).
+                if ($resolved !== 'free' && !($pendingReportId !== null && count($monthlyPayment['periods']) === 1
                     && $monthlyPayment['periods'][0]['source'] === 'single_period_legacy'
                     && $monthlyPayment['payment_status'] === 'unpaid')) {
                     $class->setAttribute('payment_status', $monthlyPayment['payment_status']);
@@ -1828,7 +1829,10 @@ class StudentClassController extends Controller
                     && $newTeacherId === $oldTeacherSnapshot
                     && $newClassType === $oldClassType
                     && $newRoomId === $oldRoomId
-                    && $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass) === $recurringSlots
+                    && $this->sameRecurringSlots(
+                        $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass),
+                        $recurringSlots
+                    )
                     && $this->activeWindowWithin($studentClass, $candidate);
                 $recurringConflicts = $this->scheduleGuardService->validateRecurringCourse([
                     'teacher_id' => $newTeacherId,
@@ -5103,6 +5107,36 @@ class StudentClassController extends Controller
         }
 
         return $recurring;
+    }
+
+    /**
+     * Order-independent equality for weekly slots (#4098).
+     * A resubmit of the same Mon/Sun pair as Sun/Mon must still count as no added load.
+     *
+     * @param  array<int, array{day_of_week: int, start_time: string, end_time: string}>  $a
+     * @param  array<int, array{day_of_week: int, start_time: string, end_time: string}>  $b
+     */
+    private function sameRecurringSlots(array $a, array $b): bool
+    {
+        $normalize = static function (array $slots): array {
+            usort($slots, static function ($x, $y) {
+                $c = ((int) ($x['day_of_week'] ?? 0)) <=> ((int) ($y['day_of_week'] ?? 0));
+                if ($c !== 0) {
+                    return $c;
+                }
+                $c = strcmp((string) ($x['start_time'] ?? ''), (string) ($y['start_time'] ?? ''));
+                if ($c !== 0) {
+                    return $c;
+                }
+
+                return strcmp((string) ($x['end_time'] ?? ''), (string) ($y['end_time'] ?? ''));
+            });
+
+            // usort already reindexes 0..n-1; array_values would be a no-op (PHPStan).
+            return $slots;
+        };
+
+        return $normalize($a) === $normalize($b);
     }
 
     /** True when the candidate's active window starts no earlier and ends no later than the stored one. */

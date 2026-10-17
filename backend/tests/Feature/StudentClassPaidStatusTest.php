@@ -554,7 +554,8 @@ class StudentClassPaidStatusTest extends TestCase
         $row = collect($this->getJson('/api/v1/student-classes?branch_id=1', ['Authorization' => "Bearer {$token}"])->assertOk()->json('data'))
             ->firstWhere('ID', $free->ID);
 
-        $this->assertSame('paid', $row['payment_status'], 'the derived single-period status is the shape under test');
+        // #4150: the resolver calls this zero-fee course `free`, which now outranks the derived single-period `paid`.
+        $this->assertSame('free', $row['payment_status'], 'the resolver verdict is not replaced by the derived period status');
         $this->assertFalse($row['legacy_paid_flag_only']);
     }
 
