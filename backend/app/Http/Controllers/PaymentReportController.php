@@ -712,7 +712,7 @@ class PaymentReportController extends Controller
             if ($existingPending) {
                 return response()->json([
                     'message' => ((int) $existingPending->StudentClassID === (int) $lockedCourse->getKey() ? '此課程' : '同一共用方案')
-                        . '已有「等你確認」的繳費回報，請先到帳務中心確認收款或退回後再登錄。',
+                        . '已有「已回報付款，待你核對入帳」的繳費回報，請先到帳務中心確認收款或退回後再登錄。',
                     'code' => 'pending_report_exists',
                     'report_id' => $existingPending->id,
                 ], 422);
@@ -740,7 +740,7 @@ class PaymentReportController extends Controller
             ]);
 
             return response()->json([
-                'message'    => '已送出，等你確認',
+                'message'    => '已送出，待你核對入帳',
                 'report_id'  => $report->id,
                 'payment_id' => null,
                 'invoice_id' => $invoice?->id,
@@ -891,7 +891,7 @@ class PaymentReportController extends Controller
         }
 
         return response()->json([
-            'message' => "已送出 {$accepted} / " . count($data['entries']) . ' 筆，等你確認',
+            'message' => "已送出 {$accepted} / " . count($data['entries']) . ' 筆，待你核對入帳',
             'accepted' => $accepted,
             'results' => $results,
         ], $accepted === count($data['entries']) ? 200 : 207);
