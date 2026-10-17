@@ -37,3 +37,5 @@ Purpose: weekly triage sweep — pull current `new`/`triaged`/`in_progress` queu
 # kickoff 2026-10-13T03:17:09Z — refresh live open queue (new/triaged/in_progress/resolved counts) after #3905/#3915 work; detect any report above max id 393 for intake reconciliation
 
 # kickoff 2026-10-13T08:13:33Z — Founder reports new in-app feedback since 03:40Z (max id 393, open 390/391/393); refresh live queue counts + issue reconciliation to identify IDs above 393
+
+# kickoff 2026-10-17T06:41:00Z — product-loop C+D closeout; refresh open queue (avoid rework on exam stack / #409 #413 drafts / #407 already shipped); pair with detail dump for 411
