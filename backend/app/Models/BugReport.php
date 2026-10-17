@@ -31,6 +31,17 @@ class BugReport extends Model
         'assigned_to',
     ];
 
+    protected static function booted(): void
+    {
+        // #4100: closing or resolving a report ends triage billing access for good (a reopen needs a fresh link).
+        static::saved(function (BugReport $bug): void {
+            if ($bug->wasChanged('status') && !in_array((string) $bug->status, BugReportContractLink::OPEN_REPORT_STATUSES, true)) {
+                $actor = app()->bound('request') ? request()->attributes->get('auth_user') : null;
+                BugReportContractLink::revokeAllForReport((int) $bug->id, $actor instanceof User ? (int) $actor->getKey() : null);
+            }
+        });
+    }
+
     public function reporter()
     {
         return $this->belongsTo(User::class, 'reporter_user_id');

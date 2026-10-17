@@ -46,7 +46,9 @@ use App\Http\Controllers\TeacherLeaveController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
+use App\Http\Controllers\TriageBillingSnapshotController;
 use App\Http\Controllers\TriageBugReportController;
+use App\Http\Controllers\TriageContractLinkController;
 use App\Http\Controllers\TriageTokenController;
 use App\Http\Controllers\TeacherDuplicateController;
 use App\Http\Controllers\SubjectController;
@@ -971,11 +973,17 @@ Route::prefix('v1')->group(function () {
             ->whereNumber('id')->name('triage.bug-reports.show');
         Route::get('bug-reports/{id}/attachments/{attachmentId}', [TriageBugReportController::class, 'attachment'])
             ->whereNumber(['id', 'attachmentId'])->name('triage.bug-reports.attachment');
+        // #4100: ONE super-admin-linked contract of an open report; triage_tokens.billing_snapshot_enabled (default off, 待 Founder 核准).
+        Route::get('student-classes/{id}/billing-snapshot', [TriageBillingSnapshotController::class, 'show'])
+            ->whereNumber('id')->name('triage.student-classes.billing-snapshot');
     });
     Route::middleware(['super_admin', 'require_password_change'])->group(function () {
         Route::get('admin/triage-tokens', [TriageTokenController::class, 'index']);
         Route::post('admin/triage-tokens', [TriageTokenController::class, 'store']);
         Route::delete('admin/triage-tokens/{id}', [TriageTokenController::class, 'destroy'])->whereNumber('id');
+        // #4100: link ONE open report to ONE contract for the triage billing snapshot (session only; never the token).
+        Route::post('admin/triage-contract-links', [TriageContractLinkController::class, 'store']);
+        Route::delete('admin/triage-contract-links/{id}', [TriageContractLinkController::class, 'destroy'])->whereNumber('id');
     });
 
     // ── Duplicate Sessions P2 Review (director + super_admin) ──
