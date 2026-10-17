@@ -278,6 +278,72 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertSame(0, DB::table('Invoice')->where('Note', 'like', '%更正自%')->count());
     }
 
+    public function test_4132_pending_report_locked_by_confirmation_does_not_deadlock_reissue(): void
+    {
+        $token = $this->token([1]);
+        $course = $this->course($this->student());
+        $old = $this->voidedInvoice($token, $course, 8000);
+        DB::table('payment_reports')->insert(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+            'reported_by_name' => 'Synthetic', 'payment_date' => now()->toDateString(), 'payment_method' => 'cash',
+            'reported_amount' => 7200, 'status' => 'pending', 'report_token_hash' => hash('sha256', 'lock-fixture'),
+            'token_expires_at' => now()->addDay(), 'created_at' => now(), 'updated_at' => now()]);
+        // Publish fixtures to a separate connection, as when confirmation has locked its report first.
+        DB::commit();
+        config(['database.connections.correction_lock_probe' => config('database.connections.' . DB::getDefaultConnection())]);
+        $other = DB::connection('correction_lock_probe');
+        try {
+            DB::statement('SET SESSION innodb_lock_wait_timeout = 1');
+            $other->beginTransaction();
+            $other->table('payment_reports')->where('StudentClassID', $course->ID)->lockForUpdate()->first();
+            $this->record($token, $course, $old)->assertStatus(422)->assertJsonPath('code', 'pending_report_exists');
+            $this->assertDatabaseCount('invoice_corrections', 0);
+        } finally {
+            $other->rollBack();
+            DB::purge('correction_lock_probe');
+            DB::beginTransaction();
+        }
+    }
+
+    public function test_4132_replay_rejects_changed_payment_details_and_missing_report(): void
+    {
+        $token = $this->token([1]);
+        $course = $this->course($this->student());
+        $old = $this->voidedInvoice($token, $course, 8000);
+        $first = $this->record($token, $course, $old)->assertOk()->json();
+        foreach ([['payment_date' => '2026-09-01'], ['payment_method' => 'transfer', 'account_last5' => '12345'],
+            ['account_last5' => '54321'], ['note' => 'changed request']] as $changed) {
+            $this->record($token, $course, $old, $changed)->assertStatus(409)->assertJsonPath('code', 'correction_replay_incompatible');
+        }
+        DB::table('payment_reports')->where('id', $first['report_id'])->delete();
+        $this->record($token, $course, $old)->assertStatus(409)->assertJsonPath('code', 'correction_replay_incompatible');
+        $this->assertDatabaseCount('invoice_corrections', 1);
+    }
+
+    public function test_4132_fresh_campus_authorization_blocks_write_and_replay(): void
+    {
+        $token = $this->token([1]);
+        foreach ([false, true] as $replay) {
+            $student = $this->student();
+            $course = $this->course($student);
+            $old = $this->voidedInvoice($token, $course, 8000);
+            if ($replay) {
+                $this->record($token, $course, $old)->assertOk();
+            }
+            $before = DB::table('invoice_corrections')->count();
+            $moved = false;
+            DB::listen(function ($query) use ($student, &$moved) {
+                if (!$moved && str_starts_with(strtolower($query->sql), 'select')
+                    && str_contains($query->sql, '`Student`.`id` in (' . $student->id . ')')) {
+                    $moved = true;
+                    DB::table('Student')->where('id', $student->id)->update(['CampusID' => 2]);
+                }
+            });
+            $this->record($token, $course, $old)->assertNotFound();
+            $this->assertTrue($moved);
+            $this->assertSame($before, DB::table('invoice_corrections')->count());
+        }
+    }
+
     /** @param array<string, mixed> $over */
     private function record(string $token, StudentClass $course, int $oldId, array $over = [])
     {
