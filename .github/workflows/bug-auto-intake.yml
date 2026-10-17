@@ -139,7 +139,7 @@ jobs:
               printf '%s' "$raw"
             }
             find_trusted() {
-              local n raw docs target targets="" chosen="" fallback="" hit nums="" part
+              local n raw docs target targets="" chosen="" fallback="" hit nums="${1:-}" part
               # Fail closed: a search or view error must stop the run, never look like "no issue yet".
               for who in "${GITHUB_REPOSITORY_OWNER}" app/github-actions; do
                 part="$(gh issue list --state all --limit 20 --search "\"alltrue:bug_report:${id}\" author:${who}" --json number -q '.[].number')" || return 2
@@ -192,7 +192,7 @@ jobs:
               # Race with Phase-A/consolidation: resolve trusted canonical ownership again before
               # closing ours. An explicit canonical target may be newer than the duplicate.
               sleep 5
-              rc=0; oldest="$(find_trusted)" || rc=$?
+              rc=0; oldest="$(find_trusted "${url##*/}")" || rc=$?
               [ "$rc" -le 1 ] || { echo "::error::post-create lookup failed for in-app #$id"; exit 1; }
               canonical_state="${oldest%% *}"
               oldest="${oldest#* }"

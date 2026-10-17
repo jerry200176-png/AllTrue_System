@@ -93,6 +93,8 @@ r = run([], { race: [issue(8999, 'CLOSED', 'SourceRef: alltrue:bug_report:416\n'
 ok(r, 9500);
 assert.equal(writes(r, 'close')[0][2], 'https://github.com/owner/repo/issues/9000');
 assert.equal(writes(r, 'reopen')[0][2], 'https://github.com/owner/repo/issues/9500', 'newer explicit canonical wins creation race');
+r = run([], { hidden: [9000], race: [issue(9500)] }); ok(r, 9000);
+assert.equal(writes(r, 'close').length, 0, 'directly seed created ID when search indexing omits it; newer unmarked fallback cannot replace it');
 r = run([], { race: [issue(8999)] }); ok(r, 8999);
 assert.equal(writes(r, 'close').length, 1, 'legacy oldest trusted race dedupe retained');
 r = run([]); ok(r, 9000); assert.equal(writes(r, 'create').length, 1);
