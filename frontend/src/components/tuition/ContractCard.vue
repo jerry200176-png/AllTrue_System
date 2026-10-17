@@ -86,7 +86,7 @@
     </template>
     <AtDialog :open="confirmOpen" title="確認入帳？" size="sm" title-id="contract-confirm-title" @close="confirmOpen = false">
       <p class="contract__confirm-text" data-testid="contract-confirm-text">
-        確認收到 {{ money(pendingReport?.amount) }}，這筆會算已收。入錯時，請用「撤銷收款」更正。
+        確認實際收到 {{ money(pendingReport?.amount) }}，這筆會算已收。這裡只確認回報金額，不能修改金額；不符請取消並退回回報。撤銷收款不會更改帳單應繳金額，帳單開錯需另行作廢並更正。
       </p>
       <template #actions>
         <AtButton variant="secondary" size="sm" shape="rect" data-testid="contract-confirm-cancel" @click="confirmOpen = false">取消</AtButton>
@@ -94,6 +94,7 @@
       </template>
     </AtDialog>
     <AtDialog :open="rejectOpen" title="退回這筆繳費回報" size="sm" title-id="contract-reject-title" @close="rejectOpen = false">
+      <p class="contract__confirm-text">退回只處理這筆待核對回報，不會更改帳單應繳金額，也不代表退款。</p>
       <label class="contract__reject-label" :for="`contract-reject-reason-${course.id}`">退回原因（家長會看到）</label>
       <AtTextarea :id="`contract-reject-reason-${course.id}`" v-model="rejectReason" :rows="3" data-testid="contract-reject-reason" />
       <template #actions>
