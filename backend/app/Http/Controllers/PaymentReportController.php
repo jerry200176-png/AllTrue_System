@@ -11,6 +11,7 @@ use App\Models\StudentClass;
 use App\Models\Subject;
 use App\Support\AccountingCourseClarity;
 use App\Services\Billing\BillingPeriodInvoiceExists;
+use App\Services\Billing\InvoiceCorrectionLink;
 use App\Services\Billing\InvoiceIssuer;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\MonthlyBillingService;
@@ -385,6 +386,16 @@ class PaymentReportController extends Controller
             if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
                 return $blockedTutoringPayment;
             }
+            // #4132 Codex P1: recheck package membership on confirm (convert already blocks payment_reports).
+            $isCorrectionReport = DB::table('invoice_corrections')
+                ->where('payment_report_id', (int) $report->id)
+                ->exists();
+            if ($isCorrectionReport && $sc && $sc->isPartOfPackage()) {
+                return response()->json([
+                    'message' => '這筆更正回報建立後，課程已加入共用方案；請先解除方案歸屬或作廢此回報後再處理。沒有登記任何款項。',
+                    'code' => 'correction_reissue_joined_package',
+                ], 422);
+            }
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
             if ($sc && ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0)))) {
@@ -580,6 +591,10 @@ class PaymentReportController extends Controller
             'account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
             'note'             => 'nullable|string|max:500',
             'free_gift'        => 'sometimes|boolean',
+            // Founder D3/B1 (#4132): this payment settles a new bill that corrects a voided one; both notes cross-reference.
+            'replaces_invoice_id' => 'nullable|integer|min:1',
+            'correction_reason' => 'required_with:replaces_invoice_id|string|min:3|max:80',
+            'idempotency_key'   => 'required_with:replaces_invoice_id|uuid',
         ]);
         $freeGift = (bool) ($data['free_gift'] ?? false);
 
@@ -587,6 +602,22 @@ class PaymentReportController extends Controller
         if (!$sc->student) {
             return response()->json(['message' => '課程資料不存在'], 404);
         }
+
+        $userId = $request->attributes->get('auth_user_id');
+        // #4132 Codex P1: feature gate + campus auth before tutoring/zero-fee classification.
+        if (!empty($data['replaces_invoice_id'])) {
+            if (!config('billing.receipt_correction_reissue_enabled', false)) {
+                return response()->json(['message' => '更正帳單收款功能尚未開放', 'code' => 'correction_reissue_disabled'], 404);
+            }
+            if ($freeGift || !empty($data['invoice_id'])) {
+                return response()->json(['message' => '更正帳單不能同時指定其他帳單或標記免費。沒有登記任何款項。', 'code' => 'correction_reissue_conflict'], 422);
+            }
+
+            $actorId = $request->attributes->get('auth_user')?->id; // the auth_user_id attribute is not set on this route
+            return $sc instanceof StudentClass ? $this->recordCorrectionReissue($request, $data, $sc, $actorId === null ? null : (int) $actorId)
+                : response()->json(['message' => '課程資料不存在'], 404);
+        }
+
         if ($freeGift && $request->attributes->get('auth_role') !== 'super_admin' // #3991 review: authorize the campus before classifying
             && !in_array((int) $sc->student->CampusID, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true)) {
             return response()->json(['message' => 'Forbidden'], 403);
@@ -613,8 +644,6 @@ class PaymentReportController extends Controller
                 'code' => 'monthly_fee_unset',
             ], 422);
         }
-
-        $userId = $request->attributes->get('auth_user_id');
         if ($freeGift) {
             return $this->recordFreeGiftBill((int) $data['student_class_id'], $data, $userId);
         }
@@ -746,6 +775,91 @@ class PaymentReportController extends Controller
                 'invoice_id' => $invoice?->id,
                 'status'     => 'pending',
             ]);
+        });
+    }
+
+    /** Receipt-intent reissue; confirmation separately settles the pending report. @param array<string, mixed> $data */
+    private function recordCorrectionReissue(Request $request, array $data, StudentClass $sc, ?int $userId)
+    {
+        $link = app(InvoiceCorrectionLink::class);
+        return DB::transaction(function () use ($request, $data, $sc, $userId, $link) {
+            // Fresh authorization and ownership, locked student → course → invoices.
+            $student = Student::query()->whereKey($sc->StudentID)->lockForUpdate()->first();
+            $course = StudentClass::query()->whereKey($sc->getKey())->lockForUpdate()->first();
+            $campusAllowed = $student && ($request->attributes->get('auth_role') === 'super_admin'
+                || in_array((int) $student->CampusID, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true));
+            if (!$student || !$course || (int) $course->StudentID !== (int) $student->getKey() || !$campusAllowed) {
+                return response()->json(['message' => '找不到此課程', 'code' => 'replaces_invoice_not_found'], 404);
+            }
+            // Course-classifying guards only after campus auth.
+            if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($course)) {
+                return $blockedTutoringPayment;
+            }
+            if ($refusal = ContractMoneyState::waivedRefusal($course, '此合約已確認不收，不能登記收款')) {
+                return $refusal;
+            }
+            if ((string) ($course->ScheduleMode ?? 'count') !== 'count' || $course->isPartOfPackage()) {
+                return response()->json(['message' => '目前只有單一堂數制課程可以登記更正帳單。沒有登記任何款項。', 'code' => 'correction_reissue_count_only'], 422);
+            }
+            $replaced = Invoice::query()->whereKey((int) $data['replaces_invoice_id'])->lockForUpdate()->first();
+            $check = $link->precheck($replaced, $course, true, (string) $data['correction_reason'], (int) $data['amount'], (string) $data['idempotency_key']);
+            if ($check['refusal']) {
+                return $check['refusal'];
+            }
+            if ($replay = $check['replay']) {
+                $report = PaymentReport::query()->whereKey((int) $replay->payment_report_id)->first();
+                if (!$report || (int) $report->InvoiceID !== (int) $replay->replacement_invoice_id
+                    || (int) $report->StudentClassID !== (int) $course->getKey()
+                    || (int) $report->StudentID !== (int) $student->getKey()
+                    || (float) $report->reported_amount !== (float) $data['amount']
+                    || $report->payment_date?->toDateString() !== Carbon::parse($data['payment_date'])->toDateString()
+                    || $report->payment_method !== $data['payment_method']
+                    || (string) $report->account_last5 !== (string) ($data['account_last5'] ?? '')
+                    || (string) $report->note !== (string) (trim((string) ($data['note'] ?? '')) ?: null)) {
+                    return response()->json(['message' => '更正回報資料與原請求不同，請重新核對帳務。', 'code' => 'correction_replay_incompatible'], 409);
+                }
+                return response()->json(['message' => '這筆更正已經送出過', 'report_id' => $report->id, 'payment_id' => null, 'correction_id' => (int) $replay->id,
+                    'invoice_id' => (int) $replay->replacement_invoice_id, 'status' => $report->status ?? 'pending', 'replayed' => true]);
+            }
+            if ((int) $data['amount'] <= 0) {
+                return response()->json(['message' => '更正帳單的金額必須大於 0。沒有登記任何款項。', 'code' => 'correction_amount_invalid'], 422);
+            }
+            if ($blockReason = $this->courseMoneyBlockReason((int) $course->getKey(), (int) ($course->getAttribute('Paid') ?? 0))) {
+                return $this->duplicateCoursePaymentResponse($blockReason);
+            }
+            if ($over = $this->amountExceedsOutstandingResponse((int) $course->getKey(), (float) $data['amount'])) {
+                return $over;
+            }
+            if ($this->pickOpenInvoice((int) $course->getKey(), $course)) {
+                return response()->json(['message' => '此課程還有未作廢的帳單，請直接登記那張帳單。沒有登記任何款項。', 'code' => 'open_invoice_exists'], 422);
+            }
+            // Confirmation locks report → course; course lock already serializes new reports.
+            if ($pending = PaymentReport::query()->where('StudentClassID', $course->getKey())->where('status', 'pending')->first()) {
+                return response()->json(['message' => '此課程已有「等你確認」的繳費回報，請先確認收款或退回後再登錄。',
+                    'code' => 'pending_report_exists', 'report_id' => $pending->id], 422);
+            }
+
+            $invoice = app(InvoiceIssuer::class)->issue([
+                'StudentID' => $course->StudentID, 'StudentClassID' => $course->getKey(), 'IssueDate' => Carbon::today()->toDateString(),
+                'TotalAmount' => (int) $data['amount'], 'ScheduleModeAtIssue' => 'count',
+            ], [['StudentClassID' => $course->getKey(), 'Description' => '更正帳單', 'Amount' => (int) $data['amount']]]);
+            $correctionId = $link->link($replaced, $invoice, $userId, (string) $data['correction_reason'], (string) $data['idempotency_key']);
+
+            /** @var PaymentReport $report */
+            $report = PaymentReport::query()->create([
+                'StudentID' => $student->getKey(), 'StudentClassID' => $course->getKey(), 'InvoiceID' => $invoice->id,
+                'reported_by_name' => $student->name, 'payment_date' => $data['payment_date'],
+                'payment_method' => $data['payment_method'], 'reported_amount' => $data['amount'],
+                'account_last5' => $data['account_last5'] ?? null, 'note' => trim((string) ($data['note'] ?? '')) ?: null,
+                'status' => 'pending', 'report_token_hash' => hash('sha256', 'director-' . $course->getKey() . '-' . now()->timestamp),
+                'token_expires_at' => Carbon::now()->addDays(30),
+            ]);
+            DB::table('invoice_corrections')->where('id', $correctionId)->update(['payment_report_id' => $report->getKey()]);
+            Log::info('PaymentReport director-record correction reissue', ['report_id' => $report->getKey(), 'invoice_id' => $invoice->id,
+                'replaces_invoice_id' => $replaced->id, 'user_id' => $userId]);
+
+            return response()->json(['message' => '已開更正帳單並送出，等你確認', 'report_id' => $report->getKey(), 'payment_id' => null,
+                'invoice_id' => (int) $invoice->id, 'status' => 'pending', 'correction_id' => $correctionId]);
         });
     }
 
