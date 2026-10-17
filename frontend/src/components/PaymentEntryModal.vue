@@ -189,8 +189,12 @@ async function submit() {
     const res = await recordPayment(body);
     if (!res.ok) {
       if (res.code === 'pending_report_exists') {
-        submitError.value = `這筆已經送出過，目前在「${REPORT_STATUS_LABELS.pending}」；請直接按「確認入帳」，不要重複送出。`;
-        emit('pending', res.data);
+        submitError.value = `此課程已有「${REPORT_STATUS_LABELS.pending}」回報，不要重複送出。請先核對該回報金額與實收金額；相符才確認入帳，金額不符請先退回，再重新登記。退回回報不會更改帳單應繳金額。`;
+        // Keep this refusal and the entered amount visible; parent pending handlers navigate away.
+        return;
+      }
+      if (res.code === 'amount_exceeds_outstanding') {
+        submitError.value = '這筆金額超過帳單未收餘額。請先核對實收款項與應繳金額，不要為了送出而改小實收金額。帳單金額有誤，請先核對約定費用並走帳務更正流程；款項屬於其他帳單，請分別登記。尚未完成核對前，請勿確認入帳。';
         return;
       }
       throw new Error(res.message);
