@@ -5,10 +5,13 @@ name: Autonomous safe merge
 # the classifier already on main, and asks GitHub to enable server-side
 # auto-merge for T0/T1 work. GitHub still enforces the required status checks
 # and branch rules before the merge is actually performed.
+# Merge freeze: operations/merge-freeze.yaml on the base branch via the API, never
+# the PR head; frozen, unreadable or malformed = hold. Every hold (freeze, higher
+# tier after an `edited` body, failed classification) disarms an armed auto-merge.
 on:
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions:
   contents: read
@@ -28,8 +31,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      decision: ${{ steps.classify.outputs.decision }}
+      # Auto only when the freeze file positively says frozen: false; anything else holds.
+      decision: ${{ steps.freeze.outputs.frozen == 'false' && steps.classify.outputs.decision || 'hold' }}
       tier: ${{ steps.classify.outputs.tier }}
+      freeze_reason: ${{ steps.freeze.outputs.reason }}
     steps:
       - name: Checkout base revision only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -98,6 +103,16 @@ jobs:
               print(f"Autonomous merge held: T{tier} requires risk-appropriate review/protected handling")
           PY
 
+      - name: Read merge freeze from the base branch (fail closed)
+        id: freeze
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/merge-freeze.mjs "$REPO" "$BASE_REF" | tee -a "$GITHUB_OUTPUT"
+
   enable-auto-merge:
     permissions:
       contents: write
@@ -109,12 +124,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Checkout base revision only (freeze reader)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
       - name: Enable server-side squash auto-merge
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
           CURRENT_HEAD_SHA="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
@@ -122,5 +144,50 @@ jobs:
             echo "PR head changed before auto-merge; fail closed" >&2
             exit 1
           fi
+          FREEZE="$(node .github/scripts/merge-freeze.mjs "$REPO" "$BASE_REF")"
+          if [[ "$(sed -n 's/^frozen=//p' <<<"$FREEZE")" != "false" ]]; then
+            echo "Merge freeze active right before arming; not arming ($FREEZE)"
+            ARMED="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.auto_merge != null')"
+            if [[ "$ARMED" == "true" ]]; then
+              gh pr merge "$PR_NUMBER" --repo "$REPO" --disable-auto
+            fi
+            exit 0
+          fi
           gh pr merge "$PR_NUMBER" --repo "$REPO" --auto --squash --delete-branch
           echo "GitHub will merge only after required checks and branch rules pass."
+
+  disable-auto-merge:
+    permissions:
+      contents: write
+      pull-requests: write
+    name: Disarm auto-merge on hold
+    needs: classify
+    # Any hold, including a failed classification (fail closed). Not on cancel: a newer run owns the PR.
+    if: ${{ !cancelled() && needs.classify.result != 'skipped' && (needs.classify.result != 'success' || needs.classify.outputs.decision != 'auto') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Disable server-side auto-merge if armed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TIER: ${{ needs.classify.outputs.tier }}
+          FREEZE_REASON: ${{ needs.classify.outputs.freeze_reason }}
+        run: |
+          set -euo pipefail
+          armed() { gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.auto_merge != null'; }
+          echo "Hold: tier=${TIER:-unknown}; freeze=${FREEZE_REASON:-none}"
+          state="$(armed)" # assignment so a failed read aborts (fail closed) instead of reading as "not armed"
+          if [[ "$state" != "true" ]]; then
+            echo "Auto-merge not enabled; nothing to disarm."
+            exit 0
+          fi
+          # Tolerate a race where it was disarmed between the read and the call; fail if it stays armed.
+          gh pr merge "$PR_NUMBER" --repo "$REPO" --disable-auto || true
+          state="$(armed)"
+          if [[ "$state" == "true" ]]; then
+            echo "Auto-merge is still armed on a held PR; fail closed" >&2
+            exit 1
+          fi
+          echo "Auto-merge disarmed."

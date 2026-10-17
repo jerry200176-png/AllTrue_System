@@ -8,7 +8,7 @@ rules:
   dangerous-triggers:
     ignore:
       # pull_request_target: checks out the BASE sha only, same-repo heads only,
-      # never runs PR code; write scope is limited to the enable-auto-merge job.
+      # never runs PR code; write scope is limited to the enable/disable-auto-merge jobs.
       - auto-merge-safe.yml
       # Only calls gh api with github.token; no checkout of PR code.
       - autonomous-convergence.yml

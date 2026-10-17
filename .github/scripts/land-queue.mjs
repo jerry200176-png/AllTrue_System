@@ -2,6 +2,7 @@
 // unavailable for this user-owned repo: a merge_queue ruleset probe returned 422).
 // Runs from the base branch only; it never checks out or executes PR code.
 import { execFileSync } from 'node:child_process';
+import { readFreeze } from './merge-freeze.mjs';
 
 const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
 const PASSED = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
@@ -141,6 +142,15 @@ export function guardedSquash(n, sha, readThreads, doSquash, log = console.log) 
 }
 
 export const marker = (reason, sha) => `<!-- land-queue:${reason}:${sha} -->`;
+
+// Merge freeze (operations/merge-freeze.yaml on main; unreadable/malformed = frozen): merge, update and batch
+// nothing. Each queued PR gets one comment per freeze (keyed by its since date); the label stays.
+export function freezeHold(freeze, queue, comment) {
+  if (!freeze.frozen) return false;
+  console.log(`merge freeze active (${freeze.reason}); queue paused: ${queue.map((p) => '#' + p.number).join(' ') || '(empty)'}`);
+  for (const p of queue) comment(p.number, `freeze-${freeze.since || 'unknown'}`, `merge freeze active (${freeze.reason}). Nothing merges until the Founder sets \`frozen: false\` in operations/merge-freeze.yaml; this PR stays queued.`);
+  return true;
+}
 
 const REPO = process.env.REPO || process.env.GITHUB_REPOSITORY;
 let PINS = new Map(); // set by requiredChecks() from the live ruleset
@@ -353,6 +363,7 @@ function processQueue() {
   const listed = JSON.parse(gh('pr', 'list', '--repo', REPO, '--label', 'queue', '--state', 'open', '--base', 'main', '--json', 'number,isDraft,baseRefName,isCrossRepository'));
   const queue = orderQueue(listed.map((p) => ({ ...p, labeledAt: labeledAt(p.number) })));
   console.log(`queue: ${queue.map((p) => '#' + p.number).join(' ') || '(empty)'}; batching ${strict ? 'off (strict up-to-date still required)' : 'on'}`);
+  if (freezeHold(readFreeze(REPO, 'main'), queue, (n, key, text) => note(n, key, 'merge-freeze', text))) return;
   const open = api(`git/matching-refs/heads/${BATCH_PREFIX}`).filter((b) => {
     const { root, base } = readBatch(b.object.sha);
     const owned = isBatchBase(api(`git/commits/${root}`), api(`git/commits/${base}`).tree.sha);
