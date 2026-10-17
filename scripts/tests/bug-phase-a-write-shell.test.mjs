@@ -1,9 +1,16 @@
 /**
- * Executable extraction of bug-phase-a-triage.yml write shell (REMOTE + runner).
- * Boundary: fake-ssh + receipt-gate exit≠0 when tinker swallows PHP (exit 0 + no
- * receipt). Does not exercise Eloquent/MySQL. Real DB / chunkById / txn proofs:
- * backend/tests/Feature/BugPhaseATinkerIntegrationTest.php (raw PsySH exit recorded;
- * no fake wrapper). Synthetic payload + fake ssh only — never contacts a host.
+ * Extracted write-step shell tests for bug-phase-a-triage.yml (runner + static YAML).
+ *
+ * Evidence boundary (honest):
+ * - These tests (12 here + 8 batch = 20 Node) prove the **Actions runner** gate:
+ *   receipt file parse, jq/hash/issue checks, fail-stop, sentinel scrubbing.
+ * - Fake `ssh` **discards REMOTE stdin** (`cat >/dev/null`) and synthesizes
+ *   stdout/exit — so this suite does **not** execute the REMOTE heredoc, does
+ *   **not** run tinker/MySQL, and must not be cited as REMOTE-gate evidence.
+ * - Static `extractWriteShell()` asserts only that YAML *contains* REMOTE
+ *   receipt/`PHASE_A_FAIL` text; that is source inspection, not a live REMOTE run.
+ * - Live REMOTE tinker + PsySH exit(1)→1 / exit success→0 + chunkById/txn:
+ *   `backend/tests/Feature/BugPhaseATinkerIntegrationTest.php` (no invented wrapper).
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -52,9 +59,11 @@ function makeItem(id, n, disposition, reply) {
 }
 
 /**
- * Fake ssh modes (FAKE_SSH_MODE):
+ * Fake ssh modes (FAKE_SSH_MODE) — runner-side fixtures only (REMOTE stdin discarded):
  * - ok: emit valid phase_a_receipt matching BUG_ID + PUBLIC_REPLY_B64 sha
- * - no_receipt | php_fail_exit0: exit 0 with error text, no receipt (tinker swallow)
+ * - no_receipt | php_fail_exit0: synthetic exit 0 + error text, no receipt
+ *   (tests runner fail-closed when ssh returns 0 without receipt; not a claim
+ *   that real PsySH swallows exit(1) — live tinker asserts exit=1 on PHASE_A_FAIL)
  * - malformed: exit 0 garbage JSON
  * - wrong_hash / wrong_bug: exit 0 receipt that fails runner checks
  * - ssh255 / failAfter: transport failure
@@ -82,7 +91,9 @@ B64="$(sed -n "s/.*PUBLIC_REPLY_B64='\\([^']*\\)'.*/\\1/p" <<<"$CMD")"
 BODY_FILE="${sshLog}.body"
 printf '%s' "$B64" | base64 -d > "$BODY_FILE" 2>/dev/null || : > "$BODY_FILE"
 RSHA="$(sha256sum "$BODY_FILE" | cut -d' ' -f1)"
-cat >/dev/null  # consume remote script stdin
+# Discard REMOTE heredoc stdin — fake ssh never runs /tmp/phase-a-remote.sh.
+# Therefore this suite proves runner gates only, not REMOTE execution.
+cat >/dev/null
 
 case "$MODE" in
   ssh255)
@@ -90,7 +101,8 @@ case "$MODE" in
     exit 255
     ;;
   no_receipt|php_fail_exit0)
-    # Simulate PsySH swallow: exit 0, no receipt, plus QueryException-shaped noise.
+    # Runner fixture: ssh exits 0 with no receipt (+ QueryException-shaped noise).
+    # Not evidence of live PsySH exit behavior (see BugPhaseATinkerIntegrationTest).
     echo "PHASE_A_FAIL code=db_query_failed" >&2
     echo 'SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry SENTINEL_SQL_LEAK for key PRIMARY (SQL: insert into \`BugReportComment\` (\`body\`) values (SENTINEL_REPLY_LEAK))' >&2
     exit 0
@@ -177,8 +189,9 @@ function runWriteShell({ event, mode = 'ok', failAfter = 0 }) {
 
 test('extracted write shell gates success on receipt file + runner validation', () => {
   const shell = extractWriteShell();
-  assert.match(shell, /RECEIPT_FILE=/, 'remote must use receipt file (tinker exit unreliable)');
-  assert.match(shell, /PHASE_A_FAIL code=missing_success_receipt/, 'remote exits non-zero without receipt');
+  // Static YAML inspection only — does not execute REMOTE (fake ssh discards stdin).
+  assert.match(shell, /RECEIPT_FILE=/, 'YAML REMOTE must use receipt file');
+  assert.match(shell, /PHASE_A_FAIL code=missing_success_receipt/, 'YAML REMOTE emits missing_success_receipt');
   assert.match(shell, /phase_a_receipt/, 'receipt schema includes phase_a_receipt');
   assert.match(shell, /hash_equals\(\$replySha, hash\("sha256"/, 'dedup compares sha256 bytes, not unicode_ci =');
   assert.match(shell, /findPublicByHash|hash\("sha256", \(string\)\$row->body\)/, 'retry matches comment by hash not latest');
@@ -231,13 +244,13 @@ test('P1: batch ssh255 exits nonzero without false wrote', () => {
   fs.rmSync(r.dir, { recursive: true, force: true });
 });
 
-test('tinker-swallowed PHP fail (exit0 + error text, no receipt) fails and stops batch', () => {
+test('runner fail-closes when fake-ssh returns exit0 + error text with no receipt', () => {
   const items = [
     makeItem(411, 4156, 'bug', `a：${issue(4156)}`),
     makeItem(415, 4158, 'bug', `b：${issue(4158)}`),
   ];
   const r = runWriteShell({ event: { batch_json: JSON.stringify(items) }, mode: 'php_fail_exit0' });
-  assert.notEqual(r.code, 0, 'must not treat tinker exit0 without receipt as success');
+  assert.notEqual(r.code, 0, 'runner must not treat ssh exit0 without receipt as success');
   assert.match(r.stderr + r.stdout, /PHASE_A_FAIL code=missing_success_receipt|batch fail-stop/);
   assert.doesNotMatch(r.stdout, /wrote bug_id=/);
   assert.equal((r.sshLog.match(/ssh_call/g) || []).length, 1, 'must not continue to second row');
