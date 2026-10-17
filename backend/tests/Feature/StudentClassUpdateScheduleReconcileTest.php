@@ -210,6 +210,89 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     }
 
     /**
+     * #4245 review: a live substitute row (scheduled + original_schedule_id) must still
+     * occupy the substitute teacher even though StudentClass.TeacherID is the contract
+     * teacher. Blanket contract-TeacherID mismatch skip must not clear that seat.
+     */
+    public function test_update_teacher_rejects_when_slot_held_by_substitute_schedule_row(): void
+    {
+        [$token, $student, $course] = $this->seedCourseWithHistory();
+
+        $contractStudent = Student::create([
+            'name' => '合約老師學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $contractCourse = StudentClass::create([
+            'StudentID' => $contractStudent->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 200, // contract teacher ≠ substitute teacher 100
+            'ClassType' => 'one_on_one',
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-03-01',
+            'TotalHours' => 20,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 4,
+            'UsedSessions' => 4,
+            'week' => 7,
+            'time' => '15:00:00',
+        ]);
+        // Anchor (original) + live substitute row per SubstituteScheduleService semantics.
+        $anchor = Schedule::create([
+            'student_id' => $contractStudent->id,
+            'teacher_id' => 200,
+            'day_of_week' => 7,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $contractCourse->ID,
+        ]);
+        Schedule::create([
+            'student_id' => $contractStudent->id,
+            'teacher_id' => 100, // 代課
+            'day_of_week' => 7,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $contractCourse->ID,
+            'original_schedule_id' => $anchor->id,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'teacher_id' => 100,
+        ]);
+
+        $res->assertStatus(409)
+            ->assertJsonPath('code', 'teacher_schedule_conflict')
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+        $course->refresh();
+        $this->assertSame(99, (int) $course->TeacherID);
+    }
+
+    /**
      * When immutable history exists and future sessions ARE scheduled,
      * syncFutureScheduledSessionTimes should update them, and reconcile
      * should run normally (times match the new value).

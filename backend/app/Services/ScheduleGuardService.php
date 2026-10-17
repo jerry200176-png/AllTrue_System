@@ -1448,9 +1448,18 @@ class ScheduleGuardService
                 continue;
             }
             $meta = $courseId > 0 ? ($courseMeta[$courseId] ?? null) : null;
-            // Contract TeacherID is authoritative for who occupies the seat. A leftover
-            // schedules.teacher_id pointing at the old teacher must not count (cascade miss).
-            if ($meta !== null && (int) ($meta->TeacherID ?? 0) !== $teacherId) {
+            // Stale normal row after contract teacher move: schedules.teacher_id still points at
+            // the old teacher while StudentClass.TeacherID already moved (in-app #401/#402 H1).
+            // Do NOT apply that skip to substitute rows — SubstituteScheduleService stores
+            // status=scheduled + original_schedule_id with teacher_id = 代課 (≠ contract TeacherID);
+            // ClassSession occupancy is filtered by contract teacher, so dropping the substitute
+            // schedule would erase the only seat and allow real conflicts (#4245 review).
+            $isSubstituteOccupancy = (int) ($row->original_schedule_id ?? 0) > 0;
+            if (
+                !$isSubstituteOccupancy
+                && $meta !== null
+                && (int) ($meta->TeacherID ?? 0) !== $teacherId
+            ) {
                 continue;
             }
             $classType = (string) ($row->class_type ?: ($meta->ClassType ?? 'one_on_one'));
