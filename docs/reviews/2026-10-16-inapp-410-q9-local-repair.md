@@ -24,9 +24,10 @@ The shared cascade undo checks successor provenance before every restore/delete.
 The by-session desync path checks before voiding a leave sign-in. Both endpoints
 return HTTP 422, `undo_leave_successor_shift_active`, a clear reason, and
 `affected_lessons` with course/session identifiers plus original/current date and
-start time. Matching is exact for the leave ID and scoped to the same student and
-subject. Past, completed and cancelled rows are not silently skipped. Restored
-original slots no longer count as active; historical note text is retained.
+start time. Matching is exact for the leave ID and scoped to the same student; mutable
+subject metadata is excluded from provenance lookup. Past, completed and cancelled rows are not silently skipped. Restored
+original slots require a reconciled renewal EndDate before they count as inactive;
+historical note text is retained.
 
 No reversal, migration, new class, auth change, ledger write, UI change or flag
 change. The existing default-OFF gate and its response remain intact. Existing
@@ -180,3 +181,32 @@ has not been pushed. Integration remains blocked on publishing/integrating the
 reviewed test-only correction and rerunning exact-head CI. The server guard and
 activation flag are unchanged. The public Draft body records the failed run and
 root cause rather than claiming readiness.
+
+
+## Ready-review P1 corrections (merge preparation)
+
+Automated review at `9eef9621` identified two valid guard gaps:
+- `discussion_r4300423240`: supported subject edits on either contract hide rows
+  from a same-subject lookup. StudentClassController::update unsets StudentID
+  (line 1729), so same-student scoping is retained while SubjectID is removed.
+  An explicit locking join makes course ownership and provenance current together,
+  preserving the campus boundary instead of querying global note markers.
+- `discussion_r4300423235`: restoring original lesson slots leaves the shifted
+  renewal EndDate behind. For restored marked slots, lock the owning course and
+  its current sessions; require a nonnull EndDate equal to the latest noncancelled
+  lesson date. Missing/inconsistent boundaries fail closed with
+  `renewal_end_date_mismatch`, affected course/session identifiers and observed
+  boundary dates. Nothing is repaired or shifted automatically.
+
+RED: four new subject/boundary cases produced 3 failures (expected 422, got 200);
+reconciled boundary already passed. GREEN includes both subject edits, actual
+shift followed by restored slots with stale/reconciled EndDate, plus a foreign
+campus student's copied marker that must neither block ordinary undo nor move
+that student's lesson. Existing stale-snapshot and cleanup regressions remain.
+
+The boundary rule is conservative: an unrelated later EndDate change may require
+explicit reconciliation before undo. Original pre-shift EndDate is not recorded
+by #4162, so the guard does not guess or overwrite it. Existing lock-order
+liveness and deleted/lost provenance limitations remain pre-enable dependencies.
+Default-OFF flag, role/campus checks and past/consumed records are unchanged.
+Exact-head CI and final independent review are recorded on PR #4212.

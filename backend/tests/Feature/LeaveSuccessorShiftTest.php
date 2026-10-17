@@ -312,6 +312,74 @@ class LeaveSuccessorShiftTest extends TestCase
         }
     }
 
+    /** #4210 review: mutable subjects must never hide exact leave provenance. @dataProvider changedSubjectCourses */
+    public function test_subject_edits_do_not_hide_an_active_shift(string $which): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->json('preview_token');
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertOk();
+        DB::table('StudentClass')->where('ID', $which === 'old' ? $this->old : $this->renewal)->update(['SubjectID' => 2]);
+        $before = $this->undoSnapshot();
+        $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])
+            ->assertStatus(422)->assertJsonPath('affected_lessons.0.course_id', $this->renewal);
+        $this->assertSame($before, $this->undoSnapshot());
+    }
+
+    public static function changedSubjectCourses(): array
+    {
+        return ['old subject changed' => ['old'], 'renewal subject changed' => ['renewal']];
+    }
+
+    /** #4210 review: restoring slots alone does not reconcile the contract boundary. @dataProvider renewalBoundaries */
+    public function test_restored_slots_require_a_reconciled_renewal_boundary(bool $reconciled): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk();
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk();
+        foreach (array_slice($preview->json('moves'), 1) as $move) {
+            DB::table('ClassSession')->where('id', $move['session_id'])->update([
+                'SessionDate' => $move['from']['date'], 'StartTime' => $move['from']['start'], 'EndTime' => $move['from']['end'],
+            ]);
+        }
+        if ($reconciled) {
+            DB::table('StudentClass')->where('ID', $this->renewal)->update(['EndDate' => '2026-12-22']);
+        }
+        $before = $this->undoSnapshot();
+        $response = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId]);
+        if ($reconciled) {
+            $response->assertOk();
+            $this->assertSame('2026-12-22', substr((string) DB::table('StudentClass')->where('ID', $this->renewal)->value('EndDate'), 0, 10));
+        } else {
+            $response->assertStatus(422)->assertJsonPath('affected_lessons.0.reason', 'renewal_end_date_mismatch')
+                ->assertJsonPath('affected_lessons.0.course_id', $this->renewal);
+            $this->assertSame($before, $this->undoSnapshot(), 'Q9 never repairs the boundary during undo');
+        }
+    }
+
+    public static function renewalBoundaries(): array
+    {
+        return ['stale end date' => [false], 'reconciled end date' => [true]];
+    }
+
+    /** #4210 review: provenance lookup must retain the authorized student's boundary. */
+    public function test_another_campus_student_marker_is_not_exposed_or_used(): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        DB::table('ClassSession')->where('id', $leaveId)->update(['Status' => 'leave']);
+        $this->student(88411);
+        DB::table('Student')->where('id', 88411)->update(['CampusID' => 2]);
+        $other = $this->course(88411, '2026-12-01', '2026-12-08');
+        $otherLesson = $this->lesson($other, '2026-12-08');
+        DB::table('ClassSession')->where('id', $otherLesson)->update([
+            'Note' => 'successor-shift-after-leave:ls=' . $leaveId . ':from=2026-12-01T19:00',
+        ]);
+        $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])->assertOk();
+        $this->assertSame('2026-12-08', substr((string) DB::table('ClassSession')->where('id', $otherLesson)->value('SessionDate'), 0, 10));
+    }
+
     private function undoSnapshot(): string
     {
         return (string) json_encode(array_map(fn ($table) => DB::table($table)->get()->all(), [

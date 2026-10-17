@@ -34,32 +34,49 @@ class CourseLeaveCascadeSuccessorShiftService
     {
     }
 
-    /** #4210 Q9: provenance remains active until the affected slot is restored explicitly. */
+    /** #4210 Q9: both the affected slots and renewal boundary must be reconciled explicitly. */
     public static function assertUndoAllowed(StudentClass $old, int $leaveSessionId): void
     {
         $marker = self::NOTE_SHIFT . ':ls=' . $leaveSessionId . ':from=';
-        $rows = ClassSession::query()
-            ->whereIn('StudentClassID', StudentClass::query()->select('ID')
-                ->where('StudentID', (int) $old->StudentID)->where('SubjectID', (int) $old->SubjectID)
-                ->where('ID', '!=', (int) $old->ID))
-            ->where('Note', 'like', '%' . $marker . '%')->orderBy('id')->lockForUpdate()->get();
+        $rows = ClassSession::query()->select('ClassSession.*')
+            ->join('StudentClass as renewal', 'renewal.ID', '=', 'ClassSession.StudentClassID')
+            ->where('renewal.StudentID', (int) $old->StudentID)->where('renewal.ID', '!=', (int) $old->ID)
+            ->where('ClassSession.Note', 'like', '%' . $marker . '%')->orderBy('ClassSession.id')->lockForUpdate()->get();
+        // Supported contract updates cannot change StudentID, but can change SubjectID.
+        // Provenance therefore stays student-scoped without depending on mutable subjects.
         $affected = [];
+        $boundaries = [];
         foreach ($rows as $row) {
             if (!preg_match('/(?:^|;\s*)' . preg_quote($marker, '/') . '(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?=;|$)/', (string) $row->Note, $match)) {
                 continue;
             }
             $date = Carbon::parse($row->SessionDate)->toDateString();
             $start = substr((string) $row->StartTime, 0, 5);
+            $courseId = (int) $row->StudentClassID;
+            $boundary = [];
             if ($date === $match[1] && $start === $match[2]) {
-                continue;
+                if (!array_key_exists($courseId, $boundaries)) {
+                    $renewal = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
+                    $lessons = ClassSession::query()->where('StudentClassID', $courseId)->orderBy('id')->lockForUpdate()->get();
+                    $lastDate = $lessons->filter(fn ($lesson) => strtolower((string) $lesson->Status) !== 'cancelled')
+                        ->map(fn ($lesson) => Carbon::parse($lesson->SessionDate)->toDateString())->max();
+                    $endDate = $renewal && $renewal->EndDate ? Carbon::parse($renewal->EndDate)->toDateString() : null;
+                    $boundaries[$courseId] = ['course_end_date' => $endDate, 'last_lesson_date' => $lastDate];
+                }
+                $boundary = $boundaries[$courseId];
+                if ($boundary['course_end_date'] !== null && $boundary['last_lesson_date'] !== null
+                    && $boundary['course_end_date'] === $boundary['last_lesson_date']) {
+                    continue;
+                }
             }
             // Include past/consumed/cancelled rows too: undo must never rewrite their history.
-            $affected[] = ['course_id' => (int) $row->StudentClassID, 'session_id' => (int) $row->id,
+            $affected[] = ['course_id' => $courseId, 'session_id' => (int) $row->id,
+                'reason' => $boundary === [] ? 'shifted_slot' : 'renewal_end_date_mismatch',
                 'from' => ['date' => $match[1], 'start' => $match[2]],
-                'to' => ['date' => $date, 'start' => $start]];
+                'to' => ['date' => $date, 'start' => $start]] + $boundary;
         }
         if ($affected !== []) {
-            throw new SuccessorShiftRefused('此請假已順延續約堂次，順延仍有效，無法撤銷請假。請先查看受影響的續約堂次。', 422,
+            throw new SuccessorShiftRefused('此請假已順延續約堂次，堂次或課程結束日期仍未復原，無法撤銷請假。請先查看受影響的續約堂次。', 422,
                 ['affected_lessons' => $affected]);
         }
     }
