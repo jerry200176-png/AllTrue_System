@@ -1,4 +1,4 @@
-# ContractCard: show 合約金額 apart from bill totals (in-app #414)
-
-Display-only: `合約金額` from `current_contract_charge`, bill line labeled
-`本合約帳單 應收／已收／未收`. Does not reprice issued invoices.
+## 2026-10-17 — fix(billing-ui): 合約卡分開顯示合約金額與帳單應收（#4155／in-app #414）
+<!-- release-notes: staff_update=staff-2026-10-17-4155-contract-vs-bill-amounts -->
+- 學生帳務合約卡新增「合約金額」（課程目前約定），帳單列改標「本合約帳單 應收／已收／未收」。
+- 開單金額與合約金額不同時，仍用既有中性說明；不會自動改已開帳單。
