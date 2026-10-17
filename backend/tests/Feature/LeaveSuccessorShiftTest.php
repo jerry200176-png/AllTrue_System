@@ -245,8 +245,8 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertSame('scheduled', DB::table('ClassSession')->where('id', $leaveId)->value('Status'));
     }
 
-    /** #4210: provenance alone is historical once every original slot is restored. */
-    public function test_restored_shift_provenance_does_not_block_undo(): void
+    /** #4212: legacy provenance without the original end time must fail closed. */
+    public function test_incomplete_legacy_shift_provenance_blocks_undo(): void
     {
         $leaveId = $this->sessions['2026-11-17'];
         DB::table('ClassSession')->where('id', $leaveId)->update(['Status' => 'leave']);
@@ -254,8 +254,8 @@ class LeaveSuccessorShiftTest extends TestCase
             'Note' => 'successor-shift-after-leave:ls=' . $leaveId . ':from=2026-12-01T19:00',
         ]);
         $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
-            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])->assertOk();
-        $this->assertSame('scheduled', DB::table('ClassSession')->where('id', $leaveId)->value('Status'));
+            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])->assertStatus(422);
+        $this->assertSame('leave', DB::table('ClassSession')->where('id', $leaveId)->value('Status'));
     }
 
     /** #4210: a locking Q9 read must see a shift committed after undo's repeatable-read snapshot. */
@@ -378,6 +378,95 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
             ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])->assertOk();
         $this->assertSame('2026-12-08', substr((string) DB::table('ClassSession')->where('id', $otherLesson)->value('SessionDate'), 0, 10));
+    }
+
+    /** #4212 r4300456905: a supported renewal rebuild must not erase the undo guard. */
+    public function test_renewal_rebuild_cannot_erase_active_shift_identity(): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk();
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk();
+        $renewalIds = DB::table('ClassSession')->where('StudentClassID', $this->renewal)->pluck('id');
+        $edit = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->putJson('/api/v1/student-classes/' . $this->renewal, [
+                'days_of_week' => [3], 'start_time' => '16:00', 'duration_hours' => 2,
+            ]);
+        $this->assertSame(200, $edit->status(), $edit->getContent());
+        $this->assertSame(0, DB::table('ClassSession')->whereIn('id', $renewalIds)->count(), 'exercise the real delete/rebuild path');
+        $before = $this->undoSnapshot();
+        $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])
+            ->assertStatus(422)->assertJsonPath('affected_lessons.0.reason', 'shift_provenance_missing')
+            ->assertJsonPath('affected_lessons.0.course_id', $this->renewal);
+        $this->assertSame($before, $this->undoSnapshot());
+    }
+
+    /** #4212 r4300456910: original date/start do not prove original duration. */
+    public function test_undo_requires_the_original_end_time_too(): void
+    {
+        DB::table('ClassSession')->where('id', $this->sessions['2026-12-01'])->update(['EndTime' => '20:00:00']);
+        $leaveId = $this->sessions['2026-11-17'];
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk();
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk();
+        foreach (array_slice($preview->json('moves'), 1) as $move) {
+            DB::table('ClassSession')->where('id', $move['session_id'])->update([
+                'SessionDate' => $move['from']['date'], 'StartTime' => $move['from']['start'],
+            ]);
+        }
+        DB::table('StudentClass')->where('ID', $this->renewal)->update(['EndDate' => '2026-12-22']);
+        $before = $this->undoSnapshot();
+        $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])
+            ->assertStatus(422)->assertJsonPath('affected_lessons.0.from.end', '20:00:00')
+            ->assertJsonPath('affected_lessons.0.to.end', '21:00:00');
+        $this->assertSame($before, $this->undoSnapshot());
+        foreach (array_slice($preview->json('moves'), 1) as $move) {
+            DB::table('ClassSession')->where('id', $move['session_id'])->update(['EndTime' => $move['from']['end']]);
+        }
+        $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])->assertOk();
+    }
+
+    /** #4212 r4300456914: reconciled desync uses cascade cleanup, preserving consumed tails. @dataProvider shiftTailStates */
+    public function test_reconciled_desync_undo_cleans_up_only_a_safe_owned_tail(string $state): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk();
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk();
+        foreach (array_slice($preview->json('moves'), 1) as $move) {
+            DB::table('ClassSession')->where('id', $move['session_id'])->update([
+                'SessionDate' => $move['from']['date'], 'StartTime' => $move['from']['start'], 'EndTime' => $move['from']['end'],
+            ]);
+        }
+        DB::table('StudentClass')->where('ID', $this->renewal)->update(['EndDate' => '2026-12-22']);
+        DB::table('ClassSession')->where('id', $leaveId)->update(['Status' => 'scheduled']);
+        $tail = DB::table('ClassSession')->where('StudentClassID', $this->old)->where('Note', 'like', 'auto-extended-after-leave%:succ=%')->value('id');
+        if ($state === 'consumed') {
+            DB::table('ClassSession')->where('id', $tail)->update(['Status' => 'completed']);
+        } elseif ($state === 'past') {
+            DB::table('ClassSession')->where('id', $tail)->update(['SessionDate' => '2026-10-31']);
+        }
+        $before = $this->undoSnapshot();
+        $response = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId]);
+        if ($state !== 'scheduled') {
+            $response->assertStatus(422);
+            $this->assertSame($before, $this->undoSnapshot());
+        } else {
+            $response->assertOk()->assertJsonPath('extended_end_date', '2026-11-24');
+            $this->assertFalse(DB::table('ClassSession')->where('id', $tail)->exists());
+            $this->assertSame(0, DB::table('StudentSingIn')->where('ClassSessionID', $leaveId)->whereNull('VoidedAt')->count());
+            $this->assertSame(4, DB::table('ClassSession')->where('StudentClassID', $this->old)->count());
+            // Historical provenance must not trap a later ordinary leave on this occurrence.
+            DB::table('ClassSession')->where('id', $leaveId)->update(['Status' => 'leave']);
+            $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+                ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])->assertOk();
+        }
+    }
+
+    public static function shiftTailStates(): array
+    {
+        return ['scheduled tail' => ['scheduled'], 'consumed tail' => ['consumed'], 'past tail' => ['past']];
     }
 
     private function undoSnapshot(): string

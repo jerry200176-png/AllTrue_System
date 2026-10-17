@@ -648,7 +648,7 @@ class ScheduleController extends Controller
 
                 $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
 
-                if ($csStatus === 'leave') {
+                if ($csStatus === 'leave' || CourseLeaveCascadeSuccessorShiftService::shiftTail($courseId, $sessionId)) {
                     // 正常請假：走 cascade 反轉（含下游已上課護欄、回復順延尾堂）。
                     [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $sessionDate, (int) $session->id);
                 } else {

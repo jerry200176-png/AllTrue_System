@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\DB;
 class CourseLeaveCascadeSuccessorShiftService
 {
     public const NOTE_SHIFT = 'successor-shift-after-leave';
+    public const NOTE_ANCHOR = 'successor-shift-anchor';
 
     public function __construct(private ScheduleGuardService $guard, private LeaveAttendanceService $leaveAttendance)
     {
@@ -38,23 +39,43 @@ class CourseLeaveCascadeSuccessorShiftService
     public static function assertUndoAllowed(StudentClass $old, int $leaveSessionId): void
     {
         $marker = self::NOTE_SHIFT . ':ls=' . $leaveSessionId . ':from=';
+        $leaveNote = (string) ClassSession::query()->where('StudentClassID', (int) $old->ID)->whereKey($leaveSessionId)->lockForUpdate()->value('Note');
+        $tail = self::shiftTail((int) $old->ID, $leaveSessionId);
+        $anchor = [];
+        $hasAnchor = preg_match('/(?:^|;\s*)' . self::NOTE_ANCHOR . ':succ=(\d+):n=(\d+):state=(active|undone)(?=;|$)/', $leaveNote, $anchor);
+        if ($hasAnchor && $anchor[3] === 'undone' && !$tail) {
+            return; // Historical row notes must not block a later ordinary leave.
+        }
+        $tailMatch = [];
+        if (!$hasAnchor && $tail) {
+            preg_match(self::tailPattern($leaveSessionId), (string) $tail->Note, $tailMatch);
+        }
+        $expectedCourse = $hasAnchor ? (int) $anchor[1] : (isset($tailMatch[1]) ? (int) $tailMatch[1] : null);
+        $expectedCount = $hasAnchor && $anchor[3] === 'active' ? (int) $anchor[2] : (isset($tailMatch[2]) ? (int) $tailMatch[2] : null);
+
         $rows = ClassSession::query()->select('ClassSession.*')
             ->join('StudentClass as renewal', 'renewal.ID', '=', 'ClassSession.StudentClassID')
             ->where('renewal.StudentID', (int) $old->StudentID)->where('renewal.ID', '!=', (int) $old->ID)
+            ->when($expectedCourse !== null, fn ($q) => $q->where('renewal.ID', $expectedCourse))
             ->where('ClassSession.Note', 'like', '%' . $marker . '%')->orderBy('ClassSession.id')->lockForUpdate()->get();
         // Supported contract updates cannot change StudentID, but can change SubjectID.
         // Provenance therefore stays student-scoped without depending on mutable subjects.
         $affected = [];
         $boundaries = [];
+        $seen = 0;
         foreach ($rows as $row) {
-            if (!preg_match('/(?:^|;\s*)' . preg_quote($marker, '/') . '(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?=;|$)/', (string) $row->Note, $match)) {
+            if (!preg_match('/(?:^|;\s*)' . preg_quote($marker, '/') . '(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}(?::\d{2})?)(?::end=(\d{2}:\d{2}:\d{2}))?(?=;|$)/', (string) $row->Note, $match)) {
                 continue;
             }
+            $seen++;
             $date = Carbon::parse($row->SessionDate)->toDateString();
-            $start = substr((string) $row->StartTime, 0, 5);
+            $start = substr((string) $row->StartTime, 0, 8);
+            $end = substr((string) $row->EndTime, 0, 8);
+            $fromStart = strlen($match[2]) === 5 ? $match[2] . ':00' : $match[2];
+            $fromEnd = $match[3] ?? null;
             $courseId = (int) $row->StudentClassID;
             $boundary = [];
-            if ($date === $match[1] && $start === $match[2]) {
+            if ($expectedCount && $fromEnd !== null && $date === $match[1] && $start === $fromStart && $end === $fromEnd) {
                 if (!array_key_exists($courseId, $boundaries)) {
                     $renewal = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
                     $lessons = ClassSession::query()->where('StudentClassID', $courseId)->orderBy('id')->lockForUpdate()->get();
@@ -71,14 +92,40 @@ class CourseLeaveCascadeSuccessorShiftService
             }
             // Include past/consumed/cancelled rows too: undo must never rewrite their history.
             $affected[] = ['course_id' => $courseId, 'session_id' => (int) $row->id,
-                'reason' => $boundary === [] ? 'shifted_slot' : 'renewal_end_date_mismatch',
-                'from' => ['date' => $match[1], 'start' => $match[2]],
-                'to' => ['date' => $date, 'start' => $start]] + $boundary;
+                'reason' => $fromEnd === null || !$expectedCount ? 'shift_provenance_incomplete' : ($boundary === [] ? 'shifted_slot' : 'renewal_end_date_mismatch'),
+                'from' => ['date' => $match[1], 'start' => $fromStart, 'end' => $fromEnd],
+                'to' => ['date' => $date, 'start' => $start, 'end' => $end]] + $boundary;
+        }
+        if ($expectedCourse !== null && (!$expectedCount || $seen !== $expectedCount || !$tail)) {
+            $owner = StudentClass::query()->whereKey($expectedCourse)->where('StudentID', (int) $old->StudentID)->lockForUpdate()->first();
+            $lesson = $owner ? ClassSession::query()->where('StudentClassID', $expectedCourse)->orderBy('id')->lockForUpdate()->first() : null;
+            $affected[] = ['course_id' => $owner ? $expectedCourse : (int) $old->ID,
+                'session_id' => $owner ? ($lesson ? (int) $lesson->id : null) : $leaveSessionId,
+                'reason' => 'shift_provenance_missing', 'expected_lessons' => $expectedCount, 'observed_lessons' => $seen];
         }
         if ($affected !== []) {
-            throw new SuccessorShiftRefused('此請假已順延續約堂次，堂次或課程結束日期仍未復原，無法撤銷請假。請先查看受影響的續約堂次。', 422,
+            throw new SuccessorShiftRefused('此請假的續約順延尚未確認完整復原，無法撤銷請假。請先核對受影響的續約堂次與順延紀錄。', 422,
                 ['affected_lessons' => $affected]);
         }
+    }
+
+    /** Stable old-contract tail identity; renewal rows may have been rebuilt. */
+    public static function shiftTail(int $courseId, int $leaveSessionId): ?ClassSession
+    {
+        return ClassSession::query()->where('StudentClassID', $courseId)
+            ->where('Note', 'like', '%:ls=' . $leaveSessionId . ':succ=%')->orderBy('id')->lockForUpdate()->get()
+            ->first(fn ($row) => preg_match(self::tailPattern($leaveSessionId), (string) $row->Note));
+    }
+
+    private static function tailPattern(int $leaveSessionId): string
+    {
+        return '/(?:^|;\s*)' . CourseLeaveCascadeService::NOTE_AUTO_EXTENDED . ':ld=\d{4}-\d{2}-\d{2}:ls='
+            . $leaveSessionId . ':succ=(\d+)(?::n=(\d+))?(?=;|$)/';
+    }
+
+    public static function resolvedAnchorNote(string $note): string
+    {
+        return (string) preg_replace('/(' . self::NOTE_ANCHOR . ':succ=\d+:n=\d+:state=)active(?=;|$)/', '${1}undone', $note);
     }
 
     /** @return array<string, mixed> */
@@ -112,7 +159,9 @@ class CourseLeaveCascadeSuccessorShiftService
             }
 
             /** @var ClassSession $leave */ $leave = ClassSession::query()->whereKey($leaveSessionId)->firstOrFail();
-            CourseLeaveCascadeService::markSessionLeaveOnly($leave);
+            $leave->Note = trim((string) preg_replace('/(?:^|;\s*)' . self::NOTE_ANCHOR . ':[^;]*(?=;|$)/', '', (string) $leave->Note), '; ');
+            CourseLeaveCascadeService::markSessionLeaveOnly($leave, CourseLeaveCascadeService::NOTE_LEAVE . '; '
+                . self::NOTE_ANCHOR . ':succ=' . $plan['successor_course_id'] . ':n=' . (count($plan['moves']) - 1) . ':state=active');
             /** @var StudentClass $old */ $old = StudentClass::query()->whereKey($plan['old_course_id'])->firstOrFail();
             $campusId = (int) (DB::table('Student')->where('id', (int) $old->StudentID)->value('CampusID') ?? 0);
             if (!StudentSignIn::query()->where('ClassSessionID', $leaveSessionId)->exists()) {
@@ -128,7 +177,9 @@ class CourseLeaveCascadeSuccessorShiftService
                 $row->SessionDate = $move['to']['date'];
                 $row->StartTime = $move['to']['start'];
                 $row->EndTime = $move['to']['end'];
-                $row->Note = CourseLeaveCascadeService::appendNote($row->Note, self::NOTE_SHIFT . ':ls=' . $leaveSessionId . ':from=' . $move['from']['date'] . 'T' . substr($move['from']['start'], 0, 5));
+                $previousNote = trim((string) preg_replace('/(?:^|;\s*)' . self::NOTE_SHIFT . ':ls=' . $leaveSessionId . ':from=[^;]*(?=;|$)/', '', (string) $row->Note), '; ');
+                $row->Note = CourseLeaveCascadeService::appendNote($previousNote, self::NOTE_SHIFT . ':ls=' . $leaveSessionId . ':from='
+                    . $move['from']['date'] . 'T' . $move['from']['start'] . ':end=' . $move['from']['end']);
                 $row->save();
                 CourseLeaveCascadeService::syncLearningRecordSessionDate($row);
             }
@@ -141,7 +192,7 @@ class CourseLeaveCascadeSuccessorShiftService
                 'EndTime' => $tail['end'],
                 'Status' => 'scheduled',
                 'Note' => CourseLeaveCascadeService::NOTE_AUTO_EXTENDED . ':ld=' . $plan['leave_session']['date']
-                    . ':ls=' . $leaveSessionId . ':succ=' . $plan['successor_course_id'],
+                    . ':ls=' . $leaveSessionId . ':succ=' . $plan['successor_course_id'] . ':n=' . (count($plan['moves']) - 1),
                 '_revive_cancelled' => true,
             ]);
             if (!$created['created']) {

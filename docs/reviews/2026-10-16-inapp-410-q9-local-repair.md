@@ -210,3 +210,34 @@ by #4162, so the guard does not guess or overwrite it. Existing lock-order
 liveness and deleted/lost provenance limitations remain pre-enable dependencies.
 Default-OFF flag, role/campus checks and past/consumed records are unchanged.
 Exact-head CI and final independent review are recorded on PR #4212.
+
+## Follow-up P1 repair after `3e8db9d6`
+
+The head changed from approved `9eef9621` to `3e8db9d6` solely to fix the
+subject-filter and renewal-boundary P1s above. The following functional increment
+is isolated for Claude's verification; Codex remains the sole writer.
+
+- `r4300456905`: recurring schedule PUT deletes/recreates renewal rows, erasing
+  their notes. Apply now records successor ID and expected lesson count on the
+  old leave and its owned tail, outside those replaceable rows. Missing/partial
+  renewal provenance fails closed with affected course/lesson identifiers.
+- `r4300456910`: date/start alone misses heterogeneous original EndTime.
+  New provenance includes original end time; all three slot fields must match.
+  Legacy metadata lacking that information fails closed rather than guessing.
+- `r4300456914`: scheduled-status/live-leave desync bypassed cascade cleanup.
+  A shift-owned tail now routes through shared undo. Only a future, unused,
+  scheduled owned tail can be removed; consumed/past/ledger-backed tails refuse.
+  Successful undo voids the selected leave sign-in, recomputes old EndDate and
+  marks the old anchor resolved. Later ordinary leave is not trapped by history.
+
+RED against `3e8db9d6`: all four new cases failed (rebuild and EndTime undo
+incorrectly returned 200; safe desync left its boundary/tail; consumed desync
+incorrectly returned 200). Log: `/tmp/q9-latest-red.txt`. GREEN: affected local suite passed 516 tests / 2,603 assertions / 7 skipped;
+PHPStan passed both changed services; `git diff --check` passed. The suite also
+checks past-tail refusal and later ordinary undo.
+No automatic renewal reversal, UI changes, flag activation or schema changes.
+The default-OFF activation flag and existing role/campus checks are unchanged.
+Legacy shifts with insufficient metadata require explicit reconciliation; total
+manual removal of every old and renewal provenance marker cannot be inferred.
+Claude's final independent verification and exact-head CI remain integration
+prerequisites. No queue/merge is permitted with unresolved P1s.
