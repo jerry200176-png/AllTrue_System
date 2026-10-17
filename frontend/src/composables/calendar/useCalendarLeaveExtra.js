@@ -1,9 +1,11 @@
 import { ref, computed, watch } from 'vue';
 import { dayLabel, normalizeTimeTo30, computeEndTime } from '../../lib/calendarFormat.js';
+import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems } from '../../lib/leaveSuccessorShift.js';
 
 /** #740 Step 7b1：請假 + 加課 modal 流程 */
 export function useCalendarLeaveExtra({
   branchId,
+  userRole,
   showModal,
   modalForm,
   editingCourseId,
@@ -34,7 +36,7 @@ export function useCalendarLeaveExtra({
     teacher_id: '', duration_hours: 2, class_type: 'one_on_one',
   });
 
-  const leaveRequestKey = computed(() => JSON.stringify([Number(branchId.value ?? branchId), leaveForm.value]));
+  const leaveRequestKey = computed(() => JSON.stringify([Number(branchId.value ?? branchId), userRole?.value ?? userRole, leaveForm.value]));
   const closeLeaveModal = () => { if (!leaveSubmitting.value) showLeaveModal.value = false; };
   const openLeaveModal = () => {
     if (leaveSubmitting.value) return;
@@ -62,6 +64,13 @@ export function useCalendarLeaveExtra({
   const leaveImpactPreview = computed(() => {
     const plan = leaveCascadePlan.value;
     if (!plan || !leavePreviewSuccessKey.value) return null;
+    if (plan.applicable === true) return {
+      title: '請假與續約順延影響預覽',
+      summary: `${getStudentName(leaveForm.value.student_id)}｜${getSubjectLabel(leaveForm.value.subject)}｜${leaveForm.value.schedule_date}`,
+      items: successorImpactItems(plan),
+      blockers: plan.blockers,
+      date: leaveForm.value.schedule_date,
+    };
     const isDateMode = Object.hasOwn(plan, 'contract_end_date');
     const items = [
       '本堂會標記為請假，不扣堂數',
@@ -113,6 +122,17 @@ export function useCalendarLeaveExtra({
       const token = await getToken();
       if (!token) throw new Error('請重新登入後再試');
       if (!showLeaveModal.value || requestKey !== leaveRequestKey.value || requestVersion !== leavePreviewRequestVersion.value) return;
+      const successor = await previewSuccessorLeave({
+        role: userRole?.value ?? userRole, courseId, date, start: leaveForm.value.start_time,
+        branchId: Number(branchId.value ?? branchId), token,
+      });
+      if (requestVersion !== leavePreviewRequestVersion.value || requestKey !== leaveRequestKey.value || !showLeaveModal.value) return;
+      if (successor) {
+        leaveCascadePlan.value = successor;
+        leavePreviewSuccessKey.value = requestKey;
+        if (!successor.eligible) leavePreviewError.value = successorImpactItems(successor).slice(-successor.blockers.length).join('\n');
+        return;
+      }
       const res = await fetch('/api/v1/schedules/leave-cascade-preview', {
         method: 'POST', credentials: 'include',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -179,6 +199,16 @@ export function useCalendarLeaveExtra({
       const token = await getToken();
       if (!token) throw new Error('請重新登入後再試');
       if (!ownsRequest() || !leavePreviewReady.value) return;
+      if (leaveCascadePlan.value?.applicable === true) {
+        await applySuccessorLeave(leaveCascadePlan.value, { token });
+        if (ownsRequest()) {
+          showLeaveModal.value = false;
+          contextMenu.value = { show: false, x: 0, y: 0, course: null, date: null };
+          alert('請假與續約順延已完成');
+        }
+        await loadCourses();
+        return;
+      }
       const res = await fetch('/api/v1/schedules', {
         method: 'POST',
         credentials: 'include',
@@ -218,7 +248,14 @@ export function useCalendarLeaveExtra({
       await loadCourses();
       if (!toastRef?.value) alert('請假登記完成');
     } catch (error) {
-      if (ownsRequest()) leaveSubmitError.value = error?.message || '請稍後再試';
+      if (ownsRequest()) {
+        leaveSubmitError.value = error?.message || '請稍後再試';
+        if (leaveCascadePlan.value?.applicable === true) {
+          leaveCascadePlan.value = null;
+          leavePreviewSuccessKey.value = '';
+          leavePreviewError.value = '請重新取得預覽後再確認';
+        }
+      }
     } finally { leaveSubmitting.value = false; }
   };
 

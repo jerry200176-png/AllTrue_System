@@ -454,6 +454,7 @@
       :error="leaveSubmitError" :submitting="leaveSubmitting"
       @close="closeLeaveModal"
       @submit="submitLeave" @retry-preview="refreshLeaveCascadePreview"
+      @navigate="closeLeaveModal(); emit('navigate', $event)"
     />
 
     <!-- ===== PRD 9c058f19：代課 V2 Modal + Toast + 批次請假 ===== -->
@@ -994,6 +995,7 @@ const {
 } = useCalendarLeaveExtra({
   supabase,
   branchId: computed(() => props.branchId),
+  userRole: computed(() => props.userRole),
   showModal,
   modalForm,
   editingCourseId,
