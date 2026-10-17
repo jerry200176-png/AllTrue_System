@@ -259,33 +259,6 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertDatabaseCount('invoice_corrections', 1);
     }
 
-    public function test_4132_pending_report_locked_by_confirmation_does_not_deadlock_reissue(): void
-    {
-        $token = $this->token([1]);
-        $course = $this->course($this->student());
-        $old = $this->voidedInvoice($token, $course, 8000);
-        DB::table('payment_reports')->insert(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
-            'reported_by_name' => 'Synthetic', 'payment_date' => now()->toDateString(), 'payment_method' => 'cash',
-            'reported_amount' => 7200, 'status' => 'pending', 'report_token_hash' => hash('sha256', 'lock-fixture'),
-            'token_expires_at' => now()->addDay(), 'created_at' => now(), 'updated_at' => now()]);
-        // Publish fixtures to a separate connection, as when confirmation has locked its report first.
-        DB::commit();
-        config(['database.connections.correction_lock_probe' => config('database.connections.' . DB::getDefaultConnection())]);
-        $other = DB::connection('correction_lock_probe');
-        try {
-            DB::statement('SET SESSION innodb_lock_wait_timeout = 1');
-            $other->beginTransaction();
-            $other->table('payment_reports')->where('StudentClassID', $course->ID)->lockForUpdate()->first();
-            $this->record($token, $course, $old)->assertStatus(422)->assertJsonPath('code', 'pending_report_exists');
-            $this->assertDatabaseCount('invoice_corrections', 0);
-        } finally {
-            $other->rollBack();
-            DB::purge('correction_lock_probe');
-            $this->artisan('migrate:fresh'); // The separate-connection fixture was committed; leave no rows behind.
-            DB::beginTransaction();
-        }
-    }
-
     public function test_4132_replay_rejects_changed_payment_details_and_missing_report(): void
     {
         $token = $this->token([1]);

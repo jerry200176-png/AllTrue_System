@@ -1,7 +1,5 @@
 <?php
-
 namespace App\Services\Billing;
-
 use App\Models\Invoice;
 use App\Models\SecurityAuditEvent;
 use App\Models\StudentClass;
@@ -9,7 +7,6 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-
 /** Permanent void/reissue links, independent of APP_KEY and audit retention.
  * Caller holds course and replaced-invoice locks; unique original_invoice_id prevents double correction. */
 final class InvoiceCorrectionLink
@@ -44,14 +41,11 @@ final class InvoiceCorrectionLink
                 && (string) $prior->reason === self::cleanReason($reason)) {
                 return ['refusal' => null, 'replay' => $prior]; // the same request again: its original result, never a second bill
             }
-
             return $refuse(409, 'replaces_invoice_already_replaced', '這張帳單已經更正過，請改從更正後的帳單處理。',
                 ['replacement_invoice_id' => (int) $prior->replacement_invoice_id]);
         }
-
         return ['refusal' => null, 'replay' => null];
     }
-
     /** Permanent unique link and audit; retain whole tags, trimming only older free text.
      * Falls back to a short tag or retained link row when notes are full. @return int */
     public function link(Invoice $replaced, Invoice $invoice, ?int $userId, string $reason, string $key): int
@@ -81,25 +75,20 @@ final class InvoiceCorrectionLink
         SecurityAuditEvent::append(self::EVENT, 'success', ['actor_type' => 'user', 'actor_id' => $userId, 'subject_type' => 'invoice',
             'subject_id' => $invoice->id, 'campus_id' => DB::table('Student')->where('id', $invoice->StudentID)->value('CampusID')],
             ['reason_code' => 'replacement', 'old_charge' => (int) $replaced->TotalAmount, 'new_charge' => (int) $invoice->TotalAmount]);
-
         return $id;
     }
-
     /** Staff-facing number, same format as the accounting ledger (INV-YYYYMM-000123). */
     private static function invoiceNo(Invoice $invoice): string
     {
         return 'INV-' . (preg_replace('/[^0-9]/', '', (string) ($invoice->billing_period ?: substr((string) $invoice->IssueDate, 0, 7))) ?: 'LEGACY')
             . '-' . str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT);
     }
-
     /** Free text going into a tag: no brackets, separators or markers, so it cannot fake a tag or the operator. */
     public static function cleanReason(string $reason): string
     {
         $clean = str_replace(["\r", "\n", '[', ']', '／', '/', ';', '；', '：', ':', '操作者', '更正自', 'replaced_by'], ' ', $reason);
-
         return trim(preg_replace('/\s+/u', ' ', $clean) ?? '');
     }
-
     /** Retain whole tags within VARCHAR(255); null if tags or bracketed free text cannot fit. */
     private static function appendNoteTag(string $note, string $tag): ?string
     {
@@ -115,10 +104,8 @@ final class InvoiceCorrectionLink
             }
             $free = $room > 0 ? trim(mb_substr($free, 0, $room)) : '';
         }
-
         return $free === '' ? $tail : $free . ' ' . $tail;
     }
-
     /** Whole void tags include bracketed reasons through their fixed user_id/at ending.
      * @return array{0: string, 1: list<string>} */
     private static function parseNote(string $note): array
@@ -126,7 +113,6 @@ final class InvoiceCorrectionLink
         $pattern = '/\[(?:void|exception-void): .*?; user_id=[^;\]]*; at=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:; positive_payments=[^\]]*?; net=-?\d+)?\]|\[[^\[\]]*\]/su';
         preg_match_all($pattern, $note, $m);
         $free = trim(preg_replace('/\s+/u', ' ', preg_replace($pattern, ' ', $note) ?? '') ?? '');
-
         return [$free, $m[0]];
     }
 }
