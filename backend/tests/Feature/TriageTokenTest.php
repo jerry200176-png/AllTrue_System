@@ -157,20 +157,75 @@ final class TriageTokenTest extends TestCase
         $this->assertSame(11, $this->auditCount('triage_token.scope_denied') + $this->auditCount('triage_token.read'));
     }
 
-    public function test_expiry_follows_config_and_expired_token_is_rejected(): void
+    public function test_expiry_is_fixed_at_issue_and_config_can_only_shorten_it(): void
     {
         config(['triage_tokens.ttl_days' => 42]);
         $admin = $this->user('S');
         $token = $this->createToken($admin);
+        $id = (int) explode('|', $token)[0];
         $listed = $this->getJson('/api/v1/admin/triage-tokens', $this->as($admin))->json('data.0');
         $this->assertSame(42, now()->parse($listed['created_at'])->diffInDays(now()->parse($listed['expires_at'])));
+        $this->assertNotNull(DB::table('personal_access_tokens')->where('id', $id)->value('expires_at'));
 
         $this->travel(10)->days();
-        config(['triage_tokens.ttl_days' => 7]);
+        config(['triage_tokens.ttl_days' => 7]); // shortening applies at once (fail-safe)
         $this->getJson('/api/v1/triage/bug-reports', $this->bearer($token))
             ->assertStatus(401)->assertJsonPath('code', 'token_expired');
-        config(['triage_tokens.ttl_days' => 30]);
+        config(['triage_tokens.ttl_days' => 30]); // within the issued 42 days: back to the issued expiry
         $this->getJson('/api/v1/triage/bug-reports', $this->bearer($token))->assertOk();
+
+        // #4021: raising ttl_days does not extend a live token ...
+        config(['triage_tokens.ttl_days' => 180]);
+        $this->assertSame($listed['expires_at'], $this->getJson('/api/v1/admin/triage-tokens', $this->as($admin))->json('data.0.expires_at'));
+        // ... nor revive an expired one.
+        $this->travel(40)->days();
+        $this->getJson('/api/v1/triage/bug-reports', $this->bearer($token))
+            ->assertStatus(401)->assertJsonPath('code', 'token_expired');
+
+        // A token issued after the change gets the new TTL.
+        $fresh = $this->createToken($admin);
+        $row = collect($this->getJson('/api/v1/admin/triage-tokens', $this->as($admin))->json('data'))
+            ->firstWhere('id', (int) explode('|', $fresh)[0]);
+        $this->assertSame(180, now()->parse($row['created_at'])->diffInDays(now()->parse($row['expires_at'])));
+        $this->assertFalse($row['expired']);
+        $this->getJson('/api/v1/triage/bug-reports', $this->bearer($fresh))->assertOk();
+    }
+
+    public function test_token_issued_before_expires_at_existed_is_capped_at_the_launch_ttl(): void
+    {
+        config(['triage_tokens.ttl_days' => 365]);
+        $token = $this->createToken($this->user('S'));
+        DB::table('personal_access_tokens')->where('id', (int) explode('|', $token)[0])->update(['expires_at' => null]);
+
+        $this->travel(89)->days();
+        $this->getJson('/api/v1/triage/bug-reports', $this->bearer($token))->assertOk();
+        $this->travel(2)->days();
+        $this->getJson('/api/v1/triage/bug-reports', $this->bearer($token))
+            ->assertStatus(401)->assertJsonPath('code', 'token_expired');
+    }
+
+    public function test_attachment_read_that_throws_is_audited_even_after_the_denial_cap_is_spent(): void
+    {
+        $this->withoutMiddleware(ThrottleRequestsByIp::class);
+        $token = $this->createToken($this->user('S'));
+        $forged = ['Authorization' => 'Bearer 1|' . config('triage_tokens.secret_prefix') . 'forged', 'Accept' => 'application/json'];
+        foreach (range(1, 12) as $i) { $this->getJson('/api/v1/triage/bug-reports', $forged)->assertUnauthorized(); }
+        $this->assertSame(10, $this->auditCount('triage_token.read')); // the unauthenticated cap is spent
+        $bug = $this->bug($this->user('T'), 'new');
+        $att = BugReportAttachment::create(['bug_report_id' => $bug->id, 'stored_path' => "bug-reports/{$bug->id}/shot.png", 'original_name' => 'shot.png', 'mime_type' => 'image/png', 'size' => 7]);
+        $disk = \Mockery::mock();
+        $disk->shouldReceive('exists')->andReturn(true);
+        $disk->shouldReceive('get')->andThrow(new \RuntimeException('disk read failed'));
+        Storage::shouldReceive('disk')->with('public')->andReturn($disk);
+
+        $this->getJson("/api/v1/triage/bug-reports/{$bug->id}/attachments/{$att->id}", $this->bearer($token))->assertStatus(500);
+
+        $rows = DB::table('security_audit_events')->where('event_type', 'triage_token.read')
+            ->where('actor_ref', SecurityAuditEvent::ref('triage_token', (int) explode('|', $token)[0]))->get();
+        $this->assertCount(1, $rows);
+        $this->assertSame('failure', $rows[0]->outcome);
+        $meta = json_decode($rows[0]->metadata, true);
+        $this->assertSame([500, 'read_failed', 'triage.bug-reports.attachment'], [$meta['http_status'], $meta['reason_code'], $meta['route']]);
     }
 
     public function test_revoked_token_and_session_tokens_are_rejected(): void
