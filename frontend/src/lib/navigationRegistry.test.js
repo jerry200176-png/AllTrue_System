@@ -83,7 +83,7 @@ describe('navigation registry', () => {
 
   it('keeps the director sidebar short and the hub badge equal to its tabs', () => {
     expect(sidebar('director')).toEqual([
-      '今日工作台', '班級行事曆', '出缺勤', '學習評量', '學生管理', '課程查找', '新生問班', '帳務中心', '報表與薪資', '設定',
+      '今日工作台', '班級行事曆', '出缺勤', '學習評量', '段考成績', '學生管理', '課程查找', '新生問班', '帳務中心', '報表與薪資', '設定',
     ]);
     expect(sidebar('super_admin')).toContain('系統管理');
     expect(sidebar('director')).not.toContain('系統管理');

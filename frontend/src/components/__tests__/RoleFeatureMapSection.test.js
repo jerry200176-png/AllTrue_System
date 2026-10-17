@@ -3,15 +3,16 @@ import { describe, expect, it } from 'vitest';
 import RoleFeatureMapSection from '../RoleFeatureMapSection.vue';
 
 describe('RoleFeatureMapSection component', () => {
-  it('renders director feature map with all 24 current items and no super_admin leaks', () => {
+  it('renders director feature map with all 25 current items and no super_admin leaks', () => {
     const wrapper = mount(RoleFeatureMapSection, { props: { role: 'director', admissionsEnabled: true } });
     expect(wrapper.text()).toContain('主任功能指南');
-    expect(wrapper.text()).toContain('24');
-    expect(wrapper.text()).toContain('常用高頻 (13)');
+    expect(wrapper.text()).toContain('25');
+    expect(wrapper.text()).toContain('常用高頻 (14)');
     expect(wrapper.text()).toContain('進階工具 (11)');
 
     const pages = wrapper.findAll('.rfm-card').map(c => c.attributes('data-page'));
-    expect(pages).toHaveLength(24);
+    expect(pages).toHaveLength(25);
+    expect(pages).toContain('exam-grades');
 
     for (const p of ['director', 'calendar', 'attendance', 'students', 'tuition-collect', 'teachers', 'classroom']) {
       expect(pages).toContain(p);
@@ -43,10 +44,10 @@ describe('RoleFeatureMapSection component', () => {
 
   it('filters features and emits select-page on click', async () => {
     const wrapper = mount(RoleFeatureMapSection, { props: { role: 'director' } });
-    expect(wrapper.findAll('.rfm-card')).toHaveLength(24);
+    expect(wrapper.findAll('.rfm-card')).toHaveLength(25);
 
     await wrapper.find('[data-testid="filter-high"]').trigger('click');
-    expect(wrapper.findAll('.rfm-card')).toHaveLength(13);
+    expect(wrapper.findAll('.rfm-card')).toHaveLength(14);
 
     await wrapper.find('[data-testid="filter-advanced"]').trigger('click');
     expect(wrapper.findAll('.rfm-card')).toHaveLength(11);
