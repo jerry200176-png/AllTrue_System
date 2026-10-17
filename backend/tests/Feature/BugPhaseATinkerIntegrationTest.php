@@ -6,6 +6,7 @@ use App\Models\BugReport;
 use App\Models\BugReportComment;
 use App\Models\User;
 use App\Models\UserCampus;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\Process\Process;
@@ -67,21 +68,34 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
 
     protected function tearDown(): void
     {
-        $this->dropForceRollbackCheck();
-        $this->assertFalse(
-            $this->forceRollbackCheckInstalled,
-            'AllTrue_test-only force-rollback CHECK must be dropped after the case'
-        );
-        foreach ($this->cleanupBugIds as $id) {
-            BugReportComment::where('bug_report_id', $id)->delete();
-            DB::table('bug_report_status_logs')->where('bug_report_id', $id)->delete();
-            BugReport::whereKey($id)->delete();
+        // CHECK drop must not skip fixture/observer/parent cleanup (CI pollution).
+        // Preserve any CHECK/assert error and rethrow after cleanup so it stays visible.
+        $checkError = null;
+        try {
+            try {
+                $this->dropForceRollbackCheck();
+                $this->assertFalse(
+                    $this->forceRollbackCheckInstalled,
+                    'AllTrue_test-only force-rollback CHECK must be dropped after the case'
+                );
+            } catch (\Throwable $e) {
+                $checkError = $e;
+            }
+            foreach ($this->cleanupBugIds as $id) {
+                BugReportComment::where('bug_report_id', $id)->delete();
+                DB::table('bug_report_status_logs')->where('bug_report_id', $id)->delete();
+                BugReport::whereKey($id)->delete();
+            }
+            foreach ($this->cleanupUserIds as $id) {
+                UserCampus::where('UserID', $id)->delete();
+                User::whereKey($id)->delete();
+            }
+        } finally {
+            parent::tearDown();
         }
-        foreach ($this->cleanupUserIds as $id) {
-            UserCampus::where('UserID', $id)->delete();
-            User::whereKey($id)->delete();
+        if ($checkError !== null) {
+            throw $checkError;
         }
-        parent::tearDown();
     }
 
     public function test_exact_hash_on_chunkById_second_page_hits_and_retry_dedupes(): void
@@ -354,7 +368,8 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
      */
     private function installForceRollbackCheck(): void
     {
-        $this->dropForceRollbackCheck();
+        // Always attempt named DROP first (accept missing 3821) so a stale CHECK cannot block ADD.
+        $this->dropForceRollbackCheck(false);
         DB::statement(
             'ALTER TABLE `bug_report_comments` ADD CONSTRAINT `' . self::FORCE_ROLLBACK_CHECK . '` '
             . 'CHECK (`body` NOT LIKE \'PHASE_A_FORCE_ROLLBACK%\')'
@@ -362,8 +377,15 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
         $this->forceRollbackCheckInstalled = true;
     }
 
-    private function dropForceRollbackCheck(): void
+    /**
+     * @param  bool  $onlyIfInstalled  tearDown/default: skip DROP when this process never installed.
+     *                                 install path passes false to clear a stale named CHECK.
+     */
+    private function dropForceRollbackCheck(bool $onlyIfInstalled = true): void
     {
+        if ($onlyIfInstalled && !$this->forceRollbackCheckInstalled) {
+            return;
+        }
         try {
             DB::statement('ALTER TABLE `bug_report_comments` DROP CHECK `' . self::FORCE_ROLLBACK_CHECK . '`');
             $this->forceRollbackCheckInstalled = false;
@@ -379,12 +401,21 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
 
     private function isMissingForceRollbackCheckError(\Throwable $e): bool
     {
+        // Typed driver codes for this named DROP only; other SQL errors still throw.
+        // MySQL 8.0.46: ER_CHECK_CONSTRAINT_NOT_FOUND = 3821
+        // ("Check constraint … is not found in the table").
+        // Some builds/docs also surface 3822 — accept both typed codes.
+        if ($e instanceof QueryException) {
+            $driverCode = isset($e->errorInfo[1]) ? (int) $e->errorInfo[1] : 0;
+            if ($driverCode === 3821 || $driverCode === 3822) {
+                return true;
+            }
+        }
         $msg = $e->getMessage();
-        // MySQL 8: ER_CHECK_CONSTRAINT_NOT_FOUND (3822) / wording variants.
-        if (preg_match('/\b3822\b/', $msg) === 1) {
+        if (preg_match('/\b3821\b/', $msg) === 1 || preg_match('/\b3822\b/', $msg) === 1) {
             return true;
         }
-        if (preg_match('/check constraint .+ does not exist/i', $msg) === 1) {
+        if (preg_match('/check constraint .+ (does not exist|is not found)/i', $msg) === 1) {
             return true;
         }
         if (preg_match('/unknown check constraint/i', $msg) === 1) {
