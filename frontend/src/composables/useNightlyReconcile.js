@@ -234,11 +234,20 @@ export function useNightlyReconcile(tokenRef) {
         if (meta.checked_at !== checkedAt) {
           throw new Error('對帳報告已更新，請按「重新載入」後再試。');
         }
+        // #4068: report may have been replaced by a concurrent loadReport() —
+        // same stale-response generation pattern as BindingManagementPage (#4076).
+        if (report.value?.checked_at !== checkedAt) {
+          throw new Error('對帳報告已更新，請按「重新載入」後再試。');
+        }
         rows.push(...pageRows);
         lastPage = Math.max(1, Number(meta.last_page) || 1);
         complete = meta.complete !== false;
         page += 1;
       } while (page <= lastPage);
+      // Final guard before mutate: never attach an older page set under newer metadata.
+      if (report.value?.checked_at !== checkedAt) {
+        throw new Error('對帳報告已更新，請按「重新載入」後再試。');
+      }
       if (rows.length > storedRowCount.value) {
         report.value = { ...report.value, mismatches: rows };
       }
