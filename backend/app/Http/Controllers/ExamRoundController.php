@@ -371,7 +371,10 @@ class ExamRoundController extends Controller
             }
         }
         $after = DB::transaction(function () use ($request, $examRound, $action) {
-            $locked = ExamRound::whereKey($examRound->id)->lockForUpdate()->firstOrFail();
+            $locked = ExamRound::query()->whereKey($examRound->id)->lockForUpdate()->first();
+            if ($locked === null) {
+                abort(404);
+            }
             if ($action === 'publish') {
                 if ($locked->status === 'published') {
                     return $this->serializeRound($locked->load('subjects'));
