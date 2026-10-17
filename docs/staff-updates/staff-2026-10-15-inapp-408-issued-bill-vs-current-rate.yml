@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-15-inapp-408-issued-bill-vs-current-rate
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 帳單金額和目前單價不同時會並列給你看
+    summary: 已開的帳單不會跟著課程金額自動改，學生帳務會並列開單金額和目前課程金額。
+    items:
+      - category: improved
+        text: 堂數制課程的未收款帳單，若和目前課程金額不同，合約卡會顯示「開單時金額／目前課程金額」。
+      - category: improved
+        text: 金額不同可能是約定調整，不代表帳單有誤；請先確認原約定與應收金額，確認開錯才更正。
+    source_refs:
+      - "changelog:2026-10-15:inapp-408-issued-bill-vs-current-rate"

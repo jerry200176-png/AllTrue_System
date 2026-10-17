@@ -13,6 +13,7 @@
     <div class="sbl__summary" data-testid="sbl-summary">
       <span>本校區到今天未收 <strong>{{ money(totalNow) }}</strong></span>
       <span>未繳 <strong>{{ owingCount }}</strong> 位</span>
+      <span v-if="pendingReviewCount" data-testid="sbl-pending-review">另有金額待確認 <strong>{{ money(pendingReviewTotal) }}</strong>（{{ pendingReviewCount }} 筆，未計入未收）</span>
     </div>
     <p v-if="rows.length && !owingCount" class="sbl__clear" data-testid="sbl-clear">本校區目前沒有到期未繳。</p>
     <div class="sbl__tools">
@@ -70,6 +71,7 @@
                 <span>{{ c.period }}</span>
                 <span>未繳 {{ money(c.owed) }}</span>
                 <span>已繳 {{ money(c.paid) }}</span>
+                <span v-if="c.pending_review > 0">金額待確認 {{ money(c.pending_review) }}</span>
               </li>
             </ul>
           </template>
@@ -88,6 +90,7 @@ import AtEmpty from '../design-system/AtEmpty.vue';
 import AtInlineAlert from '../design-system/AtInlineAlert.vue';
 import AtSkeleton from '../design-system/AtSkeleton.vue';
 import { formatDate } from '../../lib/billingDocumentView.js';
+import { LEGACY_FLAG_UNVERIFIED_LABEL } from '../../lib/courseMoneyState.js';
 import { buildStudentBillingRows, STUDENT_FILTERS } from '../../lib/studentBillingRows.js';
 
 const props = defineProps({
@@ -113,6 +116,9 @@ const filter = ref('all');
 const rows = computed(() => buildStudentBillingRows(props.alertRows, props.students, props.today));
 const totalNow = computed(() => rows.value.reduce((s, r) => s + r.owed_now, 0));
 const owingCount = computed(() => rows.value.filter((r) => r.owed_now > 0).length);
+// Founder D2: pending-confirmation amounts are a separate line, never part of 未收.
+const pendingReviewTotal = computed(() => rows.value.reduce((s, r) => s + r.pending_review_amount, 0));
+const pendingReviewCount = computed(() => rows.value.reduce((s, r) => s + r.pending_review_count, 0));
 // Client-side only: the rows are already loaded (server-side sort stays a Founder-gated item, #309).
 const SORTS = {
   amount: { label: '未繳金額', cmp: null },
@@ -130,9 +136,12 @@ const visible = computed(() => {
 const badges = (r) => {
   const out = [];
   if (r.waiting_confirm > 0) out.push({ tone: 'warning', label: '已回報付款，待你核對入帳' });
+  if (r.pending_review_count > 0) out.push({ tone: 'warning', label: '金額待確認' });
   if (r.owed_now > 0) out.push({ tone: 'danger', label: '未繳' });
   else if (r.owed_later > 0 && !out.length) out.push({ tone: 'neutral', label: '還沒到期' });
   else if (!out.length && r.unbilled > 0) out.push({ tone: 'neutral', label: '還沒開帳單' });
+  // #4114 (Founder Q3): a contract paid by the legacy flag alone reads 需核對, never 已收 (not owed either).
+  else if (!out.length && r.legacy_flag_only > 0) out.push({ tone: 'warning', label: LEGACY_FLAG_UNVERIFIED_LABEL });
   // in-app #407: 已收 only when the server says a contract is paid (never a payment date alone).
   else if (!out.length) out.push(r.has_paid ? { tone: 'success', label: '已收' } : { tone: 'neutral', label: '沒有待收款項' });
   return out;

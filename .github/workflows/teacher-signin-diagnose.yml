@@ -27,6 +27,7 @@ jobs:
   diagnose:
     name: Run read-only teacher sign-in diagnostic
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
 
     steps:

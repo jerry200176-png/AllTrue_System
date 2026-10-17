@@ -357,7 +357,8 @@ class NotificationApiTest extends TestCase
             'note' => '通知中心核帳',
         ]);
 
-        $response->assertOk()->assertJsonPath('message', '已送出，等你確認');
+        // #4104: a pending report asks for ledger review, never claims money was confirmed.
+        $response->assertOk()->assertJsonPath('message', '已送出，待核對入帳');
 
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $class->ID,
@@ -485,7 +486,7 @@ class NotificationApiTest extends TestCase
             'note' => '櫃台現金',
         ]);
 
-        $response->assertOk()->assertJsonPath('message', '已送出，等你確認');
+        $response->assertOk()->assertJsonPath('message', '已送出，待核對入帳');
 
         $this->assertDatabaseHas('Invoice', [
             'id' => $invoice->id,

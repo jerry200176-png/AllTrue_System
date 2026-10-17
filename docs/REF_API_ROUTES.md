@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 506 api/* routes · generated 2026-10-14
+> Source: `php artisan route:list --json` · 508 api/* routes · generated 2026-10-16
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -696,7 +696,7 @@
 |--------|-----|--------|------|
 | POST | `api/v1/schedule-import/preview` | `ScheduleImportController@preview` | role+campus |
 
-## /api/v1/schedules (11)
+## /api/v1/schedules (13)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -705,6 +705,8 @@
 | POST | `api/v1/schedules/bulk-leave` | `ScheduleController@bulkHolidayLeave` | role+campus |
 | POST | `api/v1/schedules/leave-by-session` | `ScheduleController@leaveBySession` | role+campus |
 | POST | `api/v1/schedules/leave-cascade-preview` | `ScheduleController@leaveCascadePreview` | role+campus |
+| POST | `api/v1/schedules/leave-successor-shift/apply` | `ScheduleLeaveSuccessorShiftController@apply` | role+campus |
+| POST | `api/v1/schedules/leave-successor-shift/preview` | `ScheduleLeaveSuccessorShiftController@preview` | role+campus |
 | POST | `api/v1/schedules/retro-leave` | `ScheduleController@retroLeave` | role+campus |
 | POST | `api/v1/schedules/undo-leave-by-session` | `ScheduleController@undoLeaveBySession` | role+campus |
 | PUT | `api/v1/schedules/{schedule}` | `ScheduleController@update` | role+campus |
