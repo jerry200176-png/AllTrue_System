@@ -405,25 +405,33 @@ jobs:
               echo "::error::phase-a ssh failed rc=$SSH_RC" >&2
               return "$SSH_RC"
             fi
-            # Exactly one phase_a_receipt object; validate bug_id / comment_id / body hash / status.
-            # Only receipt JSON objects are accepted from stdout — never echo raw SSH_OUT.
-            local RECEIPTS RECEIPT_COUNT RECEIPT
-            RECEIPTS="$(printf '%s\n' "$SSH_OUT" | jq -c 'select(type=="object" and .phase_a_receipt==1)' 2>/dev/null || true)"
-            RECEIPT_COUNT="$(printf '%s\n' "$RECEIPTS" | grep -c . || true)"
-            if [[ "$RECEIPT_COUNT" -ne 1 ]]; then
-              echo "::error::phase-a receipt missing/malformed/not-unique for bug_id=$BUG_ID count=$RECEIPT_COUNT" >&2
+            # Entire stdout must parse as exactly one JSON value: a phase_a_receipt object.
+            # Do not ignore jq failures; trailing garbage / extra values / non-receipt → fail.
+            # Never echo raw SSH_OUT (may contain SQL/bindings).
+            local RECEIPT PARSE_RC=0
+            RECEIPT="$(printf '%s' "$SSH_OUT" | jq -ce --slurp '
+              if length == 1
+                 and (.[0] | type == "object")
+                 and (.[0].phase_a_receipt == 1)
+              then .[0]
+              else error("expected exactly one phase_a_receipt object")
+              end
+            ' 2>/dev/null)" || PARSE_RC=$?
+            if [[ "$PARSE_RC" -ne 0 || -z "$RECEIPT" ]]; then
+              echo "::error::phase-a receipt missing/malformed/not-unique for bug_id=$BUG_ID" >&2
               phase_a_emit_safe_remote_log "$SSH_OUT"
               return 1
             fi
-            RECEIPT="$(printf '%s\n' "$RECEIPTS" | head -n1)"
-            local RBID RCID RSHA RSTATUS
+            local RBID RCID RSHA RSTATUS RISSUE
             RBID="$(jq -r '.bug_id|tostring' <<<"$RECEIPT")"
             RCID="$(jq -r '.comment_id|tostring' <<<"$RECEIPT")"
             RSHA="$(jq -r '.public_body_sha256|tostring' <<<"$RECEIPT")"
             RSTATUS="$(jq -r '.final|tostring' <<<"$RECEIPT")"
+            RISSUE="$(jq -r '.issue|tostring' <<<"$RECEIPT")"
             [[ "$RBID" == "$BUG_ID" ]] || { echo "::error::receipt bug_id mismatch"; return 1; }
             [[ "$RSHA" == "$REPLY_SHA" ]] || { echo "::error::receipt public_body_sha256 mismatch"; return 1; }
             [[ "$RCID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::receipt comment_id invalid"; return 1; }
+            [[ "$RISSUE" == "$GITHUB_ISSUE_URL" ]] || { echo "::error::receipt issue mismatch"; return 1; }
             if [[ "$CLOSE_AS_LOGGED" == "true" ]]; then
               [[ "$RSTATUS" == "closed" ]] || { echo "::error::receipt status expected closed"; return 1; }
             else

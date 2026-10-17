@@ -75,6 +75,7 @@ fi
 # Parse BUG_ID and PUBLIC_REPLY_B64 from the remote command string.
 CMD="$*"
 BUG_ID="$(sed -n "s/.*BUG_ID='\\([0-9]*\\)'.*/\\1/p" <<<"$CMD")"
+ISSUE="$(sed -n "s/.*GITHUB_ISSUE_URL='\\([^']*\\)'.*/\\1/p" <<<"$CMD")"
 B64="$(sed -n "s/.*PUBLIC_REPLY_B64='\\([^']*\\)'.*/\\1/p" <<<"$CMD")"
 # Decode to a file — $(base64 -d) would strip a trailing newline from the reply body.
 BODY_FILE="${sshLog}.body"
@@ -103,16 +104,26 @@ case "$MODE" in
     exit 0
     ;;
   wrong_hash)
-    printf '%s\\n' "{\\"phase_a_receipt\\":1,\\"bug_id\\":$BUG_ID,\\"comment_id\\":99,\\"final\\":\\"triaged\\",\\"public_body_sha256\\":\\"deadbeef\\",\\"issue\\":\\"x\\"}"
+    printf '%s\\n' "{\\"phase_a_receipt\\":1,\\"bug_id\\":$BUG_ID,\\"comment_id\\":99,\\"final\\":\\"triaged\\",\\"public_body_sha256\\":\\"deadbeef\\",\\"issue\\":\\"$ISSUE\\"}"
     exit 0
     ;;
   wrong_bug)
-    printf '%s\\n' "{\\"phase_a_receipt\\":1,\\"bug_id\\":999999,\\"comment_id\\":99,\\"final\\":\\"triaged\\",\\"public_body_sha256\\":\\"$RSHA\\",\\"issue\\":\\"x\\"}"
+    printf '%s\\n' "{\\"phase_a_receipt\\":1,\\"bug_id\\":999999,\\"comment_id\\":99,\\"final\\":\\"triaged\\",\\"public_body_sha256\\":\\"$RSHA\\",\\"issue\\":\\"$ISSUE\\"}"
+    exit 0
+    ;;
+  wrong_issue)
+    printf '%s\\n' "{\\"phase_a_receipt\\":1,\\"bug_id\\":$BUG_ID,\\"comment_id\\":99,\\"final\\":\\"triaged\\",\\"public_body_sha256\\":\\"$RSHA\\",\\"issue\\":\\"https://github.com/other-org/OtherRepo/issues/999\\"}"
+    exit 0
+    ;;
+  trailing_garbage)
+    CID=$((1000 + BUG_ID))
+    printf '%s\\n' "{\\"phase_a_receipt\\":1,\\"bug_id\\":$BUG_ID,\\"comment_id\\":$CID,\\"comment_skipped\\":false,\\"final\\":\\"triaged\\",\\"public_body_sha256\\":\\"$RSHA\\",\\"issue\\":\\"$ISSUE\\"}"
+    echo 'trailing SENTINEL_SQL_LEAK garbage after valid receipt'
     exit 0
     ;;
   ok|*)
     CID=$((1000 + BUG_ID))
-    printf '%s\\n' "{\\"phase_a_receipt\\":1,\\"bug_id\\":$BUG_ID,\\"comment_id\\":$CID,\\"comment_skipped\\":false,\\"final\\":\\"triaged\\",\\"public_body_sha256\\":\\"$RSHA\\",\\"issue\\":\\"https://github.com/${REPO}/issues/1\\"}"
+    printf '%s\\n' "{\\"phase_a_receipt\\":1,\\"bug_id\\":$BUG_ID,\\"comment_id\\":$CID,\\"comment_skipped\\":false,\\"final\\":\\"triaged\\",\\"public_body_sha256\\":\\"$RSHA\\",\\"issue\\":\\"$ISSUE\\"}"
     exit 0
     ;;
 esac
@@ -180,6 +191,9 @@ test('extracted write shell gates success on receipt file + runner validation', 
   assert.match(shell, /rollBack\(\)/, 'rollback on failure');
   assert.match(shell, /receipt missing\/malformed\/not-unique/, 'runner rejects bad receipts');
   assert.match(shell, /receipt public_body_sha256 mismatch/, 'runner checks body hash');
+  assert.match(shell, /jq -ce --slurp/, 'entire stdout must fully parse as one JSON value');
+  assert.match(shell, /receipt issue mismatch/, 'runner checks receipt.issue URL');
+  assert.doesNotMatch(shell, /jq -c 'select\(type=="object"/, 'must not ignore jq failures via select||true');
 });
 
 /**
@@ -256,9 +270,9 @@ test('sentinel: SQL/reply bindings never appear in Actions-facing output', () =>
   }
 });
 
-test('0-exit missing / malformed / wrong-hash / wrong-bug receipts all fail', () => {
+test('0-exit missing / malformed / wrong-hash / wrong-bug / wrong-issue / trailing-garbage receipts all fail', () => {
   const item = makeItem(411, 4156, 'bug', `x：${issue(4156)}`);
-  for (const mode of ['no_receipt', 'malformed', 'wrong_hash', 'wrong_bug']) {
+  for (const mode of ['no_receipt', 'malformed', 'wrong_hash', 'wrong_bug', 'wrong_issue', 'trailing_garbage']) {
     const r = runWriteShell({
       event: {
         bug_id: '411',
@@ -272,6 +286,9 @@ test('0-exit missing / malformed / wrong-hash / wrong-bug receipts all fail', ()
     });
     assert.notEqual(r.code, 0, mode);
     assert.doesNotMatch(r.stdout, /wrote bug_id=411/, mode);
+    if (mode === 'trailing_garbage' || mode === 'wrong_issue') {
+      assert.match(r.stderr + r.stdout, /receipt (missing\/malformed\/not-unique|issue mismatch)/, mode);
+    }
     fs.rmSync(r.dir, { recursive: true, force: true });
   }
 });
