@@ -38,8 +38,9 @@ Steps (a)–(c) → merge the PR → (d) → (e) → (f) → (g).
 2. **Deployment branches and tags** → **Selected branches and tags** → add the rule `main`. Add no
    other branch or tag.
 3. **Required reviewers: leave this OFF.** Scheduled jobs (`pi-health`, `slow-query-report`,
-   `backup-restore-test`, `bug-auto-intake`, the `deploy.yml` schedule, and others) must keep running
-   with nobody present. The branch policy is the control here, not a reviewer. Leave the wait timer
+   `bug-auto-intake`, the `deploy.yml` schedule, and others) must keep running
+   with nobody present. (`backup-restore-test`, monthly, is on `production-activation`: gated pending
+   evidence, see P3 below.) The branch policy is the control here, not a reviewer. Leave the wait timer
    at 0.
 
 ### Existing environments (documented exceptions)
@@ -53,6 +54,32 @@ A job can declare only one environment. Jobs that already use `production-activa
   it is not set already. Keep its required reviewer.
 
 The lint (`DOCUMENTED_EXCEPTIONS`) accepts only `production-ssh` and `production-activation`.
+
+### Writes wait for the Founder (P3, Founder Q2 2026-10-15)
+
+`production-ssh` has no reviewer, and agents can call `workflow_dispatch`. So a job that **writes**
+production (DB rows, `.env`, files under `/home/admin`, bug-report status or replies, LINE pushes,
+scratch databases on the production MySQL server) declares `production-activation`. The run then waits
+for the Founder's approval. Read-only jobs stay on `production-ssh`.
+
+Every secret-bearing job is listed in `docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json` → `job_gates`
+(`"<file>:<job>"`), with `writes`, `gate` and file:line `evidence`. Rule **P3**
+(`scripts/ci/production-write-gate.mjs`, run by control-plane-lint) fails when:
+
+- a secret-bearing job is not listed, or an entry is stale;
+- a `writes: true` job does not declare `production-activation`. Two exceptions exist.
+  `needs:<job>`: the job needs a same-file job on `production-activation`, and its `if:` requires that
+  job's success with no `||` (e.g. `deploy.yml` `parent-portal-smoke`, `pop-bootstrap`).
+  `founder-decision`: the job is a listed ungated writer and its `decision` names the open Founder
+  decision (the two scheduled bug-report writers and the Founder 1A auto-deploy path). Being scheduled is not an
+  exemption by itself: the entry must also give `authorization` (with its source), `scope`,
+  `idempotency`, `stop_switch`, `audit_trail` and `isolation`;
+- a `writes: false` job contains a strong write marker in its own text (`--apply`, `ALLOW_PROD_REPAIR=1`,
+  `sed -i`, `->save(`, `mysql -e "CREATE DATABASE`, ...). The marker scan is only a backstop. It does not see
+  scripts shipped to the Pi or what an artisan command does inside. The `evidence` review covers those.
+
+`production-activation` therefore needs **every secret the moved jobs read** (step c, plus the
+non-SSH secrets listed in the P3 PR) as environment secrets, unless they are repository-level secrets.
 
 ## (b) Generate a new key pair (trusted machine, not the Pi, not a cloud agent)
 

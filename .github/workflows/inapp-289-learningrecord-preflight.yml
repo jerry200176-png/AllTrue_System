@@ -9,7 +9,7 @@ permissions:
 jobs:
   preflight:
     runs-on: ubuntu-latest
-    environment: production-ssh
+    environment: production-activation
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

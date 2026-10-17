@@ -80,6 +80,7 @@ jobs:
           node scripts/ci/workflow-secret-echo.test.mjs
           node --test scripts/ci/production-secret-triggers.test.mjs
           node --test scripts/ci/production-ssh-environment.test.mjs
+          node --test scripts/ci/production-write-gate.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs

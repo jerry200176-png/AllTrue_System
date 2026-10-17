@@ -28,7 +28,7 @@ jobs:
   evidence:
     name: Production evidence closeout on Pi
     runs-on: ubuntu-latest
-    environment: production-ssh
+    environment: production-activation
     timeout-minutes: 45
 
     steps:

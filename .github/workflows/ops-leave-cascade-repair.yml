@@ -50,7 +50,7 @@ permissions:
 jobs:
   repair:
     runs-on: ubuntu-latest
-    environment: production-ssh
+    environment: production-activation
     timeout-minutes: 25
     steps:
       - name: Checkout pinned SSH trust helper
