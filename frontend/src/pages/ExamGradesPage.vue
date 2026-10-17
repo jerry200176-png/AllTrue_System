@@ -38,10 +38,19 @@
             {{ round.status === 'published' ? '登分' : '查看' }}
           </AtButton>
           <AtButton v-if="isDirector && round.status === 'draft'" shape="rect" size="sm" variant="ghost" @click="publishRound(round)">發布</AtButton>
-          <AtButton v-if="isDirector && round.status === 'published'" shape="rect" size="sm" variant="ghost" @click="closeRound(round)">關閉</AtButton>
+          <AtButton v-if="isDirector && round.status === 'published'" shape="rect" size="sm" variant="ghost" @click="askCloseRound(round)">關閉</AtButton>
         </div>
       </article>
     </div>
+
+    <AtDialog :open="!!pendingClose" title="關閉段考" title-id="exam-close-title" @close="pendingClose = null">
+      <p>關閉後老師不能再改分，確定關閉「{{ pendingClose?.title }}」嗎？</p>
+      <p v-if="closeError" class="exam-error">{{ closeError }}</p>
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" :disabled="closing" @click="pendingClose = null">取消</AtButton>
+        <AtButton shape="rect" variant="primary" :loading="closing" @click="confirmCloseRound">確定關閉</AtButton>
+      </template>
+    </AtDialog>
 
     <AtDialog :open="showCreate" title="開新段考" title-id="exam-create-title" @close="showCreate = false">
       <label>標題<input v-model.trim="createForm.title" maxlength="120" placeholder="例如：113-1 第一次段考" /></label>
@@ -145,6 +154,9 @@ const studentsError = ref('');
 const scoreError = ref('');
 const savingStudentId = ref(null);
 const draftScores = reactive({});
+const pendingClose = ref(null);
+const closing = ref(false);
+const closeError = ref('');
 
 async function api(path, options = {}) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -235,13 +247,24 @@ async function publishRound(round) {
   }
 }
 
-async function closeRound(round) {
-  if (!window.confirm('關閉後老師不能再改分，確定嗎？')) return;
+function askCloseRound(round) {
+  closeError.value = '';
+  pendingClose.value = round;
+}
+
+async function confirmCloseRound() {
+  const round = pendingClose.value;
+  if (!round) return;
+  closing.value = true;
+  closeError.value = '';
   try {
     await api(`/exam-rounds/${round.id}/close`, { method: 'POST' });
+    pendingClose.value = null;
     await loadRounds();
   } catch (e) {
-    error.value = e.message || '關閉失敗';
+    closeError.value = e.message || '關閉失敗';
+  } finally {
+    closing.value = false;
   }
 }
 
@@ -324,24 +347,24 @@ onMounted(loadRounds);
 <style scoped>
 .exam-round-list { display: grid; gap: 12px; }
 .exam-round-card {
-  border: 1px solid var(--border-subtle, #e5e7eb);
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--ds-radius-lg);
   padding: 14px 16px;
-  background: var(--surface, #fff);
+  background: var(--card-bg);
 }
 .exam-round-card__head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .exam-round-card__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-.muted { color: var(--text-muted, #6b7280); margin: 4px 0 0; font-size: 0.9rem; }
-.status-pill { font-size: 0.8rem; padding: 2px 8px; border-radius: 999px; background: #f3f4f6; }
-.status-published { background: #dcfce7; }
-.status-closed { background: #e5e7eb; }
+.muted { color: var(--text-light); margin: 4px 0 0; font-size: var(--ds-font-size-sm); }
+.status-pill { font-size: var(--ds-font-size-xs); padding: 2px 8px; border-radius: var(--ds-radius-pill); background: var(--ds-canvas-soft); }
+.status-published { background: var(--success-bg); }
+.status-closed { background: var(--ds-surface-2); }
 .exam-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.exam-error { color: #b91c1c; margin-top: 8px; }
+.exam-error { color: var(--danger); margin-top: 8px; }
 .exam-score-table-wrap { overflow-x: auto; }
 .exam-score-table { width: 100%; border-collapse: collapse; }
-.exam-score-table th, .exam-score-table td { padding: 8px; border-bottom: 1px solid #eee; text-align: left; vertical-align: middle; }
+.exam-score-table th, .exam-score-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
 .exam-score-input { width: 4.5rem; padding: 6px 8px; }
-.exam-complete { color: #15803d; display: block; }
+.exam-complete { color: var(--success); display: block; }
 label { display: block; margin-bottom: 10px; }
 label input, label select, label textarea { display: block; width: 100%; margin-top: 4px; }
 @media (max-width: 720px) {
