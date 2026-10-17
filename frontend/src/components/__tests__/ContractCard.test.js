@@ -82,11 +82,27 @@ describe('ContractCard', () => {
     const w = mount(ContractCard, { props: { course: { id: 9 }, lastPayment: { date: '2026-10-05', amount: 6600 }, amounts: { due: 6600, received: 6600, owed: 0 } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/10/05　NT$ 6,600');
-    expect(w.find('[data-testid="contract-amounts"]').text()).toBe('應繳 NT$ 6,600・已收 NT$ 6,600・未繳 NT$ 0');
+    expect(w.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 6,600・已收 NT$ 6,600・未收 NT$ 0');
     const w2 = mount(ContractCard, { props: { course: { id: 9 } } });
     await flushPromises();
     expect(w2.find('[data-testid="contract-last-payment"]').text()).toBe('還沒繳費');
     expect(w2.find('[data-testid="contract-amounts"]').exists()).toBe(false);
+  });
+
+  // in-app #414 / #4155: contract Charge vs stored bill total — labels must not call the bill 「應繳」alone
+  it('shows 合約金額 apart from 本合約帳單 when Charge differs from bill due', async () => {
+    authedFetch.mockResolvedValue(respond(COVERAGE));
+    const w = mount(ContractCard, {
+      props: {
+        course: { id: 9, current_contract_charge: 8800 },
+        amounts: { due: 8000, received: 8000, owed: 0 },
+        rateNote: { invoiceId: 1, issued: 8000, current: 8800 },
+      },
+    });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-charge"]').text()).toBe('合約金額 NT$ 8,800');
+    expect(w.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,000・已收 NT$ 8,000・未收 NT$ 0');
+    expect(w.find('[data-testid="contract-rate-note"]').exists()).toBe(true);
   });
 
   it('monthly mode: no 剩 counter, pay line inside each month heading', async () => {
@@ -554,7 +570,7 @@ describe('AccountingLedgerModal Excel-card sources (spec B-PR3)', () => {
     await flushPromises();
     const text = (id) => w.find(`[data-testid="contract-card-${id}"]`).text();
     expect(text(2)).toContain('繳費日 2026/09/03　NT$ 8,000');
-    expect(text(2)).toContain('應繳 NT$ 8,000・已收 NT$ 8,000・未繳 NT$ 0');
+    expect(text(2)).toContain('本合約帳單 應收 NT$ 8,000・已收 NT$ 8,000・未收 NT$ 0');
     // #4150: course 3 has only a legacy PayDate + Charge, no receipt or payment -> neutral 需核對, no 繳費日 line.
     expect(text(3)).toContain('需核對：舊資料標記已收，缺付款紀錄');
     expect(text(3)).not.toContain('繳費日');
@@ -670,7 +686,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     expect(card(w).find('[data-testid="contract-last-payment"]').exists()).toBe(false);
     expect(card(w).find('[data-testid="contract-legacy-unverified"]').text()).toBe(LEGACY);
     expect(card(w).text()).not.toContain('2026/08/01');
-    expect(card(w).find('[data-testid="contract-amounts"]').text()).toBe('應繳 NT$ 6,000・已收 NT$ 0・未繳 NT$ 6,000');
+    expect(card(w).find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 6,000・已收 NT$ 0・未收 NT$ 6,000');
     w.unmount(); vi.unstubAllGlobals();
   });
 
@@ -679,7 +695,10 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     expect(card(w).find('[data-testid="contract-legacy-unverified"]').text()).toBe(LEGACY);
     expect(card(w).find('[data-testid="contract-last-payment"]').exists()).toBe(false);
     expect(card(w).text()).not.toContain('已收清');
-    expect(card(w).text()).not.toContain('NT$ 6,000');
+    // #4155: 合約金額 may show Charge; the forbidden money is a fabricated 繳費日 / bill settlement
+    expect(card(w).find('[data-testid="contract-charge"]').text()).toBe('合約金額 NT$ 6,000');
+    expect(card(w).find('[data-testid="contract-amounts"]').exists()).toBe(false);
+    expect(card(w).text()).not.toMatch(/繳費日.*NT\$ 6,000/);
     w.unmount(); vi.unstubAllGlobals();
   });
 

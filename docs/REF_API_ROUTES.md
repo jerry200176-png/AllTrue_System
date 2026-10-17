@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 508 api/* routes · generated 2026-10-16
+> Source: `php artisan route:list --json` · 520 api/* routes · generated 2026-10-17
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -43,7 +43,7 @@
 | GET | `api/v1/action-inbox/cases/{id}` | `ActionInboxController@showCase` | role+campus |
 | GET | `api/v1/action-inbox/count` | `ActionInboxController@count` | role+campus |
 
-## /api/v1/admin (25)
+## /api/v1/admin (27)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -69,6 +69,8 @@
 | GET | `api/v1/admin/teachers/duplicates` | `TeacherDuplicateController@index` | role |
 | POST | `api/v1/admin/teachers/merge` | `TeacherDuplicateController@merge` | role |
 | POST | `api/v1/admin/teachers/merge-preview` | `TeacherDuplicateController@preview` | role |
+| POST | `api/v1/admin/triage-contract-links` | `TriageContractLinkController@store` | role |
+| DELETE | `api/v1/admin/triage-contract-links/{id}` | `TriageContractLinkController@destroy` | role |
 | GET | `api/v1/admin/triage-tokens` | `TriageTokenController@index` | role |
 | POST | `api/v1/admin/triage-tokens` | `TriageTokenController@store` | role |
 | DELETE | `api/v1/admin/triage-tokens/{id}` | `TriageTokenController@destroy` | role |
@@ -351,6 +353,19 @@
 |--------|-----|--------|------|
 | POST | `api/v1/enrollments` | `EnrollmentController@store` | role+campus |
 
+## /api/v1/exam-rounds (8)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/exam-rounds` | `ExamRoundController@index` | role+campus |
+| POST | `api/v1/exam-rounds` | `ExamRoundController@store` | role+campus |
+| GET | `api/v1/exam-rounds/{examRound}` | `ExamRoundController@show` | role+campus |
+| POST | `api/v1/exam-rounds/{examRound}/close` | `ExamRoundController@close` | role+campus |
+| GET | `api/v1/exam-rounds/{examRound}/progress` | `ExamRoundController@progress` | role+campus |
+| POST | `api/v1/exam-rounds/{examRound}/publish` | `ExamRoundController@publish` | role+campus |
+| POST | `api/v1/exam-rounds/{examRound}/scores` | `ExamRoundController@upsertScores` | role+campus |
+| GET | `api/v1/exam-rounds/{examRound}/students` | `ExamRoundController@students` | role+campus |
+
 ## /api/v1/exception-workflows (6)
 
 | Method | URI | Action | Auth |
@@ -513,7 +528,7 @@
 | POST | `api/v1/line/webhook` | `LineWebhookController@handleDomainBased` | public |
 | POST | `api/v1/line/webhook/{campusId}` | `LineWebhookController@handle` | public |
 
-## /api/v1/me (16)
+## /api/v1/me (17)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -521,6 +536,7 @@
 | PUT | `api/v1/me` | `AuthController@updateMe` | public |
 | POST | `api/v1/me/avatar` | `AuthController@uploadAvatar` | public |
 | GET | `api/v1/me/awaiting-reply-count` | `LearningRecordFeedbackController@awaitingReplyCount` | role+campus |
+| GET | `api/v1/me/exam-pending-summary` | `ExamRoundController@pendingSummary` | role+campus |
 | GET | `api/v1/me/learning-pending-summary` | `LearningRecordController@teacherPendingBadgeSummary` | role+campus |
 | GET | `api/v1/me/learning-progress-summary` | `LearningRecordController@teacherLearningProgressSummary` | role+campus |
 | GET | `api/v1/me/notification-preferences` | `AuthController@notificationPreferences` | public |
@@ -892,13 +908,14 @@
 | GET | `api/v1/temp-rfid` | `TempRfidController@show` | role+campus |
 | POST | `api/v1/temp-rfid/consume` | `TempRfidController@consume` | role+campus |
 
-## /api/v1/triage (3)
+## /api/v1/triage (4)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/triage/bug-reports` | `TriageBugReportController@index` | auth |
 | GET | `api/v1/triage/bug-reports/{id}` | `TriageBugReportController@show` | auth |
 | GET | `api/v1/triage/bug-reports/{id}/attachments/{attachmentId}` | `TriageBugReportController@attachment` | auth |
+| GET | `api/v1/triage/student-classes/{id}/billing-snapshot` | `TriageBillingSnapshotController@show` | auth |
 
 ## /api/v1/truefit (12)
 

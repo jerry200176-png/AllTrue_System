@@ -46,7 +46,9 @@ use App\Http\Controllers\TeacherLeaveController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
+use App\Http\Controllers\TriageBillingSnapshotController;
 use App\Http\Controllers\TriageBugReportController;
+use App\Http\Controllers\TriageContractLinkController;
 use App\Http\Controllers\TriageTokenController;
 use App\Http\Controllers\TeacherDuplicateController;
 use App\Http\Controllers\SubjectController;
@@ -65,6 +67,7 @@ use App\Http\Controllers\StudentIdentityController;
 use App\Http\Controllers\TeacherEligibilityController;
 use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\AssessmentController;
+use App\Http\Controllers\ExamRoundController;
 use App\Http\Controllers\QuestionBankController;
 use App\Http\Controllers\PopOperationController;
 use App\Http\Controllers\ContractAmendmentController;
@@ -674,6 +677,7 @@ Route::prefix('v1')->group(function () {
         Route::get('me/awaiting-reply-count', [LearningRecordFeedbackController::class, 'awaitingReplyCount']);
         Route::get('me/learning-pending-summary', [LearningRecordController::class, 'teacherPendingBadgeSummary']);
         Route::get('me/learning-progress-summary', [LearningRecordController::class, 'teacherLearningProgressSummary']);
+        Route::get('me/exam-pending-summary', [ExamRoundController::class, 'pendingSummary']);
         Route::get('learning-record-feedbacks', [LearningRecordFeedbackController::class, 'index']);
         Route::post('learning-record-feedbacks/{feedback}/read', [LearningRecordFeedbackController::class, 'markRead']);
         Route::get('learning-record-feedbacks/analytics', [LearningRecordFeedbackController::class, 'analytics']);
@@ -776,6 +780,10 @@ Route::prefix('v1')->group(function () {
         Route::get('assessments/{assessment}/results', [AssessmentController::class, 'results'])->whereNumber('assessment');
         Route::get('assessment-results/{assessmentResult}/remediation-actions', [AssessmentController::class, 'remediationActions'])->whereNumber('assessmentResult');
         Route::get('assessment-reports/summary', [AssessmentController::class, 'summary']);
+
+        Route::get('exam-rounds', [ExamRoundController::class, 'index']);
+        Route::get('exam-rounds/{examRound}', [ExamRoundController::class, 'show'])->whereNumber('examRound');
+        Route::get('exam-rounds/{examRound}/students', [ExamRoundController::class, 'students'])->whereNumber('examRound');
     });
 
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
@@ -790,6 +798,8 @@ Route::prefix('v1')->group(function () {
         Route::patch('assessment-results/{assessmentResult}', [AssessmentController::class, 'updateResult'])->whereNumber('assessmentResult');
         Route::post('assessment-results/{assessmentResult}/remediation-actions', [AssessmentController::class, 'storeRemediationAction'])->whereNumber('assessmentResult');
         Route::patch('assessment-remediation-actions/{remediationAction}', [AssessmentController::class, 'updateRemediationAction'])->whereNumber('remediationAction');
+
+        Route::post('exam-rounds/{examRound}/scores', [ExamRoundController::class, 'upsertScores'])->whereNumber('examRound');
     });
 
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
@@ -797,6 +807,11 @@ Route::prefix('v1')->group(function () {
         Route::post('assessment-results/{assessmentResult}/review', [AssessmentController::class, 'reviewResult'])->whereNumber('assessmentResult');
         Route::post('assessment-results/{assessmentResult}/void', [AssessmentController::class, 'voidResult'])->whereNumber('assessmentResult');
         Route::post('assessment-attempts/{assessmentAttempt}/review', [AssessmentController::class, 'reviewAttempt'])->whereNumber('assessmentAttempt');
+
+        Route::post('exam-rounds', [ExamRoundController::class, 'store']);
+        Route::post('exam-rounds/{examRound}/publish', [ExamRoundController::class, 'publish'])->whereNumber('examRound');
+        Route::post('exam-rounds/{examRound}/close', [ExamRoundController::class, 'close'])->whereNumber('examRound');
+        Route::get('exam-rounds/{examRound}/progress', [ExamRoundController::class, 'progress'])->whereNumber('examRound');
     });
 
     Route::middleware(['role:director,teacher,super_admin', 'require_campus', 'require_password_change'])->group(function () {
@@ -958,11 +973,17 @@ Route::prefix('v1')->group(function () {
             ->whereNumber('id')->name('triage.bug-reports.show');
         Route::get('bug-reports/{id}/attachments/{attachmentId}', [TriageBugReportController::class, 'attachment'])
             ->whereNumber(['id', 'attachmentId'])->name('triage.bug-reports.attachment');
+        // #4100: ONE super-admin-linked contract of an open report; triage_tokens.billing_snapshot_enabled (default off, 待 Founder 核准).
+        Route::get('student-classes/{id}/billing-snapshot', [TriageBillingSnapshotController::class, 'show'])
+            ->whereNumber('id')->name('triage.student-classes.billing-snapshot');
     });
     Route::middleware(['super_admin', 'require_password_change'])->group(function () {
         Route::get('admin/triage-tokens', [TriageTokenController::class, 'index']);
         Route::post('admin/triage-tokens', [TriageTokenController::class, 'store']);
         Route::delete('admin/triage-tokens/{id}', [TriageTokenController::class, 'destroy'])->whereNumber('id');
+        // #4100: link ONE open report to ONE contract for the triage billing snapshot (session only; never the token).
+        Route::post('admin/triage-contract-links', [TriageContractLinkController::class, 'store']);
+        Route::delete('admin/triage-contract-links/{id}', [TriageContractLinkController::class, 'destroy'])->whereNumber('id');
     });
 
     // ── Duplicate Sessions P2 Review (director + super_admin) ──

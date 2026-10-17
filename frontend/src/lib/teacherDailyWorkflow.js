@@ -122,11 +122,33 @@ const taskForFeedback = (row) => {
   };
 };
 
+const taskForExam = (row) => {
+  const count = Number(valueOf(row, 'incomplete_students', 'count') || 1);
+  const roundId = valueOf(row, 'exam_round_id', 'id');
+  return {
+    id: `exam-${roundId || 'pending'}`,
+    type: 'exam',
+    severity: 'normal',
+    title: '段考成績待登',
+    summary: `${valueOf(row, 'title') || '段考'} · 還有 ${Number.isFinite(count) ? count : 1} 位學生未登完`,
+    count: Number.isFinite(count) ? count : 1,
+    owner: '老師',
+    dueAt: valueOf(row, 'entry_deadline', 'dueAt') || null,
+    actionLabel: '去登分',
+    target: { type: 'exam', examRoundId: roundId || null },
+    source: row,
+    _stableKey: `exam|${roundId || 'pending'}`,
+    _sortTime: Date.parse(valueOf(row, 'entry_deadline') || '') || Number.MAX_SAFE_INTEGER - 1,
+    _sortRank: 3,
+  };
+};
+
 export function buildTeacherTasks({
   pendingAttendance = [],
   pendingLearning = [],
   overdueLearning = [],
   awaitingReplies = [],
+  pendingExams = [],
 } = {}) {
   const tasks = [];
   const taskIndex = new Map();
@@ -163,6 +185,12 @@ export function buildTeacherTasks({
     if (Number.isFinite(count) && count <= 0) continue;
     const task = taskForFeedback(typeof row === 'object' ? row : { count });
     addTask(task);
+  }
+  for (const row of pendingExams) {
+    if (!row) continue;
+    const count = Number(valueOf(row, 'incomplete_students', 'count') || 0);
+    if (Number.isFinite(count) && count <= 0) continue;
+    addTask(taskForExam(row));
   }
 
   const typeOrderForSameSession = { attendance: 0, learning: 1 };

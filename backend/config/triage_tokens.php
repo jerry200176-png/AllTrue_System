@@ -8,6 +8,12 @@ return [
     // Recognizable secret prefix (like ghp_ / lin_api_) for logs and secret scanners.
     'secret_prefix' => 'alltrue_triage_',
     // The ONLY routes a triage token may reach; every other API route answers 403.
-    'allowed_routes' => ['triage.bug-reports.index', 'triage.bug-reports.show', 'triage.bug-reports.attachment'],
+    // #4100 adds the billing snapshot (IDs + numbers of ONE super-admin-linked contract); removing it here also closes it.
+    'allowed_routes' => [
+        'triage.bug-reports.index', 'triage.bug-reports.show', 'triage.bug-reports.attachment',
+        'triage.student-classes.billing-snapshot',
+    ],
     'list_max_limit' => 100,
+    // #4100 kill switch, default OFF (待 Founder 核准): while false the billing snapshot answers 404 even for a live link.
+    'billing_snapshot_enabled' => (bool) env('TRIAGE_BILLING_SNAPSHOT_ENABLED', false),
 ];

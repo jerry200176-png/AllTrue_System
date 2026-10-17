@@ -937,6 +937,12 @@ jobs:
               "rev" => "e2783fa4a36d46ffd75fb1c4fcea68fbc5399db1",
               "deploy" => "38487348016",
             ],
+            407 => [
+              "reply" => "已修好並上線：帳務中心的學生列表只有真的有收款紀錄時才會顯示「已收」；還沒開帳單會顯示「還沒開帳單」，目前沒有待收款項會顯示「沒有待收款項」。若只有舊資料打了已收標記、卻找不到付款紀錄，會改成「需核對」，不會再誤顯示綠色已收。請重新整理帳務中心確認；順利的話請按「確認已修好」；若仍有問題請按「問題仍存在」並簡述分校與操作步驟（請勿貼姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/4114",
+              "issue" => 4114,
+              "rev" => "83c52b2b9c490b01d5aa90b21f1813ff250d2577",
+              "deploy" => "39002903783",
+            ],
           ];
           // One authorized target per run. A request for an unknown ID or an
           // unshipped revision fails before any comment/status mutation.
