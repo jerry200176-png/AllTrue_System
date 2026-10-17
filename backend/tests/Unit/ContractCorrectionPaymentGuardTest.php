@@ -81,6 +81,11 @@ class ContractCorrectionPaymentGuardTest extends TestCase
         return [
             'full reversal' => [[[8000, 'cash'], [-8000, 'void']], 0, false],
             'PR4217 whole decimal report remains valid' => [[[8000, 'cash'], [-8000, 'void']], 0, false, false, '8000.00'],
+            'PR4217 whole report with extra zero precision remains valid' => [[[8000, 'cash'], [-8000, 'void']], 0, false, false, '8000.000'],
+            'PR4217 one-cent fractional report fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, '8000.01'],
+            'PR4217 near-whole fractional report fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, '8000.99'],
+            'PR4217 zero report amount fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, '0.00'],
+            'PR4217 negative report amount fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, '-8000.00'],
             'PR4217 fractional report fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, '8000.50'],
             'PR4217 fractional legacy report fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, true, '8000.50'],
             'PR4217 malformed report amount fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, '8000oops'],
