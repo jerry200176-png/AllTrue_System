@@ -24,12 +24,12 @@ describe('RoleFeatureMapSection component', () => {
   it('renders teacher feature map with exactly 7 items and no director leaks', () => {
     const wrapper = mount(RoleFeatureMapSection, { props: { role: 'teacher' } });
     expect(wrapper.text()).toContain('老師功能指南');
-    expect(wrapper.text()).toContain('7');
-    expect(wrapper.text()).toContain('常用高頻 (4)');
+    expect(wrapper.text()).toContain('8');
+    expect(wrapper.text()).toContain('常用高頻 (5)');
     expect(wrapper.text()).toContain('進階工具 (3)');
 
     const pages = wrapper.findAll('.rfm-card').map(c => c.attributes('data-page'));
-    expect(pages).toEqual(['teacher-home', 'calendar', 'attendance', 'learning', 'subject-units', 'chat', 'bugs']);
+    expect(pages).toEqual(['teacher-home', 'calendar', 'attendance', 'learning', 'exam-grades', 'subject-units', 'chat', 'bugs']);
     expect(pages).not.toContain('director');
     expect(pages).not.toContain('students');
   });

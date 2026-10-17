@@ -15,6 +15,8 @@ describe('navigation registry', () => {
     expect(pages('director')).not.toEqual(expect.arrayContaining(['assessments', 'question-banks']));
     expect(pages('teacher')).not.toEqual(expect.arrayContaining(['assessments', 'question-banks']));
     expect(pages('super_admin')).not.toEqual(expect.arrayContaining(['assessments', 'question-banks']));
+    expect(pages('director')).toContain('exam-grades');
+    expect(pages('teacher')).toContain('exam-grades');
     expect(pages('super_admin')).toEqual(expect.arrayContaining([
       'director-accounts', 'branch-management', 'branch-health-board', 'nightly-reconcile',
     ]));
