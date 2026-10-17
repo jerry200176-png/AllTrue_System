@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Founder D3/B1 (#4132): permanent link from a voided bill to the bill that corrects it. Additive (one new table, no
@@ -33,6 +34,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Coordinated local deviation from #4132: permanent correction history is never dropped.
+        if (Schema::hasTable('invoice_corrections') && DB::table('invoice_corrections')->exists()) {
+            throw new RuntimeException('Retain permanent invoice correction history; disable application code instead.');
+        }
         Schema::dropIfExists('invoice_corrections');
     }
 };
