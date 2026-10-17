@@ -5,7 +5,8 @@ require __DIR__.'/../../vendor/autoload.php';
 $app = require __DIR__.'/../../bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 $data = json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
-if (($data['db']['database'] ?? '') !== 'AllTrue_test' || ($data['db']['host'] ?? '') !== 'agreed-fee-test-mysql') exit(90);
+if (($data['db']['database'] ?? '') !== 'AllTrue_test'
+    || !in_array($data['db']['host'] ?? '', ['agreed-fee-test-mysql', '127.0.0.1'], true)) exit(90);
 config(['database.connections.mysql' => $data['db'], 'database.default' => 'mysql',
     'billing.agreed_fee_correction_enabled' => true, 'app.key' => str_repeat('t', 32)]);
 Illuminate\Support\Facades\DB::purge();

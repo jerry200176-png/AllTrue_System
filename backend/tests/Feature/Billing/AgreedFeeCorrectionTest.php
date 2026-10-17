@@ -117,6 +117,23 @@ class AgreedFeeCorrectionTest extends TestCase
         $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'billing.agreed_fee_corrected')->count());
     }
 
+    public function test_4217_pending_8000_requires_rejection_before_agreeing_8800_without_receipt(): void
+    {
+        config(['billing.agreed_fee_correction_enabled' => true]);
+        $f = $this->fixture(); $f['invoice']->update(['TotalAmount' => 8000]);
+        $report = $this->reportFor($f); $report->update(['reported_amount' => 8000]);
+        $body = array_replace($this->feePayload($f['invoice']), ['new_charge' => 8800]);
+        $this->withToken($f['token'])->postJson($this->path($f).'/preview', $body)->assertStatus(422)->assertJsonPath('code', 'payment_evidence_blocks');
+        $this->withToken($f['token'])->putJson('/api/v1/payment-reports/'.$report->id.'/reject', ['rejection_note' => 'Synthetic amount requires a fresh report'])->assertOk();
+        $preview = $this->withToken($f['token'])->postJson($this->path($f).'/preview', $body)->assertOk()->json('preview_token');
+        $result = $this->withToken($f['token'])->postJson($this->path($f).'/apply', $body + ['preview_token' => $preview])->assertOk()->json();
+        $this->assertSame(8800, (int) Invoice::findOrFail($result['replacement_invoice_id'])->TotalAmount);
+        $this->assertSame(8800, (int) $f['course']->fresh()->Charge);
+        $this->assertSame('rejected', $report->fresh()->status);
+        $this->assertSame(8000, (int) $report->fresh()->reported_amount);
+        $this->assertSame(1, PaymentReport::count()); $this->assertSame(0, Payment::count());
+    }
+
     public function test_unbilled_trial_changes_only_charge_keeps_history_and_replays_after_later_invoice(): void
     {
         config(['billing.agreed_fee_correction_enabled' => true]); $f = $this->fixture();
@@ -210,12 +227,26 @@ class AgreedFeeCorrectionTest extends TestCase
     }
     public static function singleTrialScopes(): array { return [['billed'], ['unbilled']]; }
 
-    public function test_teacher_unauthenticated_and_changed_actor_cannot_apply_or_replay(): void
+    public function test_teacher_and_unauthenticated_cannot_preview(): void
     {
         config(['billing.agreed_fee_correction_enabled' => true]); $f = $this->fixture(); $body = $this->feePayload($f['invoice']);
         $this->postJson($this->path($f).'/preview', $body)->assertUnauthorized();
         $f['user']->update(['type' => 'T']);
         $this->withToken($f['token'])->postJson($this->path($f).'/preview', $body)->assertForbidden();
+    }
+
+    public function test_4217_preview_replay_and_audit_bind_the_authenticated_director(): void
+    {
+        config(['billing.agreed_fee_correction_enabled' => true]);
+        $f = $this->fixture(); $other = $this->fixture(); $body = $this->feePayload($f['invoice']);
+        $preview = $this->withToken($f['token'])->postJson($this->path($f).'/preview', $body)->assertOk()->json('preview_token');
+        $apply = $body + ['preview_token' => $preview];
+        $this->withToken($other['token'])->postJson($this->path($f).'/apply', $apply)->assertStatus(409);
+        $result = $this->withToken($f['token'])->postJson($this->path($f).'/apply', $apply)->assertOk()->json();
+        $this->assertSame((int) $f['user']->id, (int) DB::table('invoice_corrections')->where('id', $result['correction_id'])->value('operator_user_id'));
+        $this->assertSame(\App\Models\SecurityAuditEvent::ref('user', $f['user']->id), DB::table('security_audit_events')->where('event_type', 'billing.agreed_fee_corrected')->value('actor_ref'));
+        $this->withToken($other['token'])->postJson($this->path($f).'/apply', $apply)->assertStatus(409)->assertJsonPath('code', 'idempotency_conflict');
+        $this->withToken($f['token'])->postJson($this->path($f).'/apply', $apply)->assertOk()->assertExactJson($result);
     }
 
     public function test_domain_history_blocks_destructive_rollback(): void

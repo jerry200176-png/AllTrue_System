@@ -1213,22 +1213,25 @@ class PaymentReportController extends Controller
 
         return DB::transaction(function () use ($id, $userId, $data, $role, $campusIds) {
             // Same lock prefix as confirm. A delayed request must not reuse its pre-transaction status.
-            $report = PaymentReport::whereKey($id)->lockForUpdate()->firstOrFail();
-            if ($report->status !== 'confirmed') {
+            $reportQuery = PaymentReport::query()->whereKey($id);
+            $reportQuery->lockForUpdate();
+            $report = $reportQuery->firstOrFail();
+            if (!$report instanceof PaymentReport) abort(404);
+            if ($report->getAttribute('status') !== 'confirmed') {
                 return response()->json(['message' => '此收款已處理過，請重新整理'], 422);
             }
-            $sc = StudentClass::whereKey($report->StudentClassID)->lockForUpdate()->first();
-            $campusId = (int) DB::table('Student')->where('id', $report->StudentID)->value('CampusID');
+            $sc = StudentClass::query()->whereKey($report->getAttribute('StudentClassID'))->lockForUpdate()->first();
+            $campusId = (int) DB::table('Student')->where('id', $report->getAttribute('StudentID'))->value('CampusID');
             if ($campusId <= 0 || ($role !== 'super_admin' && !in_array($campusId, $campusIds, true))) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
-            $originalAmount = (int) abs((float) $report->reported_amount);
+            $originalAmount = (int) abs((float) $report->getAttribute('reported_amount'));
 
-            $invoice = $report->InvoiceID ? Invoice::whereKey($report->InvoiceID)->lockForUpdate()->first() : null;
+            $invoice = $report->getAttribute('InvoiceID') ? Invoice::query()->whereKey($report->getAttribute('InvoiceID'))->lockForUpdate()->first() : null;
             if ($invoice && ((string) $invoice->Status === 'void' || !$sc
                 || (int) $invoice->StudentClassID !== (int) $sc->ID
-                || (int) $invoice->StudentID !== (int) $report->StudentID
-                || (int) $sc->StudentID !== (int) $report->StudentID)) {
+                || (int) $invoice->StudentID !== (int) $report->getAttribute('StudentID')
+                || (int) $sc->StudentID !== (int) $report->getAttribute('StudentID'))) {
                 return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
             }
             if ($invoice) $invoice->payments()->lockForUpdate()->get();
@@ -1240,7 +1243,7 @@ class PaymentReportController extends Controller
                     'PaidAt'            => Carbon::today()->toDateString(),
                     'Method'            => 'void',
                     'Note'              => $data['void_reason'],
-                    'payment_report_id' => $report->id,
+                    'payment_report_id' => $report->getAttribute('id'),
                 ]);
 
                 $newPaid = max(0, (int) $invoice->PaidAmount - $originalAmount);
@@ -1270,17 +1273,17 @@ class PaymentReportController extends Controller
             ]);
 
             Log::info('[PaymentVoid]', [
-                'report_id'        => $report->id,
-                'payment_id'       => $report->payment_id,
+                'report_id'        => $report->getAttribute('id'),
+                'payment_id'       => $report->getAttribute('payment_id'),
                 'user_id'          => $userId,
                 'void_reason'      => $data['void_reason'],
-                'student_class_id' => $report->StudentClassID,
+                'student_class_id' => $report->getAttribute('StudentClassID'),
                 'amount'           => $originalAmount,
             ]);
 
             return response()->json([
                 'message'            => '已撤銷收款',
-                'report_id'          => $report->id,
+                'report_id'          => $report->getAttribute('id'),
                 'invoice_status'     => $invoice->Status ?? null,
                 'student_class_paid' => $scPaid,
             ]);

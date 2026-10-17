@@ -20,6 +20,8 @@ final class AgreedFeeCorrectionController extends Controller
     {
         abort_unless(config('billing.agreed_fee_correction_enabled') === true, 404);
         $role = (string) $request->attributes->get('auth_role');
+        $actorId = (int) $request->attributes->get('auth_user')?->id;
+        abort_unless($actorId > 0, 403);
         $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
         $campusId = (int) $course->student?->CampusID;
         abort_unless(in_array($role, ['director', 'super_admin'], true) && $campusId > 0
@@ -31,7 +33,7 @@ final class AgreedFeeCorrectionController extends Controller
             'new_charge' => 'required|integer|min:1|max:99999999', 'reason' => 'required|string|min:3|max:80|regex:/\S/u',
             'idempotency_key' => 'required|uuid', 'preview_token' => ($apply ? 'required' : 'nullable').'|string|max:2048',
         ]);
-        return response()->json($service->run((int) $course->ID, $data, ['id' => (int) $request->attributes->get('auth_user_id'),
+        return response()->json($service->run((int) $course->ID, $data, ['id' => $actorId,
             'role' => $role, 'campus_ids' => $campusIds, 'student_id' => (int) $course->StudentID], $apply));
     }
 }
