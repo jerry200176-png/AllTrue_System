@@ -1211,10 +1211,27 @@ class PaymentReportController extends Controller
 
         $userId = $request->attributes->get('auth_user_id');
 
-        return DB::transaction(function () use ($report, $userId, $data) {
+        return DB::transaction(function () use ($id, $userId, $data, $role, $campusIds) {
+            // Same lock prefix as confirm. A delayed request must not reuse its pre-transaction status.
+            $report = PaymentReport::whereKey($id)->lockForUpdate()->firstOrFail();
+            if ($report->status !== 'confirmed') {
+                return response()->json(['message' => '此收款已處理過，請重新整理'], 422);
+            }
+            $sc = StudentClass::whereKey($report->StudentClassID)->lockForUpdate()->first();
+            $campusId = (int) DB::table('Student')->where('id', $report->StudentID)->value('CampusID');
+            if ($campusId <= 0 || ($role !== 'super_admin' && !in_array($campusId, $campusIds, true))) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
             $originalAmount = (int) abs((float) $report->reported_amount);
 
-            $invoice = $report->InvoiceID ? Invoice::find($report->InvoiceID) : null;
+            $invoice = $report->InvoiceID ? Invoice::whereKey($report->InvoiceID)->lockForUpdate()->first() : null;
+            if ($invoice && ((string) $invoice->Status === 'void' || !$sc
+                || (int) $invoice->StudentClassID !== (int) $sc->ID
+                || (int) $invoice->StudentID !== (int) $report->StudentID
+                || (int) $sc->StudentID !== (int) $report->StudentID)) {
+                return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
+            }
+            if ($invoice) $invoice->payments()->lockForUpdate()->get();
 
             if ($invoice) {
                 Payment::create([
@@ -1234,7 +1251,6 @@ class PaymentReportController extends Controller
                 ]);
             }
 
-            $sc = StudentClass::find($report->StudentClassID);
             $scPaid = 0;
             if ($sc) {
                 // F7 S7: recompute from the resolver; no invoice or no longer paid (partial or unpaid) clears the flag.
