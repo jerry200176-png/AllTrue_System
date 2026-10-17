@@ -8,6 +8,7 @@ use App\Models\Notification;
 use App\Models\NotificationRead;
 use App\Models\PendingSwipe;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
@@ -133,11 +134,11 @@ class NotificationSyncService
                     continue;
                 }
 
-                $notification->ResolvedAt = now();
-                $notification->save();
+                NotificationResolution::resolve($notification, 'system:sync:' . $notification->Type, '系統確認來源狀況已解除');
                 $resolved++;
             }
         });
+        $resolved += self::resolveClearedOneOffs($scopedCampusIds);
 
         return [
             'created' => $created,
@@ -165,8 +166,7 @@ class NotificationSyncService
             $studentId = (int) ($owner[(int) $notification->SourceID] ?? 0);
             $campusId = (int) ($campusOf[$studentId] ?? 0);
             if ($campusId > 0 && $campusId !== (int) $notification->CampusID) {
-                $notification->ResolvedAt = now();
-                $notification->save();
+                NotificationResolution::resolve($notification, 'system:student_transferred', '學生已轉到其他分校，原分校提醒結案');
                 $retired++;
             }
         }
@@ -249,23 +249,24 @@ class NotificationSyncService
     }
 
     /**
-     * A tuition alert that was resolved (re-opened now) or whose director-visible content changed
-     * (title, body, severity, deep-link source, owed-amount composition) must show unread again;
-     * an unchanged re-sync keeps each director's read state.
+     * #413: any resolved notice whose source problem is back is re-opened and shows unread again for
+     * everyone (recorded in the processing record). For an open tuition alert, a change in
+     * director-visible content (title, body, severity, deep-link source, owed-amount composition)
+     * also shows unread again; an unchanged re-sync keeps each director's read state.
      */
     private static function reopenIfOwedChanged(Notification $existing, array $payload): void
     {
+        if ($existing->ResolvedAt !== null) {
+            NotificationResolution::reopen($existing, 'system:sync:' . $existing->Type, '來源狀況再次出現，重新通知');
+
+            return;
+        }
         if (($payload['Type'] ?? null) !== 'tuition') {
             return;
         }
-        // Every resolved->open transition (any source) must show unread again.
-        $changed = $existing->ResolvedAt !== null;
+        $changed = false;
         // Content-change reset only for the per-course stream: invoice-overdue rows embed a day counter that changes daily.
         if (($payload['SourceType'] ?? null) !== 'StudentClass') {
-            if ($changed) {
-                NotificationRead::query()->where('NotificationID', $existing->id)->delete();
-            }
-
             return;
         }
         foreach (['Title', 'Body', 'Severity', 'SourceType', 'SourceID'] as $f) {
@@ -277,6 +278,53 @@ class NotificationSyncService
         if ($changed) {
             NotificationRead::query()->where('NotificationID', $existing->id)->delete();
         }
+    }
+
+    /**
+     * #413: one-off notices whose source condition can be re-checked. System alerts
+     * (system_alert, grade_promotion_scheduler) are not listed: they stay manual.
+     */
+    private static function resolveClearedOneOffs(array $campusIds): int
+    {
+        $open = Notification::query()->whereIn('Type', ['deduction_failed', 'grade_promotion_preview'])->whereNull('ResolvedAt')
+            ->when($campusIds !== [], fn ($q) => $q->whereIn('CampusID', $campusIds))->get();
+        $resolved = 0;
+        foreach ($open as $notification) {
+            $reason = $notification->Type === 'deduction_failed'
+                ? self::deductionFailedCleared($notification)
+                : self::gradePromotionCleared($notification);
+            if ($reason !== null) {
+                NotificationResolution::resolve($notification, 'system:sync:' . $notification->Type, $reason);
+                $resolved++;
+            }
+        }
+
+        return $resolved;
+    }
+
+    /** StudentPresenceBackfillService treats SessionDeducted as the source of truth for the deduction. */
+    private static function deductionFailedCleared(Notification $notification): ?string
+    {
+        $signIn = StudentSignIn::query()->find((int) $notification->SourceID);
+        if (!$signIn) {
+            return '刷卡出席紀錄已更正（已刪除），不需補扣';
+        }
+
+        return $signIn->SessionDeducted ? '系統確認已補扣堂' : null;
+    }
+
+    private static function gradePromotionCleared(Notification $notification): ?string
+    {
+        $payload = (array) ($notification->Payload ?? []);
+        $campusId = (int) ($payload['campus_id'] ?? $notification->CampusID);
+        $seasonYear = (int) ($payload['season_year'] ?? $notification->SourceID);
+        try {
+            $preview = app(GradePromotionService::class)->preview($campusId, $seasonYear);
+        } catch (\Throwable $e) {
+            return null; // cannot check now: leave open
+        }
+
+        return collect($preview)->contains(fn ($row) => (bool) ($row['actionable'] ?? false)) ? null : '系統確認已無需升級的學生';
     }
 
     /**

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-15-inapp-413-notification-auto-resolve
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 處理完的提醒會自動結案
+    summary: 扣堂失敗補扣後、年級升級已處理完時，提醒會自動結案；問題再出現會重新通知。
+    items:
+      - category: improved
+        text: 「刷卡出席但扣堂失敗」補扣完成後，以及「年級升級預覽提醒」已無需升級的學生時，系統會自動結案並記下結案原因。
+      - category: improved
+        text: 已結案的提醒如果同樣的問題再發生，會重新出現在待辦裡，之前看過的人也會再看到。已讀只代表看過，不會結案。
+    source_refs:
+      - "changelog:2026-10-15:inapp-413-notification-resolution-record"
