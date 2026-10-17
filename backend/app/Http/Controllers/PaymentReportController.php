@@ -386,8 +386,7 @@ class PaymentReportController extends Controller
             if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
                 return $blockedTutoringPayment;
             }
-            // #4132 Codex P1: a correction pending report must not settle after the course joined a package
-            // (convertToPackage should already block on payment_reports, but confirm rechecks membership).
+            // #4132 Codex P1: recheck package membership on confirm (convert already blocks payment_reports).
             $isCorrectionReport = DB::table('invoice_corrections')
                 ->where('payment_report_id', (int) $report->id)
                 ->exists();
@@ -605,8 +604,7 @@ class PaymentReportController extends Controller
         }
 
         $userId = $request->attributes->get('auth_user_id');
-        // #4132 Codex P1: correction must hit feature gate + campus auth before any course-classifying guard
-        // (tutoring / zero-fee), so a cross-campus correction cannot leak existence/classification via 422.
+        // #4132 Codex P1: feature gate + campus auth before tutoring/zero-fee classification.
         if (!empty($data['replaces_invoice_id'])) {
             if (!config('billing.receipt_correction_reissue_enabled', false)) {
                 return response()->json(['message' => '更正帳單收款功能尚未開放', 'code' => 'correction_reissue_disabled'], 404);
@@ -793,7 +791,7 @@ class PaymentReportController extends Controller
             if (!$student || !$course || (int) $course->StudentID !== (int) $student->getKey() || !$campusAllowed) {
                 return response()->json(['message' => '找不到此課程', 'code' => 'replaces_invoice_not_found'], 404);
             }
-            // After campus auth only: course-classifying guards must not run earlier in directorRecord.
+            // Course-classifying guards only after campus auth.
             if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($course)) {
                 return $blockedTutoringPayment;
             }

@@ -5,12 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Founder D3/B1 (#4132): permanent link from a voided bill to the bill that corrects it. Additive (one new table, no
- * data writes). UNIQUE(original_invoice_id): the database refuses a second correction of a bill from any request;
- * key + reason + amount let the same request's retry get its result. No APP_KEY or audit-retention dependence.
- * Rows are never deleted. Rollback = drop the table. Needs Founder approval before production (R5: billing table).
- */
+/** Founder D3/B1 (#4132): additive permanent void→replacement link; UNIQUE(original); rows never deleted; R5 Founder before prod. */
 return new class extends Migration
 {
     public function up(): void
@@ -31,10 +26,8 @@ return new class extends Migration
             $table->timestamp('created_at')->useCurrent();
         });
     }
-
     public function down(): void
     {
-        // Coordinated local deviation from #4132: permanent correction history is never dropped.
         if (Schema::hasTable('invoice_corrections') && DB::table('invoice_corrections')->exists()) {
             throw new RuntimeException('Retain permanent invoice correction history; disable application code instead.');
         }

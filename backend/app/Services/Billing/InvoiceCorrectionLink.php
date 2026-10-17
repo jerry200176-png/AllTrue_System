@@ -7,32 +7,23 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-/** Permanent void/reissue links, independent of APP_KEY and audit retention.
- * Caller holds course and replaced-invoice locks; unique original_invoice_id prevents double correction. */
+/** Permanent void/reissue links; caller holds locks. */
 final class InvoiceCorrectionLink
 {
     public const EVENT = 'invoice.correction_reissue';
-    /** @return array{refusal: ?JsonResponse, replay: ?object} replay = the invoice_corrections row of an identical earlier request */
     public function precheck(?Invoice $replaced, StudentClass $course, bool $campusAllowed, string $reason, int $amount, string $key): array
     {
         $refuse = fn (int $status, string $code, string $message, array $extra = []) => ['refusal' => response()->json(
             ['message' => $message . '沒有登記任何款項。', 'code' => $code] + $extra, $status), 'replay' => null];
-        if (!$replaced || !$campusAllowed) {
-            return $refuse(404, 'replaces_invoice_not_found', '找不到要更正的帳單。');
-        }
+        if (!$replaced || !$campusAllowed) { return $refuse(404, 'replaces_invoice_not_found', '找不到要更正的帳單。'); }
         if ((int) $replaced->StudentClassID !== (int) $course->getKey() || (int) $replaced->StudentID !== (int) $course->getAttribute('StudentID')) {
             return $refuse(422, 'replaces_invoice_mismatch', '要更正的帳單不是這位學生的這門課程。');
         }
-        if (strtolower((string) ($replaced->Status ?? '')) !== 'void') {
-            return $refuse(422, 'replaces_invoice_not_void', '請先作廢原帳單（需填原因），再登記更正。');
-        }
-        if (mb_strlen(self::cleanReason($reason)) < 2) {
-            return $refuse(422, 'correction_reason_invalid', '請填寫更正原因。');
-        }
+        if (strtolower((string) ($replaced->Status ?? '')) !== 'void') { return $refuse(422, 'replaces_invoice_not_void', '請先作廢原帳單（需填原因），再登記更正。'); }
+        if (mb_strlen(self::cleanReason($reason)) < 2) { return $refuse(422, 'correction_reason_invalid', '請填寫更正原因。'); }
         $prior = DB::table('invoice_corrections')->where('original_invoice_id', (int) $replaced->id)->lockForUpdate()->first();
         if ($prior) {
-            // Pre-extension rows have no kind column; they are this receipt-reissue contract.
-            // Fee-only/unknown rows must never become a phantom successful payment report.
+            // Pre-extension rows lack kind; fee-only/unknown must not phantom-replay as receipt.
             if ((property_exists($prior, 'kind') && $prior->kind !== 'receipt_reissue')
                 || (int) $prior->replacement_invoice_id <= 0 || (int) $prior->payment_report_id <= 0 || (int) $prior->amount <= 0) {
                 return $refuse(409, 'correction_replay_incompatible', '這筆更正不是完整的收款回報，請重新核對帳務。');
@@ -46,8 +37,7 @@ final class InvoiceCorrectionLink
         }
         return ['refusal' => null, 'replay' => null];
     }
-    /** Permanent unique link and audit; retain whole tags, trimming only older free text.
-     * Falls back to a short tag or retained link row when notes are full. @return int */
+    /** Permanent unique link + audit; @return int */
     public function link(Invoice $replaced, Invoice $invoice, ?int $userId, string $reason, string $key): int
     {
         try {
@@ -94,20 +84,14 @@ final class InvoiceCorrectionLink
     {
         [$free, $tags] = self::parseNote($note);
         $tail = implode(' ', [...$tags, $tag]);
-        if (mb_strlen($tail) > 255) {
-            return null;
-        }
+        if (mb_strlen($tail) > 255) { return null; }
         $room = 255 - mb_strlen($tail) - 1;
         if (mb_strlen($free) > $room) {
-            if (str_contains($free, '[') || str_contains($free, ']')) {
-                return null;
-            }
+            if (str_contains($free, '[') || str_contains($free, ']')) { return null; }
             $free = $room > 0 ? trim(mb_substr($free, 0, $room)) : '';
         }
         return $free === '' ? $tail : $free . ' ' . $tail;
     }
-    /** Whole void tags include bracketed reasons through their fixed user_id/at ending.
-     * @return array{0: string, 1: list<string>} */
     private static function parseNote(string $note): array
     {
         $pattern = '/\[(?:void|exception-void): .*?; user_id=[^;\]]*; at=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:; positive_payments=[^\]]*?; net=-?\d+)?\]|\[[^\[\]]*\]/su';
