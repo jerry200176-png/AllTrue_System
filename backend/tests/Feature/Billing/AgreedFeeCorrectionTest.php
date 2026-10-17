@@ -36,7 +36,9 @@ class AgreedFeeCorrectionTest extends TestCase
 
     public function test_missing_extension_columns_fail_closed_even_when_flag_on(): void
     {
-        // Isolated rebuild: DROP CHECK/columns DDL ends RefreshDatabase wrap — do not prove rollback here.
+        // End outer Testing txn *before* DROP — MySQL DDL implicit-commits and must not
+        // leave Laravel's transaction counter desynced (next begin would be SAVEPOINT-only).
+        $this->endOuterTestingTransactions();
         AgreedFeeTestSchema::dropExtensionColumns();
         try {
             config(['billing.agreed_fee_correction_enabled' => true]);
