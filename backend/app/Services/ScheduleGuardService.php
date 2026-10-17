@@ -1414,7 +1414,9 @@ class ScheduleGuardService
         if (!empty($courseIds)) {
             $metaRows = DB::table('StudentClass')
                 ->whereIn('ID', $courseIds)
-                ->select(['ID', 'ClassType', 'room_id'])
+                // TeacherID included so a stale schedules.teacher_id after contract teacher
+                // change cannot inflate occupancy (in-app #401/#402 / H1).
+                ->select(['ID', 'ClassType', 'room_id', 'TeacherID'])
                 ->get();
             foreach ($metaRows as $meta) {
                 $courseMeta[(int) $meta->ID] = $meta;
@@ -1446,6 +1448,11 @@ class ScheduleGuardService
                 continue;
             }
             $meta = $courseId > 0 ? ($courseMeta[$courseId] ?? null) : null;
+            // Contract TeacherID is authoritative for who occupies the seat. A leftover
+            // schedules.teacher_id pointing at the old teacher must not count (cascade miss).
+            if ($meta !== null && (int) ($meta->TeacherID ?? 0) !== $teacherId) {
+                continue;
+            }
             $classType = (string) ($row->class_type ?: ($meta->ClassType ?? 'one_on_one'));
             $roomId = $meta?->room_id ? (int) $meta->room_id : null;
             $key = $courseId . '|' . $start . '|' . $end;
