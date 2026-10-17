@@ -136,12 +136,13 @@ final class ContractMoneyState
      * Zero invoice net alone is insufficient: every reversal must have unambiguous receipt provenance.
      * Each voided report must match exactly one full reversal; duplicates and split reversals fail closed.
      * Missing legacy links and inconsistent stored balances also fail closed.
+     * Agreed-fee replacement opts into checking retained void history too; legacy callers keep their scope.
      */
-    public static function blocksUnpaidCorrection(int $studentClassId): bool
+    public static function blocksUnpaidCorrection(int $studentClassId, bool $includeVoided = false): bool
     {
         $invoices = fn () => DB::table('Invoice')
             ->where('Invoice.StudentClassID', $studentClassId)
-            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'));
+            ->when(!$includeVoided, fn ($q) => $q->where(fn ($status) => $status->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void')));
         if ($invoices()->select('Invoice.id')
             ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->groupBy('Invoice.id', 'Invoice.PaidAmount')

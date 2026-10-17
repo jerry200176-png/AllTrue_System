@@ -3,23 +3,16 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\Invoice;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Support\AgreedFeeFixture;
-use Tests\Support\AgreedFeeTestSchema;
+use Tests\Support\AgreedFeeRefreshDatabase;
 use Tests\TestCase;
 
 /** Local #4132 integration: fee corrections never become receipt/report submissions. */
 class FeeReceiptKindCompatibilityTest extends TestCase
 {
-    use RefreshDatabase, AgreedFeeFixture;
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-        AgreedFeeTestSchema::ensureExtensionColumns();
-    }
+    use AgreedFeeRefreshDatabase, AgreedFeeFixture;
 
     /** @dataProvider scopes */
     public function test_4132_receipt_collision_cannot_consume_a_fee_only_correction(string $scope): void

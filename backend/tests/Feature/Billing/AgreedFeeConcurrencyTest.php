@@ -4,6 +4,7 @@ use App\Models\{Invoice, Payment, PaymentReport};
 use App\Services\Billing\AgreedFeeCorrection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Support\AgreedFeeTestSchema;
 class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
 {
     /** @dataProvider scopesAndKeys */
@@ -129,11 +130,11 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
         try {
             $this->withToken($f['token'])->postJson('/api/v1/student-classes/'.$f['course']->ID.'/agreed-fee-correction/preview', $body)->assertStatus(503);
         } finally { DB::statement('RENAME TABLE synthetic_missing_corrections TO invoice_corrections'); }
-        $extension = require database_path('migrations/2026_10_17_120000_extend_invoice_corrections_for_agreed_fee.php');
-        $extension->down();
+        // Isolated test-schema fixture (no production extension migration file).
+        AgreedFeeTestSchema::dropExtensionColumns();
         DB::table('invoice_corrections')->insert(['original_invoice_id' => 10001, 'replacement_invoice_id' => 10002,
             'student_class_id' => $f['course']->ID, 'amount' => 7600, 'reason' => 'Synthetic receipt prerequisite', 'idempotency_key' => (string) Str::uuid()]);
-        $extension->up();
+        AgreedFeeTestSchema::ensureExtensionColumns();
         $row = DB::table('invoice_corrections')->sole(); $this->assertSame('receipt_reissue', $row->kind);
         $this->assertSame(7600, (int) $row->amount); $this->assertNull($row->new_charge);
     }

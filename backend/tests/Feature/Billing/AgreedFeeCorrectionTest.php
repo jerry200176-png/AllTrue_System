@@ -4,26 +4,19 @@ namespace Tests\Feature\Billing;
 
 use App\Models\{ClassSession, Invoice, Payment, PaymentReport, StudentClass};
 use App\Services\Billing\AgreedFeeCorrection;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\{DB, Http, Notification, Queue, Schema};
 use App\Services\Billing\ContractMoneyState;
 use RuntimeException;
 use Illuminate\Support\Str;
 use Tests\Support\AgreedFeeFixture;
+use Tests\Support\AgreedFeeRefreshDatabase;
 use Tests\Support\AgreedFeeTestSchema;
 use Tests\TestCase;
 
 /** Local synthetic agreed-fee correction: fee and obligation change, teaching entitlement does not. */
 class AgreedFeeCorrectionTest extends TestCase
 {
-    use RefreshDatabase, AgreedFeeFixture;
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-        // Happy-path / txn tests need extension columns on AllTrue_test only — not a prod ALTER.
-        AgreedFeeTestSchema::ensureExtensionColumns();
-    }
+    use AgreedFeeRefreshDatabase, AgreedFeeFixture;
 
     private function path(array $f): string { return '/api/v1/student-classes/'.$f['course']->ID.'/agreed-fee-correction'; }
 
@@ -43,6 +36,7 @@ class AgreedFeeCorrectionTest extends TestCase
 
     public function test_missing_extension_columns_fail_closed_even_when_flag_on(): void
     {
+        // Isolated rebuild: DROP CHECK/columns DDL ends RefreshDatabase wrap — do not prove rollback here.
         AgreedFeeTestSchema::dropExtensionColumns();
         try {
             config(['billing.agreed_fee_correction_enabled' => true]);
@@ -52,7 +46,7 @@ class AgreedFeeCorrectionTest extends TestCase
                 ->assertStatus(503)
                 ->assertJsonPath('code', 'unavailable');
         } finally {
-            AgreedFeeTestSchema::ensureExtensionColumns();
+            $this->rebuildIsolatedSchema();
         }
     }
 
