@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/** @method static static create(array $attributes = []) */
 /**
  * @property int $id
  * @property int $exam_round_id
