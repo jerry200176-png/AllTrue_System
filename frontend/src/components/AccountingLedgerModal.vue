@@ -772,7 +772,7 @@ function getAuthRole() {
 
 async function voidReport(reportId) {
   if (!reportId || !isDirectorRole(getAuthRole())) return;
-  const reason = window.prompt('請輸入撤銷原因（會保留稽核紀錄）');
+  const reason = window.prompt('撤銷收款會保留稽核紀錄，不會更改帳單應繳金額；帳單開錯需另行作廢並更正。請輸入撤銷原因');
   if (!reason || !reason.trim()) return;
   busyReportId.value = reportId;
   try {

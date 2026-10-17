@@ -114,20 +114,18 @@ final class ContractMoneyState
 
     // ---- invoice/payment queries -------------------------------------------------------------
 
-    /** True when a non-void invoice has PaidAmount>0 or a non-void Payment>0 (blocks free billing corrections). */
+    /** A nonzero ledger or stored PaidAmount blocks unpaid-only corrections; inconsistent reversals fail closed. */
     public static function hasActivePayment(int $studentClassId): bool
     {
         return DB::table('Invoice')
+            ->select('Invoice.id')
             ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->where('Invoice.StudentClassID', $studentClassId)
             ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
-            ->where(function ($q) {
-                $q->where('Invoice.PaidAmount', '>', 0)
-                    ->orWhere(function ($payment) {
-                        $payment->where('Payment.Amount', '>', 0)
-                            ->where(fn ($method) => $method->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void'));
-                    });
-            })
+            // Same signed ledger convention as BillingPayableResolver::validPaymentEvidence.
+            // Group per invoice: a reversal on another bill cannot clear a surviving receipt.
+            ->groupBy('Invoice.id', 'Invoice.PaidAmount')
+            ->havingRaw("Invoice.PaidAmount != 0 OR SUM(CASE WHEN Payment.Amount < 0 OR Payment.Method = 'void' THEN -ABS(Payment.Amount) ELSE COALESCE(Payment.Amount, 0) END) != 0")
             ->exists();
     }
 
