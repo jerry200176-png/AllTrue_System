@@ -802,7 +802,7 @@ class PaymentReportController extends Controller
                     || (string) $report->note !== (string) (trim((string) ($data['note'] ?? '')) ?: null)) {
                     return response()->json(['message' => '更正回報資料與原請求不同，請重新核對帳務。', 'code' => 'correction_replay_incompatible'], 409);
                 }
-                return response()->json(['message' => '這筆更正已經送出過', 'report_id' => $report?->id, 'payment_id' => null, 'correction_id' => (int) $replay->id,
+                return response()->json(['message' => '這筆更正已經送出過', 'report_id' => $report->id, 'payment_id' => null, 'correction_id' => (int) $replay->id,
                     'invoice_id' => (int) $replay->replacement_invoice_id, 'status' => $report->status ?? 'pending', 'replayed' => true]);
             }
             if ((int) $data['amount'] <= 0) {
