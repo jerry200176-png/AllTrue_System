@@ -40,6 +40,12 @@ final class InvoiceCorrectionLink
         }
         $prior = DB::table('invoice_corrections')->where('original_invoice_id', (int) $replaced->id)->lockForUpdate()->first();
         if ($prior) {
+            // Pre-extension rows have no kind column; they are this receipt-reissue contract.
+            // Fee-only/unknown rows must never become a phantom successful payment report.
+            if ((property_exists($prior, 'kind') && $prior->kind !== 'receipt_reissue')
+                || (int) $prior->replacement_invoice_id <= 0 || (int) $prior->payment_report_id <= 0 || (int) $prior->amount <= 0) {
+                return $refuse(409, 'correction_replay_incompatible', '這筆更正不是完整的收款回報，請重新核對帳務。');
+            }
             if ((string) $prior->idempotency_key === strtolower(trim($key)) && (int) $prior->amount === $amount
                 && (string) $prior->reason === self::cleanReason($reason)) {
                 return ['refusal' => null, 'replay' => $prior]; // the same request again: its original result, never a second bill
