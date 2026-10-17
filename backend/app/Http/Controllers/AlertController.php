@@ -131,9 +131,16 @@ class AlertController extends Controller
         $stoppedResults = $stoppedResults->get();
         $stoppedStatuses = $this->payableResolver
             ->courseStatusesByStudentClassIds($stoppedResults->pluck('ID')->all(), $stoppedResults);
+        // In-app #394: a review_required verdict built from issued invoices still owes their open balance.
+        // Dropping it hid the student from the list (shown 已收) while the drawer showed 未繳 for the same bill.
+        // Review without an issued invoice is an estimate only and stays in 已結清 → 待核對.
         $pendingSettlementResults = $stoppedResults
-            ->filter(fn ($c) => in_array($stoppedStatuses[(int) $c->ID]['status'] ?? null, ['unpaid', 'partial', 'unbilled'], true)
-                && (int) $stoppedStatuses[(int) $c->ID]['outstanding'] > 0)
+            ->filter(function (StudentClass $c) use ($stoppedStatuses) {
+                $s = $stoppedStatuses[(int) $c->ID] ?? [];
+
+                return (in_array($s['status'] ?? null, ['unpaid', 'partial', 'unbilled'], true) && (int) ($s['outstanding'] ?? 0) > 0)
+                    || BillingPayableResolver::isAmountPendingConfirmation($c, $s);
+            })
             ->values();
 
         $countPkgQuery = CoursePackage::query()
@@ -173,6 +180,7 @@ class AlertController extends Controller
             ->values()
             ->all();
         $paidAtMap = $this->payableResolver->lastPaidAtByStudentClassIds($allClassIds);
+        $paymentHistoryMap = $this->payableResolver->studentClassIdsWithPaymentHistory($allClassIds);
         $invoiceAggMap = $this->payableResolver->invoiceAggregateByStudentClassIds($allClassIds);
         $allResults = $countResults->merge($dateResults)->merge($pendingSettlementResults)->keyBy('ID');
         $payableMap = $this->payableResolver->byStudentClassIds($allClassIds, $allResults);
@@ -362,7 +370,7 @@ class AlertController extends Controller
             ->merge(
                 $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
             )
-            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses, $courseStatuses) {
+            ->map(function ($row) use ($paidAtMap, $paymentHistoryMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses, $courseStatuses) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
@@ -392,6 +400,7 @@ class AlertController extends Controller
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
 
                 $paymentStatus = ContractMoneyState::alertStatus($sc, $paidAmount, $charge, $pendingReportId !== null, $verdict['status'] ?? null);
+                $amountPendingConfirmation = false;
                 if ($row['alert_type'] === 'pending_reconciliation') {
                     // F7 S3a: stopped + still owing per the invoices. Every amount the UI reads comes from the
                     // resolver's cumulative totals (never the single-invoice payable or the contract price).
@@ -405,6 +414,14 @@ class AlertController extends Controller
                         'payable_invoice_id' => $stopped['current_invoice_id'],
                     ]);
                     $paymentStatus = $pendingReportId !== null ? 'pending_report' : 'pending_reconciliation';
+                    // Founder D2 (in-app #394): a review_required bill stays findable, but its amount is still to be
+                    // confirmed. Its own status keeps it out of every confirmed-unpaid count and total. The amount is
+                    // the resolver's `outstanding`, the same field 已結清 → 待核對 (AccountingController::settledCourses) shows.
+                    if ($sc instanceof StudentClass && BillingPayableResolver::isAmountPendingConfirmation($sc, $stopped)) {
+                        $amountPendingConfirmation = true;
+                        // A pending parent report stays confirmable (確認入帳 / 待核對入帳); the amount is still unconfirmed.
+                        $paymentStatus = $pendingReportId !== null ? 'pending_report' : 'amount_review';
+                    }
                 }
 
                 $newerInfo = $newerCourseMap[$classId] ?? null;
@@ -422,7 +439,9 @@ class AlertController extends Controller
                 return $row + [
                     'closed_reason'            => $sc?->getAttribute('closed_reason'),
                     'paid_at'                  => $directPaidAt,
-                    'last_paid_at'             => $directPaidAt ?? $invoicePaidAt,
+                    // #4123: only a receipt still standing on the net Payment ledger gives 最近繳費. The legacy PayDate
+                    // is a fallback only for contracts with no Payment history at all (any row, void/reversed included).
+                    'last_paid_at'             => $invoicePaidAt ?? (isset($paymentHistoryMap[$classId]) ? null : $directPaidAt),
                     'charge'                   => $charge,
                     'estimated_amount'         => $charge,
                     'charge_semantics'         => 'estimate_only',
@@ -443,6 +462,8 @@ class AlertController extends Controller
                             ->values()->all()
                         : [],
                     'payment_status'           => $paymentStatus,
+                    'amount_pending_confirmation' => $amountPendingConfirmation,
+                    'pending_confirmation_amount' => $amountPendingConfirmation ? $outstanding : 0,
                     'latest_payment_report_id' => $pendingReportId,
                     'has_newer_course'         => $newerInfo !== null,
                     'newer_course_id'          => $newerInfo['newer_id'] ?? null,
@@ -481,7 +502,43 @@ class AlertController extends Controller
             return $row + ['has_confirmed_receipt' => $reportId !== null, 'receipt_report_id' => $reportId !== null ? (int) $reportId : null];
         })->values();
 
-        return response()->json($rows);
+        return response()->json($this->markLegacyPaidFlagOnly($rows, $campusIds === [] ? null : array_map('intval', $campusIds)));
+    }
+
+    /**
+     * #4114 (Founder Q3): a paid status (paid / renew_needed / monthly_due_soon) with no receipt standing on the contract or
+     * its package rests on the legacy Paid / package `paid` flag alone. `payment_status` is unchanged, so the row is still
+     * not owed and sends no reminder; `legacy_paid_flag_only` makes the list read 需核對 instead of 已收. Only a row whose
+     * legacy flag is actually set qualifies (StudentClass.Paid=1 / its package paid, or the package row's own `paid`); package
+     * evidence is read inside the caller's campuses only (#4174 review).
+     *
+     * @param int[]|null $campusIds null = super admin (every campus)
+     */
+    private function markLegacyPaidFlagOnly(\Illuminate\Support\Collection $rows, ?array $campusIds): \Illuminate\Support\Collection
+    {
+        $paidLike = fn (array $row) => in_array($row['payment_status'] ?? null, ['paid', 'renew_needed', 'monthly_due_soon'], true);
+        $candidates = $rows->filter($paidLike);
+        $isPackageRow = fn (array $row) => isset($row['package_id']);
+        $packageFlag = CoursePackage::query()->whereIn('id', $candidates->filter($isPackageRow)->pluck('package_id')->map(fn ($id) => (int) $id)->all())
+            ->pluck('paid', 'id')->mapWithKeys(fn ($paid, $id) => [(int) $id => (bool) $paid])->all();
+        $classFlag = StudentClass::query()->with('coursePackage')
+            ->whereIn('ID', $candidates->reject($isPackageRow)->pluck('id')->filter()->map(fn ($id) => (int) $id)->all())->get()
+            ->mapWithKeys(fn (StudentClass $c) => [(int) $c->ID => $c->isEffectivelyPaid()])->all();
+        $hasFlag = fn (array $row) => $isPackageRow($row)
+            ? ($packageFlag[(int) $row['package_id']] ?? false)
+            : ($classFlag[(int) ($row['id'] ?? 0)] ?? false);
+        $flagged = $candidates->filter($hasFlag);
+        // A package row asks about its package (the resolver reads only the owner's in-scope members), never about the raw
+        // member_class_ids list, which is not campus-filtered.
+        $evidence = $this->payableResolver->validPaymentEvidence(
+            $flagged->reject($isPackageRow)->pluck('id')->filter()->all(),
+            $flagged->filter($isPackageRow)->pluck('package_id')->filter()->all(),
+            $campusIds,
+        );
+
+        return $rows->map(fn ($row) => $row + ['legacy_paid_flag_only' => $paidLike($row) && $hasFlag($row) && ($isPackageRow($row)
+            ? !isset($evidence['packages'][(int) $row['package_id']])
+            : !isset($evidence['classes'][(int) ($row['id'] ?? 0)]))])->values();
     }
 
     /** @param array<string, mixed>|null $verdict BillingPayableResolver course row; invoices that still owe beat the Paid flag (Founder Q2) */
@@ -739,20 +796,25 @@ class AlertController extends Controller
         $campusIds = $role === 'super_admin' ? null : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
         $sc = StudentClass::with(['student', 'coursePackage'])->find($studentClassId);
         $student = $sc?->student;
-        if (!$sc || !$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) {
+        if (!$sc instanceof StudentClass || !$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) {
             abort(403);
         }
 
         // ARCH2: a slip exists only while the Verdict says the contract owes. Paid=1 beside an unpaid invoice still gets
         // its slip (the money is owed); Payment rows that settle a Paid=0 contract refuse it. No Verdict answer
         // (review_required) keeps the legacy flag test.
-        $settlement = $this->payableResolver->courseStatusesByStudentClassIds([$studentClassId], [$sc])[$studentClassId]['status'] ?? null;
+        $verdict = $this->payableResolver->courseStatusesByStudentClassIds([$studentClassId], [$sc])[$studentClassId] ?? [];
+        $settlement = $verdict['status'] ?? null;
+        // Founder D2 (#4121 review): an issued bill whose amount is still to be confirmed never reaches a parent.
+        if (BillingPayableResolver::isAmountPendingConfirmation($sc, $verdict)) {
+            return response()->json(['message' => '金額待確認，請先確認應收金額'], 422);
+        }
         if ($settlement === 'free') {
             return response()->json(['message' => '這門課是免費課程，不需要繳費單'], 422);
         }
         $settled = in_array($settlement, ['unpaid', 'partial', 'unbilled'], true)
             ? false
-            : ($settlement === 'paid' || (int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid()));
+            : ($settlement === 'paid' || (int) ($sc->getAttribute('Paid') ?? 0) === 1 || $sc->isEffectivelyPaid());
         if ($settled) {
             return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
         }
@@ -794,9 +856,7 @@ class AlertController extends Controller
                 // Count-mode alerts already use the contract price rather than
                 // a stale historical Charge snapshot. Keep the tuition slip on
                 // that same canonical display path (in-app #275).
-                'charge' => $sc instanceof StudentClass
-                    ? $this->countModeCharge($sc)
-                    : max(0, (int) ($sc->Charge ?? 0)),
+                'charge' => $this->countModeCharge($sc),
                 'period_sessions' => null,
                 'period_start' => null,
                 'period_end' => null,

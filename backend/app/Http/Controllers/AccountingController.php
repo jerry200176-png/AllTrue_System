@@ -9,6 +9,7 @@ use App\Models\PaymentReport;
 use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\BillingPayableResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyRenewalPeriodService;
@@ -221,8 +222,8 @@ class AccountingController extends Controller
                 'pending_reconciliation' => $pendingReconciliation,
                 'payment_review_required' => $paymentReview,
                 'reconciliation_label' => $pendingReconciliation
-                    ? ($closedReason === '' ? '暫停中・等你確認收款' : '課已結束，等你確認收款')
-                    : ($paymentReview ? '付款期間待確認' : ($waived ? '歷史 · 確認不收' : null)),
+                    ? ($closedReason === '' ? '暫停中，尚未收款' : '課已結束，尚未收款')
+                    : ($paymentReview ? '月結帳單與上課堂數不符，請核對' : ($waived ? '歷史 · 確認不收' : null)),
                 'closed_reason' => $course->getAttribute('closed_reason'),
             ];
         })->values();
@@ -320,7 +321,7 @@ class AccountingController extends Controller
             $unpaid = (int) ($course->Paid ?? 0) !== 1;
             $pending = $closedReason === 'settled_pending' || ($closedReason === 'contract_amended' && $unpaid);
             if ((int) $course->Stop !== 1 || !$pending || !$unpaid) {
-                return response()->json(['message' => '只有「課已結束，等你確認收款」且還沒繳清的合約，才能改成「不收了」'], 422);
+                return response()->json(['message' => '只有「課已結束，尚未收款」且還沒繳清的合約，才能改成「不收了」'], 422);
             }
 
             $invoices = Invoice::with(['studentClass', 'items', 'payments'])
@@ -629,6 +630,11 @@ class AccountingController extends Controller
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,
+                // #4115: every line belongs to this bill's own course (no multi-course or hand-entered lines).
+                'single_course_items' => $invoice->items->isNotEmpty()
+                    && $invoice->items->every(fn ($item) => (int) $item->StudentClassID === (int) $invoice->StudentClassID),
+                // D3 (Founder 2026-10-15): a hand-priced bill is never compared with the contract Charge (see isHandPriced()).
+                'hand_priced' => $this->isHandPriced($invoice),
             ] + ($invoice->zero_amount_reason !== null ? ['zero_amount_reason' => $invoice->zero_amount_reason] : []); // #3991: 免費／贈送 badge
         })->values();
         $this->invoiceAmounts->forgetPreloadedSessions();
@@ -715,14 +721,23 @@ class AccountingController extends Controller
             // #4041: notes of invoices voided when their course was deleted; read-only, outside the invoice table.
             'voided_invoice_notes' => $this->deletedCourseInvoiceNotes($student),
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
-            'courses' => $classes->map(fn (StudentClass $class) => [
+            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates) {
+                // #3991: a 免費／贈送 mark settles the course only while it holds (Invoice::freeGiftHolds) for the current term.
+                $freeGiftSettled = $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
+                    && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
+
+                return [
                 'id' => (int) $class->ID,
                 'course_ref' => $this->courseRef((int) $class->ID),
                 'subject' => $class->displaySubjectName($subjectNames),
                 'schedule_mode' => (string) ($class->ScheduleMode ?? ''),
                 'charge' => (int) ($class->Charge ?? 0),
-                'paid' => (int) ($class->Paid ?? 0) === 1 || $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
-                    && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class))), // #3991: current term
+                // #4115 (Founder Q2 = A): display-only, compared with an issued bill; never rewrites a bill.
+                'current_contract_charge' => $this->currentContractCharge($class),
+                'paid' => (int) ($class->Paid ?? 0) === 1 || $freeGiftSettled, // #3991: current term
+                // #4150: display context so the panel never reads a waiver or a valid free/gift term as a missing payment.
+                'free_gift_settled' => $freeGiftSettled,
+                'waived' => ContractMoneyState::isWaived($class),
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
                 'first_session_date' => $firstSessionDates->get((int) $class->getAttribute('ID')),
@@ -731,11 +746,42 @@ class AccountingController extends Controller
                 // Monthly ('date') members stay separate: each is billed and recorded by its own period subtotal (#3892 review).
                 'package_id' => (int) ($class->PackageID ?? 0) > 0 && strtolower((string) ($class->ScheduleMode ?? 'count')) !== 'date'
                     ? (int) $class->PackageID : null,
-            ])->values()->all(),
+                ];
+            })->values()->all(),
             'invoices' => $invoiceRows->all(),
             'receipts' => $reportRows->all(),
             'anomalies' => $uniqueAnomalies->all(),
         ]);
+    }
+
+    /**
+     * The contract's current Charge for a count-mode, non-package course. Charge already follows rate and
+     * count edits, keeps renewal discounts and session_charge deltas, so an issued bill that still equals it is
+     * not flagged. Null for every other course. Read-only (#4115).
+     */
+    private function currentContractCharge(StudentClass $class): ?int
+    {
+        if ((string) ($class->ScheduleMode ?? 'count') !== 'count' || $class->isPartOfPackage()) {
+            return null;
+        }
+
+        return max(0, (int) ($class->Charge ?? 0));
+    }
+
+    /**
+     * D3 (#4128): a bill whose amount was set by a person, not copied from the contract, so differing from the current
+     * Charge is no sign that it is wrong. Signals: no line (amount typed when the payment was reported), several lines
+     * (composed by hand or split), a total typed apart from its one line, a note (staff or special-path bill), or a
+     * 免費／贈送 mark. Read-only.
+     */
+    private function isHandPriced(Invoice $invoice): bool
+    {
+        $items = $invoice->items;
+
+        return $items->count() !== 1
+            || (int) $items->first()->Amount !== (int) $invoice->TotalAmount
+            || trim((string) ($invoice->Note ?? '')) !== ''
+            || $invoice->zero_amount_reason !== null;
     }
 
     private function paymentResponse(Request $request, bool $export)

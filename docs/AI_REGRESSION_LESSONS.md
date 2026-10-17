@@ -433,6 +433,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 > 下次改下列模組，**先認領家族 → 對照不變式 → 補該家族的回歸測試**，不要只修單一 symptom。
 > 追蹤 Epic：見 GitHub `[Epic] 復發家族根治`。各家族成員 issue 與 production 佐證寫在該 Epic。
 
+Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue may be a deliberately closed duplicate. Resolve explicit trusted same-repo canonical metadata and verify target SourceRef before reopening; do not substitute open-state preference or arbitrary redirect URLs. Behavioral shell tests cover trust, exact numeric IDs, one-hop validation, lookup failure and concurrent creation (`scripts/ci/bug-auto-intake-canonical.test.mjs`).
+
 | 家族 | 共同根因（不變式被違反） | 前例 | 必補回歸測試守門 |
 |------|--------------------------|------|------------------|
 | **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示；**反面**：堂數制仍有 `RemainingSessions` 時不得把請假順延尾堂當幽靈取消 | #151、#427、#99、**#1839**、行290、§R32、§R59、**§R109** | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留；**count + RemainingSessions>0 禁止 settled/completed 除非 `forfeit_remaining`** |

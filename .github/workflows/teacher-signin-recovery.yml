@@ -36,6 +36,7 @@ jobs:
   recover:
     name: Run allowlisted teacher sign-in recovery
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
 
     steps:

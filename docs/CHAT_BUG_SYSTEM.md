@@ -135,6 +135,19 @@ last_reviewed: 2026-08-23
 | A5b | **先查、不問（F15）**：回報者通常不會回覆。分診先看後台分診卡的「最近按過／畫面訊息／最近失敗請求／版本」（只在 app 內，不進公開 log）、正式站唯讀 probe、程式碼與同校同時段的其他回報自己重現。公開回覆寫「我們查到的原因＋會怎麼修／已修」，**不要**列問題請回報者回答；只有查完仍無法判斷、且答案會改變修法時，才問**一個**是非題。 |
 | A6 | **建議類（feature／ux／不做／重複）不留 `triaged`**（F12）：開／找到 GitHub issue → `bug-phase-a-triage.yml` 帶 `close_as_logged=true` + `disposition`（`suggestion`／`ux_friction`／`not_planned`／`duplicate`）。回覆範本：「已收進產品清單 <issue URL>。上線時會在這裡通知你；想補充直接回覆就會重開。」上線後用 `bug-followup-comment.yml`（`expected_status=closed` + `production_revision` + `deploy_run_id`）回「已上線＋怎麼用」；只對 `closed_as_logged` 且同一 issue 的單有效，會寫入 production evidence |
 
+##### GitHub intake consolidation metadata
+
+When consolidating an intake duplicate, preserve its SourceRef/history and put this explicit line in the same owner/bot-authored body or comment as its label-first SourceRef (replace the two IDs):
+
+```text
+SourceRef: alltrue:bug_report:416
+<!-- intake-canonical:alltrue:bug_report:416:4195 -->
+```
+
+Auto-intake validates that target #4195 is a same-repository issue with the same exact SourceRef owned by the repository owner/workflow bot. It follows one hop only; conflicting, missing, chained or cyclic targets and lookup errors stop intake before linking/reopening. Existing trusted `Canonical tracking: #4195.` lines are supported for the historical consolidation. Arbitrary prose URLs and untrusted authors/comments cannot redirect intake. Ordinary closed canonical issues still reopen for reports that remain new; consolidated duplicates stay closed. Family clustering remains advisory.
+
+This metadata only preserves GitHub tracking ownership. It does not resolve the in-app report, authorize implementation, or send a reporter reply. Consolidation can be rolled back by removing the marker and explicitly restoring the intended GitHub ownership; workflow rollback alone would restore oldest-match behavior and can reopen duplicates.
+
 **分診留言範本（公開）**：已收到 #___、已看附件 #___（若有）、已建 GitHub #___ 追蹤；勿叫補截圖若附件已存在。
 
 #### Phase B — 修復（改 `backend/`／`frontend/`）

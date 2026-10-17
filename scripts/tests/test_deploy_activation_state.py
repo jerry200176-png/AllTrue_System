@@ -1476,6 +1476,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('if ! php artisan optimize; then', self.workflow)
         self.assertIn('if ! rm -f /home/admin/frontend/.env.production.local; then', self.workflow)
         self.assertIn('if ! OPCACHE_RESPONSE=$(curl -skf -X POST', self.workflow)
+        # A failed web refresh must name its HTTP status (curl writes 000 when it cannot connect).
+        self.assertIn("-w '\\n%{http_code}'", self.workflow)
+        self.assertIn("http=${OPCACHE_RESPONSE##*$'\\n'}", self.workflow)
         self.assertIn('abort_deploy "health check 或 smoke test 失敗"', self.workflow)
         self.assertIn('rollback_failed=1', self.workflow)
         self.assertIn('health=$health2 rollback_failed=$rollback_failed', self.workflow)
