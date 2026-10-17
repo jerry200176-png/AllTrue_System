@@ -206,7 +206,10 @@ class ExamRoundController extends Controller
         }
         $saved = [];
         DB::transaction(function () use ($normalized, $examRound, $request, $isDirector, $payload, &$saved) {
-            $locked = ExamRound::whereKey($examRound->id)->lockForUpdate()->firstOrFail();
+            $locked = ExamRound::query()->whereKey($examRound->id)->lockForUpdate()->first();
+            if ($locked === null) {
+                abort(404);
+            }
             if (!$isDirector && $locked->status !== 'published') {
                 abort(response()->json(['message' => 'Round is not open for entry'], 409));
             }
@@ -214,7 +217,8 @@ class ExamRoundController extends Controller
                 abort(response()->json(['message' => 'Publish the round before entering scores'], 409));
             }
             foreach ($normalized as $row) {
-                $record = ExamScore::where('exam_round_id', $locked->id)
+                $record = ExamScore::query()
+                    ->where('exam_round_id', $locked->id)
                     ->where('student_id', $row['student_id'])
                     ->where('exam_round_subject_id', $row['exam_round_subject_id'])
                     ->lockForUpdate()->first();
