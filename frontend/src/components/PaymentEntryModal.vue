@@ -190,7 +190,7 @@ async function submit() {
     if (!res.ok) {
       if (res.code === 'pending_report_exists') {
         submitError.value = `此課程已有「${REPORT_STATUS_LABELS.pending}」回報，不要重複送出。請先核對該回報金額與實收金額；相符才確認入帳，金額不符請先退回，再重新登記。退回回報不會更改帳單應繳金額。`;
-        emit('pending', res.data);
+        // Keep this refusal and the entered amount visible; parent pending handlers navigate away.
         return;
       }
       if (res.code === 'amount_exceeds_outstanding') {

@@ -132,7 +132,7 @@ final class ContractMoneyState
     }
 
     /**
-     * Unpaid-only count/charge correction guard. Other callers retain hasActivePayment's historical rule.
+     * Unpaid-only count correction guard. Other callers retain hasActivePayment's historical rule.
      * Zero invoice net alone is insufficient: every reversal must have unambiguous receipt provenance.
      * Each voided report must match exactly one full reversal; duplicates and split reversals fail closed.
      * Missing legacy links and inconsistent stored balances also fail closed.
