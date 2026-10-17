@@ -88,6 +88,7 @@ jobs:
           python3 -m unittest scripts.tests.test_deploy_activation_state.GhApiRetryTest
           python3 scripts/tests/test_required_php_checks.py
           python3 scripts/tests/test_evidence_contract_timeouts.py
+          python3 scripts/tests/test_principal_rotation_grant_replay.py
           bash scripts/tests/production-acceptance-stage-contract.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
           bash scripts/tests/synthetic-director-workflow-contract.test.sh
