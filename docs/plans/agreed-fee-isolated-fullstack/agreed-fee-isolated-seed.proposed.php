@@ -1,10 +1,10 @@
 <?php
 /**
- * DRAFT — proposed path: backend/tests/Support/agreed-fee-isolated-seed.php
+ * DRAFT — proposed install path: backend/tests/Support/agreed-fee-isolated-seed.php
  *
- * Seeds one synthetic trial course (Charge 8000 + unpaid invoice) mirroring
- * AgreedFeeFixture. Writes /tmp/agreed-fee-isolated.env for Playwright.
- * Refuses non-AllTrue_test.
+ * Seeds one synthetic trial course using the **same field contract** as
+ * Tests\Support\AgreedFeeFixture::fixture() (do not invent alternate shapes).
+ * Writes /tmp/agreed-fee-isolated.env with mode 0600. Never prints the token.
  */
 declare(strict_types=1);
 
@@ -18,23 +18,22 @@ use App\Models\UserCampus;
 use Illuminate\Support\Str;
 use Tests\Support\AgreedFeeTestSchema;
 
-require __DIR__.'/../../vendor/autoload.php';
-$app = require __DIR__.'/../../bootstrap/app.php';
+require __DIR__.'/agreed-fee-isolated-db-guard.php';
+agreed_fee_isolated_assert_db();
+
+$backendRoot = dirname(__DIR__, 2);
+require $backendRoot.'/vendor/autoload.php';
+$app = require $backendRoot.'/bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
-$host = (string) config('database.connections.mysql.host');
-$name = (string) config('database.connections.mysql.database');
-if ($name !== 'AllTrue_test' || !in_array($host, ['127.0.0.1', 'localhost', 'agreed-fee-test-mysql'], true)) {
-    fwrite(STDERR, "seed: refusing {$host}/{$name}\n");
-    exit(90);
-}
-
-config(['billing.agreed_fee_correction_enabled' => true, 'database.default' => 'mysql']);
+agreed_fee_isolated_assert_effective_connection();
+agreed_fee_isolated_apply_runtime_config();
 AgreedFeeTestSchema::ensureExtensionColumns();
 
+// === AgreedFeeFixture::fixture() field contract (keep in sync; do not "improve") ===
 $user = User::create([
-    'LoginName' => 'fee-iso-'.Str::uuid(),
-    'Name' => 'Isolated Director',
+    'LoginName' => 'fee-'.Str::uuid(),
+    'Name' => 'Fixture',
     'PSW' => 'test',
     'type' => 'A',
     'phone' => '',
@@ -90,12 +89,17 @@ InvoiceItem::create([
     'Amount' => 7600,
 ]);
 
-$env = '/tmp/agreed-fee-isolated.env';
-file_put_contents($env, implode("\n", [
+$envPath = '/tmp/agreed-fee-isolated.env';
+$payload = implode("\n", [
     'AGREED_FEE_ISOLATED_TOKEN='.$token,
     'AGREED_FEE_ISOLATED_COURSE_ID='.$course->ID,
     'AGREED_FEE_ISOLATED_INVOICE_ID='.$invoice->id,
     'AGREED_FEE_ISOLATED_API_URL=http://127.0.0.1:8000',
     'AGREED_FEE_ISOLATED_BASE_URL=http://127.0.0.1:5179',
-])."\n");
-fwrite(STDOUT, "wrote {$env}\n");
+])."\n";
+file_put_contents($envPath, $payload);
+chmod($envPath, 0600);
+// Short-lived: seed also writes an mtime stamp for cleanup (stack removes on exit).
+touch($envPath);
+
+fwrite(STDOUT, "seed: wrote {$envPath} mode 0600 (token redacted); course_id={$course->ID} invoice_id={$invoice->id}\n");

@@ -1,7 +1,6 @@
-# DRAFT ONLY — do NOT copy into .github/workflows/ until reviewed.
+# DRAFT ONLY — do NOT copy into .github/workflows/ until reviewed + enable=false default kept.
 # Intended final path: .github/workflows/agreed-fee-isolated-fullstack.yml
 # Triggers: workflow_dispatch ONLY (no pull_request / push / schedule).
-# Default disabled via inputs.enable=false.
 
 name: Agreed-fee isolated full-stack (DRAFT)
 
@@ -13,8 +12,12 @@ on:
         required: true
         type: boolean
         default: false
-      head_sha:
-        description: 'Exact git SHA expected (operator verifies before enable)'
+      candidate_sha:
+        description: '40-hex SHA of fee candidate tip (e.g. #4250 a579) — source of AgreedFee code'
+        required: true
+        type: string
+      harness_sha:
+        description: '40-hex SHA of harness draft tip (docs/plans agreed-fee-isolated-fullstack)'
         required: true
         type: string
 
@@ -33,6 +36,9 @@ jobs:
     timeout-minutes: 25
     env:
       DB_PASSWORD: ci-ephemeral
+      # Bound once; never interpolate inputs.head_sha raw into shell.
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      HARNESS_SHA: ${{ inputs.harness_sha }}
     services:
       mysql:
         image: mysql:8.0
@@ -49,51 +55,51 @@ jobs:
           --health-timeout=5s
           --health-retries=5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate SHA inputs (40 hex)
+        env:
+          CANDIDATE_SHA: ${{ env.CANDIDATE_SHA }}
+          HARNESS_SHA: ${{ env.HARNESS_SHA }}
+        run: |
+          set -euo pipefail
+          hex40='^[0-9a-f]{40}$'
+          [[ "$CANDIDATE_SHA" =~ $hex40 ]] || { echo "::error::candidate_sha not 40 hex"; exit 1; }
+          [[ "$HARNESS_SHA" =~ $hex40 ]] || { echo "::error::harness_sha not 40 hex"; exit 1; }
+          echo "candidate_sha_ok=${CANDIDATE_SHA:0:11}"
+          echo "harness_sha_ok=${HARNESS_SHA:0:11}"
+
+      - name: Checkout candidate tip (fee source)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.head_sha }}
+          ref: ${{ env.CANDIDATE_SHA }}
 
-      - name: Refuse wrong SHA
+      - name: Bind candidate HEAD
+        env:
+          CANDIDATE_SHA: ${{ env.CANDIDATE_SHA }}
         run: |
           set -euo pipefail
           got=$(git rev-parse HEAD)
-          [[ "$got" == "${{ inputs.head_sha }}" ]] || {
-            echo "::error::HEAD $got != requested ${{ inputs.head_sha }}"
-            exit 1
-          }
+          [[ "$got" == "$CANDIDATE_SHA" ]] || { echo "::error::HEAD $got != candidate $CANDIDATE_SHA"; exit 1; }
+          test -f backend/app/Services/Billing/AgreedFeeCorrection.php
+          test -f frontend/src/components/AgreedFeeCorrectionModal.vue
 
-      # --- reuse phpunit job pieces: PHP, composer, migrate ---
+      - name: Fetch harness draft at pinned SHA (sparse)
+        env:
+          HARNESS_SHA: ${{ env.HARNESS_SHA }}
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin "$HARNESS_SHA"
+          rm -rf /tmp/fee-harness && mkdir -p /tmp/fee-harness
+          git archive "$HARNESS_SHA" docs/plans/agreed-fee-isolated-fullstack | tar -x -C /tmp/fee-harness
+          test -d /tmp/fee-harness/docs/plans/agreed-fee-isolated-fullstack
+          # Prove harness tip identity without checking out over candidate tree
+          echo "harness_archive_from=$HARNESS_SHA" > /tmp/fee-harness/SHA.txt
+          [[ $(cat /tmp/fee-harness/SHA.txt) == "harness_archive_from=$HARNESS_SHA" ]]
+
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: '8.2'
           extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype
-
-      - name: Install PHP deps + migrate AllTrue_test
-        working-directory: backend
-        env:
-          DB_CONNECTION: mysql
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_DATABASE: AllTrue_test
-          DB_USERNAME: admin
-          DB_PASSWORD: ci-ephemeral
-        run: |
-          composer install --no-interaction --prefer-dist --optimize-autoloader
-          php artisan migrate --force --database=mysql
-
-      - name: Core AgreedFee PHPUnit regressions (required companion)
-        working-directory: backend
-        env:
-          DB_CONNECTION: mysql
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_DATABASE: AllTrue_test
-          DB_USERNAME: admin
-          DB_PASSWORD: ci-ephemeral
-        run: |
-          vendor/bin/phpunit --filter \
-            'AgreedFeeCorrectionTest|AgreedFeeConcurrencyTest|FeeReceiptKindCompatibilityTest'
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
@@ -101,13 +107,13 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend + Playwright Chromium
-        working-directory: frontend
+      - name: Install deps
         run: |
-          npm ci
-          npx playwright install --with-deps chromium
+          set -euo pipefail
+          (cd backend && composer install --no-interaction --prefer-dist --optimize-autoloader)
+          (cd frontend && npm ci && npx playwright install --with-deps chromium)
 
-      - name: Boot isolated stack + Playwright (process-local flag only)
+      - name: Companion PHPUnit (before browser seed; required)
         env:
           DB_CONNECTION: mysql
           DB_HOST: 127.0.0.1
@@ -115,15 +121,45 @@ jobs:
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
           DB_PASSWORD: ci-ephemeral
-          # Intentionally NO SMOKE_* / production URLs
         run: |
           set -euo pipefail
-          # After proposed scripts land in repo:
-          # bash scripts/agreed-fee-isolated-stack.proposed.sh &
-          # source /tmp/agreed-fee-isolated.env
-          # cd frontend && npx playwright test -c playwright.agreed-fee-isolated.proposed.config.js
-          echo "::error::Proposed scripts not installed in .github/workflows yet — draft only"
-          exit 1
+          unset DATABASE_URL DB_URL DB_SOCKET DB_READ_HOST DB_WRITE_HOST || true
+          DRAFT=/tmp/fee-harness/docs/plans/agreed-fee-isolated-fullstack
+          bash "$DRAFT/db-guard.proposed.sh"
+          (cd backend && php artisan migrate --force --database=mysql)
+          (cd backend && vendor/bin/phpunit --filter \
+            'AgreedFeeCorrectionTest|AgreedFeeConcurrencyTest|FeeReceiptKindCompatibilityTest')
+
+      - name: Stack + Playwright (process-local flag; same-origin proxy)
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: AllTrue_test
+          DB_USERNAME: admin
+          DB_PASSWORD: ci-ephemeral
+          AGREED_FEE_STACK_EXTERNAL: '1'
+        run: |
+          set -euo pipefail
+          unset DATABASE_URL DB_URL DB_SOCKET DB_READ_HOST DB_WRITE_HOST || true
+          DRAFT=/tmp/fee-harness/docs/plans/agreed-fee-isolated-fullstack
+          # Point stack ROOT install at workspace; copy draft dir into docs/plans for install_draft paths
+          mkdir -p docs/plans
+          rm -rf docs/plans/agreed-fee-isolated-fullstack
+          cp -a "$DRAFT" docs/plans/agreed-fee-isolated-fullstack
+          bash docs/plans/agreed-fee-isolated-fullstack/agreed-fee-isolated-stack.proposed.sh
+          set -a
+          # shellcheck disable=SC1091
+          source /tmp/agreed-fee-isolated.env
+          set +a
+          (cd frontend && npx playwright test -c playwright.agreed-fee-isolated.config.js)
+          # Stop servers + token hygiene (never upload env)
+          if [[ -f /tmp/agreed-fee-api.pid ]]; then kill "$(cat /tmp/agreed-fee-api.pid)" 2>/dev/null || true; fi
+          if [[ -f /tmp/agreed-fee-vite.pid ]]; then kill "$(cat /tmp/agreed-fee-vite.pid)" 2>/dev/null || true; fi
+          rm -f /tmp/agreed-fee-isolated.env /tmp/agreed-fee-api.pid /tmp/agreed-fee-vite.pid
+          if [[ -f /tmp/agreed-fee-api.log ]]; then
+            sed -i -E 's/Bearer [A-Za-z0-9_-]+/Bearer [REDACTED]/g' /tmp/agreed-fee-api.log || true
+          fi
 
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -132,3 +168,4 @@ jobs:
           path: frontend/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
+          # Explicitly do NOT upload /tmp/agreed-fee-isolated.env or raw API logs with tokens
