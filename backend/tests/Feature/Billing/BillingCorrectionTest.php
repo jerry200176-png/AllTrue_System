@@ -3,6 +3,8 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\Invoice;
+use App\Models\Payment;
+use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\BillingCorrection;
@@ -38,6 +40,27 @@ class BillingCorrectionTest extends TestCase
         $this->assertSame($a, $svc->confirmationToken($c, 6, 3000, 0, [], 1));
         $this->assertNotSame($a, $svc->confirmationToken($c, 6, 3000, 0, [], 2));
         $this->assertNotSame($a, $svc->confirmationToken($c, 5, 2500, 0, [], 1));
+    }
+
+    public function test_token_binds_payment_and_report_ledger_history(): void
+    {
+        $svc = app(BillingCorrection::class);
+        $c = $this->course();
+        $before = $svc->confirmationToken($c, 6, 3000, 0, [], 1);
+
+        $invoice = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-01', 'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+        $report = PaymentReport::create([
+            'StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => '更正模組', 'payment_date' => '2032-03-02', 'reported_amount' => 4000,
+            'status' => 'voided', 'report_token_hash' => hash('sha256', 'ledger-bind-' . uniqid()),
+            'token_expires_at' => now()->addDay(),
+        ]);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4000, 'Method' => 'cash', 'PaidAt' => '2032-03-02', 'payment_report_id' => $report->id]);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -4000, 'Method' => 'void', 'PaidAt' => '2032-03-03', 'payment_report_id' => $report->id]);
+
+        $after = $svc->confirmationToken($c->fresh(), 6, 3000, 0, [], 1);
+        $this->assertNotSame($before, $after);
+        $this->assertSame($after, $svc->confirmationToken($c->fresh(), 6, 3000, 0, [], 1));
     }
 
     public function test_apply_updates_course_and_open_invoice_with_a_valid_token(): void
