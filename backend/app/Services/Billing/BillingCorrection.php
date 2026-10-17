@@ -56,57 +56,43 @@ final class BillingCorrection
                 (string) $session->getAttribute('Status'),
                 (string) $session->getAttribute('updated_at'),
             ])->all(),
-            // Bind preview to the payment/report ledger so a void cycle after preview invalidates the token.
+            // Bind preview to ledger history so a void cycle after preview invalidates the token.
             'ledger' => $this->ledgerHistoryFingerprint($classId),
         ];
 
         return hash_hmac('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), (string) config('app.key'));
     }
 
-    /**
-     * Ordered fingerprint of non-void invoice payments and every payment report for the course.
-     * Used only for confirmation binding; never interprets or rewrites money.
-     *
-     * @return array{payments: list<array<int|string|null>>, reports: list<array<int|string|null>>}
-     */
+    /** Confirmation-only fingerprint of open-invoice payments + all payment reports. @return array{payments: list<array>, reports: list<array>} */
     private function ledgerHistoryFingerprint(int $classId): array
     {
         $invoiceIds = Invoice::query()
             ->where('StudentClassID', $classId)
-            ->where(function ($q) {
-                $q->whereNull('Status')->orWhere('Status', '!=', 'void');
-            })
-            ->orderBy('id')
-            ->pluck('id')
-            ->map(static fn ($id): int => (int) $id)
-            ->all();
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+            ->orderBy('id')->pluck('id')->map(static fn ($id): int => (int) $id)->all();
 
-        $payments = $invoiceIds === []
-            ? []
-            : Payment::query()
-                ->whereIn('InvoiceID', $invoiceIds)
-                ->orderBy('id')
-                ->get(['id', 'InvoiceID', 'Amount', 'Method', 'payment_report_id', 'PaidAt'])
-                ->map(static fn (Payment $payment): array => [
-                    (int) $payment->getKey(),
-                    (int) $payment->InvoiceID,
-                    (int) $payment->Amount,
-                    (string) ($payment->Method ?? ''),
-                    $payment->payment_report_id === null ? null : (int) $payment->payment_report_id,
-                    (string) ($payment->PaidAt ?? ''),
-                ])->all();
+        $payments = $invoiceIds === [] ? [] : Payment::query()
+            ->whereIn('InvoiceID', $invoiceIds)->orderBy('id')
+            ->get(['id', 'InvoiceID', 'Amount', 'Method', 'payment_report_id', 'PaidAt'])
+            ->map(static fn (Payment $p): array => [
+                (int) $p->getKey(),
+                (int) $p->getAttribute('InvoiceID'),
+                (int) $p->getAttribute('Amount'),
+                (string) ($p->getAttribute('Method') ?? ''),
+                ($rid = $p->getAttribute('payment_report_id')) === null ? null : (int) $rid,
+                (string) ($p->getAttribute('PaidAt') ?? ''),
+            ])->all();
 
         $reports = PaymentReport::query()
-            ->where('StudentClassID', $classId)
-            ->orderBy('id')
+            ->where('StudentClassID', $classId)->orderBy('id')
             ->get(['id', 'InvoiceID', 'payment_id', 'status', 'reported_amount', 'updated_at'])
-            ->map(static fn (PaymentReport $report): array => [
-                (int) $report->getKey(),
-                $report->InvoiceID === null ? null : (int) $report->InvoiceID,
-                $report->payment_id === null ? null : (int) $report->payment_id,
-                (string) ($report->status ?? ''),
-                (string) ($report->reported_amount ?? ''),
-                (string) ($report->updated_at ?? ''),
+            ->map(static fn (PaymentReport $r): array => [
+                (int) $r->getKey(),
+                ($inv = $r->getAttribute('InvoiceID')) === null ? null : (int) $inv,
+                ($pid = $r->getAttribute('payment_id')) === null ? null : (int) $pid,
+                (string) ($r->getAttribute('status') ?? ''),
+                (string) ($r->getAttribute('reported_amount') ?? ''),
+                (string) ($r->getAttribute('updated_at') ?? ''),
             ])->all();
 
         return ['payments' => $payments, 'reports' => $reports];
@@ -160,8 +146,7 @@ final class BillingCorrection
                 ], 409));
             }
 
-            // Lock reports + the full payment ledger (including matched reversals) before
-            // re-hashing the confirmation token and repeating money guards.
+            // Lock reports + full payment ledger before re-hashing the confirmation token.
             if (PaymentReport::query()->where('StudentClassID', $classId)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->exists()) {
                 abort(response()->json([
                     'message' => '處理期間出現繳費回報，請重新整理後改走帳務流程。',
@@ -170,17 +155,11 @@ final class BillingCorrection
             }
             PaymentReport::query()->where('StudentClassID', $classId)->lockForUpdate()->get();
 
-            // An unpaid invoice may already exist even though no payment was
-            // entered. Keep the future payment report and receipt on the same
-            // corrected amount; paid invoices were rejected above.
             $adjustedInvoiceCount = 0;
             $openInvoices = Invoice::query()
                 ->where('StudentClassID', $classId)
-                ->where(function ($q) {
-                    $q->whereNull('Status')->orWhere('Status', '!=', 'void');
-                })
-                ->lockForUpdate()
-                ->get();
+                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+                ->lockForUpdate()->get();
             $invoiceIds = $openInvoices->pluck('id')->map(static fn ($id): int => (int) $id)->all();
             if ($invoiceIds !== []) {
                 Payment::query()->whereIn('InvoiceID', $invoiceIds)->lockForUpdate()->get();
@@ -191,8 +170,7 @@ final class BillingCorrection
                     'code' => 'billing_correction_payment_locked',
                 ], 409));
             }
-            // BillingPayableResolver sums every non-void invoice: never stamp the
-            // full corrected charge onto more than one open bill (Codex P1 #4217).
+            // Payable is additive across non-void invoices — never stamp full charge onto each.
             if ($openInvoices->count() > 1) {
                 abort(response()->json([
                     'message' => '此課程有多張未作廢帳單，無法用堂數更正一次改寫全部應收；請先整理帳單後再操作。',
@@ -338,12 +316,8 @@ final class BillingCorrection
             ], 409);
         }
 
-        $openInvoiceCount = Invoice::query()
-            ->where('StudentClassID', $classId)
-            ->where(function ($q) {
-                $q->whereNull('Status')->orWhere('Status', '!=', 'void');
-            })
-            ->count();
+        $openInvoiceCount = Invoice::query()->where('StudentClassID', $classId)
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->count();
         if ($openInvoiceCount > 1) {
             $audit('billing_correction_multiple_open_invoices', 409);
             return $this->reply([

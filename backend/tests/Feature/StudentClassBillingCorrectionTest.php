@@ -129,106 +129,63 @@ class StudentClassBillingCorrectionTest extends TestCase
         $this->assertSame(8000, (int) $invoice->fresh()->TotalAmount);
     }
 
-    /**
-     * PR #4217 P1: after a matched full reversal, multiple non-void invoices must not each
-     * receive the full corrected charge (BillingPayableResolver sums them additively).
-     */
+    /** PR #4217 P1: matched full reversal + ≥2 open invoices must not stamp full charge onto each. */
     public function test_multiple_open_invoices_after_matched_reversal_refuse_duplicate_full_charge(): void
     {
         [$token, $actorId] = $this->director();
         $student = $this->student();
         $course = $this->course($student->id, ['Rate' => 500, 'Charge' => 8000, 'SessionCount' => 16,
             'RemainingSessions' => 16, 'UsedSessions' => 0, 'TotalHours' => 32]);
-        $invoiceA = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
-            'IssueDate' => '2026-09-01', 'TotalAmount' => 8000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
-        InvoiceItem::create(['InvoiceID' => $invoiceA->id, 'StudentClassID' => $course->ID,
-            'Description' => 'Synthetic primary bill', 'Amount' => 8000]);
-        $invoiceB = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
-            'IssueDate' => '2026-09-02', 'TotalAmount' => 8000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
-        InvoiceItem::create(['InvoiceID' => $invoiceB->id, 'StudentClassID' => $course->ID,
-            'Description' => 'Synthetic second open bill', 'Amount' => 8000]);
-
-        $body = ['student_class_id' => $course->ID, 'invoice_id' => $invoiceA->id,
-            'payment_date' => '2026-09-02', 'payment_method' => 'cash', 'amount' => 8000];
-        $original = $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', $body)->assertOk()->json('report_id');
-        $this->withToken($token)->putJson("/api/v1/payment-reports/{$original}/confirm")->assertOk();
-        $this->withToken($token)->putJson("/api/v1/payment-reports/{$original}/void", ['void_reason' => 'Synthetic mistaken receipt'])->assertOk();
+        $invoiceA = $this->openInvoice($student->id, $course->ID, '2026-09-01');
+        $invoiceB = $this->openInvoice($student->id, $course->ID, '2026-09-02');
+        $this->recordConfirmVoid($token, $course->ID, $invoiceA->id, 8000, '2026-09-02');
 
         $this->assertFalse(\App\Services\Billing\ContractMoneyState::blocksUnpaidCorrection((int) $course->ID));
-        $this->assertSame(2, Invoice::query()->where('StudentClassID', $course->ID)
-            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->count());
-
         $correction = ['new_session_count' => 1, 'new_charge' => 500, 'reason' => 'Synthetic multi-invoice refuse'];
         $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", $correction + ['preview' => true])
             ->assertStatus(409)->assertJsonPath('code', 'billing_correction_multiple_open_invoices');
 
-        // Locked write path: a token bound to the current ledger must still refuse before stamping both bills.
         $service = app(\App\Services\Billing\BillingCorrection::class);
-        $validToken = $service->confirmationToken($course->fresh(), 1, 500, 0, [], $actorId);
         try {
-            $service->applyCountCorrection($course->fresh(), 1, 500, 'Synthetic multi-invoice refuse', 16, 8000, $validToken, $actorId);
-            $this->fail('Multiple open invoices must refuse the locked correction');
-        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
-            $this->assertSame(409, $exception->getResponse()->getStatusCode());
-            $this->assertSame('billing_correction_multiple_open_invoices', json_decode($exception->getResponse()->getContent(), true)['code']);
+            $service->applyCountCorrection($course->fresh(), 1, 500, 'Synthetic multi-invoice refuse', 16, 8000,
+                $service->confirmationToken($course->fresh(), 1, 500, 0, [], $actorId), $actorId);
+            $this->fail('locked multi-invoice correction must refuse');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            $this->assertSame(409, $e->getResponse()->getStatusCode());
+            $this->assertSame('billing_correction_multiple_open_invoices', json_decode($e->getResponse()->getContent(), true)['code']);
         }
-
-        $this->assertSame(8000, (int) $course->fresh()->Charge);
-        $this->assertSame(16, (int) $course->fresh()->SessionCount);
-        $this->assertSame(8000, (int) $invoiceA->fresh()->TotalAmount);
-        $this->assertSame(8000, (int) $invoiceB->fresh()->TotalAmount);
-        $this->assertSame(0, DB::table('security_audit_events')
-            ->where('event_type', 'student_class.billing_contract_correction')->count());
+        $this->assertSame([8000, 16, 8000, 8000], [(int) $course->fresh()->Charge, (int) $course->fresh()->SessionCount,
+            (int) $invoiceA->fresh()->TotalAmount, (int) $invoiceB->fresh()->TotalAmount]);
+        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'student_class.billing_contract_correction')->count());
     }
 
-    /**
-     * PR #4217 P2: preview token must bind ledger/report history and be recomputed under
-     * payment locks so a confirm→void cycle after preview invalidates the confirmation.
-     */
+    /** PR #4217 P2: preview token binds ledger; confirm→void after preview fails under payment locks. */
     public function test_preview_token_invalidates_after_payment_void_cycle_under_locks(): void
     {
         [$token, $actorId] = $this->director();
         $student = $this->student();
         $course = $this->course($student->id, ['Rate' => 500, 'Charge' => 8000, 'SessionCount' => 16,
             'RemainingSessions' => 16, 'UsedSessions' => 0, 'TotalHours' => 32]);
-        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
-            'IssueDate' => '2026-09-01', 'TotalAmount' => 8000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
-        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID,
-            'Description' => 'Synthetic never-paid then void-cycled', 'Amount' => 8000]);
-
+        $invoice = $this->openInvoice($student->id, $course->ID, '2026-09-01');
         $correction = ['new_session_count' => 1, 'new_charge' => 500, 'reason' => 'Synthetic ledger-bound preview'];
-        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", $correction + ['preview' => true])->assertOk();
-        $previewToken = (string) $preview->json('confirmation_token');
-        $this->assertNotSame('', $previewToken);
+        $previewToken = (string) $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", $correction + ['preview' => true])
+            ->assertOk()->json('confirmation_token');
 
-        // Another operator records, confirms, then fully voids a receipt before the first operator submits.
-        $body = ['student_class_id' => $course->ID, 'invoice_id' => $invoice->id,
-            'payment_date' => '2026-09-03', 'payment_method' => 'cash', 'amount' => 8000];
-        $reportId = $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', $body)->assertOk()->json('report_id');
-        $this->withToken($token)->putJson("/api/v1/payment-reports/{$reportId}/confirm")->assertOk();
-        $this->withToken($token)->putJson("/api/v1/payment-reports/{$reportId}/void", ['void_reason' => 'Synthetic void after preview'])->assertOk();
-
+        $this->recordConfirmVoid($token, $course->ID, $invoice->id, 8000, '2026-09-03');
         $this->assertFalse(\App\Services\Billing\ContractMoneyState::blocksUnpaidCorrection((int) $course->ID));
-
-        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction",
-            $correction + ['confirmation_token' => $previewToken])
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", $correction + ['confirmation_token' => $previewToken])
             ->assertStatus(409)->assertJsonPath('code', 'billing_correction_confirmation_required');
 
         try {
             app(\App\Services\Billing\BillingCorrection::class)->applyCountCorrection(
-                $course->fresh(), 1, 500, 'Synthetic ledger-bound preview', 16, 8000, $previewToken, $actorId
-            );
-            $this->fail('A preview token from before the void cycle must be stale under payment locks');
-        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
-            $this->assertSame(409, $exception->getResponse()->getStatusCode());
-            $this->assertSame('billing_correction_confirmation_stale', json_decode($exception->getResponse()->getContent(), true)['code']);
+                $course->fresh(), 1, 500, 'Synthetic ledger-bound preview', 16, 8000, $previewToken, $actorId);
+            $this->fail('preview token must be stale after void cycle');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            $this->assertSame(409, $e->getResponse()->getStatusCode());
+            $this->assertSame('billing_correction_confirmation_stale', json_decode($e->getResponse()->getContent(), true)['code']);
         }
-
-        $this->assertSame(8000, (int) $course->fresh()->Charge);
-        $this->assertSame(16, (int) $course->fresh()->SessionCount);
-        $this->assertSame(8000, (int) $invoice->fresh()->TotalAmount);
-        $this->assertSame(0, DB::table('security_audit_events')
-            ->where('event_type', 'student_class.billing_contract_correction')->count());
+        $this->assertSame([8000, 16, 8000], [(int) $course->fresh()->Charge, (int) $course->fresh()->SessionCount, (int) $invoice->fresh()->TotalAmount]);
+        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'student_class.billing_contract_correction')->count());
     }
 
     public function test_monthly_reversed_receipt_keeps_both_date_correction_paths_blocked_without_repricing(): void
@@ -928,5 +885,24 @@ class StudentClassBillingCorrectionTest extends TestCase
             'ClassType' => 'one_on_one',
             'UsedSessions' => 0,
         ], $overrides));
+    }
+
+    private function openInvoice(int $studentId, int $classId, string $issueDate, int $amount = 8000): Invoice
+    {
+        $invoice = Invoice::create(['StudentID' => $studentId, 'StudentClassID' => $classId,
+            'IssueDate' => $issueDate, 'TotalAmount' => $amount, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $classId, 'Description' => 'Synthetic', 'Amount' => $amount]);
+
+        return $invoice;
+    }
+
+    private function recordConfirmVoid(string $token, int $classId, int $invoiceId, int $amount, string $paymentDate): void
+    {
+        $reportId = $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $classId, 'invoice_id' => $invoiceId, 'payment_date' => $paymentDate,
+            'payment_method' => 'cash', 'amount' => $amount,
+        ])->assertOk()->json('report_id');
+        $this->withToken($token)->putJson("/api/v1/payment-reports/{$reportId}/confirm")->assertOk();
+        $this->withToken($token)->putJson("/api/v1/payment-reports/{$reportId}/void", ['void_reason' => 'Synthetic void'])->assertOk();
     }
 }
