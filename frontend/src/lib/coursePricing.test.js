@@ -75,4 +75,17 @@ const sessionCourse = {
 assert.equal(getRateUnitDisplayLabel(sessionCourse), '每堂');
 assert.equal(getCourseTotalFee(sessionCourse), 6000, '每堂 750 × 8 堂 = 6,000');
 
+// Server Charge preserves negotiated/renewal discounts and session-charge deltas.
+// Recomputing rate x sessions loses that agreement on the director course screen.
+assert.equal(getCourseTotalFee({ ...sessionCourse, rate_per_30min: 1100, charge: 8000, effective_charge: 8000 }), 8000,
+  'stored discounted contract8000 must not display rate-estimate8800 as its total');
+assert.equal(getCourseTotalFee({ ...sessionCourse, rate_per_30min: 1000, charge: 8300 }), 8300,
+  'persisted session-charge delta must not disappear from the course total');
+assert.equal(getCourseTotalFee({ ...sessionCourse, Charge: 8000, charge: 0, effective_charge: 8800 }), 8800,
+  'the server effective-charge projection outranks stale raw aliases');
+assert.equal(getCourseTotalFee({ ...sessionCourse, charge: 0 }), 0, 'an explicit zero charge stays zero');
+assert.equal(getCourseTotalFee({ ...hourlyCourse, charge: 10000 }), 10000, 'hourly discounted total stays the agreed amount');
+
+assert.equal(getCourseTotalFee({ ...sessionCourse, charge: 'not-a-number' }), 6000, 'malformed optional charge keeps rate fallback');
+assert.equal(getCourseTotalFee({ ...sessionCourse, charge: '' }), 6000, 'empty optional charge keeps rate fallback');
 console.error('coursePricing.test: OK');
