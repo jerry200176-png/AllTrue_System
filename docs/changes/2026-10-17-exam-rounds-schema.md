@@ -4,3 +4,4 @@
 
 - 新增 `exam_rounds`／`exam_round_subjects`／`exam_scores`／`exam_score_audit_logs`。
 - 後續 API／TeacherHome 待辦另 PR；計畫見 `.cursor/plans/midterm_exam_grades_prd_2026-10-17.md`。
+
