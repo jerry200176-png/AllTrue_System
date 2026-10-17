@@ -18,6 +18,7 @@ class FeeReceiptKindCompatibilityTest extends TestCase
     public function test_4132_receipt_collision_cannot_consume_a_fee_only_correction(string $scope): void
     {
         config(['billing.agreed_fee_correction_enabled' => true]);
+        $this->assertFalse(config('billing.receipt_correction_reissue_enabled'));
         $f = $this->fixture();
         $body = $this->feePayload($f['invoice']);
         if ($scope === 'unbilled') {
@@ -40,6 +41,7 @@ class FeeReceiptKindCompatibilityTest extends TestCase
         }
         $before = DB::table('Invoice')->orderBy('id')->get()->toArray();
         $auditCount = DB::table('security_audit_events')->count();
+        config(['billing.receipt_correction_reissue_enabled' => true]); // Explicit synthetic future-activation collision.
         $this->withToken($f['token'])->postJson('/api/v1/payment-reports/director-record', [
             'student_class_id' => $f['course']->ID, 'payment_date' => now()->toDateString(), 'payment_method' => 'cash',
             'amount' => 500, 'replaces_invoice_id' => $oldId, 'correction_reason' => $body['reason'],
