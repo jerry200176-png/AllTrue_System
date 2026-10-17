@@ -41,3 +41,5 @@ Purpose: weekly triage sweep — pull current `new`/`triaged`/`in_progress` queu
 # kickoff 2026-10-17T06:41:00Z — product-loop C+D closeout; refresh open queue (avoid rework on exam stack / #409 #413 drafts / #407 already shipped); pair with detail dump for 411
 
 # kickoff 2026-10-17T12:17:34Z — fresh ID-only queue census for reply-delivery audit (status counts; no bodies; secrets stay on runner)
+
+# kickoff 2026-10-17T12:20:10Z — retrigger CI after R0/T0 PR declaration (same dump purpose)
