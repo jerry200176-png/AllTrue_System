@@ -4,19 +4,23 @@
 
 本表是 in-app 回報各階段自動化的**唯一權威對照**；其他文件只連到這裡。真相以 `.github/workflows/` 為準，有出入時改本表。
 
-| 階段 | Workflow（做什麼） | 觸發 | Cloud session（無 SSH；寫 production 的 dispatch 不得自行執行，見表下說明） |
+| 階段 | Workflow（做什麼） | 觸發 | Cloud session（無 SSH；dispatch 能力與操作授權分開，見表下說明） |
 |------|--------------------|------|------------------------------------------------|
 | 收件建單 + 收到回覆 | `bug-auto-intake.yml`：每筆 `new` 開／重用 IDs-only GitHub issue（SourceRef 去重）、加 `area:<類別>`、同類提醒、留固定「收到，我們正在查」回覆（Founder 6A）。狀態**維持 `new`**，等 Phase A | schedule 每小時 :23；人工 dispatch 預設 dry-run，`dry_run=false` 會真的建單並寫 production | 自動，不需動作 |
 | 撈佇列 | `bug-queue-dump.yml`：log 只有 ID／數量；明文 artifact 另含 metadata（嚴重度、分校 ID、page key、時間、回報者 user ID／角色、回饋類型），標題／描述／留言不在其中；文字在加密 `*.full.tar.gz.enc`（#3605；queue 不含描述／留言）；附 in-app ↔ issue reconcile step summary | push request-file `operations/closeout/bug-queue-dump.request.md`；或 dispatch | 可觸發；看得到 log 的 ID／數量；artifact 與全文要本機下載並解密 |
 | 撈單筆 | `bug-detail-dump.yml`（`summary.json` 明文含分校／page／回報者 metadata；加密 JSON 會截斷：描述 4000、留言 1500、狀態備註 1000 字，超過要標 coverage gap；附件只有 metadata、沒有圖檔） | push request-file `operations/closeout/bug-detail-dump.request.md`（改檔內 `bug_id:` 行）；或 dispatch | 同上 |
 | 即時唯讀（金鑰） | 無 workflow：`GET /api/v1/triage/bug-reports…`，帶 `ALLTRUE_TRIAGE_TOKEN`（見下方「Reading reports with `ALLTRUE_TRIAGE_TOKEN`」） | 直接 HTTPS | 可以：已設定金鑰且網路允許正式站 host 時，讀全文、留言、附件；不能寫 |
-| Phase A 分診回寫 | `bug-phase-a-triage.yml`：`new`→`triaged` + 公開回覆；建議類 `close_as_logged` | **dispatch-only** | 不行：交出 `bug_id`、`github_issue_url`、含 issue URL 的 §3.8 `public_reply`；建議類另加 `disposition` 與 `close_as_logged=true`（預設是 `bug`／`false`） |
-| 進度補充／建議上線通知 | `bug-followup-comment.yml`：只留言、不改狀態；`expected_status=closed`（已上線的建議）會記 production evidence 並關 GitHub issue（守門同 Phase C） | **dispatch-only** | 不行：交出 `bug_id`、`expected_status`、`github_issue_url`、`public_reply`；`expected_status=closed`（已上線的建議）另需 40 字元 `production_revision` 與 `deploy_run_id` |
+| Phase A 分診回寫 | `bug-phase-a-triage.yml`：`new`→`triaged` + 公開回覆；建議類 `close_as_logged` | **dispatch-only**；preview → Founder approve → write | 在既有授權範圍且當前連線可 dispatch 時，可提交待審請求；準備 `bug_id`、`github_issue_url`、含 issue URL 的 §3.8 `public_reply`；建議類另加 `disposition` 與 `close_as_logged=true`（預設是 `bug`／`false`） |
+| 進度補充／建議上線通知 | `bug-followup-comment.yml`：只留言、不改狀態；`expected_status=closed`（已上線的建議）會記 production evidence 並關 GitHub issue（守門同 Phase C） | **dispatch-only**；preview → Founder approve → write | 同上；準備 `bug_id`、`expected_status`、`github_issue_url`、`public_reply`；`expected_status=closed`（已上線的建議）另需 40 字元 `production_revision` 與 `deploy_run_id` |
 | Phase C 上線後回寫 | `bug-phase-c-allowlist.yml`：已上線修復 → `resolved` + 公開回覆，並自動關對應 issue（F14；`type:epic`、`lifecycle:frozen` 不關，issue 標題或 SourceRef 對到的任何 in-app 回報不在本次已檢查清單內就不關）。`bug-phase-c-autodispatch.yml` 在 allowlist 有新增 ID 合併進 main 後逐筆 dispatch 並驗證 | push：PR 在 allowlist 新增條目（`reply`／`rev`／`deploy`）→ merge；或 push request-file `operations/closeout/bug-phase-c-allowlist.request.md`；已在 allowlist 的 ID 可直接 dispatch（`bug_id`） | 可以（開 PR → CI → merge）；只限 `rev` 已在 production 的修復，不可拿來做 Phase A |
 | `resolved`→`closed` 逾時 | `bug-reporter-timeout.yml` `auto`（排程）：只看 `resolved`，14 天無回報者回覆即結案並白話回覆；回報者回覆會重開（Founder 2A）。符合者超過 20 筆時整批拒絕、**一筆都不關**，要先人工 dry-run 處理。人工 `dry-run`／`apply` 是另一條路：`days` 預設 **7**（只作用於 `resolved`），另外也檢查固定 14 天的 `triaged` 等回報者佇列；`apply` 必填 `confirmation=CLOSE_STALE_RESOLVED` 與逐筆審過的 `reviewed_ids` | `auto`：schedule 每日 10:40 台北（亦可 dispatch `auto-dry-run`／`auto`）；`dry-run`／`apply`：只限人工 dispatch | `auto` 自動；人工 `apply` 不行：交出 dry-run 審過的 `reviewed_ids` 與 `days` |
 | 週報 | `bug-sla-weekly-report.yml`：「in-app 週報 YYYY-Www」issue | schedule 週一 09:00 台北；可人工 dispatch 重產 | 自動 |
 
-**雲端 dispatch 現況（更正舊說法「一律 403」）**：2026-10-15：在這一個 Claude cloud session、以當時這套權限實測，`workflow_dispatch`（對 `land-queue.yml`）與 `repository_dispatch` 呼叫成功（未觸發任何寫入）。不代表所有雲端 session 或日後權限都能觸發。上表「不行」指**不得自行執行**，不是技術上一定做不到：寫入 production 一律須 Founder 明確批准；因以 Founder 身分執行的 agent 技術上可能觸發 dispatch，該批准須由寫入步驟上的 required-reviewer environment 強制（見保護方案 PR（進行中））。
+**雲端 dispatch 現況（更正舊說法「一律 403」）**：2026-10-15 的原始觀測是在當時那一個 Claude cloud session、以當時的權限，成功呼叫 `workflow_dispatch`（`land-queue.yml` 的 no-op）及 `repository_dispatch`（未觸發任何寫入）；不代表所有 session 或日後權限皆可觸發。**可 dispatch 不等於已授權**：既有 Founder 常設批准及其條件以 [`FOUNDER_STANDING_DECISIONS.md`](../governance/FOUNDER_STANDING_DECISIONS.md) 為準，本表不新增 token、正式資料存取或政策例外。
+
+**Phase A／follow-up 的 guard 已合併**：[PR #4196](https://github.com/jerry200176-png/AllTrue_System/pull/4196)（2026-10-16）已讓上述兩個 dispatch-only workflow 走 `preview` → `approve` → write。雲端 agent 有既有範圍授權及可用 dispatch 權限時可提交請求；不是必須由人類代按 dispatch。preview 驗證輸入，公開 summary 只顯示案件／issue／狀態等 metadata、回覆長度與精確 UTF-8 `sha256(public_reply)`，不顯示全文；Founder 需對照私下審過的逐筆回覆及 hash。approve 在 `production-activation` 等待平台審核，並 fail closed 檢查 required reviewer 恰為 Founder `jerry200176-png`、無 admin bypass、僅允許 `main`；通過後的寫入 job 才使用 main-only `production-ssh`。兩個 workflow 共用 `inapp-production-writeback` concurrency（`cancel-in-progress: false`、`queue: max`）。Agent 不得代為批准、繞過平台 gate，或僅因 guard 已合併就宣稱案件已回寫。這段只描述已合併控制，不更動其他 workflow 的授權／人工 apply 限制。
+
+回覆仍須符合 §3.8、含 issue URL、避免重複送出；私下審核清單也不貼公開 GitHub。各階段仍須先備齊真實案件、讀取新鮮度及完整留言／附件 coverage；宣稱已上線時另須上線與受影響路徑證據。缺證據就停止該項，不以猜測內容或舊 dump 補足。`expected_status=closed` 仍限已上線的 logged suggestion，並提供完整 `production_revision` 與 `deploy_run_id`；不得代替回報者驗收。
 
 **關 GitHub issue（Founder 常設決定 2026-10-12 ③）**：merge + 上線驗證（版本＋health＋smoke，見下方 Deployment evidence gate）+ 已回覆 in-app → 即可關，不等回報者確認；復發再開。In-app 的 `resolved`→`closed` 仍只由回報者 `reporter-verify` 或上表逾時流程完成，Agent 不代按。
 
@@ -49,8 +53,12 @@ paired with the detail dump for the same bug ID.
 
 The log carries IDs and counts; the plaintext artifacts add non-text metadata
 (see the table). Titles, descriptions and comments are only in `*.full.tar.gz.enc`, encrypted with `DUMP_ARTIFACT_KEY`; the
-workflows fail closed without it. Cloud sessions cannot download or decrypt it, so
-a local agent does (key in an ignored `chmod 600` file, never committed):
+workflows fail closed without it. Artifact download depends on the current connection
+and network policy; a session without the existing authorized decryption key cannot
+read the full text. A past cloud download 403 is not a universal capability rule,
+and an egress block must not be bypassed. Keep the existing key custody: the local
+agent holding the key downloads and decrypts it (key in an ignored `chmod 600` file,
+never committed); dispatch capability grants no key transfer or new data access:
 
 ```bash
 gh run download <run-id> -R jerry200176-png/AllTrue_System -n bug-detail-dump -D dump
