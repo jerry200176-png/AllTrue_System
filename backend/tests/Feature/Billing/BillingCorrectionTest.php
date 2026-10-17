@@ -135,9 +135,13 @@ class BillingCorrectionTest extends TestCase
         $first = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-01',
             'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
         $token = $svc->confirmationToken($c->fresh(), 6, 3000, 0, [], 7);
-        $svc->setAfterConfirmationTokenForTests(function (int $classId) use ($c): void {
+        $insertedAfterFirstGuard = false;
+        $svc->setAfterConfirmationTokenForTests(function (int $classId) use ($c, &$insertedAfterFirstGuard): void {
             Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $classId, 'IssueDate' => '2032-03-02',
                 'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => 'post-guard phantom']);
+            // Still inside apply's txn — prove the post-guard insert was visible before refuse.
+            $this->assertSame(2, Invoice::query()->where('StudentClassID', $classId)->where('Status', '!=', 'void')->count());
+            $insertedAfterFirstGuard = true;
         });
         try {
             $svc->applyCountCorrection($c->fresh(), 6, 3000, 'pre-stamp seam', 8, 4000, $token, 7);
@@ -148,6 +152,7 @@ class BillingCorrectionTest extends TestCase
         } finally {
             $svc->setAfterConfirmationTokenForTests(null);
         }
+        $this->assertTrue($insertedAfterFirstGuard, 'seam must insert after the first open-invoice guard');
         // Refuse aborts the apply txn; same-conn phantom is rolled back with it.
         $this->assertSame(1, Invoice::query()->where('StudentClassID', $c->ID)->where('Status', '!=', 'void')->count());
         $this->assertSame([4000, 8, 4000], [(int) $first->fresh()->TotalAmount, (int) $c->fresh()->SessionCount, (int) $c->fresh()->Charge]);
