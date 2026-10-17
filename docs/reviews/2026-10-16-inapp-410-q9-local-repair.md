@@ -1,9 +1,8 @@
 # In-app #410 / issue #4210: local Q9 repair evidence
 
-Status: original local-preparation evidence, followed by Draft publication at
-`fb96b145` as recorded below. Integration owner: Claude. The test-isolation
-correction below is local only. No merge, deployment, production access,
-credential change or flag activation performed.
+Status: historical preparation/publication evidence; PR #4212 records current head and checks.
+Codex owns engineering/integration after Jerry's ownership update; a separate Codex reviewer verifies.
+No merge, deployment, production access, credential change or flag activation performed.
 
 ## Scope and provenance
 
@@ -20,18 +19,11 @@ credential change or flag activation performed.
 
 ## Implementation
 
-The shared cascade undo checks successor provenance before every restore/delete.
-The by-session desync path checks before voiding a leave sign-in. Both endpoints
-return HTTP 422, `undo_leave_successor_shift_active`, a clear reason, and
-`affected_lessons` with course/session identifiers plus original/current date and
-start time. Matching is exact for the leave ID and scoped to the same student; mutable
-subject metadata is excluded from provenance lookup. Past, completed and cancelled rows are not silently skipped. Restored
-original slots require a reconciled renewal EndDate before they count as inactive;
-historical note text is retained.
-
-No reversal, migration, new class, auth change, ledger write, UI change or flag
-change. The existing default-OFF gate and its response remain intact. Existing
-role/campus and downstream consumed-lesson guards remain intact.
+Shared cascade undo checks successor provenance before every restore/delete; desync checks before sign-in writes.
+Both endpoints return422, `undo_leave_successor_shift_active`, a clear reason and affected course/session IDs plus original/current slots.
+Matching uses exact leave ID and same student; mutable subjects are excluded. Past/consumed/cancelled rows are included.
+Original slots and renewal EndDate must be reconciled explicitly. Historical notes remain; no automatic reversal.
+No migration, new class, auth/ledger/UI/flag change. Default-OFF gate, role/campus and consumed-lesson checks remain.
 
 ## Verification
 
@@ -248,3 +240,9 @@ one RED failure (elapsed expected422/got200; later already passed). Tail cleanup
 now requires the complete start instant to be future, retaining today's elapsed
 occurrences without blocking a later unused slot. This is a separate correction
 commit; final exact-head reviewer and CI results belong to the handoff.
+
+Final bounded review also found historical `leave-policy-shift` notes can survive
+legacy undo and incorrectly select reverse-shift during successor-owned cleanup.
+A real apply/reconcile/undo regression with that historical state failed
+(expected200/got422). Successor-owned tails now bypass only the legacy reversal
+branch; ordinary legacy undo is unchanged. No lessons are moved back.

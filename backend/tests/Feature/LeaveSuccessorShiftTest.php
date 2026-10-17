@@ -431,6 +431,9 @@ class LeaveSuccessorShiftTest extends TestCase
     public function test_reconciled_desync_undo_cleans_up_only_a_safe_owned_tail(string $state): void
     {
         $leaveId = $this->sessions['2026-11-17'];
+        if ($state === 'historical_policy') { // Legacy undo preserves this note on scheduled occurrences.
+            DB::table('ClassSession')->where('id', $leaveId)->update(['Note' => 'leave-policy-shift']);
+        }
         $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk();
         $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk();
         foreach (array_slice($preview->json('moves'), 1) as $move) {
@@ -453,7 +456,7 @@ class LeaveSuccessorShiftTest extends TestCase
         $before = $this->undoSnapshot();
         $response = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
             ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId]);
-        if (!in_array($state, ['scheduled', 'later_today'], true)) {
+        if (!in_array($state, ['scheduled', 'later_today', 'historical_policy'], true)) {
             $response->assertStatus(422);
             $this->assertSame($before, $this->undoSnapshot());
         } else {
@@ -470,7 +473,7 @@ class LeaveSuccessorShiftTest extends TestCase
 
     public static function shiftTailStates(): array
     {
-        return ['scheduled tail' => ['scheduled'], 'consumed tail' => ['consumed'], 'past tail' => ['past'], 'elapsed today' => ['elapsed_today'], 'later today' => ['later_today']];
+        return ['scheduled tail' => ['scheduled'], 'consumed tail' => ['consumed'], 'past tail' => ['past'], 'elapsed today' => ['elapsed_today'], 'later today' => ['later_today'], 'historical policy' => ['historical_policy']];
     }
 
     private function undoSnapshot(): string

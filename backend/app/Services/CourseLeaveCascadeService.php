@@ -1080,8 +1080,8 @@ class CourseLeaveCascadeService
         // leave-policy-shift note and still need reverse-shift (handled below).
         $leaveNote = strtolower((string) ($leaveSession->Note ?? ''));
         $appendNote = strtolower((string) ($appendedSession->Note ?? ''));
-        $isLegacyShift = str_contains($leaveNote, self::NOTE_POLICY_SHIFT)
-            || str_contains($appendNote, self::NOTE_POLICY_SHIFT);
+        $isLegacyShift = !$shiftTail && (str_contains($leaveNote, self::NOTE_POLICY_SHIFT)
+            || str_contains($appendNote, self::NOTE_POLICY_SHIFT));
 
         if ($isLegacyShift) {
             $weekdays = self::resolveCourseWeekdays(
