@@ -105,6 +105,10 @@ class BillingCorrectionInvoiceRaceTest extends TestCase
         $charge = (int) DB::table('StudentClass')->where('ID', $course->ID)->value('Charge');
 
         $this->assertTrue($committed || $writerLockWait, 'B must either commit or hit lock-wait; neither hung nor no-op');
+        // Explicit CI-log marker so claim-9 path is read from output, not inferred from assertion counts.
+        fwrite(STDERR, $committed
+            ? "claim9_path=commit-then-refuse open_count={$openCount}\n"
+            : "claim9_path=writer-lock-wait open_count={$openCount}\n");
         if ($committed) {
             $this->assertSame('billing_correction_multiple_open_invoices', $refuseCode);
             $this->assertSame(2, $openCount);
