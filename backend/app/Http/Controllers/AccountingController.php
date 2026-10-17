@@ -184,9 +184,10 @@ class AccountingController extends Controller
             $closedReason = (string) ($course->getAttribute('closed_reason') ?? '');
             $status = $stoppedStatuses[(int) $course->getAttribute('ID')] ?? null;
             $state = $status !== null && (int) $course->getAttribute('Stop') === 1 ? $this->stoppedCourseVisibleState($course, $status) : null;
-            $pendingReconciliation = $state === 'pending';
-            $paymentReview = $state === 'review';
-            if ($state === 'pending' || $state === 'review') {
+            // pending_review (#4124): count as pending (amount in totals) and keep payment_review hint.
+            $pendingReconciliation = $state === 'pending' || $state === 'pending_review';
+            $paymentReview = $state === 'review' || $state === 'pending_review';
+            if ($state === 'pending' || $state === 'review' || $state === 'pending_review') {
                 $invoiceTotal = (int) $status['payable_total'];
                 $appliedTotal = (int) $status['applied'];
                 $outstandingTotal = (int) $status['outstanding'];
@@ -221,9 +222,11 @@ class AccountingController extends Controller
                 'has_exception' => $overpaidTotal > 0,
                 'pending_reconciliation' => $pendingReconciliation,
                 'payment_review_required' => $paymentReview,
-                'reconciliation_label' => $pendingReconciliation
-                    ? ($closedReason === '' ? '暫停中，尚未收款' : '課已結束，尚未收款')
-                    : ($paymentReview ? '月結帳單與上課堂數不符，請核對' : ($waived ? '歷史 · 確認不收' : null)),
+                'reconciliation_label' => $state === 'pending_review'
+                    ? '課已結束，尚未收款 · 月結帳單與上課堂數不符，請核對'
+                    : ($pendingReconciliation
+                        ? ($closedReason === '' ? '暫停中，尚未收款' : '課已結束，尚未收款')
+                        : ($paymentReview ? '月結帳單與上課堂數不符，請核對' : ($waived ? '歷史 · 確認不收' : null))),
                 'closed_reason' => $course->getAttribute('closed_reason'),
             ];
         })->values();
@@ -245,6 +248,7 @@ class AccountingController extends Controller
 
     /**
      * Stopped contract: 'pending' (resolver says it still owes), 'review' (payment period unattributable),
+     * 'pending_review' (#4124: review_required + issued open bill — pending totals + review hint),
      * 'history' (closed settled_pending/amended but the resolver says paid) or null.
      * waived is history with outstanding 0, never pending.
      *
@@ -256,7 +260,9 @@ class AccountingController extends Controller
             return null;
         }
         if ($status['status'] === 'review_required') {
-            return 'review';
+            // #4124: issued open bill under review stays findable as pending (matches tuition) and keeps a review hint.
+            // Review without an issued open balance stays review-only on both pages.
+            return BillingPayableResolver::isAmountPendingConfirmation($course, $status) ? 'pending_review' : 'review';
         }
         // Settled by Payment rows although the invoice/closure state says otherwise: keep it in history.
         if ($status['status'] === 'paid' && in_array((string) $course->getAttribute('closed_reason'), ['settled_pending', 'contract_amended'], true)) {
