@@ -311,6 +311,7 @@ class InvoiceCorrectionReissueTest extends TestCase
         } finally {
             $other->rollBack();
             DB::purge('correction_lock_probe');
+            $this->artisan('migrate:fresh'); // The separate-connection fixture was committed; leave no rows behind.
             DB::beginTransaction();
         }
     }
