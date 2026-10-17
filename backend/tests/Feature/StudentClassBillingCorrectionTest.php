@@ -136,10 +136,14 @@ class StudentClassBillingCorrectionTest extends TestCase
         $course = $this->course($student->id, ['ScheduleMode' => 'date', 'Charge' => 8000]);
         $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
             'IssueDate' => '2026-09-01', 'TotalAmount' => 8000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
-        foreach ([8000, -8000] as $amount) {
-            DB::table('Payment')->insert(['InvoiceID' => $invoice->id, 'Amount' => $amount,
-                'Method' => $amount < 0 ? 'void' : 'cash', 'PaidAt' => '2026-09-02']);
-        }
+        $receiptId = DB::table('Payment')->insertGetId(['InvoiceID' => $invoice->id, 'Amount' => 8000,
+            'Method' => 'cash', 'PaidAt' => '2026-09-02']);
+        $report = PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => 'Synthetic fixture', 'reported_amount' => 8000, 'payment_date' => '2026-09-02',
+            'payment_method' => 'cash', 'status' => 'voided', 'payment_id' => $receiptId,
+            'report_token_hash' => hash('sha256', 'synthetic-reversed-history'), 'token_expires_at' => now()->addDay()]);
+        DB::table('Payment')->insert(['InvoiceID' => $invoice->id, 'Amount' => -8000, 'Method' => 'void',
+            'PaidAt' => '2026-09-02', 'payment_report_id' => $report->id]);
         $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/charge-correction",
             ['new_charge' => 500, 'reason' => 'Synthetic verified charge'])->assertOk();
         $this->assertSame(500, (int) $invoice->fresh()->TotalAmount);

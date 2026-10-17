@@ -2673,7 +2673,7 @@ class StudentClassController extends Controller
         }
 
         $classId = (int) $studentClass->getKey();
-        $activePayment = ContractMoneyState::hasActivePayment($classId);
+        $activePayment = ContractMoneyState::blocksUnpaidCorrection($classId);
         if ($activePayment) {
             $this->auditEditBlocked($studentClass, 'charge_correction_payment_locked', 409);
             return response()->json([
@@ -2720,7 +2720,7 @@ class StudentClassController extends Controller
             if ($invoiceIds !== []) {
                 Payment::query()->whereIn('InvoiceID', $invoiceIds)->lockForUpdate()->get();
             }
-            if (ContractMoneyState::hasActivePayment($classId)) {
+            if (ContractMoneyState::blocksUnpaidCorrection($classId)) {
                 abort(response()->json([
                     'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
                     'code' => 'charge_correction_payment_locked',

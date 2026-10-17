@@ -114,19 +114,74 @@ final class ContractMoneyState
 
     // ---- invoice/payment queries -------------------------------------------------------------
 
-    /** A nonzero ledger or stored PaidAmount blocks unpaid-only corrections; inconsistent reversals fail closed. */
+    /** True when a non-void invoice has PaidAmount>0 or a non-void Payment>0 (blocks free billing corrections). */
     public static function hasActivePayment(int $studentClassId): bool
     {
         return DB::table('Invoice')
-            ->select('Invoice.id')
             ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->where('Invoice.StudentClassID', $studentClassId)
             ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
-            // Same signed ledger convention as BillingPayableResolver::validPaymentEvidence.
-            // Group per invoice: a reversal on another bill cannot clear a surviving receipt.
+            ->where(function ($q) {
+                $q->where('Invoice.PaidAmount', '>', 0)
+                    ->orWhere(function ($payment) {
+                        $payment->where('Payment.Amount', '>', 0)
+                            ->where(fn ($method) => $method->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void'));
+                    });
+            })
+            ->exists();
+    }
+
+    /**
+     * Unpaid-only count/charge correction guard. Other callers retain hasActivePayment's historical rule.
+     * Zero invoice net alone is insufficient: every reversal must have unambiguous receipt provenance.
+     * Missing legacy links, duplicate/excess reversals and inconsistent stored balances fail closed.
+     */
+    public static function blocksUnpaidCorrection(int $studentClassId): bool
+    {
+        $invoices = fn () => DB::table('Invoice')
+            ->where('Invoice.StudentClassID', $studentClassId)
+            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'));
+        if ($invoices()->select('Invoice.id')
+            ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->groupBy('Invoice.id', 'Invoice.PaidAmount')
             ->havingRaw("Invoice.PaidAmount != 0 OR SUM(CASE WHEN Payment.Amount < 0 OR Payment.Method = 'void' THEN -ABS(Payment.Amount) ELSE COALESCE(Payment.Amount, 0) END) != 0")
-            ->exists();
+            ->exists()) {
+            return true;
+        }
+        $payments = $invoices()->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')->get(['Payment.*']);
+        $reversals = $payments->filter(fn ($p) => (int) $p->Amount < 0 || (string) $p->Method === 'void');
+        if ($reversals->contains(fn ($p) => empty($p->payment_report_id))) {
+            return true;
+        }
+        $groups = $reversals->groupBy('payment_report_id');
+        $reports = $groups->isEmpty() ? collect() : DB::table('payment_reports')->whereIn('id', $groups->keys()->all())->get()->keyBy('id');
+        $seenReceipts = [];
+        foreach ($groups as $reportId => $rows) {
+            $report = $reports->get($reportId);
+            if (!$report || $report->status !== 'voided' || (int) $report->StudentClassID !== $studentClassId) {
+                return true;
+            }
+            // Older receipts can be linked only by report.payment_id; current receipts also carry payment_report_id.
+            $receipts = $payments->filter(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void'
+                && ((int) ($p->payment_report_id ?? 0) === (int) $reportId || (int) $p->id === (int) ($report->payment_id ?? 0)));
+            if ($receipts->count() !== 1) {
+                return true;
+            }
+            $receipt = $receipts->first();
+            if (isset($seenReceipts[(int) $receipt->id])) {
+                return true;
+            }
+            $seenReceipts[(int) $receipt->id] = true;
+            if ((int) $receipt->InvoiceID !== (int) $report->InvoiceID
+                || (!empty($report->payment_id) && (int) $report->payment_id !== (int) $receipt->id)
+                || (!empty($receipt->payment_report_id) && (int) $receipt->payment_report_id !== (int) $reportId)
+                || (int) $receipt->Amount !== (int) $report->reported_amount
+                || $rows->contains(fn ($p) => (int) $p->InvoiceID !== (int) $receipt->InvoiceID)
+                || (int) $rows->sum(fn ($p) => abs((int) $p->Amount)) > (int) $receipt->Amount) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

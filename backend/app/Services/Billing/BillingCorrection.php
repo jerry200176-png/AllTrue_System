@@ -141,7 +141,7 @@ final class BillingCorrection
             if ($invoiceIds !== []) {
                 Payment::query()->whereIn('InvoiceID', $invoiceIds)->lockForUpdate()->get();
             }
-            if (ContractMoneyState::hasActivePayment($classId)) {
+            if (ContractMoneyState::blocksUnpaidCorrection($classId)) {
                 abort(response()->json([
                     'message' => '處理期間出現有效收款紀錄，請重新整理後改走帳務流程。',
                     'code' => 'billing_correction_payment_locked',
@@ -254,7 +254,7 @@ final class BillingCorrection
         }
 
         $classId = (int) $studentClass->getKey();
-        $activePayment = ContractMoneyState::hasActivePayment($classId);
+        $activePayment = ContractMoneyState::blocksUnpaidCorrection($classId);
         if ($activePayment) {
             $audit('billing_correction_payment_locked', 409);
             return $this->reply([
