@@ -22,6 +22,19 @@ class StudentClassBillingCorrectionTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * Retirable surplus reservations are scheduled rows dated on or after
+     * "today" in the app timezone (Asia/Taipei). Tests whose fixtures use
+     * literal future dates pin the clock before them; otherwise they go red
+     * once Taipei's calendar passes a fixture date (2026-10-16 00:00 Taipei =
+     * 2026-10-15T16:00Z broke the quota-sequence test). Laravel's tearDown
+     * resets the test clock.
+     */
+    private function pinClockBeforeFixtureDates(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-25 10:00:00', 'Asia/Taipei'));
+    }
+
     public function test_editability_preflight_explains_locked_contract_and_safe_actions(): void
     {
         [$token] = $this->director();
@@ -68,6 +81,7 @@ class StudentClassBillingCorrectionTest extends TestCase
 
     public function test_director_can_correct_unpaid_count_course_after_deduction(): void
     {
+        $this->pinClockBeforeFixtureDates();
         [$token, $userId] = $this->director();
         $student = $this->student();
         $course = $this->course($student->id, [
@@ -269,6 +283,7 @@ class StudentClassBillingCorrectionTest extends TestCase
 
     public function test_confirmation_rechecks_payment_report_created_after_preview_without_partial_write(): void
     {
+        $this->pinClockBeforeFixtureDates();
         [$token] = $this->director();
         $student = $this->student();
         $course = $this->course($student->id, ['SessionCount' => 4, 'Charge' => 4400, 'RemainingSessions' => 3, 'UsedSessions' => 1]);
@@ -328,6 +343,7 @@ class StudentClassBillingCorrectionTest extends TestCase
 
     public function test_confirmation_uses_the_same_quota_sequence_when_cancelled_and_leave_history_exist(): void
     {
+        $this->pinClockBeforeFixtureDates();
         [$token] = $this->director();
         $student = $this->student();
         $course = $this->course($student->id, [
@@ -365,6 +381,75 @@ class StudentClassBillingCorrectionTest extends TestCase
         $this->assertDatabaseHas('ClassSession', ['id' => $attended->id, 'Status' => 'attended']);
         $this->assertDatabaseHas('ClassSession', ['id' => $scheduled->last()->id, 'Status' => 'cancelled']);
         $this->assertSame(2, ClassSession::whereIn('id', $scheduled->take(2)->pluck('id'))->where('Status', 'scheduled')->count());
+    }
+
+    /**
+     * Regression for the 2026-10-15T16:00Z CI break: whether the tail
+     * reservation is retired depends only on its Taipei calendar date versus
+     * Taipei "today", never on the runner's wall clock or UTC date. Dated
+     * today it is retired exactly as previewed; dated yesterday and never
+     * recorded, the correction is refused (fail closed).
+     *
+     * @dataProvider taipeiMidnightBoundaryProvider
+     */
+    public function test_tail_reservation_retirement_follows_the_taipei_calendar_day(string $utcNow, bool $tailIsRetirable): void
+    {
+        Carbon::setTestNow(Carbon::parse($utcNow, 'UTC'));
+
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, [
+            'SessionCount' => 4,
+            'Charge' => 4400,
+            'RemainingSessions' => 3,
+            'UsedSessions' => 1,
+        ]);
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-04-01', 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'cancelled']);
+        $attended = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-05-01', 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'attended']);
+        SessionDeductionLedger::create(['student_class_id' => $course->ID, 'class_session_id' => $attended->id, 'event_type' => 'deduct', 'source' => 'attendance', 'minutes' => 120]);
+        $scheduled = collect(['2026-10-01', '2026-10-08', '2026-10-15'])->map(fn (string $date) => ClassSession::create([
+            'StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'scheduled',
+        ]));
+
+        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
+            'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認跨午夜邊界', 'preview' => true,
+        ]);
+
+        if (!$tailIsRetirable) {
+            // Fail closed (Founder 2026-10-16): a tail dated yesterday (Taipei)
+            // that was never recorded blocks the reduction; nothing is written.
+            $preview->assertStatus(422)
+                ->assertJsonPath('code', 'billing_correction_past_unrecorded_sessions')
+                ->assertJsonCount(1, 'past_unrecorded_sessions')
+                ->assertJsonPath('past_unrecorded_sessions.0.session_id', $scheduled->last()->id);
+            $this->assertDatabaseHas('ClassSession', ['id' => $scheduled->last()->id, 'Status' => 'scheduled']);
+            $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 4, 'Charge' => 4400]);
+            $this->assertSame(3, ClassSession::whereIn('id', $scheduled->pluck('id'))->where('Status', 'scheduled')->count());
+
+            return;
+        }
+
+        $preview->assertOk()
+            ->assertJsonCount(1, 'affected_scheduled_sessions')
+            ->assertJsonPath('affected_scheduled_sessions.0.session_id', $scheduled->last()->id);
+
+        // The confirmed write retires exactly what the preview listed.
+        $confirmed = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
+            'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認跨午夜邊界',
+            'confirmation_token' => $preview->json('confirmation_token'),
+        ])->assertOk();
+        $this->assertSame($preview->json('affected_scheduled_sessions'), $confirmed->json('cancelled_scheduled_sessions'));
+        $this->assertDatabaseHas('ClassSession', ['id' => $scheduled->last()->id, 'Status' => 'cancelled']);
+        $this->assertSame(2, ClassSession::whereIn('id', $scheduled->take(2)->pluck('id'))->where('Status', 'scheduled')->count());
+    }
+
+    /** @return array<string, array{string, bool}> */
+    public function taipeiMidnightBoundaryProvider(): array
+    {
+        return [
+            '2026-10-15 23:59 Taipei: tail dated today is retirable' => ['2026-10-15T15:59:00Z', true],
+            '2026-10-16 00:01 Taipei: unrecorded tail dated yesterday blocks the reduction' => ['2026-10-15T16:01:00Z', false],
+        ];
     }
 
     public function test_director_can_correct_unpaid_date_mode_charge_without_touching_entitlement(): void

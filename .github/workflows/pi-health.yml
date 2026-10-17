@@ -23,6 +23,7 @@ jobs:
   health-check:
     name: Pi System Health
     runs-on: ubuntu-latest
+    environment: production-ssh
 
     steps:
       - name: Checkout

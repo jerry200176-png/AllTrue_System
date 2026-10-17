@@ -30,6 +30,7 @@ on:
           - print
           - tutoring
           - feedback
+          - payments
   workflow_run:
     workflows: ['Deploy to Pi']
     types: [completed]
@@ -47,6 +48,7 @@ jobs:
     name: Authenticated calendar/course parity (bounded auth setup + read-only)
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -466,6 +468,8 @@ jobs:
             print) acceptance_args=(e2e/calendar-print-production.spec.js) ;;
             tutoring) acceptance_args=(e2e/tutoring-free-production.spec.js) ;;
             feedback) acceptance_args=(e2e/feedback-launcher-production.spec.js) ;;
+            # #4150: read-only payment-display checks; kept out of `all` so they report separately.
+            payments) acceptance_args=(e2e/payment-display-production.spec.js) ;;
             *) echo "unsupported acceptance scope: ${ACCEPTANCE_SCOPE}" >&2; exit 1 ;;
           esac
           acceptance_args+=(--project=chromium --reporter=json)
@@ -474,6 +478,7 @@ jobs:
           fi
           # Keep going after a Playwright failure so the gate names the failing spec/title in the log
           # (file + test title only, never page text); the step still fails with Playwright's code.
+          # The gate also prints each test's status and pattern-checked numeric coverage counts (#4150).
           playwright_rc=0
           npx playwright test "${acceptance_args[@]}" > playwright-report/acceptance-results.json || playwright_rc=$?
           node ../.github/scripts/acceptance-report-gate.mjs --self-test

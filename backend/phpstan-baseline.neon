@@ -457,12 +457,6 @@ parameters:
 			path: app/Http/Controllers/AlertController.php
 
 		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$ID\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/AlertController.php
-
-		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$student\.$#'
 			identifier: property.notFound
 			count: 1
@@ -496,12 +490,6 @@ parameters:
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 5
-			path: app/Http/Controllers/AlertController.php
-
-		-
-			message: '#^Parameter \#1 \$c of method App\\Http\\Controllers\\AlertController\:\:subjectLabel\(\) expects App\\Models\\StudentClass, Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model given\.$#'
-			identifier: argument.type
-			count: 1
 			path: app/Http/Controllers/AlertController.php
 
 		-

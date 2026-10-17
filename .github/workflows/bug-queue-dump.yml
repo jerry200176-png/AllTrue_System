@@ -29,6 +29,7 @@ jobs:
   dump:
     name: Dump open bug_reports (redacted)
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
     steps:
       - name: Require DUMP_ARTIFACT_KEY (fail closed, no plaintext fallback)

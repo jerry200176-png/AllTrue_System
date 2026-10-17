@@ -87,6 +87,7 @@
                 :amounts="amountsFor(c.id)"
                 :month-lines="monthLinesFor(c.id)"
                 :bill-draft="draftFor(c.id)"
+                :rate-note="issuedBillRateNote(c, payload.invoices)"
                 @record="openEntry"
                 @issue="openIssue"
                 @confirmed="openReceipt"
@@ -136,6 +137,7 @@
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
                         <small v-if="isOtherCourseInvoice(inv)" class="ledger-other-course" data-testid="ledger-other-course">其他課程</small>
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
+                        <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">開單時金額 {{ formatCurrency(rateNoteFor(inv).issued) }} ／ 目前課程金額 {{ formatCurrency(rateNoteFor(inv).current) }}（金額不同可能是約定調整，不代表帳單有誤）</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
                       <td data-label="應繳日">{{ fmtDate(inv.due_date) }}</td>
@@ -306,10 +308,11 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
-import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT } from '../lib/courseMoneyState.js';
+import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, isWaivedContract, latestStandingPayment } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
+import { issuedBillRateNote } from '../lib/issuedBillRateNote.js';
 import ReceiptModal from './ReceiptModal.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
@@ -588,20 +591,26 @@ const owedFor = (id) => (payload.value?.invoices || [])
   .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
 const courseInvoices = (id) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(id) && inv.status !== 'void');
-const lastInvoicePayment = (id) => {
-  const pays = courseInvoices(id).flatMap((inv) => inv.payments || [])
-    .filter((p) => !p.is_void && Number(p.amount) > 0 && p.paid_at);
-  const last = pays.sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)) || Number(b.id) - Number(a.id))[0];
-  return last ? { date: String(last.paid_at).slice(0, 10), amount: Number(last.amount) } : null;
-};
-// Pay line (spec 2.3): latest confirmed receipt = same source as the printed receipt; invoice payments next;
-// the contract's PayDate only as a last fallback (G-009 dual truth, never corrected from here).
+// Reversals are netted per invoice (latestStandingPayment, same rule as the server's last-paid resolver), never filtered by row.
+const lastInvoicePayment = (ids) => ids.flatMap((id) => courseInvoices(id)).map((inv) => latestStandingPayment(inv.payments))
+  .filter(Boolean).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+// Pay line (spec 2.3): latest confirmed receipt = same source as the printed receipt; invoice payments next.
+// #4150: the contract's PayDate / Charge / Paid flag are legacy metadata, not proof of a payment, so they never
+// become a 繳費日 line; the card shows the neutral 需核對 note instead (G-009 dual truth, display only).
+// Waiver and a current-term 免費／贈送 are server verdicts on the course row (ContractMoneyState::isWaived,
+// Invoice::freeGiftHolds); neither is guessed here from balances, Stop or a gift marker on an old bill.
+// A shared count-mode package is one obligation (#3753): markPackagePaid() flags every member, while the receipt and
+// Payment stay on the member used for collection, so evidence is read across packageMemberIds (as pendingReportFor).
 const payLineFor = (course) => {
+  const ids = packageMemberIds(course.id);
   const rc = (payload.value?.receipts || [])
-    .filter((r) => Number(r.student_class_id) === Number(course.id) && r.status === 'confirmed' && Number(r.amount) > 0 && r.payment_date)
+    .filter((r) => ids.includes(Number(r.student_class_id)) && r.status === 'confirmed' && Number(r.amount) > 0 && r.payment_date)
     .sort((a, b) => String(b.payment_date).localeCompare(String(a.payment_date)) || Number(b.report_id) - Number(a.report_id))[0];
   if (rc) return { date: String(rc.payment_date).slice(0, 10), amount: Number(rc.amount) };
-  return lastInvoicePayment(course.id) || (course.paid_at && Number(course.charge) > 0 ? { date: String(course.paid_at).slice(0, 10), amount: Number(course.charge) } : null);
+  const paid = lastInvoicePayment(ids);
+  if (paid) return paid;
+  if (isWaivedContract(course)) return { waived: true };
+  return (course.paid_at || course.paid) && course.free_gift_settled !== true ? { legacyUnverified: true } : null;
 };
 const amountsFor = (id) => {
   const list = courseInvoices(id);
@@ -611,9 +620,8 @@ const amountsFor = (id) => {
 };
 const monthLinesFor = (id) => Object.fromEntries(courseInvoices(id).map((inv) => {
   const key = String(inv.billing_period || inv.period_start || '').slice(0, 7);
-  const paid = (inv.payments || []).filter((p) => !p.is_void && Number(p.amount) > 0 && p.paid_at)
-    .sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)))[0];
-  return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? String(paid.paid_at).slice(0, 10) : '', paidAmount: Number(inv.calculated_applied_amount || 0) }];
+  const paid = latestStandingPayment(inv.payments);
+  return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? paid.date : '', paidAmount: Number(inv.calculated_applied_amount || 0) }];
 }).filter(([k]) => k));
 // #3753 (D18): members of one shared CoursePackage are one obligation; one pending report covers them all.
 const packageMemberIds = (id) => {
@@ -624,6 +632,12 @@ const pendingReportFor = (id) => {
   const ids = packageMemberIds(id);
   const r = (payload.value?.receipts || []).find((x) => ids.includes(Number(x.student_class_id)) && x.status === 'pending');
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
+};
+// #4115: the issued-bill vs current-contract note for the bill row (display only).
+const rateNoteFor = (inv) => {
+  const course = (payload.value?.courses || []).find((c) => Number(c.id) === Number(inv.student_class_id));
+  const note = course ? issuedBillRateNote(course, payload.value?.invoices) : null;
+  return note && note.invoiceId === Number(inv.id) ? note : null;
 };
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
@@ -637,13 +651,15 @@ const packageLeadOf = (c) => {
   const pending = (payload.value?.receipts || []).find((r) => r.status === 'pending' && members.some((m) => Number(m.id) === Number(r.student_class_id)));
   if (!pending && members.filter((m) => owedFor(m.id) > 0).length > 1) return c;
   return (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
+    // #4205: a waiver is terminal (Paid=0 only), so a member that still owes leads before a waived one.
+    || members.find((m) => !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
     || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];
 };
 const packageLead = (c) => packageLeadOf(c).id === c.id;
 // Multiple existing member bills cannot share one batch: the first report blocks siblings. Keep explicit card actions.
 const hasMultiplePackageBills = (c) => !!c.package_id && contractCourses.value.filter((m) => m.package_id === c.package_id && owedFor(m.id) > 0).length > 1;
 
-// D18: every contract the card would offer 登記收款 for (no pending report, money due or not yet billed),
+// D18: every contract the card would offer 登記收款 for (no pending report, money due or not yet billed, not waived),
 // oldest open invoice first; the allocation step fills the oldest and never exceeds what is owed.
 const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
   // directorRecord rejects invoices already marked paid or void.
@@ -651,7 +667,7 @@ const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
   .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
     || Number(a.id) - Number(b.id))[0];
 const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
-  .filter((c) => c.class_type !== 'tutoring' && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && (owedFor(c.id) > 0 || !c.paid))
+  .filter((c) => c.class_type !== 'tutoring' && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && !isWaivedContract(c) && (owedFor(c.id) > 0 || !c.paid))
   .map((c) => {
     const inv = oldestOpenInvoice(c.id);
     return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };
@@ -874,6 +890,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-row--open td{background:var(--ds-canvas-soft)}
 .ledger-row--attention td:nth-child(2) strong{color:var(--ds-ink)}
 .ledger-overpay-hint{display:block;color:var(--ds-danger);font-weight:600}
+.ledger-rate-hint{display:block;color:var(--ds-ink-mute)}
 .ledger-other-course{display:inline-block;color:var(--ds-ink-mute);font-weight:600}
 .due{color:var(--ds-danger);font-weight:700}
 

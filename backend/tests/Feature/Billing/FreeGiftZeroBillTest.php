@@ -203,6 +203,23 @@ class FreeGiftZeroBillTest extends TestCase
         $this->assertSame('void', (string) $first->fresh()->Status);
     }
 
+    /**
+     * #4150 (Codex P2 on #4204): a monthly (date-mode) free/gift course rates its NT$0 period `paid`; the course list
+     * must still say `free` (the resolver verdict), with the monthly summary kept as-is for the period rows.
+     */
+    public function test_a_monthly_free_gift_course_lists_as_free_not_the_period_status(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->monthlyCourse($this->student());
+        $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))->assertOk();
+        $row = collect($this->withToken($token)->getJson('/api/v1/student-classes?student_id=' . $course->StudentID . '&per_page=100')
+            ->assertOk()->json('data'))->firstWhere('ID', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('free', $row['payment_status']);
+        $this->assertIsArray($row['monthly_payment']);
+        $this->assertFalse($row['legacy_paid_flag_only']);
+    }
+
     /** @param array<string, mixed> $over @return array<string, mixed> */
     private function payload(StudentClass $course, array $over = []): array
     {
