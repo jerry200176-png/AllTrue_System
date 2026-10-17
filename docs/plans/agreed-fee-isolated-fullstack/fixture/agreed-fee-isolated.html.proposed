@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agreed-fee isolated fixture</title>
+  </head>
+  <body>
+    <!-- Install path: frontend/e2e/fixtures/agreed-fee-isolated/agreed-fee-isolated.html -->
+    <div id="app"></div>
+    <script type="module" src="./agreed-fee-isolated-mount.js"></script>
+  </body>
+</html>

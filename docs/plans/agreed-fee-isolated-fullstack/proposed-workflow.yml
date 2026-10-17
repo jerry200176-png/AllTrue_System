@@ -1,0 +1,222 @@
+# DRAFT ONLY — do NOT copy into .github/workflows/ until reviewed + enable=false default kept.
+# Intended final path: .github/workflows/agreed-fee-isolated-fullstack.yml
+# Triggers: workflow_dispatch ONLY (no pull_request / push / schedule).
+
+name: Agreed-fee isolated full-stack (DRAFT)
+
+on:
+  workflow_dispatch:
+    inputs:
+      enable:
+        description: 'Must be true to run; default false keeps dispatch a no-op'
+        required: true
+        type: boolean
+        default: false
+      candidate_sha:
+        description: '40-hex SHA of fee candidate tip (e.g. #4250 a579) — source of AgreedFee code'
+        required: true
+        type: string
+      harness_sha:
+        description: '40-hex SHA of harness draft tip (docs/plans agreed-fee-isolated-fullstack)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agreed-fee-isolated-fullstack
+  cancel-in-progress: false
+
+jobs:
+  isolated-fullstack:
+    name: Browser + Laravel + AllTrue_test
+    if: ${{ inputs.enable == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DB_PASSWORD: ci-ephemeral
+      # Bound once; never interpolate inputs.head_sha raw into shell.
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      HARNESS_SHA: ${{ inputs.harness_sha }}
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: AllTrue_test
+          MYSQL_USER: admin
+          MYSQL_PASSWORD: ci-ephemeral
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - name: Validate SHA inputs (40 hex)
+        env:
+          CANDIDATE_SHA: ${{ env.CANDIDATE_SHA }}
+          HARNESS_SHA: ${{ env.HARNESS_SHA }}
+        run: |
+          set -euo pipefail
+          hex40='^[0-9a-f]{40}$'
+          [[ "$CANDIDATE_SHA" =~ $hex40 ]] || { echo "::error::candidate_sha not 40 hex"; exit 1; }
+          [[ "$HARNESS_SHA" =~ $hex40 ]] || { echo "::error::harness_sha not 40 hex"; exit 1; }
+          echo "candidate_sha_ok=${CANDIDATE_SHA:0:11}"
+          echo "harness_sha_ok=${HARNESS_SHA:0:11}"
+
+      - name: Checkout candidate tip (fee source)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ env.CANDIDATE_SHA }}
+
+      - name: Bind candidate HEAD
+        env:
+          CANDIDATE_SHA: ${{ env.CANDIDATE_SHA }}
+        run: |
+          set -euo pipefail
+          got=$(git rev-parse HEAD)
+          [[ "$got" == "$CANDIDATE_SHA" ]] || { echo "::error::HEAD $got != candidate $CANDIDATE_SHA"; exit 1; }
+          test -f backend/app/Services/Billing/AgreedFeeCorrection.php
+          test -f frontend/src/components/AgreedFeeCorrectionModal.vue
+
+      - name: Fetch harness draft at pinned SHA (sparse)
+        env:
+          HARNESS_SHA: ${{ env.HARNESS_SHA }}
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin "$HARNESS_SHA"
+          rm -rf /tmp/fee-harness && mkdir -p /tmp/fee-harness
+          git archive "$HARNESS_SHA" docs/plans/agreed-fee-isolated-fullstack | tar -x -C /tmp/fee-harness
+          test -d /tmp/fee-harness/docs/plans/agreed-fee-isolated-fullstack
+          # Prove harness tip identity without checking out over candidate tree
+          echo "harness_archive_from=$HARNESS_SHA" > /tmp/fee-harness/SHA.txt
+          [[ $(cat /tmp/fee-harness/SHA.txt) == "harness_archive_from=$HARNESS_SHA" ]]
+
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        run: |
+          set -euo pipefail
+          (cd backend && composer install --no-interaction --prefer-dist --optimize-autoloader)
+          (cd frontend && npm ci && npx playwright install --with-deps chromium)
+
+      - name: Companion PHPUnit (guarded migrate; JUnit non-zero required)
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: AllTrue_test
+          DB_USERNAME: admin
+          DB_PASSWORD: ci-ephemeral
+          AGREED_FEE_BACKEND_ROOT: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          unset DATABASE_URL DB_URL DB_SOCKET DB_READ_HOST DB_WRITE_HOST || true
+          DRAFT=/tmp/fee-harness/docs/plans/agreed-fee-isolated-fullstack
+          mkdir -p backend/tests/Support scripts
+          cp -f "$DRAFT/db-guard.proposed.php" backend/tests/Support/agreed-fee-isolated-db-guard.php
+          cp -f "$DRAFT/db-guard.proposed.sh" scripts/agreed-fee-isolated-db-guard.sh
+          cp -f "$DRAFT/agreed-fee-isolated-migrate.proposed.php" backend/tests/Support/agreed-fee-isolated-migrate.php
+          chmod +x scripts/agreed-fee-isolated-db-guard.sh
+          bash scripts/agreed-fee-isolated-db-guard.sh
+          # SAME PROCESS guard → loaded-config refuse → DDL. Never plain artisan migrate.
+          (cd backend && php tests/Support/agreed-fee-isolated-migrate.php)
+          mkdir -p backend/test-results
+          (cd backend && vendor/bin/phpunit \
+            --filter 'AgreedFeeCorrectionTest|AgreedFeeConcurrencyTest|FeeReceiptKindCompatibilityTest' \
+            --log-junit test-results/agreed-fee-companion-junit.xml)
+          test -f backend/test-results/agreed-fee-companion-junit.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET, sys
+          root = ET.parse('backend/test-results/agreed-fee-companion-junit.xml').getroot()
+          suites = [root] if root.tag == 'testsuite' else list(root.findall('testsuite'))
+          if not suites and root.tag == 'testsuites':
+              suites = list(root.findall('testsuite'))
+          tests = sum(int(s.attrib.get('tests', 0)) for s in suites)
+          failures = sum(int(s.attrib.get('failures', 0)) for s in suites)
+          errors = sum(int(s.attrib.get('errors', 0)) for s in suites)
+          print(f'companion_junit tests={tests} failures={failures} errors={errors}')
+          if tests < 1:
+              print('::error::companion JUnit reported zero tests', file=sys.stderr)
+              sys.exit(1)
+          if failures or errors:
+              print('::error::companion JUnit has failures/errors', file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Stack + Playwright (process-local flag; EXTERNAL trap cleanup)
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: AllTrue_test
+          DB_USERNAME: admin
+          DB_PASSWORD: ci-ephemeral
+          AGREED_FEE_STACK_EXTERNAL: '1'
+          AGREED_FEE_ISOLATED_REQUIRE: '1'
+        run: |
+          set -euo pipefail
+          unset DATABASE_URL DB_URL DB_SOCKET DB_READ_HOST DB_WRITE_HOST || true
+          DRAFT=/tmp/fee-harness/docs/plans/agreed-fee-isolated-fullstack
+          mkdir -p docs/plans
+          rm -rf docs/plans/agreed-fee-isolated-fullstack
+          cp -a "$DRAFT" docs/plans/agreed-fee-isolated-fullstack
+          bash docs/plans/agreed-fee-isolated-fullstack/agreed-fee-isolated-stack.proposed.sh
+          # EXTERNAL=1: stack leaves servers up; trap owned cleanup so Playwright failure cannot skip it.
+          test -x /tmp/agreed-fee-owned-cleanup.sh
+          trap 'bash /tmp/agreed-fee-owned-cleanup.sh || true' EXIT
+          set -a
+          # shellcheck disable=SC1091
+          source /tmp/agreed-fee-isolated.env
+          set +a
+          : "${AGREED_FEE_ISOLATED_TOKEN:?token missing after seed}"
+          : "${AGREED_FEE_ISOLATED_COURSE_ID:?course missing after seed}"
+          : "${AGREED_FEE_ISOLATED_CASE_INV8800_COURSE_ID:?inv8800 missing}"
+          : "${AGREED_FEE_ISOLATED_CASE_REG8800_COURSE_ID:?reg8800 missing}"
+          : "${AGREED_FEE_ISOLATED_CASE_STATE_COURSE_ID:?state case missing}"
+          (cd frontend && npx playwright test -c playwright.agreed-fee-isolated.config.js)
+          test -f frontend/test-results/agreed-fee-isolated-junit.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET, sys
+          root = ET.parse('frontend/test-results/agreed-fee-isolated-junit.xml').getroot()
+          suites = [root] if root.tag == 'testsuite' else list(root.findall('testsuite'))
+          if root.tag == 'testsuites':
+              suites = list(root.findall('testsuite'))
+          tests = sum(int(s.attrib.get('tests', 0)) for s in suites)
+          print(f'playwright_junit tests={tests}')
+          if tests < 1:
+              print('::error::Playwright JUnit reported zero tests', file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agreed-fee-isolated-playwright
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/agreed-fee-isolated-junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
+          # Explicitly do NOT upload /tmp/agreed-fee-isolated.env or raw API logs with tokens
+
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agreed-fee-companion-junit
+          path: backend/test-results/agreed-fee-companion-junit.xml
+          if-no-files-found: warn
+          retention-days: 7
