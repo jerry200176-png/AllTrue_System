@@ -150,6 +150,8 @@ class StudentClass extends Model
         if ($ids === []) {
             return false;
         }
+        if (\Illuminate\Support\Facades\Schema::hasTable('invoice_corrections')
+            && DB::table('invoice_corrections')->whereIn('student_class_id', $ids)->exists()) return true;
         $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $ids)->pluck('ID')->all();
 
         // Every append-only table that keeps a contract id. Add new ones here.
