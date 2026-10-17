@@ -1342,17 +1342,25 @@ class PaymentReportController extends Controller
                 return response()->json(['message' => 'Forbidden'], 403);
             }
             $originalAmount = (int) abs((float) $report->getAttribute('reported_amount'));
+            $reportStudentId = (int) $report->getAttribute('StudentID');
 
-            $invoice = $report->getAttribute('InvoiceID')
-                ? Invoice::query()->whereKey($report->getAttribute('InvoiceID'))->lockForUpdate()->first()
-                : null;
-            if ($invoice && ((string) $invoice->Status === 'void' || !$sc
-                || (int) $invoice->StudentClassID !== (int) $sc->ID
-                || (int) $invoice->StudentID !== (int) $report->getAttribute('StudentID')
-                || (int) $sc->StudentID !== (int) $report->getAttribute('StudentID'))) {
+            // Ownership before any write: course must exist and match the report student.
+            // Non-null InvoiceID that cannot be loaded must refuse (do not clear Paid on a missing bill).
+            // Legitimate null-InvoiceID legacy path is allowed only when course/report ownership already matches.
+            if (!$sc || (int) $sc->StudentID !== $reportStudentId) {
                 return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
             }
-            if ($invoice) {
+
+            $invoiceId = $report->getAttribute('InvoiceID');
+            $invoice = null;
+            if ($invoiceId) {
+                $invoice = Invoice::query()->whereKey($invoiceId)->lockForUpdate()->first();
+                if (!$invoice
+                    || (string) $invoice->Status === 'void'
+                    || (int) $invoice->StudentClassID !== (int) $sc->ID
+                    || (int) $invoice->StudentID !== $reportStudentId) {
+                    return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
+                }
                 $invoice->payments()->lockForUpdate()->get();
             }
 
