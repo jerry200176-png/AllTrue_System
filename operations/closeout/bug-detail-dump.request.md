@@ -1,8 +1,8 @@
 # Request: single bug detail dump (read-only)
 
-bug_id: 247
+bug_id: 411
 
-Purpose: Phase A triage for in-app bug #247 linked to GitHub #2179. Obtain the current description, attachments, comments, status logs, and reporter's complete history/cross-campus record per CHAT_BUG_SYSTEM.md §3.6 before proposing a root cause.
+Purpose: Phase A triage for in-app bug #411 (GitHub #4166, area:calendar, auto-intake only). No open implementation PR yet — unlike #409/#413. Obtain description, attachments, comments, status logs, and reporter history per CHAT_BUG_SYSTEM.md §3.6. Paired with queue dump kickoff 2026-10-17T06:41:00Z.
 **No writes.**
 
 # kickoff 2026-08-31T08:09:30+08:00 — re-trigger the paired queue/detail evidence after restoring the main CI→deploy event chain; target in-app bug #247
