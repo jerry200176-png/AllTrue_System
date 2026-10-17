@@ -185,6 +185,11 @@ export const getCourseTotalFee = (course) => {
   // Payment cadence and price unit are separate dimensions. A session-paid
   // course may explicitly be priced by the hour.
   if (paymentType === 'session') {
+    // Existing-course totals come from the server: Charge retains agreed discounts
+    // and session-charge adjustments. Rate x quantity is only a missing-data estimate.
+    const serverCharge = course.effective_charge ?? course.charge ?? course.Charge;
+    const amount = serverCharge == null || serverCharge === '' ? null : toNumber(serverCharge);
+    if (amount != null && amount >= 0) return Math.round(amount);
     if (rateUnit === 'hour') {
       const rate = toNumber(course.rate_per_30min ?? course.Rate) ?? 0;
       return rate > 0 ? Math.round(rate * getCourseTotalHours(course, purchased)) : 0;
