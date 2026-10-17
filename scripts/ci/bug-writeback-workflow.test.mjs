@@ -998,7 +998,7 @@ for (const [id, revision, issue] of [
   assert.match(src, /^permissions:\n  contents: read$/m, 'top-level permissions stay read-only');
   assert.equal((src.match(/issues: write/g) || []).length, 1, 'issues: write only on the issue job');
   assert.ok(src.includes('SourceRef: alltrue:bug_report:${id}') && src.includes('.login == $owner or .login == "app/github-actions"')
-    && src.includes('[.comments[] | select('), 'issue dedupe by SourceRef in body or comments, trusted authors only');
+    && /\[\.comments\[\]\?? \| select\(/.test(src), 'issue dedupe by SourceRef in body or comments, trusted authors only');
   assert.equal((src.match(/if: github\.ref == 'refs\/heads\/main'/g) || []).length, 3, 'every job is main-only');
   assert.ok(!src.includes('page_key'), 'client-controlled page_key is never published');
   assert.ok(src.includes("!(github.event_name == 'workflow_dispatch' && inputs.dry_run)"), 'manual dry run never writes production');
