@@ -149,6 +149,12 @@ final class ContractMoneyState
             return true;
         }
         $payments = $invoices()->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')->get(['Payment.*']);
+        // SQL collation can treat 'VOID' or 'void ' as 'void'; provenance uses exact PHP semantics.
+        // Refuse any balance disagreement rather than normalizing ambiguous historical methods.
+        if ($payments->groupBy('InvoiceID')->contains(fn ($rows) => (int) $rows->sum(fn ($p) =>
+            (int) $p->Amount < 0 || (string) $p->Method === 'void' ? -abs((int) $p->Amount) : (int) $p->Amount) !== 0)) {
+            return true;
+        }
         $reversals = $payments->filter(fn ($p) => (int) $p->Amount < 0 || (string) $p->Method === 'void');
         if ($reversals->contains(fn ($p) => empty($p->payment_report_id))) {
             return true;
