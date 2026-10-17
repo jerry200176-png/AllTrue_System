@@ -1384,14 +1384,13 @@ class PaymentReportController extends Controller
             }
 
             $scPaid = 0;
-            if ($sc) {
-                // F7 S7: recompute from the resolver; no invoice or no longer paid (partial or unpaid) clears the flag.
-                if ($invoice && $this->courseResolvedPaid($sc)) {
-                    $scPaid = (int) $sc->Paid;
-                } else {
-                    $reopen = $sc->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
-                    $sc->update(['Paid' => 0, 'PayDate' => null] + $reopen);
-                }
+            // F7 S7: recompute from the resolver; no invoice or no longer paid (partial or unpaid) clears the flag.
+            // $sc already required above (missing/mismatched course returns void_invoice_mismatch).
+            if ($invoice && $this->courseResolvedPaid($sc)) {
+                $scPaid = (int) $sc->Paid;
+            } else {
+                $reopen = $sc->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
+                $sc->update(['Paid' => 0, 'PayDate' => null] + $reopen);
             }
 
             $report->update([
