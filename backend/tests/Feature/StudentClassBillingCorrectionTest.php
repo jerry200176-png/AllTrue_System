@@ -129,25 +129,52 @@ class StudentClassBillingCorrectionTest extends TestCase
         $this->assertSame(8000, (int) $invoice->fresh()->TotalAmount);
     }
 
-    public function test_date_charge_correction_also_accepts_fully_reversed_history(): void
+    public function test_monthly_reversed_receipt_keeps_both_date_correction_paths_blocked_without_repricing(): void
     {
+        // PR4217: a real confirmation snapshot and billable sessions must not be bypassed by changing stored totals.
+        Carbon::setTestNow('2026-09-30 12:00:00');
         [$token] = $this->director();
         $student = $this->student();
-        $course = $this->course($student->id, ['ScheduleMode' => 'date', 'Charge' => 8000]);
-        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
-            'IssueDate' => '2026-09-01', 'TotalAmount' => 8000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
-        $receiptId = DB::table('Payment')->insertGetId(['InvoiceID' => $invoice->id, 'Amount' => 8000,
-            'Method' => 'cash', 'PaidAt' => '2026-09-02']);
-        $report = PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'InvoiceID' => $invoice->id,
-            'reported_by_name' => 'Synthetic fixture', 'reported_amount' => 8000, 'payment_date' => '2026-09-02',
-            'payment_method' => 'cash', 'status' => 'voided', 'payment_id' => $receiptId,
-            'report_token_hash' => hash('sha256', 'synthetic-reversed-history'), 'token_expires_at' => now()->addDay()]);
-        DB::table('Payment')->insert(['InvoiceID' => $invoice->id, 'Amount' => -8000, 'Method' => 'void',
-            'PaidAt' => '2026-09-02', 'payment_report_id' => $report->id]);
+        $course = $this->course($student->id, ['ScheduleMode' => 'date', 'StartDate' => '2026-09-01',
+            'EndDate' => '2026-09-30', 'Rate' => 2000, 'Charge' => 8000, 'SessionCount' => 4,
+            'RemainingSessions' => 4, 'monthly_sessions' => 4, 'settlement_day' => 30]);
+        foreach (['2026-09-02', '2026-09-09', '2026-09-16', '2026-09-23'] as $date) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date,
+                'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        }
+        $body = ['student_class_id' => $course->ID, 'payment_date' => '2026-09-30',
+            'payment_method' => 'cash', 'amount' => 8000];
+        $original = $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', $body)->assertOk()->json('report_id');
+        $confirmed = $this->withToken($token)->putJson("/api/v1/payment-reports/{$original}/confirm")->assertOk();
+        $invoice = Invoice::findOrFail($confirmed->json('invoice_id'));
+        $this->assertSame(4, (int) $invoice->billing_snapshot['period_sessions']);
+        $this->assertCount(4, $invoice->billing_snapshot['sessions']);
+        $this->withToken($token)->putJson("/api/v1/payment-reports/{$original}/void",
+            ['void_reason' => 'Synthetic mistaken monthly receipt'])->assertOk();
+        $snapshot = $invoice->fresh()->billing_snapshot;
+        $history = DB::table('Payment')->where('InvoiceID', $invoice->id)->orderBy('id')->get()->toArray();
+        $reportCount = PaymentReport::where('StudentClassID', $course->ID)->count();
+
+        // This separate date-mode path was already conservative before PR4217; it is not widened here.
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction",
+            ['new_session_count' => 3, 'new_charge' => 6000, 'new_end_date' => '2026-09-30',
+                'reason' => 'Synthetic date boundary correction'])->assertStatus(409)->assertJsonPath('code', 'billing_correction_payment_locked');
         $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/charge-correction",
-            ['new_charge' => 500, 'reason' => 'Synthetic verified charge'])->assertOk();
-        $this->assertSame(500, (int) $invoice->fresh()->TotalAmount);
-        $this->assertSame([8000, -8000], DB::table('Payment')->where('InvoiceID', $invoice->id)->orderBy('id')->pluck('Amount')->map(fn ($v) => (int) $v)->all());
+            ['new_charge' => 500, 'reason' => 'Synthetic verified charge'])->assertStatus(409)->assertJsonPath('code', 'charge_correction_payment_locked');
+        $this->assertSame(8000, (int) $course->fresh()->Charge);
+        $this->assertSame(4, (int) $course->fresh()->SessionCount);
+        $this->assertSame('2026-09-30', Carbon::parse($course->fresh()->EndDate)->toDateString());
+        $this->assertSame(8000, (int) $invoice->fresh()->TotalAmount);
+        $this->assertSame($snapshot, $invoice->fresh()->billing_snapshot);
+        $this->assertEquals($history, DB::table('Payment')->where('InvoiceID', $invoice->id)->orderBy('id')->get()->toArray());
+        $this->assertSame($reportCount, PaymentReport::where('StudentClassID', $course->ID)->count());
+
+        // The unchanged authoritative monthly amount can still be recorded and confirmed separately.
+        $replacement = $this->withToken($token)->postJson('/api/v1/payment-reports/director-record',
+            $body + ['invoice_id' => $invoice->id])->assertOk()->json('report_id');
+        $this->withToken($token)->putJson("/api/v1/payment-reports/{$replacement}/confirm")->assertOk();
+        $this->assertSame(8000, (int) $invoice->fresh()->TotalAmount);
+        $this->assertSame([8000, -8000, 8000], DB::table('Payment')->where('InvoiceID', $invoice->id)->orderBy('id')->pluck('Amount')->map(fn ($v) => (int) $v)->all());
     }
 
     public function test_editability_preflight_explains_locked_contract_and_safe_actions(): void

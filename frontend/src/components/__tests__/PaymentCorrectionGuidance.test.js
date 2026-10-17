@@ -1,7 +1,9 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import PaymentEntryModal from '../PaymentEntryModal.vue';
+import AccountingLedgerModal from '../AccountingLedgerModal.vue';
+import TuitionCollectionPage from '../../pages/TuitionCollectionPage.vue';
 
 beforeEach(() => {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic-token' }));
@@ -35,4 +37,45 @@ it('preserves an over-limit receipt and directs reconciliation rather than chang
   expect(w.find('input[type="number"]').element.value).toBe('8800');
   expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ amount: 8800, invoice_id: 902 });
   expect(w.emitted('confirmed')).toBeUndefined();
+});
+
+// PR4217: exercise the real child plus each real navigation consumer, not just an isolated emitted event.
+it.each(['collection page', 'accounting ledger'])('keeps mismatched pending-report guidance and the entered amount in the %s', async (owner) => {
+  localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic-token', user: { role: 'director' } }));
+  const row = { id: 901, student_id: 11, student_name: 'Synthetic fixture', subject: 'Synthetic subject',
+    schedule_mode: 'count', payment_status: 'unpaid', alert_type: 'unpaid', charge: 8800, outstanding: 8800,
+    paid_amount: 0, paid: false, stop: false, remaining_sessions: 8,
+    payable_status: 'invoiced', payable_amount: 8800, payable_outstanding: 8800, payable_invoice_id: 902 };
+  const payload = { summary: {}, student: { name: row.student_name }, scope: { student_class_id: 901 },
+    courses: [row], receipts: [], anomalies: [], invoices: [{ id: 902, student_class_id: 901,
+      total_amount: 8800, outstanding_amount: 8800, calculated_applied_amount: 0, status: 'unpaid', payments: [] }] };
+  global.fetch = vi.fn(async (url) => {
+    const path = String(url);
+    if (path.includes('/payment-reports/director-record')) {
+      return { ok: false, status: 422, json: async () => ({ code: 'pending_report_exists', report_id: 903, reported_amount: 8000 }) };
+    }
+    return { ok: true, status: 200, json: async () => path.includes('/accounting/ledger') ? payload : path.includes('/alerts/tuition') ? [row] : [] };
+  });
+  const w = owner === 'collection page'
+    ? mount(TuitionCollectionPage, { props: { branchId: 1, initialTab: 'all' }, global: { stubs: {
+      MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true,
+      AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true,
+    } } })
+    : mount(AccountingLedgerModal, { props: { show: true, studentClassId: 901, branchId: 1 }, global: { stubs: { Transition: false } } });
+  try {
+    await flushPromises();
+    await w.find(owner === 'collection page' ? 'button[title="登記已回報"]' : '[data-testid="contract-record"]').trigger('click');
+    const entry = w.findComponent(PaymentEntryModal);
+    await entry.find('input[type="number"]').setValue(8800);
+    await entry.find('form').trigger('submit');
+    await flushPromises();
+    expect(entry.props('show')).toBe(true);
+    expect(entry.text()).toContain('金額不符請先退回');
+    expect(entry.find('input[type="number"]').element.value).toBe('8800');
+    expect(w.text()).not.toContain('請按確認入帳，不要重複送出');
+    expect(global.fetch.mock.calls.filter(([url]) => String(url).includes('/director-record'))).toHaveLength(1);
+    expect(global.fetch.mock.calls.some(([url]) => /payment-reports\/\d+\/confirm/.test(String(url)))).toBe(false);
+  } finally {
+    w.unmount();
+  }
 });
