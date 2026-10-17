@@ -199,7 +199,7 @@ describe('AgreedFeeCorrectionModal API contract', () => {
   it('does not call payment or receipt endpoints', async () => {
     localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'fixture' }));
     const urls = [];
-    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
       urls.push(String(url));
       if (String(url).endsWith('/preview')) return ok(plan);
       return ok({ correction_id: 1 });
