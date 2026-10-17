@@ -2093,6 +2093,34 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame('2026-04-10', $sc->fresh()->PayDate);
     }
 
+    public function test_void_refuses_zero_invoice_id_as_non_null(): void
+    {
+        // Truthy checks would treat 0 as legacy null; strict !== null must refuse and keep Paid.
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 500, 'PayDate' => '2026-04-10']);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => 0,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 500, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'report_token_hash' => hash('sha256', 'void-zero-invoice'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => 'Zero InvoiceID is not legacy null',
+        ])->assertStatus(422)->assertJsonPath('code', 'void_invoice_mismatch');
+
+        $this->assertSame(0, Payment::where('Method', 'void')->count());
+        $this->assertSame('confirmed', $report->fresh()->status);
+        $this->assertSame(1, (int) $sc->fresh()->Paid);
+        $this->assertSame('2026-04-10', $sc->fresh()->PayDate);
+    }
+
     public function test_void_null_invoice_legacy_path_requires_course_report_ownership(): void
     {
         $token = $this->createDirectorToken([1]);

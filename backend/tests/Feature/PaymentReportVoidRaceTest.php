@@ -91,7 +91,8 @@ class PaymentReportVoidRaceTest extends TestCase
         ]);
 
         $student = Student::create([
-            'name' => 'void-race-'.Str::uuid(),
+            // students.name is varchar(32) strict — keep synthetic name ≤32 (uuid alone is 36).
+            'name' => 'vr-'.substr(str_replace('-', '', (string) Str::uuid()), 0, 28),
             'CampusID' => 1,
             'ClassID' => 1,
             'enable' => 1,

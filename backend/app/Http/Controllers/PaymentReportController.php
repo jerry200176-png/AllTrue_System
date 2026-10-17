@@ -1353,7 +1353,8 @@ class PaymentReportController extends Controller
 
             $invoiceId = $report->getAttribute('InvoiceID');
             $invoice = null;
-            if ($invoiceId) {
+            // Strict non-null: InvoiceID=0 must not take the legacy null path (truthy check would).
+            if ($invoiceId !== null) {
                 $invoice = Invoice::query()->whereKey($invoiceId)->lockForUpdate()->first();
                 if (!$invoice
                     || (string) $invoice->Status === 'void'
