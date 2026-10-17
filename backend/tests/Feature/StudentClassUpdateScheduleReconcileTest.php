@@ -489,10 +489,23 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             'payment_type' => 'session',
         ]);
         $ok->assertOk();
-        $this->assertSame(100, (int) $course->fresh()->TeacherID);
+        // API mutated DB; sync local model so the reset below is actually dirty (#4245 fixture).
+        $course->refresh();
+        $this->assertSame(100, (int) $course->TeacherID);
+        $this->assertStringStartsWith('13:00', (string) $course->time);
 
-        // Reset course teacher so the substitute conflict path is independent.
-        $course->update(['TeacherID' => 99, 'time' => '15:00:00', 'week' => 7]);
+        // Reset for the substitute conflict path. Without refresh(), Eloquent still held
+        // TeacherID=99/time=15 and skipped writing those columns.
+        $course->update([
+            'TeacherID' => 99,
+            'time' => '15:00:00',
+            'week' => 7,
+            'ClassType' => 'one_on_one',
+            'by1' => 1,
+        ]);
+        $course->refresh();
+        $this->assertSame(99, (int) $course->TeacherID, 'reset must land in DB before second PUT');
+        $this->assertSame('15:00:00', (string) $course->time);
 
         $contractStudent = Student::create([
             'name' => '合併路徑代課合約',
@@ -568,7 +581,8 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
         $blocked->assertStatus(409)
             ->assertJsonPath('code', 'teacher_schedule_conflict')
             ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
-        $this->assertSame(99, (int) $course->fresh()->TeacherID);
+        $course->refresh();
+        $this->assertSame(99, (int) $course->TeacherID, 'rejected teacher+time edit must not mutate contract teacher');
     }
 
     /**
