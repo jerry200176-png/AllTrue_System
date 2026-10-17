@@ -52,13 +52,8 @@ final class InvoiceCorrectionLink
         return ['refusal' => null, 'replay' => null];
     }
 
-    /**
-     * Records the link row (UNIQUE original bill: a concurrent different request that got past the checks fails here
-     * and gets 409), then both notes and an audit event. The old bill gets the full tag when it fits after trimming
-     * older free text, else a short tag naming the new bill and the link row; if even that cannot fit beside its
-     * existing tags (a very long void reason), its note is left as is and the link row carries the link. Existing
-     * tags are never cut. @return int the invoice_corrections id
-     */
+    /** Permanent unique link and audit; retain whole tags, trimming only older free text.
+     * Falls back to a short tag or retained link row when notes are full. @return int */
     public function link(Invoice $replaced, Invoice $invoice, ?int $userId, string $reason, string $key): int
     {
         try {
@@ -105,10 +100,7 @@ final class InvoiceCorrectionLink
         return trim(preg_replace('/\s+/u', ' ', $clean) ?? '');
     }
 
-    /**
-     * Invoice.Note is VARCHAR(255). Existing tags and the new tag are kept whole; only older free text is trimmed.
-     * Null when the tags alone do not fit, or when the free text holds a bracket that is not a whole tag (never cut).
-     */
+    /** Retain whole tags within VARCHAR(255); null if tags or bracketed free text cannot fit. */
     private static function appendNoteTag(string $note, string $tag): ?string
     {
         [$free, $tags] = self::parseNote($note);
@@ -127,12 +119,8 @@ final class InvoiceCorrectionLink
         return $free === '' ? $tail : $free . ' ' . $tail;
     }
 
-    /**
-     * Free text and whole tags. A void / exception-void tag is matched up to its fixed "user_id=…; at=…" ending, so an
-     * older reason with brackets ("[void: 開錯 [註] …]") stays one tag.
-     *
-     * @return array{0: string, 1: list<string>}
-     */
+    /** Whole void tags include bracketed reasons through their fixed user_id/at ending.
+     * @return array{0: string, 1: list<string>} */
     private static function parseNote(string $note): array
     {
         $pattern = '/\[(?:void|exception-void): .*?; user_id=[^;\]]*; at=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:; positive_payments=[^\]]*?; net=-?\d+)?\]|\[[^\[\]]*\]/su';
