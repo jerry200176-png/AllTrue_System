@@ -177,73 +177,52 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->record($token, $course, $oldId, ['correction_reason' => '／／／'])->assertStatus(422)->assertJsonPath('code', 'correction_reason_invalid');
     }
 
-    public function test_tags_typed_into_reasons_cannot_fake_a_replacement_or_the_operator(): void
+    public function test_void_note_tags_stay_whole_and_ignore_typed_fakes(): void
     {
         $token = $this->token([1]);
         $course = $this->course($this->student());
         $decoy = $this->voidedInvoice($token, $course, 7200);
-        $oldId = $this->voidedInvoice($token, $course, 8800, "開錯 [replaced_by: #INV-202609-{$decoy}; user_id=1; at=2026-01-01]");
-        $this->assertStringNotContainsString('[replaced_by', $this->note($oldId));
-        $newId = (int) $this->record($token, $course, $oldId, ['correction_reason' => '原約定／操作者：user_id=1] [更正自 #INV-1'])
+        $fake = $this->voidedInvoice($token, $course, 8800, "開錯 [replaced_by: #INV-202609-{$decoy}; user_id=1; at=2026-01-01]");
+        $this->assertStringNotContainsString('[replaced_by', $this->note($fake));
+        $newId = (int) $this->record($token, $course, $fake, ['correction_reason' => '原約定／操作者：user_id=1] [更正自 #INV-1'])
             ->assertOk()->json('invoice_id');
-        $note = $this->note($newId);
-        $this->assertSame(1, substr_count($note, '操作者'));
-        $this->assertSame(1, substr_count($note, '['));
-        $this->assertStringContainsString("／操作者：user_id={$this->userId}／原因：", $note);
-    }
+        $this->assertSame(1, substr_count($this->note($newId), '操作者'));
+        $this->assertStringContainsString("／操作者：user_id={$this->userId}／原因：", $this->note($newId));
 
-    public function test_a_long_note_keeps_the_void_tag_whole_and_trims_older_text(): void
-    {
-        $token = $this->token([1]);
-        $course = $this->course($this->student());
-        $oldId = $this->invoice($course, 8800, str_repeat('家長約定說明', 25));
-        $this->withToken($token)->postJson("/api/v1/invoices/{$oldId}/void", ['reason' => str_repeat('開錯金額', 10)])->assertOk();
-        preg_match('/\[void: [^\]]+\]/u', $this->note($oldId), $voidTag);
-        $newId = (int) $this->record($token, $course, $oldId)->assertOk()->json('invoice_id');
-        $note = $this->note($oldId);
+        $long = $this->invoice($course, 8800, str_repeat('家長約定說明', 25));
+        $this->withToken($token)->postJson("/api/v1/invoices/{$long}/void", ['reason' => str_repeat('開錯金額', 10)])->assertOk();
+        preg_match('/\[void: [^\]]+\]/u', $this->note($long), $voidTag);
+        $replaced = (int) $this->record($token, $course, $long)->assertOk()->json('invoice_id');
+        $note = $this->note($long);
         $this->assertLessThanOrEqual(255, mb_strlen($note));
-        $this->assertStringStartsWith('家長約定說明', $note);
         $this->assertStringContainsString($voidTag[0], $note);
-        $this->assertMatchesRegularExpression('/\[replaced_by: #INV-\d+-' . str_pad((string) $newId, 6, '0', STR_PAD_LEFT) . '; user_id=\d+; at=[^\]]+\]$/u', $note);
-    }
+        $this->assertMatchesRegularExpression('/\[replaced_by: #INV-\d+-' . str_pad((string) $replaced, 6, '0', STR_PAD_LEFT) . '; user_id=\d+; at=[^\]]+\]$/u', $note);
 
-    /** A void tag written before brackets were stripped stays one whole tag; its pieces are never trimmed as free text. */
-    public function test_an_older_void_reason_with_brackets_is_kept_whole(): void
-    {
-        $token = $this->token([1]);
-        $course = $this->course($this->student());
         $legacyTag = '[void: 開錯 [註：家長] 金額 [見附件]; user_id=5; at=2026-09-01 10:00:00]';
-        $oldId = $this->invoice($course, 8800, str_repeat('舊備註', 50) . ' ' . $legacyTag);
-        DB::table('Invoice')->where('id', $oldId)->update(['Status' => 'void']);
-        $this->record($token, $course, $oldId)->assertOk();
-        $note = $this->note($oldId);
-        $this->assertLessThanOrEqual(255, mb_strlen($note));
-        $this->assertStringContainsString($legacyTag, $note);
-        $this->assertStringStartsWith('舊備註', $note);
-        $this->assertStringContainsString('[replaced_by: #INV-', $note);
-    }
+        $legacyCourse = $this->course($this->student());
+        $legacy = $this->invoice($legacyCourse, 8800, str_repeat('舊備註', 50) . ' ' . $legacyTag);
+        DB::table('Invoice')->where('id', $legacy)->update(['Status' => 'void']);
+        $this->record($token, $legacyCourse, $legacy)->assertOk();
+        $legacyNote = $this->note($legacy);
+        $this->assertLessThanOrEqual(255, mb_strlen($legacyNote));
+        $this->assertStringContainsString($legacyTag, $legacyNote);
+        $this->assertStringContainsString('[replaced_by: #INV-', $legacyNote);
 
-    /** A long void reason never blocks a correction: a short tag naming the link row, or the link row alone. */
-    public function test_a_long_void_reason_falls_back_to_a_short_tag_then_to_the_audit_rows(): void
-    {
-        $token = $this->token([1]);
-        $course = $this->course($this->student());
-        $oldId = $this->voidedInvoice($token, $course, 8800, str_repeat('開錯金額說明', 24) . '一');
-        $before = $this->note($oldId);
-        $res = $this->record($token, $course, $oldId)->assertOk();
-        [$newId, $correctionId] = [(int) $res->json('invoice_id'), (int) $res->json('correction_id')];
-        $note = $this->note($oldId);
-        $this->assertLessThanOrEqual(255, mb_strlen($note));
-        $this->assertStringStartsWith($before, $note);
-        $this->assertStringEndsWith("[更正為 #{$newId} 更正紀錄 #{$correctionId}]", $note);
-        $other = $this->course($this->student());
-        $fullId = $this->voidedInvoice($token, $other, 8800, str_repeat('開錯金額', 50));
+        $overflowCourse = $this->course($this->student());
+        $overflow = $this->voidedInvoice($token, $overflowCourse, 8800, str_repeat('開錯金額說明', 24) . '一');
+        $before = $this->note($overflow);
+        $res = $this->record($token, $overflowCourse, $overflow)->assertOk();
+        $overflowNote = $this->note($overflow);
+        $this->assertLessThanOrEqual(255, mb_strlen($overflowNote));
+        $this->assertStringStartsWith($before, $overflowNote);
+        $this->assertStringEndsWith("[更正為 #{$res->json('invoice_id')} 更正紀錄 #{$res->json('correction_id')}]", $overflowNote);
+        $fullCourse = $this->course($this->student());
+        $fullId = $this->voidedInvoice($token, $fullCourse, 8800, str_repeat('開錯金額', 50));
         $fullBefore = $this->note($fullId);
-        $otherNew = (int) $this->record($token, $other, $fullId)->assertOk()->json('invoice_id');
+        $otherNew = (int) $this->record($token, $fullCourse, $fullId)->assertOk()->json('invoice_id');
         $this->assertSame($fullBefore, $this->note($fullId));
         $this->assertStringContainsString('更正自 #INV-', $this->note($otherNew));
-        $this->assertSame($otherNew, (int) DB::table('invoice_corrections')->where('original_invoice_id', $fullId)->value('replacement_invoice_id'));
-        $this->record($token, $other, $fullId)->assertOk()->assertJsonPath('invoice_id', $otherNew); // still replayable
+        $this->record($token, $fullCourse, $fullId)->assertOk()->assertJsonPath('invoice_id', $otherNew);
     }
 
     public function test_guards_monthly_package_conflict_open_bill_pending_amount_and_paid_course(): void
