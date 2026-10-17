@@ -182,6 +182,19 @@ final class BillingCorrection
                 ], 409));
             }
 
+            // Authoritative current-read under course lock before stamp (RR locking read).
+            // Invoice.StudentClassID is unindexed — do not rely on gap locks for INSERT exclusion.
+            $openInvoices = Invoice::query()
+                ->where('StudentClassID', $classId)
+                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+                ->orderBy('id')->lockForUpdate()->get();
+            if ($openInvoices->count() > 1) {
+                abort(response()->json([
+                    'message' => '此課程有多張未作廢帳單，無法用堂數更正一次改寫全部應收；請先整理帳單後再操作。',
+                    'code' => 'billing_correction_multiple_open_invoices',
+                ], 409));
+            }
+
             $locked->SessionCount = $newCount;
             $locked->Charge = $newCharge;
             $locked->save();

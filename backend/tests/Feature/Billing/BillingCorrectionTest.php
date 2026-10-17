@@ -121,4 +121,55 @@ class BillingCorrectionTest extends TestCase
         $this->assertSame(200, $done['status']);
         $this->assertSame(6, (int) $c->fresh()->SessionCount);
     }
+
+    /**
+     * Reachability on the unpaid count matched-reversal correction path (not a default exclusion):
+     * - legacy backfill selects Paid=1 only → disjoint from Paid=0 correction courses
+     * - transfer paid-birth / POP catchup attach Invoice rows to a *new* StudentClass id
+     * Pre-stamp current-read still refuses ≥2 open invoices under the course lock.
+     */
+    public function test_bypass_writers_not_reachable_and_pre_stamp_current_read_refuses_multi_open(): void
+    {
+        $svc = app(BillingCorrection::class);
+        $c = $this->course();
+        $this->assertSame(0, (int) $c->Paid);
+
+        // Same selector as BackfillLegacyPayments::handle — unpaid correction courses cannot be selected.
+        $backfillIds = StudentClass::query()->where('Paid', 1)->where('Charge', '>', 0)->whereNotNull('Charge')
+            ->pluck('ID')->all();
+        $this->assertNotContains((int) $c->ID, $backfillIds);
+
+        // Transfer paid-birth + POP catchup create Invoice on a newly created course, never the source id.
+        $newCourse = StudentClass::create([
+            'StudentID' => $c->StudentID, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
+            'StartDate' => '2032-04-01', 'TotalHours' => 10, 'Charge' => 2000, 'Paid' => 1, 'Rate' => 500, 'MDate' => now(),
+            'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 4, 'SessionDuration' => 120, 'RemainingSessions' => 4,
+            'ClassType' => 'one_on_one', 'UsedSessions' => 0,
+        ]);
+        $transferOrPopInvoice = Invoice::create([
+            'StudentID' => $c->StudentID, 'StudentClassID' => $newCourse->ID, 'IssueDate' => '2032-04-01',
+            'TotalAmount' => 2000, 'PaidAmount' => 2000, 'Status' => 'paid', 'Note' => 'synthetic transfer/pop birth',
+        ]);
+        $this->assertNotSame((int) $c->ID, (int) $transferOrPopInvoice->StudentClassID);
+        $this->assertSame(0, Invoice::query()->where('StudentClassID', $c->ID)->where('Status', '!=', 'void')->count());
+
+        // Pre-stamp current-read: two open invoices on the correction course must refuse without stamping.
+        $a = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-01',
+            'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+        $b = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-02',
+            'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+        $token = $svc->confirmationToken($c->fresh(), 6, 3000, 0, [], 7);
+        try {
+            $svc->applyCountCorrection($c->fresh(), 6, 3000, 'race current-read', 8, 4000, $token, 7);
+            $this->fail('expected multi-open refuse');
+        } catch (HttpResponseException $e) {
+            $body = json_decode($e->getResponse()->getContent(), true);
+            $this->assertSame(409, $e->getResponse()->getStatusCode());
+            $this->assertSame('billing_correction_multiple_open_invoices', $body['code']);
+        }
+        $this->assertSame([4000, 4000, 8, 4000], [
+            (int) $a->fresh()->TotalAmount, (int) $b->fresh()->TotalAmount,
+            (int) $c->fresh()->SessionCount, (int) $c->fresh()->Charge,
+        ]);
+    }
 }
