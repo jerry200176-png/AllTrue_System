@@ -20,9 +20,63 @@ class InvoiceCorrectionReissueTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function refreshTestDatabase()
+    {
+        // Exercise adoption DDL before the fixture transaction, without destructive down() on retained history.
+        $this->artisan('migrate:fresh');
+        if (str_starts_with($this->getName(false), 'test_4132_')
+            && !\Illuminate\Support\Facades\Schema::hasColumn('invoice_corrections', 'kind')) {
+            \Illuminate\Support\Facades\Schema::table('invoice_corrections', function ($table) {
+                $table->string('kind', 32)->nullable()->default('receipt_reissue');
+            });
+        }
+        \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = true;
+        $this->beginDatabaseTransaction();
+    }
+
     private const KEY = '6f1c2b7e-3a4d-4e5f-8a9b-0c1d2e3f4a5b';
 
     private int $userId = 0;
+
+    /** @dataProvider nonReceiptKinds */
+    public function test_4132_fee_or_unknown_kind_cannot_be_replayed_as_a_pending_report(?string $kind): void
+    {
+        $token = $this->token([1]); $course = $this->course($this->student());
+        $oldId = $this->voidedInvoice($token, $course, 8800);
+        $replacementId = $this->invoice($course, 7200);
+        $reportId = $kind === 'receipt_reissue' ? null : DB::table('payment_reports')->insertGetId([
+            'StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'InvoiceID' => $replacementId,
+            'reported_by_name' => 'Synthetic fixture', 'payment_date' => '2026-09-01', 'payment_method' => 'cash',
+            'reported_amount' => 7200, 'status' => 'pending', 'report_token_hash' => hash('sha256', uniqid()),
+            'token_expires_at' => now()->addDay()]);
+        DB::table('invoice_corrections')->insert(['kind' => $kind, 'original_invoice_id' => $oldId,
+            'replacement_invoice_id' => $replacementId, 'student_class_id' => $course->ID,
+            'payment_report_id' => $reportId, 'amount' => 7200, 'reason' => '原約定 7200',
+            'idempotency_key' => self::KEY, 'operator_user_id' => $this->userId, 'created_at' => now()]);
+        $before = DB::table('Invoice')->orderBy('id')->get()->toArray();
+        $beforeReports = DB::table('payment_reports')->orderBy('id')->get()->toArray();
+        $this->record($token, $course, $oldId)->assertStatus(409)->assertJsonPath('code', 'correction_replay_incompatible');
+        $this->assertEquals($before, DB::table('Invoice')->orderBy('id')->get()->toArray());
+        $this->assertEquals($beforeReports, DB::table('payment_reports')->orderBy('id')->get()->toArray());
+        $this->assertSame(0, DB::table('Payment')->count());
+        $this->assertSame(1, DB::table('invoice_corrections')->count());
+    }
+
+    public static function nonReceiptKinds(): array
+    {
+        return [['agreed_fee'], ['agreed_fee_unbilled'], ['unknown'], ['receipt_reissue']];
+    }
+
+    public function test_4132_explicit_receipt_kind_replays_its_existing_report(): void
+    {
+        $token = $this->token([1]); $course = $this->course($this->student());
+        $oldId = $this->voidedInvoice($token, $course, 8800);
+        $first = $this->record($token, $course, $oldId)->assertOk();
+        $this->record($token, $course, $oldId)->assertOk()->assertJsonPath('replayed', true)
+            ->assertJsonPath('report_id', $first->json('report_id'))->assertJsonPath('invoice_id', $first->json('invoice_id'));
+        $this->assertSame(1, DB::table('payment_reports')->count());
+        $this->assertSame(0, DB::table('Payment')->count());
+    }
 
     public function test_correction_issues_a_linked_bill_and_confirm_settles_it(): void
     {
