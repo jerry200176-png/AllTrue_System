@@ -27,6 +27,24 @@ abstract class AgreedFeeConcurrencyHarness extends TestCase
         $this->assertSame('REPEATABLE-READ', DB::selectOne('SELECT @@transaction_isolation AS level')->level);
     }
     protected function tearDown(): void { foreach ($this->files as $p) @unlink($p); RefreshDatabaseState::$migrated = false; parent::tearDown(); }
+
+    /**
+     * Committed AllTrue_test schema lifecycle for mid-case DDL (RENAME/DROP/ADD).
+     * No RefreshDatabase outer wrap — workers use separate PDOs and must see commits.
+     * Call only when transactionLevel is already 0 (this harness never opens an outer txn).
+     */
+    protected function rebuildCommittedTestSchema(): void
+    {
+        $level = DB::connection()->transactionLevel();
+        if ($level !== 0) {
+            throw new \RuntimeException(
+                'Concurrency harness has no outer Testing txn; expected level 0 before schema rebuild, got '.$level
+            );
+        }
+        $this->artisan('migrate:fresh', ['--force' => true]);
+        AgreedFeeTestSchema::ensureExtensionColumns();
+        RefreshDatabaseState::$migrated = false;
+    }
     protected function file(): string { $p = '/tmp/fee-'.Str::uuid(); $this->files[] = $p; return $p; }
     protected function actor(array $f): array { return ['id' => (int) $f['user']->id, 'role' => 'director', 'campus_ids' => [1], 'student_id' => (int) $f['student']->id]; }
     protected function preview(array $f, ?array $body = null): array

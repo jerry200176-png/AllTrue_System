@@ -125,9 +125,10 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
 
     public function test_missing_extension_fails_closed_and_legacy_shared_table_adoption_keeps_receipt_kind(): void
     {
-        // End outer Testing txn before RENAME/DROP — MySQL DDL implicit-commits and must not
-        // leave Laravel's transaction counter desynced (next begin would be SAVEPOINT-only).
-        $this->endOuterTestingTransactions();
+        // Concurrency harness uses committed migrate:fresh (no RefreshDatabase outer txn) so
+        // dual-process workers see rows. DDL is safe at transactionLevel 0 — do not call
+        // AgreedFeeRefreshDatabase::endOuter/rebuildIsolated (undefined on this parent).
+        $this->assertSame(0, DB::connection()->transactionLevel(), 'harness must stay non-transactional for workers');
         $f = $this->fixture(); $body = $this->feePayload($f['invoice']);
         DB::statement('RENAME TABLE invoice_corrections TO synthetic_missing_corrections');
         try {
@@ -144,7 +145,7 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
             $row = DB::table('invoice_corrections')->sole(); $this->assertSame('receipt_reissue', $row->kind);
             $this->assertSame(7600, (int) $row->amount); $this->assertNull($row->new_charge);
         } finally {
-            $this->rebuildIsolatedSchema();
+            $this->rebuildCommittedTestSchema();
         }
     }
 
