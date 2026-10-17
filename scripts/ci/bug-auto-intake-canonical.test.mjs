@@ -22,7 +22,7 @@ const created = fs.existsSync(p+'/created');
 let issues = [...cfg.issues, ...(created ? (cfg.race || []) : [])];
 if (created) issues.push({number:9000,url:'https://github.com/owner/repo/issues/9000',state:'OPEN',body:'SourceRef: alltrue:bug_report:416',author:{login:'github-actions'},comments:[]});
 if (a[0] === 'issue' && a[1] === 'list') {
-  if (cfg.searchError) process.exit(1);
+  if (cfg.searchError || (created && cfg.searchErrorAfterCreate)) process.exit(1);
   console.log(issues.filter(x=>!(cfg.hidden || []).includes(x.number)).map(x=>x.number).join('\\n'));
 } else if (a[0] === 'issue' && a[1] === 'view') {
   const n = Number(a[2]); if ((cfg.viewError || []).includes(n)) process.exit(1);
@@ -97,4 +97,16 @@ r = run([], { race: [issue(8999)] }); ok(r, 8999);
 assert.equal(writes(r, 'close').length, 1, 'legacy oldest trusted race dedupe retained');
 r = run([]); ok(r, 9000); assert.equal(writes(r, 'create').length, 1);
 r = run([], { dry: true }); assert.equal(r.status, 0); assert.equal(writes(r, 'create').length, 0);
+for (const opts of [{ searchErrorAfterCreate: true },
+  { race: [issue(8999, 'CLOSED', 'SourceRef: alltrue:bug_report:416\n' + marker(9500))] }]) {
+  r = run([], opts);
+  assert.notEqual(r.status, 0); assert.equal(r.output, '');
+  assert.equal(writes(r, 'create').length, 1, 'created issue history remains after race lookup failure');
+  assert.equal(writes(r, 'reopen').length, 0); assert.equal(writes(r, 'close').length, 0);
+}
+for (const [issues, opts, failedOp] of [[ [issue(1, 'CLOSED')], { writeError: true }, 'reopen' ],
+  [ [], { race: [issue(8999)], writeError: true }, 'close' ]]) {
+  r = run(issues, opts); assert.notEqual(r.status, 0); assert.equal(r.output, '');
+  assert.equal(writes(r, failedOp).length, 1, 'failed mutation never produces acknowledgement pairs');
+}
 console.log('bug-auto-intake canonical behavior: PASS');
