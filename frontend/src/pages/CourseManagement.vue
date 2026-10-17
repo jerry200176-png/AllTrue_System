@@ -993,8 +993,18 @@
       :subject="contractAdjustmentCourse?.subject_name || contractAdjustmentCourse?.subject || ''"
       :payment-status="contractAdjustmentCourse?.payment_status || ''"
       :billing-available="isBillingCorrectionStructureEligible(contractAdjustmentCourse)"
+      :agreed-fee-available="agreedFeeCorrectionAvailable"
       @close="showContractAdjustmentModal = false"
       @choose="chooseContractAdjustment"
+    />
+
+    <AgreedFeeCorrectionModal
+      v-if="showAgreedFeeCorrectionModal && agreedFeeCorrectionAvailable && agreedFeeCourseId"
+      :key="agreedFeeCourseId"
+      :course-id="agreedFeeCourseId"
+      :invoice-id="agreedFeeInvoiceId"
+      @close="closeAgreedFeeCorrection"
+      @changed="onAgreedFeeCorrectionChanged"
     />
 
     <ContractAmendmentRevertModal
@@ -1458,6 +1468,7 @@ import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
+import AgreedFeeCorrectionModal from '../components/AgreedFeeCorrectionModal.vue';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -2389,6 +2400,12 @@ const {
 });
 const showContractAdjustmentModal = ref(false);
 const contractAdjustmentCourse = ref(null);
+// Default-off UX gate only. Backend flag + role/campus remain the security boundary.
+// Stays false until a server payload explicitly grants agreed_fee_correction (never a client flag).
+const agreedFeeCorrectionAvailable = ref(false);
+const showAgreedFeeCorrectionModal = ref(false);
+const agreedFeeCourseId = ref(null);
+const agreedFeeInvoiceId = ref(null);
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
@@ -2462,6 +2479,37 @@ function chooseContractAdjustment(action) {
   }
   if (action === 'transfer') openTransferSessionsModal(course);
   if (action === 'amendment') openContractAmendmentModal(course);
+  if (action === 'agreed_fee') {
+    if (!agreedFeeCorrectionAvailable.value) return;
+    openAgreedFeeCorrection(course);
+  }
+}
+
+function soleUnpaidInvoiceIdFromCourse(course) {
+  // Only pass an invoice id the server already named as the sole unpaid obligation.
+  // Never invent from Charge / Rate×count / payment_status.
+  const raw = course?.sole_unpaid_invoice_id ?? course?.agreed_fee_invoice_id ?? null;
+  const id = Number(raw);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function openAgreedFeeCorrection(course) {
+  const courseId = Number(course?.id ?? course?.ID ?? 0);
+  if (!Number.isInteger(courseId) || courseId <= 0) return;
+  agreedFeeCourseId.value = courseId;
+  agreedFeeInvoiceId.value = soleUnpaidInvoiceIdFromCourse(course);
+  showAgreedFeeCorrectionModal.value = true;
+}
+
+function closeAgreedFeeCorrection() {
+  showAgreedFeeCorrectionModal.value = false;
+  agreedFeeCourseId.value = null;
+  agreedFeeInvoiceId.value = null;
+}
+
+function onAgreedFeeCorrectionChanged() {
+  closeAgreedFeeCorrection();
+  loadCourses();
 }
 
 async function submitBillingCorrection() {
