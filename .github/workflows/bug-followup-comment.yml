@@ -200,7 +200,9 @@ jobs:
             "BUG_ID='$BUG_ID' EXPECTED_STATUS='$EXPECTED_STATUS' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' PRODUCTION_REVISION='$PRODUCTION_REVISION' DEPLOY_RUN_ID='$DEPLOY_RUN_ID' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
           set -euo pipefail
           cd /home/admin/backend
-          PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
+          # Preserve exact approved bytes (incl. trailing newlines). Bare $(...) strips them.
+          PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d; printf x)"
+          PUBLIC_REPLY="${PUBLIC_REPLY%x}"
           export BUG_ID EXPECTED_STATUS GITHUB_ISSUE_URL PUBLIC_REPLY PRODUCTION_REVISION DEPLOY_RUN_ID
           if [[ "$EXPECTED_STATUS" == closed ]]; then
             # Same gate as Phase-C: never announce a revision that is not in production.

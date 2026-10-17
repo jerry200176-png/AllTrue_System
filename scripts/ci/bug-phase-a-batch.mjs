@@ -2,6 +2,7 @@
 /**
  * Bounded Phase-A batch helper for bug-phase-a-triage.yml.
  * Max 5 rows; triaged-only (close_as_logged forced false); PII-safe (IDs/hashes only).
+ * Disposition kinds must match BugReportService::DISPOSITION_KINDS (not a bare [a-z_]+ regex).
  * Does not implement Pi write — the workflow reuses the existing REMOTE script per row.
  */
 import { createHash } from 'node:crypto';
@@ -9,6 +10,19 @@ import fs from 'node:fs';
 
 export const MAX_BATCH = 5;
 export const MAX_REPLY_CHARS = 2000;
+
+/** Keep in sync with App\Services\BugReportService::DISPOSITION_KINDS. */
+export const DISPOSITION_KINDS = Object.freeze([
+  'bug',
+  'suggestion',
+  'ux_friction',
+  'duplicate',
+  'already_solved',
+  'not_planned',
+  'needs_info',
+]);
+
+const ALLOWED_KEYS = new Set(['bug_id', 'github_issue_url', 'disposition', 'public_reply', 'close_as_logged']);
 
 /** Canonical row line used to bind Founder approval to the exact batch payload. */
 export function rowCanonical({ bug_id, github_issue_url, disposition, public_reply }) {
@@ -32,6 +46,10 @@ export function issueInRepo(url, repo) {
   const prefix = `https://github.com/${repo}/issues/`;
   if (!url.startsWith(prefix)) return false;
   return /^[1-9][0-9]*$/.test(url.slice(prefix.length));
+}
+
+function containsNul(value) {
+  return typeof value === 'string' && value.includes('\0');
 }
 
 /**
@@ -59,6 +77,12 @@ export function validateBatch(raw, { repo }) {
       errors.push(`${tag}: must be an object`);
       return;
     }
+    // Never echo caller key text — a synthetic key with newlines can inject ::warning:: annotations.
+    for (const k of Object.keys(row)) {
+      if (!ALLOWED_KEYS.has(k)) {
+        errors.push(`${tag}: unknown field`);
+      }
+    }
     const bug_id = String(row.bug_id ?? '').trim();
     const github_issue_url = String(row.github_issue_url ?? '').trim();
     const disposition = String(row.disposition ?? '').trim();
@@ -66,19 +90,19 @@ export function validateBatch(raw, { repo }) {
     if ('close_as_logged' in row && row.close_as_logged !== false && row.close_as_logged !== 'false') {
       errors.push(`${tag}: batch mode forbids close_as_logged (triaged only)`);
     }
+    if ([bug_id, github_issue_url, disposition, public_reply].some(containsNul)) {
+      errors.push(`${tag}: NUL byte rejected`);
+    }
     if (!/^[1-9][0-9]{0,9}$/.test(bug_id)) errors.push(`${tag}: invalid bug_id`);
-    else if (seen.has(bug_id)) errors.push(`${tag}: duplicate bug_id ${bug_id}`);
+    else if (seen.has(bug_id)) errors.push(`${tag}: duplicate bug_id`);
     else seen.add(bug_id);
-    if (!issueInRepo(github_issue_url, repo)) errors.push(`${tag}: github_issue_url must be an issue in ${repo}`);
-    if (!/^[a-z_]+$/.test(disposition)) errors.push(`${tag}: invalid disposition syntax`);
+    if (!issueInRepo(github_issue_url, repo)) errors.push(`${tag}: github_issue_url must be an issue in repo`);
+    if (!DISPOSITION_KINDS.includes(disposition)) {
+      errors.push(`${tag}: invalid disposition`);
+    }
     if (!public_reply) errors.push(`${tag}: public_reply required`);
     else if ([...public_reply].length > MAX_REPLY_CHARS) errors.push(`${tag}: public_reply too long`);
     else if (!public_reply.includes(github_issue_url)) errors.push(`${tag}: public_reply must contain github_issue_url`);
-    // Extra keys fail closed so approval binds to a known shape.
-    const allowed = new Set(['bug_id', 'github_issue_url', 'disposition', 'public_reply', 'close_as_logged']);
-    for (const k of Object.keys(row)) {
-      if (!allowed.has(k)) errors.push(`${tag}: unknown field ${k}`);
-    }
     items.push({
       bug_id,
       github_issue_url,
@@ -129,6 +153,7 @@ function main(cmd) {
     const raw = event?.inputs?.batch_json;
     const result = validateBatch(raw ?? '', { repo });
     if (!result.ok) {
+      // Fixed strings only — never re-echo caller-controlled field names/values into ::error::.
       for (const e of result.errors) console.error(`::error::${e}`);
       process.exit(1);
     }

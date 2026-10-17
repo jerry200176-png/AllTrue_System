@@ -82,8 +82,18 @@ jobs:
           [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
           [[ "$ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
           [[ "$ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
-          [[ "$DISPOSITION" =~ ^[a-z_]+$ ]] || { echo "invalid disposition syntax"; exit 1; }
+          # Align with BugReportService::DISPOSITION_KINDS (not a bare [a-z_]+ regex).
+          case "$DISPOSITION" in
+            bug|suggestion|ux_friction|duplicate|already_solved|not_planned|needs_info) ;;
+            *) echo "invalid disposition"; exit 1 ;;
+          esac
           [[ "$CLOSE_AS_LOGGED" =~ ^(true|false)$ ]] || { echo "invalid close_as_logged"; exit 1; }
+          # NUL cannot survive in bash vars; reject on the event payload before load.
+          python3 - "$GITHUB_EVENT_PATH" <<'PY' || { echo "NUL byte rejected in public_reply"; exit 1; }
+          import json, sys
+          reply = json.load(open(sys.argv[1])).get("inputs", {}).get("public_reply") or ""
+          sys.exit(1 if isinstance(reply, str) and "\0" in reply else 0)
+          PY
           PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"
           PUBLIC_REPLY="${PUBLIC_REPLY%x}"
           [[ "$PUBLIC_REPLY" == *"$ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
@@ -197,13 +207,16 @@ jobs:
           cat > /tmp/phase-a-remote.sh <<'REMOTE'
           set -euo pipefail
           cd /home/admin/backend
-          PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
+          # Preserve exact approved bytes (incl. trailing newlines). Bare $(...) strips them.
+          PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d; printf x)"
+          PUBLIC_REPLY="${PUBLIC_REPLY%x}"
           export BUG_ID GITHUB_ISSUE_URL DISPOSITION PUBLIC_REPLY CLOSE_AS_LOGGED
           php artisan tinker --execute='
           $bugId = (int)getenv("BUG_ID");
           $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
           $disposition = (string)getenv("DISPOSITION");
           $reply = (string)getenv("PUBLIC_REPLY");
+          $replySha = hash("sha256", $reply);
           $bug = \App\Models\BugReport::find($bugId);
           if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
           $status = (string)$bug->status;
@@ -219,11 +232,11 @@ jobs:
           if (getenv("CLOSE_AS_LOGGED") === "true") {
               $closed = $svc::closeAsLogged($bugId, $actor, $disposition, $issueUrl, $reply);
               if (!($closed["ok"] ?? false)) { throw new \RuntimeException(json_encode($closed)); }
-              echo json_encode(["bug_id" => $bugId, "from" => $status, "close_as_logged" => $closed, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
+              echo json_encode(["bug_id" => $bugId, "from" => $status, "close_as_logged" => $closed, "issue" => $issueUrl, "public_body_sha256" => $replySha], JSON_UNESCAPED_UNICODE), PHP_EOL;
           } else {
           // Same row lock as bugs:auto-intake --ack: whoever runs second re-reads the status after the
           // first commits, so a report is never moved new->triaged twice or answered twice concurrently.
-          \Illuminate\Support\Facades\DB::transaction(function () use ($bugId, $issueUrl, $disposition, $reply, $actor, $svc) {
+          \Illuminate\Support\Facades\DB::transaction(function () use ($bugId, $issueUrl, $disposition, $reply, $replySha, $actor, $svc) {
           $locked = \App\Models\BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
           $status = (string)$locked->status;
           if (!in_array($status, ["new", "triaged"], true)) { throw new \RuntimeException("refusing status: ".$status); }
@@ -247,21 +260,40 @@ jobs:
               ], "phase-a verified intake; GitHub issue=".$issueUrl);
               if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
           }
-          $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
-              ->where("body", "like", "%".$issueUrl."%")->exists();
-          $comment = $already ? ["ok" => true, "skipped" => true] : $svc::addComment($bugId, $actor, $reply, false);
-          // addComment() returns the persisted BugReportComment model, while
-          // an idempotent skip returns the small {ok, skipped} shape.
+          // Exact public-body dedup (historical single URL-like skip silently dropped a new approved
+          // text that shared an issue URL with an older ack/private/reporter comment; batch must not
+          // inherit that). Same URL + different body posts; same exact body is a retry skip.
+          $exactPublic = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
+              ->where("is_internal_note", false)->where("body", $reply)->orderByDesc("id")->first();
+          if ($exactPublic) {
+              $comment = ["ok" => true, "skipped" => true, "reason" => "exact_public_body", "id" => (int)$exactPublic->id];
+          } else {
+              $comment = $svc::addComment($bugId, $actor, $reply, false);
+          }
           $commentSucceeded = ($comment["ok"] ?? false) || isset($comment["id"]) || ($comment["skipped"] ?? false);
           if (!$commentSucceeded) { throw new \RuntimeException(json_encode($comment)); }
           $fresh = \App\Models\BugReport::find($bugId);
+          $latestPublic = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
+              ->where("is_internal_note", false)->orderByDesc("id")->first();
+          $publicBody = $latestPublic ? (string)$latestPublic->body : "";
+          $publicSha = hash("sha256", $publicBody);
+          if (!hash_equals($replySha, $publicSha)) {
+              throw new \RuntimeException(json_encode([
+                  "code" => "public_body_mismatch",
+                  "expected_sha256" => $replySha,
+                  "actual_sha256" => $publicSha,
+                  "status" => $fresh ? (string)$fresh->status : "missing",
+              ]));
+          }
           echo json_encode([
               "bug_id" => $bugId,
               "from" => $status,
               "final" => $fresh ? (string)$fresh->status : "missing",
               "transition" => $transition,
-              "comment_id" => is_array($comment) ? ($comment["skipped"] ?? false) : $comment->id,
+              "comment_id" => is_array($comment) ? ($comment["id"] ?? ($comment["skipped"] ?? false)) : $comment->id,
+              "comment_skipped" => is_array($comment) ? (bool)($comment["skipped"] ?? false) : false,
               "issue" => $issueUrl,
+              "public_body_sha256" => $publicSha,
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           });
           }
@@ -269,16 +301,23 @@ jobs:
           REMOTE
           write_one() {
             local BUG_ID="$1" GITHUB_ISSUE_URL="$2" DISPOSITION="$3" CLOSE_AS_LOGGED="$4" PUBLIC_REPLY="$5"
-            [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
-            [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
-            [[ "$GITHUB_ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
-            [[ "$DISPOSITION" =~ ^[a-z_]+$ ]] || { echo "invalid disposition syntax"; exit 1; }
-            [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
-            [[ "$CLOSE_AS_LOGGED" =~ ^(true|false)$ ]] || { echo "invalid close_as_logged"; exit 1; }
+            [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; return 1; }
+            [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; return 1; }
+            [[ "$GITHUB_ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; return 1; }
+            case "$DISPOSITION" in
+              bug|suggestion|ux_friction|duplicate|already_solved|not_planned|needs_info) ;;
+              *) echo "invalid disposition"; return 1 ;;
+            esac
+            # NUL already rejected by batch helper / single preview on the event payload.
+            # Bash vars cannot hold NUL, so a pattern check here is meaningless and false-rejects.
+            [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; return 1; }
+            [[ "$CLOSE_AS_LOGGED" =~ ^(true|false)$ ]] || { echo "invalid close_as_logged"; return 1; }
             local PUBLIC_REPLY_B64
             PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
             local REPLY_SHA
             REPLY_SHA="$(printf '%s' "$PUBLIC_REPLY" | sha256sum | cut -d' ' -f1)"
+            # Explicit return on ssh failure: when write_one is used in `cmd || list`, Bash disables
+            # errexit inside the function; a later successful echo would otherwise mask ssh 255.
             ssh -i ~/.ssh/deploy_key \
               -o IdentitiesOnly=yes \
               -o BatchMode=yes \
@@ -287,8 +326,9 @@ jobs:
               -o UserKnownHostsFile=~/.ssh/known_hosts \
               "${PI_SSH_USER}@${PI_SSH_HOST}" \
               "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' CLOSE_AS_LOGGED='$CLOSE_AS_LOGGED' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" \
-              < /tmp/phase-a-remote.sh
+              < /tmp/phase-a-remote.sh || return $?
             echo "wrote bug_id=$BUG_ID reply_sha256=$REPLY_SHA close_as_logged=$CLOSE_AS_LOGGED"
+            return 0
           }
 
           BATCH_JSON="$(jq -r --arg k batch_json '.inputs[$k] | if . == null then "" else tostring end' "$GITHUB_EVENT_PATH")"
@@ -307,8 +347,12 @@ jobs:
               REPLY="$(jq -je .public_reply <<<"$row" && printf x)"
               REPLY="${REPLY%x}"
               [[ "$(printf '%s' "$REPLY" | sha256sum | cut -d' ' -f1)" == "$RSHA" ]] || { echo "reply hash mismatch for bug $BID"; exit 1; }
-              write_one "$BID" "$URL" "$DISP" "false" "$REPLY" \
-                || { echo "::error::batch fail-stop at bug_id=$BID; written=$WRITTEN"; exit 1; }
+              # Prefer if/! over `write_one ||` so set -e semantics stay obvious; write_one still
+              # returns explicitly on ssh failure for callers that use || lists.
+              if ! write_one "$BID" "$URL" "$DISP" "false" "$REPLY"; then
+                echo "::error::batch fail-stop at bug_id=$BID; written=$WRITTEN"
+                exit 1
+              fi
               WRITTEN="$(jq -c --arg id "$BID" --arg sha "$RSHA" '. + [{bug_id:($id|tonumber), reply_sha256:$sha}]' <<<"$WRITTEN")"
             done < <(jq -c '.items[]' /tmp/phase-a-batch-plan.json)
             echo "batch complete written=$WRITTEN batch_payload_sha256=$BATCH_SHA"

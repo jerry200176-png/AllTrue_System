@@ -14,7 +14,8 @@ for (const workflow of workflows) {
   const source = fs.readFileSync(workflow, 'utf8');
   assert.match(source, /PUBLIC_REPLY_B64="\$\(printf '%s' "\$PUBLIC_REPLY" \| base64 \| tr -d '\\n'\)"/);
   assert.match(source, /PUBLIC_REPLY_B64='\$PUBLIC_REPLY_B64' bash -s/);
-  assert.match(source, /PUBLIC_REPLY="\$\(printf '%s' "\$PUBLIC_REPLY_B64" \| base64 -d\)"/);
+  assert.match(source, /PUBLIC_REPLY="\$\(printf '%s' "\$PUBLIC_REPLY_B64" \| base64 -d; printf x\)"/);
+  assert.match(source, /PUBLIC_REPLY="\$\{PUBLIC_REPLY%x\}"/);
   assert.ok(
     source.includes('[[ "$GITHUB_ISSUE_URL" =~ ^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]]'),
     `${workflow} must strictly validate issue URLs`,
@@ -192,8 +193,8 @@ assert.ok(
     && phaseASource.includes('"github_issue_url" => $issueUrl'),
   'Phase-A must pass the selected disposition and GitHub issue to the existing service',
 );
-assert.match(phaseASource, /\[\[ "\$DISPOSITION" =~ \^\[a-z_\]\+\$ \]\]/,
-  'Phase-A must constrain the disposition before passing it through SSH');
+assert.match(phaseASource, /case "\$DISPOSITION" in[\s\S]*bug\|suggestion\|ux_friction\|duplicate\|already_solved\|not_planned\|needs_info\)/,
+  'Phase-A must constrain disposition to BugReportService::DISPOSITION_KINDS before SSH');
 assert.ok(!phaseASource.includes('"disposition" => "bug"'), 'Phase-A must not force every report to bug');
 assert.ok(!phaseASource.includes('"engineering_required" => true'),
   'Phase-A must use the service-owned engineering requirement default');
@@ -369,16 +370,19 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-bug-reply-'));
 const marker = path.join(tempDir, 'executed');
 const payload = `literal $(touch ${marker}) \`echo SHOULD_NOT_RUN\` ; quoted 'reply'`;
 const encoded = Buffer.from(payload, 'utf8').toString('base64');
+const payloadWithNl = `${payload}\n\n`;
+const encodedNl = Buffer.from(payloadWithNl, 'utf8').toString('base64');
 const script = [
   'set -euo pipefail',
-  `PUBLIC_REPLY_B64='${encoded}'`,
-  'PUBLIC_REPLY="$(printf \'%s\' "$PUBLIC_REPLY_B64" | base64 -d)"',
+  `PUBLIC_REPLY_B64='${encodedNl}'`,
+  'PUBLIC_REPLY="$(printf \'%s\' "$PUBLIC_REPLY_B64" | base64 -d; printf x)"',
+  'PUBLIC_REPLY="${PUBLIC_REPLY%x}"',
   'printf \'%s\' "$PUBLIC_REPLY"',
 ].join('\n');
 
 try {
   const decoded = execFileSync('bash', ['-c', script], { encoding: 'utf8' });
-  assert.equal(decoded, payload, 'encoded reply must round-trip literally');
+  assert.equal(decoded, payloadWithNl, 'encoded reply must round-trip literally including trailing newlines');
   assert.equal(fs.existsSync(marker), false, 'reply metacharacters must not execute');
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
@@ -1067,13 +1071,19 @@ assert.match(phaseCSource,
   assert.ok(/type:epic/.test(shipJob) && /lifecycle:frozen/.test(shipJob) && /also maps in-app/.test(shipJob),
     'the logged ship path uses the same never-close guards as Phase-C');
   assert.match(phaseASource, /must be in this repository/, 'issue URLs from other repositories are rejected before any write');
-  // Phase-A max-5 batch (Draft): single-mode stays compatible; batch is triaged-only with one Founder gate.
+  // Phase-A max-5 batch: single-mode stays compatible; batch is triaged-only with one Founder gate.
   assert.match(phaseASource, /batch_json:/, 'Phase-A exposes optional batch_json input');
   assert.match(phaseASource, /bug-phase-a-batch\.mjs/, 'Phase-A reuses the batch validator module');
   assert.match(phaseASource, /batch mode is triaged-only/, 'Phase-A batch forbids close_as_logged');
   assert.match(phaseASource, /batch fail-stop/, 'Phase-A batch stops on first write failure');
   assert.match(phaseASource, /batch_payload_sha256/, 'Phase-A binds Founder preview to batch_payload_sha256');
   assert.match(phaseASource, /clear single-mode fields when using batch_json/, 'Phase-A rejects mixed single+batch mode');
+  assert.match(phaseASource, /\|\| return \$\?/, 'write_one must return ssh status so || lists cannot mask 255');
+  assert.match(phaseASource, /exact_public_body/, 'Phase-A uses exact public-body dedup (not URL-only like)');
+  assert.match(phaseASource, /public_body_mismatch/, 'Phase-A post-commit verifies public body hash');
+  assert.match(phaseASource, /bug\|suggestion\|ux_friction\|duplicate\|already_solved\|not_planned\|needs_info/,
+    'Phase-A disposition allowlist matches BugReportService::DISPOSITION_KINDS');
+  assert.match(phaseASource, /base64 -d; printf x/, 'Phase-A preserves trailing newlines on PUBLIC_REPLY');
   assert.match(phaseCSource, /"action" => \$ok \? "resolved" : "failed"/);
   assert.match(phaseCSource, /r\.get\("action"\) in \("resolved", "skip_already"\)/, 'resolved and already-resolved (retry) targets close issues; failed ones never');
   // in-app #389 (2026-10-11): the reply linked a follow-up issue (#3847) before the canonical one, and the
