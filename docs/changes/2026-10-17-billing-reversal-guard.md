@@ -2,7 +2,7 @@
 
 silent_ship: protected billing repair prepared as a Draft; not deployed or production verified.
 
-Unpaid-only count/date correction guards now evaluate signed payment history per invoice. Fully reversed receipts with matched report/receipt provenance no longer block these corrections; surviving receipts, partial reversals, nonzero stored PaidAmount and inconsistent negative ledger totals and missing/ambiguous reversal links still block correction. Other callers keep the historical guard. Locked correction paths lock all ledger rows, including reversals, before repeating the guard. Original receipt and reversal rows remain intact. Existing pricing, entitlement and invoice-amount restrictions remain in force.
+Unpaid-only count/date correction guards now evaluate signed payment history per invoice. Fully reversed receipts with matched report/receipt provenance and exactly one full reversal per report no longer block these corrections; split or extra reversal rows fail closed even when their sum matches the receipt; surviving receipts, partial reversals, nonzero stored PaidAmount and inconsistent negative ledger totals and missing/ambiguous reversal links still block correction. Other callers keep the historical guard. Locked correction paths lock all ledger rows, including reversals, before repeating the guard. Original receipt and reversal rows remain intact. Existing pricing, entitlement and invoice-amount restrictions remain in force.
 
 Payment confirmation and rejection guidance now distinguishes a report's amount from the bill obligation. A conflicting pending report must be checked and rejected/replaced when wrong; an over-limit receipt is retained in the form for reconciliation. The server's invoice cap remains unchanged.
 

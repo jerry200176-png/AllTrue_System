@@ -134,7 +134,8 @@ final class ContractMoneyState
     /**
      * Unpaid-only count/charge correction guard. Other callers retain hasActivePayment's historical rule.
      * Zero invoice net alone is insufficient: every reversal must have unambiguous receipt provenance.
-     * Missing legacy links, duplicate/excess reversals and inconsistent stored balances fail closed.
+     * Each voided report must match exactly one full reversal; duplicates and split reversals fail closed.
+     * Missing legacy links and inconsistent stored balances also fail closed.
      */
     public static function blocksUnpaidCorrection(int $studentClassId): bool
     {
@@ -164,7 +165,7 @@ final class ContractMoneyState
         $seenReceipts = [];
         foreach ($groups as $reportId => $rows) {
             $report = $reports->get($reportId);
-            if (!$report || $report->status !== 'voided' || (int) $report->StudentClassID !== $studentClassId) {
+            if ($rows->count() !== 1 || !$report || $report->status !== 'voided' || (int) $report->StudentClassID !== $studentClassId) {
                 return true;
             }
             // Older receipts can be linked only by report.payment_id; current receipts also carry payment_report_id.
@@ -183,7 +184,7 @@ final class ContractMoneyState
                 || (!empty($receipt->payment_report_id) && (int) $receipt->payment_report_id !== (int) $reportId)
                 || (int) $receipt->Amount !== (int) $report->reported_amount
                 || $rows->contains(fn ($p) => (int) $p->InvoiceID !== (int) $receipt->InvoiceID)
-                || (int) $rows->sum(fn ($p) => abs((int) $p->Amount)) > (int) $receipt->Amount) {
+                || abs((int) $rows->first()->Amount) !== (int) $receipt->Amount) {
                 return true;
             }
         }
