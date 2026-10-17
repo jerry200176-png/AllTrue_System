@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
+use App\Models\Schedule;
 use App\Models\SessionDeductionLedger;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
@@ -87,6 +88,25 @@ class CourseLeaveCascadeService
         }
 
         return $session;
+    }
+
+    /** Caller owns the leave transaction; shared by ordinary and successor-shift leave. */
+    public static function recordLeaveMarker(StudentClass $course, ClassSession $session, int $campusId): void
+    {
+        $date = Carbon::parse($session->SessionDate)->toDateString();
+        $twoLessons = ClassSession::query()->where('StudentClassID', (int) $course->ID)->whereDate('SessionDate', $date)
+            ->whereRaw('LOWER(COALESCE(Status, \'\')) <> ?', ['cancelled'])->count() > 1;
+        $key = ['student_course_id' => (int) $course->ID, 'schedule_date' => $date, 'status' => 'leave']
+            + ($twoLessons ? ['start_time' => substr((string) $session->StartTime, 0, 5)] : []);
+        Schedule::query()->firstOrCreate($key, [
+            'student_id' => (int) $course->StudentID,
+            'day_of_week' => Carbon::parse($date)->dayOfWeekIso,
+            'start_time' => substr((string) $session->StartTime, 0, 5),
+            'end_time' => substr((string) $session->EndTime, 0, 5),
+            'class_type' => $course->ClassType ?? 'one_on_one',
+            'type' => 'normal', 'deduction' => 0, 'branch_id' => $campusId,
+            'teacher_id' => (int) ($course->TeacherID ?? 0), 'subject' => $course->SubjectID ?? null,
+        ]);
     }
 
     /**
