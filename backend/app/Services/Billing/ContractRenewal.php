@@ -652,6 +652,7 @@ final class ContractRenewal
                 'pricing_snapshot' => $discountSnapshot,
             ];
 
+            $newPayload = array_merge($newPayload, SessionDeductionService::pilotSafeCopiedContract($studentClass));
             $newCourse = $this->createCourseRecord($newPayload);
             $newCourse->initializePricingSnapshot($discountSnapshot);
 

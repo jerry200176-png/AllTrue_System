@@ -59,7 +59,7 @@ SELECT CONCAT_WS('|',sc.ID,sc.SessionCount,IFNULL(sc.UsedSessions,'null'),IFNULL
  (SELECT COUNT(*) FROM ClassSession cs WHERE cs.StudentClassID=sc.ID AND LOWER(cs.Status) IN ('scheduled','attended','completed','late')),
  (SELECT COUNT(*) FROM ClassSession cs WHERE cs.StudentClassID=sc.ID AND LOWER(cs.Status)='scheduled'),
  (SELECT COUNT(DISTINCT CONCAT(DATE(lr.SessionDate),'|',IFNULL(LEFT(lr.StartTime,5),''))) FROM LearningRecord lr WHERE lr.StudentClassID=sc.ID AND lr.Status='approved' AND (lr.ClassSessionID IS NULL OR lr.ClassSessionID<=0) AND lr.SessionDate IS NOT NULL),
- (SELECT COALESCE(SUM(CASE WHEN dl.event_type='deduct' THEN 1 WHEN dl.event_type='reverse' THEN -1 ELSE 0 END),0) FROM session_deduction_ledger dl WHERE dl.student_class_id=sc.ID AND dl.source IN ('attendance','retro_leave','status_adjust')))
+ (SELECT COALESCE(SUM(CASE WHEN dl.event_type='deduct' THEN 1 WHEN dl.event_type='reverse' THEN -1 ELSE 0 END),0) FROM session_deduction_ledger dl WHERE dl.student_class_id=sc.ID AND dl.source REGEXP '^(attendance|retro_leave|status_adjust)(_(makeup|regular))?$'))
 FROM StudentClass sc WHERE sc.ID IN (1681,1682,2649,2606)
 ORDER BY sc.StudentID,sc.ID;"
 

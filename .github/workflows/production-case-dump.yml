@@ -452,7 +452,7 @@ jobs:
             $signins = $classIds === [] ? collect() : $db::table('StudentSingIn')->whereIn('StudentClassID', $classIds)->whereNull('VoidedAt')
               ->get(['id', 'StudentClassID as class_id', 'ClassSessionID as session_id', 'SessionDeducted as session_deducted', 'Status as status']);
             $ledger = $classIds === [] ? collect() : $db::table('session_deduction_ledger')->whereIn('student_class_id', $classIds)
-              ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+              ->whereRaw("source REGEXP '^(attendance|retro_leave|status_adjust|duplicate_session)(_(makeup|regular))?$'")
               ->get(['id', 'student_class_id as class_id', 'class_session_id as session_id', 'event_type', 'source', 'minutes']);
             $out['student_ids'] = $studentIds;
             $out['student_count'] = count($studentIds);

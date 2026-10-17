@@ -508,6 +508,9 @@ jobs:
           cd backend
           EFFECTIVE="$(php artisan tinker --execute="echo config('perfflags.actual_duration_deduction_enabled') ? 'true' : 'false';" 2>/dev/null | tail -1)"
           echo "effective-config-value=$EFFECTIVE"
+          # #3834: the pilot boundary (third gate). Expected after deploy: 11,13.
+          CAMPUS_IDS="$(php artisan tinker --execute="echo (string) config('perfflags.actual_duration_campus_ids');" 2>/dev/null | tail -1)"
+          echo "effective-campus-ids=$CAMPUS_IDS"
 
           HEALTH="$(curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
           echo "health-status=$HEALTH"

@@ -60,6 +60,17 @@ return [
     // back off is a complete rollback with no data migration.
     'actual_duration_deduction_enabled' => (bool) env('PERF_ACTUAL_DURATION_DEDUCTION', false),
 
+    // Actual-duration pilot scope (#3834, Founder 2026-10-13). Comma-separated
+    // CampusIDs where actual-duration billing may run. A third gate, on top of the
+    // flag above and each course's deduction_basis: a course whose student belongs to
+    // a campus NOT listed here deducts exactly like fixed_session, and the create /
+    // edit APIs refuse to opt a course in there.
+    //   "11,13" — the pilot: 11 = 新莊分校, 13 = 新莊中平分校 (default)
+    //   "*"     — every campus (full rollout, after the pilot)
+    //   ""      — no campus (feature inert everywhere, even with the flag on)
+    // Shrinking this list is a rollback for the removed campuses, same as the flag.
+    'actual_duration_campus_ids' => (string) env('PERF_ACTUAL_DURATION_CAMPUS_IDS', '11,13'),
+
     // Multi-guardian (Student 1:N). Flag gates staff UX + Portal canonical authZ
     // (guardians/student_guardians). Dual-write runs whenever tables exist.
     // Flag off ⇒ Portal/LINE auth falls back to verified SLB + legacy parent_phone.

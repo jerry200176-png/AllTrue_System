@@ -115,7 +115,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 ### G-011：「一堂 = 幾分鐘」是**每門課自己的**設定，沒有全公司統一值；契約在第一次扣堂後鎖死
 `StudentClass.standard_lesson_minutes`（計費標準堂長）與 `SessionDuration`（排課時長）是**兩件事**。同樣一次 180 分鐘的課，在標準 90 / 120 / 180 分鐘的課程裡分別扣 **2.00 / 1.50 / 1.00** 堂；買 8 堂分別 = 720 / 960 / 1440 分鐘。
 **後端沒有任何 fallback 到 120**：`resolvedStandardLessonMinutes()` 未設定時回傳 `null`，不會退回 `SessionDuration` 也不會退回 120；建課表單的 `120` 只是輸入框初值，一定會隨 payload 明確送出。任何「AllTrue 一堂固定 120 分鐘」「8 堂 = 16 小時」「3 小時課永遠扣 1.5 堂」的假設都是 bug。
-**兩個旗標缺一不可且皆預設關**：`perfflags.actual_duration_deduction_enabled`（環境）＋ `deduction_basis`（每門課）。旗標關閉時，已標記 `actual_duration` 的課行為**完全等同** `fixed_session`（fail-safe，非 fail-open），因此關旗標＝完整回滾、無資料要清。
+**兩個旗標缺一不可且皆預設關**：`perfflags.actual_duration_deduction_enabled`（環境）＋ `deduction_basis`（每門課）。旗標關閉時，已標記 `actual_duration` 的課行為**完全等同** `fixed_session`（fail-safe，非 fail-open），因此關旗標＝完整回滾、無資料要清。**第三道閘（#3834）**：分校白名單 `perfflags.actual_duration_campus_ids`（`PERF_ACTUAL_DURATION_CAMPUS_IDS`，預設 `11,13`）；名單外分校即使兩旗標皆開也一律整堂扣、建課選實際時長回 422。三道閘任一關閉（含分校移出名單、學生轉到名單外分校）時，該課連同先前以分鐘記錄的扣堂都改以「每次出席＝1 堂」重算，不會留下零頭；補課（extra）仍照 fixed_session 規則按實際分鐘折算。 已寫入 `_makeup`／`_regular` source 後，回滾必須保留相容讀取程式，不能直接 revert 成舊 reader；無法判定的未標記舊分鐘紀錄保留既有計數並要求人工核對，核對前新增扣堂回 422 且回滾整筆點名，不自動修復歷史。
 **第一筆扣堂 ledger 之後**，`standard_lesson_minutes`／`deduction_basis`／`SessionCount` 由 `BillingContractLockGuard` 在**後端**鎖定（回 422）；前端變灰只是 UX。一般編輯仍不提供扣堂後任意修正；但主任／超級管理員可使用具名的 `billing-correction` 例外流程，僅處理**未收款、非共用、按堂計費的堂數下修**，不得低於已使用堂數，且會留下稽核紀錄。此例外不修改 `standard_lesson_minutes`／`deduction_basis`，也不改寫已發生的扣堂歷史；已收款或付款回報案件仍須走帳務作廢／更正流程。
 **超額永遠不擋點名**：確認只發生在建課階段（D5）。若出現「因額度不足而無法點名」＝ bug，先關旗標。上線／回滾見 [`docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`](docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md)。
 
