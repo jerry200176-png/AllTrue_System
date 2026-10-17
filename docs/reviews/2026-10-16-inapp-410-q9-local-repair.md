@@ -241,3 +241,10 @@ Legacy shifts with insufficient metadata require explicit reconciliation; total
 manual removal of every old and renewal provenance marker cannot be inferred.
 Claude's final independent verification and exact-head CI remain integration
 prerequisites. No queue/merge is permitted with unresolved P1s.
+
+Independent Codex review of `bbf21b06` found date-only tail preservation missed
+elapsed lessons earlier today. New elapsed-today/later-today regressions produced
+one RED failure (elapsed expected422/got200; later already passed). Tail cleanup
+now requires the complete start instant to be future, retaining today's elapsed
+occurrences without blocking a later unused slot. This is a separate correction
+commit; final exact-head reviewer and CI results belong to the handoff.

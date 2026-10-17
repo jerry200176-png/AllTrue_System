@@ -1018,7 +1018,7 @@ class CourseLeaveCascadeService
         }
 
         CourseLeaveCascadeSuccessorShiftService::assertUndoAllowed($course, (int) $leaveSession->id);
-        if ($shiftTail && (Carbon::parse($shiftTail->SessionDate)->toDateString() < Carbon::today()->toDateString()
+        if ($shiftTail && (!Carbon::parse(Carbon::parse($shiftTail->SessionDate)->toDateString() . ' ' . $shiftTail->StartTime)->isFuture()
             || !self::isSafeToRemoveAutoAppend($shiftTail)
             || SessionDeductionLedger::query()->where('class_session_id', (int) $shiftTail->id)->exists())) {
             throw new \InvalidArgumentException('順延尾堂已經過期或已有使用紀錄，無法自動撤銷請假');

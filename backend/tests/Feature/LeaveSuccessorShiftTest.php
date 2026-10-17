@@ -446,10 +446,14 @@ class LeaveSuccessorShiftTest extends TestCase
         } elseif ($state === 'past') {
             DB::table('ClassSession')->where('id', $tail)->update(['SessionDate' => '2026-10-31']);
         }
+        if (in_array($state, ['elapsed_today', 'later_today'], true)) {
+            Carbon::setTestNow(Carbon::parse('2026-12-01 ' . ($state === 'elapsed_today' ? '22:00:00' : '18:00:00'), 'Asia/Taipei'));
+            AuthToken::query()->where('token', $this->token)->update(['expires_at' => now()->addDay()]);
+        }
         $before = $this->undoSnapshot();
         $response = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
             ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId]);
-        if ($state !== 'scheduled') {
+        if (!in_array($state, ['scheduled', 'later_today'], true)) {
             $response->assertStatus(422);
             $this->assertSame($before, $this->undoSnapshot());
         } else {
@@ -466,7 +470,7 @@ class LeaveSuccessorShiftTest extends TestCase
 
     public static function shiftTailStates(): array
     {
-        return ['scheduled tail' => ['scheduled'], 'consumed tail' => ['consumed'], 'past tail' => ['past']];
+        return ['scheduled tail' => ['scheduled'], 'consumed tail' => ['consumed'], 'past tail' => ['past'], 'elapsed today' => ['elapsed_today'], 'later today' => ['later_today']];
     }
 
     private function undoSnapshot(): string
