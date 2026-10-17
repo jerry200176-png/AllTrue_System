@@ -140,9 +140,13 @@ final class ContractMoneyState
      */
     public static function blocksUnpaidCorrection(int $studentClassId, bool $includeVoided = false): bool
     {
-        $invoices = fn () => DB::table('Invoice')
+        // Default path keeps the #4217 live-invoice filter line intact (stale-copy guard).
+        // includeVoided=true widens scope for agreed-fee retained void history only.
+        $invoices = $includeVoided
+            ? fn () => DB::table('Invoice')->where('Invoice.StudentClassID', $studentClassId)
+            : fn () => DB::table('Invoice')
             ->where('Invoice.StudentClassID', $studentClassId)
-            ->when(!$includeVoided, fn ($q) => $q->where(fn ($status) => $status->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void')));
+            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'));
         if ($invoices()->select('Invoice.id')
             ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->groupBy('Invoice.id', 'Invoice.PaidAmount')
