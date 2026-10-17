@@ -46,6 +46,22 @@
           </span>
           <span class="choice-card__arrow" aria-hidden="true">›</span>
         </button>
+
+        <!-- Server capability only: default-off; never treat a client flag as authority. -->
+        <button
+          v-if="agreedFeeAvailable"
+          type="button"
+          class="choice-card"
+          data-testid="contract-adjust-agreed-fee"
+          @click="onChoose('agreed_fee')"
+        >
+          <span class="choice-card__icon" aria-hidden="true">$</span>
+          <span class="choice-card__copy">
+            <strong>只更正約定費用</strong>
+            <small>只改約定費用與必要帳單；不新增收款、付款回報或收據。</small>
+          </span>
+          <span class="choice-card__arrow" aria-hidden="true">›</span>
+        </button>
       </div>
 
       <p class="choice-footnote">提前結束會保留原合約、已上課紀錄與稽核軌跡；帳務不在此流程自動改動。不要用「編輯」直接改已發生的扣堂資料。</p>
@@ -68,6 +84,8 @@ const props = defineProps({
   subject: { type: String, default: '' },
   paymentStatus: { type: String, default: '' },
   billingAvailable: { type: Boolean, default: true },
+  /** Server-emitted capability (e.g. ledger/API). Default false → no entry while feature stays off. */
+  agreedFeeAvailable: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['close', 'choose']);

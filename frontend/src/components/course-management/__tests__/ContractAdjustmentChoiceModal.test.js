@@ -48,6 +48,20 @@ describe('ContractAdjustmentChoiceModal', () => {
     await choices[2].trigger('click');
 
     expect(wrapper.emitted('choose')).toEqual([['billing'], ['amendment'], ['transfer']]);
+    expect(wrapper.find('[data-testid="contract-adjust-agreed-fee"]').exists()).toBe(false);
+  });
+
+  it('keeps agreed-fee entry off by default and only routes when server capability is on', async () => {
+    const off = mount(ContractAdjustmentChoiceModal, {
+      props: { show: true, paymentStatus: 'unpaid' },
+    });
+    expect(off.find('[data-testid="contract-adjust-agreed-fee"]').exists()).toBe(false);
+
+    const on = mount(ContractAdjustmentChoiceModal, {
+      props: { show: true, paymentStatus: 'unpaid', agreedFeeAvailable: true },
+    });
+    await on.get('[data-testid="contract-adjust-agreed-fee"]').trigger('click');
+    expect(on.emitted('choose')).toEqual([['agreed_fee']]);
   });
 
   it('can be dismissed without selecting an adjustment', async () => {
