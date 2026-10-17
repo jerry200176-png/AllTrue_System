@@ -3,31 +3,36 @@ name: Bug Phase-A triage write-back
 # Narrow, auditable write-back for a freshly verified in-app bug.
 # This workflow never resolves a bug. With close_as_logged it closes a
 # suggestion/ux/not-planned/duplicate report via BugReportService::closeAsLogged (F12).
+# Optional batch_json (max 5): one Founder gate, triaged-only (close_as_logged forced false).
 on:
   workflow_dispatch:
     inputs:
       bug_id:
-        description: In-app bug ID
-        required: true
+        description: In-app bug ID (single mode; leave empty when using batch_json)
+        required: false
         type: string
       github_issue_url:
-        description: GitHub issue URL, required in the public reply
-        required: true
+        description: GitHub issue URL, required in the public reply (single mode)
+        required: false
         type: string
       disposition:
-        description: Product disposition kind validated by BugReportService
-        required: true
+        description: Product disposition kind validated by BugReportService (single mode)
+        required: false
         default: bug
         type: string
       public_reply:
-        description: Public reply to post on the in-app bug
-        required: true
+        description: Public reply to post on the in-app bug (single mode)
+        required: false
         type: string
       close_as_logged:
-        description: Close as logged (suggestion, ux_friction, not_planned, duplicate); reporter reply reopens
+        description: Close as logged (single mode only; batch mode forbids this — triaged only)
         required: false
         default: false
         type: boolean
+      batch_json:
+        description: Optional JSON array (1–5) of {bug_id,github_issue_url,disposition,public_reply}. When set, single-mode fields must be empty; close_as_logged forced false.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -44,6 +49,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Checkout batch validator (sparse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            scripts/ci/bug-phase-a-batch.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Show the requested write
         # Every displayed input is read from the event payload (never env: GitHub prints step env in the
         # public log header) and validated before anything reaches the public run summary. Errors name
@@ -51,6 +63,18 @@ jobs:
         run: |
           set -euo pipefail
           ev() { jq -r --arg k "$1" '.inputs[$k] | if . == null then "" else tostring end' "$GITHUB_EVENT_PATH"; }
+          BATCH_JSON="$(ev batch_json)"
+          if [[ -n "$BATCH_JSON" ]]; then
+            # Batch mode: all rows validated before any summary; hash binds the approval payload.
+            BUG_ID="$(ev bug_id)"
+            ISSUE_URL="$(ev github_issue_url)"
+            PUBLIC_REPLY_RAW="$(jq -r '.inputs.public_reply // empty | if . == null then "" else tostring end' "$GITHUB_EVENT_PATH")"
+            CLOSE_AS_LOGGED="$(ev close_as_logged)"
+            [[ -z "$BUG_ID" && -z "$ISSUE_URL" && -z "$PUBLIC_REPLY_RAW" ]] || { echo "invalid mixed mode: clear single-mode fields when using batch_json"; exit 1; }
+            [[ "$CLOSE_AS_LOGGED" =~ ^(false|)$ ]] || { echo "invalid close_as_logged: batch mode is triaged-only"; exit 1; }
+            node scripts/ci/bug-phase-a-batch.mjs preview --event "$GITHUB_EVENT_PATH" --repo "$GITHUB_REPOSITORY" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           BUG_ID="$(ev bug_id)"
           ISSUE_URL="$(ev github_issue_url)"
           DISPOSITION="$(ev disposition)"
@@ -135,6 +159,7 @@ jobs:
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            scripts/ci/bug-phase-a-batch.mjs
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Configure pinned production SSH trust
@@ -167,23 +192,9 @@ jobs:
         # Read the exact bytes from the event payload; the trailing x keeps trailing newlines.
         run: |
           set -euo pipefail
-          PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"
-          PUBLIC_REPLY="${PUBLIC_REPLY%x}"
-          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
-          [[ "$DISPOSITION" =~ ^[a-z_]+$ ]] || { echo "invalid disposition syntax"; exit 1; }
-          [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
-          [[ "$CLOSE_AS_LOGGED" =~ ^(true|false)$ ]] || { echo "invalid close_as_logged"; exit 1; }
-          PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
-          ssh -i ~/.ssh/deploy_key \
-            -o IdentitiesOnly=yes \
-            -o BatchMode=yes \
-            -o ConnectTimeout=20 \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' CLOSE_AS_LOGGED='$CLOSE_AS_LOGGED' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
+          # Shared Pi write body (same logic as single-mode REMOTE). Kept as a file so batch
+          # can call it repeatedly without nesting a heredoc inside a function.
+          cat > /tmp/phase-a-remote.sh <<'REMOTE'
           set -euo pipefail
           cd /home/admin/backend
           PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
@@ -256,8 +267,60 @@ jobs:
           }
           '
           REMOTE
+          write_one() {
+            local BUG_ID="$1" GITHUB_ISSUE_URL="$2" DISPOSITION="$3" CLOSE_AS_LOGGED="$4" PUBLIC_REPLY="$5"
+            [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
+            [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
+            [[ "$GITHUB_ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
+            [[ "$DISPOSITION" =~ ^[a-z_]+$ ]] || { echo "invalid disposition syntax"; exit 1; }
+            [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
+            [[ "$CLOSE_AS_LOGGED" =~ ^(true|false)$ ]] || { echo "invalid close_as_logged"; exit 1; }
+            local PUBLIC_REPLY_B64
+            PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
+            local REPLY_SHA
+            REPLY_SHA="$(printf '%s' "$PUBLIC_REPLY" | sha256sum | cut -d' ' -f1)"
+            ssh -i ~/.ssh/deploy_key \
+              -o IdentitiesOnly=yes \
+              -o BatchMode=yes \
+              -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              "${PI_SSH_USER}@${PI_SSH_HOST}" \
+              "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' CLOSE_AS_LOGGED='$CLOSE_AS_LOGGED' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" \
+              < /tmp/phase-a-remote.sh
+            echo "wrote bug_id=$BUG_ID reply_sha256=$REPLY_SHA close_as_logged=$CLOSE_AS_LOGGED"
+          }
+
+          BATCH_JSON="$(jq -r --arg k batch_json '.inputs[$k] | if . == null then "" else tostring end' "$GITHUB_EVENT_PATH")"
+          if [[ -n "$BATCH_JSON" ]]; then
+            # Re-validate the exact event payload (same bytes Founder approved via preview hash).
+            node scripts/ci/bug-phase-a-batch.mjs plan --event "$GITHUB_EVENT_PATH" --repo "$GITHUB_REPOSITORY" --out /tmp/phase-a-batch-plan.json
+            BATCH_SHA="$(jq -r .batch_sha256 /tmp/phase-a-batch-plan.json)"
+            COUNT="$(jq '.items | length' /tmp/phase-a-batch-plan.json)"
+            echo "batch_payload_sha256=$BATCH_SHA count=$COUNT (fail-stop; triaged-only)"
+            WRITTEN='[]'
+            while IFS= read -r row; do
+              BID="$(jq -r .bug_id <<<"$row")"
+              URL="$(jq -r .github_issue_url <<<"$row")"
+              DISP="$(jq -r .disposition <<<"$row")"
+              RSHA="$(jq -r .reply_sha256 <<<"$row")"
+              REPLY="$(jq -je .public_reply <<<"$row" && printf x)"
+              REPLY="${REPLY%x}"
+              [[ "$(printf '%s' "$REPLY" | sha256sum | cut -d' ' -f1)" == "$RSHA" ]] || { echo "reply hash mismatch for bug $BID"; exit 1; }
+              write_one "$BID" "$URL" "$DISP" "false" "$REPLY" \
+                || { echo "::error::batch fail-stop at bug_id=$BID; written=$WRITTEN"; exit 1; }
+              WRITTEN="$(jq -c --arg id "$BID" --arg sha "$RSHA" '. + [{bug_id:($id|tonumber), reply_sha256:$sha}]' <<<"$WRITTEN")"
+            done < <(jq -c '.items[]' /tmp/phase-a-batch-plan.json)
+            echo "batch complete written=$WRITTEN batch_payload_sha256=$BATCH_SHA"
+            exit 0
+          fi
+
+          PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"
+          PUBLIC_REPLY="${PUBLIC_REPLY%x}"
+          write_one "$BUG_ID" "$GITHUB_ISSUE_URL" "$DISPOSITION" "$CLOSE_AS_LOGGED" "$PUBLIC_REPLY"
 
   # F12/F14: a logged suggestion's issue is the backlog; label it so reconcile keeps it open.
+  # Batch mode never auto-closes and never reaches this job with close_as_logged=true.
   label-logged:
     needs: triage
     if: inputs.close_as_logged

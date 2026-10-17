@@ -1067,6 +1067,13 @@ assert.match(phaseCSource,
   assert.ok(/type:epic/.test(shipJob) && /lifecycle:frozen/.test(shipJob) && /also maps in-app/.test(shipJob),
     'the logged ship path uses the same never-close guards as Phase-C');
   assert.match(phaseASource, /must be in this repository/, 'issue URLs from other repositories are rejected before any write');
+  // Phase-A max-5 batch (Draft): single-mode stays compatible; batch is triaged-only with one Founder gate.
+  assert.match(phaseASource, /batch_json:/, 'Phase-A exposes optional batch_json input');
+  assert.match(phaseASource, /bug-phase-a-batch\.mjs/, 'Phase-A reuses the batch validator module');
+  assert.match(phaseASource, /batch mode is triaged-only/, 'Phase-A batch forbids close_as_logged');
+  assert.match(phaseASource, /batch fail-stop/, 'Phase-A batch stops on first write failure');
+  assert.match(phaseASource, /batch_payload_sha256/, 'Phase-A binds Founder preview to batch_payload_sha256');
+  assert.match(phaseASource, /clear single-mode fields when using batch_json/, 'Phase-A rejects mixed single+batch mode');
   assert.match(phaseCSource, /"action" => \$ok \? "resolved" : "failed"/);
   assert.match(phaseCSource, /r\.get\("action"\) in \("resolved", "skip_already"\)/, 'resolved and already-resolved (retry) targets close issues; failed ones never');
   // in-app #389 (2026-10-11): the reply linked a follow-up issue (#3847) before the canonical one, and the
