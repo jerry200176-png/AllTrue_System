@@ -39,7 +39,7 @@ class ContractCorrectionPaymentGuardTest extends TestCase
             $table->integer('StudentClassID');
             $table->integer('InvoiceID');
             $table->integer('payment_id')->nullable();
-            $table->integer('reported_amount');
+            $table->string('reported_amount'); // Preserve the decimal strings returned by MySQL without SQLite coercion.
             $table->string('status');
         });
     }
@@ -53,7 +53,7 @@ class ContractCorrectionPaymentGuardTest extends TestCase
     }
 
     /** @dataProvider receipts */
-    public function test_reversed_history_is_not_active_payment(array $payments, int $storedPaid, bool $blocked, bool $legacy = false): void
+    public function test_reversed_history_is_not_active_payment(array $payments, int $storedPaid, bool $blocked, bool $legacy = false, ?string $reportedAmount = null): void
     {
         $id = $this->database->table('Invoice')->insertGetId(['StudentClassID' => 901, 'Status' => 'unpaid', 'PaidAmount' => $storedPaid]);
         $receiptId = null;
@@ -70,7 +70,7 @@ class ContractCorrectionPaymentGuardTest extends TestCase
         }
         if ($receiptId !== null) {
             $this->database->table('payment_reports')->insert(['id' => 903, 'StudentClassID' => 901, 'InvoiceID' => $id,
-                'payment_id' => $receiptId, 'reported_amount' => $receiptAmount, 'status' => 'voided']);
+                'payment_id' => $receiptId, 'reported_amount' => $reportedAmount ?? $receiptAmount, 'status' => 'voided']);
         }
         $this->assertSame($blocked, ContractMoneyState::blocksUnpaidCorrection(901));
         $this->assertSame(count($payments), $this->database->table('Payment')->count(), 'Guard never rewrites history');
@@ -80,6 +80,14 @@ class ContractCorrectionPaymentGuardTest extends TestCase
     {
         return [
             'full reversal' => [[[8000, 'cash'], [-8000, 'void']], 0, false],
+            'PR4217 whole decimal report remains valid' => [[[8000, 'cash'], [-8000, 'void']], 0, false, false, '8000.00'],
+            'PR4217 fractional report fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, '8000.50'],
+            'PR4217 fractional legacy report fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, true, '8000.50'],
+            'PR4217 malformed report amount fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, '8000oops'],
+            'PR4217 exponent report amount fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, '8e3'],
+            'PR4217 whitespace report amount fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, ' 8000.00'],
+            'PR4217 nonfinite report amount fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, 'INF'],
+            'PR4217 overflowing report amount fails closed' => [[[8000, 'cash'], [-8000, 'void']], 0, true, false, '999999999999999999999999.00'],
             'PR4217 split reversals sharing one report fail closed' => [[[8000, 'cash'], [-4000, 'void'], [-4000, 'void']], 0, true],
             'PR4217 full reversal plus zero void row fails closed' => [[[8000, 'cash'], [-8000, 'void'], [0, 'void']], 0, true],
             'PR4217 unequal split reversals sharing one report fail closed' => [[[8000, 'cash'], [-1000, 'void'], [-2000, 'void'], [-5000, 'void']], 0, true],
