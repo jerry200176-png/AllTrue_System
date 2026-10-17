@@ -97,6 +97,119 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     }
 
     /**
+     * in-app #401/#402 (H1): after a student already moved to another teacher,
+     * a leftover schedules.teacher_id on the old teacher must not fill one_on_two
+     * capacity and block a legitimate reassignment into that slot.
+     */
+    public function test_update_teacher_ignores_stale_schedule_teacher_id_after_contract_move(): void
+    {
+        [$token, $student, $course] = $this->seedCourseWithHistory();
+        // Under edit: count-mode one_on_two joining teacher 100's slot.
+        $course->update([
+            'ClassType' => 'one_on_two',
+            'by1' => 2,
+        ]);
+
+        // Real occupant still on teacher 100 (1 of 2 seats).
+        $liveStudent = Student::create([
+            'name' => '佔位真實學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $liveCourse = StudentClass::create([
+            'StudentID' => $liveStudent->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 100,
+            'ClassType' => 'one_on_two',
+            'by1' => 2,
+            'Period' => 4,
+            'StartDate' => '2026-03-01',
+            'TotalHours' => 20,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 4,
+            'UsedSessions' => 4,
+            'week' => 7,
+            'time' => '15:00:00',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $liveCourse->ID,
+            'SessionDate' => '2026-04-19',
+            'StartTime' => '15:00:00',
+            'EndTime' => '17:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        // Already switched away (TeacherID=200) but left a stale schedules row on 100.
+        $movedStudent = Student::create([
+            'name' => '已換老師殘留佔位',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $movedCourse = StudentClass::create([
+            'StudentID' => $movedStudent->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 200,
+            'ClassType' => 'one_on_two',
+            'by1' => 2,
+            'Period' => 4,
+            'StartDate' => '2026-03-01',
+            'TotalHours' => 20,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 7,
+            'UsedSessions' => 1,
+            'week' => 7,
+            'time' => '15:00:00',
+        ]);
+        Schedule::create([
+            'student_id' => $movedStudent->id,
+            'teacher_id' => 100,
+            'day_of_week' => 7,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $movedCourse->ID,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'teacher_id' => 100,
+            'class_type' => 'one_on_two',
+        ]);
+
+        $res->assertOk();
+        $course->refresh();
+        $this->assertSame(100, (int) $course->TeacherID);
+    }
+
+    /**
      * When immutable history exists and future sessions ARE scheduled,
      * syncFutureScheduledSessionTimes should update them, and reconcile
      * should run normally (times match the new value).
