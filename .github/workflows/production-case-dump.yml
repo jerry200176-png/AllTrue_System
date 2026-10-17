@@ -2044,24 +2044,54 @@ jobs:
             // student ID). Other contracts' IDs stay numeric.
             $idOut = fn ($v) => $v === null ? null : ((int) $v === $targetStudentClassId ? 'target' : (int) $v);
             $reasons = [];
+            // Case-local admission: never compute from a truncated ledger or session set.
+            $readComplete = static function (string $sql, array $bindings = []) use ($conn, $cap) {{
+              $rows = $conn->select($sql.' LIMIT '.($cap + 1), $bindings);
+              if (count($rows) > $cap) {{ throw new \LengthException('input_row_budget_exceeded'); }}
+              return $rows;
+            }};
+            $deadlineReady = false;
+            try {{
+              // SESSION only; unsupported engines/settings fail before target reads. No global configuration changes.
+              $conn->useWriteConnectionWhenReading();
+              $version = (string) $conn->getPdo()->getAttribute(\PDO::ATTR_SERVER_VERSION);
+              if (stripos($version, 'MariaDB') !== false) {{
+                $conn->select('SET SESSION max_statement_time = 2', [], false);
+                if ((float) $conn->selectOne('SELECT @@SESSION.max_statement_time AS budget')->budget !== 2.0) {{
+                  throw new \RuntimeException('deadline_unavailable');
+                }}
+              }} elseif (preg_match('/^(8\.|9\.|5\.7\.)/', $version)) {{
+                $conn->select('SET SESSION max_execution_time = 2000', [], false);
+                if ((int) $conn->selectOne('SELECT @@SESSION.max_execution_time AS budget')->budget !== 2000) {{
+                  throw new \RuntimeException('deadline_unavailable');
+                }}
+              }} else {{ throw new \RuntimeException('deadline_unavailable'); }}
+              $deadlineReady = true;
+              // The canonical resolver uses get(), never aggregates, for ClassSession. Limit N+1 and reject
+              // during hydration BEFORE get() returns, including its empty-billable zero-evidence query.
+              $sessionRows = 0;
+              \App\Models\ClassSession::addGlobalScope('diagnostic_row_budget', static function ($q) use (&$sessionRows) {{ $q->limit(2001 - $sessionRows); }});
+              \App\Models\ClassSession::retrieved(static function ($row) use (&$sessionRows) {{
+                if (++$sessionRows > 2000) {{ throw new \LengthException('input_row_budget_exceeded'); }}
+              }});
             $conn->select('SET TRANSACTION READ ONLY', [], false);
             $conn->beginTransaction();
             try {{
               $c = $conn->selectOne($sqlContract, [$targetStudentClassId]);
               if ($c === null) {{ throw new \\RuntimeException('inapp_414: student_class not found'); }}
               if ((int) $c->campus_id !== $requiredCampusId) {{ throw new \\RuntimeException('inapp_414: student_class is outside campus 11'); }}
-              $invoices = $conn->select($sqlInvoices, [$targetStudentClassId, $targetStudentClassId]);
-              $unlinked = $conn->select($sqlUnlinked, [(int) $c->student_id]);
+              $invoices = $readComplete($sqlInvoices, [$targetStudentClassId, $targetStudentClassId]);
+              $unlinked = $readComplete($sqlUnlinked, [(int) $c->student_id]);
               $invoiceIds = array_map(fn ($r) => (int) $r->invoice_id, $invoices);
               $in = implode(',', array_map('intval', $invoiceIds));
-              $lines = $invoiceIds === [] ? [] : $conn->select(sprintf($sqlLines, $in));
-              $payments = $invoiceIds === [] ? [] : $conn->select(sprintf($sqlPayments, $in));
-              $reports = $conn->select($sqlReports, [$targetStudentClassId]);
-              $amendments = $conn->select($sqlAmendments, [$targetStudentClassId]);
+              $lines = $invoiceIds === [] ? [] : $readComplete(sprintf($sqlLines, $in));
+              $payments = $invoiceIds === [] ? [] : $readComplete(sprintf($sqlPayments, $in));
+              $reports = $readComplete($sqlReports, [$targetStudentClassId]);
+              $amendments = $readComplete($sqlAmendments, [$targetStudentClassId]);
               $refKinds = [\\App\\Models\\SecurityAuditEvent::ref('student_class', $targetStudentClassId) => ['student_class', $targetStudentClassId]];
               foreach ($invoiceIds as $iid) {{ $refKinds[\\App\\Models\\SecurityAuditEvent::ref('invoice', $iid)] = ['invoice', $iid]; }}
               $placeholders = implode(',', array_fill(0, count($refKinds), '?'));
-              $events = $conn->select(sprintf($sqlAudit, $placeholders), array_keys($refKinds));
+              $events = $readComplete(sprintf($sqlAudit, $placeholders), array_keys($refKinds));
               // Project display amounts using the production resolver; never serialize models or session rows.
               $hydrate = static function (string $type, array $attributes) use ($conn) {{
                 $model = new $type();
@@ -2194,6 +2224,15 @@ jobs:
               'Only non-void top-level target invoices receive display projection; item-linked invoices of other contracts are not repriced.',
               'Course management shows 應繳 from the first non-void unpaid/partial invoice (else the first non-void one) of row.invoices.',
             ];
+            }} catch (\Throwable $failure) {{
+              $out = ['ok' => false, 'case' => $case, 'snapshot_complete' => false,
+                'reason' => $failure instanceof \LengthException ? 'input_row_budget_exceeded'
+                  : (!$deadlineReady ? 'deadline_unavailable'
+                    : ($failure instanceof \Illuminate\Database\QueryException
+                      && in_array((int) ($failure->errorInfo[1] ?? 0), [1969, 3024], true)
+                        ? 'statement_timeout' : 'diagnostic_execution_failed'))];
+              // Fixed encrypted status only; never include exception SQL, bindings, identifiers or partial amounts.
+            }}
           }} elseif ($case === 'class_sessions_explain_319') {{
             // in-app #319 (#3069): EXPLAIN + timed paginate() of the /class-sessions index query for the real
             // Teacher Home request shapes. Read-only; plans, timings and row estimates only (no row data).
@@ -2313,7 +2352,15 @@ jobs:
             base64 -w76 /tmp/production_case_probe.php
             echo 'PROBE_B64'
             echo 'cd /home/admin/backend'
-            echo 'php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
+            if [[ "$CASE_KEY" == 'inapp_414_amount_source' ]]; then
+              # A missing GNU timeout fails closed; no fallback to unbounded execution.
+              echo 'command -v timeout >/dev/null'
+              echo 'if timeout --signal=TERM --kill-after=5s 120s php artisan tinker "--execute=require '"'"'$probe_file'"'"';"; then :; else'
+              echo '  probe_rc=$?; echo "remote_execution_failed_or_timed_out" >&2; exit "$probe_rc"'
+              echo 'fi'
+            else
+              echo 'php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
+            fi
           } > "$remote_script"
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' < "$remote_script" > raw/production-case.log 2> raw/production-case.stderr.log

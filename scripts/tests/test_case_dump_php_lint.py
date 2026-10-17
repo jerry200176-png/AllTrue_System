@@ -142,7 +142,9 @@ class InApp414AmountSourceCase(unittest.TestCase):
         self.assertNotRegex(block, r"(?i)\b(insert\s+into|update\s+\w+\s+set|delete\s+from|replace\s+into|alter\s+table|drop\s+table|truncate|create\s+table|for\s+update|lock\s+in\s+share)\b")
         # Every query of the case runs inside the try block.
         body = block.split("$conn->beginTransaction();")[1].split("} finally {")[0]
-        self.assertEqual(block.count("$conn->select"), body.count("$conn->select") + 1)  # +1: SET TRANSACTION
+        self.assertIn("$conn->selectOne($sqlContract", body)
+        self.assertEqual(body.count("$readComplete("), 7)
+        self.assertNotIn("$conn->select($sql", body)
 
     def test_is_bound_to_campus_11_through_student_campus(self):
         block = self.block()
@@ -152,7 +154,7 @@ class InApp414AmountSourceCase(unittest.TestCase):
         self.assertRegex(block, r"if \(\(int\) \$c->campus_id !== \$requiredCampusId\) \{ throw ")
         self.assertRegex(block, r"if \(\$c === null\) \{ throw ")
         # The campus check comes before any bill is read.
-        self.assertLess(block.index("$requiredCampusId) {"), block.index("$conn->select($sqlInvoices"))
+        self.assertLess(block.index("$requiredCampusId) {"), block.index("$readComplete($sqlInvoices"))
         self.assertIn("obj.get('campus_bound') != 11", RUN)
 
     def test_selects_and_outputs_no_free_text_columns(self):
