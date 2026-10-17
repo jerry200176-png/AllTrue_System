@@ -282,8 +282,7 @@ test.describe('agreed-fee isolated full-stack', () => {
     request,
   }) => {
     const courseId = process.env.AGREED_FEE_ISOLATED_CASE_STATE_COURSE_ID;
-    const invoiceId = process.env.AGREED_FEE_ISOLATED_CASE_STATE_INVOICE_ID;
-    await openModal(page, courseId, invoiceId);
+    await openModal(page, courseId, process.env.AGREED_FEE_ISOLATED_CASE_STATE_INVOICE_ID);
     const before = await snapshot(request, courseId);
     expect(before.charge).toBe(8000);
     expect(before.correction_count).toBe(0);
@@ -291,6 +290,8 @@ test.describe('agreed-fee isolated full-stack', () => {
 
     const previewBody = await previewCharge(page, '500');
     expect(previewBody.preview_token).toBeTruthy();
+    // Keep the modal's pending idempotency_key — a fresh UUID would 409 on request-hash
+    // mismatch, not state drift. After bump, click real fee-apply with that sealed plan.
 
     const bump = await request.post(`${base}/__isolated/bump-tracked-state`, {
       headers: {
@@ -304,27 +305,16 @@ test.describe('agreed-fee isolated full-stack', () => {
     const bumpBody = await bump.json();
     expect(bumpBody.remaining_sessions).toBe(4);
 
-    const apply = await request.post(
-      `${base}/api/v1/student-classes/${courseId}/agreed-fee-correction/apply`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        data: {
-          scope: 'billed',
-          original_invoice_id: Number(invoiceId),
-          new_charge: 500,
-          reason: 'Synthetic agreed fee correction',
-          idempotency_key: crypto.randomUUID(),
-          preview_token: previewBody.preview_token,
-        },
-      },
+    const applyWait = page.waitForResponse(
+      (r) =>
+        r.request().method() === 'POST' && r.url().includes('/agreed-fee-correction/apply'),
     );
-    expect(apply.status()).toBe(409);
-    const err = await apply.json();
+    await page.getByTestId('fee-apply').click();
+    const applyRes = await applyWait;
+    expect(applyRes.status()).toBe(409);
+    const err = await applyRes.json();
     expect(err.code).toBe('state_changed');
+    await expect(page.getByTestId('agreed-fee-success')).toHaveCount(0);
 
     const after = await snapshot(request, courseId);
     expect(after.charge).toBe(8000);

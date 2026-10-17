@@ -58,14 +58,21 @@ function agreed_fee_isolated_assert_loaded_connection_or_refuse(): void
     if (!empty($cfg['unix_socket'])) {
         agreed_fee_isolated_refuse('mysql.unix_socket set');
     }
+    // Candidate database.php ships read=>[] / write=>[] when DB_READ_HOST is unset.
+    // Empty defaults are OK; only non-empty overrides are redirects.
+    $read = $cfg['read'] ?? null;
+    $write = $cfg['write'] ?? null;
+    if (is_array($read) && $read !== []) {
+        agreed_fee_isolated_refuse('mysql read override non-empty');
+    }
+    if (is_array($write) && $write !== []) {
+        agreed_fee_isolated_refuse('mysql write override non-empty');
+    }
+    if ((!is_array($read) && $read !== null) || (!is_array($write) && $write !== null)) {
+        agreed_fee_isolated_refuse('mysql read/write override malformed');
+    }
     if (!empty($cfg['read']['host']) || !empty($cfg['write']['host'])) {
         agreed_fee_isolated_refuse('mysql read/write host override');
-    }
-    if (isset($cfg['read']) || isset($cfg['write'])) {
-        // sticky read/write arrays even if host empty still count as redirect surface
-        if (is_array($cfg['read'] ?? null) || is_array($cfg['write'] ?? null)) {
-            agreed_fee_isolated_refuse('mysql read/write connection split present');
-        }
     }
 
     $host = (string) ($cfg['host'] ?? '');
@@ -88,10 +95,22 @@ function agreed_fee_isolated_assert_loaded_connection_or_refuse(): void
 /** After a successful loaded-assert: clear residual socket/url keys and reconnect. */
 function agreed_fee_isolated_harden_connection_after_pass(): void
 {
+    $mysql = config('database.connections.mysql');
+    if (!is_array($mysql)) {
+        agreed_fee_isolated_refuse('mysql connection missing at harden');
+    }
+    $mysql['unix_socket'] = '';
+    $mysql['url'] = null;
+    // Drop empty read/write split stubs so the migrator never treats them as a redirect surface.
+    if (($mysql['read'] ?? null) === []) {
+        unset($mysql['read']);
+    }
+    if (($mysql['write'] ?? null) === []) {
+        unset($mysql['write']);
+    }
     config([
         'database.default' => 'mysql',
-        'database.connections.mysql.unix_socket' => '',
-        'database.connections.mysql.url' => null,
+        'database.connections.mysql' => $mysql,
     ]);
     Illuminate\Support\Facades\DB::purge('mysql');
     Illuminate\Support\Facades\DB::reconnect('mysql');

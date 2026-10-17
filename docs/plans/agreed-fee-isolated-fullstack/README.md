@@ -29,6 +29,8 @@ Canonical plan: [`../2026-10-17-agreed-fee-isolated-fullstack-harness.md`](../20
 5. **Origins / token / cleanup** — BASE/API/Vite proxy allowlist precise loopback (`127.0.0.1:5179` / `:8000`); seed token unexpired + course allowlist; env written under umask 077 → 0600; `EXTERNAL=1` writes `/tmp/agreed-fee-owned-cleanup.sh` and workflow traps it so Playwright failure cannot skip cleanup.
 6. **Companion JUnit** — `--log-junit` + non-zero test assert + artifact upload; `AGREED_FEE_ISOLATED_REQUIRE=1` fail-closed; stack ready requires **both** API and Vite or exit 1.
 
+Post-HOLD microfixes (tip after `72972d`): empty `read=>[]`/`write=>[]` accepted (non-empty still refused; harden drops empty stubs); state_changed uses modal `fee-apply` with sealed preview key (no fresh UUID); Vite proxy requires exact `:8000` origin.
+
 ## Dual-source bind
 
 - **candidate_sha**: tip containing `AgreedFeeCorrection*` + modal (e.g. #4250 `a579…`).

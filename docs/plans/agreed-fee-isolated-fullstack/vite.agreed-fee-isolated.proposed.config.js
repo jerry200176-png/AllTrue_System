@@ -28,8 +28,9 @@ function assertLoopbackProxyTarget(raw, label) {
   if (u.protocol !== 'http:') {
     throw new Error(`${label} must be http:// loopback`);
   }
-  if (u.port && u.port !== '8000') {
-    throw new Error(`${label} port must be 8000, got ${u.port}`);
+  // Empty port / :80 normalize to origin without :8000 — refuse. Exact match only.
+  if (u.origin !== 'http://127.0.0.1:8000' && u.origin !== 'http://localhost:8000') {
+    throw new Error(`${label} origin must be http://127.0.0.1:8000 (or localhost:8000), got ${u.origin}`);
   }
   return u.origin;
 }
