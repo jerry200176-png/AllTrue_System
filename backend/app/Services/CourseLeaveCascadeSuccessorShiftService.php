@@ -128,6 +128,15 @@ class CourseLeaveCascadeSuccessorShiftService
         return (string) preg_replace('/(' . self::NOTE_ANCHOR . ':succ=\d+:n=\d+:state=)active(?=;|$)/', '${1}undone', $note);
     }
 
+    private static function boundedNote(string $note, ClassSession $session): string
+    {
+        if (mb_strlen($note) > 255) {
+            throw new SuccessorShiftRefused('堂次備註空間不足以保留完整順延紀錄，請先整理備註後再重試，未做任何變更。', 422,
+                ['affected_lessons' => [['course_id' => (int) $session->StudentClassID, 'session_id' => (int) $session->id, 'reason' => 'shift_note_capacity']]]);
+        }
+        return $note;
+    }
+
     /** @return array<string, mixed> */
     public function preview(int $leaveSessionId): array
     {
@@ -160,8 +169,11 @@ class CourseLeaveCascadeSuccessorShiftService
 
             /** @var ClassSession $leave */ $leave = ClassSession::query()->whereKey($leaveSessionId)->firstOrFail();
             $leave->Note = trim((string) preg_replace('/(?:^|;\s*)' . self::NOTE_ANCHOR . ':[^;]*(?=;|$)/', '', (string) $leave->Note), '; ');
-            CourseLeaveCascadeService::markSessionLeaveOnly($leave, CourseLeaveCascadeService::NOTE_LEAVE . '; '
-                . self::NOTE_ANCHOR . ':succ=' . $plan['successor_course_id'] . ':n=' . (count($plan['moves']) - 1) . ':state=active');
+            $leaveSuffix = CourseLeaveCascadeService::NOTE_LEAVE . '; ' . self::NOTE_ANCHOR . ':succ='
+                . $plan['successor_course_id'] . ':n=' . (count($plan['moves']) - 1) . ':state=active';
+            self::boundedNote(CourseLeaveCascadeService::appendNote(
+                CourseLeaveCascadeService::appendNote($leave->Note, $leaveSuffix), CourseLeaveCascadeService::NOTE_REVERT_TO_SCHEDULED), $leave);
+            CourseLeaveCascadeService::markSessionLeaveOnly($leave, $leaveSuffix);
             /** @var StudentClass $old */ $old = StudentClass::query()->whereKey($plan['old_course_id'])->firstOrFail();
             $campusId = (int) (DB::table('Student')->where('id', (int) $old->StudentID)->value('CampusID') ?? 0);
             if (!StudentSignIn::query()->where('ClassSessionID', $leaveSessionId)->exists()) {
@@ -178,8 +190,8 @@ class CourseLeaveCascadeSuccessorShiftService
                 $row->StartTime = $move['to']['start'];
                 $row->EndTime = $move['to']['end'];
                 $previousNote = trim((string) preg_replace('/(?:^|;\s*)' . self::NOTE_SHIFT . ':ls=' . $leaveSessionId . ':from=[^;]*(?=;|$)/', '', (string) $row->Note), '; ');
-                $row->Note = CourseLeaveCascadeService::appendNote($previousNote, self::NOTE_SHIFT . ':ls=' . $leaveSessionId . ':from='
-                    . $move['from']['date'] . 'T' . $move['from']['start'] . ':end=' . $move['from']['end']);
+                $row->Note = self::boundedNote(CourseLeaveCascadeService::appendNote($previousNote, self::NOTE_SHIFT . ':ls=' . $leaveSessionId . ':from='
+                    . $move['from']['date'] . 'T' . $move['from']['start'] . ':end=' . $move['from']['end']), $row);
                 $row->save();
                 CourseLeaveCascadeService::syncLearningRecordSessionDate($row);
             }

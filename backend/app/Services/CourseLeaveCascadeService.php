@@ -1017,6 +1017,7 @@ class CourseLeaveCascadeService
             throw new \InvalidArgumentException('找不到可撤銷的請假堂次');
         }
 
+        $shiftTail = CourseLeaveCascadeSuccessorShiftService::shiftTail($courseId, (int) $leaveSession->id);
         CourseLeaveCascadeSuccessorShiftService::assertUndoAllowed($course, (int) $leaveSession->id);
         if ($shiftTail && (!Carbon::parse(Carbon::parse($shiftTail->SessionDate)->toDateString() . ' ' . $shiftTail->StartTime)->isFuture()
             || !self::isSafeToRemoveAutoAppend($shiftTail)

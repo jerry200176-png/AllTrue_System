@@ -428,7 +428,7 @@ class LeaveSuccessorShiftTest extends TestCase
     }
 
     /** #4212 r4300456914: reconciled desync uses cascade cleanup, preserving consumed tails. @dataProvider shiftTailStates */
-    public function test_reconciled_desync_undo_cleans_up_only_a_safe_owned_tail(string $state): void
+    public function test_reconciled_desync_undo_cleans_up_only_a_safe_owned_tail(string $state, string $entry = 'session'): void
     {
         $leaveId = $this->sessions['2026-11-17'];
         if ($state === 'historical_policy') { // Legacy undo preserves this note on scheduled occurrences.
@@ -442,10 +442,14 @@ class LeaveSuccessorShiftTest extends TestCase
             ]);
         }
         DB::table('StudentClass')->where('ID', $this->renewal)->update(['EndDate' => '2026-12-22']);
-        DB::table('ClassSession')->where('id', $leaveId)->update(['Status' => 'scheduled']);
+        if ($entry === 'session') {
+            DB::table('ClassSession')->where('id', $leaveId)->update(['Status' => 'scheduled']);
+        }
         $tail = DB::table('ClassSession')->where('StudentClassID', $this->old)->where('Note', 'like', 'auto-extended-after-leave%:succ=%')->value('id');
         if ($state === 'consumed') {
             DB::table('ClassSession')->where('id', $tail)->update(['Status' => 'completed']);
+        } elseif ($state === 'ledger') {
+            SessionDeductionLedger::create(['student_class_id' => $this->old, 'class_session_id' => $tail, 'event_type' => 'deduct', 'source' => 'attendance', 'minutes' => 120]);
         } elseif ($state === 'past') {
             DB::table('ClassSession')->where('id', $tail)->update(['SessionDate' => '2026-10-31']);
         }
@@ -453,9 +457,15 @@ class LeaveSuccessorShiftTest extends TestCase
             Carbon::setTestNow(Carbon::parse('2026-12-01 ' . ($state === 'elapsed_today' ? '22:00:00' : '18:00:00'), 'Asia/Taipei'));
             AuthToken::query()->where('token', $this->token)->update(['expires_at' => now()->addDay()]);
         }
+        $url = '/api/v1/schedules/undo-leave-by-session';
+        if ($entry === 'schedule') {
+            $marker = \App\Models\Schedule::create(['student_id' => self::STUDENT, 'student_course_id' => $this->old, 'teacher_id' => self::TEACHER,
+                'branch_id' => 1, 'schedule_date' => '2026-11-17', 'day_of_week' => 2, 'start_time' => '18:00', 'end_time' => '20:00', 'status' => 'leave', 'type' => 'regular']);
+            $url = '/api/v1/schedules/' . $marker->id . '/undo-leave'; // Stale start deliberately resolves no ID.
+        }
         $before = $this->undoSnapshot();
         $response = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
-            ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId]);
+            ->postJson($url, ['class_session_id' => $leaveId]);
         if (!in_array($state, ['scheduled', 'later_today', 'historical_policy'], true)) {
             $response->assertStatus(422);
             $this->assertSame($before, $this->undoSnapshot());
@@ -473,7 +483,45 @@ class LeaveSuccessorShiftTest extends TestCase
 
     public static function shiftTailStates(): array
     {
-        return ['scheduled tail' => ['scheduled'], 'consumed tail' => ['consumed'], 'past tail' => ['past'], 'elapsed today' => ['elapsed_today'], 'later today' => ['later_today'], 'historical policy' => ['historical_policy']];
+        return ['scheduled tail' => ['scheduled'], 'consumed tail' => ['consumed'], 'past tail' => ['past'], 'elapsed today' => ['elapsed_today'], 'later today' => ['later_today'], 'historical policy' => ['historical_policy'],
+            'schedule elapsed' => ['elapsed_today', 'schedule'], 'schedule ledger' => ['ledger', 'schedule'],
+            'schedule safe' => ['scheduled', 'schedule'], 'schedule historical' => ['historical_policy', 'schedule']];
+    }
+
+    /** @dataProvider noteCapacityCases */
+    public function test_apply_respects_note_capacity_without_truncation(bool $old, bool $overflow): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $suffix = $old ? '; leave; successor-shift-anchor:succ=' . $this->renewal . ':n=4:state=active; revert-to-scheduled'
+            : '; successor-shift-after-leave:ls=' . $leaveId . ':from=2026-12-01T19:00:00:end=21:00:00';
+        $text = str_repeat('備', 255 - mb_strlen($suffix) + (int) $overflow);
+        $target = $old ? $leaveId : $this->sessions['2026-12-01'];
+        DB::table('ClassSession')->where('id', $target)->update(['Note' => $text]);
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk();
+        $before = $this->undoSnapshot();
+        $response = $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')]);
+        if ($overflow) {
+            $response->assertStatus(422)->assertJsonPath('plan.affected_lessons.0.reason', 'shift_note_capacity');
+            $this->assertSame($before, $this->undoSnapshot());
+        } else {
+            $response->assertOk()->assertJsonPath('applied', true);
+            foreach (array_slice($preview->json('moves'), 1) as $move) {
+                DB::table('ClassSession')->where('id', $move['session_id'])->update([
+                    'SessionDate' => $move['from']['date'], 'StartTime' => $move['from']['start'], 'EndTime' => $move['from']['end'],
+                ]);
+            }
+            DB::table('StudentClass')->where('ID', $this->renewal)->update(['EndDate' => '2026-12-22']);
+            $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+                ->postJson('/api/v1/schedules/undo-leave-by-session', ['class_session_id' => $leaveId])->assertOk();
+            $note = DB::table('ClassSession')->where('id', $target)->value('Note');
+            $this->assertStringContainsString($text, $note);
+            $this->assertSame(255, mb_strlen($note));
+        }
+    }
+
+    public static function noteCapacityCases(): array
+    {
+        return ['old leave overflow' => [true, true], 'renewal overflow' => [false, true], 'old leave fits' => [true, false], 'renewal fits' => [false, false]];
     }
 
     private function undoSnapshot(): string
