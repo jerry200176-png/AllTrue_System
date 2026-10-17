@@ -144,7 +144,7 @@ jobs:
           if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'}):
               raise SystemExit(f'{case} requires student_id')
           if case == 'inapp_414_amount_source':
-              # The ID is read only from the masked secret; any dispatch input is refused so it never reaches the public log.
+              # The ID is read only from the masked secret. Rejection cannot redact public dispatch metadata; never submit a live ID there.
               if target_student_id or target_student_class_id:
                   raise SystemExit('inapp_414_amount_source takes no student_id/student_class_id input; set the CASE_INPUT_STUDENT_CLASS_ID secret')
               if os.environ.get('EXPECTED_TEACHER_IDS') or os.environ.get('TARGET_SUBJECT_NAME', '數學') not in {'', '數學'}:
@@ -2000,7 +2000,7 @@ jobs:
             sc.rate_unit, sc.SessionCount AS session_count, sc.TotalHours AS total_hours, sc.Charge AS charge,
             sc.Paid AS paid, sc.Pay AS pay, sc.PayDate AS pay_date, sc.Disconunt AS discount, sc.Stop AS stop,
             sc.closed_reason, sc.ScheduleMode AS schedule_mode, sc.ClassType AS class_type, sc.PackageID AS package_id,
-            sc.standard_lesson_minutes, sc.deduction_basis, sc.MDate AS mdate
+            sc.standard_lesson_minutes, sc.deduction_basis, sc.MDate AS mdate, sc.StartDate AS start_date, sc.EndDate AS end_date
           FROM StudentClass sc
           JOIN Student s ON s.id = sc.StudentID
           WHERE sc.ID = ?
@@ -2062,6 +2062,49 @@ jobs:
               foreach ($invoiceIds as $iid) {{ $refKinds[\\App\\Models\\SecurityAuditEvent::ref('invoice', $iid)] = ['invoice', $iid]; }}
               $placeholders = implode(',', array_fill(0, count($refKinds), '?'));
               $events = $conn->select(sprintf($sqlAudit, $placeholders), array_keys($refKinds));
+              // Project display amounts using the production resolver; never serialize models or session rows.
+              $hydrate = static function (string $type, array $attributes) use ($conn) {{
+                $model = new $type();
+                $model->setConnection($conn->getName());
+                $model->setRawAttributes($attributes);
+                return $model;
+              }};
+              $displayCourse = $hydrate(\\App\\Models\\StudentClass::class, [
+                'ID' => $targetStudentClassId, 'ScheduleMode' => $c->schedule_mode,
+                'StartDate' => $c->start_date, 'EndDate' => $c->end_date,
+                'Rate' => $c->rate, 'rate_unit' => $c->rate_unit, 'Charge' => $c->charge, 'PackageID' => $c->package_id,
+              ]);
+              $displayCourse->setRelation('pricingAmendments', new \\Illuminate\\Database\\Eloquent\\Collection(array_map(
+                fn ($a) => $hydrate(\\App\\Models\\StudentClassPricingAmendment::class, [
+                  'id' => $a->amendment_id, 'effective_from' => $a->effective_from, 'rate' => $a->rate,
+                  'rate_unit' => $a->rate_unit, 'voided_at' => $a->voided_at,
+                ]), $amendments)));
+              $displayResolver = app(\\App\\Services\\InvoiceAmountReconciliationService::class);
+              $displayKeys = array_fill_keys(['total_amount', 'computed_total_amount', 'outstanding_amount',
+                'amount_source', 'period_sessions', 'amount_discrepancy', 'repriceable'], true);
+              $displayProjections = [];
+              foreach (array_slice($invoices, 0, $cap) as $i) {{
+                $iid = (int) $i->invoice_id;
+                // StudentClassController::invoices only displays non-void top-level target invoices.
+                if ((int) $i->student_class_id !== $targetStudentClassId || (string) $i->status === 'void') {{
+                  $displayProjections[$iid] = ['status' => 'not_displayed_for_target'];
+                  continue;
+                }}
+                $displayInvoice = $hydrate(\\App\\Models\\Invoice::class, [
+                  'id' => $iid, 'StudentClassID' => $targetStudentClassId, 'TotalAmount' => $i->total_amount,
+                  'Status' => $i->status, 'billing_period' => $i->billing_period, 'IssueDate' => $i->issue_date,
+                ]);
+                $displayInvoice->setRelation('payments', new \\Illuminate\\Database\\Eloquent\\Collection(array_values(array_map(
+                  fn ($p) => $hydrate(\\App\\Models\\Payment::class, ['Amount' => $p->amount, 'Method' => $p->method]),
+                  array_filter($payments, fn ($p) => (int) $p->invoice_id === $iid)))));
+                $displayInvoice->setRelation('items', new \\Illuminate\\Database\\Eloquent\\Collection(array_values(array_map(
+                  fn ($l) => $hydrate(\\App\\Models\\InvoiceItem::class, [
+                    'StudentClassID' => $l->student_class_id, 'PeriodStart' => $l->period_start, 'PeriodEnd' => $l->period_end,
+                  ]), array_filter($lines, fn ($l) => (int) $l->invoice_id === $iid)))));
+                $displayProjections[$iid] = ['status' => 'resolved'] + array_intersect_key(
+                  $displayResolver->resolve($displayInvoice, $displayCourse), $displayKeys);
+              }}
+              // End display projection; all resolver reads occurred before transaction rollback.
             }} finally {{
               $conn->rollBack();
             }}
@@ -2084,7 +2127,7 @@ jobs:
                 'student_class_id' => $idOut($l->student_class_id), 'amount' => (int) $l->amount,
                 'period_start' => $l->period_start, 'period_end' => $l->period_end, 'created_at' => $l->created_at];
             }}, $lines);
-            $invoiceRows = array_map(function ($i) use ($netPaid, $lineSum, $lineSumThisClass, $c, $idOut) {{
+            $invoiceRows = array_map(function ($i) use ($netPaid, $lineSum, $lineSumThisClass, $c, $idOut, $displayProjections) {{
               $iid = (int) $i->invoice_id;
               $paidNet = max(0, $netPaid[$iid] ?? 0);
               return ['invoice_id' => $iid, 'student_id_matches_contract' => (int) $i->student_id === (int) $c->student_id,
@@ -2092,6 +2135,7 @@ jobs:
                 'status' => $i->status === null ? null : (string) $i->status, 'is_void' => (string) $i->status === 'void',
                 'total_amount' => (int) $i->total_amount, 'paid_amount_stored' => (int) $i->paid_amount_stored,
                 'paid_amount_net_payments' => $paidNet, 'outstanding_computed' => max(0, (int) $i->total_amount - $paidNet),
+                'display_projection' => $displayProjections[$iid] ?? ['status' => 'not_projected'],
                 'line_sum' => $lineSum[$iid] ?? 0, 'line_sum_this_class' => $lineSumThisClass[$iid] ?? 0,
                 'billing_period' => $i->billing_period, 'zero_amount_reason' => $i->zero_amount_reason,
                 'schedule_mode_at_issue' => $i->schedule_mode_at_issue, 'issue_date' => $i->issue_date, 'due_date' => $i->due_date,
@@ -2146,7 +2190,8 @@ jobs:
             $out['evidence_limits'] = [
               'Audit rows match on HMAC subject refs (APP_KEY); a rotated key or an event logged without subject_id is not found.',
               'security_audit_events are purged after audit.retention_days; older amount changes leave no audit row.',
-              'outstanding_computed and paid_amount_net_payments follow Invoice::netPaidSql; the screen may use another resolver.',
+              'outstanding_computed is persisted-ledger arithmetic; display_projection uses InvoiceAmountReconciliationService inside the read-only transaction.',
+              'Only non-void top-level target invoices receive display projection; item-linked invoices of other contracts are not repriced.',
               'Course management shows 應繳 from the first non-void unpaid/partial invoice (else the first non-void one) of row.invoices.',
             ];
           }} elseif ($case === 'class_sessions_explain_319') {{
