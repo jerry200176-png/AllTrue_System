@@ -42,16 +42,16 @@ test.describe('agreed-fee isolated full-stack (synthetic)', () => {
       { token, apiUrl: api },
     );
 
-    await page.goto('/agreed-fee-isolated.html');
+    await page.goto(`/agreed-fee-isolated.html?courseId=${courseId}&invoiceId=${invoiceId}`);
     await expect(page.getByTestId('agreed-fee-isolated-root')).toBeVisible();
 
-    // Modal fields — selectors must match AgreedFeeCorrectionModal data-testid once wired.
-    await page.getByTestId('agreed-fee-new-charge').fill('500');
-    await page.getByTestId('agreed-fee-reason').fill('Synthetic agreed fee correction');
-    await page.getByTestId('agreed-fee-preview').click();
-    await expect(page.getByTestId('agreed-fee-preview-summary')).toBeVisible({ timeout: 15_000 });
+    // Selectors match AgreedFeeCorrectionModal on tip a579 (fee-charge / fee-reason / …).
+    await page.getByTestId('fee-charge').fill('500');
+    await page.getByTestId('fee-reason').fill('Synthetic agreed fee correction');
+    await page.getByTestId('fee-preview').click();
+    await expect(page.getByTestId('fee-plan')).toBeVisible({ timeout: 15_000 });
 
-    await page.getByTestId('agreed-fee-apply').click();
+    await page.getByTestId('fee-apply').click();
     await expect(page.getByTestId('agreed-fee-success')).toBeVisible({ timeout: 15_000 });
 
     expect(feeCalls.some((c) => c.url.endsWith('/preview') && c.method === 'POST')).toBeTruthy();

@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agreed-fee isolated fixture (DRAFT)</title>
+  </head>
+  <body>
+    <!-- Proposed path after copy: frontend/e2e/fixtures/agreed-fee-isolated/agreed-fee-isolated.html -->
+    <div id="app" data-testid="agreed-fee-isolated-root"></div>
+    <script type="module" src="./agreed-fee-isolated-mount.js"></script>
+  </body>
+</html>

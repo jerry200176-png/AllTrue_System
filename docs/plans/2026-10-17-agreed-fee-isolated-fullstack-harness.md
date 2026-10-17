@@ -61,6 +61,7 @@ Do **not** bolt this onto the required `phpunit` / Vite jobs (timeout, FinOps, r
 | `backend/tests/Support/agreed-fee-isolated-serve.proposed.php` | artisan-serve bootstrap with DB/host refuse + process-local flag |
 | `frontend/playwright.agreed-fee-isolated.proposed.config.js` | dedicated config; ignore production smoke specs |
 | `frontend/e2e/agreed-fee-isolated-fullstack.proposed.spec.js` | 8000→500 preview/apply against real API; no `page.route` mock for fee |
+| `frontend/vite.agreed-fee-isolated.proposed.config.js` + fixture HTML/mount | Mount modal; Vite proxies `/api`→`:8000` |
 | `docs/plans/agreed-fee-isolated-fullstack/proposed-workflow.yml` | **inert** copy — `workflow_dispatch` only + `inputs.enable` default `false` |
 
 ---

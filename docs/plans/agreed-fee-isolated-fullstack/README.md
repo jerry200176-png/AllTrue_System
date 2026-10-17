@@ -12,5 +12,8 @@ Canonical plan: [`../2026-10-17-agreed-fee-isolated-fullstack-harness.md`](../20
 | `agreed-fee-isolated-stack.proposed.sh` | `scripts/agreed-fee-isolated-stack.sh` |
 | `playwright.agreed-fee-isolated.proposed.config.js` | `frontend/playwright.agreed-fee-isolated.config.js` |
 | `agreed-fee-isolated-fullstack.proposed.spec.js` | `frontend/e2e/agreed-fee-isolated-fullstack.spec.js` |
+| `vite.agreed-fee-isolated.proposed.config.js` | `frontend/vite.agreed-fee-isolated.config.js` (proxies `/api`→`:8000`) |
+| `fixture/agreed-fee-isolated.html.proposed` | `frontend/e2e/fixtures/agreed-fee-isolated/agreed-fee-isolated.html` |
+| `fixture/agreed-fee-isolated-mount.proposed.js` | `…/agreed-fee-isolated-mount.js` (mounts modal; needs fee UI tip e.g. a579) |
 
-Still missing after approval (small follow-up): `vite.agreed-fee-isolated.config.js` + `agreed-fee-isolated.html` mounting `AgreedFeeCorrectionModal` with absolute API base from env (proxy optional).
+Apply onto a tip that contains `AgreedFeeCorrectionModal` (e.g. #4250 `a579`). Spec asserts `fee-charge` / `fee-plan` / fixture `agreed-fee-success` after apply emit.

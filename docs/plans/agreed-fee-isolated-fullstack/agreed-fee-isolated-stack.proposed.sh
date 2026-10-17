@@ -33,8 +33,7 @@ php -S 127.0.0.1:8000 "$ROOT/docs/plans/agreed-fee-isolated-fullstack/agreed-fee
 echo $! > /tmp/agreed-fee-api.pid
 
 cd "$ROOT/frontend"
-# Fixture page to be added with the Playwright proposed config (Vite on 5179).
-# npx vite --config vite.agreed-fee-isolated.proposed.config.js &
+# After copy: npx vite --config vite.agreed-fee-isolated.config.js &
 echo "API http://127.0.0.1:8000  (pid $(cat /tmp/agreed-fee-api.pid))"
 echo "source /tmp/agreed-fee-isolated.env before Playwright"
-echo "DRAFT NOTE: Vite fixture + Playwright config still proposed — see sibling *.proposed.*"
+echo "DRAFT: Vite fixture proposed under docs/plans/.../fixture/ + vite.*.proposed.config.js"
