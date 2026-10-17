@@ -19,6 +19,7 @@ jobs:
   run:
     name: Run learning-records:void-stale-leave on production
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper

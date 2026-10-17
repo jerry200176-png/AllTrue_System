@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-16-free-status-shared-badge
+    published_at: "2026-10-16"
+    audiences:
+      - director
+    importance: digest
+    title: 免費課程不再顯示未繳
+    summary: 學生列表、課程查找與結案確認，免費／贈送的課程會顯示「免費／贈送」，不再顯示未繳。
+    items:
+      - category: fixed
+        text: 免費／贈送的課程不會再顯示「未繳」或「登記繳費回報」，結案時也不會提醒尚未繳費。
+      - category: fixed
+        text: 系統不認得的繳費狀態會顯示「狀態待確認」，不會再預設成「未繳」。
+    source_refs:
+      - "changelog:2026-10-16:4150-free-status-shared-badge"

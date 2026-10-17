@@ -23,6 +23,7 @@ jobs:
   backup:
     name: Backup + verify backend/storage/app/public on Pi
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
 
     steps:

@@ -519,6 +519,46 @@ class StudentClassPaidStatusTest extends TestCase
         $this->assertSame('paid', $match['payment_status'], 'payment_status should be paid when invoice has payment');
     }
 
+    /** #4114 (Founder Q3): course management marks a `paid` resting on the legacy flag alone; payment_status is unchanged. */
+    public function test_index_marks_paid_flag_without_payment_record(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $flagOnly = $this->createStudentClass($student->id, ['Paid' => 1, 'PayDate' => '2026-03-01', 'Charge' => 16500]);
+        $paid = $this->createStudentClass($student->id, ['Paid' => 1, 'Charge' => 16500, 'SubjectID' => 2]);
+        $invoice = \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $paid->ID,
+            'IssueDate' => now()->toDateString(), 'TotalAmount' => 16500, 'PaidAmount' => 16500, 'Status' => 'paid']);
+        \App\Models\Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 16500, 'PaidAt' => '2026-04-15', 'Method' => 'cash']);
+        $unpaid = $this->createStudentClass($student->id, ['Charge' => 16500, 'SubjectID' => 3]);
+
+        $data = collect($this->getJson('/api/v1/student-classes?branch_id=1', ['Authorization' => "Bearer {$token}"])->assertOk()->json('data'));
+        $pick = fn (StudentClass $c) => $data->firstWhere('ID', $c->ID);
+
+        $this->assertSame(['paid', true], [$pick($flagOnly)['payment_status'], $pick($flagOnly)['legacy_paid_flag_only']]);
+        $this->assertSame(['paid', false], [$pick($paid)['payment_status'], $pick($paid)['legacy_paid_flag_only']]);
+        $this->assertSame(['unpaid', false], [$pick($unpaid)['payment_status'], $pick($unpaid)['legacy_paid_flag_only']]);
+        $this->assertSame(1, (int) $flagOnly->fresh()->Paid, 'read-only: the stored flag is untouched');
+    }
+
+    /**
+     * #4174 review: a single-period date-mode course with Charge=0, Paid=0 and no invoice derives `paid` (0 >= 0), but no
+     * legacy flag exists, so there is nothing to verify: no 需核對.
+     */
+    public function test_index_does_not_mark_derived_paid_without_a_legacy_flag(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $free = $this->createStudentClass($student->id, ['ScheduleMode' => 'date', 'Charge' => 0, 'Paid' => 0,
+            'StartDate' => '2026-10-05', 'EndDate' => '2026-10-26', 'settlement_day' => 5]);
+
+        $row = collect($this->getJson('/api/v1/student-classes?branch_id=1', ['Authorization' => "Bearer {$token}"])->assertOk()->json('data'))
+            ->firstWhere('ID', $free->ID);
+
+        // #4150: the resolver calls this zero-fee course `free`, which now outranks the derived single-period `paid`.
+        $this->assertSame('free', $row['payment_status'], 'the resolver verdict is not replaced by the derived period status');
+        $this->assertFalse($row['legacy_paid_flag_only']);
+    }
+
     /**
      * TD-083 B1 / R94: partial invoice payment must NOT display as paid on the course list.
      */

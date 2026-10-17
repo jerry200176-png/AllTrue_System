@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-15-inapp-415-course-manager-close-in-place
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 結束課程不再跳到學生管理
+    summary: 管理課程裡結束課程會留在原頁；已收款移到歷史課程，未收款留清單標「課已結束，尚未收款」。
+    items:
+      - category: fixed
+        text: 「管理課程」裡按「結束課程」直接結案，不再跳到學生管理頁。
+      - category: improved
+        text: 篩選「進行中」時看不到剛結束的課，會出現提示，可一鍵切到「全部」查看。
+    source_refs:
+      - "changelog:2026-10-15:inapp-415-course-manager-close-in-place"

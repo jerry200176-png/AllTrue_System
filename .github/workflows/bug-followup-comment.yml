@@ -36,9 +36,108 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: inapp-production-writeback
+  cancel-in-progress: false
+  queue: max
+
 jobs:
-  comment:
+  preview:
+    # Runs before the approval so the reviewer sees exactly what will be written.
+    name: Preview the in-app write
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Show the requested write
+        # Every displayed input is read from the event payload (never env: GitHub prints step env in the
+        # public log header) and validated before anything reaches the public run summary. Errors name
+        # the field, never the value; a failed preview blocks approval and the write.
+        run: |
+          set -euo pipefail
+          ev() { jq -r --arg k "$1" '.inputs[$k] | if . == null then "" else tostring end' "$GITHUB_EVENT_PATH"; }
+          BUG_ID="$(ev bug_id)"
+          ISSUE_URL="$(ev github_issue_url)"
+          EXPECTED_STATUS="$(ev expected_status)"
+          PROD_REV="$(ev production_revision)"
+          DEPLOY_RUN="$(ev deploy_run_id)"
+          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
+          [[ "$ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
+          [[ "$ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
+          [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved|closed)$ ]] || { echo "invalid expected_status"; exit 1; }
+          [[ "$PROD_REV" =~ ^([0-9a-f]{40})?$ ]] || { echo "invalid production_revision"; exit 1; }
+          [[ "$DEPLOY_RUN" =~ ^[0-9]*$ ]] || { echo "invalid deploy_run_id"; exit 1; }
+          if [[ "$EXPECTED_STATUS" == closed ]]; then
+            [[ -n "$PROD_REV" && -n "$DEPLOY_RUN" ]] || { echo "closed follow-up needs production_revision and deploy_run_id"; exit 1; }
+          fi
+          PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"
+          PUBLIC_REPLY="${PUBLIC_REPLY%x}"
+          [[ "$PUBLIC_REPLY" == *"$ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
+          reply_len="$(jq -er '.inputs.public_reply | strings | length' "$GITHUB_EVENT_PATH")"
+          reply_sha="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" | sha256sum | cut -d' ' -f1)"
+          {
+            echo "## In-app write requested (approve only if this matches the reviewed list)"
+            echo
+            printf -- '- bug_id: %s\n' "$BUG_ID"
+            printf -- '- expected_status: %s\n' "$EXPECTED_STATUS"
+            printf -- '- github_issue_url: %s\n' "$ISSUE_URL"
+            printf -- '- production_revision: %s\n' "$PROD_REV"
+            printf -- '- deploy_run_id: %s\n' "$DEPLOY_RUN"
+            printf -- '- public_reply length (characters): %s\n' "$reply_len"
+            printf -- '- public_reply sha256 (exact UTF-8 input, no trailing newline added): %s\n' "$reply_sha"
+            echo
+            echo "The reply text is intentionally not shown (public repo). Compare the sha256 with the reviewed private list row."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  approve:
+    # Founder approval gate. Secrets stay on production-ssh (main-only); this job holds none.
+    name: Founder approval for production write
+    needs: preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production-activation
+    # GET environment / deployment-branch-policies need Actions: read for GITHUB_TOKEN (as in deploy.yml).
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Verify production-activation protection
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess
+          base = f"/repos/{os.environ['REPO']}/environments/production-activation"
+          def api(path):
+              return json.loads(subprocess.check_output(["gh", "api", path], text=True))
+          env = api(base)
+          rules = env.get("protection_rules") or []
+          reviewer_rules = [r for r in rules if r.get("type") == "required_reviewers"]
+          if not reviewer_rules:
+              raise SystemExit("production-activation has no required reviewer; refusing to write")
+          # The only approver must be the Founder: exactly one User reviewer, jerry200176-png, in every rule.
+          for r in reviewer_rules:
+              found = sorted((str(x.get("type")), str((x.get("reviewer") or {}).get("login"))) for x in (r.get("reviewers") or []))
+              if found != [("User", "jerry200176-png")]:
+                  raise SystemExit(f"production-activation reviewers must be exactly the Founder, got {found}; refusing to write")
+          if env.get("can_admins_bypass") is not False:
+              raise SystemExit("production-activation allows admin bypass; refusing to write")
+          # Same main-only check as deploy.yml production-activation gate.
+          policy = env.get("deployment_branch_policy") or {}
+          if policy.get("custom_branch_policies") is not True or policy.get("protected_branches") is not False:
+              raise SystemExit("production-activation needs a custom main-only branch policy; refusing to write")
+          policies = api(f"{base}/deployment-branch-policies").get("branch_policies") or []
+          names = sorted(str(p.get("name")) for p in policies)
+          if names != ["main"]:
+              raise SystemExit(f"production-activation must allow only main, got {names}; refusing to write")
+          print("production-activation verified: Founder-only reviewer, no admin bypass, main only")
+          PY
+
+  comment:
+    needs: approve
+    runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
@@ -73,11 +172,14 @@ jobs:
           BUG_ID: ${{ inputs.bug_id }}
           EXPECTED_STATUS: ${{ inputs.expected_status }}
           GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
-          PUBLIC_REPLY: ${{ inputs.public_reply }}
           PRODUCTION_REVISION: ${{ inputs.production_revision }}
           DEPLOY_RUN_ID: ${{ inputs.deploy_run_id }}
+        # PUBLIC_REPLY is deliberately not in env (GitHub prints step env in the public log header).
+        # Read the exact bytes from the event payload; the trailing x keeps trailing newlines.
         run: |
           set -euo pipefail
+          PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"
+          PUBLIC_REPLY="${PUBLIC_REPLY%x}"
           [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
           [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved|closed)$ ]] || { echo "invalid expected_status"; exit 1; }
           [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }

@@ -27,6 +27,7 @@ jobs:
   cleanup:
     name: Remove Claude Code footprint + dead git-sync cron from Pi
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 10
 
     steps:
