@@ -2,6 +2,8 @@
  * DRAFT — install path: frontend/vite.agreed-fee-isolated.config.js
  * Dev-only. Proxies /api → Laravel :8000 so AgreedFeeCorrectionModal relative
  * fetch('/api/v1/...') stays same-origin. Not used by production build.
+ *
+ * Proxy target is allowlisted to precise loopback origins (not a lifenet blacklist).
  */
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
@@ -10,6 +12,32 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixtureRoot = path.resolve(__dirname, 'e2e/fixtures/agreed-fee-isolated');
+
+const LOOPBACK = new Set(['127.0.0.1', 'localhost']);
+
+function assertLoopbackProxyTarget(raw, label) {
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error(`${label} not a URL: ${raw}`);
+  }
+  if (!LOOPBACK.has(u.hostname)) {
+    throw new Error(`${label} host must be loopback, got ${u.hostname}`);
+  }
+  if (u.protocol !== 'http:') {
+    throw new Error(`${label} must be http:// loopback`);
+  }
+  if (u.port && u.port !== '8000') {
+    throw new Error(`${label} port must be 8000, got ${u.port}`);
+  }
+  return u.origin;
+}
+
+const apiTarget = assertLoopbackProxyTarget(
+  process.env.AGREED_FEE_ISOLATED_API_URL || 'http://127.0.0.1:8000',
+  'AGREED_FEE_ISOLATED_API_URL',
+);
 
 export default defineConfig({
   root: fixtureRoot,
@@ -29,12 +57,12 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: process.env.AGREED_FEE_ISOLATED_API_URL || 'http://127.0.0.1:8000',
+        target: apiTarget,
         changeOrigin: true,
       },
       // Harness snapshot is on the Laravel router, not under /api
       '/__isolated': {
-        target: process.env.AGREED_FEE_ISOLATED_API_URL || 'http://127.0.0.1:8000',
+        target: apiTarget,
         changeOrigin: true,
       },
     },

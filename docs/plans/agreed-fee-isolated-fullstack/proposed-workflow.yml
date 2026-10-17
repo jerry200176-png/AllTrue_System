@@ -113,7 +113,7 @@ jobs:
           (cd backend && composer install --no-interaction --prefer-dist --optimize-autoloader)
           (cd frontend && npm ci && npx playwright install --with-deps chromium)
 
-      - name: Companion PHPUnit (before browser seed; required)
+      - name: Companion PHPUnit (guarded migrate; JUnit non-zero required)
         env:
           DB_CONNECTION: mysql
           DB_HOST: 127.0.0.1
@@ -121,16 +121,43 @@ jobs:
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
           DB_PASSWORD: ci-ephemeral
+          AGREED_FEE_BACKEND_ROOT: ${{ github.workspace }}/backend
         run: |
           set -euo pipefail
           unset DATABASE_URL DB_URL DB_SOCKET DB_READ_HOST DB_WRITE_HOST || true
           DRAFT=/tmp/fee-harness/docs/plans/agreed-fee-isolated-fullstack
-          bash "$DRAFT/db-guard.proposed.sh"
-          (cd backend && php artisan migrate --force --database=mysql)
-          (cd backend && vendor/bin/phpunit --filter \
-            'AgreedFeeCorrectionTest|AgreedFeeConcurrencyTest|FeeReceiptKindCompatibilityTest')
+          mkdir -p backend/tests/Support scripts
+          cp -f "$DRAFT/db-guard.proposed.php" backend/tests/Support/agreed-fee-isolated-db-guard.php
+          cp -f "$DRAFT/db-guard.proposed.sh" scripts/agreed-fee-isolated-db-guard.sh
+          cp -f "$DRAFT/agreed-fee-isolated-migrate.proposed.php" backend/tests/Support/agreed-fee-isolated-migrate.php
+          chmod +x scripts/agreed-fee-isolated-db-guard.sh
+          bash scripts/agreed-fee-isolated-db-guard.sh
+          # SAME PROCESS guard → loaded-config refuse → DDL. Never plain artisan migrate.
+          (cd backend && php tests/Support/agreed-fee-isolated-migrate.php)
+          mkdir -p backend/test-results
+          (cd backend && vendor/bin/phpunit \
+            --filter 'AgreedFeeCorrectionTest|AgreedFeeConcurrencyTest|FeeReceiptKindCompatibilityTest' \
+            --log-junit test-results/agreed-fee-companion-junit.xml)
+          test -f backend/test-results/agreed-fee-companion-junit.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET, sys
+          root = ET.parse('backend/test-results/agreed-fee-companion-junit.xml').getroot()
+          suites = [root] if root.tag == 'testsuite' else list(root.findall('testsuite'))
+          if not suites and root.tag == 'testsuites':
+              suites = list(root.findall('testsuite'))
+          tests = sum(int(s.attrib.get('tests', 0)) for s in suites)
+          failures = sum(int(s.attrib.get('failures', 0)) for s in suites)
+          errors = sum(int(s.attrib.get('errors', 0)) for s in suites)
+          print(f'companion_junit tests={tests} failures={failures} errors={errors}')
+          if tests < 1:
+              print('::error::companion JUnit reported zero tests', file=sys.stderr)
+              sys.exit(1)
+          if failures or errors:
+              print('::error::companion JUnit has failures/errors', file=sys.stderr)
+              sys.exit(1)
+          PY
 
-      - name: Stack + Playwright (process-local flag; same-origin proxy)
+      - name: Stack + Playwright (process-local flag; EXTERNAL trap cleanup)
         env:
           DB_CONNECTION: mysql
           DB_HOST: 127.0.0.1
@@ -139,33 +166,57 @@ jobs:
           DB_USERNAME: admin
           DB_PASSWORD: ci-ephemeral
           AGREED_FEE_STACK_EXTERNAL: '1'
+          AGREED_FEE_ISOLATED_REQUIRE: '1'
         run: |
           set -euo pipefail
           unset DATABASE_URL DB_URL DB_SOCKET DB_READ_HOST DB_WRITE_HOST || true
           DRAFT=/tmp/fee-harness/docs/plans/agreed-fee-isolated-fullstack
-          # Point stack ROOT install at workspace; copy draft dir into docs/plans for install_draft paths
           mkdir -p docs/plans
           rm -rf docs/plans/agreed-fee-isolated-fullstack
           cp -a "$DRAFT" docs/plans/agreed-fee-isolated-fullstack
           bash docs/plans/agreed-fee-isolated-fullstack/agreed-fee-isolated-stack.proposed.sh
+          # EXTERNAL=1: stack leaves servers up; trap owned cleanup so Playwright failure cannot skip it.
+          test -x /tmp/agreed-fee-owned-cleanup.sh
+          trap 'bash /tmp/agreed-fee-owned-cleanup.sh || true' EXIT
           set -a
           # shellcheck disable=SC1091
           source /tmp/agreed-fee-isolated.env
           set +a
+          : "${AGREED_FEE_ISOLATED_TOKEN:?token missing after seed}"
+          : "${AGREED_FEE_ISOLATED_COURSE_ID:?course missing after seed}"
+          : "${AGREED_FEE_ISOLATED_CASE_INV8800_COURSE_ID:?inv8800 missing}"
+          : "${AGREED_FEE_ISOLATED_CASE_REG8800_COURSE_ID:?reg8800 missing}"
+          : "${AGREED_FEE_ISOLATED_CASE_STATE_COURSE_ID:?state case missing}"
           (cd frontend && npx playwright test -c playwright.agreed-fee-isolated.config.js)
-          # Stop servers + token hygiene (never upload env)
-          if [[ -f /tmp/agreed-fee-api.pid ]]; then kill "$(cat /tmp/agreed-fee-api.pid)" 2>/dev/null || true; fi
-          if [[ -f /tmp/agreed-fee-vite.pid ]]; then kill "$(cat /tmp/agreed-fee-vite.pid)" 2>/dev/null || true; fi
-          rm -f /tmp/agreed-fee-isolated.env /tmp/agreed-fee-api.pid /tmp/agreed-fee-vite.pid
-          if [[ -f /tmp/agreed-fee-api.log ]]; then
-            sed -i -E 's/Bearer [A-Za-z0-9_-]+/Bearer [REDACTED]/g' /tmp/agreed-fee-api.log || true
-          fi
+          test -f frontend/test-results/agreed-fee-isolated-junit.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET, sys
+          root = ET.parse('frontend/test-results/agreed-fee-isolated-junit.xml').getroot()
+          suites = [root] if root.tag == 'testsuite' else list(root.findall('testsuite'))
+          if root.tag == 'testsuites':
+              suites = list(root.findall('testsuite'))
+          tests = sum(int(s.attrib.get('tests', 0)) for s in suites)
+          print(f'playwright_junit tests={tests}')
+          if tests < 1:
+              print('::error::Playwright JUnit reported zero tests', file=sys.stderr)
+              sys.exit(1)
+          PY
 
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agreed-fee-isolated-playwright
-          path: frontend/playwright-report/
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/agreed-fee-isolated-junit.xml
           if-no-files-found: ignore
           retention-days: 7
           # Explicitly do NOT upload /tmp/agreed-fee-isolated.env or raw API logs with tokens
+
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agreed-fee-companion-junit
+          path: backend/test-results/agreed-fee-companion-junit.xml
+          if-no-files-found: warn
+          retention-days: 7

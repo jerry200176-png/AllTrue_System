@@ -1,7 +1,8 @@
 // @ts-check
 /**
  * DRAFT — install path: frontend/playwright.agreed-fee-isolated.config.js
- * Explicit AGREED_FEE_ISOLATED_* gate. Never uses SMOKE_BASE_URL / production.
+ * AGREED_FEE_ISOLATED_REQUIRE defaults to fail-closed (missing env → throw, not skip).
+ * Emits JUnit for companion CI upload/verification.
  */
 import { defineConfig, devices } from '@playwright/test';
 
@@ -11,18 +12,21 @@ const base = process.env.AGREED_FEE_ISOLATED_BASE_URL || `http://127.0.0.1:${por
 export default defineConfig({
   testDir: './e2e',
   testMatch: /agreed-fee-isolated-fullstack\.spec\.js$/,
-  timeout: 90_000,
+  timeout: 120_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
   retries: 0,
   workers: 1,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [
+    ['list'],
+    ['html', { open: 'never' }],
+    ['junit', { outputFile: 'test-results/agreed-fee-isolated-junit.xml' }],
+  ],
   use: {
     baseURL: base,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  // Stack script already boots Vite+API; reuse when CI/stack left them up.
   webServer: process.env.AGREED_FEE_STACK_EXTERNAL === '1'
     ? undefined
     : {
