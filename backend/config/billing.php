@@ -8,4 +8,5 @@ return [
     // Founder 2026-10-14「不要有折扣功能了」: no new transaction discounts. Deliberately not env-driven;
     // stored snapshots of earlier discounted terms are untouched.
     'transaction_discounts_enabled' => false,
+    'receipt_correction_reissue_enabled' => false, // Separate protected activation; never environment-driven.
 ];
