@@ -621,6 +621,9 @@ class PaymentReportController extends Controller
 
         $userId = $request->attributes->get('auth_user_id');
         if (!empty($data['replaces_invoice_id'])) {
+            if (!config('billing.receipt_correction_reissue_enabled', false)) {
+                return response()->json(['message' => '更正帳單收款功能尚未開放', 'code' => 'correction_reissue_disabled'], 404);
+            }
             if ($freeGift || !empty($data['invoice_id'])) {
                 return response()->json(['message' => '更正帳單不能同時指定其他帳單或標記免費。沒有登記任何款項。', 'code' => 'correction_reissue_conflict'], 422);
             }
@@ -763,11 +766,7 @@ class PaymentReportController extends Controller
         });
     }
 
-    /**
-     * Founder D3/B1 (#4132): 登記收款 settling a new bill that corrects a voided count-mode bill (InvoiceCorrectionLink);
-     * the pending report points at the new bill, so 確認入帳 settles it as usual.
-     * @param array<string, mixed> $data
-     */
+    /** Receipt-intent reissue; confirmation separately settles the pending report. @param array<string, mixed> $data */
     private function recordCorrectionReissue(Request $request, array $data, StudentClass $sc, ?int $userId)
     {
         $link = app(InvoiceCorrectionLink::class);
@@ -800,7 +799,7 @@ class PaymentReportController extends Controller
                     || $report->payment_date?->toDateString() !== Carbon::parse($data['payment_date'])->toDateString()
                     || $report->payment_method !== $data['payment_method']
                     || (string) $report->account_last5 !== (string) ($data['account_last5'] ?? '')
-                    || (string) $report->note !== trim((string) ($data['note'] ?? ''))) {
+                    || (string) $report->note !== (string) (trim((string) ($data['note'] ?? '')) ?: null)) {
                     return response()->json(['message' => '更正回報資料與原請求不同，請重新核對帳務。', 'code' => 'correction_replay_incompatible'], 409);
                 }
                 return response()->json(['message' => '這筆更正已經送出過', 'report_id' => $report?->id, 'payment_id' => null, 'correction_id' => (int) $replay->id,
