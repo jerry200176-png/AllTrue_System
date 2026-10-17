@@ -211,93 +211,137 @@ jobs:
           PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d; printf x)"
           PUBLIC_REPLY="${PUBLIC_REPLY%x}"
           export BUG_ID GITHUB_ISSUE_URL DISPOSITION PUBLIC_REPLY CLOSE_AS_LOGGED
-          php artisan tinker --execute='
-          $bugId = (int)getenv("BUG_ID");
-          $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
-          $disposition = (string)getenv("DISPOSITION");
-          $reply = (string)getenv("PUBLIC_REPLY");
-          $replySha = hash("sha256", $reply);
-          $bug = \App\Models\BugReport::find($bugId);
-          if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
-          $status = (string)$bug->status;
-          // close_as_logged reruns may find the report already closed; closeAsLogged decides idempotently.
-          $allowedStatuses = getenv("CLOSE_AS_LOGGED") === "true" ? ["new", "triaged", "closed"] : ["new", "triaged"];
-          if (!in_array($status, $allowedStatuses, true)) {
-              throw new \RuntimeException("refusing status: ".$status);
-          }
-          $admin = \Illuminate\Support\Facades\DB::table("UserCampus")
-              ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
-          $actor = $admin ? (int)$admin : 1;
-          $svc = \App\Services\BugReportService::class;
-          if (getenv("CLOSE_AS_LOGGED") === "true") {
-              $closed = $svc::closeAsLogged($bugId, $actor, $disposition, $issueUrl, $reply);
-              if (!($closed["ok"] ?? false)) { throw new \RuntimeException(json_encode($closed)); }
-              echo json_encode(["bug_id" => $bugId, "from" => $status, "close_as_logged" => $closed, "issue" => $issueUrl, "public_body_sha256" => $replySha], JSON_UNESCAPED_UNICODE), PHP_EOL;
-          } else {
-          // Same row lock as bugs:auto-intake --ack: whoever runs second re-reads the status after the
-          // first commits, so a report is never moved new->triaged twice or answered twice concurrently.
-          \Illuminate\Support\Facades\DB::transaction(function () use ($bugId, $issueUrl, $disposition, $reply, $replySha, $actor, $svc) {
-          $locked = \App\Models\BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
-          $status = (string)$locked->status;
-          if (!in_array($status, ["new", "triaged"], true)) { throw new \RuntimeException("refusing status: ".$status); }
-          $validatedDisposition = $svc::normalizeDispositionOptions([
-              "disposition" => $disposition,
-              "github_issue_url" => $issueUrl,
-          ]);
-          if (!($validatedDisposition["ok"] ?? false)) { throw new \RuntimeException(json_encode($validatedDisposition)); }
-          $transition = null;
-          if ($status === "new") {
-              $transition = $svc::changeStatus($bugId, $actor, "triaged", "phase-a verified intake; GitHub issue=".$issueUrl, [
-                  "disposition" => $disposition,
-                  "github_issue_url" => $issueUrl,
-              ]);
-              if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
-          } else {
-              // Already triaged (e.g. hourly auto-intake): record the verified disposition without a transition.
-              $transition = $svc::restateDisposition($bugId, $actor, [
-                  "disposition" => $disposition,
-                  "github_issue_url" => $issueUrl,
-              ], "phase-a verified intake; GitHub issue=".$issueUrl);
-              if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
-          }
-          // Exact public-body dedup (historical single URL-like skip silently dropped a new approved
-          // text that shared an issue URL with an older ack/private/reporter comment; batch must not
-          // inherit that). Same URL + different body posts; same exact body is a retry skip.
-          $exactPublic = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
-              ->where("is_internal_note", false)->where("body", $reply)->orderByDesc("id")->first();
-          if ($exactPublic) {
-              $comment = ["ok" => true, "skipped" => true, "reason" => "exact_public_body", "id" => (int)$exactPublic->id];
-          } else {
-              $comment = $svc::addComment($bugId, $actor, $reply, false);
-          }
-          $commentSucceeded = ($comment["ok"] ?? false) || isset($comment["id"]) || ($comment["skipped"] ?? false);
-          if (!$commentSucceeded) { throw new \RuntimeException(json_encode($comment)); }
-          $fresh = \App\Models\BugReport::find($bugId);
-          $latestPublic = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
-              ->where("is_internal_note", false)->orderByDesc("id")->first();
-          $publicBody = $latestPublic ? (string)$latestPublic->body : "";
-          $publicSha = hash("sha256", $publicBody);
-          if (!hash_equals($replySha, $publicSha)) {
-              throw new \RuntimeException(json_encode([
-                  "code" => "public_body_mismatch",
-                  "expected_sha256" => $replySha,
-                  "actual_sha256" => $publicSha,
-                  "status" => $fresh ? (string)$fresh->status : "missing",
-              ]));
-          }
-          echo json_encode([
+          # Tinker (PsySH) catches Throwable and TinkerCommand always returns 0 after Shell::execute.
+          # Success is gated on a post-commit receipt file; missing receipt => this remote exits non-zero.
+          RECEIPT_FILE="/tmp/phase-a-receipt-${BUG_ID}.json"
+          rm -f "$RECEIPT_FILE"
+          export RECEIPT_FILE
+          set +e
+          TINKER_OUT="$(php artisan tinker --execute='
+          try {
+            $bugId = (int)getenv("BUG_ID");
+            $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
+            $disposition = (string)getenv("DISPOSITION");
+            $reply = (string)getenv("PUBLIC_REPLY");
+            $replySha = hash("sha256", $reply);
+            $receiptPath = (string)getenv("RECEIPT_FILE");
+            if ($receiptPath === "" || $bugId <= 0) { throw new \RuntimeException("missing receipt path or bug id"); }
+            $bug = \App\Models\BugReport::find($bugId);
+            if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
+            $fromStatus = (string)$bug->status;
+            $allowedStatuses = getenv("CLOSE_AS_LOGGED") === "true" ? ["new", "triaged", "closed"] : ["new", "triaged"];
+            if (!in_array($fromStatus, $allowedStatuses, true)) {
+                throw new \RuntimeException("refusing status: ".$fromStatus);
+            }
+            $admin = \Illuminate\Support\Facades\DB::table("UserCampus")
+                ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
+            $actor = $admin ? (int)$admin : 1;
+            $svc = \App\Services\BugReportService::class;
+            $findPublicByHash = function (int $bugId, string $replySha) {
+                // unicode_ci body= is not byte equality; compare sha256 in PHP.
+                $rows = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
+                    ->where("is_internal_note", false)->orderByDesc("id")->limit(100)->get(["id", "body"]);
+                foreach ($rows as $row) {
+                    if (hash_equals($replySha, hash("sha256", (string)$row->body))) {
+                        return $row;
+                    }
+                }
+                return null;
+            };
+            $commentId = 0;
+            $commentSkipped = false;
+            $finalStatus = $fromStatus;
+            if (getenv("CLOSE_AS_LOGGED") === "true") {
+                $closed = $svc::closeAsLogged($bugId, $actor, $disposition, $issueUrl, $reply);
+                if (!($closed["ok"] ?? false)) { throw new \RuntimeException(json_encode($closed)); }
+                $finalStatus = "closed";
+                $matched = $findPublicByHash($bugId, $replySha);
+                if (!$matched) { throw new \RuntimeException(json_encode(["code" => "public_body_mismatch", "expected_sha256" => $replySha])); }
+                $commentId = (int)$matched->id;
+            } else {
+              // Writes under a transaction; receipt is built only AFTER commit.
+              \Illuminate\Support\Facades\DB::beginTransaction();
+              try {
+                $locked = \App\Models\BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
+                $status = (string)$locked->status;
+                if (!in_array($status, ["new", "triaged"], true)) { throw new \RuntimeException("refusing status: ".$status); }
+                $validatedDisposition = $svc::normalizeDispositionOptions([
+                    "disposition" => $disposition,
+                    "github_issue_url" => $issueUrl,
+                ]);
+                if (!($validatedDisposition["ok"] ?? false)) { throw new \RuntimeException(json_encode($validatedDisposition)); }
+                if ($status === "new") {
+                    $transition = $svc::changeStatus($bugId, $actor, "triaged", "phase-a verified intake; GitHub issue=".$issueUrl, [
+                        "disposition" => $disposition,
+                        "github_issue_url" => $issueUrl,
+                    ]);
+                    if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
+                } else {
+                    $transition = $svc::restateDisposition($bugId, $actor, [
+                        "disposition" => $disposition,
+                        "github_issue_url" => $issueUrl,
+                    ], "phase-a verified intake; GitHub issue=".$issueUrl);
+                    if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
+                }
+                $exactPublic = $findPublicByHash($bugId, $replySha);
+                if ($exactPublic) {
+                    $commentId = (int)$exactPublic->id;
+                    $commentSkipped = true;
+                } else {
+                    $created = $svc::addComment($bugId, $actor, $reply, false);
+                    $commentId = (int)($created->id ?? 0);
+                    if ($commentId <= 0) { throw new \RuntimeException(json_encode($created)); }
+                }
+                \Illuminate\Support\Facades\DB::commit();
+              } catch (\Throwable $inner) {
+                \Illuminate\Support\Facades\DB::rollBack();
+                throw $inner;
+              }
+              // Post-commit readback: the matching comment by hash (not latest — a newer reporter
+              // reply must not fail a retry of an already-written approved body).
+              $fresh = \App\Models\BugReport::find($bugId);
+              $finalStatus = $fresh ? (string)$fresh->status : "missing";
+              $matched = $findPublicByHash($bugId, $replySha);
+              if (!$matched || (int)$matched->id !== $commentId) {
+                  throw new \RuntimeException(json_encode([
+                      "code" => "public_body_mismatch",
+                      "expected_sha256" => $replySha,
+                      "expected_comment_id" => $commentId,
+                      "status" => $finalStatus,
+                  ]));
+              }
+            }
+            $receipt = [
+              "phase_a_receipt" => 1,
               "bug_id" => $bugId,
-              "from" => $status,
-              "final" => $fresh ? (string)$fresh->status : "missing",
-              "transition" => $transition,
-              "comment_id" => is_array($comment) ? ($comment["id"] ?? ($comment["skipped"] ?? false)) : $comment->id,
-              "comment_skipped" => is_array($comment) ? (bool)($comment["skipped"] ?? false) : false,
+              "comment_id" => $commentId,
+              "comment_skipped" => $commentSkipped,
+              "final" => $finalStatus,
               "issue" => $issueUrl,
-              "public_body_sha256" => $publicSha,
-          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
-          });
+              "public_body_sha256" => $replySha,
+            ];
+            // Receipt file is the sole success signal (tinker exit code is unreliable).
+            if (file_put_contents($receiptPath, json_encode($receipt, JSON_UNESCAPED_UNICODE)."\n") === false) {
+                throw new \RuntimeException("failed to write receipt");
+            }
+          } catch (\Throwable $e) {
+            try { if (\Illuminate\Support\Facades\DB::transactionLevel() > 0) { \Illuminate\Support\Facades\DB::rollBack(); } } catch (\Throwable $ignore) {}
+            fwrite(STDERR, "PHASE_A_FAIL ".$e->getMessage().PHP_EOL);
+            // Best-effort non-zero; PsySH/Tinker may still return 0 — remote bash gates on receipt file.
+            exit(1);
           }
-          '
+          ' 2>&1)"
+          TINKER_RC=$?
+          set -e
+          if [[ ! -s "$RECEIPT_FILE" ]]; then
+            printf '%s\n' "$TINKER_OUT" >&2
+            echo "PHASE_A_FAIL missing success receipt (tinker_rc=$TINKER_RC)" >&2
+            exit 1
+          fi
+          # Sole stdout: one receipt JSON object for the runner to validate.
+          cat "$RECEIPT_FILE"
+          rm -f "$RECEIPT_FILE"
+          exit 0
           REMOTE
           write_one() {
             local BUG_ID="$1" GITHUB_ISSUE_URL="$2" DISPOSITION="$3" CLOSE_AS_LOGGED="$4" PUBLIC_REPLY="$5"
@@ -316,9 +360,9 @@ jobs:
             PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
             local REPLY_SHA
             REPLY_SHA="$(printf '%s' "$PUBLIC_REPLY" | sha256sum | cut -d' ' -f1)"
-            # Explicit return on ssh failure: when write_one is used in `cmd || list`, Bash disables
-            # errexit inside the function; a later successful echo would otherwise mask ssh 255.
-            ssh -i ~/.ssh/deploy_key \
+            # Capture stdout: remote exits non-zero without a receipt even when tinker returns 0.
+            local SSH_OUT SSH_RC=0
+            SSH_OUT="$(ssh -i ~/.ssh/deploy_key \
               -o IdentitiesOnly=yes \
               -o BatchMode=yes \
               -o ConnectTimeout=20 \
@@ -326,8 +370,35 @@ jobs:
               -o UserKnownHostsFile=~/.ssh/known_hosts \
               "${PI_SSH_USER}@${PI_SSH_HOST}" \
               "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' CLOSE_AS_LOGGED='$CLOSE_AS_LOGGED' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" \
-              < /tmp/phase-a-remote.sh || return $?
-            echo "wrote bug_id=$BUG_ID reply_sha256=$REPLY_SHA close_as_logged=$CLOSE_AS_LOGGED"
+              < /tmp/phase-a-remote.sh 2>&1)" || SSH_RC=$?
+            if [[ "$SSH_RC" -ne 0 ]]; then
+              printf '%s\n' "$SSH_OUT" >&2
+              return "$SSH_RC"
+            fi
+            # Exactly one phase_a_receipt object; validate bug_id / comment_id / body hash / status.
+            local RECEIPTS RECEIPT_COUNT RECEIPT
+            RECEIPTS="$(printf '%s\n' "$SSH_OUT" | jq -c 'select(type=="object" and .phase_a_receipt==1)' 2>/dev/null || true)"
+            RECEIPT_COUNT="$(printf '%s\n' "$RECEIPTS" | grep -c . || true)"
+            if [[ "$RECEIPT_COUNT" -ne 1 ]]; then
+              echo "::error::phase-a receipt missing/malformed/not-unique for bug_id=$BUG_ID count=$RECEIPT_COUNT" >&2
+              printf '%s\n' "$SSH_OUT" >&2
+              return 1
+            fi
+            RECEIPT="$(printf '%s\n' "$RECEIPTS" | head -n1)"
+            local RBID RCID RSHA RSTATUS
+            RBID="$(jq -r '.bug_id|tostring' <<<"$RECEIPT")"
+            RCID="$(jq -r '.comment_id|tostring' <<<"$RECEIPT")"
+            RSHA="$(jq -r '.public_body_sha256|tostring' <<<"$RECEIPT")"
+            RSTATUS="$(jq -r '.final|tostring' <<<"$RECEIPT")"
+            [[ "$RBID" == "$BUG_ID" ]] || { echo "::error::receipt bug_id mismatch"; return 1; }
+            [[ "$RSHA" == "$REPLY_SHA" ]] || { echo "::error::receipt public_body_sha256 mismatch"; return 1; }
+            [[ "$RCID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::receipt comment_id invalid"; return 1; }
+            if [[ "$CLOSE_AS_LOGGED" == "true" ]]; then
+              [[ "$RSTATUS" == "closed" ]] || { echo "::error::receipt status expected closed"; return 1; }
+            else
+              [[ "$RSTATUS" == "triaged" ]] || { echo "::error::receipt status expected triaged"; return 1; }
+            fi
+            echo "wrote bug_id=$BUG_ID reply_sha256=$REPLY_SHA comment_id=$RCID final=$RSTATUS close_as_logged=$CLOSE_AS_LOGGED"
             return 0
           }
 

@@ -1078,9 +1078,11 @@ assert.match(phaseCSource,
   assert.match(phaseASource, /batch fail-stop/, 'Phase-A batch stops on first write failure');
   assert.match(phaseASource, /batch_payload_sha256/, 'Phase-A binds Founder preview to batch_payload_sha256');
   assert.match(phaseASource, /clear single-mode fields when using batch_json/, 'Phase-A rejects mixed single+batch mode');
-  assert.match(phaseASource, /\|\| return \$\?/, 'write_one must return ssh status so || lists cannot mask 255');
-  assert.match(phaseASource, /exact_public_body/, 'Phase-A uses exact public-body dedup (not URL-only like)');
+  assert.match(phaseASource, /SSH_RC=\$\?/, 'write_one captures ssh status so success echo cannot mask failures');
+  assert.match(phaseASource, /RECEIPT_FILE=/, 'Phase-A gates success on receipt file (tinker exit is unreliable)');
+  assert.match(phaseASource, /phase_a_receipt/, 'Phase-A success receipt schema');
   assert.match(phaseASource, /public_body_mismatch/, 'Phase-A post-commit verifies public body hash');
+  assert.match(phaseASource, /hash\("sha256", \(string\)\$row->body\)/, 'Phase-A dedup compares sha256 bytes not unicode_ci =');
   assert.match(phaseASource, /bug\|suggestion\|ux_friction\|duplicate\|already_solved\|not_planned\|needs_info/,
     'Phase-A disposition allowlist matches BugReportService::DISPOSITION_KINDS');
   assert.match(phaseASource, /base64 -d; printf x/, 'Phase-A preserves trailing newlines on PUBLIC_REPLY');
