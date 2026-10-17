@@ -6,6 +6,12 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### #4192. 刷卡候選不是出勤權威：先鎖合約，再鎖定重讀堂次（2026-10-16）
+
+- **根因**：`RecordStudentSwipe`（簽到）、`AttendanceController::swipe` 選到堂次後，以及簽退／`student-signin:close-orphans` 共用的 `StudentPresenceBackfillService::backfill` 撈到候選堂次後，取消交易可能先提交；InnoDB REPEATABLE READ 的普通查詢仍可讀到舊狀態，之後的 UPDATE 卻覆寫已取消堂次。
+- **守門**：與 `AttendanceController::store`／`SessionDeductionService`／堂數更正共用 `StudentClass FOR UPDATE` → `ClassSession FOR UPDATE` 順序，再以重讀的物件驗證、建立出勤與扣堂；不可在鎖定後又換回普通快照查詢的堂次物件。簽退補登在鎖定後若堂次已非 `scheduled`、合約已停或已有簽到，就略過該堂（簽退本身照常成功）。RFID 簽到的重複簽到檢查也改為鎖定讀取。
+- **測試**：`SwipeCancellationConcurrencyTest` 用獨立連線在候選查詢後提交取消，兩條簽到路徑須拒絕（422）、RFID 簽退須成功但不補登該堂，並驗證取消、出勤、學習紀錄與扣堂 ledger 的持久狀態。`close-orphans` 走同一個 backfill 服務，但沒有自己的並行測試；`AttendanceController::swipe` 的簽退分支不呼叫 backfill。只在 CI 隔離 MySQL 執行；RFID 真機 hold 不因測試通過而解除。
+
 ### R156. 不再提供交易折扣；任何會產生折扣的入口一律在寫入前擋下（#4018／#4020，2026-10-14）
 
 - **現象**：100% 或等於原價的固定折扣讓續約產生 NT$0 帳單，但沒有任何流程能把它記成已結清：帳單維持未繳、課程卡一直提示「登記這筆」；而且這筆課有費用，所以「免費／贈送」也被拒絕（#4018）。
