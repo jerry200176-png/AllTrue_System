@@ -168,6 +168,14 @@ final class ContractMoneyState
             if ($rows->count() !== 1 || !$report || $report->status !== 'voided' || (int) $report->StudentClassID !== $studentClassId) {
                 return true;
             }
+            // Compare exact whole-NT decimal strings; casts must not erase fractional or malformed provenance.
+            if (preg_match('/\A([1-9][0-9]*)(?:\.0+)?\z/', (string) $report->reported_amount, $amountParts) !== 1) {
+                return true;
+            }
+            $reportedAmount = filter_var($amountParts[1], FILTER_VALIDATE_INT);
+            if ($reportedAmount === false) {
+                return true;
+            }
             // Older receipts can be linked only by report.payment_id; current receipts also carry payment_report_id.
             $receipts = $payments->filter(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void'
                 && ((int) ($p->payment_report_id ?? 0) === (int) $reportId || (int) $p->id === (int) ($report->payment_id ?? 0)));
@@ -182,7 +190,7 @@ final class ContractMoneyState
             if ((int) $receipt->InvoiceID !== (int) $report->InvoiceID
                 || (!empty($report->payment_id) && (int) $report->payment_id !== (int) $receipt->id)
                 || (!empty($receipt->payment_report_id) && (int) $receipt->payment_report_id !== (int) $reportId)
-                || (int) $receipt->Amount !== (int) $report->reported_amount
+                || (int) $receipt->Amount !== $reportedAmount
                 || $rows->contains(fn ($p) => (int) $p->InvoiceID !== (int) $receipt->InvoiceID)
                 || abs((int) $rows->first()->Amount) !== (int) $receipt->Amount) {
                 return true;
