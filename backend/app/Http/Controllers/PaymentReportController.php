@@ -771,13 +771,13 @@ class PaymentReportController extends Controller
     private function recordCorrectionReissue(Request $request, array $data, StudentClass $sc, ?int $userId)
     {
         $link = app(InvoiceCorrectionLink::class);
-        $campusAllowed = $request->attributes->get('auth_role') === 'super_admin'
-            || in_array((int) $sc->student->CampusID, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true);
-
-        return DB::transaction(function () use ($data, $sc, $userId, $link, $campusAllowed) {
-            // Lock order as directorRecord: course, then invoices.
+        return DB::transaction(function () use ($request, $data, $sc, $userId, $link) {
+            // Fresh authorization and ownership, locked student → course → invoices.
+            $student = Student::query()->whereKey($sc->StudentID)->lockForUpdate()->first();
             $course = StudentClass::query()->whereKey($sc->getKey())->lockForUpdate()->first();
-            if (!$course || !$campusAllowed) {
+            $campusAllowed = $student && ($request->attributes->get('auth_role') === 'super_admin'
+                || in_array((int) $student->CampusID, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true));
+            if (!$student || !$course || (int) $course->StudentID !== (int) $student->getKey() || !$campusAllowed) {
                 return response()->json(['message' => '找不到此課程', 'code' => 'replaces_invoice_not_found'], 404);
             }
             if ($refusal = ContractMoneyState::waivedRefusal($course, '此合約已確認不收，不能登記收款')) {
@@ -793,6 +793,16 @@ class PaymentReportController extends Controller
             }
             if ($replay = $check['replay']) {
                 $report = PaymentReport::query()->whereKey((int) $replay->payment_report_id)->first();
+                if (!$report || (int) $report->InvoiceID !== (int) $replay->replacement_invoice_id
+                    || (int) $report->StudentClassID !== (int) $course->getKey()
+                    || (int) $report->StudentID !== (int) $student->getKey()
+                    || (float) $report->reported_amount !== (float) $data['amount']
+                    || $report->payment_date?->toDateString() !== Carbon::parse($data['payment_date'])->toDateString()
+                    || $report->payment_method !== $data['payment_method']
+                    || (string) $report->account_last5 !== (string) ($data['account_last5'] ?? '')
+                    || (string) $report->note !== trim((string) ($data['note'] ?? ''))) {
+                    return response()->json(['message' => '更正回報資料與原請求不同，請重新核對帳務。', 'code' => 'correction_replay_incompatible'], 409);
+                }
                 return response()->json(['message' => '這筆更正已經送出過', 'report_id' => $report?->id, 'payment_id' => null, 'correction_id' => (int) $replay->id,
                     'invoice_id' => (int) $replay->replacement_invoice_id, 'status' => $report->status ?? 'pending', 'replayed' => true]);
             }
@@ -808,7 +818,8 @@ class PaymentReportController extends Controller
             if ($this->pickOpenInvoice((int) $course->getKey(), $course)) {
                 return response()->json(['message' => '此課程還有未作廢的帳單，請直接登記那張帳單。沒有登記任何款項。', 'code' => 'open_invoice_exists'], 422);
             }
-            if ($pending = PaymentReport::query()->where('StudentClassID', $course->getKey())->where('status', 'pending')->lockForUpdate()->first()) {
+            // Confirmation locks report → course; course lock already serializes new reports.
+            if ($pending = PaymentReport::query()->where('StudentClassID', $course->getKey())->where('status', 'pending')->first()) {
                 return response()->json(['message' => '此課程已有「等你確認」的繳費回報，請先確認收款或退回後再登錄。',
                     'code' => 'pending_report_exists', 'report_id' => $pending->id], 422);
             }
@@ -821,11 +832,11 @@ class PaymentReportController extends Controller
 
             /** @var PaymentReport $report */
             $report = PaymentReport::query()->create([
-                'StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
-                'reported_by_name' => $sc->student->name, 'payment_date' => $data['payment_date'],
+                'StudentID' => $student->getKey(), 'StudentClassID' => $course->getKey(), 'InvoiceID' => $invoice->id,
+                'reported_by_name' => $student->name, 'payment_date' => $data['payment_date'],
                 'payment_method' => $data['payment_method'], 'reported_amount' => $data['amount'],
                 'account_last5' => $data['account_last5'] ?? null, 'note' => trim((string) ($data['note'] ?? '')) ?: null,
-                'status' => 'pending', 'report_token_hash' => hash('sha256', 'director-' . $sc->ID . '-' . now()->timestamp),
+                'status' => 'pending', 'report_token_hash' => hash('sha256', 'director-' . $course->getKey() . '-' . now()->timestamp),
                 'token_expires_at' => Carbon::now()->addDays(30),
             ]);
             DB::table('invoice_corrections')->where('id', $correctionId)->update(['payment_report_id' => $report->getKey()]);

@@ -10,17 +10,11 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Founder D3 / B1 (#4128, #4132): a confirmed correction is void + reissue, and the two bills must be traceable for
- * good. The link lives in invoice_corrections (UNIQUE original bill: the database refuses a second correction from any
- * request; the stored key + reason + amount let a retry of the same request get the same result). Both notes also name
- * the other bill, and an audit event records who did it. Nothing depends on APP_KEY or audit retention. The caller
- * holds the course lock and the replaced bill's row lock inside one transaction.
- */
+/** Permanent void/reissue links, independent of APP_KEY and audit retention.
+ * Caller holds course and replaced-invoice locks; unique original_invoice_id prevents double correction. */
 final class InvoiceCorrectionLink
 {
     public const EVENT = 'invoice.correction_reissue';
-
     /** @return array{refusal: ?JsonResponse, replay: ?object} replay = the invoice_corrections row of an identical earlier request */
     public function precheck(?Invoice $replaced, StudentClass $course, bool $campusAllowed, string $reason, int $amount, string $key): array
     {
