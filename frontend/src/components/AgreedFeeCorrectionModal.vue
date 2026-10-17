@@ -74,7 +74,7 @@ async function apply() {
 <style scoped>
 .fee-form { display: grid; gap: var(--ds-space-4, 16px); }
 .fee-form label { display: grid; gap: var(--ds-space-2, 8px); }
-.fee-form input { border: 1px solid var(--ds-hairline-input); padding: 8px; border-radius: 4px; }
+.fee-form input { border: 1px solid var(--ds-hairline-input); padding: 8px; border-radius: var(--ds-radius-sm); }
 .fee-preview dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .fee-preview dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 </style>
