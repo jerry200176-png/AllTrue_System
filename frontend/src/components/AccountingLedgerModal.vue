@@ -751,6 +751,10 @@ function openEntry(course) {
     payable_status: oldest ? 'invoiced' : 'unbilled',
     payable_amount: oldest ? Number(oldest.outstanding_amount) : null,
     payable_outstanding: oldest ? Number(oldest.outstanding_amount) : null,
+    // Founder D3/B1 (#4132): with no open bill, a voided bill of a single count-mode course can be corrected here.
+    voided_invoices: oldest || course.schedule_mode === 'date' || course.package_id ? [] : (payload.value?.invoices || [])
+      .filter((inv) => Number(inv.student_class_id) === Number(course.id) && inv.status === 'void')
+      .map((inv) => ({ id: Number(inv.id), label: formatAccountingLedgerInvoiceLabel(inv), amount: Number(inv.total_amount || 0) })),
   };
   entryOpen.value = true;
 }

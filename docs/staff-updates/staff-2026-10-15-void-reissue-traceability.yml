@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-15-void-reissue-traceability
+    published_at: "2026-10-15"
+    audiences:
+      - director
+    importance: digest
+    title: 作廢帳單可登記更正，新舊單互記
+    summary: 作廢開錯的帳單後，登記收款時可指定更正哪一張，新舊帳單會互記單號與原因。
+    items:
+      - category: improved
+        text: 堂數制課程登記收款可勾「這筆是更正已作廢的帳單」，選原帳單並填原因；確認入帳照常。
+      - category: improved
+        text: 重複送出不會開第二張帳單；同一張作廢帳單只能更正一次。
+    source_refs:
+      - "changelog:2026-10-15:void-reissue-traceability"
