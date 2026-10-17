@@ -160,6 +160,7 @@ class StudentClass extends Model
             'student_class_pricing_amendments' => ['student_class_id'],
             'dunning_events' => ['student_class_id'],
             'course_contract_group_members' => ['student_class_id'],
+            'bug_report_contract_links' => ['student_class_id'],
         ];
         foreach ($refs as $table => $columns) {
             foreach ($columns as $column) {
