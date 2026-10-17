@@ -3,6 +3,21 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+## 2026-10-15（四）（Q6：merge GO 綁定 head SHA；**提案——Founder 合併本 PR 後才生效**）
+
+> **狀態：提案，尚未生效。** 本節在 Founder 親自合併引入本節的 PR 之前**不具任何效力**；在那之前照舊：head SHA 一變就要重新取得 Founder GO。
+
+背景：main 要求 branch 與 main 同步（strict up-to-date），land queue（或 Agent）會用「合併 main」更新 PR branch，PR head SHA 因此改變；例：#4128 的 GO 給在 `fdbddd99`，之後 head 已不同。
+
+1. **GO 綁定 SHA**：Founder 的 merge GO 只對**確切的 PR head SHA** 有效。
+2. **沿用條件（全部成立且合併前已記錄在 PR 上，GO 才可沿用到新 head）**：
+   - (a) **新 commit 只有「合併 main」**：沒有手動解衝突，merge commit 不含任何手改的 hunk。
+   - (b) **沒有新的有效阻擋**：新 head 上 required checks 全部重新變綠；沒有新的未解 review thread；Claude Approvals 或其他 required 訊號沒有新的失敗。
+   - (c) **本 PR 自己的改動不變**：本 PR 檔案的 `git diff <base>...<head>` 與批准版本**逐位元組相同**；**且**期間合進 main 的改動不會改變本 PR 的行為、權限或風險（例：main 改了本 PR 依賴的同一批函式／路由／權限／migration → **不沿用**）。
+   - (d) **紀錄內容**：舊 SHA、新 SHA、實際 merge base、diff 比對結果、整合測試結果（新 head 上的 CI run ID）。
+3. **作廢**：上述任一條不成立，或 main 的改動對本 PR 有實質影響 → GO **作廢**，以新 SHA 與 diff 重新請 Founder 批准。
+4. **部署不沿用**：部署／正式啟用（production activation）的 GO **永遠不會**從 merge GO 或先前的部署 GO 自動沿用。
+
 ## 2026-10-14（三）補充（#4097 決定 1–4；對話中「都照你推薦」）
 
 1. **新增型 migration（#4093 選 B）**：不再用關鍵字清單判定。作者在 PR 內文宣告 `Additive-Migration: yes`；檢查只驗結構（只新增 migration 檔；只建新表、在既有表加 nullable 欄位或索引；`down()` 只撤掉 `up()` 新加的東西；有「已存在就跳過」guard 時 `down()` 必須為空）；並須 Codex 在**最終 head** 給 👍「無問題」且無未解 thread。Codex 額度用完時不以其他審查代替，退回 Founder 批准。**身分／權限表與帳務表一律排除**，照舊由 Founder 批准。
