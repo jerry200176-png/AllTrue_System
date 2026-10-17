@@ -5132,7 +5132,8 @@ class StudentClassController extends Controller
                 return strcmp((string) ($x['end_time'] ?? ''), (string) ($y['end_time'] ?? ''));
             });
 
-            return array_values($slots);
+            // usort already reindexes 0..n-1; array_values would be a no-op (PHPStan).
+            return $slots;
         };
 
         return $normalize($a) === $normalize($b);
