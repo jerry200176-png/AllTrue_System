@@ -386,6 +386,17 @@ class PaymentReportController extends Controller
             if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
                 return $blockedTutoringPayment;
             }
+            // #4132 Codex P1: a correction pending report must not settle after the course joined a package
+            // (convertToPackage should already block on payment_reports, but confirm rechecks membership).
+            $isCorrectionReport = DB::table('invoice_corrections')
+                ->where('payment_report_id', (int) $report->id)
+                ->exists();
+            if ($isCorrectionReport && $sc && $sc->isPartOfPackage()) {
+                return response()->json([
+                    'message' => '這筆更正回報建立後，課程已加入共用方案；請先解除方案歸屬或作廢此回報後再處理。沒有登記任何款項。',
+                    'code' => 'correction_reissue_joined_package',
+                ], 422);
+            }
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
             if ($sc && ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0)))) {
@@ -592,6 +603,23 @@ class PaymentReportController extends Controller
         if (!$sc->student) {
             return response()->json(['message' => '課程資料不存在'], 404);
         }
+
+        $userId = $request->attributes->get('auth_user_id');
+        // #4132 Codex P1: correction must hit feature gate + campus auth before any course-classifying guard
+        // (tutoring / zero-fee), so a cross-campus correction cannot leak existence/classification via 422.
+        if (!empty($data['replaces_invoice_id'])) {
+            if (!config('billing.receipt_correction_reissue_enabled', false)) {
+                return response()->json(['message' => '更正帳單收款功能尚未開放', 'code' => 'correction_reissue_disabled'], 404);
+            }
+            if ($freeGift || !empty($data['invoice_id'])) {
+                return response()->json(['message' => '更正帳單不能同時指定其他帳單或標記免費。沒有登記任何款項。', 'code' => 'correction_reissue_conflict'], 422);
+            }
+
+            $actorId = $request->attributes->get('auth_user')?->id; // the auth_user_id attribute is not set on this route
+            return $sc instanceof StudentClass ? $this->recordCorrectionReissue($request, $data, $sc, $actorId === null ? null : (int) $actorId)
+                : response()->json(['message' => '課程資料不存在'], 404);
+        }
+
         if ($freeGift && $request->attributes->get('auth_role') !== 'super_admin' // #3991 review: authorize the campus before classifying
             && !in_array((int) $sc->student->CampusID, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true)) {
             return response()->json(['message' => 'Forbidden'], 403);
@@ -617,20 +645,6 @@ class PaymentReportController extends Controller
                     . '若這門課確定免費，請勾選「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。',
                 'code' => 'monthly_fee_unset',
             ], 422);
-        }
-
-        $userId = $request->attributes->get('auth_user_id');
-        if (!empty($data['replaces_invoice_id'])) {
-            if (!config('billing.receipt_correction_reissue_enabled', false)) {
-                return response()->json(['message' => '更正帳單收款功能尚未開放', 'code' => 'correction_reissue_disabled'], 404);
-            }
-            if ($freeGift || !empty($data['invoice_id'])) {
-                return response()->json(['message' => '更正帳單不能同時指定其他帳單或標記免費。沒有登記任何款項。', 'code' => 'correction_reissue_conflict'], 422);
-            }
-
-            $actorId = $request->attributes->get('auth_user')?->id; // the auth_user_id attribute is not set on this route
-            return $sc instanceof StudentClass ? $this->recordCorrectionReissue($request, $data, $sc, $actorId === null ? null : (int) $actorId)
-                : response()->json(['message' => '課程資料不存在'], 404);
         }
         if ($freeGift) {
             return $this->recordFreeGiftBill((int) $data['student_class_id'], $data, $userId);
@@ -778,6 +792,10 @@ class PaymentReportController extends Controller
                 || in_array((int) $student->CampusID, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true));
             if (!$student || !$course || (int) $course->StudentID !== (int) $student->getKey() || !$campusAllowed) {
                 return response()->json(['message' => '找不到此課程', 'code' => 'replaces_invoice_not_found'], 404);
+            }
+            // After campus auth only: course-classifying guards must not run earlier in directorRecord.
+            if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($course)) {
+                return $blockedTutoringPayment;
             }
             if ($refusal = ContractMoneyState::waivedRefusal($course, '此合約已確認不收，不能登記收款')) {
                 return $refusal;

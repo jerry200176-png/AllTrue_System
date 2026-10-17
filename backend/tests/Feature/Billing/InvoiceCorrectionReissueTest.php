@@ -3,6 +3,7 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\AuthToken;
+use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -356,6 +357,54 @@ class InvoiceCorrectionReissueTest extends TestCase
         }
     }
 
+    /** Codex P1: feature gate + campus auth before tutoring/zero-fee classification on correction. */
+    public function test_4132_correction_does_not_leak_cross_campus_tutoring_or_zero_fee_classification(): void
+    {
+        $token = $this->token([1]);
+        foreach ([['ClassType' => 'tutoring', 'Charge' => 7200], ['ClassType' => 'one_on_one', 'Charge' => 0]] as $over) {
+            $foreign = $this->course($this->student(['CampusID' => 2]), $over);
+            // Seed a voided invoice row without exercising director void on a foreign campus.
+            $oldId = $this->invoice($foreign, 7200);
+            DB::table('Invoice')->where('id', $oldId)->update(['Status' => 'void']);
+            config(['billing.receipt_correction_reissue_enabled' => false]);
+            $this->record($token, $foreign, $oldId)->assertNotFound()->assertJsonPath('code', 'correction_reissue_disabled');
+            config(['billing.receipt_correction_reissue_enabled' => true]);
+            $this->record($token, $foreign, $oldId)->assertNotFound()->assertJsonPath('code', 'replaces_invoice_not_found');
+            $this->assertSame(0, DB::table('invoice_corrections')->count());
+            $this->assertSame(0, DB::table('payment_reports')->count());
+        }
+        // Same-campus tutoring still refused — but only after campus auth inside the correction path.
+        $localTutoring = $this->course($this->student(), ['ClassType' => 'tutoring']);
+        $localOld = $this->voidedInvoice($token, $localTutoring, 7200);
+        $this->record($token, $localTutoring, $localOld)->assertStatus(422)
+            ->assertJsonPath('code', 'tutoring_no_payment_obligation');
+    }
+
+    /** Codex P1: confirm rejects a correction whose course joined a package after the pending report was created. */
+    public function test_4132_confirm_rejects_correction_after_course_joins_package(): void
+    {
+        $token = $this->token([1]);
+        $student = $this->student();
+        $course = $this->course($student);
+        $oldId = $this->voidedInvoice($token, $course, 8800);
+        $res = $this->record($token, $course, $oldId)->assertOk();
+        $reportId = (int) $res->json('report_id');
+        $this->assertSame(1, DB::table('invoice_corrections')->where('payment_report_id', $reportId)->count());
+
+        $pkg = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => 'joined-after-correction',
+            'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8, 'used_sessions' => 0,
+            'rate' => 900, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true,
+        ]);
+        $course->update(['PackageID' => $pkg->id, 'PackageTotalSessions' => 8, 'PackageName' => $pkg->name]);
+
+        $this->withToken($token)->putJson('/api/v1/payment-reports/' . $reportId . '/confirm')
+            ->assertStatus(422)->assertJsonPath('code', 'correction_reissue_joined_package');
+        $this->assertSame('pending', DB::table('payment_reports')->where('id', $reportId)->value('status'));
+        $this->assertSame(0, (int) DB::table('StudentClass')->where('ID', $course->ID)->value('Paid'));
+        $this->assertFalse((bool) DB::table('course_packages')->where('id', $pkg->id)->value('paid'));
+    }
+
     /** @param array<string, mixed> $over */
     private function record(string $token, StudentClass $course, int $oldId, array $over = [])
     {
@@ -402,9 +451,13 @@ class InvoiceCorrectionReissueTest extends TestCase
         return $raw;
     }
 
-    private function student(): Student
+    /** @param array<string, mixed> $over */
+    private function student(array $over = []): Student
     {
-        return Student::create(['name' => 'Student ' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0900000000', 'MDT' => now(), 'Notify_Token' => '']);
+        return Student::create(array_merge([
+            'name' => 'Student ' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+            'Phone' => '0900000000', 'MDT' => now(), 'Notify_Token' => '',
+        ], $over));
     }
 
     /** @param array<string, mixed> $over */
