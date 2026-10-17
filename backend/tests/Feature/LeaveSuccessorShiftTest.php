@@ -155,6 +155,37 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertSame('21:45:00', DB::table('ClassSession')->where('id', $this->sessions['2026-12-22'])->value('EndTime'));
     }
 
+    /** #4210 review: compare proposed intervals, including the final same-day contract slot. @dataProvider plannedTailDurations */
+    public function test_proposed_intervals_cannot_double_book_the_student(int $minutes, bool $blocked): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        DB::table('ClassSession')->where('id', $leaveId)->update(['EndTime' => $minutes === 120 ? '21:00:00' : '20:00:00']);
+        DB::table('ClassSession')->where('StudentClassID', $this->renewal)
+            ->where('id', '!=', $this->sessions['2026-12-01'])->delete();
+        DB::table('ClassSession')->where('id', $this->sessions['2026-12-01'])->update(['EndTime' => '20:00:00']);
+        DB::table('StudentClass')->where('ID', $this->renewal)->update([
+            'SessionDuration' => 60, 'week1' => 2, 'time1' => '20:00:00', 'duration1' => 60,
+        ]);
+        $before = $this->undoSnapshot();
+        $plan = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', !$blocked);
+        $this->assertSame('2026-12-01', $plan->json('moves.1.to.date'));
+        $this->assertSame('20:00:00', $plan->json('moves.1.to.start'));
+        $this->assertSame($before, $this->undoSnapshot(), 'preview must not write');
+        $response = $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $plan->json('preview_token')]);
+        if ($blocked) {
+            $this->assertSame('student', $plan->json('blockers.0.type'));
+            $response->assertStatus(422);
+            $this->assertSame($before, $this->undoSnapshot());
+        } else {
+            $response->assertOk()->assertJsonPath('applied', true);
+        }
+    }
+
+    public static function plannedTailDurations(): array
+    {
+        return ['overlapping tail' => [120, true], 'adjacent tail' => [60, false]];
+    }
+
     public function test_old_tail_cannot_silently_cross_midnight(): void
     {
         DB::table('ClassSession')->where('id', $this->sessions['2026-12-01'])->update(['StartTime' => '23:00:00', 'EndTime' => '23:30:00']);
@@ -298,8 +329,13 @@ class LeaveSuccessorShiftTest extends TestCase
         return ['ledger' => ['ledger'], 'live attendance' => ['live'], 'voided history' => ['voided_leave'], 'occurrence anchor' => ['anchor']];
     }
 
-    /** #4210: current artifact reads must defeat a pre-existing REPEATABLE READ snapshot. @dataProvider lateOldLeaveEvidence */
-    public function test_stale_apply_snapshot_sees_committed_old_leave_evidence(string $kind): void
+    public static function staleApplyEvidence(): array
+    {
+        return self::lateOldLeaveEvidence() + ['renewal changed to date mode' => ['renewal_mode']];
+    }
+
+    /** #4210: locking reads must defeat a pre-existing REPEATABLE READ snapshot. @dataProvider staleApplyEvidence */
+    public function test_stale_apply_snapshot_sees_committed_ineligibility(string $kind): void
     {
         $original = DB::getDefaultConnection();
         $this->assertSame('mysql', DB::connection()->getDriverName());
@@ -312,17 +348,29 @@ class LeaveSuccessorShiftTest extends TestCase
         $table = $kind === 'anchor' ? 'schedules' : ($kind === 'ledger' ? (new SessionDeductionLedger)->getTable() : 'StudentSingIn');
         $column = $kind === 'anchor' ? 'student_course_id' : ($kind === 'ledger' ? 'class_session_id' : 'ClassSessionID');
         $lookup = $kind === 'anchor' ? $this->old : $leaveId;
+        $observed = fn () => $kind === 'renewal_mode'
+            ? $apply->table('StudentClass')->where('ID', $this->renewal)->where('ScheduleMode', 'date')->count()
+            : $apply->table($table)->where($column, $lookup)->count();
         try {
             $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', true);
             $apply->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
             $apply->beginTransaction();
-            $this->assertSame(0, $apply->table($table)->where($column, $lookup)->count());
-            $this->seedOldLeaveEvidence($leaveId, $kind); // Committed on the independent original connection.
+            $this->assertSame(0, $observed());
+            if ($kind === 'renewal_mode') {
+                DB::table('StudentClass')->where('ID', $this->renewal)->update(['ScheduleMode' => 'date']);
+            } else {
+                $this->seedOldLeaveEvidence($leaveId, $kind);
+            } // Committed on the independent original connection.
             $before = $this->undoSnapshot();
-            $this->assertSame(0, $apply->table($table)->where($column, $lookup)->count(), 'prove that the snapshot is stale');
+            $this->assertSame(0, $observed(), 'prove that the snapshot is stale');
             DB::setDefaultConnection('shift_stale_apply');
-            $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])
-                ->assertStatus(422)->assertJsonPath('plan.blockers.0.course_id', $this->old)->assertJsonPath('plan.blockers.0.session_id', $leaveId);
+            $response = $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])
+                ->assertStatus(422);
+            if ($kind === 'renewal_mode') {
+                $response->assertJsonPath('message', '續約課程已變動，請重新預覽');
+            } else {
+                $response->assertJsonPath('plan.blockers.0.course_id', $this->old)->assertJsonPath('plan.blockers.0.session_id', $leaveId);
+            }
             DB::setDefaultConnection($original);
             $this->assertSame($before, $this->undoSnapshot());
         } finally {
@@ -875,6 +923,7 @@ class LeaveSuccessorShiftTest extends TestCase
     {
         return (string) json_encode(array_map(fn ($table) => DB::table($table)->get()->all(), [
             'ClassSession', 'StudentClass', 'StudentSingIn', 'LearningRecord', (new SessionDeductionLedger)->getTable(), 'schedules',
+            'Notifications', 'schedule_audit_logs',
         ]));
     }
 
