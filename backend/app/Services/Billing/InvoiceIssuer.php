@@ -5,6 +5,7 @@ namespace App\Services\Billing;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\StudentClass;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -16,11 +17,14 @@ use RuntimeException;
  * BillingController::store enforces it today; turning it on elsewhere would change behavior.
  * Paid-at-birth backfill invoices are out of scope.
  *
- * #4217 co-lock (caller txn required): with StudentClassID set, lockForUpdate the course before INSERT so a
- * concurrent BillingCorrection holding the same course lock cannot see a phantom second open invoice.
+ * #4217: with StudentClassID set, require an open DB transaction (fail closed if none) and lockForUpdate
+ * the course before INSERT so the course lock is held through the write with the caller's txn.
  */
 final class InvoiceIssuer
 {
+    /** @var list<int> Testing probe: transaction levels observed at issue() entry (testing only). */
+    public static array $observedTransactionLevelsForTests = [];
+
     /**
      * @param array<string, mixed> $attrs StudentID, StudentClassID, IssueDate, TotalAmount required-ish; DueDate, Note, billing_period, ScheduleModeAtIssue optional
      * @param list<array<string, mixed>> $items Description, Amount; StudentClassID (falls back to the invoice's), PeriodStart, PeriodEnd optional
@@ -30,6 +34,12 @@ final class InvoiceIssuer
     {
         $attrs += ['StudentClassID' => null, 'DueDate' => null, 'Note' => '', 'billing_period' => null, 'ScheduleModeAtIssue' => null];
         $classId = $attrs['StudentClassID'] !== null && $attrs['StudentClassID'] !== '' ? (int) $attrs['StudentClassID'] : 0;
+        if (app()->runningUnitTests()) {
+            self::$observedTransactionLevelsForTests[] = DB::transactionLevel();
+        }
+        if ($classId > 0 && DB::transactionLevel() < 1) {
+            throw new RuntimeException('InvoiceIssuer: StudentClassID requires an open DB transaction so course lock holds through INSERT');
+        }
         if ($classId > 0 && !StudentClass::query()->whereKey($classId)->lockForUpdate()->exists()) {
             throw new RuntimeException("InvoiceIssuer: StudentClass {$classId} not found under lock");
         }

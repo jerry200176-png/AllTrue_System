@@ -19,6 +19,18 @@ use Illuminate\Support\Facades\DB;
  */
 final class BillingCorrection
 {
+    /** @var null|callable(int):void Testing seam: runs after the first open-invoice guard + token check, before pre-stamp current-read. */
+    private $afterConfirmationTokenForTests = null;
+
+    /** Testing-only: inject work between the first multi-open guard and the pre-stamp current-read. */
+    public function setAfterConfirmationTokenForTests(?callable $callback): void
+    {
+        if (!app()->runningUnitTests()) {
+            throw new \LogicException('BillingCorrection test seam is testing-only');
+        }
+        $this->afterConfirmationTokenForTests = $callback;
+    }
+
     /**
      * Bind an explicit operator confirmation to the current course, payment
      * guard inputs and schedule state. It is not authorization: all guards are
@@ -182,8 +194,12 @@ final class BillingCorrection
                 ], 409));
             }
 
-            // Authoritative current-read under course lock before stamp (RR locking read).
-            // Invoice.StudentClassID is unindexed — do not rely on gap locks for INSERT exclusion.
+            if ($this->afterConfirmationTokenForTests !== null) {
+                ($this->afterConfirmationTokenForTests)($classId);
+            }
+
+            // Pre-stamp current-read under course lock (locking read). Unindexed Invoice.StudentClassID
+            // means gap locks may not block INSERT; refuse ≥2 before stamping a stale singleton.
             $openInvoices = Invoice::query()
                 ->where('StudentClassID', $classId)
                 ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))

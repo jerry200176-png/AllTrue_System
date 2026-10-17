@@ -56,7 +56,7 @@ class InvoiceIssuerTest extends TestCase
         ], [['Description' => '月結', 'Amount' => 6000, 'PeriodStart' => '2026-09-01', 'PeriodEnd' => '2026-09-30']]);
         $log = collect(DB::getQueryLog());
         DB::connection()->disableQueryLog();
-        // #4217: StudentClass FOR UPDATE must precede Invoice INSERT inside Issuer's txn.
+        // SQL order only — not a multi-connection RR proof.
         $lockIdx = $log->search(fn (array $q) => stripos($q['query'], 'StudentClass') !== false && stripos($q['query'], 'for update') !== false);
         $insertIdx = $log->search(fn (array $q) => stripos($q['query'], 'insert') !== false && stripos($q['query'], 'invoice') !== false);
         $this->assertNotFalse($lockIdx);
@@ -97,12 +97,24 @@ class InvoiceIssuerTest extends TestCase
         $body = ['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-09-01', 'TotalAmount' => 6000,
             'billing_period' => '2026-09', 'Items' => [['Description' => '月結', 'Amount' => 6000]]];
 
+        InvoiceIssuer::$observedTransactionLevelsForTests = [];
         $this->withHeaders($this->headers)->postJson('/api/v1/invoices', $body)->assertCreated()
             ->assertJsonPath('Status', 'unpaid')->assertJsonPath('PaidAmount', 0)->assertJsonPath('ScheduleModeAtIssue', 'date');
+        // BillingController::store wraps DB::transaction; RefreshDatabase is level≥1, so store must nest to ≥2.
+        $this->assertNotEmpty(InvoiceIssuer::$observedTransactionLevelsForTests);
+        $this->assertGreaterThanOrEqual(2, min(InvoiceIssuer::$observedTransactionLevelsForTests));
         $this->assertSame(1, InvoiceItem::where('StudentClassID', $sc->ID)->count());
 
         $this->withHeaders($this->headers)->postJson('/api/v1/invoices', $body)->assertStatus(409)
             ->assertJsonPath('code', 'billing_period_invoice_exists');
         $this->assertSame(1, Invoice::where('StudentClassID', $sc->ID)->count());
+    }
+
+    /** Production fail-closed: StudentClassID issue() refuses transactionLevel < 1 (RefreshDatabase cannot observe level 0 safely). */
+    public function test_issue_source_fail_closed_requires_open_transaction_for_student_class(): void
+    {
+        $src = file_get_contents(base_path('app/Services/Billing/InvoiceIssuer.php'));
+        $this->assertStringContainsString('transactionLevel() < 1', $src);
+        $this->assertStringContainsString('requires an open DB transaction so course lock holds through INSERT', $src);
     }
 }
