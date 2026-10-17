@@ -88,12 +88,18 @@ case "$MODE" in
     exit 255
     ;;
   no_receipt|php_fail_exit0)
-    echo "PHASE_A_FAIL simulated php exception swallowed by tinker" >&2
-    echo "some error text about public_body_mismatch" >&2
+    # Simulate PsySH swallow: exit 0, no receipt, plus QueryException-shaped noise.
+    echo "PHASE_A_FAIL code=db_query_failed" >&2
+    echo 'SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry SENTINEL_SQL_LEAK for key PRIMARY (SQL: insert into \`BugReportComment\` (\`body\`) values (SENTINEL_REPLY_LEAK))' >&2
     exit 0
     ;;
+  leak_ssh_fail)
+    echo 'Illuminate\\\\Database\\\\QueryException: SQLSTATE[42S02] SENTINEL_SQL_LEAK bindings:[SENTINEL_REPLY_LEAK]' >&2
+    echo "PHASE_A_FAIL code=db_query_failed" >&2
+    exit 255
+    ;;
   malformed)
-    echo 'not-json-at-all'
+    echo 'not-json-at-all SENTINEL_SQL_LEAK SENTINEL_REPLY_LEAK'
     exit 0
     ;;
   wrong_hash)
@@ -160,14 +166,41 @@ function runWriteShell({ event, mode = 'ok', failAfter = 0 }) {
 test('extracted write shell gates success on receipt file + runner validation', () => {
   const shell = extractWriteShell();
   assert.match(shell, /RECEIPT_FILE=/, 'remote must use receipt file (tinker exit unreliable)');
-  assert.match(shell, /PHASE_A_FAIL missing success receipt/, 'remote exits non-zero without receipt');
+  assert.match(shell, /PHASE_A_FAIL code=missing_success_receipt/, 'remote exits non-zero without receipt');
   assert.match(shell, /phase_a_receipt/, 'receipt schema includes phase_a_receipt');
   assert.match(shell, /hash_equals\(\$replySha, hash\("sha256"/, 'dedup compares sha256 bytes, not unicode_ci =');
   assert.match(shell, /findPublicByHash|hash\("sha256", \(string\)\$row->body\)/, 'retry matches comment by hash not latest');
+  assert.match(shell, /chunkById\(/, 'exact-hash scan must paginate all public comments');
+  assert.doesNotMatch(shell, /->limit\(100\)/, 'must not window to newest 100 (misses older exact hash)');
+  assert.match(shell, /PHASE_A_FAIL code=/, 'failures emit fixed codes only');
+  assert.match(shell, /phase_a_emit_safe_remote_log/, 'runner must not echo raw tinker/SQL');
+  assert.doesNotMatch(shell, /PHASE_A_FAIL "\.\$e->getMessage\(\)/, 'must not print exception message');
+  assert.doesNotMatch(shell, /fwrite\(STDERR, "PHASE_A_FAIL "\.\$e->getMessage/, 'must not print exception message');
   assert.match(shell, /DB::commit\(\)/, 'commit before receipt');
   assert.match(shell, /rollBack\(\)/, 'rollback on failure');
   assert.match(shell, /receipt missing\/malformed\/not-unique/, 'runner rejects bad receipts');
   assert.match(shell, /receipt public_body_sha256 mismatch/, 'runner checks body hash');
+});
+
+/**
+ * Documents the >100 newest-window bug and the all-scan fix used in the workflow.
+ * Newest-100 would miss id=1 when 101 public comments exist; chunked full scan must hit it.
+ */
+test('>100 public comments: newest-100 misses old exact hash; full scan finds it', () => {
+  const rows = [];
+  for (let i = 1; i <= 101; i += 1) {
+    rows.push({ id: i, body: `public-body-${i}` });
+  }
+  const target = rows[0];
+  const targetSha = sha256(target.body);
+  const newest100 = [...rows].sort((a, b) => b.id - a.id).slice(0, 100);
+  const limitedHit = newest100.find((r) => sha256(r.body) === targetSha);
+  assert.equal(limitedHit, undefined, 'newest-100 must miss the oldest exact hash (regression fixture)');
+  const fullHit = rows.find((r) => sha256(r.body) === targetSha);
+  assert.equal(fullHit?.id, 1);
+  const shell = extractWriteShell();
+  assert.match(shell, /chunkById\(/);
+  assert.doesNotMatch(shell, /->limit\(100\)/);
 });
 
 test('P1: batch ssh255 exits nonzero without false wrote', () => {
@@ -190,10 +223,37 @@ test('tinker-swallowed PHP fail (exit0 + error text, no receipt) fails and stops
   ];
   const r = runWriteShell({ event: { batch_json: JSON.stringify(items) }, mode: 'php_fail_exit0' });
   assert.notEqual(r.code, 0, 'must not treat tinker exit0 without receipt as success');
-  assert.match(r.stderr + r.stdout, /receipt missing|PHASE_A_FAIL|batch fail-stop/);
+  assert.match(r.stderr + r.stdout, /PHASE_A_FAIL code=missing_success_receipt|batch fail-stop/);
   assert.doesNotMatch(r.stdout, /wrote bug_id=/);
   assert.equal((r.sshLog.match(/ssh_call/g) || []).length, 1, 'must not continue to second row');
   fs.rmSync(r.dir, { recursive: true, force: true });
+});
+
+test('sentinel: SQL/reply bindings never appear in Actions-facing output', () => {
+  const reply = `老師您好 SENTINEL_REPLY_LEAK。追蹤：${issue(4156)}`;
+  for (const mode of ['php_fail_exit0', 'leak_ssh_fail', 'malformed']) {
+    const r = runWriteShell({
+      event: {
+        bug_id: '411',
+        github_issue_url: issue(4156),
+        disposition: 'bug',
+        public_reply: reply,
+        close_as_logged: 'false',
+        batch_json: '',
+      },
+      mode,
+    });
+    assert.notEqual(r.code, 0, mode);
+    const combined = `${r.stdout}\n${r.stderr}`;
+    assert.doesNotMatch(combined, /SENTINEL_SQL_LEAK/, mode);
+    assert.doesNotMatch(combined, /SENTINEL_REPLY_LEAK/, mode);
+    assert.doesNotMatch(combined, /SQLSTATE\[/, mode);
+    assert.doesNotMatch(combined, /QueryException/, mode);
+    if (mode === 'php_fail_exit0') {
+      assert.match(combined, /PHASE_A_FAIL code=(missing_success_receipt|db_query_failed)/);
+    }
+    fs.rmSync(r.dir, { recursive: true, force: true });
+  }
 });
 
 test('0-exit missing / malformed / wrong-hash / wrong-bug receipts all fail', () => {

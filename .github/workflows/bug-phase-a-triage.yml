@@ -237,26 +237,35 @@ jobs:
                 ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
             $actor = $admin ? (int)$admin : 1;
             $svc = \App\Services\BugReportService::class;
+            // Scan ALL public comments (chunked). A limit(100) newest window misses older
+            // exact-hash retries and can insert a duplicate then falsely succeed.
             $findPublicByHash = function (int $bugId, string $replySha) {
-                // unicode_ci body= is not byte equality; compare sha256 in PHP.
-                $rows = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
-                    ->where("is_internal_note", false)->orderByDesc("id")->limit(100)->get(["id", "body"]);
-                foreach ($rows as $row) {
-                    if (hash_equals($replySha, hash("sha256", (string)$row->body))) {
-                        return $row;
-                    }
-                }
-                return null;
+                $matched = null;
+                \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
+                    ->where("is_internal_note", false)->orderBy("id")->select(["id", "body"])
+                    ->chunkById(200, function ($rows) use ($replySha, &$matched) {
+                        foreach ($rows as $row) {
+                            if (hash_equals($replySha, hash("sha256", (string)$row->body))) {
+                                $matched = $row;
+                                return false;
+                            }
+                        }
+                        return true;
+                    });
+                return $matched;
+            };
+            $throwCode = function (string $code) {
+                throw new \RuntimeException(json_encode(["code" => $code], JSON_UNESCAPED_UNICODE));
             };
             $commentId = 0;
             $commentSkipped = false;
             $finalStatus = $fromStatus;
             if (getenv("CLOSE_AS_LOGGED") === "true") {
                 $closed = $svc::closeAsLogged($bugId, $actor, $disposition, $issueUrl, $reply);
-                if (!($closed["ok"] ?? false)) { throw new \RuntimeException(json_encode($closed)); }
+                if (!($closed["ok"] ?? false)) { $throwCode("close_failed"); }
                 $finalStatus = "closed";
                 $matched = $findPublicByHash($bugId, $replySha);
-                if (!$matched) { throw new \RuntimeException(json_encode(["code" => "public_body_mismatch", "expected_sha256" => $replySha])); }
+                if (!$matched) { $throwCode("public_body_mismatch"); }
                 $commentId = (int)$matched->id;
             } else {
               // Writes under a transaction; receipt is built only AFTER commit.
@@ -264,24 +273,24 @@ jobs:
               try {
                 $locked = \App\Models\BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
                 $status = (string)$locked->status;
-                if (!in_array($status, ["new", "triaged"], true)) { throw new \RuntimeException("refusing status: ".$status); }
+                if (!in_array($status, ["new", "triaged"], true)) { $throwCode("refusing_status"); }
                 $validatedDisposition = $svc::normalizeDispositionOptions([
                     "disposition" => $disposition,
                     "github_issue_url" => $issueUrl,
                 ]);
-                if (!($validatedDisposition["ok"] ?? false)) { throw new \RuntimeException(json_encode($validatedDisposition)); }
+                if (!($validatedDisposition["ok"] ?? false)) { $throwCode("disposition_invalid"); }
                 if ($status === "new") {
                     $transition = $svc::changeStatus($bugId, $actor, "triaged", "phase-a verified intake; GitHub issue=".$issueUrl, [
                         "disposition" => $disposition,
                         "github_issue_url" => $issueUrl,
                     ]);
-                    if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
+                    if (!($transition["ok"] ?? false)) { $throwCode("transition_failed"); }
                 } else {
                     $transition = $svc::restateDisposition($bugId, $actor, [
                         "disposition" => $disposition,
                         "github_issue_url" => $issueUrl,
                     ], "phase-a verified intake; GitHub issue=".$issueUrl);
-                    if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
+                    if (!($transition["ok"] ?? false)) { $throwCode("restate_failed"); }
                 }
                 $exactPublic = $findPublicByHash($bugId, $replySha);
                 if ($exactPublic) {
@@ -290,7 +299,7 @@ jobs:
                 } else {
                     $created = $svc::addComment($bugId, $actor, $reply, false);
                     $commentId = (int)($created->id ?? 0);
-                    if ($commentId <= 0) { throw new \RuntimeException(json_encode($created)); }
+                    if ($commentId <= 0) { $throwCode("comment_create_failed"); }
                 }
                 \Illuminate\Support\Facades\DB::commit();
               } catch (\Throwable $inner) {
@@ -303,12 +312,7 @@ jobs:
               $finalStatus = $fresh ? (string)$fresh->status : "missing";
               $matched = $findPublicByHash($bugId, $replySha);
               if (!$matched || (int)$matched->id !== $commentId) {
-                  throw new \RuntimeException(json_encode([
-                      "code" => "public_body_mismatch",
-                      "expected_sha256" => $replySha,
-                      "expected_comment_id" => $commentId,
-                      "status" => $finalStatus,
-                  ]));
+                  $throwCode("public_body_mismatch");
               }
             }
             $receipt = [
@@ -322,20 +326,41 @@ jobs:
             ];
             // Receipt file is the sole success signal (tinker exit code is unreliable).
             if (file_put_contents($receiptPath, json_encode($receipt, JSON_UNESCAPED_UNICODE)."\n") === false) {
-                throw new \RuntimeException("failed to write receipt");
+                $throwCode("receipt_write_failed");
             }
           } catch (\Throwable $e) {
             try { if (\Illuminate\Support\Facades\DB::transactionLevel() > 0) { \Illuminate\Support\Facades\DB::rollBack(); } } catch (\Throwable $ignore) {}
-            fwrite(STDERR, "PHASE_A_FAIL ".$e->getMessage().PHP_EOL);
-            // Best-effort non-zero; PsySH/Tinker may still return 0 — remote bash gates on receipt file.
+            // Never echo getMessage() — QueryException may interpolate SQL + bindings (incl. reply).
+            $code = "phase_a_exception";
+            if ($e instanceof \Illuminate\Database\QueryException) {
+                $code = "db_query_failed";
+            } else {
+                $msg = (string)$e->getMessage();
+                if ($msg !== "" && ($msg[0] === "{" || $msg[0] === "[")) {
+                    $decoded = json_decode($msg, true);
+                    if (is_array($decoded) && isset($decoded["code"]) && is_string($decoded["code"])
+                        && preg_match("/^[a-z][a-z0-9_]{0,63}$/", $decoded["code"])) {
+                        $code = $decoded["code"];
+                    }
+                } elseif (strpos($msg, "missing receipt path") !== false) {
+                    $code = "missing_receipt_path";
+                } elseif (strpos($msg, "bug not found:") === 0) {
+                    $code = "bug_not_found";
+                }
+            }
+            fwrite(STDERR, "PHASE_A_FAIL code=".$code.PHP_EOL);
             exit(1);
           }
           ' 2>&1)"
           TINKER_RC=$?
           set -e
+          # Forward only fixed PHASE_A_FAIL code= lines; never raw tinker/SQL/reply text.
+          phase_a_emit_safe_remote_log() {
+            printf '%s\n' "$1" | grep -E '^PHASE_A_FAIL code=[a-z0-9_]+$' >&2 || true
+          }
           if [[ ! -s "$RECEIPT_FILE" ]]; then
-            printf '%s\n' "$TINKER_OUT" >&2
-            echo "PHASE_A_FAIL missing success receipt (tinker_rc=$TINKER_RC)" >&2
+            phase_a_emit_safe_remote_log "$TINKER_OUT"
+            echo "PHASE_A_FAIL code=missing_success_receipt" >&2
             exit 1
           fi
           # Sole stdout: one receipt JSON object for the runner to validate.
@@ -343,6 +368,10 @@ jobs:
           rm -f "$RECEIPT_FILE"
           exit 0
           REMOTE
+          # Strip unsafe remote chatter (SQL/bindings/reply) from captured ssh/tinker output.
+          phase_a_emit_safe_remote_log() {
+            printf '%s\n' "$1" | grep -E '^PHASE_A_FAIL code=[a-z0-9_]+$' >&2 || true
+          }
           write_one() {
             local BUG_ID="$1" GITHUB_ISSUE_URL="$2" DISPOSITION="$3" CLOSE_AS_LOGGED="$4" PUBLIC_REPLY="$5"
             [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; return 1; }
@@ -372,16 +401,18 @@ jobs:
               "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' CLOSE_AS_LOGGED='$CLOSE_AS_LOGGED' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" \
               < /tmp/phase-a-remote.sh 2>&1)" || SSH_RC=$?
             if [[ "$SSH_RC" -ne 0 ]]; then
-              printf '%s\n' "$SSH_OUT" >&2
+              phase_a_emit_safe_remote_log "$SSH_OUT"
+              echo "::error::phase-a ssh failed rc=$SSH_RC" >&2
               return "$SSH_RC"
             fi
             # Exactly one phase_a_receipt object; validate bug_id / comment_id / body hash / status.
+            # Only receipt JSON objects are accepted from stdout — never echo raw SSH_OUT.
             local RECEIPTS RECEIPT_COUNT RECEIPT
             RECEIPTS="$(printf '%s\n' "$SSH_OUT" | jq -c 'select(type=="object" and .phase_a_receipt==1)' 2>/dev/null || true)"
             RECEIPT_COUNT="$(printf '%s\n' "$RECEIPTS" | grep -c . || true)"
             if [[ "$RECEIPT_COUNT" -ne 1 ]]; then
               echo "::error::phase-a receipt missing/malformed/not-unique for bug_id=$BUG_ID count=$RECEIPT_COUNT" >&2
-              printf '%s\n' "$SSH_OUT" >&2
+              phase_a_emit_safe_remote_log "$SSH_OUT"
               return 1
             fi
             RECEIPT="$(printf '%s\n' "$RECEIPTS" | head -n1)"
