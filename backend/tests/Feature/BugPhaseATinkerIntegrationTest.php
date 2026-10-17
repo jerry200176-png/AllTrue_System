@@ -29,6 +29,11 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
 
     private const ISSUE = 'https://github.com/jerry200176-png/AllTrue_System/issues/4246';
 
+    /** Must match chunkById(200) in the extracted workflow tinker payload. */
+    private const CHUNK_SIZE = 200;
+
+    private const FORCE_ROLLBACK_TRIGGER = 'phase_a_force_comment_rollback_trg';
+
     private string $tinkerPhp = '';
 
     /** @var list<int> */
@@ -45,6 +50,7 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
         }
         $this->tinkerPhp = self::extractTinkerPhpFromWorkflow();
         $this->assertStringContainsString('chunkById(', $this->tinkerPhp);
+        $this->assertMatchesRegularExpression('/chunkById\(\s*' . self::CHUNK_SIZE . '\s*,/', $this->tinkerPhp);
         $this->assertStringContainsString('phase_a_receipt', $this->tinkerPhp);
         $this->assertStringContainsString('hash("sha256"', $this->tinkerPhp);
         $this->assertStringNotContainsString('->limit(100)', $this->tinkerPhp);
@@ -52,6 +58,7 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
 
     protected function tearDown(): void
     {
+        $this->dropForceRollbackTrigger();
         foreach ($this->cleanupBugIds as $id) {
             BugReportComment::where('bug_report_id', $id)->delete();
             DB::table('bug_report_status_logs')->where('bug_report_id', $id)->delete();
@@ -64,59 +71,104 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_oldest_exact_hash_among_over_100_public_comments_hits_without_duplicate(): void
+    public function test_exact_hash_on_chunkById_second_page_hits_and_retry_dedupes(): void
     {
-        [$admin, $reporter] = $this->actors();
-        $reply = 'phase-a-oldest-hash-target-' . uniqid('', true);
+        [, $reporter] = $this->actors();
+        $reply = 'phase-a-chunk2-target-' . uniqid('', true);
         $bug = $this->newBug($reporter);
+
+        // Page 1 = first CHUNK_SIZE rows by ascending id; target must land on page 2.
         $rows = [];
-        for ($i = 1; $i <= 101; $i++) {
+        for ($i = 1; $i <= self::CHUNK_SIZE; $i++) {
             $rows[] = [
                 'bug_report_id' => $bug->id,
                 'author_user_id' => $reporter->id,
-                'body' => $i === 1 ? $reply : "filler-public-{$i}-{$bug->id}",
+                'body' => "filler-page1-{$i}-{$bug->id}",
+                'is_internal_note' => 0,
+                'created_at' => now()->toDateTimeString(),
+            ];
+        }
+        $rows[] = [
+            'bug_report_id' => $bug->id,
+            'author_user_id' => $reporter->id,
+            'body' => $reply,
+            'is_internal_note' => 0,
+            'created_at' => now()->toDateTimeString(),
+        ];
+        for ($i = 1; $i <= 5; $i++) {
+            $rows[] = [
+                'bug_report_id' => $bug->id,
+                'author_user_id' => $reporter->id,
+                'body' => "filler-page2-after-{$i}-{$bug->id}",
                 'is_internal_note' => 0,
                 'created_at' => now()->toDateTimeString(),
             ];
         }
         BugReportComment::insert($rows);
-        $oldestId = (int) BugReportComment::query()
-            ->where('bug_report_id', $bug->id)
-            ->orderBy('id')
-            ->value('id');
-        $newest100 = BugReportComment::query()
-            ->where('bug_report_id', $bug->id)
-            ->orderByDesc('id')
-            ->limit(100)
-            ->pluck('id');
-        $this->assertFalse($newest100->contains($oldestId), 'fixture: newest-100 must miss the oldest row');
 
-        $result = $this->runExtractedTinker([
+        $orderedIds = BugReportComment::query()
+            ->where('bug_report_id', $bug->id)
+            ->where('is_internal_note', false)
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+        $this->assertGreaterThan(self::CHUNK_SIZE, count($orderedIds));
+        $page1 = array_slice($orderedIds, 0, self::CHUNK_SIZE);
+        $page2 = array_slice($orderedIds, self::CHUNK_SIZE);
+        $targetId = (int) BugReportComment::query()
+            ->where('bug_report_id', $bug->id)
+            ->where('body', $reply)
+            ->value('id');
+        $this->assertNotContains($targetId, $page1, 'fixture: target must miss chunkById page 1');
+        $this->assertContains($targetId, $page2, 'fixture: target must sit on chunkById page 2');
+
+        $first = $this->runExtractedTinker([
             'BUG_ID' => (string) $bug->id,
             'GITHUB_ISSUE_URL' => self::ISSUE,
             'DISPOSITION' => 'bug',
             'PUBLIC_REPLY' => $reply,
             'CLOSE_AS_LOGGED' => 'false',
         ]);
+        $this->assertNotNull($first['receipt'], $first['stderr'] . "\n" . $first['stdout']);
+        $this->assertSame(1, (int) $first['receipt']['phase_a_receipt']);
+        $this->assertSame($targetId, (int) $first['receipt']['comment_id']);
+        $this->assertTrue((bool) $first['receipt']['comment_skipped']);
+        $this->assertSame('triaged', $first['receipt']['final']);
+        $this->assertSame(hash('sha256', $reply), $first['receipt']['public_body_sha256']);
+        $publicCount = BugReportComment::where('bug_report_id', $bug->id)->where('is_internal_note', false)->count();
+        $this->assertSame(count($orderedIds), $publicCount);
 
-        $this->assertNotNull($result['receipt'], $result['stderr'] . "\n" . $result['stdout']);
-        $this->assertSame(1, (int) $result['receipt']['phase_a_receipt']);
-        $this->assertSame($bug->id, (int) $result['receipt']['bug_id']);
-        $this->assertSame($oldestId, (int) $result['receipt']['comment_id']);
-        $this->assertTrue((bool) $result['receipt']['comment_skipped']);
-        $this->assertSame('triaged', $result['receipt']['final']);
-        $this->assertSame(hash('sha256', $reply), $result['receipt']['public_body_sha256']);
-        $this->assertSame(101, BugReportComment::where('bug_report_id', $bug->id)->where('is_internal_note', false)->count());
-        $this->assertSame('triaged', $bug->fresh()->status);
-        $this->assertSame($admin->id, (int) UserCampus::where('Admin', 1)->where('Approved', 1)->orderBy('UserID')->value('UserID'));
+        // Newer reporter follow-up must not become the retry match key.
+        BugReportComment::create([
+            'bug_report_id' => $bug->id,
+            'author_user_id' => $reporter->id,
+            'body' => 'reporter follow-up after chunk2 ' . uniqid('', true),
+            'is_internal_note' => false,
+            'created_at' => now(),
+        ]);
+        $beforeRetry = BugReportComment::where('bug_report_id', $bug->id)->where('is_internal_note', false)->count();
+
+        $retry = $this->runExtractedTinker([
+            'BUG_ID' => (string) $bug->id,
+            'GITHUB_ISSUE_URL' => self::ISSUE,
+            'DISPOSITION' => 'bug',
+            'PUBLIC_REPLY' => $reply,
+            'CLOSE_AS_LOGGED' => 'false',
+        ]);
+        $this->assertNotNull($retry['receipt'], $retry['stderr'] . "\n" . $retry['stdout']);
+        $this->assertTrue((bool) $retry['receipt']['comment_skipped']);
+        $this->assertSame($targetId, (int) $retry['receipt']['comment_id']);
+        $this->assertSame(
+            $beforeRetry,
+            BugReportComment::where('bug_report_id', $bug->id)->where('is_internal_note', false)->count(),
+            'retry must not insert a second approved body after crossing chunk page 2'
+        );
     }
 
     public function test_case_and_accent_byte_differences_do_not_sha256_collide(): void
     {
         [, $reporter] = $this->actors();
-        // Accent pair: hashes always differ; may or may not equate under unicode_ci.
         $this->assertNotSame(hash('sha256', 'cafe'), hash('sha256', 'café'));
-        // Prefer accent near-miss when the live collation equates them; else case-only.
         $nearMiss = 'Cafe';
         $reply = 'café';
         $this->assertNotSame(hash('sha256', $nearMiss), hash('sha256', $reply));
@@ -171,23 +223,47 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
         $this->assertSame(hash('sha256', $reply), $result['receipt']['public_body_sha256']);
     }
 
-    public function test_rollback_skips_receipt_then_commit_receipt_and_retry_dedupes(): void
+    /**
+     * Force failure after changeStatus has written inside the tinker transaction
+     * (comment INSERT trigger), prove an independent connection never sees a
+     * half-write / no success receipt, then drop the trigger and commit+retry.
+     */
+    public function test_post_write_failure_rolls_back_then_commit_receipt_and_retry_dedupes(): void
     {
         [, $reporter] = $this->actors();
-        $reply = "phase-a-commit-retry\nline2-" . uniqid('', true);
+        $reply = 'PHASE_A_FORCE_ROLLBACK ' . uniqid('', true);
         $bug = $this->newBug($reporter);
 
-        $rolled = $this->runExtractedTinker([
-            'BUG_ID' => (string) $bug->id,
-            'GITHUB_ISSUE_URL' => self::ISSUE,
-            'DISPOSITION' => 'not_a_real_disposition',
-            'PUBLIC_REPLY' => $reply,
-            'CLOSE_AS_LOGGED' => 'false',
-        ]);
-        $this->assertNull($rolled['receipt'], 'invalid disposition must not write a success receipt');
-        $this->assertSame('new', $bug->fresh()->status);
-        $this->assertSame(0, BugReportComment::where('bug_report_id', $bug->id)->count());
-        $this->assertStringContainsString('PHASE_A_FAIL code=', $rolled['stderr'] . $rolled['stdout']);
+        config(['database.connections.phase_a_observer' => config('database.connections.' . config('database.default'))]);
+        DB::purge('phase_a_observer');
+        $observer = DB::connection('phase_a_observer');
+
+        $this->installForceRollbackTrigger();
+        try {
+            $rolled = $this->runExtractedTinker([
+                'BUG_ID' => (string) $bug->id,
+                'GITHUB_ISSUE_URL' => self::ISSUE,
+                'DISPOSITION' => 'bug',
+                'PUBLIC_REPLY' => $reply,
+                'CLOSE_AS_LOGGED' => 'false',
+            ]);
+            $this->assertNull($rolled['receipt'], 'forced post-write failure must not leave a success receipt');
+            $this->assertStringContainsString('PHASE_A_FAIL code=', $rolled['stderr'] . $rolled['stdout']);
+
+            // Independent connection: rolled-back status/comment must be invisible.
+            $this->assertSame('new', (string) $observer->table('bug_reports')->where('id', $bug->id)->value('status'));
+            $this->assertSame(
+                0,
+                (int) $observer->table('bug_report_comments')->where('bug_report_id', $bug->id)->count()
+            );
+            $this->assertSame(
+                0,
+                (int) $observer->table('bug_report_status_logs')->where('bug_report_id', $bug->id)->count()
+            );
+            $this->assertSame('new', $bug->fresh()->status);
+        } finally {
+            $this->dropForceRollbackTrigger();
+        }
 
         $first = $this->runExtractedTinker([
             'BUG_ID' => (string) $bug->id,
@@ -199,13 +275,12 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
         $this->assertNotNull($first['receipt'], $first['stderr'] . "\n" . $first['stdout']);
         $this->assertFalse((bool) $first['receipt']['comment_skipped']);
         $this->assertSame('triaged', $first['receipt']['final']);
-        $this->assertSame('triaged', $bug->fresh()->status);
+        $this->assertSame('triaged', (string) $observer->table('bug_reports')->where('id', $bug->id)->value('status'));
         $commentId = (int) $first['receipt']['comment_id'];
         $this->assertGreaterThan(0, $commentId);
         $this->assertSame(1, BugReportComment::where('bug_report_id', $bug->id)->where('is_internal_note', false)->count());
         $this->assertSame($reply, (string) BugReportComment::find($commentId)->body);
 
-        // Newer reporter follow-up must not become the retry match key (hash, not latest).
         BugReportComment::create([
             'bug_report_id' => $bug->id,
             'author_user_id' => $reporter->id,
@@ -232,6 +307,32 @@ final class BugPhaseATinkerIntegrationTest extends TestCase
             BugReportComment::where('bug_report_id', $bug->id)->where('is_internal_note', false)->count(),
             'retry must not insert a second approved body'
         );
+
+        DB::purge('phase_a_observer');
+    }
+
+    /**
+     * Test-DB-only trigger: fires on public-comment INSERT after changeStatus
+     * has already mutated rows inside the same tinker transaction.
+     */
+    private function installForceRollbackTrigger(): void
+    {
+        $this->dropForceRollbackTrigger();
+        DB::unprepared(
+            'CREATE TRIGGER `' . self::FORCE_ROLLBACK_TRIGGER . '`
+            BEFORE INSERT ON `bug_report_comments`
+            FOR EACH ROW
+            BEGIN
+              IF NEW.`body` LIKE \'PHASE_A_FORCE_ROLLBACK%\' THEN
+                SIGNAL SQLSTATE \'45000\' SET MESSAGE_TEXT = \'phase_a_test_forced_post_write_rollback\';
+              END IF;
+            END'
+        );
+    }
+
+    private function dropForceRollbackTrigger(): void
+    {
+        DB::unprepared('DROP TRIGGER IF EXISTS `' . self::FORCE_ROLLBACK_TRIGGER . '`');
     }
 
     /**
