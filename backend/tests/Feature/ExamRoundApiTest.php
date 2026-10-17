@@ -19,7 +19,7 @@ class ExamRoundApiTest extends TestCase
 
     public function test_publish_score_pending_and_scope_guards(): void
     {
-        $campus = $this->makeCampus();
+        $campus = (int) CampusFactory::new()->create(['name' => '段考分校 ' . Str::random(5)])->id;
         $director = $this->makeStaff('A', 'exam-director@example.com', $campus);
         $teacher = $this->makeStaff('T', 'exam-teacher@example.com', $campus);
         $other = $this->makeStaff('T', 'exam-other@example.com', $campus);
@@ -75,29 +75,17 @@ class ExamRoundApiTest extends TestCase
         $this->assertDatabaseHas('exam_score_audit_logs', ['exam_round_id' => $roundId, 'action' => 'score_corrected']);
     }
 
-    private function makeCampus(): int
-    {
-        return (int) CampusFactory::new()->create(['name' => '段考分校 ' . Str::random(5)])->id;
-    }
-
     /** @return array{token:string,user:User} */
     private function makeStaff(string $type, string $login, int $campus): array
     {
         $user = User::create([
-            'LoginName' => $login,
-            'Name' => $type === 'A' ? '段考主任' : '段考老師',
-            'PSW' => 'secret',
-            'type' => $type,
-            'phone' => (string) random_int(900000000, 999999999),
+            'LoginName' => $login, 'Name' => $type === 'A' ? '段考主任' : '段考老師',
+            'PSW' => 'secret', 'type' => $type, 'phone' => (string) random_int(900000000, 999999999),
             'MustChangePassword' => false,
         ]);
-        UserCampus::create([
-            'CampusID' => $campus, 'UserID' => $user->id,
-            'Admin' => $type === 'A' ? 1 : 0, 'Approved' => 1,
-        ]);
+        UserCampus::create(['CampusID' => $campus, 'UserID' => $user->id, 'Admin' => $type === 'A' ? 1 : 0, 'Approved' => 1]);
         $token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
-
         return ['token' => $token, 'user' => $user];
     }
 
@@ -122,15 +110,11 @@ class ExamRoundApiTest extends TestCase
         $class->SessionDuration = 60;
         $class->ClassType = 'one_on_one';
         $class->save();
-
         return $class->fresh();
     }
 
     private function withAuth(string $token)
     {
-        return $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ]);
+        return $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json']);
     }
 }

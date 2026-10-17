@@ -27,8 +27,8 @@ class ExamRoundController extends Controller
         if ($this->role($request) === 'teacher') {
             $query->whereIn('status', ['published', 'closed']);
         }
-        $rows = $query->latest('exam_date')->latest('id')->paginate(min((int) $request->input('per_page', 50), 100));
-
+        $perPage = max(1, min((int) $request->input('per_page', 50), 100));
+        $rows = $query->latest('exam_date')->latest('id')->paginate($perPage);
         return response()->json([
             'data' => collect($rows->items())->map(fn (ExamRound $r) => $this->serializeRound($r))->values(),
             'meta' => [
@@ -39,7 +39,6 @@ class ExamRoundController extends Controller
             ],
         ]);
     }
-
     public function store(Request $request)
     {
         if (!$this->isDirector($request)) {
@@ -70,7 +69,6 @@ class ExamRoundController extends Controller
                 array_keys(self::DEFAULT_SUBJECTS)
             );
         }
-
         $round = DB::transaction(function () use ($data, $campusId, $subjects, $request) {
             $round = ExamRound::create([
                 'campus_id' => $campusId,
@@ -95,22 +93,17 @@ class ExamRoundController extends Controller
                 ]);
             }
             $this->audit($request, $round, null, 'round_created', null, $this->serializeRound($round->fresh('subjects')));
-
             return $round->fresh('subjects');
         });
-
         return response()->json(['data' => $this->serializeRound($round)], 201);
     }
-
     public function show(Request $request, ExamRound $examRound)
     {
         if (!$this->canAccessRound($request, $examRound)) {
             return response()->json(['message' => 'Not found'], 404);
         }
-
         return response()->json(['data' => $this->serializeRound($examRound->load('subjects'))]);
     }
-
     public function publish(Request $request, ExamRound $examRound)
     {
         if (!$this->isDirector($request) || !$this->campusAllowed($request, (int) $examRound->campus_id)) {
@@ -125,14 +118,22 @@ class ExamRoundController extends Controller
         if ($examRound->status === 'closed') {
             return response()->json(['message' => 'Closed round cannot be published'], 409);
         }
-        $before = $this->serializeRound($examRound);
-        $examRound->update(['status' => 'published', 'published_at' => now()]);
-        $after = $this->serializeRound($examRound->fresh('subjects'));
-        $this->audit($request, $examRound, null, 'published', $before, $after);
-
+        $after = DB::transaction(function () use ($request, $examRound) {
+            $locked = ExamRound::query()->whereKey($examRound->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status === 'published') {
+                return $this->serializeRound($locked->load('subjects'));
+            }
+            if ($locked->status === 'closed') {
+                abort(response()->json(['message' => 'Closed round cannot be published'], 409));
+            }
+            $before = $this->serializeRound($locked);
+            $locked->update(['status' => 'published', 'published_at' => now()]);
+            $serialized = $this->serializeRound($locked->fresh('subjects'));
+            $this->audit($request, $locked, null, 'published', $before, $serialized);
+            return $serialized;
+        });
         return response()->json(['data' => $after]);
     }
-
     public function close(Request $request, ExamRound $examRound)
     {
         if (!$this->isDirector($request) || !$this->campusAllowed($request, (int) $examRound->campus_id)) {
@@ -144,14 +145,22 @@ class ExamRoundController extends Controller
         if ($examRound->status !== 'published') {
             return response()->json(['message' => 'Only published rounds can be closed'], 409);
         }
-        $before = $this->serializeRound($examRound);
-        $examRound->update(['status' => 'closed', 'closed_at' => now()]);
-        $after = $this->serializeRound($examRound->fresh('subjects'));
-        $this->audit($request, $examRound, null, 'closed', $before, $after);
-
+        $after = DB::transaction(function () use ($request, $examRound) {
+            $locked = ExamRound::query()->whereKey($examRound->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status === 'closed') {
+                return $this->serializeRound($locked->load('subjects'));
+            }
+            if ($locked->status !== 'published') {
+                abort(response()->json(['message' => 'Only published rounds can be closed'], 409));
+            }
+            $before = $this->serializeRound($locked);
+            $locked->update(['status' => 'closed', 'closed_at' => now()]);
+            $serialized = $this->serializeRound($locked->fresh('subjects'));
+            $this->audit($request, $locked, null, 'closed', $before, $serialized);
+            return $serialized;
+        });
         return response()->json(['data' => $after]);
     }
-
     public function students(Request $request, ExamRound $examRound)
     {
         if (!$this->canAccessRound($request, $examRound)) {
@@ -163,7 +172,6 @@ class ExamRoundController extends Controller
         $scores = ExamScore::query()->where('exam_round_id', $examRound->id)
             ->whereIn('student_id', $eligible->pluck('student_id')->all() ?: [0])
             ->get()->groupBy('student_id');
-
         $data = $eligible->map(function ($row) use ($scores, $subjectIds) {
             $bySubject = collect($scores->get($row['student_id'], []))->keyBy('exam_round_subject_id');
             $filled = 0;
@@ -180,7 +188,6 @@ class ExamRoundController extends Controller
                     'notes' => $s->notes ?? null,
                 ];
             }
-
             return [
                 'student_id' => (int) $row['student_id'],
                 'student_name' => $row['student_name'],
@@ -192,10 +199,8 @@ class ExamRoundController extends Controller
                 'scores' => $scorePayload,
             ];
         })->values();
-
         return response()->json(['data' => $data]);
     }
-
     public function upsertScores(Request $request, ExamRound $examRound)
     {
         if (!$this->canAccessRound($request, $examRound)) {
@@ -212,7 +217,6 @@ class ExamRoundController extends Controller
         if ($isDirector && $examRound->status === 'draft') {
             return response()->json(['message' => 'Publish the round before entering scores'], 409);
         }
-
         $payload = $request->validate([
             'scores' => ['required', 'array', 'min:1', 'max:200'],
             'scores.*.student_id' => ['required', 'integer', 'min:1'],
@@ -231,7 +235,6 @@ class ExamRoundController extends Controller
             $this->eligibleStudentRows($examRound, $teacherId)->pluck('student_id')->all(),
             true
         );
-
         $normalized = [];
         foreach ($payload['scores'] as $row) {
             $studentId = (int) $row['student_id'];
@@ -264,15 +267,29 @@ class ExamRoundController extends Controller
                 'notes' => $row['notes'] ?? null,
             ];
         }
-
         $saved = [];
         DB::transaction(function () use ($normalized, $examRound, $request, $isDirector, $payload, &$saved) {
+            $locked = ExamRound::query()->whereKey($examRound->id)->lockForUpdate()->firstOrFail();
+            if (!$isDirector && $locked->status !== 'published') {
+                abort(response()->json(['message' => 'Round is not open for entry'], 409));
+            }
+            if ($isDirector && $locked->status === 'draft') {
+                abort(response()->json(['message' => 'Publish the round before entering scores'], 409));
+            }
             foreach ($normalized as $row) {
-                $record = ExamScore::query()->firstOrNew([
-                    'exam_round_id' => $examRound->id,
-                    'student_id' => $row['student_id'],
-                    'exam_round_subject_id' => $row['exam_round_subject_id'],
-                ]);
+                $record = ExamScore::query()
+                    ->where('exam_round_id', $locked->id)
+                    ->where('student_id', $row['student_id'])
+                    ->where('exam_round_subject_id', $row['exam_round_subject_id'])
+                    ->lockForUpdate()
+                    ->first();
+                if (!$record) {
+                    $record = new ExamScore([
+                        'exam_round_id' => $locked->id,
+                        'student_id' => $row['student_id'],
+                        'exam_round_subject_id' => $row['exam_round_subject_id'],
+                    ]);
+                }
                 $before = $record->exists ? $record->only(['score', 'is_absent', 'notes']) : null;
                 $record->fill([
                     'score' => $row['score'],
@@ -282,12 +299,12 @@ class ExamRoundController extends Controller
                     'recorded_at' => now(),
                 ])->save();
                 $action = $before === null ? 'score_created' : 'score_updated';
-                if ($isDirector && $examRound->status === 'closed') {
+                if ($isDirector && $locked->status === 'closed') {
                     $action = 'score_corrected';
                 }
                 $this->audit(
                     $request,
-                    $examRound,
+                    $locked,
                     $record->id,
                     $action,
                     $before,
@@ -305,10 +322,8 @@ class ExamRoundController extends Controller
                 ];
             }
         });
-
         return response()->json(['data' => $saved]);
     }
-
     public function progress(Request $request, ExamRound $examRound)
     {
         if (!$this->isDirector($request) || !$this->campusAllowed($request, (int) $examRound->campus_id)) {
@@ -344,7 +359,6 @@ class ExamRoundController extends Controller
             }
         }
         $expected = $eligible->count();
-
         return response()->json([
             'data' => [
                 'exam_round_id' => (int) $examRound->id,
@@ -355,7 +369,6 @@ class ExamRoundController extends Controller
             ],
         ]);
     }
-
     public function pendingSummary(Request $request)
     {
         $userId = $this->userId($request);
@@ -366,7 +379,6 @@ class ExamRoundController extends Controller
         $rounds = ExamRound::query()->with('subjects')->where('status', 'published')
             ->when(!$this->isSuperAdmin($request), fn ($q) => $q->whereIn('campus_id', $campusIds ?: [0]))
             ->orderBy('entry_deadline')->orderBy('id')->get();
-
         $pendingRounds = [];
         $total = 0;
         foreach ($rounds as $round) {
@@ -408,20 +420,28 @@ class ExamRoundController extends Controller
                 ];
             }
         }
-
         return response()->json(['data' => ['count' => $total, 'rounds' => $pendingRounds]]);
     }
-
     private function eligibleStudentRows(ExamRound $round, ?int $teacherId)
     {
         $gradeIds = array_values(array_map('intval', $round->grade_ids ?? []));
         if ($gradeIds === []) {
             return collect();
         }
+        // Keep students who already have scores so closed/historical rows stay visible
+        // after grade moves or contract changes (Codex P1 roster stability).
+        $scoredIds = ExamScore::query()->where('exam_round_id', $round->id)->distinct()->pluck('student_id')->all();
         $students = Student::query()
             ->where('CampusID', (int) $round->campus_id)
-            ->whereIn('ClassID', $gradeIds)
-            ->where(fn ($q) => $q->whereNull('enable')->orWhere('enable', 1))
+            ->where(function ($q) use ($gradeIds, $scoredIds) {
+                $q->where(function ($inner) use ($gradeIds) {
+                    $inner->whereIn('ClassID', $gradeIds)
+                        ->where(fn ($e) => $e->whereNull('enable')->orWhere('enable', 1));
+                });
+                if ($scoredIds !== []) {
+                    $q->orWhereIn('id', $scoredIds);
+                }
+            })
             ->get(['id', 'name', 'ClassID']);
         if ($students->isEmpty()) {
             return collect();
@@ -433,34 +453,29 @@ class ExamRoundController extends Controller
             $classQuery->where('TeacherID', $teacherId);
         }
         $classes = $classQuery->get(['ID', 'StudentID', 'TeacherID']);
-        if ($classes->isEmpty()) {
-            return collect();
-        }
         $teachersByStudent = $classes->groupBy('StudentID')->map(
             fn ($rows) => $rows->pluck('TeacherID')->map(fn ($id) => (int) $id)->unique()->values()->all()
         );
-
-        return $students->filter(fn ($s) => $teachersByStudent->has($s->id))->map(fn ($s) => [
+        $scoredSet = array_fill_keys(array_map('intval', $scoredIds), true);
+        return $students->filter(
+            fn ($s) => $teachersByStudent->has($s->id) || isset($scoredSet[(int) $s->id])
+        )->map(fn ($s) => [
             'student_id' => (int) $s->id,
             'student_name' => (string) $s->name,
             'class_id' => (int) $s->ClassID,
             'teacher_ids' => $teachersByStudent->get($s->id, []),
         ])->values();
     }
-
     private function canAccessRound(Request $request, ExamRound $round): bool
     {
         if (!$this->campusAllowed($request, (int) $round->campus_id)) {
             return false;
         }
-
         return $this->role($request) !== 'teacher' || in_array($round->status, ['published', 'closed'], true);
     }
-
     private function serializeRound(ExamRound $round): array
     {
         $round->loadMissing('subjects');
-
         return [
             'id' => (int) $round->id,
             'campus_id' => (int) $round->campus_id,
@@ -481,7 +496,6 @@ class ExamRoundController extends Controller
             ])->values()->all(),
         ];
     }
-
     private function audit(Request $request, ExamRound $round, ?int $scoreId, string $action, $before, $after, ?string $reason = null): void
     {
         ExamScoreAuditLog::create([
@@ -495,36 +509,28 @@ class ExamRoundController extends Controller
             'after' => $after,
         ]);
     }
-
     private function campusIds(Request $request): array
     {
         $ids = $request->attributes->get('auth_campus_ids', []);
-
         return array_values(array_map('intval', is_array($ids) ? $ids : []));
     }
-
     private function campusAllowed(Request $request, int $campusId): bool
     {
         return $this->isSuperAdmin($request) || in_array($campusId, $this->campusIds($request), true);
     }
-
     private function role(Request $request): string
     {
         return (string) $request->attributes->get('auth_role', '');
     }
-
     private function userId(Request $request): int
     {
         $user = $request->attributes->get('auth_user');
-
         return (int) (is_object($user) ? ($user->id ?? 0) : 0);
     }
-
     private function isSuperAdmin(Request $request): bool
     {
         return $this->role($request) === 'super_admin';
     }
-
     private function isDirector(Request $request): bool
     {
         return in_array($this->role($request), ['director', 'super_admin'], true);
