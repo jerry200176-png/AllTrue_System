@@ -1354,6 +1354,18 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("[[ \"$(stat -c '%a' \"$KEY_FILE\")\" == \"600\" ]]", self.workflow)
         self.assertIn("if: ${{ always() && inputs.phase != 'pop-bootstrap'", self.workflow)
 
+    def test_staged_principal_rotation_requires_a_green_contract_test(self):
+        # #4160: the rotation job writes production credentials, so it must not run
+        # in parallel with, or after a failure of, the transformer/preflight contract.
+        rotation_start = self.workflow.index("  staged_principal_rotation:")
+        header = self.workflow[rotation_start:self.workflow.index("    steps:", rotation_start)]
+        self.assertRegex(header, r"(?m)^    needs: contract-test$")
+        self.assertRegex(header, r"(?m)^    if: needs\.contract-test\.result == 'success' && ")
+        self.assertNotIn("always()", header)
+        contract = self.workflow[self.workflow.index("  contract-test:"):self.workflow.index("  resolve-target:")]
+        self.assertNotIn("\n    if:", contract)
+        self.assertIn("python3 scripts/tests/test_principal_rotation_grant_replay.py", contract)
+
     def test_production_concurrency_is_scoped_to_side_effecting_jobs(self):
         top_level = self.workflow.split("permissions:", 1)[0]
         self.assertNotIn("concurrency:", top_level)
