@@ -125,7 +125,8 @@ class BillingCorrectionTest extends TestCase
     /**
      * Targets the pre-stamp current-read: first open-invoice guard sees one bill; a test seam inserts a
      * second open bill only after the confirmation token check; apply must refuse before stamp.
-     * This is an in-process seam, not a multi-connection MySQL RR proof.
+     * Same-connection seam: the phantom rides A's txn and rolls back with the refuse — expect 1 open
+     * invoice afterward. Multi-connection persistence (count=2 when B commits) is claim9's job.
      */
     public function test_pre_stamp_current_read_refuses_invoice_inserted_after_first_guard(): void
     {
@@ -134,9 +135,13 @@ class BillingCorrectionTest extends TestCase
         $first = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-01',
             'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
         $token = $svc->confirmationToken($c->fresh(), 6, 3000, 0, [], 7);
-        $svc->setAfterConfirmationTokenForTests(function (int $classId) use ($c): void {
+        $insertedAfterFirstGuard = false;
+        $svc->setAfterConfirmationTokenForTests(function (int $classId) use ($c, &$insertedAfterFirstGuard): void {
             Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $classId, 'IssueDate' => '2032-03-02',
                 'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => 'post-guard phantom']);
+            // Still inside apply's txn — prove the post-guard insert was visible before refuse.
+            $this->assertSame(2, Invoice::query()->where('StudentClassID', $classId)->where('Status', '!=', 'void')->count());
+            $insertedAfterFirstGuard = true;
         });
         try {
             $svc->applyCountCorrection($c->fresh(), 6, 3000, 'pre-stamp seam', 8, 4000, $token, 7);
@@ -147,7 +152,9 @@ class BillingCorrectionTest extends TestCase
         } finally {
             $svc->setAfterConfirmationTokenForTests(null);
         }
-        $this->assertSame(2, Invoice::query()->where('StudentClassID', $c->ID)->where('Status', '!=', 'void')->count());
+        $this->assertTrue($insertedAfterFirstGuard, 'seam must insert after the first open-invoice guard');
+        // Refuse aborts the apply txn; same-conn phantom is rolled back with it.
+        $this->assertSame(1, Invoice::query()->where('StudentClassID', $c->ID)->where('Status', '!=', 'void')->count());
         $this->assertSame([4000, 8, 4000], [(int) $first->fresh()->TotalAmount, (int) $c->fresh()->SessionCount, (int) $c->fresh()->Charge]);
     }
 
