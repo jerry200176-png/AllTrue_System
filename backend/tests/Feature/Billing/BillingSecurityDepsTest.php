@@ -15,6 +15,11 @@ use Tests\TestCase;
  * Focused evidence for S1 security deps (land before fee service):
  * - SecurityAuditEvent::append(..., required: true) rethrows
  * - StudentClass::hasOperationalHistory blocks on invoice_corrections rows
+ *
+ * Fixture checklist (avoid DDL under RefreshDatabase / varchar overflows):
+ * - no Schema::rename/drop/alter inside RefreshDatabase cases (MySQL DDL implicit-commit)
+ * - Student.name ≤ varchar(32); invoice_corrections.reason ≤ 80; idempotency_key char(36)
+ * - required-audit failure via test-scoped beforeExecuting (no swallowed rollback errors)
  */
 class BillingSecurityDepsTest extends TestCase
 {
@@ -23,7 +28,19 @@ class BillingSecurityDepsTest extends TestCase
     public function test_required_audit_append_rethrows_when_insert_fails(): void
     {
         $this->assertTrue(Schema::hasTable('security_audit_events'));
-        Schema::rename('security_audit_events', 'security_audit_events_hidden_for_required_test');
+
+        // Test-scoped insert failure only — no DDL (RefreshDatabase outer txn stays honest).
+        $armed = true;
+        DB::connection()->beforeExecuting(function ($query) use (&$armed) {
+            if (!$armed) {
+                return;
+            }
+            if (stripos((string) $query, 'insert') !== false
+                && stripos((string) $query, 'security_audit_events') !== false) {
+                throw new \RuntimeException('forced audit insert failure for required=true test');
+            }
+        });
+
         try {
             // Default path: insert failure is swallowed (must not become a 500 for soft callers).
             SecurityAuditEvent::append('billing.security_deps_probe', 'success', [
@@ -34,6 +51,7 @@ class BillingSecurityDepsTest extends TestCase
             ], [], false);
 
             $threw = false;
+            $caught = null;
             try {
                 SecurityAuditEvent::append('billing.security_deps_probe', 'success', [
                     'correlation_id' => (string) Str::uuid(),
@@ -43,20 +61,22 @@ class BillingSecurityDepsTest extends TestCase
                 ], [], true);
             } catch (\Throwable $e) {
                 $threw = true;
+                $caught = $e;
             }
             $this->assertTrue($threw, 'required=true must rethrow when audit insert cannot succeed');
+            $this->assertInstanceOf(\RuntimeException::class, $caught);
+            $this->assertStringContainsString('forced audit insert failure', $caught->getMessage());
         } finally {
-            if (Schema::hasTable('security_audit_events_hidden_for_required_test')) {
-                Schema::rename('security_audit_events_hidden_for_required_test', 'security_audit_events');
-            }
+            $armed = false;
         }
     }
 
     public function test_invoice_corrections_row_counts_as_operational_history(): void
     {
         $this->assertTrue(Schema::hasTable('invoice_corrections'));
+        // students.name is varchar(32) strict — keep synthetic name ≤32 (uuid alone is 36).
         $student = Student::create([
-            'name' => 'security-deps-'.Str::uuid(),
+            'name' => 'sd-'.substr(str_replace('-', '', (string) Str::uuid()), 0, 28),
             'CampusID' => 1,
             'ClassID' => 1,
             'SchoolName' => 'T',
