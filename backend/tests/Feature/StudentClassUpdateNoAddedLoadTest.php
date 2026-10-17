@@ -59,6 +59,30 @@ class StudentClassUpdateNoAddedLoadTest extends TestCase
             ->assertJsonPath('code', 'teacher_schedule_conflict');
     }
 
+    /** #4098: same multi-slot set in a different array order still adds no load on a full slot. */
+    public function test_reordered_unchanged_multi_slots_save_when_slot_is_full(): void
+    {
+        [$token, $course] = $this->seedDoubleBookedMultiSlot();
+
+        // Stored order is Mon then Sun (week/week1); resubmit Sun then Mon.
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'duration_hours' => 2,
+            'payment_type' => 'session',
+            'days_of_week' => [7, 1],
+            'start_time' => '15:00',
+            'day_time_slots' => [
+                ['day' => 7, 'start_time' => '15:00', 'duration_minutes' => 120],
+                ['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 120],
+            ],
+            'first_class_date' => '2026-03-01',
+        ])->assertOk();
+    }
+
     private function update(string $token, StudentClass $course, string $start)
     {
         return $this->withHeaders([
@@ -112,6 +136,51 @@ class StudentClassUpdateNoAddedLoadTest extends TestCase
                 'UsedSessions' => 0,
                 'week' => 7,
                 'time' => '15:00:00',
+            ]);
+        }
+
+        return [$token, $courses[0]];
+    }
+
+    /** Two one-on-one seats on Mon 15:00 and Sun 15:00 so both slots are full. */
+    /** @return array{0: string, 1: StudentClass} */
+    private function seedDoubleBookedMultiSlot(): array
+    {
+        $token = $this->createDirectorToken([1]);
+        $courses = [];
+        foreach (['滿堂複堂學生甲', '滿堂複堂學生乙'] as $name) {
+            $student = Student::create([
+                'name' => $name,
+                'CampusID' => 1,
+                'ClassID' => 1,
+                'enable' => 1,
+                'MDT' => now(),
+                'Notify_Token' => '',
+            ]);
+            $courses[] = StudentClass::create([
+                'StudentID' => $student->id,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'TeacherID' => 99,
+                'ClassType' => 'one_on_one',
+                'by1' => 1,
+                'Period' => 4,
+                'StartDate' => '2026-03-01',
+                'TotalHours' => 16,
+                'Charge' => 0,
+                'Paid' => 0,
+                'Rate' => 500,
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'count',
+                'SessionCount' => 8,
+                'SessionDuration' => 120,
+                'RemainingSessions' => 8,
+                'UsedSessions' => 0,
+                'week' => 1,
+                'time' => '15:00:00',
+                'week1' => 7,
+                'time1' => '15:00:00',
             ]);
         }
 
