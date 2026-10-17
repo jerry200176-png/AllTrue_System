@@ -80,6 +80,9 @@ class ContractCorrectionPaymentGuardTest extends TestCase
     {
         return [
             'full reversal' => [[[8000, 'cash'], [-8000, 'void']], 0, false],
+            'PR4217 split reversals sharing one report fail closed' => [[[8000, 'cash'], [-4000, 'void'], [-4000, 'void']], 0, true],
+            'PR4217 full reversal plus zero void row fails closed' => [[[8000, 'cash'], [-8000, 'void'], [0, 'void']], 0, true],
+            'PR4217 unequal split reversals sharing one report fail closed' => [[[8000, 'cash'], [-1000, 'void'], [-2000, 'void'], [-5000, 'void']], 0, true],
             'legacy reverse-linked receipt' => [[[8000, 'cash'], [-8000, 'void']], 0, false, true],
             'equal-value receipt hidden by duplicate reversal' => [[[8000, 'cash'], [-8000, 'void'], [8000, 'cash'], [-8000, 'void']], 0, true],
             'positive void convention' => [[[8000, 'cash'], [8000, 'void']], 0, false],
