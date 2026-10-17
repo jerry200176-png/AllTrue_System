@@ -73,23 +73,6 @@
           <p v-if="isZeroCharge" class="pe-hint">課程沒填費用不會自動當免費；確定免費才勾選，否則請先到課程管理設定費用。</p>
         </div>
 
-        <!-- Founder D3/B1 (#4132): settle a new bill that corrects a voided one; both bills record each other's number. -->
-        <div v-if="voidedInvoices.length && !form.free_gift" class="pe-field" data-testid="pe-correction">
-          <label class="pe-check">
-            <input type="checkbox" v-model="form.correcting" data-testid="pe-correction-toggle" />
-            這筆是更正已作廢的帳單
-          </label>
-          <template v-if="form.correcting">
-            <label for="pe-correction-invoice">更正哪一張帳單 <span class="required">*</span></label>
-            <select id="pe-correction-invoice" v-model.number="form.replaces_invoice_id" data-testid="pe-correction-invoice">
-              <option v-for="inv in voidedInvoices" :key="inv.id" :value="inv.id">{{ inv.label }}（原金額 NT$ {{ inv.amount.toLocaleString('zh-TW') }}）</option>
-            </select>
-            <label for="pe-correction-reason">更正原因 <span class="required">*</span></label>
-            <input id="pe-correction-reason" type="text" v-model="form.correction_reason" maxlength="80" placeholder="例如：原約定 7,200 元" data-testid="pe-correction-reason" />
-            <p class="pe-hint">送出時會用這個金額開一張新帳單，新舊帳單的備註會互記單號、原因與操作者。重複送出不會再開第二張。</p>
-          </template>
-        </div>
-
         <div class="pe-workflow-hint" role="note" data-testid="pe-workflow-hint">
           <span class="material-symbols-outlined" aria-hidden="true">info</span>
           <span v-if="form.free_gift">送出後直接留下一張 NT$ 0「{{ FREE_GIFT_LABEL }}」帳單，不是收款，不需要確認入帳。</span>
@@ -136,13 +119,7 @@ const form = reactive({
   amount: 0,
   note: '',
   free_gift: false,
-  correcting: false, replaces_invoice_id: null, correction_reason: '',
 });
-const voidedInvoices = computed(() => (Array.isArray(props.row?.voided_invoices) ? props.row.voided_invoices : []));
-// One key per opened form: a double click or a retry sends the same key, so the server returns the same bill.
-const newKey = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID()
-  : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16)));
-let idempotencyKey = newKey();
 
 const submitting = ref(false);
 const submitError = ref('');
@@ -158,8 +135,6 @@ watch(() => props.show, (val) => {
       : (props.row.payable_outstanding ?? props.row.payable_amount ?? '');
     form.note = '';
     form.free_gift = false;
-    Object.assign(form, { correcting: false, replaces_invoice_id: voidedInvoices.value[0]?.id ?? null, correction_reason: '' });
-    idempotencyKey = newKey();
     submitError.value = '';
   }
 });
@@ -188,11 +163,6 @@ async function submit() {
     return;
   }
 
-  const correcting = form.correcting && voidedInvoices.value.length > 0 && !form.free_gift;
-  if (correcting && (!form.replaces_invoice_id || form.correction_reason.trim().length < 3)) {
-    submitError.value = '請選擇要更正的帳單，並填寫更正原因（至少 3 個字）。';
-    return;
-  }
   submitting.value = true;
   try {
     const body = {
@@ -206,11 +176,7 @@ async function submit() {
     }
     // Pay the bill whose outstanding prefilled the amount (payable_invoice_id), not a display invoice_id (#3875, #3888).
     const invoiceId = props.row.payable_invoice_id ?? props.row.invoice_id;
-    if (correcting) {
-      body.replaces_invoice_id = form.replaces_invoice_id;
-      body.correction_reason = form.correction_reason.trim();
-      body.idempotency_key = idempotencyKey;
-    } else if (invoiceId) {
+    if (invoiceId) {
       body.invoice_id = invoiceId;
     }
     if (form.payment_method === 'transfer' && form.account_last5) {
@@ -325,7 +291,6 @@ async function submit() {
 .pe-field input[type="date"],
 .pe-field input[type="text"],
 .pe-field input[type="number"],
-.pe-field select,
 .pe-field textarea {
   width: 100%;
   padding: 8px 12px;

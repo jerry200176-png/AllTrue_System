@@ -1,5 +1,7 @@
 # Agreed-fee correction — exact-scope decision packet
 
+> Historical source handoff. The current integration, dependency ownership and publication scope are recorded in [the fresh-main integration record](2026-10-17-agreed-fee-fresh-main-integration.md). Earlier local-only/pending-owner statements below describe the original preparation, not current delivery status.
+
 Prepared locally, feature OFF. This packet requests no production access or actual account correction. The next proposed approval is **draft publication and nonproduction exact-head checks only**, for the candidates below, with #4132 owner coordination. Merge, deployment, migration execution, activation, credentials and live data repair remain separate protected decisions.
 
 ## Exact candidate dependencies and ownership

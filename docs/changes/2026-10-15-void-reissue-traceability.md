@@ -1,4 +1,4 @@
-## 2026-10-15 — fix(billing): 作廢後登記更正帳單，新舊帳單備註互記單號、原因與操作者 (Founder D3/B1；Refs #4115)
-<!-- release-notes: staff_update=staff-2026-10-15-void-reissue-traceability -->
-- 學生帳務「登記收款」：堂數制課程的帳單作廢後，可勾選「這筆是更正已作廢的帳單」，選原帳單並填原因。系統用這個金額開新帳單，新帳單備註記「更正自 #舊單號／操作者／原因」，舊帳單備註加上新單號（不截掉原作廢紀錄），並另存永久的更正紀錄與稽核紀錄；確認入帳照常。
-- 重複送出同一張表單會回到同一張帳單，不會開第二張；同一張作廢帳單只能更正一次（資料庫層擋下），其他請求會被拒絕。
+## 2026-10-15 — fix(billing): prepare permanent correction links and receipt-kind replay guard (Refs #4115)
+<!-- release-notes: silent_ship=silent-2026-10-15-void-reissue-traceability -->
+<!-- silent-reason: Draft backend/schema prerequisite only; the preserved staff UI and announcement are deferred. No production activation is claimed. -->
+- Keep one permanent original/replacement/report link; reject incompatible correction kinds, preserve valid receipt replay, and retain history during rollback. Fee-only operations remain a separate disabled implementation.

@@ -1,5 +1,7 @@
 # Agreed-fee correction: local implementation boundary
 
+> Historical source handoff. The current integration, dependency ownership and publication scope are recorded in [the fresh-main integration record](2026-10-17-agreed-fee-fresh-main-integration.md). Earlier local-only/pending-owner statements below describe the original preparation, not current delivery status.
+
 Status: LOCAL, disabled and unmerged. `billing.agreed_fee_correction_enabled` is literal `false`, without an environment switch. No production query, migration, credential configuration, deployment, or real-record repair is part of this work.
 
 The existing proposal and its separate Python behavioral model remain design evidence. The implementation is an independent bounded service, `Billing/AgreedFeeCorrection`, with preview/apply controller and a dedicated dialog reached from each course in AccountingLedgerModal. Role/campus middleware and both controller/service enforce the exact student's campus; empty director scope grants nothing, while the documented super-admin exception remains. The ledger supplies a server capability, hidden by default and unavailable if schema is absent.
