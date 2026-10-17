@@ -4,14 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-/**
- * @property int $id
- * @property int $exam_round_id
- * @property string $name
- * @property int $sort_order
- * @property float|string $max_score
- * @method static static create(array $attributes = [])
- */
+/** @method static static create(array $attributes = []) */
 class ExamRoundSubject extends Model
 {
     protected $table = 'exam_round_subjects';
