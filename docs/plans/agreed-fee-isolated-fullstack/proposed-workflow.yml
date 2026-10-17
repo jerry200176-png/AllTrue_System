@@ -1,0 +1,134 @@
+# DRAFT ONLY — do NOT copy into .github/workflows/ until reviewed.
+# Intended final path: .github/workflows/agreed-fee-isolated-fullstack.yml
+# Triggers: workflow_dispatch ONLY (no pull_request / push / schedule).
+# Default disabled via inputs.enable=false.
+
+name: Agreed-fee isolated full-stack (DRAFT)
+
+on:
+  workflow_dispatch:
+    inputs:
+      enable:
+        description: 'Must be true to run; default false keeps dispatch a no-op'
+        required: true
+        type: boolean
+        default: false
+      head_sha:
+        description: 'Exact git SHA expected (operator verifies before enable)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agreed-fee-isolated-fullstack
+  cancel-in-progress: false
+
+jobs:
+  isolated-fullstack:
+    name: Browser + Laravel + AllTrue_test
+    if: ${{ inputs.enable == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DB_PASSWORD: ci-ephemeral
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: AllTrue_test
+          MYSQL_USER: admin
+          MYSQL_PASSWORD: ci-ephemeral
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.head_sha }}
+
+      - name: Refuse wrong SHA
+        run: |
+          set -euo pipefail
+          got=$(git rev-parse HEAD)
+          [[ "$got" == "${{ inputs.head_sha }}" ]] || {
+            echo "::error::HEAD $got != requested ${{ inputs.head_sha }}"
+            exit 1
+          }
+
+      # --- reuse phpunit job pieces: PHP, composer, migrate ---
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype
+
+      - name: Install PHP deps + migrate AllTrue_test
+        working-directory: backend
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: AllTrue_test
+          DB_USERNAME: admin
+          DB_PASSWORD: ci-ephemeral
+        run: |
+          composer install --no-interaction --prefer-dist --optimize-autoloader
+          php artisan migrate --force --database=mysql
+
+      - name: Core AgreedFee PHPUnit regressions (required companion)
+        working-directory: backend
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: AllTrue_test
+          DB_USERNAME: admin
+          DB_PASSWORD: ci-ephemeral
+        run: |
+          vendor/bin/phpunit --filter \
+            'AgreedFeeCorrectionTest|AgreedFeeConcurrencyTest|FeeReceiptKindCompatibilityTest'
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend + Playwright Chromium
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Boot isolated stack + Playwright (process-local flag only)
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: AllTrue_test
+          DB_USERNAME: admin
+          DB_PASSWORD: ci-ephemeral
+          # Intentionally NO SMOKE_* / production URLs
+        run: |
+          set -euo pipefail
+          # After proposed scripts land in repo:
+          # bash scripts/agreed-fee-isolated-stack.proposed.sh &
+          # source /tmp/agreed-fee-isolated.env
+          # cd frontend && npx playwright test -c playwright.agreed-fee-isolated.proposed.config.js
+          echo "::error::Proposed scripts not installed in .github/workflows yet — draft only"
+          exit 1
+
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agreed-fee-isolated-playwright
+          path: frontend/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
