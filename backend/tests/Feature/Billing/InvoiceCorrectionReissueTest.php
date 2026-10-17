@@ -11,11 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
-/**
- * Founder D3 / B1 (#4132): 登記收款 can settle a new bill that corrects a voided one. Both notes cross-reference each
- * other (bill number, operator, reason), the invoice_corrections row is the permanent link (UNIQUE original bill), and
- * a retry of the same request returns its original result.
- */
+/** Permanent reissue links, guarded capability, and identical-request replay. */
 class InvoiceCorrectionReissueTest extends TestCase
 {
     use RefreshDatabase;
@@ -24,6 +20,7 @@ class InvoiceCorrectionReissueTest extends TestCase
     {
         // Exercise adoption DDL before the fixture transaction, without destructive down() on retained history.
         $this->artisan('migrate:fresh');
+        config(['billing.receipt_correction_reissue_enabled' => true]);
         if (str_starts_with($this->getName(false), 'test_4132_')
             && !\Illuminate\Support\Facades\Schema::hasColumn('invoice_corrections', 'kind')) {
             \Illuminate\Support\Facades\Schema::table('invoice_corrections', function ($table) {
@@ -71,8 +68,8 @@ class InvoiceCorrectionReissueTest extends TestCase
     {
         $token = $this->token([1]); $course = $this->course($this->student());
         $oldId = $this->voidedInvoice($token, $course, 8800);
-        $first = $this->record($token, $course, $oldId)->assertOk();
-        $this->record($token, $course, $oldId)->assertOk()->assertJsonPath('replayed', true)
+        $first = $this->record($token, $course, $oldId, ['note' => '0'])->assertOk();
+        $this->record($token, $course, $oldId, ['note' => '0'])->assertOk()->assertJsonPath('replayed', true)
             ->assertJsonPath('report_id', $first->json('report_id'))->assertJsonPath('invoice_id', $first->json('invoice_id'));
         $this->assertSame(1, DB::table('payment_reports')->count());
         $this->assertSame(0, DB::table('Payment')->count());
@@ -276,6 +273,20 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->record($token, $paid, $paidOld)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
         $this->assertSame(0, DB::table('invoice_corrections')->count());
         $this->assertSame(0, DB::table('Invoice')->where('Note', 'like', '%更正自%')->count());
+    }
+
+    public function test_4132_disabled_capability_rejects_writes_and_replays(): void
+    {
+        $token = $this->token([1]); $course = $this->course($this->student());
+        $old = $this->voidedInvoice($token, $course, 8000);
+        config(['billing.receipt_correction_reissue_enabled' => false]);
+        $this->record($token, $course, $old)->assertNotFound()->assertJsonPath('code', 'correction_reissue_disabled');
+        $this->assertDatabaseCount('invoice_corrections', 0);
+        config(['billing.receipt_correction_reissue_enabled' => true]);
+        $this->record($token, $course, $old)->assertOk();
+        config(['billing.receipt_correction_reissue_enabled' => false]);
+        $this->record($token, $course, $old)->assertNotFound()->assertJsonPath('code', 'correction_reissue_disabled');
+        $this->assertDatabaseCount('invoice_corrections', 1);
     }
 
     public function test_4132_pending_report_locked_by_confirmation_does_not_deadlock_reissue(): void
