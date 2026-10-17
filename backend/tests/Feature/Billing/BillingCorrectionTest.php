@@ -125,7 +125,8 @@ class BillingCorrectionTest extends TestCase
     /**
      * Targets the pre-stamp current-read: first open-invoice guard sees one bill; a test seam inserts a
      * second open bill only after the confirmation token check; apply must refuse before stamp.
-     * This is an in-process seam, not a multi-connection MySQL RR proof.
+     * Same-connection seam: the phantom rides A's txn and rolls back with the refuse — expect 1 open
+     * invoice afterward. Multi-connection persistence (count=2 when B commits) is claim9's job.
      */
     public function test_pre_stamp_current_read_refuses_invoice_inserted_after_first_guard(): void
     {
@@ -147,7 +148,8 @@ class BillingCorrectionTest extends TestCase
         } finally {
             $svc->setAfterConfirmationTokenForTests(null);
         }
-        $this->assertSame(2, Invoice::query()->where('StudentClassID', $c->ID)->where('Status', '!=', 'void')->count());
+        // Refuse aborts the apply txn; same-conn phantom is rolled back with it.
+        $this->assertSame(1, Invoice::query()->where('StudentClassID', $c->ID)->where('Status', '!=', 'void')->count());
         $this->assertSame([4000, 8, 4000], [(int) $first->fresh()->TotalAmount, (int) $c->fresh()->SessionCount, (int) $c->fresh()->Charge]);
     }
 
