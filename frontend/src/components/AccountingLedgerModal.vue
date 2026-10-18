@@ -290,7 +290,7 @@
           <AtButton size="sm" shape="rect" :loading="issueBusy" data-testid="ledger-issue-submit" @click="submitIssue">開立帳單</AtButton>
         </template>
       </AtDialog>
-      <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="loadLedger" />
+      <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="onEntryConflict" />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" later-label="稍後再開" :return-focus-to="modalEl" @close="receiptOpen = false" />
     </div>
   </Transition>
@@ -752,6 +752,11 @@ function openReceipt(reportId) {
   receiptOpen.value = true;
 }
 watch(() => [props.show, props.studentClassId, props.studentId], () => { receiptOpen.value = false; });
+
+async function onEntryConflict() {
+  await loadLedger();
+  emit('changed');
+}
 
 async function onPanelChanged() {
   entryOpen.value = false;

@@ -46,7 +46,7 @@ it('shows an authoritative zero balance without changing the entered receipt', a
   expect(w.find('input[type="number"]').element.value).toBe('8800');
 });
 // PR4217: real child + each navigation consumer.
-it.each(['collection page', 'accounting ledger'])('keeps mismatched pending-report guidance and the entered amount in the %s', async (owner) => {
+it.each(['collection page', 'accounting ledger', 'ledger inside collection'])('keeps mismatched pending-report guidance and the entered amount in the %s', async (owner) => {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic-token', user: { role: 'director' } }));
   const row = { id: 901, student_id: 11, student_name: 'Synthetic fixture', subject: 'Synthetic subject',
     schedule_mode: 'count', payment_status: 'unpaid', alert_type: 'unpaid', charge: 8800, outstanding: 8800,
@@ -69,14 +69,19 @@ it.each(['collection page', 'accounting ledger'])('keeps mismatched pending-repo
     return { ok: true, status: 200, json: async () => path.includes('/accounting/ledger') ? currentLedger : path.includes('/alerts/tuition') ? [currentRow] : [] };
   });
   const stubs = { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true,
-    AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true };
-  const w = owner === 'collection page'
+    AccountingLedgerModal: owner === 'ledger inside collection' ? false : true, StudentBillingList: true, OperationsQuickStart: true, teleport: true };
+  const w = owner !== 'accounting ledger'
     ? mount(TuitionCollectionPage, { props: { branchId: 1, initialTab: 'all' }, global: { stubs } })
     : mount(AccountingLedgerModal, { props: { show: true, studentClassId: 901, branchId: 1 }, global: { stubs: { Transition: false } } });
   try {
     await flushPromises();
-    await w.find(owner === 'collection page' ? 'button[title="登記已回報"]' : '[data-testid="contract-record"]').trigger('click');
-    const entry = w.findComponent(PaymentEntryModal);
+    if (owner === 'ledger inside collection') {
+      await w.find('button[title="查看學生繳費明細"]').trigger('click');
+      await flushPromises();
+    }
+    const frame = owner === 'ledger inside collection' ? w.findComponent(AccountingLedgerModal) : w;
+    await frame.find(owner === 'collection page' ? 'button[title="登記已回報"]' : '[data-testid="contract-record"]').trigger('click');
+    const entry = frame.findComponent(PaymentEntryModal);
     await entry.find('input[type="number"]').setValue(8800);
     await entry.find('form').trigger('submit');
     await flushPromises();
@@ -90,6 +95,13 @@ it.each(['collection page', 'accounting ledger'])('keeps mismatched pending-repo
     expect(global.fetch.mock.calls.filter(([url]) => String(url).includes(readPath))).toHaveLength(2);
     await entry.find('button.ghost').trigger('click');
     await flushPromises();
-    expect(w.find(owner === 'collection page' ? 'button[title="確認入帳"]' : '[data-testid="contract-confirm"]').exists()).toBe(true);
+    expect(frame.find(owner === 'collection page' ? 'button[title="確認入帳"]' : '[data-testid="contract-confirm"]').exists()).toBe(true);
+    if (owner === 'ledger inside collection') {
+      expect(global.fetch.mock.calls.filter(([url]) => String(url).includes('/alerts/tuition'))).toHaveLength(2);
+      await frame.find('button[aria-label="關閉學生帳務"]').trigger('click');
+      await flushPromises();
+      expect(w.find('button[title="確認入帳"]').exists()).toBe(true);
+      expect(w.find('button[title="登記已回報"]').exists()).toBe(false);
+    }
   } finally { w.unmount(); }
 });
