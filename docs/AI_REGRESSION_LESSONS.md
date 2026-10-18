@@ -681,6 +681,9 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 ### R28. 已繳課程不可再次核帳建立新付款
 
+**2026-10-18 唯讀個案查核校區補充**：不得從舊 probe 名稱或前端 fallback 推定現行分校 ID。先核對 production `/branches`，再以 Campus.id + name 及 Student.CampusID 三者綁定；新莊為11，舊 campus9 probe 查空不是「個案不存在」。編號只識別候選，帳單／回報／Payment 必須在同一 server READ ONLY snapshot 校驗 ownership、row budget 與未歸屬帳單；缺漏不推導可改帳。公開只留技術證據，加密全文留既有持鑰本機。
+
+
 - 主任核帳若找不到未繳 Invoice 就自動新建 Invoice/Payment，會讓同一筆課被重複入帳，畫面出現多筆繳費。
 - 已繳課程底下若殘留 unpaid Invoice，不能把該 Invoice 當成「可核帳目標」；這通常代表歷史錯帳或續報/帳單建立時期的殘留資料，應先作廢或修補資料。
 - **Founder Q2（2026-10-11，#3797／#3864）取代舊規則**：帳單＋Payment 紀錄才是真相，`Paid=1` 旁邊還欠的帳單**可以**收款；但只能收**目標帳單**依 Payment 紀錄（`InvoiceAmountReconciliationService`）算出的未收額（鎖住帳單後在 `directorRecord`／batch／`confirm` 都重算，超過回 422「這張帳單只欠 NT$X…」），不可用整門課的總未收額，也不可用儲存的 `PaidAmount`；`confirm` 寫回的 `PaidAmount`／`Status` 一律從 Payment 紀錄重算。Payment 紀錄已收足的帳單（即使 Status 過期仍是 unpaid）一律拒收；課程已收齊（resolver `paid`）且沒有未結帳單時仍回 422。

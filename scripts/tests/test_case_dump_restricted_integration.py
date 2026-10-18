@@ -17,7 +17,7 @@ class RestrictedCaseIntegration(unittest.TestCase):
     def shell(self, script, root, env):
         return subprocess.run(['bash'], input=script, cwd=root, env=env, capture_output=True, text=True)
 
-    def exercise(self, *, key=KEY, restricted_id='876543210', ssh_exit=0, bad_case=False, malformed=False, campus=11, read_only=True, subject='數學', teachers=''):
+    def exercise(self, *, key=KEY, restricted_id='876543210', ssh_exit=0, bad_case=False, malformed=False, campus=11, read_only=True, subject='數學', teachers='', case=CASE):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             runner = root / 'runner'
@@ -30,15 +30,19 @@ class RestrictedCaseIntegration(unittest.TestCase):
                            'cat "$RUNNER_TEMP/fixture"\nprintf "%s" "$PRIVATE_SENTINEL" >&2\n'
                            'exit "$FAKE_SSH_EXIT"\n')
             ssh.chmod(0o700)
-            payload = {'ok': True, 'case': SENTINEL if bad_case else CASE,
+            if case == 'xinzhuang_fee_cases':
+                support = root / 'scripts/lib'
+                support.mkdir(parents=True)
+                (support / 'fee-case-ledger.php').write_bytes((Path(__file__).parents[2] / 'scripts/lib/fee-case-ledger.php').read_bytes())
+            payload = {'ok': True, 'case': SENTINEL if bad_case else case,
                        'read_only_transaction': read_only, 'campus_bound': campus,
                        'snapshot_complete': False, 'contract': {'class_id': 'target'},
                        'reason': SENTINEL, 'completeness': SENTINEL,
                        'diagnostic': SENTINEL, 'synthetic_id': restricted_id}
             (runner / 'fixture').write_text('{broken ' + SENTINEL if malformed else json.dumps(payload) + '\n')
             env = {'PATH': str(bindir) + ':' + os.environ['PATH'], 'RUNNER_TEMP': str(runner),
-                   'CASE_KEY': CASE, 'DUMP_ARTIFACT_KEY': key, 'CASE_INPUT_STUDENT_CLASS_ID': restricted_id,
-                   'TARGET_STUDENT_ID': '', 'TARGET_STUDENT_CLASS_ID': '', 'EXPECTED_TEACHER_IDS': teachers,
+                   'CASE_KEY': case, 'DUMP_ARTIFACT_KEY': key, 'CASE_INPUT_STUDENT_CLASS_ID': restricted_id,
+                   'TARGET_STUDENT_ID': '', 'TARGET_STUDENT_CLASS_ID': restricted_id if case == 'xinzhuang_fee_cases' else '', 'EXPECTED_TEACHER_IDS': teachers,
                    'TARGET_SUBJECT_NAME': subject, 'PI_SSH_USER': 'synthetic', 'PI_SSH_HOST': 'invalid.test',
                    'PRIVATE_SENTINEL': SENTINEL, 'FAKE_SSH_EXIT': str(ssh_exit)}
             checked = self.shell(case_steps()[0]['run'], d, env)
@@ -122,3 +126,21 @@ class RestrictedCaseIntegration(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class XinzhuangFeeTransport(unittest.TestCase):
+    exercise = RestrictedCaseIntegration.exercise
+    shell = RestrictedCaseIntegration.shell
+    # Reuse the same real encryption/SSH-stub boundary without inheriting old-case test cases.
+    def test_fee_case_uses_encrypted_transport_and_cleanup(self):
+        code, enc, files, recovered, called = self.exercise(case='xinzhuang_fee_cases', restricted_id='4064')
+        self.assertEqual((code, enc, called), (0, 0, True))
+        self.assertEqual(len(files), 2)
+        self.assertIn(SENTINEL, recovered)
+
+    def test_fee_case_scope_and_payload_guards(self):
+        for override in ({'restricted_id': '999999'}, {'campus': 9}, {'read_only': False}, {'bad_case': True}):
+            args = dict(case='xinzhuang_fee_cases', restricted_id='4064')
+            args.update(override)
+            code, _, _, _, _ = self.exercise(**args)
+            self.assertNotEqual(code, 0)
