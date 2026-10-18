@@ -104,6 +104,13 @@ class AgreedFeeIsolatedLifecycleTest extends TestCase
         $this->assertFileDoesNotExist($root.'/provider.json');
     }
 
+    public function test_dotenv_cache_without_native_putenv_is_refused_before_providers(): void
+    {
+        [$process, $root] = $this->runFixture([], [], false, 'dotenv');
+        $this->assertSame(90, $process->getExitCode(), $process->getErrorOutput().$process->getOutput());
+        $this->assertFileDoesNotExist($root.'/provider.json');
+    }
+
     public function test_same_process_entry_runs_one_real_migration_and_replay_runs_none(): void
     {
         [$process, $root, , $environment] = $this->runFixture([], [], true);
@@ -175,8 +182,15 @@ PHP);
         file_put_contents($root.'/tests/Support/agreed-fee-isolated-db-guard.php', '<?php require '.var_export($guard, true).';');
         copy(base_path('tests/Support/agreed-fee-isolated-migrate.php'), $root.'/tests/Support/agreed-fee-isolated-migrate.php');
         if ($cached === true) $writePhp($root.'/bootstrap/cache/config.php', []);
-        if ($cached === 'alternate') {
-            $environment['APP_CONFIG_CACHE'] = $root.'/alternate.php';
+        if ($cached === 'alternate' || $cached === 'dotenv') {
+            if ($cached === 'alternate') {
+                $environment['APP_CONFIG_CACHE'] = $root.'/alternate.php';
+            } else {
+                file_put_contents($root.'/.env', 'APP_CONFIG_CACHE='.$root.'/alternate.php');
+                $bootstrap = $root.'/bootstrap/app.php';
+                file_put_contents($bootstrap, str_replace('$app = new', '\Illuminate\Support\Env::disablePutenv();'."\n".'$app = new',
+                    file_get_contents($bootstrap)));
+            }
             $writePhp($root.'/alternate.php', ['database' => require $root.'/config/database.php',
                 'app' => require $root.'/config/app.php']);
         }

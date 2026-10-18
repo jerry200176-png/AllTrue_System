@@ -28,8 +28,13 @@ are not browser or real-case acceptance; the three cases remain0/3 accepted.
 The alternate APP_CONFIG_CACHE fixture reproduced RED: boot completed with exit0
 and reached the provider instead of refusing with90. Guard now rejects that env
 redirect before bootstrap. Focused lifecycle + existing allowlist + worker safety
-suite passed33tests/152assertions in2.378seconds using phpunit-isolated.sh.
+suite passed34tests/154assertions in2.667seconds using phpunit-isolated.sh.
 Subprocess canaries cover21 unsafe env/loaded-connection forms, default/alternate
 config cache, safe target/runtime and a real one-time migration plus replay.
 Initial minimal-app fixture lacked migration repository/exception bindings;
 corrected the fixture without weakening its assertions. Hosted CI/review pending.
+
+Follow-up RED reproduced the .env/cache path with Laravel's native putenv adapter
+turned off: getenv missed the override and boot reached the canary (exit0).
+The LoadConfiguration callback now also checks Application::configurationIsCached
+before providers. Both process-env and framework-resolved cache paths are refused.

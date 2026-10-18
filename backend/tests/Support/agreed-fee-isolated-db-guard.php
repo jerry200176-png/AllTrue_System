@@ -162,7 +162,10 @@ function agreed_fee_isolated_boot_application(string $backendRoot): \Illuminate\
     }
     require_once $backendRoot.'/vendor/autoload.php';
     $app = require $backendRoot.'/bootstrap/app.php';
-    $app->afterBootstrapping(Illuminate\Foundation\Bootstrap\LoadConfiguration::class, static function () {
+    $app->afterBootstrapping(Illuminate\Foundation\Bootstrap\LoadConfiguration::class, static function ($app) {
+        if ($app->configurationIsCached()) {
+            agreed_fee_isolated_refuse('cached configuration present');
+        }
         agreed_fee_isolated_assert_loaded_connection_or_refuse();
         agreed_fee_isolated_harden_connection_after_pass();
         agreed_fee_isolated_apply_runtime_config();

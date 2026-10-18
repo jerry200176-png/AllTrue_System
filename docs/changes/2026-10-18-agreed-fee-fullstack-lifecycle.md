@@ -6,6 +6,8 @@ Extract the reviewed #4253 database guard and same-process Migrator entry.
 Reuse the existing synthetic-schema allowlist and minimal TCP configuration;
 require APP_ENV=testing and reject alternate DSNs, config-cache redirects,
 sockets, PDO options, split connections and loaded-target drift before providers.
+Check both native environment and Laravel-resolved cache paths, including .env
+with the native putenv adapter disabled.
 
 Subprocess provider canaries verify refusals happen before provider registration.
 A real migration/replay verifies the same process runs exactly one migration
