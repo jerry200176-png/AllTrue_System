@@ -67,10 +67,8 @@ class FeeCaseLedgerProbeTest extends TestCase
             $this->assertStringNotContainsString($private, $json);
         }
         $this->assertSame($before, [$f['course']->fresh()->getRawOriginal(), Payment::count(), Invoice::count()]);
-        $transferReport = $this->reportFor($f, 'confirmed');
         foreach (['transfer_out' => -200, 'transfer_in' => 200] as $method => $amount) {
-            Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => $amount, 'Method' => $method, 'PaidAt' => '2026-10-01',
-                'payment_report_id' => $transferReport->id]);
+            Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => $amount, 'Method' => $method, 'PaidAt' => '2026-10-01']);
         }
         $r = $this->probe($f);
         $this->assertContains('transfer_out', array_column($r['payments'], 'Method'));
@@ -140,7 +138,8 @@ class FeeCaseLedgerProbeTest extends TestCase
         foreach ([['date', 'tutoring'], ['date', 'regular'], ['count', 'one_on_two']] as [$mode, $type]) {
             $f['course']->update(['ScheduleMode' => $mode, 'ClassType' => $type]);
             $r = $this->probe($f);
-            $this->assertTrue($r['snapshot_complete']);
+            $this->assertSame($mode !== 'date', $r['snapshot_complete']);
+            $this->assertSame($mode === 'date' ? 'monthly_amount_unverified' : 'complete', $r['completeness']);
             $this->assertSame($mode, $r['contract']['ScheduleMode']);
             $this->assertSame($type, $r['contract']['ClassType']);
         }
@@ -251,7 +250,9 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertTrue($r['snapshot_complete'], 'valid legacy inverse-only link is retained');
         $duplicate = $this->reportFor($f, 'confirmed'); $duplicate->update(['payment_id' => $paymentId]);
         $this->assertFalse($this->probe($f)['snapshot_complete'], 'two legacy reports cannot claim one receipt');
-        $duplicate->update(['payment_id' => null, 'status' => 'rejected']);
+        $duplicate->update(['StudentClassID' => $f['course']->ID + 100000, 'InvoiceID' => null]);
+        $this->assertFalse($this->probe($f)['snapshot_complete'], 'inverse-only foreign report must be discovered');
+        $duplicate->update(['StudentClassID' => $f['course']->ID, 'InvoiceID' => $f['invoice']->id, 'payment_id' => null, 'status' => 'rejected']);
         Payment::findOrFail($paymentId)->update(['payment_report_id' => $report->id]);
         $extra = Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => 7600, 'Method' => 'cash',
             'PaidAt' => '2026-10-01', 'payment_report_id' => $report->id]);
@@ -268,6 +269,18 @@ class FeeCaseLedgerProbeTest extends TestCase
         $report->update(['payment_id' => $extra->id]);
         $this->assertFalse($this->probe($f)['snapshot_complete'], 'a reversal cannot be the receipt anchor');
         $this->assertSame(0, DB::transactionLevel());
+    }
+
+    public function test_reversal_provenance_requires_exact_amounts_and_voided_status(): void
+    {
+        $f = $this->scopedFixture(); $report = $this->receiptFor($f);
+        $void = Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => -7600, 'Method' => 'void',
+            'PaidAt' => '2026-10-01', 'payment_report_id' => $report->id]);
+        foreach ([[-1, 'voided', '7600.00', false], [-7600, 'confirmed', '7600.00', false],
+            [-7600, 'voided', '7600.50', false], [-7600, 'voided', '7600.00', true]] as [$amount, $status, $reported, $complete]) {
+            $void->update(['Amount' => $amount]); $report->update(['status' => $status, 'reported_amount' => $reported]);
+            $this->assertSame($complete, $this->probe($f)['snapshot_complete']);
+        }
     }
 
     public function test_row_budget_discards_payload_and_rolls_back_transaction(): void
@@ -301,6 +314,11 @@ class FeeCaseLedgerProbeTest extends TestCase
     public function test_missing_correction_schema_keeps_evidence_but_never_claims_complete(): void
     {
         $f = $this->scopedFixture();
+        $f['course']->update(['ScheduleMode' => 'date']); $monthly = $this->probe($f);
+        $this->assertFalse($monthly['snapshot_complete'], 'unpaid monthly stored totals do not establish the display amount');
+        $this->assertSame('monthly_amount_unverified', $monthly['completeness']); $this->assertCount(1, $monthly['invoices']);
+        $f['invoice']->update(['PaidAmount' => 7600]); $this->assertFalse($this->probe($f)['snapshot_complete'], 'stored paid amount cannot override zero applied net');
+        $f['course']->update(['ScheduleMode' => 'count']);
         \Tests\Support\AgreedFeeTestSchema::dropExtensionColumns();
         $withoutExtension = $this->probe($f);
         \Illuminate\Support\Facades\Schema::drop('invoice_corrections');

@@ -72,8 +72,9 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
             }
         }
         $stage = 'reports';
-        $reports = $rows($conn->table('payment_reports')->where(function ($q) use ($ids, $courseId) {
-            $q->where('StudentClassID', $courseId)->orWhereIn('InvoiceID', $ids);
+        $reports = $rows($conn->table('payment_reports')->where(function ($q) use ($ids, $courseId, $conn) {
+            $q->where('StudentClassID', $courseId)->orWhereIn('InvoiceID', $ids)
+                ->orWhereIn('payment_id', $conn->table('Payment')->whereIn('InvoiceID', $ids)->select('id'));
         })->orderBy('id')->select(['id', 'StudentID', 'StudentClassID', 'InvoiceID', 'reported_amount',
             'status', 'payment_id', 'payment_method', 'payment_date', 'confirmed_at', 'voided_at']));
         foreach ($reports as $r) {
@@ -109,7 +110,7 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
         $seenReversals = [];
         foreach ($payments as $p) {
             if ($p->payment_report_id === null) {
-                if ((int) $p->Amount < 0 || $p->Method === 'void') throw new \RuntimeException('unlinked_reversal');
+                if (((int) $p->Amount < 0 && $p->Method !== 'transfer_out') || $p->Method === 'void') throw new \RuntimeException('unlinked_reversal');
                 continue;
             }
             if ((int) $p->Amount < 0 || $p->Method === 'void') {
@@ -119,6 +120,13 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
             $r = $reports->firstWhere('id', $p->payment_report_id);
             if (!$r || (int) $r->InvoiceID !== (int) $p->InvoiceID) {
                 throw new \RuntimeException('payment_invoice_link_mismatch');
+            }
+            if ((int) $p->Amount < 0 || $p->Method === 'void') {
+                $receipt = $payments->first(static fn ($a) => (int) $a->Amount > 0 && $a->Method !== 'void'
+                    && ((int) $a->payment_report_id === (int) $r->id || (int) $a->id === (int) $r->payment_id));
+                if (!$receipt || $r->status !== 'voided' || abs((int) $p->Amount) !== (int) $receipt->Amount
+                    || preg_match('/\A([1-9][0-9]*)(?:\.0+)?\z/', (string) $r->reported_amount, $parts) !== 1
+                    || filter_var($parts[1], FILTER_VALIDATE_INT) !== (int) $receipt->Amount) throw new \RuntimeException('reversal_provenance_mismatch');
             }
         }
         $out['contract'] = (array) $course;
@@ -208,9 +216,12 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
         $out['correction_schema_ready'] = $out['correction_table_present']
             && $out['agreed_fee_extension_columns_present'] && $out['security_audit_table_present'];
         $hasUnscoped = $allItems->whereNull('StudentClassID')->isNotEmpty();
-        $out['snapshot_complete'] = $unlinked->isEmpty() && !$hasUnscoped && $out['correction_schema_ready'];
+        $monthlyUnverified = $course->ScheduleMode === 'date' && collect($out['invoices'])->contains(static fn ($i) =>
+            $i['status'] === 'unpaid' && $i['net_paid'] === 0);
+        $out['snapshot_complete'] = $unlinked->isEmpty() && !$hasUnscoped && !$monthlyUnverified && $out['correction_schema_ready'];
         $out['completeness'] = !$out['correction_schema_ready'] ? 'correction_schema_missing'
             : ($hasUnscoped ? 'ambiguous_obligations' : ($unlinked->isEmpty() ? 'complete' : 'unlinked_obligations'));
+        if ($monthlyUnverified && $out['correction_schema_ready']) $out['completeness'] = 'monthly_amount_unverified';
     } catch (\Throwable $e) {
         // Never emit SQL, connection configuration, exception messages or partial ledger payloads.
         $out = array_intersect_key($out, array_flip(['read_only_transaction', 'campus_bound']));
