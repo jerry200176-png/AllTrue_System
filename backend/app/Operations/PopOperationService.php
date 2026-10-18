@@ -430,8 +430,9 @@ final class PopOperationService
      * The raw approval token is reconstructed only inside the Pi process from
      * its database hash and local APP_KEY; it is never returned or logged.
      */
-    public function runApprovedLocally(?string $requestId = null): array
+    public function runApprovedLocally(?string $requestId = null, string $phase = 'execute'): array
     {
+        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || ($phase !== 'execute' && $requestId === null)) throw new RuntimeException('POP recovery requires one explicit request and valid phase.');
         $lockName = 'alltrue:pop:executor';
         $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lockName]);
         if ((int) ($lock->acquired ?? 0) !== 1) {
@@ -439,13 +440,13 @@ final class PopOperationService
         }
 
         try {
-            return $this->claimApprovedLocally($requestId);
+            return $this->claimApprovedLocally($requestId, $phase);
         } finally {
             DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
         }
     }
 
-    private function claimApprovedLocally(?string $requestId): array
+    private function claimApprovedLocally(?string $requestId, string $phase): array
     {
         if ($requestId === null) {
             $pending = DB::table('pop_operation_requests')->where('status', 'approved');
@@ -479,13 +480,18 @@ final class PopOperationService
         try {
             $request = $this->request((string) $candidate->id);
             $retry = $requestId !== null && $this->retryableFinancialExecute($request);
-            if ((string) $request->status !== 'approved' && !$retry) {
+            $records = DB::table('pop_execution_records')->where('operation_id', $request->id);
+            $recover = $requestId !== null && $this->atomicFinancialRepair((string) $request->strategy_id)
+                && (clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists()
+                && !(clone $records)->where('phase', 'rollback')->when($phase === 'rollback', fn ($q) => $q->where('result', 'rolled_back'))->exists();
+            if ($phase === 'execute' ? ((string) $request->status !== 'approved' && !$retry) : !$recover) {
                 return ['ok' => true, 'status' => 'skipped', 'request_id' => (string) $request->id];
             }
             $approval = $this->localApproval($request);
             $commitSha = (string) $approval->commit_sha;
             $this->assertLocalDeployment($commitSha);
             $token = $this->reconstructToken($request, $approval, $commitSha);
+            if ($phase !== 'execute') return $this->localSummary($request, $this->run((string) $request->id, $phase, $token, $commitSha, 'pop-pi-local'));
             $execute = $this->run((string) $request->id, 'execute', $token, $commitSha, 'pop-pi-local');
             if (($execute['result'] ?? null) !== 'succeeded') {
                 return $this->localSummary($request, $execute);
@@ -503,7 +509,8 @@ final class PopOperationService
     {
         if ((string) $request->status !== 'failed' || !$this->atomicFinancialRepair((string) $request->strategy_id)) return false;
         $executions = DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'execute');
-        return (clone $executions)->where('result', 'failed')->where('payload->failure_reason', 'execution_failed')->exists()
+        return ((clone $executions)->where('result', 'failed')->where('payload->failure_reason', 'execution_failed')->exists()
+                || DB::table('pop_execution_records')->where('operation_id', $request->id)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->exists())
             && !(clone $executions)->where('result', 'succeeded')->exists()
             && !DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'rollback')->exists();
     }
