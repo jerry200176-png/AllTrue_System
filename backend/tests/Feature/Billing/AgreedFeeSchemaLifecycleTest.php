@@ -85,4 +85,22 @@ class AgreedFeeSchemaLifecycleTest extends TestCase
             }
         });
     }
+
+    public function test_kind_only_schema_left_by_receipt_tests_can_be_completed(): void
+    {
+        $this->endOuterTestingTransactions();
+        AgreedFeeTestSchema::assertTestConnection();
+        DB::statement('ALTER TABLE invoice_corrections DROP campus_id, DROP old_charge,
+            DROP new_charge, DROP original_invoice_total, DROP request_hash, DROP state_hash');
+        $this->assertTrue(Schema::hasColumn('invoice_corrections', 'kind'));
+        $this->assertFalse(AgreedFeeTestSchema::hasExtensionColumns());
+        AgreedFeeTestSchema::ensureExtensionColumns();
+        $this->assertTrue(AgreedFeeTestSchema::hasExtensionColumns());
+        $this->assertSame('receipt_reissue', collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))
+            ->firstWhere('Field', 'kind')->Default);
+        $index = collect(DB::select('SHOW INDEX FROM invoice_corrections'))
+            ->where('Key_name', 'uq_invoice_corrections_course_key');
+        $this->assertCount(2, $index, 'existing unique index must not be added twice');
+        $this->beginDatabaseTransaction();
+    }
 }

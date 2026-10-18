@@ -39,15 +39,15 @@ final class AgreedFeeTestSchema
         }
     }
 
-    /** @var list<string> */
+    /** @var array<string, string> */
     private const COLUMNS = [
-        'kind',
-        'campus_id',
-        'old_charge',
-        'new_charge',
-        'original_invoice_total',
-        'request_hash',
-        'state_hash',
+        'kind' => "VARCHAR(32) NOT NULL DEFAULT 'receipt_reissue'",
+        'campus_id' => 'INT UNSIGNED NULL',
+        'old_charge' => 'INT UNSIGNED NULL',
+        'new_charge' => 'INT UNSIGNED NULL',
+        'original_invoice_total' => 'INT UNSIGNED NULL',
+        'request_hash' => 'CHAR(64) NULL',
+        'state_hash' => 'CHAR(64) NULL',
     ];
 
     public static function ensureExtensionColumns(): void
@@ -61,21 +61,23 @@ final class AgreedFeeTestSchema
 
             return;
         }
-        // One MySQL ALTER matching e8 source: NOT NULL DEFAULT receipt_reissue for kind;
-        // nullable invoice links / amount; unique (student_class_id, idempotency_key).
         self::assertNoOpenTransaction();
-        DB::statement("ALTER TABLE invoice_corrections
-            ADD kind VARCHAR(32) NOT NULL DEFAULT 'receipt_reissue',
-            ADD campus_id INT UNSIGNED NULL,
-            ADD old_charge INT UNSIGNED NULL,
-            ADD new_charge INT UNSIGNED NULL,
-            ADD original_invoice_total INT UNSIGNED NULL,
-            ADD request_hash CHAR(64) NULL,
-            ADD state_hash CHAR(64) NULL,
-            ADD UNIQUE KEY uq_invoice_corrections_course_key (student_class_id, idempotency_key),
-            MODIFY original_invoice_id BIGINT UNSIGNED NULL,
-            MODIFY replacement_invoice_id BIGINT UNSIGNED NULL,
-            MODIFY amount INT UNSIGNED NULL");
+        // Receipt-kind tests may leave only kind installed. Add missing fields,
+        // preserving the existing kind/data and any already-created course key.
+        $existing = Schema::getColumnListing('invoice_corrections');
+        $parts = [];
+        foreach (self::COLUMNS as $name => $definition) {
+            if (!in_array($name, $existing, true)) {
+                $parts[] = "ADD {$name} {$definition}";
+            }
+        }
+        $parts = array_merge($parts, [
+            'MODIFY original_invoice_id BIGINT UNSIGNED NULL',
+            'MODIFY replacement_invoice_id BIGINT UNSIGNED NULL',
+            'MODIFY amount INT UNSIGNED NULL',
+        ]);
+        DB::statement('ALTER TABLE invoice_corrections '.implode(', ', $parts));
+        self::ensureCourseKeyUnique();
     }
 
     /**
@@ -94,7 +96,7 @@ final class AgreedFeeTestSchema
     public static function hasExtensionColumns(): bool
     {
         self::assertTestConnection();
-        return Schema::hasColumns('invoice_corrections', self::COLUMNS);
+        return Schema::hasColumns('invoice_corrections', array_keys(self::COLUMNS));
     }
 
     /**
@@ -122,7 +124,7 @@ final class AgreedFeeTestSchema
             MODIFY amount INT UNSIGNED NOT NULL');
         Schema::table('invoice_corrections', function (Blueprint $table) {
             $table->dropUnique('uq_invoice_corrections_course_key');
-            $table->dropColumn(self::COLUMNS);
+            $table->dropColumn(array_keys(self::COLUMNS));
         });
     }
 
