@@ -100,8 +100,8 @@ final class PaymentReportPendingReturnStrategy
         if (!is_string($p['reason'] ?? null) || trim($p['reason']) === '' || mb_strlen($p['reason']) > 500
             || !preg_match('/\A[A-Za-z0-9:_-]{3,80}\z/', $p['decision_reference'] ?? '')) $this->fail('invalid_reason');
         $one = fn ($q) => (array) $q->when($lock, fn ($q) => $q->lockForUpdate())->first();
-        $c = $one(DB::table('StudentClass')->where('ID', $p['course_id']));
         $student = $one(DB::table('Student')->where('id', $p['student_id'])->select('id', 'CampusID'));
+        $c = $one(DB::table('StudentClass')->where('ID', $p['course_id']));
         if ((int) ($c['StudentID'] ?? 0) !== $p['student_id'] || (int) ($student['CampusID'] ?? 0) !== $p['campus_id']) $this->fail('owner_mismatch');
         $rows = function ($q) use ($lock): array {
             $r = $q->when($lock, fn ($q) => $q->lockForUpdate())->limit(101)->get();
