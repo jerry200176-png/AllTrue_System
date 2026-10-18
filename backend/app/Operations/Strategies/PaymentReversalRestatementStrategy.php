@@ -29,7 +29,7 @@ final class PaymentReversalRestatementStrategy
             }
             $creator = isset($context['operation_id']) ? DB::table('pop_operation_requests')->where('id', $context['operation_id'])->value('actor') : null;
             if (isset($context['operation_id']) && $creator !== 'user:'.$parameters['plan']['actor_user_id']) throw new RuntimeException('creator_changed');
-            $this->service->prepared($parameters, $this->actor($parameters));
+            $this->service->prepared($parameters, $this->actor($parameters), $context['operation_id'] ?? null);
             return ['ok' => true, 'parameters' => $parameters];
         } catch (Throwable) {
             return ['ok' => false, 'errors' => ['reversal_restatement_precondition_failed']];
