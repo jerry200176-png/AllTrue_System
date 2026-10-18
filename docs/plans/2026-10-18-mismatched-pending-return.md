@@ -13,3 +13,5 @@ Registration includes the pending-return operation and the invoice-alignment cla
 # CI closeout
 
 The real Laravel route generator now includes the scoped status endpoint; `generate-ref-api-routes.sh --check` passes. Exact inert class-name strings preserve the proposed operation/class binding while allowing this standalone branch to pass static analysis before its sibling strategies are delivered. No class is supplied or activated by a string comparison. Final-head full CI and independent review remain outstanding; HOLD and planned catalog entries remain.
+
+Integration closeout: this PR now owns all three planned catalog entries, including the unchanged legacy-reversal entry moved from #4272. Catalog version 14 remains; #4272's core/adapter no longer edits the shared catalog. The committed-catalog test checks all three remain planned with Founder approval and super_admin requirements. No operation is activated, no assertion is dropped, and neither PR depends on merging a stacked branch.

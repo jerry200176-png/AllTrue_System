@@ -137,10 +137,10 @@ class PaymentReportPendingReturnTest extends TestCase
         }
     }
 
-    public function test_committed_catalog_keeps_both_prepared_operations_planned(): void
+    public function test_committed_catalog_keeps_all_three_prepared_operations_planned(): void
     {
         [$f, $p] = $this->candidate(); $catalog = app(\App\Operations\PopOperationCatalog::class);
-        foreach ([ReturnReport::OPERATION, 'reviewed-unpaid-invoice-charge-alignment'] as $operation) {
+        foreach ([ReturnReport::OPERATION, 'reviewed-unpaid-invoice-charge-alignment', 'reviewed-legacy-reversal-restatement'] as $operation) {
             $entry = $catalog->operation($operation); $this->assertSame('planned', $entry['lifecycle']);
             $this->assertTrue($entry['founder_approval_required']); $this->assertSame(['super_admin'], $entry['approver_roles']);
         }
