@@ -353,16 +353,10 @@ class PaymentReportController extends Controller
         $confirmationNote = trim((string) $request->input('note', ''));
 
         return DB::transaction(function () use ($id, $userId, $confirmationNote) {
-            // Serialize confirmation attempts for the same report. This keeps a retry
-            // after a lost response from creating a second Payment.
-            $report = PaymentReport::query()
-                ->whereKey($id)
-                ->lockForUpdate()
-                ->first();
-
-            if (!$report) {
-                abort(404);
-            }
+            // Global lock order with BillingCorrection::applyCountCorrection and void:
+            // StudentClass → payment_reports (never report-first). Serializes confirm retries
+            // after a lost response so a second Payment cannot be created.
+            [$sc, $report] = $this->lockCourseThenReport((int) $id);
 
             if ($report->status !== 'pending') {
                 return response()->json(['message' => '此回報已處理過'], 422);
@@ -378,8 +372,6 @@ class PaymentReportController extends Controller
             $note = $confirmationNote !== ''
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));
-            // Lock the course so a concurrent 確認不收 cannot interleave with this confirmation.
-            $sc = StudentClass::query()->whereKey($report->StudentClassID)->lockForUpdate()->first();
             if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能再確認回報')) {
                 return $refusal;
             }
@@ -1062,6 +1054,34 @@ class PaymentReportController extends Controller
     }
 
     /**
+     * Shared confirm/void lock prefix — must stay aligned with
+     * BillingCorrection::applyCountCorrection (course, then payment_reports).
+     * Unlocked course-id resolve first; re-check StudentClassID after both locks.
+     *
+     * @return array{0: ?StudentClass, 1: PaymentReport}
+     */
+    private function lockCourseThenReport(int $reportId): array
+    {
+        $courseId = (int) PaymentReport::query()->whereKey($reportId)->value('StudentClassID');
+        if ($courseId <= 0) {
+            abort(404);
+        }
+        $sc = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
+        $report = PaymentReport::query()->whereKey($reportId)->lockForUpdate()->first();
+        if (!$report instanceof PaymentReport) {
+            abort(404);
+        }
+        if ((int) $report->getAttribute('StudentClassID') !== $courseId) {
+            abort(response()->json([
+                'message' => '課程歸屬已變更，請重新整理',
+                'code' => 'report_course_changed',
+            ], 409));
+        }
+
+        return [$sc, $report];
+    }
+
+    /**
      * F7 S6 (B9): duplicate-payment guard on the BillingPayableResolver, not "any paid invoice" / raw Charge / SUM(PaidAmount).
      * Blocks `paid` and `free`; partial (the remainder may be recorded), unbilled, review_required and a plain unpaid
      * course may take a payment. Package members follow the resolver (a paid package counts while no non-void invoice exists).
@@ -1326,17 +1346,12 @@ class PaymentReportController extends Controller
         $userId = $request->attributes->get('auth_user_id');
 
         return DB::transaction(function () use ($id, $userId, $data, $role, $campusIds) {
-            // Same lock prefix as confirm. A delayed request must not reuse its pre-transaction status.
-            $reportQuery = PaymentReport::query()->whereKey($id);
-            $reportQuery->lockForUpdate();
-            $report = $reportQuery->firstOrFail();
-            if (!$report instanceof PaymentReport) {
-                abort(404);
-            }
+            // Same lock order as confirm + BillingCorrection (StudentClass → payment_reports).
+            // A delayed request must not reuse its pre-transaction status.
+            [$sc, $report] = $this->lockCourseThenReport((int) $id);
             if ($report->getAttribute('status') !== 'confirmed') {
                 return response()->json(['message' => '此收款已處理過，請重新整理'], 422);
             }
-            $sc = StudentClass::query()->whereKey($report->getAttribute('StudentClassID'))->lockForUpdate()->first();
             $campusId = (int) DB::table('Student')->where('id', $report->getAttribute('StudentID'))->value('CampusID');
             if ($campusId <= 0 || ($role !== 'super_admin' && !in_array($campusId, $campusIds, true))) {
                 return response()->json(['message' => 'Forbidden'], 403);
