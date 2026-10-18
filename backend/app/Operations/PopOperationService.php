@@ -292,6 +292,26 @@ final class PopOperationService
         ?array $context = null
     ): array
     {
+        $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
+        if ($phase !== 'rollback' || !$this->atomicFinancialRepair((string) $this->request($requestId)->strategy_id)) return $run();
+        // Serialize replay lookup, attempt allocation, restoration and its receipt for this request.
+        return DB::transaction(function () use ($requestId, $run): array {
+            DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
+            return $run();
+        }, 3);
+    }
+
+    private function runPhase(
+        string $requestId,
+        string $phase,
+        ?string $token = null,
+        ?string $commitSha = null,
+        string $actor = 'pop-runner',
+        ?int $actorId = null,
+        ?string $actorRole = null,
+        ?array $context = null
+    ): array
+    {
         $request = $this->request($requestId);
         if (!in_array($phase, ['dry-run', 'execute', 'verify', 'rollback'], true)) {
             throw new RuntimeException('POP phase is invalid; fail closed.');
@@ -385,11 +405,13 @@ final class PopOperationService
         }
     }
 
-    private function atomicFinancialRepair(object $strategy): bool
+    private function atomicFinancialRepair(object|string $strategy): bool
     {
-        return $strategy instanceof Strategies\UnpaidInvoiceChargeAlignmentStrategy
-            || $strategy instanceof Strategies\PaymentReversalRestatementStrategy
-            || $strategy instanceof Strategies\PaymentReportPendingReturnStrategy;
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, [
+            'App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy',
+            'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy',
+            'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy',
+        ], true);
     }
 
     /**
@@ -1159,7 +1181,7 @@ final class PopOperationService
         $idempotencyKey = $request->idempotency_key . ':' . $phase;
         $attemptNo = 1;
         $attemptKey = $idempotencyKey;
-        if ($phase === 'dry-run') {
+        if ($phase === 'dry-run' || ($phase === 'rollback' && $this->atomicFinancialRepair((string) $request->strategy_id))) {
             $attemptNo = ((int) DB::table('pop_execution_records')
                 ->where('operation_id', $request->id)
                 ->where('phase', $phase)
@@ -1306,6 +1328,12 @@ final class PopOperationService
 
     private function existing(object $request, string $phase): ?array
     {
+        if ($phase === 'rollback' && $this->atomicFinancialRepair((string) $request->strategy_id)) {
+            $row = DB::table('pop_execution_records')->where('operation_id', $request->id)
+                ->where('phase', 'rollback')->where('result', 'rolled_back')->orderByDesc('attempt_no')->first();
+            return $row ? json_decode((string) $row->payload, true, 512, JSON_THROW_ON_ERROR)
+                + ['execution_id' => $row->execution_id, 'phase' => $phase] : null;
+        }
         $row = $phase === 'dry-run'
             ? DB::table('pop_execution_records')
                 ->where('operation_id', $request->id)

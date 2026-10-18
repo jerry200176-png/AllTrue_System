@@ -6,6 +6,8 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+**F7／POP 回滾重試（#4271）**：原子撤回與失敗紀錄都正確，仍可能因快取失敗 receipt 永久失去回復路徑。回歸必須在 fault injection 後實際重試，驗證有效核准、失敗紀錄保留、成功冪等重播與序列化；見 [invoice alignment plan](plans/2026-10-18-unpaid-invoice-alignment.md)。
+
 ### R157. MariaDB 上不可直接重放 MySQL 8 形狀的 SHOW GRANTS（staged DB principal rotation Phase 1，run 38724893175／#4160，2026-10-15）
 
 - **現象**：`deploy.yml` 的 `phase1-create` 以 `SHOW GRANTS contains authentication material; refusing unsafe replay` fail closed。正式機是 MariaDB，它會在 `GRANT USAGE` 行後面附上舊帳號的 `IDENTIFIED BY PASSWORD '*…'`／`IDENTIFIED VIA <plugin> USING '…'`；轉換器卻假設 MySQL 8 的形狀（GRANT 行不帶認證子句）。另外，轉換器在檢查 GRANT 之前就先印出 `CREATE USER`，所以拒絕時那一行仍可能送進 `mysql`，再被 cleanup trap 靜默 DROP，log 無法證明最後狀態。

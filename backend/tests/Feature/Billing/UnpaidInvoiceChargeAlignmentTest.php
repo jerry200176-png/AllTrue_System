@@ -230,6 +230,8 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'repair-proof-rollback')->count());
             $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'rollback')->where('result', 'failed')->count());
             // #4271: a transient outer receipt failure must not permanently strand rollback.
+            $this->refuse(fn () => $pop->run($id, 'rollback', 'invalid-token', $sha, 'synthetic-pop'), 'approval token');
+            $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'rollback')->count());
             $retriedRollback = $pop->run($id, 'rollback', $thirdApproval['token'], $sha, 'synthetic-pop');
             $this->assertTrue($retriedRollback['ok']);
             $this->assertSame('rolled_back', $retriedRollback['result']);
