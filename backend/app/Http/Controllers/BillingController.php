@@ -216,17 +216,14 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($invoice, $data) {
-            // Same order as 確認不收 (courses, then invoice) so the two cannot deadlock.
-            $courseIds = DB::table('InvoiceItem')->where('InvoiceID', $invoice->getKey())->pluck('StudentClassID')
-                ->push($invoice->getAttribute('StudentClassID'))->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
-            if ($courseIds !== []) {
-                StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
-            }
+            // Keep course-before-invoice ordering with invoice void and correction writers.
+            $courseIds = $this->lockInvoiceCourses($invoice, true);
             // 先鎖帳單再判斷，避免與確認不收（void）競爭。
             $fresh = Invoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
             if (!$fresh || (string) $fresh->getAttribute('Status') === 'void' || $fresh->isMarkedFreeGift()) { // #3991: a 免費／贈送 bill takes no payment
                 return response()->json(['message' => $fresh?->isMarkedFreeGift() ? '免費／贈送帳單不能登記收款；這門課要收費的話，請先作廢這張帳單再開立新帳單' : '作廢帳單不可登記收款'], 422);
             }
+            $this->assertInvoiceOwnersUnchanged($fresh, $courseIds, (int) $invoice->StudentID);
             $invoice = $fresh;
             // R28 (#3873 item 4), same rule as payment-report confirm: what is paid comes from Payment rows, never
             // the stored PaidAmount, and a payment may only take what the bill still owes by those rows.
@@ -312,6 +309,39 @@ class BillingController extends Controller
         return $projection;
     }
 
+    /**
+     * Void joins the header owner's count-correction mutex, or the sole item
+     * owner when there is no header. Never add a multi-course void lock set:
+     * it would invert existing transfer locks. Direct payments retain their
+     * pre-existing sorted multi-course protocol.
+     */
+    private function lockInvoiceCourses(Invoice $invoice, bool $allCourses = false): array
+    {
+        $headerId = DB::table('Invoice')->where('id', $invoice->getKey())->value('StudentClassID');
+        $courseIds = DB::table('InvoiceItem')->where('InvoiceID', $invoice->getKey())->pluck('StudentClassID')
+            ->push($headerId)->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+        $lockIds = $allCourses ? $courseIds : ($headerId ? [(int) $headerId] : (count($courseIds) === 1 ? $courseIds : []));
+        if ($lockIds !== []) {
+            StudentClass::query()->whereIn('ID', $lockIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+        }
+
+        return $courseIds;
+    }
+
+    /** Called under the fresh invoice lock; locking items bypasses an old RR snapshot. */
+    private function assertInvoiceOwnersUnchanged(Invoice $invoice, array $expected, int $studentId): void
+    {
+        $current = DB::table('InvoiceItem')->where('InvoiceID', $invoice->getKey())->orderBy('id')
+            ->lockForUpdate()->pluck('StudentClassID')->push($invoice->StudentClassID)
+            ->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+        if ($current !== $expected || (int) $invoice->StudentID !== $studentId) {
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                'message' => '帳單所屬課程已變更，請重新載入後再操作。沒有變更帳款。',
+                'code' => 'invoice_owner_changed',
+            ], 409));
+        }
+    }
+
     public function voidInvoice(Request $request, Invoice $invoice)
     {
         $invoice->loadMissing('student');
@@ -325,7 +355,10 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($request, $invoice, $data) {
+            $studentId = (int) $invoice->StudentID;
+            $owners = $this->lockInvoiceCourses($invoice);
             $invoice = Invoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            $this->assertInvoiceOwnersUnchanged($invoice, $owners, $studentId);
             $status = strtolower((string) ($invoice->Status ?? ''));
 
             if ($status === 'void') {
@@ -387,7 +420,10 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($request, $invoice, $data) {
+            $studentId = (int) $invoice->StudentID;
+            $owners = $this->lockInvoiceCourses($invoice);
             $invoice = Invoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            $this->assertInvoiceOwnersUnchanged($invoice, $owners, $studentId);
             $status = strtolower((string) ($invoice->Status ?? ''));
 
             if ($status === 'void') {

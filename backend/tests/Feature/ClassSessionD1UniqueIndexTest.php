@@ -6,11 +6,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\WithClassSessionIndexFlag;
 use Tests\TestCase;
 
 class ClassSessionD1UniqueIndexTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshDatabase, WithClassSessionIndexFlag;
 
     /** DDL in test (DROP/ADD INDEX) cannot run inside RefreshDatabase transaction wrapper. */
     protected array $connectionsToTransact = [];
@@ -56,8 +57,7 @@ class ClassSessionD1UniqueIndexTest extends TestCase
         DB::table('migrations')
             ->where('migration', '2026_07_09_100000_add_unique_class_session_slot_index')
             ->delete();
-        putenv('APPLY_CLASS_SESSION_UNIQUE_INDEX=1');
-        $_ENV['APPLY_CLASS_SESSION_UNIQUE_INDEX'] = '1';
+        $this->enableClassSessionIndexFlag();
         Artisan::call('migrate', ['--path' => self::MIGRATION]);
         $this->assertTrue($this->uniqueIndexExists());
 

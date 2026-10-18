@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\WithClassSessionIndexFlag;
 use Tests\TestCase;
 
 /**
@@ -21,7 +22,7 @@ use Tests\TestCase;
  */
 class SyncFutureSessionTimesTwoPhaseTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshDatabase, WithClassSessionIndexFlag;
 
     /** DDL cannot run inside the RefreshDatabase transaction wrapper. */
     protected array $connectionsToTransact = [];
@@ -181,9 +182,7 @@ class SyncFutureSessionTimesTwoPhaseTest extends TestCase
         if (!Schema::hasTable('ClassSession')) {
             $this->markTestSkipped('ClassSession missing');
         }
-        putenv('APPLY_CLASS_SESSION_UNIQUE_INDEX=1');
-        $_ENV['APPLY_CLASS_SESSION_UNIQUE_INDEX'] = '1';
-        $_SERVER['APPLY_CLASS_SESSION_UNIQUE_INDEX'] = '1';
+        $this->enableClassSessionIndexFlag();
         if (count(DB::select("SHOW INDEX FROM ClassSession WHERE Key_name = 'uq_class_session_slot'")) === 0) {
             Artisan::call('migrate', [
                 '--path' => self::MIGRATION,
