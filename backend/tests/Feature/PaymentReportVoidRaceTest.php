@@ -86,8 +86,11 @@ class PaymentReportVoidRaceTest extends TestCase
     }
 
     /**
-     * Correction holds StudentClass FOR UPDATE then pauses; void (course-first) waits on the course;
-     * correction resumes, locks reports, refuses 409; void then voids once — no deadlock/500.
+     * Deterministic mixed-writer: correction holds StudentClass FOR UPDATE then pauses;
+     * void signals via beforeExecuting immediately before its authoritative StudentClass
+     * FOR UPDATE (course-first: report not held yet; report-first: report already held);
+     * parent releases correction only after that marker — not after worker-started / sleep.
+     * Correction then locks reports → 409; void voids once. Deadlock/500 ≠ success.
      */
     public function test_mixed_writer_correction_then_void_does_not_deadlock_and_voids_once(): void
     {
@@ -115,9 +118,16 @@ class PaymentReportVoidRaceTest extends TestCase
         ], $pause);
         $this->await($pause['ready']);
 
-        $void = $this->spawnVoid($actorId, (int) $report->id, 'Mixed-writer void after correction pause');
-        // Void must be blocked on course while correction holds it — do not finish yet.
-        usleep(100000);
+        $voidAtCourseLock = $this->file();
+        $void = $this->spawnVoid(
+            $actorId,
+            (int) $report->id,
+            'Mixed-writer void after correction pause',
+            null,
+            $voidAtCourseLock
+        );
+        // Handshake: void reached authoritative StudentClass FOR UPDATE (not merely process start).
+        $this->await($voidAtCourseLock);
 
         touch($pause['release']);
         $correctionResult = $this->finish($correction);
@@ -240,17 +250,27 @@ class PaymentReportVoidRaceTest extends TestCase
         return ['match' => $match, 'ready' => $this->file(), 'release' => $this->file()];
     }
 
-    private function spawnVoid(int $actorId, int $reportId, string $reason, ?array $pause = null): array
-    {
+    private function spawnVoid(
+        int $actorId,
+        int $reportId,
+        string $reason,
+        ?array $pause = null,
+        ?string $signalBeforeStudentClassForUpdate = null
+    ): array {
+        $payload = [
+            'db' => config('database.connections.mysql'),
+            'actor' => ['id' => $actorId, 'role' => 'director', 'campus_ids' => [1]],
+            'id' => $reportId,
+            'input' => ['void_reason' => $reason],
+            'pause' => $pause,
+        ];
+        if ($signalBeforeStudentClassForUpdate !== null) {
+            $payload['signal_before_studentclass_for_update'] = $signalBeforeStudentClassForUpdate;
+        }
+
         return $this->spawnProcess(
             base_path('tests/Support/payment-void-race-worker.php'),
-            [
-                'db' => config('database.connections.mysql'),
-                'actor' => ['id' => $actorId, 'role' => 'director', 'campus_ids' => [1]],
-                'id' => $reportId,
-                'input' => ['void_reason' => $reason],
-                'pause' => $pause,
-            ]
+            $payload
         );
     }
 

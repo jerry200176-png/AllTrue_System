@@ -15,24 +15,10 @@ if (!alltrue_is_allowed_test_database(is_string($dbName) ? $dbName : null)
 config(['database.connections.mysql' => $data['db'], 'database.default' => 'mysql', 'app.key' => str_repeat('t', 32)]);
 Illuminate\Support\Facades\DB::purge();
 Illuminate\Support\Facades\DB::statement('SET SESSION innodb_lock_wait_timeout = 5');
-$pause = $data['pause'] ?? null;
-if ($pause) {
-    Illuminate\Support\Facades\DB::listen(function ($query) use (&$pause) {
-        if ($pause && str_contains(strtolower($query->sql), $pause['match'])
-            && (!($pause['locked'] ?? true) || str_contains(strtolower($query->sql), 'for update'))) {
-            $p = $pause;
-            $pause = null;
-            touch($p['ready']);
-            $deadline = microtime(true) + 15;
-            while (!file_exists($p['release'])) {
-                if (microtime(true) > $deadline) {
-                    throw new RuntimeException('synthetic correction barrier timed out');
-                }
-                usleep(5000);
-            }
-        }
-    });
-}
+alltrue_install_sql_pause(
+    is_array($data['pause'] ?? null) ? $data['pause'] : null,
+    'synthetic correction barrier timed out'
+);
 try {
     if (!empty($data['started'])) {
         touch($data['started']);

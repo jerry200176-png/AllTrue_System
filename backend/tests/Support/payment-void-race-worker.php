@@ -17,24 +17,15 @@ config(['database.connections.mysql' => $data['db'], 'database.default' => 'mysq
 Illuminate\Support\Facades\DB::purge();
 // Bound waits so deadlock/lock-wait cannot hang the suite or be mistaken for success.
 Illuminate\Support\Facades\DB::statement('SET SESSION innodb_lock_wait_timeout = 5');
-$pause = $data['pause'] ?? null;
-if ($pause) {
-    Illuminate\Support\Facades\DB::listen(function ($query) use (&$pause) {
-        if ($pause && str_contains(strtolower($query->sql), $pause['match'])
-            && (!($pause['locked'] ?? true) || str_contains(strtolower($query->sql), 'for update'))) {
-            $p = $pause;
-            $pause = null;
-            touch($p['ready']);
-            $deadline = microtime(true) + 15;
-            while (!file_exists($p['release'])) {
-                if (microtime(true) > $deadline) {
-                    throw new RuntimeException('synthetic void barrier timed out');
-                }
-                usleep(5000);
-            }
-        }
-    });
-}
+alltrue_install_sql_pause(
+    is_array($data['pause'] ?? null) ? $data['pause'] : null,
+    'synthetic void barrier timed out'
+);
+alltrue_install_before_studentclass_for_update_signal(
+    isset($data['signal_before_studentclass_for_update']) && is_string($data['signal_before_studentclass_for_update'])
+        ? $data['signal_before_studentclass_for_update']
+        : null
+);
 try {
     if (!empty($data['started'])) {
         touch($data['started']);
