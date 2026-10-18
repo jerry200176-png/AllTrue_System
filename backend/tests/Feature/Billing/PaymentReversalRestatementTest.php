@@ -72,7 +72,6 @@ class PaymentReversalRestatementTest extends TestCase
         }
         return $out;
     }
-
     public function test_permanent_restatement_is_not_a_cash_receipt_or_permission_to_correct_a_pending_report(): void
     {
         config(['billing.agreed_fee_correction_enabled' => true]);
@@ -107,7 +106,6 @@ class PaymentReversalRestatementTest extends TestCase
         $changedLedger = $this->getJson('/api/v1/accounting/ledger?student_class_id='.$f['course']->ID, ['Authorization' => 'Bearer '.$f['token']])->assertOk()->json();
         $this->assertFalse(collect($changedLedger['invoices'][0]['payments'])->firstWhere('id', $f['extra']->id)['is_void']);
         DB::table('Payment')->where('id', $f['extra']->id)->update(['receipt_url' => null]);
-
         $this->assertCount(5, DB::table('Payment')->where('InvoiceID', $f['invoice']->id)->get());
         $this->assertSame(0, (int) DB::table('Payment')->where('InvoiceID', $f['invoice']->id)->sum('Amount'));
         $this->assertFalse(ContractMoneyState::blocksUnpaidCorrection($f['course']->ID, true));
@@ -253,6 +251,7 @@ class PaymentReversalRestatementTest extends TestCase
             $this->assertTrue($approved['ready']);
             $direct = $svc->execute($p['plan'], $actor, $p['decision_reference'], $r['id']); // Interrupted before outer receipt.
             $this->assertSame('applied', $direct['state']);
+            $f['user']->update(['status' => 'suspended']); $this->assertFalse(app(\App\Operations\Strategies\PaymentReversalRestatementStrategy::class)->plan($p)['ok']);
             $executed = $pop->run($r['id'], 'execute', $approved['token'], $sha, 'pop-runner');
             $this->assertTrue($executed['ok']); $this->assertTrue($executed['already_applied']);
             $other = $pop->createDraft(PaymentReversalRestatement::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);

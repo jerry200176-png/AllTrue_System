@@ -17,7 +17,7 @@ final class PaymentReversalRestatement
         $graph = $this->capture($scope, $actor, false);
         $target = $this->proveExcess($graph, $scope);
         return ['scope' => $scope, 'state_hash' => self::hash($graph),
-            'actor_user_id' => $actor['id'], 'actor_hash' => self::hash($actor), 'before_payment' => $target,
+            'actor_user_id' => $actor['id'], 'actor_hash' => self::hash($actor), 'actor_context' => $actor, 'before_payment' => $target,
             'rollback_epoch' => $this->rollbackEpoch($scope['payment_id']),
             'raw_net_before' => (int) $target['Amount'], 'raw_net_after' => 0];
     }
@@ -29,7 +29,7 @@ final class PaymentReversalRestatement
     public function execute(array $plan, array $actor, string $decision, string $operationId): array
     {
         if (!Str::isUuid($operationId) || !preg_match('/\A[a-f0-9]{64}\z/', $plan['state_hash'] ?? '')
-            || ($plan['actor_hash'] ?? '') !== self::hash($actor)) $this->fail('invalid_manifest');
+            || ($plan['actor_hash'] ?? '') !== self::hash($actor) || self::hash($plan['actor_context'] ?? []) !== ($plan['actor_hash'] ?? '')) $this->fail('invalid_manifest');
         return DB::transaction(function () use ($plan, $actor, $decision, $operationId) {
             $this->request($operationId, $this->requestParameters($plan, $decision));
             $scope = $plan['scope']; $this->authorize($scope, $actor, true);
@@ -67,7 +67,7 @@ final class PaymentReversalRestatement
             if (!$record) $this->fail('history_missing');
             $s = json_decode($record->snapshot, true, 512, JSON_THROW_ON_ERROR);
             $this->request($record->operation_id, $s['request_parameters']);
-            $scope = $s['scope']; $this->authorize($scope, $actor, true);
+            $scope = $s['scope']; $this->authorize($scope, $actor, true); if (!hash_equals($s['request_parameters']['plan']['actor_hash'], self::hash($actor))) $this->fail('actor_changed');
             if ($this->proof($record->operation_id, 'reversal-proof-rollback')) {
                 $this->assertReplay($record, $s['request_parameters'], true, true);
                 return ['state' => 'already_rolled_back'];
@@ -105,7 +105,7 @@ final class PaymentReversalRestatement
         if (self::hash($p) !== self::hash($this->requestParameters($plan, $p['decision_reference']))) $this->fail('invalid_manifest');
         $this->authorize($plan['scope'], $actor, false);
         if (!hash_equals($plan['rollback_epoch'], $this->rollbackEpoch($plan['scope']['payment_id']))) $this->fail('stale_rollback_epoch');
-        if (!hash_equals($plan['actor_hash'], self::hash($actor))) $this->fail('actor_changed');
+        if (!hash_equals($plan['actor_hash'], self::hash($actor)) || !hash_equals($plan['actor_hash'], self::hash($plan['actor_context'] ?? []))) $this->fail('actor_changed');
         $record = DB::table('pop_execution_records')->where('id', $this->proofId($p, 'reversal-proof'))->first();
         if ($record) {
             if ($operationId !== null && $record->operation_id !== $operationId) $this->fail('request_mismatch');
@@ -224,7 +224,8 @@ final class PaymentReversalRestatement
         $items = $rows(DB::table('InvoiceItem')->where(fn ($q) => $q->where('StudentClassID', $s['course_id'])->orWhere('InvoiceID', $s['invoice_id']))->orderBy('id'));
         if ($items !== []) $this->fail('unsupported_items');
         $payments = $rows(DB::table('Payment')->where('InvoiceID', $s['invoice_id'])->orderBy('id'));
-        $reports = $rows(DB::table('payment_reports')->where(fn ($q) => $q->where('StudentClassID', $s['course_id'])->orWhere('InvoiceID', $s['invoice_id']))->orderBy('id'));
+        if (DB::table('payment_reports')->where('InvoiceID', $s['invoice_id'])->where('StudentClassID', '<>', $s['course_id'])->exists()) $this->fail('report_owner_mismatch');
+        $reports = $rows(DB::table(DB::raw('`payment_reports` FORCE INDEX (`payment_reports_studentclassid_index`)'))->where('StudentClassID', $s['course_id'])->orderBy('id'));
         foreach ($reports as $r) if ((int) $r['StudentID'] !== $s['student_id'] || (int) $r['StudentClassID'] !== $s['course_id'] || (int) $r['InvoiceID'] !== $s['invoice_id']) $this->fail('report_owner_mismatch');
         return ['course' => (array) $course, 'invoices' => $invoices, 'payments' => $payments, 'reports' => $reports];
     }
