@@ -146,8 +146,16 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->assertSame('skipped', $pop->runApprovedLocally($r['id'], 'verify')['status']);
             DB::beginTransaction();
             try { $this->assertFalse($pop->run($r['id'], 'rollback', $approval['token'], $sha, 'pop-runner')['ok']); $this->assertSame('skipped', $pop->runApprovedLocally($r['id'])['status'], 'Rollback after failed execute must prevent reclaim'); } finally { DB::rollBack(); }
+            $oldApprovals = DB::table('pop_approval_events')->where('operation_id', $r['id'])->orderBy('id')->get()->toJson();
             $this->travel(61)->minutes();
-            try { $this->refuse(fn () => $pop->runApprovedLocally($r['id']), 'expired'); } finally { $this->travelBack(); }
+            $this->refuse(fn () => $pop->runApprovedLocally($r['id']), 'expired');
+            $this->assertFalse($pop->approve($r['id'], 'RETRY-DIRECTOR', 'reviewer-director', 'director', $sha, $f['user']->id + 100000, [1])['ready']);
+            $approval = $pop->approve($r['id'], 'RETRY-FOUNDER', 'reviewer-founder', 'super_admin', $sha, $f['user']->id + 100001);
+            $this->assertTrue($approval['ready']); $this->assertSame('failed', $approval['status']);
+            $this->assertSame('execute-recovery', DB::table('pop_approval_events')->where('operation_id', $r['id'])->latest('id')->value('phase'));
+            $this->assertSame($oldApprovals, DB::table('pop_approval_events')->where('operation_id', $r['id'])->orderBy('id')->limit(2)->get()->toJson());
+            $this->assertSame('idle', $pop->runApprovedLocally()['status'], 'Renewal must not schedule execute');
+            $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $r['id'])->where('phase', 'execute')->where('result', 'failed')->count());
             file_put_contents($dir.'/deployment.json', json_encode(['backend_sha' => str_repeat('d', 40)]));
             $this->refuse(fn () => $pop->runApprovedLocally($r['id']), 'match');
             file_put_contents($dir.'/deployment.json', json_encode(['backend_sha' => $sha]));
@@ -177,6 +185,7 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->assertSame('pending', $f['pending']->fresh()->status);
             $this->refuse(fn () => $pop->run($r['id'], 'verify', $approval['token'], $sha, 'pop-runner'), 'rollback'); $this->assertSame('rolled_back', DB::table('pop_operation_requests')->where('id', $r['id'])->value('status'));
         } finally {
+            $this->travelBack();
             unlink($dir.'/deployment.json'); unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
         }
     }

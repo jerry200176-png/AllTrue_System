@@ -1,4 +1,5 @@
 name: CI — PHPUnit Tests
+run-name: "Targeted financial preflight - not full acceptance"
 
 on:
   push:
@@ -408,6 +409,7 @@ jobs:
         run: |
           mkdir -p storage/test-results
           ./vendor/bin/phpunit \
+            --filter='UnpaidInvoiceChargeAlignmentTest|UnpaidInvoiceChargeAlignmentConcurrencyTest|PaymentReversalRestatementTest|PaymentReportPendingReturnTest' \
             --coverage-text \
             --coverage-clover=storage/test-results/coverage.xml \
             --log-junit=storage/test-results/junit.xml
