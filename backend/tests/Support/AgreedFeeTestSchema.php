@@ -24,7 +24,7 @@ final class AgreedFeeTestSchema
         $host = $config['host'] ?? null;
         if ($connection->getDriverName() !== 'mysql'
             || !alltrue_is_allowed_test_database($connection->getDatabaseName())
-            || !is_string($host) || !alltrue_is_allowed_test_db_host($host)
+            || $host !== '127.0.0.1'
             || !empty($config['url']) || !empty($config['unix_socket'])
             || !empty($config['read']) || !empty($config['write'])
             || !empty($config['options'])) {

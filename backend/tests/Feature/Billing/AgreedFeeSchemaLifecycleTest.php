@@ -3,6 +3,8 @@
 namespace Tests\Feature\Billing;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Tests\Support\AgreedFeeFixture;
 use Tests\Support\AgreedFeeRefreshDatabase;
 use Tests\Support\AgreedFeeTestSchema;
@@ -63,5 +65,24 @@ class AgreedFeeSchemaLifecycleTest extends TestCase
         }
         $this->assertTrue(AgreedFeeTestSchema::hasExtensionColumns());
         $this->assertSame(1, DB::table('invoice_corrections')->where('kind', 'agreed_fee_unbilled')->count());
+    }
+
+    public function test_following_ordinary_refresh_rebuilds_the_committed_base_schema(): void
+    {
+        $this->assertTrue(AgreedFeeTestSchema::hasExtensionColumns());
+        // Observe the real destruction callbacks after this case's outer rollback,
+        // then exercise Laravel's ordinary RefreshDatabase path, without extension setup.
+        $this->beforeApplicationDestroyed(function () {
+            $this->assertFalse(RefreshDatabaseState::$migrated);
+            try {
+                $this->laravelRefreshTestDatabase();
+                $this->assertFalse(Schema::hasColumn('invoice_corrections', 'kind'));
+                $column = collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))->firstWhere('Field', 'amount');
+                $this->assertSame('NO', $column->Null);
+            } finally {
+                $this->endOuterTestingTransactions();
+                RefreshDatabaseState::$migrated = false;
+            }
+        });
     }
 }

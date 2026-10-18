@@ -26,6 +26,11 @@ trait AgreedFeeRefreshDatabase
     protected function refreshTestDatabase()
     {
         AgreedFeeTestSchema::assertTestConnection();
+        // Extension DDL survives row rollback. The next ordinary RefreshDatabase
+        // must remigrate the committed base schema instead of trusting this generation.
+        $this->beforeApplicationDestroyed(static function () {
+            RefreshDatabaseState::$migrated = false;
+        });
         if (!RefreshDatabaseState::$migrated) {
             $this->artisan('migrate:fresh', $this->migrateFreshUsing());
             $this->app[Kernel::class]->setArtisan(null);

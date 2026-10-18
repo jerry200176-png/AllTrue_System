@@ -32,7 +32,8 @@ class AgreedFeeSchemaSafetyTest extends TestCase
         return [[['database' => 'AllTrue']], [['host' => 'remote.invalid']],
             [['url' => 'mysql://unused:unused@remote.invalid/AllTrue']],
             [['unix_socket' => '/tmp/unused.sock']], [['read' => ['host' => 'remote.invalid']]],
-            [['write' => ['database' => 'AllTrue']]], [['options' => [1002 => 'USE AllTrue']]]];
+            [['write' => ['database' => 'AllTrue']]], [['options' => [1002 => 'USE AllTrue']]],
+            [['host' => 'localhost']]];
     }
 
     public function test_missing_extensions_cannot_implicit_commit_a_test_transaction(): void
