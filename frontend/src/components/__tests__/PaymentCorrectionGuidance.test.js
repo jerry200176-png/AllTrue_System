@@ -25,18 +25,25 @@ async function attempt(code, amount, extra = {}) {
 it('keeps intended receipt 8800 and requires checking the existing report before confirming', async () => {
   const w = await attempt('pending_report_exists', 8800, { report_id: 903 });
   expect(w.text()).toContain('金額不符請先退回');
+  expect(w.find('.pe-error').attributes('role')).toBe('alert');
   expect(w.text()).not.toContain('請直接按');
   expect(w.find('input[type="number"]').element.value).toBe('8800');
   expect(w.emitted('confirmed')).toBeUndefined();
   expect(global.fetch).toHaveBeenCalledTimes(1);
 });
 it('preserves an over-limit receipt and directs reconciliation rather than changing the amount', async () => {
-  const w = await attempt('amount_exceeds_outstanding', 8800, { expected_amount: 8000 });
+  const w = await attempt('amount_exceeds_outstanding', 8800, { expected_amount: 7600 });
+  expect(w.text()).toContain('NT$7,600');
   expect(w.text()).toContain('不要為了送出而改小實收金額');
   expect(w.text()).toContain('帳單金額有誤');
   expect(w.find('input[type="number"]').element.value).toBe('8800');
   expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ amount: 8800, invoice_id: 902 });
   expect(w.emitted('confirmed')).toBeUndefined();
+});
+it('shows an authoritative zero balance without changing the entered receipt', async () => {
+  const w = await attempt('amount_exceeds_outstanding', 8800, { expected_amount: 0 });
+  expect(w.text()).toContain('NT$0');
+  expect(w.find('input[type="number"]').element.value).toBe('8800');
 });
 // PR4217: real child + each navigation consumer.
 it.each(['collection page', 'accounting ledger'])('keeps mismatched pending-report guidance and the entered amount in the %s', async (owner) => {
@@ -48,12 +55,18 @@ it.each(['collection page', 'accounting ledger'])('keeps mismatched pending-repo
   const payload = { summary: {}, student: { name: row.student_name }, scope: { student_class_id: 901 },
     courses: [row], receipts: [], anomalies: [], invoices: [{ id: 902, student_class_id: 901,
       total_amount: 8800, outstanding_amount: 8800, calculated_applied_amount: 0, status: 'unpaid', payments: [] }] };
+  let refused = false;
   global.fetch = vi.fn(async (url) => {
     const path = String(url);
     if (path.includes('/payment-reports/director-record')) {
+      refused = true;
       return { ok: false, status: 422, json: async () => ({ code: 'pending_report_exists', report_id: 903, reported_amount: 8000 }) };
     }
-    return { ok: true, status: 200, json: async () => path.includes('/accounting/ledger') ? payload : path.includes('/alerts/tuition') ? [row] : [] };
+    const currentRow = refused ? { ...row, payment_status: 'pending_report', latest_payment_report_id: 903 } : row;
+    const currentLedger = refused ? { ...payload, courses: [currentRow], receipts: [
+      { report_id: 903, student_class_id: 901, status: 'pending', amount: 8000, payment_date: '2026-10-01' },
+    ] } : payload;
+    return { ok: true, status: 200, json: async () => path.includes('/accounting/ledger') ? currentLedger : path.includes('/alerts/tuition') ? [currentRow] : [] };
   });
   const stubs = { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true,
     AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true };
@@ -73,5 +86,10 @@ it.each(['collection page', 'accounting ledger'])('keeps mismatched pending-repo
     expect(w.text()).not.toContain('請按確認入帳，不要重複送出');
     expect(global.fetch.mock.calls.filter(([url]) => String(url).includes('/director-record'))).toHaveLength(1);
     expect(global.fetch.mock.calls.some(([url]) => /payment-reports\/\d+\/confirm/.test(String(url)))).toBe(false);
+    const readPath = owner === 'collection page' ? '/alerts/tuition' : '/accounting/ledger';
+    expect(global.fetch.mock.calls.filter(([url]) => String(url).includes(readPath))).toHaveLength(2);
+    await entry.find('button.ghost').trigger('click');
+    await flushPromises();
+    expect(w.find(owner === 'collection page' ? 'button[title="確認入帳"]' : '[data-testid="contract-confirm"]').exists()).toBe(true);
   } finally { w.unmount(); }
 });
