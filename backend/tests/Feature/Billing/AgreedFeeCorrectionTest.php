@@ -20,6 +20,44 @@ class AgreedFeeCorrectionTest extends TestCase
 
     private function path(array $f): string { return '/api/v1/student-classes/'.$f['course']->ID.'/agreed-fee-correction'; }
 
+    public function test_non_text_reason_returns_validation_errors_without_writes(): void
+    {
+        config(['billing.agreed_fee_correction_enabled' => true]);
+        $f = $this->fixture(); $body = $this->feePayload($f['invoice']);
+        foreach ([[], (object) ['note' => 'Synthetic'], 123, 12.5, true, null] as $reason) {
+            foreach (['preview', 'apply'] as $operation) {
+                $this->withToken($f['token'])->postJson($this->path($f).'/'.$operation,
+                    array_replace($body, ['reason' => $reason, 'preview_token' => 'synthetic']))
+                    ->assertStatus(422)->assertJsonValidationErrors('reason');
+            }
+        }
+        $this->assertSame(1, Invoice::count()); $this->assertSame(0, Payment::count());
+        $this->assertSame(8000, (int) $f['course']->fresh()->Charge);
+        $this->assertSame('unpaid', $f['invoice']->fresh()->Status);
+        $this->assertSame(0, DB::table('invoice_corrections')->count());
+        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'billing.agreed_fee_corrected')->count());
+    }
+
+    /** @dataProvider invoiceIdRepresentations */
+    public function test_integer_and_string_invoice_ids_share_preview_and_permanent_replay(bool $stringPreview): void
+    {
+        config(['billing.agreed_fee_correction_enabled' => true]);
+        $f = $this->fixture(); $body = $this->feePayload($f['invoice']);
+        $body['reason'] = '  Synthetic canonical invoice  ';
+        $body['original_invoice_id'] = $stringPreview ? (string) $f['invoice']->id : (int) $f['invoice']->id;
+        $token = $this->withToken($f['token'])->postJson($this->path($f).'/preview', $body)->assertOk()->json('preview_token');
+        $apply = array_replace($body, ['original_invoice_id' => $stringPreview ? (int) $f['invoice']->id : (string) $f['invoice']->id,
+            'preview_token' => $token]);
+        $result = $this->withToken($f['token'])->postJson($this->path($f).'/apply', $apply)->assertOk()->json();
+        $this->withToken($f['token'])->postJson($this->path($f).'/apply', $body + ['preview_token' => 'expired'])
+            ->assertOk()->assertExactJson($result);
+        $this->assertSame(2, Invoice::count()); $this->assertSame(0, Payment::count());
+        $this->assertSame(1, DB::table('invoice_corrections')->count());
+        $this->assertSame('Synthetic canonical invoice', DB::table('invoice_corrections')->sole()->reason);
+        $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'billing.agreed_fee_corrected')->count());
+    }
+    public static function invoiceIdRepresentations(): array { return [[true], [false]]; }
+
     public function test_disabled_by_default_and_campus_empty_scope_fail_closed(): void
     {
         $f = $this->fixture(); $body = $this->feePayload($f['invoice']);

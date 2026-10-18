@@ -35,7 +35,7 @@ final class AgreedFeeCorrection
                 || ($actor['role'] !== 'super_admin' && !in_array($campusId, $actor['campus_ids'], true))) abort(403);
             $kind = $input['scope'] === 'unbilled' ? 'agreed_fee_unbilled' : self::KIND;
             $request = ['kind' => $kind, 'scope' => $input['scope'], 'course_id' => $courseId,
-                'original_invoice_id' => $input['original_invoice_id'] ?? null, 'new_charge' => (int) $input['new_charge'],
+                'original_invoice_id' => isset($input['original_invoice_id']) ? (int) $input['original_invoice_id'] : null, 'new_charge' => (int) $input['new_charge'],
                 'reason' => trim($input['reason']), 'operator_user_id' => $actor['id'], 'idempotency_key' => strtolower($input['idempotency_key'])];
             $requestHash = $this->digest($request);
             $key = strtolower($input['idempotency_key']);

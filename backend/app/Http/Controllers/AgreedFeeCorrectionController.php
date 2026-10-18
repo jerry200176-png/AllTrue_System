@@ -26,7 +26,8 @@ final class AgreedFeeCorrectionController extends Controller
         $campusId = (int) $course->student?->CampusID;
         abort_unless(in_array($role, ['director', 'super_admin'], true) && $campusId > 0
             && ($role === 'super_admin' || in_array($campusId, $campusIds, true)), 403);
-        $request->merge(['reason' => trim((string) $request->input('reason'))]);
+        $reason = $request->input('reason');
+        if (is_string($reason)) $request->merge(['reason' => trim($reason)]);
         $data = $request->validate([
             'scope' => 'required|in:billed,unbilled',
             'original_invoice_id' => 'nullable|required_if:scope,billed|prohibited_if:scope,unbilled|integer|min:1',

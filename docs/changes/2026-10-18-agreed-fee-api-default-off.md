@@ -5,5 +5,6 @@
 - Preserve the reviewed source preview/apply API for explicit fee corrections, with authenticated campus scope, signed state-bound previews, permanent history and idempotent retries.
 - Preserve functional and receipt-kind collision regressions using the existing isolated test fixtures.
 - Cover rejected 8000 report → explicit 8800 correction → pending-only registration → confirmed 8800 Payment/receipt; a confirmation retry cannot collect twice.
+- Reject non-text reasons with422; canonicalize validated invoice IDs before preview/idempotency hashing so numeric-string/integer retries remain the same request.
 
 This draft adds new billing semantics and needs a scoped Founder code-merge decision after validation. No production extension migration, activation or data repair is included. Rollback keeps the capability off and retains correction/audit history.
