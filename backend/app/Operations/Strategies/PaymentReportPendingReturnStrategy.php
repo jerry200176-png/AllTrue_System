@@ -63,7 +63,7 @@ final class PaymentReportPendingReturnStrategy
     public function verify(array $plan, array $result): array
     {
         $s = $result['snapshot'];
-        return ['ok' => hash_equals($s['after_hash'], $this->hash($this->capture($s['parameters'], false)))];
+        return ['ok' => hash_equals($s['after_hash'], $this->hash($this->capture($s['parameters'], true)))];
     }
 
     public function rollback(array $s, array $context): array
