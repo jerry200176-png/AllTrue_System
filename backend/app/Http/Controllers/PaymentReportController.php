@@ -351,12 +351,15 @@ class PaymentReportController extends Controller
 
         $userId = $request->attributes->get('auth_user_id');
         $confirmationNote = trim((string) $request->input('note', ''));
+        // Routing id only — must not run inside the transaction (would start an RR
+        // consistent-read snapshot before waiting on the course lock).
+        $courseId = $this->resolveReportCourseId((int) $id);
 
-        return DB::transaction(function () use ($id, $userId, $confirmationNote) {
+        return DB::transaction(function () use ($id, $courseId, $userId, $confirmationNote) {
             // Global lock order with BillingCorrection::applyCountCorrection and void:
             // StudentClass → payment_reports (never report-first). Serializes confirm retries
             // after a lost response so a second Payment cannot be created.
-            [$sc, $report] = $this->lockCourseThenReport((int) $id);
+            [$sc, $report] = $this->lockCourseThenReport((int) $id, $courseId);
 
             if ($report->status !== 'pending') {
                 return response()->json(['message' => '此回報已處理過'], 422);
@@ -1054,18 +1057,32 @@ class PaymentReportController extends Controller
     }
 
     /**
-     * Shared confirm/void lock prefix — must stay aligned with
-     * BillingCorrection::applyCountCorrection (course, then payment_reports).
-     * Unlocked course-id resolve first; re-check StudentClassID after both locks.
-     *
-     * @return array{0: ?StudentClass, 1: PaymentReport}
+     * Plain routing lookup — call only outside DB::transaction.
+     * A non-locking SELECT inside the write txn would establish the REPEATABLE-READ
+     * consistent-read snapshot before this connection waits on the course lock, so a
+     * peer confirm that commits while we wait would be invisible to later resolver
+     * non-locking reads (invoice/payments) even though locking invoice reads see it.
      */
-    private function lockCourseThenReport(int $reportId): array
+    private function resolveReportCourseId(int $reportId): int
     {
         $courseId = (int) PaymentReport::query()->whereKey($reportId)->value('StudentClassID');
         if ($courseId <= 0) {
             abort(404);
         }
+
+        return $courseId;
+    }
+
+    /**
+     * Shared confirm/void lock prefix — must stay aligned with
+     * BillingCorrection::applyCountCorrection (course, then payment_reports).
+     * $courseId must already be resolved outside the transaction; after both locks,
+     * re-check report StudentClassID / presence (status checked by callers).
+     *
+     * @return array{0: ?StudentClass, 1: PaymentReport}
+     */
+    private function lockCourseThenReport(int $reportId, int $courseId): array
+    {
         $sc = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
         $report = PaymentReport::query()->whereKey($reportId)->lockForUpdate()->first();
         if (!$report instanceof PaymentReport) {
@@ -1344,11 +1361,14 @@ class PaymentReportController extends Controller
         }
 
         $userId = $request->attributes->get('auth_user_id');
+        // Routing id only — outside the write transaction so waiting on the course
+        // lock cannot inherit a stale REPEATABLE-READ snapshot from a plain SELECT.
+        $courseId = $this->resolveReportCourseId((int) $id);
 
-        return DB::transaction(function () use ($id, $userId, $data, $role, $campusIds) {
+        return DB::transaction(function () use ($id, $courseId, $userId, $data, $role, $campusIds) {
             // Same lock order as confirm + BillingCorrection (StudentClass → payment_reports).
             // A delayed request must not reuse its pre-transaction status.
-            [$sc, $report] = $this->lockCourseThenReport((int) $id);
+            [$sc, $report] = $this->lockCourseThenReport((int) $id, $courseId);
             if ($report->getAttribute('status') !== 'confirmed') {
                 return response()->json(['message' => '此收款已處理過，請重新整理'], 422);
             }
