@@ -1072,6 +1072,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **同名測試 DB 的隔離取決於 runner 儲存邊界（#732 已 superseded）**：`backend/phpunit.xml` 仍以 `force="true"` 設定 `DB_DATABASE=AllTrue_test`，但每個 GitHub-hosted PHPUnit job 都有獨立 MySQL service container，因此同名 schema 不會跨 run 互相清表。若未來改回共享 self-hosted MySQL，必須先提供 run-scoped schema 或等價隔離，不能只改 runner label。
 - **測試 DDL 也要先驗證 resolved connection（#4256）**：沿用 synthetic schema／loopback allowlist，拒絕 URL、socket、read/write 與 PDO init-command 等替代目標；`migrate:fresh` 前驗證、DDL 前拒絕 open transaction。MySQL DDL 會 implicit commit，不可在 `RefreshDatabase` 外層交易中臨時補欄位。
 - **Laravel 8 Schema 要直接 mock connection 的 builder（#4256）**：其 facade accessor 回傳物件，不是一般 binding 名稱。`Schema::swap()` 會出現 illegal offset，`Schema::shouldReceive()` 也可能先觸發未設定的 `getSchemaBuilder()`；這些初始化失敗不算有效 RED。先查該版本開源實作，再讓 connection 的 `getSchemaBuilder()` 回傳 builder mock，直接在 builder 設期待，並核對失敗 stack 確實進入受測路徑。
+- **更新 PR 證據內文時保留機器欄位（#4257）**：`Risk-Class`、`Autonomy-Tier`、`Release-Impact` 不可被自由文字摘要取代；可用既有 `check_pr_declaration.py` 先驗證。僅內文修正造成的失敗重跑原 Presubmit job，避免留下同名成功／失敗 check；程式碼未變不必重跑完整 PHPUnit。
 
 ---
 
