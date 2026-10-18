@@ -12,7 +12,6 @@ use Tests\TestCase;
 class PaymentReversalRestatementTest extends TestCase
 {
     use AgreedFeeFixture, AgreedFeeRefreshDatabase;
-
     private function plannedCatalog(): void
     {
         $dir = sys_get_temp_dir().'/reversal-planned-'.Str::uuid(); mkdir($dir, 0700); mkdir($dir.'/policies', 0700);
@@ -21,7 +20,6 @@ class PaymentReversalRestatementTest extends TestCase
         $this->app->instance(\App\Operations\PopOperationCatalog::class, new \App\Operations\PopOperationCatalog($dir.'/catalog.yaml'));
         $this->beforeApplicationDestroyed(static function () use ($dir): void { unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir); });
     }
-
     private function excessFixture(): array
     {
         $f = $this->fixture();
@@ -44,19 +42,16 @@ class PaymentReversalRestatementTest extends TestCase
         $f['actor'] = ['id' => (int) $f['user']->id, 'role' => 'director', 'campus_ids' => [1], 'student_id' => (int) $f['student']->id];
         return $f;
     }
-
     private function refused(callable $action, string $code): void
     {
         try { $action(); } catch (\RuntimeException $e) { $this->assertStringContainsString($code, $e->getMessage()); return; }
         $this->fail('Expected refusal: '.$code);
     }
-
     private function execute(PaymentReversalRestatement $svc, array $plan, array $actor, string $decision, string $id): array
     {
         $this->prepareRequest($svc, $plan, $actor, $decision, $id);
         return $svc->execute($plan, $actor, $decision, $id);
     }
-
     private function prepareRequest(PaymentReversalRestatement $svc, array $plan, array $actor, string $decision, string $id): void
     {
         if (!DB::table('pop_operation_requests')->where('id', $id)->exists()) {
@@ -67,7 +62,6 @@ class PaymentReversalRestatementTest extends TestCase
                 'status' => 'approved', 'actor' => 'user:'.$actor['id'], 'created_at' => now(), 'updated_at' => now()]);
         }
     }
-
     private function permutations(array $keys): array
     {
         if ($keys === []) return [[]];
