@@ -149,7 +149,9 @@ class PaymentReportPendingReturnTest extends TestCase
             file_put_contents($dir.'/deployment.json', json_encode(['backend_sha' => str_repeat('d', 40)]));
             $this->refuse(fn () => $pop->runApprovedLocally($r['id']), 'match');
             file_put_contents($dir.'/deployment.json', json_encode(['backend_sha' => $sha]));
-            $this->assertTrue($pop->runApprovedLocally($r['id'])['ok']);
+            config(['pop_inapp.standing_policy_enabled' => false]); $this->app->instance(\App\Operations\PopOperationService::class, $pop);
+            $this->artisan('pop:execute-approved', ['--request' => $r['id']])->assertExitCode(0);
+            $this->assertSame('succeeded', DB::table('pop_operation_requests')->where('id', $r['id'])->value('status'));
             $this->assertSame('skipped', $pop->runApprovedLocally($r['id'])['status']);
             $executed = $pop->run($r['id'], 'execute', $approval['token'], $sha, 'pop-runner');
             $this->assertTrue($executed['ok']); $this->assertSame('rejected', $f['pending']->fresh()->status);
