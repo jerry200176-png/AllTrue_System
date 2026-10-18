@@ -47,8 +47,8 @@ class PaymentReportPendingReturnTest extends TestCase
 
     private function refuse(callable $call, string $code): void
     {
-        try { $call(); $this->fail('Expected refusal '.$code); }
-        catch (\RuntimeException $e) { $this->assertStringContainsString($code, $e->getMessage()); }
+        try { $call(); } catch (\RuntimeException $e) { $this->assertStringContainsString($code, $e->getMessage()); return; }
+        $this->fail('Expected refusal '.$code);
     }
 
     public function test_return_retains_reported_amount_and_money_history_with_replay_and_exact_rollback(): void
@@ -65,6 +65,12 @@ class PaymentReportPendingReturnTest extends TestCase
         $this->assertSame($payments, DB::table('Payment')->where('InvoiceID', $f['invoice']->id)->orderBy('id')->get()->toJson());
         $this->assertFalse($svc->plan($p, ['operation_id' => (string) Str::uuid()])['ok']);
         $this->assertTrue($svc->execute($svc->plan($p, $ctx), $ctx)['already_applied']);
+        DB::beginTransaction();
+        try {
+            DB::table('payment_reports')->where('id', $p['report_id'])->update(['rejection_note' => 'synthetic target drift']);
+            $this->assertFalse($svc->plan($p, $ctx)['ok']);
+            $this->refuse(fn () => $svc->execute(['ok' => true, 'parameters' => $p], $ctx), 'target_moved_on');
+        } finally { DB::rollBack(); }
         $this->assertTrue($svc->rollback($result['snapshot'], $ctx)['ok']);
         $this->assertSame($before, $f['pending']->fresh()->getRawOriginal());
         $this->assertTrue($svc->rollback($result['snapshot'], $ctx)['already_rolled_back']);

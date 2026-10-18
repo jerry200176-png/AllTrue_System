@@ -21,12 +21,13 @@ final class PaymentReportPendingReturnStrategy
         return $this->hash($g);
     }
 
-    public function plan(array $p): array
+    public function plan(array $p, array $context = []): array
     {
         try {
             $proof = DB::table('pop_execution_records')->where('id', $this->proofId($p, 'pending-return-proof'))->first();
-            if ($proof) {
+            if ($proof && $proof->operation_id === ($context['operation_id'] ?? null)) {
                 if ($this->proof($proof->operation_id, 'pending-return-rollback')) $this->fail('reapply_requires_new_preview');
+                $this->replaySnapshot($proof, $p, false);
             } else {
                 $hash = $this->preview($p);
                 if (($p['expected_state_hash'] ?? '') === '') {
@@ -46,12 +47,14 @@ final class PaymentReportPendingReturnStrategy
             $p = $plan['parameters']; $r = $this->request($p, $context);
             if ($this->proof($r->id, 'pending-return-rollback')) $this->fail('reapply_requires_new_preview');
             if ($prior = $this->proof($r->id, 'pending-return-proof')) return ['ok' => true, 'already_applied' => true,
-                'snapshot' => json_decode($prior->snapshot, true, 512, JSON_THROW_ON_ERROR)];
+                'snapshot' => $this->replaySnapshot($prior, $p, true)];
             $before = $this->capture($p, true); $this->eligible($before, $p);
             if (!hash_equals($p['expected_state_hash'], $this->hash($before))) $this->fail('state_changed');
             DB::table('payment_reports')->where('id', $p['report_id'])->update(['status' => 'rejected',
                 'confirmed_by' => (int) substr($r->actor, 5), 'confirmed_at' => now(), 'updated_at' => now(), 'rejection_note' => $p['reason']]);
-            $s = ['parameters' => $p, 'before' => $before, 'after_hash' => $this->hash($this->capture($p, true))];
+            $after = $this->capture($p, true);
+            $s = ['parameters' => $p, 'before' => $before, 'after_hash' => $this->hash($after),
+                'after_report' => collect($after['reports'])->firstWhere('id', $p['report_id'])];
             $this->persist($r->id, 'pending-return-proof', $context, $s); $this->audit($p, $r->id, false);
             return ['ok' => true, 'snapshot' => $s];
         }, 3);
@@ -77,6 +80,15 @@ final class PaymentReportPendingReturnStrategy
             $this->persist($r->id, 'pending-return-rollback', $context, $s); $this->audit($p, $r->id, true);
             return ['ok' => true];
         }, 3);
+    }
+
+    private function replaySnapshot(object $proof, array $p, bool $lock): array
+    {
+        $s = json_decode($proof->snapshot, true, 512, JSON_THROW_ON_ERROR);
+        $current = collect($this->capture($p, $lock)['reports'])->firstWhere('id', $p['report_id']);
+        if (!hash_equals($this->hash($s['parameters']), $this->hash($p)) || !$current
+            || !hash_equals($this->hash($s['after_report']), $this->hash($current))) $this->fail('target_moved_on');
+        return $s;
     }
 
     private function capture(array $p, bool $lock): array
