@@ -23,7 +23,7 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             'new_total' => (int) $graph['course']['Charge']];
     }
 
-    public function plan(array $parameters): array
+    public function plan(array $parameters, array $context = []): array
     {
         try {
             // A process may stop after our atomic commit but before POP records phase=execute.
@@ -33,7 +33,7 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             if ($proof) {
                 $snapshot = json_decode($proof->snapshot, true, 512, JSON_THROW_ON_ERROR);
                 if ($this->proof($proof->operation_id, 'repair-proof-rollback')
-                    || !hash_equals($this->hash($snapshot['parameters']), $this->hash($parameters))) $this->fail('history_mismatch');
+                    || !hash_equals($this->hash($snapshot['parameters']), $this->hash($parameters)) || (isset($context['operation_id']) && $proof->operation_id !== $context['operation_id'])) $this->fail('history_mismatch');
                 return ['ok' => true, 'parameters' => $parameters, 'digest' => $parameters['expected_state_hash'], 'recoverable_proof' => $proof->id];
             }
             $preview = $this->preview($parameters);
