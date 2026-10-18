@@ -140,4 +140,58 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
         $this->assertSame(1, $svc->rollback($result['snapshot'], $ctx)['restored']);
         $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
     }
+
+    public function test_pop_recovers_after_strategy_commit_without_outer_execute_record(): void
+    {
+        $svc = app(Alignment::class); [$f, $p, $ctx] = $this->candidate(8000, 500);
+        $dir = sys_get_temp_dir().'/alignment-pop-'.Str::uuid(); mkdir($dir, 0700); mkdir($dir.'/policies', 0700);
+        try {
+            file_put_contents($dir.'/policies/default.yaml', "version: 1\n");
+            file_put_contents($dir.'/catalog.yaml', "version: 1\noperations:\n  synthetic-alignment:\n    lifecycle: active\n    strategy_class: ".Alignment::class."\n    parameter_keys: [".implode(', ', array_keys($p))."]\n    approval_required: true\n    approval_policy: critical-dual-approval\n    approver_roles: [director, super_admin]\n");
+            $pop = new PopOperationService(new \App\Operations\PopOperationCatalog($dir.'/catalog.yaml'));
+            $dry = $pop->runDryRun($ctx['operation_id'], 'synthetic-pop', null, 'director', [1]);
+            $this->assertTrue($dry['ok']); $sha = str_repeat('a', 40);
+            $first = $pop->approve($ctx['operation_id'], 'SYNTHETIC-DIRECTOR', 'reviewer-director', 'director', $sha, 900, [1]);
+            $this->assertFalse($first['ready']);
+            $approved = $pop->approve($ctx['operation_id'], 'SYNTHETIC-FOUNDER', 'reviewer-founder', 'super_admin', $sha, 901);
+            $this->assertTrue($approved['ready']);
+            $direct = $svc->execute($svc->plan($p), $ctx); // Process exits here, before outer phase=execute recording.
+            $this->assertSame(500, (int) $f['invoice']->fresh()->TotalAmount);
+            $this->assertFalse(DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->where('phase', 'execute')->exists());
+            $recovered = $pop->run($ctx['operation_id'], 'execute', $approved['token'], $sha, 'synthetic-pop');
+            $this->assertTrue($recovered['ok']); $this->assertTrue($recovered['already_applied']);
+            $this->assertSame('succeeded', $recovered['result']);
+            $this->assertEquals($direct['snapshot'], $recovered['snapshot']); // MySQL JSON normalizes numeric/object representation.
+            $verified = $pop->run($ctx['operation_id'], 'verify', $approved['token'], $sha, 'synthetic-pop');
+            $this->assertTrue($verified['ok']);
+            $rollback = $pop->run($ctx['operation_id'], 'rollback', $approved['token'], $sha, 'synthetic-pop');
+            $this->assertTrue($rollback['ok']); $this->assertSame('rolled_back', $rollback['result']);
+            $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
+            $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->where('phase', 'repair-proof')->count());
+
+            // A failed outer receipt must roll back the money AND the internal proof on a normal POP run.
+            [$secondFixture, $secondParameters, $secondContext] = $this->candidate(8000, 500);
+            $id = $secondContext['operation_id'];
+            $this->assertTrue($pop->runDryRun($id, 'synthetic-pop', null, 'director', [1])['ok']);
+            $pop->approve($id, 'SYNTHETIC-DIRECTOR', 'reviewer-director', 'director', $sha, 900, [1]);
+            $secondApproval = $pop->approve($id, 'SYNTHETIC-FOUNDER', 'reviewer-founder', 'super_admin', $sha, 901);
+            $fault = (object) ['armed' => true];
+            DB::listen(function ($q) use ($fault): void {
+                if ($fault->armed && str_starts_with($q->sql, 'insert ignore into `pop_execution_records`')
+                    && in_array('execute', $q->bindings, true)) {
+                    $fault->armed = false;
+                    throw new \RuntimeException('synthetic_outer_execution_receipt_failure');
+                }
+            });
+            $failed = $pop->run($id, 'execute', $secondApproval['token'], $sha, 'synthetic-pop');
+            $this->assertFalse($fault->armed, 'The fault must reach the outer execution writer');
+            $this->assertFalse($failed['ok']);
+            $this->assertSame(8000, (int) $secondFixture['invoice']->fresh()->TotalAmount);
+            $this->assertTrue($svc->plan($secondParameters)['ok']);
+            $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'repair-proof')->count());
+            $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->where('result', 'failed')->count());
+        } finally {
+            unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
+        }
+    }
 }

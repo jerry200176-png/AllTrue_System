@@ -26,6 +26,16 @@ final class UnpaidInvoiceChargeAlignmentStrategy
     public function plan(array $parameters): array
     {
         try {
+            // A process may stop after our atomic commit but before POP records phase=execute.
+            // Keep replay reachable through POP's planning gate using the retained proof.
+            $proof = DB::table('pop_execution_records')->where('id', $this->proofId($parameters, 'repair-proof'))
+                ->where('phase', 'repair-proof')->first();
+            if ($proof) {
+                $snapshot = json_decode($proof->snapshot, true, 512, JSON_THROW_ON_ERROR);
+                if ($this->proof($proof->operation_id, 'repair-proof-rollback')
+                    || !hash_equals($this->hash($snapshot['parameters']), $this->hash($parameters))) $this->fail('history_mismatch');
+                return ['ok' => true, 'parameters' => $parameters, 'digest' => $parameters['expected_state_hash'], 'recoverable_proof' => $proof->id];
+            }
             $preview = $this->preview($parameters);
             if (!hash_equals($preview['state_hash'], (string) ($parameters['expected_state_hash'] ?? ''))) $this->fail('state_changed');
             return ['ok' => true, 'parameters' => $parameters, 'digest' => $preview['state_hash']];
@@ -139,12 +149,19 @@ final class UnpaidInvoiceChargeAlignmentStrategy
 
     private function persistProof(object $request, array $context, string $phase, array $snapshot): void
     {
-        $id = (string) Str::uuid();
+        $id = $this->proofId($snapshot['parameters'], $phase);
         DB::table('pop_execution_records')->insert(['id' => $id, 'execution_id' => $id, 'operation_id' => $request->id,
             'phase' => $phase, 'result' => 'succeeded', 'idempotency_key' => $request->id.':'.$phase,
             'attempt_key' => $request->id.':'.$phase, 'correlation_id' => (string) Str::uuid(),
             'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'payload' => json_encode(['kind' => self::STRATEGY], JSON_THROW_ON_ERROR),
             'actor' => substr($context['actor'], 0, 128), 'created_at' => now()]);
+    }
+
+    private function proofId(array $parameters, string $phase): string
+    {
+        // Existing UUID primary index makes recovery a point lookup; no new financial DDL.
+        return \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_OID,
+            'alltrue:invoice-alignment:'.$phase.':'.$this->hash($parameters))->toString();
     }
 
     private function audit(array $p, string $id, string $event): void

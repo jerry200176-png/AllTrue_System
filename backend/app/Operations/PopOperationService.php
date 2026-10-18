@@ -346,7 +346,7 @@ final class PopOperationService
             if ($phase === 'execute') {
                 $strategy = app((string) $entry['strategy_class']);
 
-                return $this->record(
+                $executeAndRecord = fn () => $this->record(
                     $request,
                     $entry,
                     $parameters,
@@ -357,6 +357,11 @@ final class PopOperationService
                     $commitSha,
                     $this->durationMs($startedAt)
                 );
+                // This new repair's financial write and outer execution receipt must commit together.
+                // Keep existing strategies' transaction/external-effect contracts unchanged.
+                return $strategy instanceof Strategies\UnpaidInvoiceChargeAlignmentStrategy
+                    ? DB::transaction($executeAndRecord, 3)
+                    : $executeAndRecord();
             }
             $execution = $this->latest($request, 'execute');
             if (!$execution) {
