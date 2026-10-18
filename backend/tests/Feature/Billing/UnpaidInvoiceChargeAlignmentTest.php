@@ -255,6 +255,7 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'repair-proof-rollback')->count());
             $this->assertSame($retriedRollback, $pop->run($id, 'rollback', $thirdApproval['token'], $sha, 'synthetic-pop'));
             $this->assertSame(2, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'rollback')->count());
+            $this->refuse(fn () => $pop->run($id, 'verify', $thirdApproval['token'], $sha, 'synthetic-pop'), 'rollback'); $this->assertSame('rolled_back', DB::table('pop_operation_requests')->where('id', $id)->value('status'));
         } finally {
             $this->travelBack();
             unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);

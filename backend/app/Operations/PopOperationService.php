@@ -291,24 +291,16 @@ final class PopOperationService
     ): array
     {
         $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
-        if (!in_array($phase, ['execute', 'rollback'], true) || !$this->atomicFinancialRepair((string) $this->request($requestId)->strategy_id)) return $run();
+        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->atomicFinancialRepair((string) $this->request($requestId)->strategy_id)) return $run();
         // Serialize replay lookup, attempt allocation, mutation and its receipt for this request.
-        return DB::transaction(function () use ($requestId, $run): array {
+        return DB::transaction(function () use ($requestId, $phase, $run): array {
             DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
+            if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
             return $run();
         }, 3);
     }
 
-    private function runPhase(
-        string $requestId,
-        string $phase,
-        ?string $token = null,
-        ?string $commitSha = null,
-        string $actor = 'pop-runner',
-        ?int $actorId = null,
-        ?string $actorRole = null,
-        ?array $context = null
-    ): array
+    private function runPhase(string $requestId, string $phase, ?string $token = null, ?string $commitSha = null, string $actor = 'pop-runner', ?int $actorId = null, ?string $actorRole = null, ?array $context = null): array
     {
         $request = $this->request($requestId);
         if (!in_array($phase, ['dry-run', 'execute', 'verify', 'rollback'], true)) {
@@ -348,7 +340,7 @@ final class PopOperationService
         if ($existing) {
             return $existing;
         }
-        $plan = $this->safePlan($entry, $parameters);
+        $plan = $this->safePlan($entry, $parameters, (string) $request->id);
         // After a successful execute, later drift (new work arriving) must not make the repair unverifiable or un-rollbackable.
         $executed = in_array($phase, ['verify', 'rollback'], true) && DB::table('pop_execution_records')
             ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
@@ -1112,11 +1104,11 @@ final class PopOperationService
     }
 
     /** @param array<string,mixed> $entry @param array<string,mixed> $parameters @return array<string,mixed> */
-    private function safePlan(array $entry, array $parameters): array
+    private function safePlan(array $entry, array $parameters, string $requestId): array
     {
         try {
             $strategy = app((string) $entry['strategy_class']);
-            $plan = $strategy->plan($parameters);
+            $plan = $strategy->plan($parameters, ['operation_id' => $requestId]);
 
             return is_array($plan) ? $plan : ['ok' => false, 'errors' => ['strategy_plan_invalid']];
         } catch (Throwable) {
@@ -1144,7 +1136,7 @@ final class PopOperationService
         if ($existing) {
             return $existing;
         }
-        $plan = $this->safePlan($entry, $parameters);
+        $plan = $this->safePlan($entry, $parameters, (string) $request->id);
 
         return $this->recordDryRun($request, $entry, $parameters, $plan, $actor, $this->durationMs($startedAt), $actorId, $actorRole, $requestFingerprint);
     }
