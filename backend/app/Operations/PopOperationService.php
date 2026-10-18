@@ -230,7 +230,7 @@ final class PopOperationService
             $token = null;
             $expiresAt = null;
             if ($ready) {
-                $expiresAt = now()->addMinutes($ttlMinutes);
+                $expiresAt = $renewal ? Carbon::parse((string) $this->approvals($locked)->min('expires_at')) : now()->addMinutes($ttlMinutes);
                 $token = $this->sign($locked, $approvalPhase, $commitSha, $expiresAt->timestamp);
                 DB::table('pop_approval_events')
                     ->where('id', $approvalId)
