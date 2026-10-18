@@ -14,7 +14,6 @@ use Tests\TestCase;
 class UnpaidInvoiceChargeAlignmentTest extends TestCase
 {
     use AgreedFeeFixture, RefreshDatabase;
-
     private function candidate(int $old, int $new, bool $voidHistory = true): array
     {
         $f = $this->fixture();
@@ -44,13 +43,11 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
         } finally { unlink($catalogPath); }
         return [$f, $p, ['operation_id' => $id, 'actor' => 'synthetic-pop']];
     }
-
     private function refuse(callable $call, string $code): void
     {
         try { $call(); } catch (\RuntimeException $e) { $this->assertStringContainsString($code, $e->getMessage()); return; }
         $this->fail('Expected refusal '.$code);
     }
-
     public function test_three_target_shapes_align_only_invoice_and_keep_atomic_recovery_proof(): void
     {
         $svc = app(Alignment::class);
@@ -78,12 +75,11 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->refuse(fn () => $svc->execute($plan, $ctx), 'reapply_requires_new_request');
         }
     }
-
     public function test_foreign_owner_pending_unmatched_reversal_drift_and_request_tampering_refuse(): void
     {
         $svc = app(Alignment::class); [$f, $p, $ctx] = $this->candidate(8000, 8800);
         $foreign = $p; $foreign['campus_id'] = 2; $this->assertFalse($svc->plan($foreign)['ok']);
-        DB::beginTransaction(); try { DB::table('Invoice')->where('id', $p['invoice_id'])->update(['ScheduleModeAtIssue' => 'date']); $this->assertFalse($svc->plan($p)['ok']); } finally { DB::rollBack(); }
+        DB::beginTransaction(); try { DB::table('Invoice')->where('id', $p['invoice_id'])->update(['ScheduleModeAtIssue' => 'date']); $this->refuse(fn () => $svc->preview($p), 'unsupported_state'); $this->assertFalse($svc->plan($p)['ok']); } finally { DB::rollBack(); }
         $pending = $this->reportFor($f); $this->assertFalse($svc->plan($p)['ok']); $pending->delete();
         $extra = Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => -8000, 'Method' => 'void', 'PaidAt' => '2026-10-01']);
         $this->assertFalse($svc->plan($p)['ok']); $extra->delete();
@@ -95,7 +91,6 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
         $this->refuse(fn () => $svc->execute($tampered, $ctx), 'request_mismatch');
         $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
     }
-
     public function test_later_work_refuses_rollback_but_retains_replay_and_original_history(): void
     {
         $svc = app(Alignment::class); [$f, $p, $ctx] = $this->candidate(8000, 500, false);
@@ -108,7 +103,6 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
         $this->assertSame('pending', $pending->fresh()->status);
         $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->count());
     }
-
     public function test_replay_refuses_changed_or_deleted_target_invoice(): void
     {
         $svc = app(Alignment::class); [$f, $p, $ctx] = $this->candidate(8000, 500);
@@ -125,7 +119,6 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
         }
         $this->assertTrue($svc->execute($plan, $ctx)['already_applied']);
     }
-
     public function test_proof_or_required_audit_failure_rolls_back_invoice_change(): void
     {
         $svc = app(Alignment::class);
@@ -141,7 +134,6 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->count());
         }
     }
-
     public function test_proof_is_retained_when_rollback_evidence_cannot_be_written(): void
     {
         $svc = app(Alignment::class); [$f, $p, $ctx] = $this->candidate(8000, 500);
@@ -159,7 +151,6 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
         $this->assertSame(1, $svc->rollback($result['snapshot'], $ctx)['restored']);
         $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
     }
-
     public function test_pop_recovers_after_strategy_commit_without_outer_execute_record(): void
     {
         $svc = app(Alignment::class); [$f, $p, $ctx] = $this->candidate(8000, 500);
@@ -200,7 +191,6 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertTrue($rollback['ok']); $this->assertSame('rolled_back', $rollback['result']);
             $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
             $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->where('phase', 'repair-proof')->count());
-
             $this->travelBack();
             // A failed outer receipt must roll back the money AND the internal proof on a normal POP run.
             [$secondFixture, $secondParameters, $secondContext] = $this->candidate(8000, 500);
@@ -227,7 +217,6 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertTrue($retriedExecute['ok']); $this->assertSame(2, $retriedExecute['attempt_no']);
             $this->assertSame(500, (int) $secondFixture['invoice']->fresh()->TotalAmount);
             $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->where('result', 'failed')->count());
-
             [$thirdFixture, $thirdParameters, $thirdContext] = $this->candidate(8000, 500);
             $id = $thirdContext['operation_id'];
             $this->assertTrue($pop->runDryRun($id, 'synthetic-pop', null, 'director', [1])['ok']);
@@ -276,7 +265,6 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
         }
     }
-
     public function test_pre_rollback_request_cannot_reapply_after_invoice_values_are_restored(): void
     {
         $svc = app(Alignment::class); [$f, $p, $a] = $this->candidate(8000, 500);
@@ -292,7 +280,6 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
         $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
         $this->assertNotSame($p['expected_state_hash'], $svc->preview($p)['state_hash']);
     }
-
     public function test_initial_dry_run_returns_confirmation_parameters_and_cannot_execute(): void
     {
         [$f, $p, $ctx] = $this->candidate(8000, 500); $svc = app(Alignment::class);
@@ -302,5 +289,4 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
         $this->refuse(fn () => $svc->execute($preview, $ctx), 'plan_not_ready');
         $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
     }
-
 }

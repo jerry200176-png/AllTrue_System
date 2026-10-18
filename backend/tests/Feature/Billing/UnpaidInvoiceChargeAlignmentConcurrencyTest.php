@@ -13,9 +13,7 @@ use Tests\TestCase;
 class UnpaidInvoiceChargeAlignmentConcurrencyTest extends TestCase
 {
     use AgreedFeeFixture, RefreshDatabase;
-
     protected $connectionsToTransact = [];
-
     public function test_same_request_and_distinct_request_cannot_write_while_first_writer_holds_graph(): void
     {
         $primary = DB::getDefaultConnection();
