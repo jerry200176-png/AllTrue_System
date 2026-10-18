@@ -359,7 +359,7 @@ final class PopOperationService
                 );
                 // This new repair's financial write and outer execution receipt must commit together.
                 // Keep existing strategies' transaction/external-effect contracts unchanged.
-                return $strategy instanceof Strategies\UnpaidInvoiceChargeAlignmentStrategy
+                return $this->atomicFinancialRepair($strategy)
                     ? DB::transaction($executeAndRecord, 3)
                     : $executeAndRecord();
             }
@@ -369,17 +369,26 @@ final class PopOperationService
             }
             $payload = json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR);
             $strategy = app((string) $entry['strategy_class']);
-            $result = $phase === 'verify'
-                ? $strategy->verify($plan, $payload)
-                : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]);
-
-            return $this->record($request, $entry, $parameters, $phase, $result, $actor, $approval, $commitSha, $this->durationMs($startedAt));
+            $complete = function () use ($phase, $strategy, $plan, $payload, $request, $entry, $parameters, $actor, $approval, $commitSha, $startedAt): array {
+                $result = $phase === 'verify'
+                    ? $strategy->verify($plan, $payload)
+                    : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]);
+                return $this->record($request, $entry, $parameters, $phase, $result, $actor, $approval, $commitSha, $this->durationMs($startedAt));
+            };
+            return $phase === 'rollback' && $this->atomicFinancialRepair($strategy)
+                ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
             return $this->record($request, $entry, $parameters, $phase, [
                 'ok' => false,
                 'errors' => ['execution_failed'],
             ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
         }
+    }
+
+    private function atomicFinancialRepair(object $strategy): bool
+    {
+        return $strategy instanceof Strategies\UnpaidInvoiceChargeAlignmentStrategy
+            || $strategy instanceof Strategies\PaymentReversalRestatementStrategy;
     }
 
     /**

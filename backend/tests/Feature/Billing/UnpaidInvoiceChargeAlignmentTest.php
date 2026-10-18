@@ -190,6 +190,28 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertTrue($svc->plan($secondParameters)['ok']);
             $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'repair-proof')->count());
             $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->where('result', 'failed')->count());
+
+            [$thirdFixture, $thirdParameters, $thirdContext] = $this->candidate(8000, 500);
+            $id = $thirdContext['operation_id'];
+            $this->assertTrue($pop->runDryRun($id, 'synthetic-pop', null, 'director', [1])['ok']);
+            $pop->approve($id, 'SYNTHETIC-DIRECTOR', 'reviewer-director', 'director', $sha, 900, [1]);
+            $thirdApproval = $pop->approve($id, 'SYNTHETIC-FOUNDER', 'reviewer-founder', 'super_admin', $sha, 901);
+            $this->assertTrue($pop->run($id, 'execute', $thirdApproval['token'], $sha, 'synthetic-pop')['ok']);
+            $rollbackFault = (object) ['armed' => true];
+            DB::listen(function ($q) use ($rollbackFault): void {
+                if ($rollbackFault->armed && str_starts_with($q->sql, 'insert ignore into `pop_execution_records`')
+                    && in_array('rollback', $q->bindings, true)) {
+                    $rollbackFault->armed = false;
+                    throw new \RuntimeException('synthetic_outer_rollback_receipt_failure');
+                }
+            });
+            $failedRollback = $pop->run($id, 'rollback', $thirdApproval['token'], $sha, 'synthetic-pop');
+            $this->assertFalse($rollbackFault->armed);
+            $this->assertFalse($failedRollback['ok']);
+            $this->assertSame(500, (int) $thirdFixture['invoice']->fresh()->TotalAmount, 'Failed outer rollback receipt must undo the attempted restore');
+            $this->assertTrue($svc->plan($thirdParameters)['ok']);
+            $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'repair-proof-rollback')->count());
+            $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'rollback')->where('result', 'failed')->count());
         } finally {
             unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
         }
