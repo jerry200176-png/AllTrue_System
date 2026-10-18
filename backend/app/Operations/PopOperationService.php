@@ -258,6 +258,26 @@ final class PopOperationService
         });
     }
 
+    /** Read-only phase receipt, never parameters, snapshots, approvers or approval tokens. */
+    public function statusForActor(string $requestId, string $role, array $campusIds): array
+    {
+        $request = $this->request($requestId);
+        $p = json_decode($request->parameters, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertCampusScope($p, $role, $campusIds);
+        $query = DB::table('pop_execution_records')->where('operation_id', $requestId)
+            ->whereIn('phase', ['dry-run', 'execute', 'verify', 'rollback'])->select(['phase', 'result', 'execution_id', 'commit_sha']);
+        // created_at has second precision: select the phase consistent with the authoritative request status.
+        $phase = match ($request->status) {
+            'succeeded', 'verification_failed' => 'verify', 'verifying' => 'execute', 'rolled_back' => 'rollback', default => null,
+        };
+        if ($phase) $query->where('phase', $phase);
+        if ($request->status === 'failed') $query->where('result', 'failed');
+        $record = $query->orderByDesc('created_at')->orderByDesc('attempt_no')->first();
+        return ['request_id' => $requestId, 'operation_id' => $request->operation_id, 'status' => $request->status,
+            'phase' => $record?->phase, 'result' => $record?->result, 'execution_id' => $record?->execution_id,
+            'commit_sha' => $record?->commit_sha];
+    }
+
     /** Run the authenticated, read-only planning phase for the control plane. */
     /** @param array<int,int> $actorCampusIds */
     public function runDryRun(

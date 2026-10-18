@@ -174,4 +174,30 @@ class PaymentReportPendingReturnTest extends TestCase
             unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
         }
     }
+
+    public function test_initial_authenticated_http_preview_is_read_only_and_requires_new_confirmed_draft(): void
+    {
+        [$f, $p] = $this->candidate(); $p['expected_state_hash'] = ''; $headers = ['Authorization' => 'Bearer '.$f['token']];
+        $draft = fn ($p) => $this->postJson('/api/v1/pop/operations/'.ReturnReport::OPERATION.'/draft',
+            ['parameters' => $p, 'idempotency_key' => (string) Str::uuid()], $headers)->assertCreated()->json('data.id');
+        $id = $draft($p); $preview = $this->postJson('/api/v1/pop/operations/requests/'.$id.'/dry-run', [], $headers)->assertStatus(422)->json('data.plan');
+        $this->assertFalse($preview['ok']); $this->assertSame('preview_confirmation_required', $preview['errors'][0]);
+        $id = $draft($preview['preview_parameters']);
+        $this->postJson('/api/v1/pop/operations/requests/'.$id.'/dry-run', [], $headers)->assertOk()->assertJsonPath('data.ok', true);
+        $this->assertSame('pending', $f['pending']->fresh()->status);
+    }
+
+    public function test_read_only_status_is_campus_scoped_and_never_returns_private_proof_or_token(): void
+    {
+        [$f, $p] = $this->candidate(); $ctx = $this->context($f, $p); $url = '/api/v1/pop/operations/requests/'.$ctx['operation_id'].'/status';
+        $headers = ['Authorization' => 'Bearer '.$f['token']];
+        $data = $this->getJson($url, $headers)->assertOk()->json('data');
+        $this->assertSame('approved', $data['status']);
+        $this->assertSame(['request_id', 'operation_id', 'status', 'phase', 'result', 'execution_id', 'commit_sha'], array_keys($data));
+        DB::table('UserCampus')->where('UserID', $f['user']->id)->update(['CampusID' => 2]);
+        $this->getJson($url, $headers)->assertForbidden();
+        DB::table('UserCampus')->where('UserID', $f['user']->id)->delete(); $this->getJson($url, $headers)->assertForbidden();
+        $f['user']->update(['type' => 'S']); $this->getJson($url, $headers)->assertOk();
+        $this->getJson($url, ['Authorization' => 'Bearer invalid-fixture-token'])->assertUnauthorized();
+    }
 }

@@ -27,7 +27,14 @@ final class PaymentReportPendingReturnStrategy
             $proof = DB::table('pop_execution_records')->where('id', $this->proofId($p, 'pending-return-proof'))->first();
             if ($proof) {
                 if ($this->proof($proof->operation_id, 'pending-return-rollback')) $this->fail('reapply_requires_new_preview');
-            } elseif (!hash_equals($p['expected_state_hash'] ?? '', $this->preview($p))) $this->fail('state_changed');
+            } else {
+                $hash = $this->preview($p);
+                if (($p['expected_state_hash'] ?? '') === '') {
+                    $p['expected_state_hash'] = $hash;
+                    return ['ok' => false, 'errors' => ['preview_confirmation_required'], 'preview_parameters' => $p];
+                }
+                if (!hash_equals($p['expected_state_hash'] ?? '', $hash)) $this->fail('state_changed');
+            }
             return ['ok' => true, 'parameters' => $p];
         } catch (Throwable) { return ['ok' => false, 'errors' => ['pending_return_precondition_failed']]; }
     }
