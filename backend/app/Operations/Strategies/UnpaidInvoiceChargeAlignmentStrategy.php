@@ -162,7 +162,6 @@ final class UnpaidInvoiceChargeAlignmentStrategy
     }
     private function proofId(array $parameters, string $phase): string
     {
-        // Existing UUID primary index makes recovery a point lookup; no new financial DDL.
         return \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_OID,
             'alltrue:invoice-alignment:'.$phase.':'.$this->hash($parameters))->toString();
     }
