@@ -151,6 +151,7 @@ class PaymentReversalRestatementTest extends TestCase
         $this->assertSame('rolled_back', $svc->rollback($result['restatement_id'], $f['actor'])['state']);
         $this->assertSame($beforePayment, (array) DB::table('Payment')->where('id', $f['extra']->id)->first());
         $this->assertSame('already_rolled_back', $svc->rollback($result['restatement_id'], $f['actor'])['state']);
+        $next = $f['invoice']->replicate(); $next->save(); try { $this->assertSame('already_rolled_back', $svc->rollback($result['restatement_id'], $f['actor'])['state']); } finally { $next->delete(); }
         foreach (['edit', 'delete'] as $change) { DB::beginTransaction(); try { $q = DB::table('Payment')->where('id', $f['extra']->id); $change === 'edit' ? $q->update(['Note' => 'restored target drift']) : $q->delete(); $this->refused(fn () => $svc->rollback($result['restatement_id'], $f['actor']), 'target_moved_on'); } finally { DB::rollBack(); } }
         $this->refused(fn () => $this->execute($svc, $plan, $f['actor'], 'SYNTHETIC-RESTATEMENT', $op), 'reapply_requires_new_decision');
         $this->assertSame(1, DB::table('pop_execution_records')->where('phase', 'reversal-proof')->where('snapshot->payment_id', $f['extra']->id)->count());

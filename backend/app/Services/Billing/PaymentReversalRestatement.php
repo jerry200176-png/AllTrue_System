@@ -68,12 +68,11 @@ final class PaymentReversalRestatement
             $s = json_decode($record->snapshot, true, 512, JSON_THROW_ON_ERROR);
             $this->request($record->operation_id, $s['request_parameters']);
             $scope = $s['scope']; $this->authorize($scope, $actor, true);
-            $graph = $this->capture($scope, $actor, true);
             if ($this->proof($record->operation_id, 'reversal-proof-rollback')) {
-                $target = $this->payment($graph, $scope['payment_id']);
-                if (!$target || !hash_equals(self::hash($s['before_payment']), self::hash($target))) $this->fail('target_moved_on');
+                $this->assertReplay($record, $s['request_parameters'], true, true);
                 return ['state' => 'already_rolled_back'];
             }
+            $graph = $this->capture($scope, $actor, true);
             if (!hash_equals($s['after_state_hash'], self::hash($graph))) $this->fail('values_moved_on');
             $before = $s['before_payment']; $restored = $graph;
             foreach ($restored['payments'] as &$row) if ((int) $row['id'] === (int) $scope['payment_id']) $row = $before;
@@ -155,14 +154,14 @@ final class PaymentReversalRestatement
         return $out;
     }
 
-    private function assertReplay(object $record, array $parameters, bool $lock): void
+    private function assertReplay(object $record, array $parameters, bool $lock, bool $restored = false): void
     {
         $s = json_decode($record->snapshot, true, 512, JSON_THROW_ON_ERROR);
         if (!hash_equals(self::hash($s['request_parameters']), self::hash($parameters))) $this->fail('history_mismatch');
         $scope = $parameters['plan']['scope'];
         $row = DB::table('Payment')->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')->where('Payment.id', $scope['payment_id'])->where('Invoice.id', $scope['invoice_id'])
             ->where('Invoice.StudentID', $scope['student_id'])->where('Invoice.StudentClassID', $scope['course_id'])->when($lock, fn ($q) => $q->lockForUpdate())->first(['Payment.*']);
-        if (!$row || !hash_equals(self::hash($s['after_payment']), self::hash((array) $row))) $this->fail('target_moved_on');
+        if (!$row || !hash_equals(self::hash($s[$restored ? 'before_payment' : 'after_payment']), self::hash((array) $row))) $this->fail('target_moved_on');
     }
 
     private function proofId(array $p, string $phase): string
