@@ -150,7 +150,7 @@ final class UnpaidInvoiceChargeAlignmentStrategy
     private function audit(array $p, string $id, string $event): void
     {
         SecurityAuditEvent::append($event, 'success', ['actor_type' => 'pop-runner', 'campus_id' => $p['campus_id'],
-            'subject_type' => 'invoice', 'subject_id' => $p['invoice_id'], 'correlation_id' => (string) Str::uuid()],
+            'subject_type' => 'invoice', 'subject_id' => $p['invoice_id'], 'correlation_id' => $id],
             ['operation_id' => $id, 'reason_code' => $p['decision_reference'], 'row_count' => 1], true);
     }
 

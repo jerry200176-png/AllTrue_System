@@ -106,12 +106,12 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
     {
         $svc = app(Alignment::class);
         foreach (['pop_execution_records', 'security_audit_events'] as $table) {
-            [$f, $p, $ctx] = $this->candidate(8000, 500); $plan = $svc->plan($p); $active = true;
-            DB::listen(function ($q) use ($table, &$active) {
-                if ($active && str_starts_with($q->sql, 'insert into `'.$table.'`')) throw new \RuntimeException('synthetic_write_failure');
+            [$f, $p, $ctx] = $this->candidate(8000, 500); $plan = $svc->plan($p); $fault = (object) ['active' => true];
+            DB::listen(function ($q) use ($table, $fault) {
+                if ($fault->active && str_starts_with($q->sql, 'insert into `'.$table.'`')) throw new \RuntimeException('synthetic_write_failure:'.$table);
             });
-            try { $this->refuse(fn () => $svc->execute($plan, $ctx), 'synthetic_write_failure'); }
-            finally { $active = false; }
+            try { $this->refuse(fn () => $svc->execute($plan, $ctx), 'synthetic_write_failure:'.$table); }
+            finally { $fault->active = false; }
             $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
             $this->assertTrue($svc->plan($p)['ok']);
             $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->count());
