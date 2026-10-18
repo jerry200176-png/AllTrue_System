@@ -1844,3 +1844,9 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：投影前先保留 stored counters，回傳 canonical 顯示值時仍須以 stored-versus-canonical 判定 `review_required`；營運收入風險不得把 canonical 已耗盡的整堂課列為 stranded，但資料品質警示必須保留。部分分鐘餘額仍是權威，不得套用整堂排除。
 - **安全邊界**：GET、摘要與診斷只能讀取和標示，不得自動更改課程、出席、扣堂或付款資料；跨校摘要必須維持 campus scope，批次診斷不可退化成逐課 N+1。
 - **測試必補**：同一筆 stored 餘額漂移要同時證明 Critical 消失、對帳警示仍在、API 顯示 canonical 餘額並回傳 stored 診斷，而且資料庫原值不變；另以部分分鐘案例證明不會被錯誤排除。
+
+- **#4253 isolated full-stack bootstrap**: checking only bootstrap/cache/config.php
+  misses APP_CONFIG_CACHE redirects. Refuse alternate cache paths before Laravel
+  bootstraps; verify rejection before a provider canary, then prove guarded real
+  migration/replay on the existing ephemeral synthetic DB wrapper. Env and loaded
+  DSN checks must run in the same process as Migrator, before provider registration.
