@@ -2,8 +2,12 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Tests\Support\PaymentReportRaceWorker;
 use Tests\TestCase;
+
+require_once __DIR__.'/../Support/alltrueTestDatabase.php';
 
 /** #4254: subprocess configuration must preserve the validated target and signing key. */
 class PaymentRaceWorkerSafetyTest extends TestCase
@@ -40,5 +44,14 @@ class PaymentRaceWorkerSafetyTest extends TestCase
         $worker = $this->raceSpawn(base_path('tests/Support/payment-race-payload-probe.php'), []);
         $body = $this->raceFinish($worker)['body'];
         $this->assertSame(hash_hmac('sha256', 'race-probe', config('app.key')), $body['key_proof']);
+    }
+
+    public function test_mariadb_uses_the_existing_tx_isolation_fallback(): void
+    {
+        DB::shouldReceive('selectOne')->once()->with('SELECT @@transaction_isolation AS level')
+            ->andThrow(new QueryException('SELECT @@transaction_isolation AS level', [], new \PDOException('Unknown system variable')));
+        DB::shouldReceive('selectOne')->once()->with('SELECT @@tx_isolation AS level')
+            ->andReturn((object) ['level' => 'REPEATABLE-READ']);
+        $this->assertSame('REPEATABLE-READ', alltrue_race_isolation_level());
     }
 }
