@@ -351,18 +351,15 @@ class PaymentReportController extends Controller
 
         $userId = $request->attributes->get('auth_user_id');
         $confirmationNote = trim((string) $request->input('note', ''));
+        // Routing id only — must not run inside the transaction (would start an RR
+        // consistent-read snapshot before waiting on the course lock).
+        $courseId = $this->resolveReportCourseId((int) $id);
 
-        return DB::transaction(function () use ($id, $userId, $confirmationNote) {
-            // Serialize confirmation attempts for the same report. This keeps a retry
-            // after a lost response from creating a second Payment.
-            $report = PaymentReport::query()
-                ->whereKey($id)
-                ->lockForUpdate()
-                ->first();
-
-            if (!$report) {
-                abort(404);
-            }
+        return DB::transaction(function () use ($id, $courseId, $userId, $confirmationNote) {
+            // Global lock order with BillingCorrection::applyCountCorrection and void:
+            // StudentClass → payment_reports (never report-first). Serializes confirm retries
+            // after a lost response so a second Payment cannot be created.
+            [$sc, $report] = $this->lockCourseThenReport((int) $id, $courseId);
 
             if ($report->status !== 'pending') {
                 return response()->json(['message' => '此回報已處理過'], 422);
@@ -378,8 +375,6 @@ class PaymentReportController extends Controller
             $note = $confirmationNote !== ''
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));
-            // Lock the course so a concurrent 確認不收 cannot interleave with this confirmation.
-            $sc = StudentClass::query()->whereKey($report->StudentClassID)->lockForUpdate()->first();
             if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能再確認回報')) {
                 return $refusal;
             }
@@ -1062,6 +1057,48 @@ class PaymentReportController extends Controller
     }
 
     /**
+     * Plain routing lookup — call only outside DB::transaction.
+     * A non-locking SELECT inside the write txn would establish the REPEATABLE-READ
+     * consistent-read snapshot before this connection waits on the course lock, so a
+     * peer confirm that commits while we wait would be invisible to later resolver
+     * non-locking reads (invoice/payments) even though locking invoice reads see it.
+     */
+    private function resolveReportCourseId(int $reportId): int
+    {
+        $courseId = (int) PaymentReport::query()->whereKey($reportId)->value('StudentClassID');
+        if ($courseId <= 0) {
+            abort(404);
+        }
+
+        return $courseId;
+    }
+
+    /**
+     * Shared course-first confirm/void lock prefix — must stay aligned with
+     * BillingCorrection::applyCountCorrection (course, then payment_reports).
+     * $courseId must already be resolved outside the transaction; after both locks,
+     * re-check report StudentClassID / presence (status checked by callers).
+     *
+     * @return array{0: ?StudentClass, 1: PaymentReport}
+     */
+    private function lockCourseThenReport(int $reportId, int $courseId): array
+    {
+        $sc = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
+        $report = PaymentReport::query()->whereKey($reportId)->lockForUpdate()->first();
+        if (!$report instanceof PaymentReport) {
+            abort(404);
+        }
+        if ((int) $report->getAttribute('StudentClassID') !== $courseId) {
+            abort(response()->json([
+                'message' => '課程歸屬已變更，請重新整理',
+                'code' => 'report_course_changed',
+            ], 409));
+        }
+
+        return [$sc, $report];
+    }
+
+    /**
      * F7 S6 (B9): duplicate-payment guard on the BillingPayableResolver, not "any paid invoice" / raw Charge / SUM(PaidAmount).
      * Blocks `paid` and `free`; partial (the remainder may be recorded), unbilled, review_required and a plain unpaid
      * course may take a payment. Package members follow the resolver (a paid package counts while no non-void invoice exists).
@@ -1324,11 +1361,44 @@ class PaymentReportController extends Controller
         }
 
         $userId = $request->attributes->get('auth_user_id');
+        // Routing id only — outside the write transaction so waiting on the course
+        // lock cannot inherit a stale REPEATABLE-READ snapshot from a plain SELECT.
+        $courseId = $this->resolveReportCourseId((int) $id);
 
-        return DB::transaction(function () use ($report, $userId, $data) {
-            $originalAmount = (int) abs((float) $report->reported_amount);
+        return DB::transaction(function () use ($id, $courseId, $userId, $data, $role, $campusIds) {
+            // Align with BillingCorrection (StudentClass → payment_reports).
+            // A delayed request must not reuse its pre-transaction status.
+            [$sc, $report] = $this->lockCourseThenReport((int) $id, $courseId);
+            if ($report->getAttribute('status') !== 'confirmed') {
+                return response()->json(['message' => '此收款已處理過，請重新整理'], 422);
+            }
+            $campusId = (int) DB::table('Student')->where('id', $report->getAttribute('StudentID'))->value('CampusID');
+            if ($campusId <= 0 || ($role !== 'super_admin' && !in_array($campusId, $campusIds, true))) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+            $originalAmount = (int) abs((float) $report->getAttribute('reported_amount'));
+            $reportStudentId = (int) $report->getAttribute('StudentID');
 
-            $invoice = $report->InvoiceID ? Invoice::find($report->InvoiceID) : null;
+            // Ownership before any write: course must exist and match the report student.
+            // Non-null InvoiceID that cannot be loaded must refuse (do not clear Paid on a missing bill).
+            // Legitimate null-InvoiceID legacy path is allowed only when course/report ownership already matches.
+            if (!$sc || (int) $sc->StudentID !== $reportStudentId) {
+                return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
+            }
+
+            $invoiceId = $report->getAttribute('InvoiceID');
+            $invoice = null;
+            // Strict non-null: InvoiceID=0 must not take the legacy null path (truthy check would).
+            if ($invoiceId !== null) {
+                $invoice = Invoice::query()->whereKey($invoiceId)->lockForUpdate()->first();
+                if (!$invoice
+                    || (string) $invoice->Status === 'void'
+                    || (int) $invoice->StudentClassID !== (int) $sc->ID
+                    || (int) $invoice->StudentID !== $reportStudentId) {
+                    return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
+                }
+                $invoice->payments()->lockForUpdate()->get();
+            }
 
             if ($invoice) {
                 Payment::create([
@@ -1337,7 +1407,7 @@ class PaymentReportController extends Controller
                     'PaidAt'            => Carbon::today()->toDateString(),
                     'Method'            => 'void',
                     'Note'              => $data['void_reason'],
-                    'payment_report_id' => $report->id,
+                    'payment_report_id' => $report->getAttribute('id'),
                 ]);
 
                 $newPaid = max(0, (int) $invoice->PaidAmount - $originalAmount);
@@ -1348,16 +1418,14 @@ class PaymentReportController extends Controller
                 ]);
             }
 
-            $sc = StudentClass::find($report->StudentClassID);
             $scPaid = 0;
-            if ($sc) {
-                // F7 S7: recompute from the resolver; no invoice or no longer paid (partial or unpaid) clears the flag.
-                if ($invoice && $this->courseResolvedPaid($sc)) {
-                    $scPaid = (int) $sc->Paid;
-                } else {
-                    $reopen = $sc->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
-                    $sc->update(['Paid' => 0, 'PayDate' => null] + $reopen);
-                }
+            // F7 S7: recompute from the resolver; no invoice or no longer paid (partial or unpaid) clears the flag.
+            // $sc already required above (missing/mismatched course returns void_invoice_mismatch).
+            if ($invoice && $this->courseResolvedPaid($sc)) {
+                $scPaid = (int) $sc->Paid;
+            } else {
+                $reopen = $sc->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
+                $sc->update(['Paid' => 0, 'PayDate' => null] + $reopen);
             }
 
             $report->update([
@@ -1368,17 +1436,17 @@ class PaymentReportController extends Controller
             ]);
 
             Log::info('[PaymentVoid]', [
-                'report_id'        => $report->id,
-                'payment_id'       => $report->payment_id,
+                'report_id'        => $report->getAttribute('id'),
+                'payment_id'       => $report->getAttribute('payment_id'),
                 'user_id'          => $userId,
                 'void_reason'      => $data['void_reason'],
-                'student_class_id' => $report->StudentClassID,
+                'student_class_id' => $report->getAttribute('StudentClassID'),
                 'amount'           => $originalAmount,
             ]);
 
             return response()->json([
                 'message'            => '已撤銷收款',
-                'report_id'          => $report->id,
+                'report_id'          => $report->getAttribute('id'),
                 'invoice_status'     => $invoice->Status ?? null,
                 'student_class_paid' => $scPaid,
             ]);

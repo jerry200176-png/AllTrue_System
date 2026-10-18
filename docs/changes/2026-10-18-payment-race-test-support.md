@@ -1,6 +1,6 @@
-# Isolated payment race test support
-
-silent_ship: true
+## 2026-10-18 — test(billing): Isolated payment race test support
+<!-- release-notes: silent_ship=silent-2026-10-18-payment-race-test-support -->
+<!-- silent-reason: Test-only subprocess and database-safety support; no staff-facing behavior. -->
 
 Extract the synthetic database allowlist and bounded two-process race helpers
 from #4248 before landing the billing lock repair. Source: `265d4717b148a8761820a4275043e403b17977bc`.
