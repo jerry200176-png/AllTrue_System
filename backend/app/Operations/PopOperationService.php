@@ -272,7 +272,8 @@ final class PopOperationService
         };
         if ($phase) $query->where('phase', $phase);
         if ($request->status === 'failed') $query->where('result', 'failed');
-        $record = $query->orderByDesc('created_at')->orderByDesc('attempt_no')->first();
+        // Equal-second failures follow phase progression; attempt numbers are local to one phase.
+        $record = $query->orderByDesc('created_at')->orderByRaw("CASE phase WHEN 'rollback' THEN 4 WHEN 'verify' THEN 3 WHEN 'execute' THEN 2 ELSE 1 END DESC")->orderByDesc('attempt_no')->first();
         return ['request_id' => $requestId, 'operation_id' => $request->operation_id, 'status' => $request->status,
             'phase' => $record?->phase, 'result' => $record?->result, 'execution_id' => $record?->execution_id,
             'commit_sha' => $record?->commit_sha];
@@ -303,6 +304,26 @@ final class PopOperationService
 
     /** @return array<string,mixed> */
     public function run(
+        string $requestId,
+        string $phase,
+        ?string $token = null,
+        ?string $commitSha = null,
+        string $actor = 'pop-runner',
+        ?int $actorId = null,
+        ?string $actorRole = null,
+        ?array $context = null
+    ): array
+    {
+        $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
+        if (!in_array($phase, ['execute', 'rollback'], true) || !$this->atomicFinancialRepair((string) $this->request($requestId)->strategy_id)) return $run();
+        // Serialize replay lookup, attempt allocation, mutation and its receipt for this request.
+        return DB::transaction(function () use ($requestId, $run): array {
+            DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
+            return $run();
+        }, 3);
+    }
+
+    private function runPhase(
         string $requestId,
         string $phase,
         ?string $token = null,
@@ -351,7 +372,7 @@ final class PopOperationService
         if ($existing) {
             return $existing;
         }
-        $plan = $this->safePlan($entry, $parameters);
+        $plan = $this->safePlan($entry, $parameters, (string) $request->id);
         // After a successful execute, later drift (new work arriving) must not make the repair unverifiable or un-rollbackable.
         $executed = in_array($phase, ['verify', 'rollback'], true) && DB::table('pop_execution_records')
             ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
@@ -367,7 +388,7 @@ final class PopOperationService
             if ($phase === 'execute') {
                 $strategy = app((string) $entry['strategy_class']);
 
-                return $this->record(
+                $executeAndRecord = fn () => $this->record(
                     $request,
                     $entry,
                     $parameters,
@@ -378,6 +399,11 @@ final class PopOperationService
                     $commitSha,
                     $this->durationMs($startedAt)
                 );
+                // This new repair's financial write and outer execution receipt must commit together.
+                // Keep existing strategies' transaction/external-effect contracts unchanged.
+                return $this->atomicFinancialRepair($strategy)
+                    ? DB::transaction($executeAndRecord, 3)
+                    : $executeAndRecord();
             }
             $execution = $this->latest($request, 'execute');
             if (!$execution) {
@@ -385,17 +411,29 @@ final class PopOperationService
             }
             $payload = json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR);
             $strategy = app((string) $entry['strategy_class']);
-            $result = $phase === 'verify'
-                ? $strategy->verify($plan, $payload)
-                : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]);
-
-            return $this->record($request, $entry, $parameters, $phase, $result, $actor, $approval, $commitSha, $this->durationMs($startedAt));
+            $complete = function () use ($phase, $strategy, $plan, $payload, $request, $entry, $parameters, $actor, $approval, $commitSha, $startedAt): array {
+                $result = $phase === 'verify'
+                    ? $strategy->verify($plan, $payload)
+                    : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]);
+                return $this->record($request, $entry, $parameters, $phase, $result, $actor, $approval, $commitSha, $this->durationMs($startedAt));
+            };
+            return $phase === 'rollback' && $this->atomicFinancialRepair($strategy)
+                ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
             return $this->record($request, $entry, $parameters, $phase, [
                 'ok' => false,
                 'errors' => ['execution_failed'],
             ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
         }
+    }
+
+    private function atomicFinancialRepair(object|string $strategy): bool
+    {
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, [
+            'App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy',
+            'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy',
+            'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy',
+        ], true);
     }
 
     /**
@@ -1108,11 +1146,12 @@ final class PopOperationService
     }
 
     /** @param array<string,mixed> $entry @param array<string,mixed> $parameters @return array<string,mixed> */
-    private function safePlan(array $entry, array $parameters): array
+    private function safePlan(array $entry, array $parameters, string $requestId): array
     {
         try {
             $strategy = app((string) $entry['strategy_class']);
-            $plan = $strategy->plan($parameters);
+            $plan = $entry['strategy_class'] === 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy'
+                ? $strategy->plan($parameters, ['operation_id' => $requestId]) : $strategy->plan($parameters);
 
             return is_array($plan) ? $plan : ['ok' => false, 'errors' => ['strategy_plan_invalid']];
         } catch (Throwable) {
@@ -1140,7 +1179,7 @@ final class PopOperationService
         if ($existing) {
             return $existing;
         }
-        $plan = $this->safePlan($entry, $parameters);
+        $plan = $this->safePlan($entry, $parameters, (string) $request->id);
 
         return $this->recordDryRun($request, $entry, $parameters, $plan, $actor, $this->durationMs($startedAt), $actorId, $actorRole, $requestFingerprint);
     }
@@ -1186,7 +1225,7 @@ final class PopOperationService
         $idempotencyKey = $request->idempotency_key . ':' . $phase;
         $attemptNo = 1;
         $attemptKey = $idempotencyKey;
-        if ($phase === 'dry-run') {
+        if ($phase === 'dry-run' || (in_array($phase, ['execute', 'rollback'], true) && $this->atomicFinancialRepair((string) $request->strategy_id))) {
             $attemptNo = ((int) DB::table('pop_execution_records')
                 ->where('operation_id', $request->id)
                 ->where('phase', $phase)
@@ -1333,6 +1372,12 @@ final class PopOperationService
 
     private function existing(object $request, string $phase): ?array
     {
+        if (in_array($phase, ['execute', 'rollback'], true) && $this->atomicFinancialRepair((string) $request->strategy_id)) {
+            $row = DB::table('pop_execution_records')->where('operation_id', $request->id)
+                ->where('phase', $phase)->where('result', $this->resultFor($phase, true, null))->orderByDesc('attempt_no')->first();
+            return $row ? json_decode((string) $row->payload, true, 512, JSON_THROW_ON_ERROR)
+                + ['execution_id' => $row->execution_id, 'phase' => $phase] : null;
+        }
         $row = $phase === 'dry-run'
             ? DB::table('pop_execution_records')
                 ->where('operation_id', $request->id)
