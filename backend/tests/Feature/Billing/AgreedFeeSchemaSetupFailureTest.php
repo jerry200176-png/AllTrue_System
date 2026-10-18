@@ -28,7 +28,8 @@ class AgreedFeeSchemaSetupFailureTest extends TestCase
         $connection->shouldReceive('getDatabaseName')->andReturn('AllTrue_test');
         $connection->shouldReceive('transactionLevel')->andReturn(0);
         DB::shouldReceive('connection')->andReturn($connection);
-        $schema->shouldReceive('hasTable')->andReturn(true);
+        $schema->shouldReceive('hasTable')->with('invoice_corrections')->andReturn(true);
+        $schema->shouldReceive('hasTable')->with('Subject')->andReturn(false);
         $schema->shouldReceive('hasColumns')->andReturn(false);
         $schema->shouldReceive('getColumnListing')->andReturn([]);
         DB::shouldReceive('statement')->once()->andReturnUsing(function () {
