@@ -31,6 +31,7 @@ class UnpaidInvoiceChargeAlignmentConcurrencyTest extends TestCase
         $this->assertSame('REPEATABLE-READ', $iso);
         $svc = app(Alignment::class);
         foreach ([true, false] as $sameRequest) {
+            $other = $this->fixture(); $other['student']->update(['CampusID' => 2]); $otherReport = $this->reportFor($other);
             $f = $this->fixture(); $requests = []; $barrier = (object) ['enabled' => false, 'attempted' => false, 'blocked' => false];
             try {
                 $f['course']->update(['Charge' => 500]); $f['invoice']->update(['TotalAmount' => 8000]);
@@ -48,8 +49,11 @@ class UnpaidInvoiceChargeAlignmentConcurrencyTest extends TestCase
                 }
                 $plan = $svc->plan($p); $aCtx = ['actor' => 'synthetic-pop', 'operation_id' => $requests[0]];
                 $bCtx = ['actor' => 'synthetic-pop', 'operation_id' => $requests[count($requests) - 1]];
-                $probe = (object) ['table' => 'StudentClass', 'blocked' => false];
-                DB::listen(function ($q) use ($probe, $b, $f): void {
+                $probe = (object) ['table' => 'StudentClass', 'blocked' => false, 'otherWrote' => false];
+                DB::listen(function ($q) use ($probe, $b, $f, $other, $otherReport): void {
+                    if (!$probe->otherWrote && str_contains($q->sql, 'from `payment_reports`') && str_contains($q->sql, 'for update')) {
+                        $probe->otherWrote = true; $b->transaction(function () use ($b, $other, $otherReport): void { $b->table('Student')->where('id', $other['student']->id)->lockForUpdate()->first(); $b->table('StudentClass')->where('ID', $other['course']->ID)->lockForUpdate()->first(); $this->assertSame(1, $b->table('payment_reports')->where('id', $otherReport->id)->update(['rejection_note' => 'unrelated campus writer'])); });
+                    }
                     if (!$probe->table || !str_contains($q->sql, 'from `'.$probe->table.'`') || !str_contains($q->sql, 'for update')) return;
                     $probe->table = null;
                     try { $b->transaction(fn () => $b->table('Student')->where('id', $f['student']->id)->lockForUpdate()->first()); $this->fail('An invoice/payment writer must wait at Student before reaching its course'); }
@@ -69,7 +73,7 @@ class UnpaidInvoiceChargeAlignmentConcurrencyTest extends TestCase
                 });
                 $result = $svc->execute($plan, $aCtx);
                 $this->assertTrue($barrier->attempted); $this->assertTrue($barrier->blocked);
-                $this->assertTrue($probe->blocked, 'Student must already be held when the course is locked'); $probe->table = 'Payment'; $probe->blocked = false;
+                $this->assertTrue($probe->otherWrote); $this->assertTrue($probe->blocked, 'Student must already be held when the course is locked'); $probe->table = 'Payment'; $probe->blocked = false;
                 DB::transaction(function () use ($svc, $plan, $result): void { $this->assertTrue($svc->verify($plan, $result)['ok']); });
                 $this->assertTrue($probe->blocked, 'Verification must exclude an ordinary writer until its receipt transaction ends');
                 $this->assertSame(500, (int) $f['invoice']->fresh()->TotalAmount);
@@ -88,10 +92,13 @@ class UnpaidInvoiceChargeAlignmentConcurrencyTest extends TestCase
                 DB::table('pop_operation_requests')->whereIn('id', $requests)->delete();
                 DB::table('security_audit_events')->where('subject_ref', \App\Models\SecurityAuditEvent::ref('invoice', $f['invoice']->id))
                     ->where('event_type', 'like', 'billing.invoice_charge_alignment%')->delete();
+                foreach ([$f, $other] as $f) {
+                DB::table('payment_reports')->where('StudentClassID', $f['course']->ID)->delete();
                 DB::table('InvoiceItem')->where('InvoiceID', $f['invoice']->id)->delete(); $f['invoice']->delete();
                 $f['course']->delete(); $f['student']->delete();
                 DB::table('auth_tokens')->where('user_id', $f['user']->id)->delete();
                 DB::table('UserCampus')->where('UserID', $f['user']->id)->delete(); $f['user']->delete();
+                }
             }
         }
         DB::disconnect('alignment_race_b');

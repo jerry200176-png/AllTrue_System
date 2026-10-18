@@ -167,6 +167,7 @@ class PaymentReportPendingReturnTest extends TestCase
             $other = $pop->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);
             $this->assertFalse($pop->runDryRun($other['id'], 'user:'.$f['user']->id, $f['user']->id, 'director', [1])['ok']);
             $this->assertTrue($pop->run($r['id'], 'verify', $approval['token'], $sha, 'pop-runner')['ok']);
+            $f['user']->update(['status' => 'suspended']);
             $fault->phase = 'rollback'; $fault->armed = true;
             $this->assertFalse($pop->run($r['id'], 'rollback', $approval['token'], $sha, 'pop-runner')['ok']);
             $this->assertFalse($fault->armed); $this->assertSame('rejected', $f['pending']->fresh()->status);
@@ -189,6 +190,8 @@ class PaymentReportPendingReturnTest extends TestCase
         foreach ([ReturnReport::OPERATION, 'reviewed-unpaid-invoice-charge-alignment', 'reviewed-legacy-reversal-restatement'] as $operation) {
             $entry = $catalog->operation($operation); $this->assertSame('planned', $entry['lifecycle']);
             $this->assertTrue($entry['founder_approval_required']); $this->assertSame(['super_admin'], $entry['approver_roles']);
+            $this->assertSame('founder-exact-reviewed-financial', $entry['approval_policy']); $policy = file_get_contents(dirname(base_path()).'/operations/policies/default.yaml');
+            $this->assertSame(1, preg_match('/- id: founder-exact-reviewed-financial(.*?)(?=\n  - id:|\z)/s', $policy, $m)); $this->assertStringContainsString($operation, $m[1]); $this->assertStringContainsString($entry['blast_radius'], $m[1]);
         }
         $pop = app(\App\Operations\PopOperationService::class);
         $r = $pop->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);
@@ -212,7 +215,7 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->assertTrue($approval['ready']); $this->assertSame(['super_admin'], $approval['required_roles']);
             $this->assertTrue($pop->run($r['id'], 'execute', $approval['token'], str_repeat('c', 40), 'pop-runner')['ok']);
             $method = new \ReflectionMethod($pop, 'approvalRoles'); $entry = $catalog->operation(ReturnReport::OPERATION);
-            foreach (['strategy_class', 'parameter_keys', 'blast_radius', 'risk', 'founder_approval_required', 'snapshot_required', 'transaction_required', 'rollback_supported', 'verification_required', 'approval_required', 'execution_authority', 'approver_roles'] as $key) {
+            foreach (['strategy_class', 'parameter_keys', 'blast_radius', 'risk', 'founder_approval_required', 'snapshot_required', 'transaction_required', 'rollback_supported', 'verification_required', 'approval_required', 'approval_policy', 'execution_authority', 'approver_roles'] as $key) {
                 $bad = $entry; $bad[$key] = false;
                 $this->refuse(fn () => $method->invoke($pop, $bad), 'approval');
             }
@@ -223,7 +226,7 @@ class PaymentReportPendingReturnTest extends TestCase
 
     public function test_initial_authenticated_http_preview_is_read_only_and_requires_new_confirmed_draft(): void
     {
-        [$f, $p] = $this->candidate(); $p['expected_state_hash'] = ''; $headers = ['Authorization' => 'Bearer '.$f['token']];
+        [$f, $p] = $this->candidate(); $this->refuse(fn () => app(\App\Operations\PopOperationService::class)->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'api_client:synthetic', 'pop_machine', [1], 1), 'human'); $p['expected_state_hash'] = ''; $headers = ['Authorization' => 'Bearer '.$f['token']];
         $draft = fn ($p) => $this->postJson('/api/v1/pop/operations/'.ReturnReport::OPERATION.'/draft',
             ['parameters' => $p, 'idempotency_key' => (string) Str::uuid()], $headers)->assertCreated()->json('data.id');
         $id = $draft($p); $preview = $this->postJson('/api/v1/pop/operations/requests/'.$id.'/dry-run', [], $headers)->assertStatus(422)->json('data.plan');

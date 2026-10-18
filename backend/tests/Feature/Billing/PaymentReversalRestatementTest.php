@@ -253,6 +253,7 @@ class PaymentReversalRestatementTest extends TestCase
             $this->assertTrue($approved['ready']);
             $direct = $svc->execute($p['plan'], $actor, $p['decision_reference'], $r['id']); // Interrupted before outer receipt.
             $this->assertSame('applied', $direct['state']);
+            $f['user']->update(['status' => 'suspended']); $this->assertFalse(app(\App\Operations\Strategies\PaymentReversalRestatementStrategy::class)->plan($p)['ok']);
             $executed = $pop->run($r['id'], 'execute', $approved['token'], $sha, 'pop-runner');
             $this->assertTrue($executed['ok']); $this->assertTrue($executed['already_applied']);
             $other = $pop->createDraft(PaymentReversalRestatement::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);
