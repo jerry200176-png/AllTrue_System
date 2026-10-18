@@ -20,6 +20,13 @@ final class PaymentReversalRestatementStrategy
     public function plan(array $parameters): array
     {
         try {
+            if (!isset($parameters['plan']['state_hash'])) {
+                $scope = $parameters['plan']['scope']; $user = request()->attributes->get('auth_user');
+                if (!$user || ($parameters['campus_id'] ?? null) !== ($scope['campus_id'] ?? null)) throw new RuntimeException('invalid_preview');
+                $actor = $this->service->actorContext($user->id, $scope['student_id']);
+                return ['ok' => false, 'errors' => ['preview_confirmation_required'], 'preview_parameters' =>
+                    $this->service->requestParameters($this->service->plan($scope, $actor), $parameters['decision_reference'])];
+            }
             $this->service->prepared($parameters, $this->actor($parameters));
             return ['ok' => true, 'parameters' => $parameters];
         } catch (Throwable) {

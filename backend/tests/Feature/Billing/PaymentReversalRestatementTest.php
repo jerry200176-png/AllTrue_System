@@ -269,4 +269,18 @@ class PaymentReversalRestatementTest extends TestCase
         $this->assertTrue($pop->runDryRun($r['id'], 'user:'.$f['user']->id, $f['user']->id, 'director', [1])['ok']);
         $this->refused(fn () => $pop->approve($r['id'], 'founder-go-synthetic', 'reviewer-founder', 'super_admin', str_repeat('b', 40), 901), 'not active');
     }
+
+    public function test_authenticated_http_preview_produces_fresh_confirmable_parameters_without_host_commands(): void
+    {
+        $f = $this->excessFixture(); $headers = ['Authorization' => 'Bearer '.$f['token']];
+        $p = ['campus_id' => 1, 'plan' => ['scope' => $f['scope']], 'decision_reference' => 'SYNTHETIC-HTTP-PREVIEW'];
+        $draft = fn ($p) => $this->postJson('/api/v1/pop/operations/'.PaymentReversalRestatement::OPERATION.'/draft',
+            ['parameters' => $p, 'idempotency_key' => (string) Str::uuid()], $headers)->assertCreated()->json('data.id');
+        $id = $draft($p);
+        $preview = $this->postJson('/api/v1/pop/operations/requests/'.$id.'/dry-run', [], $headers)->assertStatus(422)->json('data.plan');
+        $this->assertFalse($preview['ok']); $this->assertSame('preview_confirmation_required', $preview['errors'][0]);
+        $confirmed = $preview['preview_parameters']; $this->assertSame($f['user']->id, $confirmed['plan']['actor_user_id']);
+        $id = $draft($confirmed); $this->postJson('/api/v1/pop/operations/requests/'.$id.'/dry-run', [], $headers)->assertOk()->assertJsonPath('data.ok', true);
+        $this->assertSame(-8000, (int) $f['extra']->fresh()->Amount);
+    }
 }
