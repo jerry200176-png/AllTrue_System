@@ -490,7 +490,8 @@ final class PopOperationService
 
         try {
             $request = $this->request((string) $candidate->id);
-            if ((string) $request->status !== 'approved') {
+            $retry = $requestId !== null && $this->retryableFinancialExecute($request);
+            if ((string) $request->status !== 'approved' && !$retry) {
                 return ['ok' => true, 'status' => 'skipped', 'request_id' => (string) $request->id];
             }
             $approval = $this->localApproval($request);
@@ -507,6 +508,15 @@ final class PopOperationService
         } finally {
             DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
         }
+    }
+
+    /** Explicit Pi-local retries only; the ordinary scheduler never requeues failed requests. */
+    private function retryableFinancialExecute(object $request): bool
+    {
+        if ((string) $request->status !== 'failed' || !$this->atomicFinancialRepair((string) $request->strategy_id)) return false;
+        $executions = DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'execute');
+        return (clone $executions)->where('result', 'failed')->where('payload->failure_reason', 'execution_failed')->exists()
+            && !(clone $executions)->where('result', 'succeeded')->exists();
     }
 
     /** @param array<string,mixed> $parameters */
