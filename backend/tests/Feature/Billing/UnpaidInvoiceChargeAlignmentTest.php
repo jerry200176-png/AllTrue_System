@@ -229,6 +229,16 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertTrue($svc->plan($thirdParameters)['ok']);
             $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'repair-proof-rollback')->count());
             $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'rollback')->where('result', 'failed')->count());
+            // #4271: a transient outer receipt failure must not permanently strand rollback.
+            $retriedRollback = $pop->run($id, 'rollback', $thirdApproval['token'], $sha, 'synthetic-pop');
+            $this->assertTrue($retriedRollback['ok']);
+            $this->assertSame('rolled_back', $retriedRollback['result']);
+            $this->assertSame(2, $retriedRollback['attempt_no']);
+            $this->assertSame(8000, (int) $thirdFixture['invoice']->fresh()->TotalAmount);
+            $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'rollback')->where('result', 'failed')->count());
+            $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'repair-proof-rollback')->count());
+            $this->assertSame($retriedRollback, $pop->run($id, 'rollback', $thirdApproval['token'], $sha, 'synthetic-pop'));
+            $this->assertSame(2, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'rollback')->count());
         } finally {
             unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
         }
