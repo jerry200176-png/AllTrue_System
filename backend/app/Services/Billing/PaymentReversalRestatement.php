@@ -91,7 +91,7 @@ final class PaymentReversalRestatement
     public function actorContext(int $userId, int $studentId): array
     {
         $user = \App\Models\User::query()->find($userId);
-        if (!$user || in_array($user->status, ['inactive', 'suspended'], true)) $this->fail('forbidden');
+        if (!($user instanceof \App\Models\User) || in_array($user->status, ['inactive', 'suspended'], true)) $this->fail('forbidden');
         $auth = app(\App\Services\StaffCapabilityAuthorizer::class);
         $role = $user->type === 'S' ? 'super_admin' : 'director';
         if ($role === 'super_admin') $campuses = [];
