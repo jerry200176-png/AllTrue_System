@@ -1995,7 +1995,7 @@ jobs:
           }} elseif ($case === 'xinzhuang_fee_cases') {{
             if (!in_array($targetStudentClassId, [4064, 3753, 3693], true)) {{ throw new \RuntimeException('unsupported_fee_case'); }}
             eval(substr(base64_decode('{fee_reader_b64}', true), 5));
-            $out = array_merge($out, alltrue_fee_case_ledger(app('db')->connection(), $targetStudentClassId, 11, '新莊分校'));
+            $out = array_merge($out, alltrue_fee_case_ledger(app('db')->connection(), $targetStudentClassId, 11, '新莊分校', $targetStudentClassId === 3753));
           }} elseif ($case === 'inapp_414_amount_source') {{
             // in-app #414 (#4155): trace the stored amount behind the displayed course payable.
             // Founder option A (#4136 comment 6216671699): one StudentClass ID, bound to campus 11 (Student.CampusID).
