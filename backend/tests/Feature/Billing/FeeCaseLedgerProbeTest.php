@@ -67,8 +67,10 @@ class FeeCaseLedgerProbeTest extends TestCase
             $this->assertStringNotContainsString($private, $json);
         }
         $this->assertSame($before, [$f['course']->fresh()->getRawOriginal(), Payment::count(), Invoice::count()]);
+        $transferReport = $this->reportFor($f, 'confirmed');
         foreach (['transfer_out' => -200, 'transfer_in' => 200] as $method => $amount) {
-            Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => $amount, 'Method' => $method, 'PaidAt' => '2026-10-01']);
+            Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => $amount, 'Method' => $method, 'PaidAt' => '2026-10-01',
+                'payment_report_id' => $transferReport->id]);
         }
         $r = $this->probe($f);
         $this->assertContains('transfer_out', array_column($r['payments'], 'Method'));
@@ -98,6 +100,14 @@ class FeeCaseLedgerProbeTest extends TestCase
         DB::table('invoice_corrections')->where('id', $correction)->update(['kind' => 'receipt_reissue',
             'old_charge' => null, 'new_charge' => null, 'original_invoice_total' => null,
             'payment_report_id' => $report->id, 'original_invoice_id' => $f['invoice']->id]);
+        $links = ['original_invoice_id' => $f['invoice']->id, 'replacement_invoice_id' => $replacement->id,
+            'payment_report_id' => $report->id];
+        foreach ($links as $column => $id) {
+            DB::table('invoice_corrections')->where('id', $correction)->update(array_merge(
+                array_fill_keys(array_keys($links), null), [$column => $id, 'student_class_id' => $f['course']->ID + 100000]));
+            $this->assertFalse($this->probe($f)['snapshot_complete'], 'linked correction cannot hide behind a stale course reference: '.$column);
+        }
+        DB::table('invoice_corrections')->where('id', $correction)->update($links + ['student_class_id' => $f['course']->ID]);
         $this->assertStringNotContainsString('Private correction reason', json_encode($r));
         DB::table('invoice_corrections')->where('id', $correction)->update(['replacement_invoice_id' => $replacement->id + 100]);
         $r = $this->probe($f);
@@ -252,6 +262,9 @@ class FeeCaseLedgerProbeTest extends TestCase
             'PaidAt' => '2026-10-01', 'payment_report_id' => $report->id]);
         $this->assertFalse($this->probe($f)['snapshot_complete'], 'two reversals cannot share one receipt report');
         $duplicateVoid->delete();
+        $extra->update(['payment_report_id' => null]);
+        $this->assertFalse($this->probe($f)['snapshot_complete'], 'a reversal without receipt provenance is incomplete');
+        $extra->update(['payment_report_id' => $report->id]);
         $report->update(['payment_id' => $extra->id]);
         $this->assertFalse($this->probe($f)['snapshot_complete'], 'a reversal cannot be the receipt anchor');
         $this->assertSame(0, DB::transactionLevel());

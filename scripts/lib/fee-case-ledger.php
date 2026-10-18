@@ -108,7 +108,10 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
         }
         $seenReversals = [];
         foreach ($payments as $p) {
-            if ($p->payment_report_id === null) continue;
+            if ($p->payment_report_id === null) {
+                if ((int) $p->Amount < 0 || $p->Method === 'void') throw new \RuntimeException('unlinked_reversal');
+                continue;
+            }
             if ((int) $p->Amount < 0 || $p->Method === 'void') {
                 if (isset($seenReversals[$p->payment_report_id])) throw new \RuntimeException('duplicate_reversal_link');
                 $seenReversals[$p->payment_report_id] = true;
@@ -184,15 +187,17 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
             ['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total', 'request_hash', 'state_hash'], $columns) === [];
         $optional = array_values(array_intersect(['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total'], $columns));
         $out['corrections'] = $out['correction_table_present']
-            ? $rows($conn->table('invoice_corrections')->where('student_class_id', $courseId)->orderBy('id')
-                ->select(array_merge(['id', 'original_invoice_id', 'replacement_invoice_id', 'payment_report_id', 'amount', 'created_at'], $optional)))
+            ? $rows($conn->table('invoice_corrections')->where(fn ($q) => $q->where('student_class_id', $courseId)
+                ->orWhereIn('original_invoice_id', $ids)->orWhereIn('replacement_invoice_id', $ids)
+                ->orWhereIn('payment_report_id', $reportIds))->orderBy('id')
+                ->select(array_merge(['id', 'student_class_id', 'original_invoice_id', 'replacement_invoice_id', 'payment_report_id', 'amount', 'created_at'], $optional)))
                 ->map(static function ($c) use ($enum) {
                     if (property_exists($c, 'kind')) $c->kind = $enum($c->kind, ['receipt_reissue', 'agreed_fee', 'agreed_fee_unbilled']);
                     return $c;
                 })->all()
             : [];
         foreach ($out['corrections'] as $c) {
-            if ((isset($c->campus_id) && (int) $c->campus_id !== $campusId)
+            if ((int) $c->student_class_id !== $courseId || (isset($c->campus_id) && (int) $c->campus_id !== $campusId)
                 || ($c->original_invoice_id !== null && !in_array($c->original_invoice_id, $ids))
                 || ($c->replacement_invoice_id !== null && !in_array($c->replacement_invoice_id, $ids))
                 || ($c->payment_report_id !== null && !in_array($c->payment_report_id, $reportIds))) {
