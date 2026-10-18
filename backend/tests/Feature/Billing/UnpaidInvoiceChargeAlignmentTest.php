@@ -175,6 +175,7 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $direct = $svc->execute($svc->plan($p), $ctx); // Process exits here, before outer phase=execute recording.
             $this->assertSame(500, (int) $f['invoice']->fresh()->TotalAmount);
             $this->assertFalse(DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->where('phase', 'execute')->exists());
+            $this->assertFalse($svc->plan($p, ['operation_id' => (string) Str::uuid()])['ok'], 'A different request cannot inherit the retained proof');
             $recovered = $pop->run($ctx['operation_id'], 'execute', $approved['token'], $sha, 'synthetic-pop');
             $this->assertTrue($recovered['ok']); $this->assertTrue($recovered['already_applied']);
             $this->assertSame('succeeded', $recovered['result']);

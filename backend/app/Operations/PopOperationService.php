@@ -321,16 +321,7 @@ final class PopOperationService
         }, 3);
     }
 
-    private function runPhase(
-        string $requestId,
-        string $phase,
-        ?string $token = null,
-        ?string $commitSha = null,
-        string $actor = 'pop-runner',
-        ?int $actorId = null,
-        ?string $actorRole = null,
-        ?array $context = null
-    ): array
+    private function runPhase(string $requestId, string $phase, ?string $token = null, ?string $commitSha = null, string $actor = 'pop-runner', ?int $actorId = null, ?string $actorRole = null, ?array $context = null): array
     {
         $request = $this->request($requestId);
         if (!in_array($phase, ['dry-run', 'execute', 'verify', 'rollback'], true)) {
