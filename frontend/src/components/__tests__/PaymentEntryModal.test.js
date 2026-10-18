@@ -115,7 +115,7 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     expect(wrapper.text()).toContain('此課程已標記為已繳費');
   });
 
-  it('explains pending accounting and routes duplicate reports to the pending flow', async () => {
+  it('keeps duplicate reports in the form without notifying navigation consumers', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: false,
       status: 422,
@@ -131,9 +131,7 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     await tick();
 
     expect(wrapper.emitted('confirmed')).toBeUndefined();
-    expect(wrapper.emitted('pending')).toEqual([[
-      { code: 'pending_report_exists', message: '此課程已有待對帳回報', report_id: 42 },
-    ]]);
+    expect(wrapper.emitted('pending')).toBeUndefined();
     expect(wrapper.text()).toContain('不要重複送出');
   });
 
