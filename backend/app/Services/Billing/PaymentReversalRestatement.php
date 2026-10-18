@@ -47,7 +47,7 @@ final class PaymentReversalRestatement
                 || $plan['raw_net_after'] !== 0) $this->fail('plan_mismatch');
             DB::table('Payment')->where('id', $scope['payment_id'])->update([
                 'Amount' => 0, 'Method' => 'other',
-                'Note' => mb_substr('歷史沖銷更正 '.$decision.'；原沖銷 '.$before['Amount'].'，更正為非收款零額；'.$before['Note'], 0, 255),
+                'Note' => '歷史沖銷更正 '.$decision.'；原沖銷 '.$before['Amount'].'，更正為非收款零額；'.$before['Note'],
                 'updated_at' => now(),
             ]);
             $afterGraph = $this->capture($scope, $actor, true);
@@ -95,7 +95,8 @@ final class PaymentReversalRestatement
         if (!$auth->enabled() && in_array($user->type, ['T', 'U'], true)) $this->fail('forbidden');
         $resolved = $auth->resolve($user, 'director');
         if ($resolved['context_denied'] || $resolved['role'] !== 'director') $this->fail('forbidden');
-        return ['id' => $userId, 'role' => 'director', 'campus_ids' => $resolved['campus_ids'], 'student_id' => $studentId];
+        $campuses = array_values(array_unique(array_map('intval', $resolved['campus_ids']))); sort($campuses, SORT_NUMERIC);
+        return ['id' => $userId, 'role' => 'director', 'campus_ids' => $campuses, 'student_id' => $studentId];
     }
 
     public function prepared(array $p, array $actor, ?string $operationId = null): void

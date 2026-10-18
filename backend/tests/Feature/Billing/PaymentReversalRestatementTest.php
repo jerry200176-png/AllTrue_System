@@ -12,7 +12,6 @@ use Tests\TestCase;
 class PaymentReversalRestatementTest extends TestCase
 {
     use AgreedFeeFixture, AgreedFeeRefreshDatabase;
-
     private function plannedCatalog(): void
     {
         $dir = sys_get_temp_dir().'/reversal-planned-'.Str::uuid(); mkdir($dir, 0700); mkdir($dir.'/policies', 0700);
@@ -21,7 +20,6 @@ class PaymentReversalRestatementTest extends TestCase
         $this->app->instance(\App\Operations\PopOperationCatalog::class, new \App\Operations\PopOperationCatalog($dir.'/catalog.yaml'));
         $this->beforeApplicationDestroyed(static function () use ($dir): void { unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir); });
     }
-
     private function excessFixture(): array
     {
         $f = $this->fixture();
@@ -44,19 +42,16 @@ class PaymentReversalRestatementTest extends TestCase
         $f['actor'] = ['id' => (int) $f['user']->id, 'role' => 'director', 'campus_ids' => [1], 'student_id' => (int) $f['student']->id];
         return $f;
     }
-
     private function refused(callable $action, string $code): void
     {
         try { $action(); } catch (\RuntimeException $e) { $this->assertStringContainsString($code, $e->getMessage()); return; }
         $this->fail('Expected refusal: '.$code);
     }
-
     private function execute(PaymentReversalRestatement $svc, array $plan, array $actor, string $decision, string $id): array
     {
         $this->prepareRequest($svc, $plan, $actor, $decision, $id);
         return $svc->execute($plan, $actor, $decision, $id);
     }
-
     private function prepareRequest(PaymentReversalRestatement $svc, array $plan, array $actor, string $decision, string $id): void
     {
         if (!DB::table('pop_operation_requests')->where('id', $id)->exists()) {
@@ -67,7 +62,6 @@ class PaymentReversalRestatementTest extends TestCase
                 'status' => 'approved', 'actor' => 'user:'.$actor['id'], 'created_at' => now(), 'updated_at' => now()]);
         }
     }
-
     private function permutations(array $keys): array
     {
         if ($keys === []) return [[]];
@@ -83,6 +77,7 @@ class PaymentReversalRestatementTest extends TestCase
     {
         config(['billing.agreed_fee_correction_enabled' => true]);
         $f = $this->excessFixture(); $svc = app(PaymentReversalRestatement::class);
+        $f['extra']->update(['Note' => str_repeat('Synthetic retained reason ', 30)]);
         $beforeCourse = $f['course']->fresh()->getRawOriginal(); $beforeInvoice = $f['invoice']->fresh()->getRawOriginal();
         $reports = DB::table('payment_reports')->where('StudentClassID', $f['course']->ID)->orderBy('id')->get()->toJson();
         $beforePayment = (array) DB::table('Payment')->where('id', $f['extra']->id)->first();
@@ -97,7 +92,7 @@ class PaymentReversalRestatementTest extends TestCase
         $expectedBefore = $beforePayment; ksort($storedBefore); ksort($expectedBefore);
         $this->assertSame($expectedBefore, $storedBefore);
         $this->assertSame(0, (int) $f['extra']->fresh()->Amount); $this->assertSame('other', $f['extra']->fresh()->Method);
-        $this->assertStringContainsString('SYNTHETIC-RESTATEMENT', $f['extra']->fresh()->Note);
+        $this->assertStringContainsString('SYNTHETIC-RESTATEMENT', $f['extra']->fresh()->Note); $this->assertStringEndsWith($beforePayment['Note'], $f['extra']->fresh()->Note);
         $ledger = $this->getJson('/api/v1/accounting/ledger?student_class_id='.$f['course']->ID, ['Authorization' => 'Bearer '.$f['token']])->assertOk()->json();
         $row = collect($ledger['invoices'][0]['payments'])->firstWhere('id', $f['extra']->id);
         $this->assertSame('voided', $row['application_status']); $this->assertTrue($row['is_void']);
@@ -276,6 +271,9 @@ class PaymentReversalRestatementTest extends TestCase
     public function test_pop_adapter_refuses_scope_and_current_staff_permission_drift(): void
     {
         $f = $this->excessFixture(); $svc = app(PaymentReversalRestatement::class);
+        $auth = \Mockery::mock(\App\Services\StaffCapabilityAuthorizer::class); $auth->shouldReceive('enabled')->andReturn(true);
+        $auth->shouldReceive('resolve')->andReturn(['context_denied' => false, 'role' => 'director', 'campus_ids' => [2, 1, 2]], ['context_denied' => false, 'role' => 'director', 'campus_ids' => [1, 2]]); $this->app->instance(\App\Services\StaffCapabilityAuthorizer::class, $auth);
+        try { $a = $svc->actorContext($f['user']->id, $f['student']->id); $b = $svc->actorContext($f['user']->id, $f['student']->id); $svc->prepared($svc->requestParameters($svc->plan($f['scope'], $a), 'SAME-CAMPUSES'), $b); $this->assertSame([1, 2], $a['campus_ids']); $this->assertSame($a, $b); } finally { $this->app->forgetInstance(\App\Services\StaffCapabilityAuthorizer::class); }
         $p = $svc->requestParameters($svc->plan($f['scope'], $svc->actorContext($f['user']->id, $f['student']->id)), 'SYNTHETIC-IDENTITY');
         $adapter = app(\App\Operations\Strategies\PaymentReversalRestatementStrategy::class);
         $this->assertTrue($adapter->plan($p)['ok']);
