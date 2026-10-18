@@ -300,7 +300,14 @@ class CourseLeaveCascadeSuccessorShiftService
 
         $movingIds = array_merge([(int) $leave->id], $chain->pluck('id')->map(fn ($id) => (int) $id)->all());
         $branchId = (int) (DB::table('Student')->where('id', (int) $old->StudentID)->value('CampusID') ?? 0);
-        foreach ($moves as $move) {
+        foreach ($moves as $index => $move) {
+            foreach (array_slice($moves, $index + 1) as $other) {
+                if ($move['to']['date'] === $other['to']['date'] && $move['to']['start'] < $other['to']['end']
+                    && $move['to']['end'] > $other['to']['start']) {
+                    $blockers[] = ['type' => 'student', 'course_id' => $move['course_id'], 'session_id' => $move['session_id'],
+                        'date' => $move['to']['date'], 'start' => $move['to']['start'], 'message' => '本次順延的目的時段互相重疊，請先核對'];
+                }
+            }
             $course = $move['role'] === 'old_tail' ? $old : $successor;
             $blockers = array_merge($blockers, $this->conflicts($course, $branchId, $move['to'], $movingIds, $move['session_id'], $lock, $move['from']));
         }
@@ -354,6 +361,7 @@ class CourseLeaveCascadeSuccessorShiftService
             $best = [$chosen, $this->sessions((int) $chosen->ID, true)
                 ->filter(fn ($s) => strtolower((string) $s->Status) !== 'cancelled')->values()];
             if ((int) $chosen->StudentID !== (int) $old->StudentID || (int) $chosen->SubjectID !== (int) $old->SubjectID
+                || strtolower((string) ($chosen->ScheduleMode ?? 'count')) !== 'count'
                 || (int) $chosen->Stop === 1 || $best[1]->isEmpty()) {
                 throw new \InvalidArgumentException('續約課程已變動，請重新預覽');
             }
@@ -403,8 +411,14 @@ class CourseLeaveCascadeSuccessorShiftService
     private function nextSuccessorSlot(StudentClass $successor, Collection $chain): array
     {
         $last = $chain->last();
+        $duration = (int) $successor->SessionDuration;
+        if ($duration <= 0) {
+            $duration = Carbon::parse($last->SessionDate . ' ' . $last->StartTime)
+                ->diffInMinutes(Carbon::parse($last->SessionDate . ' ' . $last->EndTime), false);
+        }
+        if ($duration <= 0) throw new \InvalidArgumentException('續約堂次時間無效，無法自動順延');
         $slots = ContractSessionSchedule::buildSlotsByWeekdayMap(
-            ContractSessionSchedule::resolveScheduleSlotsForRebuild($successor), (int) $successor->SessionDuration);
+            ContractSessionSchedule::resolveScheduleSlotsForRebuild($successor), $duration);
         $cursor = Carbon::parse($last->SessionDate)->startOfDay();
         $after = Carbon::parse($last->SessionDate . ' ' . $last->EndTime);
         for ($i = 0; $i < 3660; $i++, $cursor->addDay()) {

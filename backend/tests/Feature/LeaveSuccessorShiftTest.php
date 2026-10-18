@@ -186,6 +186,20 @@ class LeaveSuccessorShiftTest extends TestCase
         return ['overlapping tail' => [120, true], 'adjacent tail' => [60, false]];
     }
 
+    /** #4215 review: scheduling duration comes from the existing occurrence, never billing minutes. */
+    public function test_legacy_missing_duration_uses_existing_successor_occurrence(): void
+    {
+        DB::table('StudentClass')->where('ID', $this->renewal)->update(['SessionDuration' => null, 'standard_lesson_minutes' => 90]);
+        DB::table('ClassSession')->where('StudentClassID', $this->renewal)->update(['EndTime' => '20:15:00']);
+        $leaveId = $this->sessions['2026-11-17'];
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', true);
+        $moves = $preview->json('moves');
+        $this->assertSame(['date' => '2026-12-29', 'start' => '19:00:00', 'end' => '20:15:00'], end($moves)['to']);
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk();
+        $this->assertNull(DB::table('StudentClass')->where('ID', $this->renewal)->value('SessionDuration'));
+        $this->assertSame(90, (int) DB::table('StudentClass')->where('ID', $this->renewal)->value('standard_lesson_minutes'));
+    }
+
     public function test_old_tail_cannot_silently_cross_midnight(): void
     {
         DB::table('ClassSession')->where('id', $this->sessions['2026-12-01'])->update(['StartTime' => '23:00:00', 'EndTime' => '23:30:00']);
