@@ -166,6 +166,7 @@ final class PopOperationService
             && !$this->isExactTd076Repair($entry)
             && !$this->isExactPastScheduledCancel($entry)
             && !$this->isExactInvoice1997StaleValues($entry)
+            && !$this->isReviewedFinancialCase($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
         }
@@ -624,6 +625,8 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isReviewedFinancialCase($entry)) return $roles;
+
         $isFounderScopedRepair = $policy === 'founder-explicit-single-repair'
             && ($entry['id'] ?? null) === 'course-contract-repair'
             && ($entry['founder_approval_required'] ?? false) === true
@@ -830,6 +833,25 @@ final class PopOperationService
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnbilledBacklogCatchupStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-unbilled-backlog-catchup'
             && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
+    }
+
+    /** Prepared exact single-record repair shapes; activation and every immutable case still require Founder approval. */
+    private function isReviewedFinancialCase(array $e): bool
+    {
+        $shapes = [
+            'reviewed-unpaid-invoice-charge-alignment' => [Strategies\UnpaidInvoiceChargeAlignmentStrategy::class,
+                ['student_id', 'course_id', 'campus_id', 'invoice_id', 'expected_invoice_total', 'expected_charge', 'decision_reference', 'expected_state_hash'], 'one_exact_unpaid_invoice_total'],
+            'reviewed-legacy-reversal-restatement' => [Strategies\PaymentReversalRestatementStrategy::class,
+                ['campus_id', 'plan', 'decision_reference'], 'one_exact_unlinked_negative_posting'],
+            'reviewed-mismatched-pending-return' => [Strategies\PaymentReportPendingReturnStrategy::class,
+                ['campus_id', 'student_id', 'course_id', 'invoice_id', 'report_id', 'expected_reported_amount', 'expected_charge', 'expected_invoice_total', 'decision_reference', 'reason', 'expected_state_hash'], 'one_exact_mismatched_pending_report'],
+        ];
+        $shape = $shapes[$e['id'] ?? ''] ?? null;
+        if (!$shape || [$e['strategy_class'] ?? null, $e['parameter_keys'] ?? null, $e['blast_radius'] ?? null] !== $shape) return false;
+        foreach (['founder_approval_required', 'reversible', 'snapshot_required', 'transaction_required', 'rollback_supported', 'verification_required', 'approval_required'] as $key)
+            if (($e[$key] ?? false) !== true) return false;
+        return ($e['approver_roles'] ?? null) === ['super_admin'] && ($e['risk'] ?? null) === 'critical'
+            && ($e['approval_policy'] ?? null) === 'founder-explicit-single-repair' && ($e['execution_authority'] ?? null) === 'pop-pi-local';
     }
 
     /** Same single-super_admin Founder-exact shape (in-app #369, invoice 1997 stale values). */
