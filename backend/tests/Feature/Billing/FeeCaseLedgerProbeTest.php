@@ -38,7 +38,7 @@ class FeeCaseLedgerProbeTest extends TestCase
     {
         $f = $this->scopedFixture();
         $report = $this->receiptFor($f);
-        $f['invoice']->update(['zero_amount_reason' => 'gift']);
+        $f['invoice']->update(['zero_amount_reason' => 'gift', 'billing_period' => '2026-09', 'ScheduleModeAtIssue' => 'date']);
         Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => -7600, 'Method' => 'void',
             'PaidAt' => '2026-10-02', 'payment_report_id' => $report->id]);
         $report->update(['status' => 'voided']);
@@ -53,6 +53,8 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertSame('voided', $r['reports'][0]['status']);
         $this->assertTrue($r['invoices'][0]['has_zero_amount_reason']);
         $this->assertTrue($r['agreed_fee_extension_columns_present']);
+        $this->assertSame('2026-09', $r['invoices'][0]['billing_period'] ?? null);
+        $this->assertSame('date', $r['invoices'][0]['schedule_mode_at_issue'] ?? null);
         $json = json_encode($r);
         foreach (['Synthetic fee fixture', 'Original retained note', 'Original retained line', 'Fixture', 'report_token_hash'] as $private) {
             $this->assertStringNotContainsString($private, $json);
@@ -73,6 +75,22 @@ class FeeCaseLedgerProbeTest extends TestCase
             'idempotency_key' => (string) \Illuminate\Support\Str::uuid()]);
         $r = $this->probe($f);
         $this->assertTrue($r['snapshot_complete']); $this->assertCount(1, $r['corrections']);
+        $this->assertSame('receipt_reissue', ((array) $r['corrections'][0])['kind'] ?? null);
+        foreach (['agreed_fee', 'agreed_fee_unbilled'] as $kind) {
+            $unbilled = $kind === 'agreed_fee_unbilled';
+            DB::table('invoice_corrections')->where('id', $correction)->update(['kind' => $kind,
+                'old_charge' => 8000, 'new_charge' => 500, 'original_invoice_total' => $unbilled ? null : 7600,
+                'payment_report_id' => null,
+                'original_invoice_id' => $unbilled ? null : $f['invoice']->id,
+                'replacement_invoice_id' => $unbilled ? null : $replacement->id]);
+            $fee = $this->probe($f);
+            $c = (array) $fee['corrections'][0];
+            $this->assertSame([$kind, 8000, 500, $unbilled ? null : 7600], [
+                $c['kind'] ?? null, $c['old_charge'] ?? null, $c['new_charge'] ?? null, $c['original_invoice_total'] ?? null]);
+        }
+        DB::table('invoice_corrections')->where('id', $correction)->update(['kind' => 'receipt_reissue',
+            'old_charge' => null, 'new_charge' => null, 'original_invoice_total' => null,
+            'payment_report_id' => $report->id, 'original_invoice_id' => $f['invoice']->id]);
         $this->assertStringNotContainsString('Private correction reason', json_encode($r));
         DB::table('invoice_corrections')->where('id', $correction)->update(['replacement_invoice_id' => $replacement->id + 100]);
         $r = $this->probe($f);
@@ -237,5 +255,24 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertFalse($r['snapshot_complete']);
         $this->assertSame(0, DB::transactionLevel());
         $this->assertSame(7600, (int) $f['invoice']->fresh()->TotalAmount);
+    }
+
+    public function test_missing_correction_schema_keeps_evidence_but_never_claims_complete(): void
+    {
+        $f = $this->scopedFixture();
+        \Tests\Support\AgreedFeeTestSchema::dropExtensionColumns();
+        $withoutExtension = $this->probe($f);
+        \Illuminate\Support\Facades\Schema::drop('invoice_corrections');
+        $withoutTable = $this->probe($f);
+        $this->assertSame([false, false], array_column([$withoutExtension, $withoutTable], 'snapshot_complete'));
+        foreach ([$withoutExtension, $withoutTable] as $r) {
+            $this->assertSame('correction_schema_missing', $r['completeness']);
+            $this->assertFalse($r['agreed_fee_extension_columns_present']);
+            $this->assertSame((int) $f['course']->ID, (int) $r['contract']['ID']);
+            $this->assertCount(1, $r['invoices']);
+        }
+        $this->assertTrue($withoutExtension['correction_table_present']);
+        $this->assertFalse($withoutTable['correction_table_present']);
+        $this->assertSame(0, DB::transactionLevel());
     }
 }

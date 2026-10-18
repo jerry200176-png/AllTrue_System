@@ -55,6 +55,7 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
         }
         $invoices = $rows($linked->where('StudentID', $studentId)->orderBy('id')->select([
             'id', 'StudentClassID', 'TotalAmount', 'PaidAmount', 'Status', 'IssueDate', 'DueDate', 'zero_amount_reason',
+            'billing_period', 'ScheduleModeAtIssue',
         ]));
         $ids = $invoices->pluck('id')->all();
         // Shared invoices are identifiable without exporting other courses or their line amounts.
@@ -124,6 +125,9 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
             return ['id' => $i->id, 'header_matches_course' => (int) $i->StudentClassID === $courseId,
                 'total_amount' => $i->TotalAmount, 'stored_paid_amount' => $i->PaidAmount, 'net_paid' => max(0, $net),
                 'status' => $enum($i->Status, ['unpaid', 'partial', 'paid', 'void']),
+                'billing_period' => $i->billing_period === null ? null
+                    : (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $i->billing_period) ? $i->billing_period : 'other'),
+                'schedule_mode_at_issue' => $enum($i->ScheduleModeAtIssue, ['date', 'count']),
                 'has_zero_amount_reason' => !empty($i->zero_amount_reason),
                 'issue_date' => $i->IssueDate, 'due_date' => $i->DueDate,
                 'unscoped_item_count' => $allItems->where('InvoiceID', $i->id)->whereNull('StudentClassID')->count(),
@@ -147,23 +151,35 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
             })->orderBy('i.id')->select(['i.id']));
         $out['unlinked_invoice_ids'] = $unlinked->pluck('id')->all();
         $stage = 'correction_history';
-        $out['correction_table_present'] = $conn->getSchemaBuilder()->hasTable('invoice_corrections');
+        $schema = $conn->getSchemaBuilder();
+        $out['correction_table_present'] = $schema->hasTable('invoice_corrections');
+        $columns = $out['correction_table_present'] ? $schema->getColumnListing('invoice_corrections') : [];
+        $out['agreed_fee_extension_columns_present'] = $out['correction_table_present'] && array_diff(
+            ['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total', 'request_hash', 'state_hash'], $columns) === [];
+        $optional = array_values(array_intersect(['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total'], $columns));
         $out['corrections'] = $out['correction_table_present']
             ? $rows($conn->table('invoice_corrections')->where('student_class_id', $courseId)->orderBy('id')
-                ->select(['id', 'original_invoice_id', 'replacement_invoice_id', 'payment_report_id', 'amount', 'created_at']))->all()
+                ->select(array_merge(['id', 'original_invoice_id', 'replacement_invoice_id', 'payment_report_id', 'amount', 'created_at'], $optional)))
+                ->map(static function ($c) use ($enum) {
+                    if (property_exists($c, 'kind')) $c->kind = $enum($c->kind, ['receipt_reissue', 'agreed_fee', 'agreed_fee_unbilled']);
+                    return $c;
+                })->all()
             : [];
         foreach ($out['corrections'] as $c) {
-            if (($c->original_invoice_id !== null && !in_array($c->original_invoice_id, $ids))
+            if ((isset($c->campus_id) && (int) $c->campus_id !== $campusId)
+                || ($c->original_invoice_id !== null && !in_array($c->original_invoice_id, $ids))
                 || ($c->replacement_invoice_id !== null && !in_array($c->replacement_invoice_id, $ids))
                 || ($c->payment_report_id !== null && !in_array($c->payment_report_id, $reportIds))) {
                 throw new \RuntimeException('correction_history_link_mismatch');
             }
         }
-        $out['agreed_fee_extension_columns_present'] = $out['correction_table_present'] && $conn->getSchemaBuilder()
-            ->hasColumns('invoice_corrections', ['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total', 'request_hash', 'state_hash']);
+        $out['security_audit_table_present'] = $schema->hasTable('security_audit_events');
+        $out['correction_schema_ready'] = $out['correction_table_present']
+            && $out['agreed_fee_extension_columns_present'] && $out['security_audit_table_present'];
         $hasUnscoped = $allItems->whereNull('StudentClassID')->isNotEmpty();
-        $out['snapshot_complete'] = $unlinked->isEmpty() && !$hasUnscoped;
-        $out['completeness'] = $hasUnscoped ? 'ambiguous_obligations' : ($unlinked->isEmpty() ? 'complete' : 'unlinked_obligations');
+        $out['snapshot_complete'] = $unlinked->isEmpty() && !$hasUnscoped && $out['correction_schema_ready'];
+        $out['completeness'] = !$out['correction_schema_ready'] ? 'correction_schema_missing'
+            : ($hasUnscoped ? 'ambiguous_obligations' : ($unlinked->isEmpty() ? 'complete' : 'unlinked_obligations'));
     } catch (\Throwable $e) {
         // Never emit SQL, connection configuration, exception messages or partial ledger payloads.
         $out = array_intersect_key($out, array_flip(['read_only_transaction', 'campus_bound']));
