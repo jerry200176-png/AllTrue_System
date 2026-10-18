@@ -1071,7 +1071,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **merge-train 稅（拓撲部分已 superseded）**：strict required checks 仍會讓其他 PR 在 main 前進後變 `BEHIND` 並重跑 CI；不可用 `gh pr merge --admin` 繞過。2026-07-14 起所有 jobs 已改用 GitHub-hosted runner，可平行執行，不再受單一 WSL2 runner 序列化；現況見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
 - **同名測試 DB 的隔離取決於 runner 儲存邊界（#732 已 superseded）**：`backend/phpunit.xml` 仍以 `force="true"` 設定 `DB_DATABASE=AllTrue_test`，但每個 GitHub-hosted PHPUnit job 都有獨立 MySQL service container，因此同名 schema 不會跨 run 互相清表。若未來改回共享 self-hosted MySQL，必須先提供 run-scoped schema 或等價隔離，不能只改 runner label。
 - **測試 DDL 也要先驗證 resolved connection（#4256）**：沿用 synthetic schema／loopback allowlist，拒絕 URL、socket、read/write 與 PDO init-command 等替代目標；`migrate:fresh` 前驗證、DDL 前拒絕 open transaction。MySQL DDL 會 implicit commit，不可在 `RefreshDatabase` 外層交易中臨時補欄位。
-- **先綁定 Schema mock，再替換 DB connection（#4256）**：Laravel facade 建立 mock 時可能先呼叫 `getSchemaBuilder()`。若先換成未設定此方法的 connection mock，測試會在呼叫受測 helper 前失敗；這不算有效 RED。以 `Schema::swap()` 預先綁定 builder mock，並核對失敗 stack 確實進入受測路徑。
+- **Laravel 8 Schema 要直接 mock connection 的 builder（#4256）**：其 facade accessor 回傳物件，不是一般 binding 名稱。`Schema::swap()` 會出現 illegal offset，`Schema::shouldReceive()` 也可能先觸發未設定的 `getSchemaBuilder()`；這些初始化失敗不算有效 RED。先查該版本開源實作，再讓 connection 的 `getSchemaBuilder()` 回傳 builder mock，直接在 builder 設期待，並核對失敗 stack 確實進入受測路徑。
 
 ---
 
