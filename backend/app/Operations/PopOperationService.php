@@ -34,6 +34,7 @@ final class PopOperationService
     ): array {
         $entry = $this->catalog->operation($operationId);
         $this->assertActor($actor);
+        if ($this->isReviewedFinancialCase($entry) && ($actorId === null || $actor !== 'user:'.$actorId || $actorRole === 'pop_machine')) throw new RuntimeException('Reviewed financial repair requires an authenticated human requester.');
         $this->assertIdempotencyKey($idempotencyKey);
         $normalized = self::canonicalParameters($parameters);
         $this->assertParameterContract($entry, $normalized);
@@ -909,7 +910,7 @@ final class PopOperationService
         foreach (['founder_approval_required', 'reversible', 'snapshot_required', 'transaction_required', 'rollback_supported', 'verification_required', 'approval_required'] as $key)
             if (($e[$key] ?? false) !== true) return false;
         return ($e['approver_roles'] ?? null) === ['super_admin'] && ($e['risk'] ?? null) === 'critical'
-            && ($e['approval_policy'] ?? null) === 'founder-explicit-single-repair' && ($e['execution_authority'] ?? null) === 'pop-pi-local';
+            && ($e['approval_policy'] ?? null) === 'founder-exact-reviewed-financial' && ($e['execution_authority'] ?? null) === 'pop-pi-local';
     }
 
     /** Same single-super_admin Founder-exact shape (in-app #369, invoice 1997 stale values). */

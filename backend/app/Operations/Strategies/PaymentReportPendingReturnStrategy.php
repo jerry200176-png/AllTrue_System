@@ -69,7 +69,7 @@ final class PaymentReportPendingReturnStrategy
     public function rollback(array $s, array $context): array
     {
         return DB::transaction(function () use ($s, $context): array {
-            $p = $s['parameters']; $r = $this->request($p, $context); $proof = $this->proof($r->id, 'pending-return-proof');
+            $p = $s['parameters']; $r = $this->request($p, $context, false); $proof = $this->proof($r->id, 'pending-return-proof');
             if (!$proof || !hash_equals($this->hash(json_decode($proof->snapshot, true, 512, JSON_THROW_ON_ERROR)), $this->hash($s))) $this->fail('history_mismatch');
             $rolledBack = $this->proof($r->id, 'pending-return-rollback');
             $current = $this->capture($p, true);
@@ -112,7 +112,8 @@ final class PaymentReportPendingReturnStrategy
         if (count($invoices) !== 1 || (int) $invoices[0]['id'] !== $p['invoice_id'] || (int) $invoices[0]['StudentID'] !== $p['student_id']) $this->fail('invoice_scope');
         $items = $rows(DB::table('InvoiceItem')->where(fn ($q) => $q->where('InvoiceID', $p['invoice_id'])->orWhere('StudentClassID', $p['course_id']))->orderBy('id'));
         $payments = $rows(DB::table('Payment')->where('InvoiceID', $p['invoice_id'])->orderBy('id'));
-        $reports = $rows(DB::table('payment_reports')->where(fn ($q) => $q->where('InvoiceID', $p['invoice_id'])->orWhere('StudentClassID', $p['course_id']))->orderBy('id'));
+        if (DB::table('payment_reports')->where('InvoiceID', $p['invoice_id'])->where('StudentClassID', '<>', $p['course_id'])->exists()) $this->fail('report_owner');
+        $reports = $rows(DB::table(DB::raw('`payment_reports` FORCE INDEX (`payment_reports_studentclassid_index`)'))->where('StudentClassID', $p['course_id'])->orderBy('id'));
         foreach ($reports as $r) if ((int) $r['StudentID'] !== $p['student_id'] || (int) $r['StudentClassID'] !== $p['course_id'] || (int) $r['InvoiceID'] !== $p['invoice_id']) $this->fail('report_owner');
         $epoch = DB::table('pop_execution_records')->where('phase', 'pending-return-rollback')->where('snapshot->parameters->report_id', $p['report_id'])->orderBy('id')->limit(101)->pluck('id')->all();
         if (count($epoch) > 100) $this->fail('history_budget');
@@ -132,12 +133,12 @@ final class PaymentReportPendingReturnStrategy
         if (array_sum(array_column($g['payments'], 'Amount')) !== 0 || ContractMoneyState::blocksUnpaidCorrection($p['course_id'], true)) $this->fail('money_evidence');
     }
 
-    private function request(array $p, array $context): object
+    private function request(array $p, array $context, bool $active = true): object
     {
         if (!Str::isUuid($context['operation_id'] ?? '') || !is_string($context['actor'] ?? null) || $context['actor'] === '') $this->fail('invalid_context');
         $r = DB::table('pop_operation_requests')->where('id', $context['operation_id'])->lockForUpdate()->first();
         if (!$r || $r->operation_id !== self::OPERATION || $r->strategy_id !== self::class || !preg_match('/\Auser:([1-9][0-9]*)\z/', $r->actor, $m)
-            || !DB::table('User')->where('id', (int) $m[1])->where(fn ($q) => $q->whereNull('status')->orWhereNotIn('status', ['inactive', 'suspended']))->exists()
+            || ($active && !$this->proof($r->id, 'pending-return-proof') && !DB::table('User')->where('id', (int) $m[1])->where(fn ($q) => $q->whereNull('status')->orWhereNotIn('status', ['inactive', 'suspended']))->exists())
             || !hash_equals($this->hash(json_decode($r->parameters, true, 512, JSON_THROW_ON_ERROR)), $this->hash($p))) $this->fail('request_mismatch');
         return $r;
     }
