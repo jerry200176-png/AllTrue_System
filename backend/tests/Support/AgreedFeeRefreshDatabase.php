@@ -27,6 +27,11 @@ trait AgreedFeeRefreshDatabase
 
     protected function refreshTestDatabase()
     {
+        // Also protect setup failures after a committed ALTER but before rollback
+        // registration. Successful teardown may revalidate the generation below.
+        $this->beforeApplicationDestroyed(static function () {
+            RefreshDatabaseState::$migrated = false;
+        });
         AgreedFeeTestSchema::assertTestConnection();
         $this->agreedFeeRequiresFreshSchema = false;
         if (!RefreshDatabaseState::$migrated) {
