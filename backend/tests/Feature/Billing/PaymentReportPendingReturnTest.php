@@ -74,6 +74,7 @@ class PaymentReportPendingReturnTest extends TestCase
         $this->assertTrue($svc->rollback($result['snapshot'], $ctx)['ok']);
         $this->assertSame($before, $f['pending']->fresh()->getRawOriginal());
         $this->assertTrue($svc->rollback($result['snapshot'], $ctx)['already_rolled_back']);
+        DB::beginTransaction(); try { DB::table('payment_reports')->where('id', $p['report_id'])->update(['rejection_note' => 'restored target drift']); $this->refuse(fn () => $svc->rollback($result['snapshot'], $ctx), 'values_moved_on'); } finally { DB::rollBack(); }
         $this->assertFalse($svc->plan($p)['ok']);
         $this->assertSame(2, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->count());
     }

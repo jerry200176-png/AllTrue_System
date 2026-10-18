@@ -71,8 +71,10 @@ final class PaymentReportPendingReturnStrategy
         return DB::transaction(function () use ($s, $context): array {
             $p = $s['parameters']; $r = $this->request($p, $context); $proof = $this->proof($r->id, 'pending-return-proof');
             if (!$proof || !hash_equals($this->hash(json_decode($proof->snapshot, true, 512, JSON_THROW_ON_ERROR)), $this->hash($s))) $this->fail('history_mismatch');
-            if ($this->proof($r->id, 'pending-return-rollback')) return ['ok' => true, 'already_rolled_back' => true];
-            if (!hash_equals($s['after_hash'], $this->hash($this->capture($p, true)))) $this->fail('values_moved_on');
+            $rolledBack = $this->proof($r->id, 'pending-return-rollback');
+            $current = $this->capture($p, true);
+            if (!hash_equals($rolledBack ? $this->hash($s['before']['reports']) : $s['after_hash'], $this->hash($rolledBack ? $current['reports'] : $current))) $this->fail('values_moved_on');
+            if ($rolledBack) return ['ok' => true, 'already_rolled_back' => true];
             $report = collect($s['before']['reports'])->firstWhere('id', $p['report_id']);
             DB::table('payment_reports')->where('id', $p['report_id'])->update(array_intersect_key($report,
                 array_flip(['status', 'confirmed_by', 'confirmed_at', 'rejection_note', 'updated_at'])));
