@@ -4,6 +4,29 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int|null $StudentID
+ * @property int|null $StudentClassID
+ * @property int|null $InvoiceID
+ * @property string|null $reported_by_name
+ * @property mixed $payment_date
+ * @property string|null $payment_method
+ * @property mixed $reported_amount
+ * @property string|null $account_last5
+ * @property string|null $note
+ * @property string|null $status
+ * @property int|null $confirmed_by
+ * @property mixed $confirmed_at
+ * @property string|null $rejection_note
+ * @property string|null $report_token_hash
+ * @property mixed $token_expires_at
+ * @property int|null $payment_id
+ * @property int|null $voided_by
+ * @property mixed $voided_at
+ * @property string|null $void_reason
+ * @property string|null $backfill_note
+ */
 class PaymentReport extends Model
 {
     protected $table = 'payment_reports';
