@@ -42,6 +42,7 @@ class PaymentReportConfirmRrRaceTest extends TestCase
 
     protected function tearDown(): void
     {
+        $this->raceTerminateAllWorkers();
         $this->raceCleanupFiles();
         RefreshDatabaseState::$migrated = false;
         parent::tearDown();
@@ -73,11 +74,15 @@ class PaymentReportConfirmRrRaceTest extends TestCase
         $this->raceAwait($bAtCourseLock);
 
         touch($pause['release']);
-        $aResult = $this->raceFinish($winner);
-        $bResult = $this->raceFinish($delayed);
+        try {
+            $aResult = $this->raceFinish($winner);
+            $bResult = $this->raceFinish($delayed);
 
-        $this->assertSame(200, $aResult['status'], json_encode($aResult));
-        $this->assertSame(200, $bResult['status'], json_encode($bResult));
+            $this->assertSame(200, $aResult['status'], json_encode($aResult));
+            $this->assertSame(200, $bResult['status'], json_encode($bResult));
+        } finally {
+            $this->raceTerminateAllWorkers();
+        }
 
         $this->assertSame('confirmed', $reportA->fresh()->status);
         $this->assertSame('confirmed', $reportB->fresh()->status);

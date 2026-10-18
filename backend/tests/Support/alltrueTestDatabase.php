@@ -3,7 +3,9 @@
 /**
  * Allowed synthetic MySQL schemas for multi-process billing race workers.
  * Matches scripts/phpunit-isolated.sh validate_schema_name for namespaced DBs,
- * plus the exact CI default AllTrue_test. Rejects production / empty / illegal.
+ * plus the exact CI default AllTrue_test. Rejects production / empty / illegal / trailing LF.
+ *
+ * Use \z (not $) so a trailing newline cannot sneak past the end anchor.
  */
 function alltrue_is_allowed_test_database(?string $name): bool
 {
@@ -13,11 +15,15 @@ function alltrue_is_allowed_test_database(?string $name): bool
     if ($name === null || $name === '' || $name === 'AllTrue') {
         return false;
     }
+    // Reject CR/LF before length/regex — `$` would still match before a final LF.
+    if (strpbrk($name, "\r\n") !== false) {
+        return false;
+    }
     if (strlen($name) > 64) {
         return false;
     }
 
-    return (bool) preg_match('/^AllTrue_test_[A-Za-z0-9_]+$/', $name);
+    return (bool) preg_match('/^AllTrue_test_[A-Za-z0-9_]+\z/', $name);
 }
 
 function alltrue_is_allowed_test_db_host(?string $host): bool

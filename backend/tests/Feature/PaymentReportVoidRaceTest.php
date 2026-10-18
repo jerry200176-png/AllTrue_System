@@ -15,9 +15,8 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Support\PaymentReportRaceWorker;
 use Tests\TestCase;
-
-require_once __DIR__.'/../Support/alltrueTestDatabase.php';
 
 /**
  * #4248: real two-process void race evidence on this independent slice.
@@ -27,32 +26,26 @@ require_once __DIR__.'/../Support/alltrueTestDatabase.php';
  *
  * Mixed-writer (void × BillingCorrection) was not covered by the prior source review on 15b319d;
  * this file now proves course-first lock order under real two-process interleaving.
+ *
+ * Process plumbing (bounded non-blocking finish + tearDown terminate) lives in PaymentReportRaceWorker.
  */
 class PaymentReportVoidRaceTest extends TestCase
 {
-    /** @var list<string> */
-    private array $files = [];
+    use PaymentReportRaceWorker;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->assertSame('mysql', DB::connection()->getDriverName());
-        $dbName = DB::connection()->getDatabaseName();
-        $this->assertTrue(
-            alltrue_is_allowed_test_database($dbName),
-            'race workers require CI AllTrue_test or phpunit-isolated AllTrue_test_<suffix>_<nonce>; got '.$dbName
-        );
+        $this->raceAssertMysqlRr();
         // Committed rows visible to separate PDO workers — no RefreshDatabase outer wrap.
         $this->artisan('migrate:fresh', ['--force' => true]);
         $this->assertSame('REPEATABLE-READ', DB::selectOne('SELECT @@transaction_isolation AS level')->level);
-        DB::statement('SET SESSION innodb_lock_wait_timeout = 5');
     }
 
     protected function tearDown(): void
     {
-        foreach ($this->files as $p) {
-            @unlink($p);
-        }
+        $this->raceTerminateAllWorkers();
+        $this->raceCleanupFiles();
         RefreshDatabaseState::$migrated = false;
         parent::tearDown();
     }
@@ -62,22 +55,26 @@ class PaymentReportVoidRaceTest extends TestCase
         [$actorId, $report, $invoice] = $this->confirmedReportFixture(paidFlag: 1, reportAmount: 8800, invoicePaid: 8800);
 
         // Delayed worker pauses on the unlocked preflight SELECT (no FOR UPDATE) after seeing confirmed.
-        $pause = $this->pause('from `payment_reports`');
+        $pause = $this->racePause('from `payment_reports`');
         $pause['locked'] = false;
         $delayed = $this->spawnVoid($actorId, (int) $report->id, 'Delayed synthetic reversal', $pause);
-        $this->await($pause['ready']);
+        $this->raceAwait($pause['ready']);
         $this->assertSame('confirmed', $report->fresh()->status, 'winner has not voided yet; delayed already saw confirmed');
 
         $winner = $this->spawnVoid($actorId, (int) $report->id, 'Winning synthetic reversal');
-        $winnerResult = $this->finish($winner);
-        $this->assertSame(200, $winnerResult['status'], json_encode($winnerResult));
-        $this->assertSame('voided', $report->fresh()->status);
+        try {
+            $winnerResult = $this->raceFinish($winner);
+            $this->assertSame(200, $winnerResult['status'], json_encode($winnerResult));
+            $this->assertSame('voided', $report->fresh()->status);
 
-        touch($pause['release']);
-        $delayedResult = $this->finish($delayed);
-        $this->assertSame(422, $delayedResult['status'], json_encode($delayedResult));
-        $this->assertStringContainsString('已處理過', (string) ($delayedResult['body']['message'] ?? ''));
-        $this->assertNotSame(500, $delayedResult['status']);
+            touch($pause['release']);
+            $delayedResult = $this->raceFinish($delayed);
+            $this->assertSame(422, $delayedResult['status'], json_encode($delayedResult));
+            $this->assertStringContainsString('已處理過', (string) ($delayedResult['body']['message'] ?? ''));
+            $this->assertNotSame(500, $delayedResult['status']);
+        } finally {
+            $this->raceTerminateAllWorkers();
+        }
 
         $this->assertSame(1, Payment::where('Method', 'void')->where('InvoiceID', $invoice->id)->count());
         $this->assertSame(2, Payment::where('InvoiceID', $invoice->id)->count());
@@ -105,7 +102,7 @@ class PaymentReportVoidRaceTest extends TestCase
         $token = $svc->confirmationToken($course->fresh(), 6, 6600, 0, [], $actorId);
 
         // Pause after correction acquires the course lock (same prefix void now uses first).
-        $pause = $this->pause('from `studentclass`');
+        $pause = $this->racePause('from `studentclass`');
         $correction = $this->spawnCorrection([
             'class_id' => (int) $course->ID,
             'new_count' => 6,
@@ -116,9 +113,9 @@ class PaymentReportVoidRaceTest extends TestCase
             'actor_id' => $actorId,
             'reason' => 'mixed-writer correction',
         ], $pause);
-        $this->await($pause['ready']);
+        $this->raceAwait($pause['ready']);
 
-        $voidAtCourseLock = $this->file();
+        $voidAtCourseLock = $this->raceFile();
         $void = $this->spawnVoid(
             $actorId,
             (int) $report->id,
@@ -127,21 +124,25 @@ class PaymentReportVoidRaceTest extends TestCase
             $voidAtCourseLock
         );
         // Handshake: void reached authoritative StudentClass FOR UPDATE (not merely process start).
-        $this->await($voidAtCourseLock);
+        $this->raceAwait($voidAtCourseLock);
 
         touch($pause['release']);
-        $correctionResult = $this->finish($correction);
-        $voidResult = $this->finish($void);
+        try {
+            $correctionResult = $this->raceFinish($correction);
+            $voidResult = $this->raceFinish($void);
 
-        $this->assertNotSame(500, $correctionResult['status'], json_encode($correctionResult));
-        $this->assertNotSame(500, $voidResult['status'], json_encode($voidResult));
-        $this->assertSame(409, $correctionResult['status'], json_encode($correctionResult));
-        $this->assertSame(
-            'billing_correction_payment_report_locked',
-            $correctionResult['body']['code'] ?? null,
-            json_encode($correctionResult)
-        );
-        $this->assertSame(200, $voidResult['status'], json_encode($voidResult));
+            $this->assertNotSame(500, $correctionResult['status'], json_encode($correctionResult));
+            $this->assertNotSame(500, $voidResult['status'], json_encode($voidResult));
+            $this->assertSame(409, $correctionResult['status'], json_encode($correctionResult));
+            $this->assertSame(
+                'billing_correction_payment_report_locked',
+                $correctionResult['body']['code'] ?? null,
+                json_encode($correctionResult)
+            );
+            $this->assertSame(200, $voidResult['status'], json_encode($voidResult));
+        } finally {
+            $this->raceTerminateAllWorkers();
+        }
 
         $this->assertSame('voided', $report->fresh()->status);
         $this->assertSame(1, Payment::where('Method', 'void')->where('InvoiceID', $invoice->id)->count());
@@ -237,19 +238,6 @@ class PaymentReportVoidRaceTest extends TestCase
         return [(int) $user->id, $report, $invoice, $sc];
     }
 
-    private function file(): string
-    {
-        $p = '/tmp/void-race-'.Str::uuid();
-        $this->files[] = $p;
-
-        return $p;
-    }
-
-    private function pause(string $match): array
-    {
-        return ['match' => $match, 'ready' => $this->file(), 'release' => $this->file()];
-    }
-
     private function spawnVoid(
         int $actorId,
         int $reportId,
@@ -258,7 +246,6 @@ class PaymentReportVoidRaceTest extends TestCase
         ?string $signalBeforeStudentClassForUpdate = null
     ): array {
         $payload = [
-            'db' => config('database.connections.mysql'),
             'actor' => ['id' => $actorId, 'role' => 'director', 'campus_ids' => [1]],
             'id' => $reportId,
             'input' => ['void_reason' => $reason],
@@ -268,7 +255,7 @@ class PaymentReportVoidRaceTest extends TestCase
             $payload['signal_before_studentclass_for_update'] = $signalBeforeStudentClassForUpdate;
         }
 
-        return $this->spawnProcess(
+        return $this->raceSpawn(
             base_path('tests/Support/payment-void-race-worker.php'),
             $payload
         );
@@ -277,61 +264,9 @@ class PaymentReportVoidRaceTest extends TestCase
     /** @param array<string, mixed> $payload */
     private function spawnCorrection(array $payload, ?array $pause = null): array
     {
-        return $this->spawnProcess(
+        return $this->raceSpawn(
             base_path('tests/Support/payment-void-correction-race-worker.php'),
-            [
-                'db' => config('database.connections.mysql'),
-                'pause' => $pause,
-            ] + $payload
+            ['pause' => $pause] + $payload
         );
-    }
-
-    /** @param array<string, mixed> $payload */
-    private function spawnProcess(string $script, array $payload): array
-    {
-        $started = $this->file();
-        $payload['started'] = $started;
-        $process = proc_open(
-            [PHP_BINARY, $script],
-            [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']],
-            $pipes,
-            base_path()
-        );
-        $this->assertIsResource($process);
-        fwrite($pipes[0], json_encode($payload, JSON_THROW_ON_ERROR));
-        fclose($pipes[0]);
-        $this->await($started);
-
-        return [$process, $pipes];
-    }
-
-    private function await(string $file): void
-    {
-        $deadline = microtime(true) + 15;
-        while (!file_exists($file) && microtime(true) < $deadline) {
-            usleep(5000);
-        }
-        $this->assertFileExists($file, 'worker reached deterministic barrier');
-    }
-
-    private function finish(array $worker): array
-    {
-        [$process, $pipes] = $worker;
-        stream_set_timeout($pipes[1], 20);
-        stream_set_timeout($pipes[2], 20);
-        $out = stream_get_contents($pipes[1]);
-        $err = stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        $code = proc_close($process);
-        $this->assertSame(0, $code, $err."\n".$out);
-        $result = json_decode($out, true);
-        $this->assertIsArray($result, $out.$err);
-        // Deadlock / lock-wait / generic 500 must never count as success.
-        if (($result['status'] ?? null) === 500) {
-            $this->fail('worker returned HTTP 500 (deadlock/lock-wait not success): '.json_encode($result));
-        }
-
-        return $result;
     }
 }
