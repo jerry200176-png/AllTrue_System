@@ -207,7 +207,7 @@ class PaymentReversalRestatementTest extends TestCase
         $plan = $svc->plan($f['scope'], $f['actor']); $op = (string) Str::uuid();
         $result = $this->execute($svc, $plan, $f['actor'], 'LATER-INVOICE', $op);
         $next = $f['invoice']->replicate(); $next->save();
-        $this->assertSame('already_applied', $this->execute($svc, $plan, $f['actor'], 'LATER-INVOICE', $op)['state']);
+        $this->assertSame('already_applied', $this->execute($svc, $plan, $f['actor'], 'LATER-INVOICE', $op)['state']); $this->assertTrue($svc->verifyProof($result['restatement_id'], $f['actor'])['ok']);
         foreach ([['Note' => 'synthetic drift'], null] as $change) {
             DB::beginTransaction();
             try {
@@ -305,6 +305,9 @@ class PaymentReversalRestatementTest extends TestCase
         $preview = $this->postJson('/api/v1/pop/operations/requests/'.$id.'/dry-run', [], $headers)->assertStatus(422)->json('data.plan');
         $this->assertFalse($preview['ok']); $this->assertSame('preview_confirmation_required', $preview['errors'][0]);
         $confirmed = $preview['preview_parameters']; $this->assertSame($f['user']->id, $confirmed['plan']['actor_user_id']);
+        $other = $this->fixture(); $otherHeaders = ['Authorization' => 'Bearer '.$other['token']];
+        $otherId = $this->postJson('/api/v1/pop/operations/'.PaymentReversalRestatement::OPERATION.'/draft', ['parameters' => $confirmed, 'idempotency_key' => (string) Str::uuid()], $otherHeaders)->assertCreated()->json('data.id');
+        $this->postJson('/api/v1/pop/operations/requests/'.$otherId.'/dry-run', [], $otherHeaders)->assertStatus(422);
         foreach (['INVALID REFERENCE', str_repeat('X', 81)] as $decision) {
             $bad = $confirmed; $bad['decision_reference'] = $decision;
             $this->assertFalse(app(\App\Operations\Strategies\PaymentReversalRestatementStrategy::class)->plan($bad)['ok']);

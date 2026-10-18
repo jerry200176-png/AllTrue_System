@@ -330,7 +330,7 @@ final class PopOperationService
         if ($existing) {
             return $existing;
         }
-        $plan = $this->safePlan($entry, $parameters);
+        $plan = $this->safePlan($entry, $parameters, (string) $request->id);
         // After a successful execute, later drift (new work arriving) must not make the repair unverifiable or un-rollbackable.
         $executed = in_array($phase, ['verify', 'rollback'], true) && DB::table('pop_execution_records')
             ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
@@ -1066,11 +1066,11 @@ final class PopOperationService
     }
 
     /** @param array<string,mixed> $entry @param array<string,mixed> $parameters @return array<string,mixed> */
-    private function safePlan(array $entry, array $parameters): array
+    private function safePlan(array $entry, array $parameters, string $requestId): array
     {
         try {
             $strategy = app((string) $entry['strategy_class']);
-            $plan = $strategy->plan($parameters);
+            $plan = $strategy->plan($parameters, ['operation_id' => $requestId]);
 
             return is_array($plan) ? $plan : ['ok' => false, 'errors' => ['strategy_plan_invalid']];
         } catch (Throwable) {
@@ -1098,7 +1098,7 @@ final class PopOperationService
         if ($existing) {
             return $existing;
         }
-        $plan = $this->safePlan($entry, $parameters);
+        $plan = $this->safePlan($entry, $parameters, (string) $request->id);
 
         return $this->recordDryRun($request, $entry, $parameters, $plan, $actor, $this->durationMs($startedAt), $actorId, $actorRole, $requestFingerprint);
     }
