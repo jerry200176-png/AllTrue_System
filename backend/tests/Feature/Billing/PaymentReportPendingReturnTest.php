@@ -145,6 +145,8 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->assertFalse($fault->armed); $this->assertSame('pending', $f['pending']->fresh()->status);
             $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $r['id'])->where('phase', 'pending-return-proof')->count());
             $this->assertSame('idle', $pop->runApprovedLocally()['status'], 'Failed attempts require an explicitly selected retry');
+            $this->refuse(fn () => $pop->runApprovedLocally(null, 'rollback'), 'explicit'); $this->refuse(fn () => $pop->runApprovedLocally($r['id'], 'invalid'), 'valid phase');
+            $this->assertSame('skipped', $pop->runApprovedLocally($r['id'], 'verify')['status']);
             DB::beginTransaction();
             try { $this->assertFalse($pop->run($r['id'], 'rollback', $approval['token'], $sha, 'pop-runner')['ok']); $this->assertSame('skipped', $pop->runApprovedLocally($r['id'])['status'], 'Rollback after failed execute must prevent reclaim'); } finally { DB::rollBack(); }
             $this->travel(61)->minutes();
@@ -153,6 +155,10 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->refuse(fn () => $pop->runApprovedLocally($r['id']), 'match');
             file_put_contents($dir.'/deployment.json', json_encode(['backend_sha' => $sha]));
             config(['pop_inapp.standing_policy_enabled' => false]); $this->app->instance(\App\Operations\PopOperationService::class, $pop);
+            $fault->phase = 'verify'; $fault->armed = true;
+            $this->artisan('pop:execute-approved', ['--request' => $r['id']])->assertExitCode(1); $this->assertFalse($fault->armed);
+            $this->assertSame('verification_failed', DB::table('pop_operation_requests')->where('id', $r['id'])->value('status'));
+            $this->artisan('pop:execute-approved', ['--request' => $r['id'], '--phase' => 'verify'])->assertExitCode(0);
             $this->artisan('pop:execute-approved', ['--request' => $r['id']])->assertExitCode(0);
             $this->assertSame('succeeded', DB::table('pop_operation_requests')->where('id', $r['id'])->value('status'));
             $this->assertSame('skipped', $pop->runApprovedLocally($r['id'])['status']);
@@ -167,6 +173,8 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $r['id'])->where('phase', 'pending-return-rollback')->count());
             $this->assertSame('skipped', $pop->runApprovedLocally($r['id'])['status'], 'A failed rollback must never reclaim execute');
             $this->refuse(fn () => $pop->run($r['id'], 'verify', $approval['token'], $sha, 'pop-runner'), 'rollback'); $this->assertSame('failed', DB::table('pop_operation_requests')->where('id', $r['id'])->value('status'));
+            $this->assertSame('skipped', $pop->runApprovedLocally($r['id'], 'verify')['status']);
+            $this->artisan('pop:execute-approved', ['--request' => $r['id'], '--phase' => 'rollback'])->assertExitCode(0);
             $this->assertTrue($pop->run($r['id'], 'rollback', $approval['token'], $sha, 'pop-runner')['ok']);
             $this->assertSame('pending', $f['pending']->fresh()->status);
             $this->refuse(fn () => $pop->run($r['id'], 'verify', $approval['token'], $sha, 'pop-runner'), 'rollback'); $this->assertSame('rolled_back', DB::table('pop_operation_requests')->where('id', $r['id'])->value('status'));
