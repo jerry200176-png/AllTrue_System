@@ -21,7 +21,7 @@ class AgreedFeeSchemaSafetyTest extends TestCase
         $connection->shouldReceive('getDriverName')->andReturn('mysql');
         $connection->shouldReceive('getDatabaseName')->andReturn($config['database']);
         DB::shouldReceive('connection')->andReturn($connection);
-        $schema->shouldReceive('hasTable')->never();
+        $schema->shouldReceive('hasTable')->andThrow(new \LogicException('Schema access before target validation'));
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('isolated synthetic');
         AgreedFeeTestSchema::ensureExtensionColumns();
@@ -47,7 +47,7 @@ class AgreedFeeSchemaSafetyTest extends TestCase
         DB::shouldReceive('connection')->andReturn($connection);
         $schema->shouldReceive('hasTable')->with('invoice_corrections')->andReturn(true);
         $schema->shouldReceive('hasColumns')->andReturn(false);
-        DB::shouldReceive('statement')->never();
+        DB::shouldReceive('statement')->andThrow(new \LogicException('DDL before transaction guard'));
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('open test transaction');
         AgreedFeeTestSchema::ensureExtensionColumns();
