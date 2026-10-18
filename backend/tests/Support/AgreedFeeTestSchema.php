@@ -57,6 +57,7 @@ final class AgreedFeeTestSchema
             throw new RuntimeException('invoice_corrections missing — create-table from #4132 required on AllTrue_test');
         }
         if (self::hasExtensionColumns()) {
+            self::ensureKindDefinition();
             self::ensureCourseKeyUnique();
 
             return;
@@ -65,6 +66,9 @@ final class AgreedFeeTestSchema
         // Receipt-kind tests may leave only kind installed. Add missing fields,
         // preserving the existing kind/data and any already-created course key.
         $existing = Schema::getColumnListing('invoice_corrections');
+        if (in_array('kind', $existing, true)) {
+            self::ensureKindDefinition();
+        }
         $parts = [];
         foreach (self::COLUMNS as $name => $definition) {
             if (!in_array($name, $existing, true)) {
@@ -140,5 +144,21 @@ final class AgreedFeeTestSchema
         Schema::table('invoice_corrections', function (Blueprint $table) {
             $table->unique(['student_class_id', 'idempotency_key'], 'uq_invoice_corrections_course_key');
         });
+    }
+
+    private static function ensureKindDefinition(): void
+    {
+        $kind = collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))->firstWhere('Field', 'kind');
+        if (!$kind || strtolower($kind->Type) !== 'varchar(32)') {
+            throw new RuntimeException('Unexpected synthetic correction kind definition; rebuild the isolated schema.');
+        }
+        if ($kind->Null === 'NO' && $kind->Default === 'receipt_reissue') {
+            return;
+        }
+        self::assertNoOpenTransaction();
+        if (DB::table('invoice_corrections')->whereNull('kind')->exists()) {
+            throw new RuntimeException('Retain unclassified correction history; rebuild an isolated schema explicitly.');
+        }
+        DB::statement("ALTER TABLE invoice_corrections MODIFY kind VARCHAR(32) NOT NULL DEFAULT 'receipt_reissue'");
     }
 }
