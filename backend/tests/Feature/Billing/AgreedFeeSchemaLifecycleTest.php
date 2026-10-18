@@ -67,22 +67,48 @@ class AgreedFeeSchemaLifecycleTest extends TestCase
         $this->assertSame(1, DB::table('invoice_corrections')->where('kind', 'agreed_fee_unbilled')->count());
     }
 
-    public function test_following_ordinary_refresh_rebuilds_the_committed_base_schema(): void
+    public function test_following_ordinary_refresh_reuses_the_restored_base_without_remigrating(): void
     {
+        $fixture = $this->fixture();
+        $report = $this->receiptFor($fixture);
+        DB::table('invoice_corrections')->insert([
+            'kind' => 'agreed_fee_unbilled', 'student_class_id' => $fixture['course']->ID,
+            'reason' => 'Synthetic rollback isolation', 'idempotency_key' => (string) \Illuminate\Support\Str::uuid(),
+        ]);
         $this->assertTrue(AgreedFeeTestSchema::hasExtensionColumns());
         // Observe the real destruction callbacks after this case's outer rollback,
         // then exercise Laravel's ordinary RefreshDatabase path, without extension setup.
-        $this->beforeApplicationDestroyed(function () {
-            $this->assertFalse(RefreshDatabaseState::$migrated);
+        $this->beforeApplicationDestroyed(function () use ($fixture, $report) {
+            $this->assertTrue(RefreshDatabaseState::$migrated);
+            $this->assertFalse(DB::table('Invoice')->where('id', $fixture['invoice']->id)->exists());
+            $this->assertFalse(DB::table('payment_reports')->where('id', $report->id)->exists());
+            $this->assertFalse(DB::table('invoice_corrections')->where('student_class_id', $fixture['course']->ID)->exists());
+            $ddl = [];
+            DB::listen(static function ($query) use (&$ddl) {
+                if (preg_match('/^\s*(?:create|drop|alter)\s+table/i', $query->sql)) {
+                    $ddl[] = $query->sql;
+                }
+            });
             try {
                 $this->laravelRefreshTestDatabase();
                 $this->assertFalse(Schema::hasColumn('invoice_corrections', 'kind'));
                 $column = collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))->firstWhere('Field', 'amount');
                 $this->assertSame('NO', $column->Null);
+                $this->assertSame([], $ddl, 'ordinary refresh must not remigrate an already restored base');
             } finally {
                 $this->endOuterTestingTransactions();
                 RefreshDatabaseState::$migrated = false;
             }
+        });
+    }
+
+    public function test_mid_case_transaction_end_invalidates_the_schema_generation(): void
+    {
+        $this->endOuterTestingTransactions();
+        $this->beginDatabaseTransaction();
+        $this->beforeApplicationDestroyed(function () {
+            $this->assertFalse(RefreshDatabaseState::$migrated);
+            $this->assertTrue(Schema::hasColumn('invoice_corrections', 'kind'));
         });
     }
 
@@ -92,6 +118,7 @@ class AgreedFeeSchemaLifecycleTest extends TestCase
         $this->leaveNullableKindOnlySchema($keepCourseKey);
         $this->assertTrue(Schema::hasColumn('invoice_corrections', 'kind'));
         $this->assertFalse(AgreedFeeTestSchema::hasExtensionColumns());
+        $this->assertFalse(AgreedFeeTestSchema::restoreBaseSchemaAfterTest(), 'partial schemas cannot be reused');
         $this->assertSame('YES', collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))
             ->firstWhere('Field', 'kind')->Null, 'match the real receipt-test nullable definition');
         AgreedFeeTestSchema::ensureExtensionColumns();
