@@ -351,18 +351,15 @@ class PaymentReportController extends Controller
 
         $userId = $request->attributes->get('auth_user_id');
         $confirmationNote = trim((string) $request->input('note', ''));
+        // Routing id only — must not run inside the transaction (would start an RR
+        // consistent-read snapshot before waiting on the course lock).
+        $courseId = $this->resolveReportCourseId((int) $id);
 
-        return DB::transaction(function () use ($id, $userId, $confirmationNote) {
-            // Serialize confirmation attempts for the same report. This keeps a retry
-            // after a lost response from creating a second Payment.
-            $report = PaymentReport::query()
-                ->whereKey($id)
-                ->lockForUpdate()
-                ->first();
-
-            if (!$report) {
-                abort(404);
-            }
+        return DB::transaction(function () use ($id, $courseId, $userId, $confirmationNote) {
+            // Global lock order with BillingCorrection::applyCountCorrection and void:
+            // StudentClass → payment_reports (never report-first). Serializes confirm retries
+            // after a lost response so a second Payment cannot be created.
+            [$sc, $report] = $this->lockCourseThenReport((int) $id, $courseId);
 
             if ($report->status !== 'pending') {
                 return response()->json(['message' => '此回報已處理過'], 422);
@@ -378,8 +375,6 @@ class PaymentReportController extends Controller
             $note = $confirmationNote !== ''
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));
-            // Lock the course so a concurrent 確認不收 cannot interleave with this confirmation.
-            $sc = StudentClass::query()->whereKey($report->StudentClassID)->lockForUpdate()->first();
             if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能再確認回報')) {
                 return $refusal;
             }
@@ -1079,7 +1074,7 @@ class PaymentReportController extends Controller
     }
 
     /**
-     * Course-first void lock prefix — must stay aligned with
+     * Shared course-first confirm/void lock prefix — must stay aligned with
      * BillingCorrection::applyCountCorrection (course, then payment_reports).
      * $courseId must already be resolved outside the transaction; after both locks,
      * re-check report StudentClassID / presence (status checked by callers).
