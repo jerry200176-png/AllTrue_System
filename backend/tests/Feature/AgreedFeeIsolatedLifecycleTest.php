@@ -87,6 +87,7 @@ class AgreedFeeIsolatedLifecycleTest extends TestCase
 
     public function test_guarded_boot_preserves_target_and_installs_only_synthetic_runtime(): void
     {
+        $this->requireIsolatedMigrationTarget();
         [$process, $root, $db] = $this->runFixture();
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput().$process->getOutput());
         $observed = json_decode(file_get_contents($root.'/provider.json'), true);
@@ -118,6 +119,7 @@ class AgreedFeeIsolatedLifecycleTest extends TestCase
 
     public function test_same_process_entry_runs_one_real_migration_and_replay_runs_none(): void
     {
+        $this->requireIsolatedMigrationTarget();
         [$process, $root, , $environment] = $this->runFixture([], [], true);
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput().$process->getOutput());
         $this->assertFileExists($root.'/provider.json');
@@ -133,6 +135,14 @@ class AgreedFeeIsolatedLifecycleTest extends TestCase
         $this->assertSame(0, $again->getExitCode(), $again->getErrorOutput());
         $this->assertSame(1, DB::table($table)->count());
         $this->assertSame(1, DB::table('migrations')->where('migration', $migration)->count());
+    }
+
+    private function requireIsolatedMigrationTarget(): void
+    {
+        if (config('database.connections.mysql.database') === 'AllTrue_test'
+            && !(getenv('CI') === 'true' && getenv('GITHUB_ACTIONS') === 'true')) {
+            $this->markTestSkipped('Standalone lifecycle success requires scripts/phpunit-isolated.sh or isolated CI; shared local PHPUnit remains locked by its parent.');
+        }
     }
 
     private function runFixture(array $envOverride = [], array $configOverride = [], bool $migrate = false, bool|string $cached = false): array
