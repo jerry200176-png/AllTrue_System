@@ -124,9 +124,6 @@ class RestrictedCaseIntegration(unittest.TestCase):
         self.assertNotEqual(code, 0)
 
 
-if __name__ == '__main__':
-    unittest.main()
-
 
 class XinzhuangFeeTransport(unittest.TestCase):
     exercise = RestrictedCaseIntegration.exercise
@@ -139,8 +136,12 @@ class XinzhuangFeeTransport(unittest.TestCase):
         self.assertIn(SENTINEL, recovered)
 
     def test_fee_case_scope_and_payload_guards(self):
-        for override in ({'restricted_id': '999999'}, {'campus': 9}, {'read_only': False}, {'bad_case': True}):
+        for override in ({'restricted_id': '999999'}, {'campus': 9}, {'read_only': False}, {'bad_case': True}, {'subject': SENTINEL}, {'teachers': '123'}):
             args = dict(case='xinzhuang_fee_cases', restricted_id='4064')
             args.update(override)
             code, _, _, _, _ = self.exercise(**args)
             self.assertNotEqual(code, 0)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -189,9 +189,6 @@ class InApp414AmountSourceCase(unittest.TestCase):
         self.assertIn("'snapshot_complete' not in obj", post)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 
 class XinzhuangFeeScope(unittest.TestCase):
@@ -205,3 +202,7 @@ class XinzhuangFeeScope(unittest.TestCase):
         self.assertIn(", 11, '新莊分校'", block)
         for marker in WRITE_MARKERS:
             self.assertNotIn(marker, block)
+
+
+if __name__ == '__main__':
+    unittest.main()

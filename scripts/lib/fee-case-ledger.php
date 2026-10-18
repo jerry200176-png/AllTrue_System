@@ -69,9 +69,24 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
                 throw new \RuntimeException('payment_report_link_mismatch');
             }
         }
+        foreach ($reports as $r) {
+            if ($r->payment_id === null) continue;
+            $p = $payments->firstWhere('id', $r->payment_id);
+            if (!$p || (int) $p->InvoiceID !== (int) $r->InvoiceID
+                || ($p->payment_report_id !== null && (int) $p->payment_report_id !== (int) $r->id)) {
+                throw new \RuntimeException('report_payment_link_mismatch');
+            }
+        }
+        foreach ($payments as $p) {
+            if ($p->payment_report_id === null) continue;
+            $r = $reports->firstWhere('id', $p->payment_report_id);
+            if (!$r || (int) $r->InvoiceID !== (int) $p->InvoiceID) {
+                throw new \RuntimeException('payment_invoice_link_mismatch');
+            }
+        }
         $out['contract'] = (array) $course;
-        $out['contract']['ScheduleMode'] = $enum($course->ScheduleMode, ['count', 'monthly', 'term']);
-        $out['contract']['ClassType'] = $enum($course->ClassType, ['trial', 'one_on_one', 'one_on_two', 'one_on_three', 'group']);
+        $out['contract']['ScheduleMode'] = $enum($course->ScheduleMode, ['date', 'count']);
+        $out['contract']['ClassType'] = $enum($course->ClassType, ['regular', 'trial', 'tutoring', 'one_on_one', 'one_on_two', 'one_on_three']);
         $out['invoices'] = $invoices->map(static function ($i) use ($payments, $allItems, $courseId, $enum) {
             $net = $payments->where('InvoiceID', $i->id)->sum(static fn ($p) =>
                 $p->Method === 'void' || $p->Amount < 0 ? -abs((int) $p->Amount) : max(0, (int) $p->Amount));
@@ -79,6 +94,7 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
                 'total_amount' => $i->TotalAmount, 'stored_paid_amount' => $i->PaidAmount, 'net_paid' => max(0, $net),
                 'status' => $enum($i->Status, ['unpaid', 'partial', 'paid', 'void']),
                 'issue_date' => $i->IssueDate, 'due_date' => $i->DueDate,
+                'unscoped_item_count' => $allItems->where('InvoiceID', $i->id)->whereNull('StudentClassID')->count(),
                 'other_course_item_count' => $allItems->where('InvoiceID', $i->id)->filter(
                     static fn ($l) => $l->StudentClassID !== null && (int) $l->StudentClassID !== $courseId)->count()];
         })->all();
@@ -102,8 +118,9 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
             ? $rows($conn->table('invoice_corrections')->where('student_class_id', $courseId)->orderBy('id')
                 ->select(['id', 'original_invoice_id', 'replacement_invoice_id', 'payment_report_id', 'amount', 'created_at']))->all()
             : [];
-        $out['snapshot_complete'] = $unlinked->isEmpty();
-        $out['completeness'] = $unlinked->isEmpty() ? 'complete' : 'unlinked_obligations';
+        $hasUnscoped = $allItems->whereNull('StudentClassID')->isNotEmpty();
+        $out['snapshot_complete'] = $unlinked->isEmpty() && !$hasUnscoped;
+        $out['completeness'] = $hasUnscoped ? 'ambiguous_obligations' : ($unlinked->isEmpty() ? 'complete' : 'unlinked_obligations');
     } catch (\Throwable $e) {
         // Never emit SQL, connection configuration, exception messages or partial ledger payloads.
         $out = array_intersect_key($out, array_flip(['read_only_transaction', 'campus_bound']));

@@ -72,6 +72,13 @@ class FeeCaseLedgerProbeTest extends TestCase
             $this->assertFalse($r['snapshot_complete']); $this->assertArrayNotHasKey('contract', $r);
             $this->assertSame(0, DB::transactionLevel());
         }
+        foreach ([['date', 'tutoring'], ['date', 'regular'], ['count', 'one_on_two']] as [$mode, $type]) {
+            $f['course']->update(['ScheduleMode' => $mode, 'ClassType' => $type]);
+            $r = $this->probe($f);
+            $this->assertTrue($r['snapshot_complete']);
+            $this->assertSame($mode, $r['contract']['ScheduleMode']);
+            $this->assertSame($type, $r['contract']['ClassType']);
+        }
         DB::beginTransaction();
         $r = $this->probe($f);
         $this->assertSame('existing_transaction', $r['reason']);
@@ -102,6 +109,37 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertCount(1, $r['items']);
         $this->assertStringNotContainsString('12345', json_encode($r));
         $this->assertStringNotContainsString('Private shared text', json_encode($r));
+        InvoiceItem::create(['InvoiceID' => $f['invoice']->id, 'StudentClassID' => null,
+            'Description' => 'Private unscoped text', 'Amount' => 6789]);
+        $r = $this->probe($f);
+        $this->assertFalse($r['snapshot_complete']);
+        $this->assertSame(1, $r['invoices'][0]['unscoped_item_count']);
+        $this->assertSame('ambiguous_obligations', $r['completeness']);
+        $this->assertStringNotContainsString('6789', json_encode($r));
+    }
+
+    public function test_legacy_report_payment_link_requires_a_selected_payment_on_its_invoice(): void
+    {
+        $f = $this->scopedFixture(); $report = $this->receiptFor($f);
+        $paymentId = $report->payment_id;
+        $report->update(['payment_id' => $paymentId + 100000]);
+        $r = $this->probe($f);
+        $this->assertFalse($r['snapshot_complete']); $this->assertArrayNotHasKey('reports', $r);
+        $other = Invoice::create(['StudentID' => $f['student']->id, 'StudentClassID' => $f['course']->ID,
+            'IssueDate' => '2026-10-01', 'TotalAmount' => 500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $legacy = Payment::create(['InvoiceID' => $other->id, 'Amount' => 500, 'Method' => 'cash', 'PaidAt' => '2026-10-01']);
+        $report->update(['payment_id' => $legacy->id]);
+        $r = $this->probe($f);
+        $this->assertFalse($r['snapshot_complete']); $this->assertArrayNotHasKey('payments', $r);
+        $report->update(['payment_id' => $paymentId]);
+        $legacy->update(['payment_report_id' => $report->id]);
+        $r = $this->probe($f);
+        $this->assertFalse($r['snapshot_complete']);
+        $legacy->update(['payment_report_id' => null]);
+        Payment::findOrFail($paymentId)->update(['payment_report_id' => null]);
+        $r = $this->probe($f);
+        $this->assertTrue($r['snapshot_complete'], 'valid legacy inverse-only link is retained');
+        $this->assertSame(0, DB::transactionLevel());
     }
 
     public function test_row_budget_discards_payload_and_rolls_back_transaction(): void
