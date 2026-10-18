@@ -34,6 +34,7 @@ final class PopOperationService
     ): array {
         $entry = $this->catalog->operation($operationId);
         $this->assertActor($actor);
+        if ($this->isReviewedFinancialCase($entry) && ($actorId === null || $actor !== 'user:'.$actorId || $actorRole === 'pop_machine')) throw new RuntimeException('Reviewed financial repair requires an authenticated human requester.');
         $this->assertIdempotencyKey($idempotencyKey);
         $normalized = self::canonicalParameters($parameters);
         $this->assertParameterContract($entry, $normalized);
@@ -166,6 +167,7 @@ final class PopOperationService
             && !$this->isExactTd076Repair($entry)
             && !$this->isExactPastScheduledCancel($entry)
             && !$this->isExactInvoice1997StaleValues($entry)
+            && !$this->isReviewedFinancialCase($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
         }
@@ -255,6 +257,27 @@ final class PopOperationService
         });
     }
 
+    /** Read-only phase receipt, never parameters, snapshots, approvers or approval tokens. */
+    public function statusForActor(string $requestId, string $role, array $campusIds): array
+    {
+        $request = $this->request($requestId);
+        $p = json_decode($request->parameters, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertCampusScope($p, $role, $campusIds);
+        $query = DB::table('pop_execution_records')->where('operation_id', $requestId)
+            ->whereIn('phase', ['dry-run', 'execute', 'verify', 'rollback'])->select(['phase', 'result', 'execution_id', 'commit_sha']);
+        // created_at has second precision: select the phase consistent with the authoritative request status.
+        $phase = match ($request->status) {
+            'succeeded', 'verification_failed' => 'verify', 'verifying' => 'execute', 'rolled_back' => 'rollback', default => null,
+        };
+        if ($phase) $query->where('phase', $phase);
+        if ($request->status === 'failed') $query->where('result', 'failed');
+        // Equal-second failures follow phase progression; attempt numbers are local to one phase.
+        $record = $query->orderByDesc('created_at')->orderByRaw("CASE phase WHEN 'rollback' THEN 4 WHEN 'verify' THEN 3 WHEN 'execute' THEN 2 ELSE 1 END DESC")->orderByDesc('attempt_no')->first();
+        return ['request_id' => $requestId, 'operation_id' => $request->operation_id, 'status' => $request->status,
+            'phase' => $record?->phase, 'result' => $record?->result, 'execution_id' => $record?->execution_id,
+            'commit_sha' => $record?->commit_sha];
+    }
+
     /** Run the authenticated, read-only planning phase for the control plane. */
     /** @param array<int,int> $actorCampusIds */
     public function runDryRun(
@@ -335,7 +358,10 @@ final class PopOperationService
         if (!$approval) {
             throw new RuntimeException('POP approval token is missing, expired, or not bound to this request.');
         }
-        if (in_array($phase, ['verify', 'rollback'], true) && $this->financialRecoveryPhase($request) === 'execute-recovery') throw new RuntimeException('POP recovery requires its successful execute receipt first.');
+        // Retained writes need an execute receipt; failed atomic attempts have no committed write to undo.
+        if ($this->atomicFinancialRepair((string) $request->strategy_id) && DB::table('pop_execution_records')->where('operation_id', $request->id)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->exists()) {
+            if (in_array($phase, ['verify', 'rollback'], true) && $this->financialRecoveryPhase($request) === 'execute-recovery') throw new RuntimeException('POP recovery requires its successful execute receipt first.');
+        }
         $existing = $this->existing($request, $phase);
         if ($existing) {
             return $existing;
@@ -402,8 +428,9 @@ final class PopOperationService
      * The raw approval token is reconstructed only inside the Pi process from
      * its database hash and local APP_KEY; it is never returned or logged.
      */
-    public function runApprovedLocally(?string $requestId = null): array
+    public function runApprovedLocally(?string $requestId = null, string $phase = 'execute'): array
     {
+        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || ($phase !== 'execute' && $requestId === null)) throw new RuntimeException('POP recovery requires one explicit request and valid phase.');
         $lockName = 'alltrue:pop:executor';
         $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lockName]);
         if ((int) ($lock->acquired ?? 0) !== 1) {
@@ -411,13 +438,13 @@ final class PopOperationService
         }
 
         try {
-            return $this->claimApprovedLocally($requestId);
+            return $this->claimApprovedLocally($requestId, $phase);
         } finally {
             DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
         }
     }
 
-    private function claimApprovedLocally(?string $requestId): array
+    private function claimApprovedLocally(?string $requestId, string $phase): array
     {
         if ($requestId === null) {
             $pending = DB::table('pop_operation_requests')->where('status', 'approved');
@@ -450,13 +477,19 @@ final class PopOperationService
 
         try {
             $request = $this->request((string) $candidate->id);
-            if ((string) $request->status !== 'approved') {
+            $retry = $requestId !== null && $this->retryableFinancialExecute($request);
+            $records = DB::table('pop_execution_records')->where('operation_id', $request->id);
+            $recover = $requestId !== null && $this->atomicFinancialRepair((string) $request->strategy_id)
+                && (clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists()
+                && !(clone $records)->where('phase', 'rollback')->when($phase === 'rollback', fn ($q) => $q->where('result', 'rolled_back'))->exists();
+            if ($phase === 'execute' ? ((string) $request->status !== 'approved' && !$retry) : !$recover) {
                 return ['ok' => true, 'status' => 'skipped', 'request_id' => (string) $request->id];
             }
             $approval = $this->localApproval($request);
             $commitSha = (string) $approval->commit_sha;
             $this->assertLocalDeployment($commitSha);
             $token = $this->reconstructToken($request, $approval, $commitSha);
+            if ($phase !== 'execute') return $this->localSummary($request, $this->run((string) $request->id, $phase, $token, $commitSha, 'pop-pi-local'));
             $execute = $this->run((string) $request->id, 'execute', $token, $commitSha, 'pop-pi-local');
             if (($execute['result'] ?? null) !== 'succeeded') {
                 return $this->localSummary($request, $execute);
@@ -467,6 +500,17 @@ final class PopOperationService
         } finally {
             DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
         }
+    }
+
+    /** Explicit Pi-local retries only; the ordinary scheduler never requeues failed requests. */
+    private function retryableFinancialExecute(object $request): bool
+    {
+        if ((string) $request->status !== 'failed' || !$this->atomicFinancialRepair((string) $request->strategy_id)) return false;
+        $executions = DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'execute');
+        return ((clone $executions)->where('result', 'failed')->where('payload->failure_reason', 'execution_failed')->exists()
+                || DB::table('pop_execution_records')->where('operation_id', $request->id)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->exists())
+            && !(clone $executions)->where('result', 'succeeded')->exists()
+            && !DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'rollback')->exists();
     }
 
     /** @param array<string,mixed> $parameters */
@@ -642,6 +686,8 @@ final class PopOperationService
             && $roles === ['super_admin']) {
             return $roles;
         }
+
+        if ($this->isReviewedFinancialCase($entry)) return $roles;
 
         $isFounderScopedRepair = $policy === 'founder-explicit-single-repair'
             && ($entry['id'] ?? null) === 'course-contract-repair'
@@ -849,6 +895,25 @@ final class PopOperationService
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnbilledBacklogCatchupStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-unbilled-backlog-catchup'
             && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
+    }
+
+    /** Prepared exact single-record repair shapes; activation and every immutable case still require Founder approval. */
+    private function isReviewedFinancialCase(array $e): bool
+    {
+        $shapes = [
+            'reviewed-unpaid-invoice-charge-alignment' => ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy',
+                ['student_id', 'course_id', 'campus_id', 'invoice_id', 'expected_invoice_total', 'expected_charge', 'decision_reference', 'expected_state_hash'], 'one_exact_unpaid_invoice_total'],
+            'reviewed-legacy-reversal-restatement' => ['App\\Operations\\Strategies\\PaymentReversalRestatementStrategy',
+                ['campus_id', 'plan', 'decision_reference'], 'one_exact_unlinked_negative_posting'],
+            'reviewed-mismatched-pending-return' => [Strategies\PaymentReportPendingReturnStrategy::class,
+                ['campus_id', 'student_id', 'course_id', 'invoice_id', 'report_id', 'expected_reported_amount', 'expected_charge', 'expected_invoice_total', 'decision_reference', 'reason', 'expected_state_hash'], 'one_exact_mismatched_pending_report'],
+        ];
+        $shape = $shapes[$e['id'] ?? ''] ?? null;
+        if (!$shape || [$e['strategy_class'] ?? null, $e['parameter_keys'] ?? null, $e['blast_radius'] ?? null] !== $shape) return false;
+        foreach (['founder_approval_required', 'reversible', 'snapshot_required', 'transaction_required', 'rollback_supported', 'verification_required', 'approval_required'] as $key)
+            if (($e[$key] ?? false) !== true) return false;
+        return ($e['approver_roles'] ?? null) === ['super_admin'] && ($e['risk'] ?? null) === 'critical'
+            && ($e['approval_policy'] ?? null) === 'founder-exact-reviewed-financial' && ($e['execution_authority'] ?? null) === 'pop-pi-local';
     }
 
     /** Same single-super_admin Founder-exact shape (in-app #369, invoice 1997 stale values). */
@@ -1091,6 +1156,7 @@ final class PopOperationService
         if ((clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists())
             return (clone $records)->where('phase', 'rollback')->exists() ? 'rollback' : 'recovery';
         $proof = (clone $records)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->first();
+        if (!$proof && $this->retryableFinancialExecute($request)) return 'execute-recovery';
         $snapshot = $proof ? json_decode((string) $proof->snapshot, true, 512, JSON_THROW_ON_ERROR) : []; $parameters = $snapshot['parameters'] ?? $snapshot['request_parameters'] ?? [];
         return $proof && hash_equals((string) $request->parameters_hash, hash('sha256', json_encode(self::canonicalParameters($parameters), JSON_THROW_ON_ERROR)))
             && !(clone $records)->where('phase', 'rollback')->exists() ? 'execute-recovery' : null;

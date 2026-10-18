@@ -831,6 +831,7 @@ Route::prefix('v1')->group(function () {
         Route::post('pop/operations/{operationId}/draft', [PopOperationController::class, 'storeDraft'])->where('operationId', '[a-z0-9-]+');
         Route::post('pop/operations/requests/{requestId}/dry-run', [PopOperationController::class, 'dryRun'])->whereUuid('requestId');
         Route::post('pop/operations/requests/{requestId}/approvals', [PopOperationController::class, 'approve'])->whereUuid('requestId');
+        Route::get('pop/operations/requests/{requestId}/status', [PopOperationController::class, 'status'])->whereUuid('requestId');
     });
 
     // Machine control-plane entrypoints only. A POP machine can submit and
