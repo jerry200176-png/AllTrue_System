@@ -128,10 +128,10 @@ class PaymentReportPendingReturnTest extends TestCase
         try {
             file_put_contents($dir.'/policies/default.yaml', "version: 1\n");
             file_put_contents($dir.'/catalog.yaml', "version: 1\noperations:\n  ".ReturnReport::OPERATION.":\n    lifecycle: active\n    strategy_class: ".ReturnReport::class."\n    parameter_keys: [".implode(', ', array_keys($p))."]\n    approval_required: true\n    approval_policy: critical-dual-approval\n    approver_roles: [director, super_admin]\n");
-            $pop = new \App\Operations\PopOperationService(new \App\Operations\PopOperationCatalog($dir.'/catalog.yaml'));
+            $sha = str_repeat('c', 40); file_put_contents($dir.'/deployment.json', json_encode(['backend_sha' => $sha]));
+            $pop = new \App\Operations\PopOperationService(new \App\Operations\PopOperationCatalog($dir.'/catalog.yaml'), null, $dir.'/deployment.json');
             $r = $pop->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);
             $this->assertTrue($pop->runDryRun($r['id'], 'user:'.$f['user']->id, $f['user']->id, 'director', [1])['ok']);
-            $sha = str_repeat('c', 40);
             $this->assertFalse($pop->approve($r['id'], 'SYNTHETIC-DIRECTOR', 'reviewer-director', 'director', $sha, $f['user']->id + 100000, [1])['ready']);
             $approval = $pop->approve($r['id'], 'SYNTHETIC-FOUNDER', 'reviewer-founder', 'super_admin', $sha, $f['user']->id + 100001);
             $fault = (object) ['armed' => true, 'phase' => 'execute'];
@@ -143,6 +143,14 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->assertFalse($pop->run($r['id'], 'execute', $approval['token'], $sha, 'pop-runner')['ok']);
             $this->assertFalse($fault->armed); $this->assertSame('pending', $f['pending']->fresh()->status);
             $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $r['id'])->where('phase', 'pending-return-proof')->count());
+            $this->assertSame('idle', $pop->runApprovedLocally()['status'], 'Failed attempts require an explicitly selected retry');
+            $this->travel(61)->minutes();
+            try { $this->refuse(fn () => $pop->runApprovedLocally($r['id']), 'expired'); } finally { $this->travelBack(); }
+            file_put_contents($dir.'/deployment.json', json_encode(['backend_sha' => str_repeat('d', 40)]));
+            $this->refuse(fn () => $pop->runApprovedLocally($r['id']), 'match');
+            file_put_contents($dir.'/deployment.json', json_encode(['backend_sha' => $sha]));
+            $this->assertTrue($pop->runApprovedLocally($r['id'])['ok']);
+            $this->assertSame('skipped', $pop->runApprovedLocally($r['id'])['status']);
             $executed = $pop->run($r['id'], 'execute', $approval['token'], $sha, 'pop-runner');
             $this->assertTrue($executed['ok']); $this->assertSame('rejected', $f['pending']->fresh()->status);
             $other = $pop->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);
@@ -152,10 +160,11 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->assertFalse($pop->run($r['id'], 'rollback', $approval['token'], $sha, 'pop-runner')['ok']);
             $this->assertFalse($fault->armed); $this->assertSame('rejected', $f['pending']->fresh()->status);
             $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $r['id'])->where('phase', 'pending-return-rollback')->count());
+            $this->assertSame('skipped', $pop->runApprovedLocally($r['id'])['status'], 'A failed rollback must never reclaim execute');
             $this->assertTrue($pop->run($r['id'], 'rollback', $approval['token'], $sha, 'pop-runner')['ok']);
             $this->assertSame('pending', $f['pending']->fresh()->status);
         } finally {
-            unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
+            unlink($dir.'/deployment.json'); unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
         }
     }
 
