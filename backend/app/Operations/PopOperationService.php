@@ -859,9 +859,9 @@ final class PopOperationService
     private function isReviewedFinancialCase(array $e): bool
     {
         $shapes = [
-            'reviewed-unpaid-invoice-charge-alignment' => [Strategies\UnpaidInvoiceChargeAlignmentStrategy::class,
+            'reviewed-unpaid-invoice-charge-alignment' => ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy',
                 ['student_id', 'course_id', 'campus_id', 'invoice_id', 'expected_invoice_total', 'expected_charge', 'decision_reference', 'expected_state_hash'], 'one_exact_unpaid_invoice_total'],
-            'reviewed-legacy-reversal-restatement' => [Strategies\PaymentReversalRestatementStrategy::class,
+            'reviewed-legacy-reversal-restatement' => ['App\\Operations\\Strategies\\PaymentReversalRestatementStrategy',
                 ['campus_id', 'plan', 'decision_reference'], 'one_exact_unlinked_negative_posting'],
             'reviewed-mismatched-pending-return' => [Strategies\PaymentReportPendingReturnStrategy::class,
                 ['campus_id', 'student_id', 'course_id', 'invoice_id', 'report_id', 'expected_reported_amount', 'expected_charge', 'expected_invoice_total', 'decision_reference', 'reason', 'expected_state_hash'], 'one_exact_mismatched_pending_report'],
