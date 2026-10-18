@@ -6,19 +6,10 @@ require __DIR__.'/../../vendor/autoload.php';
 require __DIR__.'/alltrueTestDatabase.php';
 $data = json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
 try {
-    $db = alltrue_race_database_config($data['db'] ?? []);
-    if (!is_string($data['app_key'] ?? null) || $data['app_key'] === '') {
-        throw new InvalidArgumentException('Missing synthetic parent signing key');
-    }
+    alltrue_boot_race_worker($data);
 } catch (InvalidArgumentException $e) {
     exit(90);
 }
-$app = require __DIR__.'/../../bootstrap/app.php';
-$app->afterBootstrapping(Illuminate\Foundation\Bootstrap\LoadConfiguration::class, static function ($app) use ($db, $data) {
-    $app['config']->set(['database.connections.mysql' => $db, 'database.default' => 'mysql',
-        'app.env' => 'testing', 'app.key' => $data['app_key']]);
-});
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 Illuminate\Support\Facades\DB::purge();
 // Bound waits so deadlock/lock-wait cannot hang the suite or be mistaken for success.
 Illuminate\Support\Facades\DB::statement('SET SESSION innodb_lock_wait_timeout = 5');

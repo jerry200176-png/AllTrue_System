@@ -40,7 +40,7 @@ class PaymentRaceWorkerSafetyTest extends TestCase
 
     public function test_child_receives_the_parent_token_signing_key(): void
     {
-        config(['app.key' => 'synthetic-parent-signing-key-4254']);
+        config(['app.key' => 'base64:'.base64_encode(str_repeat('p', 32))]);
         $worker = $this->raceSpawn(base_path('tests/Support/payment-race-payload-probe.php'), []);
         $body = $this->raceFinish($worker)['body'];
         $this->assertSame(hash_hmac('sha256', 'race-probe', config('app.key')), $body['key_proof']);

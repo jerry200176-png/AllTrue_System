@@ -48,6 +48,21 @@ function alltrue_race_database_config(array $db): array
         'collation' => 'utf8mb4_unicode_ci', 'prefix' => '', 'strict' => true];
 }
 
+/** Install validated configuration before any provider can open a connection or resolve encryption. */
+function alltrue_boot_race_worker(array $data): void
+{
+    $db = alltrue_race_database_config($data['db'] ?? []);
+    if (!is_string($data['app_key'] ?? null) || $data['app_key'] === '') {
+        throw new InvalidArgumentException('Missing synthetic parent signing key');
+    }
+    $app = require __DIR__.'/../../bootstrap/app.php';
+    $app->afterBootstrapping(Illuminate\Foundation\Bootstrap\LoadConfiguration::class, static function ($app) use ($db, $data) {
+        $app['config']->set(['database.connections.mysql' => $db, 'database.default' => 'mysql',
+            'app.env' => 'testing', 'app.key' => $data['app_key']]);
+    });
+    $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+}
+
 function alltrue_race_isolation_level(): string
 {
     try {
