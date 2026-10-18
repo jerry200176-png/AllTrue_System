@@ -358,7 +358,9 @@ final class PopOperationService
         if (!$approval) {
             throw new RuntimeException('POP approval token is missing, expired, or not bound to this request.');
         }
-        if (in_array($phase, ['verify', 'rollback'], true) && $this->financialRecoveryPhase($request) === 'execute-recovery') throw new RuntimeException('POP recovery requires its successful execute receipt first.');
+        // Retained writes need an execute receipt; failed atomic attempts have no committed write to undo.
+        if (in_array($phase, ['verify', 'rollback'], true) && $this->financialRecoveryPhase($request) === 'execute-recovery'
+            && DB::table('pop_execution_records')->where('operation_id', $request->id)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->exists()) throw new RuntimeException('POP recovery requires its successful execute receipt first.');
         $existing = $this->existing($request, $phase);
         if ($existing) {
             return $existing;
@@ -1153,6 +1155,7 @@ final class PopOperationService
         if ((clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists())
             return (clone $records)->where('phase', 'rollback')->exists() ? 'rollback' : 'recovery';
         $proof = (clone $records)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->first();
+        if (!$proof && $this->retryableFinancialExecute($request)) return 'execute-recovery';
         $snapshot = $proof ? json_decode((string) $proof->snapshot, true, 512, JSON_THROW_ON_ERROR) : []; $parameters = $snapshot['parameters'] ?? $snapshot['request_parameters'] ?? [];
         return $proof && hash_equals((string) $request->parameters_hash, hash('sha256', json_encode(self::canonicalParameters($parameters), JSON_THROW_ON_ERROR)))
             && !(clone $records)->where('phase', 'rollback')->exists() ? 'execute-recovery' : null;
