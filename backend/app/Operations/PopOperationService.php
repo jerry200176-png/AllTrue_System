@@ -995,7 +995,7 @@ final class PopOperationService
             return null;
         }
         if (($approval->phase === 'rollback' && $phase !== 'rollback') || ($approval->phase === 'recovery' && !in_array($phase, ['verify', 'rollback'], true))) return null;
-        if ($approval->phase === 'execute-recovery' && $phase === 'execute' && $this->financialRecoveryPhase($request) !== 'execute-recovery') return null;
+        if ($approval->phase === 'execute-recovery' && $phase === 'execute' && !$this->existing($request, 'execute') && $this->financialRecoveryPhase($request) !== 'execute-recovery') return null;
 
         return hash_equals((string) $approval->token_hash, hash('sha256', $token))
             && hash_equals($token, $this->sign($request, (string) $approval->phase, $commitSha, $expiresAt))
