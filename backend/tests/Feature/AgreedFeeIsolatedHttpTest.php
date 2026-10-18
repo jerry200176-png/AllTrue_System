@@ -19,6 +19,7 @@ class AgreedFeeIsolatedHttpTest extends TestCase
     private array $childEnv;
     private string $baseUrl;
     private string $token;
+    private array $proxyEnv = [];
 
     protected function refreshTestDatabase()
     {
@@ -46,6 +47,7 @@ class AgreedFeeIsolatedHttpTest extends TestCase
 
     protected function tearDown(): void
     {
+        foreach ($this->proxyEnv as $key => $value) $value === false ? putenv($key) : putenv($key.'='.$value);
         if ($this->server) $this->server->stop(2);
         if ($this->artifacts) (new Filesystem)->deleteDirectory($this->artifacts);
         parent::tearDown();
@@ -79,7 +81,7 @@ class AgreedFeeIsolatedHttpTest extends TestCase
 
     private function request(string $method, string $path, array $body = [], bool $authorized = true): array
     {
-        $options = ['http_errors' => false, 'allow_redirects' => false, 'timeout' => 5,
+        $options = ['http_errors' => false, 'allow_redirects' => false, 'timeout' => 5, 'proxy' => '',
             'headers' => ['Accept' => 'application/json']];
         if ($authorized) $options['headers']['Authorization'] = 'Bearer '.$this->token;
         if ($method === 'POST') $options['json'] = $body;
@@ -90,7 +92,8 @@ class AgreedFeeIsolatedHttpTest extends TestCase
     private function seedGuardedFixture(): Process
     {
         $before = DB::table('StudentClass')->count();
-        $this->assertSame(90, $this->runSeed(['AGREED_FEE_ISOLATED_ARTIFACT_DIR' => sys_get_temp_dir()])->getExitCode());
+        $badRoot = $this->artifacts.'/invalid-mode'; mkdir($badRoot, 0700); chmod($badRoot, 0755);
+        $this->assertSame(90, $this->runSeed(['AGREED_FEE_ISOLATED_ARTIFACT_DIR' => $badRoot])->getExitCode());
         $this->assertSame($before, DB::table('StudentClass')->count());
         $rejected = $this->runSeed(['DB_DATABASE' => 'AllTrue']);
         $this->assertSame(90, $rejected->getExitCode());
@@ -111,7 +114,11 @@ class AgreedFeeIsolatedHttpTest extends TestCase
         $this->assertFalse(str_contains($seed->getOutput(), $this->token));
         foreach (['fixture.env', 'courses.json'] as $file) $this->assertSame(0600, fileperms($this->artifacts.'/'.$file) & 0777);
         $allow = json_decode(file_get_contents($this->artifacts.'/courses.json'), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertCount(5, $allow['course_ids']);
+        $this->assertCount(6, $allow['course_ids']);
+        foreach (['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy'] as $key) {
+            $this->proxyEnv[$key] = getenv($key);
+            putenv($key.'='.(strtoupper($key) === 'NO_PROXY' ? '' : 'http://127.0.0.1:9'));
+        }
         $this->startServer();
         $this->assertSame(401, $this->request('GET', '/__isolated/fee-snapshot?course_id='.$allow['course_ids'][0], [], false)[0]);
         $this->assertSame(403, $this->request('GET', '/__isolated/fee-snapshot?course_id=999999999')[0]);
@@ -130,6 +137,8 @@ class AgreedFeeIsolatedHttpTest extends TestCase
             $snapshotPath = '/__isolated/fee-snapshot?course_id='.$id;
             [$status, $before] = $this->request('GET', $snapshotPath); $this->assertSame(200, $status);
             $courseBefore = (array) DB::table('StudentClass')->where('ID', $id)->first(); unset($courseBefore['Charge']);
+            $paymentBefore = DB::table('Payment')->where('InvoiceID', $case['invoice_id'])->orderBy('id')->get()->toArray();
+            $reportBefore = DB::table('payment_reports')->where('StudentClassID', $id)->orderBy('id')->get()->toArray();
             $body = ['scope' => 'billed', 'original_invoice_id' => $case['invoice_id'], 'new_charge' => $case['new_charge'],
                 'reason' => 'Synthetic full-stack fee correction', 'idempotency_key' => (string) Str::uuid()];
             [$status, $preview] = $this->request('POST', $path.'/preview', $body); $this->assertSame(200, $status);
@@ -143,7 +152,9 @@ class AgreedFeeIsolatedHttpTest extends TestCase
             $this->assertSame($case['expect_invoice_total'], $after['original_invoice']['TotalAmount']);
             $this->assertSame('void', $after['original_invoice']['Status']);
             $this->assertSame(1, $after['correction_count']); $this->assertSame(1, $after['audit_agreed_fee_count']);
-            $this->assertSame([0, 0, $before['notification_count']], [$after['payment_count'], $after['payment_report_count'], $after['notification_count']]);
+            $this->assertSame([$before['payment_count'], $before['payment_report_count'], $before['notification_count']], [$after['payment_count'], $after['payment_report_count'], $after['notification_count']]);
+            $this->assertEquals($paymentBefore, DB::table('Payment')->where('InvoiceID', $case['invoice_id'])->orderBy('id')->get()->toArray());
+            $this->assertEquals($reportBefore, DB::table('payment_reports')->where('StudentClassID', $id)->orderBy('id')->get()->toArray());
             $courseAfter = (array) DB::table('StudentClass')->where('ID', $id)->first(); unset($courseAfter['Charge']);
             $this->assertSame($courseBefore, $courseAfter);
             $this->assertSame([200, $result], $this->request('POST', $path.'/apply', $apply));

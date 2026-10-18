@@ -102,7 +102,7 @@ $mkCourse = static function (array $overrides = []) use ($user): array {
 // A) trial 8000→500 (AgreedFeeFixture contract)
 $a = $mkCourse();
 // B) invoice-only discrepancy Charge 7200 / invoice 8800 → new_charge 7200
-$b = $mkCourse(['course' => ['Charge' => 7200], 'invoice_total' => 8800]);
+$b = $mkCourse(['course' => ['Charge' => 7200, 'Rate' => 900, 'ClassType' => 'one_on_three', 'UsedSessions' => 4, 'RemainingSessions' => 4], 'invoice_total' => 8800]);
 // C) regular one_on_one 8800→7200
 $c = $mkCourse([
     'course' => [
@@ -118,8 +118,29 @@ $c = $mkCourse([
 $d = $mkCourse();
 // E) the required increase case: agreed fee8000→8800, no cash receipt created.
 $e = $mkCourse(['course' => ['ClassType' => 'one_on_one'], 'invoice_total' => 8000]);
+// Anonymous invoice-only shapes: no original lines, retained fully matched void history.
+$f = $mkCourse(['course' => ['Charge' => 500, 'Rate' => 500, 'SessionCount' => 1, 'UsedSessions' => 1, 'RemainingSessions' => 0], 'invoice_total' => 8000]);
+$seedVoids = static function (array $fixture, array $amounts): void {
+    InvoiceItem::where('InvoiceID', $fixture['invoice']->id)->delete();
+    foreach ($amounts as $amount) {
+        $report = \App\Models\PaymentReport::create(['StudentID' => $fixture['student']->id, 'StudentClassID' => $fixture['course']->ID,
+            'InvoiceID' => $fixture['invoice']->id, 'reported_by_name' => 'Fixture', 'payment_date' => '2026-10-01',
+            'payment_method' => 'cash', 'reported_amount' => $amount, 'status' => 'voided',
+            'confirmed_at' => now()->subMinute(), 'voided_at' => now(), 'report_token_hash' => hash('sha256', (string) Str::uuid()), 'token_expires_at' => now()->addDay()]);
+        $receipt = \App\Models\Payment::create(['InvoiceID' => $fixture['invoice']->id, 'Amount' => $amount,
+            'Method' => 'cash', 'PaidAt' => '2026-10-01', 'payment_report_id' => $report->id]);
+        $report->update(['payment_id' => $receipt->id]);
+        \App\Models\Payment::create(['InvoiceID' => $fixture['invoice']->id, 'Amount' => -$amount,
+            'Method' => 'void', 'PaidAt' => '2026-10-02', 'payment_report_id' => $report->id]);
+    }
+};
+$seedVoids($f, [8000, 500]); $seedVoids($b, [8800]);
 
 $cases = [
+    'trial_invoice_only_8000_to_500' => [
+        'course_id' => $f['course']->ID, 'invoice_id' => $f['invoice']->id,
+        'new_charge' => 500, 'expect_old_charge' => 500, 'expect_invoice_total' => 8000,
+    ],
     'regular_8000_to_8800' => [
         'course_id' => $e['course']->ID, 'invoice_id' => $e['invoice']->id,
         'new_charge' => 8800, 'expect_old_charge' => 8000, 'expect_invoice_total' => 8000,
@@ -159,6 +180,8 @@ $envPath = $artifactDir.'/fixture.env';
 $allowPath = $artifactDir.'/courses.json';
 $lines = [
     'AGREED_FEE_ISOLATED_TOKEN='.$token,
+    'AGREED_FEE_ISOLATED_CASE_TRIAL_ONLY_COURSE_ID='.$f['course']->ID,
+    'AGREED_FEE_ISOLATED_CASE_TRIAL_ONLY_INVOICE_ID='.$f['invoice']->id,
     'AGREED_FEE_ISOLATED_CASE_UP8800_COURSE_ID='.$e['course']->ID,
     'AGREED_FEE_ISOLATED_CASE_UP8800_INVOICE_ID='.$e['invoice']->id,
     'AGREED_FEE_ISOLATED_COURSE_ID='.$a['course']->ID,

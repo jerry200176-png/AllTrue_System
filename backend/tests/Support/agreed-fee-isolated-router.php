@@ -140,7 +140,6 @@ if ($path === '/__isolated/fee-snapshot' && ($_SERVER['REQUEST_METHOD'] ?? '') =
         'payment_report_count' => $reports,
         'audit_agreed_fee_count' => $audit,
         'notification_count' => $notif,
-        'effects' => ['payment' => $payments, 'receipt' => $reports, 'notification' => 0],
     ], JSON_THROW_ON_ERROR);
     exit;
 }
