@@ -48,10 +48,15 @@ class PaymentRaceWorkerSafetyTest extends TestCase
 
     public function test_mariadb_uses_the_existing_tx_isolation_fallback(): void
     {
+        $connection = \Mockery::mock(\Illuminate\Database\Connection::class);
+        $connection->shouldReceive('getDriverName')->andReturn('mysql');
+        $connection->shouldReceive('getDatabaseName')->andReturn('AllTrue_test');
+        DB::shouldReceive('connection')->andReturn($connection);
         DB::shouldReceive('selectOne')->once()->with('SELECT @@transaction_isolation AS level')
             ->andThrow(new QueryException('SELECT @@transaction_isolation AS level', [], new \PDOException('Unknown system variable')));
         DB::shouldReceive('selectOne')->once()->with('SELECT @@tx_isolation AS level')
             ->andReturn((object) ['level' => 'REPEATABLE-READ']);
-        $this->assertSame('REPEATABLE-READ', alltrue_race_isolation_level());
+        DB::shouldReceive('statement')->once()->with('SET SESSION innodb_lock_wait_timeout = 5');
+        $this->raceAssertMysqlRr();
     }
 }
