@@ -681,7 +681,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 ### R28. 已繳課程不可再次核帳建立新付款
 
-**2026-10-18 唯讀個案查核校區補充**：不得從舊 probe 名稱或前端 fallback 推定現行分校 ID。先核對 production `/branches`，再以 Campus.id + name 及 Student.CampusID 三者綁定；新莊為11，舊 campus9 probe 查空不是「個案不存在」。編號只識別候選，帳單／回報／Payment 必須在同一 server READ ONLY snapshot 校驗 ownership、row budget 與未歸屬帳單；缺漏不推導可改帳。公開只留技術證據，加密全文留既有持鑰本機。Enum 必須核對 schema/controller（date/count、regular/tutoring），不可猜 monthly；report.payment_id 與 Payment.payment_report_id 要雙向核對同張帳單，NULL 歸屬明細不能算完整。
+**2026-10-18 唯讀個案查核校區補充**：不得從舊 probe 名稱或前端 fallback 推定現行分校 ID。先核對 production `/branches`，再以 Campus.id + name 及 Student.CampusID 三者綁定；新莊為11，舊 campus9 probe 查空不是「個案不存在」。編號只識別候選，帳單／回報／Payment 必須在同一 server READ ONLY snapshot 校驗 ownership、row budget 與未歸屬帳單；缺漏不推導可改帳。公開只留技術證據，加密全文留既有持鑰本機。Enum 必須核對 schema/controller（date/count、regular/tutoring），不可猜 monthly；report.payment_id 與 Payment.payment_report_id 要雙向核對同張帳單，NULL 歸屬明細不能算完整。 真正 READ ONLY 測試不能套在外層寫入交易；用具名、不同學生／課程的情境共用一次 schema generation，破壞 schema 的案例另開一代，避免每項 migrate:fresh 擠爆既有 CI15分鐘預算。保留全部斷言與 server 拒寫證據，不延長或略過關卡。
 
 
 - 主任核帳若找不到未繳 Invoice 就自動新建 Invoice/Payment，會讓同一筆課被重複入帳，畫面出現多筆繳費。

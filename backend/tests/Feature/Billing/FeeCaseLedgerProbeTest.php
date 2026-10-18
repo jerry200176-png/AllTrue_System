@@ -16,8 +16,22 @@ class FeeCaseLedgerProbeTest extends TestCase
     {
         parent::setUp();
         // The server must start a genuine READ ONLY transaction, not a nested savepoint.
-        // Existing helper invalidates schema reuse so committed fixtures are freshly rebuilt.
+        // Named scenarios use distinct students/courses; schema mutation remains a separate test.
         $this->endOuterTestingTransactions();
+    }
+
+    public function test_scoped_reader_contract_against_committed_fixtures(): void
+    {
+        $this->case_projects_real_net_ledger_and_keeps_private_text_out();
+        $this->case_wrong_campus_or_campus_identity_does_not_export_contract();
+        $this->case_mismatched_invoice_and_report_owners_fail_without_partial_payload();
+        $this->case_shared_invoice_exports_only_target_lines_and_other_course_count();
+        $this->case_orphan_items_and_cross_owner_typed_items_are_incomplete();
+        $this->case_package_waiver_and_effective_amendments_are_explicit_without_private_text();
+        $this->case_legacy_report_payment_link_requires_a_selected_payment_on_its_invoice();
+        $this->case_reversal_provenance_requires_exact_amounts_and_voided_status();
+        $this->case_row_budget_discards_payload_and_rolls_back_transaction();
+        $this->case_server_read_only_transaction_rejects_accidental_writes();
     }
 
     private function probe(array $f, ?int $campusId = null, string $name = 'Synthetic campus'): array
@@ -34,7 +48,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         return $f;
     }
 
-    public function test_projects_real_net_ledger_and_keeps_private_text_out(): void
+    private function case_projects_real_net_ledger_and_keeps_private_text_out(): void
     {
         $f = $this->scopedFixture();
         $report = $this->receiptFor($f);
@@ -126,7 +140,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertSame([(int) $legacy->id, (int) $ghostHeader->id, (int) $ghostItem->id], array_map('intval', $r['unlinked_invoice_ids']));
     }
 
-    public function test_wrong_campus_or_campus_identity_does_not_export_contract(): void
+    private function case_wrong_campus_or_campus_identity_does_not_export_contract(): void
     {
         $f = $this->scopedFixture();
         $other = Campus::factory()->create(['name' => 'Other synthetic campus']);
@@ -150,7 +164,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         DB::rollBack();
     }
 
-    public function test_mismatched_invoice_and_report_owners_fail_without_partial_payload(): void
+    private function case_mismatched_invoice_and_report_owners_fail_without_partial_payload(): void
     {
         $f = $this->scopedFixture(); $other = $this->scopedFixture();
         $f['invoice']->update(['StudentID' => $other['student']->id]);
@@ -162,7 +176,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertFalse($r['snapshot_complete']); $this->assertArrayNotHasKey('reports', $r);
     }
 
-    public function test_shared_invoice_exports_only_target_lines_and_other_course_count(): void
+    private function case_shared_invoice_exports_only_target_lines_and_other_course_count(): void
     {
         $f = $this->scopedFixture(); $other = $this->scopedFixture();
         $other['course']->update(['StudentID' => $f['student']->id]);
@@ -183,7 +197,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertStringNotContainsString('6789', json_encode($r));
     }
 
-    public function test_orphan_items_and_cross_owner_typed_items_are_incomplete(): void
+    private function case_orphan_items_and_cross_owner_typed_items_are_incomplete(): void
     {
         $f = $this->scopedFixture(); $other = $this->scopedFixture();
         $line = InvoiceItem::create(['InvoiceID' => Invoice::max('id') + 100, 'StudentClassID' => $f['course']->ID,
@@ -203,7 +217,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertSame(0, DB::transactionLevel());
     }
 
-    public function test_package_waiver_and_effective_amendments_are_explicit_without_private_text(): void
+    private function case_package_waiver_and_effective_amendments_are_explicit_without_private_text(): void
     {
         $f = $this->scopedFixture();
         $package = \App\Models\CoursePackage::create(['student_id' => $f['student']->id,
@@ -228,7 +242,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertStringNotContainsString('Private', json_encode($r));
     }
 
-    public function test_legacy_report_payment_link_requires_a_selected_payment_on_its_invoice(): void
+    private function case_legacy_report_payment_link_requires_a_selected_payment_on_its_invoice(): void
     {
         $f = $this->scopedFixture(); $report = $this->receiptFor($f);
         $paymentId = $report->payment_id;
@@ -272,7 +286,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertSame(0, DB::transactionLevel());
     }
 
-    public function test_reversal_provenance_requires_exact_amounts_and_voided_status(): void
+    private function case_reversal_provenance_requires_exact_amounts_and_voided_status(): void
     {
         $f = $this->scopedFixture(); $report = $this->receiptFor($f);
         $void = Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => -7600, 'Method' => 'void',
@@ -284,7 +298,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         }
     }
 
-    public function test_row_budget_discards_payload_and_rolls_back_transaction(): void
+    private function case_row_budget_discards_payload_and_rolls_back_transaction(): void
     {
         $f = $this->scopedFixture();
         foreach (range(1, 101) as $n) Payment::create(['InvoiceID' => $f['invoice']->id,
@@ -296,7 +310,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertSame(0, DB::transactionLevel());
     }
 
-    public function test_server_read_only_transaction_rejects_accidental_writes(): void
+    private function case_server_read_only_transaction_rejects_accidental_writes(): void
     {
         $f = $this->scopedFixture(); $attempted = false; $sqlState = null;
         DB::listen(function ($query) use (&$attempted, &$sqlState) {
