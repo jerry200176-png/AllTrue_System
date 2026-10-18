@@ -60,7 +60,7 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
         $ids = $invoices->pluck('id')->all();
         // Shared invoices are identifiable without exporting other courses or their line amounts.
         $allItems = $rows($conn->table('InvoiceItem')->whereIn('InvoiceID', $ids)->orderBy('id')
-            ->select(['id', 'InvoiceID', 'StudentClassID', 'Amount']));
+            ->select(['id', 'InvoiceID', 'StudentClassID', 'Amount', 'PeriodStart', 'PeriodEnd']));
         $referencedIds = $allItems->pluck('StudentClassID')->merge($invoices->pluck('StudentClassID'))
             ->filter(static fn ($id) => $id !== null)->unique()->values()->all();
         $owners = $rows($conn->table('StudentClass as sc')->join('Student as s', 's.id', '=', 'sc.StudentID')
@@ -75,7 +75,7 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
         $reports = $rows($conn->table('payment_reports')->where(function ($q) use ($ids, $courseId) {
             $q->where('StudentClassID', $courseId)->orWhereIn('InvoiceID', $ids);
         })->orderBy('id')->select(['id', 'StudentID', 'StudentClassID', 'InvoiceID', 'reported_amount',
-            'status', 'payment_id', 'payment_date', 'confirmed_at', 'voided_at']));
+            'status', 'payment_id', 'payment_method', 'payment_date', 'confirmed_at', 'voided_at']));
         foreach ($reports as $r) {
             if ((int) $r->StudentID !== $studentId || (int) $r->StudentClassID !== $courseId
                 || ($r->InvoiceID !== null && !in_array($r->InvoiceID, $ids))) {
@@ -91,16 +91,28 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
                 throw new \RuntimeException('payment_report_link_mismatch');
             }
         }
+        $seenReceipts = [];
         foreach ($reports as $r) {
+            $anchors = $payments->filter(static fn ($p) => (int) $p->Amount > 0 && $p->Method !== 'void'
+                && ((int) $p->payment_report_id === (int) $r->id || ($r->payment_id !== null && (int) $p->id === (int) $r->payment_id)));
+            if ($anchors->count() > 1 || ($anchors->count() === 1 && isset($seenReceipts[$anchors->first()->id]))) {
+                throw new \RuntimeException('duplicate_receipt_link');
+            }
+            if ($anchors->count() === 1) $seenReceipts[$anchors->first()->id] = true;
             if ($r->payment_id === null) continue;
             $p = $payments->firstWhere('id', $r->payment_id);
-            if (!$p || (int) $p->InvoiceID !== (int) $r->InvoiceID
+            if (!$p || (int) $p->Amount <= 0 || $p->Method === 'void' || (int) $p->InvoiceID !== (int) $r->InvoiceID
                 || ($p->payment_report_id !== null && (int) $p->payment_report_id !== (int) $r->id)) {
                 throw new \RuntimeException('report_payment_link_mismatch');
             }
         }
+        $seenReversals = [];
         foreach ($payments as $p) {
             if ($p->payment_report_id === null) continue;
+            if ((int) $p->Amount < 0 || $p->Method === 'void') {
+                if (isset($seenReversals[$p->payment_report_id])) throw new \RuntimeException('duplicate_reversal_link');
+                $seenReversals[$p->payment_report_id] = true;
+            }
             $r = $reports->firstWhere('id', $p->payment_report_id);
             if (!$r || (int) $r->InvoiceID !== (int) $p->InvoiceID) {
                 throw new \RuntimeException('payment_invoice_link_mismatch');
@@ -135,19 +147,33 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
                     static fn ($l) => $l->StudentClassID !== null && (int) $l->StudentClassID !== $courseId)->count()];
         })->all();
         $out['items'] = $allItems->filter(static fn ($l) => (int) $l->StudentClassID === $courseId)
-            ->map(static fn ($l) => ['id' => $l->id, 'invoice_id' => $l->InvoiceID, 'amount' => $l->Amount])->values()->all();
+            ->map(static fn ($l) => ['id' => $l->id, 'invoice_id' => $l->InvoiceID, 'amount' => $l->Amount,
+                'period_start' => $l->PeriodStart, 'period_end' => $l->PeriodEnd])->values()->all();
         $out['reports'] = $reports->map(static function ($r) use ($enum) {
             $a = (array) $r; unset($a['StudentID'], $a['StudentClassID']);
-            $a['status'] = $enum($r->status, ['pending', 'confirmed', 'rejected', 'voided']); return $a;
+            $a['status'] = $enum($r->status, ['pending', 'confirmed', 'rejected', 'voided']);
+            $a['payment_method'] = $enum($r->payment_method, ['cash', 'transfer']); return $a;
         })->all();
         $out['payments'] = $payments->map(static function ($p) use ($enum) {
             $a = (array) $p; $a['Method'] = $enum($p->Method, ['cash', 'transfer', 'credit_card', 'void', 'transfer_out', 'transfer_in', 'other']); return $a;
         })->all();
         $stage = 'unlinked_invoices';
+        $validCourseRef = static function ($q, string $column) use ($studentId, $campusId) {
+            $q->selectRaw('1')->from('StudentClass as valid_sc')->join('Student as valid_s', 'valid_s.id', '=', 'valid_sc.StudentID')
+                ->whereColumn('valid_sc.ID', $column)->where('valid_sc.StudentID', $studentId)->where('valid_s.CampusID', $campusId);
+        };
         $unlinked = $rows($conn->table('Invoice as i')->where('i.StudentID', $studentId)
-            ->whereNull('i.StudentClassID')->whereNotExists(function ($q) {
-                $q->selectRaw('1')->from('InvoiceItem as ii')->whereColumn('ii.InvoiceID', 'i.id')
-                    ->whereNotNull('ii.StudentClassID');
+            ->where(function ($q) use ($validCourseRef) {
+                $q->where(function ($bare) {
+                    $bare->whereNull('i.StudentClassID')->whereNotExists(function ($items) {
+                        $items->selectRaw('1')->from('InvoiceItem as ii')->whereColumn('ii.InvoiceID', 'i.id')->whereNotNull('ii.StudentClassID');
+                    });
+                })->orWhere(function ($header) use ($validCourseRef) {
+                    $header->whereNotNull('i.StudentClassID')->whereNotExists(fn ($course) => $validCourseRef($course, 'i.StudentClassID'));
+                })->orWhereExists(function ($items) use ($validCourseRef) {
+                    $items->selectRaw('1')->from('InvoiceItem as ii')->whereColumn('ii.InvoiceID', 'i.id')->whereNotNull('ii.StudentClassID')
+                        ->whereNotExists(fn ($course) => $validCourseRef($course, 'ii.StudentClassID'));
+                });
             })->orderBy('i.id')->select(['i.id']));
         $out['unlinked_invoice_ids'] = $unlinked->pluck('id')->all();
         $stage = 'correction_history';

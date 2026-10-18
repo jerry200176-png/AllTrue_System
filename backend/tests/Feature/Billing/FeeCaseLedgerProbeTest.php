@@ -41,7 +41,10 @@ class FeeCaseLedgerProbeTest extends TestCase
         $f['invoice']->update(['zero_amount_reason' => 'gift', 'billing_period' => '2026-09', 'ScheduleModeAtIssue' => 'date']);
         Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => -7600, 'Method' => 'void',
             'PaidAt' => '2026-10-02', 'payment_report_id' => $report->id]);
-        $report->update(['status' => 'voided']);
+        $report->update(['status' => 'voided', 'payment_method' => 'transfer']);
+        InvoiceItem::where('InvoiceID', $f['invoice']->id)->update(['Amount' => 3600, 'PeriodStart' => '2026-09-15', 'PeriodEnd' => '2026-10-14']);
+        InvoiceItem::create(['InvoiceID' => $f['invoice']->id, 'StudentClassID' => $f['course']->ID,
+            'Description' => 'Private period line', 'Amount' => 4000, 'PeriodStart' => '2026-10-15', 'PeriodEnd' => '2026-11-03']);
         $before = [$f['course']->fresh()->getRawOriginal(), Payment::count(), Invoice::count()];
         $r = $this->probe($f);
         $this->assertTrue($r['snapshot_complete']);
@@ -51,6 +54,10 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertSame(7600, (int) $r['invoices'][0]['stored_paid_amount']);
         $this->assertCount(2, $r['payments']); $this->assertCount(1, $r['reports']);
         $this->assertSame('voided', $r['reports'][0]['status']);
+        $this->assertSame('transfer', $r['reports'][0]['payment_method'] ?? null);
+        $this->assertSame('cash', $r['payments'][0]['Method']);
+        $this->assertSame([['2026-09-15', '2026-10-14'], ['2026-10-15', '2026-11-03']], array_map(
+            static fn ($line) => [$line['period_start'] ?? null, $line['period_end'] ?? null], $r['items']));
         $this->assertTrue($r['invoices'][0]['has_zero_amount_reason']);
         $this->assertTrue($r['agreed_fee_extension_columns_present']);
         $this->assertSame('2026-09', $r['invoices'][0]['billing_period'] ?? null);
@@ -99,10 +106,16 @@ class FeeCaseLedgerProbeTest extends TestCase
         DB::table('invoice_corrections')->where('id', $correction)->update(['replacement_invoice_id' => $replacement->id]);
         $legacy = Invoice::create(['StudentID' => $f['student']->id, 'StudentClassID' => null,
             'IssueDate' => '2026-10-01', 'TotalAmount' => 500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $ghostHeader = Invoice::create(['StudentID' => $f['student']->id, 'StudentClassID' => $f['course']->ID + 100000,
+            'IssueDate' => '2026-10-01', 'TotalAmount' => 500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $ghostItem = Invoice::create(['StudentID' => $f['student']->id, 'StudentClassID' => null,
+            'IssueDate' => '2026-10-01', 'TotalAmount' => 500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        InvoiceItem::create(['InvoiceID' => $ghostItem->id, 'StudentClassID' => $f['course']->ID + 100001,
+            'Description' => 'Private dangling reference', 'Amount' => 500]);
         $r = $this->probe($f);
         $this->assertFalse($r['snapshot_complete']);
         $this->assertSame('unlinked_obligations', $r['completeness']);
-        $this->assertSame([(int) $legacy->id], array_map('intval', $r['unlinked_invoice_ids']));
+        $this->assertSame([(int) $legacy->id, (int) $ghostHeader->id, (int) $ghostItem->id], array_map('intval', $r['unlinked_invoice_ids']));
     }
 
     public function test_wrong_campus_or_campus_identity_does_not_export_contract(): void
@@ -226,6 +239,21 @@ class FeeCaseLedgerProbeTest extends TestCase
         Payment::findOrFail($paymentId)->update(['payment_report_id' => null]);
         $r = $this->probe($f);
         $this->assertTrue($r['snapshot_complete'], 'valid legacy inverse-only link is retained');
+        $duplicate = $this->reportFor($f, 'confirmed'); $duplicate->update(['payment_id' => $paymentId]);
+        $this->assertFalse($this->probe($f)['snapshot_complete'], 'two legacy reports cannot claim one receipt');
+        $duplicate->update(['payment_id' => null, 'status' => 'rejected']);
+        Payment::findOrFail($paymentId)->update(['payment_report_id' => $report->id]);
+        $extra = Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => 7600, 'Method' => 'cash',
+            'PaidAt' => '2026-10-01', 'payment_report_id' => $report->id]);
+        $this->assertFalse($this->probe($f)['snapshot_complete'], 'one report cannot claim two positive receipts');
+        $extra->update(['Amount' => -7600, 'Method' => 'void']); $report->update(['status' => 'voided']);
+        $this->assertTrue($this->probe($f)['snapshot_complete'], 'a receipt and its reversal may share their report');
+        $duplicateVoid = Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => -1, 'Method' => 'void',
+            'PaidAt' => '2026-10-01', 'payment_report_id' => $report->id]);
+        $this->assertFalse($this->probe($f)['snapshot_complete'], 'two reversals cannot share one receipt report');
+        $duplicateVoid->delete();
+        $report->update(['payment_id' => $extra->id]);
+        $this->assertFalse($this->probe($f)['snapshot_complete'], 'a reversal cannot be the receipt anchor');
         $this->assertSame(0, DB::transactionLevel());
     }
 
