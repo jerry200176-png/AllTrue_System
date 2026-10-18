@@ -83,6 +83,7 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
     {
         $svc = app(Alignment::class); [$f, $p, $ctx] = $this->candidate(8000, 8800);
         $foreign = $p; $foreign['campus_id'] = 2; $this->assertFalse($svc->plan($foreign)['ok']);
+        DB::beginTransaction(); try { DB::table('Invoice')->where('id', $p['invoice_id'])->update(['ScheduleModeAtIssue' => 'date']); $this->assertFalse($svc->plan($p)['ok']); } finally { DB::rollBack(); }
         $pending = $this->reportFor($f); $this->assertFalse($svc->plan($p)['ok']); $pending->delete();
         $extra = Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => -8000, 'Method' => 'void', 'PaidAt' => '2026-10-01']);
         $this->assertFalse($svc->plan($p)['ok']); $extra->delete();
@@ -177,6 +178,11 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertSame(500, (int) $f['invoice']->fresh()->TotalAmount);
             $this->assertFalse(DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->where('phase', 'execute')->exists());
             $this->assertFalse($svc->plan($p, ['operation_id' => (string) Str::uuid()])['ok'], 'A different request cannot inherit the retained proof');
+            $oldApprovals = DB::table('pop_approval_events')->where('operation_id', $ctx['operation_id'])->orderBy('id')->get()->toJson(); $this->travel(61)->minutes();
+            $this->refuse(fn () => $pop->run($ctx['operation_id'], 'execute', $approved['token'], $sha, 'synthetic-pop'), 'expired');
+            $this->assertFalse($pop->approve($ctx['operation_id'], 'RECOVER-DIRECTOR', 'reviewer-director', 'director', $sha, 900, [1])['ready']);
+            $approved = $pop->approve($ctx['operation_id'], 'RECOVER-FOUNDER', 'reviewer-founder', 'super_admin', $sha, 901); $this->assertTrue($approved['ready']); $this->assertSame('failed', $approved['status']);
+            $this->assertSame('execute-recovery', DB::table('pop_approval_events')->where('operation_id', $ctx['operation_id'])->latest('id')->value('phase')); $this->assertSame($oldApprovals, DB::table('pop_approval_events')->where('operation_id', $ctx['operation_id'])->orderBy('id')->limit(2)->get()->toJson());
             $recovered = $pop->run($ctx['operation_id'], 'execute', $approved['token'], $sha, 'synthetic-pop');
             $this->assertTrue($recovered['ok']); $this->assertTrue($recovered['already_applied']);
             $this->assertSame('succeeded', $recovered['result']);
@@ -185,6 +191,9 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             DB::listen(function ($q) use ($verifyFault): void { if ($verifyFault->armed && str_starts_with($q->sql, 'insert ignore into `pop_execution_records`') && in_array('verify', $q->bindings, true)) { $verifyFault->armed = false; throw new \RuntimeException('synthetic_verify_receipt_fault'); } });
             $this->assertFalse($pop->run($ctx['operation_id'], 'verify', $approved['token'], $sha, 'synthetic-pop')['ok']); $this->assertFalse($verifyFault->armed);
             $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->where('phase', 'verify')->where('result', 'verification_failed')->count());
+            $this->travel(61)->minutes(); $this->assertFalse($pop->approve($ctx['operation_id'], 'VERIFY-DIRECTOR', 'reviewer-director', 'director', $sha, 900, [1])['ready']);
+            $approved = $pop->approve($ctx['operation_id'], 'VERIFY-FOUNDER', 'reviewer-founder', 'super_admin', $sha, 901); $this->assertTrue($approved['ready']);
+            $this->assertSame('recovery', DB::table('pop_approval_events')->where('operation_id', $ctx['operation_id'])->latest('id')->value('phase')); $this->refuse(fn () => $pop->run($ctx['operation_id'], 'execute', $approved['token'], $sha, 'synthetic-pop'), 'bound');
             $verified = $pop->run($ctx['operation_id'], 'verify', $approved['token'], $sha, 'synthetic-pop');
             $this->assertTrue($verified['ok']);
             $rollback = $pop->run($ctx['operation_id'], 'rollback', $approved['token'], $sha, 'synthetic-pop');
@@ -192,6 +201,7 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
             $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->where('phase', 'repair-proof')->count());
 
+            $this->travelBack();
             // A failed outer receipt must roll back the money AND the internal proof on a normal POP run.
             [$secondFixture, $secondParameters, $secondContext] = $this->candidate(8000, 500);
             $id = $secondContext['operation_id'];

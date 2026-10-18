@@ -50,6 +50,13 @@ class UnpaidInvoiceChargeAlignmentConcurrencyTest extends TestCase
                 }
                 $plan = $svc->plan($p); $aCtx = ['actor' => 'synthetic-pop', 'operation_id' => $requests[0]];
                 $bCtx = ['actor' => 'synthetic-pop', 'operation_id' => $requests[count($requests) - 1]];
+                $probe = (object) ['table' => 'StudentClass', 'blocked' => false];
+                DB::listen(function ($q) use ($probe, $b, $f): void {
+                    if (!$probe->table || !str_contains($q->sql, 'from `'.$probe->table.'`') || !str_contains($q->sql, 'for update')) return;
+                    $probe->table = null;
+                    try { $b->transaction(fn () => $b->table('Student')->where('id', $f['student']->id)->lockForUpdate()->first()); $this->fail('An invoice/payment writer must wait at Student before reaching its course'); }
+                    catch (QueryException $e) { $this->assertSame(1205, (int) ($e->errorInfo[1] ?? 0)); $probe->blocked = true; }
+                });
                 $barrier->enabled = true;
                 DB::listen(function ($q) use ($barrier, $primary, $svc, $plan, $bCtx): void {
                     if (!$barrier->enabled || !str_starts_with($q->sql, 'update `Invoice`')) return;
@@ -64,7 +71,9 @@ class UnpaidInvoiceChargeAlignmentConcurrencyTest extends TestCase
                 });
                 $result = $svc->execute($plan, $aCtx);
                 $this->assertTrue($barrier->attempted); $this->assertTrue($barrier->blocked);
-                $this->assertTrue($svc->verify($plan, $result)['ok']);
+                $this->assertTrue($probe->blocked, 'Student must already be held when the course is locked'); $probe->table = 'Payment'; $probe->blocked = false;
+                DB::transaction(function () use ($svc, $plan, $result): void { $this->assertTrue($svc->verify($plan, $result)['ok']); });
+                $this->assertTrue($probe->blocked, 'Verification must exclude an ordinary writer until its receipt transaction ends');
                 $this->assertSame(500, (int) $f['invoice']->fresh()->TotalAmount);
                 if ($sameRequest) {
                     $this->assertTrue($svc->execute($plan, $bCtx)['already_applied']);
