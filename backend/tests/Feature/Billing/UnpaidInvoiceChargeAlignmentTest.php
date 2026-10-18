@@ -169,6 +169,7 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertSame(500, (int) $f['invoice']->fresh()->TotalAmount);
             $this->assertFalse(DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->where('phase', 'execute')->exists());
             $this->assertFalse($svc->plan($p, ['operation_id' => (string) Str::uuid()])['ok'], 'A different request cannot inherit the retained proof');
+            foreach (['rollback', 'verify'] as $phase) $this->refuse(fn () => $pop->run($ctx['operation_id'], $phase, $approved['token'], $sha, 'synthetic-pop'), 'execute receipt');
             $oldApprovals = DB::table('pop_approval_events')->where('operation_id', $ctx['operation_id'])->orderBy('id')->get()->toJson(); $this->travel(61)->minutes();
             $this->refuse(fn () => $pop->run($ctx['operation_id'], 'execute', $approved['token'], $sha, 'synthetic-pop'), 'expired');
             $this->assertFalse($pop->approve($ctx['operation_id'], 'RECOVER-DIRECTOR', 'reviewer-director', 'director', $sha, 900, [1])['ready']);
