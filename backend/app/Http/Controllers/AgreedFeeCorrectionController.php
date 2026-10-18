@@ -31,7 +31,7 @@ final class AgreedFeeCorrectionController extends Controller
         $data = $request->validate([
             'scope' => 'required|in:billed,unbilled',
             'original_invoice_id' => 'nullable|required_if:scope,billed|prohibited_if:scope,unbilled|integer|min:1',
-            'new_charge' => 'required|integer|min:1|max:99999999', 'reason' => 'required|string|min:3|max:80|regex:/\S/u',
+            'new_charge' => 'required|integer|min:1|max:999999', 'reason' => 'required|string|min:3|max:80|regex:/\S/u',
             'idempotency_key' => 'required|uuid', 'preview_token' => ($apply ? 'required' : 'nullable').'|string|max:2048',
         ]);
         return response()->json($service->run((int) $course->ID, $data, ['id' => $actorId,

@@ -382,4 +382,18 @@ class AgreedFeeCorrectionTest extends TestCase
         $this->withToken($f['token'])->postJson($this->path($f).'/preview', $this->feePayload($f['invoice']))->assertStatus(422)->assertJsonPath('code', 'payment_evidence_blocks');
     }
 
+    /** @dataProvider collectionAmountBounds */
+    public function test_fee_bounds_match_director_collection(int $amount, int $status): void
+    {
+        config(['billing.agreed_fee_correction_enabled' => true]); $f = $this->fixture();
+        $body = array_replace($this->feePayload($f['invoice']), ['new_charge' => $amount]);
+        foreach ($status === 422 ? ['preview', 'apply'] : ['preview'] as $action) {
+            $response = $this->withToken($f['token'])->postJson($this->path($f).'/'.$action, $body + ['preview_token' => 'unused']);
+            if ($status === 422) $response->assertStatus(422)->assertJsonValidationErrors('new_charge');
+            elseif ($action === 'preview') $response->assertOk();
+        }
+        $this->assertSame(0, DB::table('invoice_corrections')->count()); $this->assertSame(0, Payment::count());
+    }
+    public static function collectionAmountBounds(): array { return [[999999, 200], [1000000, 422]]; }
+
 }
