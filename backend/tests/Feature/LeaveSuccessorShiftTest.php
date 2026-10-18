@@ -249,7 +249,7 @@ class LeaveSuccessorShiftTest extends TestCase
             $locks = array_values(array_filter(DB::getQueryLog(), fn ($query) => str_contains(strtolower($query['query']), 'for update')));
             $this->assertStringContainsString('`ClassSession`', $locks[0]['query']);
             foreach ($locks as $query) {
-                if (str_contains($query['query'], '`StudentClass`')) {
+                if (str_starts_with($query['query'], 'select * from `StudentClass`')) {
                     if (str_contains($query['query'], '`StudentID`')) {
                         $this->assertStringContainsString('`SubjectID` = ?', $query['query']);
                         $this->assertContains(self::STUDENT, $query['bindings']);
@@ -376,7 +376,10 @@ class LeaveSuccessorShiftTest extends TestCase
 
     public static function staleApplyEvidence(): array
     {
-        return self::lateOldLeaveEvidence() + ['renewal changed to date mode' => ['renewal_mode'], 'another successor moved earlier' => ['earlier_candidate']];
+        return self::lateOldLeaveEvidence() + [
+            'renewal changed to date mode' => ['renewal_mode'], 'another successor moved earlier' => ['earlier_candidate'],
+            'booking committed after snapshot' => ['late_booking'],
+        ];
     }
 
     /** #4210: locking reads must defeat a pre-existing REPEATABLE READ snapshot. @dataProvider staleApplyEvidence */
@@ -386,7 +389,8 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertSame('mysql', DB::connection()->getDriverName());
         $this->assertSame(1, DB::transactionLevel());
         $userId = AuthToken::query()->where('token', $this->token)->value('user_id');
-        $candidate = $kind === 'earlier_candidate' ? $this->course(self::STUDENT, '2026-11-25', '2026-12-30') : null;
+        $candidate = in_array($kind, ['earlier_candidate', 'late_booking'], true)
+            ? $this->course(self::STUDENT, '2026-11-25', '2026-12-30', ['SubjectID' => $kind === 'late_booking' ? 2 : 1]) : null;
         if ($candidate) $this->lesson($candidate, '2026-12-30');
         DB::commit();
         config(['database.connections.shift_stale_apply' => config('database.connections.' . $original)]);
@@ -398,6 +402,7 @@ class LeaveSuccessorShiftTest extends TestCase
         $observed = fn () => match ($kind) {
             'renewal_mode' => $apply->table('StudentClass')->where('ID', $this->renewal)->where('ScheduleMode', 'date')->count(),
             'earlier_candidate' => $apply->table('ClassSession')->where('StudentClassID', $candidate)->whereDate('SessionDate', '2026-11-30')->count(),
+            'late_booking' => $apply->table('ClassSession')->where('StudentClassID', $candidate)->whereDate('SessionDate', '2026-12-29')->count(),
             default => $apply->table($table)->where($column, $lookup)->count(),
         };
         try {
@@ -408,7 +413,7 @@ class LeaveSuccessorShiftTest extends TestCase
             if ($kind === 'renewal_mode') {
                 DB::table('StudentClass')->where('ID', $this->renewal)->update(['ScheduleMode' => 'date']);
             } elseif ($candidate) {
-                DB::table('ClassSession')->where('StudentClassID', $candidate)->update(['SessionDate' => '2026-11-30']);
+                DB::table('ClassSession')->where('StudentClassID', $candidate)->update(['SessionDate' => $kind === 'late_booking' ? '2026-12-29' : '2026-11-30']);
             } else {
                 $this->seedOldLeaveEvidence($leaveId, $kind);
             } // Committed on the independent original connection.
@@ -420,7 +425,7 @@ class LeaveSuccessorShiftTest extends TestCase
             if ($kind === 'renewal_mode') {
                 $response->assertJsonPath('message', '續約課程已變動，請重新預覽');
             } elseif ($candidate) {
-                $response->assertJsonPath('plan.successor_course_id', $candidate)->assertJsonPath('plan.blockers.0.type', 'student');
+                $response->assertJsonPath('plan.successor_course_id', $kind === 'late_booking' ? $this->renewal : $candidate)->assertJsonPath('plan.blockers.0.type', 'student');
             } else {
                 $response->assertJsonPath('plan.blockers.0.course_id', $this->old)->assertJsonPath('plan.blockers.0.session_id', $leaveId);
             }

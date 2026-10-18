@@ -169,6 +169,7 @@ class ClassSessionMaterializationService
             $this->normalizeTimeForStorage($session->getAttribute('StartTime')),
             $this->normalizeTimeForStorage($session->getAttribute('EndTime')),
             $session->exists ? (int) $session->getKey() : null,
+            [], true,
         );
     }
 
@@ -178,7 +179,7 @@ class ClassSessionMaterializationService
      * Planners that pick slots themselves ask this instead of re-implementing the rule (in-app #380, R142).
      * @param list<int> $excludeSessionIds Authoritative rows moved by the same atomic plan.
      */
-    public function findStudentSlotConflict(StudentClass $studentClass, string $sessionDate, string $startTime, string $endTime, ?string $asOf = null, array $excludeSessionIds = []): ?SlotOccupiedException
+    public function findStudentSlotConflict(StudentClass $studentClass, string $sessionDate, string $startTime, string $endTime, ?string $asOf = null, array $excludeSessionIds = [], bool $lock = false): ?SlotOccupiedException
     {
         $date = $this->normalizeDate($sessionDate);
         // $asOf: a planner's own reference day (e.g. a report run --as-of a past date); defaults to the write path's today.
@@ -192,7 +193,7 @@ class ClassSessionMaterializationService
                 $date,
                 $this->normalizeTimeForStorage($startTime),
                 $this->normalizeTimeForStorage($endTime),
-                null, $excludeSessionIds,
+                null, $excludeSessionIds, $lock,
             );
 
             return null;
@@ -210,6 +211,7 @@ class ClassSessionMaterializationService
         string $endTime,
         ?int $excludeSessionId = null,
         array $excludeSessionIds = [],
+        bool $lock = false,
     ): void {
         $studentId = (int) $studentClass->getAttribute('StudentID');
         $packageId = (int) $studentClass->getAttribute('PackageID');
@@ -255,7 +257,7 @@ class ClassSessionMaterializationService
             ->whereRaw("LOWER(COALESCE(sc.ClassType, '')) <> ?", ['trial'])
             ->where('cs.StartTime', '<', $endTime)
             ->where('cs.EndTime', '>', $startTime)
-            ->orderBy('cs.id')
+            ->orderBy('cs.id')->when($lock, fn ($q) => $q->lockForUpdate())
             ->first();
 
         if ($sessionConflict) {
@@ -322,14 +324,14 @@ class ClassSessionMaterializationService
             })
             ->where('s.start_time', '<', substr($endTime, 0, 5))
             ->where('s.end_time', '>', substr($startTime, 0, 5))
-            ->orderBy('s.id')
+            ->orderBy('s.id')->when($lock, fn ($q) => $q->lockForUpdate())
             ->get(['s.id', 's.status', 's.student_course_id', 's.start_time']);
 
         // Match availability's source-of-truth rule: a scheduled exception
         // backed only by cancelled/leave ClassSessions is stale and cannot
         // block materialization. Keep schedule-only makeup rows as busy.
         $scheduleConflict = app(StaleScheduleExceptionFilter::class)
-            ->rejectStale($scheduleConflicts, $sessionDate)[0] ?? null;
+            ->rejectStale($scheduleConflicts, $sessionDate, $lock)[0] ?? null;
 
         if ($scheduleConflict) {
             throw SlotOccupiedException::fromStudentScheduleConflict(

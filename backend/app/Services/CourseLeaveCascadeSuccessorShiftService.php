@@ -475,7 +475,7 @@ class CourseLeaveCascadeSuccessorShiftService
             $out[] = ['type' => $room ? 'classroom' : 'teacher'] + $at + ['message' => $room ? '教室在此時段已有課程衝突，請核對課表' : '授課老師在此時段已有課程衝突，請核對課表'];
         }
         $studentClash = app(ClassSessionMaterializationService::class)
-            ->findStudentSlotConflict($course, $to['date'], $to['start'], $to['end'], null, $movingIds) !== null;
+            ->findStudentSlotConflict($course, $to['date'], $to['start'], $to['end'], null, $movingIds, $lock) !== null;
         if ($studentClash) {
             $out[] = ['type' => 'student'] + $at + ['message' => '學生在此時段已有其他課程'];
         }
