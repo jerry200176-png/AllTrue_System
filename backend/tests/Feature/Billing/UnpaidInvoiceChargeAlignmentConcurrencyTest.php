@@ -52,7 +52,7 @@ class UnpaidInvoiceChargeAlignmentConcurrencyTest extends TestCase
                 $probe = (object) ['table' => 'StudentClass', 'blocked' => false, 'otherWrote' => false];
                 DB::listen(function ($q) use ($probe, $b, $f, $other, $otherReport): void {
                     if (!$probe->otherWrote && str_contains($q->sql, 'from `payment_reports`') && str_contains($q->sql, 'for update')) {
-                        $probe->otherWrote = true; $b->transaction(function () use ($b, $other, $otherReport): void { $b->table('Student')->where('id', $other['student']->id)->lockForUpdate()->first(); $b->table('StudentClass')->where('ID', $other['course']->ID)->lockForUpdate()->first(); $this->assertSame(1, $b->table('payment_reports')->where('id', $otherReport->id)->update(['rejection_note' => 'unrelated campus writer'])); });
+                        $b->transaction(function () use ($b, $other, $otherReport): void { $b->table('Student')->where('id', $other['student']->id)->lockForUpdate()->first(); $b->table('StudentClass')->where('ID', $other['course']->ID)->lockForUpdate()->first(); $this->assertSame(1, $b->table('payment_reports')->where('id', $otherReport->id)->update(['rejection_note' => 'unrelated campus writer'])); }); $probe->otherWrote = true;
                     }
                     if (!$probe->table || !str_contains($q->sql, 'from `'.$probe->table.'`') || !str_contains($q->sql, 'for update')) return;
                     $probe->table = null;

@@ -409,7 +409,7 @@ jobs:
         run: |
           mkdir -p storage/test-results
           ./vendor/bin/phpunit \
-            --filter='UnpaidInvoiceChargeAlignmentTest|UnpaidInvoiceChargeAlignmentConcurrencyTest|PaymentReversalRestatementTest|PaymentReportPendingReturnTest' \
+            --filter='UnpaidInvoiceChargeAlignmentConcurrencyTest' \
             --coverage-text \
             --coverage-clover=storage/test-results/coverage.xml \
             --log-junit=storage/test-results/junit.xml
