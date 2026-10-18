@@ -1,7 +1,7 @@
 <?php
 
 /** Bounded SELECT-only evidence. Caller supplies its reviewed case/campus allowlist. */
-function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $courseId, int $campusId, string $campusName): array
+function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $courseId, int $campusId, string $campusName, bool $inspectOwnedLinks = false): array
 {
     $out = ['read_only_transaction' => false, 'campus_bound' => $campusId,
         'snapshot_complete' => false, 'completeness' => 'not_started'];
@@ -83,13 +83,18 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
                 throw new \RuntimeException('report_owner_mismatch');
             }
         }
+        $linkIssues = [];
+        $linkIssue = static function (string $code) use (&$linkIssues, $inspectOwnedLinks): void {
+            if (!$inspectOwnedLinks) throw new \RuntimeException($code);
+            $linkIssues[$code] = true;
+        };
         $stage = 'payments';
         $payments = $rows($conn->table('Payment')->whereIn('InvoiceID', $ids)->orderBy('id')
             ->select(['id', 'InvoiceID', 'Amount', 'Method', 'payment_report_id', 'PaidAt']));
         $reportIds = $reports->pluck('id')->all();
         foreach ($payments as $p) {
             if ($p->payment_report_id !== null && !in_array($p->payment_report_id, $reportIds)) {
-                throw new \RuntimeException('payment_report_link_mismatch');
+                $linkIssue('payment_report_link_mismatch');
             }
         }
         $seenReceipts = [];
@@ -97,36 +102,37 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
             $anchors = $payments->filter(static fn ($p) => (int) $p->Amount > 0 && $p->Method !== 'void'
                 && ((int) $p->payment_report_id === (int) $r->id || ($r->payment_id !== null && (int) $p->id === (int) $r->payment_id)));
             if ($anchors->count() > 1 || ($anchors->count() === 1 && isset($seenReceipts[$anchors->first()->id]))) {
-                throw new \RuntimeException('duplicate_receipt_link');
+                $linkIssue('duplicate_receipt_link');
             }
             if ($anchors->count() === 1) $seenReceipts[$anchors->first()->id] = true;
             if ($r->payment_id === null) continue;
             $p = $payments->firstWhere('id', $r->payment_id);
             if (!$p || (int) $p->Amount <= 0 || $p->Method === 'void' || (int) $p->InvoiceID !== (int) $r->InvoiceID
                 || ($p->payment_report_id !== null && (int) $p->payment_report_id !== (int) $r->id)) {
-                throw new \RuntimeException('report_payment_link_mismatch');
+                $linkIssue('report_payment_link_mismatch');
             }
         }
         $seenReversals = [];
         foreach ($payments as $p) {
             if ($p->payment_report_id === null) {
-                if (((int) $p->Amount < 0 && $p->Method !== 'transfer_out') || $p->Method === 'void') throw new \RuntimeException('unlinked_reversal');
+                if (((int) $p->Amount < 0 && $p->Method !== 'transfer_out') || $p->Method === 'void') $linkIssue('unlinked_reversal');
                 continue;
             }
             if ((int) $p->Amount < 0 || $p->Method === 'void') {
-                if (isset($seenReversals[$p->payment_report_id])) throw new \RuntimeException('duplicate_reversal_link');
+                if (isset($seenReversals[$p->payment_report_id])) $linkIssue('duplicate_reversal_link');
                 $seenReversals[$p->payment_report_id] = true;
             }
             $r = $reports->firstWhere('id', $p->payment_report_id);
             if (!$r || (int) $r->InvoiceID !== (int) $p->InvoiceID) {
-                throw new \RuntimeException('payment_invoice_link_mismatch');
+                $linkIssue('payment_invoice_link_mismatch');
+                continue;
             }
             if ((int) $p->Amount < 0 || $p->Method === 'void') {
                 $receipt = $payments->first(static fn ($a) => (int) $a->Amount > 0 && $a->Method !== 'void'
                     && ((int) $a->payment_report_id === (int) $r->id || (int) $a->id === (int) $r->payment_id));
                 if (!$receipt || $r->status !== 'voided' || abs((int) $p->Amount) !== (int) $receipt->Amount
                     || preg_match('/\A([1-9][0-9]*)(?:\.0+)?\z/', (string) $r->reported_amount, $parts) !== 1
-                    || filter_var($parts[1], FILTER_VALIDATE_INT) !== (int) $receipt->Amount) throw new \RuntimeException('reversal_provenance_mismatch');
+                    || filter_var($parts[1], FILTER_VALIDATE_INT) !== (int) $receipt->Amount) $linkIssue('reversal_provenance_mismatch');
             }
         }
         $out['contract'] = (array) $course;
@@ -218,10 +224,12 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
         $hasUnscoped = $allItems->whereNull('StudentClassID')->isNotEmpty();
         $monthlyUnverified = $course->ScheduleMode === 'date' && collect($out['invoices'])->contains(static fn ($i) =>
             $i['status'] === 'unpaid' && $i['net_paid'] === 0);
-        $out['snapshot_complete'] = $unlinked->isEmpty() && !$hasUnscoped && !$monthlyUnverified && $out['correction_schema_ready'];
+        $out['link_issues'] = array_keys($linkIssues);
+        $out['snapshot_complete'] = $linkIssues === [] && $unlinked->isEmpty() && !$hasUnscoped && !$monthlyUnverified && $out['correction_schema_ready'];
         $out['completeness'] = !$out['correction_schema_ready'] ? 'correction_schema_missing'
             : ($hasUnscoped ? 'ambiguous_obligations' : ($unlinked->isEmpty() ? 'complete' : 'unlinked_obligations'));
         if ($monthlyUnverified && $out['completeness'] === 'complete') $out['completeness'] = 'monthly_amount_unverified';
+        if ($linkIssues !== [] && $out['completeness'] === 'complete') $out['completeness'] = 'payment_links_inconsistent';
     } catch (\Throwable $e) {
         // Never emit SQL, connection configuration, exception messages or partial ledger payloads.
         $out = array_intersect_key($out, array_flip(['read_only_transaction', 'campus_bound']));

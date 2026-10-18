@@ -200,6 +200,7 @@ class XinzhuangFeeScope(unittest.TestCase):
             self.assertEqual(r.returncode == 0, value in {'4064', '3753', '3693'}, r.stderr)
         block = case_block(render('xinzhuang_fee_cases').stdout, 'xinzhuang_fee_cases')
         self.assertIn(", 11, '新莊分校'", block)
+        self.assertIn("$targetStudentClassId === 3753)", block)
         for marker in WRITE_MARKERS:
             self.assertNotIn(marker, block)
 

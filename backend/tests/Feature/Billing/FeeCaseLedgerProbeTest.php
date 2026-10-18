@@ -30,14 +30,15 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->case_package_waiver_and_effective_amendments_are_explicit_without_private_text();
         $this->case_legacy_report_payment_link_requires_a_selected_payment_on_its_invoice();
         $this->case_reversal_provenance_requires_exact_amounts_and_voided_status();
+        $this->case_owned_link_inspection_keeps_facts_but_never_certifies_broken_links();
         $this->case_row_budget_discards_payload_and_rolls_back_transaction();
         $this->case_server_read_only_transaction_rejects_accidental_writes();
     }
 
-    private function probe(array $f, ?int $campusId = null, string $name = 'Synthetic campus'): array
+    private function probe(array $f, ?int $campusId = null, string $name = 'Synthetic campus', bool $inspectOwnedLinks = false): array
     {
         require_once base_path('../scripts/lib/fee-case-ledger.php');
-        return alltrue_fee_case_ledger(DB::connection(), $f['course']->ID, $campusId ?? $f['student']->CampusID, $name);
+        return alltrue_fee_case_ledger(DB::connection(), $f['course']->ID, $campusId ?? $f['student']->CampusID, $name, $inspectOwnedLinks);
     }
 
     private function scopedFixture(): array
@@ -296,6 +297,36 @@ class FeeCaseLedgerProbeTest extends TestCase
             $void->update(['Amount' => $amount]); $report->update(['status' => $status, 'reported_amount' => $reported]);
             $this->assertSame($complete, $this->probe($f)['snapshot_complete']);
         }
+    }
+
+    private function case_owned_link_inspection_keeps_facts_but_never_certifies_broken_links(): void
+    {
+        $f = $this->scopedFixture(); $report = $this->receiptFor($f); $paymentId = $report->payment_id;
+        $report->update(['payment_id' => $paymentId + 100000]);
+        $this->assertArrayNotHasKey('contract', $this->probe($f), 'strict default remains fail closed');
+        $r = $this->probe($f, inspectOwnedLinks: true);
+        $this->assertSame((int) $f['course']->ID, (int) ($r['contract']['ID'] ?? 0));
+        $this->assertFalse($r['snapshot_complete']);
+        $this->assertSame('payment_links_inconsistent', $r['completeness']);
+        $this->assertContains('report_payment_link_mismatch', $r['link_issues']);
+        $this->assertCount(1, $r['invoices']); $this->assertCount(1, $r['reports']); $this->assertCount(1, $r['payments']);
+        $this->assertSame(7600, (int) $r['payments'][0]['Amount']);
+        $report->update(['payment_id' => $paymentId]);
+        Payment::where('id', $paymentId)->update(['payment_report_id' => $report->id + 100000]);
+        $r = $this->probe($f, inspectOwnedLinks: true);
+        $this->assertFalse($r['snapshot_complete']);
+        $this->assertContains('payment_report_link_mismatch', $r['link_issues']);
+        $this->assertContains('payment_invoice_link_mismatch', $r['link_issues']);
+        $this->assertCount(1, $r['payments']);
+        Payment::where('id', $paymentId)->update(['payment_report_id' => $report->id]);
+        Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => -1, 'Method' => 'void', 'PaidAt' => '2026-10-01']);
+        $r = $this->probe($f, inspectOwnedLinks: true);
+        $this->assertFalse($r['snapshot_complete']); $this->assertContains('unlinked_reversal', $r['link_issues']);
+        $other = $this->scopedFixture(); $report->update(['StudentID' => $other['student']->id]);
+        $r = $this->probe($f, inspectOwnedLinks: true);
+        $this->assertSame('reports', $r['failure_stage']);
+        $this->assertArrayNotHasKey('contract', $r); $this->assertArrayNotHasKey('payments', $r);
+        $this->assertSame(0, DB::transactionLevel());
     }
 
     private function case_row_budget_discards_payload_and_rolls_back_transaction(): void
