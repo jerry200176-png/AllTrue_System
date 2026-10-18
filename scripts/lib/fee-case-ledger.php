@@ -34,7 +34,7 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
         $stage = 'contract';
         $course = $conn->table('StudentClass as sc')->join('Student as s', 's.id', '=', 'sc.StudentID')
             ->where('sc.ID', $courseId)->where('s.CampusID', $campusId)->first([
-                'sc.ID', 'sc.StudentID', 'sc.Charge', 'sc.Rate', 'sc.SessionCount', 'sc.UsedSessions',
+                'sc.ID', 'sc.StudentID', 'sc.Charge', 'sc.Rate', 'sc.SessionCount', 'sc.TotalHours', 'sc.UsedSessions',
                 'sc.RemainingSessions', 'sc.Paid', 'sc.Pay', 'sc.PayDate', 'sc.Stop', 'sc.ScheduleMode', 'sc.ClassType',
                 'sc.PackageID', 'sc.closed_reason', 'sc.rate_unit', 'sc.StartDate', 'sc.EndDate',
             ]);
@@ -221,7 +221,7 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
         $out['snapshot_complete'] = $unlinked->isEmpty() && !$hasUnscoped && !$monthlyUnverified && $out['correction_schema_ready'];
         $out['completeness'] = !$out['correction_schema_ready'] ? 'correction_schema_missing'
             : ($hasUnscoped ? 'ambiguous_obligations' : ($unlinked->isEmpty() ? 'complete' : 'unlinked_obligations'));
-        if ($monthlyUnverified && $out['correction_schema_ready']) $out['completeness'] = 'monthly_amount_unverified';
+        if ($monthlyUnverified && $out['completeness'] === 'complete') $out['completeness'] = 'monthly_amount_unverified';
     } catch (\Throwable $e) {
         // Never emit SQL, connection configuration, exception messages or partial ledger payloads.
         $out = array_intersect_key($out, array_flip(['read_only_transaction', 'campus_bound']));

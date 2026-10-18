@@ -120,7 +120,7 @@ class FeeCaseLedgerProbeTest extends TestCase
             'IssueDate' => '2026-10-01', 'TotalAmount' => 500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
         InvoiceItem::create(['InvoiceID' => $ghostItem->id, 'StudentClassID' => $f['course']->ID + 100001,
             'Description' => 'Private dangling reference', 'Amount' => 500]);
-        $r = $this->probe($f);
+        $f['course']->update(['ScheduleMode' => 'date']); $r = $this->probe($f);
         $this->assertFalse($r['snapshot_complete']);
         $this->assertSame('unlinked_obligations', $r['completeness']);
         $this->assertSame([(int) $legacy->id, (int) $ghostHeader->id, (int) $ghostItem->id], array_map('intval', $r['unlinked_invoice_ids']));
@@ -176,7 +176,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertStringNotContainsString('Private shared text', json_encode($r));
         InvoiceItem::create(['InvoiceID' => $f['invoice']->id, 'StudentClassID' => null,
             'Description' => 'Private unscoped text', 'Amount' => 6789]);
-        $r = $this->probe($f);
+        $f['course']->update(['ScheduleMode' => 'date']); $r = $this->probe($f);
         $this->assertFalse($r['snapshot_complete']);
         $this->assertSame(1, $r['invoices'][0]['unscoped_item_count']);
         $this->assertSame('ambiguous_obligations', $r['completeness']);
@@ -208,7 +208,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         $f = $this->scopedFixture();
         $package = \App\Models\CoursePackage::create(['student_id' => $f['student']->id,
             'campus_id' => $f['student']->CampusID, 'name' => 'Private package', 'billing_mode' => 'count', 'total_sessions' => 8]);
-        $f['course']->update(['PackageID' => $package->id, 'closed_reason' => 'waived', 'rate_unit' => 'hour']);
+        $f['course']->update(['PackageID' => $package->id, 'closed_reason' => 'waived', 'rate_unit' => 'hour', 'TotalHours' => 6]);
         foreach (['2026-09-01', '2026-10-01'] as $date) {
             \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $f['course']->ID,
                 'effective_from' => $date, 'rate' => 900, 'rate_unit' => 'hour',
@@ -224,6 +224,7 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertNull($r['pricing_amendments'][0]['voided_at']);
         $this->assertNotNull($r['pricing_amendments'][1]['voided_at']);
         $this->assertSame('hour', $r['pricing_amendments'][0]['rate_unit']);
+        $this->assertSame(6, (int) ($r['contract']['TotalHours'] ?? 0));
         $this->assertStringNotContainsString('Private', json_encode($r));
     }
 
