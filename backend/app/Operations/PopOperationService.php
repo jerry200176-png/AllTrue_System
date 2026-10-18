@@ -317,7 +317,6 @@ final class PopOperationService
     {
         $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
         if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->atomicFinancialRepair((string) $this->request($requestId)->strategy_id)) return $run();
-        // Serialize replay lookup, attempt allocation, mutation and its receipt for this request.
         return DB::transaction(function () use ($requestId, $phase, $run): array {
             DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
             if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
@@ -392,8 +391,7 @@ final class PopOperationService
                     $commitSha,
                     $this->durationMs($startedAt)
                 );
-                // This new repair's financial write and outer execution receipt must commit together.
-                // Keep existing strategies' transaction/external-effect contracts unchanged.
+                // Co-commit financial repair/receipt; preserve other strategies' external-effect contracts.
                 return $this->atomicFinancialRepair($strategy)
                     ? DB::transaction($executeAndRecord, 3)
                     : $executeAndRecord();
