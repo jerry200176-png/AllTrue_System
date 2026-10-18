@@ -26,7 +26,14 @@ Canonical plan: [`../2026-10-17-agreed-fee-isolated-fullstack-harness.md`](../20
 2. **UI stale** — `fee-back` before editing `fee-charge` (removed under `v-if=!preview`); fixture success only on `changed`; waits exact preview/apply responses.
 3. **state_changed** — valid preview → `__isolated/bump-tracked-state` → exact HTTP 409 `state_changed` with no side effects (not post-apply forged ≥400). Real browser cases: invoice 8800→7200 + regular 8800→7200.
 4. **Deep snapshot** — preview no-write; original invoice 7600/status/items/dates; replacement unpaid/PaidAmount/id/DueDate; audit + notification; replay compares response body **and** DB snapshot fields (not counts alone).
-5. **Origins / token / cleanup** — BASE/API/Vite proxy allowlist precise loopback (`127.0.0.1:5179` / `:8000`); seed token unexpired + course allowlist; env written under umask 077 → 0600; `EXTERNAL=1` writes `/tmp/agreed-fee-owned-cleanup.sh` and workflow traps it so Playwright failure cannot skip cleanup.
+5. **Origins / token / cleanup** — BASE/API/Vite proxy allowlist precise loopback (`127.0.0.1:5179` / `:8000`); seed token unexpired + course allowlist; env written under umask 077 → 0600; `EXTERNAL=1` writes `/tmp/agreed-fee-owned-cleanup.sh`; workflow traps it before stack startup, tracking the actual Vite Node PID.
+
+### 2026-10-18 review repair (still inert)
+
+- Reuse merged #4254's minimal TCP configuration before providers bootstrap; refuse PDO options, alternate DSNs and non-loopback targets before Migrator, seed or router can connect.
+- Count agreed-fee audit by student-class subject; each synthetic success adds exactly one row and replay adds none.
+- These changes have syntax checks only. Full-stack execution, authoritative case evidence and activation remain pending; the proposed workflow is not installed or dispatched.
+- Delivery must split from fresh main without stacking: environment/DDL lifecycle; fixture/router/seed; Playwright spec/config; proposed workflow. Keep every delivery PR within700 lines.
 6. **Companion JUnit** — `--log-junit` + non-zero test assert + artifact upload; `AGREED_FEE_ISOLATED_REQUIRE=1` fail-closed; stack ready requires **both** API and Vite or exit 1.
 
 Post-HOLD microfixes (tip after `72972d`): empty `read=>[]`/`write=>[]` accepted (non-empty still refused; harden drops empty stubs); state_changed uses modal `fee-apply` with sealed preview key (no fresh UUID); Vite proxy requires exact `:8000` origin.

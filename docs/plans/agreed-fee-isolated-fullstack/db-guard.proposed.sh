@@ -39,7 +39,7 @@ case "$DB_DATABASE" in
 esac
 
 case "$DB_HOST" in
-  127.0.0.1|localhost|agreed-fee-test-mysql) ;;
+  127.0.0.1|localhost) ;;
   *)
     echo "db-guard: refusing DB_HOST=$DB_HOST (need loopback/test)" >&2
     exit 90

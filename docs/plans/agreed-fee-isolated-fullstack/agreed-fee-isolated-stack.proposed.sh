@@ -65,7 +65,7 @@ php -S 127.0.0.1:8000 tests/Support/agreed-fee-isolated-router.php \
 echo $! > /tmp/agreed-fee-api.pid
 
 cd "$ROOT/frontend"
-npx vite --config vite.agreed-fee-isolated.config.js \
+node node_modules/vite/bin/vite.js --config vite.agreed-fee-isolated.config.js \
   > /tmp/agreed-fee-vite.log 2>&1 &
 echo $! > /tmp/agreed-fee-vite.pid
 

@@ -3,10 +3,12 @@
  * DRAFT — install as: backend/tests/Support/agreed-fee-isolated-db-guard.php
  *
  * Refuse DATABASE_URL / DB_SOCKET / read|write host / non-AllTrue_test /
- * non-loopback. Loaded-config assert happens AFTER Laravel bootstrap and
- * BEFORE any DDL (see agreed-fee-isolated-migrate.php).
+ * non-loopback. Loaded-config assert and sanitized configuration run before
+ * providers bootstrap; DDL remains in the same guarded process.
  */
 declare(strict_types=1);
+
+require_once __DIR__.'/alltrueTestDatabase.php';
 
 function agreed_fee_isolated_refuse(string $why): never
 {
@@ -30,13 +32,13 @@ function agreed_fee_isolated_assert_db(): void
     if ($name !== 'AllTrue_test') {
         agreed_fee_isolated_refuse("DB_DATABASE={$name}");
     }
-    if (!in_array($host, ['127.0.0.1', 'localhost', 'agreed-fee-test-mysql'], true)) {
+    if (!alltrue_is_allowed_test_db_host($host)) {
         agreed_fee_isolated_refuse("DB_HOST={$host}");
     }
 }
 
 /**
- * After bootstrap: refuse whatever Laravel loaded if it is not the isolated DSN.
+ * After LoadConfiguration, before providers: refuse an unexpected isolated DSN.
  * Does NOT rewrite a bad target into a good one — exit 90 instead.
  */
 function agreed_fee_isolated_assert_loaded_connection_or_refuse(): void
@@ -52,11 +54,17 @@ function agreed_fee_isolated_assert_loaded_connection_or_refuse(): void
     if (!is_array($cfg)) {
         agreed_fee_isolated_refuse('mysql connection missing');
     }
+    if (($cfg['driver'] ?? null) !== 'mysql') {
+        agreed_fee_isolated_refuse('mysql driver mismatch');
+    }
     if (!empty($cfg['url'])) {
         agreed_fee_isolated_refuse('mysql.url set (DATABASE_URL / config redirect)');
     }
     if (!empty($cfg['unix_socket'])) {
         agreed_fee_isolated_refuse('mysql.unix_socket set');
+    }
+    if (!empty($cfg['options'])) {
+        agreed_fee_isolated_refuse('mysql PDO options set');
     }
     // Candidate database.php ships read=>[] / write=>[] when DB_READ_HOST is unset.
     // Empty defaults are OK; only non-empty overrides are redirects.
@@ -79,11 +87,14 @@ function agreed_fee_isolated_assert_loaded_connection_or_refuse(): void
     $name = (string) ($cfg['database'] ?? '');
     $envHost = (string) getenv('DB_HOST');
     $envName = (string) getenv('DB_DATABASE');
+    if ((int) ($cfg['port'] ?? 3306) !== (int) (getenv('DB_PORT') ?: 3306)) {
+        agreed_fee_isolated_refuse('loaded port differs from intended test port');
+    }
 
     if ($name !== 'AllTrue_test') {
         agreed_fee_isolated_refuse("loaded database={$name}");
     }
-    if (!in_array($host, ['127.0.0.1', 'localhost', 'agreed-fee-test-mysql'], true)) {
+    if (!alltrue_is_allowed_test_db_host($host)) {
         agreed_fee_isolated_refuse("loaded host={$host}");
     }
     if ($name !== $envName || $host !== $envHost) {
@@ -92,29 +103,22 @@ function agreed_fee_isolated_assert_loaded_connection_or_refuse(): void
     }
 }
 
-/** After a successful loaded-assert: clear residual socket/url keys and reconnect. */
+/** Install only the shared allowlisted TCP keys, before any provider can connect. */
 function agreed_fee_isolated_harden_connection_after_pass(): void
 {
     $mysql = config('database.connections.mysql');
     if (!is_array($mysql)) {
         agreed_fee_isolated_refuse('mysql connection missing at harden');
     }
-    $mysql['unix_socket'] = '';
-    $mysql['url'] = null;
-    // Drop empty read/write split stubs so the migrator never treats them as a redirect surface.
-    if (($mysql['read'] ?? null) === []) {
-        unset($mysql['read']);
-    }
-    if (($mysql['write'] ?? null) === []) {
-        unset($mysql['write']);
+    try {
+        $mysql = alltrue_race_database_config($mysql);
+    } catch (InvalidArgumentException $e) {
+        agreed_fee_isolated_refuse('invalid synthetic TCP configuration');
     }
     config([
         'database.default' => 'mysql',
         'database.connections.mysql' => $mysql,
     ]);
-    Illuminate\Support\Facades\DB::purge('mysql');
-    Illuminate\Support\Facades\DB::reconnect('mysql');
-    agreed_fee_isolated_assert_loaded_connection_or_refuse();
 }
 
 /** @deprecated use assert_loaded + harden; kept for router boot path naming */
@@ -133,6 +137,7 @@ function agreed_fee_isolated_apply_runtime_config(): void
 {
     config([
         'app.key' => 'base64:c29tZXJhbmRvbWtleWZvcnRlc3RpbmcxcXdhc2R6eGM=',
+        'app.env' => 'testing',
         'app.url' => 'http://127.0.0.1:8000',
         'billing.agreed_fee_correction_enabled' => true,
         'database.default' => 'mysql',
@@ -143,4 +148,23 @@ function agreed_fee_isolated_apply_runtime_config(): void
             'http://localhost:8000',
         ],
     ]);
+}
+
+/** Same before-provider pattern as alltrue_boot_race_worker; return the app for Migrator/HTTP. */
+function agreed_fee_isolated_boot_application(string $backendRoot): \Illuminate\Foundation\Application
+{
+    agreed_fee_isolated_assert_db();
+    if (is_file($backendRoot.'/bootstrap/cache/config.php')) {
+        agreed_fee_isolated_refuse('bootstrap/cache/config.php present');
+    }
+    require_once $backendRoot.'/vendor/autoload.php';
+    $app = require $backendRoot.'/bootstrap/app.php';
+    $app->afterBootstrapping(Illuminate\Foundation\Bootstrap\LoadConfiguration::class, static function () {
+        agreed_fee_isolated_assert_loaded_connection_or_refuse();
+        agreed_fee_isolated_harden_connection_after_pass();
+        agreed_fee_isolated_apply_runtime_config();
+    });
+    $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+    return $app;
 }

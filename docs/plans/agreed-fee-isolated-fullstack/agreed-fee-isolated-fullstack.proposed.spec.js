@@ -136,6 +136,28 @@ async function applyAndWait(page) {
   return applyBody;
 }
 
+/** Every synthetic success must create its own audit row; replay must not add one. */
+async function applyAndCheckReplay(page, request, courseId, beforeAudit) {
+  const payloadWait = page.waitForRequest(
+    (req) => req.method() === 'POST' && req.url().includes('/agreed-fee-correction/apply'),
+  );
+  const body = await applyAndWait(page);
+  const payload = (await payloadWait).postDataJSON();
+  const applied = await snapshot(request, courseId);
+  expect(applied.audit_agreed_fee_count).toBe(beforeAudit + 1);
+  const replay = await request.post(`${base}/api/v1/student-classes/${courseId}/agreed-fee-correction/apply`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    data: { ...payload, preview_token: 'expired' },
+  });
+  expect(replay.status()).toBe(200);
+  expect(await replay.json()).toEqual(body);
+  const afterReplay = await snapshot(request, courseId);
+  expect(afterReplay.audit_agreed_fee_count).toBe(applied.audit_agreed_fee_count);
+  expect(afterReplay.correction_ids).toEqual(applied.correction_ids);
+  expect(afterReplay.replacement_invoice.id).toBe(applied.replacement_invoice.id);
+  return body;
+}
+
 test.describe('agreed-fee isolated full-stack', () => {
   test('trial 8000→500: preview no-write, apply, replay+DB, UI stale via fee-back', async ({
     page,
@@ -340,6 +362,7 @@ test.describe('agreed-fee isolated full-stack', () => {
     await openModal(page, courseId, invoiceId);
     const before = await snapshot(request, courseId);
     expect(before.charge).toBe(7200);
+    expect(before.audit_agreed_fee_count).toBe(0);
     expect(before.original_invoice.TotalAmount).toBe(8800);
     expect(before.original_invoice.Status).toBe('unpaid');
     expect(before.correction_count).toBe(0);
@@ -356,8 +379,9 @@ test.describe('agreed-fee isolated full-stack', () => {
     expect(afterPreview.original_invoice.Status).toBe('unpaid');
     expect(afterPreview.correction_count).toBe(0);
     expect(afterPreview.replacement_invoice).toBeNull();
+    expect(afterPreview.audit_agreed_fee_count).toBe(before.audit_agreed_fee_count);
 
-    const applyBody = await applyAndWait(page);
+    const applyBody = await applyAndCheckReplay(page, request, courseId, before.audit_agreed_fee_count);
 
     const after = await snapshot(request, courseId);
     expect(after.charge).toBe(7200);
@@ -374,7 +398,7 @@ test.describe('agreed-fee isolated full-stack', () => {
     expect(after.correction_count).toBe(1);
     expect(after.payment_count).toBe(0);
     expect(after.payment_report_count).toBe(0);
-    expect(after.audit_agreed_fee_count).toBeGreaterThanOrEqual(1);
+    expect(after.audit_agreed_fee_count).toBe(before.audit_agreed_fee_count + 1);
   });
 
   test('regular one_on_one 8800→7200 preserves sessions/rate', async ({ page, request }) => {
@@ -383,6 +407,7 @@ test.describe('agreed-fee isolated full-stack', () => {
     await openModal(page, courseId, invoiceId);
     const before = await snapshot(request, courseId);
     expect(before.charge).toBe(8800);
+    expect(before.audit_agreed_fee_count).toBe(0);
     expect(before.rate).toBe(1100);
     expect(before.used_sessions).toBe(5);
     expect(before.remaining_sessions).toBe(3);
@@ -390,7 +415,7 @@ test.describe('agreed-fee isolated full-stack', () => {
     expect(before.original_invoice.TotalAmount).toBe(8800);
 
     await previewCharge(page, '7200');
-    const applyBody = await applyAndWait(page);
+    const applyBody = await applyAndCheckReplay(page, request, courseId, before.audit_agreed_fee_count);
 
     const after = await snapshot(request, courseId);
     expect(after.charge).toBe(7200);
@@ -407,5 +432,6 @@ test.describe('agreed-fee isolated full-stack', () => {
     expect(after.replacement_invoice.id).toBe(applyBody.replacement_invoice_id);
     expect(after.payment_count).toBe(0);
     expect(after.payment_report_count).toBe(0);
+    expect(after.audit_agreed_fee_count).toBe(before.audit_agreed_fee_count + 1);
   });
 });

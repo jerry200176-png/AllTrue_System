@@ -174,10 +174,10 @@ jobs:
           mkdir -p docs/plans
           rm -rf docs/plans/agreed-fee-isolated-fullstack
           cp -a "$DRAFT" docs/plans/agreed-fee-isolated-fullstack
+          # Install before stack startup: failures during startup must also clean its owned processes.
+          trap 'if [[ -x /tmp/agreed-fee-owned-cleanup.sh ]]; then bash /tmp/agreed-fee-owned-cleanup.sh || true; fi' EXIT
           bash docs/plans/agreed-fee-isolated-fullstack/agreed-fee-isolated-stack.proposed.sh
-          # EXTERNAL=1: stack leaves servers up; trap owned cleanup so Playwright failure cannot skip it.
           test -x /tmp/agreed-fee-owned-cleanup.sh
-          trap 'bash /tmp/agreed-fee-owned-cleanup.sh || true' EXIT
           set -a
           # shellcheck disable=SC1091
           source /tmp/agreed-fee-isolated.env

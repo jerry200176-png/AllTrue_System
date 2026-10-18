@@ -27,13 +27,7 @@ if (is_file($configCache)) {
     agreed_fee_isolated_refuse('bootstrap/cache/config.php present — clear before isolated seed');
 }
 
-require $backendRoot.'/vendor/autoload.php';
-$app = require $backendRoot.'/bootstrap/app.php';
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-
-agreed_fee_isolated_assert_loaded_connection_or_refuse();
-agreed_fee_isolated_harden_connection_after_pass();
-agreed_fee_isolated_apply_runtime_config();
+$app = agreed_fee_isolated_boot_application($backendRoot);
 AgreedFeeTestSchema::ensureExtensionColumns();
 
 $user = User::create([

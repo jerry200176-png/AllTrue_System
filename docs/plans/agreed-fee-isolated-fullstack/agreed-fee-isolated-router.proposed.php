@@ -22,13 +22,7 @@ if (php_sapi_name() === 'cli-server') {
     }
 }
 
-require $backendRoot.'/vendor/autoload.php';
-$app = require $backendRoot.'/bootstrap/app.php';
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-
-agreed_fee_isolated_assert_loaded_connection_or_refuse();
-agreed_fee_isolated_harden_connection_after_pass();
-agreed_fee_isolated_apply_runtime_config();
+$app = agreed_fee_isolated_boot_application($backendRoot);
 \Tests\Support\AgreedFeeTestSchema::ensureExtensionColumns();
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
@@ -101,7 +95,8 @@ if ($path === '/__isolated/fee-snapshot') {
         ->where('StudentClassID', $courseId)->count();
     $notif = (int) Illuminate\Support\Facades\DB::table('Notifications')->count();
     $audit = (int) Illuminate\Support\Facades\DB::table('security_audit_events')
-        ->where('event_type', 'billing.agreed_fee_corrected')->count();
+        ->where('event_type', 'billing.agreed_fee_corrected')
+        ->where('subject_type', 'student_class')->where('subject_id', $courseId)->count();
 
     header('Content-Type: application/json');
     echo json_encode([
