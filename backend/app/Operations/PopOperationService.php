@@ -166,6 +166,7 @@ final class PopOperationService
             && !$this->isExactTd076Repair($entry)
             && !$this->isExactPastScheduledCancel($entry)
             && !$this->isExactInvoice1997StaleValues($entry)
+            && !$this->isReviewedFinancialCase($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
         }
@@ -253,6 +254,27 @@ final class PopOperationService
                 'expires_at' => $expiresAt?->toIso8601String(),
             ];
         });
+    }
+
+    /** Read-only phase receipt, never parameters, snapshots, approvers or approval tokens. */
+    public function statusForActor(string $requestId, string $role, array $campusIds): array
+    {
+        $request = $this->request($requestId);
+        $p = json_decode($request->parameters, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertCampusScope($p, $role, $campusIds);
+        $query = DB::table('pop_execution_records')->where('operation_id', $requestId)
+            ->whereIn('phase', ['dry-run', 'execute', 'verify', 'rollback'])->select(['phase', 'result', 'execution_id', 'commit_sha']);
+        // created_at has second precision: select the phase consistent with the authoritative request status.
+        $phase = match ($request->status) {
+            'succeeded', 'verification_failed' => 'verify', 'verifying' => 'execute', 'rolled_back' => 'rollback', default => null,
+        };
+        if ($phase) $query->where('phase', $phase);
+        if ($request->status === 'failed') $query->where('result', 'failed');
+        // Equal-second failures follow phase progression; attempt numbers are local to one phase.
+        $record = $query->orderByDesc('created_at')->orderByRaw("CASE phase WHEN 'rollback' THEN 4 WHEN 'verify' THEN 3 WHEN 'execute' THEN 2 ELSE 1 END DESC")->orderByDesc('attempt_no')->first();
+        return ['request_id' => $requestId, 'operation_id' => $request->operation_id, 'status' => $request->status,
+            'phase' => $record?->phase, 'result' => $record?->result, 'execution_id' => $record?->execution_id,
+            'commit_sha' => $record?->commit_sha];
     }
 
     /** Run the authenticated, read-only planning phase for the control plane. */
@@ -348,7 +370,7 @@ final class PopOperationService
         if ($existing) {
             return $existing;
         }
-        $plan = $this->safePlan($entry, $parameters);
+        $plan = $this->safePlan($entry, $parameters, (string) $request->id);
         // After a successful execute, later drift (new work arriving) must not make the repair unverifiable or un-rollbackable.
         $executed = in_array($phase, ['verify', 'rollback'], true) && DB::table('pop_execution_records')
             ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
@@ -659,6 +681,8 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isReviewedFinancialCase($entry)) return $roles;
+
         $isFounderScopedRepair = $policy === 'founder-explicit-single-repair'
             && ($entry['id'] ?? null) === 'course-contract-repair'
             && ($entry['founder_approval_required'] ?? false) === true
@@ -865,6 +889,25 @@ final class PopOperationService
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnbilledBacklogCatchupStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-unbilled-backlog-catchup'
             && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
+    }
+
+    /** Prepared exact single-record repair shapes; activation and every immutable case still require Founder approval. */
+    private function isReviewedFinancialCase(array $e): bool
+    {
+        $shapes = [
+            'reviewed-unpaid-invoice-charge-alignment' => ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy',
+                ['student_id', 'course_id', 'campus_id', 'invoice_id', 'expected_invoice_total', 'expected_charge', 'decision_reference', 'expected_state_hash'], 'one_exact_unpaid_invoice_total'],
+            'reviewed-legacy-reversal-restatement' => ['App\\Operations\\Strategies\\PaymentReversalRestatementStrategy',
+                ['campus_id', 'plan', 'decision_reference'], 'one_exact_unlinked_negative_posting'],
+            'reviewed-mismatched-pending-return' => [Strategies\PaymentReportPendingReturnStrategy::class,
+                ['campus_id', 'student_id', 'course_id', 'invoice_id', 'report_id', 'expected_reported_amount', 'expected_charge', 'expected_invoice_total', 'decision_reference', 'reason', 'expected_state_hash'], 'one_exact_mismatched_pending_report'],
+        ];
+        $shape = $shapes[$e['id'] ?? ''] ?? null;
+        if (!$shape || [$e['strategy_class'] ?? null, $e['parameter_keys'] ?? null, $e['blast_radius'] ?? null] !== $shape) return false;
+        foreach (['founder_approval_required', 'reversible', 'snapshot_required', 'transaction_required', 'rollback_supported', 'verification_required', 'approval_required'] as $key)
+            if (($e[$key] ?? false) !== true) return false;
+        return ($e['approver_roles'] ?? null) === ['super_admin'] && ($e['risk'] ?? null) === 'critical'
+            && ($e['approval_policy'] ?? null) === 'founder-explicit-single-repair' && ($e['execution_authority'] ?? null) === 'pop-pi-local';
     }
 
     /** Same single-super_admin Founder-exact shape (in-app #369, invoice 1997 stale values). */
@@ -1112,11 +1155,12 @@ final class PopOperationService
     }
 
     /** @param array<string,mixed> $entry @param array<string,mixed> $parameters @return array<string,mixed> */
-    private function safePlan(array $entry, array $parameters): array
+    private function safePlan(array $entry, array $parameters, string $requestId): array
     {
         try {
             $strategy = app((string) $entry['strategy_class']);
-            $plan = $strategy->plan($parameters);
+            $plan = $entry['strategy_class'] === 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy'
+                ? $strategy->plan($parameters, ['operation_id' => $requestId]) : $strategy->plan($parameters);
 
             return is_array($plan) ? $plan : ['ok' => false, 'errors' => ['strategy_plan_invalid']];
         } catch (Throwable) {
@@ -1144,7 +1188,7 @@ final class PopOperationService
         if ($existing) {
             return $existing;
         }
-        $plan = $this->safePlan($entry, $parameters);
+        $plan = $this->safePlan($entry, $parameters, (string) $request->id);
 
         return $this->recordDryRun($request, $entry, $parameters, $plan, $actor, $this->durationMs($startedAt), $actorId, $actorRole, $requestFingerprint);
     }
