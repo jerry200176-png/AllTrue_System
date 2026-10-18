@@ -203,8 +203,8 @@ final class PaymentReversalRestatement
         if (!isset($actor['id']) || !is_int($actor['id']) || $actor['id'] <= 0 || ($actor['student_id'] ?? 0) !== $s['student_id']
             || !in_array($actor['role'] ?? '', ['director', 'super_admin'], true)
             || ($actor['role'] !== 'super_admin' && !in_array($s['campus_id'], $actor['campus_ids'] ?? [], true))) $this->fail('forbidden');
-        $course = DB::table('StudentClass')->where('ID', $s['course_id'])->when($lock, fn ($q) => $q->lockForUpdate())->first();
         $student = DB::table('Student')->where('id', $s['student_id'])->when($lock, fn ($q) => $q->lockForUpdate())->first(['id', 'CampusID']);
+        $course = DB::table('StudentClass')->where('ID', $s['course_id'])->when($lock, fn ($q) => $q->lockForUpdate())->first();
         if (!$student || (int) $student->CampusID !== $s['campus_id'] || !$course || (int) $course->StudentID !== $s['student_id']) $this->fail('owner_mismatch');
         return (array) $course;
     }
