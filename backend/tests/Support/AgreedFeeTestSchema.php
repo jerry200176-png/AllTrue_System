@@ -103,6 +103,39 @@ final class AgreedFeeTestSchema
         return Schema::hasColumns('invoice_corrections', array_keys(self::COLUMNS));
     }
 
+    /** Reuse only a verified committed base schema after Laravel row rollback. */
+    public static function restoreBaseSchemaAfterTest(): bool
+    {
+        self::assertTestConnection();
+        self::assertNoOpenTransaction();
+        if (!self::hasExtensionColumns()) {
+            return false; // Partial/missing schema must go through migrate:fresh.
+        }
+        self::dropExtensionColumns();
+        $columns = collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))->keyBy('Field');
+        if (array_intersect(array_keys(self::COLUMNS), $columns->keys()->all())) {
+            throw new RuntimeException('Synthetic correction extension cleanup left extra columns.');
+        }
+        foreach (['original_invoice_id', 'replacement_invoice_id', 'amount'] as $name) {
+            if (!isset($columns[$name]) || $columns[$name]->Null !== 'NO') {
+                throw new RuntimeException('Synthetic correction base schema was not restored.');
+            }
+        }
+        $indexes = collect(DB::select('SHOW INDEX FROM invoice_corrections'));
+        if ($indexes->where('Key_name', 'uq_invoice_corrections_course_key')->isNotEmpty()) {
+            throw new RuntimeException('Synthetic correction extension uniqueness was not removed.');
+        }
+        foreach (['original_invoice_id' => 'uq_invoice_corrections_original',
+            'replacement_invoice_id' => 'uq_invoice_corrections_replacement'] as $column => $name) {
+            $index = $indexes->where('Key_name', $name)->values();
+            if ($index->count() !== 1 || $index[0]->Column_name !== $column || (int) $index[0]->Non_unique !== 0) {
+                throw new RuntimeException('Synthetic correction base uniqueness was not restored.');
+            }
+        }
+
+        return true;
+    }
+
     /**
      * Mirrors excluded extension migration down() — refuse while agreed-fee history exists,
      * otherwise drop extension columns and restore NOT NULL invoice links/amount.
