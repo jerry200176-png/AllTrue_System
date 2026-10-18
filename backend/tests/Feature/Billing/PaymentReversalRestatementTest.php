@@ -258,6 +258,8 @@ class PaymentReversalRestatementTest extends TestCase
             $this->assertSame('applied', $direct['state']);
             $executed = $pop->run($r['id'], 'execute', $approved['token'], $sha, 'pop-runner');
             $this->assertTrue($executed['ok']); $this->assertTrue($executed['already_applied']);
+            $other = $pop->createDraft(PaymentReversalRestatement::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);
+            $this->assertFalse($pop->runDryRun($other['id'], 'user:'.$f['user']->id, $f['user']->id, 'director', [1])['ok']);
             $this->assertTrue($pop->run($r['id'], 'verify', $approved['token'], $sha, 'pop-runner')['ok']);
             $this->assertSame(0, (int) $f['extra']->fresh()->Amount);
             $this->assertSame('pending', $f['pending']->fresh()->status);

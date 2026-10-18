@@ -99,7 +99,7 @@ final class PaymentReversalRestatement
         return ['id' => $userId, 'role' => 'director', 'campus_ids' => $resolved['campus_ids'], 'student_id' => $studentId];
     }
 
-    public function prepared(array $p, array $actor): void
+    public function prepared(array $p, array $actor, ?string $operationId = null): void
     {
         $plan = $p['plan'];
         if (self::hash($p) !== self::hash($this->requestParameters($plan, $p['decision_reference']))) $this->fail('invalid_manifest');
@@ -108,6 +108,7 @@ final class PaymentReversalRestatement
         if (!hash_equals($plan['actor_hash'], self::hash($actor))) $this->fail('actor_changed');
         $record = DB::table('pop_execution_records')->where('id', $this->proofId($p, 'reversal-proof'))->first();
         if ($record) {
+            if ($operationId !== null && $record->operation_id !== $operationId) $this->fail('request_mismatch');
             if ($this->proof($record->operation_id, 'reversal-proof-rollback')) $this->fail('reapply_requires_new_decision');
             $this->assertReplay($record, $p, false);
             return;
@@ -120,7 +121,7 @@ final class PaymentReversalRestatement
         $r = DB::table('pop_execution_records')->where('id', $id)->where('phase', 'reversal-proof')->first();
         if (!$r || $this->proof($r->operation_id, 'reversal-proof-rollback')) return ['ok' => false];
         $s = json_decode($r->snapshot, true, 512, JSON_THROW_ON_ERROR);
-        $this->prepared($s['request_parameters'], $actor);
+        $this->prepared($s['request_parameters'], $actor, (string) $r->operation_id);
         return ['ok' => true];
     }
 
