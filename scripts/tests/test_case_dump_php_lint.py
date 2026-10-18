@@ -21,6 +21,10 @@ WRITE_MARKERS = ("->insert", "->update(", "->delete(", "->execute(", "DB::statem
 
 
 def render(case):
+    if case == 'xinzhuang_fee_cases':
+        return subprocess.run(['python3', '-'], input=PROBE_PY, capture_output=True, text=True,
+                              env={**os.environ, 'CASE_KEY': case, 'TARGET_STUDENT_ID': '',
+                                   'TARGET_STUDENT_CLASS_ID': '4064', 'EXPECTED_TEACHER_IDS': ''})
     if case in SECRET_ID_CASES:
         return render_secret_case(case)
     run = next(s for s in WORKFLOW["jobs"]["dump"]["steps"] if s.get("name", "").startswith("Run bounded"))["run"]
@@ -185,6 +189,20 @@ class InApp414AmountSourceCase(unittest.TestCase):
         self.assertIn("'snapshot_complete' not in obj", post)
 
 
+
+
+class XinzhuangFeeScope(unittest.TestCase):
+    def test_only_exact_user_supplied_references_are_accepted(self):
+        for value in ('4064', '3753', '3693', '', '1', '04064', '４０６４', '4064;exit'):
+            r = subprocess.run(['python3', '-'], input=PROBE_PY, capture_output=True, text=True,
+                env={**os.environ, 'CASE_KEY': 'xinzhuang_fee_cases', 'TARGET_STUDENT_ID': '',
+                     'TARGET_STUDENT_CLASS_ID': value, 'EXPECTED_TEACHER_IDS': '', 'TARGET_SUBJECT_NAME': '數學'})
+            self.assertEqual(r.returncode == 0, value in {'4064', '3753', '3693'}, r.stderr)
+        block = case_block(render('xinzhuang_fee_cases').stdout, 'xinzhuang_fee_cases')
+        self.assertIn(", 11, '新莊分校'", block)
+        for marker in WRITE_MARKERS:
+            self.assertNotIn(marker, block)
+
+
 if __name__ == "__main__":
     unittest.main()
-
