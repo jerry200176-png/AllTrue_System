@@ -207,6 +207,10 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertTrue($svc->plan($secondParameters)['ok']);
             $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'repair-proof')->count());
             $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->where('result', 'failed')->count());
+            $retriedExecute = $pop->run($id, 'execute', $secondApproval['token'], $sha, 'synthetic-pop');
+            $this->assertTrue($retriedExecute['ok']); $this->assertSame(2, $retriedExecute['attempt_no']);
+            $this->assertSame(500, (int) $secondFixture['invoice']->fresh()->TotalAmount);
+            $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->where('result', 'failed')->count());
 
             [$thirdFixture, $thirdParameters, $thirdContext] = $this->candidate(8000, 500);
             $id = $thirdContext['operation_id'];
@@ -230,6 +234,15 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'repair-proof-rollback')->count());
             $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'rollback')->where('result', 'failed')->count());
             // #4271: a transient outer receipt failure must not permanently strand rollback.
+            $oldApprovals = DB::table('pop_approval_events')->where('operation_id', $id)->orderBy('id')->get()->toJson();
+            $oldToken = $thirdApproval['token']; $this->travel(61)->minutes();
+            $this->refuse(fn () => $pop->run($id, 'rollback', $oldToken, $sha, 'synthetic-pop'), 'expired');
+            $this->assertFalse($pop->approve($id, 'SYNTHETIC-RENEW-DIRECTOR', 'reviewer-director', 'director', $sha, 900, [1])['ready']);
+            $thirdApproval = $pop->approve($id, 'SYNTHETIC-RENEW-FOUNDER', 'reviewer-founder', 'super_admin', $sha, 901);
+            $this->assertTrue($thirdApproval['ready']);
+            $this->assertSame($oldApprovals, DB::table('pop_approval_events')->where('operation_id', $id)->orderBy('id')->limit(2)->get()->toJson());
+            $this->assertSame('failed', DB::table('pop_operation_requests')->where('id', $id)->value('status'), 'Rollback approval must not enqueue a new execute');
+            $this->refuse(fn () => $pop->run($id, 'execute', $thirdApproval['token'], $sha, 'synthetic-pop'), 'bound');
             $this->refuse(fn () => $pop->run($id, 'rollback', 'invalid-token', $sha, 'synthetic-pop'), 'approval token');
             $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'rollback')->count());
             $retriedRollback = $pop->run($id, 'rollback', $thirdApproval['token'], $sha, 'synthetic-pop');
@@ -242,6 +255,7 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertSame($retriedRollback, $pop->run($id, 'rollback', $thirdApproval['token'], $sha, 'synthetic-pop'));
             $this->assertSame(2, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'rollback')->count());
         } finally {
+            $this->travelBack();
             unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
         }
     }
