@@ -263,6 +263,7 @@ describe('AgreedFeeCorrectionModal API contract', () => {
     expect(previews).toHaveLength(2);
     expect(previews[0].body).toMatchObject({ new_charge: 500, reason: '約定費用誤植' });
     expect(previews[1].body).toMatchObject({ new_charge: 600, reason: '改成新原因說明' });
+    expect(previews[1].body.idempotency_key).not.toBe(previews[0].body.idempotency_key);
     expect(wrapper.find('[data-testid="fee-apply"]').exists()).toBe(true);
 
     await wrapper.get('[data-testid="fee-apply"]').trigger('click');
@@ -277,7 +278,7 @@ describe('AgreedFeeCorrectionModal API contract', () => {
     wrapper.unmount();
   });
 
-  it('P2: deferred apply race — after preview, back+edit then late actions still require fresh preview', async () => {
+  it('P2: deferred re-preview — back+edit then late responses still require fresh preview', async () => {
     localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'fixture' }));
     let resolveSecondPreview;
     const secondDeferred = new Promise((resolve) => { resolveSecondPreview = resolve; });
@@ -329,6 +330,9 @@ describe('AgreedFeeCorrectionModal API contract', () => {
 
     await wrapper.get('form').trigger('submit');
     await flushPromises();
+    const previews = calls.filter((c) => c.url.endsWith('/preview'));
+    expect(previews).toHaveLength(3);
+    expect(new Set(previews.map((c) => c.body.idempotency_key)).size).toBe(3);
     expect(calls.filter((c) => c.url.endsWith('/preview')).at(-1).body).toMatchObject({
       new_charge: 700,
       reason: '又改一次原因文字',
@@ -341,6 +345,40 @@ describe('AgreedFeeCorrectionModal API contract', () => {
       preview_token: 'signed-700-new',
     });
     expect(wrapper.emitted('changed')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('deferred apply blocks duplicate actions and emits success only after its response', async () => {
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'fixture' }));
+    let resolveApply;
+    const deferred = new Promise((resolve) => { resolveApply = resolve; });
+    const calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      const body = JSON.parse(options.body);
+      calls.push({ url: String(url), body });
+      if (String(url).endsWith('/preview')) return ok(plan);
+      await deferred;
+      return ok({ correction_id: 99 });
+    }));
+    const wrapper = mountFee();
+    await fillAndPreview(wrapper);
+    await wrapper.get('[data-testid="fee-apply"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="fee-apply"]').element.disabled).toBe(true);
+    expect(wrapper.find('[data-testid="fee-back"]').exists()).toBe(false);
+    const cancel = wrapper.findAll('button').find((button) => button.text() === '取消');
+    expect(cancel.element.disabled).toBe(true);
+    wrapper.findComponent({ name: 'AtDialog' }).vm.$emit('close');
+    await wrapper.get('[data-testid="fee-apply"]').trigger('click');
+    expect(wrapper.emitted('changed')).toBeUndefined();
+    expect(wrapper.emitted('close')).toBeUndefined();
+    const applies = calls.filter((call) => call.url.endsWith('/apply'));
+    expect(applies).toHaveLength(1);
+    expect(applies[0].body).toEqual({ ...calls[0].body, preview_token: plan.preview_token });
+    resolveApply();
+    await flushPromises();
+    expect(wrapper.emitted('changed')).toHaveLength(1);
+    expect(wrapper.emitted('close')).toHaveLength(1);
     wrapper.unmount();
   });
 });
