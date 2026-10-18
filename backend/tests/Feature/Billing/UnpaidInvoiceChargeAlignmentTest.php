@@ -107,6 +107,23 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
         $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->count());
     }
 
+    public function test_replay_refuses_changed_or_deleted_target_invoice(): void
+    {
+        $svc = app(Alignment::class); [$f, $p, $ctx] = $this->candidate(8000, 500);
+        $plan = $svc->plan($p); $svc->execute($plan, $ctx);
+        foreach (['edit', 'delete'] as $change) {
+            DB::beginTransaction();
+            try {
+                $target = DB::table('Invoice')->where('id', $p['invoice_id']);
+                if ($change === 'edit') $target->update(['TotalAmount' => 777]);
+                else $target->delete();
+                $this->refuse(fn () => $svc->execute($plan, $ctx), 'target_moved_on');
+                $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->count());
+            } finally { DB::rollBack(); }
+        }
+        $this->assertTrue($svc->execute($plan, $ctx)['already_applied']);
+    }
+
     public function test_proof_or_required_audit_failure_rolls_back_invoice_change(): void
     {
         $svc = app(Alignment::class);
@@ -231,6 +248,16 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
         $this->refuse(fn () => $svc->execute($beforePlan, ['actor' => 'synthetic-pop', 'operation_id' => $b]), 'state_changed');
         $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
         $this->assertNotSame($p['expected_state_hash'], $svc->preview($p)['state_hash']);
+    }
+
+    public function test_initial_dry_run_returns_confirmation_parameters_and_cannot_execute(): void
+    {
+        [$f, $p, $ctx] = $this->candidate(8000, 500); $svc = app(Alignment::class);
+        $p['expected_state_hash'] = ''; $preview = $svc->plan($p);
+        $this->assertFalse($preview['ok']); $this->assertSame('preview_confirmation_required', $preview['errors'][0]);
+        $this->assertTrue($svc->plan($preview['preview_parameters'])['ok']);
+        $this->refuse(fn () => $svc->execute($preview, $ctx), 'plan_not_ready');
+        $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
     }
 
 }

@@ -37,6 +37,10 @@ final class UnpaidInvoiceChargeAlignmentStrategy
                 return ['ok' => true, 'parameters' => $parameters, 'digest' => $parameters['expected_state_hash'], 'recoverable_proof' => $proof->id];
             }
             $preview = $this->preview($parameters);
+            if (($parameters['expected_state_hash'] ?? '') === '') {
+                $parameters['expected_state_hash'] = $preview['state_hash'];
+                return ['ok' => false, 'errors' => ['preview_confirmation_required'], 'preview_parameters' => $parameters];
+            }
             if (!hash_equals($preview['state_hash'], (string) ($parameters['expected_state_hash'] ?? ''))) $this->fail('state_changed');
             return ['ok' => true, 'parameters' => $parameters, 'digest' => $preview['state_hash']];
         } catch (RuntimeException) {
@@ -53,7 +57,14 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             $prior = $this->proof($request->id, 'repair-proof');
             if ($prior) {
                 if ($this->proof($request->id, 'repair-proof-rollback')) $this->fail('reapply_requires_new_request');
-                return ['ok' => true, 'already_applied' => true, 'updated' => 0, 'snapshot' => json_decode($prior->snapshot, true, 512, JSON_THROW_ON_ERROR)];
+                $snapshot = json_decode($prior->snapshot, true, 512, JSON_THROW_ON_ERROR);
+                $course = DB::table('StudentClass')->where('ID', $p['course_id'])->lockForUpdate()->first();
+                $student = DB::table('Student')->where('id', $p['student_id'])->lockForUpdate()->first();
+                $invoice = DB::table('Invoice')->where('id', $p['invoice_id'])->lockForUpdate()->first();
+                if ((int) ($course->StudentID ?? 0) !== $p['student_id'] || (int) ($student->CampusID ?? 0) !== $p['campus_id']
+                    || (int) ($invoice->StudentID ?? 0) !== $p['student_id'] || (int) ($invoice->StudentClassID ?? 0) !== $p['course_id']
+                    || !isset($snapshot['after_invoice']) || !hash_equals($this->hash($snapshot['after_invoice']), $this->hash((array) $invoice))) $this->fail('target_moved_on');
+                return ['ok' => true, 'already_applied' => true, 'updated' => 0, 'snapshot' => $snapshot];
             }
             $before = $this->capture($p, true);
             $this->eligible($before, $p);
@@ -62,7 +73,8 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             $updated = DB::table('Invoice')->where('id', $p['invoice_id'])->where('TotalAmount', $p['expected_invoice_total'])
                 ->update(['TotalAmount' => $p['expected_charge'], 'updated_at' => now()]);
             if ($updated !== 1) $this->fail('update_failed');
-            $snapshot = ['parameters' => $p, 'before' => $before, 'after_hash' => $this->hash($this->capture($p, true))];
+            $after = $this->capture($p, true);
+            $snapshot = ['parameters' => $p, 'before' => $before, 'after_hash' => $this->hash($after), 'after_invoice' => $after['invoice']];
             $this->persistProof($request, $context, 'repair-proof', $snapshot);
             $this->audit($p, $request->id, 'billing.invoice_charge_alignment');
             return ['ok' => true, 'updated' => 1, 'snapshot' => $snapshot];
