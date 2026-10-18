@@ -73,6 +73,7 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertSame(1, $svc->rollback($result['snapshot'], $ctx)['restored']);
             $this->assertSame($invoice, $f['invoice']->fresh()->getRawOriginal());
             $this->assertTrue($svc->rollback($result['snapshot'], $ctx)['already_rolled_back']);
+            DB::beginTransaction(); try { DB::table('Invoice')->where('id', $p['invoice_id'])->update(['TotalAmount' => $old + 1]); $this->refuse(fn () => $svc->rollback($result['snapshot'], $ctx), 'values_moved_on'); } finally { DB::rollBack(); }
             $this->assertSame(2, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->count());
             $this->refuse(fn () => $svc->execute($plan, $ctx), 'reapply_requires_new_request');
         }
