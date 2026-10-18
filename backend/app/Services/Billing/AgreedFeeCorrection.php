@@ -52,8 +52,8 @@ final class AgreedFeeCorrection
             $ids = $invoices->pluck('id')->all();
             $items = DB::table('InvoiceItem')->where(fn ($q) => $q->whereIn('InvoiceID', $ids)->orWhere('StudentClassID', $courseId))->orderBy('id')->lockForUpdate()->get();
             $payments = DB::table('Payment')->whereIn('InvoiceID', $ids)->orderBy('id')->lockForUpdate()->get();
-            // Never lock reports while holding the course: confirm/void lock report → course → invoice.
-            // Their course lock gates all money writes. A pre-existing pending/confirmed report blocks here.
+            // All money writers hold the course through their writes (confirm/void are course-first).
+            // Read reports under that lock; a pre-existing pending/confirmed report blocks here.
             $reports = DB::table('payment_reports')->where(fn ($q) => $q->where('StudentClassID', $courseId)->orWhereIn('InvoiceID', $ids))->orderBy('id')->get();
             $amendments = DB::table('student_class_pricing_amendments')->where('student_class_id', $courseId)->orderBy('id')->get();
             $sessions = DB::table('ClassSession')->where('StudentClassID', $courseId)->orderBy('ID')->get();

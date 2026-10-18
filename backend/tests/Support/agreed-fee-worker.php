@@ -2,28 +2,17 @@
 
 // Separate PHP process, separate PDO. Only the isolated synthetic test database may be supplied.
 require __DIR__.'/../../vendor/autoload.php';
-$app = require __DIR__.'/../../bootstrap/app.php';
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+require __DIR__.'/alltrueTestDatabase.php';
 $data = json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
-if (($data['db']['database'] ?? '') !== 'AllTrue_test'
-    || !in_array($data['db']['host'] ?? '', ['agreed-fee-test-mysql', '127.0.0.1'], true)) exit(90);
-config(['database.connections.mysql' => $data['db'], 'database.default' => 'mysql',
-    'billing.agreed_fee_correction_enabled' => true, 'app.key' => str_repeat('t', 32)]);
-Illuminate\Support\Facades\DB::purge();
-$pause = $data['pause'] ?? null;
-if ($pause) {
-    Illuminate\Support\Facades\DB::listen(function ($query) use (&$pause) {
-        if ($pause && str_contains(strtolower($query->sql), $pause['match']) && (!($pause['locked'] ?? true) || str_contains(strtolower($query->sql), 'for update'))) {
-            $p = $pause; $pause = null;
-            touch($p['ready']);
-            $deadline = microtime(true) + 15;
-            while (!file_exists($p['release'])) {
-                if (microtime(true) > $deadline) throw new RuntimeException('synthetic barrier timed out');
-                usleep(5000);
-            }
-        }
-    });
+try {
+    alltrue_boot_race_worker($data);
+} catch (InvalidArgumentException $e) {
+    exit(90);
 }
+config(['billing.agreed_fee_correction_enabled' => true]);
+Illuminate\Support\Facades\DB::purge();
+Illuminate\Support\Facades\DB::statement('SET SESSION innodb_lock_wait_timeout = 5');
+alltrue_install_sql_pause(is_array($data['pause'] ?? null) ? $data['pause'] : null, 'synthetic fee barrier timed out');
 try {
     if (!empty($data['started'])) touch($data['started']);
     if ($data['op'] === 'fee') {
