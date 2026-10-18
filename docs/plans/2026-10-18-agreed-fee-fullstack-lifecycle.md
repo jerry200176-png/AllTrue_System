@@ -38,3 +38,5 @@ Follow-up RED reproduced the .env/cache path with Laravel's native putenv adapte
 turned off: getenv missed the override and boot reached the canary (exit0).
 The LoadConfiguration callback now also checks Application::configurationIsCached
 before providers. Both process-env and framework-resolved cache paths are refused.
+
+Final-review follow-up: do not execute backend bootstrap/app.php before guard, since its manual provider registrations are too early. The isolated helper constructs the application, binds the framework console kernel (no scheduled-command discovery) and real HTTP/exception kernels, validates loaded config, then registers the route provider; normal config providers follow guarded bootstrap. Fixture bootstrap contains a throwing manual-registration trap. Exact shared AllTrue_test is admitted only with CI=true and GITHUB_ACTIONS=true; local use requires suffixed schemas. Refusals print field names, never raw rejected connection values. Five additional malformed credential/shared-schema fixtures plus all earlier cases pass. Correct combined directory-filter run:39tests/174assertions,3.169seconds. Hosted CI and final review must be renewed.

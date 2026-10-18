@@ -41,6 +41,9 @@ class AgreedFeeIsolatedLifecycleTest extends TestCase
     public static function rejectedEnvironments(): array
     {
         return [
+            [['CI' => 'false', 'GITHUB_ACTIONS' => 'false', 'DB_DATABASE' => 'AllTrue_test']],
+            [['DB_DATABASE' => 'mysql://synthetic-secret@remote.invalid/AllTrue']],
+            [['DB_HOST' => 'mysql://synthetic-secret@remote.invalid/AllTrue']],
             [['APP_ENV' => 'production']], [['DB_DATABASE' => 'AllTrue']],
             [['DB_DATABASE' => "AllTrue_test_bad\n"]], [['DB_HOST' => 'remote.invalid']],
             [['DATABASE_URL' => 'mysql://synthetic-secret@remote.invalid/AllTrue']],
@@ -63,6 +66,8 @@ class AgreedFeeIsolatedLifecycleTest extends TestCase
     public static function rejectedConnections(): array
     {
         return [
+            [['host' => 'mysql://synthetic-secret@remote.invalid/AllTrue']],
+            [['database' => 'mysql://synthetic-secret@remote.invalid/AllTrue']],
             [['driver' => 'sqlite']], [['host' => 'remote.invalid']], [['database' => 'AllTrue']],
             [['database' => 'AllTrue_test_other_target']], [['port' => 0]],
             [['url' => 'mysql://synthetic-secret@remote.invalid/AllTrue']],
@@ -134,9 +139,11 @@ class AgreedFeeIsolatedLifecycleTest extends TestCase
     {
         $root = sys_get_temp_dir().'/alltrue-fee-lifecycle-'.bin2hex(random_bytes(8));
         $this->roots[] = $root;
-        foreach (['vendor', 'bootstrap/cache', 'config', 'database/migrations', 'tests/Support'] as $directory) {
+        foreach (['vendor', 'bootstrap/cache', 'routes', 'config', 'database/migrations', 'tests/Support'] as $directory) {
             mkdir($root.'/'.$directory, 0700, true);
         }
+        file_put_contents($root.'/routes/api.php', '<?php');
+        file_put_contents($root.'/routes/web.php', '<?php');
         $db = config('database.connections.mysql');
         require_once base_path('tests/Support/alltrueTestDatabase.php');
         $db = alltrue_race_database_config($db);
@@ -173,11 +180,15 @@ class AgreedFeeLifecycleCanary extends \Illuminate\Support\ServiceProvider {
         ], JSON_THROW_ON_ERROR));
     }
 }
+throw new \RuntimeException('unguarded manual provider registration');
 $app = new \Illuminate\Foundation\Application(dirname(__DIR__));
 $app->singleton(\Illuminate\Contracts\Console\Kernel::class, \Illuminate\Foundation\Console\Kernel::class);
 $app->singleton(\Illuminate\Contracts\Debug\ExceptionHandler::class, \Illuminate\Foundation\Exceptions\Handler::class);
 return $app;
 PHP);
+        $bootstrapCode = file_get_contents($root.'/bootstrap/app.php');
+        $canaryCode = substr($bootstrapCode, 0, strpos($bootstrapCode, 'throw new \RuntimeException'));
+        file_put_contents($root.'/vendor/autoload.php', file_get_contents($root.'/vendor/autoload.php')."\n".substr($canaryCode, 5));
         $guard = base_path('tests/Support/agreed-fee-isolated-db-guard.php');
         file_put_contents($root.'/tests/Support/agreed-fee-isolated-db-guard.php', '<?php require '.var_export($guard, true).';');
         copy(base_path('tests/Support/agreed-fee-isolated-migrate.php'), $root.'/tests/Support/agreed-fee-isolated-migrate.php');
@@ -187,9 +198,7 @@ PHP);
                 $environment['APP_CONFIG_CACHE'] = $root.'/alternate.php';
             } else {
                 file_put_contents($root.'/.env', 'APP_CONFIG_CACHE='.$root.'/alternate.php');
-                $bootstrap = $root.'/bootstrap/app.php';
-                file_put_contents($bootstrap, str_replace('$app = new', '\Illuminate\Support\Env::disablePutenv();'."\n".'$app = new',
-                    file_get_contents($bootstrap)));
+                file_put_contents($root.'/vendor/autoload.php', '\Illuminate\Support\Env::disablePutenv();', FILE_APPEND);
             }
             $writePhp($root.'/alternate.php', ['database' => require $root.'/config/database.php',
                 'app' => require $root.'/config/app.php']);

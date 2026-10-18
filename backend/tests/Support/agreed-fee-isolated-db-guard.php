@@ -32,11 +32,12 @@ function agreed_fee_isolated_assert_db(): void
     if ($name === '' || $host === '') {
         agreed_fee_isolated_refuse('DB_HOST/DB_DATABASE unset');
     }
-    if (!alltrue_is_allowed_test_database($name)) {
-        agreed_fee_isolated_refuse("DB_DATABASE={$name}");
+    if (!alltrue_is_allowed_test_database($name)
+        || ($name === 'AllTrue_test' && !(getenv('CI') === 'true' && getenv('GITHUB_ACTIONS') === 'true'))) {
+        agreed_fee_isolated_refuse('DB_DATABASE invalid or shared outside CI');
     }
     if (!alltrue_is_allowed_test_db_host($host)) {
-        agreed_fee_isolated_refuse("DB_HOST={$host}");
+        agreed_fee_isolated_refuse('DB_HOST invalid');
     }
 }
 
@@ -50,7 +51,7 @@ function agreed_fee_isolated_assert_loaded_connection_or_refuse(): void
 
     $default = (string) config('database.default');
     if ($default !== 'mysql') {
-        agreed_fee_isolated_refuse("database.default={$default}");
+        agreed_fee_isolated_refuse('database.default invalid');
     }
 
     $cfg = config('database.connections.mysql');
@@ -95,14 +96,14 @@ function agreed_fee_isolated_assert_loaded_connection_or_refuse(): void
     }
 
     if (!alltrue_is_allowed_test_database($name)) {
-        agreed_fee_isolated_refuse("loaded database={$name}");
+        agreed_fee_isolated_refuse('loaded database invalid');
     }
     if (!alltrue_is_allowed_test_db_host($host)) {
-        agreed_fee_isolated_refuse("loaded host={$host}");
+        agreed_fee_isolated_refuse('loaded host invalid');
     }
     if ($name !== $envName || $host !== $envHost) {
         // Loaded config drifted from the process env the operator intended.
-        agreed_fee_isolated_refuse("loaded {$host}/{$name} != env {$envHost}/{$envName}");
+        agreed_fee_isolated_refuse('loaded target differs from intended target');
     }
 }
 
@@ -161,7 +162,11 @@ function agreed_fee_isolated_boot_application(string $backendRoot): \Illuminate\
         agreed_fee_isolated_refuse('bootstrap/cache/config.php present');
     }
     require_once $backendRoot.'/vendor/autoload.php';
-    $app = require $backendRoot.'/bootstrap/app.php';
+    // Do not execute bootstrap/app.php: its manual registrations precede our guard.
+    $app = new \Illuminate\Foundation\Application($backendRoot);
+    $app->singleton(\Illuminate\Contracts\Console\Kernel::class, \Illuminate\Foundation\Console\Kernel::class);
+    $app->singleton(\Illuminate\Contracts\Http\Kernel::class, \App\Http\Kernel::class);
+    $app->singleton(\Illuminate\Contracts\Debug\ExceptionHandler::class, \App\Exceptions\Handler::class);
     $app->afterBootstrapping(Illuminate\Foundation\Bootstrap\LoadConfiguration::class, static function ($app) {
         if ($app->configurationIsCached()) {
             agreed_fee_isolated_refuse('cached configuration present');
@@ -169,6 +174,7 @@ function agreed_fee_isolated_boot_application(string $backendRoot): \Illuminate\
         agreed_fee_isolated_assert_loaded_connection_or_refuse();
         agreed_fee_isolated_harden_connection_after_pass();
         agreed_fee_isolated_apply_runtime_config();
+        $app->register(\App\Providers\RouteServiceProvider::class);
     });
     $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
