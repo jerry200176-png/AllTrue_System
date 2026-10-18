@@ -35,6 +35,20 @@ class AgreedFeeSchemaLifecycleTest extends TestCase
         $this->assertSame('receipt_reissue', DB::table('invoice_corrections')->where('id', $id)->value('kind'));
     }
 
+    public function test_extension_metadata_keeps_nullable_links_and_course_key_uniqueness(): void
+    {
+        $columns = collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))->keyBy('Field');
+        $this->assertSame('NO', $columns['kind']->Null);
+        $this->assertSame('receipt_reissue', $columns['kind']->Default);
+        foreach (['original_invoice_id', 'replacement_invoice_id', 'amount'] as $name) {
+            $this->assertSame('YES', $columns[$name]->Null, $name);
+        }
+        $index = collect(DB::select('SHOW INDEX FROM invoice_corrections'))
+            ->where('Key_name', 'uq_invoice_corrections_course_key')->sortBy('Seq_in_index');
+        $this->assertSame(['student_class_id', 'idempotency_key'], $index->pluck('Column_name')->values()->all());
+        $this->assertSame([0], $index->pluck('Non_unique')->map(fn ($value) => (int) $value)->unique()->values()->all());
+    }
+
     public function test_rollback_preserves_agreed_fee_history(): void
     {
         DB::table('invoice_corrections')->insert([
