@@ -359,8 +359,9 @@ final class PopOperationService
             throw new RuntimeException('POP approval token is missing, expired, or not bound to this request.');
         }
         // Retained writes need an execute receipt; failed atomic attempts have no committed write to undo.
-        if (in_array($phase, ['verify', 'rollback'], true) && $this->financialRecoveryPhase($request) === 'execute-recovery'
-            && DB::table('pop_execution_records')->where('operation_id', $request->id)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->exists()) throw new RuntimeException('POP recovery requires its successful execute receipt first.');
+        if ($this->atomicFinancialRepair((string) $request->strategy_id) && DB::table('pop_execution_records')->where('operation_id', $request->id)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->exists()) {
+            if (in_array($phase, ['verify', 'rollback'], true) && $this->financialRecoveryPhase($request) === 'execute-recovery') throw new RuntimeException('POP recovery requires its successful execute receipt first.');
+        }
         $existing = $this->existing($request, $phase);
         if ($existing) {
             return $existing;
