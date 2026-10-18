@@ -96,7 +96,7 @@ if ($path === '/__isolated/fee-snapshot') {
     $notif = (int) Illuminate\Support\Facades\DB::table('Notifications')->count();
     $audit = (int) Illuminate\Support\Facades\DB::table('security_audit_events')
         ->where('event_type', 'billing.agreed_fee_corrected')
-        ->where('subject_type', 'student_class')->where('subject_id', $courseId)->count();
+        ->where('subject_ref', App\Models\SecurityAuditEvent::ref('student_class', $courseId))->count();
 
     header('Content-Type: application/json');
     echo json_encode([
