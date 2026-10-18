@@ -10,8 +10,8 @@ use Tests\TestCase;
 /** Source #4247: extension DDL must refuse unsafe targets and open transactions. */
 class AgreedFeeSchemaSafetyTest extends TestCase
 {
-    /** @dataProvider unsafeTargets */
-    public function test_unsafe_targets_are_refused_before_schema_access(array $overrides): void
+    /** @dataProvider unsafeSchemaOperations */
+    public function test_unsafe_targets_are_refused_before_schema_access(array $overrides, string $method): void
     {
         $config = array_replace(['driver' => 'mysql', 'host' => '127.0.0.1', 'database' => 'AllTrue_test'], $overrides);
         $connection = \Mockery::mock(Connection::class);
@@ -24,7 +24,18 @@ class AgreedFeeSchemaSafetyTest extends TestCase
         $schema->shouldReceive('hasTable')->andThrow(new \LogicException('Schema access before target validation'));
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('isolated synthetic');
-        AgreedFeeTestSchema::ensureExtensionColumns();
+        AgreedFeeTestSchema::$method();
+    }
+
+    public static function unsafeSchemaOperations(): array
+    {
+        $cases = [];
+        foreach (self::unsafeTargets() as [$overrides]) {
+            foreach (['ensureExtensionColumns', 'restoreBaseSchemaAfterTest'] as $method) {
+                $cases[] = [$overrides, $method];
+            }
+        }
+        return $cases;
     }
 
     public static function unsafeTargets(): array
@@ -36,7 +47,8 @@ class AgreedFeeSchemaSafetyTest extends TestCase
             [['host' => 'localhost']]];
     }
 
-    public function test_missing_extensions_cannot_implicit_commit_a_test_transaction(): void
+    /** @dataProvider schemaOperations */
+    public function test_missing_extensions_cannot_implicit_commit_a_test_transaction(string $method): void
     {
         $connection = \Mockery::mock(Connection::class);
         $schema = \Mockery::mock(\Illuminate\Database\Schema\Builder::class);
@@ -51,6 +63,11 @@ class AgreedFeeSchemaSafetyTest extends TestCase
         DB::shouldReceive('statement')->andThrow(new \LogicException('DDL before transaction guard'));
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('open test transaction');
-        AgreedFeeTestSchema::ensureExtensionColumns();
+        AgreedFeeTestSchema::$method();
+    }
+
+    public static function schemaOperations(): array
+    {
+        return [['ensureExtensionColumns'], ['restoreBaseSchemaAfterTest']];
     }
 }

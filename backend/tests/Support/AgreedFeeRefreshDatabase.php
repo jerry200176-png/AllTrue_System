@@ -23,14 +23,17 @@ trait AgreedFeeRefreshDatabase
         refreshTestDatabase as private laravelRefreshTestDatabase;
     }
 
+    private bool $agreedFeeRequiresFreshSchema = false;
+
     protected function refreshTestDatabase()
     {
-        AgreedFeeTestSchema::assertTestConnection();
-        // Extension DDL survives row rollback. The next ordinary RefreshDatabase
-        // must remigrate the committed base schema instead of trusting this generation.
+        // Also protect setup failures after a committed ALTER but before rollback
+        // registration. Successful teardown may revalidate the generation below.
         $this->beforeApplicationDestroyed(static function () {
             RefreshDatabaseState::$migrated = false;
         });
+        AgreedFeeTestSchema::assertTestConnection();
+        $this->agreedFeeRequiresFreshSchema = false;
         if (!RefreshDatabaseState::$migrated) {
             $this->artisan('migrate:fresh', $this->migrateFreshUsing());
             $this->app[Kernel::class]->setArtisan(null);
@@ -39,6 +42,14 @@ trait AgreedFeeRefreshDatabase
         // Always ensure — not only on first migrate in this process.
         AgreedFeeTestSchema::ensureExtensionColumns();
         $this->beginDatabaseTransaction();
+        // Laravel registers rollback first. Only after it has cleared the rows
+        // may we undo this helper's extension DDL and reuse the base generation.
+        $this->beforeApplicationDestroyed(function () {
+            RefreshDatabaseState::$migrated = false;
+            if (!$this->agreedFeeRequiresFreshSchema) {
+                RefreshDatabaseState::$migrated = AgreedFeeTestSchema::restoreBaseSchemaAfterTest();
+            }
+        });
     }
 
     /**
@@ -48,6 +59,7 @@ trait AgreedFeeRefreshDatabase
      */
     protected function endOuterTestingTransactions(): void
     {
+        $this->agreedFeeRequiresFreshSchema = true;
         $database = $this->app->make('db');
         foreach ($this->connectionsToTransact() as $name) {
             $connection = $database->connection($name);
@@ -71,6 +83,7 @@ trait AgreedFeeRefreshDatabase
      */
     protected function rebuildIsolatedSchema(): void
     {
+        $this->agreedFeeRequiresFreshSchema = true;
         AgreedFeeTestSchema::assertTestConnection();
         foreach ($this->connectionsToTransact() as $name) {
             $level = DB::connection($name)->transactionLevel();
