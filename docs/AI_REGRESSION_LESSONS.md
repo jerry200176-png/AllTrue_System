@@ -695,7 +695,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：對帳視窗若列出可處理的 Invoice，就必須同頁提供正確操作；一般作廢只看 `can_direct_void`，沖銷作廢只看 `can_exception_void`，不可用 anomaly 標籤自行推導按鈕。
 - **強制規則**：未收款錯帳不可因使用者按到沖銷作廢而卡住；後端若判斷淨收款與 `PaidAmount` 都是 0，必須安全降級為一般作廢。
 - **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；已繳課程殘留 unpaid Invoice 時仍必須拒絕；invoice API 必須排除 void payment count 與 void invoice，並回傳付款/沖銷明細供稽核；Invoice 作廢 API 必須覆蓋 paid/partial/cross-campus/teacher forbidden。
-- **Invoice 作廢也須加入課程交易鎖（#4247 整合回歸）**：一般作廢與例外沖銷先依 ID 排序鎖定 header／item 的相關課程，再鎖帳單並重查狀態；僅鎖帳單會搶先覆寫尚持有課程鎖的費用更正。`InvoiceVoidSerializationTest` 用獨立程序證明作廢必須等待課程擁有者，之後拒絕已被取代的舊帳單，且不新增沖銷或覆寫原備註。
+- **單課作廢要加入費用更正的課程鎖，並重查歸屬（#4247／#4262）**：從 DB 讀取當前 header/item 課程，鎖單課後再鎖帳單；以 fresh invoice/item locking reads 比對歸屬，漂移回409且不寫款項。多課合併帳單不符合 fee correction 資格，作廢維持 invoice-only，不新增會與逆 ID 轉移相反的課程鎖集；直接收款保留既有 sorted course locks。測試以 PROCESSLIST 觀測真實等待查詢及 post-query marker 未出現，不能只憑 beforeExecuting 訊號宣稱已阻塞。
 
 ---
 
@@ -1071,6 +1071,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **`backend/public/storage` symlink 會卡住 `git reset --hard` / `git merge`**（WSL/Windows 掛載：`Function not implemented` / `File exists`）→ 改用 `git reset --mixed` 移 HEAD（不寫工作樹）再清殘留；勿對 protected 路徑設 `assume-unchanged`（R58 + pre-commit hook 會擋）。
 - **merge-train 稅（拓撲部分已 superseded）**：strict required checks 仍會讓其他 PR 在 main 前進後變 `BEHIND` 並重跑 CI；不可用 `gh pr merge --admin` 繞過。2026-07-14 起所有 jobs 已改用 GitHub-hosted runner，可平行執行，不再受單一 WSL2 runner 序列化；現況見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
 - **同名測試 DB 的隔離取決於 runner 儲存邊界（#732 已 superseded）**：`backend/phpunit.xml` 仍以 `force="true"` 設定 `DB_DATABASE=AllTrue_test`，但每個 GitHub-hosted PHPUnit job 都有獨立 MySQL service container，因此同名 schema 不會跨 run 互相清表。若未來改回共享 self-hosted MySQL，必須先提供 run-scoped schema 或等價隔離，不能只改 runner label。
+- **測試開關須還原原始環境三個管道（#4262）**：ClassSession 唯一索引測試的 `putenv`／`$_ENV`／`$_SERVER` 只在該案例啟用；teardown 還原原值，重複 enable 只捕捉一次。否則中途 remigrate 會把測試索引帶進後續舊 fixture，讓相同時段的 leave/leave_adjusted 以1062失敗；不得刪索引斷言或只重跑 CI。
 - **測試 DDL 也要先驗證 resolved connection（#4256）**：沿用 synthetic schema／loopback allowlist，拒絕 URL、socket、read/write 與 PDO init-command 等替代目標；`migrate:fresh` 前驗證、DDL 前拒絕 open transaction。MySQL DDL 會 implicit commit，不可在 `RefreshDatabase` 外層交易中臨時補欄位。
 - **測試 extension 不可污染下一個 RefreshDatabase，也不應每例重建全庫**：一般案例在 Laravel rollback callback 之後撤回 test-only DDL，核對 base 欄位與唯一索引才重用 generation；中途 DDL／部分 schema／committed lifecycle／cleanup 失敗保持 generation 無效，交回完整重建。改善效能必須保留實際 teardown 的 row/schema 隔離回歸及原 CI 門檻。
 - **Laravel 8 Schema 要直接 mock connection 的 builder（#4256）**：其 facade accessor 回傳物件，不是一般 binding 名稱。`Schema::swap()` 會出現 illegal offset，`Schema::shouldReceive()` 也可能先觸發未設定的 `getSchemaBuilder()`；這些初始化失敗不算有效 RED。先查該版本開源實作，再讓 connection 的 `getSchemaBuilder()` 回傳 builder mock，直接在 builder 設期待，並核對失敗 stack 確實進入受測路徑。

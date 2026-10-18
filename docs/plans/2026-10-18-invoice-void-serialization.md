@@ -1,44 +1,47 @@
 # Invoice void serialization
 
-Goal: make normal and exception invoice voids share the existing course-first
-money-writer mutex, so an in-flight correction cannot lose to an unlocked void.
+Goal: protect single-course fee corrections from overlapping normal/exception
+invoice voids, recheck current ownership, and preserve consolidated void behavior.
+Repository AllTrue_System; task chore/task-exception-void-fee-lock-20261018;
+initial base75ae398c, main1fab98b8 incorporated. Risk R3/T3 existing-rule billing
+code, no new financial policy. No production activation/schema/account changes.
 
-Repository: AllTrue_System; base 75ae398c; task branch
-chore/task-exception-void-fee-lock-20261018. Risk R3/T3 billing code, existing
-serialization rule only. No production activation, account repair or schema change.
+## Evidence and implementation
 
-Evidence: combined candidate CI 39094727324 failed at
-AgreedFeeConcurrencyTest::test_invoice_void_writers_and_fee_cannot_overwrite_each_other
-(exception_void: expected 200, got 409). Both controller void paths lock invoices
-without first locking their courses; recordPayment already does course-first.
+- Held-source #4247 CI39094727324: exception void/fee race expected200, got409.
+  Initial isolated RED completed HTTP200 while parent held the course mutex.
+- #4262 first review found stale bound owners, a new multi-course lock-order
+  inversion, and insufficient proof of server-side blocking. Current code reads
+  current header ownership, revalidates fresh invoice/item owners and returns409
+  on drift. Reparenting RED observed200 instead of409 before this repair.
+- Single-course voids take the course mutex; consolidated voids keep invoice-only
+  serialization. Fee correction already refuses foreign/shared items (API test
+  test_pending_reports_shared_items_and_ambiguous_reversal_provenance_block).
+  Do not introduce multi-course fee support or change session-transfer semantics.
+  Direct payments keep their prior sorted lock set and gain owner revalidation.
+- Race tests observe the worker CONNECTION_ID in server PROCESSLIST and an
+  absent post-query marker while parent owns the row, rather than a pre-SQL signal.
+  Own-user visibility needs no PROCESS grant: [MySQL8.0 reference](https://dev.mysql.com/doc/refman/8.0/en/information-schema-processlist-table.html).
 
-Candidates: missing writer serialization; insufficient race barrier; fixture/schema
-interference. Reproduce with independent two-process evidence before changing code.
+## Verification
 
-1. Add a regression using the maintained PaymentReportRaceWorker and guarded
-   synthetic loopback database. Hold a course, start a void, supersede the invoice,
-   then release the course; the void must recheck and refuse without another write.
-2. Run RED; if missing serialization is demonstrated, align both void paths with
-   recordPayment, including item-only/multiple course references in sorted order.
-3. Run targeted GREEN and existing void/payment regressions; independent review
-   and exact-head hosted checks, then normal queue under existing-rule code policy.
-4. Revalidate the held combined source separately; never count isolated tests as
-   full integration or production acceptance.
+1. Observed-blocking regressions: header/item, stale bound header, ownership drift
+   while waiting, both voids, direct payment and consolidated reverse-ID overlap.
+2. Preserve existing BillingInvoiceVoidTest and InvoiceRecordPaymentProjectionTest.
+3. First hosted #4262 CI39095906152 completed4146tests with one unrelated fixture
+   error: a unique-index test leaked APPLY_CLASS_SESSION_UNIQUE_INDEX into later
+   migrations. A focused three-case sequence (D1→void→ensure-past leave) reproduced
+   the same1062. Fix the six flag producers to restore native/ENV/SERVER channels;
+   retain their actual index-enforcement assertions. PHPUnit global-state backup
+   does not restore native putenv, so scoped test-only restoration is needed.
+4. Expanded focused GREEN passed49tests/341assertions in160seconds: all12 race
+   cases (including direct payment), all six index-flag producers, the failing
+   D1→void→leave sequence, flag lifecycle unit and existing money regressions.
+   No assertion, unique-index check, CI deadline or coverage threshold removed.
+5. After targeted GREEN: final-head hosted CI and independent review; reply/resolve
+   all3 review findings; normal queue only after exact-head gates. Revalidate held
+   combined source separately before claiming integration or production acceptance.
 
-Stops: new accounting semantics, access expansion, protected release/schema/data
-operations require their concrete decision. Retain all original financial history.
-Rollback: revert code; no data rollback or migration is involved in this change.
-
-RED: isolated InvoiceVoidSerializationTest data set #0 on unchanged production
-code completed with HTTP 200 while the parent still held the course lock. The
-test failed with the actual response, not a setup/DDL error. An initial test
-probe consumed proc_get_status exit status; it was replaced with non-consuming
-pipe readiness before treating the final RED as evidence.
-
-Targeted GREEN: six independent-process serialization cases passed (78 assertions),
-including item-only and multiple-course references. Existing BillingInvoiceVoidTest
-also passed 11 tests / 42 assertions, including paid/partial and actor/campus guards.
-Direct payment projection regression passed 9 tests / 47 assertions. The header
-fixtures were then tightened to have no InvoiceItem; the final targeted run
-passed all 6 cases / 78 assertions in 67 seconds. Hosted checks and review remain
-pending; no release or case acceptance is claimed.
+Rollback: revert code, retain all financial history. Stops: new billing/access
+semantics, protected release/schema/data operations need their concrete decision.
+Three real cases remain unaccepted; synthetic tests are not production evidence.
