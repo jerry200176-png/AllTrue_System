@@ -63,7 +63,8 @@ class PaymentReportPendingReturnTest extends TestCase
         $this->assertSame($p['reason'], $report->rejection_note); $this->assertTrue($svc->verify([], $result)['ok']);
         $this->assertSame($course, $f['course']->fresh()->getRawOriginal()); $this->assertSame($invoice, $f['invoice']->fresh()->getRawOriginal());
         $this->assertSame($payments, DB::table('Payment')->where('InvoiceID', $f['invoice']->id)->orderBy('id')->get()->toJson());
-        $this->assertTrue($svc->execute($svc->plan($p), $ctx)['already_applied']);
+        $this->assertFalse($svc->plan($p, ['operation_id' => (string) Str::uuid()])['ok']);
+        $this->assertTrue($svc->execute($svc->plan($p, $ctx), $ctx)['already_applied']);
         $this->assertTrue($svc->rollback($result['snapshot'], $ctx)['ok']);
         $this->assertSame($before, $f['pending']->fresh()->getRawOriginal());
         $this->assertTrue($svc->rollback($result['snapshot'], $ctx)['already_rolled_back']);
@@ -127,9 +128,24 @@ class PaymentReportPendingReturnTest extends TestCase
             $sha = str_repeat('c', 40);
             $this->assertFalse($pop->approve($r['id'], 'SYNTHETIC-DIRECTOR', 'reviewer-director', 'director', $sha, $f['user']->id + 100000, [1])['ready']);
             $approval = $pop->approve($r['id'], 'SYNTHETIC-FOUNDER', 'reviewer-founder', 'super_admin', $sha, $f['user']->id + 100001);
+            $fault = (object) ['armed' => true, 'phase' => 'execute'];
+            DB::listen(function ($q) use ($fault): void {
+                if ($fault->armed && str_starts_with($q->sql, 'insert ignore into `pop_execution_records`') && in_array($fault->phase, $q->bindings, true)) {
+                    $fault->armed = false; throw new \RuntimeException('synthetic_outer_receipt_failure');
+                }
+            });
+            $this->assertFalse($pop->run($r['id'], 'execute', $approval['token'], $sha, 'pop-runner')['ok']);
+            $this->assertFalse($fault->armed); $this->assertSame('pending', $f['pending']->fresh()->status);
+            $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $r['id'])->where('phase', 'pending-return-proof')->count());
             $executed = $pop->run($r['id'], 'execute', $approval['token'], $sha, 'pop-runner');
             $this->assertTrue($executed['ok']); $this->assertSame('rejected', $f['pending']->fresh()->status);
+            $other = $pop->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);
+            $this->assertFalse($pop->runDryRun($other['id'], 'user:'.$f['user']->id, $f['user']->id, 'director', [1])['ok']);
             $this->assertTrue($pop->run($r['id'], 'verify', $approval['token'], $sha, 'pop-runner')['ok']);
+            $fault->phase = 'rollback'; $fault->armed = true;
+            $this->assertFalse($pop->run($r['id'], 'rollback', $approval['token'], $sha, 'pop-runner')['ok']);
+            $this->assertFalse($fault->armed); $this->assertSame('rejected', $f['pending']->fresh()->status);
+            $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $r['id'])->where('phase', 'pending-return-rollback')->count());
             $this->assertTrue($pop->run($r['id'], 'rollback', $approval['token'], $sha, 'pop-runner')['ok']);
             $this->assertSame('pending', $f['pending']->fresh()->status);
         } finally {
@@ -194,6 +210,14 @@ class PaymentReportPendingReturnTest extends TestCase
         $data = $this->getJson($url, $headers)->assertOk()->json('data');
         $this->assertSame('approved', $data['status']);
         $this->assertSame(['request_id', 'operation_id', 'status', 'phase', 'result', 'execution_id', 'commit_sha'], array_keys($data));
+        foreach (['dry-run' => 2, 'execute' => 1] as $phase => $attempt) {
+            $executionId = (string) Str::uuid();
+            DB::table('pop_execution_records')->insert(['id' => $executionId, 'execution_id' => $executionId, 'operation_id' => $ctx['operation_id'],
+                'phase' => $phase, 'attempt_no' => $attempt, 'result' => 'failed', 'idempotency_key' => $executionId, 'attempt_key' => $executionId,
+                'correlation_id' => $executionId, 'payload' => '{}', 'actor' => 'synthetic-pop', 'created_at' => now()->startOfSecond()]);
+        }
+        DB::table('pop_operation_requests')->where('id', $ctx['operation_id'])->update(['status' => 'failed']);
+        $this->getJson($url, $headers)->assertOk()->assertJsonPath('data.phase', 'execute')->assertJsonPath('data.execution_id', $executionId);
         DB::table('UserCampus')->where('UserID', $f['user']->id)->update(['CampusID' => 2]);
         $this->getJson($url, $headers)->assertForbidden();
         DB::table('UserCampus')->where('UserID', $f['user']->id)->delete(); $this->getJson($url, $headers)->assertForbidden();
