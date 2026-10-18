@@ -388,7 +388,8 @@ final class PopOperationService
     private function atomicFinancialRepair(object $strategy): bool
     {
         return $strategy instanceof Strategies\UnpaidInvoiceChargeAlignmentStrategy
-            || $strategy instanceof Strategies\PaymentReversalRestatementStrategy;
+            || $strategy instanceof Strategies\PaymentReversalRestatementStrategy
+            || $strategy instanceof Strategies\PaymentReportPendingReturnStrategy;
     }
 
     /**

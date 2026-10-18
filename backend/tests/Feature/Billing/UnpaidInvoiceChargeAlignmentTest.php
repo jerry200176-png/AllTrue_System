@@ -216,4 +216,21 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
         }
     }
+
+    public function test_pre_rollback_request_cannot_reapply_after_invoice_values_are_restored(): void
+    {
+        $svc = app(Alignment::class); [$f, $p, $a] = $this->candidate(8000, 500);
+        $old = $p; $old['decision_reference'] = 'OLD-SECOND-ALIGNMENT';
+        $b = (string) Str::uuid(); $r = (array) DB::table('pop_operation_requests')->where('id', $a['operation_id'])->first();
+        $r['id'] = $b; $r['idempotency_key'] = $b; $r['parameters'] = json_encode($old);
+        $r['parameters_hash'] = hash('sha256', json_encode(PopOperationService::canonicalParameters($old)));
+        DB::table('pop_operation_requests')->insert($r);
+        $beforePlan = $svc->plan($old); $result = $svc->execute($svc->plan($p), $a);
+        $svc->rollback($result['snapshot'], $a);
+        $this->assertFalse($svc->plan($old)['ok']);
+        $this->refuse(fn () => $svc->execute($beforePlan, ['actor' => 'synthetic-pop', 'operation_id' => $b]), 'state_changed');
+        $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
+        $this->assertNotSame($p['expected_state_hash'], $svc->preview($p)['state_hash']);
+    }
+
 }

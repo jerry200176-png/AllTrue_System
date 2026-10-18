@@ -117,7 +117,10 @@ final class UnpaidInvoiceChargeAlignmentStrategy
         $reports = $rows(DB::table('payment_reports')->where(fn ($q) => $q->where('InvoiceID', $p['invoice_id'])->orWhere('StudentClassID', $p['course_id']))->orderBy('id'));
         foreach ($reports as $r) if ((int) $r['StudentID'] !== $p['student_id'] || (int) $r['StudentClassID'] !== $p['course_id'] || (int) $r['InvoiceID'] !== $p['invoice_id']) $this->fail('report_owner');
         $amendments = $rows(DB::table('student_class_pricing_amendments')->where('student_class_id', $p['course_id'])->orderBy('id'));
-        return ['student' => $student, 'course' => $course, 'invoice' => $invoices[0], 'items' => $items, 'payments' => $payments, 'reports' => $reports, 'amendments' => $amendments];
+        $epoch = DB::table('pop_execution_records')->where('phase', 'repair-proof-rollback')
+            ->where('snapshot->parameters->invoice_id', $p['invoice_id'])->orderBy('id')->limit(101)->pluck('id')->all();
+        if (count($epoch) > 100) $this->fail('history_budget');
+        return ['student' => $student, 'course' => $course, 'invoice' => $invoices[0], 'items' => $items, 'payments' => $payments, 'reports' => $reports, 'amendments' => $amendments, 'rollback_epoch' => $epoch];
     }
 
     private function eligible(array $g, array $p): void
