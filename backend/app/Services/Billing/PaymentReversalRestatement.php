@@ -21,13 +21,11 @@ final class PaymentReversalRestatement
             'rollback_epoch' => $this->rollbackEpoch($scope['payment_id']),
             'raw_net_before' => (int) $target['Amount'], 'raw_net_after' => 0];
     }
-
     public function requestParameters(array $plan, string $decision): array
     {
         if (!preg_match('/\A[A-Za-z0-9:_-]{3,80}\z/', $decision)) $this->fail('invalid_manifest');
         return ['campus_id' => $plan['scope']['campus_id'], 'plan' => $plan, 'decision_reference' => $decision];
     }
-
     public function execute(array $plan, array $actor, string $decision, string $operationId): array
     {
         if (!Str::isUuid($operationId) || !preg_match('/\A[a-f0-9]{64}\z/', $plan['state_hash'] ?? '')
@@ -62,7 +60,6 @@ final class PaymentReversalRestatement
             return ['state' => 'applied', 'restatement_id' => $id];
         }, 3);
     }
-
     public function rollback(string $id, array $actor): array
     {
         return DB::transaction(function () use ($id, $actor) {
@@ -71,8 +68,12 @@ final class PaymentReversalRestatement
             $s = json_decode($record->snapshot, true, 512, JSON_THROW_ON_ERROR);
             $this->request($record->operation_id, $s['request_parameters']);
             $scope = $s['scope']; $this->authorize($scope, $actor, true);
-            if ($this->proof($record->operation_id, 'reversal-proof-rollback')) return ['state' => 'already_rolled_back'];
             $graph = $this->capture($scope, $actor, true);
+            if ($this->proof($record->operation_id, 'reversal-proof-rollback')) {
+                $target = $this->payment($graph, $scope['payment_id']);
+                if (!$target || !hash_equals(self::hash($s['before_payment']), self::hash($target))) $this->fail('target_moved_on');
+                return ['state' => 'already_rolled_back'];
+            }
             if (!hash_equals($s['after_state_hash'], self::hash($graph))) $this->fail('values_moved_on');
             $before = $s['before_payment']; $restored = $graph;
             foreach ($restored['payments'] as &$row) if ((int) $row['id'] === (int) $scope['payment_id']) $row = $before;
@@ -86,7 +87,6 @@ final class PaymentReversalRestatement
             return ['state' => 'rolled_back'];
         }, 3);
     }
-
     public function actorContext(int $userId, int $studentId): array
     {
         $user = \App\Models\User::query()->find($userId);
