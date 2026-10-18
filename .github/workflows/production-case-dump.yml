@@ -37,6 +37,7 @@ on:
           - inapp_333_multi_teacher_templates
           - billing_correction_past_session_impact
           - inapp_414_amount_source
+          - xinzhuang_fee_cases
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
@@ -133,7 +134,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source'}:
+          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -143,6 +144,14 @@ jobs:
           id_cases = {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'contract_xindian_student', 'contract_muzha_student', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang'}
           if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'}):
               raise SystemExit(f'{case} requires student_id')
+          if case == 'xinzhuang_fee_cases':
+              if target_student_id or target_student_class_id not in {'4064', '3753', '3693'}:
+                  raise SystemExit('fee case requires one approved course reference and no student override')
+              if os.environ.get('EXPECTED_TEACHER_IDS') or os.environ.get('TARGET_SUBJECT_NAME', '數學') not in {'', '數學'}:
+                  raise SystemExit('fee case takes no teacher or subject override')
+          import base64
+          from pathlib import Path
+          fee_reader_b64 = base64.b64encode(Path('scripts/lib/fee-case-ledger.php').read_bytes()).decode('ascii') if case == 'xinzhuang_fee_cases' else ''
           if case == 'inapp_414_amount_source':
               # The ID is read only from the masked secret. Rejection cannot redact public dispatch metadata; never submit a live ID there.
               if target_student_id or target_student_class_id:
@@ -153,7 +162,7 @@ jobs:
               if not secret_class_id.isascii() or not secret_class_id.isdigit() or len(secret_class_id) > 12 or int(secret_class_id) <= 0:
                   raise SystemExit('inapp_414_amount_source requires the CASE_INPUT_STUDENT_CLASS_ID secret as a positive numeric ID')
               target_student_class_id = secret_class_id
-          if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student', 'inapp_414_amount_source'} or not target_student_class_id.isdigit()):
+          if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student', 'inapp_414_amount_source', 'xinzhuang_fee_cases'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           expected_teacher_ids = os.environ.get('EXPECTED_TEACHER_IDS') or ''
           teacher_ids = expected_teacher_ids.split(',') if expected_teacher_ids else []
@@ -1983,6 +1992,10 @@ jobs:
             $out['inferred_weak_sessions'] = array_slice($weak, 0, $cap);
             $out['unmatched_past_cancels'] = array_slice($unmatched, 0, $cap);
             $out['truncated'] = max(count($corrections), count($affected), count($strong), count($weak), count($unresolved), count($unmatched)) > $cap;
+          }} elseif ($case === 'xinzhuang_fee_cases') {{
+            if (!in_array($targetStudentClassId, [4064, 3753, 3693], true)) {{ throw new \RuntimeException('unsupported_fee_case'); }}
+            eval(substr(base64_decode('{fee_reader_b64}', true), 5));
+            $out = array_merge($out, alltrue_fee_case_ledger(app('db')->connection(), $targetStudentClassId, 11, '新莊分校'));
           }} elseif ($case === 'inapp_414_amount_source') {{
             // in-app #414 (#4155): trace the stored amount behind the displayed course payable.
             // Founder option A (#4136 comment 6216671699): one StudentClass ID, bound to campus 11 (Student.CampusID).
@@ -2358,6 +2371,9 @@ jobs:
               echo 'if timeout --signal=TERM --kill-after=5s 120s php artisan tinker "--execute=require '"'"'$probe_file'"'"';"; then :; else'
               echo '  probe_rc=$?; echo "remote_execution_failed_or_timed_out" >&2; exit "$probe_rc"'
               echo 'fi'
+            elif [[ "$CASE_KEY" == 'xinzhuang_fee_cases' ]]; then
+              echo 'command -v timeout >/dev/null'
+              echo 'timeout --signal=TERM --kill-after=5s 120s php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
             else
               echo 'php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
             fi
@@ -2393,6 +2409,9 @@ jobs:
           if obj.get('case') == 'inapp_414_amount_source':
               if obj.get('read_only_transaction') is not True or obj.get('campus_bound') != 11 or 'snapshot_complete' not in obj or 'contract' not in obj:
                   raise SystemExit('inapp_414 amount-source probe did not finish inside its read-only campus-11 transaction')
+          if os.environ.get('CASE_KEY') == 'xinzhuang_fee_cases':
+              if obj.get('case') != 'xinzhuang_fee_cases' or obj.get('read_only_transaction') is not True or obj.get('campus_bound') != 11 or 'snapshot_complete' not in obj:
+                  raise SystemExit('fee probe did not finish inside its read-only campus-11 transaction')
           print('parsed read-only production case')
           PY
 
@@ -2438,6 +2457,9 @@ jobs:
           }
           # This restricted case exposes only execution status, never payload-derived reason strings.
           if case == 'inapp_414_amount_source':
+              status.pop('reason')
+              status.pop('completeness')
+          if case == 'xinzhuang_fee_cases':
               status.pop('reason')
               status.pop('completeness')
           print('case status:', json.dumps(status, sort_keys=True))
