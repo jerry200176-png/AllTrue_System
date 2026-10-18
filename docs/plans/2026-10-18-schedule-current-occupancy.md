@@ -1,0 +1,13 @@
+# Current occupancy reads for atomic scheduling apply
+
+Repo AllTrue_System; main b0c9b9f9ac1f; worktree schedule-current-occupancy-20261018, branch chore/task-schedule-current-occupancy-20261018; session594a6b45212a457490d3063811d27e56. Preflight passed. R2/T2 shared runtime foundation; no production activation, feature flags, billing semantics or repair. Existing approved development continues.
+
+Problem: independent #4215 review4306281805 proves apply's teacher occupancy reads can retain an old REPEATABLE READ snapshot and miss a newly committed booking. Its699-line change needs a meaningful shared foundation rather than dropping tests to fit.
+
+1. Add explicit server-owned optional current/locking reads to the canonical teacher occupancy guard and its stale-exception/substitute provenance dependencies. Defaults preserve unlocked preview behavior. No request-payload switch and no global isolation change.
+2. Reproduce with real independent MySQL connections: establish stale snapshot, commit synthetic conflicting sessions/schedules/provenance, show ordinary reads remain stale and current guard detects current capacity. Keep campus filtering, self-exclusions, cancelled/leave filtering, mixed-class capacity and substitute identity unchanged. Verify rollback/owned fixture cleanup.
+3. Targeted existing capacity/stale/substitute suites, complete CI, independent review, resolved threads, diff below700lines and normal queue. This foundation alone must not claim #410 fixed or enable it. After merge, #4215 consumes the mode and proves endpoint rejection/atomic unchanged state with its own final gates.
+
+Rollback: normal code revert; no schema/data migration. Stop before production activation or real record mutation. Prioritize the three financial cases whenever their diagnostic gates complete; this task is independent work during that verified CI/review wait.
+
+Evidence: independent-PDO regression RED1test/4assertions proves current guard misses a committed ClassSession; initial GREEN1/16 covers five stale-snapshot shapes. Complete local focused suite48tests/217assertions passes26.458s, including course-wrapper current reads, self/campus boundaries, existing guardrails, stale exceptions, makeup substitute and occurrence flags. A first combined run exposed committed base-seed leakage from the new nontransactional test; teardown now resets RefreshDatabaseState so later transactional tests get a fresh generation, preserving existing assertions. Draft pending priority#4269/main integration, final exact-head CI and independent review.

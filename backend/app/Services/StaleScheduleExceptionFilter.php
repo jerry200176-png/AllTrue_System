@@ -33,11 +33,11 @@ class StaleScheduleExceptionFilter
      * @param  string  $ymd  Y-m-d
      * @return array<int, object> 保留的 rows（順序不變）
      */
-    public function rejectStale(iterable $rows, string $ymd): array
+    public function rejectStale(iterable $rows, string $ymd, bool $lock = false): array
     {
         $rows = is_array($rows) ? $rows : iterator_to_array($rows, false);
 
-        return $this->rejectStaleBatch([$ymd => $rows])[$ymd] ?? [];
+        return $this->rejectStaleBatch([$ymd => $rows], $lock)[$ymd] ?? [];
     }
 
     /**
@@ -46,7 +46,7 @@ class StaleScheduleExceptionFilter
      * @param  array<string, array<int, object>>  $rowsByYmd  Y-m-d => rows (student_course_id, start_time)
      * @return array<string, array<int, object>> kept rows per date
      */
-    public function rejectStaleBatch(array $rowsByYmd): array
+    public function rejectStaleBatch(array $rowsByYmd, bool $lock = false): array
     {
         $courseIds = [];
         foreach ($rowsByYmd as $rows) {
@@ -65,7 +65,7 @@ class StaleScheduleExceptionFilter
                 ->whereIn('StudentClassID', array_keys($courseIds))
                 ->whereIn(DB::raw('DATE(SessionDate)'), array_keys($rowsByYmd))
                 ->select('StudentClassID', 'StartTime', 'Status', DB::raw('DATE(SessionDate) as ymd'))
-                ->get();
+                ->when($lock, fn ($q) => $q->lockForUpdate())->get();
             foreach ($sessions as $session) {
                 $courseId = (int) $session->StudentClassID;
                 $hhmm = $this->hhmm($session->StartTime);

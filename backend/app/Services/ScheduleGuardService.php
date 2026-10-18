@@ -129,11 +129,12 @@ class ScheduleGuardService
 
     /**
      * Validate one concrete schedule occurrence (e.g. rescheduled target slot).
+     * $lock is server-owned: atomic apply uses current reads inside its transaction; previews remain unlocked.
      *
      * @param  array<string, mixed>  $payload
      * @return array<int, array<string, mixed>>
      */
-    public function validateScheduleOccurrence(array $payload): array
+    public function validateScheduleOccurrence(array $payload, bool $lock = false): array
     {
         $teacherId = (int) ($payload['teacher_id'] ?? 0);
         $branchId = (int) ($payload['branch_id'] ?? 0);
@@ -181,7 +182,8 @@ class ScheduleGuardService
             $excludeStudentId,
             $excludeCourseId,
             $startTime,
-            $endTime
+            $endTime,
+            $lock
         );
         $overlaps = array_values(array_filter($entries, function ($entry) use ($startTime, $endTime) {
             return $this->timesOverlap($startTime, $endTime, (string) $entry['start_time'], (string) $entry['end_time']);
@@ -209,7 +211,7 @@ class ScheduleGuardService
      *
      * @return array<int, array<string, mixed>>
      */
-    public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime): array
+    public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime, bool $lock = false): array
     {
         return $this->validateScheduleOccurrence([
             'teacher_id' => (int) $course->getAttribute('TeacherID'),
@@ -221,7 +223,7 @@ class ScheduleGuardService
             'end_time' => $endTime,
             'exclude_course_id' => (int) $course->getAttribute('ID') ?: null,
             'exclude_student_id' => (int) ($course->getAttribute('StudentID') ?? 0) ?: null,
-        ]);
+        ], $lock);
     }
 
     /**
@@ -1316,7 +1318,8 @@ class ScheduleGuardService
         ?int $excludeStudentId = null,
         ?int $excludeCourseId = null,
         ?string $targetStartTime = null,
-        ?string $targetEndTime = null
+        ?string $targetEndTime = null,
+        bool $lock = false
     ): array {
         $scheduleRowsQuery = DB::table('schedules')
             ->where('branch_id', $branchId)
@@ -1340,7 +1343,7 @@ class ScheduleGuardService
         if ($excludeCourseId && ($targetStartTime === null || $targetEndTime === null)) {
             $scheduleRowsQuery->where('student_course_id', '!=', $excludeCourseId);
         }
-        $scheduleRows = $scheduleRowsQuery->get();
+        $scheduleRows = $scheduleRowsQuery->when($lock, fn ($q) => $q->lockForUpdate())->get();
 
         $leaveOrRescheduled = [];
         $scheduledRows = [];
@@ -1359,7 +1362,7 @@ class ScheduleGuardService
         // #1296：同 key 的 ClassSession 已全數取消 → scheduled 例外 row 視為 stale，
         // 不可再計入老師佔用（否則代課挑選會出現假衝堂／假已滿）。
         $scheduledRows = app(StaleScheduleExceptionFilter::class)
-            ->rejectStale($scheduledRows, $date);
+            ->rejectStale($scheduledRows, $date, $lock);
 
         $classSessions = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
@@ -1379,7 +1382,7 @@ class ScheduleGuardService
                 'sc.ClassType',
                 'sc.room_id',
             ])
-            ->get();
+            ->when($lock, fn ($q) => $q->lockForUpdate())->get();
 
         $entries = [];
         $existingKeys = [];
@@ -1389,7 +1392,7 @@ class ScheduleGuardService
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])) {
                 continue;
             }
-            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $date, (string) ($row->StartTime ?? ''))) {
+            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $date, (string) ($row->StartTime ?? ''), $lock)) {
                 continue;
             }
             if ($excludeStudentId && (int) ($row->StudentID ?? 0) === $excludeStudentId) {
@@ -1425,7 +1428,7 @@ class ScheduleGuardService
 
         $courseMeta = $this->loadCourseTeacherMeta(array_map(static function ($row) {
             return (int) ($row->student_course_id ?? 0);
-        }, $scheduledRows));
+        }, $scheduledRows), $lock);
 
         foreach ($scheduledRows as $row) {
             $start = $this->normalizeTime($row->start_time ?? null);
@@ -1475,7 +1478,7 @@ class ScheduleGuardService
         }
 
         // #3590 item 9 (flag on): a substitute on a makeup occurrence is busy too.
-        foreach (SubstituteScheduleService::makeupOccurrencesTaughtBy($teacherId, $date, $excludeScheduleId ? [$excludeScheduleId] : [], $excludeStudentId, $branchId) as $row) {
+        foreach (SubstituteScheduleService::makeupOccurrencesTaughtBy($teacherId, $date, $excludeScheduleId ? [$excludeScheduleId] : [], $excludeStudentId, $branchId, $lock) as $row) {
             $start = $this->normalizeTime($row->start_time);
             $end = $this->normalizeTime($row->end_time);
             $courseId = (int) $row->student_course_id;
@@ -1503,14 +1506,14 @@ class ScheduleGuardService
      * @param  list<int>  $courseIds
      * @return array<int, object>
      */
-    private function loadCourseTeacherMeta(array $courseIds): array
+    private function loadCourseTeacherMeta(array $courseIds, bool $lock = false): array
     {
         $ids = array_values(array_unique(array_filter(array_map('intval', $courseIds))));
         if ($ids === []) {
             return [];
         }
         $courseMeta = [];
-        foreach (DB::table('StudentClass')->whereIn('ID', $ids)->select(['ID', 'ClassType', 'room_id', 'TeacherID'])->get() as $meta) {
+        foreach (DB::table('StudentClass')->whereIn('ID', $ids)->select(['ID', 'ClassType', 'room_id', 'TeacherID'])->when($lock, fn ($q) => $q->lockForUpdate())->get() as $meta) {
             $courseMeta[(int) $meta->ID] = $meta;
         }
 
