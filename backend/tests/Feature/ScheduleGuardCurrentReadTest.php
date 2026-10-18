@@ -14,12 +14,42 @@ class ScheduleGuardCurrentReadTest extends TestCase
 
     protected array $connectionsToTransact = [];
 
+    private array $seededSubjectIds = [];
+    private array $initialSubjectIds = [];
+    private array $ownedStudentIds = [];
+    private array $ownedCourseIds = [];
+    private ?int $ownedCampusId = null;
+
+    protected function afterRefreshingDatabase(): void
+    {
+        // TestCase seeds subjects after RefreshDatabase. Preserve any pre-existing rows.
+        $this->initialSubjectIds = DB::table('Subject')->pluck('id')->all();
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seededSubjectIds = array_values(array_diff(DB::table('Subject')->pluck('id')->all(), $this->initialSubjectIds));
+    }
+
     protected function tearDown(): void
     {
-        try { parent::tearDown(); }
-        finally {
-            // This committed two-connection fixture must not leak base seeds to transactional tests.
+        try {
+            DB::table('LearningRecord')->whereIn('StudentClassID', $this->ownedCourseIds)->delete();
+            DB::table('schedules')->whereIn('student_course_id', $this->ownedCourseIds)->delete();
+            DB::table('ClassSession')->whereIn('StudentClassID', $this->ownedCourseIds)->delete();
+            DB::table('StudentClass')->whereIn('ID', $this->ownedCourseIds)->delete();
+            DB::table('Student')->whereIn('id', $this->ownedStudentIds)->delete();
+            if ($this->ownedCampusId !== null) DB::table('Campus')->where('id', $this->ownedCampusId)->delete();
+            DB::table('Subject')->whereIn('id', $this->seededSubjectIds)->delete();
+            $this->assertSame(0, DB::table('StudentClass')->whereIn('ID', $this->ownedCourseIds)->count());
+            $this->assertSame(0, DB::table('Student')->whereIn('id', $this->ownedStudentIds)->count());
+            $this->assertSame(0, DB::table('Campus')->where('id', $this->ownedCampusId)->count());
+            $this->assertSame(0, DB::table('Subject')->whereIn('id', $this->seededSubjectIds)->count());
+        } finally {
+            // Reset remains a schema-isolation backstop, not fixture cleanup.
             RefreshDatabaseState::$migrated = false;
+            parent::tearDown();
         }
     }
 
@@ -30,12 +60,14 @@ class ScheduleGuardCurrentReadTest extends TestCase
         config(['database.connections.occupancy_current' => config('database.connections.' . $original)]);
         $reader = DB::connection('occupancy_current');
         $campus = Campus::factory()->create();
+        $this->ownedCampusId = $campus->id;
         $targetTeacher = 78171;
         $date = '2026-12-29';
         try {
             foreach (['class_session', 'schedule', 'reactivated', 'makeup_substitute', 'returned_teacher'] as $kind) {
                 config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => in_array($kind, ['makeup_substitute', 'returned_teacher'], true)]);
                 $student = Student::factory()->create(['CampusID' => $campus->id]);
+                $this->ownedStudentIds[] = $student->id;
                 $course = StudentClass::create([
                     'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
                     'TeacherID' => $kind === 'makeup_substitute' ? $targetTeacher + 1 : $targetTeacher,
@@ -45,6 +77,7 @@ class ScheduleGuardCurrentReadTest extends TestCase
                     'Charge' => 1600, 'Pay' => 0, 'Paid' => 0, 'Rate' => 200,
                     'MDate' => now(), 'ScheduleMode' => 'count',
                 ]);
+                $this->ownedCourseIds[] = $course->ID;
                 $slot = ['StudentClassID' => $course->ID, 'SessionDate' => $date,
                     'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled'];
                 $schedule = ['student_course_id' => $course->ID, 'student_id' => $student->id,
