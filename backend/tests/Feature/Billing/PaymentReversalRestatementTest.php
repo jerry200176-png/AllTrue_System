@@ -47,8 +47,8 @@ class PaymentReversalRestatementTest extends TestCase
 
     private function refused(callable $action, string $code): void
     {
-        try { $action(); $this->fail('Expected refusal: '.$code); }
-        catch (\RuntimeException $e) { $this->assertStringContainsString($code, $e->getMessage()); }
+        try { $action(); } catch (\RuntimeException $e) { $this->assertStringContainsString($code, $e->getMessage()); return; }
+        $this->fail('Expected refusal: '.$code);
     }
 
     private function execute(PaymentReversalRestatement $svc, array $plan, array $actor, string $decision, string $id): array
