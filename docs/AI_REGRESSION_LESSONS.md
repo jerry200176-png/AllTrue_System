@@ -704,6 +704,8 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 - **Preview／冪等 hash 必須用同一份已驗證正規值（#4259）**：原因先確認是字串才 trim，拒絕 array/object 等型別；接受 integer 與 numeric-string 的單據 ID 要先轉成相同整數再簽章／比對，避免同一請求回409或產生無意義 audit reason。
 
+- **隔離 HTTP 驗證（#4253）**：沿用已合併的 before-provider DB guard，僅用 loopback synthetic schema；token/allowlist 改放每輪0700目錄與0600檔案，重用目錄前 fail closed。使用真實入站 API/MySQL，出站 Laravel transports fake 並 assert nothing sent/pushed；不 mock 成功回應。fixture seed 與 API 串成同一測試保留斷言，避免重建 schema 擠爆 CI；測試 helper 用 runSeed 等名稱，勿覆寫 Laravel TestCase 既有 seed()。
+
 ---
 
 ### R29. 請假入口不可 fallback 直接寫 `schedules`
