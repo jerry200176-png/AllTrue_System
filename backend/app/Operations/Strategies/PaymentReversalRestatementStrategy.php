@@ -17,7 +17,7 @@ final class PaymentReversalRestatementStrategy
         return $this->service->actorContext($p['plan']['actor_user_id'], $p['plan']['scope']['student_id']);
     }
 
-    public function plan(array $parameters): array
+    public function plan(array $parameters, array $context = []): array
     {
         try {
             if (!isset($parameters['plan']['state_hash'])) {
@@ -27,6 +27,8 @@ final class PaymentReversalRestatementStrategy
                 return ['ok' => false, 'errors' => ['preview_confirmation_required'], 'preview_parameters' =>
                     $this->service->requestParameters($this->service->plan($scope, $actor), $parameters['decision_reference'])];
             }
+            $creator = isset($context['operation_id']) ? DB::table('pop_operation_requests')->where('id', $context['operation_id'])->value('actor') : null;
+            if (isset($context['operation_id']) && $creator !== 'user:'.$parameters['plan']['actor_user_id']) throw new RuntimeException('creator_changed');
             $this->service->prepared($parameters, $this->actor($parameters));
             return ['ok' => true, 'parameters' => $parameters];
         } catch (Throwable) {

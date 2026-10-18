@@ -16,8 +16,8 @@ final class PaymentReversalRestatement
     {
         $graph = $this->capture($scope, $actor, false);
         $target = $this->proveExcess($graph, $scope);
-        return ['scope' => $scope, 'state_hash' => $this->hash($graph),
-            'actor_user_id' => $actor['id'], 'actor_hash' => $this->hash($actor), 'before_payment' => $target,
+        return ['scope' => $scope, 'state_hash' => self::hash($graph),
+            'actor_user_id' => $actor['id'], 'actor_hash' => self::hash($actor), 'before_payment' => $target,
             'rollback_epoch' => $this->rollbackEpoch($scope['payment_id']),
             'raw_net_before' => (int) $target['Amount'], 'raw_net_after' => 0];
     }
@@ -30,9 +30,8 @@ final class PaymentReversalRestatement
 
     public function execute(array $plan, array $actor, string $decision, string $operationId): array
     {
-        if (!preg_match('/\A[A-Za-z0-9:_-]{3,80}\z/', $decision) || !Str::isUuid($operationId)
-            || !preg_match('/\A[a-f0-9]{64}\z/', $plan['state_hash'] ?? '')
-            || ($plan['actor_hash'] ?? '') !== $this->hash($actor)) $this->fail('invalid_manifest');
+        if (!Str::isUuid($operationId) || !preg_match('/\A[a-f0-9]{64}\z/', $plan['state_hash'] ?? '')
+            || ($plan['actor_hash'] ?? '') !== self::hash($actor)) $this->fail('invalid_manifest');
         return DB::transaction(function () use ($plan, $actor, $decision, $operationId) {
             $this->request($operationId, $this->requestParameters($plan, $decision));
             $scope = $plan['scope']; $this->authorize($scope, $actor, true);
@@ -44,9 +43,9 @@ final class PaymentReversalRestatement
                 return ['state' => 'already_applied', 'restatement_id' => $prior->id];
             }
             $graph = $this->capture($scope, $actor, true);
-            if (!hash_equals($plan['state_hash'], $this->hash($graph))) $this->fail('state_changed');
+            if (!hash_equals($plan['state_hash'], self::hash($graph))) $this->fail('state_changed');
             $before = $this->proveExcess($graph, $scope);
-            if ($this->hash($plan['before_payment']) !== $this->hash($before) || $plan['raw_net_before'] !== (int) $before['Amount']
+            if (self::hash($plan['before_payment']) !== self::hash($before) || $plan['raw_net_before'] !== (int) $before['Amount']
                 || $plan['raw_net_after'] !== 0) $this->fail('plan_mismatch');
             DB::table('Payment')->where('id', $scope['payment_id'])->update([
                 'Amount' => 0, 'Method' => 'other',
@@ -57,7 +56,7 @@ final class PaymentReversalRestatement
             $snapshot = ['payment_id' => $scope['payment_id'], 'scope' => $scope, 'decision_reference' => $decision,
                 'request_parameters' => $this->requestParameters($plan, $decision), 'before_payment' => $before,
                 'after_payment' => $this->payment($afterGraph, $scope['payment_id']),
-                'before_state_hash' => $plan['state_hash'], 'after_state_hash' => $this->hash($afterGraph)];
+                'before_state_hash' => $plan['state_hash'], 'after_state_hash' => self::hash($afterGraph)];
             $id = $this->persistProof($operationId, 'reversal-proof', $actor, $snapshot);
             $this->audit($scope, $actor, $operationId, 'billing.legacy_reversal_restated', $decision);
             return ['state' => 'applied', 'restatement_id' => $id];
@@ -74,11 +73,11 @@ final class PaymentReversalRestatement
             $scope = $s['scope']; $this->authorize($scope, $actor, true);
             if ($this->proof($record->operation_id, 'reversal-proof-rollback')) return ['state' => 'already_rolled_back'];
             $graph = $this->capture($scope, $actor, true);
-            if (!hash_equals($s['after_state_hash'], $this->hash($graph))) $this->fail('values_moved_on');
+            if (!hash_equals($s['after_state_hash'], self::hash($graph))) $this->fail('values_moved_on');
             $before = $s['before_payment']; $restored = $graph;
             foreach ($restored['payments'] as &$row) if ((int) $row['id'] === (int) $scope['payment_id']) $row = $before;
             unset($row);
-            if (!hash_equals($s['before_state_hash'], $this->hash($restored))) $this->fail('history_mismatch');
+            if (!hash_equals($s['before_state_hash'], self::hash($restored))) $this->fail('history_mismatch');
             $this->proveExcess($restored, $scope);
             DB::table('Payment')->where('id', $scope['payment_id'])->update(array_intersect_key($before,
                 array_flip(['Amount', 'Method', 'Note', 'updated_at'])));
@@ -93,35 +92,27 @@ final class PaymentReversalRestatement
         $user = \App\Models\User::query()->find($userId);
         if (!($user instanceof \App\Models\User) || in_array($user->status, ['inactive', 'suspended'], true)) $this->fail('forbidden');
         $auth = app(\App\Services\StaffCapabilityAuthorizer::class);
-        $role = $user->type === 'S' ? 'super_admin' : 'director';
-        if ($role === 'super_admin') $campuses = [];
-        elseif ($auth->enabled()) {
-            $resolved = $auth->resolve($user, 'director');
-            if ($resolved['context_denied'] || $resolved['role'] !== 'director') $this->fail('forbidden');
-            $campuses = $resolved['campus_ids'];
-        } else {
-            if (in_array($user->type, ['T', 'U'], true)) $this->fail('forbidden');
-            $campuses = $auth->capabilityCampusMap($user)['director'];
-        }
-        return ['id' => $userId, 'role' => $role, 'campus_ids' => $campuses, 'student_id' => $studentId];
+        if ($user->type === 'S') return ['id' => $userId, 'role' => 'super_admin', 'campus_ids' => [], 'student_id' => $studentId];
+        if (!$auth->enabled() && in_array($user->type, ['T', 'U'], true)) $this->fail('forbidden');
+        $resolved = $auth->resolve($user, 'director');
+        if ($resolved['context_denied'] || $resolved['role'] !== 'director') $this->fail('forbidden');
+        return ['id' => $userId, 'role' => 'director', 'campus_ids' => $resolved['campus_ids'], 'student_id' => $studentId];
     }
 
     public function prepared(array $p, array $actor): void
     {
         $plan = $p['plan'];
-        if ($this->hash($p) !== $this->hash($this->requestParameters($plan, $p['decision_reference']))) $this->fail('invalid_manifest');
+        if (self::hash($p) !== self::hash($this->requestParameters($plan, $p['decision_reference']))) $this->fail('invalid_manifest');
         $this->authorize($plan['scope'], $actor, false);
         if (!hash_equals($plan['rollback_epoch'], $this->rollbackEpoch($plan['scope']['payment_id']))) $this->fail('stale_rollback_epoch');
-        if (!hash_equals($plan['actor_hash'], $this->hash($actor))) $this->fail('actor_changed');
+        if (!hash_equals($plan['actor_hash'], self::hash($actor))) $this->fail('actor_changed');
         $record = DB::table('pop_execution_records')->where('id', $this->proofId($p, 'reversal-proof'))->first();
         if ($record) {
             if ($this->proof($record->operation_id, 'reversal-proof-rollback')) $this->fail('reapply_requires_new_decision');
-            $s = json_decode($record->snapshot, true, 512, JSON_THROW_ON_ERROR);
-            if (!hash_equals($this->hash($s['request_parameters']), $this->hash($p))) $this->fail('history_mismatch');
             $this->assertReplay($record, $p, false);
             return;
         }
-        if (!hash_equals($this->hash($plan), $this->hash($this->plan($plan['scope'], $actor)))) $this->fail('state_changed');
+        if (!hash_equals(self::hash($plan), self::hash($this->plan($plan['scope'], $actor)))) $this->fail('state_changed');
     }
 
     public function verifyProof(string $id, array $actor): array
@@ -129,7 +120,8 @@ final class PaymentReversalRestatement
         $r = DB::table('pop_execution_records')->where('id', $id)->where('phase', 'reversal-proof')->first();
         if (!$r || $this->proof($r->operation_id, 'reversal-proof-rollback')) return ['ok' => false];
         $s = json_decode($r->snapshot, true, 512, JSON_THROW_ON_ERROR);
-        return ['ok' => hash_equals($s['after_state_hash'], $this->hash($this->capture($s['scope'], $actor, false)))];
+        $this->prepared($s['request_parameters'], $actor);
+        return ['ok' => true];
     }
 
     private function rollbackEpoch(int $paymentId): string
@@ -137,7 +129,7 @@ final class PaymentReversalRestatement
         $ids = DB::table('pop_execution_records')->where('phase', 'reversal-proof-rollback')
             ->where('snapshot->payment_id', $paymentId)->orderBy('id')->limit(101)->pluck('id')->all();
         if (count($ids) > 100) $this->fail('history_budget');
-        return $this->hash($ids);
+        return self::hash($ids);
     }
 
     /** Recognize only intact, owned, recorded zero-value dispositions; ordinary zero rows still warn. */
@@ -156,12 +148,8 @@ final class PaymentReversalRestatement
             $s = json_decode($r->snapshot, true); $p = $candidates->get($s['payment_id'] ?? 0);
             if (!$p || (int) ($s['scope']['invoice_id'] ?? 0) !== (int) $p->InvoiceID
                 || ($s['before_payment']['Method'] ?? null) !== 'void' || (int) ($s['before_payment']['Amount'] ?? 0) >= 0) continue;
-            $intact = true;
-            foreach (['id', 'InvoiceID', 'Amount', 'Method', 'Note', 'payment_report_id', 'PaidAt', 'receipt_url'] as $key) {
-                $raw = $p->getRawOriginal($key); $after = $s['after_payment'];
-                if (!array_key_exists($key, $after) || ($after[$key] === null ? $raw !== null : (string) $after[$key] !== (string) $raw)) $intact = false;
-            }
-            if ($intact) $out[(int) $p->id] = true;
+            $keys = array_flip(['id', 'InvoiceID', 'Amount', 'Method', 'Note', 'payment_report_id', 'PaidAt', 'receipt_url']);
+            if (self::hash(array_intersect_key($s['after_payment'], $keys)) === self::hash(array_intersect_key($p->getRawOriginal(), $keys))) $out[(int) $p->id] = true;
         }
         return $out;
     }
@@ -169,22 +157,24 @@ final class PaymentReversalRestatement
     private function assertReplay(object $record, array $parameters, bool $lock): void
     {
         $s = json_decode($record->snapshot, true, 512, JSON_THROW_ON_ERROR);
-        if (!hash_equals($this->hash($s['request_parameters']), $this->hash($parameters))) $this->fail('history_mismatch');
-        $row = DB::table('Payment')->where('id', $parameters['plan']['scope']['payment_id'])->when($lock, fn ($q) => $q->lockForUpdate())->first();
-        if (!$row || !hash_equals($this->hash($s['after_payment']), $this->hash((array) $row))) $this->fail('target_moved_on');
+        if (!hash_equals(self::hash($s['request_parameters']), self::hash($parameters))) $this->fail('history_mismatch');
+        $scope = $parameters['plan']['scope'];
+        $row = DB::table('Payment')->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')->where('Payment.id', $scope['payment_id'])->where('Invoice.id', $scope['invoice_id'])
+            ->where('Invoice.StudentID', $scope['student_id'])->where('Invoice.StudentClassID', $scope['course_id'])->when($lock, fn ($q) => $q->lockForUpdate())->first(['Payment.*']);
+        if (!$row || !hash_equals(self::hash($s['after_payment']), self::hash((array) $row))) $this->fail('target_moved_on');
     }
 
     private function proofId(array $p, string $phase): string
     {
         return \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_OID,
-            'alltrue:legacy-reversal:'.$phase.':'.$this->hash($p))->toString();
+            'alltrue:legacy-reversal:'.$phase.':'.self::hash($p))->toString();
     }
 
     private function request(string $id, array $parameters): void
     {
         $r = DB::table('pop_operation_requests')->where('id', $id)->lockForUpdate()->first();
         if (!$r || $r->operation_id !== self::OPERATION || $r->actor !== 'user:'.$parameters['plan']['actor_user_id']
-            || !hash_equals($this->hash(json_decode($r->parameters, true, 512, JSON_THROW_ON_ERROR)), $this->hash($parameters))) $this->fail('request_mismatch');
+            || !hash_equals(self::hash(json_decode($r->parameters, true, 512, JSON_THROW_ON_ERROR)), self::hash($parameters))) $this->fail('request_mismatch');
         // The future registered POP adapter owns approval validation; this primitive grants none.
     }
 
@@ -278,15 +268,9 @@ final class PaymentReversalRestatement
             ['reason_code' => $decision, 'row_count' => 1], true);
     }
 
-    private function hash(array $value): string
+    private static function hash(array $value): string
     {
-        // Match the existing monthly-correction convention: JSON object order is not identity.
-        $canonical = function (array $data) use (&$canonical): array {
-            if (!array_is_list($data)) ksort($data);
-            foreach ($data as &$item) if (is_array($item)) $item = $canonical($item);
-            return $data;
-        };
-        return hash('sha256', json_encode($canonical($value), JSON_THROW_ON_ERROR));
+        return hash('sha256', json_encode(\App\Operations\PopOperationService::canonicalParameters($value), JSON_THROW_ON_ERROR));
     }
     private function fail(string $code): never { throw new RuntimeException('payment_restatement:'.$code); }
 }

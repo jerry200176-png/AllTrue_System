@@ -1159,8 +1159,7 @@ final class PopOperationService
     {
         try {
             $strategy = app((string) $entry['strategy_class']);
-            $plan = $entry['strategy_class'] === 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy'
-                ? $strategy->plan($parameters, ['operation_id' => $requestId]) : $strategy->plan($parameters);
+            $plan = $strategy->plan($parameters, ['operation_id' => $requestId]);
 
             return is_array($plan) ? $plan : ['ok' => false, 'errors' => ['strategy_plan_invalid']];
         } catch (Throwable) {
