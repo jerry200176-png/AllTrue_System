@@ -1,37 +1,8 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 13
+version: 12
 
 operations:
-  reviewed-legacy-reversal-restatement:
-    lifecycle: planned
-    domain: billing-entitlement
-    business_owner: director-data
-    technical_owner: platform-data
-    owner: platform-ops
-    approver_roles: [super_admin]
-    approval_policy: founder-explicit-single-repair
-    founder_approval_required: true
-    runbook: docs/plans/2026-10-18-reversal-pop-proof.md
-    alert_group: LINE:ops-data
-    escalation_policy: billing-entitlement-critical-escalation
-    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
-    risk: critical
-    reversible: true
-    snapshot_required: true
-    transaction_required: true
-    rollback_supported: true
-    verification_required: true
-    approval_required: true
-    execution_authority: pop-pi-local
-    blast_radius: one_exact_unlinked_negative_posting
-    estimated_duration: 5m
-    invariant_packs: [billing-entitlement-pack@1.0.0]
-    strategy_class: App\Operations\Strategies\PaymentReversalRestatementStrategy
-    parameter_keys: [campus_id, plan, decision_reference]
-    tags: [repair, billing, historical-reversal]
-    notes: Planned only; protected activation and case approval required. No cash receipt/refund or invoice/course/report write. Complete original row retained atomically in POP proof.
-
   muzha-fixed-schedule-20261001:
     lifecycle: active
     domain: session

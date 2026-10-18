@@ -13,6 +13,15 @@ class PaymentReversalRestatementTest extends TestCase
 {
     use AgreedFeeFixture, AgreedFeeRefreshDatabase;
 
+    private function plannedCatalog(): void
+    {
+        $dir = sys_get_temp_dir().'/reversal-planned-'.Str::uuid(); mkdir($dir, 0700); mkdir($dir.'/policies', 0700);
+        file_put_contents($dir.'/policies/default.yaml', "version: 1\n");
+        file_put_contents($dir.'/catalog.yaml', "version: 1\noperations:\n  ".PaymentReversalRestatement::OPERATION.":\n    lifecycle: planned\n    strategy_class: App\\Operations\\Strategies\\PaymentReversalRestatementStrategy\n    parameter_keys: [campus_id, plan, decision_reference]\n    approval_required: true\n    approver_roles: [super_admin]\n");
+        $this->app->instance(\App\Operations\PopOperationCatalog::class, new \App\Operations\PopOperationCatalog($dir.'/catalog.yaml'));
+        $this->beforeApplicationDestroyed(static function () use ($dir): void { unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir); });
+    }
+
     private function excessFixture(): array
     {
         $f = $this->fixture();
@@ -97,6 +106,12 @@ class PaymentReversalRestatementTest extends TestCase
         $otherLedger = $this->getJson('/api/v1/accounting/ledger?student_class_id='.$f['course']->ID, ['Authorization' => 'Bearer '.$f['token']])->assertOk()->json();
         $this->assertTrue(collect($otherLedger['anomalies'])->contains(fn ($a) => $a['code'] === 'payment_without_receipt' && $a['payment_id'] === $ordinary->id));
         $ordinary->delete();
+        $studentRows = $this->getJson('/api/v1/student-classes/'.$f['course']->ID.'/invoices', ['Authorization' => 'Bearer '.$f['token']])->assertOk()->json('invoices.0.payments');
+        $this->assertTrue(collect($studentRows)->firstWhere('id', $f['extra']->id)['is_void']);
+        DB::table('Payment')->where('id', $f['extra']->id)->update(['receipt_url' => '0']);
+        $changedLedger = $this->getJson('/api/v1/accounting/ledger?student_class_id='.$f['course']->ID, ['Authorization' => 'Bearer '.$f['token']])->assertOk()->json();
+        $this->assertFalse(collect($changedLedger['invoices'][0]['payments'])->firstWhere('id', $f['extra']->id)['is_void']);
+        DB::table('Payment')->where('id', $f['extra']->id)->update(['receipt_url' => null]);
 
         $this->assertCount(5, DB::table('Payment')->where('InvoiceID', $f['invoice']->id)->get());
         $this->assertSame(0, (int) DB::table('Payment')->where('InvoiceID', $f['invoice']->id)->sum('Amount'));
@@ -193,6 +208,15 @@ class PaymentReversalRestatementTest extends TestCase
         $result = $this->execute($svc, $plan, $f['actor'], 'LATER-INVOICE', $op);
         $next = $f['invoice']->replicate(); $next->save();
         $this->assertSame('already_applied', $this->execute($svc, $plan, $f['actor'], 'LATER-INVOICE', $op)['state']);
+        foreach ([['Note' => 'synthetic drift'], null] as $change) {
+            DB::beginTransaction();
+            try {
+                $target = DB::table('Payment')->where('id', $f['extra']->id);
+                $change === null ? $target->delete() : $target->update($change);
+                $this->refused(fn () => $this->execute($svc, $plan, $f['actor'], 'LATER-INVOICE', $op), 'target_moved_on');
+                $this->refused(fn () => $svc->prepared($svc->requestParameters($plan, 'LATER-INVOICE'), $f['actor']), 'target_moved_on');
+            } finally { DB::rollBack(); }
+        }
         $this->refused(fn () => $svc->rollback($result['restatement_id'], $f['actor']), 'invoice_scope_mismatch');
         $this->assertSame(0, (int) $f['extra']->fresh()->Amount);
         $f['student']->update(['CampusID' => 2]);
@@ -262,7 +286,7 @@ class PaymentReversalRestatementTest extends TestCase
     public function test_committed_catalog_remains_planned_and_rejects_approval(): void
     {
         $f = $this->excessFixture(); $svc = app(PaymentReversalRestatement::class);
-        $p = $svc->requestParameters($svc->plan($f['scope'], $f['actor']), 'SYNTHETIC-PLANNED');
+        $this->plannedCatalog(); $p = $svc->requestParameters($svc->plan($f['scope'], $f['actor']), 'SYNTHETIC-PLANNED');
         $catalog = app(\App\Operations\PopOperationCatalog::class); $this->assertSame('planned', $catalog->operation(PaymentReversalRestatement::OPERATION)['lifecycle']);
         $pop = app(\App\Operations\PopOperationService::class);
         $r = $pop->createDraft(PaymentReversalRestatement::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);
@@ -272,6 +296,7 @@ class PaymentReversalRestatementTest extends TestCase
 
     public function test_authenticated_http_preview_produces_fresh_confirmable_parameters_without_host_commands(): void
     {
+        $this->plannedCatalog();
         $f = $this->excessFixture(); $headers = ['Authorization' => 'Bearer '.$f['token']];
         $p = ['campus_id' => 1, 'plan' => ['scope' => $f['scope']], 'decision_reference' => 'SYNTHETIC-HTTP-PREVIEW'];
         $draft = fn ($p) => $this->postJson('/api/v1/pop/operations/'.PaymentReversalRestatement::OPERATION.'/draft',
@@ -280,6 +305,10 @@ class PaymentReversalRestatementTest extends TestCase
         $preview = $this->postJson('/api/v1/pop/operations/requests/'.$id.'/dry-run', [], $headers)->assertStatus(422)->json('data.plan');
         $this->assertFalse($preview['ok']); $this->assertSame('preview_confirmation_required', $preview['errors'][0]);
         $confirmed = $preview['preview_parameters']; $this->assertSame($f['user']->id, $confirmed['plan']['actor_user_id']);
+        foreach (['INVALID REFERENCE', str_repeat('X', 81)] as $decision) {
+            $bad = $confirmed; $bad['decision_reference'] = $decision;
+            $this->assertFalse(app(\App\Operations\Strategies\PaymentReversalRestatementStrategy::class)->plan($bad)['ok']);
+        }
         $id = $draft($confirmed); $this->postJson('/api/v1/pop/operations/requests/'.$id.'/dry-run', [], $headers)->assertOk()->assertJsonPath('data.ok', true);
         $this->assertSame(-8000, (int) $f['extra']->fresh()->Amount);
     }
