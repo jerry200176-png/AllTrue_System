@@ -17,14 +17,14 @@ final class PaymentReversalRestatement
         $graph = $this->capture($scope, $actor, false);
         $target = $this->proveExcess($graph, $scope);
         return ['scope' => $scope, 'state_hash' => $this->hash($graph),
-            'actor_hash' => $this->hash($actor), 'before_payment' => $target,
+            'actor_user_id' => $actor['id'], 'actor_hash' => $this->hash($actor), 'before_payment' => $target,
+            'rollback_epoch' => $this->rollbackEpoch($scope['payment_id']),
             'raw_net_before' => (int) $target['Amount'], 'raw_net_after' => 0];
     }
 
     public function requestParameters(array $plan, string $decision): array
     {
-        return ['scope' => $plan['scope'], 'actor_hash' => $plan['actor_hash'],
-            'plan_hash' => $this->hash($plan), 'decision_reference' => $decision];
+        return ['campus_id' => $plan['scope']['campus_id'], 'plan' => $plan, 'decision_reference' => $decision];
     }
 
     public function execute(array $plan, array $actor, string $decision, string $operationId): array
@@ -37,6 +37,7 @@ final class PaymentReversalRestatement
             $scope = $plan['scope']; $this->authorize($scope, $actor, true);
             $prior = $this->proof($operationId, 'reversal-proof');
             if ($this->proof($operationId, 'reversal-proof-rollback')) $this->fail('reapply_requires_new_decision');
+            if (!hash_equals($plan['rollback_epoch'], $this->rollbackEpoch($scope['payment_id']))) $this->fail('stale_rollback_epoch');
             if ($prior) return ['state' => 'already_applied', 'restatement_id' => $prior->id];
             $graph = $this->capture($scope, $actor, true);
             if (!hash_equals($plan['state_hash'], $this->hash($graph))) $this->fail('state_changed');
@@ -77,16 +78,99 @@ final class PaymentReversalRestatement
             $this->proveExcess($restored, $scope);
             DB::table('Payment')->where('id', $scope['payment_id'])->update(array_intersect_key($before,
                 array_flip(['Amount', 'Method', 'Note', 'updated_at'])));
-            $this->persistProof($record->operation_id, 'reversal-proof-rollback', $actor, ['original_proof_id' => $id]);
+            $this->persistProof($record->operation_id, 'reversal-proof-rollback', $actor, ['original_proof_id' => $id, 'payment_id' => $scope['payment_id']]);
             $this->audit($scope, $actor, $record->operation_id, 'billing.legacy_reversal_rollback', $s['decision_reference']);
             return ['state' => 'rolled_back'];
         }, 3);
     }
 
+    public function actorContext(int $userId, int $studentId): array
+    {
+        $user = \App\Models\User::find($userId);
+        if (!$user || in_array($user->status, ['inactive', 'suspended'], true)) $this->fail('forbidden');
+        $auth = app(\App\Services\StaffCapabilityAuthorizer::class);
+        $role = $user->type === 'S' ? 'super_admin' : 'director';
+        if ($role === 'super_admin') $campuses = [];
+        elseif ($auth->enabled()) {
+            $resolved = $auth->resolve($user, 'director');
+            if ($resolved['context_denied'] || $resolved['role'] !== 'director') $this->fail('forbidden');
+            $campuses = $resolved['campus_ids'];
+        } else {
+            if (in_array($user->type, ['T', 'U'], true)) $this->fail('forbidden');
+            $campuses = $auth->capabilityCampusMap($user)['director'];
+        }
+        return ['id' => $userId, 'role' => $role, 'campus_ids' => $campuses, 'student_id' => $studentId];
+    }
+
+    public function prepared(array $p, array $actor): void
+    {
+        $plan = $p['plan'];
+        if ($this->hash($p) !== $this->hash($this->requestParameters($plan, $p['decision_reference']))) $this->fail('invalid_manifest');
+        $this->authorize($plan['scope'], $actor, false);
+        if (!hash_equals($plan['rollback_epoch'], $this->rollbackEpoch($plan['scope']['payment_id']))) $this->fail('stale_rollback_epoch');
+        if (!hash_equals($plan['actor_hash'], $this->hash($actor))) $this->fail('actor_changed');
+        $record = DB::table('pop_execution_records')->where('id', $this->proofId($p, 'reversal-proof'))->first();
+        if ($record) {
+            if ($this->proof($record->operation_id, 'reversal-proof-rollback')) $this->fail('reapply_requires_new_decision');
+            $s = json_decode($record->snapshot, true, 512, JSON_THROW_ON_ERROR);
+            if (!hash_equals($this->hash($s['request_parameters']), $this->hash($p))) $this->fail('history_mismatch');
+            return;
+        }
+        if (!hash_equals($this->hash($plan), $this->hash($this->plan($plan['scope'], $actor)))) $this->fail('state_changed');
+    }
+
+    public function verifyProof(string $id, array $actor): array
+    {
+        $r = DB::table('pop_execution_records')->where('id', $id)->where('phase', 'reversal-proof')->first();
+        if (!$r || $this->proof($r->operation_id, 'reversal-proof-rollback')) return ['ok' => false];
+        $s = json_decode($r->snapshot, true, 512, JSON_THROW_ON_ERROR);
+        return ['ok' => hash_equals($s['after_state_hash'], $this->hash($this->capture($s['scope'], $actor, false)))];
+    }
+
+    private function rollbackEpoch(int $paymentId): string
+    {
+        $ids = DB::table('pop_execution_records')->where('phase', 'reversal-proof-rollback')
+            ->where('snapshot->payment_id', $paymentId)->orderBy('id')->limit(101)->pluck('id')->all();
+        if (count($ids) > 100) $this->fail('history_budget');
+        return $this->hash($ids);
+    }
+
+    /** Recognize only intact, owned, recorded zero-value dispositions; ordinary zero rows still warn. */
+    public static function recordedDispositionIds($payments): array
+    {
+        $candidates = $payments->filter(fn ($p) => (int) $p->Amount === 0 && $p->Method === 'other' && $p->payment_report_id === null)->keyBy('id');
+        if ($candidates->isEmpty() || $candidates->count() > 100) return [];
+        $proofs = DB::table('pop_execution_records')->where('phase', 'reversal-proof')->where('result', 'succeeded')
+            ->whereIn('snapshot->payment_id', $candidates->keys()->all())->limit(201)->get();
+        if ($proofs->count() > 200) return [];
+        $rolledBack = DB::table('pop_execution_records')->whereIn('operation_id', $proofs->pluck('operation_id'))
+            ->where('phase', 'reversal-proof-rollback')->pluck('operation_id')->all();
+        $out = [];
+        foreach ($proofs as $r) {
+            if (in_array($r->operation_id, $rolledBack, true)) continue;
+            $s = json_decode($r->snapshot, true); $p = $candidates->get($s['payment_id'] ?? 0);
+            if (!$p || (int) ($s['scope']['invoice_id'] ?? 0) !== (int) $p->InvoiceID
+                || ($s['before_payment']['Method'] ?? null) !== 'void' || (int) ($s['before_payment']['Amount'] ?? 0) >= 0) continue;
+            $intact = true;
+            foreach (['id', 'InvoiceID', 'Amount', 'Method', 'Note', 'payment_report_id', 'PaidAt'] as $key) {
+                $raw = $p->getRawOriginal($key); $after = $s['after_payment'];
+                if (!array_key_exists($key, $after) || ($after[$key] === null ? $raw !== null : (string) $after[$key] !== (string) $raw)) $intact = false;
+            }
+            if ($intact) $out[(int) $p->id] = true;
+        }
+        return $out;
+    }
+
+    private function proofId(array $p, string $phase): string
+    {
+        return \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_OID,
+            'alltrue:legacy-reversal:'.$phase.':'.$this->hash($p))->toString();
+    }
+
     private function request(string $id, array $parameters): void
     {
         $r = DB::table('pop_operation_requests')->where('id', $id)->lockForUpdate()->first();
-        if (!$r || $r->operation_id !== self::OPERATION
+        if (!$r || $r->operation_id !== self::OPERATION || $r->actor !== 'user:'.$parameters['plan']['actor_user_id']
             || !hash_equals($this->hash(json_decode($r->parameters, true, 512, JSON_THROW_ON_ERROR)), $this->hash($parameters))) $this->fail('request_mismatch');
         // The future registered POP adapter owns approval validation; this primitive grants none.
     }
@@ -98,7 +182,7 @@ final class PaymentReversalRestatement
 
     private function persistProof(string $operationId, string $phase, array $actor, array $snapshot): string
     {
-        $id = (string) Str::uuid();
+        $id = $this->proofId($snapshot['request_parameters'] ?? ['original_proof_id' => $snapshot['original_proof_id']], $phase);
         DB::table('pop_execution_records')->insert(['id' => $id, 'execution_id' => $id, 'operation_id' => $operationId,
             'phase' => $phase, 'result' => 'succeeded', 'idempotency_key' => $operationId.':'.$phase,
             'attempt_key' => $operationId.':'.$phase, 'correlation_id' => $operationId,

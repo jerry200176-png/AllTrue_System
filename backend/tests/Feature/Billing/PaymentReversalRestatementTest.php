@@ -44,14 +44,19 @@ class PaymentReversalRestatementTest extends TestCase
 
     private function execute(PaymentReversalRestatement $svc, array $plan, array $actor, string $decision, string $id): array
     {
+        $this->prepareRequest($svc, $plan, $actor, $decision, $id);
+        return $svc->execute($plan, $actor, $decision, $id);
+    }
+
+    private function prepareRequest(PaymentReversalRestatement $svc, array $plan, array $actor, string $decision, string $id): void
+    {
         if (!DB::table('pop_operation_requests')->where('id', $id)->exists()) {
             $p = $svc->requestParameters($plan, $decision);
             DB::table('pop_operation_requests')->insert(['id' => $id, 'operation_id' => PaymentReversalRestatement::OPERATION,
                 'strategy_id' => 'synthetic-internal-service-test', 'catalog_version' => 1, 'parameters' => json_encode($p),
                 'parameters_hash' => hash('sha256', json_encode($p)), 'idempotency_key' => $id,
-                'status' => 'approved', 'actor' => 'synthetic-pop', 'created_at' => now(), 'updated_at' => now()]);
+                'status' => 'approved', 'actor' => 'user:'.$actor['id'], 'created_at' => now(), 'updated_at' => now()]);
         }
-        return $svc->execute($plan, $actor, $decision, $id);
     }
 
     private function permutations(array $keys): array
@@ -84,6 +89,15 @@ class PaymentReversalRestatementTest extends TestCase
         $this->assertSame($expectedBefore, $storedBefore);
         $this->assertSame(0, (int) $f['extra']->fresh()->Amount); $this->assertSame('other', $f['extra']->fresh()->Method);
         $this->assertStringContainsString('SYNTHETIC-RESTATEMENT', $f['extra']->fresh()->Note);
+        $ledger = $this->getJson('/api/v1/accounting/ledger?student_class_id='.$f['course']->ID, ['Authorization' => 'Bearer '.$f['token']])->assertOk()->json();
+        $row = collect($ledger['invoices'][0]['payments'])->firstWhere('id', $f['extra']->id);
+        $this->assertSame('voided', $row['application_status']); $this->assertTrue($row['is_void']);
+        $this->assertFalse(collect($ledger['anomalies'])->contains(fn ($a) => $a['code'] === 'payment_without_receipt' && $a['payment_id'] === $f['extra']->id));
+        $ordinary = Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => 0, 'Method' => 'other', 'PaidAt' => '2026-10-02']);
+        $otherLedger = $this->getJson('/api/v1/accounting/ledger?student_class_id='.$f['course']->ID, ['Authorization' => 'Bearer '.$f['token']])->assertOk()->json();
+        $this->assertTrue(collect($otherLedger['anomalies'])->contains(fn ($a) => $a['code'] === 'payment_without_receipt' && $a['payment_id'] === $ordinary->id));
+        $ordinary->delete();
+
         $this->assertCount(5, DB::table('Payment')->where('InvoiceID', $f['invoice']->id)->get());
         $this->assertSame(0, (int) DB::table('Payment')->where('InvoiceID', $f['invoice']->id)->sum('Amount'));
         $this->assertFalse(ContractMoneyState::blocksUnpaidCorrection($f['course']->ID, true));
@@ -184,5 +198,75 @@ class PaymentReversalRestatementTest extends TestCase
         $f['student']->update(['CampusID' => 2]);
         $this->refused(fn () => $this->execute($svc, $plan, $f['actor'], 'LATER-INVOICE', $op), 'owner_mismatch');
         $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $op)->where('phase', 'reversal-proof')->count());
+    }
+
+    public function test_pre_rollback_request_cannot_reapply_even_when_original_money_graph_is_restored(): void
+    {
+        $f = $this->excessFixture(); $svc = app(PaymentReversalRestatement::class);
+        $plan = $svc->plan($f['scope'], $f['actor']); $a = (string) Str::uuid(); $b = (string) Str::uuid();
+        $this->prepareRequest($svc, $plan, $f['actor'], 'BEFORE-ROLLBACK-B', $b);
+        $applied = $this->execute($svc, $plan, $f['actor'], 'BEFORE-ROLLBACK-A', $a);
+        $svc->rollback($applied['restatement_id'], $f['actor']);
+        $this->refused(fn () => $this->execute($svc, $plan, $f['actor'], 'BEFORE-ROLLBACK-B', $b), 'stale_rollback_epoch');
+        $this->assertSame(-8000, (int) $f['extra']->fresh()->Amount);
+        $fresh = $svc->plan($f['scope'], $f['actor']); $this->assertNotSame($plan['rollback_epoch'], $fresh['rollback_epoch']);
+        $this->assertSame('applied', $this->execute($svc, $fresh, $f['actor'], 'AFTER-ROLLBACK-NEW', (string) Str::uuid())['state']);
+    }
+
+    public function test_real_pop_adapter_binds_creator_recovers_proof_verifies_and_rolls_back(): void
+    {
+        $f = $this->excessFixture(); $svc = app(PaymentReversalRestatement::class);
+        $actor = $svc->actorContext($f['user']->id, $f['student']->id);
+        $p = $svc->requestParameters($svc->plan($f['scope'], $actor), 'SYNTHETIC-POP-REVERSAL');
+        $dir = sys_get_temp_dir().'/reversal-pop-'.Str::uuid(); mkdir($dir, 0700); mkdir($dir.'/policies', 0700);
+        try {
+            file_put_contents($dir.'/policies/default.yaml', "version: 1\n");
+            file_put_contents($dir.'/catalog.yaml', "version: 1\noperations:\n  ".PaymentReversalRestatement::OPERATION.":\n    lifecycle: active\n    strategy_class: App\\Operations\\Strategies\\PaymentReversalRestatementStrategy\n    parameter_keys: [campus_id, plan, decision_reference]\n    approval_required: true\n    approval_policy: critical-dual-approval\n    approver_roles: [director, super_admin]\n");
+            $pop = new \App\Operations\PopOperationService(new \App\Operations\PopOperationCatalog($dir.'/catalog.yaml'));
+            $r = $pop->createDraft(PaymentReversalRestatement::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id,
+                'director', [1], $f['user']->id);
+            $this->assertTrue($pop->runDryRun($r['id'], 'user:'.$f['user']->id, $f['user']->id, 'director', [1])['ok']);
+            $sha = str_repeat('b', 40);
+            $this->assertFalse($pop->approve($r['id'], 'SYNTHETIC-DIRECTOR', 'reviewer-director', 'director', $sha, 900, [1])['ready']);
+            $approved = $pop->approve($r['id'], 'SYNTHETIC-FOUNDER', 'reviewer-founder', 'super_admin', $sha, 901);
+            $this->assertTrue($approved['ready']);
+            $direct = $svc->execute($p['plan'], $actor, $p['decision_reference'], $r['id']); // Interrupted before outer receipt.
+            $this->assertSame('applied', $direct['state']);
+            $executed = $pop->run($r['id'], 'execute', $approved['token'], $sha, 'pop-runner');
+            $this->assertTrue($executed['ok']); $this->assertTrue($executed['already_applied']);
+            $this->assertTrue($pop->run($r['id'], 'verify', $approved['token'], $sha, 'pop-runner')['ok']);
+            $this->assertSame(0, (int) $f['extra']->fresh()->Amount);
+            $this->assertSame('pending', $f['pending']->fresh()->status);
+            $this->assertTrue($pop->run($r['id'], 'rollback', $approved['token'], $sha, 'pop-runner')['ok']);
+            $this->assertSame(-8000, (int) $f['extra']->fresh()->Amount);
+            $this->assertSame(2, DB::table('pop_execution_records')->where('operation_id', $r['id'])->whereIn('phase', ['reversal-proof', 'reversal-proof-rollback'])->count());
+        } finally {
+            unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
+        }
+    }
+
+    public function test_pop_adapter_refuses_scope_and_current_staff_permission_drift(): void
+    {
+        $f = $this->excessFixture(); $svc = app(PaymentReversalRestatement::class);
+        $p = $svc->requestParameters($svc->plan($f['scope'], $svc->actorContext($f['user']->id, $f['student']->id)), 'SYNTHETIC-IDENTITY');
+        $adapter = app(\App\Operations\Strategies\PaymentReversalRestatementStrategy::class);
+        $this->assertTrue($adapter->plan($p)['ok']);
+        $foreign = $p; $foreign['campus_id'] = 2; $this->assertFalse($adapter->plan($foreign)['ok']);
+        $op = (string) Str::uuid(); $this->prepareRequest($svc, $p['plan'], $f['actor'], $p['decision_reference'], $op);
+        DB::table('pop_operation_requests')->where('id', $op)->update(['actor' => 'user:999999']);
+        $this->refused(fn () => $svc->execute($p['plan'], $f['actor'], $p['decision_reference'], $op), 'request_mismatch');
+        $f['user']->update(['status' => 'suspended']); $this->assertFalse($adapter->plan($p)['ok']);
+        $this->assertSame(-8000, (int) $f['extra']->fresh()->Amount);
+    }
+
+    public function test_committed_catalog_remains_planned_and_rejects_approval(): void
+    {
+        $f = $this->excessFixture(); $svc = app(PaymentReversalRestatement::class);
+        $p = $svc->requestParameters($svc->plan($f['scope'], $f['actor']), 'SYNTHETIC-PLANNED');
+        $catalog = app(\App\Operations\PopOperationCatalog::class); $this->assertSame('planned', $catalog->operation(PaymentReversalRestatement::OPERATION)['lifecycle']);
+        $pop = app(\App\Operations\PopOperationService::class);
+        $r = $pop->createDraft(PaymentReversalRestatement::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);
+        $this->assertTrue($pop->runDryRun($r['id'], 'user:'.$f['user']->id, $f['user']->id, 'director', [1])['ok']);
+        $this->refused(fn () => $pop->approve($r['id'], 'founder-go-synthetic', 'reviewer-founder', 'super_admin', str_repeat('b', 40), 901), 'not active');
     }
 }

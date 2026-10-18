@@ -478,12 +478,13 @@ class AccountingController extends Controller
             ->orderByDesc('id')
             ->get();
 
+        $restatedPaymentIds = \App\Services\Billing\PaymentReversalRestatement::recordedDispositionIds($invoices->flatMap(fn ($i) => $i->payments));
         $reportsByPaymentId = $reports->whereNotNull('payment_id')->keyBy('payment_id');
         $reportsById = $reports->keyBy('id');
         $reportsByInvoiceId = $reports->whereNotNull('InvoiceID')->groupBy('InvoiceID');
         $anomalies = [];
 
-        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
+        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($restatedPaymentIds, $reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
             $invoiceStudentClassId = (int) $invoice->getAttribute('StudentClassID');
             $invoiceStudentClass = $invoice->getRelationValue('studentClass');
             $payments = $invoice->payments;
@@ -536,10 +537,12 @@ class AccountingController extends Controller
             }
 
             $remainingInvoiceAmount = $totalAmount;
-            $paymentRows = $payments->map(function ($payment) use ($reportsByPaymentId, $reportsById, $invoice, &$invoiceAnomalies, &$remainingInvoiceAmount) {
+            $paymentRows = $payments->map(function ($payment) use ($restatedPaymentIds, $reportsByPaymentId, $reportsById, $invoice, &$invoiceAnomalies, &$remainingInvoiceAmount) {
                 $report = $reportsByPaymentId->get((int) $payment->id)
                     ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
-                $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
+                $isRestatement = isset($restatedPaymentIds[(int) $payment->id]);
+                // Recorded zero-value history uses the existing 已更正 chip, never an applied cash receipt.
+                $isVoid = $isRestatement || (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
                 $amount = (int) ($payment->Amount ?? 0);
                 $appliedToInvoice = 0;
                 $unappliedAmount = 0;
@@ -557,7 +560,7 @@ class AccountingController extends Controller
                 }
 
                 // 轉課 transfer_in is a ledger carry-over, not a receipted cash payment.
-                if (!$isVoid && !$report && (string) ($payment->Method ?? '') !== 'transfer_in') {
+                if (!$isVoid && !$report && !$isRestatement && (string) ($payment->Method ?? '') !== 'transfer_in') {
                     $invoiceAnomalies[] = $this->ledgerAnomaly(
                         'payment_without_receipt',
                         'warning',
