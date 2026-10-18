@@ -32,11 +32,16 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             'invoice_id' => (int) $f['invoice']->id, 'expected_invoice_total' => $old, 'expected_charge' => $new,
             'decision_reference' => 'SYNTHETIC-ALIGNMENT'];
         $svc = app(Alignment::class); $p['expected_state_hash'] = $svc->preview($p)['state_hash'];
-        $id = (string) Str::uuid();
-        DB::table('pop_operation_requests')->insert(['id' => $id, 'operation_id' => 'synthetic-unregistered-alignment',
-            'strategy_id' => Alignment::STRATEGY, 'catalog_version' => 1, 'parameters' => json_encode($p),
-            'parameters_hash' => hash('sha256', json_encode(PopOperationService::canonicalParameters($p))),
-            'idempotency_key' => $id, 'status' => 'approved', 'actor' => 'synthetic-pop', 'created_at' => now(), 'updated_at' => now()]);
+        // Use the real draft writer: strategy_id is a PHP class name, not a made-up version ID.
+        $catalogPath = tempnam(sys_get_temp_dir(), 'alignment-catalog-');
+        try {
+            file_put_contents($catalogPath, "version: 1\noperations:\n  synthetic-alignment:\n    lifecycle: planned\n    strategy_class: ".Alignment::class."\n    parameter_keys: [".implode(', ', array_keys($p))."]\n    approval_required: true\n    approver_roles: [super_admin]\n");
+            $pop = new PopOperationService(new \App\Operations\PopOperationCatalog($catalogPath));
+            $request = $pop->createDraft('synthetic-alignment', $p, (string) Str::uuid(), 'synthetic-pop', 'director', [1]);
+            $id = $request['id'];
+            // Strategy-level tests only; this is not a claim that protected POP approval passed.
+            DB::table('pop_operation_requests')->where('id', $id)->update(['status' => 'approved']);
+        } finally { unlink($catalogPath); }
         return [$f, $p, ['operation_id' => $id, 'actor' => 'synthetic-pop']];
     }
 

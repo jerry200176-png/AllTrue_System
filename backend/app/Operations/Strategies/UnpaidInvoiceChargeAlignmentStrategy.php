@@ -12,7 +12,7 @@ use RuntimeException;
 /** Preparation only: deliberately absent from the POP catalog and public routes. */
 final class UnpaidInvoiceChargeAlignmentStrategy
 {
-    public const STRATEGY = 'unpaid-invoice-charge-alignment@1';
+    public const STRATEGY = self::class;
 
     /** Operator preview only; the resulting hash must be bound into the POP request before approval. */
     public function preview(array $parameters): array
