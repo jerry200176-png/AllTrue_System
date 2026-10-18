@@ -64,7 +64,9 @@ trait PaymentReportRaceWorker
     {
         $started = $this->raceFile();
         $payload['started'] = $started;
-        $payload['db'] = $payload['db'] ?? config('database.connections.mysql');
+        require_once base_path('tests/Support/alltrueTestDatabase.php');
+        $payload['db'] = alltrue_race_database_config($payload['db'] ?? config('database.connections.mysql'));
+        $payload['app_key'] = config('app.key');
         $process = proc_open(
             [PHP_BINARY, $script],
             [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']],
@@ -291,7 +293,7 @@ trait PaymentReportRaceWorker
             alltrue_is_allowed_test_database($dbName),
             'race workers require CI AllTrue_test or phpunit-isolated AllTrue_test_*; got '.$dbName
         );
-        $this->assertSame('REPEATABLE-READ', DB::selectOne('SELECT @@transaction_isolation AS level')->level);
+        $this->assertSame('REPEATABLE-READ', alltrue_race_isolation_level());
         DB::statement('SET SESSION innodb_lock_wait_timeout = 5');
     }
 }

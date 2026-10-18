@@ -10,3 +10,8 @@ production data, schema, feature flags, or deployment permissions.
 The existing source branch retains the void/confirm regression suites. They will
 land with the remaining implementation slices after this prerequisite merges.
 Allowlist unit tests reject production, empty, illegal and newline-suffixed schemas.
+
+Independent review also added a minimal TCP connection configuration, preserved
+parent signing keys, and the existing MySQL/MariaDB isolation lookup fallback.
+Focused subprocess regressions cover alternate connection overrides and key handoff.
+The confirm worker stays with its subsequent confirm/RR behavior slice.

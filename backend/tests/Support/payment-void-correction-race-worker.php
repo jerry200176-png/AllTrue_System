@@ -3,16 +3,21 @@
 // Separate PHP process for BillingCorrection::applyCountCorrection vs void mixed-writer (#4248).
 require __DIR__.'/../../vendor/autoload.php';
 require __DIR__.'/alltrueTestDatabase.php';
-$app = require __DIR__.'/../../bootstrap/app.php';
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 $data = json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
-$dbName = $data['db']['database'] ?? null;
-$dbHost = $data['db']['host'] ?? null;
-if (!alltrue_is_allowed_test_database(is_string($dbName) ? $dbName : null)
-    || !alltrue_is_allowed_test_db_host(is_string($dbHost) ? $dbHost : null)) {
+try {
+    $db = alltrue_race_database_config($data['db'] ?? []);
+    if (!is_string($data['app_key'] ?? null) || $data['app_key'] === '') {
+        throw new InvalidArgumentException('Missing synthetic parent signing key');
+    }
+} catch (InvalidArgumentException $e) {
     exit(90);
 }
-config(['database.connections.mysql' => $data['db'], 'database.default' => 'mysql', 'app.key' => str_repeat('t', 32)]);
+$app = require __DIR__.'/../../bootstrap/app.php';
+$app->afterBootstrapping(Illuminate\Foundation\Bootstrap\LoadConfiguration::class, static function ($app) use ($db, $data) {
+    $app['config']->set(['database.connections.mysql' => $db, 'database.default' => 'mysql',
+        'app.env' => 'testing', 'app.key' => $data['app_key']]);
+});
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 Illuminate\Support\Facades\DB::purge();
 Illuminate\Support\Facades\DB::statement('SET SESSION innodb_lock_wait_timeout = 5');
 alltrue_install_sql_pause(

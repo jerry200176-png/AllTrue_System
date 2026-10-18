@@ -45,4 +45,17 @@ class AllTrueTestDatabaseAllowlistTest extends TestCase
         $this->assertGreaterThan(64, strlen($tooLong));
         $this->assertFalse(alltrue_is_allowed_test_database($tooLong));
     }
+
+    public function test_connection_builder_refuses_invalid_targets(): void
+    {
+        $local = ['host' => '127.0.0.1', 'database' => 'AllTrue_test', 'port' => 3306];
+        foreach ([['host' => 'remote.invalid'], ['database' => 'AllTrue'], ['port' => 0], ['port' => 65536]] as $override) {
+            try {
+                alltrue_race_database_config(array_replace($local, $override));
+                $this->fail('Unsafe target must be refused before worker bootstrap');
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('loopback synthetic', $e->getMessage());
+            }
+        }
+    }
 }

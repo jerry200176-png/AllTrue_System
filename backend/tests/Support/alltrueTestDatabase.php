@@ -31,6 +31,32 @@ function alltrue_is_allowed_test_db_host(?string $host): bool
     return in_array($host ?? '', ['127.0.0.1', 'localhost'], true);
 }
 
+/** Construct a single TCP target; never forward URL, socket, PDO options or read/write overrides. */
+function alltrue_race_database_config(array $db): array
+{
+    $name = $db['database'] ?? null;
+    $host = $db['host'] ?? null;
+    $port = filter_var($db['port'] ?? 3306, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]);
+    if (!is_string($name) || !alltrue_is_allowed_test_database($name)
+        || !is_string($host) || !alltrue_is_allowed_test_db_host($host) || $port === false) {
+        throw new InvalidArgumentException('Race workers require a loopback synthetic test database');
+    }
+
+    return ['driver' => 'mysql', 'host' => '127.0.0.1', 'port' => $port,
+        'database' => $name, 'username' => (string) ($db['username'] ?? ''),
+        'password' => (string) ($db['password'] ?? ''), 'charset' => 'utf8mb4',
+        'collation' => 'utf8mb4_unicode_ci', 'prefix' => '', 'strict' => true];
+}
+
+function alltrue_race_isolation_level(): string
+{
+    try {
+        return Illuminate\Support\Facades\DB::selectOne('SELECT @@transaction_isolation AS level')->level;
+    } catch (Illuminate\Database\QueryException $e) {
+        return Illuminate\Support\Facades\DB::selectOne('SELECT @@tx_isolation AS level')->level;
+    }
+}
+
 /**
  * After a matching SQL runs (listen), touch ready and block until release.
  * Used so a worker can hold a lock while the parent coordinates the peer.
