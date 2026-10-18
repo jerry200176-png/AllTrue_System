@@ -559,6 +559,9 @@ Route::prefix('v1')->group(function () {
 
     // Cross-campus student identity bridge: explicit two-campus authorization only.
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        // Agreed-fee correction (S1): default-off; controller 404 when flag false; service 503 without extension schema.
+        Route::post('student-classes/{studentClass}/agreed-fee-correction/preview', [\App\Http\Controllers\AgreedFeeCorrectionController::class, 'preview']);
+        Route::post('student-classes/{studentClass}/agreed-fee-correction/apply', [\App\Http\Controllers\AgreedFeeCorrectionController::class, 'apply']);
         Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
         Route::post('student-classes/{studentClass}/contract-amendment/preview', [ContractAmendmentController::class, 'preview']);
         Route::post('student-classes/{studentClass}/contract-amendment', [ContractAmendmentController::class, 'execute']);

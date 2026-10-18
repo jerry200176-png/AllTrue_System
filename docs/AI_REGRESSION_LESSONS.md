@@ -697,6 +697,8 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；已繳課程殘留 unpaid Invoice 時仍必須拒絕；invoice API 必須排除 void payment count 與 void invoice，並回傳付款/沖銷明細供稽核；Invoice 作廢 API 必須覆蓋 paid/partial/cross-campus/teacher forbidden。
 - **單課作廢要加入費用更正的課程鎖，並重查歸屬（#4247／#4262）**：從 DB 讀取當前 header/item 課程，鎖單課後再鎖帳單；以 fresh invoice/item locking reads 比對歸屬，漂移回409且不寫款項。多課合併帳單雖不符合新 fee API 資格，既有 count correction 仍可用 header 找到它，作廢至少要鎖 header owner；不可新增會與轉移相反的多課鎖集；直接收款保留既有 sorted course locks。測試以 PROCESSLIST 觀測真實等待查詢及 post-query marker 未出現，不能只憑 beforeExecuting 訊號宣稱已阻塞。
 
+- **Preview／冪等 hash 必須用同一份已驗證正規值（#4259）**：原因先確認是字串才 trim，拒絕 array/object 等型別；接受 integer 與 numeric-string 的單據 ID 要先轉成相同整數再簽章／比對，避免同一請求回409或產生無意義 audit reason。
+
 ---
 
 ### R29. 請假入口不可 fallback 直接寫 `schedules`
