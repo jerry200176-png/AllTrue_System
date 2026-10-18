@@ -47,8 +47,8 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
 
     private function refuse(callable $call, string $code): void
     {
-        try { $call(); $this->fail('Expected refusal '.$code); }
-        catch (\RuntimeException $e) { $this->assertStringContainsString($code, $e->getMessage()); }
+        try { $call(); } catch (\RuntimeException $e) { $this->assertStringContainsString($code, $e->getMessage()); return; }
+        $this->fail('Expected refusal '.$code);
     }
 
     public function test_three_target_shapes_align_only_invoice_and_keep_atomic_recovery_proof(): void
